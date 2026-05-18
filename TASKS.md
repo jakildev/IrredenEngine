@@ -257,17 +257,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE** — remove duplicated naming-convention tables from 5 SKILL.md files
-  - **ID:** T-233
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-233-drop-naming-table-copies
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `simplify/SKILL.md:308-321`, `ecs-prefab-creator/SKILL.md:22-23` and `200-206`, `render-trixel-pipeline/SKILL.md:106-114`, `backend-parity/SKILL.md:121-132`, `review-pr/SKILL.md:283-289` each use a one-sentence ref to `CLAUDE-BASELINE.md §Naming` (and keep only regex-style fix patterns they specifically use); (2) duplicate tables removed; (3) canonical home `CLAUDE-BASELINE.md:36-47` unchanged
-  - **Issue:** #816
-  - **Notes:** Follow-up from T-222 audit (§5.3, §1.2). Size S. Five files restate the same table.
-  - **Links:**
-
 - [~] **docs/skills: shrink commit-and-push cross-repo info-isolation procedure to a check + baseline ref** — replace 38-line inline procedure with a ~2-line check + baseline pointer
   - **ID:** T-234
   - **Area:** docs
@@ -558,6 +547,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-233** — docs/skills: replace naming-table copies with one-line refs to CLAUDE-BASELINE · Owner: claude/T-233-drop-naming-table-copies · PR: https://github.com/jakildev/IrredenEngine/pull/859
 - [x] **T-221** — docs audit of role-*.md — shared protocols + point-don't-dump · Owner: claude/T-221-roles-audit · PR: https://github.com/jakildev/IrredenEngine/pull/857
 - [x] **T-211** — editor F-1.1 — place/erase + palette panel + undo stack · Owner: claude/T-211-place-erase-palette-undo · PR: https://github.com/jakildev/IrredenEngine/pull/785
 - [x] **T-232** — docs/skills: move IRMath substitution table into .claude/rules/cpp-math.md · Owner: claude/T-232-irmath-table-to-rules · PR: https://github.com/jakildev/IrredenEngine/pull/853
@@ -577,4 +567,3 @@ Avoid:
 - [x] **T-218** — tooling: allow fleet agents to force-push claude/* branches · Owner: claude/T-218-force-push-allow · PR: https://github.com/jakildev/IrredenEngine/pull/789
 - [x] **T-199** — migrate COMPUTE_LIGHT_VOLUME reader to C_WorldTransform (step 1) · Owner: claude/T-199-step1-clean · PR: https://github.com/jakildev/IrredenEngine/pull/787
 - [x] **T-201** — split LodLevel header + migrate component_shape_descriptor IRRender:: aliases · Owner: claude/T-201-lod-level-shape-types-split · PR: https://github.com/jakildev/IrredenEngine/pull/786
-- [x] **T-209** — modifier: replace ticksRemaining footgun with pushFrameLocal / pushOneFrame · Owner: claude/T-209-pushFrameLocal-rebased · PR: https://github.com/jakildev/IrredenEngine/pull/784
