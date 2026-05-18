@@ -764,17 +764,14 @@ iterations write nothing).
 
 ## Hard rules
 
-- **Never `git push origin master`. Never push to master at all.**
-  Only push the PR branch with `--force-with-lease`.
-- **Never `git push --force`.** Always `--force-with-lease` so
-  the push fails if upstream changed under you (which would mean
-  the author pushed in parallel).
-- **Never `gh pr merge`.** The human merges. The merger only
-  rebases.
-- **Never `gh pr review --approve` or `--request-changes`.** All
-  fleet agents share one GitHub account and GitHub rejects formal
-  review actions on your own PRs. Use `--comment` for status
-  posts (already handled via `gh pr comment`).
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Merger-specific additions:
+
+- **Only push the PR branch with `--force-with-lease`**, never `--force`.
+  The push fails if upstream changed under you (parallel author push).
+- **Never `gh pr review --approve` or `--request-changes`.** All fleet
+  agents share one GitHub account and GitHub rejects formal review
+  actions on your own PRs. Use `--comment` for status posts
+  (already handled via `gh pr comment`).
 - **Never bypass labels.** A PR with `human:wip`, `fleet:wip`,
   `fleet:blocker`, `human:needs-fix`, or `human:blocker` is off-
   limits. Do not touch.
@@ -794,7 +791,6 @@ iterations write nothing).
   step — but do NOT also try a second mechanical class on a later
   PR in the same iteration unless the first one succeeded
   cleanly. Fail-stop.
-- Single-command Bash only (see CRITICAL section above).
 
 ## How the cooldown label works
 

@@ -420,34 +420,26 @@ iterations write nothing).
 
 ## Hard rules
 
-- Never commit, push, or open PRs from this worktree.
-- Never `gh pr merge` — the human merges.
-- Never `gh pr review --approve` or `--request-changes` — all fleet
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Reviewer-specific additions:
+
+- **Never commit, push, or open PRs from this worktree.**
+- **Never `gh pr review --approve` or `--request-changes`** — all fleet
   agents share one GitHub account and GitHub rejects formal review
   actions on your own PRs. Always use `--comment` with a clear
   verdict line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
-- Never `git push --force` (you have no reason to push at all).
 - **Never post a review without setting the verdict label.** A review
   comment without a `fleet:approved` / `fleet:needs-fix` /
   `fleet:blocker` label is invisible to the human's merge queue —
   the human filters PRs by label, not by review body. After every
   `gh pr review --comment ...`, your VERY NEXT bash call MUST be
-  `gh pr edit <N> ... --add-label "fleet:..."`. This is the
-  most-skipped step in the loop; it has been observed in production
-  on PR #230 (re-review approve, no label set, PR sat invisible).
-  If you described the label change in the review body but didn't
-  run the gh command, the label is NOT set — describing isn't
-  doing. Verify with `gh pr view <N> --json labels`.
+  `gh pr edit <N> ... --add-label "fleet:..."`. Verify with
+  `gh pr view <N> --json labels`.
 - **Never re-apply a verdict label without posting a new review in
   the same iteration.** If a PR you previously verdicted is now
   missing its verdict label, that is NOT a label-fixup trigger —
   the label may have been legitimately cleared by the author's
   `commit-and-push` after a fix push, by an ESCALATE handoff (which
   swaps `fleet:needs-fix` for `fleet:changes-made`), or by a worker
-  mid-claim on a `fleet:has-nits` PR. Heuristically re-stamping a
-  stale verdict overwrites those transitions and produces
-  invisible-needs-fix states (observed: PRs #347, #348, #394, plus
-  the 65s `fleet:has-nits` re-stamp race on #402). If you decide to
-  re-review, post a new review and set the label as part of THAT
-  review's flow. Otherwise leave the label alone.
-- Single-command Bash only (see CRITICAL section above).
+  mid-claim on a `fleet:has-nits` PR. If you decide to re-review,
+  post a new review and set the label as part of THAT review's flow.
+  Otherwise leave the label alone.
