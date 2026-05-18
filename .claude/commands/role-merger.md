@@ -49,14 +49,9 @@ file, what stays direct — lives in
 
 ## Exit protocol
 
-You are a transient one-shot `claude --print` invocation. When
-your merge iteration finishes, stop emitting tool calls and
-produce a final text response — `claude --print` then exits
-naturally, the pane returns to bash, and `fleet-dispatcher`
-fires a fresh invocation when scout's next merge-candidate
-trigger arrives. Do NOT loop. The auto-mode classifier blocks
-`bash -c 'kill -TERM $PPID'`, so the older explicit-kill path
-no longer applies — natural-exit on the final turn is correct.
+See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNTIME.md#exit-protocol--transient-roles)
+— transient one-shot, natural-exit on the final turn, no looping, no
+`kill -TERM $PPID`.
 
 ## What you do
 
@@ -114,20 +109,15 @@ The `/loop` driver re-invokes this role every 10 minutes in live
 mode. Each invocation is one iteration — handle ready PRs, then
 exit cleanly:
 
-0. **Heartbeat** — signal to the witness monitor that this agent is alive:
-   `fleet-heartbeat merger`
-   (Wrapper script around `touch ~/.fleet/heartbeats/<role>`. Using
-   the helper instead of a direct `touch` avoids the `~`-expansion
-   path-scope prompt that fires on the raw form.)
-   Witness's staleness threshold for `merger` is 20 minutes (10m loop +
-   10m budget for rebases / pushes). Re-run `fleet-heartbeat merger`
-   before any long-running git fetch / push / rebase loop so a slow
-   conflict resolution doesn't trigger a false alert.
+0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
+   `fleet-heartbeat merger` with a 20-minute staleness threshold (10m
+   loop + 10m budget for rebases/pushes). Re-touch before any
+   long-running `git fetch` / `push` / `rebase` loop.
    For the audit log: `echo "..." >> ~/.fleet/logs/merger-audit.log` is
    one command, one file write — the single `>>` redirect is fine
-   (the "single-command Bash" rule above bans `&&`, `||`, `;`, `|`
-   between commands, not file redirects). Use it directly; don't fall
-   back to Read+Write.
+   (the "single-command Bash" rule bans `&&`, `||`, `;`, `|` between
+   commands, not file redirects). Use it directly; don't fall back to
+   Read+Write.
 
 1. **Clear all `fleet:merger-cooldown` labels.** The 10-minute loop
    interval is the cooldown — clearing at iteration start (rather
@@ -743,17 +733,12 @@ exit cleanly:
       checking out the same branch:
       `git checkout -B claude/merger-scratch origin/master`
 
-6. Write a per-iteration summary, then print completion:
+6. **Shutdown.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
    `fleet-iteration-summary merger "<PRs processed, outcomes, snags — under 100 words.>"`
-   **Do NOT use backticks in the summary text.** Your bash shell
-   evaluates backticks within double-quoted args as command
-   substitution — `` `something` `` will be run as a command, fail,
-   and silently strip from the saved summary (observed on
-   opus-reviewer 2026-05-02). Write technical references in plain
-   prose (`scale > 1` becomes `scale gt 1` or `the scale gate`).
-   Then print `[merger] Iteration complete. Will re-fire on next dispatcher trigger.`
-   Then exit cleanly. fleet-dispatcher re-fires this role when the
-   scout's projection sees new actionable PR state.
+   The merger does not reserve worktrees, so skip `release-worktree`;
+   the scratch reset has already happened per-PR in step 5f. Print
+   `[merger] Iteration complete. Will re-fire on next dispatcher trigger.`
+   and exit cleanly.
 
 If Mode above is `dry-run`: do startup actions only and stop at
 the `merger standing by (dry-run)` line. The PR list is not

@@ -51,14 +51,9 @@ file, what stays direct — lives in
 
 ## Exit protocol
 
-You are a transient one-shot `claude --print` invocation. When
-your review iteration finishes, stop emitting tool calls and
-produce a final text response — `claude --print` then exits
-naturally, the pane returns to bash, and `fleet-dispatcher`
-fires a fresh invocation when scout's next flagged-PR trigger
-arrives. Do NOT loop. The auto-mode classifier blocks
-`bash -c 'kill -TERM $PPID'`, so the older explicit-kill path
-no longer applies — natural-exit on the final turn is correct.
+See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNTIME.md#exit-protocol--transient-roles)
+— transient one-shot, natural-exit on the final turn, no looping, no
+`kill -TERM $PPID`.
 
 ## Role
 
@@ -165,11 +160,8 @@ sees new actionable PR state, with an empty conversation — no
 context carries over from prior reviews. Each invocation is one
 iteration of polling, reviewing, and exiting cleanly:
 
-0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `fleet-heartbeat opus-reviewer`
-   (Wrapper script around `touch ~/.fleet/heartbeats/<role>`. Using
-   the helper instead of a direct `touch` avoids the `~`-expansion
-   path-scope prompt that fires on the raw form.)
+0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
+   `fleet-heartbeat opus-reviewer`.
 
 1. Re-Read `~/.fleet/state/state.json` if its contents are no
    longer in your conversation context — both repos' open PRs (with
@@ -345,19 +337,12 @@ iteration of polling, reviewing, and exiting cleanly:
    `git checkout -B claude/opus-reviewer-scratch origin/master`
    This prevents "branch already checked out in worktree" errors when
    a worker agent tries to check out a PR branch you just reviewed.
-4. After the reset, write a per-iteration summary:
+4. **Shutdown.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
    `fleet-iteration-summary opus-reviewer "<PR numbers reviewed, verdicts, snags — under 100 words.>"`
-   **Do NOT use backticks in the summary text.** Your bash shell
-   evaluates backticks within double-quoted args as command
-   substitution — `` `something` `` will be run as a command, fail,
-   and silently strip from the saved summary (observed on
-   opus-reviewer 2026-05-02). Write technical references in plain
-   prose (`scale > 1` becomes `scale gt 1` or `the scale gate`).
-   Then print
+   Reviewers do not reserve worktrees, so skip `release-worktree`; the
+   scratch reset already happened in step 3 above. Print
    `[opus-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`
-   Then exit cleanly. fleet-dispatcher launches a fresh `claude` for
-   this role when the scout's projection sees new actionable PR
-   state — no carry-over between iterations.
+   and exit cleanly.
 5. If you hit a usage-limit error: print the error and exit.
    `fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
 

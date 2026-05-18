@@ -36,24 +36,9 @@ file, what stays direct — lives in
 
 ## Exit protocol
 
-You are a transient one-shot `claude --print` invocation,
-dispatched into a tmux pane that's otherwise sitting at a bash
-prompt. When your iteration finishes, **stop emitting tool calls
-and produce a final text response** — `claude --print` then exits
-naturally, the pane returns to bash, and `fleet-dispatcher` fires
-a fresh invocation when scout's next trigger arrives.
-
-Do NOT loop, do NOT call `fleet-babysit`, do NOT keep emitting
-tool calls hoping the iteration will be re-entered. The iteration
-is done when you stop producing turns.
-
-Older role-doc revisions suggested `bash -c 'kill -TERM $PPID'`
-to terminate immediately. The auto-mode classifier now blocks
-that command (it reads as "agent attempting to terminate its
-controlling session"), so the explicit-kill path no longer
-applies. Ending your turn cleanly without further tool calls is
-the correct exit; the natural-exit pause is at most a few
-seconds and doesn't change anything load-bearing.
+See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNTIME.md#exit-protocol--transient-roles)
+— transient one-shot, natural-exit on the final turn, no looping, no
+`kill -TERM $PPID`.
 
 ## Responsibilities
 
@@ -109,36 +94,18 @@ earlier work.
 
 Each iteration:
 
-0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `fleet-heartbeat <your-worktree-basename>`
-   (e.g. `fleet-heartbeat sonnet-fleet-1` — substitute the basename
-   from your `pwd` at startup. Wrapper script around
-   `touch ~/.fleet/heartbeats/<role>`. Using the helper instead of a
-   direct `touch` avoids the `~`-expansion path-scope prompt that
-   fires on the raw form.)
-   Also re-run `fleet-heartbeat <your-worktree-basename>` before
-   long-running steps (fleet-build, fleet-run, commit-and-push) to
-   prevent false staleness alerts during builds or PR actions.
+0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
+   Your worktree basename (e.g. `sonnet-fleet-1`, from `pwd` at startup)
+   is the helper argument. Re-touch before `fleet-build`, `fleet-run`,
+   and `commit-and-push`.
 
-0.5. **Check for a worktree reservation.** See whether a prior iteration
-   reserved this worktree for an interrupted task:
-   `fleet-claim reservation-of <your-worktree-basename>`
-
-   - **Empty output** — no reservation; proceed normally (step 1 onward).
-   - **Non-empty output (a task ID, e.g. `T-NNN`)** — this worktree is
-     reserved for an in-flight task from a previous interrupted iteration.
-     Read the reserved branch and check it out:
-     Use the **Read tool** to read
-     `~/.fleet/reservations/<your-worktree-basename>.json`
-     and extract the `branch` field from the JSON. Then:
-     `git checkout <branch>`
-     (No-op if the branch is already checked out.) Run steps 1 and 1b
-     normally — feedback and smoke are still your responsibility. **At
-     step 2**, skip molecule resume and task pickup entirely: the
-     reserved task IS your task. Record the reserved task ID, skip steps
-     2–3 (pickup and claim — already done), and jump directly to step 4
-     (read the plan file) with the reserved task ID. The PR from the
-     previous iteration is still open; do NOT open a new one.
+0.5. **Reservation check.** See [docs/agents/FLEET-RUNTIME.md § Reservation check](../../docs/agents/FLEET-RUNTIME.md#reservation-check--step-05-workers-and-authors-only).
+   If `fleet-claim reservation-of <your-worktree-basename>` returns a
+   `T-NNN`, run steps 1 and 1b normally (feedback and smoke still
+   apply), then skip step 2's molecule resume + task pickup and step 3's
+   claim, and jump directly to **step 4 (read the plan file)** with the
+   reserved task ID. The PR from the previous iteration is still open;
+   do NOT open a new one.
 
 1. **Check for feedback labels on open PRs.** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
@@ -789,30 +756,15 @@ Each iteration:
    `fleet-claim release "<task ID, e.g. T-002>"`
    Paste the PR URL.
 
-11. **Reset and exit cleanly.** Before resetting, write a per-iteration
-   summary so `fleet-down --summary` has coverage even if the pane is
-   between iterations at shutdown:
+11. **Reset and exit cleanly.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
+   Summary template:
    `fleet-iteration-summary <your-worktree-basename> "T-NNN: <task title>. PR: #<N>. <Snags if any — under 100 words.>"`
-   **Do NOT use backticks in the summary text.** Your bash shell
-   evaluates backticks within double-quoted args as command
-   substitution — `` `something` `` will be run as a command, fail,
-   and silently strip from the saved summary. Write technical
-   references in plain prose.
-
-   **Then release the reservation BEFORE resetting** so the next
-   iteration on this pane doesn't try to resume the just-completed
-   task: `fleet-claim release-worktree <your-worktree-basename>`.
-   Order matters — release before scratch-reset means an
-   interruption between the two leaves the worktree in a known
-   "free" state, not pinned to dead work. (#521)
-
-   Then use the `start-next-task` skill to land on a fresh branch off
-   `origin/master`. Print
+   Then `fleet-claim release-worktree <your-worktree-basename>`
+   (release BEFORE the scratch reset, per #521), then `start-next-task`
+   to land on a fresh branch off `origin/master`. Print
    `[sonnet-author] Iteration complete. Will re-fire on next dispatcher trigger.`
-   Then exit cleanly (do NOT loop back to step 1 inside this same
-   `claude` session — fleet-dispatcher launches a fresh `claude` for
-   each iteration when scout sees new actionable state, so each run
-   has clean conversation context).
+   and exit cleanly — do NOT loop back to step 1 inside this same
+   `claude` session.
 
 ## Mode behavior
 
