@@ -256,17 +256,6 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.5, §3.6). Reviewer-tagging and author-claiming are two halves of the same protocol — keeping them in separate role files obscures the handoff. The Sonnet-vs-Opus visual judgment split is a real protocol divergence worth documenting explicitly.
   - **Links:**
 
-- [~] **docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor** — add canonical Hard rules section to CLAUDE-BASELINE.md; collapse all seven role Hard rules epilogues to pointers; fix broken (see CRITICAL section above) anchor throughout
-  - **ID:** T-265
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-265-hoist-hard-rules
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `CLAUDE-BASELINE.md` gains `## Hard rules for autonomous fleet roles` covering all baseline prohibitions (never push master, never --force, never gh pr merge, never cmake --preset, never sudo/brew/apt, never touch .claude/worktrees/ layout); (2) every role file's Hard rules section collapses to 3-line pointer plus role-specific additions (e.g., merger's "never write merge commits"); (3) broken "(see CRITICAL section above)" in all seven role files fixed to point at CLAUDE-BASELINE.md § Bash tool rules; (4) net -150 lines across seven roles
-  - **Issue:** #866
-  - **Notes:** From T-221 role audit (audit-roles.md §1.14, §2.2, §3.4). Broken anchor exists in role-opus-worker.md, role-sonnet-author.md, role-opus-architect.md, role-merger.md, role-opus-reviewer.md, role-sonnet-reviewer.md — role-queue-manager.md says "see CLAUDE-BASELINE.md above" (also misleading).
-  - **Links:**
-
 - [~] **docs/roles: invert Engine API removal rule citation (baseline owns it)** — make CLAUDE-BASELINE.md the canonical home for the Engine API removal rule; collapse role-file copies to pointers
   - **ID:** T-266
   - **Area:** docs
@@ -370,6 +359,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-265** — docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor · Owner: claude/T-265-hoist-hard-rules · PR: https://github.com/jakildev/IrredenEngine/pull/917
 - [x] **T-259** — docs: SQT transition notes across prefabs/ family CLAUDE.md · Owner: claude/T-259-sqt-transition-notes · PR: https://github.com/jakildev/IrredenEngine/pull/916
 - [x] **T-262** — docs/roles: hoist molecule + stacked-PR per-task sequence into FLEET.md · Owner: claude/T-262-molecule-stacked-pr-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/914
 - [x] **T-258** — docs: creations/ + creations/demos/ CLAUDE.md — fix drift · Owner: claude/T-258-creations-claude-md-drift · PR: https://github.com/jakildev/IrredenEngine/pull/913
@@ -389,4 +379,3 @@ Avoid:
 - [x] **T-260** — docs/roles: hoist feedback-label handling into FLEET-FEEDBACK-HANDLING.md · Owner: claude/T-260-fleet-feedback-handling · PR: https://github.com/jakildev/IrredenEngine/pull/895
 - [x] **T-244** — docs/skills: drop decorative emoji bullets from Anti-patterns sections · Owner: claude/T-244-drop-emoji-bullets · PR: https://github.com/jakildev/IrredenEngine/pull/894
 - [x] **T-263** — docs/agents: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown · Owner: claude/T-263-fleet-runtime-doc · PR: https://github.com/jakildev/IrredenEngine/pull/893
-- [x] **T-243** — docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections · Owner: claude/T-243-trim-skill-when-to-invoke · PR: https://github.com/jakildev/IrredenEngine/pull/892
