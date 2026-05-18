@@ -14,11 +14,7 @@ components. The full reasoning, allowlists, and canonical patterns live in
 [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) — those auto-load
 when you open any C++ file. The capsules here are reminders.
 
-- **Math primitives go through IRMath.** Never `glm::*` or
-  `std::sin/cos/sqrt/abs/min/max/clamp` outside `engine/math/`.
-  Use `IRMath::vec3` not `glm::vec3`, `IRMath::clamp` not `std::clamp`,
-  `IRMath::kPi` not `glm::pi<float>()`. Need a primitive that isn't
-  there? Add the wrapper to `engine/math/` first, then call it.
+- **Math primitives go through IRMath** — never `glm::*` or `std::sin/cos/sqrt/abs/min/max/clamp` outside `engine/math/`. See [`.claude/rules/cpp-math.md`](../../.claude/rules/cpp-math.md).
 - **System state lives on `System<N>` or in `SystemParams`.** Never
   function-local `static` for mutable or system-owned state —
   `static constexpr` / `static const` for genuine compile-time
@@ -29,27 +25,9 @@ when you open any C++ file. The capsules here are reminders.
   Both forms have the same per-tick cost. Full pattern in
   [`engine/system/CLAUDE.md`](../system/CLAUDE.md) and
   [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md).
-- **No per-entity `getComponent` inside a system tick.** Add the
-  component to the system's template parameters instead. Foreign-entity
-  lookups for collisions/messages should batch the entities as a vector
-  rather than per-call inside the tick — see
-  [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md).
+- **No per-entity `getComponent` inside a system tick** — see [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md).
 
 ## Layout
-
-```
-engine/prefabs/irreden/
-  common/   — position, transform, name, player, tags, selection
-  update/   — physics, movement, collision, animation, particles
-  voxel/    — voxel pools, voxel sets, sculpting, shape descriptors
-  input/    — key/mouse/gamepad input components, hover detect, hitboxes
-  render/   — trixel canvases, framebuffers, cameras, text
-  audio/    — MIDI messages, sequences, channels, devices
-  video/    — screenshot + recording commands
-  asset/    — asset-related prefabs (currently small)
-  demo/     — demo-specific scratch prefabs (do not ship into creations)
-  wip/      — experimental prefabs not ready for production
-```
 
 Each domain has its own `CLAUDE.md` with the components/systems/commands
 catalog and the patterns specific to that domain. Read the nearest one
@@ -148,26 +126,8 @@ and should be moved to a system, builder, or namespace.
 
 ## Anti-patterns
 
-- Per-entity `getComponent` inside a system tick function. Fix: add the
-  component to the system's template parameters.
-- Allocating memory in a hot tick path (`std::vector` push, string
-  concat, `new`). Reserve once at `beginTick`.
-- Adding a new system without updating the `SystemName` enum.
-- Storing references to other entities' component storage across frames
-  — archetype changes invalidate addresses.
-- Cross-domain includes inside a prefab header (e.g. `voxel/` component
-  including `audio/` component). Prefabs are grouped by domain on purpose;
-  cross-domain composition belongs in a creation.
-- Function-local `static` for system-owned state. Use the
-  member-on-`System<N>` form via `registerSystem` (preferred) or the
-  explicit `Params` + `setSystemParams` form — both have the same
-  per-tick cost, correct lifetime, and are multi-instance safe.
-  See `engine/system/CLAUDE.md` "Per-system parameters" for the
-  rule, rationale, and canonical patterns.
-- `bool dirty_` (or `needsUpload_`, `changed_`) on a component to
-  gate a per-frame CPU→GPU sync step. Push at mutation time (per-write
-  `subData` / `subImage2D`) or let the GPU own ongoing state and seed
-  the resource once in the ctor. The only documented exception is
-  `C_CanvasFogOfWar` (CPU-authored, GPU-read-only, full-texture upload).
-  See [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) "No
-  dirty flags on components".
+ECS-general anti-patterns (getComponent in ticks, hot-path allocations, dirty flags, function-local static) live in [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) and [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md). Prefab-specific anti-patterns:
+
+- ❌ Adding a new system without updating the `SystemName` enum.
+- ❌ Storing references to other entities' component storage across frames — archetype changes invalidate addresses.
+- ❌ Cross-domain includes inside a prefab header (e.g. `voxel/` component including `audio/` component). Prefabs are grouped by domain on purpose; cross-domain composition belongs in a creation.
