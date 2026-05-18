@@ -333,11 +333,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.3, §1.4, §1.6). FLEET.md §"Stacked PRs" already covers scheduler-level mechanics but not the per-task command sequence — this extends it. Alternative: new docs/agents/FLEET-MOLECULES.md if FLEET.md becomes too long.
   - **Links:**
 
-- [ ] **docs/roles: create FLEET-CROSS-HOST-SMOKE.md** — extract cross-host smoke validation protocol from four role files into a single shared doc with explicit Sonnet-vs-Opus split
+- [~] **docs/roles: create FLEET-CROSS-HOST-SMOKE.md** — extract cross-host smoke validation protocol from four role files into a single shared doc with explicit Sonnet-vs-Opus split
   - **ID:** T-264
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `docs/agents/FLEET-CROSS-HOST-SMOKE.md` created covering: reviewer tagging (fleet:needs-<other-host>-smoke), author claiming, build/run/verdict, and explicit Sonnet-vs-Opus behavioral split (Sonnet defers visual judgment; Opus inspects screenshots and decides); (2) `role-opus-worker.md:438-502`, `role-sonnet-author.md:373-446`, `role-opus-reviewer.md:297-319`, `role-sonnet-reviewer.md:342-364` each collapse to ~5-line pointers; (3) net -20 lines overall
   - **Issue:** #865
