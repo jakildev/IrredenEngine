@@ -215,7 +215,7 @@ iteration of polling, reviewing, and exiting cleanly:
       gated upstream-not-yet-approved, "Opus recheck required"). See
       [REVIEWER-PROTOCOL.md § Acquiring / releasing the review claim](../../docs/agents/REVIEWER-PROTOCOL.md#acquiring--releasing-the-review-claim).
    g. **Cross-host smoke tagging (engine render PRs only).** See
-      [REVIEWER-PROTOCOL.md § Cross-host smoke tagging](../../docs/agents/REVIEWER-PROTOCOL.md#cross-host-smoke-tagging).
+      [FLEET-CROSS-HOST-SMOKE.md § Reviewer side: tagging](../../docs/agents/FLEET-CROSS-HOST-SMOKE.md#reviewer-side-tagging).
 
    **Nits vs needs-fix decisions** — see
    [REVIEWER-PROTOCOL.md § Nits vs needs-fix](../../docs/agents/REVIEWER-PROTOCOL.md#nits-vs-needs-fix--the-bright-line).
