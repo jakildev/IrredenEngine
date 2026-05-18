@@ -280,17 +280,6 @@ Avoid:
   - **Notes:** Roles total ~3,500 lines; `role-opus-worker.md` is 1,242 lines alone. Likely duplication: commit/PR rules, gh invocations, fleet-cache structure, ECS baseline restatements, label state-machine descriptions. Candidate shared homes: `CLAUDE-BASELINE.md`, `FLEET.md`, `FLEET-CACHE.md`, `BUILD.md`, or new `docs/agents/REVIEWER-PROTOCOL.md`. Companion to skills/ audit and CLAUDE.md audit sibling research tasks. Issue author expects the findings note itself to feed the queue-manager with follow-up tasks via filed issues.
   - **Links:**
 
-- [~] **docs/skills: pick a single formatter owner across simplify / commit-and-push / polish-checkpoint** — eliminate the three-way disagreement on who runs clang-format
-  - **ID:** T-229
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-229-formatter-owner
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) formatter step (fleet-build --target format-changed or equivalent) owned by exactly one skill; (2) the other two skills do not mention a separate format step; (3) decision documented with a one-sentence rationale in the owning skill
-  - **Issue:** #812
-  - **Notes:** Follow-up from T-222 audit (§5.11, §3.3). Size S. Three-way conflict: simplify runs `fleet-build --target format-changed`; polish-checkpoint runs `fleet-build --target format` after simplify; commit-and-push invokes simplify but omits format.
-  - **Links:**
-
 - [~] **docs/skills: reconcile backend-parity's proactive start-next-task chaining with start-next-task's no-auto-invoke contract** — remove the contradictory chaining instruction from one of the two skills
   - **ID:** T-230
   - **Area:** docs
@@ -317,7 +306,7 @@ Avoid:
   - **ID:** T-232
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** claude/T-232-irmath-table-to-rules
+  - **Owner:** claude/T-232-cpp-math-rules-file
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRMath substitution table moved from `simplify/SKILL.md:144-154` into `.claude/rules/cpp-math.md` (already referenced at `simplify/SKILL.md:119`); (2) `backend-parity/SKILL.md:218-222`, `optimize/SKILL.md:211-213`, `review-pr/SKILL.md:268-273` each replaced with a one-line ref; (3) canonical source remains `CLAUDE-BASELINE.md:92-107`
   - **Issue:** #815
@@ -625,6 +614,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
 - [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
 - [x] **T-227** — docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify · Owner: claude/T-227-auto-screenshot-symbol-unify · PR: https://github.com/jakildev/IrredenEngine/pull/847
 - [x] **T-206** — voxel: route C_VoxelSetNew pool calls through IRPrefab::VoxelPool · Owner: claude/T-206-voxel-pool-api · PR: https://github.com/jakildev/IrredenEngine/pull/846
@@ -644,4 +634,3 @@ Avoid:
 - [x] **T-210** — generalize APPLY_POSITION_OFFSET into applyVec3ModifierTo<> · Owner: claude/T-210-apply-vec3-modifier-to · PR: https://github.com/jakildev/IrredenEngine/pull/779
 - [x] **T-208** — modifier: writer-owned slot API — upsertBySource to eliminate per-frame push_back churn · Owner: claude/T-208-modifier-upsert-by-source · PR: https://github.com/jakildev/IrredenEngine/pull/776
 - [x] **T-202** — enable Linux/OpenGL backend on WSLg (GL 4.5 + GLSL hygiene) · Owner: claude/T-202-linux-opengl-parity · PR: https://github.com/jakildev/IrredenEngine/pull/775
-- [x] **T-205** — move getActiveCanvasEntityOrNull out of ir_render.hpp · Owner: claude/T-205-active-canvas-decouple · PR: https://github.com/jakildev/IrredenEngine/pull/772
