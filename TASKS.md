@@ -443,17 +443,6 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.3, §1.4, §1.6). FLEET.md §"Stacked PRs" already covers scheduler-level mechanics but not the per-task command sequence — this extends it. Alternative: new docs/agents/FLEET-MOLECULES.md if FLEET.md becomes too long.
   - **Links:**
 
-- [~] **docs/roles: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown** — consolidate per-iteration runtime ceremonies repeated across all five transient roles into one shared doc
-  - **ID:** T-263
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** claude/T-263-fleet-runtime-doc
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `docs/agents/FLEET-RUNTIME.md` created covering: heartbeat (step 0), reservation check (step 0.5), exit protocol (no kill -TERM $PPID), per-iteration shutdown (reset, fleet-iteration-summary, no-backticks warning, release-worktree ordering); (2) git checkout origin/master -- warning (from worker role) included; (3) all five transient roles reduce matching sections to pointers; (4) net -130 lines across five roles
-  - **Issue:** #864
-  - **Notes:** From T-221 role audit (audit-roles.md §1.10–§1.13, §4.1, §4.2). "Do NOT use backticks in the summary text" and release-worktree ordering each repeated five times. The kill -TERM $PPID deprecation and git checkout origin/master warning are easily missed when buried in role-specific files.
-  - **Links:**
-
 - [ ] **docs/roles: create FLEET-CROSS-HOST-SMOKE.md** — extract cross-host smoke validation protocol from four role files into a single shared doc with explicit Sonnet-vs-Opus split
   - **ID:** T-264
   - **Area:** docs
@@ -579,6 +568,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-263** — docs/agents: create FLEET-RUNTIME.md for heartbeat + reservation + exit + shutdown · Owner: claude/T-263-fleet-runtime-doc · PR: https://github.com/jakildev/IrredenEngine/pull/893
 - [x] **T-243** — docs/skills: standardize SKILL.md structure; drop redundant 'When to invoke' and 'Why this exists' sections · Owner: claude/T-243-trim-skill-when-to-invoke · PR: https://github.com/jakildev/IrredenEngine/pull/892
 - [x] **T-242** — docs/skills: trim inventory tables from render-debug-loop, backend-parity, optimize · Owner: claude/T-242-trim-skill-inventories · PR: https://github.com/jakildev/IrredenEngine/pull/890
 - [x] **T-238** — docs/skills: lift commit-and-push PR-body HEREDOC templates into procedures/pr-body.md · Owner: claude/T-238-pr-body-v2 · PR: https://github.com/jakildev/IrredenEngine/pull/889
@@ -598,4 +588,3 @@ Avoid:
 - [x] **T-229** — docs/skills: pick a single formatter owner · Owner: claude/T-229-formatter-owner · PR: https://github.com/jakildev/IrredenEngine/pull/850
 - [x] **T-228** — docs/skills: align model-version stamps emitted by review-pr and commit-and-push · Owner: claude/T-228-align-model-version-stamps · PR: https://github.com/jakildev/IrredenEngine/pull/848
 - [x] **T-227** — docs/skills: unify --auto-screenshot contract symbol names across render-debug-loop and render-verify · Owner: claude/T-227-auto-screenshot-symbol-unify · PR: https://github.com/jakildev/IrredenEngine/pull/847
-- [x] **T-206** — voxel: route C_VoxelSetNew pool calls through IRPrefab::VoxelPool · Owner: claude/T-206-voxel-pool-api · PR: https://github.com/jakildev/IrredenEngine/pull/846
