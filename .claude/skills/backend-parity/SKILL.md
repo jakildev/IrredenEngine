@@ -96,40 +96,13 @@ Record the mode at the top of the PR body later.
 
 ### 2. Enumerate the deviation set
 
-The render module has a consistent directory split. Use it as the
-source of truth for parity:
-
-**Backend C++ sources (per pair):**
-
-| OpenGL path                                    | Metal path                                     |
-|------------------------------------------------|------------------------------------------------|
-| `engine/render/src/opengl/opengl_buffer.cpp`   | `engine/render/src/metal/metal_buffer.cpp`     |
-| `engine/render/src/opengl/opengl_framebuffer.cpp` | `engine/render/src/metal/metal_framebuffer.cpp` |
-| `engine/render/src/opengl/opengl_render_impl.cpp` | `engine/render/src/metal/metal_render_impl.cpp` |
-| `engine/render/src/opengl/opengl_shader.cpp`   | `engine/render/src/metal/metal_pipeline.cpp`   |
-| `engine/render/src/opengl/opengl_texture.cpp`  | `engine/render/src/metal/metal_texture.cpp`    |
-| `engine/render/src/opengl/opengl_vertex_layout.cpp` | *(bundled into metal_pipeline.cpp)*       |
-| *(glad.c)*                                     | `engine/render/src/metal/metal_runtime.cpp`    |
-|                                                | `engine/render/src/metal/metal_cocoa_bridge.mm` |
-|                                                | `engine/render/src/metal/metal_cpp_impl.cpp`   |
-
-**Headers** mirror under `engine/render/include/irreden/render/opengl/`
-and `.../metal/`.
-
-**Shaders:**
-
-| OpenGL location                                          | Metal location                                              |
-|----------------------------------------------------------|-------------------------------------------------------------|
-| `engine/render/src/shaders/*.glsl` (flat)                | `engine/render/src/shaders/metal/*.metal`                    |
-
-GLSL prefixes (`c_`, `v_`, `f_`, `g_`) follow [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Naming and indicate the shader stage. MSL files
-use one `.metal` file per shader with the stage inferred from the
-`kernel` / `vertex` / `fragment` declaration inside. A single `.metal`
-file sometimes bundles a vertex and a fragment stage together (see
-`framebuffer_to_screen.metal` for the canonical pattern). When porting
-a pair of GLSL v/f stages (e.g. `v_framebuffer_to_screen.glsl` +
-`f_framebuffer_to_screen.glsl`), produce **one** `.metal` file with
-both stages rather than two.
+OpenGL sources live under `engine/render/src/opengl/` and Metal counterparts
+under `engine/render/src/metal/` with matching names. Headers mirror under
+`engine/render/include/irreden/render/opengl/` and `.../metal/`. Shaders:
+`engine/render/src/shaders/*.glsl` (GLSL, prefixed per CLAUDE-BASELINE §Naming)
+↔ `engine/render/src/shaders/metal/*.metal` (MSL). MSL bundles a vertex + fragment
+pair into one `.metal` file — when porting GLSL v/f stages, produce **one** `.metal`
+file (see `framebuffer_to_screen.metal` for the canonical pattern).
 
 **Audit command** (to list missing counterparts when running on macOS
 porting GLSL → MSL):
