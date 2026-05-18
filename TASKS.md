@@ -333,11 +333,11 @@ Avoid:
   - **Notes:** From T-221 role audit (audit-roles.md §1.21, §2.1). CLAUDE-BASELINE.md currently points downstream to the role files ("See role-opus-architect.md and role-opus-worker.md for full guidance") — this inverts the canonical direction correctly.
   - **Links:**
 
-- [ ] **docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers** — collapse three restated intro sections across all seven role files to single-line pointers
+- [~] **docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers** — collapse three restated intro sections across all seven role files to single-line pointers
   - **ID:** T-267
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) all seven role files reduce Bash tool rules section to a single-line pointer at CLAUDE-BASELINE.md; (2) all seven reduce shared fleet state cache section to a single-line pointer at FLEET-CACHE.md; (3) four roles (merger, opus-reviewer, sonnet-reviewer, queue-manager) reduce repo-slug discovery startup step to a pointer at FLEET-CACHE.md § "Repo slug discovery"; (4) CLAUDE-BASELINE.md gains one-sentence "keep PR review/merger body files inside the worktree" addendum; (5) net -90 lines across seven roles
   - **Issue:** #868
