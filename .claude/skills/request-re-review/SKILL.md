@@ -1,4 +1,5 @@
 ---
+name: request-re-review
 description: >-
   Push changes on the current PR branch and request a fleet re-review.
   Use when the user says "request re-review", "push and re-review",
