@@ -60,7 +60,12 @@
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_color_swatch.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
+#include <irreden/render/systems/system_widget_apply_list.hpp>
+#include <irreden/render/systems/system_widget_apply_checkbox.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
+#include <irreden/render/systems/system_widget_render_list.hpp>
+#include <irreden/render/systems/system_widget_render_checkbox.hpp>
+#include <irreden/render/systems/system_widget_render_button.hpp>
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
@@ -228,6 +233,13 @@ IREntity::EntityId g_sceneVoxelSetEntity = IREntity::kNullEntity;
 IREntity::EntityId g_scrubberSlider = IREntity::kNullEntity;
 IREntity::EntityId g_fpsSlider = IREntity::kNullEntity;
 
+// Layer panel widget entity IDs (T-213). Initialized in initEntities.
+IREntity::EntityId g_layerPanel = IREntity::kNullEntity;
+IREntity::EntityId g_layerList = IREntity::kNullEntity;
+IREntity::EntityId g_layerVisCheckbox = IREntity::kNullEntity;
+IREntity::EntityId g_layerAddBtn = IREntity::kNullEntity;
+IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
+
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
         IR_LOG_INFO(
@@ -237,6 +249,23 @@ void logLayerState() {
             r.visible_,
             r.id_ == g_layerManager.activeLayerId() ? "<active>" : ""
         );
+    }
+}
+
+// Iterate the scene voxel set and activate or deactivate every voxel
+// whose layer_id_ matches `layerId`. Called when a layer's visibility
+// is toggled so the GPU sees the correct alpha immediately.
+void applyLayerVisibility(std::uint8_t layerId, bool visible) {
+    if (g_sceneVoxelSetEntity == IREntity::kNullEntity)
+        return;
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+    for (auto &v : set.voxels_) {
+        if (v.layer_id_ != layerId)
+            continue;
+        if (visible)
+            v.activate();
+        else
+            v.deactivate();
     }
 }
 
@@ -256,9 +285,15 @@ void applyEdit(
     g_editor.pendingStroke_.edits_.push_back(edit);
     if (place) {
         set.voxels_[flat].color_ = placeColor;
-        set.voxels_[flat].activate();
+        set.voxels_[flat].layer_id_ = g_layerManager.activeLayerId();
+        // Keep hidden when placed onto a currently-hidden layer.
+        if (g_layerManager.isVisible(set.voxels_[flat].layer_id_))
+            set.voxels_[flat].activate();
+        else
+            set.voxels_[flat].deactivate();
     } else {
         set.voxels_[flat].deactivate();
+        set.voxels_[flat].layer_id_ = 0;
     }
 }
 
@@ -517,7 +552,8 @@ void initSystems() {
             // Panel hitbox covers the whole palette dock; check it first
             // so clicks on the background (title bar, label gap, padding)
             // are suppressed without iterating the swatch list.
-            bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_);
+            bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_)
+                           || IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -672,13 +708,107 @@ void initSystems() {
         }
     );
 
+    // Layer panel sync (T-213). Runs in INPUT after WIDGET_APPLY_LIST and
+    // WIDGET_APPLY_CHECKBOX so click state is already committed. Syncs
+    // g_layerManager ↔ the LAYERS panel widgets in both directions:
+    //   - list click → setActiveLayer; keyboard nav mirrors back to selection
+    //   - checkbox click → toggleLayerVisibility + applyLayerVisibility
+    //   - add/delete buttons → addLayer / deleteLayer with voxel migration
+    //   - layer manager state always mirrored to list items and checkbox
+    auto layerSyncSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorLayerSync",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_layerList == IREntity::kNullEntity)
+                return;
+
+            auto &list = IREntity::getComponent<C_WidgetList>(g_layerList);
+            const auto &layers = g_layerManager.layers();
+
+            // List click → set active layer.
+            if (IRPrefab::Widget::wasClicked(g_layerList)) {
+                const int sel = list.selectedIndex_;
+                if (sel >= 0 && sel < static_cast<int>(layers.size()))
+                    g_layerManager.setActiveLayer(layers[static_cast<std::size_t>(sel)].id_);
+            }
+
+            // Checkbox click → toggle active layer visibility + update voxels.
+            if (g_layerVisCheckbox != IREntity::kNullEntity
+                && IRPrefab::Widget::wasClicked(g_layerVisCheckbox)) {
+                const std::uint8_t activeId = g_layerManager.activeLayerId();
+                bool nowVisible = g_layerManager.toggleLayerVisibility(activeId);
+                applyLayerVisibility(activeId, nowVisible);
+            }
+
+            // Add button → new layer, auto-named, becomes active.
+            if (g_layerAddBtn != IREntity::kNullEntity
+                && IRPrefab::Widget::wasClicked(g_layerAddBtn)) {
+                std::uint8_t id = g_layerManager.addLayer(
+                    "layer " + std::to_string(g_layerManager.layers().size())
+                );
+                if (id != 0)
+                    g_layerManager.setActiveLayer(id);
+            }
+
+            // Delete button → migrate voxels to default, then remove layer.
+            if (g_layerDelBtn != IREntity::kNullEntity
+                && IRPrefab::Widget::wasClicked(g_layerDelBtn)) {
+                const std::uint8_t delId = g_layerManager.activeLayerId();
+                if (delId != 0 && g_sceneVoxelSetEntity != IREntity::kNullEntity) {
+                    const bool defaultVisible = g_layerManager.isVisible(0);
+                    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+                    for (auto &v : set.voxels_) {
+                        if (v.layer_id_ != delId)
+                            continue;
+                        v.layer_id_ = 0;
+                        if (defaultVisible)
+                            v.activate();
+                        else
+                            v.deactivate();
+                    }
+                    g_layerManager.deleteLayer(delId);
+                }
+            }
+
+            // Rebuild list items (names + "[H]" suffix for hidden layers).
+            const auto &updatedLayers = g_layerManager.layers();
+            if (list.items_.size() != updatedLayers.size())
+                list.items_.resize(updatedLayers.size());
+            for (std::size_t i = 0; i < updatedLayers.size(); ++i) {
+                list.items_[i] = updatedLayers[i].name_
+                               + (updatedLayers[i].visible_ ? "" : " [H]");
+            }
+
+            // Mirror active layer → list selection.
+            const std::uint8_t activeId = g_layerManager.activeLayerId();
+            for (int i = 0; i < static_cast<int>(updatedLayers.size()); ++i) {
+                if (updatedLayers[static_cast<std::size_t>(i)].id_ == activeId) {
+                    IRPrefab::Widget::setListSelectedIndex(g_layerList, i);
+                    break;
+                }
+            }
+
+            // Mirror active layer visibility → checkbox.
+            if (g_layerVisCheckbox != IREntity::kNullEntity)
+                IRPrefab::Widget::setCheckboxState(
+                    g_layerVisCheckbox,
+                    g_layerManager.isVisible(activeId)
+                );
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
          IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
          IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
+         IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
+         IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          scrubberSystem,
+         layerSyncSystem,
          paletteUpdateSystem,
          placeEraseSystem,
          scrollZoomSystem,
@@ -709,7 +839,10 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
+        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
@@ -1011,19 +1144,19 @@ void initCommands() {
         }
     );
 
-    // H: toggle active layer visibility. When g_sceneVoxelSetEntity is set,
-    // iterate C_VoxelSetNew and update voxel alpha for the affected layer.
+    // H: toggle active layer visibility. Iterates C_VoxelSetNew and updates
+    // voxel alpha so hidden layers vanish from the viewport immediately.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonH,
         []() {
-            bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(
-                IRVoxelEditor::g_layerManager.activeLayerId()
-            );
+            const std::uint8_t layerId = IRVoxelEditor::g_layerManager.activeLayerId();
+            bool nowVisible = IRVoxelEditor::g_layerManager.toggleLayerVisibility(layerId);
+            IRVoxelEditor::applyLayerVisibility(layerId, nowVisible);
             IR_LOG_INFO(
                 "Layer {} visibility -> {}",
-                IRVoxelEditor::g_layerManager.activeLayerId(),
+                layerId,
                 nowVisible ? "shown" : "hidden"
             );
         }
@@ -1112,6 +1245,7 @@ void initEntities() {
         C_Position3D{IRVoxelEditor::kEditableSceneOrigin},
         C_VoxelSetNew{IRVoxelEditor::kEditableSceneSize, Color{200, 200, 210, 255}}
     );
+    IRVoxelEditor::g_sceneVoxelSetEntity = g_editor.editableVoxelSet_;
     {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
         set.deactivateAll();
@@ -1206,5 +1340,43 @@ void initEntities() {
         1.0f,
         30.0f,
         IRVoxelEditor::g_anim.fps_
+    );
+
+    // Layer panel (T-213, F-1.3) — second column alongside the PALETTE panel.
+    // The list shows all layers with a "[H]" suffix on hidden ones. The
+    // visibility checkbox and add/delete buttons are below the list. Keyboard
+    // shortcuts K/[/]/H still work; the panel just makes the state visible.
+    constexpr ivec2 kLayerPanelPos{130, 240};
+    constexpr ivec2 kLayerPanelSize{120, 96};
+    IRVoxelEditor::g_layerPanel = IRPrefab::Widget::makePanel(
+        kLayerPanelPos, kLayerPanelSize, "LAYERS"
+    );
+    IREntity::setComponent(
+        IRVoxelEditor::g_layerPanel, IRComponents::C_HitBox2DGui{kLayerPanelSize}
+    );
+    IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_layerPanel).zOrder_ = -1;
+
+    IRVoxelEditor::g_layerList = IRPrefab::Widget::makeList(
+        ivec2(kLayerPanelPos.x + 4, kLayerPanelPos.y + 18),
+        ivec2(112, 52),
+        {"default"},
+        0,
+        13
+    );
+    IRVoxelEditor::g_layerVisCheckbox = IRPrefab::Widget::makeCheckbox(
+        ivec2(kLayerPanelPos.x + 4, kLayerPanelPos.y + 74),
+        ivec2(60, 14),
+        "visible",
+        true
+    );
+    IRVoxelEditor::g_layerAddBtn = IRPrefab::Widget::makeButton(
+        ivec2(kLayerPanelPos.x + 68, kLayerPanelPos.y + 74),
+        ivec2(20, 14),
+        "+"
+    );
+    IRVoxelEditor::g_layerDelBtn = IRPrefab::Widget::makeButton(
+        ivec2(kLayerPanelPos.x + 92, kLayerPanelPos.y + 74),
+        ivec2(20, 14),
+        "-"
     );
 }
