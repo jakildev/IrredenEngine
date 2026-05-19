@@ -9,6 +9,7 @@
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 
+#include <cstdint>
 #include <span>
 #include <optional>
 #include <map>
@@ -18,6 +19,12 @@ using namespace IRMath;
 using IREntity::EntityId;
 
 namespace IRComponents {
+
+// Each mask word covers `kVoxelActiveMaskBits` consecutive voxel slots.
+// CPU-side storage is `std::vector<uint32_t>`; the GPU compact shader
+// reads the same memory through a `uint activeMask[]` SSBO at
+// `kBufferIndex_VoxelActiveMask`.
+constexpr std::size_t kVoxelActiveMaskBits = 32;
 
 struct ChunkBounds {
     vec2 isoMin_ = vec2(std::numeric_limits<float>::max());
@@ -63,6 +70,11 @@ struct C_VoxelPool {
 
         m_voxelEntities.resize(m_voxelPoolSize);
         std::fill(m_voxelEntities.begin(), m_voxelEntities.end(), IREntity::kNullEntity);
+
+        const std::size_t maskWords =
+            (static_cast<std::size_t>(m_voxelPoolSize) + kVoxelActiveMaskBits - 1) /
+            kVoxelActiveMaskBits;
+        m_activeMask.assign(maskWords, 0u);
     }
 
     C_VoxelPool() {}
@@ -124,6 +136,7 @@ struct C_VoxelPool {
         for (size_t i = 0; i < size; i++) {
             m_voxelColors[startIndex + i].color_ = Color{0, 0, 0, 0};
         }
+        clearActiveMaskRange(startIndex, size);
 
         std::fill(
             m_voxelEntities.begin() + startIndex,
@@ -243,6 +256,74 @@ struct C_VoxelPool {
         m_chunkBoundsDirty = true;
     }
 
+    // Active-slot mask: 1 bit per pool slot, mirroring `m_voxelColors[i].color_.alpha_ != 0`.
+    // The GPU compact shader at `c_voxel_visibility_compact.{glsl,metal}` reads this in place
+    // of the per-voxel alpha test (T-287 / #950). CPU storage is `std::vector<uint32_t>`; the
+    // shader binds it as `uint activeMask[]` at `kBufferIndex_VoxelActiveMask`.
+    const std::vector<std::uint32_t> &getActiveMask() const {
+        return m_activeMask;
+    }
+    std::size_t getActiveMaskSizeBytes() const {
+        return m_activeMask.size() * sizeof(std::uint32_t);
+    }
+
+    void setActiveBit(std::size_t idx) {
+        IR_ASSERT(
+            idx < static_cast<std::size_t>(m_voxelPoolSize),
+            "setActiveBit out of bounds: idx={}, poolSize={}",
+            idx,
+            m_voxelPoolSize
+        );
+        m_activeMask[idx / kVoxelActiveMaskBits] |=
+            (std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
+    }
+
+    void clearActiveBit(std::size_t idx) {
+        IR_ASSERT(
+            idx < static_cast<std::size_t>(m_voxelPoolSize),
+            "clearActiveBit out of bounds: idx={}, poolSize={}",
+            idx,
+            m_voxelPoolSize
+        );
+        m_activeMask[idx / kVoxelActiveMaskBits] &=
+            ~(std::uint32_t{1} << (idx % kVoxelActiveMaskBits));
+    }
+
+    // Bulk variants for span-shaped mutations on `C_VoxelSetNew`. The single-bit
+    // setters above use one OR/AND per word touched; the range variants below
+    // handle the partial-word prefix and suffix once and mass-write the middle
+    // words to all-ones / zeros.
+    void setActiveMaskRange(std::size_t start, std::size_t count) {
+        setMaskRange(start, count, true);
+    }
+
+    void clearActiveMaskRange(std::size_t start, std::size_t count) {
+        setMaskRange(start, count, false);
+    }
+
+    // Recompute the mask bits for `[start, start + count)` from the live
+    // `m_voxelColors[i].color_.alpha_` values. Use after a span-shaped write
+    // that mixes active and inactive slots (e.g. `C_VoxelSetNew`'s ctor fill
+    // or `reshape`/`fillPlane`) — saves the caller from a per-voxel
+    // `setActiveBit` / `clearActiveBit` choice.
+    void resyncActiveMaskFromColors(std::size_t start, std::size_t count) {
+        IR_ASSERT(
+            start + count <= static_cast<std::size_t>(m_voxelPoolSize),
+            "resyncActiveMaskFromColors out of bounds: start={}, count={}, poolSize={}",
+            start,
+            count,
+            m_voxelPoolSize
+        );
+        for (std::size_t i = 0; i < count; ++i) {
+            const std::size_t idx = start + i;
+            if (m_voxelColors[idx].color_.alpha_ != 0) {
+                setActiveBit(idx);
+            } else {
+                clearActiveBit(idx);
+            }
+        }
+    }
+
   private:
     int m_voxelPoolSize;
     ivec3 m_voxelPoolSize3D;
@@ -254,6 +335,7 @@ struct C_VoxelPool {
     std::vector<vec3> m_voxelPositionsOffset;
     std::vector<C_PositionGlobal3D> m_voxelPositionsGlobal;
     std::vector<C_Voxel> m_voxelColors;
+    std::vector<std::uint32_t> m_activeMask;
     std::vector<std::pair<size_t, size_t>> m_freeVoxelSpans;
     std::map<size_t, std::set<std::pair<size_t, size_t>>> m_freeSpanLookup;
     std::vector<ChunkBounds> m_chunkBounds;
@@ -262,6 +344,45 @@ struct C_VoxelPool {
 
     void updateFreeSpanLookup(size_t startIndex, size_t size) {
         m_freeSpanLookup[size].insert({startIndex, size});
+    }
+
+    void setMaskRange(std::size_t start, std::size_t count, bool value) {
+        if (count == 0) {
+            return;
+        }
+        IR_ASSERT(
+            start + count <= static_cast<std::size_t>(m_voxelPoolSize),
+            "setMaskRange out of bounds: start={}, count={}, poolSize={}",
+            start,
+            count,
+            m_voxelPoolSize
+        );
+        const std::size_t end = start + count;
+        std::size_t idx = start;
+        // Partial-word prefix and a possible all-in-one-word path.
+        while (idx < end && (idx % kVoxelActiveMaskBits) != 0) {
+            if (value) {
+                setActiveBit(idx);
+            } else {
+                clearActiveBit(idx);
+            }
+            ++idx;
+        }
+        // Whole-word middle.
+        while (idx + kVoxelActiveMaskBits <= end) {
+            m_activeMask[idx / kVoxelActiveMaskBits] =
+                value ? std::numeric_limits<std::uint32_t>::max() : 0u;
+            idx += kVoxelActiveMaskBits;
+        }
+        // Partial-word suffix.
+        while (idx < end) {
+            if (value) {
+                setActiveBit(idx);
+            } else {
+                clearActiveBit(idx);
+            }
+            ++idx;
+        }
     }
 
     std::optional<std::pair<size_t, size_t>> findFreeSpan(size_t requestedSize) const {

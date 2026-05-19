@@ -306,7 +306,13 @@ constexpr std::uint32_t kBufferIndex_LightSourceBuffer = 4;
 constexpr std::uint32_t kBufferIndex_SingleVoxelPositions = 5;
 constexpr std::uint32_t kBufferIndex_SingleVoxelColors = 6;
 constexpr std::uint32_t kBufferIndex_FrameDataVoxelToCanvas = 7;
-constexpr std::uint32_t kBufferIndex_VoxelSetUnlockedPositions = 8;
+// Per-pool active-slot bitmask consumed by the visibility-compact compute
+// pass (`c_voxel_visibility_compact.{glsl,metal}`). One uint32 per
+// `kVoxelActiveMaskBits = 32` voxel slots; bit i mirrors
+// `C_VoxelPool::m_voxelColors[i].color_.alpha_ != 0`. T-287 / #950.
+// Repurposed from the legacy `VoxelSetUnlockedPositions` slot, which was
+// declared but unused.
+constexpr std::uint32_t kBufferIndex_VoxelActiveMask = 8;
 constexpr std::uint32_t kBufferIndex_VoxelSetUnlockedColors = 9;
 constexpr std::uint32_t kBufferIndex_FrameDataTrixelToTrixel = 10;
 constexpr std::uint32_t kBufferIndex_FontData = 11;

@@ -106,6 +106,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *frameDataBuf_ = nullptr;
     Buffer *voxelPosBuf_ = nullptr;
     Buffer *voxelColorBuf_ = nullptr;
+    Buffer *voxelActiveMaskBuf_ = nullptr;
     Buffer *voxelEntityIdBuf_ = nullptr;
     Buffer *chunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
@@ -189,6 +190,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             voxelPool.getPositionGlobals().data()
         );
         voxelColorBuf_->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
+        // Active-mask covers the live prefix; upload the matching whole-word
+        // window (`divCeil(liveVoxelCount, kVoxelActiveMaskBits)` words) so
+        // the GPU compact shader sees an up-to-date mirror of CPU alpha.
+        const std::size_t activeMaskWords = IRMath::divCeil(
+            static_cast<int>(liveVoxelCount),
+            static_cast<int>(kVoxelActiveMaskBits)
+        );
+        if (activeMaskWords > 0) {
+            voxelActiveMaskBuf_->subData(
+                0,
+                activeMaskWords * sizeof(std::uint32_t),
+                voxelPool.getActiveMask().data()
+            );
+        }
         syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
 
         const VoxelIndirectDispatchParams zeroed{};
@@ -261,6 +276,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_SingleVoxelColors
         );
+        const int maxActiveMaskWords =
+            IRMath::divCeil(maxSingleVoxels, static_cast<int>(kVoxelActiveMaskBits));
+        IRRender::createNamedResource<Buffer>(
+            "VoxelActiveMaskBuffer",
+            nullptr,
+            maxActiveMaskWords * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_VoxelActiveMask
+        );
         IRRender::createNamedResource<Buffer>(
             "VoxelEntityIdBuffer",
             nullptr,
@@ -305,6 +330,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->voxelPosBuf_ = IRRender::getNamedResource<Buffer>("VoxelPositionBuffer");
         p->voxelColorBuf_ = IRRender::getNamedResource<Buffer>("VoxelColorBuffer");
+        p->voxelActiveMaskBuf_ = IRRender::getNamedResource<Buffer>("VoxelActiveMaskBuffer");
         p->voxelEntityIdBuf_ = IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
         p->chunkVisBuf_ = IRRender::getNamedResource<Buffer>("ChunkVisibilityBuffer");
         p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");

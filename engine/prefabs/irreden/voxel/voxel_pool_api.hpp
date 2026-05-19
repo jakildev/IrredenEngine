@@ -54,10 +54,42 @@ allocate(unsigned int size, const std::string &canvasName = "main") {
 
 // Release a previously-allocated voxel span back to the pool. Pass the
 // start index returned by `allocate` and the same size.
-inline void deallocate(
-    std::size_t startIndex, std::size_t size, const std::string &canvasName = "main"
-) {
+inline void
+deallocate(std::size_t startIndex, std::size_t size, const std::string &canvasName = "main") {
     IRRender::deallocateVoxels(startIndex, size, canvasName);
+}
+
+// Push-at-mutation routes that keep the GPU active-slot bitmask
+// (`C_VoxelPool::m_activeMask` — read by `c_voxel_visibility_compact`)
+// in sync with the color span the caller just wrote. `C_VoxelSetNew`'s
+// span-direct mutators (ctors, `changeVoxelColor`, `deactivateAll`,
+// `activateAll`, `fillPlane`, `reshape`) call into these immediately
+// after the color write so the next render-frame upload sees a
+// consistent mask without any dirty flag.
+inline void
+markRangeActive(std::size_t startIndex, std::size_t count, const std::string &canvasName = "main") {
+    IRRender::markVoxelPoolRangeActive(startIndex, count, canvasName);
+}
+
+inline void markRangeInactive(
+    std::size_t startIndex, std::size_t count, const std::string &canvasName = "main"
+) {
+    IRRender::markVoxelPoolRangeInactive(startIndex, count, canvasName);
+}
+
+inline void markVoxelActive(
+    std::size_t startIndex,
+    std::size_t voxelIdx,
+    bool active,
+    const std::string &canvasName = "main"
+) {
+    IRRender::markVoxelPoolVoxelActive(startIndex + voxelIdx, active, canvasName);
+}
+
+inline void resyncRangeFromColors(
+    std::size_t startIndex, std::size_t count, const std::string &canvasName = "main"
+) {
+    IRRender::resyncVoxelPoolRangeFromColors(startIndex, count, canvasName);
 }
 
 } // namespace IRPrefab::VoxelPool

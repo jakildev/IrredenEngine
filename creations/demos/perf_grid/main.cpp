@@ -77,6 +77,13 @@ namespace {
 enum class PerfGridMode {
     VoxelSet,
     Sdf,
+    // T-287 / B1 verification modes: allocate ONE `C_VoxelSetNew` of
+    // size `grid_size`³ instead of per-cell entities, then drive the
+    // active-slot mask either dense (all on) or hollow (sphere shell only).
+    // Use these together to measure the visibility-compaction cost as a
+    // function of active-voxel count while pool-occupancy stays constant.
+    DenseSet,
+    HollowSet,
 };
 
 struct PerfGridSettings {
@@ -120,12 +127,28 @@ PerfGridMode parseMode(const std::string &value) {
     if (value == "sdf" || value == "shape") {
         return PerfGridMode::Sdf;
     }
+    if (value == "dense_set") {
+        return PerfGridMode::DenseSet;
+    }
+    if (value == "hollow_set") {
+        return PerfGridMode::HollowSet;
+    }
     IR_LOG_WARN("Unknown perf_grid mode '{}'; using voxel_set", value);
     return PerfGridMode::VoxelSet;
 }
 
 const char *modeName(PerfGridMode mode) {
-    return mode == PerfGridMode::VoxelSet ? "voxel_set" : "sdf";
+    switch (mode) {
+    case PerfGridMode::VoxelSet:
+        return "voxel_set";
+    case PerfGridMode::Sdf:
+        return "sdf";
+    case PerfGridMode::DenseSet:
+        return "dense_set";
+    case PerfGridMode::HollowSet:
+        return "hollow_set";
+    }
+    return "voxel_set";
 }
 
 template <typename T> void readLuaValue(sol::table table, const char *key, T &out) {
@@ -285,6 +308,38 @@ void createGridEntities() {
             "and light-volume LOS do not see these boxes. Visuals differ from voxel_set; see "
             "docs/perf/metal_perf_grid_baseline.md (IRPerfGrid mode parity)."
         );
+    }
+
+    if (g_settings.mode_ == PerfGridMode::DenseSet || g_settings.mode_ == PerfGridMode::HollowSet) {
+        // Single big `C_VoxelSetNew` of size n³ centered at the origin — same
+        // pool occupancy as voxel_set mode, but every voxel shares the entity
+        // so the only thing varying is the active-mask bit pattern. Dense
+        // leaves every slot active; hollow drops the interior so the mask
+        // covers only the cube's outer shell (~6n² / n³ → ≤10% for n ≥ 60),
+        // exercising the T-287 compaction path on the same voxel buffer.
+        const Color color = colorForCell(n / 2, n / 2, n / 2, n);
+        const ivec3 size{n, n, n};
+        const vec3 originOffset{-(n - 1) * 0.5f * g_settings.spacing_};
+        EntityId rootEntity = IREntity::createEntity(
+            C_Position3D{originOffset},
+            C_VoxelSetNew{size, color, true},
+            C_Modifiers{}
+        );
+        if (g_settings.mode_ == PerfGridMode::HollowSet) {
+            auto setOpt = IREntity::getComponentOptional<C_VoxelSetNew>(rootEntity);
+            if (setOpt.has_value()) {
+                C_VoxelSetNew &voxelSet = *setOpt.value();
+                voxelSet.deactivateAll();
+                // Reactivate only the cube's six bounding faces.
+                voxelSet.fillPlane(0, 0, color);
+                voxelSet.fillPlane(0, n - 1, color);
+                voxelSet.fillPlane(1, 0, color);
+                voxelSet.fillPlane(1, n - 1, color);
+                voxelSet.fillPlane(2, 0, color);
+                voxelSet.fillPlane(2, n - 1, color);
+            }
+        }
+        return;
     }
 
     for (int z = 0; z < n; ++z) {

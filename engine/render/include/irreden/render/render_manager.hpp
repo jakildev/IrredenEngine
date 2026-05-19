@@ -88,6 +88,14 @@ class RenderManager {
 
     void deallocateVoxels(size_t startIndex, size_t size, std::string canvasName = "main");
 
+    void markVoxelPoolRangeActive(size_t startIndex, size_t count, std::string canvasName = "main");
+    void
+    markVoxelPoolRangeInactive(size_t startIndex, size_t count, std::string canvasName = "main");
+    void markVoxelPoolVoxelActive(size_t voxelIndex, bool active, std::string canvasName = "main");
+    void resyncVoxelPoolRangeFromColors(
+        size_t startIndex, size_t count, std::string canvasName = "main"
+    );
+
     EntityId createCanvas(
         std::string name, ivec3 voxelPoolSize, ivec2 trixelSize, EntityId framebuffer = EntityId{}
     );
