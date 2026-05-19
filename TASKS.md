@@ -198,17 +198,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **render: runtime-sized voxel pools (B4)** — replace compile-time `kVoxelPoolSize`/`kVoxelPoolMaxAllocationSize` constants with runtime values sized from GPU VRAM budget at startup
-  - **ID:** T-277
-  - **Area:** engine/render, engine/common
-  - **Model:** opus
-  - **Owner:** claude/T-277-runtime-voxel-pools
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) launch with `--voxel-pool-size 128` runs at 128³; default behaviour identical to today at 64³; (2) `render_manager` init logs the selected pool size; (3) all existing demos continue to pass at default; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #941
-  - **Notes:** Epic B (#935) independent task — blocks Epic E E2 (#938 GPU residency manager). Replaces `ir_constants.hpp:54,63` TODOs. CLI override via `--voxel-pool-size N`. Sane fallback defaults preserve today's 64³ behaviour. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B4".
-  - **Links:**
-
 - [ ] **engine: C_LocalTransform (SQT) component (C1)** — new `C_LocalTransform` component carrying scale/rotation/translation at `engine/prefabs/irreden/common/components/component_local_transform.hpp`; identity-default = today's behaviour
   - **ID:** T-279
   - **Area:** engine/prefabs/irreden/common
@@ -224,6 +213,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-277** — render: runtime-sized voxel pools (B4) · Owner: claude/T-277-runtime-voxel-pools · PR: https://github.com/jakildev/IrredenEngine/pull/975
 - [x] **T-276** — asset: .vxs DENSE-RLE chunk variant (B3) · Owner: claude/T-276-vxs-rle-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/972
 - [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
 - [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
@@ -243,4 +233,3 @@ Avoid:
 - [x] **T-268** — fleet: add fleet:awaiting-base to FLEET.md label dictionary · Owner: claude/T-268-label-drift-fix · PR: https://github.com/jakildev/IrredenEngine/pull/921
 - [x] **T-267** — docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers · Owner: claude/T-267-shrink-intro-boilerplate · PR: https://github.com/jakildev/IrredenEngine/pull/920
 - [x] **T-266** — docs/roles: invert Engine API removal rule citation (baseline owns it) · Owner: claude/T-266-engine-api-removal-rule · PR: https://github.com/jakildev/IrredenEngine/pull/919
-- [x] **T-264** — docs/roles: create FLEET-CROSS-HOST-SMOKE.md · Owner: claude/T-264-cross-host-smoke-doc · PR: https://github.com/jakildev/IrredenEngine/pull/918
