@@ -5,8 +5,11 @@
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/render/components/component_zoom_level_lua.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_api.hpp>
+#include <irreden/script/prefab_component_factory.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -94,10 +97,12 @@ class PrefabApi : public testing::Test {
             &IRMath::vec4::w
         );
         IRPrefab::Prefab::clearPrefabs();
+        IRPrefab::Prefab::clearComponentFactories();
     }
 
     ~PrefabApi() override {
         IRPrefab::Prefab::clearPrefabs();
+        IRPrefab::Prefab::clearComponentFactories();
     }
 
     IRScript::LuaScript m_lua;
@@ -688,6 +693,112 @@ TEST_F(PrefabApi, SpawnAttachesHybridShapesAndDenseOnSameEntity) {
     EXPECT_EQ(voxelSet.recordCount(), 4u);
     EXPECT_EQ(voxelSet.pendingVoxels_.size(), 4u);
     EXPECT_EQ(voxelSet.pendingVoxels_[1].color_.green_, 31);
+}
+
+// ---- declarative components table (#698) ----------------------------------
+
+TEST_F(PrefabApi, ComponentsTableAttachesAndAppliesOverride) {
+    // Binding registers the factory as a side effect; mirrors the wiring
+    // a creation does via `registerTypesFromTraits<C_ZoomLevel>()`.
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_zoom",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = { zoom = 5.0 } },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const auto &z = IREntity::getComponent<IRComponents::C_ZoomLevel>(r.entity_);
+    EXPECT_FLOAT_EQ(z.zoom_.x, 5.0f);
+    EXPECT_FLOAT_EQ(z.zoom_.y, 5.0f);
+}
+
+TEST_F(PrefabApi, ComponentsTableEmptyOverrideUsesDefaults) {
+    // Empty override table → component constructed with its default ctor.
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_defaults",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = {} },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const IRComponents::C_ZoomLevel defaults{};
+    const auto &z = IREntity::getComponent<IRComponents::C_ZoomLevel>(r.entity_);
+    EXPECT_FLOAT_EQ(z.zoom_.x, defaults.zoom_.x);
+    EXPECT_FLOAT_EQ(z.zoom_.y, defaults.zoom_.y);
+}
+
+TEST_F(PrefabApi, ComponentsTableUnknownComponentErrors) {
+    // No factory registered for `C_DoesNotExist`. Spawn fails with a
+    // message naming the missing factory and surfacing the binding-fix
+    // hint; the entity is destroyed so the registry is not left dirty.
+    PrefabFiles f = writeFixtureSet(
+        "components_unknown",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_DoesNotExist = {} },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("no factory registered"), std::string::npos) << r.error_;
+    EXPECT_NE(r.error_.find("C_DoesNotExist"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, ComponentsTableNonTableEntryErrors) {
+    // A non-table value (`components = { C_ZoomLevel = 42 }`) is a
+    // schema error — catches the typo class instead of silently no-op'ing.
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_non_table",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = 42 },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("must be a table"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, ComponentsRunBeforeSetupCallback) {
+    // Declarative components must be visible from `setup` so the callback
+    // can read/extend them. Stash the spawned `zoom_` into a Lua global
+    // and verify it equals the declarative override.
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_before_setup",
+        "g_zoom = nil\n"
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = { zoom = 7.5 } },\n"
+        "  setup = function(entity)\n"
+        "    g_zoom = 'ran'\n"
+        "  end,\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const auto &z = IREntity::getComponent<IRComponents::C_ZoomLevel>(r.entity_);
+    EXPECT_FLOAT_EQ(z.zoom_.x, 7.5f);
+    EXPECT_EQ(m_lua.lua()["g_zoom"].get<std::string>(), "ran");
 }
 
 // ---- additivity: unknown top-level keys do not break the load -------------

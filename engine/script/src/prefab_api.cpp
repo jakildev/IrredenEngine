@@ -8,6 +8,7 @@
 #include <irreden/math/sdf.hpp>
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/script/prefab_component_factory.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -256,11 +257,60 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         }
     }
 
+    // Optional declarative `components = { C_Foo = { field = ... }, ... }`
+    // block. Each entry's factory (registered by the component's
+    // `*_lua.hpp` via `IRScript::registerComponentFactoryFor`) builds
+    // the component from the override table and attaches it. Runs
+    // before `setup` so the callback observes the declarative
+    // components and may freely overwrite or extend them.
+    sol::optional<sol::table> componentsOpt = prefab["components"];
+    if (componentsOpt) {
+        for (auto &kv : *componentsOpt) {
+            sol::optional<std::string> nameOpt = kv.first.as<sol::optional<std::string>>();
+            if (!nameOpt) {
+                for (auto child : spawnedChildren) {
+                    IREntity::destroyEntity(child);
+                }
+                IREntity::destroyEntity(entity);
+                return makeError(idStr, path, "components keys must be component-name strings");
+            }
+            if (!kv.second.is<sol::table>()) {
+                for (auto child : spawnedChildren) {
+                    IREntity::destroyEntity(child);
+                }
+                IREntity::destroyEntity(entity);
+                return makeError(
+                    idStr,
+                    path,
+                    std::string{"components['"} + *nameOpt +
+                        "'] must be a table of field overrides"
+                );
+            }
+            const ComponentFactory *factory = findComponentFactory(*nameOpt);
+            if (!factory) {
+                for (auto child : spawnedChildren) {
+                    IREntity::destroyEntity(child);
+                }
+                IREntity::destroyEntity(entity);
+                return makeError(
+                    idStr,
+                    path,
+                    std::string{"no factory registered for component '"} + *nameOpt +
+                        "' (the binding's *_lua.hpp must call "
+                        "IRScript::registerComponentFactoryFor and the creation must include it)"
+                );
+            }
+            sol::table fields = kv.second.as<sol::table>();
+            (*factory)(entity, fields);
+        }
+    }
+
     // Optional setup function — last so the user sees a fully-formed
-    // entity (position + rig + bind points + shape children already
-    // attached). Distinguish "absent" (sol::type::lua_nil) from
-    // "present but not a function" so a schema typo like `setup = 42`
-    // surfaces a diagnostic instead of silently no-op'ing.
+    // entity (position + rig + bind points + shape children + declared
+    // components already attached). Distinguish "absent"
+    // (sol::type::lua_nil) from "present but not a function" so a
+    // schema typo like `setup = 42` surfaces a diagnostic instead of
+    // silently no-op'ing.
     sol::object setupObj = prefab["setup"];
     if (setupObj.valid() && setupObj.get_type() != sol::type::lua_nil) {
         if (setupObj.get_type() != sol::type::function) {
