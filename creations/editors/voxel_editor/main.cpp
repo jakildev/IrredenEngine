@@ -1173,7 +1173,59 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    // Register camera commands individually so we can own the Escape binding.
+    // (registerCameraCommands() also binds Escape→CLOSE_WINDOW, which conflicts
+    // with the drag-cancel handler below — we handle Escape ourselves.)
+    IRCommand::createCommand<IRCommand::ZOOM_IN>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEqual
+    );
+    IRCommand::createCommand<IRCommand::ZOOM_OUT>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonMinus
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonA
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonD
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonA
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonD
+    );
 
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -1424,20 +1476,24 @@ void initCommands() {
         }
     );
 
-    // Escape — cancel an active drag without committing the fill.
+    // Escape: cancel drag if active, otherwise close the window.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonEscape,
         []() {
-            if (!IRVoxelEditor::g_fillTool.dragging_)
+            if (IRVoxelEditor::g_fillTool.dragging_) {
+                IRVoxelEditor::g_fillTool.dragging_ = false;
+                if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                    IREntity::getComponent<C_ShapeDescriptor>(
+                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    )
+                        .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+                }
+                IR_LOG_INFO("Fill drag cancelled (Escape).");
                 return;
-            IRVoxelEditor::g_fillTool.dragging_ = false;
-            if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_)
-                    .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
             }
-            IR_LOG_INFO("Fill drag cancelled (Escape).");
+            IRWindow::closeWindow();
         }
     );
 
