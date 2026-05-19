@@ -37,10 +37,9 @@ void initEntities();
 void initCommands();
 
 int main(int argc, char **argv) {
-    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     IR_LOG_INFO("Starting creation: default");
 
-    IREngine::init("config.json");
+    IREngine::init(argv[0]);
     initSystems();
     initCommands();
     initEntities();

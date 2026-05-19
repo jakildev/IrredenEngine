@@ -342,7 +342,6 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     parseArgs(argc, argv);
 
     IR_LOG_INFO("Starting creation: perf_grid");

@@ -430,7 +430,6 @@ void registerLuaBindings() {
 } // namespace
 
 int main(int argc, char **argv) {
-    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     parseArgs(argc, argv);
     IR_LOG_INFO(
         "Starting creation: lua_perf_grid (default mode={})",

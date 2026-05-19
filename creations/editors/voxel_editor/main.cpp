@@ -411,7 +411,6 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     IRVideo::parseAutoScreenshotArgv(argc, argv, &IRVoxelEditor::g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: voxel_editor");
     IR_LOG_INFO("  Left-click: place voxel adjacent to hit face");

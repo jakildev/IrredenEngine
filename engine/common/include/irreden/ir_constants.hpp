@@ -53,7 +53,9 @@ constexpr Distance kTrixelDistanceMaxDistance = 65535;
 // engine/render/include/irreden/render/voxel_pool_config.hpp
 // (IRRender::VoxelPoolConfig::getSize / getMaxAllocationSize /
 // getTotalSize / getMaxAllocationSizeTotal). The default cube edge is
-// kDefaultEdge; --voxel-pool-size N overrides at startup.
+// kDefaultEdge; set `config.voxel_pool_edge = N` in the creation's
+// config.lua to override at startup. See engine/world/CLAUDE.md
+// "Init-affecting runtime params".
 
 } // namespace IRConstants
 

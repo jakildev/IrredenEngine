@@ -105,7 +105,6 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRRender::VoxelPoolConfig::parseArgv(argc, argv);
     IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--auto-profile") == 0) {
