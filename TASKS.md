@@ -210,11 +210,11 @@ Avoid:
   - **Notes:** Epic C (#936) foundation task — base of both Stack S-C-core (C1 → C2 → C3 → C7) and S-C-math (C1 → C5 → C4 → C8). `C_Rotation` (Euler vec3, component_rotation.hpp:8-20) is deprecated and removed in a follow-up after consumer migration audit. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C1".
   - **Links:**
 
-- [ ] **editor: selection rectangle + ghost preview during fill (A4)** — ghost voxels render during drag (no commit until mouse-up); snap-to-grid visible; modifier keys for axis-lock and symmetry override
+- [~] **editor: selection rectangle + ghost preview during fill (A4)** — ghost voxels render during drag (no commit until mouse-up); snap-to-grid visible; modifier keys for axis-lock and symmetry override
   - **ID:** T-284
   - **Area:** engine/prefabs/irreden/editor
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Stack:** T-284..T-286 S-A-author
   - **Acceptance:** (1) Hovering during box-fill drag shows ghost voxels at the AABB extent; (2) commit on mouse release; cancel on Escape; (3) modifier keys for axis-lock visible in the UI; (4) fleet-build clean on linux-debug and macos-debug
