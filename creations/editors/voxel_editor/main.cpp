@@ -1795,14 +1795,10 @@ void initCommands() {
         []() {
             auto &loft = IRVoxelEditor::g_loftTool;
             loft.active_ = !loft.active_;
-            if (!loft.active_) {
-                IRVoxelEditor::g_fillTool.dragging_ = false;
-                if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
-                    )
-                        .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
-                }
+            IRVoxelEditor::g_fillTool.dragging_ = false;
+            if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_)
+                    .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
             }
             IR_LOG_INFO("Loft mode: %s", loft.active_ ? "ON" : "OFF");
         }
