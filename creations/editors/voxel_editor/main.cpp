@@ -572,8 +572,8 @@ void applyFillSDF(
     Color color
 ) {
     const vec3 center = vec3(set.size_) * 0.5f;
-    for (int z = 0; z < set.size_.z; ++z)
-        for (int y = 0; y < set.size_.y; ++y)
+    for (int z = 0; z < set.size_.z; ++z) {
+        for (int y = 0; y < set.size_.y; ++y) {
             for (int x = 0; x < set.size_.x; ++x) {
                 const vec3 sdfPos = vec3(x, y, z) - center + vec3(0.5f);
                 const float d = IRMath::SDF::evaluate(sdfPos, shapeType, sdfParams);
@@ -585,6 +585,8 @@ void applyFillSDF(
                 if (flat < set.voxels_.size())
                     applyEdit(entity, set, local, flat, place, color);
             }
+        }
+    }
 }
 
 // Update the ghost shape entity to visualize the fill region during drag.
@@ -1497,7 +1499,7 @@ void initSystems() {
             auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
             applyFillSDF(g_editor.editableVoxelSet_, set, shapeType, sdfParams, true, placeColor);
             commitStroke();
-            IR_LOG_INFO("Bake: shape %d P1=%.1f P2=%.1f", idx, p1, p2);
+            IR_LOG_INFO("Bake: shape {} P1={:.1f} P2={:.1f}", idx, p1, p2);
         }
     );
 
