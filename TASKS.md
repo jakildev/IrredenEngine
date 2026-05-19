@@ -373,7 +373,7 @@ Avoid:
   - **Stack:** T-297..T-298 S-E-persist
   - **Acceptance:** (1) Spawn N entities across M chunks; iterate the chunk index; (2) per-chunk voxel sub-pool allocated from the global pool; (3) existing demos run unchanged at default (1-chunk world); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #963
-  - **Notes:** Stack S-E-stream pos 2 (E0 → E1 → E2 → E3 → E4); also base of S-E-persist (E1 → E6). Branch from E0 PR head (#944). Blocker E0 (#944, T-280) is merged (PR #981). Replaces single-chunk `kWorldBoundMax` invariant (`engine/common/include/irreden/ir_constants.hpp:42`); includes migration path for existing demos. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E1".
+  - **Notes:** Stack S-E-stream pos 2 (E0 → E1 → E2 → E3 → E4); also base of S-E-persist (E1 → E6). Branch from E0 PR head (#981). Blocker E0 (T-280) is merged (PR #981). Replaces single-chunk `kWorldBoundMax` invariant (`engine/common/include/irreden/ir_constants.hpp:42`); includes migration path for existing demos. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E1".
   - **Links:**
 
 - [ ] **world: chunk disk persistence + lazy load (E6)** — chunks serialize to disk via .vxs; lazy load on residency request; per-chunk dirty tracking; only modified chunks re-saved
