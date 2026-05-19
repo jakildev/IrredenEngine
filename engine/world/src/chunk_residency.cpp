@@ -85,8 +85,8 @@ void ChunkResidencyManager::attachEntity(IREntity::EntityId id, IRPrefab::Chunk:
     auto &owned = it->second.ownedEntities_;
     if (std::find(owned.begin(), owned.end(), id) == owned.end()) {
         owned.push_back(id);
+        it->second.dirty_ = true;
     }
-    it->second.dirty_ = true;
 }
 
 void ChunkResidencyManager::migrateEntity(

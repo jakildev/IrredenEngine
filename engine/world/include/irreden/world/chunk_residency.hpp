@@ -158,6 +158,7 @@ class ChunkResidencyManager {
     /// Iterate every resident slot. Visit order is unordered_map's;
     /// callers must not rely on it.
     template <typename Fn> void forEachChunk(Fn &&fn) const {
+        // TODO(E3): filter to state_ == RESIDENT once async transitions add LOADING/UPLOADING slots
         for (const auto &kv : m_slots) {
             fn(kv.first, kv.second);
         }
