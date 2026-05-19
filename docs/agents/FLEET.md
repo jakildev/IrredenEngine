@@ -661,8 +661,23 @@ Specifically, **never pass these via `--label` when filing**:
   (no point asking for a smoke label on the host that just built
   and ran the demo). Permanent label — it's a fact about the PR,
   not a state. Don't add to issues.
-- `fleet:in-progress` / `fleet:merger-cooldown` /
-  `fleet:changes-made` — owned by the worker / merger pipeline.
+- `fleet:in-progress` — generic "a worker has claimed this issue"
+  marker. Today this is mostly superseded by the dynamic per-host
+  `fleet:claim-<host>-<agent>` issue label (see below); the static
+  label remains in `fleet-labels` for cases where the host/agent
+  context isn't available.
+- `fleet:claim-<host>-<agent>` — owned by the **`fleet-claim`
+  script**, applied to the **GitHub issue** linked from a TASKS.md row
+  when `fleet-claim claim` succeeds. Same race semantics as
+  `fleet:reviewing-<host>-<agent>` (generic prefix is the race lock;
+  lex-min wins under contention; losers self-remove and bail). The
+  suffix encodes who claimed so issue-tracker views show ownership
+  without anyone reading TASKS.md or the PR. Cleared by
+  `fleet-claim release` on completion, by `cleanup --gh` when the
+  linked issue closes, or via orphan-sentinel replay on transient
+  remove-label failures. Don't add manually.
+- `fleet:merger-cooldown` / `fleet:changes-made` — owned by the
+  worker / merger pipeline.
 - `fleet:semantic-conflict` — owned by the **merger** (sets when it
   can't auto-rebase). Cleared by the **opus-worker** after it
   resolves the conflict, or escalated to `human:needs-fix` if even

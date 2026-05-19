@@ -192,12 +192,43 @@ f. Do NOT close the issue — the author agent's `Closes #N` does it.
 Repeat for `repos.game.human_approved[]` against the game TASKS.md
 (use `--repo <game-repo>` on every `gh` call).
 
-### Step 6 — File the PR
+### Step 6 — Commit and push directly to master
 
-1. Append the task to `## Open` in the appropriate TASKS.md.
-2. Run the `commit-and-push` skill: commit message `queue: add task <short title>`.
-3. Paste the PR URL back to the human.
-4. For cross-repo tasks: file the engine PR first.
+Ingest commits touch only TASKS.md (and optionally `.fleet/plans/<file>`)
+— they qualify for the bookkeeping exception below. **Do not open a PR.**
+Auto-ingest PRs (the `fleet-ingest-T...` branch pattern) created strand
+the work in the review queue and burn fleet credits; the human merges
+all of them anyway because there's no review surface in a TASKS.md row.
+
+For each ingested issue:
+
+1. Stage only the files you touched:
+   ```
+   git -C "$QM_WT" add TASKS.md
+   git -C "$QM_WT" add .fleet/plans/T-<NNN>.md   # only if you copied one
+   ```
+2. Commit with `queue: add task <short title> (T-NNN, #issue)`.
+3. Push directly to master with rebase-retry (concurrent queue-tick may
+   race):
+   ```
+   for attempt in 1 2 3; do
+       git -C "$QM_WT" fetch origin --quiet
+       git -C "$QM_WT" rebase origin/master
+       if git -C "$QM_WT" push origin HEAD:master; then break; fi
+   done
+   ```
+4. For cross-repo tasks: push the engine commit first.
+
+Do NOT invoke the `commit-and-push` skill — that skill opens a PR.
+Direct push is the right call here because:
+
+- The commit only mutates `TASKS.md` / `.fleet/plans/`, which the
+  "Bookkeeping exception" below explicitly permits.
+- `fleet-queue-tick` (which runs alongside ingest) also direct-pushes
+  via the same exception, so the two paths share invariants.
+- Review on a TASKS.md add is rubber-stamping; no reviewer agent can
+  validate "is this scope right" without context the human already
+  decided when they applied `human:approved`.
 
 ## End-of-iteration feedback
 

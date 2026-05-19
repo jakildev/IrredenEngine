@@ -189,10 +189,15 @@ def fetch_human_approved(repo):
     return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS)
 
 
-def fetch_closed_fleet_queued(repo, limit=20):
-    # Closed fleet:queued issues whose TASKS.md [~] entry hasn't been flipped
-    # to [x] yet. --limit caps API cost; recently-closed issues are returned
-    # first by default so the 20-item window covers any realistic merge wave.
+def fetch_closed_fleet_queued(repo, limit=100):
+    # Closed fleet:queued issues whose TASKS.md row hasn't been flipped to [x]
+    # yet. --limit caps API cost; recently-closed issues are returned first.
+    # 100 covers the realistic backlog window — observed 2026-05-19 that the
+    # original 20-item cap missed strands like T-166 (#663) which closed
+    # 2026-05-12 and stayed in TASKS.md `## Open` while ~40 fleet:queued
+    # issues closed after it. The renderer's closed-issue reaper consumes
+    # this slice; missing entries strand rows in Open until they're swept
+    # manually.
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
         "--label", "fleet:queued", "--state", "closed",

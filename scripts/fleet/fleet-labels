@@ -131,6 +131,13 @@ LABELS=(
     # first use) and removed by the verdict label-swap or by
     # `fleet-claim review-release`. Queue-tick's `fleet-claim cleanup --gh`
     # pass sweeps stale ones (>30 min) and replays orphan sentinels.
+    #
+    # Sibling: fleet:claim-<host>-<agent> on **issues** (not PRs) — stamped
+    # by `fleet-claim claim` after FS lock + master push succeed. Generic
+    # prefix is the race-detection signal (lex-min wins under contention);
+    # suffix encodes who claimed for issue-tracker visibility. Released by
+    # `fleet-claim release`; stale labels (>24h) swept by the same
+    # cleanup pass.
 )
 
 # `gh label list` defaults to --limit 30. The engine repo already has
