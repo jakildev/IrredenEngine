@@ -8,6 +8,7 @@ set(RENDER_CORE_SRC
     src/shader.cpp
     src/texture.cpp
     src/vao.cpp
+    src/voxel_pool_config.cpp
     src/image_data.cpp
 )
 

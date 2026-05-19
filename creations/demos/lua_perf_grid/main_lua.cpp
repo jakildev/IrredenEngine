@@ -159,14 +159,15 @@ void validateSettings() {
     g_settings.gridSize_ = std::max(1, g_settings.gridSize_);
     g_settings.spacing_ = std::max(0.25f, g_settings.spacing_);
     g_settings.wavePeriodSeconds_ = std::max(0.1f, g_settings.wavePeriodSeconds_);
-    if (g_settings.gridSize_ > IRConstants::kVoxelPoolSize.x) {
+    const int poolEdge = IRRender::VoxelPoolConfig::getEdge();
+    if (g_settings.gridSize_ > poolEdge) {
         IR_LOG_WARN(
             "lua_perf_grid grid_size={} exceeds voxel pool {}^3; clamping to {}.",
             g_settings.gridSize_,
-            IRConstants::kVoxelPoolSize.x,
-            IRConstants::kVoxelPoolSize.x
+            poolEdge,
+            poolEdge
         );
-        g_settings.gridSize_ = IRConstants::kVoxelPoolSize.x;
+        g_settings.gridSize_ = poolEdge;
     }
 }
 

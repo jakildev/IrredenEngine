@@ -52,7 +52,7 @@ RenderManager::RenderManager(
     ,   m_mainCanvas{
             IREntity::createEntity<kVoxelPoolCanvas>(
                 "main",
-                IRConstants::kVoxelPoolSize,
+                IRRender::VoxelPoolConfig::getSize(),
                 IRMath::gameResolutionToSize2DIso(
                     gameResolution + IRConstants::kSizeExtraPixelBuffer
                 ),
@@ -117,6 +117,11 @@ RenderManager::RenderManager(
     //     }
     {
     IRE_LOG_INFO("Fit mode: {}", static_cast<int>(fitMode));
+    IRE_LOG_INFO(
+        "Voxel pool: edge={} ({} voxels)",
+        IRRender::VoxelPoolConfig::getEdge(),
+        IRRender::VoxelPoolConfig::getTotalSize()
+    );
     m_renderImpl->init();
     IREntity::setName(m_camera, "camera");
     // IRECS::setComponent(

@@ -244,10 +244,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::UNIFORM,
             kBufferIndex_FrameDataVoxelToCanvas
         );
+        const int maxSingleVoxels = IRRender::VoxelPoolConfig::getTotalSize();
         IRRender::createNamedResource<Buffer>(
             "VoxelPositionBuffer",
             nullptr,
-            IRConstants::kMaxSingleVoxels * sizeof(C_Position3D),
+            maxSingleVoxels * sizeof(C_Position3D),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_SingleVoxelPositions
@@ -255,7 +256,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<Buffer>(
             "VoxelColorBuffer",
             nullptr,
-            IRConstants::kMaxSingleVoxels * sizeof(C_Voxel),
+            maxSingleVoxels * sizeof(C_Voxel),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_SingleVoxelColors
@@ -263,17 +264,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<Buffer>(
             "VoxelEntityIdBuffer",
             nullptr,
-            IRConstants::kMaxSingleVoxels * sizeof(IREntity::EntityId),
+            maxSingleVoxels * sizeof(IREntity::EntityId),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_VoxelEntityIds
         );
-        constexpr int kMaxVoxelPoolChunks =
-            IRMath::divCeil(IRConstants::kMaxSingleVoxels, IRRender::kVoxelChunkSize);
+        const int maxVoxelPoolChunks = IRMath::divCeil(maxSingleVoxels, IRRender::kVoxelChunkSize);
         IRRender::createNamedResource<Buffer>(
             "ChunkVisibilityBuffer",
             nullptr,
-            kMaxVoxelPoolChunks * sizeof(std::uint32_t),
+            maxVoxelPoolChunks * sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_ChunkVisibility
@@ -281,7 +281,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<Buffer>(
             "CompactedVoxelIndices",
             nullptr,
-            IRConstants::kMaxSingleVoxels * sizeof(std::uint32_t),
+            maxSingleVoxels * sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_CompactedVoxelIndices
