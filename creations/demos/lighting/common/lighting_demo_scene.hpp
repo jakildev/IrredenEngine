@@ -172,6 +172,7 @@ inline EntityId createVoxelPoolShape(
             voxelSet.voxels_[i].deactivate();
         }
     }
+    voxelSet.syncActiveMask();
     return entity;
 }
 
