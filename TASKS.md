@@ -210,17 +210,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **docs/roles: move PR-number examples out of reviewer role docs** — remove specific PR number citations from both reviewer role docs; preserve failure-mode prose
-  - **ID:** T-272
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `role-opus-reviewer.md:421-422` and `role-sonnet-reviewer.md:463-464` PR-number citations removed; (2) failure-mode prose preserved standalone; (3) if keeping citations: moved to docs/agents/lessons-learned.md with dates; (4) ~6 line edits per option
-  - **Issue:** #873
-  - **Notes:** From T-221 role audit (audit-roles.md §4.3). Cited PRs: #347, #348, #394 (opus-reviewer), plus #402 (sonnet-reviewer). PR numbers accumulate as cruft in long-lived docs. Recommend Option B (drop numbers entirely) since failure-mode prose stands alone.
-  - **Links:**
-
 - [~] **render: IRProfile::ScopeTimer + GPU timer query infrastructure (B0)** — CPU scope-timer macro + GPU timer-query pool around each render pipeline stage; perf_grid HUD displays per-stage ms
   - **ID:** T-275
   - **Area:** engine/render, engine/profile, creations/demos/perf_grid
@@ -324,6 +313,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-272** — docs/roles: move PR-number examples out of reviewer role docs · Owner: sonnet-fleet-1 · Resolved as side effect of T-264 (PR #918) — citations already removed before dedicated PR landed
 - [x] **T-213** — editor F-1.3 — layer system panel UI · Owner: claude/T-213-layer-system · PR: https://github.com/jakildev/IrredenEngine/pull/932
 - [x] **T-250** — docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs · Owner: claude/T-250-render-claude-md-cleanup · PR: https://github.com/jakildev/IrredenEngine/pull/931
 - [x] **T-271** — docs/roles: collapse redundant --repo flags in role-merger.md · Owner: claude/T-271-collapse-repo-flags · PR: https://github.com/jakildev/IrredenEngine/pull/925
@@ -343,4 +333,3 @@ Avoid:
 - [x] **T-255** — docs: engine/input/CLAUDE.md — fix C_Hitbox2D dead reference · Owner: claude/T-255-input-hitbox-dead-ref · PR: https://github.com/jakildev/IrredenEngine/pull/909
 - [x] **T-248** — docs/skills: trim Anti-patterns sections that restate flow-step requirements · Owner: claude/T-248-trim-antipatterns-restating · PR: https://github.com/jakildev/IrredenEngine/pull/900
 - [x] **T-261** — docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers · Owner: claude/T-261-reviewer-protocol · PR: https://github.com/jakildev/IrredenEngine/pull/908
-- [x] **T-257** — docs: engine/system/CLAUDE.md ↔ .claude/rules/cpp-systems.md de-dup · Owner: claude/T-257-system-claude-md-dedup · PR: https://github.com/jakildev/IrredenEngine/pull/912
