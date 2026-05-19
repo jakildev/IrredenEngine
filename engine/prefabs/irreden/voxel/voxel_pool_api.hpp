@@ -22,6 +22,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/render/active_canvas.hpp>
 #include <irreden/render/voxel_pool_allocation.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 
 #include <cstddef>
 #include <string>
@@ -90,6 +91,24 @@ inline void resyncRangeFromColors(
     std::size_t startIndex, std::size_t count, const std::string &canvasName = "main"
 ) {
     IRRender::resyncVoxelPoolRangeFromColors(startIndex, count, canvasName);
+}
+
+// Performs a single canvas-entity lookup and calls fn(C_VoxelPool&).
+// Prefer this over calling markVoxelActive N times to avoid N RenderManager
+// lookups; fillPlane-style loops that activate many individual slots benefit
+// from calling pool.setActiveBit(absIdx) directly on the resolved pool.
+template <typename Fn> inline void withPoolByEntity(IREntity::EntityId canvasEntity, Fn &&fn) {
+    if (canvasEntity == IREntity::kNullEntity) {
+        return;
+    }
+    if (!IREntity::entityExists(canvasEntity)) {
+        return;
+    }
+    auto poolOpt = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(canvasEntity);
+    if (!poolOpt.has_value()) {
+        return;
+    }
+    fn(*poolOpt.value());
 }
 
 } // namespace IRPrefab::VoxelPool

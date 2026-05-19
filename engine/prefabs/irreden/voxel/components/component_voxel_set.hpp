@@ -275,18 +275,20 @@ struct C_VoxelSetNew {
         const ivec3 sz = size_;
         const int dim0 = (axis + 1) % 3;
         const int dim1 = (axis + 2) % 3;
-        for (int a = 0; a < sz[dim0]; ++a) {
-            for (int b = 0; b < sz[dim1]; ++b) {
-                ivec3 coord{0, 0, 0};
-                coord[axis] = planeIndex;
-                coord[dim0] = a;
-                coord[dim1] = b;
-                const int idx = IRMath::index3DtoIndex1D(coord, sz);
-                voxels_[idx].color_ = color;
-                voxels_[idx].activate();
-                IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, true);
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](IRComponents::C_VoxelPool &pool) {
+            for (int a = 0; a < sz[dim0]; ++a) {
+                for (int b = 0; b < sz[dim1]; ++b) {
+                    ivec3 coord{0, 0, 0};
+                    coord[axis] = planeIndex;
+                    coord[dim0] = a;
+                    coord[dim1] = b;
+                    const int idx = IRMath::index3DtoIndex1D(coord, sz);
+                    voxels_[idx].color_ = color;
+                    voxels_[idx].activate();
+                    pool.setActiveBit(voxelStartIdx_ + idx);
+                }
             }
-        }
+        });
     }
 
     // take positions of all voxels in voxel object and form a new shape. This could
