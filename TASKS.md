@@ -270,11 +270,11 @@ Avoid:
   - **Notes:** Stack S-B-render pos 3. Branch from B1 PR head. Per-voxel flags in component_voxel.hpp:24-82; emit skip in c_voxel_to_trixel_stage_1.glsl. System runs on edited voxel + 6 neighbors. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B2".
   - **Links:**
 
-- [ ] **voxel: push-at-mutation position upload (no per-frame re-upload) (B5)** — remove per-frame full-pool position upload; push positions at allocation and on entity-moved/bone-matrix-update only
+- [~] **voxel: push-at-mutation position upload (no per-frame re-upload) (B5)** — remove per-frame full-pool position upload; push positions at allocation and on entity-moved/bone-matrix-update only
   - **ID:** T-289
   - **Area:** engine/prefabs/irreden/render, engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-288
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) perf_grid with 100 static voxel entities idle = zero position bytes/frame uploaded (verified via GPU buffer-write counter); (2) PR includes before/after numbers via T-275 profiler; (3) moving entities still upload correctly (push-at-mutation); (4) fleet-build clean on linux-debug and macos-debug
