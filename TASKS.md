@@ -198,17 +198,6 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **asset: .vxs DENSE-RLE chunk variant (B3)** — new `VOXR_RLE` chunk tag in .vxs format; RLE encoding reduces hollow 64³ voxel set to ~10% of DENSE chunk size
-  - **ID:** T-276
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-276-vxs-rle-chunk
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) hollow 64³ voxel set saves at ~10% of DENSE chunk size; (2) round-trip unit tests in `engine/asset/tests/` cover empty/full/hollow/striped cases; (3) format extensibility rules verified: old loader skips new chunk silently, new loader prefers RLE; (4) `engine/asset/CLAUDE.md` documents the new chunk tag; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #940
-  - **Notes:** Epic B (#935) independent task — no format version bump; old loaders silently skip VOXR_RLE. Hard dependency for Epic E E6 (#938 chunk disk persistence). Must land before Phase 1 authoring (#604) generates dense .vxs corpus. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B3".
-  - **Links:**
-
 - [~] **render: runtime-sized voxel pools (B4)** — replace compile-time `kVoxelPoolSize`/`kVoxelPoolMaxAllocationSize` constants with runtime values sized from GPU VRAM budget at startup
   - **ID:** T-277
   - **Area:** engine/render, engine/common
@@ -235,6 +224,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-276** — asset: .vxs DENSE-RLE chunk variant (B3) · Owner: claude/T-276-vxs-rle-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/972
 - [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
 - [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
 - [x] **T-283** — fleet: filter fleet:epic in project_queue_manager_ingest · Owner: claude/T-283-epic-filter-projector · PR: https://github.com/jakildev/IrredenEngine/pull/980
@@ -254,4 +244,3 @@ Avoid:
 - [x] **T-267** — docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers · Owner: claude/T-267-shrink-intro-boilerplate · PR: https://github.com/jakildev/IrredenEngine/pull/920
 - [x] **T-266** — docs/roles: invert Engine API removal rule citation (baseline owns it) · Owner: claude/T-266-engine-api-removal-rule · PR: https://github.com/jakildev/IrredenEngine/pull/919
 - [x] **T-264** — docs/roles: create FLEET-CROSS-HOST-SMOKE.md · Owner: claude/T-264-cross-host-smoke-doc · PR: https://github.com/jakildev/IrredenEngine/pull/918
-- [x] **T-265** — docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor · Owner: claude/T-265-hoist-hard-rules · PR: https://github.com/jakildev/IrredenEngine/pull/917
