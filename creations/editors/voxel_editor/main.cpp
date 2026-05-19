@@ -280,6 +280,13 @@ IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
 // active fill mode (BOX / LINE / FACE) and active symmetry axes.
 IREntity::EntityId g_fillModeLabel = IREntity::kNullEntity;
 
+// Parametric shape bake panel widget entity IDs (T-286).
+IREntity::EntityId g_bakePanel = IREntity::kNullEntity;
+IREntity::EntityId g_bakeShapeList = IREntity::kNullEntity;
+IREntity::EntityId g_bakeParam1Slider = IREntity::kNullEntity;
+IREntity::EntityId g_bakeParam2Slider = IREntity::kNullEntity;
+IREntity::EntityId g_bakeButton = IREntity::kNullEntity;
+
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
         IR_LOG_INFO(
@@ -550,6 +557,34 @@ void applyFillFace(
             q.push(nb);
         }
     }
+}
+
+// CPU SDF voxel bake — fill every voxel in `set` whose SDF value for
+// `shapeType`/`sdfParams` is ≤ kSurfaceThreshold. The shape is centered on
+// the voxel set; each voxel sample point is offset by 0.5 so integer indices
+// map to voxel centers. Always produces DENSE output (no SHAPES chunk).
+void applyFillSDF(
+    IREntity::EntityId entity,
+    C_VoxelSetNew &set,
+    IRMath::SDF::ShapeType shapeType,
+    vec4 sdfParams,
+    bool place,
+    Color color
+) {
+    const vec3 center = vec3(set.size_) * 0.5f;
+    for (int z = 0; z < set.size_.z; ++z)
+        for (int y = 0; y < set.size_.y; ++y)
+            for (int x = 0; x < set.size_.x; ++x) {
+                const vec3 sdfPos = vec3(x, y, z) - center + vec3(0.5f);
+                const float d = IRMath::SDF::evaluate(sdfPos, shapeType, sdfParams);
+                if (d > IRMath::SDF::kSurfaceThreshold)
+                    continue;
+                const ivec3 local{x, y, z};
+                const std::size_t flat =
+                    static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+                if (flat < set.voxels_.size())
+                    applyEdit(entity, set, local, flat, place, color);
+            }
 }
 
 // Update the ghost shape entity to visualize the fill region during drag.
@@ -1066,7 +1101,8 @@ void initSystems() {
             }
 
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -1397,6 +1433,74 @@ void initSystems() {
         }
     );
 
+    // Shape bake system (T-286): runs in INPUT after WIDGET_APPLY_LIST so the
+    // list selection is committed, and after WIDGET_APPLY_SLIDER so slider
+    // values are committed. Reads the BAKE button and fires applyFillSDF.
+    auto bakeSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorBake",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_bakeButton == IREntity::kNullEntity)
+                return;
+            if (!IRPrefab::Widget::wasClicked(g_bakeButton))
+                return;
+            if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+                return;
+
+            static constexpr IRMath::SDF::ShapeType kShapeTypes[] = {
+                IRMath::SDF::ShapeType::BOX,
+                IRMath::SDF::ShapeType::SPHERE,
+                IRMath::SDF::ShapeType::CYLINDER,
+                IRMath::SDF::ShapeType::TORUS,
+                IRMath::SDF::ShapeType::CONE,
+                IRMath::SDF::ShapeType::ELLIPSOID,
+            };
+            static constexpr int kNumShapes = 6;
+
+            const int sel = (g_bakeShapeList != IREntity::kNullEntity)
+                                ? IRPrefab::Widget::listSelectedIndex(g_bakeShapeList)
+                                : 1;
+            const int idx = (sel >= 0 && sel < kNumShapes) ? sel : 1;
+            const IRMath::SDF::ShapeType shapeType = kShapeTypes[idx];
+
+            const float p1 = (g_bakeParam1Slider != IREntity::kNullEntity)
+                                 ? IRPrefab::Widget::sliderValue(g_bakeParam1Slider)
+                                 : 5.0f;
+            const float p2 = (g_bakeParam2Slider != IREntity::kNullEntity)
+                                 ? IRPrefab::Widget::sliderValue(g_bakeParam2Slider)
+                                 : 3.0f;
+
+            // Build SDF params for evaluate(): semantics depend on shape type.
+            // evaluate() computes halfSize = vec3(params)*0.5 for box-family shapes.
+            vec4 sdfParams{};
+            switch (shapeType) {
+            case IRMath::SDF::ShapeType::SPHERE:
+                sdfParams = vec4(p1, 0.0f, 0.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::TORUS:
+                sdfParams = vec4(p1, p2, 0.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::BOX:
+            case IRMath::SDF::ShapeType::ELLIPSOID:
+                sdfParams = vec4(p1 * 2.0f, p1 * 2.0f, p2 * 2.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::CYLINDER:
+            case IRMath::SDF::ShapeType::CONE:
+            default:
+                sdfParams = vec4(p1, p1, p2 * 2.0f, 0.0f);
+                break;
+            }
+
+            const Color placeColor = kPaletteColors[g_editor.activeSwatchIdx_];
+            auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+            applyFillSDF(g_editor.editableVoxelSet_, set, shapeType, sdfParams, true, placeColor);
+            commitStroke();
+            IR_LOG_INFO("Bake: shape %d P1=%.1f P2=%.1f", idx, p1, p2);
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
@@ -1408,6 +1512,7 @@ void initSystems() {
          scrubberSystem,
          layerSyncSystem,
          loftInputSystem,
+         bakeSystem,
          paletteUpdateSystem,
          placeEraseSystem,
          scrollZoomSystem,
@@ -2205,6 +2310,42 @@ void initEntities() {
         ivec2(kLayerPanelPos.x + 92, kLayerPanelPos.y + 74),
         ivec2(20, 14),
         "-"
+    );
+
+    // Parametric shape bake panel (T-286). Sits below the LAYERS panel.
+    // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
+    // secondary params; BAKE writes DENSE voxels into the active entity.
+    constexpr ivec2 kBakePanelPos{130, 342};
+    constexpr ivec2 kBakePanelSize{120, 140};
+    IRVoxelEditor::g_bakePanel = IRPrefab::Widget::makePanel(kBakePanelPos, kBakePanelSize, "BAKE");
+    IREntity::setComponent(IRVoxelEditor::g_bakePanel, IRComponents::C_HitBox2DGui{kBakePanelSize});
+    IRVoxelEditor::g_bakeShapeList = IRPrefab::Widget::makeList(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 18),
+        ivec2(112, 66),
+        {"BOX", "SPHERE", "CYLINDER", "TORUS", "CONE", "ELLIPSOID"},
+        1,
+        11
+    );
+    IRVoxelEditor::g_bakeParam1Slider = IRPrefab::Widget::makeSlider(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 88),
+        ivec2(112, 14),
+        "P1",
+        0.5f,
+        12.0f,
+        8.0f
+    );
+    IRVoxelEditor::g_bakeParam2Slider = IRPrefab::Widget::makeSlider(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 106),
+        ivec2(112, 14),
+        "P2",
+        0.5f,
+        12.0f,
+        3.0f
+    );
+    IRVoxelEditor::g_bakeButton = IRPrefab::Widget::makeButton(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 124),
+        ivec2(112, 12),
+        "BAKE"
     );
 
     // Ghost preview entity for drag-fill. Invisible until
