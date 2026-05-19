@@ -23,6 +23,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -100,6 +101,52 @@ inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf)
     pool.clearEntityIdsDirty();
 }
 
+// Drain `pool.getPendingPositionRanges()` to the position SSBO as one
+// `subData` per contiguous run. Mirrors `C_GPUParticlePool::flushPendingSpawns`
+// — sort, coalesce, emit. Empty list is a fast-path no-op so a static
+// voxel scene pays zero bytes/frame. The named-buffer pointer is read
+// via `getNamedResource` rather than the system's cached `voxelPosBuf_`
+// so the helper can sit next to its sibling `syncEntityIds`; the named
+// lookup is O(1) and only hits when the pool actually has queued work.
+inline void flushPendingPositionRanges(C_VoxelPool &pool) {
+    auto &ranges = pool.getPendingPositionRanges();
+    if (ranges.empty()) {
+        return;
+    }
+    Buffer *buf = IRRender::getNamedResource<Buffer>("VoxelPositionBuffer");
+    constexpr size_t kStride = sizeof(C_PositionGlobal3D);
+    const auto &globals = pool.getPositionGlobals();
+
+    std::sort(ranges.begin(), ranges.end());
+    size_t runStart = ranges.front().first;
+    size_t runEnd = runStart + ranges.front().second;
+    for (size_t i = 1; i < ranges.size(); ++i) {
+        const size_t s = ranges[i].first;
+        const size_t e = s + ranges[i].second;
+        if (s <= runEnd) {
+            // Overlapping or contiguous with the open run — extend.
+            if (e > runEnd) {
+                runEnd = e;
+            }
+            continue;
+        }
+        buf->subData(
+            static_cast<std::ptrdiff_t>(runStart * kStride),
+            (runEnd - runStart) * kStride,
+            &globals[runStart]
+        );
+        runStart = s;
+        runEnd = e;
+    }
+    buf->subData(
+        static_cast<std::ptrdiff_t>(runStart * kStride),
+        (runEnd - runStart) * kStride,
+        &globals[runStart]
+    );
+
+    pool.clearPendingPositionRanges();
+}
+
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
@@ -118,6 +165,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // mode or effective subdivisions change.
     int previousRenderMode_ = -1;
     int previousEffectiveSubdivisions_ = -1;
+    // Last canvas whose position SSBO contents were written to
+    // `voxelPosBuf_`. Positions are otherwise pushed at mutation time by
+    // `UPDATE_VOXEL_SET_CHILDREN`; we still need a per-canvas full
+    // re-seed whenever the buffer's last-writer was a different canvas
+    // (multi-canvas-with-voxels scenes share one bind point, so the
+    // mutator pushes from a foreign canvas would have overwritten the
+    // slots this dispatch is about to read). For the steady single-
+    // canvas case the tracker is set on the first tick and never
+    // re-fires.
+    IREntity::EntityId lastUploadedCanvas_ = IREntity::kNullEntity;
 
     void tick(
         IREntity::EntityId entity,
@@ -184,11 +241,26 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
-        voxelPosBuf_->subData(
-            0,
-            liveVoxelCount * sizeof(C_PositionGlobal3D),
-            voxelPool.getPositionGlobals().data()
-        );
+        // Voxel positions are now uploaded via the pending-range queue
+        // populated by `UPDATE_VOXEL_SET_CHILDREN` (`cpp-ecs.md`
+        // pending-list-flush rule). Single-canvas-with-voxels steady-
+        // state: queue empty for static entities → zero `subData`
+        // bytes/frame; moving entities coalesce into runs. Multi-
+        // canvas-with-voxels: each canvas's SSBO state can be clobbered
+        // by another canvas's mutator pushes since both write to the
+        // shared `voxelPosBuf_`, so on a canvas switch we re-seed the
+        // whole live range and drain this pool's queue.
+        if (lastUploadedCanvas_ != entity) {
+            voxelPosBuf_->subData(
+                0,
+                liveVoxelCount * sizeof(C_PositionGlobal3D),
+                voxelPool.getPositionGlobals().data()
+            );
+            voxelPool.clearPendingPositionRanges();
+            lastUploadedCanvas_ = entity;
+        } else {
+            flushPendingPositionRanges(voxelPool);
+        }
         voxelColorBuf_->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
         // Active-mask covers the live prefix; upload the matching whole-word
         // window (`divCeil(liveVoxelCount, kVoxelActiveMaskBits)` words) so

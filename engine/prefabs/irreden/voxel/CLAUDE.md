@@ -63,6 +63,10 @@ for single voxels and particles.
 
 - `UPDATE_VOXEL_SET_CHILDREN` (UPDATE pipeline) — pushes per-voxel-set
   global-position updates into the pool, also registers ownership lookups.
+  Voxel sets whose `C_PositionGlobal3D` is unchanged from the prior tick
+  early-out of `updateAsChild` and contribute nothing to the per-pool
+  GPU position queue (`C_VoxelPool::queuePositionRange`) — a static
+  voxel scene pays zero CPU→GPU position bytes/frame.
 - `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**
