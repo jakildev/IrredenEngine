@@ -167,7 +167,7 @@ Avoid:
   - **ID:** T-284
   - **Area:** engine/prefabs/irreden/editor
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-284-fill-ghost-ui
   - **Blocked by:** (none)
   - **Stack:** T-284..T-286 S-A-author
   - **Acceptance:** (1) Hovering during box-fill drag shows ghost voxels at the AABB extent; (2) commit on mouse release; cancel on Escape; (3) modifier keys for axis-lock visible in the UI; (4) fleet-build clean on linux-debug and macos-debug
@@ -175,11 +175,11 @@ Avoid:
   - **Notes:** Stack S-A-author pos 2 (A1 → A4 → A2 → A3). A1 (T-278, PR #976) merged — branch from master. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A4".
   - **Links:**
 
-- [ ] **editor: loft from 2 profiles (CSG of two extrusions) (A2)** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect
+- [~] **editor: loft from 2 profiles (CSG of two extrusions) (A2)** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect
   - **ID:** T-285
   - **Area:** engine/prefabs/irreden/editor
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-285-editor-loft-profiles
   - **Blocked by:** T-284
   - **Stack:** T-284..T-286 S-A-author
   - **Acceptance:** (1) Author a sphere-like shape from two circle profiles; (2) author a chair-like shape from front + side silhouettes; (3) mask widgets snap to grid; modifier key for symmetry plane; (4) fleet-build clean on linux-debug and macos-debug
@@ -187,11 +187,11 @@ Avoid:
   - **Notes:** Stack S-A-author pos 3. Branch from A4 PR head. Mask widget reuses trixel-rect helpers. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A2".
   - **Links:**
 
-- [ ] **editor: parametric-shape voxel bake (always DENSE) (A3)** — editor exposes "bake parametric shape into voxels"; picks primitive (sphere/box/capsule/cylinder/torus/etc.), sets params, voxelizes into active entity via CPU SDF path
+- [~] **editor: parametric-shape voxel bake (always DENSE) (A3)** — editor exposes "bake parametric shape into voxels"; picks primitive (sphere/box/capsule/cylinder/torus/etc.), sets params, voxelizes into active entity via CPU SDF path
   - **ID:** T-286
   - **Area:** engine/prefabs/irreden/editor, engine/math
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-286-parametric-voxel-bake
   - **Blocked by:** T-285
   - **Stack:** T-284..T-286 S-A-author
   - **Acceptance:** (1) Bake a radius-8 sphere; rasterized result matches GPU SDF output within 1 trixel; (2) bake at least 5 primitive types (sphere, box, capsule, cylinder, torus); (3) resulting .vxs round-trips cleanly through save/load; (4) fleet-build clean on linux-debug and macos-debug
@@ -203,7 +203,7 @@ Avoid:
   - **ID:** T-287
   - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-287-voxel-active-mask
   - **Blocked by:** (none)
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) Hollow 64³ entity pays <10% of dense 64³ render cost in perf_grid; (2) PR body includes CPU + GPU before/after numbers via T-275 overlay; (3) full-volume mutations correct; mask updates push-at-mutation (no dirty flag per cpp-ecs §"No dirty flags"); (4) fleet-build clean on linux-debug and macos-debug
@@ -211,11 +211,11 @@ Avoid:
   - **Notes:** Stack S-B-render pos 2 (B0 → B1 → B2 → B5). B0 (T-275, PR #977) merged — branch from master. Mask in component_voxel_pool.hpp:38-280; visibility compact in c_voxel_visibility_compact.glsl:66. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B1".
   - **Links:**
 
-- [ ] **voxel: face-aware rendering (per-voxel face bits) (B2)** — 6 face-occupancy bits in C_Voxel::flags_; maintained at edit time by SYSTEM_UPDATE_FACE_OCCUPANCY; shader skips emit on blocked faces
+- [~] **voxel: face-aware rendering (per-voxel face bits) (B2)** — 6 face-occupancy bits in C_Voxel::flags_; maintained at edit time by SYSTEM_UPDATE_FACE_OCCUPANCY; shader skips emit on blocked faces
   - **ID:** T-288
   - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-288-voxel-face-occupancy
   - **Blocked by:** T-287
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) Solid 64³ cube emits ~24,576 surface trixel positions (down from 1,572,864 today); (2) PR includes perf_grid numbers showing the per-voxel cost drop; (3) face bits correctly updated when a neighbor changes (push-at-mutation per cpp-ecs §"No dirty flags"); (4) fleet-build clean on linux-debug and macos-debug
@@ -223,11 +223,11 @@ Avoid:
   - **Notes:** Stack S-B-render pos 3. Branch from B1 PR head. Per-voxel flags in component_voxel.hpp:24-82; emit skip in c_voxel_to_trixel_stage_1.glsl. System runs on edited voxel + 6 neighbors. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B2".
   - **Links:**
 
-- [ ] **voxel: push-at-mutation position upload (no per-frame re-upload) (B5)** — remove per-frame full-pool position upload; push positions at allocation and on entity-moved/bone-matrix-update only
+- [~] **voxel: push-at-mutation position upload (no per-frame re-upload) (B5)** — remove per-frame full-pool position upload; push positions at allocation and on entity-moved/bone-matrix-update only
   - **ID:** T-289
   - **Area:** engine/prefabs/irreden/render, engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-289-voxel-pos-push-at-mutation
   - **Blocked by:** T-288
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) perf_grid with 100 static voxel entities idle = zero position bytes/frame uploaded (verified via GPU buffer-write counter); (2) PR includes before/after numbers via T-275 profiler; (3) moving entities still upload correctly (push-at-mutation); (4) fleet-build clean on linux-debug and macos-debug
@@ -304,6 +304,89 @@ Avoid:
   - **Acceptance:** (1) A DETACHED rectangular entity pitching forward looks correct from any world Z-yaw; (2) deformation math reused (single source of truth across world and per-canvas); (3) composition order correct (local rotation applied first inside canvas, then world Z-yaw at composite); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #958
   - **Notes:** Stack S-C-core pos 4. Branch from C3 PR head; also requires C4 (T-293) merged first. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C7".
+  - **Links:**
+
+- [~] **render: SDF restriction decision deliverable (D2)** — record final restriction shape (effects-only or revised) as architecture decision in docs/design/entity-editor-epic.md §"Architectural decisions (locked)"
+  - **ID:** T-296
+  - **Area:** docs, engine/render
+  - **Model:** opus
+  - **Owner:** claude/T-296-sdf-restriction-decision
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Decision PR amends `docs/design/entity-editor-epic.md` §"Architectural decisions (locked)" with the final restriction shape; (2) decision rationale captured (cost of effects-only vs. keeping co-equal; references the D1 audit findings in T-281/PR #982); (3) migration plan exists (or is filed as D3) for any SHAPES authoring sites identified in D1; (4) unblocks Epic C C8 (#959) and lets D3/D4 proceed
+  - **Issue:** #960
+  - **Notes:** Part of Epic D (#937 — SDF runtime restriction). Blocked-by D1 (#945, T-281) is merged (PR #982). Phase: lands during Epic C C3–C5. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic D → D2".
+  - **Links:**
+
+- [~] **world: chunk container + ivec3 chunk-coords addressing (E1)** — spatial chunk buckets owning entities + voxel allocations; addressed by ivec3 chunk coords; sparse world over chunks; per-chunk entity index + voxel sub-pool
+  - **ID:** T-297
+  - **Area:** engine/world, engine/entity
+  - **Model:** opus
+  - **Owner:** claude/T-297-world-chunk-container
+  - **Blocked by:** (none)
+  - **Stack:** T-297..T-298 S-E-persist
+  - **Acceptance:** (1) Spawn N entities across M chunks; iterate the chunk index; (2) per-chunk voxel sub-pool allocated from the global pool; (3) existing demos run unchanged at default (1-chunk world); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #963
+  - **Notes:** Stack S-E-stream pos 2 (E0 → E1 → E2 → E3 → E4); also base of S-E-persist (E1 → E6). Branch from E0 PR head (#981). Blocker E0 (T-280) is merged (PR #981). Replaces single-chunk `kWorldBoundMax` invariant (`engine/common/include/irreden/ir_constants.hpp:42`); includes migration path for existing demos. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E1".
+  - **Links:**
+
+- [~] **world: chunk disk persistence + lazy load (E6)** — chunks serialize to disk via .vxs; lazy load on residency request; per-chunk dirty tracking; only modified chunks re-saved
+  - **ID:** T-298
+  - **Area:** engine/world, engine/asset
+  - **Model:** opus
+  - **Owner:** claude/T-298-chunk-disk-persistence
+  - **Blocked by:** T-297
+  - **Stack:** T-297..T-298 S-E-persist
+  - **Acceptance:** (1) Save world; quit; restart; chunks load on-demand as camera moves; (2) visual state identical to pre-quit; (3) only modified chunks re-saved; disk usage scales with active content; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #968
+  - **Notes:** Stack S-E-persist pos 2 (E1 → E6). Branch from E1 PR head (#963). Chunks use .vxs DENSE-RLE format (#940, T-276 merged PR #972). Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E6".
+  - **Links:**
+
+- [~] **render: migrate Phase A render-side readers to C_WorldTransform** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase)
+  - **ID:** T-299
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** opus-worker-1
+  - **Blocked by:** (none)
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) Each listed render system reads C_WorldTransform.translation_/.rotation_ instead of C_PositionGlobal3D/C_Rotation; (2) legacy components still exist (retirement is T-302); (3) fleet-build clean on linux-debug and macos-debug; (4) render-debug-loop shot list pre/post pixel-identical (within bilinear tolerance for rotation-touching shaders); (5) voxel editor renders and interacts correctly — gizmos move, picking resolves, voxels position correctly
+  - **Issue:** #984
+  - **Notes:** Step 2 of transform migration decomposed from #736. Foundation already merged: PR #749/T-197 (C_LocalTransform + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM), PR #787/T-199-step-1 (COMPUTE_LIGHT_VOLUME proof-of-concept). Target files: system_sprites_to_screen.hpp, system_entity_canvas_to_framebuffer.hpp, system_shapes_to_trixel.hpp, system_voxel_picking.hpp, system_voxel_to_trixel.hpp, system_gizmo_drag.hpp, system_gizmo_screen_space_size.hpp, system_build_light_occlusion_grid.hpp, system_debug_culling_minimap.hpp, picking.hpp, gizmo.hpp. Pure mechanical swap: C_PositionGlobal3D pos → C_WorldTransform xform, pos.pos_ → xform.translation_; C_Rotation → xform.rotation_. Blocks T-300 → T-301 → T-302.
+  - **Links:**
+
+- [ ] **update: migrate Phase A update-side consumers to C_WorldTransform** — migrate ~15 update-pipeline systems and entity-spawn helpers from C_PositionGlobal3D/C_Position3D/C_Rotation to C_LocalTransform/C_WorldTransform; writers convert Euler C_Rotation to quat C_LocalTransform.rotation_
+  - **ID:** T-300
+  - **Area:** engine/prefabs/irreden/update, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-299
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) Each listed update system reads C_WorldTransform.translation_/.rotation_ and/or writes C_LocalTransform; (2) velocity integration, spring physics, periodic offsets, goto/reactive-return all behave identically post-migration; (3) fleet-build clean on both backends; (4) unit tests pass (test/ecs/*, test/asset/*); (5) IRShapeDebug + voxel editor + spring/note demos render identically
+  - **Issue:** #985
+  - **Notes:** T-199b — update-side continuation of #736 migration. Stacks on T-299. Target readers: system_periodic_idle_position_offset.hpp, system_apply_position_offset.hpp, system_rhythmic_launch.hpp, system_contact_note_burst.hpp, system_collision_note_platform.hpp, system_update_positions_global.hpp, system_periodic_idle_note_burst.hpp, system_particle_spawner.hpp, system_velocity.hpp, system_spring_platform.hpp, system_action_animation.hpp, system_reactive_return_3d.hpp, system_goto_3d.hpp, system_update_screen_view.hpp. Writers need Euler→quat: use glm::quat_cast(eulerAngles) at write sites. system_apply_position_offset.hpp may be deleted if epic #731 modifier migration has removed it — check current state first. Blocks T-301 → T-302.
+  - **Links:**
+
+- [ ] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
+  - **ID:** T-301
+  - **Area:** engine/prefabs/irreden/voxel, engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-300
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) C_VoxelPool and voxel systems use new SQT shape per the architectural decision; (2) GPU voxel-position upload path still works — voxel rendering pixel-identical pre/post; (3) voxel editor place/erase + scene save/load round-trip unchanged; (4) fleet-build clean on both backends; (5) engine/prefabs/irreden/voxel/CLAUDE.md updated with SoA decision rationale
+  - **Issue:** #986
+  - **Notes:** T-199c — voxel-side continuation; trickiest phase because C_VoxelPool SoA arrays back the GPU buffer upload path. Option A: one C_WorldTransform array per pool (wider per-voxel memory but uniform with rest of engine post-migration); Option B: keep position-only projection arrays refreshed from owning entity's C_WorldTransform once per pool tick (smaller; preserves current GPU upload contract). Worker should escalate via fleet:design-blocked when reaching the C_VoxelPool rewrite — architect input needed. Stacks on T-300. Blocks T-302.
+  - **Links:**
+
+- [ ] **engine: retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components** — delete all four legacy position/rotation component headers; remove from createEntity auto-attach set; migrate Lua bindings and script API to SQT equivalents; update CLAUDE.md
+  - **ID:** T-302
+  - **Area:** engine/prefabs/irreden/common, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-301
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) grep -r "C_PositionGlobal3D" engine/ returns zero hits; (2) grep -r "C_Position3D" engine/ returns zero hits; (3) grep -r "C_Rotation" engine/ returns zero hits; (4) createEntity no longer auto-attaches legacy components; (5) fleet-build clean on linux-debug and macos-debug; (6) full test suite passes (test/ecs/*, test/asset/*, render-verify reference set); (7) IRShapeDebug, voxel editor, spring/note demos render identically; (8) CLAUDE.md retirement note added
+  - **Issue:** #987
+  - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
 ## Done — last 20
