@@ -21,6 +21,12 @@ in `update/`.
   pair. **Both auto-added by `createEntity(...)`**. See
   [SQT transform pair + propagation](#sqt-transform-pair--propagation)
   below.
+- `C_ChunkMembership` — which streaming chunk an entity belongs to
+  (Epic E / `IRPrefab::Chunk::ChunkKey`). **NOT auto-added** —
+  single-chunk creations carry no chunk metadata. Attached by the
+  chunk-membership migration system when a creation opts into world
+  streaming via `IRWorld::ChunkResidencyManager`. Design contract:
+  [`docs/design/world-streaming.md`](../../../../docs/design/world-streaming.md).
 - `C_Modifiers` / `C_GlobalModifiers` / `C_NoGlobalModifiers` /
   `C_LambdaModifiers` / `C_ResolvedFields` — generic modifier
   framework. See [Modifier framework](#modifier-framework) below.

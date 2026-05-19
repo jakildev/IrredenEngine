@@ -8,6 +8,17 @@ by `IREngine::init()` and destroyed at shutdown.
 
 `engine/world/include/irreden/world.hpp` — declares `class World`.
 
+## Chunk residency (Epic E)
+
+`engine/world/include/irreden/world/chunk_residency.hpp` declares
+`IRWorld::ChunkResidencyManager` — the resident-set + per-chunk voxel
+sub-pool + entity manifest. **Not** owned by `World` — creations that
+opt into streaming construct one explicitly. Single-chunk creations
+ignore it entirely (zero-overhead). Companion chunk-coord utilities
+live in [`engine/prefabs/irreden/world/`](../prefabs/irreden/world/);
+full design contract in
+[`docs/design/world-streaming.md`](../../docs/design/world-streaming.md).
+
 Most code never touches `World` directly. It accesses managers via the
 `IR<Module>::get*Manager()` free functions in each module's `ir_*.hpp`
 header, which reach through the global pointers `World` sets up at
