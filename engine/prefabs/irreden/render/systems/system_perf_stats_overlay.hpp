@@ -13,6 +13,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/profile/scope_timer.hpp>
 
 #include <cstdio>
 #include <string>
@@ -57,9 +58,69 @@ template <> struct System<PERF_STATS_OVERLAY> {
                 style.boxWidth_ = canvasWidth - 2 * kPerfStatsPadding.x;
 
                 auto &timing = IRRender::gpuStageTiming();
+                const auto &cpuHist = IRProfile::cpuFrameHistogram();
 
-                std::string buf(768, '\0');
-                if (timing.enabled_) {
+                // Top-line CPU buckets from World::input/update/render —
+                // only rendered when the CPU histogram is enabled. Falls back
+                // to 0.0 if the name has never been recorded.
+                const double cpuInputMs = cpuHist.lastFrameMs("input");
+                const double cpuUpdateMs = cpuHist.lastFrameMs("update");
+                const double cpuRenderMs = cpuHist.lastFrameMs("render");
+
+                std::string buf(1024, '\0');
+                if (timing.enabled_ && cpuHist.enabled_) {
+                    std::snprintf(
+                        buf.data(),
+                        buf.size(),
+                        "FPS: %.0f  %.1fms\nUPD: %.0f\nENT: %u\nDROP: %u\n"
+                        "CPU I:%.2f U:%.2f R:%.2f\n"
+                        "GPU CLR:%.1f CMP:%.1f V1:%.1f V2:%.1f\n"
+                        "CPU CMP:%.2f V1:%.2f V2:%.2f\n"
+                        "GPU SC:%.1f S0:%.1f S1:%.1f OCC:%.1f AO:%.1f\n"
+                        "CPU S1:%.2f OCC:%.2f AO:%.2f\n"
+                        "GPU BSM:%.1f SH:%.1f LV:%.1f LIT:%.1f FOG:%.1f\n"
+                        "CPU LV:%.2f LIT:%.2f\n"
+                        "GPU T2T:%.1f T2F:%.1f EC:%.1f SSR:%.1f FB:%.1f\n"
+                        "VIS:%u Z:%u",
+                        IRTime::renderFps(),
+                        IRTime::renderFrameTimeMs(),
+                        IRTime::updateFps(),
+                        static_cast<unsigned int>(IREntity::getLiveEntityCount()),
+                        IRTime::droppedFrames(),
+                        cpuInputMs,
+                        cpuUpdateMs,
+                        cpuRenderMs,
+                        timing.canvasClearMs_,
+                        timing.voxelCompactMs_,
+                        timing.voxelStage1Ms_,
+                        timing.voxelStage2Ms_,
+                        cpuHist.lastFrameMs("voxelCompact"),
+                        cpuHist.lastFrameMs("voxelStage1"),
+                        cpuHist.lastFrameMs("voxelStage2"),
+                        timing.shapeCompactMs_,
+                        timing.shapePass0Ms_,
+                        timing.shapePass1Ms_,
+                        timing.buildLightOcclusionGridMs_,
+                        timing.computeVoxelAoMs_,
+                        cpuHist.lastFrameMs("shapePass1"),
+                        cpuHist.lastFrameMs("buildLightOcclusionGrid"),
+                        cpuHist.lastFrameMs("computeVoxelAO"),
+                        timing.bakeSunShadowMapMs_,
+                        timing.computeSunShadowMs_,
+                        timing.computeLightVolumeMs_,
+                        timing.lightingToTrixelMs_,
+                        timing.fogToTrixelMs_,
+                        cpuHist.lastFrameMs("computeLightVolume"),
+                        cpuHist.lastFrameMs("lightingToTrixel"),
+                        timing.trixelToTrixelMs_,
+                        timing.trixelToFbMs_,
+                        timing.entityCanvasToFbMs_,
+                        timing.screenSpaceResidualRotateMs_,
+                        timing.fbToScreenMs_,
+                        timing.visibleShapeCount_,
+                        timing.shapeGroupsZ_
+                    );
+                } else if (timing.enabled_) {
                     std::snprintf(
                         buf.data(),
                         buf.size(),
@@ -95,6 +156,32 @@ template <> struct System<PERF_STATS_OVERLAY> {
                         timing.fbToScreenMs_,
                         timing.visibleShapeCount_,
                         timing.shapeGroupsZ_
+                    );
+                } else if (cpuHist.enabled_) {
+                    std::snprintf(
+                        buf.data(),
+                        buf.size(),
+                        "FPS: %.0f  %.1fms\nUPD: %.0f\nENT: %u\nDROP: %u\n"
+                        "CPU I:%.2f U:%.2f R:%.2f\n"
+                        "CPU CMP:%.2f V1:%.2f V2:%.2f\n"
+                        "CPU S1:%.2f OCC:%.2f AO:%.2f\n"
+                        "CPU LV:%.2f LIT:%.2f",
+                        IRTime::renderFps(),
+                        IRTime::renderFrameTimeMs(),
+                        IRTime::updateFps(),
+                        static_cast<unsigned int>(IREntity::getLiveEntityCount()),
+                        IRTime::droppedFrames(),
+                        cpuInputMs,
+                        cpuUpdateMs,
+                        cpuRenderMs,
+                        cpuHist.lastFrameMs("voxelCompact"),
+                        cpuHist.lastFrameMs("voxelStage1"),
+                        cpuHist.lastFrameMs("voxelStage2"),
+                        cpuHist.lastFrameMs("shapePass1"),
+                        cpuHist.lastFrameMs("buildLightOcclusionGrid"),
+                        cpuHist.lastFrameMs("computeVoxelAO"),
+                        cpuHist.lastFrameMs("computeLightVolume"),
+                        cpuHist.lastFrameMs("lightingToTrixel")
                     );
                 } else {
                     std::snprintf(
