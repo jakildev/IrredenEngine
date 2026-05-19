@@ -198,11 +198,11 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [~] **engine: C_LocalTransform (SQT) component (C1)** — new `C_LocalTransform` component carrying scale/rotation/translation at `engine/prefabs/irreden/common/components/component_local_transform.hpp`; identity-default = today's behaviour
+- [ ] **engine: C_LocalTransform (SQT) component (C1)** — new `C_LocalTransform` component carrying scale/rotation/translation at `engine/prefabs/irreden/common/components/component_local_transform.hpp`; identity-default = today's behaviour
   - **ID:** T-279
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) `C_LocalTransform` landed; identity-default = pure data per cpp-ecs §"Component method tiers"; (2) existing scenes render identically (identity transform is a no-op); (3) entity spawned with non-identity SQT renders at transformed position/orientation/scale (verified in inline test demo); (4) no `getComponent` calls in tick functions touch this component; (5) fleet-build clean on linux-debug and macos-debug
@@ -274,7 +274,7 @@ Avoid:
   - **ID:** T-289
   - **Area:** engine/prefabs/irreden/render, engine/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-289-voxel-pos-push-at-mutation
   - **Blocked by:** T-288
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) perf_grid with 100 static voxel entities idle = zero position bytes/frame uploaded (verified via GPU buffer-write counter); (2) PR includes before/after numbers via T-275 profiler; (3) moving entities still upload correctly (push-at-mutation); (4) fleet-build clean on linux-debug and macos-debug
@@ -380,7 +380,7 @@ Avoid:
   - **ID:** T-298
   - **Area:** engine/world, engine/asset
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-298-chunk-disk-persistence
   - **Blocked by:** T-297
   - **Stack:** T-297..T-298 S-E-persist
   - **Acceptance:** (1) Save world; quit; restart; chunks load on-demand as camera moves; (2) visual state identical to pre-quit; (3) only modified chunks re-saved; disk usage scales with active content; (4) fleet-build clean on linux-debug and macos-debug
