@@ -258,11 +258,11 @@ Avoid:
   - **Notes:** Stack S-B-render pos 2 (B0 → B1 → B2 → B5). B0 (T-275, PR #977) merged — branch from master. Mask in component_voxel_pool.hpp:38-280; visibility compact in c_voxel_visibility_compact.glsl:66. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B1".
   - **Links:**
 
-- [ ] **voxel: face-aware rendering (per-voxel face bits) (B2)** — 6 face-occupancy bits in C_Voxel::flags_; maintained at edit time by SYSTEM_UPDATE_FACE_OCCUPANCY; shader skips emit on blocked faces
+- [~] **voxel: face-aware rendering (per-voxel face bits) (B2)** — 6 face-occupancy bits in C_Voxel::flags_; maintained at edit time by SYSTEM_UPDATE_FACE_OCCUPANCY; shader skips emit on blocked faces
   - **ID:** T-288
   - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-287
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) Solid 64³ cube emits ~24,576 surface trixel positions (down from 1,572,864 today); (2) PR includes perf_grid numbers showing the per-voxel cost drop; (3) face bits correctly updated when a neighbor changes (push-at-mutation per cpp-ecs §"No dirty flags"); (4) fleet-build clean on linux-debug and macos-debug
