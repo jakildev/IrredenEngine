@@ -83,6 +83,7 @@
 #include <deque>
 #include <list>
 #include <memory>
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -211,6 +212,18 @@ struct RotateParams {
     bool firstRotFrame_ = true;
     float prevMouseX_ = 0.0f;
 };
+
+// Drag-fill state machine: tracks a left-button drag for box/line fill.
+// Ghost entity is created in initEntities and referenced here so the
+// endTick lambda can update its position and visibility each frame.
+struct FillToolState {
+    bool dragging_ = false;
+    ivec3 dragStartWorld_ = {};
+    IREntity::EntityId dragStartEntity_ = IREntity::kNullEntity;
+    IREntity::EntityId ghostEntity_ = IREntity::kNullEntity;
+    ivec3 lastEndWorld_ = {};
+};
+FillToolState g_fillTool;
 
 // Three auto-screenshot framings so the render-debug-loop / regression
 // harness records the palette panel and the editable scene from a
@@ -366,6 +379,168 @@ bool worldVoxelToLocal(
     return outFlat < set.voxels_.size();
 }
 
+// Fill all voxels in the AABB [worldA, worldB] (inclusive) inside `set`.
+void applyFillAABB(
+    IREntity::EntityId entity,
+    C_VoxelSetNew &set,
+    const C_PositionGlobal3D &gpos,
+    ivec3 worldA,
+    ivec3 worldB,
+    bool place,
+    Color color
+) {
+    const ivec3 lo{
+        IRMath::min(worldA.x, worldB.x),
+        IRMath::min(worldA.y, worldB.y),
+        IRMath::min(worldA.z, worldB.z)
+    };
+    const ivec3 hi{
+        IRMath::max(worldA.x, worldB.x),
+        IRMath::max(worldA.y, worldB.y),
+        IRMath::max(worldA.z, worldB.z)
+    };
+    for (int z = lo.z; z <= hi.z; ++z)
+        for (int y = lo.y; y <= hi.y; ++y)
+            for (int x = lo.x; x <= hi.x; ++x) {
+                ivec3 local{};
+                std::size_t flat = 0;
+                if (worldVoxelToLocal(set, gpos, {x, y, z}, local, flat))
+                    applyEdit(entity, set, local, flat, place, color);
+            }
+}
+
+// Fill voxels along the dominant axis between worldA and worldB.
+void applyFillLine(
+    IREntity::EntityId entity,
+    C_VoxelSetNew &set,
+    const C_PositionGlobal3D &gpos,
+    ivec3 worldA,
+    ivec3 worldB,
+    bool place,
+    Color color
+) {
+    const ivec3 delta = worldB - worldA;
+    const int dx = IRMath::abs(delta.x);
+    const int dy = IRMath::abs(delta.y);
+    const int dz = IRMath::abs(delta.z);
+    int axis = 0;
+    int steps = dx;
+    if (dy > steps) { axis = 1; steps = dy; }
+    if (dz > steps) { axis = 2; steps = dz; }
+    const int dirX = delta.x > 0 ? 1 : -1;
+    const int dirY = delta.y > 0 ? 1 : -1;
+    const int dirZ = delta.z > 0 ? 1 : -1;
+    for (int i = 0; i <= steps; ++i) {
+        ivec3 pos = worldA;
+        if (axis == 0) pos.x += dirX * i;
+        else if (axis == 1) pos.y += dirY * i;
+        else pos.z += dirZ * i;
+        ivec3 local{};
+        std::size_t flat = 0;
+        if (worldVoxelToLocal(set, gpos, pos, local, flat))
+            applyEdit(entity, set, local, flat, place, color);
+    }
+}
+
+// Flood-fill all cells in the axis-plane of `faceNormal` starting from `worldHit`.
+// 4-connected BFS restricted to the plane (fixedAxis = the normal's non-zero axis).
+void applyFillFace(
+    IREntity::EntityId entity,
+    C_VoxelSetNew &set,
+    const C_PositionGlobal3D &gpos,
+    ivec3 worldHit,
+    ivec3 faceNormal,
+    bool place,
+    Color color
+) {
+    int fixedAxis = -1;
+    if (faceNormal.x != 0) fixedAxis = 0;
+    else if (faceNormal.y != 0) fixedAxis = 1;
+    else if (faceNormal.z != 0) fixedAxis = 2;
+    if (fixedAxis < 0) return;
+
+    const ivec3 origin = IRMath::roundVec3HalfUp(gpos.pos_);
+    const ivec3 startLocal = worldHit - origin;
+    if (startLocal.x < 0 || startLocal.x >= set.size_.x ||
+        startLocal.y < 0 || startLocal.y >= set.size_.y ||
+        startLocal.z < 0 || startLocal.z >= set.size_.z) return;
+
+    const int totalCells = set.size_.x * set.size_.y * set.size_.z;
+    std::vector<bool> visited(static_cast<std::size_t>(totalCells), false);
+
+    // 4-connected neighbor offsets in the plane perpendicular to fixedAxis
+    const ivec3 neighborSteps[4] = {
+        fixedAxis == 0 ? ivec3{0, 1, 0} : ivec3{1, 0, 0},
+        fixedAxis == 0 ? ivec3{0, -1, 0} : ivec3{-1, 0, 0},
+        fixedAxis == 2 ? ivec3{0, 1, 0} : ivec3{0, 0, 1},
+        fixedAxis == 2 ? ivec3{0, -1, 0} : ivec3{0, 0, -1},
+    };
+
+    const int startFlat = IRMath::index3DtoIndex1D(startLocal, set.size_);
+    if (startFlat < 0 || static_cast<std::size_t>(startFlat) >= set.voxels_.size()) return;
+    visited[static_cast<std::size_t>(startFlat)] = true;
+
+    std::queue<ivec3> q;
+    q.push(startLocal);
+    while (!q.empty()) {
+        const ivec3 cur = q.front();
+        q.pop();
+        const int flat = IRMath::index3DtoIndex1D(cur, set.size_);
+        if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size()) continue;
+        applyEdit(entity, set, cur, static_cast<std::size_t>(flat), place, color);
+        for (const auto &step : neighborSteps) {
+            const ivec3 nb = cur + step;
+            if (nb.x < 0 || nb.x >= set.size_.x ||
+                nb.y < 0 || nb.y >= set.size_.y ||
+                nb.z < 0 || nb.z >= set.size_.z) continue;
+            const int nbFlat = IRMath::index3DtoIndex1D(nb, set.size_);
+            if (nbFlat < 0 || static_cast<std::size_t>(nbFlat) >= visited.size()) continue;
+            if (visited[static_cast<std::size_t>(nbFlat)]) continue;
+            visited[static_cast<std::size_t>(nbFlat)] = true;
+            q.push(nb);
+        }
+    }
+}
+
+// Update the ghost shape entity to visualize the fill region during drag.
+// Uses AABB bounds for box fill, or the dominant-axis extent for line fill.
+void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
+    if (g_fillTool.ghostEntity_ == IREntity::kNullEntity) return;
+    auto &ghost = IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_);
+    auto &ghostPos = IREntity::getComponent<C_Position3D>(g_fillTool.ghostEntity_);
+    ghost.flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_HOLLOW |
+                   IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
+
+    ivec3 lo{};
+    ivec3 hi{};
+    if (lineMode) {
+        const ivec3 delta = worldB - worldA;
+        const int dx = IRMath::abs(delta.x);
+        const int dy = IRMath::abs(delta.y);
+        const int dz = IRMath::abs(delta.z);
+        ivec3 lineEnd = worldA;
+        if (dx >= dy && dx >= dz) lineEnd.x = worldB.x;
+        else if (dy >= dz) lineEnd.y = worldB.y;
+        else lineEnd.z = worldB.z;
+        lo = ivec3{IRMath::min(worldA.x, lineEnd.x),
+                   IRMath::min(worldA.y, lineEnd.y),
+                   IRMath::min(worldA.z, lineEnd.z)};
+        hi = ivec3{IRMath::max(worldA.x, lineEnd.x),
+                   IRMath::max(worldA.y, lineEnd.y),
+                   IRMath::max(worldA.z, lineEnd.z)};
+    } else {
+        lo = ivec3{IRMath::min(worldA.x, worldB.x),
+                   IRMath::min(worldA.y, worldB.y),
+                   IRMath::min(worldA.z, worldB.z)};
+        hi = ivec3{IRMath::max(worldA.x, worldB.x),
+                   IRMath::max(worldA.y, worldB.y),
+                   IRMath::max(worldA.z, worldB.z)};
+    }
+    const vec3 halfExt = vec3(hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1) * 0.5f;
+    ghostPos.pos_ = vec3(lo) + halfExt;
+    ghost.params_ = vec4(halfExt.x, halfExt.y, halfExt.z, 0.0f);
+}
+
 // Copy the editable target's live voxels into frames_[idx].voxels_.
 // No-op when the editable target is not yet initialized (initCommands
 // runs before initEntities, so command callbacks may fire before the
@@ -451,7 +626,10 @@ void initEntities();
 int main(int argc, char **argv) {
     IRVideo::parseAutoScreenshotArgv(argc, argv, &IRVoxelEditor::g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: voxel_editor");
-    IR_LOG_INFO("  Left-click: place voxel adjacent to hit face");
+    IR_LOG_INFO("  Left-drag: AABB box-fill between drag-start and drag-end");
+    IR_LOG_INFO("  Shift + left-drag: line-fill along dominant axis");
+    IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
+    IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
     IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
@@ -529,32 +707,17 @@ void initSystems() {
         }
     );
 
-    // Place / erase driver: reads left-click PRESSED for place and
-    // right-click PRESSED for erase. Right-DRAG keeps rotating the
-    // camera (EditorViewportRotate below) — the rotate gesture only
-    // mutates state while HELD with mouse movement, so a press alone
-    // doesn't move the camera. Both actions cast a single ray per
-    // click and operate on the place-adjacent / hit voxel
-    // respectively. Single-voxel-per-click v1; drag-paint deferred to
-    // a follow-up. Runs in INPUT, after the input/hover/widget chain
-    // so the GUI's `fireAction_` (e.g. clicking a swatch) reaches the
-    // poller above ahead of this system seeing the same press — but
-    // GUI clicks land on widget hitboxes (the swatch panel is in the
-    // top-left), so a click over the scene fires this system without
-    // affecting the palette and vice versa.
+    // Place / erase / fill driver. Three left-click gestures:
+    //   Ctrl + left-click       → face-fill (flood-fill the hit face's axis-plane)
+    //   Shift + left-drag       → line-fill along the dominant axis
+    //   left-drag (no modifier) → AABB box-fill
+    //   left-click (no drag)    → single-voxel place (same as original behavior)
+    // Right-click PRESSED → single-voxel erase (unchanged).
     auto placeEraseSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorPlaceErase",
         [](const C_GuiElement &) {},
         []() {},
         []() {
-            // Mouse is hovering over the palette panel (or any other
-            // widget) — let widgets eat the click so place/erase
-            // doesn't fire under a swatch. Widget hover state is
-            // populated by HITBOX_MOUSE_TEST_GUI earlier in this
-            // pipeline tick.
-            // Panel hitbox covers the whole palette dock; check it first
-            // so clicks on the background (title bar, label gap, padding)
-            // are suppressed without iterating the swatch list.
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
             if (!overWidget) {
@@ -567,54 +730,108 @@ void initSystems() {
                 }
             }
 
-            const bool placeClick =
-                !overWidget &&
-                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
-            const bool eraseClick =
-                !overWidget &&
-                IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
-
-            if (!placeClick && !eraseClick) {
-                return;
-            }
-
-            const auto hit = IRPrefab::Picking::castVoxelRay();
-            if (!hit) {
-                return;
-            }
-            // The picker leaves `faceNormal_ == ivec3(0)` for shape
-            // hits (cube-face direction is undefined on non-box
-            // SDFs). Place/erase needs a voxel hit; bail on shape
-            // hits.
-            if (hit->faceNormal_ == ivec3(0)) {
-                return;
-            }
-
-            auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
-            auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
-
-            ivec3 worldVoxel = hit->voxelPos_;
-            if (placeClick) {
-                worldVoxel = hit->voxelPos_ + hit->faceNormal_;
-            }
-
-            ivec3 localIdx{};
-            std::size_t flat = 0;
-            if (!IRVoxelEditor::worldVoxelToLocal(set, gpos, worldVoxel, localIdx, flat)) {
-                return;
-            }
-
-            // Single-click strokes: same-frame append + commit before
-            // return. `pendingStroke_.edits_` is always entered empty
-            // and pre-reserved (init seeds it; commitStroke clears +
-            // reserves on every exit), so no per-click clear/reserve is
-            // needed. Drag-paint would split this into press → begin /
-            // held → append / release → commit and would need an
-            // explicit begin to bound the reserve to the brush AABB.
             const Color placeColor =
                 IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
-            IRVoxelEditor::applyEdit(hit->entity_, set, localIdx, flat, placeClick, placeColor);
-            IRVoxelEditor::commitStroke();
+
+            // Right-click: single-voxel erase (unchanged).
+            if (!overWidget &&
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED)) {
+                const auto hit = IRPrefab::Picking::castVoxelRay();
+                if (hit && hit->faceNormal_ != ivec3(0)) {
+                    auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
+                    auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
+                    ivec3 local{};
+                    std::size_t flat = 0;
+                    if (IRVoxelEditor::worldVoxelToLocal(set, gpos, hit->voxelPos_, local, flat)) {
+                        IRVoxelEditor::applyEdit(hit->entity_, set, local, flat, false, placeColor);
+                        IRVoxelEditor::commitStroke();
+                    }
+                }
+            }
+
+            // Ctrl + left-click: face-fill (immediate, no drag).
+            const bool ctrlDown = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
+            const bool leftPressedNow =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+            if (!overWidget && ctrlDown && leftPressedNow) {
+                const auto hit = IRPrefab::Picking::castVoxelRay();
+                if (hit && hit->faceNormal_ != ivec3(0)) {
+                    auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
+                    auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
+                    IRVoxelEditor::applyFillFace(
+                        hit->entity_, set, gpos,
+                        hit->voxelPos_ + hit->faceNormal_, hit->faceNormal_,
+                        true, placeColor
+                    );
+                    IRVoxelEditor::commitStroke();
+                }
+                return;
+            }
+
+            // Left drag state machine (no Ctrl): PRESSED→start, HELD→preview, RELEASED→commit.
+            const bool noCtrl = !ctrlDown;
+            const bool leftReleasedNow =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED);
+
+            if (noCtrl && !overWidget && leftPressedNow) {
+                const auto hit = IRPrefab::Picking::castVoxelRay();
+                if (hit && hit->faceNormal_ != ivec3(0)) {
+                    const ivec3 startPos = hit->voxelPos_ + hit->faceNormal_;
+                    IRVoxelEditor::g_fillTool.dragging_ = true;
+                    IRVoxelEditor::g_fillTool.dragStartWorld_ = startPos;
+                    IRVoxelEditor::g_fillTool.dragStartEntity_ = hit->entity_;
+                    IRVoxelEditor::g_fillTool.lastEndWorld_ = startPos;
+                    IRVoxelEditor::updateGhostShape(startPos, startPos, false);
+                }
+            }
+
+            if (noCtrl && IRVoxelEditor::g_fillTool.dragging_ &&
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD)) {
+                const auto hit = IRPrefab::Picking::castVoxelRay();
+                if (hit && hit->faceNormal_ != ivec3(0)) {
+                    const ivec3 endPos = hit->voxelPos_ + hit->faceNormal_;
+                    IRVoxelEditor::g_fillTool.lastEndWorld_ = endPos;
+                    const bool shiftHeld =
+                        IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                    IRVoxelEditor::updateGhostShape(
+                        IRVoxelEditor::g_fillTool.dragStartWorld_, endPos, shiftHeld
+                    );
+                }
+            }
+
+            if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
+                IRVoxelEditor::g_fillTool.dragging_ = false;
+                if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                    IREntity::getComponent<C_ShapeDescriptor>(
+                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    ).flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+                }
+                const IREntity::EntityId targetEntity =
+                    IRVoxelEditor::g_fillTool.dragStartEntity_;
+                if (targetEntity == IREntity::kNullEntity) return;
+                auto &set = IREntity::getComponent<C_VoxelSetNew>(targetEntity);
+                auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(targetEntity);
+                const ivec3 startPos = IRVoxelEditor::g_fillTool.dragStartWorld_;
+                const ivec3 endPos = IRVoxelEditor::g_fillTool.lastEndWorld_;
+                const bool shiftHeld =
+                    IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+
+                if (startPos == endPos) {
+                    ivec3 local{};
+                    std::size_t flat = 0;
+                    if (IRVoxelEditor::worldVoxelToLocal(set, gpos, startPos, local, flat))
+                        IRVoxelEditor::applyEdit(targetEntity, set, local, flat, true, placeColor);
+                } else if (shiftHeld) {
+                    IRVoxelEditor::applyFillLine(
+                        targetEntity, set, gpos, startPos, endPos, true, placeColor
+                    );
+                } else {
+                    IRVoxelEditor::applyFillAABB(
+                        targetEntity, set, gpos, startPos, endPos, true, placeColor
+                    );
+                }
+                IRVoxelEditor::commitStroke();
+            }
         }
     );
 
@@ -1490,4 +1707,19 @@ void initEntities() {
         ivec2(20, 14),
         "-"
     );
+
+    // Ghost preview entity for drag-fill. Invisible until
+    // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
+    // frame and hides it again on RELEASED.
+    IRVoxelEditor::g_fillTool.ghostEntity_ = IREntity::createEntity(
+        C_Position3D{vec3(0.0f)},
+        C_ShapeDescriptor{
+            IRRender::ShapeType::BOX,
+            vec4(0.5f, 0.5f, 0.5f, 0.0f),
+            Color{240, 240, 240, 200}
+        }
+    );
+    IREntity::getComponent<C_ShapeDescriptor>(
+        IRVoxelEditor::g_fillTool.ghostEntity_
+    ).flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
 }
