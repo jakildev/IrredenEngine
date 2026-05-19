@@ -123,6 +123,70 @@ void emitVoxelSetSidecar(
     writeJsonSidecarToFile(sidecarPath, j.str());
 }
 
+// ---- Shared load/validate helpers --------------------------------------
+//
+// The chunk readers below share a few mechanical patterns: forwarding a
+// sub-read's error into the surrounding Result type, capping a corrupted
+// declared-count against bytes-remaining so a bogus varuint can't
+// pre-allocate gigabytes, decoding the 12 B VoxelRecord body, and
+// dispatching VRLE-preferred / VOXR-fallback load into a DenseVoxelSet.
+
+// Mirrors Rust's `?` — rebuild the source error in a different Result type
+// so a sub-read failure surfaces with the right outer type.
+template <typename TOut, typename TIn>
+Result<TOut> forwardError(Result<TIn> &source) {
+    return Result<TOut>::error(source.status_.code_, std::move(source.status_.message_));
+}
+
+template <typename TOut>
+Result<TOut> forwardError(BinaryStatus &source) {
+    return Result<TOut>::error(source.code_, std::move(source.message_));
+}
+
+// Cap a corrupted declared count to bytes-remaining so a malformed varuint
+// claiming billions of records can't pre-allocate that much.
+constexpr std::size_t cappedReserve(std::uint64_t requested, std::uint64_t cap) {
+    return static_cast<std::size_t>(requested < cap ? requested : cap);
+}
+
+// Write the 12 B VoxelRecord body (matches VOXR / VRLE record layout —
+// `Color` is packed RGBA, then 4 × u8 fields, then u32 reserved).
+void writeVoxelRecordBody(BinaryWriter &w, const VoxelRecord &v) {
+    IRMath::BinaryIO::writeColorPacked(w, v.color_);
+    w.writeU8(v.material_id_);
+    w.writeU8(v.flags_);
+    w.writeU8(v.bone_id_);
+    w.writeU8(v.layer_id_);
+    w.writeU32(v.reserved_);
+}
+
+// Read the 12 B VoxelRecord body. Caller forwards any error to its own
+// Result type via `forwardError<TOuter>(vR)`.
+Result<VoxelRecord> readVoxelRecordBody(BinaryReader &r) {
+    VoxelRecord v{};
+    auto colorR = r.readU32();
+    if (!colorR.ok()) return forwardError<VoxelRecord>(colorR);
+    v.color_ = Color::fromPackedRGBA(colorR.value_);
+    auto matR = r.readU8();
+    if (!matR.ok()) return forwardError<VoxelRecord>(matR);
+    v.material_id_ = matR.value_;
+    auto flagsR = r.readU8();
+    if (!flagsR.ok()) return forwardError<VoxelRecord>(flagsR);
+    v.flags_ = flagsR.value_;
+    auto boneR = r.readU8();
+    if (!boneR.ok()) return forwardError<VoxelRecord>(boneR);
+    v.bone_id_ = boneR.value_;
+    auto layerR = r.readU8();
+    if (!layerR.ok()) return forwardError<VoxelRecord>(layerR);
+    // v1 files had pad0_=0 here; v1 → v2 migration: treat as layer_id_=0
+    // (default layer), which is the correct semantic for pre-layer files.
+    v.layer_id_ = layerR.value_;
+    auto resR = r.readU32();
+    if (!resR.ok()) return forwardError<VoxelRecord>(resR);
+    v.reserved_ = resR.value_;
+    return Result<VoxelRecord>::success(std::move(v));
+}
+
 } // namespace
 
 // ---- MODE chunk --------------------------------------------------------
@@ -232,17 +296,9 @@ Result<ShapeGroupLoadResult>
 readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskShapeTypes) {
     MemoryBinaryReader r(body.data(), body.size(), "<SHPG chunk>");
     auto countR = r.readVarUInt();
-    if (!countR.ok()) {
-        return Result<ShapeGroupLoadResult>::error(
-            countR.status_.code_,
-            std::move(countR.status_.message_)
-        );
-    }
-    // Cap the upfront reserve to remaining bytes so a corrupted count
-    // claiming billions of records doesn't pre-allocate that much.
-    const std::uint64_t cap = r.remaining();
+    if (!countR.ok()) return forwardError<ShapeGroupLoadResult>(countR);
     ShapeGroupLoadResult out;
-    out.records_.reserve(static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap));
+    out.records_.reserve(cappedReserve(countR.value_, r.remaining()));
 
     NameTable currentTable(buildCurrentShapeTypeNameTable());
 
@@ -250,75 +306,39 @@ readShapeGroupChunk(std::span<const std::uint8_t> body, const NameTable &diskSha
         ShapeRecord rec{};
 
         auto typeIdR = r.readU32();
-        if (!typeIdR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                typeIdR.status_.code_,
-                std::move(typeIdR.status_.message_)
-            );
+        if (!typeIdR.ok()) return forwardError<ShapeGroupLoadResult>(typeIdR);
         const std::uint32_t diskTypeId = typeIdR.value_;
 
         auto verR = r.readU16();
-        if (!verR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                verR.status_.code_,
-                std::move(verR.status_.message_)
-            );
+        if (!verR.ok()) return forwardError<ShapeGroupLoadResult>(verR);
         rec.recordVersion_ = verR.value_;
 
         auto paramsR = IRMath::BinaryIO::readVec4(r);
-        if (!paramsR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                paramsR.status_.code_,
-                std::move(paramsR.status_.message_)
-            );
+        if (!paramsR.ok()) return forwardError<ShapeGroupLoadResult>(paramsR);
         rec.params_ = paramsR.value_;
 
         auto colorR = r.readU32();
-        if (!colorR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                colorR.status_.code_,
-                std::move(colorR.status_.message_)
-            );
+        if (!colorR.ok()) return forwardError<ShapeGroupLoadResult>(colorR);
         rec.color_ = Color::fromPackedRGBA(colorR.value_);
 
         auto flagsR = r.readU32();
-        if (!flagsR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                flagsR.status_.code_,
-                std::move(flagsR.status_.message_)
-            );
+        if (!flagsR.ok()) return forwardError<ShapeGroupLoadResult>(flagsR);
         rec.flags_ = flagsR.value_;
 
         auto boneR = r.readU8();
-        if (!boneR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                boneR.status_.code_,
-                std::move(boneR.status_.message_)
-            );
+        if (!boneR.ok()) return forwardError<ShapeGroupLoadResult>(boneR);
         rec.boneId_ = boneR.value_;
 
         auto offsetR = IRMath::BinaryIO::readVec3(r);
-        if (!offsetR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                offsetR.status_.code_,
-                std::move(offsetR.status_.message_)
-            );
+        if (!offsetR.ok()) return forwardError<ShapeGroupLoadResult>(offsetR);
         rec.offset_ = offsetR.value_;
 
         auto rotR = IRMath::BinaryIO::readVec4(r);
-        if (!rotR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                rotR.status_.code_,
-                std::move(rotR.status_.message_)
-            );
+        if (!rotR.ok()) return forwardError<ShapeGroupLoadResult>(rotR);
         rec.rotation_ = rotR.value_;
 
         auto csgR = r.readU8();
-        if (!csgR.ok())
-            return Result<ShapeGroupLoadResult>::error(
-                csgR.status_.code_,
-                std::move(csgR.status_.message_)
-            );
+        if (!csgR.ok()) return forwardError<ShapeGroupLoadResult>(csgR);
         // CsgOp is stable — future composition modes land in a separate
         // SHPT chunk, not new CsgOp values, so no name-resolution fallback
         // is needed (unlike ShapeType, which uses SREF for Rule #2).
@@ -377,23 +397,17 @@ Result<BoundsPair> readBoundsChunk(std::span<const std::uint8_t> body) {
     MemoryBinaryReader r(body.data(), body.size(), "<BNDS chunk>");
     BoundsPair out;
     auto minX = r.readI32();
-    if (!minX.ok())
-        return Result<BoundsPair>::error(minX.status_.code_, std::move(minX.status_.message_));
+    if (!minX.ok()) return forwardError<BoundsPair>(minX);
     auto minY = r.readI32();
-    if (!minY.ok())
-        return Result<BoundsPair>::error(minY.status_.code_, std::move(minY.status_.message_));
+    if (!minY.ok()) return forwardError<BoundsPair>(minY);
     auto minZ = r.readI32();
-    if (!minZ.ok())
-        return Result<BoundsPair>::error(minZ.status_.code_, std::move(minZ.status_.message_));
+    if (!minZ.ok()) return forwardError<BoundsPair>(minZ);
     auto maxX = r.readI32();
-    if (!maxX.ok())
-        return Result<BoundsPair>::error(maxX.status_.code_, std::move(maxX.status_.message_));
+    if (!maxX.ok()) return forwardError<BoundsPair>(maxX);
     auto maxY = r.readI32();
-    if (!maxY.ok())
-        return Result<BoundsPair>::error(maxY.status_.code_, std::move(maxY.status_.message_));
+    if (!maxY.ok()) return forwardError<BoundsPair>(maxY);
     auto maxZ = r.readI32();
-    if (!maxZ.ok())
-        return Result<BoundsPair>::error(maxZ.status_.code_, std::move(maxZ.status_.message_));
+    if (!maxZ.ok()) return forwardError<BoundsPair>(maxZ);
     out.boundsMin_ = ivec3(minX.value_, minY.value_, minZ.value_);
     out.boundsMax_ = ivec3(maxX.value_, maxY.value_, maxZ.value_);
     return Result<BoundsPair>::success(out);
@@ -406,12 +420,7 @@ ChunkPayload makeVoxelRecordsChunk(std::span<const VoxelRecord> voxels) {
     w.writeU16(VoxelRecord::kSaveVersion);
     w.writeVarUInt(static_cast<std::uint64_t>(voxels.size()));
     for (const auto &v : voxels) {
-        IRMath::BinaryIO::writeColorPacked(w, v.color_);
-        w.writeU8(v.material_id_);
-        w.writeU8(v.flags_);
-        w.writeU8(v.bone_id_);
-        w.writeU8(v.layer_id_);
-        w.writeU32(v.reserved_);
+        writeVoxelRecordBody(w, v);
     }
     ChunkPayload out;
     out.tag_ = kChunkTagVoxelRecords;
@@ -423,12 +432,7 @@ Result<VoxelRecordsLoadResult>
 readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCount) {
     MemoryBinaryReader r(body.data(), body.size(), "<VOXR chunk>");
     auto verR = r.readU16();
-    if (!verR.ok()) {
-        return Result<VoxelRecordsLoadResult>::error(
-            verR.status_.code_,
-            std::move(verR.status_.message_)
-        );
-    }
+    if (!verR.ok()) return forwardError<VoxelRecordsLoadResult>(verR);
     // v1 → v2 migration: pad0_=0 at byte 7 becomes layer_id_=0 (default
     // layer). Wire bytes are identical; no data translation needed.
     // Future field additions bump the version and add a migration case here.
@@ -441,12 +445,7 @@ readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCo
         );
     }
     auto countR = r.readVarUInt();
-    if (!countR.ok()) {
-        return Result<VoxelRecordsLoadResult>::error(
-            countR.status_.code_,
-            std::move(countR.status_.message_)
-        );
-    }
+    if (!countR.ok()) return forwardError<VoxelRecordsLoadResult>(countR);
     if (countR.value_ != static_cast<std::uint64_t>(expectedCount)) {
         IRE_LOG_WARN(
             "readVoxelRecordsChunk: chunk count={} != bounds-derived count={}",
@@ -454,62 +453,16 @@ readVoxelRecordsChunk(std::span<const std::uint8_t> body, std::size_t expectedCo
             expectedCount
         );
     }
-    // Cap upfront reserve to remaining bytes / record size (12 B) so a
-    // corrupted count claiming billions of records doesn't pre-allocate.
+    // Cap upfront reserve to remaining bytes / record size so a corrupted
+    // count claiming billions of records doesn't pre-allocate.
     constexpr std::uint64_t kRecordBytes = 12;
-    const std::uint64_t maxRecords = r.remaining() / kRecordBytes;
     VoxelRecordsLoadResult out;
     out.recordVersion_ = verR.value_;
-    out.voxels_.reserve(
-        static_cast<std::size_t>(countR.value_ < maxRecords ? countR.value_ : maxRecords)
-    );
+    out.voxels_.reserve(cappedReserve(countR.value_, r.remaining() / kRecordBytes));
     for (std::uint64_t i = 0; i < countR.value_; ++i) {
-        VoxelRecord v{};
-        auto colorR = r.readU32();
-        if (!colorR.ok())
-            return Result<VoxelRecordsLoadResult>::error(
-                colorR.status_.code_,
-                std::move(colorR.status_.message_)
-            );
-        v.color_ = Color::fromPackedRGBA(colorR.value_);
-        auto matR = r.readU8();
-        if (!matR.ok())
-            return Result<VoxelRecordsLoadResult>::error(
-                matR.status_.code_,
-                std::move(matR.status_.message_)
-            );
-        v.material_id_ = matR.value_;
-        auto flagsR = r.readU8();
-        if (!flagsR.ok())
-            return Result<VoxelRecordsLoadResult>::error(
-                flagsR.status_.code_,
-                std::move(flagsR.status_.message_)
-            );
-        v.flags_ = flagsR.value_;
-        auto boneR = r.readU8();
-        if (!boneR.ok())
-            return Result<VoxelRecordsLoadResult>::error(
-                boneR.status_.code_,
-                std::move(boneR.status_.message_)
-            );
-        v.bone_id_ = boneR.value_;
-        auto layerR = r.readU8();
-        if (!layerR.ok())
-            return Result<VoxelRecordsLoadResult>::error(
-                layerR.status_.code_,
-                std::move(layerR.status_.message_)
-            );
-        // v1 files had pad0_=0 here; v1 → v2 migration: treat as layer_id_=0
-        // (default layer), which is the correct semantic for pre-layer files.
-        v.layer_id_ = layerR.value_;
-        auto resR = r.readU32();
-        if (!resR.ok())
-            return Result<VoxelRecordsLoadResult>::error(
-                resR.status_.code_,
-                std::move(resR.status_.message_)
-            );
-        v.reserved_ = resR.value_;
-        out.voxels_.push_back(v);
+        auto vR = readVoxelRecordBody(r);
+        if (!vR.ok()) return forwardError<VoxelRecordsLoadResult>(vR);
+        out.voxels_.push_back(std::move(vR.value_));
     }
     return Result<VoxelRecordsLoadResult>::success(std::move(out));
 }
@@ -555,13 +508,7 @@ ChunkPayload makeVoxelRecordsRleChunk(std::span<const VoxelRecord> voxels) {
         w.writeVarUInt(t.emptyBefore_);
         w.writeVarUInt(t.filledCount_);
         for (std::uint64_t j = 0; j < t.filledCount_; ++j) {
-            const auto &v = t.filledStart_[j];
-            IRMath::BinaryIO::writeColorPacked(w, v.color_);
-            w.writeU8(v.material_id_);
-            w.writeU8(v.flags_);
-            w.writeU8(v.bone_id_);
-            w.writeU8(v.layer_id_);
-            w.writeU32(v.reserved_);
+            writeVoxelRecordBody(w, t.filledStart_[j]);
         }
     }
     ChunkPayload out;
@@ -574,12 +521,7 @@ Result<VoxelRecordsLoadResult>
 readVoxelRecordsRleChunk(std::span<const std::uint8_t> body, std::size_t expectedCount) {
     MemoryBinaryReader r(body.data(), body.size(), "<VRLE chunk>");
     auto verR = r.readU16();
-    if (!verR.ok()) {
-        return Result<VoxelRecordsLoadResult>::error(
-            verR.status_.code_,
-            std::move(verR.status_.message_)
-        );
-    }
+    if (!verR.ok()) return forwardError<VoxelRecordsLoadResult>(verR);
     if (verR.value_ > kVoxelRecordVersion) {
         IRE_LOG_WARN(
             "readVoxelRecordsRleChunk: record version {} > known version {}; "
@@ -589,12 +531,7 @@ readVoxelRecordsRleChunk(std::span<const std::uint8_t> body, std::size_t expecte
         );
     }
     auto tripleCountR = r.readVarUInt();
-    if (!tripleCountR.ok()) {
-        return Result<VoxelRecordsLoadResult>::error(
-            tripleCountR.status_.code_,
-            std::move(tripleCountR.status_.message_)
-        );
-    }
+    if (!tripleCountR.ok()) return forwardError<VoxelRecordsLoadResult>(tripleCountR);
 
     VoxelRecordsLoadResult out;
     out.recordVersion_ = verR.value_;
@@ -605,67 +542,16 @@ readVoxelRecordsRleChunk(std::span<const std::uint8_t> body, std::size_t expecte
     std::size_t cursor = 0;
     for (std::uint64_t t = 0; t < tripleCountR.value_; ++t) {
         auto emptyR = r.readVarUInt();
-        if (!emptyR.ok()) {
-            return Result<VoxelRecordsLoadResult>::error(
-                emptyR.status_.code_,
-                std::move(emptyR.status_.message_)
-            );
-        }
+        if (!emptyR.ok()) return forwardError<VoxelRecordsLoadResult>(emptyR);
         auto filledR = r.readVarUInt();
-        if (!filledR.ok()) {
-            return Result<VoxelRecordsLoadResult>::error(
-                filledR.status_.code_,
-                std::move(filledR.status_.message_)
-            );
-        }
+        if (!filledR.ok()) return forwardError<VoxelRecordsLoadResult>(filledR);
         cursor += static_cast<std::size_t>(emptyR.value_);
         const std::uint64_t filled = filledR.value_;
         for (std::uint64_t j = 0; j < filled; ++j) {
-            VoxelRecord v{};
-            auto colorR = r.readU32();
-            if (!colorR.ok())
-                return Result<VoxelRecordsLoadResult>::error(
-                    colorR.status_.code_,
-                    std::move(colorR.status_.message_)
-                );
-            v.color_ = Color::fromPackedRGBA(colorR.value_);
-            auto matR = r.readU8();
-            if (!matR.ok())
-                return Result<VoxelRecordsLoadResult>::error(
-                    matR.status_.code_,
-                    std::move(matR.status_.message_)
-                );
-            v.material_id_ = matR.value_;
-            auto flagsR = r.readU8();
-            if (!flagsR.ok())
-                return Result<VoxelRecordsLoadResult>::error(
-                    flagsR.status_.code_,
-                    std::move(flagsR.status_.message_)
-                );
-            v.flags_ = flagsR.value_;
-            auto boneR = r.readU8();
-            if (!boneR.ok())
-                return Result<VoxelRecordsLoadResult>::error(
-                    boneR.status_.code_,
-                    std::move(boneR.status_.message_)
-                );
-            v.bone_id_ = boneR.value_;
-            auto layerR = r.readU8();
-            if (!layerR.ok())
-                return Result<VoxelRecordsLoadResult>::error(
-                    layerR.status_.code_,
-                    std::move(layerR.status_.message_)
-                );
-            v.layer_id_ = layerR.value_;
-            auto resR = r.readU32();
-            if (!resR.ok())
-                return Result<VoxelRecordsLoadResult>::error(
-                    resR.status_.code_,
-                    std::move(resR.status_.message_)
-                );
-            v.reserved_ = resR.value_;
+            auto vR = readVoxelRecordBody(r);
+            if (!vR.ok()) return forwardError<VoxelRecordsLoadResult>(vR);
             if (cursor < out.voxels_.size()) {
-                out.voxels_[cursor] = v;
+                out.voxels_[cursor] = std::move(vR.value_);
             }
             ++cursor;
         }
@@ -705,43 +591,22 @@ ChunkPayload makeLayersChunk(std::span<const LayerInfo> layers) {
 Result<std::vector<LayerInfo>> readLayersChunk(std::span<const std::uint8_t> body) {
     MemoryBinaryReader r(body.data(), body.size(), "<LAYR chunk>");
     auto countR = r.readVarUInt();
-    if (!countR.ok()) {
-        return Result<std::vector<LayerInfo>>::error(
-            countR.status_.code_,
-            std::move(countR.status_.message_)
-        );
-    }
+    if (!countR.ok()) return forwardError<std::vector<LayerInfo>>(countR);
     std::vector<LayerInfo> out;
-    const std::uint64_t cap = r.remaining();
-    out.reserve(static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap));
+    out.reserve(cappedReserve(countR.value_, r.remaining()));
     for (std::uint64_t i = 0; i < countR.value_; ++i) {
         LayerInfo layer;
         auto nameR = r.readString();
-        if (!nameR.ok())
-            return Result<std::vector<LayerInfo>>::error(
-                nameR.status_.code_,
-                std::move(nameR.status_.message_)
-            );
+        if (!nameR.ok()) return forwardError<std::vector<LayerInfo>>(nameR);
         layer.name_ = std::move(nameR.value_);
         auto wordCountR = r.readVarUInt();
-        if (!wordCountR.ok())
-            return Result<std::vector<LayerInfo>>::error(
-                wordCountR.status_.code_,
-                std::move(wordCountR.status_.message_)
-            );
+        if (!wordCountR.ok()) return forwardError<std::vector<LayerInfo>>(wordCountR);
         // Cap u64 word count by remaining bytes / 8 to defuse a corrupted
         // count that claims billions of words.
-        const std::uint64_t maxWords = r.remaining() / 8;
-        layer.bitmask_.reserve(
-            static_cast<std::size_t>(wordCountR.value_ < maxWords ? wordCountR.value_ : maxWords)
-        );
+        layer.bitmask_.reserve(cappedReserve(wordCountR.value_, r.remaining() / 8));
         for (std::uint64_t w_i = 0; w_i < wordCountR.value_; ++w_i) {
             auto wordR = r.readU64();
-            if (!wordR.ok())
-                return Result<std::vector<LayerInfo>>::error(
-                    wordR.status_.code_,
-                    std::move(wordR.status_.message_)
-                );
+            if (!wordR.ok()) return forwardError<std::vector<LayerInfo>>(wordR);
             layer.bitmask_.push_back(wordR.value_);
         }
         out.push_back(std::move(layer));
@@ -771,45 +636,22 @@ Result<FramesLoadResult>
 readFramesChunk(std::span<const std::uint8_t> body, std::size_t voxelCount) {
     MemoryBinaryReader r(body.data(), body.size(), "<FRAM chunk>");
     auto frameCountR = r.readVarUInt();
-    if (!frameCountR.ok()) {
-        return Result<FramesLoadResult>::error(
-            frameCountR.status_.code_,
-            std::move(frameCountR.status_.message_)
-        );
-    }
+    if (!frameCountR.ok()) return forwardError<FramesLoadResult>(frameCountR);
     FramesLoadResult out;
-    const std::uint64_t cap = r.remaining();
-    out.frames_.reserve(
-        static_cast<std::size_t>(frameCountR.value_ < cap ? frameCountR.value_ : cap)
-    );
+    out.frames_.reserve(cappedReserve(frameCountR.value_, r.remaining()));
     for (std::uint64_t i = 0; i < frameCountR.value_; ++i) {
         auto frameIdxR = r.readU32();
-        if (!frameIdxR.ok())
-            return Result<FramesLoadResult>::error(
-                frameIdxR.status_.code_,
-                std::move(frameIdxR.status_.message_)
-            );
+        if (!frameIdxR.ok()) return forwardError<FramesLoadResult>(frameIdxR);
         auto offCountR = r.readVarUInt();
-        if (!offCountR.ok())
-            return Result<FramesLoadResult>::error(
-                offCountR.status_.code_,
-                std::move(offCountR.status_.message_)
-            );
+        if (!offCountR.ok()) return forwardError<FramesLoadResult>(offCountR);
         FramePose frame;
         frame.frameIndex_ = frameIdxR.value_;
         // Cap reserve by remaining bytes / 12 B per vec3.
         constexpr std::uint64_t kVec3Bytes = 12;
-        const std::uint64_t maxOffsets = r.remaining() / kVec3Bytes;
-        frame.offsets_.reserve(
-            static_cast<std::size_t>(offCountR.value_ < maxOffsets ? offCountR.value_ : maxOffsets)
-        );
+        frame.offsets_.reserve(cappedReserve(offCountR.value_, r.remaining() / kVec3Bytes));
         for (std::uint64_t off_i = 0; off_i < offCountR.value_; ++off_i) {
             auto vR = IRMath::BinaryIO::readVec3(r);
-            if (!vR.ok())
-                return Result<FramesLoadResult>::error(
-                    vR.status_.code_,
-                    std::move(vR.status_.message_)
-                );
+            if (!vR.ok()) return forwardError<FramesLoadResult>(vR);
             frame.offsets_.push_back(vR.value_);
         }
         if (frame.offsets_.size() != voxelCount) {
@@ -845,35 +687,124 @@ ChunkPayload makeMetaChunk(std::span<const MetaEntry> entries) {
 Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body) {
     MemoryBinaryReader r(body.data(), body.size(), "<META chunk>");
     auto countR = r.readVarUInt();
-    if (!countR.ok()) {
-        return Result<std::vector<MetaEntry>>::error(
-            countR.status_.code_,
-            std::move(countR.status_.message_)
-        );
-    }
+    if (!countR.ok()) return forwardError<std::vector<MetaEntry>>(countR);
     std::vector<MetaEntry> out;
-    const std::uint64_t cap = r.remaining();
-    out.reserve(static_cast<std::size_t>(countR.value_ < cap ? countR.value_ : cap));
+    out.reserve(cappedReserve(countR.value_, r.remaining()));
     for (std::uint64_t i = 0; i < countR.value_; ++i) {
         MetaEntry entry;
         auto keyR = r.readString();
-        if (!keyR.ok())
-            return Result<std::vector<MetaEntry>>::error(
-                keyR.status_.code_,
-                std::move(keyR.status_.message_)
-            );
+        if (!keyR.ok()) return forwardError<std::vector<MetaEntry>>(keyR);
         entry.key_ = std::move(keyR.value_);
         auto valR = r.readString();
-        if (!valR.ok())
-            return Result<std::vector<MetaEntry>>::error(
-                valR.status_.code_,
-                std::move(valR.status_.message_)
-            );
+        if (!valR.ok()) return forwardError<std::vector<MetaEntry>>(valR);
         entry.value_ = std::move(valR.value_);
         out.push_back(std::move(entry));
     }
     return Result<std::vector<MetaEntry>>::success(std::move(out));
 }
+
+namespace {
+
+// Append the DENSE-mode chunks every full-dense save shares: BNDS, VOXR,
+// VRLE (always emitted alongside VOXR — Rule #1 forward compat: old loaders
+// skip VRLE and use VOXR; new loaders prefer VRLE). LAYR / FRAM / META are
+// additive — missing chunks degrade to empty on load.
+void appendDenseChunks(std::vector<ChunkPayload> &chunks, const DenseVoxelSet &dense) {
+    chunks.push_back(makeBoundsChunk(dense.boundsMin_, dense.boundsMax_));
+    chunks.push_back(makeVoxelRecordsChunk(dense.voxels_));
+    chunks.push_back(makeVoxelRecordsRleChunk(dense.voxels_));
+    if (!dense.layers_.empty()) {
+        chunks.push_back(makeLayersChunk(dense.layers_));
+    }
+    if (!dense.frames_.empty()) {
+        chunks.push_back(makeFramesChunk(dense.frames_));
+    }
+    if (!dense.meta_.empty()) {
+        chunks.push_back(makeMetaChunk(dense.meta_));
+    }
+}
+
+// Resolve VRLE → VOXR → none into target.voxels_ + target.recordVersion_.
+// Returns an error only when the chosen chunk is malformed; if neither
+// chunk is present and expectedCount > 0 the helper logs and returns Ok
+// (Rule #5 — unknown is recoverable).
+BinaryStatus loadVoxelRecordsIntoDense(
+    std::span<const LoadedChunk> chunks,
+    std::size_t expectedCount,
+    DenseVoxelSet &target,
+    std::string_view callerName,
+    const std::string &path
+) {
+    // Prefer VRLE (RLE-encoded) if present; fall back to VOXR (dense).
+    // Old loaders skip VRLE (Rule #1) and use VOXR; new loaders prefer VRLE.
+    if (const LoadedChunk *vrle = findChunk(chunks, kChunkTagVoxelRecordsRle)) {
+        auto vR = readVoxelRecordsRleChunk(vrle->data_, expectedCount);
+        if (!vR.ok()) {
+            return BinaryStatus::error(vR.status_.code_, std::move(vR.status_.message_));
+        }
+        target.recordVersion_ = vR.value_.recordVersion_;
+        target.voxels_ = std::move(vR.value_.voxels_);
+        return BinaryStatus::success();
+    }
+    if (const LoadedChunk *voxr = findChunk(chunks, kChunkTagVoxelRecords)) {
+        auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
+        if (!vR.ok()) {
+            return BinaryStatus::error(vR.status_.code_, std::move(vR.status_.message_));
+        }
+        target.recordVersion_ = vR.value_.recordVersion_;
+        target.voxels_ = std::move(vR.value_.voxels_);
+        return BinaryStatus::success();
+    }
+    if (expectedCount > 0) {
+        // BNDS present but neither VOXR nor VRLE → malformed save. Rule #5
+        // requires we proceed (caller may still want the bounds), but log
+        // loudly so the caller knows `voxels_` is empty.
+        IRE_LOG_WARN(
+            "{}: BNDS present (voxelCount={}) but no VOXR/VRLE chunk in '{}'; "
+            "voxels_ left empty",
+            callerName,
+            expectedCount,
+            path
+        );
+    }
+    return BinaryStatus::success();
+}
+
+// Load the optional LAYR / FRAM / META chunks into target. Returns an
+// error only if a present chunk fails to parse; absent chunks leave their
+// target fields empty (Rule #1 — missing chunks degrade to empty).
+BinaryStatus loadOptionalDenseChunks(
+    std::span<const LoadedChunk> chunks,
+    std::size_t expectedCount,
+    DenseVoxelSet &target,
+    std::size_t &skippedFrames
+) {
+    if (const LoadedChunk *layr = findChunk(chunks, kChunkTagLayers)) {
+        auto lR = readLayersChunk(layr->data_);
+        if (!lR.ok()) {
+            return BinaryStatus::error(lR.status_.code_, std::move(lR.status_.message_));
+        }
+        target.layers_ = std::move(lR.value_);
+    }
+    if (const LoadedChunk *fram = findChunk(chunks, kChunkTagFrames)) {
+        auto fR = readFramesChunk(fram->data_, expectedCount);
+        if (!fR.ok()) {
+            return BinaryStatus::error(fR.status_.code_, std::move(fR.status_.message_));
+        }
+        target.frames_ = std::move(fR.value_.frames_);
+        skippedFrames = fR.value_.skippedFrames_;
+    }
+    if (const LoadedChunk *meta = findChunk(chunks, kChunkTagMeta)) {
+        auto mR = readMetaChunk(meta->data_);
+        if (!mR.ok()) {
+            return BinaryStatus::error(mR.status_.code_, std::move(mR.status_.message_));
+        }
+        target.meta_ = std::move(mR.value_);
+    }
+    return BinaryStatus::success();
+}
+
+} // namespace
 
 // ---- High-level save/load ---------------------------------------------
 
@@ -907,35 +838,20 @@ Result<VoxelSetFile> loadShapeGroup(const std::string &path) {
         );
     }
     auto chunksR = readChunks(fr, kVoxelSetMagic, kVoxelSetVersion);
-    if (!chunksR.ok()) {
-        return Result<VoxelSetFile>::error(
-            chunksR.status_.code_,
-            std::move(chunksR.status_.message_)
-        );
-    }
+    if (!chunksR.ok()) return forwardError<VoxelSetFile>(chunksR);
     VoxelSetFile out;
     out.mode_ = readModeChunk(chunksR.value_);
 
     NameTable diskShapeTypes;
     if (const LoadedChunk *sref = findChunk(chunksR.value_, kChunkTagShapeRefs)) {
         auto entriesR = readShapeRefsChunk(sref->data_);
-        if (!entriesR.ok()) {
-            return Result<VoxelSetFile>::error(
-                entriesR.status_.code_,
-                std::move(entriesR.status_.message_)
-            );
-        }
+        if (!entriesR.ok()) return forwardError<VoxelSetFile>(entriesR);
         diskShapeTypes = NameTable(std::move(entriesR.value_));
     }
 
     if (const LoadedChunk *shpg = findChunk(chunksR.value_, kChunkTagShapeGroup)) {
         auto recR = readShapeGroupChunk(shpg->data_, diskShapeTypes);
-        if (!recR.ok()) {
-            return Result<VoxelSetFile>::error(
-                recR.status_.code_,
-                std::move(recR.status_.message_)
-            );
-        }
+        if (!recR.ok()) return forwardError<VoxelSetFile>(recR);
         out.shapeRecords_ = std::move(recR.value_.records_);
         out.unknownShapesSkipped_ = recR.value_.unknownShapesSkipped_;
     }
@@ -950,25 +866,10 @@ BinaryStatus saveDenseVoxelSet(const std::string &path, const DenseVoxelSet &den
             "saveDenseVoxelSet: could not open '" + path + "' for write"
         );
     }
-    // Build the chunk set: MODE, BNDS, VOXR, VRLE (always); LAYR / FRAM /
-    // META only if the caller has data (Rule #1 — extra chunks are additive,
-    // missing chunks degrade to empty on load). VRLE is written alongside
-    // VOXR so old loaders skip VRLE and use VOXR (Rule #1 forward compat).
     std::vector<ChunkPayload> chunks;
     chunks.reserve(7);
     chunks.push_back(makeModeChunk(VoxelSetMode::DENSE));
-    chunks.push_back(makeBoundsChunk(dense.boundsMin_, dense.boundsMax_));
-    chunks.push_back(makeVoxelRecordsChunk(dense.voxels_));
-    chunks.push_back(makeVoxelRecordsRleChunk(dense.voxels_));
-    if (!dense.layers_.empty()) {
-        chunks.push_back(makeLayersChunk(dense.layers_));
-    }
-    if (!dense.frames_.empty()) {
-        chunks.push_back(makeFramesChunk(dense.frames_));
-    }
-    if (!dense.meta_.empty()) {
-        chunks.push_back(makeMetaChunk(dense.meta_));
-    }
+    appendDenseChunks(chunks, dense);
     const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
     if (status.ok()) {
         emitVoxelSetSidecar(path, VoxelSetMode::DENSE, &dense, {});
@@ -985,12 +886,7 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
         );
     }
     auto chunksR = readChunks(fr, kVoxelSetMagic, kVoxelSetVersion);
-    if (!chunksR.ok()) {
-        return Result<DenseVoxelSetFile>::error(
-            chunksR.status_.code_,
-            std::move(chunksR.status_.message_)
-        );
-    }
+    if (!chunksR.ok()) return forwardError<DenseVoxelSetFile>(chunksR);
     DenseVoxelSetFile out;
     out.mode_ = readModeChunk(chunksR.value_);
 
@@ -1002,83 +898,21 @@ Result<DenseVoxelSetFile> loadDenseVoxelSet(const std::string &path) {
         return Result<DenseVoxelSetFile>::success(std::move(out));
     }
     auto boundsR = readBoundsChunk(bndsChunk->data_);
-    if (!boundsR.ok()) {
-        return Result<DenseVoxelSetFile>::error(
-            boundsR.status_.code_,
-            std::move(boundsR.status_.message_)
-        );
-    }
+    if (!boundsR.ok()) return forwardError<DenseVoxelSetFile>(boundsR);
     out.dense_.boundsMin_ = boundsR.value_.boundsMin_;
     out.dense_.boundsMax_ = boundsR.value_.boundsMax_;
     const std::size_t expectedCount = out.dense_.voxelCount();
 
-    // Prefer VRLE (RLE-encoded) if present; fall back to VOXR (dense).
-    // Old loaders skip VRLE (Rule #1) and use VOXR; new loaders prefer VRLE.
-    if (const LoadedChunk *vrle = findChunk(chunksR.value_, kChunkTagVoxelRecordsRle)) {
-        auto vR = readVoxelRecordsRleChunk(vrle->data_, expectedCount);
-        if (!vR.ok()) {
-            return Result<DenseVoxelSetFile>::error(
-                vR.status_.code_,
-                std::move(vR.status_.message_)
-            );
-        }
-        out.dense_.recordVersion_ = vR.value_.recordVersion_;
-        out.dense_.voxels_ = std::move(vR.value_.voxels_);
-    } else if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
-        auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
-        if (!vR.ok()) {
-            return Result<DenseVoxelSetFile>::error(
-                vR.status_.code_,
-                std::move(vR.status_.message_)
-            );
-        }
-        out.dense_.recordVersion_ = vR.value_.recordVersion_;
-        out.dense_.voxels_ = std::move(vR.value_.voxels_);
-    } else if (expectedCount > 0) {
-        // BNDS present but neither VOXR nor VRLE → malformed save. Rule #5
-        // requires we proceed (caller may still want the bounds), but log
-        // loudly so the caller knows `voxels_` is empty.
-        IRE_LOG_WARN(
-            "loadDenseVoxelSet: BNDS present (voxelCount={}) but no VOXR/VRLE "
-            "chunk in '{}'; voxels_ left empty",
-            expectedCount,
-            path
-        );
-    }
+    auto recStat = loadVoxelRecordsIntoDense(
+        chunksR.value_, expectedCount, out.dense_, "loadDenseVoxelSet", path
+    );
+    if (!recStat.ok()) return forwardError<DenseVoxelSetFile>(recStat);
 
-    if (const LoadedChunk *layr = findChunk(chunksR.value_, kChunkTagLayers)) {
-        auto lR = readLayersChunk(layr->data_);
-        if (!lR.ok()) {
-            return Result<DenseVoxelSetFile>::error(
-                lR.status_.code_,
-                std::move(lR.status_.message_)
-            );
-        }
-        out.dense_.layers_ = std::move(lR.value_);
-    }
+    auto optStat = loadOptionalDenseChunks(
+        chunksR.value_, expectedCount, out.dense_, out.skippedFrames_
+    );
+    if (!optStat.ok()) return forwardError<DenseVoxelSetFile>(optStat);
 
-    if (const LoadedChunk *fram = findChunk(chunksR.value_, kChunkTagFrames)) {
-        auto fR = readFramesChunk(fram->data_, expectedCount);
-        if (!fR.ok()) {
-            return Result<DenseVoxelSetFile>::error(
-                fR.status_.code_,
-                std::move(fR.status_.message_)
-            );
-        }
-        out.dense_.frames_ = std::move(fR.value_.frames_);
-        out.skippedFrames_ = fR.value_.skippedFrames_;
-    }
-
-    if (const LoadedChunk *meta = findChunk(chunksR.value_, kChunkTagMeta)) {
-        auto mR = readMetaChunk(meta->data_);
-        if (!mR.ok()) {
-            return Result<DenseVoxelSetFile>::error(
-                mR.status_.code_,
-                std::move(mR.status_.message_)
-            );
-        }
-        out.dense_.meta_ = std::move(mR.value_);
-    }
     return Result<DenseVoxelSetFile>::success(std::move(out));
 }
 
@@ -1098,18 +932,7 @@ BinaryStatus saveVoxelSet(
     chunks.push_back(makeModeChunk(VoxelSetMode::HYBRID));
     chunks.push_back(makeShapeRefsChunk(shapeTypeEntries));
     chunks.push_back(makeShapeGroupChunk(shapes));
-    chunks.push_back(makeBoundsChunk(dense.boundsMin_, dense.boundsMax_));
-    chunks.push_back(makeVoxelRecordsChunk(dense.voxels_));
-    chunks.push_back(makeVoxelRecordsRleChunk(dense.voxels_));
-    if (!dense.layers_.empty()) {
-        chunks.push_back(makeLayersChunk(dense.layers_));
-    }
-    if (!dense.frames_.empty()) {
-        chunks.push_back(makeFramesChunk(dense.frames_));
-    }
-    if (!dense.meta_.empty()) {
-        chunks.push_back(makeMetaChunk(dense.meta_));
-    }
+    appendDenseChunks(chunks, dense);
     const auto status = writeChunked(fw, kVoxelSetMagic, kVoxelSetVersion, chunks);
     if (status.ok()) {
         emitVoxelSetSidecar(path, VoxelSetMode::HYBRID, &dense, shapes);
@@ -1126,12 +949,7 @@ Result<VoxelSetAllFile> loadVoxelSet(const std::string &path) {
         );
     }
     auto chunksR = readChunks(fr, kVoxelSetMagic, kVoxelSetVersion);
-    if (!chunksR.ok()) {
-        return Result<VoxelSetAllFile>::error(
-            chunksR.status_.code_,
-            std::move(chunksR.status_.message_)
-        );
-    }
+    if (!chunksR.ok()) return forwardError<VoxelSetAllFile>(chunksR);
     VoxelSetAllFile out;
     out.mode_ = readModeChunk(chunksR.value_);
 
@@ -1139,22 +957,12 @@ Result<VoxelSetAllFile> loadVoxelSet(const std::string &path) {
     NameTable diskShapeTypes;
     if (const LoadedChunk *sref = findChunk(chunksR.value_, kChunkTagShapeRefs)) {
         auto entriesR = readShapeRefsChunk(sref->data_);
-        if (!entriesR.ok()) {
-            return Result<VoxelSetAllFile>::error(
-                entriesR.status_.code_,
-                std::move(entriesR.status_.message_)
-            );
-        }
+        if (!entriesR.ok()) return forwardError<VoxelSetAllFile>(entriesR);
         diskShapeTypes = NameTable(std::move(entriesR.value_));
     }
     if (const LoadedChunk *shpg = findChunk(chunksR.value_, kChunkTagShapeGroup)) {
         auto recR = readShapeGroupChunk(shpg->data_, diskShapeTypes);
-        if (!recR.ok()) {
-            return Result<VoxelSetAllFile>::error(
-                recR.status_.code_,
-                std::move(recR.status_.message_)
-            );
-        }
+        if (!recR.ok()) return forwardError<VoxelSetAllFile>(recR);
         out.shapeRecords_ = std::move(recR.value_.records_);
         out.unknownShapesSkipped_ = recR.value_.unknownShapesSkipped_;
     }
@@ -1165,64 +973,20 @@ Result<VoxelSetAllFile> loadVoxelSet(const std::string &path) {
         return Result<VoxelSetAllFile>::success(std::move(out));
     }
     auto boundsR = readBoundsChunk(bndsChunk->data_);
-    if (!boundsR.ok()) {
-        return Result<VoxelSetAllFile>::error(
-            boundsR.status_.code_,
-            std::move(boundsR.status_.message_)
-        );
-    }
+    if (!boundsR.ok()) return forwardError<VoxelSetAllFile>(boundsR);
     out.dense_.boundsMin_ = boundsR.value_.boundsMin_;
     out.dense_.boundsMax_ = boundsR.value_.boundsMax_;
     const std::size_t expectedCount = out.dense_.voxelCount();
 
-    // Prefer VRLE if present; fall back to VOXR.
-    if (const LoadedChunk *vrle = findChunk(chunksR.value_, kChunkTagVoxelRecordsRle)) {
-        auto vR = readVoxelRecordsRleChunk(vrle->data_, expectedCount);
-        if (!vR.ok()) {
-            return Result<VoxelSetAllFile>::error(vR.status_.code_, std::move(vR.status_.message_));
-        }
-        out.dense_.recordVersion_ = vR.value_.recordVersion_;
-        out.dense_.voxels_ = std::move(vR.value_.voxels_);
-    } else if (const LoadedChunk *voxr = findChunk(chunksR.value_, kChunkTagVoxelRecords)) {
-        auto vR = readVoxelRecordsChunk(voxr->data_, expectedCount);
-        if (!vR.ok()) {
-            return Result<VoxelSetAllFile>::error(vR.status_.code_, std::move(vR.status_.message_));
-        }
-        out.dense_.recordVersion_ = vR.value_.recordVersion_;
-        out.dense_.voxels_ = std::move(vR.value_.voxels_);
-    } else if (expectedCount > 0) {
-        IRE_LOG_WARN(
-            "loadVoxelSet: BNDS present (voxelCount={}) but no VOXR/VRLE "
-            "chunk in '{}'; voxels_ left empty",
-            expectedCount,
-            path
-        );
-    }
+    auto recStat = loadVoxelRecordsIntoDense(
+        chunksR.value_, expectedCount, out.dense_, "loadVoxelSet", path
+    );
+    if (!recStat.ok()) return forwardError<VoxelSetAllFile>(recStat);
 
-    if (const LoadedChunk *layr = findChunk(chunksR.value_, kChunkTagLayers)) {
-        auto lR = readLayersChunk(layr->data_);
-        if (!lR.ok()) {
-            return Result<VoxelSetAllFile>::error(lR.status_.code_, std::move(lR.status_.message_));
-        }
-        out.dense_.layers_ = std::move(lR.value_);
-    }
-
-    if (const LoadedChunk *fram = findChunk(chunksR.value_, kChunkTagFrames)) {
-        auto fR = readFramesChunk(fram->data_, expectedCount);
-        if (!fR.ok()) {
-            return Result<VoxelSetAllFile>::error(fR.status_.code_, std::move(fR.status_.message_));
-        }
-        out.dense_.frames_ = std::move(fR.value_.frames_);
-        out.skippedFrames_ = fR.value_.skippedFrames_;
-    }
-
-    if (const LoadedChunk *meta = findChunk(chunksR.value_, kChunkTagMeta)) {
-        auto mR = readMetaChunk(meta->data_);
-        if (!mR.ok()) {
-            return Result<VoxelSetAllFile>::error(mR.status_.code_, std::move(mR.status_.message_));
-        }
-        out.dense_.meta_ = std::move(mR.value_);
-    }
+    auto optStat = loadOptionalDenseChunks(
+        chunksR.value_, expectedCount, out.dense_, out.skippedFrames_
+    );
+    if (!optStat.ok()) return forwardError<VoxelSetAllFile>(optStat);
 
     return Result<VoxelSetAllFile>::success(std::move(out));
 }
