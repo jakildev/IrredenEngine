@@ -53,7 +53,7 @@ inline IRComponents::C_VoxelSetNew toComponent(const IRAsset::DenseVoxelSet &den
     runtimeVoxels.reserve(expected);
     for (const auto &record : dense.voxels_) {
         runtimeVoxels.emplace_back(
-            record.color_, record.material_id_, record.flags_, record.bone_id_
+            record.color_, record.material_id_, record.flags_, record.bone_id_, record.layer_id_
         );
     }
 
