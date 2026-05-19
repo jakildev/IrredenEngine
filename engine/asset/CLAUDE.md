@@ -216,6 +216,11 @@ Container chunks:
   identical (both zero for pre-layer files), so no data translation needed.
   A count mismatch against the bounds-derived voxel volume logs a warning
   and proceeds with the chunk's count (Rule #5).
+- `VRLE` — DENSE-mode RLE-encoded per-voxel records (T-276 / B3). Triples of
+  `(emptyRun varuint, filledRun varuint, records[filled])` where a slot is
+  "empty" when alpha==0. Writers emit VRLE alongside VOXR so old loaders skip
+  the new chunk (Rule #1) and use VOXR; new loaders prefer VRLE. A hollow 64³
+  voxel set saves VRLE at ~10% of the VOXR chunk size. No version bump needed.
 - `LAYR` — DENSE-mode named layer membership bitmasks. One layer is
   `(name, ceil(voxelCount/64) u64 words)`; bit i = membership of voxel
   i.
