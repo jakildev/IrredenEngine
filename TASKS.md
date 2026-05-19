@@ -164,11 +164,11 @@ Avoid:
 
 
 
-- [~] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
+- [ ] **asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter** — extend engine/asset/ with shared binary-I/O primitives for all new asset formats (.vxs, .rig, world snapshot)
   - **ID:** T-166
   - **Area:** engine/asset
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) BinaryWriter + BinaryReader (file + memory backends) in binary_io.hpp with full primitive set (U8/U16/U32/U64/I*/F32/F64, varUInt, bytes, string) little-endian, Result<T> on reads; (2) chunk_header.hpp: 12-byte magic+version+chunk-count header + chunk-table entry {tag[4], uint64 offset, uint64 size}; unknown chunks exposed as span<uint8_t>; (3) name_table.hpp: (uint32 numeric_id, string name) pairs for forward-compat enum round-trip; (4) json_sidecar.hpp: write-only flat-object/array emitter, no third-party JSON dep; (5) unit tests: round-trip primitives, varint edges, truncated reads, bad magic, version-too-new, unknown-chunk-tag, name-table round-trip; (6) engine/asset/CLAUDE.md documents the seven Save Format Extensibility Rules + new primitives; (7) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #663
@@ -187,18 +187,6 @@ Avoid:
   - **Notes:** Human observation from PR #659 (T-163 stateless particle render): SDF path emits half-extent trixels or isolated single-trixel artifacts at silhouette boundaries that the voxel-pool path does not produce for the same shape. Investigate: (a) off-by-one from kSdfBiasEpsilon or stableCeilToInt ceiling bias at borderline depths; (b) 2x3 trixel diamond emit painting both subpixels when only one should fire near edge cases; (c) bug in snapLatticeWalk vs findSurfaceDepth. Focus: c_shapes_to_trixel.glsl (boxDepthIntersect/sphereDepthIntersect/snapLatticeWalk) vs c_voxel_to_trixel_stage_1.glsl (localIDToFace_2x3/faceOffset_2x3 emit). The snap mode (subdivisions==1) is designed to match C_VoxelSetNew trixel-for-trixel — divergence there is more likely a bug than intentional.
   - **Links:**
 
-- [~] **editor: F-1.5 — save/load round-trip with metadata + JSON sidecar** — persist editor scene to disk and load it back with exact byte- and behavior-level round-trip
-  - **ID:** T-215
-  - **Area:** creations/editors, engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-215-save-load-roundtrip
-  - **Blocked by:** (none)
-  - **Stack:** T-211..T-215 editor-phase-1
-  - **Acceptance:** (1) save scene → .vxs v2 + .vxs.json sidecar written to disk; (2) load saved file → editor scene matches exactly (voxel positions, colors, per-voxel metadata, layers, frames, symmetry settings); (3) per-voxel metadata (material_id, flags, bone_id) round-trips byte-exact through binary block; (4) layers round-trip through sidecar (membership, names, visibility, order); (5) frames round-trip (count, content per frame, FPS, loop mode); (6) IRShapeDebug loads the saved .vxs and renders frame 0 correctly; (7) sidecar is human-diffable (deterministic key order, stable indentation, no timestamps)
-  - **Issue:** #765
-  - **Notes:** Phase 1 F-1.5 save/load acceptance gate for entity-editor epic #604 / umbrella #213. Format support already exists (F-0.6, F-0.7); this wires editor save/load through it. Risk: binary .vxs must carry per-voxel metadata bits — if any field is missing, escalate before extending format (additions go in sidecar, not silent v3 churn). See docs/design/entity-editor-epic.md §Phase 1.
-  - **Links:**
-
 - [ ] **fleet: resolve PR #767 design decisions + rebase cross-machine claim layer** — opus picks direction on 3 fleet-arch decisions (T-138 vs gh_acquire redundancy, cleanup --gh home, label-defs location) then rebases PR #767 to compile cleanly on master
   - **ID:** T-217
   - **Area:** docs/agents/FLEET.md, scripts/fleet/, .claude/commands/
@@ -208,17 +196,6 @@ Avoid:
   - **Acceptance:** (1) PR #767 (or replacement) rebased on master with no semantic conflicts; (2) design decisions implemented: defense-in-depth claim redundancy kept (T-138 rollback + gh_acquire both active), cleanup --gh moved to fleet-queue-tick, label defs (fleet:claim-host-agent, fleet:reviewing-host-agent, fleet:placeholder) moved to FLEET.md §"Issue/PR labeling discipline"; (3) multiple concurrent queue-manager agents running simultaneously is not a problem (race-safe); (4) scripts/fleet/fleet-claim conflicts from master-vs-767 resolved; (5) fleet scripts pass smoke check on linux-debug
   - **Issue:** #774
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
-  - **Links:**
-
-- [~] **render: IRProfile::ScopeTimer + GPU timer query infrastructure (B0)** — CPU scope-timer macro + GPU timer-query pool around each render pipeline stage; perf_grid HUD displays per-stage ms
-  - **ID:** T-275
-  - **Area:** engine/render, engine/profile, creations/demos/perf_grid
-  - **Model:** opus
-  - **Owner:** opus-worker-2
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `IRProfile::ScopeTimer` macro emits per-frame histogram readable from a debug HUD; (2) GPU timer queries instrument each render pipeline stage (init, voxel→trixel stage 1/2, shapes→trixel, visibility compaction, lighting, framebuffer composite), results lagged 1 frame; (3) `creations/demos/perf_grid` HUD displays per-stage CPU + GPU ms; (4) golden screenshot of profiler overlay; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #939
-  - **Notes:** Epic B (#935) foundation task — blocks B1, B2, B5 (and indirectly E2). Base of Stack S-B-render (B0 → B1 → B2 → B5); downstream tasks branch from this PR's head, not master. GPU timer queries use pool to avoid sync stalls; results read 1 frame later. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B0".
   - **Links:**
 
 - [~] **asset: .vxs DENSE-RLE chunk variant (B3)** — new `VOXR_RLE` chunk tag in .vxs format; RLE encoding reduces hollow 64³ voxel set to ~10% of DENSE chunk size
@@ -243,17 +220,6 @@ Avoid:
   - **Notes:** Epic B (#935) independent task — blocks Epic E E2 (#938 GPU residency manager). Replaces `ir_constants.hpp:54,63` TODOs. CLI override via `--voxel-pool-size N`. Sane fallback defaults preserve today's 64³ behaviour. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B4".
   - **Links:**
 
-- [~] **editor: AABB box-fill + line-fill + face-fill (A1)** — drag A→B fills the AABB; axis-locked drag → line-fill; flood-fill connected coplanar surface → face-fill; ghost preview during drag; undo via snapshot stack
-  - **ID:** T-278
-  - **Area:** creations/editors
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) drag a 16×16×16 box in under 1 s of user time (multi-voxel fill in one operation); (2) line-fill along X axis when modifier-key-held; (3) face-fill flood-fills a connected coplanar surface; (4) undo/redo correctly bracket each fill operation; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #942
-  - **Notes:** Epic A (#934) foundation task — base of Stack S-A-author (A1 → A4 → A2 → A3); downstream tasks branch from this PR's head. Reuses `IRPrefab::Picking::castVoxelRay` (engine/prefabs/irreden/render/picking.hpp:47-92). Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A1".
-  - **Links:**
-
 - [ ] **engine: C_LocalTransform (SQT) component (C1)** — new `C_LocalTransform` component carrying scale/rotation/translation at `engine/prefabs/irreden/common/components/component_local_transform.hpp`; identity-default = today's behaviour
   - **ID:** T-279
   - **Area:** engine/prefabs/irreden/common
@@ -265,55 +231,17 @@ Avoid:
   - **Notes:** Epic C (#936) foundation task — base of both Stack S-C-core (C1 → C2 → C3 → C7) and S-C-math (C1 → C5 → C4 → C8). `C_Rotation` (Euler vec3, component_rotation.hpp:8-20) is deprecated and removed in a follow-up after consumer migration audit. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C1".
   - **Links:**
 
-- [~] **world: chunk infra audit + docs/design/world-streaming.md (E0)** — survey existing chunk infrastructure and write a design doc covering residency manager API, prefetch policy, entity migration semantics, and disk persistence story; no code changes
-  - **ID:** T-280
-  - **Area:** engine/world, docs
-  - **Model:** opus
-  - **Owner:** opus-worker-2
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `docs/design/world-streaming.md` reviewed by another Opus agent; (2) document covers chunk identity + addressing, residency manager API, prefetch policy (camera radius + visibility priority), one-frame upload-bandwidth cap + low-LOD fallback shape with the proxy choice resolved and rationale given, entity migration semantics (atomic ownership transfer, entity-id preservation, C6/#936 interaction), and disk persistence story reusing .vxs + B3 RLE; (3) no code changes
-  - **Issue:** #944
-  - **Notes:** Epic E (#938) foundation task — base of Stack S-E-stream (E0 → E1 → E2 → E3 → E4) and S-E-persist (E1 → E6); blocks all of E1–E6. Survey anchors: `kChunkSize` at `engine/common/include/irreden/ir_constants.hpp:19`, `C_ChunkVisibleThisFrame` at `engine/prefabs/irreden/common/components/component_tags_all.hpp:7`, render-side chunking in voxel pool / visibility compaction, `kWorldBoundMax`. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E0".
-  - **Links:**
-
-- [~] **render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1)** — enumerate every site using `C_ShapeDescriptor` as a primary entity (vs. lighting blocker or special effect); write audit doc with concrete restriction-feasibility recommendation
-  - **ID:** T-281
-  - **Area:** engine/render, docs
-  - **Model:** opus
-  - **Owner:** opus-worker-1
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `docs/design/sdf-runtime-audit.md` lists every site using `C_ShapeDescriptor` as a primary entity across all demos, creations, and tests; (2) for each site, notes the use case (primary shape vs. lighting blocker vs. special effect); (3) concrete recommendation for restriction shape (effects-only feasibility + migration cost estimate); (4) no code changes
-  - **Issue:** #945
-  - **Notes:** Epic D (#937) audit task — output informs D2 (the decision deliverable on restricting SDF runtime to effects only). Audit entry point: `C_ShapeDescriptor` at `engine/prefabs/irreden/voxel/components/component_shape_descriptor.hpp:31-47`. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic D → D1".
-  - **Links:**
-
-- [~] **fleet: invalidate seen-hash on ingest lock-bail** — rm the queue-manager-ingest seen-hash when fleet-queue-ingest exits due to lock contention so the next scout tick re-fires the trigger
-  - **ID:** T-282
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) a `human:approved` label added to an issue while another `fleet-queue-ingest` is in flight gets picked up by the next scout tick after the in-flight iteration completes; (2) regression note added to `scripts/fleet/fleet-queue-ingest` or `docs/agents/FLEET.md` explaining why the hash invalidation is necessary; (3) fix at `scripts/fleet/fleet-queue-ingest:44-47` — lock-bailed branch calls `rm -f ~/.fleet/state/seen-hashes/queue-manager-ingest` before exit
-  - **Issue:** #973
-  - **Notes:** Scout writes `seen-hashes/queue-manager-ingest` before the ingest subprocess does any work; if ingest exits on lock contention the hash is already advanced and the trigger is silently consumed. Fix: on lock-bail, invalidate the hash so the next scout tick re-arms. Idempotent — worst case is one extra iteration that finds everything already-labeled and exits fast. See also T-283 (#974 — epic filter, contributing factor to why the symptom persisted).
-  - **Links:**
-
-- [~] **fleet: filter fleet:epic in project_queue_manager_ingest** — add the role-doc skip labels to the projector so epics never appear in the pending_issues slice
-  - **ID:** T-283
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) after labeling an issue `fleet:epic + human:approved`, the queue-manager-ingest projection does not include it; (2) with only epics in `human_approved`, the projection hash stays stable and `fleet-queue-ingest` is not spawned; (3) the empty-projection fast-path in `fleet-queue-ingest` fires when only epics are pending, exiting in <1s without invoking claude; (4) fix at `fleet-state-scout:822-846` adds `_INGEST_SKIP_LABELS = frozenset({"fleet:queued","fleet:needs-plan","fleet:needs-info","fleet:epic"})`; mirror filter in `slice_queue_manager_ingest`
-  - **Issue:** #974
-  - **Notes:** `project_queue_manager_ingest` enumerates every `human:approved AND NOT fleet:queued` issue without filtering by label. Role doc (Step 5) explicitly skips fleet:epic/needs-plan/needs-info/queued. Mismatch makes epics permanent projection residents, preventing the empty-projection fast-path and contributing to #973 persisting. See T-282 for the companion race fix.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
-- [x] **T-272** — docs/roles: move PR-number examples out of reviewer role docs · Owner: sonnet-fleet-1 · Resolved as side effect of T-264 (PR #918) — citations already removed before dedicated PR landed
+- [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
+- [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
+- [x] **T-283** — fleet: filter fleet:epic in project_queue_manager_ingest · Owner: claude/T-283-epic-filter-projector · PR: https://github.com/jakildev/IrredenEngine/pull/980
+- [x] **T-282** — fleet: invalidate seen-hash on ingest lock-bail · Owner: claude/T-282-ingest-lock-bail-hash-invalidate · PR: https://github.com/jakildev/IrredenEngine/pull/978
+- [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
+- [x] **T-278** — editor AABB box-fill + line-fill + face-fill (A1) · Owner: claude/T-278-fill-tools · PR: https://github.com/jakildev/IrredenEngine/pull/976
+- [x] **T-215** — editor F-1.5 — save/load round-trip with metadata + JSON sidecar · Owner: claude/T-215-save-load-roundtrip · PR: https://github.com/jakildev/IrredenEngine/pull/933
 - [x] **T-213** — editor F-1.3 — layer system panel UI · Owner: claude/T-213-layer-system · PR: https://github.com/jakildev/IrredenEngine/pull/932
 - [x] **T-250** — docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs · Owner: claude/T-250-render-claude-md-cleanup · PR: https://github.com/jakildev/IrredenEngine/pull/931
 - [x] **T-271** — docs/roles: collapse redundant --repo flags in role-merger.md · Owner: claude/T-271-collapse-repo-flags · PR: https://github.com/jakildev/IrredenEngine/pull/925
@@ -327,9 +255,3 @@ Avoid:
 - [x] **T-266** — docs/roles: invert Engine API removal rule citation (baseline owns it) · Owner: claude/T-266-engine-api-removal-rule · PR: https://github.com/jakildev/IrredenEngine/pull/919
 - [x] **T-264** — docs/roles: create FLEET-CROSS-HOST-SMOKE.md · Owner: claude/T-264-cross-host-smoke-doc · PR: https://github.com/jakildev/IrredenEngine/pull/918
 - [x] **T-265** — docs/roles: hoist Hard rules into CLAUDE-BASELINE.md + fix broken CRITICAL anchor · Owner: claude/T-265-hoist-hard-rules · PR: https://github.com/jakildev/IrredenEngine/pull/917
-- [x] **T-259** — docs: SQT transition notes across prefabs/ family CLAUDE.md · Owner: claude/T-259-sqt-transition-notes · PR: https://github.com/jakildev/IrredenEngine/pull/916
-- [x] **T-262** — docs/roles: hoist molecule + stacked-PR per-task sequence into FLEET.md · Owner: claude/T-262-molecule-stacked-pr-hoist · PR: https://github.com/jakildev/IrredenEngine/pull/914
-- [x] **T-258** — docs: creations/ + creations/demos/ CLAUDE.md — fix drift · Owner: claude/T-258-creations-claude-md-drift · PR: https://github.com/jakildev/IrredenEngine/pull/913
-- [x] **T-255** — docs: engine/input/CLAUDE.md — fix C_Hitbox2D dead reference · Owner: claude/T-255-input-hitbox-dead-ref · PR: https://github.com/jakildev/IrredenEngine/pull/909
-- [x] **T-248** — docs/skills: trim Anti-patterns sections that restate flow-step requirements · Owner: claude/T-248-trim-antipatterns-restating · PR: https://github.com/jakildev/IrredenEngine/pull/900
-- [x] **T-261** — docs/roles: create REVIEWER-PROTOCOL.md and dedupe reviewers · Owner: claude/T-261-reviewer-protocol · PR: https://github.com/jakildev/IrredenEngine/pull/908
