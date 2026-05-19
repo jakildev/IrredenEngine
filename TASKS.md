@@ -368,7 +368,7 @@ Avoid:
   - **ID:** T-297
   - **Area:** engine/world, engine/entity
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-297-world-chunk-container
   - **Blocked by:** (none)
   - **Stack:** T-297..T-298 S-E-persist
   - **Acceptance:** (1) Spawn N entities across M chunks; iterate the chunk index; (2) per-chunk voxel sub-pool allocated from the global pool; (3) existing demos run unchanged at default (1-chunk world); (4) fleet-build clean on linux-debug and macos-debug
