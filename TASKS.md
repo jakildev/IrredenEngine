@@ -198,11 +198,11 @@ Avoid:
   - **Notes:** PR #767 was labeled fleet:semantic-conflict by the merger; opus-worker deferred 3 design decisions to human. Human comment directs: keep defense-in-depth (both T-138 + gh_acquire), move cleanup --gh into fleet-queue-tick, new labels into FLEET.md not CLAUDE.md. Ensure multiple queue-manager instances running concurrently is safe. Opus must pick and implement the full solution.
   - **Links:**
 
-- [ ] **engine: C_LocalTransform (SQT) component (C1)** — new `C_LocalTransform` component carrying scale/rotation/translation at `engine/prefabs/irreden/common/components/component_local_transform.hpp`; identity-default = today's behaviour
+- [~] **engine: C_LocalTransform (SQT) component (C1)** — new `C_LocalTransform` component carrying scale/rotation/translation at `engine/prefabs/irreden/common/components/component_local_transform.hpp`; identity-default = today's behaviour
   - **ID:** T-279
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) `C_LocalTransform` landed; identity-default = pure data per cpp-ecs §"Component method tiers"; (2) existing scenes render identically (identity transform is a no-op); (3) entity spawned with non-identity SQT renders at transformed position/orientation/scale (verified in inline test demo); (4) no `getComponent` calls in tick functions touch this component; (5) fleet-build clean on linux-debug and macos-debug
