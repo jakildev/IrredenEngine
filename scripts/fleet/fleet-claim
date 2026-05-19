@@ -292,6 +292,51 @@ if matching:
     return 0
 }
 
+# get_task_issue <task_id>
+#   Prints the GitHub issue number linked to a TASKS.md row, or empty
+#   if no Issue field is set. Reads origin/master so the answer matches
+#   what concurrent agents would compute, ignoring any local working-
+#   tree dirt. Empty output is the "no-issue" signal (free-pasted task);
+#   callers treat it as "skip issue-side bookkeeping".
+get_task_issue() {
+    local task_id="$1"
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" ]]; then
+        return 0
+    fi
+    local tasks_md
+    if ! tasks_md=$(git -C "$repo_root" show "origin/master:TASKS.md" 2>/dev/null); then
+        return 0
+    fi
+    FLEET_TASKS_MD="$tasks_md" python3 - "$task_id" <<'PYEOF'
+import os, re, sys
+task_id = sys.argv[1]
+content = os.environ.get("FLEET_TASKS_MD", "")
+current_id = None
+current_issue = None
+def flush():
+    if current_id == task_id and current_issue:
+        print(current_issue)
+        sys.exit(0)
+for line in content.splitlines():
+    if re.match(r"^- \[(.)\] \*\*(.+?)\*\*", line):
+        flush()
+        current_id = None
+        current_issue = None
+        continue
+    m = re.match(r"^\s+- \*\*ID:\*\*\s*(.+)", line)
+    if m:
+        current_id = m.group(1).strip()
+        continue
+    m = re.match(r"^\s+- \*\*Issue:\*\*\s*#(\d+)", line)
+    if m:
+        current_issue = m.group(1)
+        continue
+flush()
+PYEOF
+}
+
 # --- dependency checking --------------------------------------------------
 
 check_blockers() {
@@ -952,6 +997,34 @@ cmd_claim() {
         echo "$task_id" > "$CLAIMS_DIR/$slug/title"
         date +%s     > "$CLAIMS_DIR/$slug/created"
 
+        # Cross-host visibility: stamp the linked GitHub issue with
+        # `fleet:claim-<host>-<agent>` so issue-tracker views show who
+        # claimed without anyone reading TASKS.md or the PR. Generic
+        # prefix `fleet:claim-` is the race-detection signal — if any
+        # other agent's `fleet:claim-*` is already on the issue, the
+        # acquire loses the lex-min tie-break and rolls back. Issue
+        # number comes from the row's `Issue: #N` field; tasks without
+        # one (free-pasted, no upstream issue) skip the stamp entirely.
+        local issue_num
+        issue_num=$(get_task_issue "$task_id" 2>/dev/null || echo "")
+        local issue_label_acquired=0
+        local issue_label=""
+        if [[ -n "$issue_num" ]] && command -v gh >/dev/null 2>&1; then
+            local host repo
+            host=$(derive_host)
+            repo=$(repo_from_ns)
+            if [[ -n "$repo" ]]; then
+                issue_label="fleet:claim-${host}-${agent}"
+                if _acquire_label_on "$repo" "$issue_num" "$issue_label" "fleet:claim-"; then
+                    issue_label_acquired=1
+                else
+                    __remove_claim "$slug"
+                    echo "fleet-claim claim: $task_id issue-side claim-label race lost on #$issue_num (another agent holds fleet:claim-*)" >&2
+                    return 1
+                fi
+            fi
+        fi
+
         # Master-side TASKS.md push (T-138). Cross-host race resolution:
         # if another agent already pushed [~] for this task while we were
         # acquiring the FS lock, master_lock_task returns 1 — we roll
@@ -963,6 +1036,9 @@ cmd_claim() {
         master_lock_task lock "$task_id" "$agent" || lock_rc=$?
         if [[ $lock_rc -ne 0 ]]; then
             __remove_claim "$slug"
+            if [[ $issue_label_acquired -eq 1 ]]; then
+                gh_release_label "$(repo_from_ns)" "$issue_num" "$issue_label" || true
+            fi
             if [[ $lock_rc -eq 1 ]]; then
                 echo "fleet-claim claim: $task_id master-lock race lost — another agent already claimed on origin/master" >&2
             fi
@@ -1292,6 +1368,22 @@ cmd_release() {
                 cmd_release_worktree "$owner" >/dev/null 2>&1 || true
             fi
         fi
+        # Issue-side cleanup: drop `fleet:claim-<host>-<agent>` so the
+        # next claimant doesn't trip the lex-min lock on a stale label.
+        # Best-effort — failure here doesn't block the release because
+        # the queue-tick stale-sweep eventually catches orphans.
+        if [[ -n "$owner" && "$owner" != "unknown" ]] && command -v gh >/dev/null 2>&1; then
+            local issue_num host repo issue_label
+            issue_num=$(get_task_issue "$title" 2>/dev/null || echo "")
+            if [[ -n "$issue_num" ]]; then
+                host=$(derive_host)
+                repo=$(repo_from_ns)
+                if [[ -n "$repo" ]]; then
+                    issue_label="fleet:claim-${host}-${owner}"
+                    gh_release_label "$repo" "$issue_num" "$issue_label" || true
+                fi
+            fi
+        fi
         echo "released: $title (slug: $slug)"
     else
         echo "not claimed: $title (slug: $slug)"
@@ -1593,6 +1685,47 @@ except Exception:
                     "cleanup --gh: PR remove-label failed"
             fi
         done <<< "$pr_review_plan"
+    done
+
+    # Second pass: sweep `fleet:claim-*` labels off CLOSED issues. The
+    # claim label sticks across `gh issue close` (GitHub preserves labels
+    # on state changes), so a worker who closed an issue via `Closes #N`
+    # in a merged PR — or the closed-issue auto-reaper inside fleet-tasks-
+    # render — leaves a stale label behind. Sweeping here keeps the issue
+    # tracker tidy and prevents future claimants from tripping the
+    # lex-min lock on an issue that was reopened later.
+    for repo in "${repos[@]}"; do
+        local claim_plan
+        claim_plan=$(gh issue list --repo "$repo" --state closed \
+            --search "label:\"fleet:queued\"" \
+            --json number,labels --limit 100 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:claim-"):
+            print(f"{n}\t{name}")
+' 2>/dev/null || echo "")
+
+        [[ -z "$claim_plan" ]] && continue
+
+        while IFS=$'\t' read -r issue_num label_name; do
+            [[ -z "$issue_num" || -z "$label_name" ]] && continue
+            if gh issue edit "$issue_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (closed)"
+                total_removed=$((total_removed + 1))
+            else
+                write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
+                    "cleanup --gh: closed-issue remove-label failed"
+            fi
+        done <<< "$claim_plan"
     done
 
     if [[ $total_removed -eq 0 ]]; then

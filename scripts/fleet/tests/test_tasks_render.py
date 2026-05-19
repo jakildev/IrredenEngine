@@ -33,13 +33,15 @@ _loader.exec_module(_mod)
 render = _mod.render
 
 
-def _state_file(tmpdir, *, prs_open=None, prs_merged=None):
+def _state_file(tmpdir, *, prs_open=None, prs_merged=None,
+                closed_fleet_queued=None):
     """Write a synthetic scout-cache state.json into tmpdir."""
     payload = {
         "repos": {
             "engine": {
                 "prs": prs_open or [],
                 "recent_merged_prs": prs_merged or [],
+                "closed_fleet_queued": closed_fleet_queued or [],
             },
         },
     }
@@ -213,6 +215,61 @@ class StatusDerivation(unittest.TestCase):
                 else:
                     os.environ["FLEET_CLAIMS_DIR"] = old
             self.assertIn("- [ ] **Some Engine Feature**", out)
+
+    def test_closed_issue_with_no_pr_match_reaps_to_done(self):
+        # The strand pattern from 2026-05-19: linked Issue is closed
+        # (work landed) but no PR title carries `T-NNN:` so the
+        # renderer's PR-keyed path leaves the row in Open forever.
+        # The closed-issue reaper should detect this via the scout's
+        # closed_fleet_queued slice and move the row to Done with a
+        # synthetic placeholder pointing at the issue URL.
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td, closed_fleet_queued=[
+                {"number": 999, "title": "Some Engine Feature",
+                 "labels": ["fleet:queued", "human:approved"]},
+            ])
+            text = _basic_tasks_md(open_status=" ")
+            out = render(text, state_file=state, repo_key="engine")
+            self.assertNotIn("- [ ] **Some Engine Feature**", out)
+            self.assertNotIn("- [~] **Some Engine Feature**", out)
+            self.assertIn("- [x] **T-200**", out)
+            self.assertIn("(auto-reaped)", out)
+            self.assertIn(
+                "PR: https://github.com/jakildev/IrredenEngine/issues/999", out)
+
+    def test_closed_issue_does_not_override_real_pr(self):
+        # When both signals are present (linked Issue closed AND a real
+        # merged PR matches via `T-NNN:` prefix), the real PR wins —
+        # the Done entry carries the proper PR URL, not the synthetic
+        # placeholder.
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td,
+                prs_merged=[
+                    _pr(200, "T-200: Some Engine Feature",
+                        head="claude/T-200-feature",
+                        merged_at="2026-05-08T20:00:00Z"),
+                ],
+                closed_fleet_queued=[
+                    {"number": 999, "title": "Some Engine Feature",
+                     "labels": ["fleet:queued", "human:approved"]},
+                ])
+            text = _basic_tasks_md(open_status="~",
+                                   owner="claude/T-200-feature")
+            out = render(text, state_file=state, repo_key="engine")
+            self.assertIn("- [x] **T-200**", out)
+            self.assertIn("PR: https://github.com/jakildev/IrredenEngine/pull/200",
+                          out)
+            self.assertNotIn("(auto-reaped)", out)
+
+    def test_open_issue_does_not_reap(self):
+        # Sanity check: a row whose linked Issue is still OPEN must
+        # stay in Open. The reaper only fires on CLOSED issues.
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td)  # empty closed_fleet_queued
+            text = _basic_tasks_md(open_status=" ")
+            out = render(text, state_file=state, repo_key="engine")
+            self.assertIn("- [ ] **Some Engine Feature**", out)
+            self.assertNotIn("- [x] **T-200**", out)
 
     def test_stranded_merge_keeps_task_in_progress(self):
         # PR #543 regression: mergedAt is set but base != master, so

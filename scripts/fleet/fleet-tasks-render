@@ -76,8 +76,14 @@ DEFAULT_STATE_FILE = pathlib.Path(
 
 
 def load_pr_state(state_file: pathlib.Path, repo_key: str) -> dict[str, list[dict]]:
-    """Return {'open': [...], 'merged': [...]} for the given repo from
-    the scout cache.
+    """Return {'open': [...], 'merged': [...], 'closed_issues': {N: {...}}}
+    for the given repo from the scout cache.
+
+    `closed_issues` is the set of closed `fleet:queued` issues (issue
+    number → issue record). Used to reap TASKS.md rows whose linked
+    Issue closed via a PR whose title doesn't match the canonical
+    `T-NNN:` prefix — the case that caused the T-166 / T-217 / T-279
+    ghost-row outage on 2026-05-18.
 
     Falls back to a `gh pr list` shell-out if the cache is missing or
     truncated. The cache is the fast path — every fleet pane's startup
@@ -90,12 +96,15 @@ def load_pr_state(state_file: pathlib.Path, repo_key: str) -> dict[str, list[dic
         except (OSError, json.JSONDecodeError):
             state_obj = None
 
-    out = {"open": [], "merged": []}
+    out: dict = {"open": [], "merged": [], "closed_issues": {}}
     if state_obj is not None:
         repo_state = state_obj.get("repos", {}).get(repo_key, {})
         out["open"] = list(repo_state.get("prs", []))
         out["merged"] = list(repo_state.get("recent_merged_prs", []))
-        if out["open"] or out["merged"]:
+        out["closed_issues"] = {
+            i["number"]: i for i in repo_state.get("closed_fleet_queued", [])
+        }
+        if out["open"] or out["merged"] or out["closed_issues"]:
             return out
 
     # Cache empty / unreadable. Shell out as a safety net so a fresh
@@ -103,6 +112,10 @@ def load_pr_state(state_file: pathlib.Path, repo_key: str) -> dict[str, list[dic
     repo_slug = "jakildev/IrredenEngine" if repo_key == "engine" else "jakildev/irreden"
     out["open"] = _gh_list(repo_slug, "open")
     out["merged"] = _gh_list(repo_slug, "merged", limit=30)
+    # closed_issues stays empty on the fallback path — without the scout
+    # cache we accept that the closed-issue reaper is best-effort. The
+    # PR-title path still covers the common case; this fallback exists
+    # for fresh checkouts where no scout has run yet.
     return out
 
 
@@ -406,11 +419,31 @@ def derive_status(
     fs_claims: Optional[set[str]] = None,
     existing_status: Optional[str] = None,
     existing_owner: Optional[str] = None,
+    issue_number: Optional[int] = None,
+    closed_issues: Optional[dict[int, dict]] = None,
 ) -> tuple[str, str, Optional[dict]]:
-    """Return (status_marker, owner_string, pr_or_None) for a task id."""
+    """Return (status_marker, owner_string, pr_or_None) for a task id.
+
+    If `issue_number` is provided and refers to an issue in
+    `closed_issues`, the row is reaped to `[x]` even when no
+    `T-NNN:`-prefixed PR is found. This catches the case where the
+    closing PR's title doesn't carry the task ID (e.g., manual close,
+    PR landed via a different task ID, freeform PR title) — without
+    this fallback the row strands in `## Open` forever.
+    """
     pr = pick_pr(by_id.get(task_id, []))
     if pr is None:
-        # No PR found. Normally this means the task is open ([ ]/free).
+        # No PR found. Before falling back to [ ]/free, check the
+        # closed-issue reaper: if the linked Issue is CLOSED, the
+        # deliverable landed via a PR the renderer can't see (wrong
+        # title prefix, or the PR has fallen out of the merged-PR
+        # cache window). Move the row to Done.
+        if (
+            issue_number is not None
+            and closed_issues
+            and issue_number in closed_issues
+        ):
+            return "x", "free", None  # synthetic [x]; no PR record to point at
         # T-138 exception: if fleet-claim has just written [~] to master
         # but the worker hasn't opened the PR yet, the FS claim is the
         # only signal that the task is in-flight. Preserve [~] in that
@@ -586,6 +619,8 @@ def render(
     # fleet-claim's master-push and before the worker's PR is opened.
     fs_claims = load_fs_claims(repo_key)
 
+    closed_issues = pr_state.get("closed_issues") or {}
+
     # First pass: derive status for each task. Detect newly-merged
     # tasks so we can move them to Done.
     block_decisions: list[tuple[TaskBlock, str, str, Optional[dict]]] = []
@@ -595,21 +630,42 @@ def render(
             block_decisions.append((block, block.status, block.get_field("owner") or "free", None))
             continue
         existing_owner = block.get_field("owner")
+        issue_field = block.get_field("issue") or ""
+        m = re.match(r"#(\d+)", issue_field.strip())
+        issue_number = int(m.group(1)) if m else None
         marker, owner, pr = derive_status(
             tid, by_id, fs_claims=fs_claims,
             existing_status=block.status,
             existing_owner=existing_owner,
+            issue_number=issue_number,
+            closed_issues=closed_issues,
         )
         status_by_id[tid] = marker
         block_decisions.append((block, marker, owner, pr))
 
     # Second pass: rewrite blocks (status, owner, blocked-by). Tasks
-    # whose new status is `x` are moved to Done.
+    # whose new status is `x` are moved to Done. The synthetic-[x] case
+    # (linked Issue closed but no PR found) gets a placeholder Done
+    # entry pointing at the issue URL so the human can click through.
     surviving_blocks: list[TaskBlock] = []
     moved_to_done: list[dict] = []
+    synthetic_done_lines: list[str] = []
     for block, marker, owner, pr in block_decisions:
         if marker == "x" and pr is not None:
             moved_to_done.append(pr)
+            continue
+        if marker == "x" and pr is None:
+            tid = block.task_id or block.title
+            issue_field = block.get_field("issue") or ""
+            mm = re.match(r"#(\d+)", issue_field.strip())
+            issue_url = (
+                f"https://github.com/{repo_slug}/issues/{mm.group(1)}"
+                if mm else "(unknown)"
+            )
+            title_text = block.summary or block.title
+            synthetic_done_lines.append(
+                f"- [x] **{tid}** — {title_text} · Owner: (auto-reaped) · PR: {issue_url}"
+            )
             continue
         block.status = marker
         block.set_field("owner", owner if marker == "~" else "free")
@@ -622,7 +678,12 @@ def render(
         surviving_blocks.append(block)
 
     # Compose the new Done section. Include the freshly-moved blocks +
-    # everything already in the merged-PR cache.
+    # everything already in the merged-PR cache, plus any synthetic [x]
+    # entries from the closed-issue reaper. Synthetic entries are
+    # prepended verbatim to existing_done so compose_done_section's
+    # title-carryover logic preserves them across renders.
+    if synthetic_done_lines:
+        done_lines = synthetic_done_lines + done_lines
     new_done_lines = compose_done_section(
         pr_state["merged"], done_lines, repo_slug, done_limit
     )
