@@ -256,6 +256,10 @@ IREntity::EntityId g_layerVisCheckbox = IREntity::kNullEntity;
 IREntity::EntityId g_layerAddBtn = IREntity::kNullEntity;
 IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
 
+// Fill-mode status label — top-left status bar updated each frame with the
+// active fill mode (BOX / LINE / FACE) and active symmetry axes.
+IREntity::EntityId g_fillModeLabel = IREntity::kNullEntity;
+
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
         IR_LOG_INFO(
@@ -669,6 +673,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
     IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
     IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
+    IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
@@ -756,6 +761,23 @@ void initSystems() {
         [](const C_GuiElement &) {},
         []() {},
         []() {
+            if (IRVoxelEditor::g_fillModeLabel != IREntity::kNullEntity) {
+                const bool shiftNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                const bool ctrlNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
+                std::string status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
+                const auto &sym = IRVoxelEditor::g_symmetry;
+                if (sym.enableX_ || sym.enableY_ || sym.enableZ_) {
+                    status += " |";
+                    if (sym.enableX_)
+                        status += " X";
+                    if (sym.enableY_)
+                        status += " Y";
+                    if (sym.enableZ_)
+                        status += " Z";
+                }
+                IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
+            }
+
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
             if (!overWidget) {
@@ -1402,6 +1424,23 @@ void initCommands() {
         }
     );
 
+    // Escape — cancel an active drag without committing the fill.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEscape,
+        []() {
+            if (!IRVoxelEditor::g_fillTool.dragging_)
+                return;
+            IRVoxelEditor::g_fillTool.dragging_ = false;
+            if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_)
+                    .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+            }
+            IR_LOG_INFO("Fill drag cancelled (Escape).");
+        }
+    );
+
     // K: add a new layer (auto-named from count, immediately becomes active).
     // N is reserved for frame-animation's "add blank frame" binding.
     IRCommand::createCommand(
@@ -1781,4 +1820,9 @@ void initEntities() {
     );
     IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_).flags_ =
         IRMath::SDF::SHAPE_FLAG_NONE;
+
+    // Fill-mode status label — top-left of the GUI canvas. Updated each frame
+    // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
+    // symmetry axes are active so the user can see modifier state at a glance.
+    IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
 }
