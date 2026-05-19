@@ -238,7 +238,7 @@ Avoid:
   - **ID:** T-286
   - **Area:** engine/prefabs/irreden/editor, engine/math
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-286-parametric-voxel-bake
   - **Blocked by:** T-285
   - **Stack:** T-284..T-286 S-A-author
   - **Acceptance:** (1) Bake a radius-8 sphere; rasterized result matches GPU SDF output within 1 trixel; (2) bake at least 5 primitive types (sphere, box, capsule, cylinder, torus); (3) resulting .vxs round-trips cleanly through save/load; (4) fleet-build clean on linux-debug and macos-debug
