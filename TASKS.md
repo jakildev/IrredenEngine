@@ -240,7 +240,7 @@ Avoid:
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-279
+  - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) Spawning DETACHED allocates a child entity canvas via IRPrefab::EntityCanvas::create(); (2) spawning GRID (default) writes into the world voxel pool unchanged; (3) runtime mode change re-allocates correctly; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #953
@@ -264,7 +264,7 @@ Avoid:
   - **Area:** engine/math, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-279
+  - **Blocked by:** (none)
   - **Stack:** T-279..T-293 S-C-math
   - **Acceptance:** (1) Round-trip test computes deformation on CPU and GPU for all 4 cardinals + 8 mid-sector residual yaws; asserts bit-identical equality; (2) math goes through IRMath; no glm:: or std:: outside engine/math/ per cpp-math.md; (3) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #955
@@ -345,7 +345,7 @@ Avoid:
   - **ID:** T-299
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-299-render-readers-worldtransform
   - **Blocked by:** (none)
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) Each listed render system reads C_WorldTransform.translation_/.rotation_ instead of C_PositionGlobal3D/C_Rotation; (2) legacy components still exist (retirement is T-302); (3) fleet-build clean on linux-debug and macos-debug; (4) render-debug-loop shot list pre/post pixel-identical (within bilinear tolerance for rotation-touching shaders); (5) voxel editor renders and interacts correctly — gizmos move, picking resolves, voxels position correctly
@@ -393,10 +393,6 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
-- [x] **T-279** — engine: C_LocalTransform (SQT) component (C1) · Owner: claude/T-197-sqt-transform-propagate · PR: https://github.com/jakildev/IrredenEngine/pull/749
-- [x] **T-217** — fleet: resolve PR #767 design decisions + rebase cross-machine claim layer · Owner: claude/suspicious-perlman-781080 · PR: https://github.com/jakildev/IrredenEngine/pull/767
-- [x] **T-190** — render: SDF→trixel half-voxel / lone-trixel discrepancy investigation · Owner: claude/T-190-sdf-trixel-discrepancy · PR: https://github.com/jakildev/IrredenEngine/pull/725
-- [x] **T-166** — asset: BinaryWriter/Reader + chunk-table header + JSON sidecar emitter · Owner: claude/T-166-asset-binary-io · PR: https://github.com/jakildev/IrredenEngine/pull/678
 - [x] **T-277** — render: runtime-sized voxel pools (B4) · Owner: claude/T-277-runtime-voxel-pools · PR: https://github.com/jakildev/IrredenEngine/pull/975
 - [x] **T-276** — asset: .vxs DENSE-RLE chunk variant (B3) · Owner: claude/T-276-vxs-rle-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/972
 - [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
