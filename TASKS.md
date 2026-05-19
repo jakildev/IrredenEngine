@@ -353,11 +353,11 @@ Avoid:
   - **Notes:** Stack S-C-core pos 4. Branch from C3 PR head; also requires C4 (T-293) merged first. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C7".
   - **Links:**
 
-- [ ] **render: SDF restriction decision deliverable (D2)** — record final restriction shape (effects-only or revised) as architecture decision in docs/design/entity-editor-epic.md §"Architectural decisions (locked)"
+- [~] **render: SDF restriction decision deliverable (D2)** — record final restriction shape (effects-only or revised) as architecture decision in docs/design/entity-editor-epic.md §"Architectural decisions (locked)"
   - **ID:** T-296
   - **Area:** docs, engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) Decision PR amends `docs/design/entity-editor-epic.md` §"Architectural decisions (locked)" with the final restriction shape; (2) decision rationale captured (cost of effects-only vs. keeping co-equal; references the D1 audit findings in T-281/PR #982); (3) migration plan exists (or is filed as D3) for any SHAPES authoring sites identified in D1; (4) unblocks Epic C C8 (#959) and lets D3/D4 proceed
   - **Issue:** #960
