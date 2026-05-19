@@ -353,6 +353,41 @@ Avoid:
   - **Notes:** Stack S-C-core pos 4. Branch from C3 PR head; also requires C4 (T-293) merged first. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C7".
   - **Links:**
 
+- [ ] **render: SDF restriction decision deliverable (D2)** — record final restriction shape (effects-only or revised) as architecture decision in docs/design/entity-editor-epic.md §"Architectural decisions (locked)"
+  - **ID:** T-296
+  - **Area:** docs, engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Decision PR amends `docs/design/entity-editor-epic.md` §"Architectural decisions (locked)" with the final restriction shape; (2) decision rationale captured (cost of effects-only vs. keeping co-equal; references the D1 audit findings in T-281/PR #982); (3) migration plan exists (or is filed as D3) for any SHAPES authoring sites identified in D1; (4) unblocks Epic C C8 (#959) and lets D3/D4 proceed
+  - **Issue:** #960
+  - **Notes:** Part of Epic D (#937 — SDF runtime restriction). Blocked-by D1 (#945, T-281) is merged (PR #982). Phase: lands during Epic C C3–C5. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic D → D2".
+  - **Links:**
+
+- [ ] **world: chunk container + ivec3 chunk-coords addressing (E1)** — spatial chunk buckets owning entities + voxel allocations; addressed by ivec3 chunk coords; sparse world over chunks; per-chunk entity index + voxel sub-pool
+  - **ID:** T-297
+  - **Area:** engine/world, engine/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-297..T-298 S-E-persist
+  - **Acceptance:** (1) Spawn N entities across M chunks; iterate the chunk index; (2) per-chunk voxel sub-pool allocated from the global pool; (3) existing demos run unchanged at default (1-chunk world); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #963
+  - **Notes:** Stack S-E-stream pos 2 (E0 → E1 → E2 → E3 → E4); also base of S-E-persist (E1 → E6). Branch from E0 PR head (#944). Blocker E0 (#944, T-280) is merged (PR #981). Replaces single-chunk `kWorldBoundMax` invariant (`engine/common/include/irreden/ir_constants.hpp:42`); includes migration path for existing demos. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E1".
+  - **Links:**
+
+- [ ] **world: chunk disk persistence + lazy load (E6)** — chunks serialize to disk via .vxs; lazy load on residency request; per-chunk dirty tracking; only modified chunks re-saved
+  - **ID:** T-298
+  - **Area:** engine/world, engine/asset
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-297
+  - **Stack:** T-297..T-298 S-E-persist
+  - **Acceptance:** (1) Save world; quit; restart; chunks load on-demand as camera moves; (2) visual state identical to pre-quit; (3) only modified chunks re-saved; disk usage scales with active content; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #968
+  - **Notes:** Stack S-E-persist pos 2 (E1 → E6). Branch from E1 PR head (#963). Chunks use .vxs DENSE-RLE format (#940, T-276 merged PR #972). Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E6".
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
