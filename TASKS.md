@@ -246,11 +246,11 @@ Avoid:
   - **Notes:** Stack S-A-author pos 4. Branch from A2 PR head. Always emits DENSE voxel set — no SHAPES chunk (SDF restriction tracked in #937). CPU path uses engine/math/include/irreden/math/sdf.hpp. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A3".
   - **Links:**
 
-- [ ] **voxel: sparse occupancy bitmask in C_VoxelPool (B1)** — add `std::vector<uint64_t> m_activeMask` to C_VoxelPool; 1 bit per slot; visibility compaction reads mask instead of alpha test
+- [~] **voxel: sparse occupancy bitmask in C_VoxelPool (B1)** — add `std::vector<uint64_t> m_activeMask` to C_VoxelPool; 1 bit per slot; visibility compaction reads mask instead of alpha test
   - **ID:** T-287
   - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) Hollow 64³ entity pays <10% of dense 64³ render cost in perf_grid; (2) PR body includes CPU + GPU before/after numbers via T-275 overlay; (3) full-volume mutations correct; mask updates push-at-mutation (no dirty flag per cpp-ecs §"No dirty flags"); (4) fleet-build clean on linux-debug and macos-debug
