@@ -263,7 +263,7 @@ Avoid:
   - **ID:** T-293
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-293-geometric-trixel-deformation
   - **Blocked by:** T-292
   - **Stack:** T-279..T-293 S-C-math
   - **Acceptance:** (1) Camera yaws continuously through 360°; voxel + SDF entities deform smoothly with no bilinear blur; (2) no visible "snap" at cardinal boundaries; (3) T-322 screen-space bilinear residual path removed; engine/prefabs/irreden/render/camera.hpp no longer drives it; (4) fleet-build clean on linux-debug and macos-debug
@@ -275,7 +275,7 @@ Avoid:
   - **ID:** T-294
   - **Area:** engine/prefabs/irreden/voxel, engine/render
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-294-grid-mode-rotation
   - **Blocked by:** T-291
   - **Acceptance:** (1) A cube rotated 45° around Z occupies a different set of world voxel cells than at 0°; (2) rotation snaps to grid (aliasing accepted by design — documented in the system header); (3) deterministic across frames; cell collisions documented; (4) interacts cleanly with Epic E E5 (entity chunk migration) for rotated entities crossing chunk boundaries; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #957
