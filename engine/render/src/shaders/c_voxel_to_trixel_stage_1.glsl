@@ -45,13 +45,20 @@ struct Voxel {
     uint reserved;
 };
 
-// Stage 1 writes distances only; voxels[] is unused here. It is bound so the
-// buffer slot layout stays identical across all three voxel-to-trixel stages
-// and for Phase 2 (#605), where stage 1 will multiply each voxel position by
+// Stage 1 reads `materialFlagBone.flags` (bits 0..5 are face-occlusion bits
+// — see VoxelFlags in component_voxel.hpp) to skip emitting iso-visible
+// faces that are blocked by a neighbor. `voxels[]` is still bound for
+// Phase 2 (#605), where stage 1 will multiply each voxel position by
 // bone_matrix[bone_id] before projecting.
 layout(std430, binding = 6) readonly buffer ColorBuffer {
     Voxel voxels[];
 };
+
+// Face-occlusion bit indices — mirror VoxelFlags::kFaceOccluded{Neg,Pos}{X,Y,Z}
+// in engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+const uint kVoxelFlagFaceNegX = 1u << 2;
+const uint kVoxelFlagFaceNegY = 1u << 4;
+const uint kVoxelFlagFaceNegZ = 1u << 6;
 
 layout(std430, binding = 25) readonly buffer CompactedIndices {
     uint compactedVoxelIndices[];
@@ -80,6 +87,21 @@ void main() {
 
     const int face = localIDToFace_2x3(gl_LocalInvocationID.xy);
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+
+    // Face-aware skip: at cardinalIndex==0 the iso camera renders the world
+    // -X/-Y/-Z faces. If the voxel's neighbor on that face is active, the
+    // face is blocked and emitting only wastes an atomicMin. Skipping the
+    // tap also keeps the depth texture's tile from a transient max-value
+    // overwrite at this pixel. At non-zero cardinalIndex the authored face
+    // bits no longer line up with the iso-visible world face direction;
+    // skip the optimization in that case until a follow-up wires the
+    // rotation-aware lookup (also gates the T-293 C5 deformation work).
+    if (cardinalIndex == 0) {
+        const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+        if (face == kXFace && (flagsByte & kVoxelFlagFaceNegX) != 0u) return;
+        if (face == kYFace && (flagsByte & kVoxelFlagFaceNegY) != 0u) return;
+        if (face == kZFace && (flagsByte & kVoxelFlagFaceNegZ) != 0u) return;
+    }
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or

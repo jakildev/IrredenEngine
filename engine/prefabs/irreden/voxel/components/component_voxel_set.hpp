@@ -5,6 +5,7 @@
 #include <irreden/ir_constants.hpp>
 
 #include <irreden/voxel/components/component_voxel.hpp>
+#include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
 #include <vector>
@@ -128,6 +129,7 @@ struct C_VoxelSetNew {
         } else {
             IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
         }
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
     }
 
@@ -214,6 +216,7 @@ struct C_VoxelSetNew {
         // Dense payload is a mix of active and inactive slots, so
         // resync from per-voxel alpha rather than the fast bulk path.
         IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
 
@@ -259,6 +262,7 @@ struct C_VoxelSetNew {
             voxels_[i].deactivate();
         }
         IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
     void activateAll() {
@@ -266,6 +270,7 @@ struct C_VoxelSetNew {
             voxels_[i].activate();
         }
         IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
     // Activates all voxels in the plane perpendicular to `axis` at `planeIndex`
@@ -289,6 +294,7 @@ struct C_VoxelSetNew {
                 }
             }
         });
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, sz);
     }
 
     // take positions of all voxels in voxel object and form a new shape. This could
@@ -335,6 +341,7 @@ struct C_VoxelSetNew {
             // bulk active/inactive.
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
         }
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
     // TODO each individual voxel should be treated like this
