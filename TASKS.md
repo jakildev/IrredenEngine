@@ -247,11 +247,11 @@ Avoid:
   - **Notes:** Stack S-C-core pos 2. Branch from C1 PR head (#943). UNBOUNDED is bool flag on C_LocalTransform indicating sub-trixel positioning — only meaningful with DETACHED. Modes set at spawn via Prefab; mutable at runtime with re-allocation cost. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C2".
   - **Links:**
 
-- [ ] **render: wire detached-canvas rotation through composite TRS (C3)** — thread C_LocalTransform through per-canvas TRS for DETACHED entities at system_entity_canvas_to_framebuffer.hpp:98-100; support both voxel and SDF entities
+- [~] **render: wire detached-canvas rotation through composite TRS (C3)** — thread C_LocalTransform through per-canvas TRS for DETACHED entities at system_entity_canvas_to_framebuffer.hpp:98-100; support both voxel and SDF entities
   - **ID:** T-291
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-290
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) A DETACHED rectangular entity spins smoothly around its local Z axis without voxel re-rasterization; (2) perf_grid shows constant per-frame cost regardless of rotation rate; (3) works for both voxel and SDF entities; (4) fleet-build clean on linux-debug and macos-debug
