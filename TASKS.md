@@ -199,24 +199,12 @@ Avoid:
   - **Notes:** Stack S-A-author pos 4. Branch from A2 PR head. Always emits DENSE voxel set — no SHAPES chunk (SDF restriction tracked in #937). CPU path uses engine/math/include/irreden/math/sdf.hpp. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A3".
   - **Links:**
 
-- [~] **voxel: sparse occupancy bitmask in C_VoxelPool (B1)** — add `std::vector<uint64_t> m_activeMask` to C_VoxelPool; 1 bit per slot; visibility compaction reads mask instead of alpha test
-  - **ID:** T-287
-  - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** claude/T-287-voxel-active-mask
-  - **Blocked by:** (none)
-  - **Stack:** T-287..T-289 S-B-render
-  - **Acceptance:** (1) Hollow 64³ entity pays <10% of dense 64³ render cost in perf_grid; (2) PR body includes CPU + GPU before/after numbers via T-275 overlay; (3) full-volume mutations correct; mask updates push-at-mutation (no dirty flag per cpp-ecs §"No dirty flags"); (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #950
-  - **Notes:** Stack S-B-render pos 2 (B0 → B1 → B2 → B5). B0 (T-275, PR #977) merged — branch from master. Mask in component_voxel_pool.hpp:38-280; visibility compact in c_voxel_visibility_compact.glsl:66. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B1".
-  - **Links:**
-
 - [~] **voxel: face-aware rendering (per-voxel face bits) (B2)** — 6 face-occupancy bits in C_Voxel::flags_; maintained at edit time by SYSTEM_UPDATE_FACE_OCCUPANCY; shader skips emit on blocked faces
   - **ID:** T-288
   - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** claude/T-288-voxel-face-occupancy
-  - **Blocked by:** T-287
+  - **Blocked by:** (none)
   - **Stack:** T-287..T-289 S-B-render
   - **Acceptance:** (1) Solid 64³ cube emits ~24,576 surface trixel positions (down from 1,572,864 today); (2) PR includes perf_grid numbers showing the per-voxel cost drop; (3) face bits correctly updated when a neighbor changes (push-at-mutation per cpp-ecs §"No dirty flags"); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #951
@@ -239,7 +227,7 @@ Avoid:
   - **ID:** T-290
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-290-rotation-mode-component
   - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) Spawning DETACHED allocates a child entity canvas via IRPrefab::EntityCanvas::create(); (2) spawning GRID (default) writes into the world voxel pool unchanged; (3) runtime mode change re-allocates correctly; (4) fleet-build clean on linux-debug and macos-debug
@@ -251,7 +239,7 @@ Avoid:
   - **ID:** T-291
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-291-detached-canvas-rotation
   - **Blocked by:** T-290
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) A DETACHED rectangular entity spins smoothly around its local Z axis without voxel re-rasterization; (2) perf_grid shows constant per-frame cost regardless of rotation rate; (3) works for both voxel and SDF entities; (4) fleet-build clean on linux-debug and macos-debug
@@ -263,7 +251,7 @@ Avoid:
   - **ID:** T-292
   - **Area:** engine/math, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-292-yaw-deformation-math
   - **Blocked by:** (none)
   - **Stack:** T-279..T-293 S-C-math
   - **Acceptance:** (1) Round-trip test computes deformation on CPU and GPU for all 4 cardinals + 8 mid-sector residual yaws; asserts bit-identical equality; (2) math goes through IRMath; no glm:: or std:: outside engine/math/ per cpp-math.md; (3) fleet-build clean on linux-debug and macos-debug
@@ -353,11 +341,11 @@ Avoid:
   - **Notes:** Step 2 of transform migration decomposed from #736. Foundation already merged: PR #749/T-197 (C_LocalTransform + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM), PR #787/T-199-step-1 (COMPUTE_LIGHT_VOLUME proof-of-concept). Target files: system_sprites_to_screen.hpp, system_entity_canvas_to_framebuffer.hpp, system_shapes_to_trixel.hpp, system_voxel_picking.hpp, system_voxel_to_trixel.hpp, system_gizmo_drag.hpp, system_gizmo_screen_space_size.hpp, system_build_light_occlusion_grid.hpp, system_debug_culling_minimap.hpp, picking.hpp, gizmo.hpp. Pure mechanical swap: C_PositionGlobal3D pos → C_WorldTransform xform, pos.pos_ → xform.translation_; C_Rotation → xform.rotation_. Blocks T-300 → T-301 → T-302.
   - **Links:**
 
-- [~] **update: migrate Phase A update-side consumers to C_WorldTransform** — migrate ~15 update-pipeline systems and entity-spawn helpers from C_PositionGlobal3D/C_Position3D/C_Rotation to C_LocalTransform/C_WorldTransform; writers convert Euler C_Rotation to quat C_LocalTransform.rotation_
+- [ ] **update: migrate Phase A update-side consumers to C_WorldTransform** — migrate ~15 update-pipeline systems and entity-spawn helpers from C_PositionGlobal3D/C_Position3D/C_Rotation to C_LocalTransform/C_WorldTransform; writers convert Euler C_Rotation to quat C_LocalTransform.rotation_
   - **ID:** T-300
   - **Area:** engine/prefabs/irreden/update, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** T-299
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) Each listed update system reads C_WorldTransform.translation_/.rotation_ and/or writes C_LocalTransform; (2) velocity integration, spring physics, periodic offsets, goto/reactive-return all behave identically post-migration; (3) fleet-build clean on both backends; (4) unit tests pass (test/ecs/*, test/asset/*); (5) IRShapeDebug + voxel editor + spring/note demos render identically
@@ -393,6 +381,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-287** — voxel: sparse occupancy bitmask in C_VoxelPool (B1) · Owner: claude/T-287-voxel-active-mask · PR: https://github.com/jakildev/IrredenEngine/pull/988
 - [x] **T-277** — render: runtime-sized voxel pools (B4) · Owner: claude/T-277-runtime-voxel-pools · PR: https://github.com/jakildev/IrredenEngine/pull/975
 - [x] **T-276** — asset: .vxs DENSE-RLE chunk variant (B3) · Owner: claude/T-276-vxs-rle-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/972
 - [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
@@ -412,4 +401,3 @@ Avoid:
 - [x] **T-269** — docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect · Owner: claude/T-269-clear-feedback-labels-wrapper · PR: https://github.com/jakildev/IrredenEngine/pull/922
 - [x] **T-268** — fleet: add fleet:awaiting-base to FLEET.md label dictionary · Owner: claude/T-268-label-drift-fix · PR: https://github.com/jakildev/IrredenEngine/pull/921
 - [x] **T-267** — docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers · Owner: claude/T-267-shrink-intro-boilerplate · PR: https://github.com/jakildev/IrredenEngine/pull/920
-- [x] **T-266** — docs/roles: invert Engine API removal rule citation (baseline owns it) · Owner: claude/T-266-engine-api-removal-rule · PR: https://github.com/jakildev/IrredenEngine/pull/919
