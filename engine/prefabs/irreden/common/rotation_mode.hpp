@@ -54,11 +54,13 @@ inline void setMode(
     }
 
     if (newMode == RotationMode::DETACHED) {
+        IR_ASSERT(
+            IRRender::g_renderManager != nullptr,
+            "setMode(DETACHED) requires a live RenderManager"
+        );
         auto existing = IREntity::getComponentOptional<C_EntityCanvas>(entity);
         if (!existing) {
-            IREntity::setComponent(
-                entity, IRPrefab::EntityCanvas::create(canvasName, canvasSize)
-            );
+            IREntity::setComponent(entity, IRPrefab::EntityCanvas::create(canvasName, canvasSize));
         }
     } else { // GRID
         auto existing = IREntity::getComponentOptional<C_EntityCanvas>(entity);
