@@ -37,7 +37,7 @@ Why tmux-on-unix either way:
   first-class goal for the engine. Running the fleet from WSL matures
   the Linux path; running it from macOS matures the Metal path; the
   Windows-native clone remains the ship-it authority. See "Cross-
-  platform parity" in the top-level `CLAUDE.md` and the `backend-parity`
+  platform parity" in [`docs/agents/FLEET.md`](agents/FLEET.md) and the `backend-parity`
   skill at `.claude/skills/backend-parity/SKILL.md`.
 
 The existing Windows-native clone at
@@ -639,43 +639,73 @@ Practical rule:
   against `TASKS.md` and first-pass reviews. Docs passes, test
   generation, mechanical refactors all go here.
 
-The top-level `CLAUDE.md` "Model split" section has the full rules and
+[`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" has the full rules and
 `TASKS.md` uses a `**Model:**` tag on each task.
 
 ---
 
-## 7. `settings.json` — permissions and allowlist (optional but helpful)
+## 7. `settings.json` — permissions and allowlist
 
-If you want Sonnet-fleet agents to run unattended overnight, loosen the
-default confirmation prompts for commands they need. Edit your Claude
-Code settings (not the repo) and add an allowlist for build / test /
-`gh` / read-only shell commands. Keep **writes to master, force pushes,
-and destructive git commands** on the confirm list.
+The repo now ships a project-level allowlist at
+[`.claude/settings.json`](../.claude/settings.json) which Claude Code
+auto-loads for every session opened against any worktree under the
+repo. **No manual setup required on a fresh clone** — it just works.
 
-Rough starting allowlist (works identically on WSL and macOS — plain
-Unix commands, no `cmd.exe` wrappers):
+Coverage (the same one all fleet roles need to run unattended in
+`--print` mode without a human to approve permission prompts):
 
-- `cmake --build ...`
-- `cmake --preset linux-debug` (WSL) / `cmake --preset macos-debug` (Mac)
-- `ninja ...`, `make ...`
-- `gh pr view`, `gh pr diff`, `gh pr list`, `gh pr review --comment`,
-  `gh pr create` (but *not* `gh pr merge`)
-- `git status`, `git diff`, `git log`, `git fetch`, `git checkout -b`,
-  `git add`, `git commit`, `git push -u origin HEAD`
-- `ctest ...`
-- Common read-only shell: `ls`, `cat`, `head`, `tail`, `wc`, `find`
+- `Bash(git:*)` and `Bash(gh:*)` — broad allow with explicit deny for
+  force-push / `gh pr merge` / branch deletion / `git push origin :*`
+  etc.
+- `Bash(cmake --build:*)`, `make`, `ninja`, `ctest` — build/test only.
+  `cmake --preset` is excluded so agents don't re-configure the build
+  tree out from under you.
+- All `fleet-*` scripts.
+- `python3`, `node`, `npm` for tooling.
+- Read-only / safe shell utilities (`ls`, `cat`, `grep`, `find`,
+  `mkdir`, `cp`, `mv`, `chmod`, `mktemp`, `jq`, …).
+- `Edit(*)`, `Write(*)`, `Read(*)` — file operations.
+- `WebFetch(domain:github.com)` and friends — for skill flows that
+  pull PR/issue context over HTTPS.
+- `pkill -f fleet-*` — scoped so agents can restart fleet daemons but
+  can't kill arbitrary processes.
 
-Leave on prompt:
+Hard-denied (so even broad `Bash(git:*)` can't accidentally trigger):
+`gh pr merge:*`, `git push --force[--with-lease]:*`, `git push -f:*`,
+`git push --delete:*`, `git push origin :*` (branch-delete syntax),
+`git reset --hard:*`, `git clean -fd[x]:*`, `git branch -D master|main`,
+`rm -rf /*`, `rm -rf ~*`, `rm -rf .git*`, `rm -rf .claude/worktrees*`,
+`sudo:*`, `apt[-get]:*`, `dpkg:*`. The fleet's hard rule "agents never
+use sudo" is enforced at the permission layer, not just role docs.
 
-- `git push origin master`
-- `git push --force`
-- `git reset --hard`
-- `gh pr merge`
-- Anything destructive to `.claude/worktrees/`
-- `sudo ...` (any use of sudo)
-- `apt ...`, `apt-get ...`, `dpkg ...` (WSL package manager)
-- `brew install ...`, `brew upgrade ...`, `brew uninstall ...` (macOS)
-- `xcode-select --install`, `softwareupdate ...`
+### Personal overrides
+
+The committed file intentionally omits anything user-specific:
+- No `additionalDirectories` (those have absolute paths and vary per
+  host).
+- No `theme`, `defaultMode`, or other personal preferences.
+
+Per-worktree `.claude/settings.local.json` is auto-created by Claude
+Code on first session in a worktree and is the right place for those.
+Settings cascade is **user → project → local with allow/deny arrays
+merging (union)**, so you can add personal items at either level
+without touching the committed file.
+
+### Why the broad `Bash(git:*)` / `Bash(gh:*)` allow
+
+The fleet's queue-manager and worker roles run in
+`claude --print --output-format stream-json` (non-interactive). Any
+permission prompt in that mode auto-denies, so a narrow allowlist
+that misses one command (e.g. queue-manager's `git push origin
+HEAD:master` for TASKS.md, or `gh issue edit --add-label`) silently
+stalls a whole role. Broad-allow + targeted-deny avoids the
+maintenance burden of enumerating every command path each role
+might take, while still hard-blocking the actually-dangerous ones.
+
+If your security posture wants tighter rules, override at the
+worktree-local level with a narrower set, or set
+`permissions.defaultMode: "default"` in your user settings to force
+human confirmation on anything not explicitly listed.
 
 ---
 
@@ -791,7 +821,7 @@ window dies.
 
 ### Two-tier review with both reviewers running
 
-The Opus/Sonnet model split (see root `CLAUDE.md`) wants most first-
+The Opus/Sonnet model split (see [`docs/agents/FLEET.md`](agents/FLEET.md) "Model split") wants most first-
 pass reviews to be Sonnet and only have Opus look at core-engine PRs
 or Sonnet-escalated ones. In the reviewer-loop pattern that means:
 
@@ -1324,8 +1354,8 @@ make the fleet survive it.
   `claude --resume <id>` re-enters the exact session after the reset.
 - **The other models keep working.** Opus and Sonnet budgets are
   separate. When Opus is capped, every Sonnet window in the fleet
-  keeps going and vice versa. This is the single biggest reason the
-  root `CLAUDE.md` wants you to tag tasks `[opus]` or `[sonnet]` — it
+  keeps going and vice versa. This is the single biggest reason
+  [`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" wants you to tag tasks `[opus]` or `[sonnet]` — it
   turns the budget split into a backpressure signal instead of a
   fleet-wide stall.
 - **Resumption is manual by default.** I don't think Claude Code

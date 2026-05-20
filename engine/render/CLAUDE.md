@@ -10,20 +10,6 @@ canvas registry.
 functions. Creations and other modules should **only** include this header,
 never internal render headers.
 
-Key exposed surface:
-
-- `getRenderManager()`, `getRenderingResourceManager()`.
-- Resource CRUD: `createResource<T>()`, `getResource<T>()`,
-  `destroyResource<T>()`, plus `createNamed<T>(name, ...)` and
-  `getNamedResource<T>(name)`.
-- Voxel pool: `allocateVoxels(count)`, `deallocateVoxels(span)`.
-- Canvases: `createCanvas(name, size, ...)`, `getCanvas(name)`,
-  `setActiveCanvas(name)`.
-- Camera and viewport: `getCameraPosition2DIso()`, `getCameraZoom()`,
-  `getViewport()`, `getOutputScaleFactor()`, `mousePosToWorldPos()`.
-- Subdivision mode: `setSubdivisionMode(NONE|POSITION_ONLY|FULL)`,
-  `setVoxelRenderSubdivisions(n)`.
-- GUI state: `setGuiVisible`, `setGuiScale`, `setHoveredTrixelVisible`.
 
 ## Two managers
 
@@ -58,11 +44,36 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
 │    COMPUTE_VOXEL_AO                                              │
 │      • c_compute_voxel_ao.glsl → per-pixel AO factor             │
+│    BAKE_SUN_SHADOW_MAP                                           │
+│      • c_clear_sun_shadow_map.glsl + c_bake_sun_shadow_map.glsl  │
+│      • atomicMin-projects iso pixels into a sun-aligned depth    │
+│        map at slot 28 (kBufferIndex_LightOcclusionGrid alias)    │
 │    COMPUTE_SUN_SHADOW                                            │
-│      • c_compute_sun_shadow.glsl → per-pixel directional shadow  │
+│      • c_compute_sun_shadow.glsl → single-texel lookup against   │
+│        the baked sun depth map → per-pixel shadow brightness     │
 │    COMPUTE_LIGHT_VOLUME                                          │
-│      • CPU flood-fill BFS from C_LightSource emitters into the   │
-│        canvas's C_CanvasLightVolume 3D texture (8 MiB upload)    │
+│      • c_clear_light_volume + c_seed_light_volume +              │
+│        c_propagate_light_volume (×32) — GPU distance-tracked     │
+│        dilation chain over a ping-pong pair of 128³ RGBA8 3D     │
+│        textures, seeded from a per-frame LightSourceBuffer SSBO. │
+│        No CPU upload. The volume is camera-anchored each frame   │
+│        (Phase 1c, #360): worldOriginVoxel_ comes from the iso    │
+│        camera and lives in LightVolumeParams (UBO @ slot 23);    │
+│        the light-occlusion grid carries its own origin in a      │
+│        16-byte header at the start of LightOcclusionGridBuffer   │
+│        (SSBO @ 28). Lights whose rounded world origin falls      │
+│        outside the ±64-voxel window around the camera anchor     │
+│        still drop with a one-shot CPU warning. SDF blockers      │
+│        (`C_ShapeDescriptor + C_LightBlocker(blocksLOS_=true)`    │
+│        entities) are CPU-rasterized into a second bitfield in    │
+│        the same SSBO; the propagate shader OR's both bitfields   │
+│        per neighbor so SDFs occlude point/spot light without     │
+│        affecting AO. See system_build_light_occlusion_grid.hpp.  │
+│      • Per-canvas scope (#363): each canvas's light volume is    │
+│        seeded only from lights with no CHILD_OF parent (world-   │
+│        scope, the back-compat default) plus lights parented to   │
+│        that canvas. Parent a light via                           │
+│        `IREntity::setParent(light, canvas)` to confine it.       │
 │    LIGHTING_TO_TRIXEL                                            │
 │      • c_lighting_to_trixel.glsl → modulates canvas colors       │
 │        by (AO × sun-shadow), then adds the light-volume          │
@@ -77,6 +88,10 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │    FRAMEBUFFER_TO_SCREEN                                         │
 │      • v_/f_framebuffer_to_screen.glsl                           │
 │      • + f_debug_overlay.glsl if enabled                         │
+│    SPRITE_TO_SCREEN  (optional; no-op when zero sprites)         │
+│      • v_/f_sprites_to_screen.glsl + metal/sprites_to_screen     │
+│      • CPU iso depth-sort grouped by atlas; one                  │
+│        drawArraysInstanced call per atlas via SSBO @ slot 25     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,32 +99,15 @@ Every system in that list is a normal prefab under
 `engine/prefabs/irreden/render/systems/`. Each must have its name in
 `SystemName` enum before the specialization will link.
 
-## Key components (defined in prefabs/irreden/render)
-
-- `C_TriangleCanvasTextures` — 3 GPU textures (RGBA8 color, R32I distance,
-  RG32UI entity id). Created in ctor, destroyed in `onDestroy()`.
-- `C_EntityCanvas` — wraps a canvas entity id.
-- `C_TrixelFramebuffer` — main output framebuffer (color + depth).
-- `C_VoxelPool` — chunked voxel storage; filled by `allocateVoxels()`.
-- `C_ZoomLevel`, `C_Camera`, `C_CameraPosition2DIso` — camera entity.
-- `C_FrameDataTrixelToFramebuffer` — per-frame UBO (MVP, hover coord,
-  distance offset, ...).
-- `C_TextSegment`, `C_TextStyle`, `C_GeometricShape` — overlay prefabs.
-- `C_TrixelCanvasRenderBehavior` — flags for camera/zoom/hover hookups.
 
 ## Shaders
 
 Location: `engine/render/src/shaders/` (GLSL) and
 `engine/render/src/shaders/metal/` (Metal).
 
-Naming prefixes:
-
-- `c_` compute — all voxel→trixel stages, text rendering, shape rendering,
-  visibility compaction.
-- `v_` vertex / `f_` fragment — `trixel_to_framebuffer`,
-  `framebuffer_to_screen`, `debug_overlay`.
-- `ir_iso_common.glsl`, `ir_constants.glsl` — shared includes.
-
+Naming prefixes follow the convention in
+[`CLAUDE-BASELINE.md §Naming`](../../docs/agents/CLAUDE-BASELINE.md#naming).
+Shared includes: `ir_iso_common.glsl`, `ir_constants.glsl`.
 Shader file paths are stored in `render/shader_names.hpp`. Update that
 header when you add or rename a shader.
 
@@ -144,6 +142,38 @@ For the two viable patterns for exposing feature API from the prefab layer, see
 `engine/prefabs/irreden/render/CLAUDE.md` §"Exposing system public API from
 the prefab layer".
 
+### Name identifiers after the rendering effect, not the caller
+
+The same separation extends past C++ APIs into **type identifiers, shader
+constants, shader variables, and the comments around them.** Anything that
+lives under `engine/render/` — `ir_render_types.hpp`, `engine/render/src/shaders/`
+(GLSL), `engine/render/src/shaders/metal/` (Metal) — names what the renderer
+*does*, not which feature is asking for it.
+
+| Layer                       | Allowed                                  | Not allowed                              |
+|-----------------------------|------------------------------------------|------------------------------------------|
+| `ShapeFlags` enum values    | `SHAPE_FLAG_HOLLOW`, `SHAPE_FLAG_CHECKERBOARD`, `SHAPE_FLAG_DEPTH_COLOR`, `SHAPE_FLAG_XRAY_OCCLUDED` | `SHAPE_FLAG_GIZMO`, `SHAPE_FLAG_BUTTON`, `SHAPE_FLAG_ENEMY_HIGHLIGHT` |
+| Shader `FLAG_*` constants   | mirrors of the C++ flag names above       | feature-named mirrors                    |
+| Shader local variables      | `xrayOccluded`, `isHollow`, `parity`      | `isGizmo`, `isWidget`                    |
+| Shader-side tunables        | `kXrayOccludedAlpha`, `kCheckerScale`     | `kGizmoOccludedAlpha`, `kButtonAlpha`    |
+| Doc comments in the above   | "shapes flagged X behave like Y"          | "editor gizmos use this for …"           |
+
+Why: the shader is feature-blind by design. It transforms inputs into pixels;
+it has no idea whether a shape is a gizmo, a HUD marker, or an enemy
+silhouette. A use-case-named identifier in this layer pulls feature concerns
+into the rendering primitive — a second caller wanting the same effect either
+adds a second redundant flag, or perpetuates the misnomer by riding on the
+first feature's name. A behavior-named identifier (HOLLOW, XRAY_OCCLUDED) is
+reusable from day one; the gizmo prefab just sets the flag and the next
+caller (a selection highlight, a debug marker, a "see through walls" mode)
+sets it too. The same principle covers other engine/render/ surfaces — shader
+texture/SSBO binding names, `RenderImpl` method names, debug-overlay enum
+values, etc. — name the graphics effect, not the first user.
+
+This is a specific application of the wider engine/render/ vs prefab/ split
+above: feature names live in the prefab layer (`IRPrefab::Gizmo::`,
+`C_GizmoHandle`, `gizmo.hpp`), behavior names live in the primitive layer.
+
 ### Current deviations
 
 See `.fleet/status/render-api-relocations.md` (queue-manager-owned;
@@ -159,16 +189,43 @@ PR that touches:
 - `engine/prefabs/irreden/render/systems/` (pipeline systems)
 - anything affecting pipeline ordering, canvas textures, or the voxel pool
 
-must run the **`render-debug-loop`** skill after the change and attach at
-least one before/after screenshot pair to the PR body. The skill drives
-any creation that supports `--auto-screenshot` (today: `shape_debug`;
-reference implementation is `creations/demos/shape_debug/main.cpp`) and
-carries topic-indexed diagnosis tables for trixel / SDF shapes, lighting
-phases, and backend-parity symptoms.
+must run the **`render-debug-loop`** skill after the change and attach
+the following to the PR body:
+
+1. At least one full-frame before/after screenshot pair.
+2. **At least one ROI crop pair** (current + baseline) covering a
+   cube/voxel silhouette — a 128×128 native crop is small enough to
+   embed inline and dense enough to surface 1-pixel drift that
+   downscaled full-frames hide. ROI crops come for free with
+   `--auto-screenshot` once the demo's `kShots[]` table includes
+   `RoiCrop` entries (see `creations/demos/shape_debug/main.cpp` for
+   the canonical example).
+
+If the PR intentionally changes silhouettes / lighting / shading
+model, call out the intentional drift in the description so reviewers
+know the new crop is the new baseline rather than a regression.
+
+The skill drives any creation that supports `--auto-screenshot`
+(today: `shape_debug`; reference implementation is
+`creations/demos/shape_debug/main.cpp`) and carries topic-indexed
+diagnosis tables for trixel / SDF shapes, lighting phases, and
+backend-parity symptoms.
+
+For the "show me the drift" case — when two crops look identical at
+a glance but a regression actually moved one pixel — pipe them
+through **`tools/img_diff`**:
+
+```
+build/tools/img_diff/img_diff <baseline.png> <current.png> /tmp/diff.png
+```
+
+The output renders drifted pixels solid red against a desaturated
+baseline. Useful both for the agent's evaluation step and for
+reviewer-facing PR-body screenshots.
 
 For changes that touch only one graphics backend (GLSL without MSL
 counterpart, or vice versa), follow up with the **`backend-parity`**
-skill on the lagging-side host — the rule is in the top-level CLAUDE.md
+skill on the lagging-side host — the rule is in [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
 under "Cross-platform parity". `render-debug-loop` captures the
 evidence; `backend-parity` drives the port.
 
@@ -213,35 +270,72 @@ don't exercise backends and don't benefit from cross-host smoke).
 
 The render cull (`visibleIsoViewport` → `buildChunkVisibilityMask` in
 `system_voxel_to_trixel.hpp`, and the per-shape iso-bounds check in
-`system_shapes_to_trixel.hpp`) is a strict camera-frustum cull on the
-rendering path. It governs which voxels/shapes are written into canvas
-textures — nothing else.
+`system_shapes_to_trixel.hpp`) covers the visible iso AABB **plus the
+shadow-feeder sweep** when sun shadows are enabled
+(`IRMath::shadowFeederIsoBounds` widens by `kSunShadowMaxDistance` along
+`sunDir` (toward the sun); T-131 / PR #576). It governs which voxels/shapes are written
+into canvas textures — pixels outside the visible AABB but inside the
+swept extent still produce `trixelDistances` writes so the screen-space
+sun-shadow bake can project off-screen casters onto on-screen pixels.
+Bounds collapse to the visible viewport when `getSunShadowsEnabled()` is
+false.
 
-Lighting (occupancy grid, AO, shadows, flood-fill, fog-of-war) operates
-against a **camera-independent world-space occupancy grid**. Shadow sweeps
-march along the world-space sun axis; flood-fill BFS propagates through
-world-space voxels; fog-of-war DDA rays trace through the same grid.
-Off-screen geometry participates in lighting by design — an off-screen
-building that casts a shadow onto on-screen tiles is the common case, not an
-edge case.
+Lighting splits across two sampling spaces:
+
+- **Screen-space**: sun shadows use a sun-aligned depth map baked from
+  `trixelDistances`. Off-screen geometry participates because the bake's
+  iso-frustum AABB is swept along `-sunDir` by `kSunShadowMaxDistance`
+  (64 voxels), so shadow casters within that range project correctly
+  even when their iso position is outside the visible rect.
+- **World-space**: light-volume propagation reads the world-space
+  light-occlusion grid (post-T-091, AO migrated off it). As of
+  Phase 1c (#360) the grid is **camera-anchored** — it covers the
+  256-voxel cube centered on the iso camera's world voxel rather
+  than a fixed `[-128, 128)` window. Off-screen geometry inside that
+  cube still participates in lighting by design (a torch a few
+  voxels off-screen still floods light into on-screen voxels).
+  Geometry farther from the camera than ±128 voxels is outside the
+  grid this frame and contributes nothing — the cull is a side
+  effect of the anchor, not a separate viewport check (invariant 1
+  below still holds: the grid-build iterates the full pool and
+  writes whichever voxels land in-range).
+
+**Phased-out producer:** `BUILD_LIGHT_OCCLUSION_GRID` and the
+`LightOcclusionGrid` SSBO are scheduled for removal once light-volume
+LOS moves off the world-space bitfield. AO already migrated to
+screen-space neighbour sampling (T-091), so the bitfield now feeds only
+`c_propagate_light_volume`. The single source of truth for "is there
+geometry along ray R" in the long run is `trixelDistances` (and the
+depth-map bakes derived from it); the world-space bitfield is an
+intermediate that survives only until the propagate shader migrates to
+a screen-space LOS source.
 
 The four invariants below exist because these are the places easiest to break
 silently. Each lighting PR (AO #166, shadows #167, flood-fill #168,
 fog-of-war #170) reviewer should run this checklist. See #196 for the
 architect review that originated them.
 
+The sun-shadow path reads the screen-space sun depth map (baked from
+`trixelDistances`), not the light-occlusion grid; invariants 1, 2, and
+4 below apply to the light-volume propagate path only (AO migrated to
+screen-space sampling in T-091). The shadow-ring (invariant 2) is
+implicitly enforced by the bake AABB sweep — see "Sun shadow bake AABB
+sweep" below.
+
 ### 1. Grid-build iterates the full voxel pool, not the render-culled subset
 
 `buildChunkVisibilityMask` is a render-pipeline-local mask inside
-`system_voxel_to_trixel`. The occupancy-grid-build system must use its own
-iteration path and must **not** consult that mask. The failure mode is
-sharing a helper that accidentally applies the render cull to the grid build.
+`system_voxel_to_trixel`. The light-occlusion-grid-build system must use
+its own iteration path and must **not** consult that mask. The failure
+mode is sharing a helper that accidentally applies the render cull to
+the grid build.
 
-**Check:** `system_build_occupancy_grid.hpp` does not include
+**Check:** `system_build_light_occlusion_grid.hpp` does not include
 `cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
 
-**Status (T-010, PR #188):** compliant — `System<BUILD_OCCUPANCY_GRID>`
-iterates `pool.getLiveVoxelCount()` on the full pool with no viewport filter.
+**Status (T-010, PR #188; renamed in T-126):** compliant —
+`System<BUILD_LIGHT_OCCLUSION_GRID>` iterates `pool.getLiveVoxelCount()`
+on the full pool with no viewport filter.
 
 ### 2. Shadow-ring extent when chunk streaming activates
 
@@ -281,11 +375,22 @@ streaming activates, the chunk containing each neighbor must be resident. A
 face at the view edge whose neighbor chunk is unloaded produces wrong AO.
 
 **Invariant:** resident chunk set = view-chunk set ∪ 1-chunk guard band (in
-all six directions) for AO/shadow sampling correctness, in addition to the
+all six directions) for AO sampling correctness, in addition to the
 shadow-ring from invariant #2.
 
 **Check:** resident chunk set calculation includes this guard band when chunk
 streaming is introduced.
+
+## Sun shadow bake AABB sweep
+
+`BAKE_SUN_SHADOW_MAP` derives its sun-space AABB from the iso-frustum
+corners and a sweep of `kSunShadowMaxDistance` (64 voxels) along
+`-sunDir`. That sweep is what guarantees off-screen casters within
+shadow range project into the depth map even when their iso position
+is outside the visible rect — same role invariant #2 plays for the
+old occupancy march. Bumping `kSunShadowMaxDistance` is the lever for
+longer shadows; expect proportionally larger sun-space texels (the
+1024² depth map is fixed) and softer shadow boundaries.
 
 ## Lighting debug overlay
 
@@ -311,6 +416,55 @@ GUI pixels are unaffected because the GUI canvas early-returns out
 of the lighting pass. Invoke from a creation via the engine API
 (`IRRender::setDebugOverlay`) or in `shape_debug` via
 `--debug-overlay <none|ao|light_level|shadow>`.
+
+## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
+
+A `C_ShapeDescriptor` (SDF, GPU-evaluated) and a `C_VoxelSetNew` carved
+from the same SDF (CPU-quantized at construction) are intentionally NOT
+trixel-for-trixel identical at every render configuration. The SDF
+shader's `smoothMode` gate (`c_shapes_to_trixel.glsl`:
+`smoothMode = (renderMode != 0) && (subdivisions > 1)` — `renderMode`
+is the `SubdivisionMode` enum value, 0 = `NONE`, 1 = `POSITION_ONLY`,
+2 = `FULL`) selects between two paths:
+
+- **`smoothMode == false`** — `SubdivisionMode::NONE` always, or
+  `POSITION_ONLY` / `FULL` with effective `sub == 1`. Bit-identical to
+  the voxel pool at the silhouette. The SDF shader skips the analytical
+  surface solver and routes through `snapLatticeWalk`. (The
+  `subdivisions > 1` half of the gate was added in commit 87d2b681 so
+  `sub == 1` falls back to the parity-gated lattice walk instead of the
+  analytical 2x3 emit that aliased against the voxel-pool tiling.) The
+  walk only evaluates iso pixels with `(isoRel.x + isoRel.y) & 1 == 0`
+  — the same even-parity set integer voxels project to — and rounds
+  each candidate via `roundHalfUp` to the same integer voxel the CPU
+  carve evaluates. The SDF surface check uses `<= 0.5` with no bias,
+  matching CPU's `> kSurfaceThreshold` exclusion exactly.
+- **`smoothMode == true`** — `POSITION_ONLY` or `FULL` with effective
+  `sub > 1`. Silhouette differs by design. The SDF shader runs
+  `findSurfaceDepth` analytically: each iso sub-pixel solves for the
+  smooth surface depth, producing a continuous (sub-pixel) silhouette.
+  The voxel pool runs `faceMicroPositionFixed` over `sub²`
+  micro-positions per active voxel, producing a stair-stepped silhouette
+  that snaps to the discrete carved voxel set scaled up by `sub`. At any
+  given silhouette iso pixel one path may emit where the other doesn't
+  — that's the "lone trixel" / "half-extent voxel" effect on a
+  side-by-side comparison. It is NOT a bug; it is the entire reason
+  the smooth analytical path exists alongside the voxel-pool path.
+
+The `kSdfBiasEpsilon` (1e-3) used in the analytical surface check
+(`sdf <= 0.5 + kSdfBiasEpsilon`) is for FMA-noise stability across
+frames at integer-edge depths, not a deliberate widening of the surface
+shell. It can keep one extra sub-pixel column at borderline analytical
+hits where the CPU carve drops; the visual effect is bounded by the
+epsilon and only visible at static analysis with a per-pixel diff.
+
+If you need bit-identical voxel-pool output from a `C_ShapeDescriptor`,
+the only correct configuration is `SubdivisionMode::NONE` (or any
+`sub == 1` configuration) where both paths route through the same
+parity-gated lattice walk. At higher subdivisions, choose the path
+based on intent: voxel pool for "cubes-of-cubes" stylization, SDF for
+smooth analytical silhouettes. The lighting demo's `kShots[]`
+zoom8/zoom16 captures showcase the difference for visual reference.
 
 ## Gotchas
 

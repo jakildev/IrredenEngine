@@ -156,6 +156,24 @@ if [[ -f "$SCOUT_PID_FILE" ]]; then
 fi
 
 # ----------------------------------------------------------------------
+# Stop fleet-dispatcher daemon (started by fleet-up after #273 cutover)
+# ----------------------------------------------------------------------
+#
+# Same pattern as scout: the dispatcher polls the shutdown sentinel
+# every second and exits on its own; the explicit SIGTERM here is
+# belt-and-suspenders for wedged / missed-poll cases.
+
+DISPATCHER_PID_FILE="$HOME/.fleet/state/dispatcher.pid"
+if [[ -f "$DISPATCHER_PID_FILE" ]]; then
+    dispatcher_pid=$(cat "$DISPATCHER_PID_FILE" 2>/dev/null || true)
+    if [[ -n "$dispatcher_pid" ]] && kill -0 "$dispatcher_pid" 2>/dev/null; then
+        echo "fleet-down: stopping fleet-dispatcher (pid $dispatcher_pid)"
+        kill -TERM "$dispatcher_pid" 2>/dev/null || true
+    fi
+    rm -f "$DISPATCHER_PID_FILE"
+fi
+
+# ----------------------------------------------------------------------
 # Ctrl-C trap: per-phase abort, doesn't cascade
 # ----------------------------------------------------------------------
 #

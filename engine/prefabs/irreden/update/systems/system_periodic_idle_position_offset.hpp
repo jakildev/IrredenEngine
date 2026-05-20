@@ -1,20 +1,41 @@
 #ifndef SYSTEM_PERIODIC_IDLE_POSITION_OFFSET_H
 #define SYSTEM_PERIODIC_IDLE_POSITION_OFFSET_H
 
+// Upserts the entity's idle-bob value as a vec3 ADD modifier each UPDATE
+// tick via upsertBySourceInPlace. The slot key is (entity, POSITION_OFFSET_3D,
+// ADD) — one entry per bob-eligible entity, updated in place each tick.
+// No ticksRemaining_ countdown; no MODIFIER_DECAY dependency.
+// APPLY_POSITION_OFFSET later composes the vec3 modifiers and adds the
+// resolved offset to C_PositionGlobal3D.
+//
+// Pipeline ordering required by callers:
+//   PERIODIC_IDLE → PERIODIC_IDLE_POSITION_OFFSET
+//   → ... → GLOBAL_POSITION_3D → APPLY_POSITION_OFFSET
+
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
 
+#include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/position_modifier_fields.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
-#include <irreden/common/components/component_position_offset_3d.hpp>
-
-using namespace IRComponents;
 
 namespace IRSystem {
 
 template <> struct System<PERIODIC_IDLE_POSITION_OFFSET> {
     static SystemId create() {
-        return createSystem<C_PeriodicIdle, C_PositionOffset3D>(
+        return createSystem<IRComponents::C_PeriodicIdle, IRComponents::C_Modifiers>(
             "PeriodicIdlePositionOffset",
-            [](C_PeriodicIdle &idle, C_PositionOffset3D &offset) { offset.pos_ = idle.getValue(); }
+            [](IREntity::EntityId entity,
+               IRComponents::C_PeriodicIdle &idle,
+               IRComponents::C_Modifiers &mods) {
+                IRPrefab::Modifier::upsertBySourceInPlace(
+                    mods,
+                    IRPrefab::PositionModifier::positionOffsetField(),
+                    IRComponents::TransformKind::ADD,
+                    idle.getValue(),
+                    entity
+                );
+            }
         );
     }
 };

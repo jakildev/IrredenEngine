@@ -11,27 +11,11 @@ No opt-outs.
 
 ## Two visibility tiers
 
-```
-creations/
-├── demos/                  ← checked into git; shareable examples
-├── bazel_test/             ← gitignored
-├── editors/                ← gitignored
-└── <private creations>/    ← gitignored (games, experiments, tools)
-```
-
-The top-level `.gitignore` says:
-
-```
-creations/*
-!creations/demos/
-!creations/demos/**
-!creations/CLAUDE.md
-```
-
-Everything directly under `creations/` is ignored **except**
-`creations/demos/` and this file. Private creations (games, personal
-tools, experimental editors) live locally and are never pushed to the
-engine repo. A private creation may have its own repo, its own
+`creations/demos/` and `creations/editors/voxel_editor/` are checked into
+the engine repo. All other subdirectories under `creations/` (games,
+personal tools, experimental editors) are gitignored and live only locally.
+The top-level `.gitignore` tracks only these two subtrees; see it for the
+exact allowlist. A private creation may have its own repo, its own
 conventions, its own review criteria, even its own CLAUDE.md hierarchy.
 
 ## Engine vs. creation separation
@@ -71,22 +55,10 @@ is gitignored).
 
 ## CMake boilerplate
 
-Every creation's `CMakeLists.txt` does three things:
-
-1. **Declare the executable** and link `IrredenEngine`.
-2. **Copy runtime data** — `engine/render/data`, `engine/data`,
-   `engine/render/src/shaders` next to the exe as `data/` and
-   `shaders/`, plus any creation-specific scripts.
-3. **Copy runtime DLLs** — Windows-only POST_BUILD step using
-   `$<TARGET_RUNTIME_DLLS:...>`. Note that MinGW runtime DLLs
-   (`libgcc_s_seh-1.dll`, etc.) are *not* copied — they come from
-   `C:\msys64\mingw64\bin` and must be on `PATH` at runtime.
-4. **Define an `IR<Name>Run` custom target** with
-   `WORKING_DIRECTORY` set to the runtime dir so VSCode launches it
-   from the right cwd.
-
-Use `creations/demos/shape_debug/CMakeLists.txt` as the canonical
-reference.
+Use `creations/demos/shape_debug/CMakeLists.txt` as the canonical reference.
+Note: MinGW runtime DLLs (`libgcc_s_seh-1.dll`, etc.) are not copied by
+the Windows `$<TARGET_RUNTIME_DLLS:...>` POST_BUILD step — they come from
+`C:\msys64\mingw64\bin` and must be on `PATH` at runtime.
 
 ## Gotchas
 

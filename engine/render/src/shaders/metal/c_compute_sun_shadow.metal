@@ -1,185 +1,52 @@
 #include "ir_iso_common.metal"
-#include "ir_sdf_common.metal"
 
 // Mirrors shaders/c_compute_sun_shadow.glsl. Per-pixel directional sun
 // shadow compute — reconstructs the voxel-space surface position for
-// each rasterized pixel, marches toward the sun through the 3D
-// occupancy grid, and writes a 0..1 brightness factor into canvasSunShadow.r.
+// each rasterized pixel, projects into the sun-aligned depth map baked
+// by BAKE_SUN_SHADOW_MAP, and writes a 0..1 brightness factor into
+// canvasSunShadow.r.
 
-constant int kOccupancyGridSize = 256;
-constant int kOccupancyGridHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
-// Max occupancy-grid cells visited per pixel by the 3D DDA below. See
-// the GLSL counterpart (c_compute_sun_shadow.glsl) for the rationale —
-// 128 covers diagonal rays for the same effective shadow distance the
-// old fixed-step march produced.
-constant int kMaxShadowMarchSteps = 128;
-constant float kMaxShadowRayDistance = 64.0;
 constant float kShadowDarken = 0.45;
-constant int kMaxAnalyticShapeMarchSteps = 32;
-constant float kAnalyticShadowSurfaceThreshold = 0.05;
 
-// Shape-type constants (SHAPE_BOX, …) live in ir_sdf_common.metal.
-constant uint FLAG_HOLLOW        = 1u;
+// Must match c_bake_sun_shadow_map.metal.
+constant int kSunShadowMapDim = 1024;
+constant float kSunDepthScale = 1024.0;
+constant float kSunDepthOffset = 512.0;
+// Normal-bias offset pushes the lookup point along the face's outward
+// normal before projecting into sun-space, preventing self-shadow acne on
+// cube tops and SDF spheres caused by adjacent-face pixels rounding to the
+// same sun-texel. Tune via render-debug-loop on shape_debug.
+constant float kNormalBiasVoxels = 0.5;
+// Slope-scale bias covers the worst-case sunZ variation between iso pixels
+// that share a sun-space texel — roughly texelSize/slope voxels. Below
+// that threshold a flat surface self-shadows. Tune via render-debug-loop on shape_debug.
+constant float kShadowBiasTexelScale = 2.0;
+constant float kShadowBiasSlopeMin = 0.05;
+constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
+
+inline float unpackSunDepth(uint packedDepth) {
+    return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
+}
 
 struct FrameDataSun {
     float4 sunDirection;
     float sunIntensity;
     float sunAmbient;
     int shadowsEnabled;
-    int shapeCasterCount;
-    int occupancyBoundsCount;
     int aoEnabled;
-    int useScreenSpaceShadow;
-    int _sunPadding0;
     float4 sunBasisU;
     float4 sunBasisV;
     float2 sunBufferOriginUV;
     float2 sunBufferTexelSize;
 };
 
-// Mirrors shaders/c_bake_sun_shadow_map.metal. `occupancyBits` holds the
-// sun depth array when useScreenSpaceShadow=1 (slot 28 is rebound by the
-// C++ tick).
-constant int kSunShadowMapDim = 1024;
-constant float kSunDepthScale = 1024.0;
-constant float kSunDepthOffset = 512.0;
-constant float kShadowBiasTexelScale = 1.0;
-constant float kShadowBiasSlopeMin = 0.05;
-constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
-
-inline float unpackSunDepth(uint packed) {
-    return float(packed) / kSunDepthScale - kSunDepthOffset;
-}
-
-struct ShapeDescriptor {
-    float4 worldPosition;
-    float4 params;
-    uint shapeType;
-    uint color;
-    uint entityId;
-    uint jointIndex;
-    uint flags;
-    uint lodLevel;
-    uint pad0;
-    uint pad1;
-};
-
-// Mirrors GPUOccupancyEntityBounds in ir_render_types.hpp. See the GLSL
-// shader for the rationale.
-struct OccupancyEntityBounds {
-    uint4 entityId;
-    int4 minCell;
-    int4 maxCell;
-};
-
-inline bool occupancyGetBit(device const uint *occupancyBits, int wx, int wy, int wz) {
-    int he = kOccupancyGridHalfExtent;
-    if (wx < -he || wx >= he || wy < -he || wy >= he || wz < -he || wz >= he) {
-        return false;
-    }
-    uint x = uint(wx + he);
-    uint y = uint(wy + he);
-    uint z = uint(wz + he);
-    uint flat =
-        (z * uint(kOccupancyGridSize) + y) * uint(kOccupancyGridSize) + x;
-    uint bits = occupancyBits[flat >> 5u];
-    return ((bits >> (flat & 31u)) & 1u) == 1u;
-}
-
-// SDF primitives and `evaluateSDF` live in ir_sdf_common.metal, shared with
-// the shape rasterizer.
-
-inline float shapeBoundingRadius(thread const ShapeDescriptor& shape) {
-    const float3 halfSize = abs(shape.params.xyz) * 0.5;
-    switch (shape.shapeType) {
-        case SHAPE_SPHERE:    return shape.params.x + 0.5;
-        case SHAPE_CYLINDER:  return length(float2(shape.params.x, halfSize.z)) + 0.5;
-        case SHAPE_CONE:      return length(float2(shape.params.x, halfSize.z)) + 0.5;
-        case SHAPE_TORUS:     return shape.params.x + shape.params.y + 0.5;
-        default:              return length(halfSize) + abs(shape.params.w) + 0.5;
-    }
-}
-
-inline bool rayIntersectsSphere(
-    float3 origin,
-    float3 dir,
-    float3 center,
-    float radius,
-    thread float& tNear,
-    thread float& tFar
-) {
-    const float3 oc = origin - center;
-    const float b = dot(oc, dir);
-    const float c = dot(oc, oc) - radius * radius;
-    float h = b * b - c;
-    if (h < 0.0) {
-        return false;
-    }
-    h = sqrt(h);
-    tNear = -b - h;
-    tFar = -b + h;
-    return tFar > 0.0;
-}
-
-inline bool analyticShapeShadowHit(
-    float3 rayOrigin,
-    float3 rayDir,
-    uint selfEntityId,
-    constant FrameDataVoxelToTrixel& frameData,
-    constant FrameDataSun& sunFrameData,
-    device const ShapeDescriptor *shapeCasters
-) {
-    if (frameData.voxelRenderOptions.x == 0 || sunFrameData.shapeCasterCount <= 0) {
-        return false;
-    }
-
-    const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-    // See the GLSL counterpart: minStep matches one sub-voxel of the
-    // render resolution so the march resolves to ~one screen pixel at
-    // any zoom, avoiding the 0.25-voxel jagged plateau the old clamp
-    // imposed at zoom 16.
-    const float minStep = 1.0 / float(subdivisions);
-
-    for (int i = 0; i < sunFrameData.shapeCasterCount; ++i) {
-        const ShapeDescriptor shape = shapeCasters[i];
-        if (shape.entityId == selfEntityId) {
-            continue;
-        }
-
-        const float3 center = shape.worldPosition.xyz;
-        float tNear, tFar;
-        if (!rayIntersectsSphere(
-                rayOrigin, rayDir, center, shapeBoundingRadius(shape), tNear, tFar
-            )) {
-            continue;
-        }
-
-        float t = max(tNear, minStep);
-        for (int step = 0; step < kMaxAnalyticShapeMarchSteps && t <= tFar; ++step) {
-            const float3 samplePos = rayOrigin + rayDir * t;
-            const float distance =
-                evaluateSDF(samplePos - center, shape.shapeType, shape.params);
-            const bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
-            if ((!hollow && distance <= kAnalyticShadowSurfaceThreshold) ||
-                (hollow && abs(distance) <= kAnalyticShadowSurfaceThreshold)) {
-                return true;
-            }
-            t += max(distance * 0.75, minStep);
-        }
-    }
-    return false;
-}
-
 kernel void c_compute_sun_shadow(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
-    device const uint *occupancyBits [[buffer(28)]],
-    device const ShapeDescriptor *shapeCasters [[buffer(20)]],
-    device const OccupancyEntityBounds *occupancyEntityBounds [[buffer(4)]],
+    device const uint *sunDepthBuf [[buffer(28)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<float, access::write> canvasSunShadow [[texture(1)]],
-    texture2d<uint, access::read> trixelEntityIds [[texture(2)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     int2 pixel = int2(globalId.xy);
@@ -214,122 +81,55 @@ kernel void c_compute_sun_shadow(
         frameData.rasterYaw
     );
 
-    // Screen-space lookup; mirrors c_compute_sun_shadow.glsl.
-    if (sunFrameData.useScreenSpaceShadow != 0) {
-        float3 sunDirSS = sunFrameData.sunDirection.xyz;
-        float3 uHat = sunFrameData.sunBasisU.xyz;
-        float3 vHat = sunFrameData.sunBasisV.xyz;
-        float2 sunUV = float2(dot(pos3D, uHat), dot(pos3D, vHat));
-        float sunZ = -dot(pos3D, sunDirSS);
+    int face = encoded & 3;
+    float3 normal = faceOutwardNormal(face);
 
-        int2 sunPx = int2(round(
-            (sunUV - sunFrameData.sunBufferOriginUV) /
-            sunFrameData.sunBufferTexelSize
-        ));
-        bool ssShadowed = false;
-        if (sunPx.x >= 0 && sunPx.x < kSunShadowMapDim &&
-            sunPx.y >= 0 && sunPx.y < kSunShadowMapDim) {
-            uint storedPacked = occupancyBits[sunPx.y * kSunShadowMapDim + sunPx.x];
-            if (storedPacked != 0xFFFFFFFFu) {
-                float nearestZ = unpackSunDepth(storedPacked);
-                int face = encoded & 3;
-                float3 normal = faceOutwardNormal(face);
-                float slope = max(kShadowBiasSlopeMin, dot(normal, sunDirSS));
-                float texelSize = max(
-                    sunFrameData.sunBufferTexelSize.x,
-                    sunFrameData.sunBufferTexelSize.y
-                );
-                float bias =
-                    texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
-                ssShadowed = (sunZ - nearestZ) > bias;
-            }
-        }
-        float ssFactor = ssShadowed ? kShadowDarken : 1.0;
-        canvasSunShadow.write(float4(ssFactor, 0.0, 0.0, 0.0), uint2(pixel));
-        return;
-    }
-
+    // Screen-space lookup against the bake output. sunZ is negated
+    // (smaller = closer to sun) so the bake's atomicMin stores the
+    // nearest blocker per texel. The lookup position is offset along the
+    // outward normal first so the projected sun-texel shifts away from the
+    // true-surface writer, eliminating self-shadow acne without biasing the
+    // baked depth map itself.
     float3 sunDir = sunFrameData.sunDirection.xyz;
-    uint selfEntityId = trixelEntityIds.read(uint2(pixel)).x;
+    float3 uHat = sunFrameData.sunBasisU.xyz;
+    float3 vHat = sunFrameData.sunBasisV.xyz;
+    float3 biasedPos3D = pos3D + normal * kNormalBiasVoxels;
+    float2 sunUV = float2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
+    float sunZ = -dot(biasedPos3D, sunDir);
 
-    // Look up this surface's voxel-pool bbox so the occupancy march below
-    // can skip self-cells. Mirrors the analytic path's selfEntityId
-    // exclusion. SDF surfaces and pixels where the entity didn't make it
-    // into the bounds buffer simply fall through with the sentinel range,
-    // matching no cell — i.e. behaving as if no self-exclusion is needed.
-    int3 selfMin = int3(2147483647);
-    int3 selfMax = int3(-2147483648);
-    for (int i = 0; i < sunFrameData.occupancyBoundsCount; ++i) {
-        if (occupancyEntityBounds[i].entityId.x == selfEntityId) {
-            selfMin = occupancyEntityBounds[i].minCell.xyz;
-            selfMax = occupancyEntityBounds[i].maxCell.xyz;
-            break;
+    // Bias depends only on per-fragment constants (face/normal/sunDir,
+    // texelSize) — hoisted outside the PCF loop. T-132's slope-scale +
+    // quantisation-noise formula stays unchanged; the PCF kernel just
+    // applies it to each of the four taps.
+    float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
+    float texelSize = max(
+        sunFrameData.sunBufferTexelSize.x,
+        sunFrameData.sunBufferTexelSize.y
+    );
+    float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+
+    // 2×2 PCF: bilinearly weighted sample of four neighboring sun-space texels.
+    // Fades shadow boundaries across one sun-texel instead of cliff-edging.
+    // floor() pairs with the bake's round() convention (texel centers on
+    // integers) so the four taps surround the fragment's continuous sunPxF.
+    float2 sunPxF = (sunUV - sunFrameData.sunBufferOriginUV) /
+                    sunFrameData.sunBufferTexelSize;
+    int2 base = int2(floor(sunPxF));
+    float2 frac = sunPxF - float2(base);
+    float shadowAccum = 0.0;
+    for (int dy = 0; dy < 2; ++dy) {
+        for (int dx = 0; dx < 2; ++dx) {
+            int2 px = base + int2(dx, dy);
+            if (px.x < 0 || px.x >= kSunShadowMapDim ||
+                px.y < 0 || px.y >= kSunShadowMapDim) continue;
+            uint stored = sunDepthBuf[px.y * kSunShadowMapDim + px.x];
+            if (stored == 0xFFFFFFFFu) continue;  // no caster → lit
+            float nearestZ = unpackSunDepth(stored);
+            float weight = mix(1.0f - frac.x, frac.x, float(dx))
+                         * mix(1.0f - frac.y, frac.y, float(dy));
+            if ((sunZ - nearestZ) > bias) shadowAccum += weight;
         }
     }
-
-    float3 rayOrigin = pos3D + sunDir;
-    bool shadowed = analyticShapeShadowHit(
-        rayOrigin,
-        sunDir,
-        selfEntityId,
-        frameData,
-        sunFrameData,
-        shapeCasters
-    );
-
-    // 3D DDA over the occupancy grid — see the GLSL counterpart in
-    // c_compute_sun_shadow.glsl for the full rationale. Cells are
-    // indexed by `roundHalfUp`, so the cell boundary in the +1 step
-    // direction is at `cell + 0.5` and `cell - 0.5` for -1.
-    float3 rayPos = rayOrigin;
-    int3 cell = roundHalfUp(rayPos);
-    int3 stepCell = int3(
-        sunDir.x > 0.0 ? 1 : (sunDir.x < 0.0 ? -1 : 0),
-        sunDir.y > 0.0 ? 1 : (sunDir.y < 0.0 ? -1 : 0),
-        sunDir.z > 0.0 ? 1 : (sunDir.z < 0.0 ? -1 : 0)
-    );
-    float3 invDir = float3(
-        stepCell.x != 0 ? 1.0 / sunDir.x : 1e30,
-        stepCell.y != 0 ? 1.0 / sunDir.y : 1e30,
-        stepCell.z != 0 ? 1.0 / sunDir.z : 1e30
-    );
-    float3 nextEdge = float3(cell) + 0.5 * float3(stepCell);
-    float3 tMax = (nextEdge - rayPos) * invDir;
-    float3 tDelta = abs(invDir);
-    if (stepCell.x == 0) { tMax.x = 1e30; tDelta.x = 1e30; }
-    if (stepCell.y == 0) { tMax.y = 1e30; tDelta.y = 1e30; }
-    if (stepCell.z == 0) { tMax.z = 1e30; tDelta.z = 1e30; }
-
-    for (int step = 0; !shadowed && step < kMaxShadowMarchSteps; ++step) {
-        int he = kOccupancyGridHalfExtent;
-        if (cell.x < -he || cell.x >= he ||
-            cell.y < -he || cell.y >= he ||
-            cell.z < -he || cell.z >= he) {
-            break;
-        }
-        bool isSelfCell =
-            cell.x >= selfMin.x && cell.x <= selfMax.x &&
-            cell.y >= selfMin.y && cell.y <= selfMax.y &&
-            cell.z >= selfMin.z && cell.z <= selfMax.z;
-        if (!isSelfCell && occupancyGetBit(occupancyBits, cell.x, cell.y, cell.z)) {
-            shadowed = true;
-            break;
-        }
-        if (tMax.x < tMax.y && tMax.x < tMax.z) {
-            cell.x += stepCell.x;
-            tMax.x += tDelta.x;
-        } else if (tMax.y < tMax.z) {
-            cell.y += stepCell.y;
-            tMax.y += tDelta.y;
-        } else {
-            cell.z += stepCell.z;
-            tMax.z += tDelta.z;
-        }
-        if (min(min(tMax.x, tMax.y), tMax.z) > kMaxShadowRayDistance) {
-            break;
-        }
-    }
-
-    float factor = shadowed ? kShadowDarken : 1.0;
+    float factor = mix(1.0f, kShadowDarken, shadowAccum);
     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
 }

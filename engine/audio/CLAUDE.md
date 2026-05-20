@@ -47,16 +47,6 @@ functions:
   or Lua state from inside it**. Copy samples into a lock-free buffer and
   consume on the main thread.
 
-## Key components (prefabs/irreden/audio)
-
-- `C_MidiMessage` — status + data1 + data2. Unpacks channel/status.
-- `C_MidiNote`, `C_MidiSequence` — higher-level note/sequence types (with
-  Lua bindings).
-- `C_MidiDevice`, `C_MidiChannel`, `C_MidiDelay` — tag components.
-- `C_AudioFile` — placeholder, minimal.
-
-Plus `*_lua.hpp` variants for sequences and notes.
-
 ## Gotchas
 
 - **No hot-swap.** If a MIDI device is unplugged mid-run, the `RtMidiIn`

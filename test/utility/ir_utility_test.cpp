@@ -60,9 +60,9 @@ TEST(PathWithExtensionTest, AddsExtensionWhenNonePresent) {
 }
 
 TEST(PathWithExtensionTest, WorksWithSubdirectoryPath) {
-    std::string result = IRUtility::pathWithExtension("data/textures/tile.png", ".txl");
+    std::string result = IRUtility::pathWithExtension("data/textures/tile.png", ".vxs");
     std::string expected =
-        (std::filesystem::path("data/textures/tile.png").replace_extension(".txl")).string();
+        (std::filesystem::path("data/textures/tile.png").replace_extension(".vxs")).string();
     EXPECT_EQ(result, expected);
 }
 

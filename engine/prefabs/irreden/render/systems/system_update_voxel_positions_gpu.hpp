@@ -29,7 +29,6 @@
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_entity.hpp>
-#include <irreden/ir_constants.hpp>
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -46,17 +45,16 @@ namespace IRSystem {
 template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
     static SystemId create() {
         constexpr int kMaxGPUEntities = 4096;
+        const int maxSingleVoxels = IRRender::VoxelPoolConfig::getTotalSize();
 
         IRRender::createNamedResource<ShaderProgram>(
             "UpdateVoxelPositionsProgram",
-            std::vector{
-                ShaderStage{IRRender::kFileCompUpdateVoxelPositions, ShaderType::COMPUTE}
-            }
+            std::vector{ShaderStage{IRRender::kFileCompUpdateVoxelPositions, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "LocalVoxelPositionBuffer",
             nullptr,
-            IRConstants::kMaxSingleVoxels * sizeof(C_Position3D),
+            maxSingleVoxels * sizeof(C_Position3D),
             BUFFER_STORAGE_MAP_WRITE | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_LocalVoxelPositions
@@ -82,8 +80,9 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
             IRRender::getNamedResource<Buffer>("LocalVoxelPositionBuffer")
                 ->mapRange(
                     0,
-                    IRConstants::kMaxSingleVoxels * sizeof(C_Position3D),
-                    BUFFER_STORAGE_MAP_WRITE | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT
+                    maxSingleVoxels * sizeof(C_Position3D),
+                    BUFFER_STORAGE_MAP_WRITE | BUFFER_STORAGE_MAP_PERSISTENT |
+                        BUFFER_STORAGE_MAP_COHERENT
                 );
         static bool localPositionsUploaded = false;
 

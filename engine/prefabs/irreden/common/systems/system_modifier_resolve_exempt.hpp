@@ -23,15 +23,30 @@ template <> struct System<MODIFIER_RESOLVE_EXEMPT> {
         return createSystem<
             IRComponents::C_Modifiers,
             IRComponents::C_ResolvedFields,
-            IRComponents::C_NoGlobalModifiers
-        >(
+            IRComponents::C_NoGlobalModifiers>(
             "ModifierResolveExempt",
             [](IRComponents::C_Modifiers &m,
                IRComponents::C_ResolvedFields &resolved,
                [[maybe_unused]] IRComponents::C_NoGlobalModifiers &) {
                 for (auto &rf : resolved.fields_) {
                     rf.value_ = IRPrefab::Modifier::detail::composeForField(
-                        rf.value_, rf.field_, m.modifiers_
+                        rf.value_,
+                        rf.field_,
+                        m.modifiers_
+                    );
+                }
+                for (auto &rf : resolved.fieldsVec3_) {
+                    rf.value_ = IRPrefab::Modifier::detail::composeForFieldVec3(
+                        rf.value_,
+                        rf.field_,
+                        m.modifiersVec3_
+                    );
+                }
+                for (auto &rf : resolved.fieldsQuat_) {
+                    rf.value_ = IRPrefab::Modifier::detail::composeForFieldQuat(
+                        rf.value_,
+                        rf.field_,
+                        m.modifiersQuat_
                     );
                 }
             }

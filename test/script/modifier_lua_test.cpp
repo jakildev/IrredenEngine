@@ -7,8 +7,8 @@
 
 namespace {
 
-using IRComponents::C_Modifiers;
 using IRComponents::C_LambdaModifiers;
+using IRComponents::C_Modifiers;
 using IRComponents::FieldBindingId;
 using IRComponents::TransformKind;
 using IREntity::EntityId;
@@ -34,18 +34,30 @@ class ModifierLuaTest : public testing::Test {
 
 TEST_F(ModifierLuaTest, EnumValuesMatchCpp) {
     auto &lua = m_lua.lua();
-    EXPECT_EQ(lua.script("return ir.modifier.ADD").get<int>(),
-              static_cast<int>(TransformKind::ADD));
-    EXPECT_EQ(lua.script("return ir.modifier.MULTIPLY").get<int>(),
-              static_cast<int>(TransformKind::MULTIPLY));
-    EXPECT_EQ(lua.script("return ir.modifier.SET").get<int>(),
-              static_cast<int>(TransformKind::SET));
-    EXPECT_EQ(lua.script("return ir.modifier.CLAMP_MIN").get<int>(),
-              static_cast<int>(TransformKind::CLAMP_MIN));
-    EXPECT_EQ(lua.script("return ir.modifier.CLAMP_MAX").get<int>(),
-              static_cast<int>(TransformKind::CLAMP_MAX));
-    EXPECT_EQ(lua.script("return ir.modifier.OVERRIDE").get<int>(),
-              static_cast<int>(TransformKind::OVERRIDE));
+    EXPECT_EQ(
+        lua.script("return ir.modifier.ADD").get<int>(),
+        static_cast<int>(TransformKind::ADD)
+    );
+    EXPECT_EQ(
+        lua.script("return ir.modifier.MULTIPLY").get<int>(),
+        static_cast<int>(TransformKind::MULTIPLY)
+    );
+    EXPECT_EQ(
+        lua.script("return ir.modifier.SET").get<int>(),
+        static_cast<int>(TransformKind::SET)
+    );
+    EXPECT_EQ(
+        lua.script("return ir.modifier.CLAMP_MIN").get<int>(),
+        static_cast<int>(TransformKind::CLAMP_MIN)
+    );
+    EXPECT_EQ(
+        lua.script("return ir.modifier.CLAMP_MAX").get<int>(),
+        static_cast<int>(TransformKind::CLAMP_MAX)
+    );
+    EXPECT_EQ(
+        lua.script("return ir.modifier.OVERRIDE").get<int>(),
+        static_cast<int>(TransformKind::OVERRIDE)
+    );
 }
 
 // ---- registerField ----------------------------------------------------------
@@ -71,7 +83,7 @@ class ModifierLuaApplyTest : public ModifierLuaTest {
         m_field_id = IRPrefab::Modifier::registerField("lua.apply.test");
         m_entity = IREntity::createEntity(C_Modifiers{});
         m_lua.lua()["testEntity"] = static_cast<lua_Integer>(m_entity);
-        m_lua.lua()["testField"]  = static_cast<lua_Integer>(m_field_id);
+        m_lua.lua()["testField"] = static_cast<lua_Integer>(m_field_id);
     }
 
     FieldBindingId m_field_id = 0;
@@ -168,8 +180,8 @@ TEST_F(ModifierLuaApplyTest, ApplyToFieldReturnedFromLua) {
             source = testEntity,
         })
     )");
-    float result = lua.script("return ir.modifier.applyToField(testEntity, testField, 3.0)")
-                       .get<float>();
+    float result =
+        lua.script("return ir.modifier.applyToField(testEntity, testField, 3.0)").get<float>();
     EXPECT_FLOAT_EQ(result, 10.0f);
 }
 
@@ -221,20 +233,16 @@ TEST_F(ModifierLuaApplyTest, PushLambdaApplied) {
 
 // ---- pushGlobal -------------------------------------------------------------
 
-// Fixture: sets up a standalone globals entity and wires it into the detail
-// singleton directly, avoiding registerResolverPipeline() which also creates
-// systems and requires SystemManager.
+// Fixture: lazy-creates the globals entity via the singleton API,
+// avoiding registerResolverPipeline() which also creates systems and
+// requires SystemManager. The EntityManager fixture goes out of scope
+// at end-of-test, taking the singleton cache with it.
 class ModifierLuaGlobalTest : public ModifierLuaTest {
   protected:
     ModifierLuaGlobalTest() {
         m_field_id = IRPrefab::Modifier::registerField("lua.global.smoke");
-        m_globals_entity = IREntity::createEntity(IRComponents::C_GlobalModifiers{});
-        IRPrefab::Modifier::detail::globalsEntityId() = m_globals_entity;
+        m_globals_entity = IREntity::singletonEntity<IRComponents::C_GlobalModifiers>();
         m_lua.lua()["testField"] = static_cast<lua_Integer>(m_field_id);
-    }
-
-    ~ModifierLuaGlobalTest() {
-        IRPrefab::Modifier::detail::globalsEntityId() = IREntity::kNullEntity;
     }
 
     IRComponents::FieldBindingId m_field_id = 0;

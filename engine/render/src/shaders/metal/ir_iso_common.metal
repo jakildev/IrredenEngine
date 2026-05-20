@@ -46,6 +46,35 @@ inline float4 unpackColor(uint packedColor) {
     );
 }
 
+// PCG-flavored integer hash (low-collision, no FP precision loss). Cheap
+// enough for per-thread shader use; quality is sufficient for visual jitter
+// on the stateless particle path (T-163). Mirrors the GLSL implementation
+// in ir_iso_common.glsl line-for-line so deterministic seeds reproduce on
+// both backends.
+inline uint hash3(uint a, uint b, uint c) {
+    uint h = a * 0x9E3779B1u;
+    h = (h ^ b) * 0x85EBCA77u;
+    h = (h ^ c) * 0xC2B2AE3Du;
+    h ^= h >> 16;
+    h *= 0x85EBCA77u;
+    h ^= h >> 13;
+    h *= 0xC2B2AE3Du;
+    h ^= h >> 16;
+    return h;
+}
+
+inline float3 randomUnitVec(uint seed) {
+    const float kInvU32 = 1.0f / 4294967295.0f;
+    uint rx = hash3(seed, 0x9E3779B1u, 0u);
+    uint ry = hash3(seed, 0x85EBCA77u, 1u);
+    uint rz = hash3(seed, 0xC2B2AE3Du, 2u);
+    return float3(
+        float(rx) * kInvU32 * 2.0f - 1.0f,
+        float(ry) * kInvU32 * 2.0f - 1.0f,
+        float(rz) * kInvU32 * 2.0f - 1.0f
+    );
+}
+
 // Map local invocation ID within a (2, 3, 1) workgroup to a face type.
 //   (0,0),(1,0) -> Z_FACE
 //   (1,1),(1,2) -> X_FACE
@@ -158,6 +187,19 @@ inline int trixelOriginModifier(int2 trixelCanvasOffsetZ1, float2 frameCanvasOff
     ) & 1;
 }
 
+// Clamp a float canvas-pixel position into a valid `texture.read()` index.
+// Metal's `texture.read()` has no built-in edge handling, unlike GLSL's
+// `textureLod()` (implicit `clamp_to_edge` via sampler). See #442 for the
+// broader GLSL/Metal coord-shift reconciliation.
+inline uint2 trixelCanvasReadCoord(float2 origin, float2 textureSize) {
+    return uint2(clamp(origin, float2(0.0f), textureSize - float2(1.0f)));
+}
+
+// Mirror of `trixelFramebufferSamplePosition` in `ir_iso_common.glsl`. The
+// parity bit + fract sub-pixel test pick which row of the iso quad cell's
+// two trixels this fragment maps to. Identical math to GLSL/CPU
+// `pos2DIsoToTriangleIndex` so the same canvas data reads back the same
+// way on both backends.
 inline float2 trixelFramebufferSamplePosition(float2 origin, int originModifier) {
     const float2 originFloored = floor(origin);
     const float2 fractComp = fract(origin);
@@ -242,9 +284,8 @@ inline float3 trixelCanvasPixelToWorld3D(
     int2 trixelCanvasOffsetZ1,
     float2 frameCanvasOffset,
     int2 voxelRenderOptions,
-    float rasterYaw
+    int cardinalIndex
 ) {
-    const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     const int2 isoRel =
         trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
@@ -256,6 +297,20 @@ inline float3 trixelCanvasPixelToWorld3D(
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
+}
+
+inline float3 trixelCanvasPixelToWorld3D(
+    int2 pixel,
+    int rawDepth,
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions,
+    float rasterYaw
+) {
+    return trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions,
+        rasterYawCardinalIndex(rasterYaw)
+    );
 }
 
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the

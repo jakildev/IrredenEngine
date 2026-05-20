@@ -1,0 +1,33 @@
+-- Minimal config for lua_pipeline_demo. Window stays small; the demo
+-- exists to verify Lua-driven pipeline composition, not to render a
+-- particular scene.
+config = {
+    init_window_width = 640,
+    init_window_height = 360,
+    game_resolution_width = 640,
+    game_resolution_height = 360,
+    fit_mode = "stretch",
+    fullscreen = false,
+    monitor_index = -1,
+    monitor_name = "",
+    subdivision_mode = "none",
+    voxel_render_subdivisions = 1,
+
+    video_capture_output_file = "capture.mp4",
+    video_capture_fps = 60,
+    video_capture_bitrate = 10000000,
+    video_capture_audio_input_enabled = false,
+    video_capture_audio_input_device_name = "",
+    video_capture_audio_sample_rate = 48000,
+    video_capture_audio_channels = 2,
+    video_capture_audio_bitrate = 320000,
+    video_capture_audio_mux_enabled = false,
+    video_capture_audio_wav_enabled = false,
+    video_capture_audio_sync_offset_ms = 0.0,
+    screenshot_output_dir = "save_files/screenshots",
+    start_updates_on_first_key_press = false,
+    start_recording_on_first_key_press = false,
+    profiling_enabled = false,
+    gui_scale = 1,
+    hovered_trixel_visible = false,
+}

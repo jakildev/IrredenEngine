@@ -1,4 +1,5 @@
 ---
+name: role-sonnet-author
 description: Sonnet author — picks bounded tasks from TASKS.md and opens PRs
 ---
 
@@ -9,56 +10,19 @@ tasks from `TASKS.md`, work them end-to-end, and open PRs.
 
 Mode (optional argument): $ARGUMENTS
 
-## CRITICAL: single-command Bash calls only
+## Bash tool rules
 
-Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
-`;`, or `|`. Never append `2>/dev/null`. Use the **Read** tool instead
-of `cat`. Use the **Grep** tool instead of `grep` or `rg`. Use the
-**Glob** tool instead of `find`. Use `git -C <path>` instead of
-`cd <path> && git`. Violating this blocks unattended operation with
-interactive prompts.
-
-Common patterns and their correct alternatives:
-
-- **Check if a file exists:** Use the **Read** tool — it returns an
-  error if the file doesn't exist, which is fine. Do NOT use
-  `ls <file> 2>/dev/null || echo "missing"`.
-- **Check if a directory exists:** `ls <dir>` alone (no `||`, no
-  `2>/dev/null`). If it fails, the error message tells you.
-- **Read a file that might not exist:** Use the **Read** tool. A "file
-  not found" error is a normal signal, not something to suppress.
-- **Run a command and fall back:** Issue the command alone. Read the
-  exit status / error. Issue the fallback as a separate Bash call if
-  needed.
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
 ## Shared fleet state cache
 
-The `fleet-state-scout` daemon (started by `fleet-up`) refreshes
-`~/.fleet/state/state.json` every ~60s with both repos' open PRs and
-parsed `TASKS.md` rows. **This cache is the source of truth for
-list-y queries — do NOT bypass it for `gh pr list` or
-`git show origin/master:TASKS.md` when the cache is fresh.** One Read
-tool call replaces what used to be two `gh`/`git` invocations at
-startup.
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
-Schema (slices this role uses):
-- `repos.engine.prs[]` — `number`, `title`, `headRefName`,
-  `baseRefName`, `author` (login string), `labels` (sorted strings),
-  `mergeable`, `isDraft`. (Sonnet author works only the engine queue
-  — `repos.game` is loaded by the cache too but this role ignores
-  it.)
-- `repos.engine.tasks.{open,in_progress,done}[]` — `status`, `title`,
-  `summary`, `id`, `model`, `owner`, `area`, `blocked_by`, `issue`.
+## Exit protocol
 
-Per-item lookups (`gh pr view <N> --comments`, `gh pr diff <N>`,
-`gh api repos/.../comments`) stay inline — those pull live data the
-cache doesn't store. The cache covers list-shaped queries; live
-drill-in covers single-item drill-down.
-
-If `~/.fleet/state/state.json` is missing or its `generated_at` is
-more than ~5 minutes old, the scout daemon isn't running. Print
-`scout cache stale or missing — run fleet-up` and exit; do not
-silently fall back to direct `gh`/`git` calls.
+See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNTIME.md#exit-protocol--transient-roles)
+— transient one-shot, natural-exit on the final turn, no looping, no
+`kill -TERM $PPID`.
 
 ## Responsibilities
 
@@ -88,297 +52,73 @@ whatever directory the task touches before editing anything.
 2. `git -C ~/src/IrredenEngine fetch origin --quiet` — pulls refs
    for later `git checkout`/`git rebase`; the cache snapshots TASKS.md
    and PR metadata but doesn't fetch refs.
-3. **Read the shared fleet state cache** with the Read tool:
-   `~/.fleet/state/state.json`. One Read replaces what used to be
-   two calls here:
-   - `git show origin/master:TASKS.md` →
-     `repos.engine.tasks.{open,in_progress,done}[]`
-   - `gh pr list --state open ...` → `repos.engine.prs[]`
-
-   If the cache file is missing or its `generated_at` is older than
-   ~5 minutes, the scout is down — print
-   `scout cache stale or missing — run fleet-up` and exit. Do not
-   fall back to direct `gh`/`git` calls.
-4. Print a one-line summary: which `[sonnet]` items in
-   `tasks.open[]` look unblocked (`owner == "free"`, `blocked_by`
-   resolves to `(none)` or merged work) and not currently claimed
-   in any open PR (cross-check against `prs[].title` and
-   `prs[].headRefName`).
+3. **Read your slice** with the Read tool:
+   `~/.fleet/state/projections/sonnet-author.json`. Carries
+   `tasks_open` (filtered to `[sonnet]` engine tasks) and
+   `feedback_prs` (open PRs with feedback labels). If the slice
+   file is missing or its `generated_at` is older than ~5 minutes,
+   the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit.
+4. Print a one-line summary: which `tasks_open[]` items look
+   unblocked (`owner == "free"`, `blocked_by` resolves to `(none)`
+   or merged work) and not currently claimed in any open PR. To
+   cross-check against open PR titles / headRefNames, fall back to
+   `~/.fleet/state/state.json` `repos.engine.prs[]` (the slice only
+   carries feedback PRs, not all open PRs).
 
 ## Loop behavior
 
 Each invocation of this role is **one task iteration**. After the
 iteration completes (or after determining there's no work to do), exit
-cleanly. `fleet-babysit` then relaunches you with a **fresh `claude`
-process and an empty conversation**, so the next task starts with no
+cleanly. `fleet-dispatcher` then launches a fresh `claude`
+process with an empty conversation, so the next task starts with no
 context carried over from the prior task. This keeps each task's
 reasoning focused on its own files instead of accumulating noise from
 earlier work.
 
 Each iteration:
 
-0. **Write heartbeat** — signal to the witness monitor that this agent is alive:
-   `fleet-heartbeat <your-worktree-basename>`
-   (e.g. `fleet-heartbeat sonnet-fleet-1` — substitute the basename
-   from your `pwd` at startup. Wrapper script around
-   `touch ~/.fleet/heartbeats/<role>`. Using the helper instead of a
-   direct `touch` avoids the `~`-expansion path-scope prompt that
-   fires on the raw form.)
-   Also re-run `fleet-heartbeat <your-worktree-basename>` before
-   long-running steps (fleet-build, fleet-run, commit-and-push) to
-   prevent false staleness alerts during builds or PR actions.
+0. **Heartbeat.** See [docs/agents/FLEET-RUNTIME.md § Heartbeat](../../docs/agents/FLEET-RUNTIME.md#heartbeat--step-0).
+   Your worktree basename (e.g. `sonnet-fleet-1`, from `pwd` at startup)
+   is the helper argument. Re-touch before `fleet-build`, `fleet-run`,
+   and `commit-and-push`.
+
+0.5. **Reservation check.** See [docs/agents/FLEET-RUNTIME.md § Reservation check](../../docs/agents/FLEET-RUNTIME.md#reservation-check--step-05-workers-and-authors-only).
+   If `fleet-claim reservation-of <your-worktree-basename>` returns a
+   `T-NNN`, run steps 1 and 1b normally (feedback and smoke still
+   apply), then skip step 2's molecule resume + task pickup and step 3's
+   claim, and jump directly to **step 4 (read the plan file)** with the
+   reserved task ID. The PR from the previous iteration is still open;
+   do NOT open a new one.
 
 1. **Check for feedback labels on open PRs.** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
    conversation context. From `repos.engine.prs[]`, pick PRs whose
    `labels` array contains any of `human:needs-fix`,
-   `human:blocker`, `fleet:needs-fix`, `fleet:has-nits`. (Cached
-   equivalent of the previous `gh pr list ... --jq 'select(.labels
-   ...)'` chain — same filter, no API call.)
+   `human:blocker`, `fleet:needs-fix`, `fleet:has-nits`.
 
-   **Skip** PRs labeled `human:wip` — human is working on it directly.
-
-   **Priority order** (address one PR per iteration, oldest within each tier):
-   1. `human:needs-fix` / `human:blocker` — human review feedback, top priority
-   2. `fleet:needs-fix` — fleet review wants concrete fixes before merge
-   3. `fleet:has-nits` — PR is approved, but the reviewer flagged optional
-      improvements that should land before merge to keep code quality high.
-      The cost of a fix-and-push iteration is tiny vs merging with known
-      smells. Address every nit unless it's purely subjective preference.
-
-   **Filter the candidate set: skip PRs whose branch is already
-   checked out in another worktree.** A PR's branch can only be in
-   one worktree at a time (git refuses to share). After a fleet
-   kill+restart, the worker that originally opened a PR still has
-   its branch checked out — that worker should address the
-   feedback, not you. Trying anyway just earns a `gh pr checkout`
-   failure (`branch is already used by worktree at ...`) after
-   you've already invested reasoning.
-
-   List the busy branches with the shared helper. It reads
-   `git worktree list --porcelain` and emits one branch name per
-   line, excluding the caller's own worktree:
-   `fleet-worktree-busy-branches`
-
-   For each feedback PR in `repos.engine.prs[]`, match its
-   `headRefName` against the helper's output; skip the PR if its
-   head branch is in the set.
-
-   For each flagged PR (after the filter):
-   a. Read **all** feedback (two separate commands):
-      `gh pr view <N> --comments`
-      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'`
-      The first gets conversation-level comments. The second gets
-      inline review comments on specific lines — this is where most
-      human feedback lives. Address every comment, not just the first.
-
-      **For `fleet:has-nits`** (PR was approved, reviewer flagged
-      improvements): focus on the latest review's `### Nits` section.
-      Address every nit unless it's purely subjective preference. The
-      reviewer's "Nits" section is the comprehensive list — treat it
-      like a checklist.
-
-   a2. **For `human:needs-fix` / `human:blocker` only — decide
-       AMEND vs ESCALATE.** Two valid dispositions:
-
-       - **AMEND** (default): you'll fix the concerns inline in
-         this PR. The PR is being changed; merge should hold until
-         the reviewer re-approves. Continue with step b — the
-         existing flow handles this and step b will set
-         `fleet:human-amending` + clear `fleet:approved` to make
-         the "hold merge" state visible.
-
-       - **ESCALATE**: file a follow-up issue and leave this PR's
-         approval intact. Choose when:
-         - The concern is scope expansion (architect-level
-           redesign, follow-up feature)
-         - The concern is a downstream-PR dependency ("won't align
-           until T-X ships"), not a bug in THIS PR
-         - The fix needs Opus-tier reasoning and you're Sonnet
-         - The original review (Sonnet/Opus) explicitly deferred
-           the concern; the human is overriding that deferral and
-           the new direction belongs in its own design issue
-
-         Skip to the **ESCALATE path** below.
-
-       Default to AMEND when uncertain. ESCALATE is a deliberate
-       choice that needs justification in the linked issue.
-
-       **ESCALATE path:**
-       1. File the follow-up issue:
-          `gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"`
-          The body must include:
-          - **Context** — escalated from PR #<N>, list the human's
-            specific concerns (file:line for each)
-          - **Why escalating** — one paragraph: scope-expansion,
-            tier-mismatch, deferred-by-prior-review, etc.
-          - **Suggested model** — `[opus]` or `[sonnet]`
-          - **Suggested area** — module path
-          - **Suggested approach** — bullets, for the picker to
-            validate
-       2. Swap PR labels atomically — `fleet:changes-made` MUST be
-          added in the same call as `human:needs-fix` is removed to
-          prevent a labeless window the reviewer could mistake for a
-          missing verdict and re-apply `fleet:needs-fix` into:
-          `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --add-label "fleet:human-deferred" --add-label "fleet:changes-made"`
-       3. **Keep `fleet:approved`** — the PR is internally
-          consistent, the prior reviewer approval stands.
-          `fleet:human-deferred` signals: "agent acknowledged the
-          concerns, linked issue tracks them, human decides
-          whether to merge as-is or re-add `human:needs-fix` to
-          force amend mode."
-       4. Comment on the PR linking the issue:
-          `gh pr comment <N> --body "Escalated — filed issue #<M> for the <opus|sonnet> work. Concerns map to <one-line summary>. PR is internally OK to merge if you accept the deferral; re-add human:needs-fix to switch to AMEND mode. — sonnet-author"`
-       5. **Skip steps b–g.** Jump to step h (move to next
-          iteration). The PR's code is unchanged.
-
-   b. **(AMEND path)** **Immediately remove the feedback label** to
-      prevent another agent from also picking it up:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "human:blocker" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:human-deferred"`
-
-      For `human:needs-fix` / `human:blocker` specifically, also
-      mark the PR as in-progress and clear the prior approval so
-      the human knows to hold the merge:
-      `gh pr edit <N> --add-label "fleet:human-amending"`
-      `gh pr edit <N> --remove-label "fleet:approved"`
-      (Two separate calls — `fleet:approved` may not be present
-      and `gh pr edit --remove-label` returns non-zero when the
-      label is absent, which would abort a chained `--add-label`.
-      For `fleet:needs-fix` / `fleet:has-nits` paths, skip both —
-      reviewer-flagged feedback doesn't trigger the human-amending
-      state.)
-   c. Address every piece of feedback. Make the edits, build with
-      `fleet-build --target <name>`.
-   d. Push fixes using `commit-and-push`.
-   e. Swap the in-progress label for the done label and post a
-      summary:
-      - If it was `human:needs-fix` or `human:blocker` → swap
-        `fleet:human-amending` for `fleet:changes-made` (signals
-        BOTH the human AND the fleet reviewer to re-verify;
-        whichever picks it up first wins). Safe to combine in one
-        call — the removed label is guaranteed present (you set
-        it in step b):
-        `gh pr edit <N> --remove-label "fleet:human-amending" --add-label "fleet:changes-made"`
-      - If it was `fleet:needs-fix` → add `fleet:changes-made` so
-        the reviewer knows new commits arrived and should re-verify:
-        `gh pr edit <N> --add-label "fleet:changes-made"`
-      - If it was `fleet:has-nits` → no response label needed; the
-        existing `fleet:approved` stays valid (cleanups don't
-        invalidate the approval)
-      `gh pr comment <N> --body "Addressed feedback: <bullet list of what changed>"`
-   f. Remove stale fleet review labels (`fleet:needs-fix`,
-      `fleet:blocker`) if present — but **keep `fleet:approved`**.
-      The fleet's approval is still valid; human tweaks and nit
-      cleanups don't invalidate it. The reviewer will re-review only
-      if the stale labels triggered it.
-   g. **Propagate the upstream fix to any downstream branches in a
-      stacked chain.** Always run, after every feedback fix:
-      `fleet-claim molecule rebase-downstream <your-worktree-basename>`
-      (substitute the placeholder with the basename you discovered in
-      §1, e.g. `sonnet-fleet-1`). The subcommand
-      auto-detects the upstream task ID from the current branch
-      (`claude/T-NNN-…`) and is a graceful no-op if there's no
-      active molecule, the current branch isn't in one, or the
-      upstream is already the tail of the chain — so it is safe to
-      invoke unconditionally. When it does apply: it fetches the new
-      tip, rebases each downstream branch in molecule order,
-      force-pushes with `--force-with-lease`, and comments on each
-      downstream PR. A rebase conflict pauses the chain at that
-      task: the affected PR gets `fleet:blocker` + a comment,
-      remaining downstreams stay on the prior base, and the
-      subcommand exits non-zero — surface the failure to the human
-      and move on.
-   h. Move to the next loop iteration.
-
-   **Human feedback label cycle:** human adds `human:needs-fix` (+
-   comments) → agent picks up, decides AMEND vs ESCALATE per a2.
-
-   - **AMEND** (default): agent removes `human:needs-fix`, adds
-     `fleet:human-amending` + clears `fleet:approved`, works,
-     swaps `fleet:human-amending` for `fleet:changes-made` after
-     pushing. Either the human or the next-poll fleet reviewer
-     re-verifies (whichever first; reviewer removes the label on
-     pickup to avoid double-processing). Reviewer's re-approval
-     re-sets `fleet:approved`.
-   - **ESCALATE**: agent files a follow-up issue, atomically swaps
-     `human:needs-fix` for `fleet:human-deferred` + `fleet:changes-made`,
-     KEEPS `fleet:approved`. Human reviews the linked issue and either
-     accepts the deferral (PR ready to merge) or re-adds
-     `human:needs-fix` to force AMEND mode on the next iteration.
-
-   Human can add multiple comments before re-tagging; ALL are
-   picked up when the tag appears.
-
-   The merger has its own label for non-mechanical rebase
-   conflicts: `fleet:semantic-conflict`. That label is **not your
-   lane** — it's owned by the opus-worker (which has the budget +
-   the rebase + manual conflict resolution flow in its role doc).
-   You skip PRs with this label entirely. If the opus-worker also
-   can't resolve, IT escalates to `human:needs-fix`, which you DO
-   pick up via the normal cycle above.
-
-   **Fleet feedback cycle:** fleet reviewer adds `fleet:needs-fix` →
-   author removes it, fixes, pushes → fleet reviewer sees the new
-   commits on next poll and re-reviews.
+   Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
+   it owns the priority order, busy-branch filter, AMEND-vs-ESCALATE
+   decision, the AMEND-path step sequence (a–h), label cycles, and
+   the `fleet-pr-clear-feedback-labels` wrapper. Sonnet-author is
+   engine-only and does NOT handle `fleet:design-unblocked` (only
+   opus-worker originates design escalations). Sonnet-author also
+   does NOT handle `fleet:semantic-conflict` — that label is
+   opus-worker's lane via its step 1c rebase flow. Reserve the
+   worktree on the `human:needs-fix` / `human:blocker` AMEND paths
+   via the author-only `fleet-claim reserve` step.
 
    Address all flagged PRs before picking new work.
 
 1b. **Smoke-validate one cross-host render PR (engine only).** After
-    feedback PRs are clear, check whether any open engine PR is waiting
-    on a smoke validation from this host. Derive the host key from
-    `uname -s`:
-    - `Linux` → host key `linux`, poll `fleet:needs-linux-smoke`
-    - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
-
-    From the cached `repos.engine.prs[]`, pick PRs whose `labels`
-    array contains BOTH `fleet:needs-<host>-smoke` AND
-    `fleet:approved`, and contains NONE of `fleet:needs-fix`,
-    `fleet:blocker`, `human:wip`, `fleet:wip`,
-    `fleet:merger-cooldown`, `human:needs-fix`. (Cached equivalent
-    of the previous `gh pr list --label fleet:needs-<host>-smoke
-    ... --jq` chain — same filter, no API call.)
-
-    The filter keeps only PRs that are approved, not flagged for
-    fixes, and not claimed by the human. If the list is empty, skip
-    to step 2. Otherwise, pick the oldest (smallest number), then:
-    a. Re-touch heartbeat (`fleet-heartbeat <your-worktree-basename>`)
-       — the build can take minutes and you don't want the witness to
-       alarm.
-    b. Check out the PR: `gh pr checkout <N> --repo jakildev/IrredenEngine`
-    c. Build the demo smoke target: `fleet-build --target IRShapeDebug`.
-       If the PR breaks that build, the smoke has failed — jump to
-       step f with the build log.
-    d. Run the smoke: `fleet-run IRShapeDebug --auto-screenshot 10`.
-       The `10` is warmup-frame count; the creation's shot table
-       decides how many screenshots are taken, and `IRWindow::closeWindow()`
-       fires once they're done. Usually completes in 10–20 seconds.
-       Don't add `--timeout` — `fleet-run --timeout` reports "alive at
-       deadline" as success, which would mask an `--auto-screenshot`
-       hang.
-    e. If build + run both succeeded (no nonzero exit, no crash):
-       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-<host>-smoke"`
-       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke OK on <host> (fresh checkout build + IRShapeDebug --auto-screenshot 10)."`
-    f. If build or run failed: leave the smoke label on, post a
-       comment describing the failure, and add `fleet:needs-fix`:
-       `gh pr comment <N> --repo jakildev/IrredenEngine --body "Cross-host smoke FAILED on <host>: <one-line symptom>. Details: <attach log excerpt>"`
-       `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:approved" --remove-label "fleet:has-nits" --add-label "fleet:needs-fix"`
-    g. Reset to scratch branch before continuing:
-       `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
-       (e.g. `claude/sonnet-fleet-1-scratch` for the sonnet-fleet-1
-       worktree.)
-
-    Validate ONE PR per iteration. Multiple outstanding render PRs
-    are handled across successive iterations so task pickup isn't
-    starved by back-to-back smoke runs.
-
-    A Sonnet agent's host-smoke pass catches build breakage, nonzero
-    exit, crashes, and shader-compile errors in the run's stdout/stderr.
-    It does NOT inspect the generated screenshots — visual regressions
-    (missing voxels, inverted colors, black-but-exiting-clean) need
-    human or opus-worker eyes. If the run log mentions shader-compile
-    warnings/errors but still exits zero, escalate: comment "smoke run
-    exited clean but log flagged compile warnings; flagging for Opus
-    recheck" and leave the smoke label on so opus-worker re-validates.
+    feedback PRs are clear, run the author-side cross-host smoke
+    protocol per [`docs/agents/FLEET-CROSS-HOST-SMOKE.md`](../../docs/agents/FLEET-CROSS-HOST-SMOKE.md)
+    § "Author side: claiming + running". Sonnet is the
+    exit-code-bearing half of the protocol — see § "Sonnet-vs-Opus
+    split" § "What Sonnet escalates": do NOT inspect screenshots,
+    and escalate to opus-worker when the run log flags compile
+    warnings/errors but exits zero. Validate ONE PR per iteration;
+    skip to step 2 if no PR matches the filter.
 
 2. **Resume an active molecule first, then pick the next task.**
 
@@ -387,41 +127,19 @@ Each iteration:
 
    `fleet-claim molecule resume <your-worktree-name>`
 
-   This command always exits 0 (so it's safe to include in a parallel
-   tool batch with `git fetch`, `gh pr list`, etc.). Discriminate via
-   stdout:
+   See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Molecule
+   resume protocol" for the full discriminate-by-stdout flow, resume
+   vs restart judgment, and advance/complete commands. Sonnet-author
+   is engine-only, so the cross-repo (`--repo game`) notes in that
+   section don't apply.
 
-   - **Stdout has a `T-NNN` task ID** — that task is part of a stack
-     you started earlier (possibly in a previous process before a
-     crash). It is now (or remains) marked `in-progress`. Skip the
-     normal pickup flow and jump straight to step 4 ("Read the plan
-     file"), then continue to step 5 ("Work it") to begin working it.
-     If the task's PR is already open, `fleet-claim stack-pr-state
-     <your-worktree-name>` shows its URL and branch. Check out the
-     task's branch and continue committing normally — one task per
-     branch means the branch itself is the per-task anchor, so no
-     special commit-subject prefix is required.
-
-     **Resume vs restart judgment.** Read the worktree's git status:
-     - No work-in-progress on the branch matching that task ID →
-       **start the task fresh** as if newly claimed.
-     - Coherent partial work-in-progress → **resume from that state**;
-       previous process did real work, reuse it.
-     - Incoherent partial work (random dirty files, half-applied edits
-       to unrelated areas, mid-conflict markers) → discard with
-       `git restore --staged .` + `git checkout -- .` and start fresh.
-
-     After committing each task in the molecule, advance the state:
-     `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`
-     If you can't complete a task, use `failed` and surface to human.
-
-   - **Stdout is empty** — no work to resume. Either there's no
-     molecule for this agent (overwhelming common case) or the
-     molecule is fully done. Optionally call
-     `fleet-claim molecule complete <your-worktree-name>` to archive
-     a finished molecule (idempotent — exits 0 with a stderr note if
-     there's nothing to archive, so it's safe in any batch). Then
-     proceed with the normal pickup flow.
+   **Sonnet-author-specific routing:**
+   - **Stdout has a `T-NNN`** — skip normal pickup below and jump to
+     step 4 ("Read the plan file"), then continue to step 5 ("Work
+     it"); the task is already claimed via the molecule. After
+     committing, run
+     `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`.
+   - **Stdout is empty** — proceed with normal pickup below.
 
    **Normal pickup (no active molecule):** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
@@ -446,8 +164,25 @@ Each iteration:
    `[sonnet]` agent shouldn't pick `[opus]` tasks anyway). Otherwise
    the task is yours to claim.
 
-   **If no matching task exists, exit cleanly.** Print
-   `[sonnet-author] No unblocked [sonnet] tasks — standing by. Babysit will re-invoke.`
+   **If no matching unblocked task exists, try the fallback tier.**
+
+   **Fallback: stackable-blocked tasks (engine only, v1).** Look in
+   `repos.engine.tasks.open[]` for entries where `owner == "free"` (or
+   your worktree name), `model` contains `sonnet`, AND the entry has a
+   `stackable_blocker_pr` field. Only single-blocker tasks have this
+   field — the scout does not set it for tasks with multiple `Blocked by:`
+   entries (Q3 decision: multi-blocker not eligible in v1). Skip game-side
+   tasks — game stackable pickup is deferred to v2; check
+   `repo == "engine"` only. Pick the oldest eligible task by task ID.
+
+   If a stackable-blocked task is found, claim it with `--stackable-on`:
+   `fleet-claim claim "<task-id>" <your-worktree-name> --stackable-on <stackable_blocker_pr.number>`
+   where `<stackable_blocker_pr.number>` is the PR number from the scout's
+   `stackable_blocker_pr` object (the fleet-claim script accepts a number
+   or full URL). See step 3 for the branching flow.
+
+   **If neither tier yields a task, exit cleanly.** Print
+   `[sonnet-author] No unblocked or stackable-blocked [sonnet] tasks — standing by. Will re-fire on next dispatcher trigger.`
    and stop. Do NOT invent work, self-assign documentation passes,
    or create tasks outside the queue.
 
@@ -470,101 +205,30 @@ Each iteration:
      prints a diagnostic showing which blockers failed.
 
    **Stack claiming** (use sparingly — most sonnet tasks are
-   independent): If you find two tightly coupled `[sonnet]` tasks in
+   independent). If you find two tightly coupled `[sonnet]` tasks in
    a dependency chain, you can claim them atomically:
    `fleet-claim stack "T-002 T-004" <your-worktree-name>`
 
    Stack claim is all-or-nothing — if any task is already claimed or
    has unresolved external blockers, all are rolled back. Within the
    stack, earlier tasks satisfy later tasks' `Blocked by:` fields.
-   Work the stack **sequentially, one PR per task**, with each PR's
-   base set to the previous task's branch (true stacked PRs). Release
-   the chain with `fleet-claim release-stack <your-worktree-name>`
-   after the last PR merges. Prefer single claims unless the tasks
-   are genuinely coupled.
+   `stack` also writes a molecule file so step 2's molecule resume
+   can pick the chain back up after a crash. Release the chain with
+   `fleet-claim release-stack <your-worktree-name>` after the last
+   PR merges. Prefer single claims unless the tasks are genuinely
+   coupled.
 
-   **`stack` also writes a molecule file** (`~/.fleet/molecules/<your-
-   worktree-name>.yml`) so a crash mid-stack won't strand the
-   remaining tasks. Step 2's molecule check picks it back up on the
-   next iteration. As you complete each task, run
-   `fleet-claim molecule advance` so the molecule reflects reality;
-   `release-stack` archives the molecule when you're done.
+   See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Per-task
+   stacked PR command sequence" for the per-task branching, PR
+   creation, title/body template, post-merge rebase, and feedback
+   flow. As you complete each task in the chain, run
+   `fleet-claim molecule advance` so the molecule reflects reality.
 
-   **Stacked PR flow (REQUIRED):** each task in the chain gets its
-   own branch and its own PR, with each PR's `--base` pointing at the
-   previous task's branch. GitHub treats these as "stacked PRs":
-   reviewers approve each one independently, and when an earlier PR
-   merges, the next PR's base auto-rebases to master.
-
-   For the current task in the stack (first `(pending)` row in
-   `fleet-claim stack-pr-state <your-worktree-name>`):
-
-   1. **Compute the base branch** for this PR:
-      `base=$(fleet-claim stack-base <your-worktree-name> <task-id>)`
-      — returns `master` for the first task, or the previous task's
-      branch (e.g. `claude/T-002-lua-bindings`) for subsequent tasks.
-   2. **Branch off that base:**
-      `git fetch origin "$base"`
-      `git checkout -b claude/<task-id>-<short-topic> "origin/$base"`
-      (e.g. `claude/T-002-lua-bindings`, `claude/T-004-lua-tests`).
-   3. Do the task's work in that branch. Commit as normal — no
-      special commit-subject prefix is required anymore; one task per
-      branch means the branch name IS the per-task anchor.
-   4. Open the PR with `--base "$base"` and record it in the stack.
-      When `$base` is a feature branch (i.e. not `master`), add
-      `--label "fleet:stacked"` so the merger and reviewer can filter
-      by label without an extra `gh pr view --json baseRefName` call:
-      `gh pr create --base "$base" --title "T-<NNN>: <title>" --body "..." --label "fleet:wip" --label "fleet:stacked"`
-      `fleet-claim stack-set-pr <your-worktree-name> <task-id> "$(git branch --show-current)" "<pr-url>"`
-      For the first task in the chain (`$base == master`), omit the
-      `fleet:stacked` label — that PR merges into master normally.
-
-   **Stacked PR title + body format:** start the PR title with the
-   task ID so reviewers can tell which task in the chain this PR
-   covers. The body includes a `Stacked on:` line pointing at the
-   previous PR (or `master` for the first) so reviewers see the
-   stack context immediately.
-
-   ```markdown
-   ## Summary
-   - <what this task does>
-
-   ## Stack context
-   Stacked on: <previous PR URL, or "master" for the first>
-   Full chain: T-002 → T-004
-
-   ## Test plan
-   - [ ] <task-specific checks>
-
-   Closes #<issue-N>
-   ```
-
-   The `commit-and-push` skill's "Stack-aware mode" section walks
-   through the branch + PR creation; let it drive — it already knows
-   to call `stack-base` and `stack-set-pr`.
-
-   **When an earlier PR in the stack merges:** GitHub auto-rebases
-   the next PR's base to master. Pull the latest master into the
-   next branch before continuing work on it:
-   `git fetch origin master`
-   `git rebase origin/master`
-   Force-push with `--force-with-lease` (never `--force`). The
-   reviewer's approval on the unchanged commits carries over unless
-   a conflict actually modified them.
-
-   **For single-task claims**, create the branch, commit, and open a
-   `fleet:wip` PR normally:
-   `git checkout -b claude/<area>-<topic>`
-   `git commit --allow-empty -m "claim: <task title>"`
-
-   Check the task's **Issue:** field. If it has a `#N` reference,
-   include `Closes #N` in the PR body so the issue closes
-   automatically when the PR merges:
-   `gh pr create --title "<task title>" --body "Claiming task. Work in progress.\n\nCloses #N" --label "fleet:wip"`
-   If there is no issue (`(none)`), omit the `Closes` line.
-
-   Reference the task title in the PR title so the queue-manager can
-   match it.
+   **Single-task base resolution** (normal claim or stackable-on
+   fallback) — see [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
+   "Single-task base resolution (`claim-base`)" for the `claim-base`
+   command, base-branching, claim commit, and PR-creation snippets
+   (covers both the `master`-base and stackable-on cases).
 
 4. **Read the plan file (if it exists).** Check these paths in order:
    - `.fleet/plans/<task-ID>.md` (repo copy, synced from master)
@@ -573,8 +237,12 @@ Each iteration:
    If any exists, read it with the Read tool — it contains the
    implementation approach, affected files, and gotchas. Use it to
    guide your work. If no plan file exists at any path, read the
-   issue thread for the plan comment:
-   `gh issue view <N> --repo jakildev/IrredenEngine`
+   **full issue thread** (body + every comment — the plan is often
+   posted as a comment, and the human may have left scope refinements
+   there too) via the cache-aware wrapper:
+   `fleet-issue view <N>` (engine; for game issues add `--repo game`).
+   Do **not** fall back to bare `gh issue view <N>` — it omits comments
+   by default and silently drops the plan.
 
 5. **Work it.** Read every `CLAUDE.md` on the path to the file(s) you
    touch first. Follow naming conventions, the no-`getComponent`-in-tick
@@ -609,7 +277,7 @@ Each iteration:
    - Lifetime/ownership decisions
 
    STOP. File a GitHub issue for the opus work (no labels — see
-   CLAUDE.md "Issue/PR labeling discipline") and note the escalation
+   [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline") and note the escalation
    on your PR:
    `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
    Then comment on your PR: "escalated — filed issue #N for opus".
@@ -688,25 +356,23 @@ Each iteration:
    `fleet-claim release "<task ID, e.g. T-002>"`
    Paste the PR URL.
 
-11. **Reset and exit cleanly.** Before resetting, write a per-iteration
-   summary so `fleet-down --summary` has coverage even if the pane is
-   between iterations at shutdown:
+11. **Reset and exit cleanly.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
+   Summary template:
    `fleet-iteration-summary <your-worktree-basename> "T-NNN: <task title>. PR: #<N>. <Snags if any — under 100 words.>"`
-
-   Then use the `start-next-task` skill to land on a fresh branch off
-   `origin/master`. Print
-   `[sonnet-author] Iteration complete. Exiting; babysit will relaunch with fresh context.`
-   Then exit cleanly (do NOT loop back to step 1 inside this same
-   `claude` session — `fleet-babysit` handles the relaunch with a
-   clean conversation).
+   Then `fleet-claim release-worktree <your-worktree-basename>`
+   (release BEFORE the scratch reset, per #521), then `start-next-task`
+   to land on a fresh branch off `origin/master`. Print
+   `[sonnet-author] Iteration complete. Will re-fire on next dispatcher trigger.`
+   and exit cleanly — do NOT loop back to step 1 inside this same
+   `claude` session.
 
 ## Mode behavior
 
 The Mode argument at the top of this file is one of `dry-run`, `live`,
-or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
+or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 
 - **`live`** (full operation): each iteration runs steps 0–11 above,
-  then exits. fleet-babysit relaunches with fresh context.
+  then exits. fleet-dispatcher launches a fresh claude when scout sees actionable state.
 
 - **`dry-run`** (default): do exactly **one** task end-to-end (steps
   1–11), print the PR URL, then stop and wait for human instruction.
@@ -715,6 +381,11 @@ or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
 - **`review-only`** (close-out mode): conserves credit by closing out
   in-flight work without expanding the queue. Each iteration runs:
   - Step 0 (heartbeat)
+  - Step 0.5 (reservation check — checkout reserved branch if found;
+    in review-only mode, check out the reserved branch so step 1
+    feedback applies to the right PR, but do NOT jump to step 4 —
+    exit after step 1b as normal; the reservation persists until the
+    next live-mode iteration resumes the task)
   - Step 1 (address feedback labels on open PRs)
   - Step 1b (cross-host smoke validation on approved render PRs)
 
@@ -726,7 +397,8 @@ or `review-only` (passed by `fleet-babysit` from `fleet-up`'s mode arg).
   If step 1 finds no flagged PRs and step 1b finds no smoke-pending
   PRs, print
   `[sonnet-author] review-only: nothing to address this iteration.`
-  and exit. fleet-babysit will relaunch you on the normal cadence.
+  and exit. fleet-dispatcher will re-fire when scout sees new
+  actionable state.
 
 ## Usage-limit handling
 
@@ -745,47 +417,10 @@ about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
 `~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
 `~/.fleet/feedback/sonnet-fleet-1.md`). Per-worktree filename so
-the human can tell which sonnet pane observed what. See top-level
-`CLAUDE.md` "Fleet feedback channel" for the format and the bar
+the human can tell which sonnet pane observed what. See
+[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
 (high — most iterations write nothing).
 
 ## Hard rules
 
-- Never `git push origin master`. Never `--force`. Never call
-  `gh pr merge`. The human merges.
-- Never run `cmake --preset` — only `cmake --build` against the
-  already-configured tree.
-- Never touch the `.claude/worktrees/` layout.
-- Never use `sudo`, `brew install/upgrade/uninstall`, `apt`, or
-  `xcode-select` — those are human-initiated.
-- **Never leave dirty edits uncommitted at the end of an iteration.**
-  If you made any changes to the working tree — manual edits, edits
-  that simplify applied, fixes from optimize, anything — you MUST
-  follow with `commit-and-push` to land them. The next iteration's
-  branch switch will discard them. If `simplify` ran and reported
-  fixes applied but you didn't proceed to commit, that's the bug:
-  finish the flow. Don't invoke `simplify` standalone — let
-  `commit-and-push` invoke it for you, so the commit step is
-  guaranteed to follow.
-- **`.fleet/status/*.md` is queue-manager-owned bookkeeping**, like
-  `TASKS.md`. Read when a CLAUDE.md pointer directs you to one;
-  never include them in a feature PR's diff. Canonical explanation
-  in `.fleet/status/README.md`.
-- **Edit/Write paths must stay inside your worktree.** The parent
-  clone at `/Users/evinjkill/src/IrredenEngine/` (no `.claude/worktrees/`
-  in the path) and your worktree at
-  `.../.claude/worktrees/<your-basename>/` both contain the same tree
-  shape, so an Edit aimed at the parent's absolute path will succeed
-  silently — but your build runs against the worktree, so the edit
-  appears to "do nothing" while quietly orphaning changes in the
-  parent clone (potentially clobbering another agent's work). Prefer
-  relative paths from your worktree's cwd. If you must use an
-  absolute path, it MUST start with
-  `/Users/evinjkill/src/IrredenEngine/.claude/worktrees/<your-basename>/`.
-  Re-confirm with `pwd` if unsure.
-- Single-command Bash only (see CRITICAL section above).
-- **Edit/Write blocked for `.claude/commands/` files?** The harness
-  permission gate blocks these paths even with `Edit(*)`/`Write(*)`
-  in the allowlist. Use python3 for OS-level writes (sanctioned via
-  `Bash(python3:*)` in the allowlist):
-  `python3 -c "f=open(path).read(); assert old in f, 'string not found'; open(path, 'w').write(f.replace(old, new, 1))"`
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).

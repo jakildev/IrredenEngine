@@ -36,12 +36,45 @@ GAME = ENGINE / "creations" / "game"
 STATE_DIR = Path.home() / ".fleet" / "state"
 TRIGGERS_DIR = STATE_DIR / "triggers"
 SEEN_DIR = STATE_DIR / "seen-hashes"
+PROJECTIONS_DIR = STATE_DIR / "projections"
+PRS_DIR = STATE_DIR / "prs"
+DIFFS_DIR = STATE_DIR / "diffs"
+ISSUES_DIR = STATE_DIR / "issues"
 PID_FILE = STATE_DIR / "scout.pid"
 STATE_FILE = STATE_DIR / "state.json"
 SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
 
-POLL_SECONDS_DEFAULT = 60
+# Canonical short keys used in the cache layout. The keys match the
+# `repos.<key>` slots in state.json so consumers can read the per-PR
+# / per-issue files using the same name they already use for the
+# list-shaped cache.
+REPO_KEY_TO_SLUG = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+# Default poll cadence. Workers are transient now (each iteration is a
+# fresh `claude --print` process spawned by fleet-dispatcher when the
+# scout writes a per-role trigger). The scout's interval is therefore
+# the dominant component of "external state changed → worker fires"
+# latency; under the babysit model workers held context between ticks
+# and could self-pace, but here a 60 s interval was producing ~90 s
+# pickup latency and visibly idle panes. 30 s halves the latency and
+# stays well under GitHub's 5000-req/hr authenticated rate limit even
+# with the per-tick fan-out (the throttled max_workers=2 fetcher caps
+# burst).
+POLL_SECONDS_DEFAULT = 30
 GH_TIMEOUT_SECONDS = 30
+
+# Cap concurrent gh calls and stagger their submission to avoid GitHub's
+# secondary rate limit on private repos. The first tick used to fire all
+# 8 fetches in parallel against a cold token, which on private-repo
+# accounts is enough to trip the per-IP burst limit. With max_workers=2
+# and a 250 ms inter-submit gap the first tick takes ~2 s longer but
+# starts cleanly; pane startup already waits for state.json so the
+# extra latency is invisible to consumers.
+FETCH_MAX_WORKERS = 2
+FETCH_SUBMIT_GAP_SECONDS = 0.25
 
 TERMINATE = threading.Event()
 
@@ -115,12 +148,22 @@ def fetch_prs(repo):
 
 _ALREADY_QUEUED_LABELS = frozenset({"fleet:queued"})
 
+# Labels that mark issues the queue-manager role doc explicitly skips at
+# Step 5 — filter these out of the ingest projector/slicer so epics and
+# un-planned issues never hold the projection hash non-zero.
+_INGEST_SKIP_LABELS = frozenset({
+    "fleet:queued",      # pre-filtered by fetch_human_approved, included for explicitness
+    "fleet:epic",
+    "fleet:needs-plan",
+    "fleet:needs-info",
+})
+
 
 def fetch_issues_by_label(repo, filter_label, exclude_labels=None):
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
         "--label", filter_label, "--state", "open",
-        "--json", "number,title,labels",
+        "--json", "number,title,labels,updatedAt",
     ])
     if out is None:
         return []
@@ -144,6 +187,72 @@ def fetch_needs_plan(repo):
 def fetch_human_approved(repo):
     # Exclude already-ingested issues to avoid re-triggering queue-manager.
     return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS)
+
+
+def fetch_closed_fleet_queued(repo, limit=100):
+    # Closed fleet:queued issues whose TASKS.md row hasn't been flipped to [x]
+    # yet. --limit caps API cost; recently-closed issues are returned first.
+    # 100 covers the realistic backlog window — observed 2026-05-19 that the
+    # original 20-item cap missed strands like T-166 (#663) which closed
+    # 2026-05-12 and stayed in TASKS.md `## Open` while ~40 fleet:queued
+    # issues closed after it. The renderer's closed-issue reaper consumes
+    # this slice; missing entries strand rows in Open until they're swept
+    # manually.
+    out = run_capture([
+        "gh", "issue", "list", "--repo", repo,
+        "--label", "fleet:queued", "--state", "closed",
+        "--limit", str(limit),
+        "--json", "number,title,labels,updatedAt",
+    ])
+    if out is None:
+        return []
+    try:
+        issues = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh issue list {repo} --label fleet:queued --state closed: bad JSON: {e}")
+        return []
+    for issue in issues:
+        issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
+    issues.sort(key=lambda issue: issue.get("number", 0))
+    return issues
+
+
+def fetch_recent_merged_prs(repo, limit=30):
+    # Most recent N merged PRs, used by the queue-manager projection so a
+    # fresh merge changes the projection hash and fires queue-manager via
+    # the normal scout-driven trigger path. Without this signal,
+    # queue-manager's projection was insensitive to PR-merge events that
+    # don't also close a fleet:queued issue (e.g. fleet-tooling PRs that
+    # don't have a tracked issue), and the dispatcher had to fall back on
+    # an unconditional 5-minute re-arm to avoid stranding the queue —
+    # burning ~30s of sonnet credit every 5 min indefinitely.
+    #
+    # Window is fixed-size by count, not by time, so the projection is
+    # quiescent when no new PRs merge — no sliding-window churn that
+    # would cause spurious re-fires every poll cycle.
+    #
+    # baseRefName is included so the queue-manager (and its eventual
+    # renderer) can detect merged-to-non-master PRs (the PR #543 stranded
+    # branch pattern from 2026-05-08), where mergedAt is set but the
+    # commit isn't reachable from origin/master.
+    out = run_capture([
+        "gh", "pr", "list", "--repo", repo, "--state", "merged",
+        "--limit", str(limit),
+        # headRefName feeds the downstream Done-section renderer's
+        # Owner field — the queue-manager projection itself doesn't
+        # diff on it, but the slicer passes the full record through
+        # to ~/.fleet/state/projections/queue-manager.json.
+        "--json", "number,title,headRefName,baseRefName,mergedAt",
+    ])
+    if out is None:
+        return []
+    try:
+        prs = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh pr list {repo} --state merged: bad JSON: {e}")
+        return []
+    prs.sort(key=lambda pr: pr.get("number", 0))
+    return prs
 
 
 TASK_HEADER_RE = re.compile(r"^- \[([ ~x!])\] \*\*(.+?)\*\*\s*(?:—\s*(.*))?$")
@@ -202,6 +311,282 @@ def fetch_tasks(repo_root):
     return parse_tasks_md(out or "")
 
 
+# ---------------------------------------------------------------------------
+# Per-PR / per-issue detail cache
+#
+# The list-shaped state.json covers the queries every role makes at startup
+# (open PRs + their labels, issue lists, parsed TASKS.md). Per-item drill-in
+# (full PR body, comment timeline, inline review comments, raw diff, full
+# issue body+comments) used to be live `gh` calls fired per-role per-iteration
+# — the largest remaining token + API cost on the agent side. Scout now
+# fetches that detail once per state change and caches it on disk so every
+# reader is a Read-tool call instead of a gh subprocess.
+#
+# Layout:
+#   ~/.fleet/state/prs/<repo_key>/<N>.json       — full PR detail + inline comments
+#   ~/.fleet/state/diffs/<repo_key>/<N>-<sha>.diff — raw `gh pr diff` text
+#   ~/.fleet/state/issues/<repo_key>/<N>.json    — full issue body + comments
+#
+# `<repo_key>` is the short name (`engine` or `game`) used in state.json,
+# not the github slug, so consumers only ever traffic in one identifier.
+#
+# Refresh policy: only refetch when `updatedAt` from the list query changed
+# (per-PR / per-issue) or `headRefOid` changed (diff). Stable items cost
+# zero per-tick API calls.
+#
+# GC policy: on each tick, any cached file whose number/SHA is no longer in
+# the current list is deleted. PRs that close drop off the open-PR list,
+# their cache files (and all old-SHA diffs) get cleaned up automatically.
+# ---------------------------------------------------------------------------
+
+
+def fetch_pr_view(repo_slug, pr_number):
+    out = run_capture([
+        "gh", "pr", "view", str(pr_number), "--repo", repo_slug,
+        "--json", "number,headRefOid,body,comments,reviews,files,updatedAt",
+    ])
+    if out is None:
+        return None
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh pr view {repo_slug}#{pr_number}: bad JSON: {e}")
+        return None
+
+
+def fetch_pr_inline_comments(repo_slug, pr_number):
+    # Inline review comments live on a different endpoint than `gh pr view`'s
+    # `comments`/`reviews` fields. Reviewers walking a flagged PR want both.
+    out = run_capture([
+        "gh", "api", f"repos/{repo_slug}/pulls/{pr_number}/comments",
+    ])
+    if out is None:
+        return []
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh api .../pulls/{pr_number}/comments: bad JSON: {e}")
+        return []
+
+
+def fetch_pr_diff(repo_slug, pr_number):
+    return run_capture([
+        "gh", "pr", "diff", str(pr_number), "--repo", repo_slug,
+    ])
+
+
+def fetch_issue_detail(repo_slug, issue_number):
+    out = run_capture([
+        "gh", "issue", "view", str(issue_number), "--repo", repo_slug,
+        "--json", "number,title,body,comments,labels,updatedAt,state",
+    ])
+    if out is None:
+        return None
+    try:
+        detail = json.loads(out)
+    except json.JSONDecodeError as e:
+        log(f"gh issue view {repo_slug}#{issue_number}: bad JSON: {e}")
+        return None
+    detail["labels"] = sorted(lbl["name"] for lbl in detail.get("labels", []))
+    return detail
+
+
+def _read_cached_updated_at(path):
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        return None
+    try:
+        return json.loads(text).get("updatedAt") or None
+    except json.JSONDecodeError:
+        return None
+
+
+def refresh_pr_detail(repo_key, pr_summary):
+    # Returns (refetched_pr, refetched_diff) booleans for logging.
+    repo_slug = REPO_KEY_TO_SLUG[repo_key]
+    pr_number = pr_summary["number"]
+    list_updated_at = pr_summary.get("updatedAt") or None
+
+    pr_dir = PRS_DIR / repo_key
+    pr_path = pr_dir / f"{pr_number}.json"
+    cached_updated_at = _read_cached_updated_at(pr_path)
+
+    refetched_pr = False
+    refetched_diff = False
+    head_oid = None
+
+    if cached_updated_at != list_updated_at:
+        view = fetch_pr_view(repo_slug, pr_number)
+        if view is not None:
+            view["inlineComments"] = fetch_pr_inline_comments(repo_slug, pr_number)
+            view["_cached_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            pr_dir.mkdir(parents=True, exist_ok=True)
+            write_atomic(pr_path, json.dumps(view, indent=2, sort_keys=True) + "\n")
+            head_oid = view.get("headRefOid")
+            refetched_pr = True
+    else:
+        # Read the cached file to extract headRefOid for the diff freshness check.
+        try:
+            head_oid = json.loads(pr_path.read_text()).get("headRefOid")
+        except (FileNotFoundError, json.JSONDecodeError):
+            head_oid = None
+
+    if head_oid:
+        diff_dir = DIFFS_DIR / repo_key
+        diff_path = diff_dir / f"{pr_number}-{head_oid}.diff"
+        if not diff_path.exists():
+            diff_text = fetch_pr_diff(repo_slug, pr_number)
+            if diff_text is not None:
+                diff_dir.mkdir(parents=True, exist_ok=True)
+                write_atomic(diff_path, diff_text)
+                refetched_diff = True
+
+    return refetched_pr, refetched_diff
+
+
+def refresh_issue_detail(repo_key, issue_summary):
+    repo_slug = REPO_KEY_TO_SLUG[repo_key]
+    issue_number = issue_summary["number"]
+    list_updated_at = issue_summary.get("updatedAt") or None
+
+    issue_dir = ISSUES_DIR / repo_key
+    issue_path = issue_dir / f"{issue_number}.json"
+    cached_updated_at = _read_cached_updated_at(issue_path)
+    if cached_updated_at == list_updated_at:
+        return False
+
+    detail = fetch_issue_detail(repo_slug, issue_number)
+    if detail is None:
+        return False
+    detail["_cached_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    issue_dir.mkdir(parents=True, exist_ok=True)
+    write_atomic(issue_path, json.dumps(detail, indent=2, sort_keys=True) + "\n")
+    return True
+
+
+def gc_pr_caches(repo_key, current_pr_numbers, current_head_oids):
+    # current_pr_numbers: set of int; current_head_oids: dict{number: sha}.
+    # Delete per-PR JSON for closed PRs, and old-SHA diffs for rebased PRs.
+    pr_dir = PRS_DIR / repo_key
+    if pr_dir.exists():
+        for path in pr_dir.glob("*.json"):
+            try:
+                number = int(path.stem)
+            except ValueError:
+                continue
+            if number not in current_pr_numbers:
+                path.unlink(missing_ok=True)
+
+    diff_dir = DIFFS_DIR / repo_key
+    if diff_dir.exists():
+        for path in diff_dir.glob("*.diff"):
+            stem_parts = path.stem.split("-", 1)
+            if len(stem_parts) != 2:
+                continue
+            try:
+                number = int(stem_parts[0])
+            except ValueError:
+                continue
+            sha = stem_parts[1]
+            if number not in current_pr_numbers:
+                # PR is closed/merged — drop all its diffs.
+                path.unlink(missing_ok=True)
+            elif number in current_head_oids and current_head_oids[number] != sha:
+                # PR is open but rebased to a new SHA — drop the old diff.
+                # If the PR is open but missing from current_head_oids (the
+                # per-PR JSON refetch failed this tick), keep the diff
+                # rather than orphan it.
+                path.unlink(missing_ok=True)
+
+
+def gc_issue_caches(repo_key, current_issue_numbers):
+    issue_dir = ISSUES_DIR / repo_key
+    if not issue_dir.exists():
+        return
+    for path in issue_dir.glob("*.json"):
+        try:
+            number = int(path.stem)
+        except ValueError:
+            continue
+        if number not in current_issue_numbers:
+            path.unlink(missing_ok=True)
+
+
+def refresh_all_details(state):
+    # Fan out per-PR and per-issue refreshes through the same throttled pool
+    # the list queries use, so the combined per-tick burst stays bounded.
+    jobs = []
+    for repo_key, repo_state in state["repos"].items():
+        if repo_key not in REPO_KEY_TO_SLUG:
+            continue
+        for pr in repo_state.get("prs", []):
+            jobs.append(("pr", repo_key, pr))
+        for issue in repo_state.get("needs_plan", []):
+            jobs.append(("issue", repo_key, issue))
+        for issue in repo_state.get("human_approved", []):
+            jobs.append(("issue", repo_key, issue))
+
+    pr_refreshed = 0
+    diff_refreshed = 0
+    issue_refreshed = 0
+
+    if not jobs:
+        return
+
+    with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
+        futures = {}
+        for i, job in enumerate(jobs):
+            if i > 0:
+                time.sleep(FETCH_SUBMIT_GAP_SECONDS)
+            kind, repo_key, item = job
+            if kind == "pr":
+                futures[ex.submit(refresh_pr_detail, repo_key, item)] = job
+            else:
+                futures[ex.submit(refresh_issue_detail, repo_key, item)] = job
+        for fut in as_completed(futures):
+            job = futures[fut]
+            try:
+                result = fut.result()
+            except Exception as e:
+                log(f"detail fetch {job[0]} {job[1]}#{job[2]['number']}: {e}")
+                continue
+            if job[0] == "pr":
+                refetched_pr, refetched_diff = result
+                if refetched_pr:
+                    pr_refreshed += 1
+                if refetched_diff:
+                    diff_refreshed += 1
+            elif result:
+                issue_refreshed += 1
+
+    # GC after all refreshes so closed PRs / merged issues are cleaned up.
+    for repo_key, repo_state in state["repos"].items():
+        if repo_key not in REPO_KEY_TO_SLUG:
+            continue
+        pr_numbers = {pr["number"] for pr in repo_state.get("prs", [])}
+        head_oids = {}
+        for pr in repo_state.get("prs", []):
+            number = pr["number"]
+            cached_path = PRS_DIR / repo_key / f"{number}.json"
+            try:
+                head_oids[number] = json.loads(cached_path.read_text()).get("headRefOid")
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+        gc_pr_caches(repo_key, pr_numbers, head_oids)
+        issue_numbers = {
+            i["number"]
+            for i in repo_state.get("needs_plan", []) + repo_state.get("human_approved", [])
+        }
+        gc_issue_caches(repo_key, issue_numbers)
+
+    if pr_refreshed or diff_refreshed or issue_refreshed:
+        log(
+            f"detail refresh: prs={pr_refreshed} diffs={diff_refreshed} "
+            f"issues={issue_refreshed}"
+        )
+
+
 def stable_hash(obj):
     payload = json.dumps(obj, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
@@ -230,9 +615,52 @@ RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
+# Single-T-NNN blocker. Reject multi-blocker (`T-101, T-102`), free-text
+# (`refactor lands`), and PR-URL (`https://...`) forms — all of which
+# the cross-author stacking flow can't resolve to one upstream branch
+# (multi-blocker decision deferred to v2 per T-110 plan Q3).
+SINGLE_TASK_BLOCKER_RE = re.compile(r"^T-\d{3}$")
+
 
 def model_tags(task):
     return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
+
+
+def enrich_stackable_blocker_prs(state):
+    # Per T-110 PR 2: for each task whose blocked_by is exactly one T-NNN
+    # ID with exactly one matching open PR (head ref `claude/T-NNN-…`)
+    # in the same repo, attach a `stackable_blocker_pr` field carrying
+    # {number, headRefName, author}. Workers (T-114) read this to decide
+    # whether to fall through to a stackable claim when no unblocked
+    # tasks are free.
+    #
+    # The field is always omitted when:
+    #   - blocked_by isn't a single T-NNN (multi-blocker, free-text, URL)
+    #   - zero open PRs match the expected branch prefix (blocker not
+    #     yet started, or already merged and dropped from open list)
+    #   - more than one open PR matches (rare but possible if a stale
+    #     branch lingers — caller can't pick one safely)
+    #
+    # Engine and game tasks are both enriched; worker pickup only honors
+    # the field for engine in v1 (the merger's cascade-rebase doesn't
+    # process game PRs yet) — that gating lives in the role doc.
+    for repo_state in state["repos"].values():
+        prs = repo_state.get("prs", [])
+        for task in repo_state.get("tasks", {}).get("open", []):
+            blocked_by = (task.get("blocked_by") or "").strip()
+            if not SINGLE_TASK_BLOCKER_RE.match(blocked_by):
+                continue
+            prefix = f"claude/{blocked_by}-"
+            matches = [pr for pr in prs
+                       if pr.get("headRefName", "").startswith(prefix)]
+            if len(matches) != 1:
+                continue
+            pr = matches[0]
+            task["stackable_blocker_pr"] = {
+                "number": pr["number"],
+                "headRefName": pr["headRefName"],
+                "author": pr.get("author", ""),
+            }
 
 
 def project_sonnet_author(state):
@@ -305,6 +733,21 @@ def project_opus_reviewer(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _needs_flip_entries(repo_state):
+    # Yield (task_id, issue_num) for [~] tasks whose linked fleet:queued issue
+    # closed (PR merged) but TASKS.md hasn't been flipped to [x] yet.
+    closed_queued_nums = {
+        i["number"] for i in repo_state.get("closed_fleet_queued", [])
+    }
+    for task in repo_state.get("tasks", {}).get("open", []):
+        if task.get("status") != "~":
+            continue
+        issue_ref = task.get("issue") or ""
+        m = re.match(r"#(\d+)", issue_ref)
+        if m and int(m.group(1)) in closed_queued_nums:
+            yield task.get("id") or task.get("title"), int(m.group(1))
+
+
 def project_queue_manager(state):
     items = []
     for repo, repo_state in state["repos"].items():
@@ -317,20 +760,106 @@ def project_queue_manager(state):
         for task in repo_state.get("tasks", {}).get("done", []):
             items.append({"kind": "done", "repo": repo,
                           "id": task.get("id") or task.get("title")})
+        for task_id, issue_num in _needs_flip_entries(repo_state):
+            items.append({"kind": "needs_flip", "repo": repo,
+                          "task_id": task_id, "issue": issue_num})
+        # Recently-merged PRs feed the projection hash so a fresh merge
+        # fires queue-manager's trigger via update_role_trigger, even when
+        # the merge doesn't close a fleet:queued issue. Fixed-size window
+        # (no time filter) keeps the projection quiescent when no new PRs
+        # merge — see fetch_recent_merged_prs for rationale.
+        for pr in repo_state.get("recent_merged_prs", []):
+            items.append({"kind": "merged_pr", "repo": repo,
+                          "pr": pr["number"],
+                          "base": pr.get("baseRefName", "")})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _merger_action_signal(labels, mergeable, base_ref):
+    """Canonical signal for whether the merger has actionable work on a PR.
+
+    Returns one of:
+        "merge-ready"      — fleet:approved + MERGEABLE + base==master + no skip
+        "needs-resolve"    — approved but CONFLICTING / UNSTABLE / BEHIND
+        "stacked-pending"  — approved and base != master (or fleet:stacked)
+        None               — merger has no action right now (skip)
+
+    The signal is computed from durable labels and `mergeable` only.
+    Transient self-set labels the merger toggles on its own iterations
+    (`fleet:merger-cooldown`, `fleet:awaiting-base`,
+    `fleet:needs-base-update`, `fleet:stacked-rebase`,
+    `fleet:changes-made`, `fleet:semantic-conflict`) are intentionally
+    NOT inputs — including them turned the projection hash into a
+    self-trigger loop: the merger fired, toggled its cooldown,
+    re-fired itself on the next scout tick. Observed live 2026-05-09
+    burning ~$2/10min on idle state.
+
+    `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` are also
+    skip signals — the merger isn't the agent that resolves those;
+    a smoke-runner clears them. Including them as merger candidates
+    just makes the merger fire repeatedly to find nothing to do.
+    """
+    skip = labels & {
+        "fleet:wip", "human:wip", "fleet:blocker",
+        "fleet:fork-of-other-pr", "fleet:design-blocked",
+        "fleet:needs-info", "fleet:needs-linux-smoke",
+        "fleet:needs-macos-smoke",
+    }
+    if skip:
+        return None
+    approved = "fleet:approved" in labels
+    if mergeable in ("CONFLICTING", "UNSTABLE", "BEHIND") and approved:
+        return "needs-resolve"
+    if approved and mergeable == "MERGEABLE" and base_ref == "master":
+        return "merge-ready"
+    if approved and (base_ref != "master" or "fleet:stacked" in labels):
+        return "stacked-pending"
+    return None
+
+
 def project_merger(state):
+    """Hash-input projection: contains only stable signals so the merger
+    doesn't self-trigger on its own label toggles. Slicer (slice_merger)
+    still emits the full PR record for the role to consume."""
     items = []
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            mergeable = pr.get("mergeable")
-            approved = "fleet:approved" in labels
-            blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
-            if approved or blocked:
-                items.append({"repo": repo, "pr": pr["number"],
-                              "mergeable": mergeable, "labels": pr["labels"]})
+            signal = _merger_action_signal(
+                labels, pr.get("mergeable"), pr.get("baseRefName", "master")
+            )
+            if signal is None:
+                continue
+            items.append({"repo": repo, "pr": pr["number"], "signal": signal})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+def project_queue_manager_ingest(state):
+    """Hash-input projection for the queue-manager-ingest auto-fire.
+
+    Tracks the SET of actionable `human:approved` issues — i.e., issues the
+    human has approved but queue-manager hasn't yet filed into TASKS.md, and
+    that are not in a skip category (epic, needs-plan, needs-info, queued).
+    The hash flips when this set CHANGES:
+
+    - Operator adds `human:approved` to issue #N: #N enters the set,
+      hash flips, scout spawns fleet-queue-ingest, the LLM iteration
+      categorizes #N and writes a task entry with `fleet:queued`.
+    - After ingestion, #N has `fleet:queued` so it drops from the
+      set; hash flips again. fleet-queue-ingest re-fires, finds the
+      set is empty, exits in <1s. One wasted iteration per ingestion
+      cycle, acceptable cost.
+
+    `human_approved` already excludes `fleet:queued` via fetch_human_approved;
+    _INGEST_SKIP_LABELS mirrors the role-doc Step 5 filter so epics and
+    un-planned issues don't hold the hash non-zero indefinitely.
+    """
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for issue in repo_state.get("human_approved", []):
+            if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+                continue
+            items.append({"repo": repo, "issue": issue["number"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -340,7 +869,165 @@ PROJECTORS = {
     "sonnet-reviewer": project_sonnet_reviewer,
     "opus-reviewer": project_opus_reviewer,
     "queue-manager": project_queue_manager,
+    "queue-manager-ingest": project_queue_manager_ingest,
     "merger": project_merger,
+}
+
+
+# ---------------------------------------------------------------------------
+# Per-role slices (full-record projections written to disk).
+#
+# PROJECTORS above produce minimal-shape items used purely for trigger-hash
+# detection. Slicers produce full role-relevant records and write them to
+# ~/.fleet/state/projections/<role>.json so a role's startup can read just
+# its slice (~5 KB) instead of the full state.json (~32 KB).
+# ---------------------------------------------------------------------------
+
+
+def _slice_pr_with_repo(repo_key, pr):
+    out = dict(pr)
+    out["repo"] = repo_key
+    return out
+
+
+def _slice_task_with_repo(repo_key, task):
+    out = dict(task)
+    out["repo"] = repo_key
+    return out
+
+
+def _slice_issue_with_repo(repo_key, issue):
+    out = dict(issue)
+    out["repo"] = repo_key
+    return out
+
+
+def slice_sonnet_author(state):
+    out = {"tasks_open": [], "feedback_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for task in repo_state.get("tasks", {}).get("open", []):
+            if "sonnet" in model_tags(task):
+                out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if "human:wip" in labels:
+                continue
+            if labels & FEEDBACK_LABELS:
+                out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_opus_worker(state):
+    out = {"tasks_open": [], "needs_plan": [], "feedback_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for task in repo_state.get("tasks", {}).get("open", []):
+            if "opus" in model_tags(task):
+                out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
+        for issue in repo_state.get("needs_plan", []):
+            out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if "human:wip" in labels:
+                continue
+            if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
+                out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_sonnet_reviewer(state):
+    out = {"candidate_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if labels & REVIEW_SKIP_LABELS:
+                continue
+            if pr.get("isDraft"):
+                continue
+            has_recheck = labels & RECHECK_LABELS
+            has_verdict = labels & REVIEW_VERDICT_LABELS
+            if has_verdict and not has_recheck:
+                continue
+            out["candidate_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_opus_reviewer(state):
+    flag_labels = frozenset({"fleet:has-nits", "fleet:needs-fix"})
+    out = {"flagged_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if labels & REVIEW_SKIP_LABELS:
+                continue
+            if not (labels & flag_labels):
+                continue
+            out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_queue_manager(state):
+    out = {
+        "needs_plan": [],
+        "human_approved": [],
+        "tasks_done": [],
+        "needs_flip": [],
+        "recent_merged_prs": [],
+    }
+    for repo_key, repo_state in state["repos"].items():
+        for issue in repo_state.get("needs_plan", []):
+            out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
+        for issue in repo_state.get("human_approved", []):
+            out["human_approved"].append(_slice_issue_with_repo(repo_key, issue))
+        for task in repo_state.get("tasks", {}).get("done", []):
+            out["tasks_done"].append(_slice_task_with_repo(repo_key, task))
+        for task_id, issue_num in _needs_flip_entries(repo_state):
+            out["needs_flip"].append(
+                {"repo": repo_key, "task_id": task_id, "issue": issue_num}
+            )
+        for pr in repo_state.get("recent_merged_prs", []):
+            out["recent_merged_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_queue_manager_ingest(state):
+    """Slice for fleet-queue-ingest. Mirrors the projector — list of
+    actionable issues the human has approved but the queue hasn't filed yet.
+    Applies _INGEST_SKIP_LABELS so the LLM slice never includes epics or
+    un-planned issues that the role-doc skips at Step 5."""
+    out = {"pending_issues": []}
+    for repo_key, repo_state in state["repos"].items():
+        for issue in repo_state.get("human_approved", []):
+            if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+                continue
+            out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
+    return out
+
+
+def slice_merger(state):
+    # Merger is engine-only (v1 scope per role-merger.md). Game-repo
+    # PRs would just be skipped by the merger's own filter, but
+    # including them in the slice bloats the file with full review
+    # records the role never reads.
+    out = {"prs": []}
+    repo_state = state["repos"].get("engine", {})
+    for pr in repo_state.get("prs", []):
+        labels = set(pr["labels"])
+        mergeable = pr.get("mergeable")
+        approved = "fleet:approved" in labels
+        blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
+        if approved or blocked:
+            out["prs"].append(_slice_pr_with_repo("engine", pr))
+    return out
+
+
+SLICERS = {
+    "sonnet-author": slice_sonnet_author,
+    "opus-worker": slice_opus_worker,
+    "sonnet-reviewer": slice_sonnet_reviewer,
+    "opus-reviewer": slice_opus_reviewer,
+    "queue-manager": slice_queue_manager,
+    "queue-manager-ingest": slice_queue_manager_ingest,
+    "merger": slice_merger,
 }
 
 
@@ -375,6 +1062,8 @@ def collect_state():
             ("engine", "prs", lambda: fetch_prs("jakildev/IrredenEngine")),
             ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
+            ("engine", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
+            ("engine", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
             ("engine", "tasks", lambda: fetch_tasks(ENGINE)),
         ]
     if "game" in repos:
@@ -382,12 +1071,17 @@ def collect_state():
             ("game", "prs", lambda: fetch_prs("jakildev/irreden")),
             ("game", "needs_plan", lambda: fetch_needs_plan("jakildev/irreden")),
             ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
+            ("game", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/irreden")),
+            ("game", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/irreden")),
             ("game", "tasks", lambda: fetch_tasks(GAME)),
         ]
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = {ex.submit(fn): (repo_key, field)
-                   for (repo_key, field, fn) in fetch_specs}
+    with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
+        futures = {}
+        for i, (repo_key, field, fn) in enumerate(fetch_specs):
+            if i > 0:
+                time.sleep(FETCH_SUBMIT_GAP_SECONDS)
+            futures[ex.submit(fn)] = (repo_key, field)
         for fut in as_completed(futures):
             repo_key, field = futures[fut]
             try:
@@ -407,7 +1101,13 @@ def collect_state():
 
 def tick_once():
     state = collect_state()
+    enrich_stackable_blocker_prs(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
+
+    try:
+        refresh_all_details(state)
+    except Exception as e:
+        log(f"refresh_all_details failed: {e}")
 
     triggers_fired = []
     for role, projector in PROJECTORS.items():
@@ -416,8 +1116,75 @@ def tick_once():
         except Exception as e:
             log(f"projector {role} failed: {e}")
             continue
-        if update_role_trigger(role, projection):
+        if role == "queue-manager":
+            # queue-manager maintenance is now script-driven.
+            # Invoke fleet-queue-tick directly on projection change instead
+            # of writing a trigger for the dispatcher to consume with an LLM.
+            new_hash = stable_hash(projection)
+            seen_file = SEEN_DIR / role
+            try:
+                old_hash = seen_file.read_text().strip()
+            except FileNotFoundError:
+                old_hash = ""
+            if new_hash != old_hash:
+                write_atomic(seen_file, new_hash + "\n")
+                try:
+                    tick_cmd = subprocess.run(
+                        ["which", "fleet-queue-tick"],
+                        capture_output=True, text=True,
+                    ).stdout.strip() or str(ENGINE / "scripts" / "fleet" / "fleet-queue-tick")
+                    subprocess.Popen(
+                        [tick_cmd],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                    log("queue-manager: spawned fleet-queue-tick (projection changed)")
+                    triggers_fired.append("queue-manager(queue-tick)")
+                except Exception as e:
+                    log(f"queue-manager: failed to spawn fleet-queue-tick: {e}")
+        elif role == "queue-manager-ingest":
+            # Auto-fire ingestion when the human:approved-and-not-yet-queued
+            # set changes. Same spawn pattern as queue-tick but invokes an
+            # LLM iteration via fleet-queue-ingest. Lockfile inside the
+            # script prevents concurrent runs.
+            new_hash = stable_hash(projection)
+            seen_file = SEEN_DIR / role
+            try:
+                old_hash = seen_file.read_text().strip()
+            except FileNotFoundError:
+                old_hash = ""
+            if new_hash != old_hash:
+                write_atomic(seen_file, new_hash + "\n")
+                try:
+                    ingest_cmd = subprocess.run(
+                        ["which", "fleet-queue-ingest"],
+                        capture_output=True, text=True,
+                    ).stdout.strip() or str(ENGINE / "scripts" / "fleet" / "fleet-queue-ingest")
+                    subprocess.Popen(
+                        [ingest_cmd],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                    log("queue-manager-ingest: spawned fleet-queue-ingest (projection changed)")
+                    triggers_fired.append("queue-manager-ingest(spawn)")
+                except Exception as e:
+                    log(f"queue-manager-ingest: failed to spawn fleet-queue-ingest: {e}")
+        elif update_role_trigger(role, projection):
             triggers_fired.append(role)
+
+    for role, slicer in SLICERS.items():
+        try:
+            sliced = slicer(state)
+        except Exception as e:
+            log(f"slicer {role} failed: {e}")
+            continue
+        sliced["generated_at"] = state["generated_at"]
+        write_atomic(
+            PROJECTIONS_DIR / f"{role}.json",
+            json.dumps(sliced, indent=2, sort_keys=True) + "\n",
+        )
 
     if triggers_fired:
         log(f"triggered: {', '.join(triggers_fired)}")
@@ -448,12 +1215,16 @@ def main():
     parser.add_argument("--once", action="store_true",
                         help="run one tick and exit (for testing)")
     parser.add_argument("--interval", type=int, default=POLL_SECONDS_DEFAULT,
-                        help="poll interval in seconds (default 60)")
+                        help="poll interval in seconds (default 30)")
     args = parser.parse_args()
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     SEEN_DIR.mkdir(parents=True, exist_ok=True)
     TRIGGERS_DIR.mkdir(parents=True, exist_ok=True)
+    PROJECTIONS_DIR.mkdir(parents=True, exist_ok=True)
+    PRS_DIR.mkdir(parents=True, exist_ok=True)
+    DIFFS_DIR.mkdir(parents=True, exist_ok=True)
+    ISSUES_DIR.mkdir(parents=True, exist_ok=True)
 
     if not ENGINE.exists():
         log(f"engine repo not found at {ENGINE}; aborting")

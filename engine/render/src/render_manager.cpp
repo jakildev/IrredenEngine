@@ -52,7 +52,7 @@ RenderManager::RenderManager(
     ,   m_mainCanvas{
             IREntity::createEntity<kVoxelPoolCanvas>(
                 "main",
-                IRConstants::kVoxelPoolSize,
+                IRRender::VoxelPoolConfig::getSize(),
                 IRMath::gameResolutionToSize2DIso(
                     gameResolution + IRConstants::kSizeExtraPixelBuffer
                 ),
@@ -117,6 +117,11 @@ RenderManager::RenderManager(
     //     }
     {
     IRE_LOG_INFO("Fit mode: {}", static_cast<int>(fitMode));
+    IRE_LOG_INFO(
+        "Voxel pool: edge={} ({} voxels)",
+        IRRender::VoxelPoolConfig::getEdge(),
+        IRRender::VoxelPoolConfig::getTotalSize()
+    );
     m_renderImpl->init();
     IREntity::setName(m_camera, "camera");
     // IRECS::setComponent(
@@ -193,12 +198,7 @@ void RenderManager::presentFrame() {
     IRRender::device()->present();
 }
 
-std::tuple<
-    std::span<C_Position3D>,
-    std::span<C_PositionOffset3D>,
-    std::span<C_PositionGlobal3D>,
-    std::span<C_Voxel>>
-RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {
+VoxelPoolAllocation RenderManager::allocateVoxels(unsigned int numVoxels, std::string canvasName) {
     auto it = m_canvasMap.find(canvasName);
     IR_ASSERT(it != m_canvasMap.end(), "Canvas not found: {}", canvasName);
     auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(it->second);
@@ -296,13 +296,7 @@ void RenderManager::zoomMainBackgroundPatternOut() {
     (*zoomLevel.value()).zoomOut();
 }
 
-void RenderManager::deallocateVoxels(
-    std::span<C_Position3D> positions,
-    std::span<C_PositionOffset3D> positionOffsets,
-    std::span<C_PositionGlobal3D> positionGlobals,
-    std::span<C_Voxel> voxels,
-    std::string canvasName
-) {
+void RenderManager::deallocateVoxels(size_t startIndex, size_t size, std::string canvasName) {
     auto it = m_canvasMap.find(canvasName);
     if (it == m_canvasMap.end()) {
         return;
@@ -314,7 +308,62 @@ void RenderManager::deallocateVoxels(
     if (!poolOpt.has_value()) {
         return;
     }
-    (*poolOpt.value()).deallocateVoxels(positions, positionOffsets, positionGlobals, voxels);
+    (*poolOpt.value()).deallocateVoxels(startIndex, size);
+}
+
+namespace {
+// Shared lookup for the active-mask routes below — same shape as
+// deallocateVoxels but returning the pool so the call site can route
+// to whichever mask helper it needs.
+C_VoxelPool *lookupPoolForMaskOp(
+    const std::unordered_map<std::string, EntityId> &canvasMap, const std::string &canvasName
+) {
+    auto it = canvasMap.find(canvasName);
+    if (it == canvasMap.end() || !IREntity::entityExists(it->second)) {
+        return nullptr;
+    }
+    auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(it->second);
+    if (!poolOpt.has_value()) {
+        return nullptr;
+    }
+    return &(*poolOpt.value());
+}
+} // namespace
+
+void RenderManager::markVoxelPoolRangeActive(
+    size_t startIndex, size_t count, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        pool->setActiveMaskRange(startIndex, count);
+    }
+}
+
+void RenderManager::markVoxelPoolRangeInactive(
+    size_t startIndex, size_t count, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        pool->clearActiveMaskRange(startIndex, count);
+    }
+}
+
+void RenderManager::markVoxelPoolVoxelActive(
+    size_t voxelIndex, bool active, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        if (active) {
+            pool->setActiveBit(voxelIndex);
+        } else {
+            pool->clearActiveBit(voxelIndex);
+        }
+    }
+}
+
+void RenderManager::resyncVoxelPoolRangeFromColors(
+    size_t startIndex, size_t count, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        pool->resyncActiveMaskFromColors(startIndex, count);
+    }
 }
 
 EntityId RenderManager::getCanvas(std::string canvasName) {
@@ -498,14 +547,6 @@ void RenderManager::setSunShadowsEnabled(bool enabled) {
 
 bool RenderManager::getSunShadowsEnabled() const {
     return m_sunShadowsEnabled;
-}
-
-void RenderManager::setScreenSpaceShadowsEnabled(bool enabled) {
-    m_screenSpaceShadowsEnabled = enabled;
-}
-
-bool RenderManager::getScreenSpaceShadowsEnabled() const {
-    return m_screenSpaceShadowsEnabled;
 }
 
 void RenderManager::setAOEnabled(bool enabled) {

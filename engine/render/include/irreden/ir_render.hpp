@@ -11,6 +11,7 @@
 #include <irreden/render/shader.hpp>
 #include <irreden/render/shader_names.hpp>
 #include <irreden/render/vao.hpp>
+#include <irreden/render/voxel_pool_config.hpp>
 
 namespace IRRender {
 
@@ -60,28 +61,48 @@ template <typename T> T *getNamedResource(std::string resourceName) {
 /// @{
 /// @name Voxel pool
 /// Allocate / release contiguous spans of voxel component arrays from the named canvas
-/// pool. All four spans are co-indexed — element [i] of each span belongs to voxel i.
+/// pool. The four spans returned by @c allocateVoxels are co-indexed — element [i] of
+/// each span belongs to voxel i — and @c VoxelPoolAllocation::startIndex_ is the offset
+/// of those spans inside the pool's underlying voxel arrays. Pass that index back to
+/// @c deallocateVoxels (and to @c C_VoxelPool::setEntityIdForRange); never recompute it
+/// from `positions.data() - basePtr` against a separately-cached @c C_VoxelPool*, since
+/// a canvas archetype mutation can leave such a cache pointing at a different pool.
 /// @param size        Number of voxels to allocate.
 /// @param canvasName  Canvas pool to allocate from (default @c "main").
-inline std::tuple<
-    std::span<C_Position3D>,
-    std::span<C_PositionOffset3D>,
-    std::span<C_PositionGlobal3D>,
-    std::span<C_Voxel>>
-allocateVoxels(unsigned int size, std::string canvasName = "main") {
+inline VoxelPoolAllocation allocateVoxels(unsigned int size, std::string canvasName = "main") {
     return getRenderManager().allocateVoxels(size, canvasName);
 }
 
-/// Release voxel spans previously returned by @c allocateVoxels back to the pool.
-inline void deallocateVoxels(
-    std::span<C_Position3D> positions,
-    std::span<C_PositionOffset3D> positionOffsets,
-    std::span<C_PositionGlobal3D> positionGlobals,
-    std::span<C_Voxel> voxels,
-    std::string canvasName = "main"
-) {
-    getRenderManager()
-        .deallocateVoxels(positions, positionOffsets, positionGlobals, voxels, canvasName);
+/// Release a previously-allocated voxel span back to the pool. Pass the start index
+/// returned by @c allocateVoxels and the same size used to allocate.
+inline void deallocateVoxels(size_t startIndex, size_t size, std::string canvasName = "main") {
+    getRenderManager().deallocateVoxels(startIndex, size, canvasName);
+}
+
+/// Push-at-mutation accessors for the per-slot active-mask owned by
+/// @c C_VoxelPool. Callers that wrote into the color span via
+/// @c VoxelPoolAllocation must follow up with one of these so the GPU
+/// compact shader (`c_voxel_visibility_compact`) sees the same active
+/// set as the CPU. See @c engine/prefabs/irreden/voxel/components/component_voxel_pool.hpp
+/// "Active-slot mask" for the bit semantics.
+inline void
+markVoxelPoolRangeActive(size_t startIndex, size_t count, std::string canvasName = "main") {
+    getRenderManager().markVoxelPoolRangeActive(startIndex, count, canvasName);
+}
+
+inline void
+markVoxelPoolRangeInactive(size_t startIndex, size_t count, std::string canvasName = "main") {
+    getRenderManager().markVoxelPoolRangeInactive(startIndex, count, canvasName);
+}
+
+inline void
+markVoxelPoolVoxelActive(size_t voxelIndex, bool active, std::string canvasName = "main") {
+    getRenderManager().markVoxelPoolVoxelActive(voxelIndex, active, canvasName);
+}
+
+inline void
+resyncVoxelPoolRangeFromColors(size_t startIndex, size_t count, std::string canvasName = "main") {
+    getRenderManager().resyncVoxelPoolRangeFromColors(startIndex, count, canvasName);
 }
 /// @}
 
@@ -121,6 +142,10 @@ inline void setActiveCanvas(const std::string &name) {
 inline IREntity::EntityId getActiveCanvasEntity() {
     return getRenderManager().getActiveCanvasEntity();
 }
+// Null-safe variant `getActiveCanvasEntityOrNull()` lives in
+// `<irreden/render/active_canvas.hpp>` — included on demand by callers
+// (e.g. C_ShapeDescriptor, C_VoxelSetNew) that need the headless-safe
+// snapshot without pulling in the full render surface. See #753 (T-205).
 /// @}
 
 /// @{
@@ -154,18 +179,59 @@ vec2 getMainCanvasSizeTrixels();
 /// @name Mouse position (iso space)
 /// Multiple iso-space mouse position variants are maintained because the render
 /// and update pipelines run at different rates and the camera offset matters.
+///
+/// All four helpers below invert the @c SCREEN_SPACE_RESIDUAL_ROTATE
+/// composite (`R2D(-residualYaw)` around the framebuffer center) so the
+/// returned coordinates match what the rasterizer wrote — under any
+/// visualYaw, not just yaw=0. The 2D variants stay in the **trixel canvas
+/// frame**: under non-zero rasterYaw the canvas iso position
+/// = `M · R_z(rasterYaw) · world`, not `M · world`. The trixel-index
+/// lookup path (@ref mouseTrixelPositionWorld → GPU comparison) requires
+/// this frame to match the rasterized canvas; for true world-frame
+/// coordinates use @ref mouseWorldPos3DAtIsoDepth, which composes the
+/// additional `R_z(-rasterYaw)` lift.
 
 /// Mouse position in iso canvas coordinates **as seen on screen** — no camera offset.
 /// Use this to align UI overlays to the render output.
 vec2 mousePosition2DIsoScreenRender();
-/// Mouse position in iso canvas coordinates **in world space** — camera offset applied.
-/// Use this for world-space entity placement or selection.
+/// Mouse position in iso canvas coordinates with camera offset applied.
+/// Stays in the rasterYaw-rotated trixel canvas frame; not true world iso
+/// under non-zero yaw — see the namespace doc above.
 vec2 mousePosition2DIsoWorldRender();
-/// Mouse position in iso world space sampled during the UPDATE pipeline tick.
-/// Use this inside update systems; it may lag the render-pipeline variants by one frame.
-vec2 mousePosition2DIsoUpdate();
-/// Integer trixel coordinate of the mouse in world space.
+/// Integer trixel coordinate of the mouse in the trixel canvas frame.
+/// Matches what the voxel-to-trixel pass wrote, so a CPU-side trixel
+/// index here equals the GPU-side trixel index of the voxel under the
+/// cursor at any visualYaw.
 ivec2 mouseTrixelPositionWorld();
+/// Mouse position lifted to a 3D world point in the **unrotated world frame**
+/// at the given **canvas-frame** iso depth. Composes the full picking inverse
+/// `R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen`.
+///
+/// @p canvasIsoDepth is iso depth in the **rasterYaw-rotated canvas frame**
+/// (= `rotated.x + rotated.y + rotated.z`), NOT in the unrotated world frame
+/// (= `world.x + world.y + world.z`). At @c rasterYaw=0 the two coincide;
+/// at non-zero @c rasterYaw they differ because the cardinal Z-rotation
+/// permutes (x,y) without preserving the sum (e.g. index 1 maps
+/// `(x,y,z)→(y,-x,z)`, so `y - x + z ≠ x + y + z` in general). The depth
+/// is canvas-frame because @c isoPixelToPos3D recovers a 3D point in the
+/// same frame as the iso pixel — the rotated canvas frame.
+///
+/// To target the iso-depth plane through a known world-frame reference
+/// point (e.g. an entity's `C_PositionGlobal3D`), rotate it into the
+/// canvas frame and take its iso depth:
+/// @code
+///   const ivec3 worldRef = ... ;  // e.g. entity world position
+///   const IRMath::CardinalIndex idx = IRMath::rasterYawCardinalIndex(
+///       IRPrefab::Camera::getRasterYaw());
+///   const float canvasIsoDepth = static_cast<float>(
+///       IRMath::pos3DtoDistance(IRMath::rotateCardinalZ(worldRef, idx)));
+///   const vec3 worldClick =
+///       IRRender::mouseWorldPos3DAtIsoDepth(canvasIsoDepth);
+/// @endcode
+///
+/// Use this when world-frame coordinates are needed (e.g. spawning an
+/// entity at the click location).
+vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth);
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
 /// @note This reads a persistent-mapped GPU buffer — values become valid only after the
 ///       GPU pipeline has completed the previous frame's @c FRAMEBUFFER_TO_SCREEN pass.
@@ -231,11 +297,6 @@ float getSunAmbient();
 /// When false, sun face shading remains active but projected shadows are disabled.
 void setSunShadowsEnabled(bool enabled);
 bool getSunShadowsEnabled();
-/// When true, the @c COMPUTE_SUN_SHADOW lookup reads the sun depth buffer baked
-/// by @c BAKE_SUN_SHADOW_MAP instead of marching the occupancy grid. The legacy
-/// path remains the default while both modes coexist.
-void setScreenSpaceShadowsEnabled(bool enabled);
-bool getScreenSpaceShadowsEnabled();
 /// When false, ambient occlusion crease darkening is skipped — the AO compute
 /// shader short-circuits with a constant 1.0 so the lighting pass treats AO
 /// as a no-op. Sun face shading and projected shadows are unaffected.

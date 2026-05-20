@@ -40,6 +40,47 @@ void SystemManager::unregisterTickObserver(TickObserverId id) {
     }
 }
 
+void SystemManager::clearTickObservers() {
+    m_observers.clear();
+}
+
+SystemId SystemManager::createSystemDynamic(
+    std::string name,
+    Archetype includeArchetype,
+    Archetype excludeArchetype,
+    std::function<void(ArchetypeNode *)> body
+) {
+    m_systemNames.emplace_back(C_Name{std::move(name)});
+    SystemId newSystemId = m_nextSystemId++;
+
+    m_beginTicks.emplace_back(C_SystemEvent<BEGIN_TICK>{[]() {}});
+    m_ticks.emplace_back(
+        C_SystemEvent<TICK>{
+            std::move(body),
+            std::move(includeArchetype),
+            std::move(excludeArchetype),
+        }
+    );
+    m_endTicks.emplace_back(C_SystemEvent<END_TICK>{[]() {}});
+    m_relationTicks.emplace_back(C_SystemEvent<RELATION_TICK>{[](EntityRecord) {}});
+
+    m_relations.emplace_back(C_SystemRelation{Relation::NONE});
+    m_systemParams.emplace_back(nullptr);
+    m_timingAccum.emplace_back();
+    return newSystemId;
+}
+
+void SystemManager::replaceSystemBody(SystemId system, std::function<void(ArchetypeNode *)> body) {
+    IR_ASSERT(
+        system < m_nextSystemId,
+        "replaceSystemBody: SystemId {} out of range (have {} systems)",
+        system,
+        m_nextSystemId
+    );
+    IR_ASSERT(static_cast<bool>(body), "replaceSystemBody: body must be a non-empty std::function");
+    m_ticks[system].functionTick_ = std::move(body);
+}
+
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
     m_systemPipelinesNew[event] = pipeline;
 }
@@ -103,8 +144,10 @@ void SystemManager::executeSystem(SystemId system) {
         );
         auto &acc = m_timingAccum[system];
         acc.totalNs_ += ns;
-        if (ns < acc.minNs_) acc.minNs_ = ns;
-        if (ns > acc.maxNs_) acc.maxNs_ = ns;
+        if (ns < acc.minNs_)
+            acc.minNs_ = ns;
+        if (ns > acc.maxNs_)
+            acc.maxNs_ = ns;
         acc.callCount_++;
         acc.totalEntityCount_ += entityCount;
     }

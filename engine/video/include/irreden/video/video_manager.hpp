@@ -1,11 +1,13 @@
 #ifndef VIDEO_MANAGER_H
 #define VIDEO_MANAGER_H
 
+#include <irreden/video/auto_screenshot.hpp>
 #include <irreden/video/video_recorder.hpp>
 
 #include <cstdint>
 #include <atomic>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -38,6 +40,11 @@ class VideoManager {
 
     void toggleRecording();
     void requestScreenshot();
+    void requestScreenshotWithCrops(
+        const char *shotLabel,
+        const RoiCrop *crops,
+        int numCrops
+    );
     void requestCanvasScreenshot();
     void notifyFixedUpdate();
     void render();
@@ -69,6 +76,17 @@ class VideoManager {
     std::uint64_t m_nextScreenshotIndex = 1;
     bool m_screenshotRequested = false;
     bool m_canvasScreenshotRequested = false;
+    /// Per-screenshot ROI crop metadata. Labels live as @c std::string here
+    /// so the caller's storage can die between request and capture.
+    struct PendingCrop {
+        int x_ = 0;
+        int y_ = 0;
+        int w_ = 0;
+        int h_ = 0;
+        std::string label_;
+    };
+    std::string m_pendingScreenshotShotLabel;
+    std::vector<PendingCrop> m_pendingScreenshotCrops;
     int m_sourceFrameWidth = 0;
     int m_sourceFrameHeight = 0;
     int64_t m_totalFixedUpdates = 0;
@@ -86,7 +104,14 @@ class VideoManager {
     void toggleCapture();
     bool captureScreenshot();
     bool captureCanvasScreenshot();
-    std::string getNextScreenshotFilePath();
+    std::uint64_t reserveNextScreenshotIndex();
+    std::string screenshotFilePathForIndex(std::uint64_t index) const;
+    void writePendingRoiCrops(
+        const std::uint8_t *frameData,
+        int frameWidth,
+        int frameHeight,
+        std::uint64_t shotIndex
+    );
     bool captureFrame();
     void initReadbackPbos();
     void releaseReadbackPbos();

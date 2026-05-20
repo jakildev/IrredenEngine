@@ -22,3 +22,16 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineAudio
 )
+
+# PRIVATE: ir_command.cpp's fireByName dispatcher needs every prefab command
+# header in scope. Those headers reach into the IRRender / IRVideo / IRWindow
+# umbrellas, so the TU compiles against those include sets and the static
+# lib carries unresolved externals into them — both PRIVATE so the deps do
+# not leak through engine/command's PUBLIC interface (every downstream
+# consumer already links these libs via engine/world).
+target_link_libraries(
+    IrredenEngineCommand PRIVATE
+    IrredenEngineRendering
+    IrredenEngineVideo
+    IrredenEngineWindow
+)

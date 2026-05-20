@@ -8,11 +8,19 @@
 
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
 #include <vector>
 
 namespace IRRender {
 
 namespace {
+struct OpenGLTimestampPair {
+    GLuint startQuery_ = 0;
+    GLuint endQuery_ = 0;
+    bool hasStart_ = false;
+    bool hasEnd_ = false;
+};
+
 class OpenGLRenderDevice final : public RenderDevice {
   public:
     void beginFrame() override {}
@@ -42,10 +50,15 @@ class OpenGLRenderDevice final : public RenderDevice {
         ENG_API->glDrawElements(toGLDrawMode(drawMode), count, toGLIndexType(indexType), nullptr);
     }
 
-    void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
+    void drawElementsInstanced(
+        DrawMode drawMode, int count, IndexType indexType, int instanceCount
+    ) override {
         glDrawElementsInstanced(
-            toGLDrawMode(drawMode), count, toGLIndexType(indexType),
-            nullptr, instanceCount
+            toGLDrawMode(drawMode),
+            count,
+            toGLIndexType(indexType),
+            nullptr,
+            instanceCount
         );
     }
 
@@ -53,15 +66,44 @@ class OpenGLRenderDevice final : public RenderDevice {
         ENG_API->glDrawArrays(toGLDrawMode(drawMode), first, count);
     }
 
+    void drawArraysInstanced(DrawMode drawMode, int first, int count, int instanceCount) override {
+        if (instanceCount <= 0) {
+            return;
+        }
+        glDrawArraysInstanced(toGLDrawMode(drawMode), first, count, instanceCount);
+    }
+
     void copyImageSubData(
-        std::uint32_t srcHandle, int srcLevel, int srcX, int srcY, int srcZ,
-        std::uint32_t dstHandle, int dstLevel, int dstX, int dstY, int dstZ,
-        int width, int height, int depth
+        std::uint32_t srcHandle,
+        int srcLevel,
+        int srcX,
+        int srcY,
+        int srcZ,
+        std::uint32_t dstHandle,
+        int dstLevel,
+        int dstX,
+        int dstY,
+        int dstZ,
+        int width,
+        int height,
+        int depth
     ) override {
         glCopyImageSubData(
-            srcHandle, GL_TEXTURE_2D, srcLevel, srcX, srcY, srcZ,
-            dstHandle, GL_TEXTURE_2D_ARRAY, dstLevel, dstX, dstY, dstZ,
-            width, height, depth
+            srcHandle,
+            GL_TEXTURE_2D,
+            srcLevel,
+            srcX,
+            srcY,
+            srcZ,
+            dstHandle,
+            GL_TEXTURE_2D_ARRAY,
+            dstLevel,
+            dstX,
+            dstY,
+            dstZ,
+            width,
+            height,
+            depth
         );
     }
 
@@ -134,6 +176,77 @@ class OpenGLRenderDevice final : public RenderDevice {
     void finish() override {
         glFinish();
     }
+
+    GpuTimestampHandle createTimestampPair() override {
+        GLuint queries[2] = {0, 0};
+        glGenQueries(2, queries);
+        const GpuTimestampHandle handle = m_nextTimestampHandle++;
+        m_timestamps[handle] = OpenGLTimestampPair{queries[0], queries[1], false, false};
+        return handle;
+    }
+
+    void destroyTimestampPair(GpuTimestampHandle handle) override {
+        auto it = m_timestamps.find(handle);
+        if (it == m_timestamps.end()) {
+            return;
+        }
+        GLuint queries[2] = {it->second.startQuery_, it->second.endQuery_};
+        glDeleteQueries(2, queries);
+        m_timestamps.erase(it);
+    }
+
+    bool supportsGpuTimestampPairs() const override {
+        return GLAD_GL_VERSION_3_3 != 0;
+    }
+
+    void writeTimestamp(GpuTimestampHandle handle, TimestampSlot slot) override {
+        auto it = m_timestamps.find(handle);
+        if (it == m_timestamps.end()) {
+            return;
+        }
+        OpenGLTimestampPair &pair = it->second;
+        if (slot == TimestampSlot::START) {
+            glQueryCounter(pair.startQuery_, GL_TIMESTAMP);
+            pair.hasStart_ = true;
+            pair.hasEnd_ = false;
+            return;
+        }
+        glQueryCounter(pair.endQuery_, GL_TIMESTAMP);
+        pair.hasEnd_ = true;
+    }
+
+    bool readTimestampPairMs(GpuTimestampHandle handle, float &outMs) override {
+        auto it = m_timestamps.find(handle);
+        if (it == m_timestamps.end()) {
+            return false;
+        }
+        const OpenGLTimestampPair &pair = it->second;
+        if (!pair.hasStart_ || !pair.hasEnd_) {
+            return false;
+        }
+
+        GLint startAvailable = GL_FALSE;
+        GLint endAvailable = GL_FALSE;
+        glGetQueryObjectiv(pair.startQuery_, GL_QUERY_RESULT_AVAILABLE, &startAvailable);
+        glGetQueryObjectiv(pair.endQuery_, GL_QUERY_RESULT_AVAILABLE, &endAvailable);
+        if (startAvailable != GL_TRUE || endAvailable != GL_TRUE) {
+            return false;
+        }
+
+        GLuint64 startNs = 0;
+        GLuint64 endNs = 0;
+        glGetQueryObjectui64v(pair.startQuery_, GL_QUERY_RESULT, &startNs);
+        glGetQueryObjectui64v(pair.endQuery_, GL_QUERY_RESULT, &endNs);
+        if (endNs < startNs) {
+            return false;
+        }
+        outMs = static_cast<float>(endNs - startNs) / 1'000'000.0f;
+        return true;
+    }
+
+  private:
+    GpuTimestampHandle m_nextTimestampHandle = 1;
+    std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
 };
 
 OpenGLRenderDevice g_openGLRenderDevice;

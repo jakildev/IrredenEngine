@@ -49,20 +49,13 @@ constexpr Distance kTrixelDistanceMinDistance = -65535;
 /// imageAtomicMin.  Acts as the "nothing here" background depth.
 constexpr Distance kTrixelDistanceMaxDistance = 65535;
 
-/// Maximum voxel-pool allocation per entity (x × y × z voxels).
-/// TODO: derive from available GPU VRAM rather than using a fixed budget.
-constexpr ivec3 kVoxelPoolMaxAllocationSize = ivec3{64, 64, 64};
-/// Total voxels in the maximum per-entity allocation
-/// (kVoxelPoolMaxAllocationSize.x × .y × .z).
-constexpr int kVoxelPoolMaxAllocationSizeTotal =
-    kVoxelPoolMaxAllocationSize.x * kVoxelPoolMaxAllocationSize.y * kVoxelPoolMaxAllocationSize.z;
-
-/// Global voxel pool dimensions (x × y × z voxels).
-/// TODO: initialise from GPU stats; support multiple pools for GPUs smaller
-/// than this default.
-constexpr ivec3 kVoxelPoolSize = ivec3{64, 64, 64};
-/// Total voxels in the global pool (kVoxelPoolSize product).
-constexpr int kMaxSingleVoxels = IRMath::multVecComponents(IRConstants::kVoxelPoolSize);
+// Voxel pool sizing lives at runtime in
+// engine/render/include/irreden/render/voxel_pool_config.hpp
+// (IRRender::VoxelPoolConfig::getSize / getMaxAllocationSize /
+// getTotalSize / getMaxAllocationSizeTotal). The default cube edge is
+// kDefaultEdge; set `config.voxel_pool_edge = N` in the creation's
+// config.lua to override at startup. See engine/world/CLAUDE.md
+// "Init-affecting runtime params".
 
 } // namespace IRConstants
 

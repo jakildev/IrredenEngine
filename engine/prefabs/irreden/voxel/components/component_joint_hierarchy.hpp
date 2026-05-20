@@ -1,29 +1,36 @@
 #ifndef COMPONENT_JOINT_HIERARCHY_H
 #define COMPONENT_JOINT_HIERARCHY_H
 
-// PURPOSE: Per-entity joint tree for skeletal-style procedural animation.
-//   Each joint has a rotation quaternion (vec4), translation, and parent
-//   index. Converts to GPUJointTransform for upload to the JointBuffer
-//   SSBO (binding 21) consumed by the shapes compute shader.
-// STATUS: WIP stub -- component defined with toGPUFormat() but:
-//   - No system reads or writes joint data.
-//   - system_shapes_to_trixel.hpp creates the JointTransformBuffer SSBO
-//     but never uploads data; c_shapes_to_trixel.glsl declares JointBuffer
-//     but main() never reads from it.
-//   - system_shapes_to_trixel.hpp sets desc.jointIndex = 0 for all shapes.
-// TODO:
-//   1. Add JOINT_ANIMATION to SystemName enum.
-//   2. Create a system (or extend SHAPES_TO_TRIXEL) that:
-//      a. Uploads GPUJointTransform data per entity to JointTransformBuffer.
-//      b. Sets desc.jointIndex per shape to the correct joint.
-//   3. Update c_shapes_to_trixel.glsl main() to read joint transforms and
-//      apply parent-chain rotation/translation to voxel positions.
-//   4. Create a demo entity with joints (e.g. a 3-joint articulated arm
-//      oscillating sinusoidally) to test the full pipeline.
-// DEPENDENCIES: IRRender (GPUJointTransform), IRMath (vec4).
+// DEPRECATED — superseded by the entity-based joint model.
+//
+// New rigs should use:
+//   - `C_Skeleton` (rig root, holds an ordered vector of joint EntityIds).
+//     See `component_skeleton.hpp`.
+//   - `C_Joint` tag on each joint entity. See `component_joint.hpp`.
+//   - Per-joint local transform via the engine's canonical local-transform
+//     component (`C_LocalTransform`, since #731 Phase 1 landed — PR #749).
+//   - `CHILD_OF` relations for the parent chain.
+//
+// The original SoA `C_JointHierarchy` packed every joint into one vector on
+// the rig root. The entity-based model unlocks severance, per-joint custom
+// components, dynamic re-parenting, and uniform reuse of the engine's
+// `CHILD_OF` traversal — see `engine/prefabs/irreden/voxel/CLAUDE.md`
+// "Entity-based joints" and the design refinement in `#737`.
+//
+// MIGRATION (#605 Phase 2 will do the consumer-side work):
+//   - The GPU joint-matrix SSBO uploader reads `C_Skeleton.joints_` on each
+//     rig root and packs per-joint world transforms (from
+//     `C_WorldTransform`) at the matching slot, indexed by `C_Voxel.bone_id_`.
+//   - The `setRotation` / `setTranslation` setters here have no equivalent —
+//     pose authoring writes the per-joint local-transform component
+//     directly, then `SYSTEM_PROPAGATE_TRANSFORM` walks the CHILD_OF chain
+//     to produce world transforms.
+//
+// This header remains for one release as a deprecation shim so existing
+// callers compile while the consumer migration lands. Do not add new code
+// that depends on it.
 
 #include <irreden/ir_math.hpp>
-#include <irreden/render/ir_render_types.hpp>
 
 #include <vector>
 
@@ -60,19 +67,6 @@ struct C_JointHierarchy {
         if (jointIndex < joints_.size()) {
             joints_[jointIndex].translation_ = translation;
         }
-    }
-
-    std::vector<IRRender::GPUJointTransform> toGPUFormat() const {
-        std::vector<IRRender::GPUJointTransform> gpu;
-        gpu.reserve(joints_.size());
-        for (const auto &j : joints_) {
-            IRRender::GPUJointTransform t{};
-            t.rotation = j.rotation_;
-            t.translation = j.translation_;
-            t.parentJointIndex = j.parentIndex_;
-            gpu.push_back(t);
-        }
-        return gpu;
     }
 };
 

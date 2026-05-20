@@ -23,9 +23,18 @@
 
 set -euo pipefail
 
+# --- Shared helpers (detect_engine_root) ---
+_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
+if [[ ! -f "$_FLEET_COMMON_SH" ]]; then
+    echo "fleet-build: missing fleet-common.sh (expected next to fleet-build)" >&2
+    exit 1
+fi
+# shellcheck source=fleet-common.sh
+source "$_FLEET_COMMON_SH"
+
 # --- Build directory resolution ---
 # Priority: $IRREDEN_BUILD_DIR > <worktree-root>/build > ~/src/IrredenEngine/build
-WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+WORKTREE_ROOT=$(detect_engine_root)
 BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
 
 # --- Auto-configure if the build tree doesn't exist yet ---

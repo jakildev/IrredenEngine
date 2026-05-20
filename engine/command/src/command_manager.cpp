@@ -97,6 +97,18 @@ void CommandManager::executeDeviceMidiNoteCommands(
     }
 }
 
+void CommandManager::fireUserCommand(CommandId id) {
+    if (id >= m_userCommands.size()) {
+        IRE_LOG_ERROR(
+            "CommandManager::fireUserCommand: id {} out of range (size {})",
+            id,
+            m_userCommands.size()
+        );
+        return;
+    }
+    m_userCommands[id].execute();
+}
+
 void CommandManager::executeDeviceMidiNoteCommand(
     int device, CommandStruct<COMMAND_MIDI_NOTE> &command
 ) {

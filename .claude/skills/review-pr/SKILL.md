@@ -15,25 +15,11 @@ description: >-
 
 # review-pr
 
-Runs a code review on a Github PR using Irreden-Engine-specific criteria.
-Intended for a dedicated **reviewer agent** running in its own worktree — one
-whose context window is *not* polluted by the code it is reviewing.
-
-## When to invoke
-
-Trigger when the user says:
-
-- "review PR 42" / "review #42"
-- "review the last PR" / "review the open PR"
-- "check my PR" / "give me a review"
-- "review any new PRs" / "review the PR queue" / "check for new PRs to review"
-- Any phrase implying: look at this PR and tell me what's wrong.
-
-**Also trigger from a persistent reviewer-loop session**, where the session's
+**Trigger from a persistent reviewer-loop session**, where the session's
 own launch prompt told it to poll `gh pr list` on an interval and review
 anything new. In that mode the reviewer agent resolves the set of unreviewed
 PRs itself and invokes this skill once per PR without the user typing a fresh
-phrase each time. The loop pattern is documented in `docs/AGENT_FLEET_SETUP.md`.
+phrase each time. The loop pattern is documented in `docs/agents/FLEET.md`.
 
 Do **not** invoke proactively inside an unrelated working session — e.g. while
 an author-agent is mid-refactor on its own PR, don't auto-jump into reviewing
@@ -63,7 +49,7 @@ When running as Sonnet: finish the review, then in the verdict summary
 mention whether Opus escalation is needed. When running as Opus on a PR
 that already has a Sonnet review: read the Sonnet review first, treat
 it as a first pass, and focus on what Sonnet could not confirm. See
-the top-level `CLAUDE.md` for the full model split.
+[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md) "Model split" for the full split.
 
 ## Preconditions
 
@@ -77,10 +63,22 @@ the top-level `CLAUDE.md` for the full model split.
 
 ### 1. Resolve the PR and pull its metadata
 
+Read author/human PR comments before walking the diff — they're how
+authors flag deliberate scope ("I deferred X to a follow-up") and how
+humans pre-flag concerns ("watch out for Y on macOS"). Missing them
+leads to reviews that re-raise points the author already addressed in
+conversation.
+
 ```bash
-gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable
+gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable,comments,reviews
+gh api repos/jakildev/IrredenEngine/pulls/<N>/comments
 gh pr diff <N>
 ```
+
+The first command returns issue-level comments (`comments`) and review
+summaries (`reviews`). The second returns inline code-review comments
+(line-attached) — `gh pr view --json` does not include these. Together
+the two commands cover every kind of PR conversation.
 
 If the user said "latest" / "most recent":
 
@@ -92,42 +90,15 @@ Pick the top result, confirm the title with the user if there's ambiguity.
 
 ### 1b. Check whether the PR is stacked
 
-Every fleet PR today is single-task. When workers claim a dependency
-chain via `fleet-claim stack`, they produce a sequence of single-task
-PRs where each one's `--base` points at the previous task's branch
-instead of `master` — GitHub calls these "stacked PRs". The review
-pass is still per-PR; you don't re-review the parent PR as part of
-reviewing its child.
+Every fleet PR today is single-task. Some are stacked: their `--base` is another open PR's branch rather than `master`. The review pass is still per-PR; you don't re-review the parent.
 
-Detect stacking from the metadata already fetched in step 1:
+**Quick detection** (from the metadata fetched in step 1):
+- `baseRefName != "master"` → stacked on that branch.
+- Body contains `Stacked on:` line → confirms it; gives the parent PR URL.
 
-- **Base branch** (`baseRefName`) is not `master` → stacked on the PR
-  whose head is that branch.
-- **Body** contains a `Stacked on:` line → confirms it, and the line
-  gives you the parent PR URL for the review-body callout.
+If stacked: see [`procedures/stacked-pr-review.md`](procedures/stacked-pr-review.md) for the per-PR scoping rules, the body callout format, and the upstream-fragility flag — then return here for step 1c.
 
-If stacked:
-
-- Review **only this PR's own diff**. `gh pr diff <N>` already scopes
-  to the changes this PR introduces on top of its base branch — it
-  does NOT include the parent's changes. Trust that output; don't
-  manually expand the range.
-- Note the stack context in the review body, e.g. "Stacked on
-  #<parent>; approval assumes #<parent> lands first." Reviewers
-  (and the human merger) use that line to sequence merges.
-- Do **not** read, cite, or re-verify the parent PR's diff. It has
-  its own independent review and label. Cross-contamination between
-  stacked PRs' reviews is the main failure mode to avoid.
-- Verdict and label are set for this PR alone, the same way as a
-  non-stacked PR.
-- **Flag upstream interface fragility.** For any new function,
-  component, system, or shader this PR introduces that depends on an
-  upstream symbol, note in the review body: "if `<upstream-symbol>`
-  changes between approval and merge, this downstream will need a
-  rebase." This alerts the human merger to sequence carefully.
-
-If the base is `master` and there's no `Stacked on:` line, this is a
-standalone PR — proceed with the rest of the flow as normal.
+If standalone (base `master`, no `Stacked on:`): continue with step 1c.
 
 ### 1c. Churn audit when `mergeable == CONFLICTING`
 
@@ -211,64 +182,42 @@ worse, needs-fix.
 Go through each of these explicitly. For every item, either confirm
 compliance or raise an issue.
 
-**ECS invariants**
-- ❌ Per-entity `getComponent` / `getComponentOptional` inside a system tick
-  function. Fix: add the component to the system's template parameters.
-- ❌ `createEntity` / `removeComponent` called mid-iteration in a system
-  tick without using the deferred variant.
-- ❌ Allocating memory (new, std::vector push in hot loop, std::string
-  concat) in per-entity tick paths.
-- ❌ New prefab system that isn't added to the `SystemName` enum in
-  `engine/system/include/irreden/system/ir_system_types.hpp`.
-- ❌ New component that isn't `C_`-prefixed, or whose public members don't
-  have a trailing `_`.
-- ❌ `functionBeginTick` / `functionEndTick` declared with `Archetype&` or
-  any component parameter — they must be `void()`. The per-entity tick is
-  where entity data arrives; `begin`/`endTick` receive no entity args.
-- ❌ `endTick` reads `ids[0]` or indexes `ids` without a `ids.size() == 0`
-  guard — `begin`/`endTick` fire even when the archetype is empty.
-- ❌ system reads `C_Position3D` for visual placement instead of
-  `C_PositionGlobal3D + C_PositionOffset3D` — rendered position is always
-  Global + Offset (see `engine/CLAUDE.md`).
-- ❌ component method calls `IREntity::getComponent` / `setComponent` /
-  `createEntity` / `setParent` on a *different* entity (tier-c violation per
-  `engine/prefabs/CLAUDE.md`). Confirm the method appears on the documented
-  exceptions list before allowing.
+**ECS invariants** — check against [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md). For each item, confirm compliance or raise an issue.
 
 **Ownership / lifetime**
-- ❌ `shared_ptr` where `unique_ptr` would do.
-- ❌ Raw owning pointers (raw pointer = non-owning, always).
-- ❌ Storing references or pointers to ECS component storage across ticks —
+- `shared_ptr` where `unique_ptr` would do.
+- Raw owning pointers (raw pointer = non-owning, always).
+- Storing references or pointers to ECS component storage across ticks —
   archetype changes invalidate addresses.
-- ❌ Capturing `this` or references to World managers in lambdas that outlive
+- Capturing `this` or references to World managers in lambdas that outlive
   the World (e.g. lua callbacks registered before World teardown).
-- ❌ Stored `g_*Manager` pointer or reference in any object whose lifetime
+- Stored `g_*Manager` pointer or reference in any object whose lifetime
   can outlive `World` (background threads, sol2 callback closures, long-lived
   caches) — see `engine/world/CLAUDE.md` and `engine/CLAUDE.md`.
 
 **Render pipeline**
-- ❌ CPU frame-data struct out of sync with its GLSL `layout(std140)`
+- CPU frame-data struct out of sync with its GLSL `layout(std140)`
   counterpart. `vec3` members pad to 16 bytes; array elements stride to 16
   bytes; members crossing a 16-byte boundary need `alignas(16)`. If either
   the C++ struct (in `engine/render/include/irreden/render/`) or its shader
   `uniform` block changed, cross-reference both sides.
-- ❌ shader references `binding = N` but the C++ `kBufferIndex_*` constant
+- shader references `binding = N` but the C++ `kBufferIndex_*` constant
   was not updated — the mismatch is silent (wrong uniforms, no error).
   Confirm every bind-point index agrees on both sides.
-- ❌ New shader file not following the `c_` / `v_` / `f_` / `g_` prefix.
-- ❌ Canvas allocation before the canvas entity exists.
-- ❌ Compute dispatch size doesn't match `voxelDispatchGridForCount()`.
-- ❌ new `*.glsl` added without a matching `*.metal` counterpart (if parity
+- New shader file not following the `c_` / `v_` / `f_` / `g_` prefix.
+- Canvas allocation before the canvas entity exists.
+- Compute dispatch size doesn't match `voxelDispatchGridForCount()`.
+- new `*.glsl` added without a matching `*.metal` counterpart (if parity
   is intentionally deferred, the PR body must acknowledge it and reference a
   follow-up task).
 
 **Lighting** (if the diff touches `system_*ao*`, `system_*shadow*`,
-`system_*flood*`, `system_*fog*`, `system_build_occupancy_grid*`, or any
-`c_compute_*shadow*.glsl` / `.metal`)
-- Check 1 (grid coverage): `system_build_occupancy_grid.hpp` iterates the
-  full voxel pool — it does **not** include `cull_viewport_state.hpp` and
-  does not call `visibleIsoViewport`. Off-screen geometry participates in
-  lighting by design.
+`system_*flood*`, `system_*fog*`, `system_build_light_occlusion_grid*`,
+or any `c_compute_*shadow*.glsl` / `.metal`)
+- Check 1 (grid coverage): `system_build_light_occlusion_grid.hpp`
+  iterates the full voxel pool — it does **not** include
+  `cull_viewport_state.hpp` and does not call `visibleIsoViewport`.
+  Off-screen geometry participates in lighting by design.
 - Check 2 (shadow-ring extent): if chunk streaming is involved, the
   resident-chunk set extends past the view frustum by
   `maxCasterHeight × cot(sunAltitude)` in the sun-projection direction.
@@ -279,25 +228,30 @@ compliance or raise an issue.
   resident chunk set includes a 1-chunk guard band in all six directions for
   correct AO neighbor-voxel sampling.
 
-**Math / coordinates**
-- ❌ Mixing 3D world coords with iso 2D coords without going through
+**Math / coordinates** (see [`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) for the full glm→IRMath substitution table)
+- Mixing 3D world coords with iso 2D coords without going through
   `IRMath::pos3DtoPos2DIso` or a named helper.
-- ❌ Hard-coded `x + y + z` where `IRMath::pos3DtoDistance` exists.
-- ❌ PlaneIso axis swapped.
+- Hard-coded `x + y + z` where `IRMath::pos3DtoDistance` exists.
+- PlaneIso axis swapped.
 
-**Naming / style**
-- ❌ `m_` on public members, trailing `_` on private members (backwards).
-- ❌ `MinimapDetail`-style feature-specific helper namespaces instead of
-  `detail`.
-- ❌ Abbreviations in new names where a full word would read more clearly.
-- ❌ Anonymous namespaces in headers.
+**Serialization** (when the diff touches `engine/asset/`, `engine/prefabs/irreden/voxel/`, or `engine/world/`)
+- A struct annotated `// IRAsset: serialized` gained, lost, or renamed a field without
+  bumping `static constexpr uint16_t kSaveVersion = N;` in the same diff.
+  Fix: increment `kSaveVersion` and add a reader migration keyed on
+  `(structType, oldVersion)` in the format's load function. (Save Format Extensibility Rule #3.)
+- A new serialized record type with no `// IRAsset: serialized` annotation — the
+  simplify and review-pr checks cannot guard it without the annotation. Add the annotation
+  and set `kSaveVersion = 1` on the struct.
+
+**Naming / style** — follow the table in [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md) §Naming.
+- `m_` on public members, trailing `_` on private members (backwards — the single most common slip).
 
 **Tests / build**
-- ❌ Code change with no corresponding test change where a test existed.
-- ❌ New feature with no new test at all (flag as needs-fix unless the user
+- Code change with no corresponding test change where a test existed.
+- New feature with no new test at all (flag as needs-fix unless the user
   explicitly said "no tests").
-- ❌ Build or format-check not run before opening the PR (check commit
-  message for mention, or run `cmake --build build --target format-check`
+- Build or format-check not run before opening the PR (check commit
+  message for mention, or run `fleet-build --target format-changed`
   yourself if cheap).
 
 **Opus-only items** (Sonnet should not attempt these — escalate via the
@@ -395,7 +349,7 @@ tool**, then pass it with `--body-file`:
 - [ ] <...>
 - [ ] <...>
 
-🤖 Reviewed by Claude Opus 4.6 (review-pr skill)
+🤖 Reviewed by Claude <model> (review-pr skill)
 ```
 
 2. Post the review:
@@ -454,22 +408,23 @@ calls. Always remove stale verdict labels before adding the new one — a PR
 should have exactly one verdict label (`fleet:approved` / `fleet:needs-fix`
 / `fleet:blocker`) at any time. `fleet:has-nits` is orthogonal — it rides
 on top of `fleet:approved`. The remove list also clears
-`fleet:awaiting-upstream-review` (previously-gated stacked PR exits cleanly)
-and `fleet:stacked-rebase` (re-eval after a stacked-PR retarget completes
-the label's intent).
+`fleet:awaiting-upstream-review` (previously-gated stacked PR exits cleanly),
+`fleet:stacked-rebase` (re-eval after a stacked-PR retarget completes
+the label's intent), and `fleet:needs-base-update` (stacked PR whose
+upstream has since been re-approved or merged).
 
 ```bash
 # For approve, no nits in body:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved"
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved"
 
 # For approve WITH a non-empty Nits section in the body:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:approved" --add-label "fleet:has-nits"
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved" --add-label "fleet:has-nits"
 
 # For needs-fix (nits roll into the fix work; no separate label):
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:needs-fix"
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:needs-fix"
 
 # For blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --add-label "fleet:blocker"
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:blocker"
 ```
 
 The verdict label is the **primary signal** the human uses to decide
@@ -480,75 +435,11 @@ the nits without losing the approval.
 
 ### 5c. Tag render PRs for cross-host smoke validation
 
-Engine render PRs get built and run on whichever backend the author
-happened to be using (OpenGL on Linux, or Metal on macOS). The other
-backend's build + smoke path is not exercised until a fleet agent on
-that host picks the PR up. The `fleet:needs-<host>-smoke` labels
-surface that outstanding work so no render PR merges unvalidated on
-either backend.
+If the diff touches `engine/render/`, `engine/prefabs/irreden/render/`, `engine/render/src/shaders/`, any `*.glsl`, or any `*.metal` file, the PR needs cross-host smoke validation. The standard tagging path subtracts the author's host (only the *other* backend needs validation).
 
-After setting the verdict label in 5b, check the diff's file paths:
+Render-touching PR? See [`procedures/cross-host-smoke.md`](procedures/cross-host-smoke.md) for the host-detection table, the `gh pr edit` calls per author host, and the skip conditions (game-repo PRs, non-render engine PRs).
 
-```bash
-gh pr diff <N> --name-only
-```
-
-If any path matches **any** of these, the PR needs cross-host smoke:
-
-- `engine/render/`
-- `engine/prefabs/irreden/render/`
-- `engine/render/src/shaders/`
-- any `*.glsl` file
-- any `*.metal` file
-
-**Subtract the author's host before tagging.** `commit-and-push`
-stamps `fleet:authored-on-linux` or `fleet:authored-on-macos` at
-PR-create time based on the author's `uname -s`. Per the engine
-`CLAUDE.md` "Verifying render changes" section, render-PR authors
-build + run the demo on their host before opening, so authoring
-on a host is reasonable evidence its smoke is baseline-validated.
-Only the OTHER host actually needs cross-host validation.
-
-Read the candidate's labels (already in the cache as
-`repos.engine.prs[].labels`) and add only the smoke label for the
-host the author was NOT on:
-
-| Author label present | Add smoke label |
-|---|---|
-| `fleet:authored-on-linux` | `fleet:needs-macos-smoke` only |
-| `fleet:authored-on-macos` | `fleet:needs-linux-smoke` only |
-| Neither (Windows-native author, or pre-fix PR) | Both labels |
-
-```bash
-# Linux author  → one call:
-gh pr edit <N> --add-label "fleet:needs-macos-smoke"
-
-# macOS author  → one call:
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
-
-# Neither (Windows-native or pre-fix PR) → two calls, one per label
-# (keep them separate so each is independently safe and idempotent):
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
-gh pr edit <N> --add-label "fleet:needs-macos-smoke"
-```
-
-Each host's author agents (opus-worker, sonnet-author) poll for the
-label matching their host, run a clean-checkout build + `IRShapeDebug`
-smoke, and remove the label on success. While either label persists,
-the human should hold the merge — that's the whole point of the
-tally.
-
-**Skip the tagging step for:**
-
-- Game-repo PRs — the game's render pipeline uses the engine's
-  backend, so cross-host applies at engine level only.
-- Non-render engine PRs (tooling, docs, `.claude/`, non-render
-  modules like `engine/system/`) — these don't exercise backends and
-  don't benefit from cross-host smoke.
-
-If both labels are already present from a prior reviewer pass, no
-action needed — the `--add-label` call is a no-op when the label is
-already set.
+Non-render PR? Skip to step 6.
 
 ### 6. Report back
 
@@ -562,92 +453,15 @@ Reply with a compact summary to the calling session:
 
 ## Anti-patterns
 
-- ❌ Reviewing only the diff, not the surrounding file. Context matters.
-- ❌ Vague review comments without file:line citations.
-- ❌ Approving work that violates an ECS invariant "because the test passes"
+- Approving work that violates an ECS invariant "because the test passes"
   — some invariants don't fail at test time.
-- ❌ Merging the PR yourself. The user merges.
-- ❌ Pushing commits to the PR branch from the reviewer worktree.
-- ❌ Leaving a review that just says "LGTM" with nothing specific. Either the
-  PR is actually clean (in which case call out one non-obvious good choice
-  as **praise**, to reinforce it) or it isn't.
+- Pushing commits to the PR branch from the reviewer worktree.
 
 ## Re-review
 
-If the user says "re-review PR 42" after the author-agent has addressed
-comments:
+When the user says "re-review PR 42" or a reviewer-loop session sees `fleet:changes-made` on a previously-flagged PR, the flow is different — you must verify previously-flagged items against the new commits BEFORE running the standard checklist, otherwise you risk re-flagging items that were already fixed.
 
-1. **Check out the updated branch.** `gh pr checkout <N>` again — it pulls
-   the latest commits onto the already-checked-out branch.
-
-2. **Verify previously-flagged items first — before running the checklist.**
-   This is the most important step. Skipping it causes false-positive re-flags.
-
-   a. Fetch the prior review body (run both commands in parallel — first gets
-      conversation-level comments, second gets inline review comments):
-      ```
-      gh pr view <N> --comments
-      gh api repos/jakildev/IrredenEngine/pulls/<N>/comments \
-          --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
-      ```
-      Identify the review comment that was posted by this fleet (look for
-      the `## Review —` header and `🤖 Reviewed by` footer).
-
-   b. Extract every `<path>:<line>` or `<path>` reference from the
-      **Blockers**, **Needs-fix**, and **Nits** sections of that prior review.
-      Inline comments from the second command are also flagged items — treat
-      them the same way.
-
-   c. Get the HEAD commit SHA for attribution:
-      ```
-      git rev-parse --short HEAD
-      ```
-
-   d. For each flagged item, read the relevant portion of the file at HEAD
-      using the **Read tool** with `offset` near the flagged line. Determine:
-      - **Fixed** — the issue described in the prior review is no longer present
-        at that location (and not obviously moved elsewhere).
-      - **Still open** — the issue is still present at that location.
-      - **Location changed** — the line moved; the issue exists at a new path/line.
-
-   e. Write a **Prior-review resolution** section that will open the new review
-      body. Format:
-      ```
-      ### Prior-review resolution
-      - ✅ `path:line` — <prior issue summary> — verified fixed at <SHA>
-      - ❌ `path:line` — <prior issue summary> — still present; re-flagged below
-      - ↗ `old_path:old_line` — <prior issue summary> — moved to `new_path:new_line`; re-flagged below
-      ```
-      Every **Blocker**, **Needs-fix**, and **Nit** item from the prior review
-      must appear in one of these three states. (Praise and test-plan items
-      don't require tracking.) Do NOT silently re-flag an item without first
-      checking whether it was fixed.
-
-3. **Read the new commits only.** `git log origin/master..HEAD --oneline` lists
-   all commits on the PR branch since it diverged from master. Scope to the
-   subset that arrived **after the prior review's timestamp** — the prior review
-   comment's `created_at` (visible in the `gh pr view --comments` output from
-   step 2a) is the cutoff. Commits older than that were already reviewed; commits
-   newer than that are the delta to inspect. Avoid re-examining already-reviewed
-   code — focus the checklist on what changed.
-
-   **Re-apply guard:** If new commits are present since the last review, you MUST
-   work through every previously-flagged item in the resolution table (step 2e)
-   before confirming the old verdict. Never re-apply `fleet:needs-fix` or
-   `fleet:blocker` without checking whether the new commits actually address the
-   issue. If new commits clearly fix all flagged items, the verdict may improve
-   to `approve` even if prior iterations set `fleet:needs-fix`.
-
-4. **Run the full fresh-eyes checklist** (Step 4 of the main flow) against the
-   new commits. Carry forward any "Still open" or "Location changed" items from
-   step 2e. Do **not** re-raise items already confirmed fixed in the resolution
-   table.
-
-5. **Post the review.** Open the review body with the Prior-review resolution
-   table (step 2e), then present any new findings and any carried-forward open
-   items. If all prior items are fixed and no new issues appear, the verdict is
-   approve. Follow the same body format and label steps as the main flow
-   (steps 5, 5b, 6).
+See [`procedures/re-review.md`](procedures/re-review.md) for the full re-review procedure (Prior-review resolution table, post-cutoff commit scoping, re-apply guard).
 
 ## Escalation footer
 

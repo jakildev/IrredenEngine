@@ -1,0 +1,1154 @@
+#!/usr/bin/env bash
+# fleet-dispatcher — central transient-claude dispatcher (issue #273).
+#
+# The fully-baked version of the trigger-aware back-off shipped in
+# #272. Replaces fleet-babysit's per-pane relaunch loop for
+# worker / reviewer / queue-manager / merger panes with a single
+# polling daemon that decides when to spawn a `claude` invocation
+# and into which pane.
+#
+# Architects (opus-architect, game-architect) keep fleet-babysit —
+# they're long-lived `--resume` interactive sessions and don't fit
+# the transient model.
+#
+# Lifecycle per worker pane (under this dispatcher):
+#   1. Pane sits at `bash` prompt (idle).
+#   2. Scout writes ~/.fleet/state/triggers/<role>.
+#   3. Dispatcher's next tick finds the trigger + every idle pane
+#      tagged with that role, `tmux send-keys` a `claude --print
+#      ... | fleet-claude-stream` command into each, records each
+#      dispatch in ~/.fleet/state/dispatch/pane-<N>.json, removes
+#      the trigger. (Per-pane tracking — a role with N idle panes
+#      gets N concurrent iterations. fleet-claim's atomic claim
+#      protocol stops them from picking the same task.)
+#   4. Each claude runs to completion (one iteration), the pane
+#      returns to `bash` because the role's exit-protocol section
+#      ends with `bash -c 'kill -TERM $PPID'`.
+#   5. cleanup_stale_dispatches notices each pane is back at bash,
+#      clears that pane's dispatch record, releases the fleet-claim
+#      lock.
+#
+# **THIS SCRIPT IS ADDITIVE INFRA in PR E.1 — fleet-up does not yet
+# spawn it, and worker panes still launch fleet-babysit. Wiring is
+# in PR E.2+E.3 of the overhaul plan.**
+#
+# Source of truth: scripts/fleet/fleet-dispatcher in the engine repo.
+# Installed to ~/bin/fleet-dispatcher by scripts/fleet/install.sh.
+
+# Re-exec under bash >= 4 if the resolved interpreter is older. macOS
+# ships /bin/bash 3.2 (last GPLv2 release); env-resolved `bash` lands
+# there when no Homebrew bash is installed. This script uses bash 4
+# associative arrays (declare -A), which 3.2 silently mis-parses under
+# `set -u` as `<key>: unbound variable`. Fail loudly with an actionable
+# message instead.
+if (( BASH_VERSINFO[0] < 4 )); then
+    for _candidate in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        if [[ -x "$_candidate" ]] && "$_candidate" -c '(( BASH_VERSINFO[0] >= 4 ))' 2>/dev/null; then
+            exec "$_candidate" "$0" "$@"
+        fi
+    done
+    echo "fleet-dispatcher: requires bash >= 4 (found ${BASH_VERSION})." >&2
+    echo "  Install a newer bash, e.g.: brew install bash" >&2
+    exit 1
+fi
+
+set -euo pipefail
+
+# --- Paths -----------------------------------------------------------------
+
+FLEET_SESSION="${FLEET_SESSION:-fleet}"
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+TRIGGERS_DIR="$STATE_DIR/triggers"
+DISPATCH_DIR="$STATE_DIR/dispatch"
+RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
+USAGE_DIR="$STATE_DIR/usage"
+RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
+LOG_FILE="$HOME/.fleet/logs/dispatcher.log"
+PID_FILE="$STATE_DIR/dispatcher.pid"
+LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
+SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
+
+# --- Per-role concurrency cap config ---------------------------------------
+#
+# Soft cap on simultaneous iterations per role. Counts unique active
+# worktrees: in-flight (dispatch record present) ∪ reserved (reservation
+# whose task's Model maps to this role). Dedup by worktree avoids the
+# auto-reserve double-count where a normally-running pane has both a
+# dispatch record and a reservation for the same task.
+#
+# Override priority: env var > ~/.fleet/fleet-up.conf > built-in default.
+# Default values match each role's current pane count, so no role hits the
+# cap under normal flow — the cap only fires when reservations from a
+# crashed iteration would push the total over.
+FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
+# Capture env-set values before sourcing the conf, so a `FLEET_CONCURRENCY_X`
+# in the caller's environment still wins over a value set inside conf.
+_env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
+_env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
+_env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
+_env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
+_env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
+_env_merger="${FLEET_CONCURRENCY_MERGER:-}"
+if [[ -f "$FLEET_CONF" ]]; then
+    # shellcheck disable=SC1090
+    source "$FLEET_CONF"
+fi
+declare -A ROLE_CONCURRENCY=(
+    ["opus-worker"]="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
+    ["sonnet-author"]="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
+    ["sonnet-reviewer"]="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
+    ["opus-reviewer"]="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
+    ["queue-manager"]="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
+    ["merger"]="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
+)
+unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
+      _env_opus_reviewer _env_queue_manager _env_merger
+
+# Tracks per-role "deferred-by-cap" log throttling so the at-cap message
+# doesn't spam every 10s tick while the cap is held. Cleared whenever a
+# role drops back below cap.
+declare -A CAP_DEFER_LOGGED=()
+
+# Seconds to back off after a pane exits with code 2 (suspected usage limit).
+# Mirrors fleet-babysit's LIMIT_DELAY. Per-pane: if one of two opus-worker
+# panes hits a limit, the other keeps running.
+LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
+
+# --- Usage gate (per-rate-limit-type thresholds) --------------------------
+#
+# Soft, fleet-wide pre-emption: when any rate_limit_event observation
+# exceeds the threshold for its type, defer ALL fresh dispatches until
+# the window resets or utilization drops. In-flight iterations finish
+# normally; their next trigger waits.
+#
+# Observations are written by fleet-claude-stream (one file per
+# rateLimitType under $USAGE_DIR), so the gate piggybacks on every
+# transient worker's stream — no separate poller needed.
+#
+# Per-type thresholds let the operator distinguish a short-window
+# limit (5-hour, baked default 80% — leaves 20% headroom for
+# in-flight iterations to finish) from a long-window limit (7-day
+# all-models, baked default 95% — pre-emption only when very close
+# to the wall, so typical operation isn't gated by mid-week burn).
+#
+# Threshold lookup order (per observation type, e.g. "seven_day"):
+#   1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPERCASE>  (per-type override)
+#   2. FLEET_DISPATCHER_USAGE_GATE                   (global override)
+#   3. BUILTIN_PER_TYPE_DEFAULTS in the Python below (seven_day=0.95,
+#      five_hour=0.80; everything else falls to the global default)
+#   4. Final fallback 0.80
+#
+# Conservative against staleness: an observation older than
+# USAGE_STALE_SECONDS (default 1h) or whose resetsAt + RESET_GRACE_SECONDS
+# is in the past is ignored, so the gate doesn't latch closed forever
+# after a single high-watermark reading.
+#
+# RESET_GRACE_SECONDS pads the resetsAt boundary so the gate doesn't flip
+# open on the exact second the latched window expires. Anthropic's rolling
+# window means util at resetsAt isn't zero — it's whatever the rest of the
+# window weighs, plus any side-channel consumption (e.g. interactive
+# architect chats) the fleet didn't observe. Without padding, the first
+# tick past resetsAt dispatches every queued trigger and they all walk
+# straight into the wall. Default 10 min — enough to absorb the rolloff
+# but not enough to feel like a real wait.
+#
+# Sibling to LIMIT_DELAY's per-pane post-mortem cooldown: that fires
+# AFTER a pane hits the wall and exits with code 2; this fires BEFORE
+# the wall to spread the remaining budget across in-flight work.
+USAGE_STALE_SECONDS="${FLEET_DISPATCHER_USAGE_STALE_SECONDS:-3600}"
+RESET_GRACE_SECONDS="${FLEET_DISPATCHER_RESET_GRACE_SECONDS:-600}"
+# Validate-and-clamp: a non-numeric override (operator typo, trailing
+# unit suffix like "600s") would crash the inline-Python `int()` cast,
+# emit nothing on stdout, and silently flip the gate to OPEN — the same
+# silent-fail pattern this gate exists to prevent. Same shape as the
+# BOOT_FANOUT_WINDOW_SECONDS guard below.
+if ! [[ "$RESET_GRACE_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] RESET_GRACE_SECONDS=%q is not a non-negative integer; falling back to 600\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$RESET_GRACE_SECONDS" >&2
+    RESET_GRACE_SECONDS=600
+fi
+
+# Export the gate env vars so the inline-Python in usage_gate_status
+# sees them. Sourcing fleet-up.conf doesn't auto-export, so without
+# this an operator's `FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.50` in
+# conf would only exist as a bash-scope local. Export wraps only
+# already-set vars so unset ones stay unset (and the Python lookup
+# falls through to its baked defaults).
+if [[ -n "${FLEET_DISPATCHER_USAGE_GATE:-}" ]]; then
+    export FLEET_DISPATCHER_USAGE_GATE
+fi
+for _gate_var in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE_' || true); do
+    export "$_gate_var"
+done
+unset _gate_var
+
+# Track whether the gate was logged-as-closed last tick so the
+# "deferring all dispatches" message fires once per closed-window,
+# not every 10s.
+USAGE_GATE_CLOSED_LOGGED=""
+
+# Default poll cadence. Workers are transient — each iteration is a
+# one-shot `claude --print` spawned into an idle pane when a trigger
+# file appears, then the pane returns to bash. The dispatcher's
+# interval is the second half of "external state change → worker
+# fires" latency (the scout's interval is the first half). Local-only
+# work (no network), so a tight cadence is essentially free; 10 s
+# keeps pickup snappy without burning measurable CPU.
+POLL_INTERVAL_SECONDS="${FLEET_DISPATCHER_INTERVAL:-10}"
+
+# Which `timeout` binary to use when wrapping tmux send-keys. GNU
+# coreutils ships it as `timeout` on Linux and as `gtimeout` on macOS
+# (Homebrew coreutils, non-conflicting name). Empty string = not found;
+# dispatch_send_keys falls back to plain send-keys (today's behavior).
+TIMEOUT_CMD=""
+if command -v timeout &>/dev/null; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout &>/dev/null; then
+    TIMEOUT_CMD="gtimeout"
+fi
+
+# Periodic safety-net re-arm for merger. The merger's projection IS
+# responsive to PR state changes, so we only re-arm when the natural
+# trigger chain might be lagging (e.g. a scout tick was skipped).
+#
+# queue-manager is no longer in this list: maintenance is now script-driven
+# (fleet-queue-tick, spawned by fleet-state-scout on projection change).
+PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
+
+# Boot fan-out window. During the first N seconds after dispatcher start,
+# `dispatch_role` keeps the per-role trigger in place after a successful
+# dispatch when the post-dispatch active count is still below cap. This
+# guards against a race that surfaces at `fleet-up`: tmux applies the
+# `@fleet-role` tags to panes asynchronously, so the dispatcher's first
+# tick can see only a subset of role-tagged panes (e.g. one of two
+# sonnet-author panes). With the existing single-shot trigger semantic
+# that subset gets dispatched, the bootstrap trigger is consumed, and
+# the late-tagged panes sit idle until scout notices a projection
+# delta — which can take an arbitrarily long time when the same task
+# set was already actionable before the boot. Keeping the trigger for
+# the boot window gives subsequent ticks a chance to dispatch into the
+# missed panes; the dispatch records written here prevent
+# double-dispatch into the already-running panes.
+#
+# Scoped to the boot window so steady-state trigger semantics
+# (consume-on-success) are unchanged. 60s is generous — the race
+# typically resolves in 1–2 ticks (10–20s after start).
+BOOT_FANOUT_WINDOW_SECONDS="${FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS:-60}"
+# Validate-and-clamp: a non-numeric override (operator typo,
+# trailing-suffix like "9999s") would otherwise emit arithmetic errors
+# every tick or, under `set -u`, kill the daemon outright. Fall back
+# to the default and log a one-shot warning instead.
+if ! [[ "$BOOT_FANOUT_WINDOW_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] BOOT_FANOUT_WINDOW_SECONDS=%q is not a non-negative integer; falling back to 60\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$BOOT_FANOUT_WINDOW_SECONDS" >&2
+    BOOT_FANOUT_WINDOW_SECONDS=60
+fi
+
+# Roles this dispatcher is responsible for. Architects are excluded
+# (kept on fleet-babysit). Aligned with the worker / reviewer /
+# queue-mgr / merger roles in fleet-up.
+DISPATCHED_ROLES=(
+    "sonnet-author"
+    "opus-worker"
+    "sonnet-reviewer"
+    "opus-reviewer"
+    "merger"
+)
+# queue-manager is no longer LLM-dispatched. Maintenance (derived-field
+# rendering) is handled by fleet-queue-tick, spawned directly by
+# fleet-state-scout when the queue-manager projection changes.
+# Ingestion (new issues → TASKS.md) is a Cursor-flow / human operation.
+
+# Per-role default claude model. Sourced from fleet-up's
+# OPUS_MODEL / SONNET_MODEL convention.
+declare -A ROLE_MODEL=(
+    ["sonnet-author"]="sonnet"
+    ["opus-worker"]="claude-opus-4-7"
+    ["sonnet-reviewer"]="sonnet"
+    ["opus-reviewer"]="claude-opus-4-7"
+    ["merger"]="claude-opus-4-7"
+)
+
+# Per-role default effort level. Mirrors fleet-babysit's case stmt.
+declare -A ROLE_EFFORT=(
+    ["sonnet-author"]="high"
+    ["opus-worker"]="xhigh"
+    ["sonnet-reviewer"]="high"
+    ["opus-reviewer"]="xhigh"
+    ["merger"]="xhigh"
+)
+
+# Tracks which panes have already had their cooldown logged this cycle so
+# the "in rate-limit cooldown" message fires once per pane per cooldown
+# window, not every 10-second tick. Keyed by pane_key (e.g. "pane-3").
+declare -A RATE_LIMIT_COOLDOWN_LOGGED=()
+
+# --- Logging ---------------------------------------------------------------
+#
+# Writes to stderr only. fleet-up nohups the dispatcher with
+# `>>"$dispatcher_log" 2>&1`, so the redirect is the sole file
+# writer — `tee -a "$LOG_FILE"` here would double every line. When
+# the dispatcher is run manually for debugging, stderr lands on the
+# operator's tty as expected.
+
+log() {
+    local ts
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    printf '[%s dispatcher] %s\n' "$ts" "$*" >&2
+}
+
+# --- Shutdown handling -----------------------------------------------------
+
+cleanup_pid_file() {
+    if [[ -f "$PID_FILE" ]]; then
+        local recorded
+        recorded=$(cat "$PID_FILE" 2>/dev/null || true)
+        if [[ "$recorded" == "$$" ]]; then
+            rm -f "$PID_FILE"
+        fi
+    fi
+}
+
+on_exit() {
+    cleanup_pid_file
+    release_dispatcher_lock
+}
+trap on_exit EXIT
+trap 'log "received signal; shutting down"; exit 0' TERM INT
+
+# --- tmux helpers ----------------------------------------------------------
+
+session_exists() {
+    tmux has-session -t "$FLEET_SESSION" 2>/dev/null
+}
+
+# Print one line per pane: <pane_id>\t<@fleet-role>\t<pane_current_command>
+list_pane_state() {
+    if ! session_exists; then
+        return 0
+    fi
+    tmux list-panes -s -t "$FLEET_SESSION" \
+        -F "#{pane_id}	#{@fleet-role}	#{pane_current_command}"
+}
+
+# List all idle panes for a given role. Idle = pane_current_command
+# is `bash` / `zsh` / `sh` / `fish`. One pane_id per line on stdout
+# (empty output if no idle panes for the role).
+#
+# Plural so dispatch_role can fan out a single trigger across every
+# idle pane that's tagged with this role — that's how a role with
+# more than one pane (opus-worker has -1 and -2) gets concurrent
+# iterations. The previous singular form picked the first idle pane
+# and dropped the rest, which silently single-flighted multi-pane
+# roles.
+# Returns 0 (true) when a fleet-dispatch-wrap is currently running as a
+# direct child of the pane's shell. Used to disambiguate tmux's
+# pane_current_command, which reports "bash" while fleet-dispatch-wrap
+# (a `#!/usr/bin/env bash` script) runs its `claude | fleet-claude-stream`
+# pipeline — the wrapper's bash interpreter is the process-group leader,
+# so tmux's foreground-pgroup-name lookup returns "bash" rather than
+# "claude" or "python3". Without this check the dispatcher's idle-detection
+# treats a mid-iteration pane as idle: cleanup_stale_dispatches deletes
+# the dispatch record at the next 10s tick, and the next periodic re-arm
+# (default 5 min) fires C-c+new-dispatch into the live pipeline, killing
+# the iteration mid-edit. Observed for queue-manager: ~5 min of analysis
+# + edits would consistently get C-c'd before reaching the commit step,
+# leaving TASKS.md dirty and the master state stale across iterations.
+pane_has_running_wrapper() {
+    local pane_id="$1"
+    local pane_pid
+    pane_pid=$(tmux display-message -t "$pane_id" -p '#{pane_pid}' 2>/dev/null || true)
+    [[ -n "$pane_pid" ]] || return 1
+    pgrep -P "$pane_pid" -f fleet-dispatch-wrap >/dev/null 2>&1
+}
+
+find_idle_panes_for_role() {
+    local role="$1"
+    list_pane_state | while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
+        if [[ "$pane_role" != "$role" ]]; then
+            continue
+        fi
+        case "$pane_cmd" in
+            bash|zsh|sh|fish)
+                # tmux reports "bash" while fleet-dispatch-wrap is running.
+                # Skip the pane when the wrapper is alive — the iteration
+                # is in progress even though the foreground command name
+                # is in the shell allowlist.
+                if pane_has_running_wrapper "$pane_id"; then
+                    continue
+                fi
+                printf '%s\n' "$pane_id"
+                ;;
+        esac
+    done
+}
+
+# Wraps tmux send-keys in a $TIMEOUT_CMD guard (issue #502). A wedged
+# pty can block send-keys indefinitely, freezing the main loop for the
+# duration. 5 s is generous — a healthy send-keys returns in < 1 ms.
+# Falls back to plain send-keys if no timeout binary was found.
+dispatch_send_keys() {
+    if [[ -n "$TIMEOUT_CMD" ]]; then
+        "$TIMEOUT_CMD" 5 tmux send-keys "$@"
+    else
+        tmux send-keys "$@"
+    fi
+}
+
+# Returns 0 if the pane is occupied (non-shell cmd OR fleet-dispatch-wrap
+# alive as direct child of the pane shell), non-zero if truly idle.
+# Inverted allowlist: macOS tmux reports version strings (e.g. "2.1.132")
+# instead of "claude", so matching by name misses live panes and triggers
+# premature cleanup. The wrapper-process check covers the orthogonal case
+# where pane_current_command IS one of the allowlisted shells but a
+# fleet-dispatch-wrap iteration is mid-flight underneath it.
+pane_is_occupied() {
+    local pane_id="$1"
+    if list_pane_state | awk -F'\t' -v target="$pane_id" '
+        $1 == target {
+            cmd = $3
+            if (cmd != "bash" && cmd != "zsh" && cmd != "sh" && cmd != "fish")
+                print "yes"
+            else
+                print "no"
+        }
+    ' | grep -q "^yes$"; then
+        return 0
+    fi
+    pane_has_running_wrapper "$pane_id"
+}
+
+# --- Dispatch state --------------------------------------------------------
+#
+# Records are keyed by PANE (not role) so a role with multiple panes
+# can have multiple in-flight iterations concurrently. Filename shape
+# is `pane-<N>.json` where <N> is the tmux pane id with the leading
+# `%` stripped (tmux pane ids look like `%3` — `%` is reserved on some
+# filesystems and would need escaping; sanitizing once at the boundary
+# keeps the rest of the script free of shell-quoting hazards).
+#
+# Backward compat: cleanup_stale_dispatches globs `*.json` so any
+# legacy role-keyed records left over from a pre-refactor session
+# (e.g. `merger.json`) get cleaned up the same way as new ones — the
+# pane_id is parsed from the JSON body, not the filename.
+
+pane_id_to_key() {
+    # `%3` -> `pane-3`. Pane ids are always `%<digits>`.
+    printf 'pane-%s\n' "${1#%}"
+}
+
+dispatch_record() {
+    # $1 = pane_id (e.g. `%3`)
+    printf '%s\n' "$DISPATCH_DIR/$(pane_id_to_key "$1").json"
+}
+
+write_dispatch_record() {
+    local role="$1" pane_id="$2"
+    local ts
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    mkdir -p "$DISPATCH_DIR"
+    printf '{"role":"%s","pane":"%s","dispatched_at":"%s"}\n' \
+        "$role" "$pane_id" "$ts" >"$(dispatch_record "$pane_id")"
+}
+
+cleanup_stale_dispatches() {
+    if [[ ! -d "$DISPATCH_DIR" ]]; then
+        return
+    fi
+    local file role pane
+    for file in "$DISPATCH_DIR"/*.json; do
+        [[ -e "$file" ]] || continue
+        role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        pane=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
+        if [[ -z "$pane" ]]; then
+            rm -f "$file"
+            continue
+        fi
+        if pane_is_occupied "$pane"; then
+            continue
+        fi
+        log "dispatch for $role on $pane completed (pane returned to shell)"
+        rm -f "$file"
+    done
+}
+
+# --- Rate-limit cooldown ---------------------------------------------------
+
+# Returns 0 (true) if the pane is still within its usage-limit cooldown
+# window; returns 1 (false) if the pane is free to dispatch.
+# As a side effect, removes the marker file when the cooldown expires and
+# clears the "already logged" flag so the next cooldown produces a fresh log.
+pane_in_rate_limit_cooldown() {
+    local pane_key="$1"
+    local ts_file="$RATE_LIMIT_DIR/$pane_key.ts"
+    if [[ ! -f "$ts_file" ]]; then
+        return 1
+    fi
+    local ts now elapsed
+    ts=$(cat "$ts_file" 2>/dev/null || printf '0')
+    now=$(date +%s)
+    elapsed=$(( now - ts ))
+    if (( elapsed < LIMIT_DELAY )); then
+        return 0
+    fi
+    rm -f "$ts_file"
+    unset "RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]"
+    return 1
+}
+
+# --- Usage gate ------------------------------------------------------------
+
+# Print the gate state on stdout: "open" / "open:<info>" / "closed:<reason>".
+#
+# Reads ~/.fleet/state/usage/*.json files (latched by fleet-claude-stream
+# on every rate_limit_event). For each fresh observation still within
+# its window — or its post-reset grace pad — compares utilization
+# against the per-type threshold (see threshold_for below). Reports
+# closed when at least one observation breaches its own threshold; the
+# highest-utilization breach wins the report when several are over.
+#
+# Inlined python3 so we get JSON parsing + ISO-8601 timestamp math
+# without adding a shell dep. Same pattern rearm_periodic_meta_triggers
+# uses below.
+usage_gate_status() {
+    USAGE_DIR="$USAGE_DIR" \
+    USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
+    RESET_GRACE_SECONDS="$RESET_GRACE_SECONDS" \
+    python3 - <<'PY'
+import json
+import os
+import pathlib
+import sys
+import time
+from datetime import datetime
+
+usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
+stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
+reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
+
+# Built-in per-type defaults. Used only when neither the per-type env
+# override nor the global env override is set. This lets a fresh
+# install ship with the operator's preferred 80%/95% split without
+# requiring fleet-up.conf entries.
+BUILTIN_PER_TYPE_DEFAULTS = {
+    "seven_day": 0.95,   # all-models weekly window — pre-empt close to wall
+    "five_hour": 0.80,   # short-window — leave 20% headroom for in-flight work
+}
+# Final fallback for unknown types when the operator hasn't set a
+# global override either.
+BUILTIN_FALLBACK = 0.80
+
+
+def threshold_for(rate_limit_type):
+    """Per-type threshold lookup.
+
+    Order:
+      1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPER>  (operator per-type)
+      2. FLEET_DISPATCHER_USAGE_GATE               (operator global)
+      3. BUILTIN_PER_TYPE_DEFAULTS[type]           (baked sensible default)
+      4. BUILTIN_FALLBACK (0.80) for unknown types
+
+    The per-type env name is the rate-limit type uppercased with
+    non-alnum chars replaced by `_` (e.g. `five_hour` →
+    `FIVE_HOUR`).
+    """
+    safe = "".join(c.upper() if c.isalnum() else "_" for c in (rate_limit_type or ""))
+    if safe:
+        var = f"FLEET_DISPATCHER_USAGE_GATE_{safe}"
+        if var in os.environ and os.environ[var]:
+            try:
+                return float(os.environ[var])
+            except ValueError:
+                pass
+    glob = os.environ.get("FLEET_DISPATCHER_USAGE_GATE", "")
+    if glob:
+        try:
+            return float(glob)
+        except ValueError:
+            pass
+    return BUILTIN_PER_TYPE_DEFAULTS.get(rate_limit_type or "", BUILTIN_FALLBACK)
+
+
+if not usage_dir.is_dir():
+    print("open")
+    sys.exit(0)
+
+now = int(time.time())
+breaches = []  # list of (util_f, threshold, type, resets_at)
+top_observation = None  # for the all-open log line
+
+for path in sorted(usage_dir.glob("*.json")):
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        continue
+    util = data.get("utilization")
+    if not isinstance(util, (int, float)):
+        continue
+    observed_at = data.get("observed_at")
+    if isinstance(observed_at, (int, float)) and now - int(observed_at) > stale_s:
+        continue
+    resets_at = data.get("resetsAt")
+    # rate_limit_info ships resetsAt as either an ISO-8601 string or a
+    # Unix epoch int/float depending on CLI version — handle both.
+    if isinstance(resets_at, str):
+        try:
+            # datetime.fromisoformat accepts +00:00 but not Z until 3.11.
+            dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+            if dt.timestamp() + reset_grace_s <= now:
+                continue
+        except ValueError:
+            pass
+    elif isinstance(resets_at, (int, float)):
+        if resets_at + reset_grace_s <= now:
+            continue
+    util_f = float(util)
+    # Utilization comes back in [0,1]. Be defensive against a future
+    # API that sends a percent in [0,100] (the chat-formatter prints
+    # it as a percent, but the value itself is a fraction today).
+    if util_f > 1.5:
+        util_f = util_f / 100.0
+    rl_type = data.get("rateLimitType", path.stem)
+    th = threshold_for(rl_type)
+    if util_f >= th:
+        breaches.append((util_f, th, rl_type, resets_at))
+    if top_observation is None or util_f > top_observation[0]:
+        top_observation = (util_f, th, rl_type, resets_at)
+
+if breaches:
+    # Multiple breaches: report the highest utilization. That's the
+    # most pressing one and what the operator will care about first.
+    breaches.sort(key=lambda x: x[0], reverse=True)
+    util_f, th, rl_type, resets = breaches[0]
+    pct = int(round(util_f * 100))
+    thr_pct = int(round(th * 100))
+    resets_part = f" resets={resets}" if resets else ""
+    print(f"closed:{rl_type} util={pct}% (>= {thr_pct}%){resets_part}")
+elif top_observation is not None:
+    util_f, th, rl_type, _resets = top_observation
+    pct = int(round(util_f * 100))
+    thr_pct = int(round(th * 100))
+    print(f"open:{rl_type} util={pct}% (< {thr_pct}%)")
+else:
+    print("open")
+PY
+}
+
+# Returns 0 (true) when the gate is open and dispatching may proceed.
+# Side effect: emits a one-shot log entry on transitions (open->closed
+# and closed->open) using USAGE_GATE_CLOSED_LOGGED to suppress
+# repeat-on-every-tick spam.
+usage_gate_open() {
+    local status
+    status=$(usage_gate_status)
+    if [[ "$status" == closed:* ]]; then
+        if [[ -z "$USAGE_GATE_CLOSED_LOGGED" ]]; then
+            log "usage gate ${status}; deferring all dispatches"
+            USAGE_GATE_CLOSED_LOGGED=1
+        fi
+        return 1
+    fi
+    if [[ -n "$USAGE_GATE_CLOSED_LOGGED" ]]; then
+        log "usage gate re-opened (${status}); resuming dispatch"
+        USAGE_GATE_CLOSED_LOGGED=""
+    fi
+    return 0
+}
+
+# --- Per-role active-iteration count ---------------------------------------
+
+# Print the count of unique active worktrees for a role. "Active" =
+# (in-flight dispatch record for this role) ∪ (reservation whose task's
+# Model maps to this role AND whose matching pane is currently busy).
+# Dedup keys on worktree-basename, which is shared between dispatch
+# records (via the pane's pane_current_path) and reservations (whose
+# filename IS the worktree basename).
+#
+# A reservation on an idle pane is NOT counted. That case is the
+# resume-after-crash signal that role docs (see role-sonnet-author.md
+# step 0.5) consume on the next iteration — counting it would pin the
+# cap and prevent the resume from ever dispatching, which is the exact
+# stuck-fleet failure mode this guards against. The matching pane's
+# busy state is the disambiguator: a busy pane means an iteration is
+# live (the normal dispatch+reservation pairing); an idle pane means
+# the prior iteration crashed and the reservation is queued for the
+# next dispatch to consume.
+#
+# When tmux isn't running (shouldn't happen for a live dispatcher, but
+# the standalone --count-active CLI invokes this without a session),
+# dispatch records key on pane id instead — same dedup contract still
+# holds across two dispatch records for the same pane. Reservations in
+# that mode fall back to the legacy "always count" behavior since we
+# can't probe pane state; the tests that exercise --count-active
+# without tmux depend on this fallback.
+count_active_for_role() {
+    local role="$1"
+    declare -A seen=()
+
+    # Build worktree → busy map for panes tagged with this role. Used
+    # by the reservation pass below to skip idle-pane reservations.
+    declare -A worktree_busy=()
+    local have_tmux=0
+    if session_exists; then
+        have_tmux=1
+        local pane_id pane_role pane_cmd wt_path wt_name
+        while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
+            [[ "$pane_role" == "$role" ]] || continue
+            wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
+            [[ -n "$wt_path" ]] || continue
+            wt_name=$(basename "$wt_path")
+            case "$pane_cmd" in
+                bash|zsh|sh|fish)
+                    # Shell allowlist matches find_idle_panes_for_role's
+                    # idle detection — but a fleet-dispatch-wrap child
+                    # still means the pane is mid-iteration even though
+                    # tmux reports the parent shell's name.
+                    if pane_has_running_wrapper "$pane_id"; then
+                        worktree_busy["$wt_name"]=1
+                    fi
+                    ;;
+                *)
+                    worktree_busy["$wt_name"]=1
+                    ;;
+            esac
+        done < <(list_pane_state)
+    fi
+
+    if [[ -d "$DISPATCH_DIR" ]]; then
+        local f r p wt_path wt_name
+        for f in "$DISPATCH_DIR"/*.json; do
+            [[ -e "$f" ]] || continue
+            r=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
+            [[ "$r" == "$role" ]] || continue
+            p=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
+            [[ -n "$p" ]] || continue
+            wt_path=""
+            if (( have_tmux )); then
+                wt_path=$(tmux display-message -t "$p" -p '#{pane_current_path}' 2>/dev/null || true)
+            fi
+            if [[ -n "$wt_path" ]]; then
+                wt_name=$(basename "$wt_path")
+                seen["$wt_name"]=1
+            else
+                seen["pane-${p#%}"]=1
+            fi
+        done
+    fi
+
+    if [[ -d "$RESERVATIONS_DIR" ]]; then
+        local rfile wt_name rrole
+        for rfile in "$RESERVATIONS_DIR"/*.json; do
+            [[ -e "$rfile" ]] || continue
+            wt_name=$(basename "$rfile" .json)
+            rrole=$(fleet-claim reservation-role "$wt_name" 2>/dev/null || true)
+            [[ "$rrole" == "$role" ]] || continue
+            # With tmux available, only count the reservation when its
+            # worktree's pane is actually busy. An idle pane with a
+            # leftover reservation is the resume-after-crash case and
+            # must not pin the cap. Without tmux (CLI invocation
+            # outside a live fleet), fall back to the legacy "always
+            # count" behavior so test harnesses that don't stub tmux
+            # keep matching the documented contract.
+            if (( have_tmux )); then
+                if [[ -n "${worktree_busy[$wt_name]+x}" ]]; then
+                    seen["$wt_name"]=1
+                fi
+            else
+                seen["$wt_name"]=1
+            fi
+        done
+    fi
+
+    echo "${#seen[@]}"
+}
+
+# --- Trigger dispatch ------------------------------------------------------
+
+build_dispatch_command() {
+    # $1 = role, $2 = pane_key (e.g. "pane-3")
+    # Prints the shell-quoted command to send into the pane.
+    # Delegates to fleet-dispatch-wrap so the pane can capture claude's
+    # exit code and record rate-limit exits — the pipe to fleet-claude-stream
+    # would otherwise swallow claude's exit code (PIPESTATUS is only available
+    # in the pane's shell, not in the dispatcher). See fleet-dispatch-wrap.
+    #
+    # Leading-space sacrificial character: bash 5.2 readline (Ubuntu 24.04)
+    # eats the first input byte that arrives during the post-prompt redraw
+    # window after C-c. Without the space, `tmux send-keys C-c C-u "fleet-…" C-m`
+    # delivers `leet-…` to readline and the pane loops on
+    # `leet-dispatch-wrap: command not found`. Bash ignores leading whitespace
+    # on command lines, so the eaten space is harmless.
+    local role="$1" pane_key="$2"
+    local model="${ROLE_MODEL[$role]:-sonnet}"
+    local effort="${ROLE_EFFORT[$role]:-high}"
+    printf ' fleet-dispatch-wrap %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role"
+}
+
+dispatch_role() {
+    local role="$1"
+    local trigger_file="$TRIGGERS_DIR/$role"
+
+    if [[ ! -f "$trigger_file" ]]; then
+        return
+    fi
+
+    # Per-role concurrency cap. Defer if (in-flight + reserved) already at
+    # cap. Trigger stays in place so the next tick can re-evaluate once an
+    # iteration finishes or a reservation releases. Logged once per cap-held
+    # window to avoid spamming.
+    local cap="${ROLE_CONCURRENCY[$role]:-0}"
+    if (( cap > 0 )); then
+        local active
+        active=$(count_active_for_role "$role")
+        if (( active >= cap )); then
+            if [[ -z "${CAP_DEFER_LOGGED[$role]+x}" ]]; then
+                log "$role at concurrency cap ($active >= $cap); deferring trigger"
+                CAP_DEFER_LOGGED["$role"]=1
+            fi
+            return
+        fi
+        unset "CAP_DEFER_LOGGED[$role]"
+    fi
+
+    # Fan out across every idle pane for this role, skipping any that
+    # already have an in-flight dispatch record. A role with multiple
+    # panes (opus-worker has -1 and -2, sonnet-author has -1 and -2)
+    # gets concurrent iterations this way; the previous design
+    # single-flighted the role because the dispatch record was keyed
+    # by role name and only the first idle pane was ever picked.
+    #
+    # No coordination needed at dispatch time: each iteration runs the
+    # same role command, and the role-doc logic uses fleet-claim to
+    # atomically claim work — only one pane can claim a given task,
+    # the others find nothing actionable and exit. If there are fewer
+    # actionable items than idle panes, the surplus panes simply
+    # iterate-and-exit cheaply.
+    local idle_panes
+    idle_panes=$(find_idle_panes_for_role "$role")
+    if [[ -z "$idle_panes" ]]; then
+        # No idle pane right now (every pane for this role is running
+        # claude or otherwise busy). Leave the trigger in place —
+        # next tick may find a free pane.
+        return
+    fi
+
+    local dispatched=0
+    while IFS= read -r pane_id; do
+        [[ -n "$pane_id" ]] || continue
+        # Skip panes that already have an in-flight dispatch record.
+        # This handles the case where a pane reports `zsh` transiently
+        # between tool calls — the record says it's still busy and we
+        # don't double-dispatch.
+        if [[ -f "$(dispatch_record "$pane_id")" ]]; then
+            continue
+        fi
+        # Skip panes that hit a usage-limit recently. The per-pane
+        # rate-limit marker is written by fleet-dispatch-wrap when claude
+        # exits with code 2. Log the skip once per cooldown window to
+        # avoid repeating the message on every 10-second tick.
+        local pane_key
+        pane_key=$(pane_id_to_key "$pane_id")
+        if pane_in_rate_limit_cooldown "$pane_key"; then
+            if [[ -z "${RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]+x}" ]]; then
+                log "pane $pane_id ($role) in usage-limit cooldown (${LIMIT_DELAY}s); trigger kept"
+                RATE_LIMIT_COOLDOWN_LOGGED["$pane_key"]=1
+            fi
+            continue
+        fi
+        local cmd
+        cmd=$(build_dispatch_command "$role" "$pane_key")
+        log "dispatching $role -> $pane_id"
+        # Reset the input line with C-u (kill-line) before sending the
+        # dispatch command. Catches any partial input the human may have
+        # typed into the idle pane (stray "Ca" from an in-flight tmux
+        # prefix that didn't complete a binding, etc.) — without it the
+        # uncommitted prefix concatenates with our dispatch command,
+        # observed: "Caclaude --model …" / "command not found: Caclaude".
+        #
+        # The earlier implementation also sent C-c. Dropped because:
+        #   - SIGINT triggers a Windows alert sound under WSLg /
+        #     Windows Terminal every time a worker spins up — audibly
+        #     annoying with multiple panes restarting per minute.
+        #   - find_idle_panes_for_role only picks bash/zsh/sh/fish
+        #     panes — there is no foreground command to interrupt, so
+        #     SIGINT was a no-op aside from echoing "^C\n" and the
+        #     associated terminal bell.
+        #   - The "post-prompt-redraw eats first byte" race that C-c
+        #     induced (the "leet-dispatch-wrap: command not found"
+        #     loop on bash 5.2 / Ubuntu 24.04) is also gone.
+        # Multi-line bash continuations (the one remaining edge case
+        # C-c handled) are vanishingly rare in fleet panes — humans
+        # don't type there — and a single malformed dispatch self-heals
+        # on the next tick.
+        #
+        # The leading-space sacrificial char in build_dispatch_command
+        # remains as defense-in-depth.
+        if ! dispatch_send_keys -t "$pane_id" C-u "$cmd" C-m; then
+            log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
+            continue
+        fi
+        write_dispatch_record "$role" "$pane_id"
+        dispatched=$((dispatched + 1))
+    done <<< "$idle_panes"
+
+    if (( dispatched > 0 )); then
+        # Boot fan-out guard. If the role's post-dispatch active count
+        # is still below cap AND we're within the boot fan-out window,
+        # keep the trigger so the next tick can catch a pane whose
+        # `@fleet-role` tag landed late (the fleet-up tmux setup race).
+        # Dispatch records already written on this tick prevent
+        # double-dispatch into the panes we just fired. After the
+        # window, fall through to the legacy consume-on-success
+        # semantics so steady-state iterations don't loop just because
+        # of cap headroom.
+        local active
+        active=$(count_active_for_role "$role")
+        if should_retain_trigger_for_fanout_race "$role" "$active"; then
+            local cap="${ROLE_CONCURRENCY[$role]:-0}"
+            log "$role: dispatched $dispatched, active=$active < cap=$cap within boot fan-out window (${SECONDS}s < ${BOOT_FANOUT_WINDOW_SECONDS}s); keeping trigger for late-tag race"
+            return
+        fi
+        # Steady state (or boot window with cap saturated): at least
+        # one pane took the work and headroom is filled, consume the
+        # trigger.
+        rm -f "$trigger_file"
+    else
+        # Every idle pane already had a record (still settling in
+        # from the last dispatch) or every send-keys failed. Leave
+        # the trigger for the next tick.
+        log "no fresh dispatch for $role; trigger kept for retry"
+    fi
+}
+
+# Decide whether to retain a per-role trigger after a successful
+# dispatch tick to catch the fleet-up tmux-tag race. Returns 0
+# (retain) if all of: cap is configured (>0), the dispatcher is still
+# inside its boot fan-out window, and the post-dispatch active count
+# is below cap. Returns 1 (consume) otherwise — including any time
+# `BOOT_FANOUT_WINDOW_SECONDS=0` is set, which tests use to simulate
+# the post-window steady state.
+#
+# Extracted so the dispatcher's concurrency tests can drive the
+# decision without spinning up the full main loop.
+should_retain_trigger_for_fanout_race() {
+    local role="$1" active="$2"
+    local cap="${ROLE_CONCURRENCY[$role]:-0}"
+    if (( cap > 0 && SECONDS < BOOT_FANOUT_WINDOW_SECONDS && active < cap )); then
+        return 0
+    fi
+    return 1
+}
+
+# --- Main loop -------------------------------------------------------------
+
+write_pid_file() {
+    mkdir -p "$STATE_DIR"
+    printf '%d\n' "$$" >"$PID_FILE"
+}
+
+acquire_dispatcher_lock() {
+    # Portable single-instance guard. mkdir is atomic on every POSIX
+    # filesystem (Linux + macOS) and doesn't require flock (which is
+    # not present on macOS by default). The lock-dir's pid file lets
+    # us recover from a crashed previous instance that left the
+    # directory behind.
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%d\n' "$$" >"$LOCK_DIR/pid"
+        return 0
+    fi
+    local owner_pid
+    owner_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [[ -n "$owner_pid" ]] && kill -0 "$owner_pid" 2>/dev/null; then
+        return 1
+    fi
+    log "stale lock dir found (owner pid=${owner_pid:-?} not running); removing"
+    rm -rf "$LOCK_DIR"
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        printf '%d\n' "$$" >"$LOCK_DIR/pid"
+        return 0
+    fi
+    return 1
+}
+
+release_dispatcher_lock() {
+    if [[ -f "$LOCK_DIR/pid" ]]; then
+        local recorded
+        recorded=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+        if [[ "$recorded" == "$$" ]]; then
+            rm -rf "$LOCK_DIR"
+        fi
+    fi
+}
+
+rearm_periodic_meta_triggers() {
+    # Scout-watchdog safety net only. With merger's projection now
+    # tightened (only durable signals, not the merger's own toggled
+    # labels), the scout-driven trigger path is sufficient — the
+    # merger only fires when actionable state actually changes.
+    #
+    # The earlier `maybe_arm("merger", merger_actionable)` periodic
+    # re-arm fired every 5 min whenever any approved/blocked PR
+    # existed in the projection, even when the merger had nothing
+    # to do (e.g. PR has fleet:approved + fleet:needs-linux-smoke
+    # awaiting smoke validation — not the merger's job). Burning
+    # ~$0.30 per iteration × 12/hour was the dominant idle-fleet
+    # token cost. Dropped.
+    #
+    # queue-manager (bookkeeping) is handled by fleet-queue-tick,
+    # spawned directly by fleet-state-scout on projection change.
+    # Queue-manager (ingestion) fires on its own scout-driven
+    # trigger when human:approved-not-yet-queued issues appear.
+    #
+    # If scout itself dies, every role's projection-diff machinery
+    # stops. Re-fire merger as a one-shot so a scout crash doesn't
+    # strand the merge queue indefinitely.
+    python3 - <<'PY' || true
+import pathlib
+import time
+
+STATE = pathlib.Path("~/.fleet/state").expanduser()
+TRIG = STATE / "triggers"
+STATE_FILE = STATE / "state.json"
+TRIG.mkdir(parents=True, exist_ok=True)
+
+SCOUT_STALENESS_SECONDS = 120
+
+
+def scout_unhealthy():
+    if not STATE_FILE.is_file():
+        return True
+    try:
+        age = time.time() - STATE_FILE.stat().st_mtime
+    except OSError:
+        return True
+    return age > SCOUT_STALENESS_SECONDS
+
+
+if scout_unhealthy():
+    # One-shot watchdog: write merger trigger if scout is dead. The
+    # next scout tick (when scout recovers) will re-establish the
+    # normal projection-diff cadence and this fallback won't fire
+    # again until staleness recurs.
+    trig = TRIG / "merger"
+    if not trig.exists():
+        trig.touch()
+        print("scout-watchdog: re-arming merger (state.json stale)")
+PY
+}
+
+main() {
+    mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR" "$RATE_LIMIT_DIR" "$USAGE_DIR"
+
+    if ! acquire_dispatcher_lock; then
+        log "another dispatcher is already running (lock held); exiting"
+        exit 0
+    fi
+
+    write_pid_file
+    log "started (pid=$$, interval=${POLL_INTERVAL_SECONDS}s, rearm=${PERIODIC_REARM_INTERVAL_SECONDS}s, timeout_cmd=${TIMEOUT_CMD:-none})"
+    if [[ -z "$TIMEOUT_CMD" ]]; then
+        log "WARNING: timeout/gtimeout not found; send-keys is unguarded (install coreutils to fix)"
+    fi
+
+    # Periodic re-arm runs every Nth tick where N covers
+    # PERIODIC_REARM_INTERVAL_SECONDS. Pre-compute and clamp to >=1
+    # in case someone sets a poll interval longer than the rearm
+    # window (would otherwise produce a div-by-zero in the modulo).
+    local rearm_ticks=$((PERIODIC_REARM_INTERVAL_SECONDS / POLL_INTERVAL_SECONDS))
+    if (( rearm_ticks < 1 )); then
+        rearm_ticks=1
+    fi
+    local tick_count=0
+
+    while true; do
+        if [[ -f "$SHUTDOWN_FLAG" ]]; then
+            log "shutdown sentinel detected; exiting"
+            break
+        fi
+
+        cleanup_stale_dispatches
+
+        # Periodic safety net for chain-broken meta-roles (queue-manager,
+        # merger). Runs first so any rearm-written triggers are picked
+        # up by the normal dispatch_role pass on the same tick.
+        if (( tick_count % rearm_ticks == 0 )); then
+            rearm_periodic_meta_triggers
+        fi
+
+        # Fleet-wide usage gate. Closed → skip the dispatch_role pass
+        # entirely; triggers stay in place for next tick. The
+        # rearm_periodic_meta_triggers above still runs so the trigger
+        # set stays accurate for when the gate re-opens.
+        if session_exists && usage_gate_open; then
+            for role in "${DISPATCHED_ROLES[@]}"; do
+                dispatch_role "$role"
+            done
+        fi
+
+        tick_count=$((tick_count + 1))
+
+        # Interruptible sleep — wake on shutdown.
+        for _ in $(seq 1 "$POLL_INTERVAL_SECONDS"); do
+            if [[ -f "$SHUTDOWN_FLAG" ]]; then
+                break 2
+            fi
+            sleep 1
+        done
+    done
+
+    log "stopped"
+}
+
+# Operator/test entry points — exit before main() so the daemon never starts.
+case "${1:-}" in
+    --count-active)
+        # Print active count for a role (in-flight ∪ reserved, deduped by
+        # worktree). Used by tests and for operator inspection.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --count-active <role>" >&2
+            exit 2
+        fi
+        count_active_for_role "$2"
+        exit 0
+        ;;
+    --print-cap)
+        # Print configured cap for a role.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --print-cap <role>" >&2
+            exit 2
+        fi
+        echo "${ROLE_CONCURRENCY[$2]:-0}"
+        exit 0
+        ;;
+    --gate-status)
+        # Print the live usage gate status (open / closed) and exit.
+        # Used by operators to inspect the 5-hour-window state without
+        # tailing the dispatcher log.
+        usage_gate_status
+        exit 0
+        ;;
+    --retain-trigger-check)
+        # Test/debug: print `retain` or `consume` for this role given a
+        # post-dispatch active count. Honors BOOT_FANOUT_WINDOW_SECONDS
+        # (env override), so tests set it to 0 to simulate the
+        # post-window steady state or to a large value to simulate the
+        # boot window. SECONDS in a fresh CLI invocation is ~0, so the
+        # boot window is "in" by default unless the override drops it.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --retain-trigger-check <role> <active-count>" >&2
+            exit 2
+        fi
+        if ! [[ "$3" =~ ^[0-9]+$ ]]; then
+            echo "fleet-dispatcher --retain-trigger-check: <active-count> must be a non-negative integer (got: $3)" >&2
+            exit 2
+        fi
+        if should_retain_trigger_for_fanout_race "$2" "$3"; then
+            echo "retain"
+        else
+            echo "consume"
+        fi
+        exit 0
+        ;;
+esac
+
+main "$@"

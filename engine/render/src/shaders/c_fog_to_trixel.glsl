@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Screen-space fog-of-war pass. Runs after LIGHTING_TO_TRIXEL and before
 // TRIXEL_TO_TRIXEL. For each rasterized pixel, recovers the source voxel's

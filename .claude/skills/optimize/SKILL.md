@@ -18,55 +18,6 @@ description: >-
 
 # optimize
 
-A performance pass on freshly written or modified hot-path code.
-Decides what kind of profiling matters (CPU, GPU, or both), runs it,
-identifies hotspots, and applies engine-specific optimizations.
-
-## Why this exists
-
-The engine has hard real-time goals: 60 FPS on the target platform,
-deterministic frame pacing for the iso voxel pipeline. New code that
-adds even 0.5 ms to the per-frame budget compounds — by the time five
-features have each shipped a "small" regression, the frame budget is
-gone.
-
-Catching regressions in the author's worktree, before review, is much
-cheaper than discovering them in a perf bisect three weeks later.
-This skill is that catch.
-
-It runs **before** simplify when relevant, because simplify might
-strip the `IR_PROFILE_BLOCK` calls or the explanatory comments that
-optimize added during instrumentation.
-
-## When this is the right skill (vs. simplify alone)
-
-Run optimize when the diff touches:
-
-- **System tick functions** — anything in `engine/system/`,
-  `engine/prefabs/irreden/.../systems/`, or per-entity loops in
-  creations.
-- **Render pipeline stages** — `engine/render/`, shader files
-  (`engine/render/src/shaders/`), GPU buffer lifetimes, dispatch
-  sizes.
-- **Audio / video processing** — `engine/audio/`, `engine/video/`,
-  ffmpeg paths, MIDI handling.
-- **Math hot paths** — `engine/math/` functions called from per-entity
-  loops or per-pixel shader code.
-- **New game systems** — anything in `creations/<name>/src/` that
-  runs per-frame or per-entity.
-- **Anything the author suspects is slow** — even if it's not in the
-  list above, if the user says "this feels slow", profile it.
-
-Skip optimize when the diff is:
-
-- Tests, docs, or config changes.
-- Build / CI / tooling changes.
-- One-shot setup or teardown code that doesn't run per frame.
-- Pure refactors that preserve hot-path structure.
-
-If you're unsure, ask. Profiling time is cheap; pushing a hot-path
-regression is expensive.
-
 ## Flow
 
 ### 1. Identify the hot path
@@ -137,11 +88,7 @@ re-enable the profiler before re-running.
 ### 3. GPU profiling
 
 The engine has **per-pass GPU stage timing** wired into the render
-pipeline. Every major stage (`voxelCompact`, `voxelStage1`,
-`voxelStage2`, `shapeCompact`, `shapePass0`, `shapePass1`,
-`textToTrixel`, `computeVoxelAO`, `computeSunShadow`,
-`lightingToTrixel`, `trixelToTrixel`, `trixelToFb`, `entityCanvasToFb`,
-`fbToScreen`, `canvasClear`) brackets its GPU work with
+pipeline. Every named GPU stage brackets its work with
 `device()->finish()` + `std::chrono::steady_clock` samples and writes
 the per-frame millisecond cost into `IRRender::gpuStageTiming()`.
 
@@ -191,14 +138,7 @@ before/after numbers.
 
 For **CPU hotspots** in system ticks:
 
-- Per-entity `getComponent<C_Foo>()` → add `C_Foo` to the system's
-  template parameters so it's iterated as a dense column. (See
-  `engine/system/CLAUDE.md` for tick-function signature patterns.)
-  This is the single biggest engine-wide perf win and `simplify`
-  also flags it — but optimize is the place to actually verify the
-  measured ms improvement after fixing.
-- Allocation in per-entity paths → hoist to component construction
-  or pre-size + reuse a member buffer.
+- Per-entity `getComponent<C_Foo>()` and allocation in per-entity paths — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full pattern catalogue. After applying the fix, re-run the benchmark to verify the measured ms improvement.
 - `std::map` / `std::unordered_map` lookups in the inner loop →
   replace with a flat array indexed by entity ID, or move the
   lookup outside the loop.

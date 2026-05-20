@@ -30,7 +30,6 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/input)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/profile)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/utility)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/asset)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/render)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/video)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/math)
@@ -38,9 +37,14 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/entity)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/system)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/window)
+# command is declared before script + world because both link it
+# (T-193: lua_command_bindings.hpp exposes IRCommand into LuaScript's
+# public surface). command's own PRIVATE deps on render/video/window
+# are satisfied by the lines above.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/command)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
 
 if(IR_isLinux)
     message(STATUS "Linux-specific code will be compiled.")

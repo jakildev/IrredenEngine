@@ -5,6 +5,7 @@ project(BuildCreation VERSION 0.1.0)
 option(IRREDEN_BUILD_CREATIONS "Build engine-owned creations" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_TESTS "Build engine test targets" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_QUALITY_TARGETS "Build engine quality targets" ${PROJECT_IS_TOP_LEVEL})
+option(IRREDEN_BUILD_TOOLS "Build standalone tools (img_diff, etc.)" ${PROJECT_IS_TOP_LEVEL})
 set(
     IRREDEN_USER_PROJECTS
     ""
@@ -55,6 +56,10 @@ include_directories(${PROJECT_SOURCE_DIR}/engine/prefabs)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine)
 
+# Lua → C++ codegen tool used by creations and tests via irreden_lua_codegen().
+# Added after engine/ so the lua + sol2 targets are already declared.
+add_subdirectory(${PROJECT_SOURCE_DIR}/cmake/lua_codegen)
+
 if(IRREDEN_BUILD_CREATIONS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
 endif()
@@ -89,6 +94,10 @@ endif()
 
 if(IRREDEN_BUILD_TESTS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/test)
+endif()
+
+if(IRREDEN_BUILD_TOOLS)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/tools/img_diff)
 endif()
 
 if(IRREDEN_BUILD_QUALITY_TARGETS)

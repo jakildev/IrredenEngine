@@ -36,18 +36,20 @@ for arg in "$@"; do
     esac
 done
 
-# Per-role staleness thresholds in seconds.
-# = loop interval + overrun budget (build/API/usage-limit wait).
+# Per-role staleness thresholds in seconds. Only architects are
+# monitored — non-architect panes run under fleet-dispatcher (#273)
+# and may sit idle for arbitrarily long when no triggers fire. The
+# dispatcher's cleanup_stale_dispatches loop is the canonical
+# aliveness check for those panes; witness alerts on workers would
+# be false positives every quiet period.
+#
+# Architects use --resume sessions, may sit at "standing by" between
+# human prompts. The 2 h threshold is generous enough for typical
+# desk-time gaps without missing a genuine wedge.
 threshold_for_agent() {
     case "$1" in
-        sonnet-fleet-1)  echo 300  ;;   # 5m  — continuous loop, back-to-back
-        sonnet-reviewer) echo 360  ;;   # 6m  — 3m loop + 3m budget
-        queue-manager)   echo 600  ;;   # 10m — 5m loop + 5m budget
-        opus-worker-1)   echo 1800 ;;   # 30m — 20m loop + 10m budget
-        opus-worker-2)   echo 1800 ;;   # 30m
-        opus-reviewer)   echo 2700 ;;   # 45m — 30m loop + 15m budget
-        merger)          echo 1200 ;;   # 20m — 10m loop + 10m budget
-        *)               echo 0    ;;   # unknown — not monitored
+        opus-architect|game-architect)  echo 7200 ;;  # 2 h
+        *)                              echo 0    ;;  # not monitored
     esac
 }
 
@@ -85,6 +87,25 @@ run_one_pass() {
             rm -f "$ALERT_DIR/$agent.stuck"
         fi
     done
+
+    # fleet-dispatcher liveness check. The dispatcher is the canonical
+    # aliveness signal for non-architect panes (#273 cutover); if it
+    # crashes, those panes idle silently with no other alert path. The
+    # PID file is written by fleet-up at launch and removed by the
+    # dispatcher's own EXIT trap on clean shutdown.
+    local dispatcher_pid_file="$HOME/.fleet/state/dispatcher.pid"
+    if [[ -f "$dispatcher_pid_file" ]]; then
+        local dispatcher_pid
+        dispatcher_pid=$(cat "$dispatcher_pid_file" 2>/dev/null || true)
+        if [[ -n "$dispatcher_pid" ]] && ! kill -0 "$dispatcher_pid" 2>/dev/null; then
+            stale_count=$((stale_count + 1))
+            local msg="STALE: fleet-dispatcher (pid $dispatcher_pid recorded but process is dead)"
+            echo "[$now_str witness] $msg" | tee -a "$LOG"
+            echo "$now_str dispatcher pid=$dispatcher_pid not running" > "$ALERT_DIR/fleet-dispatcher.stuck"
+        else
+            rm -f "$ALERT_DIR/fleet-dispatcher.stuck"
+        fi
+    fi
 
     if [[ "$stale_count" -eq 0 ]]; then
         echo "[$now_str witness] all healthy ($tracked agent(s) tracked)"

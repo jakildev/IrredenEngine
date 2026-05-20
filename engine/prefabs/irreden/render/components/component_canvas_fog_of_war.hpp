@@ -15,20 +15,28 @@
 // and unused.
 //
 // v1 scope: the texture and a CPU-side mirror plus a dirty flag the
-// system uses to gate the per-frame `subImage2D` upload. Population is
-// driver-side: gameplay calls `IRPrefab::Fog::setCell` /
-// `IRPrefab::Fog::revealRadius` (see `render/fog_of_war.hpp`) to drive
-// the visibility set directly. LOS ray casting against the occupancy
-// grid (`castLOS`), heightmap-aware LOS, and the visible→explored fade
-// callback (`fadeExplored`) are deferred to follow-up tasks — the
-// fog-of-war foundation here lets the render pass and Lua-side scripts
-// ship before those algorithms land.
+// system uses to gate the per-frame `subImage2D` upload. This is the
+// documented exception to the "no dirty flags on components" rule —
+// see `.claude/rules/cpp-ecs.md` § "No dirty flags on components".
+// The exception applies because the texture is CPU-authored,
+// GPU-read-only, and a per-cell `subImage2D` would split
+// `revealRadius`'s loop into hundreds of API calls. T-161 evaluated
+// migrating to per-region `subImage2D` and deferred — see
+// `docs/design/fog-of-war-upload-strategy.md` for the analysis, the
+// trigger conditions for revisiting, and the mechanical migration
+// sketch. Population is driver-side: gameplay calls
+// `IRPrefab::Fog::setCell` / `IRPrefab::Fog::revealRadius` (see
+// `render/fog_of_war.hpp`) to drive the visibility set directly. LOS
+// ray casting against the occupancy grid (`castLOS`), heightmap-aware
+// LOS, and the visible→explored fade callback (`fadeExplored`) are
+// deferred to follow-up tasks — the fog-of-war foundation here lets
+// the render pass and Lua-side scripts ship before those algorithms
+// land.
 //
-// Sized to match `C_OccupancyGrid`'s 256×256 footprint on the ground
+// Sized to match the light-occlusion SSBO's 256×256 footprint on the ground
 // plane (256 KiB CPU+GPU) and using the same `[-halfExtent, +halfExtent)`
-// world-centered cell convention — see `component_occupancy_grid.hpp`
-// for the precedent. One cell per integer voxel column. Out-of-range
-// writes are silently dropped; out-of-range reads return
+// world-centered cell convention. One cell per integer voxel column.
+// Out-of-range writes are silently dropped; out-of-range reads return
 // `kFogStateUnexplored`. Out-of-range pixels in the shader are treated
 // as visible via an explicit bounds check (image bindings bypass sampler
 // wrap modes).
@@ -87,8 +95,7 @@ struct C_CanvasFogOfWar {
               TextureFilter::NEAREST
           )}
         , cpuBuffer_(
-              static_cast<std::size_t>(kFogOfWarSize) *
-                  static_cast<std::size_t>(kFogOfWarSize),
+              static_cast<std::size_t>(kFogOfWarSize) * static_cast<std::size_t>(kFogOfWarSize),
               kFogStateUnexplored
           ) {}
 
@@ -119,17 +126,21 @@ struct C_CanvasFogOfWar {
     }
 
     std::uint8_t getCell(int wx, int wy) const {
-        if (!inBounds(wx, wy)) return kFogStateUnexplored;
+        if (!inBounds(wx, wy))
+            return kFogStateUnexplored;
         return cpuBuffer_[flatIndex(wx, wy)];
     }
 
     void setCell(int wx, int wy, std::uint8_t state) {
-        if (!inBounds(wx, wy)) return;
+        if (!inBounds(wx, wy))
+            return;
         const std::size_t idx = flatIndex(wx, wy);
-        if (cpuBuffer_[idx] == state) return;
+        if (cpuBuffer_[idx] == state)
+            return;
         cpuBuffer_[idx] = state;
         dirty_ = true;
-        if (state != kFogStateUnexplored) allUnexplored_ = false;
+        if (state != kFogStateUnexplored)
+            allUnexplored_ = false;
     }
 
     /// Mark every cell within `radius` (taxicab distance) of `(cx,cy)`
@@ -140,7 +151,8 @@ struct C_CanvasFogOfWar {
     /// want a single moving observer can wipe the texture themselves
     /// before each `revealRadius` call.
     void revealRadius(int cx, int cy, int radius) {
-        if (radius < 0) return;
+        if (radius < 0)
+            return;
         const int xMin = std::max(cx - radius, -kFogOfWarHalfExtent);
         const int xMax = std::min(cx + radius, kFogOfWarHalfExtent - 1);
         const int yMin = std::max(cy - radius, -kFogOfWarHalfExtent);
@@ -149,9 +161,11 @@ struct C_CanvasFogOfWar {
             for (int x = xMin; x <= xMax; ++x) {
                 const int dx = x - cx;
                 const int dy = y - cy;
-                if (std::abs(dx) + std::abs(dy) > radius) continue;
+                if (std::abs(dx) + std::abs(dy) > radius)
+                    continue;
                 const std::size_t idx = flatIndex(x, y);
-                if (cpuBuffer_[idx] == kFogStateVisible) continue;
+                if (cpuBuffer_[idx] == kFogStateVisible)
+                    continue;
                 cpuBuffer_[idx] = kFogStateVisible;
                 dirty_ = true;
                 allUnexplored_ = false;
@@ -160,7 +174,8 @@ struct C_CanvasFogOfWar {
     }
 
     void clearAll() {
-        if (allUnexplored_) return;
+        if (allUnexplored_)
+            return;
         std::fill(cpuBuffer_.begin(), cpuBuffer_.end(), kFogStateUnexplored);
         allUnexplored_ = true;
         dirty_ = true;

@@ -7,15 +7,13 @@
 #include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/renderer_impl.hpp>
+#include <irreden/render/voxel_pool_allocation.hpp>
 
 #include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_offset_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 
-#include <tuple>
 #include <string>
-#include <span>
 
 using namespace IRComponents;
 using namespace IREntity;
@@ -75,8 +73,6 @@ class RenderManager {
     float getSunAmbient() const;
     void setSunShadowsEnabled(bool enabled);
     bool getSunShadowsEnabled() const;
-    void setScreenSpaceShadowsEnabled(bool enabled);
-    bool getScreenSpaceShadowsEnabled() const;
     void setAOEnabled(bool enabled);
     bool getAOEnabled() const;
 
@@ -88,19 +84,16 @@ class RenderManager {
     void presentFrame();
     void printRenderInfo();
 
-    std::tuple<
-        std::span<C_Position3D>,
-        std::span<C_PositionOffset3D>,
-        std::span<C_PositionGlobal3D>,
-        std::span<C_Voxel>>
-    allocateVoxels(unsigned int size, std::string canvasName = "main");
+    VoxelPoolAllocation allocateVoxels(unsigned int size, std::string canvasName = "main");
 
-    void deallocateVoxels(
-        std::span<C_Position3D> positions,
-        std::span<C_PositionOffset3D> positionsOffset,
-        std::span<C_PositionGlobal3D> positionsGlobal,
-        std::span<C_Voxel> voxels,
-        std::string canvasName = "main"
+    void deallocateVoxels(size_t startIndex, size_t size, std::string canvasName = "main");
+
+    void markVoxelPoolRangeActive(size_t startIndex, size_t count, std::string canvasName = "main");
+    void
+    markVoxelPoolRangeInactive(size_t startIndex, size_t count, std::string canvasName = "main");
+    void markVoxelPoolVoxelActive(size_t voxelIndex, bool active, std::string canvasName = "main");
+    void resyncVoxelPoolRangeFromColors(
+        size_t startIndex, size_t count, std::string canvasName = "main"
     );
 
     EntityId createCanvas(
@@ -151,7 +144,6 @@ class RenderManager {
     float m_sunIntensity = 1.0f;
     float m_sunAmbient = 0.4f;
     bool m_sunShadowsEnabled = true;
-    bool m_screenSpaceShadowsEnabled = false;
     bool m_aoEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
 

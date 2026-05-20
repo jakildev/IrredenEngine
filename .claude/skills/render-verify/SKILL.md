@@ -12,20 +12,6 @@ description: >-
 
 # Render Verify
 
-Visual regression harness. Complements `render-debug-loop`: where that skill
-is the open-ended "render, inspect, iterate" loop for fixing new rendering
-work, this skill is the one-shot "did anything regress?" gate.
-
-## When to invoke
-
-- After changing anything in `engine/render/src/shaders/`,
-  `engine/render/src/opengl/`, `engine/render/src/metal/`, or any
-  `engine/prefabs/irreden/render/systems/`.
-- Before opening a PR that touches the render pipeline (spot-check that
-  unrelated shots still match).
-- On a clean `master` checkout as a smoke test that the harness itself
-  still works.
-
 If the skill reports a regression you *expected* (intentional visual
 change), re-run with `--update-references` to bless the new output as the
 new baseline, then commit the updated PNGs alongside the render change.
@@ -34,15 +20,7 @@ new baseline, then commit the updated PNGs alongside the render change.
 
 ### Platform
 
-Works on any preset. The harness detects the active backend from
-`build/CMakeCache.txt` and looks up reference PNGs under the matching
-backend subdirectory:
-
-| Host          | Preset          | References dir                                           |
-|---------------|-----------------|----------------------------------------------------------|
-| WSL2 Ubuntu   | `linux-debug`   | `creations/demos/<demo>/test/references/linux-debug/`    |
-| macOS         | `macos-debug`   | `creations/demos/<demo>/test/references/macos-debug/`    |
-| Windows-native| `windows-debug` | `creations/demos/<demo>/test/references/windows-debug/`  |
+Works on any preset; see [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md) for the host/preset mapping. The harness detects the active backend from `build/CMakeCache.txt` and looks up reference PNGs under `creations/demos/<demo>/test/references/<preset>/`.
 
 Backends produce pixel-different output (FP rounding, driver differences).
 Each backend keeps its own reference set — references are **not** shared
@@ -57,10 +35,9 @@ reference set on a host representative of where verify will run.
 
 ### Demo requirement: `--auto-screenshot`
 
-The target demo must implement `--auto-screenshot [warmup-frames]` (same
-contract as `render-debug-loop`). Reference implementation:
-`creations/demos/shape_debug/main.cpp` — see `ShotConfig`, `g_shots[]`,
-the `AutoScreenshot` system.
+The target demo must implement `--auto-screenshot [warmup-frames]`. See
+[`engine/video/CLAUDE.md` § "Auto-screenshot helper"](../../../engine/video/CLAUDE.md)
+for the API and reference implementations.
 
 ### Manifest
 
@@ -101,7 +78,7 @@ The driver:
 2. Detects the backend from `build/CMakeCache.txt`.
 3. Runs `fleet-build --target IRShapeDebug`.
 4. Clears `<exe_dir>/save_files/screenshots/`.
-5. Runs `fleet-run --timeout 60 IRShapeDebug --auto-screenshot 10`.
+5. Runs `fleet-run IRShapeDebug --auto-screenshot 10`.
 6. For each shot, runs `scripts/render-compare.py` against the reference.
 7. Prints a pass/fail table and exits non-zero on any failure.
 
@@ -209,17 +186,17 @@ fleet doesn't need `pip install Pillow` on every new host.
 
 ## Anti-patterns
 
-- ❌ Updating references without visually inspecting the new PNGs. Blind
+- Updating references without visually inspecting the new PNGs. Blind
   `--update-references --force` masks real regressions.
-- ❌ Committing references for a backend you can't build. Each backend's
+- Committing references for a backend you can't build. Each backend's
   set must be captured on a host that can run that preset.
-- ❌ Loosening thresholds to make a failing shot pass. If the shot is
+- Loosening thresholds to make a failing shot pass. If the shot is
   legitimately flakey, fix the demo's determinism or exclude the shot
   from the manifest.
-- ❌ Adding the harness to a demo whose output is intentionally random or
+- Adding the harness to a demo whose output is intentionally random or
   time-dependent. The demo must be fully deterministic across runs for
   the harness to mean anything.
-- ❌ Sharing references across backends. OpenGL and Metal produce
+- Sharing references across backends. OpenGL and Metal produce
   pixel-different output; treating one as the canonical reference will
   produce false failures on the other.
 

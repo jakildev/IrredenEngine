@@ -16,11 +16,6 @@ description: >-
 
 # start-next-task
 
-Cleanly transitions a worktree from "this chunk is done, PR is open" to
-"ready for the next chunk of work". This is the other half of the new PR
-workflow — `commit-and-push` packages a slice; `start-next-task` prepares
-the worktree for the next slice.
-
 The skill operates in three modes, selected in priority order at step 4:
 
 - **Fleet stack mode** (active `fleet-claim` molecule with remaining
@@ -32,41 +27,14 @@ The skill operates in three modes, selected in priority order at step 4:
   `fleet-claim molecule resume`.
 - **Cursor stack mode** (cursor flow only, driven by user cue): same
   mechanic as fleet stack mode (branch off the old branch) but no
-  molecule machinery. Records the parent branch in
-  `branch.<new>.cursor-stack-base` git config so `commit-and-push`
-  picks it up later when opening the PR. Selected when the human
-  cues stacking ("stack this", "next slice stacked", "keep stacking",
-  "stack the next on this PR") and there is no active fleet molecule.
+  molecule machinery. Activated by stacking cues ("stack this", "next
+  slice stacked", "keep stacking", "stack the next on this PR") when
+  no fleet molecule is active; see [FLEET.md](../../../docs/agents/FLEET.md)
+  "Stacking in cursor flow" for the git-config persistence mechanism.
 - **Standard mode** (no fleet molecule and no stack cue): branch off
   fresh `origin/master`. The historical behavior and the most common
   case for both fleet single-task work and cursor flow's "I merged it,
   start something new" pattern.
-
-## When to invoke
-
-Trigger when the user says:
-
-- **Fresh-start cues** (→ standard mode):
-  - "next task" / "start next" / "what's next" (when a PR has just
-    been opened)
-  - "move on" / "move to the next item"
-  - "pull master and start fresh" / "rebase off master"
-  - "I merged it" / "merged, let's keep going" / "back to master"
-  - "fresh start" / "new task"
-- **Stack cues** (→ cursor stack mode, when not in fleet stack mode):
-  - "stack this" / "next slice, stacked" / "keep stacking"
-  - "stack the next on this PR"
-  - "build on the last PR" / "PR-stacked next slice"
-- Immediately after `commit-and-push` completes, if the user indicated
-  they want to keep working (e.g. "commit this and then start on the
-  pathfinding refactor", or "ship it and keep going stacked").
-
-Do **not** invoke proactively without a cue. If the user says "commit
-and push" and stops, don't also run `start-next-task` — wait for them
-to ask. The one cursor-flow exception is documented in the top-level
-`CLAUDE.md`: when a new chat lands on a feature branch with an
-already-merged PR and the user asks for new work, surface the state
-and ask whether to invoke `start-next-task` first.
 
 ## Preconditions
 
@@ -156,28 +124,18 @@ side. That's the expected case for cursor flow.
 
 #### 4b. Cursor stack mode
 
-If 4a returned empty AND the user's cue contained a stacking phrase
-("stack this", "next slice stacked", "keep stacking", "stack the next
-on this PR", "build on the last PR"), this is **cursor stack mode**.
+If 4a returned empty AND the cue contains a stacking phrase ("stack
+this", "next slice stacked", "keep stacking", "stack the next on this
+PR", "build on the last PR"): set `MODE=cursor-stack`,
+`BASE=<old-branch-name>`. Step 7b persists the parent branch.
 
-Set `MODE=cursor-stack`, `BASE=<old-branch-name>` (the branch you
-recorded in step 1). Note the old branch name — step 7b writes it to
-git config on the new branch.
+If the cue is fresh-start ("next task", "I merged it", "back to
+master", etc.): continue to 4c.
 
-If 4a returned empty AND the cue is fresh-start ("next task", "I
-merged it", "back to master", etc.), continue to 4c.
-
-If the cue is ambiguous (just "next slice" / "next" with no stacking
-or fresh-start hint) AND the **old branch has its own
-`cursor-stack-base` set** (i.e. the old branch is itself the middle
-of a stack), stop and ask the user:
-
-> You're on a stacked branch (`<old-branch>` → base
-> `<existing-stack-base>`). Should the next slice continue the stack
-> (branch off `<old-branch>`), or branch off `master`?
-
-Don't guess. Stack continuation has different review semantics than a
-fresh slice and the human should pick.
+If the cue is ambiguous and the old branch already has
+`cursor-stack-base` set, ask whether to continue the stack or branch
+from master — don't guess (see [FLEET.md](../../../docs/agents/FLEET.md)
+"Stacking in cursor flow").
 
 #### 4c. Standard mode
 
@@ -268,26 +226,14 @@ old PR when you push. Always start a new branch.
 
 ### 7b. Record cursor-stack-base (cursor stack mode only)
 
-In **cursor stack mode** only, persist the parent branch name as
-git config on the new branch so `commit-and-push` can find it later
-when opening the PR:
-
 ```bash
 git config branch.<new-branch>.cursor-stack-base <old-branch-name>
 ```
 
-This config write is also `.git/config` — same `all` permissions
-requirement on macOS as step 7.
-
-The config is per-branch and survives chat boundaries: if the human
-opens a new chat tomorrow already on `<new-branch>`, `commit-and-push`
-reads the config from `branch.<new-branch>.cursor-stack-base` and
-opens the PR with the correct `--base`. No "resume stack" cue is
-needed across chats.
-
-Skip this step in fleet stack mode (the chain lives in
-`fleet-claim` state, not git config) and in standard mode (no
-parent to record).
+Same `.git/config` write as step 7 — needs `all` permission on macOS.
+Skip in fleet stack mode and standard mode. See
+[FLEET.md](../../../docs/agents/FLEET.md) "Stacking in cursor flow"
+for the cross-chat persistence details.
 
 ### 8. Sanity-check the state
 
@@ -304,15 +250,7 @@ git log --oneline -5
   merge-base with `origin/master` is whatever the old branch branched
   from — not the old branch's tip. That's expected.
 
-In cursor stack mode, also confirm the config write took:
-
-```bash
-git config --get branch.<new-branch>.cursor-stack-base
-```
-
-It should print `<old-branch-name>`. If it's empty, the write was
-sandboxed (see step 7b's macOS note) — re-run with `all` permissions
-before continuing.
+In cursor stack mode, also run `git config --get branch.<new-branch>.cursor-stack-base` — should print `<old-branch-name>`; if empty, retry step 7b with `all` permissions.
 
 If the top commit is wrong for the mode you're in, the checkout went
 wrong — stop and investigate.
@@ -350,39 +288,12 @@ Reply with a compact summary:
 
 ## Anti-patterns
 
-- ❌ Switching branches with a dirty working tree. Always clean first.
-- ❌ Branching off your previous PR branch in **standard mode** (no
-  active molecule and no stack cue). That stacks unrelated work and
-  pollutes the old PR. Either stack mode (4a returned a `T-NNN`, or
-  the human cued stacking) is the only case where the old branch is
-  the correct base.
-- ❌ Branching off `origin/master` in **either stack mode**. The
-  downstream slice's diff would then include the upstream changes
-  too, defeating the whole point of stacked PRs (one slice = one
-  isolated diff).
-- ❌ Skipping `fleet-claim molecule advance` after `commit-and-push`
-  and going straight to `start-next-task`. `molecule resume` would
-  return the just-completed task as still in-progress, branching you
-  onto the same thing you just shipped. The stack-mode sanity-check
-  in step 4a catches this — heed it.
-- ❌ Writing `cursor-stack-base` git config in fleet stack mode or
-  standard mode. The config is the cursor-flow stack signal; setting
-  it elsewhere confuses `commit-and-push`.
-- ❌ Auto-detecting cursor stack mode from "old branch happens to be
-  a feature branch" without a user cue. The cue is the only signal.
-  Without it, the human's intent is ambiguous (they may want a fresh
-  slice off master), and step 4b's "ask, don't guess" rule applies
-  for cursor flow.
-- ❌ Running `git rebase origin/master` on the old branch to "catch
-  it up", then reusing it. Rebasing the same branch for new unrelated
-  work is how PR histories become unreadable.
-- ❌ Deleting the old local branch. Leave it alone — if the reviewer
-  asks for changes, you'll need to check it out again. Both stack
-  modes REQUIRE the old branch as the new branch's base.
-- ❌ Starting the next task without reading the target area's
-  CLAUDE.md. That's where the module-specific invariants live.
-- ❌ Invoking this skill when no PR was actually opened (i.e. after a
-  `commit-and-push` failure). Check step 2.
+- Running `git rebase origin/master` on the old branch to "catch it up",
+  then reusing it. Rebasing the same branch for new unrelated work is how
+  PR histories become unreadable.
+- Deleting the old local branch. Leave it alone — if the reviewer asks for
+  changes, you'll need to check it out again. Both stack modes REQUIRE the
+  old branch as the new branch's base.
 
 ## Recovery
 

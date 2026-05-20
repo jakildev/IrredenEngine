@@ -59,9 +59,10 @@ stage. Forgetting to advance for an event means stale state persists.
 
 ## Hover / hitbox
 
-Input-driven but render-aware. `C_Hitbox2D` is a screen-space axis-aligned
-rectangle on an entity. The hover-detect system tests the cursor against
-every hitbox each INPUT tick and fires registered callbacks:
+Input-driven but render-aware. `C_HitboxRect` (axis-aligned rectangle,
+`u8vec2 size_`) and `C_HitboxCircle` (circle, `int radius_`) are
+screen-space hitbox components. The hover-detect system tests the cursor
+against every hitbox each INPUT tick and fires registered callbacks:
 
 - `onHovered` / `onUnhovered` — entity-wide.
 - `onClicked` — matches a button status.
@@ -86,6 +87,17 @@ Callbacks are `sol::protected_function` (Lua) or plain `std::function`
 - **No window-focus tracking.** Input fires regardless of whether the
   window has focus. If this matters, filter in the system using a GLFW
   focus query.
-- **Lua callback lifetime.** `sol::protected_function` captured in a
-  handler must outlive the handler or the callback will crash. Register
-  the callback for the lifetime of the entity.
+- **Lua callback lifetime.** Follows the same `sol::protected_function`
+  ownership rules as all Lua callbacks — see `engine/script/CLAUDE.md`
+  Gotchas ("LuaScript lifetime is absolute"). Register the callback for
+  the lifetime of the entity.
+- **`C_MouseScroll` is ephemeral, not persistent.** Each scroll event
+  creates a short-lived entity carrying `C_MouseScroll` (with a
+  `C_Lifetime` so it expires after one frame). Unlike persistent key
+  state (one entity per button, alive for the session), scroll entities
+  are born per-event and die via the LIFETIME system. Systems that
+  iterate `C_MouseScroll` must therefore accumulate deltas in their
+  `endTick` rather than reading a single "current scroll" component —
+  multiple scroll events can arrive in one frame, each as its own
+  entity. The scrollZoomSystem in `creations/editors/voxel_editor/` is
+  the canonical example.

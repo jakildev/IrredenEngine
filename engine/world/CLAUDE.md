@@ -20,9 +20,13 @@ construction time.
 1. Parses `configFileName` into a `WorldConfig` (resolution, FPS, target
    window size, MIDI device, video-capture defaults, etc.).
 2. Constructs every manager in dependency order:
-   `EntityManager` → `SystemManager` → `InputManager` → `CommandManager`
-   → `TimeManager` → `IRGLFWWindow` → `RenderManager` →
-   `RenderingResourceManager` → `AudioManager` → `VideoManager` → `LuaScript`.
+   `IRGLFWWindow` → `LuaScript` → `EntityManager` → `SystemManager` →
+   `InputManager` → `CommandManager` → `RenderingResourceManager` →
+   `RenderManager` → `AudioManager` → `TimeManager` → `VideoManager`.
+   `LuaScript` leads the manager block so `sol::state` outlives
+   `EntityManager` — archetype columns can hold `sol::object` refs from
+   Lua-defined components (T-100), and C++ destructs members in reverse
+   declaration order.
 3. Sets the globals: `g_entityManager = &m_entityManager;`, etc.
 4. Calls `initEngineSystems()`, `initIRInputSystems()`,
    `initIRUpdateSystems()`, `initIRRenderSystems()` to register the
@@ -53,6 +57,45 @@ bindings before the first Lua script runs.
 `runScript(const char* fileName)` loads and executes a Lua file. Bare
 filenames resolve from `ExeDir/<ExeStem>/`; paths with a directory component
 resolve from cwd.
+
+## Init-affecting runtime params
+
+Runtime parameters that must be applied **before** any manager is
+constructed (today: `IRRender::VoxelPoolConfig` sizing, which the
+`RenderManager` reads at construction time) live in the same
+`config = { ... }` table as the `WorldConfig` fields, in the same
+`config.lua`. `IREngine::init` runs a small pre-init pass that loads
+the file and applies these fields before constructing the `World`.
+
+The canonical pattern from a creation's side is therefore **nothing** —
+the demo's `main()` just calls `IREngine::init(argv[0])` and the
+engine handles the rest. The override lives in the creation's own
+`config.lua`:
+
+```lua
+config = {
+    -- ... standard WorldConfig fields (init_window_width, etc) ...
+    voxel_pool_edge = 128,   -- override the default 64³ voxel pool
+}
+```
+
+Missing field → consumer's compiled-in default (`VoxelPoolConfig::kDefaultEdge`
+= 64); missing `config` table or missing `config.lua` → same. The pre-init
+pass is non-fatal.
+
+**Adding a new init-affecting param.** Extend
+`IREngine::detail::applyPreInitLuaConfig` in `engine/engine.cpp` to read
+the new field, apply it to its consumer, and log the override at INFO so
+startup logs surface non-default values. Document the field here in the
+list above and in the consuming module's `CLAUDE.md`. Do not add a CLI
+flag for the same purpose — `creations/demos/CLAUDE.md` "No runtime
+arguments" forbids it; the Lua config is the single canonical surface.
+
+**vs. `WorldConfig` fields.** `WorldConfig` covers params that World
+itself reads at construction time (`init_window_width`, `fit_mode`,
+profiling toggles, etc.); the pre-init pass covers params that need to
+land **before** `WorldConfig`'s own consumers fire. Both read from the
+same `config = { ... }` table — there is one source of truth per file.
 
 ## Gotchas
 

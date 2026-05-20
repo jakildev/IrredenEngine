@@ -12,19 +12,6 @@ description: >-
 
 # commit-and-push
 
-End-to-end flow for packaging a chunk of work into a reviewable PR on the
-Irreden Engine repo. This repo runs a parallel-agent workflow: each working
-agent lives in its own worktree, commits on a short-lived feature branch, and
-opens a PR that a reviewer agent inspects before the user merges.
-
-## When to invoke
-
-Trigger this skill whenever the user says something like:
-
-- "commit" / "commit my changes" / "commit and push"
-- "open a PR" / "make a PR" / "send it for review"
-- "wrap up" / "save progress" / "this slice is done"
-
 Do **not** invoke proactively — only when the user explicitly asks.
 
 ## Preconditions — do these before anything else
@@ -38,123 +25,15 @@ Do **not** invoke proactively — only when the user explicitly asks.
 3. **The working tree must have something to commit.** If `git status` is
    clean, tell the user and stop.
 
-## Stack-aware mode
+## Mode detection
 
-This is the **fleet stack** path. The cursor-flow stacking variant
-lives in the next section ("Cursor stack mode"); they have separate
-detection signals and are mutually exclusive in practice.
+This skill has three modes. Detect at the start of the flow, in priority order:
 
-If the current task is part of an `fleet-claim stack` chain (i.e. the
-caller's worktree name has a stack claim under
-`~/.fleet/claims/_stack_<agent>/`), this skill opens **one PR per task,
-chained by `--base`** instead of a single PR with multiple commits.
+1. **Fleet stack mode** — caller has an active `fleet-claim` stack chain. PRs are chained by `--base` (one PR per task). Detected via `fleet-claim stack-pr-state <worktree>`. See [`procedures/fleet-stack.md`](procedures/fleet-stack.md) for the deltas (branch name with `T-NNN` prefix, `stack-base` lookup for `--base`, `Stack context` body block, `fleet:stacked` label, `stack-set-pr` after PR open).
+2. **Cursor stack mode** — current branch has `branch.<name>.cursor-stack-base` git config set (written by `start-next-task` when the human cued stacking). PRs target the parent branch instead of `master`. See [`procedures/cursor-stack.md`](procedures/cursor-stack.md) for the detection check, the `Stacked on:` body line, and the macOS sandbox note.
+3. **Single-PR mode (default)** — neither stack signal present. Proceed with the standard flow below.
 
-Detect stack mode at the start of the flow:
-
-```bash
-fleet-claim stack-pr-state <your-worktree-name>
-```
-
-- Output `no stack claim for agent: <name>` → not stacked, proceed with
-  the normal single-PR flow below.
-- Output with `task`/`branch`/`pr` columns → stacked. The row whose PR
-  column is `(pending)` and whose earlier rows (if any) are all filled
-  is the current task. Note its `<task-id>`; you will need it in steps
-  2 and 8.
-
-The deltas versus the single-PR flow:
-
-- **Step 2 branch name** is `claude/<task-id>-<short-topic>` (e.g.
-  `claude/T-005-occupancy-grid`). The task ID prefix lets the
-  queue-manager, reviewers, and `stack-base` resolve the chain.
-- **Step 8 PR base** is `fleet-claim stack-base <agent> <task-id>`
-  instead of `master`. For the first task this still returns `master`;
-  for subsequent tasks it returns the previous task's branch.
-- **After `gh pr create`** record the PR in the stack so the next task
-  can chain off it:
-  ```bash
-  fleet-claim stack-set-pr <agent> <task-id> <branch> <pr-url>
-  ```
-- **PR body** includes a `## Stack context` block with a `Stacked on:`
-  line (the previous PR URL, or `master` for the first task in the
-  chain) and a `Full chain:` line listing the task IDs the molecule
-  covers. Reviewers use this to navigate sibling PRs without leaving
-  the diff.
-- **Labels** include `fleet:stacked` whenever `--base != master` (i.e.
-  every PR in the chain except the first). The merger reads
-  `baseRefName` directly for routing decisions; the label is a derived
-  convenience for human visibility and cheap GitHub-side filtering.
-- **Title** starts with `T-NNN: ` so the queue-manager's per-task
-  matching works and reviewers can tell which task in the chain this
-  PR belongs to.
-
-After the PR opens, do NOT start the next task in the same branch.
-Invoke `start-next-task` the same way as single-PR work; when it comes
-back, the next stacked-PR iteration computes its own `--base` via
-`stack-base` and branches off that (not `origin/master`).
-
-When **the final task's PR is merged**, run
-`fleet-claim release-stack <agent>` to clean up both the per-task
-claims and the stack metadata.
-
-## Cursor stack mode
-
-This is the cursor-flow analog of the fleet stack mode above. It
-opens a single PR per slice but with `--base <previous-feature-
-branch>` instead of `--base master`, so the diffs stay isolated
-while the chain accumulates. No `fleet-claim` machinery, no task
-IDs, no `fleet:stacked` label. State lives entirely in the per-
-branch git config that `start-next-task` writes when the human
-cues stacking.
-
-Detect cursor stack mode after step 1 of the main flow, AFTER
-ruling out fleet stack mode:
-
-```bash
-git config --get branch.$(git branch --show-current).cursor-stack-base
-```
-
-- Output is empty / exit 1 → not cursor-stacked. Proceed with the
-  normal single-PR flow.
-- Output names a branch (e.g. `claude/render-glow-pulse`) → the
-  current branch is cursor-stacked on that branch. Note the value;
-  step 8 uses it as `--base` and writes a `Stacked on:` line to
-  the PR body.
-
-The deltas vs the normal single-PR flow:
-
-- **Step 8 PR base** is the recorded `cursor-stack-base` instead
-  of `master`. Pass it to `gh pr create` as `--base <base>`.
-- **PR body** includes a `Stacked on: <PR URL>` line. Look up the
-  parent PR URL once at PR-open time:
-  ```bash
-  parent_branch=$(git config --get branch.$(git branch --show-current).cursor-stack-base)
-  parent_pr_url=$(gh pr list --head "$parent_branch" --state all --json url -q '.[0].url' --limit 1)
-  ```
-  If the parent has no PR yet (e.g. the human hasn't run
-  `commit-and-push` on it — unusual but possible), use the branch
-  name instead: `Stacked on: <parent_branch>` and warn the user.
-- **Title** uses the normal cursor-flow shape (no `T-NNN:` prefix —
-  cursor flow doesn't use the queue).
-- **No labels** beyond what the normal flow adds. The
-  `fleet:stacked` label is fleet-only; cursor flow just relies on
-  `Stacked on:` in the PR body.
-
-After the PR opens, do NOT clear the `cursor-stack-base` config —
-leave it as a record of the chain. The config is local-only and
-doesn't need cleanup; the next `commit-and-push` on a
-non-stacked branch (no config set) takes the standard path
-automatically.
-
-When the parent PR merges, change this PR's base to `master` in the
-GitHub UI (or `gh pr edit <N> --base master`) — same step as in any
-manual stacked-PR workflow.
-
-**macOS sandbox note.** Cursor's Bash sandbox blocks `gh` keychain
-access and SSH `git push`. Always run `gh pr create`,
-`gh pr edit`, `gh pr list`, and `git push` with the `all`
-permission on macOS. Reads of `git config --get …` are not
-sandboxed.
+The two stack modes are mutually exclusive. In single-PR mode, ignore `procedures/fleet-stack.md` and `procedures/cursor-stack.md`; `procedures/pr-body.md` still applies for the step 8 body template.
 
 ## Flow
 
@@ -186,7 +65,7 @@ If you're on `master`:
   ```bash
   git checkout -b claude/<area>-<topic>
   ```
-- **In stack-aware mode** (see section above): use
+- **In fleet stack mode** (see [`procedures/fleet-stack.md`](procedures/fleet-stack.md)): use
   `claude/<task-id>-<short-topic>` instead, and branch off the base
   returned by `fleet-claim stack-base <agent> <task-id>` (which is
   `master` for the first task in the chain, or the previous task's
@@ -201,12 +80,7 @@ If you're already on a feature branch, just use it. Do not rename mid-session.
 
 ### 3. Pre-commit checks and `simplify`
 
-**First**, run the **Rebase guard** check (see section below): if you
-saved a pre-capture earlier in this conversation (a `git diff
-origin/master` snapshot before rebasing), compare it now against a
-fresh `git diff origin/master`. If you don't have that snapshot in
-context, check `git reflog --since=2.hours.ago` for a recent rebase
-entry; if found, warn and inspect manually before proceeding.
+**First**, run the **Rebase guard** check (full procedure: [`procedures/rebase-guard.md`](procedures/rebase-guard.md)): if you saved a pre-capture earlier in this conversation (a `git diff origin/master` snapshot before rebasing), compare it now against a fresh `git diff origin/master`. If you don't have that snapshot in context, check `git reflog --since=2.hours.ago` for a recent rebase entry; if found, warn and inspect manually before proceeding.
 
 **Second**, check whether the diff touches visual/render files:
 
@@ -228,45 +102,11 @@ Skip the prompt if:
 - `docs/pr-screenshots/<branch>/` already contains screenshots from a prior
   run on this branch.
 
-**Then**, run the cross-repo information-isolation check (see engine
-`CLAUDE.md` "Cross-repo information isolation"). The engine repo is
-public; the game repo is private. Engine PRs MUST NOT leak game
-content. Scan the staged diff and the to-be-written PR body for any
-of the following game-leakage tokens:
-
-- `creations/game/` — engine PRs should never touch game files. If
-  the diff includes a path under `creations/game/`, this almost
-  certainly means the worker is in the wrong worktree (the engine
-  PR shouldn't be modifying the game tree). Stop and warn.
-- `jakildev/irreden` — the game repo slug. If a draft PR body or
-  commit message references it, scrub before continuing.
-- A `T-NNN` task ID that came from the game queue (cross-check
-  against `~/src/IrredenEngine/creations/game/TASKS.md` if present).
-  Engine PR bodies should reference engine task IDs only.
-- Game-specific feature names or design language. This one needs
-  human judgment — if the commit message you've drafted talks about
-  "ant pheromone trails" or "fungus sporulation" instead of the
-  underlying engine capability, rewrite in pure engine terms.
-
-Check for staged game-repo paths with a single git command using a
-pathspec filter — no pipe, no compound operator:
-
-```bash
-git diff --cached --name-only -- 'creations/game/'
-```
-
-If the output is non-empty, the commit includes `creations/game/`
-paths and you must stop and warn the user. (If the output is empty,
-git prints nothing and you proceed.)
-
-For the PR body / commit message scan (looking for `jakildev/irreden`
-references or game task IDs), use the **Grep tool** on the draft text
-rather than a shell pipe.
-
-If any leakage is found, surface it to the user before committing.
-The fix is usually a 30-second rewrite of the commit message and PR
-body in engine-level terms; rarely is a code change actually needed
-(if it is, the worker is in the wrong repo entirely).
+**Then**, run the cross-repo information-isolation check per
+`docs/agents/CLAUDE-BASELINE.md` §"Cross-repo information isolation":
+scan staged paths with `git diff --cached --name-only -- 'creations/game/'`
+and the PR body draft with the Grep tool for the game-leakage tokens
+listed there. Surface any match to the user before committing.
 
 **Then** invoke the `simplify` skill to review the dirty changes for reuse,
 quality, and efficiency issues specific to Irreden Engine:
@@ -324,7 +164,7 @@ default. Read the nearest `CLAUDE.md` before drafting.
   `docs:`) derived from the dominant changed path.
 - Body wraps at ~72 chars per line.
 - Describe *why* over *what*.
-- Always include the `Co-Authored-By` trailer exactly as shown.
+- Always include the `Co-Authored-By` trailer; the harness system prompt specifies the exact form with the current model version.
 
 ### 5. Stage files
 
@@ -375,30 +215,25 @@ plain `git push` works.
 
 ### 8. Open the PR
 
-Use `gh pr create`. For the single-PR flow, target is `master`. Pass the
-body via HEREDOC so the Markdown renders correctly:
+Use `gh pr create`. Body template per mode: [`procedures/pr-body.md`](procedures/pr-body.md).
+
+For the **single-PR flow** (default), target is `master`:
 
 ```bash
-gh pr create --base master --title "render: match cpu/gpu iso culling bounds" --body "$(cat <<'EOF'
+gh pr create --base master --title "<scope>: <title>" --body "$(cat <<'EOF'
 ## Summary
-- Stage-1 compute vs cpu iso culling bounds were out of sync; fixed.
-- Now both paths use the trixel-offset-corrected camera pos.
+- <bullet>
 
 ## Test plan
-- [ ] `IRShapeDebug` renders without left-edge culling pop at zoom ≥ 2
-- [ ] `render-debug-loop` screenshots diff-clean against baseline
-
-## Notes for reviewer
-Check `engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl` vs
-`engine/math/src/ir_math.cpp` `visibleIsoViewport`.
+- [ ] <check>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
 ```
 
-Title should match the commit title when the PR is a single commit. For
-multi-commit PRs, use a broader title that covers the series.
+Title should match the commit title for a single commit; use a broader title
+for multi-commit PRs.
 
 **PR labels — `fleet:wip` (important):** For the **default Cursor /
 human-ready** single-PR open to `master`, **do not** pass
@@ -410,12 +245,13 @@ where appropriate — that is unrelated and still applies. The
 **Stack-aware** block still uses `fleet:wip` for stacked fleet-worker
 PRs; that is intentional for that workflow.
 
-**Stack-aware override:** when the current task is part of a
+**Fleet stack override:** when the current task is part of a
 `fleet-claim stack`, compute the base via `stack-base` and record the
 resulting PR via `stack-set-pr`. When `$base` is a feature branch
 (i.e. not `master`), also pass `--label "fleet:stacked"` so the merger
 can filter stacked PRs via label without an extra `gh pr view --json
-baseRefName` call per candidate:
+baseRefName` call per candidate. Body adds a `## Stack context` block —
+see [`procedures/pr-body.md`](procedures/pr-body.md) fleet stack mode:
 
 ```bash
 base=$(fleet-claim stack-base <agent> <task-id>)
@@ -426,38 +262,18 @@ fi
 pr_url=$(gh pr create --base "$base" \
     --title "T-<NNN>: <short title>" \
     --body "$(cat <<'EOF'
-## Summary
-- <what this task does>
-
-## Stack context
-This PR is part of a stack. Reviewers: review this PR on its own; the
-chain is coordinated in the PR body's "Stacked on" line.
-
-Stacked on: <previous PR URL, or "master" for the first PR>
-Full chain: T-<A>, T-<B>, T-<C>
-
-## Test plan
-- [ ] <task-specific checks>
-
-Closes #<issue-N>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+<fleet stack body — see procedures/pr-body.md fleet stack mode>
 EOF
 )" "${labels[@]}")
 fleet-claim stack-set-pr <agent> <task-id> "$(git branch --show-current)" "$pr_url"
 ```
 
-The `Stacked on:` line is the reviewer's primary signal that earlier
-PRs are prerequisites. The `Full chain:` line helps them find the
-siblings if they want cross-context. The merger reads `baseRefName`
-directly for correctness decisions; `fleet:stacked` is a derived
-convenience label for human visibility and cheap filtering.
-
 **Cursor stack override:** when the current branch has a
-`cursor-stack-base` git config set (see "Cursor stack mode" section
-above), use that as the PR base instead of `master`. No `fleet-claim`
-calls and no `fleet:stacked` label — cursor stack mode is human-
-managed.
+`cursor-stack-base` git config set (see [`procedures/cursor-stack.md`](procedures/cursor-stack.md)
+for the detection rule and full deltas), use that as the PR base instead of
+`master`. No `fleet-claim` calls and no `fleet:stacked` label. Body adds a
+`## Stack context` block — see [`procedures/pr-body.md`](procedures/pr-body.md)
+cursor stack mode:
 
 ```bash
 parent_branch=$(git config --get branch."$(git branch --show-current)".cursor-stack-base)
@@ -468,72 +284,15 @@ if [[ -n "$parent_branch" ]]; then
     gh pr create --base "$parent_branch" \
         --title "<scope>: <title>" \
         --body "$(cat <<EOF
-## Summary
-- <what this slice does>
-
-## Stack context
-Stacked on: $parent_pr_ref
-
-When the parent PR merges, change this PR's base to \`master\`
-(via the GitHub UI or \`gh pr edit <N> --base master\`).
-
-## Test plan
-- [ ] <slice-specific checks>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+<cursor stack body — see procedures/pr-body.md cursor stack mode; substitute $parent_pr_ref>
 EOF
 )"
 fi
 ```
 
-The `Stacked on:` line is the reviewer's signal that an earlier PR is
-a prerequisite. Cursor stack mode does not record a `Full chain:`
-line — chains are short and the link-walk via `Stacked on:` is
-sufficient.
-
-The `gh pr list --head` and `gh pr create` calls both need keychain
-access; on macOS Cursor's Bash sandbox, run them with `all`
-permissions.
-
 ### 8b. Tag the host the PR was authored on
 
-After `gh pr create` succeeds, stamp a `fleet:authored-on-<host>`
-label so the reviewer knows which backend the author already
-implicitly smoke-tested. Per the engine `CLAUDE.md` "Verifying
-render changes" section, render-PR authors are expected to build
-and run the demo on their host before opening — so authoring on a
-host is reasonable evidence that host's smoke is at least
-baseline-validated.
-
-This is the **author's host fact**, not a state label. Reviewers
-read it to skip the matching `fleet:needs-<host>-smoke` label so
-the author's host doesn't get tagged for redundant validation.
-The OTHER host's smoke label (if needed per the diff) still gets
-added — backend drift between OpenGL and Metal is the whole point
-of cross-host validation.
-
-```bash
-host_kernel=$(uname -s)
-case "$host_kernel" in
-    Linux)  host_label="fleet:authored-on-linux" ;;
-    Darwin) host_label="fleet:authored-on-macos" ;;
-    *)      host_label="" ;;  # unknown host (Windows native, etc.) — skip
-esac
-if [[ -n "$host_label" ]]; then
-    gh pr edit <N> --add-label "$host_label"
-fi
-```
-
-This applies to **all** PRs (engine and game, render-touching or
-not). The label is cheap and consistent — having it always present
-makes the reviewer's logic simple ("subtract author host from smoke
-labels"). Game PRs don't currently get smoke labels, so the host
-label is just informational there; that's fine.
-
-If the host kernel is neither `Linux` nor `Darwin` (Windows
-native via MSYS2, etc.), skip the label — the cross-host smoke
-flow is OpenGL-on-Linux vs Metal-on-macOS, and a Windows author
-doesn't fit either bucket cleanly.
+See [`procedures/host-label.md`](procedures/host-label.md) for the shell snippet and scope rules (applies to all PRs; Windows-native authors skip the label).
 
 ### 9. Report the result
 
@@ -558,65 +317,10 @@ Reply with a compact summary:
 master for the next chunk — tell the user to invoke it (or invoke it yourself
 if the user already asked for the next task).
 
-## Rebase guard
-
-**Before rebasing this PR branch onto origin/master**, always capture
-the current diff first. Git's 3-way merge can silently drop hunks
-from non-conflicting regions of a file when a different region of the
-same file has a conflict — no conflict markers, no warning in the
-rebase output.
-
-Do NOT use `>` redirects to `/tmp/` (or any path) — Claude Code's Bash
-tool blocks shell redirects regardless of destination. Both snapshots
-live in your conversation context as Bash output; large diffs auto-
-persist to a `<persisted-output>` link the next iteration can Read.
-(Same rule that role-merger.md uses for its rebase guard.)
-
-### Pre-capture (do this BEFORE `git rebase origin/master`)
-
-Run `git diff origin/master` and keep the output in your conversation
-context — you'll compare it to the post-rebase snapshot below.
-
-### Rebase and resolve conflicts
-
-Run `git rebase origin/master`. Resolve any conflict markers normally.
-
-### Post-capture and comparison
-
-Run `git diff origin/master` again. Compare to the pre-capture above:
-look for lines beginning with `+` in the pre-capture that are absent
-from the post-capture. Each such gap is a silently dropped hunk that
-must be manually re-applied before committing.
-
-For huge diffs that don't fit cleanly in context, both snapshots get
-auto-persisted by Claude Code; Read the persisted-output files to
-diff them with the Read tool's `offset`/`limit`.
-
-### If the pre-capture was skipped
-
-1. Run `git reflog --since=2.hours.ago` to confirm a rebase happened.
-2. Compare `git diff origin/master` against the branch's last pushed state:
-   `git diff origin/<branch-name>` shows what changed since the last push.
-3. Look for missing code blocks based on the PR's commit messages and
-   description. Re-apply any that are absent.
-
 ## Anti-patterns
 
-- ❌ Committing to `master`. Always branch first.
-- ❌ `git add -A` / `git add .` — risk of committing secrets or build junk.
-- ❌ Amending a previous commit without being asked.
-- ❌ Force-pushing master. Never.
-- ❌ Skipping hooks (`--no-verify`) unless the user explicitly requests it.
-- ❌ Bypass-pushing to master with admin — the new workflow uses PRs and
-  reviewer agents. If you feel tempted to bypass, something upstream is
-  broken; flag it to the user instead.
-- ❌ Opening a PR without running `simplify` first.
-- ❌ Continuing to commit on the same feature branch after opening its PR
-  unless the user explicitly asks for it — otherwise use `start-next-task`.
-- ❌ Leaking game references into an engine PR (file paths under
-  `creations/game/`, `jakildev/irreden`, game task IDs, game design
-  language). Engine repo is public; game repo is private. See engine
-  `CLAUDE.md` "Cross-repo information isolation".
+- Amending a previous commit without being asked.
+- Leaking game references into an engine PR — see `docs/agents/CLAUDE-BASELINE.md` §"Cross-repo information isolation".
 
 ## Recovery
 

@@ -32,6 +32,89 @@ SONNET_MODEL="sonnet"   # alias is fine for sonnet — budget is cheap
 # fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
 OPUS_MIN_BACKOFF=1800
 
+# How long to wait for fleet-state-scout's first tick to write
+# state.json before giving up and launching panes anyway. With the
+# throttled fan-out (FETCH_MAX_WORKERS=2 + 250 ms gap) the first
+# tick lands in ~5-10 s; 30 s gives ample headroom for slow networks.
+SCOUT_STARTUP_TIMEOUT_SECONDS=30
+
+# --- Per-role concurrency cap config schema -------------------------------
+#
+# The dispatcher (fleet-dispatcher) enforces a soft cap on simultaneous
+# iterations per role. Counts unique active worktrees: in-flight (pane
+# mid-claude-print) ∪ reserved (worktree pinned to a paused task).
+#
+# Defaults match each role's current pane count, so no role hits the
+# cap under normal operation. The cap only fires when reservations from
+# crashed iterations would push the total over (e.g. a reserved-but-idle
+# pane resumes on the next tick — its slot is counted up front so a
+# fresh dispatch to a free pane doesn't push the role above its budget).
+#
+# Override priority (highest first):
+#   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_OPUS_WORKER=3)
+#   2. ~/.fleet/fleet-up.conf (bash-sourceable; same variable names)
+#   3. Built-in default (defined in fleet-dispatcher)
+#
+# Sample conf (write to ~/.fleet/fleet-up.conf):
+#   FLEET_CONCURRENCY_OPUS_WORKER=2
+#   FLEET_CONCURRENCY_SONNET_AUTHOR=2
+#   FLEET_CONCURRENCY_SONNET_REVIEWER=1
+#   FLEET_CONCURRENCY_OPUS_REVIEWER=1
+#   FLEET_CONCURRENCY_MERGER=1
+#
+# queue-manager is no longer LLM-dispatched; omit from cap config.
+#
+# fleet-up sources the same conf so `fleet-up --help` and the startup
+# banner reflect the active values, and so any future fleet-up logic
+# that wants to provision based on caps can read them directly.
+FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
+# Bootstrap the operator-editable conf on first run by copying the
+# in-repo sample. Sample lives next to fleet-up itself; resolve via
+# BASH_SOURCE so the symlink at ~/bin/fleet-up still points back to
+# the engine repo's scripts/fleet/fleet-up.conf.sample. Skipped when
+# FLEET_CONF is already present (idempotent across re-runs) or when
+# the sample isn't reachable (fallthrough to dispatcher built-ins).
+if [[ ! -e "$FLEET_CONF" ]]; then
+    _fleet_up_self=$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")
+    case "$_fleet_up_self" in
+        /*) ;;
+        # Relative readlink target (e.g. install.sh used a relative `ln -sf`):
+        # resolve against the symlink's containing directory so the join lands
+        # on the real script, not the symlink itself. install.sh currently
+        # always emits absolute targets so this branch is dead under the
+        # standard install — kept for future-proofing if the install scheme
+        # ever switches to relative symlinks.
+        *)  _fleet_up_self="$(cd "$(dirname "${BASH_SOURCE[0]}")/$(dirname "$_fleet_up_self")" && pwd)/$(basename "$_fleet_up_self")" ;;
+    esac
+    _fleet_up_sample="$(dirname "$_fleet_up_self")/fleet-up.conf.sample"
+    if [[ -f "$_fleet_up_sample" ]]; then
+        mkdir -p "$(dirname "$FLEET_CONF")"
+        cp "$_fleet_up_sample" "$FLEET_CONF"
+        echo "fleet-up: seeded $FLEET_CONF from $_fleet_up_sample"
+    fi
+    unset _fleet_up_self _fleet_up_sample
+fi
+# Capture env-set values before sourcing the conf so caller env still wins.
+_env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
+_env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
+_env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
+_env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
+_env_merger="${FLEET_CONCURRENCY_MERGER:-}"
+if [[ -f "$FLEET_CONF" ]]; then
+    # shellcheck disable=SC1090
+    source "$FLEET_CONF"
+fi
+FLEET_CONCURRENCY_OPUS_WORKER="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
+FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
+FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
+FLEET_CONCURRENCY_OPUS_REVIEWER="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
+FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
+unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
+      _env_opus_reviewer _env_merger
+export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR
+export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
+export FLEET_CONCURRENCY_MERGER
+
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
     exit 1
@@ -40,6 +123,51 @@ fi
 if ! command -v claude >/dev/null 2>&1; then
     echo "fleet-up: claude CLI not found on PATH." >&2
     exit 1
+fi
+
+# --- Early flag parsing -----------------------------------------------------
+#
+# Flags handled here take effect before the early-exit-if-session-exists
+# check, so they work on both fresh boots and live fleets. The main arg
+# parser further down recognizes the same flags as no-ops so the
+# unknown-arg guard doesn't reject them.
+RESET_USAGE=0
+for arg in "$@"; do
+    case "$arg" in
+        --reset-usage) RESET_USAGE=1 ;;
+    esac
+done
+
+# --reset-usage: wipe ~/.fleet/state/usage/*.json.
+#
+# Use case: the operator just switched Claude accounts. fleet-claude-stream
+# latches rate_limit_event observations per bucket (five_hour, seven_day,
+# ...), and the dispatcher reads those each tick to decide whether to gate
+# dispatches. A 94%-utilized cache file from the prior account will gate
+# the new account's dispatches for up to FLEET_DISPATCHER_USAGE_STALE_SECONDS
+# (default 1h) even though the new account has full budget.
+#
+# Safe to run on a live fleet — the dispatcher polls usage files every
+# tick (10s default), so the gate re-evaluates within one interval of
+# the wipe; no dispatcher restart needed. Cached observations re-populate
+# organically as the new account's events flow through fleet-claude-stream.
+if (( RESET_USAGE )); then
+    usage_dir="$HOME/.fleet/state/usage"
+    if [[ -d "$usage_dir" ]]; then
+        wiped=0
+        for f in "$usage_dir"/*.json; do
+            [[ -e "$f" ]] || continue
+            rm -f "$f"
+            wiped=$((wiped + 1))
+        done
+        if (( wiped > 0 )); then
+            echo "fleet-up: --reset-usage wiped $wiped cached observation(s) from $usage_dir"
+        else
+            echo "fleet-up: --reset-usage: $usage_dir already empty"
+        fi
+    else
+        echo "fleet-up: --reset-usage: $usage_dir does not exist (nothing to wipe)"
+    fi
 fi
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -109,6 +237,183 @@ warn_legacy_worktree "$ENGINE/.claude/worktrees/opus-worker"
 warn_legacy_worktree "$GAME/.claude/worktrees/game-sonnet"
 
 # ----------------------------------------------------------------------
+# Step 1.5: reconcile reservations against world state
+# ----------------------------------------------------------------------
+#
+# Each reservation in ~/.fleet/reservations/ pins a worktree to an
+# in-flight task. Boot is the single reconciliation point — no
+# wall-clock staleness, just a state-machine pass per reservation:
+#
+#   PR MERGED    → release reservation (work landed)
+#   PR CLOSED    → increment closed-counter; ≥2 fires fleet:stuck-task;
+#                   release reservation either way
+#   PR OPEN      → keep reservation (worker resumes to address feedback
+#                   or idle)
+#   PR missing,
+#     branch has → keep reservation (mid-iteration, pre-PR work)
+#     commits
+#   worktree     → release reservation (orphan)
+#     missing
+#
+# Subsequent panes that fire on a worktree with a kept reservation hit
+# the role-doc step-0.5 resumption check and pick up where the prior
+# iteration left off. Worktrees with cleared reservations fall through
+# to the normal Step 2 reset. (#521)
+
+extract_repo_slug() {
+    # Convert a git remote URL to "owner/repo".
+    # Handles git@github.com:owner/repo.git and https://github.com/owner/repo(.git)?.
+    local url="$1"
+    url="${url#git@github.com:}"
+    url="${url#https://github.com/}"
+    url="${url#http://github.com/}"
+    url="${url%.git}"
+    url="${url%/}"
+    printf '%s' "$url"
+}
+
+file_stuck_task_issue() {
+    local task_id="$1"
+    local branch="$2"
+    local body
+    body=$(printf '## Task %s has been retried %s+ times without merge\n\nBoot-time reconciliation observed at least 2 PRs for `%s` close without merging. The current reservation has been released and the closed-counter at `~/.fleet/closed-counts/%s` has been incremented.\n\nLast observed branch: `%s`\n\nLikely structural blocker (design issue, missing engine support, or out-of-date plan). Please triage:\n- abandon and remove from TASKS.md, OR\n- replan with updated context.\n\nPosting one-shot via `~/.fleet/closed-counts/%s.filed`. Re-merging the task or removing the flag file resets the gate.' \
+        "$task_id" "2" "$task_id" "$task_id" "$branch" "$task_id")
+    gh issue create --repo jakildev/IrredenEngine \
+        --title "fleet: stuck-task — $task_id retried 2+ times without merge" \
+        --label "fleet:stuck-task" \
+        --body "$body" 2>&1 | head -3
+}
+
+reconcile_reservation() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+
+    local wt task_id _combined
+    _combined=$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); print(d.get("worktree",""),d.get("task_id",""),sep="\t")' "$file" 2>/dev/null || echo $'\t')
+    wt="${_combined%%$'\t'*}"
+    task_id="${_combined##*$'\t'}"
+    [[ -z "$wt" || -z "$task_id" ]] && return 0
+
+    local wt_path=""
+    for candidate in \
+        "$ENGINE/.claude/worktrees/$wt" \
+        "$GAME/.claude/worktrees/$wt"; do
+        if [[ -d "$candidate" ]]; then
+            wt_path="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$wt_path" ]]; then
+        echo "fleet-up: reservation $wt → $task_id — no matching worktree, releasing"
+        fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    local current_branch
+    current_branch=$(cd "$wt_path" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    [[ -z "$current_branch" ]] && return 0
+
+    # Determine repo by worktree path.
+    local gh_repo="jakildev/IrredenEngine"
+    if [[ "$wt_path" == "$GAME"* ]]; then
+        local _game_url
+        _game_url=$(git -C "$GAME" remote get-url origin 2>/dev/null || true)
+        [[ -n "$_game_url" ]] && gh_repo=$(extract_repo_slug "$_game_url")
+    fi
+
+    local pr_state
+    pr_state=$(gh pr list --repo "$gh_repo" --head "$current_branch" \
+        --state all --json state --jq '.[0].state // ""' 2>/dev/null || echo "")
+
+    case "$pr_state" in
+        MERGED)
+            echo "fleet-up: reservation $wt → $task_id (branch $current_branch) PR merged — releasing"
+            fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+            ;;
+        CLOSED)
+            local count_file="$HOME/.fleet/closed-counts/$task_id"
+            mkdir -p "$(dirname "$count_file")"
+            local count=0
+            [[ -f "$count_file" ]] && count=$(cat "$count_file")
+            count=$((count + 1))
+            echo "$count" > "$count_file"
+            echo "fleet-up: reservation $wt → $task_id (branch $current_branch) PR closed-without-merge (count=$count) — releasing"
+            if [[ "$count" -ge 2 ]]; then
+                local flag_file="$HOME/.fleet/closed-counts/${task_id}.filed"
+                if [[ ! -f "$flag_file" ]]; then
+                    echo "fleet-up: count >= 2, filing fleet:stuck-task issue for $task_id"
+                    if file_stuck_task_issue "$task_id" "$current_branch"; then
+                        touch "$flag_file"
+                    fi
+                fi
+            fi
+            fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+            ;;
+        OPEN)
+            echo "fleet-up: reservation $wt → $task_id (branch $current_branch) PR OPEN — keeping"
+            ;;
+        "")
+            # No PR yet. Keep only if branch has commits past master
+            # (prior iteration committed but never opened a PR); release
+            # if branch is at master (worker died before any commit).
+            local commits_ahead
+            commits_ahead=$(cd "$wt_path" && git rev-list --count "origin/master..HEAD" 2>/dev/null || echo 0)
+            if [[ "$commits_ahead" -gt 0 ]]; then
+                echo "fleet-up: reservation $wt → $task_id (branch $current_branch) no PR, $commits_ahead commit(s) — keeping"
+            else
+                echo "fleet-up: reservation $wt → $task_id (branch $current_branch) no PR, no commits — releasing"
+                fleet-claim release-worktree "$wt" >/dev/null 2>&1 || true
+            fi
+            ;;
+    esac
+}
+
+if [[ -d "$HOME/.fleet/reservations" ]]; then
+    for file in "$HOME/.fleet/reservations"/*.json; do
+        [[ -f "$file" ]] || continue
+        reconcile_reservation "$file"
+    done
+fi
+
+# ----------------------------------------------------------------------
+# Step 1.7: reconcile amendment artifacts against world state
+# ----------------------------------------------------------------------
+#
+# An AMEND iteration writes both (a) a reservation pinning its worktree
+# to the in-flight task and (b) the `fleet:human-amending` label on the
+# PR. The reservation is the load-bearing artifact (Step 2's
+# reset_worktree consults it; the role-doc step 0.5 resumes from it);
+# the label is the human-facing signal. They should stay in sync.
+#
+# Pre-fix iterations (and any worker that died between label-swap and
+# reservation-write) leave the label on without a reservation. Scan
+# every open `fleet:human-amending` PR and reconcile:
+#   - worktree on branch + reservation present → leave alone
+#   - worktree on branch + no reservation      → reconstruct reservation
+#   - no worktree on branch                    → revert label so the
+#                                                 standard feedback
+#                                                 pickup path resumes
+#
+# Reconciler script does the actual work — see
+# scripts/fleet/fleet-reconcile-amendments for the per-PR decision
+# logic, env overrides, and dry-run mode.
+
+if command -v fleet-reconcile-amendments >/dev/null 2>&1; then
+    fleet-reconcile-amendments || \
+        echo "fleet-up: amendment reconciler exited non-zero; continuing boot"
+elif [[ -x "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/fleet-reconcile-amendments" ]]; then
+    # Fallback for the in-repo dev workflow where the symlink hasn't
+    # been refreshed by install.sh — invoke the source-tree copy
+    # directly so a freshly-pulled fleet-up can still reconcile.
+    "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/fleet-reconcile-amendments" || \
+        echo "fleet-up: amendment reconciler (source-tree) exited non-zero; continuing boot"
+else
+    echo "fleet-up: fleet-reconcile-amendments not found; skipping amendment reconcile"
+    echo "          (re-run scripts/fleet/install.sh to symlink it into ~/bin/)"
+fi
+
+# ----------------------------------------------------------------------
 # Step 2: reset each worktree to a fresh branch off origin/master
 # ----------------------------------------------------------------------
 
@@ -118,6 +423,20 @@ reset_worktree() {
     local branch="$2"
 
     if [[ ! -d "$wt" ]]; then
+        return 0
+    fi
+
+    # If a reservation still exists for this worktree (post-Step-1.5),
+    # the prior iteration is mid-flight on a real task — leave the
+    # worktree on its branch with whatever dirty state it has, so the
+    # next dispatcher tick fires step-0.5 resumption. (#521)
+    # Contract: fleet-claim clear-all (Step 3b, below) wipes task claims
+    # (~/.fleet/claims/) but NOT reservations (~/.fleet/reservations/), so
+    # this guard remains intact through the boot sequence.
+    local wt_basename
+    wt_basename=$(basename "$wt")
+    if [[ -f "$HOME/.fleet/reservations/$wt_basename.json" ]]; then
+        echo "fleet-up: $wt has reservation — preserving for resumption."
         return 0
     fi
 
@@ -222,6 +541,27 @@ baseline = [
     "Bash(fleet-run-targets:*)",
     "Bash(fleet-help:*)",
     "Bash(fleet-heartbeat:*)",
+    # Scout-cache wrappers (PR #458) and post-iteration helpers. Without
+    # these every iteration that calls fleet-issue / fleet-pr /
+    # fleet-iteration-summary stalls at a permission prompt that no human
+    # is around to answer; observed: queue-manager iteration paused for
+    # ~25 minutes on `fleet-issue view 428`. fleet-worktree-busy-branches
+    # is the fast-path filter sonnet-author / opus-worker run on every
+    # task-pickup pass. fleet-labels is the GitHub-label sync wrapper
+    # invoked by fleet-up itself but also occasionally by roles for
+    # ad-hoc relabel passes.
+    "Bash(fleet-issue:*)",
+    "Bash(fleet-pr:*)",
+    "Bash(fleet-pr-clear-feedback-labels:*)",
+    "Bash(fleet-iteration-summary:*)",
+    "Bash(fleet-worktree-busy-branches:*)",
+    "Bash(fleet-labels:*)",
+    # GitHub CLI — every role uses gh pr edit/review/comment for label
+    # management and review posting. Without this entry, headless
+    # claude --print runs (fleet-dispatcher) see a permission prompt they
+    # can't answer, so all label writes silently fail. Confirmed root cause
+    # of the Ubuntu fleet failing to set fleet:approved (issue #778 / T-216).
+    "Bash(gh:*)",
     # Env-var-prefixed git for non-interactive rebase. `Bash(git:*)`
     # in the user-level allowlist matches commands STARTING with `git`,
     # so a `GIT_EDITOR=true git ...` prefix doesn't match. Add an
@@ -341,6 +681,28 @@ mkdir -p "$HOME/.fleet/alerts"
 # failure mode.
 rm -f "${FLEET_SHUTDOWN_FLAG:-$HOME/.fleet/shutdown-in-progress}"
 
+# Sweep stale trigger files from prior fleet sessions. The scout
+# writes ~/.fleet/state/triggers/<role> when it sees new work; the
+# dispatcher consumes them. If the dispatcher crashed or fleet-down
+# was forced, triggers can be left behind, and the next fleet's
+# dispatcher would treat them as fresh work the new scout never
+# asked for (observed: dispatched sonnet-author + opus-worker on
+# fleet-up despite the fresh scout only triggering sonnet-reviewer).
+# Sweep before the scout starts (Step 3d) so any triggers it writes
+# in its first tick are preserved.
+triggers_dir="$HOME/.fleet/state/triggers"
+if [[ -d "$triggers_dir" ]]; then
+    swept=0
+    for trigger in "$triggers_dir"/*; do
+        [[ -e "$trigger" ]] || continue
+        rm -f "$trigger"
+        swept=$((swept + 1))
+    done
+    if (( swept > 0 )); then
+        echo "fleet-up: swept $swept stale trigger(s) from prior session"
+    fi
+fi
+
 # ----------------------------------------------------------------------
 # Step 3c: ensure GitHub labels referenced by agents exist
 # ----------------------------------------------------------------------
@@ -376,7 +738,7 @@ fi
 # Step 3d: launch fleet-state-scout daemon
 # ----------------------------------------------------------------------
 #
-# Polls GitHub + git every 60s and writes `~/.fleet/state/state.json`
+# Polls GitHub + git every 30s and writes `~/.fleet/state/state.json`
 # plus per-role trigger files under `~/.fleet/state/triggers/`. Roles
 # (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
 # queue-manager, merger) read state.json instead of running their own
@@ -410,6 +772,159 @@ else
     nohup "$scout_cmd" >>"$scout_log" 2>&1 &
     disown
     echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
+
+    # Wait for scout's first tick so panes find a populated state.json
+    # on startup. Without this wait, every pane's "scout cache stale
+    # or missing" diagnostic fires until the first tick lands.
+    state_json="$HOME/.fleet/state/state.json"
+    echo "fleet-up: waiting for first state.json..."
+    for _ in $(seq 1 "$SCOUT_STARTUP_TIMEOUT_SECONDS"); do
+        if [[ -f "$state_json" ]]; then
+            echo "fleet-up: state.json ready"
+            break
+        fi
+        sleep 1
+    done
+    if [[ ! -f "$state_json" ]]; then
+        echo "fleet-up: warning: state.json not present after ${SCOUT_STARTUP_TIMEOUT_SECONDS} s — panes will surface the staleness diagnostic"
+    fi
+fi
+
+# ----------------------------------------------------------------------
+# Step 3e2: bootstrap-trigger all roles on actionable state
+# ----------------------------------------------------------------------
+#
+# Workers are transient now — each iteration is a one-shot `claude`
+# spawned by the dispatcher when the scout writes a per-role trigger,
+# and triggers fire only on projection-content deltas. Edge case:
+# if a previous iteration was killed mid-run (fleet-down during
+# any role's work, dispatcher crash, etc.) the inputs that drove
+# that trigger are still in the projection on the next boot — but
+# the scout sees identical content, decides "no change", emits no
+# trigger, and the work never resumes.
+#
+# Symmetric bootstrap: for all dispatched roles, if their projection
+# has actionable content right now, seed a trigger so the dispatcher
+# picks them up in its first tick. A no-op iteration is cheap and
+# self-correcting; the cost of a false-positive bootstrap is one short
+# claude invocation, while the cost of a missed resume is a permanently
+# stuck queue, merge backlog, or idle worker with real work pending.
+if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY' || true
+import json
+import pathlib
+
+proj_dir = pathlib.Path("~/.fleet/state/projections").expanduser()
+trig_dir = pathlib.Path("~/.fleet/state/triggers").expanduser()
+trig_dir.mkdir(parents=True, exist_ok=True)
+
+def merger_actionable(p):
+    return bool(p.get("prs"))
+
+# queue-manager is no longer LLM-dispatched; fleet-state-scout invokes
+# fleet-queue-tick directly on projection change. No bootstrap trigger needed.
+
+def author_worker_actionable(p):
+    return bool(p.get("tasks_open")) or bool(p.get("feedback_prs"))
+
+def opus_worker_actionable(p):
+    return author_worker_actionable(p) or bool(p.get("needs_plan"))
+
+def sonnet_reviewer_actionable(p):
+    return bool(p.get("candidate_prs"))
+
+def opus_reviewer_actionable(p):
+    return bool(p.get("flagged_prs"))
+
+for role, predicate in [
+    ("merger", merger_actionable),
+    ("sonnet-author", author_worker_actionable),
+    ("opus-worker", opus_worker_actionable),
+    ("sonnet-reviewer", sonnet_reviewer_actionable),
+    ("opus-reviewer", opus_reviewer_actionable),
+]:
+    proj = proj_dir / f"{role}.json"
+    if not proj.is_file():
+        continue
+    try:
+        data = json.loads(proj.read_text())
+    except (OSError, json.JSONDecodeError):
+        continue
+    if predicate(data):
+        (trig_dir / role).touch()
+        print(f"fleet-up: bootstrap-triggered {role} (projection has actionable content)")
+PY
+fi
+
+# ----------------------------------------------------------------------
+# Step 3f: launch fleet-dispatcher daemon
+# ----------------------------------------------------------------------
+#
+# Polls every 10 s, watches ~/.fleet/state/triggers/<role>, dispatches
+# transient `claude --print ... | fleet-claude-stream` invocations
+# into idle worker / reviewer / queue-mgr / merger panes via
+# `tmux send-keys`. Architects keep fleet-babysit (interactive
+# --resume sessions), so they're not in the dispatcher's role list.
+#
+# Backgrounded with nohup, PID written to dispatcher.pid for
+# fleet-down to terminate cleanly. The dispatcher itself uses
+# `flock -n` on dispatcher.lock as a second-layer guard.
+dispatcher_cmd=""
+if command -v fleet-dispatcher >/dev/null 2>&1; then
+    dispatcher_cmd="fleet-dispatcher"
+elif [[ -x "$ENGINE/scripts/fleet/fleet-dispatcher" ]]; then
+    dispatcher_cmd="$ENGINE/scripts/fleet/fleet-dispatcher"
+fi
+if [[ -z "$dispatcher_cmd" ]]; then
+    echo "fleet-up: fleet-dispatcher not found — workers will fall back to fleet-babysit lifecycle"
+else
+    dispatcher_pid_file="$HOME/.fleet/state/dispatcher.pid"
+    if [[ -f "$dispatcher_pid_file" ]]; then
+        old_pid=$(cat "$dispatcher_pid_file" 2>/dev/null || true)
+        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+            kill -TERM "$old_pid" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "$dispatcher_pid_file"
+    fi
+    mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
+    dispatcher_log="$HOME/.fleet/logs/dispatcher.log"
+    nohup "$dispatcher_cmd" >>"$dispatcher_log" 2>&1 &
+    disown
+    echo "fleet-up: launched fleet-dispatcher (pid $!, log $dispatcher_log)"
+fi
+
+# ----------------------------------------------------------------------
+# Step 3e: write the repo-discovery cache
+# ----------------------------------------------------------------------
+#
+# Reviewer / queue-manager / merger roles need the canonical owner/repo
+# slugs for their `--repo` flags. Without this cache they each run
+# `gh repo view --json nameWithOwner` and `git -C ... remote get-url
+# origin` per pane on every restart — N panes × every iteration of
+# wasted gh calls. fleet-up resolves both slugs once and writes them
+# to ~/.fleet/state/repos.json for every role to read.
+repos_cache="$HOME/.fleet/state/repos.json"
+engine_url=$(git -C "$ENGINE" remote get-url origin 2>/dev/null || true)
+if [[ -z "$engine_url" ]]; then
+    echo "fleet-up: warning: could not discover engine repo slug; panes will fall back to gh repo view"
+else
+    engine_slug=$(extract_repo_slug "$engine_url")
+    game_slug=""
+    if [[ -d "$GAME/.git" ]]; then
+        game_url=$(git -C "$GAME" remote get-url origin 2>/dev/null || true)
+        if [[ -n "$game_url" ]]; then
+            game_slug=$(extract_repo_slug "$game_url")
+        fi
+    fi
+    mkdir -p "$(dirname "$repos_cache")"
+    if [[ -n "$game_slug" ]]; then
+        printf '{"engine": "%s", "game": "%s"}\n' "$engine_slug" "$game_slug" > "$repos_cache"
+        echo "fleet-up: wrote $repos_cache (engine=$engine_slug, game=$game_slug)"
+    else
+        printf '{"engine": "%s"}\n' "$engine_slug" > "$repos_cache"
+        echo "fleet-up: wrote $repos_cache (engine=$engine_slug)"
+    fi
 fi
 
 # ----------------------------------------------------------------------
@@ -447,9 +962,22 @@ for arg in "$@"; do
     case "$arg" in
         dry-run|live|review-only) MODE="$arg" ;;
         --no-attach)  ATTACH_LIVE=0 ;;
+        --reset-usage) ;;  # handled in early parse loop near the top
         *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
     esac
 done
+
+# Sleep between each agent-pane launch so 8+ panes don't simultaneously
+# fire `git fetch` + the first `claude` invocation on a cold session.
+# Without the stagger, the burst overlaps with the scout's first tick
+# and trips GitHub's secondary rate limit on private repos.
+# Override with FLEET_PANE_STAGGER_SECONDS=0 for tests / local dev.
+FLEET_PANE_STAGGER_SECONDS="${FLEET_PANE_STAGGER_SECONDS:-5}"
+pane_stagger() {
+    if (( FLEET_PANE_STAGGER_SECONDS > 0 )); then
+        sleep "$FLEET_PANE_STAGGER_SECONDS"
+    fi
+}
 
 launch_cmd() {
     # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
@@ -506,6 +1034,20 @@ label_pane_id() {
     tmux set-option -t "$1" -p @role "$2"
 }
 
+# Tag a pane with its dispatcher role slug. The dispatcher matches
+# panes via this tag (separate from the human-readable @role label).
+# Architects don't get tagged — they stay on fleet-babysit and the
+# dispatcher's role list excludes them.
+set_fleet_role() {
+    tmux set-option -t "$1" -p @fleet-role "$2"
+}
+
+# Command for a non-architect pane that's been migrated to the
+# dispatcher model: just an interactive shell. The dispatcher will
+# `tmux send-keys` a `claude --print ... | fleet-claude-stream` line
+# in when it sees a trigger for this role's pane.
+TRANSIENT_PANE_CMD='exec $SHELL -i'
+
 # --- Window 1: "fleet" — 3 rows × 3 columns ---------------------------
 #
 # Build top-down: create initial pane (will become top-left), split
@@ -515,58 +1057,72 @@ label_pane_id() {
 
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-author)"
+    "$TRANSIENT_PANE_CMD"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
 label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
+set_fleet_role "$TOP_LEFT" "sonnet-author"
+pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
-MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
+MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd "$OPUS_MODEL" opus-architect)")
 label_pane_id "$MID_LEFT" "opus-architect [opus 4.7]"
+pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
-BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
+BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-1" \
-    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
+set_fleet_role "$BOT_LEFT" "opus-worker"
+pane_stagger
 
 # Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
-# sonnet-reviewer. -p 67 leaves 33% for the new pane (right 2/3
-# of the original TOP_LEFT region); the second split halves what's
-# left, giving three equal columns.
-TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -p 67 -P -F "#{pane_id}" \
+# sonnet-reviewer. -l 67% gives the new pane 67% of the original
+# TOP_LEFT region (TOP_LEFT shrinks to 33%); the second split halves
+# what's left, giving three equal columns.
+TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-author)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
+set_fleet_role "$TOP_MID" "sonnet-author"
+pane_stagger
 
-TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -p 50 -P -F "#{pane_id}" \
+TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
-    "$(launch_cmd "$SONNET_MODEL" sonnet-reviewer 3m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$TOP_RIGHT" "sonnet-reviewer [sonnet]"
+set_fleet_role "$TOP_RIGHT" "sonnet-reviewer"
+pane_stagger
 
 # Middle row: split MID_LEFT horizontally for game-architect (only if
 # the game worktree exists). 50/50 split since architects coexist as
 # equals (engine + game).
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
-    MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -p 50 -P -F "#{pane_id}" \
+    MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd "$OPUS_MODEL" game-architect)")
     label_pane_id "$MID_RIGHT" "game-architect [opus 4.7]"
+    pane_stagger
 fi
 
 # Bottom row: split BOT_LEFT horizontally for opus-worker-2 and
 # opus-reviewer. Same 67/50 pattern as the top row to get three
 # equal columns.
-BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -p 67 -P -F "#{pane_id}" \
+BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
-    "$(launch_cmd "$OPUS_MODEL" opus-worker 20m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
+set_fleet_role "$BOT_MID" "opus-worker"
+pane_stagger
 
-BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -p 50 -P -F "#{pane_id}" \
+BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
-    "FLEET_MIN_BACKOFF=$OPUS_MIN_BACKOFF $(launch_cmd "$OPUS_MODEL" opus-reviewer 30m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
+set_fleet_role "$BOT_RIGHT" "opus-reviewer"
+pane_stagger
 
 # --- Window 2: "ops" — 2x2 grid ---------------------------------------
 #
@@ -581,20 +1137,24 @@ label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
 # at fleet-index + 1 regardless of base-index.
 OPS_TL=$(tmux new-window -a -t "$SESSION:fleet" -n ops -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/queue-manager" \
-    "$(launch_cmd "$SONNET_MODEL" queue-manager 5m)")
-label_pane_id "$OPS_TL" "queue-manager [sonnet]"
+    "$TRANSIENT_PANE_CMD")
+# queue-manager pane is now a scratch terminal for manual ingestion (Cursor
+# flow) — no fleet-role tag so the dispatcher never dispatches it as LLM.
+label_pane_id "$OPS_TL" "queue-mgr/scratch [human]"
+pane_stagger
 
-OPS_TR=$(tmux split-window -h -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+OPS_TR=$(tmux split-window -h -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/merger" \
-    "$(launch_cmd "$OPUS_MODEL" merger 10m)")
+    "$TRANSIENT_PANE_CMD")
 label_pane_id "$OPS_TR" "merger [opus 4.7]"
+set_fleet_role "$OPS_TR" "merger"
 
-OPS_BL=$(tmux split-window -v -t "$OPS_TL" -p 50 -P -F "#{pane_id}" \
+OPS_BL=$(tmux split-window -v -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$HOME/.fleet" \
     "witness; exec $SHELL")
 label_pane_id "$OPS_BL" "witness"
 
-OPS_BR=$(tmux split-window -v -t "$OPS_TR" -p 50 -P -F "#{pane_id}" \
+OPS_BR=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
     -c "$HOME" \
     "exec $SHELL")
 label_pane_id "$OPS_BR" "terminal"
@@ -679,6 +1239,12 @@ other modes you can pass to fleet-up:
   fleet-up live                  # full loop from the start, auto-attaches tmux
   fleet-up live --no-attach      # full loop, leave detached (CI / headless)
   fleet-up review-only           # close-out mode — no new work, finish in-flight
+
+flags (compose with any mode):
+  --reset-usage                  # wipe cached usage observations from a prior
+                                 #   account (use after switching Claude accounts;
+                                 #   safe to run on a live fleet — gate
+                                 #   re-evaluates within one dispatcher tick)
 
 graceful shutdown:
   fleet-down                     # graceful: send "exit", wait, kill, clear claims

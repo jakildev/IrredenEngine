@@ -1,6 +1,7 @@
 #ifndef GPU_STAGE_TIMING_H
 #define GPU_STAGE_TIMING_H
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -11,27 +12,35 @@ namespace IRRender {
 inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 struct GpuStageTiming {
-    float canvasClearMs_       = 0.0f;
-    float voxelCompactMs_      = 0.0f;
-    float voxelStage1Ms_       = 0.0f;
-    float voxelStage2Ms_       = 0.0f;
-    float shapeCompactMs_      = 0.0f;
-    float shapePass0Ms_        = 0.0f;
-    float shapePass1Ms_        = 0.0f;
-    float textToTrixelMs_      = 0.0f;
-    float computeVoxelAoMs_    = 0.0f;
-    float computeSunShadowMs_  = 0.0f;
-    float lightingToTrixelMs_  = 0.0f;
-    float trixelToTrixelMs_    = 0.0f;
-    float trixelToFbMs_        = 0.0f;
-    float entityCanvasToFbMs_  = 0.0f;
-    float fbToScreenMs_        = 0.0f;
+    float canvasClearMs_ = 0.0f;
+    float voxelCompactMs_ = 0.0f;
+    float voxelStage1Ms_ = 0.0f;
+    float voxelStage2Ms_ = 0.0f;
+    float shapeCompactMs_ = 0.0f;
+    float shapePass0Ms_ = 0.0f;
+    float shapePass1Ms_ = 0.0f;
+    float textToTrixelMs_ = 0.0f;
+    float buildLightOcclusionGridMs_ = 0.0f;
+    float computeVoxelAoMs_ = 0.0f;
+    float bakeSunShadowMapMs_ = 0.0f;
+    float computeSunShadowMs_ = 0.0f;
+    float computeLightVolumeMs_ = 0.0f;
+    float lightingToTrixelMs_ = 0.0f;
+    float fogToTrixelMs_ = 0.0f;
+    float trixelToTrixelMs_ = 0.0f;
+    float trixelToFbMs_ = 0.0f;
+    float entityCanvasToFbMs_ = 0.0f;
+    float screenSpaceResidualRotateMs_ = 0.0f;
+    float fbToScreenMs_ = 0.0f;
     std::uint32_t visibleShapeCount_ = 0;
     std::uint32_t shapeGroupsZ_ = 0;
     // Only flipped between frames by Lua on the main thread (Lua runs in
     // INPUT/UPDATE, never RENDER). Stable across the RENDER pipeline, so
     // probes can read `enabled_` twice and rely on both values matching.
     bool enabled_ = false;
+    // Development fallback that preserves the old finish()-bracketed timing
+    // path. Keep this off for throughput runs; use it only for A/B checks.
+    bool legacyFinishTiming_ = false;
 };
 
 inline GpuStageTiming &gpuStageTiming() {
@@ -52,9 +61,44 @@ inline float elapsedMs(TimePoint start, TimePoint end) {
 // absolute 16.67 ms frame limit is a separate top-line check.
 struct GpuStageInfo {
     std::string_view name_;
-    float GpuStageTiming::* field_;
+    float GpuStageTiming::*field_;
     float budgetShare_;
 };
+
+struct CpuPhaseTiming {
+    double totalMs_ = 0.0;
+    double maxMs_ = 0.0;
+    std::uint32_t sampleCount_ = 0;
+
+    void record(double ms) {
+        totalMs_ += ms;
+        maxMs_ = std::max(maxMs_, ms);
+        ++sampleCount_;
+    }
+
+    void reset() {
+        totalMs_ = 0.0;
+        maxMs_ = 0.0;
+        sampleCount_ = 0;
+    }
+};
+
+struct ComputeLightVolumeTiming {
+    CpuPhaseTiming clear_;
+    CpuPhaseTiming populate_;
+    CpuPhaseTiming upload_;
+
+    void reset() {
+        clear_.reset();
+        populate_.reset();
+        upload_.reset();
+    }
+};
+
+inline ComputeLightVolumeTiming &computeLightVolumeTiming() {
+    static ComputeLightVolumeTiming instance;
+    return instance;
+}
 
 // Authoritative mapping name → field → budget. `gpu_stage_timing_observer`
 // resolves a system's tag against this table; pass the same name to
@@ -73,23 +117,28 @@ struct GpuStageInfo {
 // `shapeCompact` (no system has ever written it; reserved for a
 // future shape-compaction pass). They stay in the registry to keep
 // the Lua API and perf overlay stable; their reported value is 0.0f.
-inline const std::array<GpuStageInfo, 15> &gpuStageRegistry() {
-    static const std::array<GpuStageInfo, 15> registry{{
-        {"canvasClear",       &GpuStageTiming::canvasClearMs_,      0.05f},
-        {"voxelCompact",      &GpuStageTiming::voxelCompactMs_,     0.10f},
-        {"voxelStage1",       &GpuStageTiming::voxelStage1Ms_,      0.20f},
-        {"voxelStage2",       &GpuStageTiming::voxelStage2Ms_,      0.15f},
-        {"shapeCompact",      &GpuStageTiming::shapeCompactMs_,     0.05f},
-        {"shapePass0",        &GpuStageTiming::shapePass0Ms_,       0.10f},
-        {"shapePass1",        &GpuStageTiming::shapePass1Ms_,       0.10f},
-        {"textToTrixel",      &GpuStageTiming::textToTrixelMs_,     0.05f},
-        {"computeVoxelAO",    &GpuStageTiming::computeVoxelAoMs_,   0.10f},
-        {"computeSunShadow",  &GpuStageTiming::computeSunShadowMs_, 0.10f},
-        {"lightingToTrixel",  &GpuStageTiming::lightingToTrixelMs_, 0.10f},
-        {"trixelToTrixel",    &GpuStageTiming::trixelToTrixelMs_,   0.05f},
-        {"trixelToFb",        &GpuStageTiming::trixelToFbMs_,       0.15f},
-        {"entityCanvasToFb",  &GpuStageTiming::entityCanvasToFbMs_, 0.05f},
-        {"fbToScreen",        &GpuStageTiming::fbToScreenMs_,       0.05f},
+inline const std::array<GpuStageInfo, 20> &gpuStageRegistry() {
+    static const std::array<GpuStageInfo, 20> registry{{
+        {"canvasClear", &GpuStageTiming::canvasClearMs_, 0.05f},
+        {"voxelCompact", &GpuStageTiming::voxelCompactMs_, 0.10f},
+        {"voxelStage1", &GpuStageTiming::voxelStage1Ms_, 0.20f},
+        {"voxelStage2", &GpuStageTiming::voxelStage2Ms_, 0.15f},
+        {"shapeCompact", &GpuStageTiming::shapeCompactMs_, 0.05f},
+        {"shapePass0", &GpuStageTiming::shapePass0Ms_, 0.10f},
+        {"shapePass1", &GpuStageTiming::shapePass1Ms_, 0.10f},
+        {"textToTrixel", &GpuStageTiming::textToTrixelMs_, 0.05f},
+        {"buildLightOcclusionGrid", &GpuStageTiming::buildLightOcclusionGridMs_, 0.10f},
+        {"computeVoxelAO", &GpuStageTiming::computeVoxelAoMs_, 0.10f},
+        {"bakeSunShadowMap", &GpuStageTiming::bakeSunShadowMapMs_, 0.10f},
+        {"computeSunShadow", &GpuStageTiming::computeSunShadowMs_, 0.10f},
+        {"computeLightVolume", &GpuStageTiming::computeLightVolumeMs_, 0.10f},
+        {"lightingToTrixel", &GpuStageTiming::lightingToTrixelMs_, 0.10f},
+        {"fogToTrixel", &GpuStageTiming::fogToTrixelMs_, 0.05f},
+        {"trixelToTrixel", &GpuStageTiming::trixelToTrixelMs_, 0.05f},
+        {"trixelToFb", &GpuStageTiming::trixelToFbMs_, 0.15f},
+        {"entityCanvasToFb", &GpuStageTiming::entityCanvasToFbMs_, 0.05f},
+        {"screenSpaceResidualRotate", &GpuStageTiming::screenSpaceResidualRotateMs_, 0.05f},
+        {"fbToScreen", &GpuStageTiming::fbToScreenMs_, 0.05f},
     }};
     return registry;
 }

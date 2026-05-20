@@ -41,11 +41,48 @@ vec4 unpackColor(uint packedColor) {
     );
 }
 
+// PCG-flavored integer hash (low-collision, no FP precision loss). Cheap enough
+// for per-thread shader use; quality is sufficient for visual jitter on the
+// stateless particle path (T-163) and any other "I need a deterministic
+// pseudo-random scalar from (i, j, k)" producer.
+uint hash3(uint a, uint b, uint c) {
+    uint h = a * 0x9E3779B1u;
+    h = (h ^ b) * 0x85EBCA77u;
+    h = (h ^ c) * 0xC2B2AE3Du;
+    h ^= h >> 16;
+    h *= 0x85EBCA77u;
+    h ^= h >> 13;
+    h *= 0xC2B2AE3Du;
+    h ^= h >> 16;
+    return h;
+}
+
+// Map a uint seed to a unit-cube random vector in [-1, 1]^3. Three independent
+// PCG outputs derived from rotated seeds keep components independent.
+vec3 randomUnitVec(uint seed) {
+    const float kInvU32 = 1.0 / 4294967295.0;
+    uint rx = hash3(seed, 0x9E3779B1u, 0u);
+    uint ry = hash3(seed, 0x85EBCA77u, 1u);
+    uint rz = hash3(seed, 0xC2B2AE3Du, 2u);
+    return vec3(
+        float(rx) * kInvU32 * 2.0 - 1.0,
+        float(ry) * kInvU32 * 2.0 - 1.0,
+        float(rz) * kInvU32 * 2.0 - 1.0
+    );
+}
+
 // Map local invocation ID within a (2, 3, 1) workgroup to a face type.
 // (0,0),(1,0) -> Z_FACE; (1,1),(1,2) -> X_FACE; (0,1),(0,2) -> Y_FACE
-int localIDToFace_2x3() {
-    if (gl_LocalInvocationID.y == 0) return kZFace;
-    if (gl_LocalInvocationID.x == 1) return kXFace;
+//
+// Takes the .xy of `gl_LocalInvocationID` as a parameter rather than reading
+// the built-in directly so this helper compiles inside vertex/fragment
+// shaders that include this header (e.g. `f_trixel_to_framebuffer.glsl`).
+// Strict GLSL frontends (Mesa) error on `gl_LocalInvocationID` references
+// even from unused functions outside compute stages. Mirrors the Metal
+// counterpart in `ir_iso_common.metal`.
+int localIDToFace_2x3(uvec2 localId) {
+    if (localId.y == 0) return kZFace;
+    if (localId.x == 1) return kXFace;
     return kYFace;
 }
 
@@ -240,9 +277,8 @@ vec3 trixelCanvasPixelToWorld3D(
     ivec2 trixelCanvasOffsetZ1,
     vec2 frameCanvasOffset,
     ivec2 voxelRenderOptions,
-    float rasterYaw
+    int cardinalIndex
 ) {
-    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     ivec2 isoRel =
         trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
@@ -254,4 +290,18 @@ vec3 trixelCanvasPixelToWorld3D(
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
+}
+
+vec3 trixelCanvasPixelToWorld3D(
+    ivec2 pixel,
+    int rawDepth,
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions,
+    float rasterYaw
+) {
+    return trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions,
+        rasterYawCardinalIndex(rasterYaw)
+    );
 }

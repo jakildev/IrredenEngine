@@ -113,6 +113,7 @@ LABELS=(
     "fleet:authored-on-macos|ededed|PR was opened from a macOS host; reviewer skips fleet:needs-macos-smoke"
     "fleet:stacked|c5def5|PR's base is a feature branch (stacked PR)"
     "fleet:awaiting-base|c5def5|Stacked PR; merger is waiting for base PR to merge"
+    "fleet:needs-base-update|fbca04|Stacked child PR; upstream force-pushed and cascade-rebase conflicted; author rebases manually"
     "fleet:stacked-rebase|c5def5|Stacked PR; base just merged, re-targeted to master, awaiting reviewer re-eval"
     "fleet:awaiting-upstream-review|c5def5|Stacked PR; reviewer is holding verdict until upstream PR is approved"
     "fleet:human-deferred|fbca04|Worker filed human:needs-fix concerns as a follow-up issue; PR is internally OK to merge if human accepts the deferral (fleet:approved kept)"
@@ -122,6 +123,21 @@ LABELS=(
     "human:needs-fix|d4c5f9|Human flagged a fix request; agent should address"
     "human:blocker|d4c5f9|Human flagged a blocker; do not merge"
     "human:re-review|5319e7|Human pushed changes; reviewer agent should re-review"
+    # NOTE: fleet:reviewing-<host>-<agent> is dynamic — it encodes host +
+    # agent identity, and there's a combinatorial explosion of valid names
+    # (mac/windows/linux × {sonnet-fleet-N, opus-worker-N, opus-reviewer,
+    # sonnet-reviewer, ...}). It's created on demand by `fleet-claim
+    # review-claim` via POST .../labels (GitHub assigns a random color on
+    # first use) and removed by the verdict label-swap or by
+    # `fleet-claim review-release`. Queue-tick's `fleet-claim cleanup --gh`
+    # pass sweeps stale ones (>30 min) and replays orphan sentinels.
+    #
+    # Sibling: fleet:claim-<host>-<agent> on **issues** (not PRs) — stamped
+    # by `fleet-claim claim` after FS lock + master push succeed. Generic
+    # prefix is the race-detection signal (lex-min wins under contention);
+    # suffix encodes who claimed for issue-tracker visibility. Released by
+    # `fleet-claim release`; stale labels (>24h) swept by the same
+    # cleanup pass.
 )
 
 # `gh label list` defaults to --limit 30. The engine repo already has

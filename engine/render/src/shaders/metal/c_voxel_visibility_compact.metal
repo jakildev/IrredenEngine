@@ -34,10 +34,18 @@ constant uint kSlotNumGroupsZ     = 2;
 constant uint kSlotVisibleCount   = 3;
 constant uint kSlotCompletedGroups = 4;
 
+// T-287 / #950: this kernel no longer reads the per-voxel color SSBO. The
+// per-slot active bit at `activeMask[idx >> 5] & (1 << (idx & 31))` is the
+// CPU-pushed mirror of `m_voxelColors[idx].color_.alpha_ != 0`, kept in
+// sync at mutation time. Replacing the alpha read with a 1-bit lookup
+// halves the per-thread SSBO bandwidth on the dominant hollow / sparse
+// cases (the visibility-test path) and lets inactive slots short-circuit
+// before the 12 B color load.
+
 kernel void c_voxel_visibility_compact(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
-    device const uint* colors [[buffer(6)]],
+    device const uint* activeMask [[buffer(8)]],
     device const uint* chunkVisible [[buffer(24)]],
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
@@ -53,9 +61,8 @@ kernel void c_voxel_visibility_compact(
     if (idx < uint(frameData.voxelCount)) {
         const uint chunkIdx = idx / uint(VOXEL_CHUNK_SIZE);
         if (chunkVisible[chunkIdx] != 0u) {
-            const uint packedColor = colors[idx];
-            const uint alpha = (packedColor >> 24) & 0xFFu;
-            if (alpha != 0u) {
+            const uint maskWord = activeMask[idx >> 5u];
+            if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
                 int3 voxelPos = int3(round(positions[idx].xyz));
                 if (cardinalIndex != 0) {
                     voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);

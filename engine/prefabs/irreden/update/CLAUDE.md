@@ -25,8 +25,24 @@ in the `UPDATE` pipeline unless explicitly noted.
 - `PARTICLE_SPAWNER` — spawns particles at configured rate via the voxel
   particle entity builder.
 - `LIFETIME` — decrements `C_Lifetime`; destroys entities at zero.
-- `PERIODIC_IDLE` — drives `C_PositionOffset3D` via sine / easing for
-  drift/hover.
+- `PERIODIC_IDLE` — advances per-entity `C_PeriodicIdle` timer.
+- `PERIODIC_IDLE_POSITION_OFFSET` — upserts the resolved bob value as a
+  vec3 ADD modifier on the entity's `C_Modifiers` each tick via
+  `upsertBySourceInPlace` (under the `POSITION_OFFSET_3D` field).
+  Slot key is `(entity, POSITION_OFFSET_3D, ADD)` — one entry per
+  bob-eligible entity, updated in place. No `ticksRemaining_` countdown;
+  no `MODIFIER_DECAY` dependency. `APPLY_POSITION_OFFSET` later folds the
+  composed value into `C_PositionGlobal3D`.
+- `PROPAGATE_TRANSFORM` — walks the `CHILD_OF` parent chain in
+  topological order and writes `C_WorldTransform` from each entity's
+  `C_LocalTransform` composed with the parent chain. Modifier-resolved
+  `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` (vec3) fold into the
+  world transform per the SQT formula in
+  `engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
+  propagation". Place after the modifier resolver pipeline and before
+  any consumer (render, gizmo, physics) that reads
+  `C_WorldTransform`. Cost is O(N + passes × archetypes) where passes
+  is bounded by the deepest parent chain.
 
 ## Commands
 

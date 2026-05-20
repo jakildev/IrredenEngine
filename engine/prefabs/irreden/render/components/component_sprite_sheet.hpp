@@ -2,7 +2,8 @@
 #define COMPONENT_SPRITE_SHEET_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/render/ir_render_types.hpp>
+#include <irreden/ir_render.hpp>
+#include <irreden/render/texture.hpp>
 
 #include <string>
 #include <string_view>
@@ -67,6 +68,12 @@ struct C_SpriteSheet {
         , animations_{std::move(animations)} {}
 
     C_SpriteSheet() = default;
+
+    void onDestroy() {
+        if (textureHandle_ != 0) {
+            IRRender::destroyResource<IRRender::Texture2D>(textureHandle_);
+        }
+    }
 
     /// Linear scan over @c animations_. Intended to be called once per
     /// state change (e.g. when a creation calls `playAnimation("walk")`),

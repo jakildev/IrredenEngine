@@ -21,11 +21,10 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_light_source.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/fog_of_war.hpp>
-#include <irreden/render/systems/system_build_occupancy_grid.hpp>
+#include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
@@ -41,6 +40,7 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -172,6 +172,7 @@ inline EntityId createVoxelPoolShape(
             voxelSet.voxels_[i].deactivate();
         }
     }
+    voxelSet.syncActiveMask();
     return entity;
 }
 
@@ -193,7 +194,6 @@ inline void configureCanvases(bool enableFog) {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
 
-    IREntity::setComponent(mainCanvas, C_OccupancyGrid{256});
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
@@ -266,6 +266,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addDirectional_) {
         IREntity::createEntity(
             C_Position3D{vec3(0.0f)},
+            C_LocalTransform{vec3(0.0f)},
             C_LightSource{
                 LightType::DIRECTIONAL,
                 IRColors::kWhite,
@@ -281,6 +282,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addEmissive_) {
         IREntity::createEntity(
             C_Position3D{vec3(24.0f, 6.0f, -2.0f)},
+            C_LocalTransform{vec3(24.0f, 6.0f, -2.0f)},
             C_LightSource{
                 LightType::EMISSIVE,
                 Color{80, 210, 255, 255},
@@ -293,6 +295,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addPoint_) {
         IREntity::createEntity(
             C_Position3D{vec3(34.0f, -7.0f, -1.0f)},
+            C_LocalTransform{vec3(34.0f, -7.0f, -1.0f)},
             C_LightSource{
                 LightType::POINT,
                 Color{255, 150, 80, 255},
@@ -305,6 +308,7 @@ inline void createLights(const DemoConfig &config) {
     if (config.addSpot_) {
         IREntity::createEntity(
             C_Position3D{vec3(10.0f, -10.0f, -2.0f)},
+            C_LocalTransform{vec3(10.0f, -10.0f, -2.0f)},
             C_LightSource{
                 LightType::SPOT,
                 Color{170, 120, 255, 255},
@@ -344,6 +348,7 @@ inline void initSystems(const DemoConfig &config) {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
 
@@ -355,7 +360,7 @@ inline void initSystems(const DemoConfig &config) {
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_OCCUPANCY_GRID>(),
+        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),

@@ -114,7 +114,7 @@ Tag every task with the intended model. Default assumption:
 A Sonnet agent that picks up an `[opus]` task should escalate instead of
 charging ahead. A Sonnet agent that finds a `[sonnet]` task is subtler
 than expected (touches an invariant, a lifetime, a race) should stop and
-requeue with `[opus]`. The top-level `CLAUDE.md` has the full split.
+requeue with `[opus]`. [`docs/agents/FLEET.md`](docs/agents/FLEET.md) "Model split" has the full split.
 
 ## Good tasks to queue here (engine-only)
 
@@ -151,131 +151,253 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-
-- [~] **Render/input: screen-to-world picking under Z-yaw** — update picking inverse to compose `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹`; audit duplicate transform copies
-  - **ID:** T-057
-  - **Area:** engine/render, engine/input
+- [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
+  - **ID:** T-118
+  - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** claude/T-057-picking-yaw-inverse
+  - **Owner:** claude/T-118-hdr-pipeline
   - **Blocked by:** (none)
-  - **Stack:** T-054..T-058 z-yaw-pipeline
-  - **Acceptance:** (1) picking inverse composes `R2D(-residualYaw)` then `R(-rasterYaw)·M⁻¹` per plan; (2) correct world coords at yaw=0 (no regression for any existing consumer); (3) correct world coords at ≥4 non-cardinal yaw values; (4) audit of duplicate screen↔world transform copies in `engine/render/` and input-side consumers complete; (5) `fleet-build --target IRShapeDebug` clean
-  - **Issue:** #313
-  - **Notes:** Child 5 of 5 of epic #310. Sequenced last — inverts the full composition once both T-055 (cardinal raster) and the residual composite pass (T-058) land. Full plan: `.fleet/plans/T-054.md`. Prior PR #418 was closed without merging.
+  - **Acceptance:** (1) bright emissive lights no longer clip at white; saturation preserved through lighting → tonemap chain; (2) new lighting demo (IRLightingHDR or similar) exercises full HDR pipeline; (3) existing lighting demos (IRLightingCombined, IRLightingPoint, IRLightingSpot, IRLightingEmissive, IRLightingSunShadow) look identical to pre-HDR LDR output at default exposure; (4) fleet-build clean on linux-debug AND macos-debug
+  - **Issue:** #366
+  - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
 
-- [~] **Render: screen-space sun shadow map — delete occupancy grid + analytic caster paths** — remove `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers after T-070 establishes the screen-space path
-  - **ID:** T-071
-  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-071-delete-occupancy-grid
+- [~] **editor: selection rectangle + ghost preview during fill (A4)** — ghost voxels render during drag (no commit until mouse-up); snap-to-grid visible; modifier keys for axis-lock and symmetry override
+  - **ID:** T-284
+  - **Area:** engine/prefabs/irreden/editor
+  - **Model:** sonnet
+  - **Owner:** claude/T-284-fill-ghost-ui
   - **Blocked by:** (none)
-  - **Acceptance:** (1) `BUILD_OCCUPANCY_GRID`, `C_OccupancyGrid`, `SunShadowShapeCasterBuffer`, `analyticShapeShadowHit`, and in-shader SDF helpers removed; (2) `system_bake_sun_shadow_map` is the sole shadow producer; (3) `engine/render/CLAUDE.md` and `engine/prefabs/irreden/render/CLAUDE.md` updated to drop occupancy/analytic-caster sections; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; shadow renders correctly; (5) revisit `C_CanvasAOTexture`/`C_CanvasSunShadow` construction per #367 during deletion pass
-  - **Issue:** #358
-  - **Notes:** PR 2 of 2 from issue #358. Must wait for T-065 (12-file render-system-params migration) to land first — `system_compute_sun_shadow.hpp` and `system_build_occupancy_grid.hpp` are the exact files T-065 migrates; if PR 2 races T-065, both sides conflict on every line. PR 1 (T-070) adds new path; this PR deletes the old one. Several closed issues (pre-existing size mismatch, multi-canvas SSBO collision, SDF shadow artifacts) resolved by construction once old paths are removed.
+  - **Stack:** T-284..T-286 S-A-author
+  - **Acceptance:** (1) Hovering during box-fill drag shows ghost voxels at the AABB extent; (2) commit on mouse release; cancel on Escape; (3) modifier keys for axis-lock visible in the UI; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #947
+  - **Notes:** Stack S-A-author pos 2 (A1 → A4 → A2 → A3). A1 (T-278, PR #976) merged — branch from master. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A4".
   - **Links:**
 
-- [ ] **Render: GPU-side light-volume propagation (jump flooding / iterative dilation)** — replace CPU BFS + 8 MB subImage3D upload in `system_compute_light_volume.hpp` with GPU seed pass + jump-flood propagate pass(es)
-  - **ID:** T-072
-  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+- [~] **editor: loft from 2 profiles (CSG of two extrusions) (A2)** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect
+  - **ID:** T-285
+  - **Area:** engine/prefabs/irreden/editor
+  - **Model:** sonnet
+  - **Owner:** claude/T-285-editor-loft-profiles
+  - **Blocked by:** T-284
+  - **Stack:** T-284..T-286 S-A-author
+  - **Acceptance:** (1) Author a sphere-like shape from two circle profiles; (2) author a chair-like shape from front + side silhouettes; (3) mask widgets snap to grid; modifier key for symmetry plane; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #948
+  - **Notes:** Stack S-A-author pos 3. Branch from A4 PR head. Mask widget reuses trixel-rect helpers. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A2".
+  - **Links:**
+
+- [~] **editor: parametric-shape voxel bake (always DENSE) (A3)** — editor exposes "bake parametric shape into voxels"; picks primitive (sphere/box/capsule/cylinder/torus/etc.), sets params, voxelizes into active entity via CPU SDF path
+  - **ID:** T-286
+  - **Area:** engine/prefabs/irreden/editor, engine/math
+  - **Model:** sonnet
+  - **Owner:** claude/T-286-parametric-voxel-bake
+  - **Blocked by:** T-285
+  - **Stack:** T-284..T-286 S-A-author
+  - **Acceptance:** (1) Bake a radius-8 sphere; rasterized result matches GPU SDF output within 1 trixel; (2) bake at least 5 primitive types (sphere, box, capsule, cylinder, torus); (3) resulting .vxs round-trips cleanly through save/load; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #949
+  - **Notes:** Stack S-A-author pos 4. Branch from A2 PR head. Always emits DENSE voxel set — no SHAPES chunk (SDF restriction tracked in #937). CPU path uses engine/math/include/irreden/math/sdf.hpp. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A3".
+  - **Links:**
+
+- [~] **voxel: face-aware rendering (per-voxel face bits) (B2)** — 6 face-occupancy bits in C_Voxel::flags_; maintained at edit time by SYSTEM_UPDATE_FACE_OCCUPANCY; shader skips emit on blocked faces
+  - **ID:** T-288
+  - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** T-071
-  - **Acceptance:** (1) `system_compute_light_volume.hpp` has no per-frame CPU `vector<>` or `std::fill` of volume-sized buffers; `subImage3D` upload for the volume texture removed; (2) GPU seed pass + propagate pass(es) replace CPU BFS; light sources seeded via compute dispatch; (3) `IRLightingCombined` and `IRLightingEmissive` outputs within sample-noise of pre-migration reference; (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
-  - **Issue:** #359
-  - **Notes:** Blocked until T-071 lands — both this issue and #358 edit `c_lighting_to_trixel.glsl` sample path and adjacent light-volume systems. GPU LOS rules in `detail::hasLineOfSight` also need GPU port. Jump flooding: seed pass writes emissive RGB at world position; propagate pass(es) dilate light into adjacent voxels per LOS rules. Camera-anchored grid follow-up deferred. Eliminates per-light O(radius³) CPU BFS and ~8 MB upload per frame.
+  - **Owner:** claude/T-288-voxel-face-occupancy
+  - **Blocked by:** (none)
+  - **Stack:** T-287..T-289 S-B-render
+  - **Acceptance:** (1) Solid 64³ cube emits ~24,576 surface trixel positions (down from 1,572,864 today); (2) PR includes perf_grid numbers showing the per-voxel cost drop; (3) face bits correctly updated when a neighbor changes (push-at-mutation per cpp-ecs §"No dirty flags"); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #951
+  - **Notes:** Stack S-B-render pos 3. Branch from B1 PR head. Per-voxel flags in component_voxel.hpp:24-82; emit skip in c_voxel_to_trixel_stage_1.glsl. System runs on edited voxel + 6 neighbors. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B2".
   - **Links:**
 
+- [~] **voxel: push-at-mutation position upload (no per-frame re-upload) (B5)** — remove per-frame full-pool position upload; push positions at allocation and on entity-moved/bone-matrix-update only
+  - **ID:** T-289
+  - **Area:** engine/prefabs/irreden/render, engine/render
+  - **Model:** opus
+  - **Owner:** claude/T-289-voxel-pos-push-at-mutation
+  - **Blocked by:** T-288
+  - **Stack:** T-287..T-289 S-B-render
+  - **Acceptance:** (1) perf_grid with 100 static voxel entities idle = zero position bytes/frame uploaded (verified via GPU buffer-write counter); (2) PR includes before/after numbers via T-275 profiler; (3) moving entities still upload correctly (push-at-mutation); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #952
+  - **Notes:** Stack S-B-render pos 4. Branch from B2 PR head. Remove per-frame loop at system_update_voxel_positions_gpu.hpp:59,85. Push from mutation site via Buffer::subData. No dirty_ flag per cpp-ecs §"No dirty flags". Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B5".
+  - **Links:**
 
-
-
-
-- [ ] **Modifier framework: LAMBDA_MODIFIER_DECAY system + stateful-lambda design** — add `system_modifier_lambda_decay.hpp` to auto-expire lambda modifiers by `ticksRemaining_`, and design (but defer implementation of) stateful-lambda support
-  - **ID:** T-089
+- [~] **engine: C_RotationMode enum + component (GRID vs DETACHED) (C2)** — new C_RotationMode component at engine/prefabs/irreden/common/components/component_rotation_mode.hpp; GRID (default) + DETACHED modes; UNBOUNDED bool on C_LocalTransform
+  - **ID:** T-290
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-290-rotation-mode-component
   - **Blocked by:** (none)
-  - **Acceptance:** Part 1 — (1) `LAMBDA_MODIFIER_DECAY` system exists, decrements `ticksRemaining_` per tick, removes expired entries from `C_LambdaModifiers`; (2) test covers basic decay case (push lambda modifier with ticksRemaining=60, advance 60 ticks, assert removed); (3) builds clean on `linux-debug` and `macos-debug`; (4) `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups" updated. Part 2 acceptance to be defined by architect after design is locked.
-  - **Issue:** #341
-  - **Notes:** Part 1 is mechanical — mirrors `system_modifier_decay.hpp` but targets `C_LambdaModifiers`. Part 2 (stateful lambdas) is architectural: architect prefers option (c) — lambda + companion component — where state lives on entity in its own component and the lambda receives entity ID. Part 2 should be its own dedicated PR after Part 1 lands and design is locked; worker can do Part 1 standalone. Surfaced during architect review of PR #332; documented in `engine/prefabs/irreden/common/CLAUDE.md` "Open follow-ups."
+  - **Stack:** T-279..T-295 S-C-core
+  - **Acceptance:** (1) Spawning DETACHED allocates a child entity canvas via IRPrefab::EntityCanvas::create(); (2) spawning GRID (default) writes into the world voxel pool unchanged; (3) runtime mode change re-allocates correctly; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #953
+  - **Notes:** Stack S-C-core pos 2. Branch from C1 PR head (#943). UNBOUNDED is bool flag on C_LocalTransform indicating sub-trixel positioning — only meaningful with DETACHED. Modes set at spawn via Prefab; mutable at runtime with re-allocation cost. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C2".
   - **Links:**
 
-- [ ] **Render: AO via trixelDistances (drop OccupancyGridBuffer)** — migrate `c_compute_voxel_ao.{glsl,metal}` off `OccupancyGridBuffer`; sample 4 face-tangent neighbour pixels in `trixelDistances` instead
-  - **ID:** T-091
-  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+- [~] **render: wire detached-canvas rotation through composite TRS (C3)** — thread C_LocalTransform through per-canvas TRS for DETACHED entities at system_entity_canvas_to_framebuffer.hpp:98-100; support both voxel and SDF entities
+  - **ID:** T-291
+  - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** T-071
-  - **Acceptance:** (1) `c_compute_voxel_ao.{glsl,metal}` no longer reads `OccupancyGridBuffer` / slot 28; (2) `system_compute_voxel_ao.hpp` no longer binds `OccupancyGridBuffer`; (3) AO crease-darkening within ~1 iso pixel of edge migration vs pre-migration reference (capture before PR, compare via `render-debug-loop`); (4) SDF shapes get crease AO on adjacent surfaces (regression-fix — SDF-into-occupancy step deleted in T-071); (5) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`
-  - **Issue:** #428
-  - **Notes:** Architect direction in `.fleet/plans/T-091.md` (derived from `~/.fleet/plans/issue-358.md` T-09X section). Blocks final occupancy teardown T-092. Approach: project world-space face tangents through iso transform once on CPU, ship in `FrameDataVoxelToTrixel` UBO; compare receiver `pos3D'` vs face-outward plane per pixel. Cost stays O(canvasPixels) with 4 texel reads per pixel.
+  - **Owner:** claude/T-291-detached-canvas-rotation
+  - **Blocked by:** T-290
+  - **Stack:** T-279..T-295 S-C-core
+  - **Acceptance:** (1) A DETACHED rectangular entity spins smoothly around its local Z axis without voxel re-rasterization; (2) perf_grid shows constant per-frame cost regardless of rotation rate; (3) works for both voxel and SDF entities; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #954
+  - **Notes:** Stack S-C-core pos 3. Branch from C2 PR head. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C3".
   - **Links:**
 
-- [ ] **Render: final occupancy-grid teardown (drop BUILD_OCCUPANCY_GRID + C_OccupancyGrid)** — pure deletion after T-091 (AO) and T-072 (light-volume) land; remove grid system, component, SSBO, constants, and CLAUDE.md phased-out sections
-  - **ID:** T-092
-  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
-  - **Model:** sonnet
-  - **Owner:** free
-  - **Blocked by:** T-091, T-072
-  - **Acceptance:** (1) `grep -rn 'C_OccupancyGrid\|OccupancyGrid\|kBufferIndex_OccupancyGrid\|BUILD_OCCUPANCY_GRID\|occupancyGetBit'` returns zero hits across `engine/`, `creations/`, `test/`; (2) all lighting demos (`IRLightingCombined`, `IRLightingSunShadow`, `IRLightingEmissive`, `IRLightingPoint`, `IRLightingSpot`, `IRShapeDebug`) render identically to pre-deletion reference via `render-debug-loop`; (3) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (4) CLAUDE.md phased-out sections from T-071 removed; one-line note added pointing to the PR that retired the grid
-  - **Issue:** #429
-  - **Notes:** Zero-design task — delete only, no new behavior. Trivial PR once T-091 and T-072 consumers are gone. If a hidden consumer is found, bounce it upstream to T-091 or T-072 rather than partially deleting. Also: promote `kBufferIndex_SunShadowDepthMap = 28` as canonical slot-28 name (retiring the alias); delete CPU↔GPU `roundHalfUp` parity contract docs if no other consumer depends on it (verify light-volume GPU port first).
-  - **Links:**
-
-- [ ] **Input: fix system_hitbox_mouse_test projection under non-zero camera yaw** — compose `R_z(rasterYaw)` and `R2D(residualYaw)` in `HITBOX_MOUSE_TEST` forward-projection (or inverse-project mouse once in `beforeTick`) so hitbox hover tracks correctly at all visualYaw values
-  - **ID:** T-093
-  - **Area:** engine/prefabs/irreden/input, engine/render
+- [~] **math: continuous-yaw + deformation math helpers (CPU+GPU mirror) (C5)** — add IRMath::faceDeformationMatrix, pos3DtoPos2DIsoYawed, deformedTrixelIsoPixel, sqtToMat4, matrixApplyToVoxelGrid; GPU mirror in ir_iso_common.glsl; CPU/GPU bit-identical
+  - **ID:** T-292
+  - **Area:** engine/math, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-292-yaw-deformation-math
   - **Blocked by:** (none)
-  - **Acceptance:** (1) mouse hover triggers `onHovered` for entities under cursor at `visualYaw` ∈ {0, π/8, π/4, π/2 + π/16} when entity is on-screen and within hitbox half-extents; (2) hitbox-only hover shows no regression vs master at `visualYaw=0`; (3) test synthesizes known mouse position + camera yaw and asserts `HITBOX_MOUSE_TEST` flips `hovered_` correctly under at least two non-cardinal yaws
-  - **Issue:** #430
-  - **Notes:** Bug surfaced during T-057 (PR #424) audit. Preferred approach (from issue): inverse-project mouse once in `beforeTick` via `inverseResidualYawOnFramebufferPixel` (from T-057) + `R_z(-rasterYaw)`, then compare in unrotated world space — O(1) per frame vs O(entities) for forward-projection. Related: epic #310.
+  - **Stack:** T-279..T-293 S-C-math
+  - **Acceptance:** (1) Round-trip test computes deformation on CPU and GPU for all 4 cardinals + 8 mid-sector residual yaws; asserts bit-identical equality; (2) math goes through IRMath; no glm:: or std:: outside engine/math/ per cpp-math.md; (3) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #955
+  - **Notes:** Stack S-C-math pos 2 (C1 → C5 → C4 → C8). Branch from C1 PR head (#943). Helpers in engine/math/include/irreden/; GPU mirror in engine/render/src/shaders/ir_iso_common.glsl. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C5".
   - **Links:**
 
-- [ ] **Render: camera-anchor GPU light volume for fidelity past static window** — add `worldOrigin_` to light-volume frame-data UBO; snap to iso camera target each frame; update seed pass to skip out-of-volume lights and consumer to subtract origin before volume sample
-  - **ID:** T-094
-  - **Area:** engine/prefabs/irreden/render/systems, shaders/glsl, shaders/metal
+- [ ] **render: geometric trixel deformation (replaces T-322 bilinear residual) (C4)** — add mat2 faceDeform[3] to FrameDataVoxelToTrixel + FrameDataShapesToTrixel UBOs; apply faceDeform in 2D iso space in c_voxel_to_trixel_stage_1/2.glsl and c_shapes_to_trixel.glsl; remove T-322 screen-space bilinear residual path
+  - **ID:** T-293
+  - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-072
-  - **Acceptance:** (1) lighting demos render with full fidelity when camera is panned far from origin (e.g. ~1000 voxels away); (2) at-origin scenes produce screenshot diff within sampling noise of T-072 reference — no regression; (3) light-volume texture memory footprint unchanged (128³ RGB); (4) `fleet-build --target IRShapeDebug` clean on `linux-debug` AND `macos-debug`; (5) GLSL and Metal shaders both read new origin uniform; `render-debug-loop` shows no parity drift
-  - **Issue:** #360
-  - **Notes:** Rescoped from original two-grid proposal (#360 was "camera-anchor occupancy + light-volume"). Occupancy grid is being deleted entirely via T-071→T-091→T-092; only the light-volume half survives. Blocked until T-072 (GPU jump-flood producer) lands — origin field rides the UBO T-072 introduces. Full plan at `.fleet/plans/T-094.md`. Snap origin to integer voxel multiples (not sub-voxel) to prevent shimmer; propagate pass stays origin-agnostic (seed and consumer only).
+  - **Blocked by:** T-292
+  - **Stack:** T-279..T-293 S-C-math
+  - **Acceptance:** (1) Camera yaws continuously through 360°; voxel + SDF entities deform smoothly with no bilinear blur; (2) no visible "snap" at cardinal boundaries; (3) T-322 screen-space bilinear residual path removed; engine/prefabs/irreden/render/camera.hpp no longer drives it; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #956
+  - **Notes:** Stack S-C-math pos 3. Branch from C5 PR head. CPU computes per-frame faceDeform from residualYaw; identity at 0; per-face stretch/compress at ±π/4. Face flip at cardinal boundaries via existing rasterYawCardinalIndex. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C4".
   - **Links:**
 
----
+- [ ] **voxel: GRID-mode rotation re-rasterizes voxels on transform change (C6)** — SYSTEM_REBUILD_GRID_VOXELS runs on entities with changed C_LocalTransform; rotates authored voxels to world-grid cells; last-writer-wins on cell collisions (deterministic by entity ID)
+  - **ID:** T-294
+  - **Area:** engine/prefabs/irreden/voxel, engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-291
+  - **Acceptance:** (1) A cube rotated 45° around Z occupies a different set of world voxel cells than at 0°; (2) rotation snaps to grid (aliasing accepted by design — documented in the system header); (3) deterministic across frames; cell collisions documented; (4) interacts cleanly with Epic E E5 (entity chunk migration) for rotated entities crossing chunk boundaries; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #957
+  - **Notes:** Off-stack fork from C3; does NOT block S-C-core's C3 → C7 chain. Branch from C3 PR head. Push-at-mutation; no dirty flag per cpp-ecs. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C6".
+  - **Links:**
 
-## In progress
+- [ ] **render: DETACHED canvas pitch/roll (full SO(3) inside canvas) (C7)** — detached canvases support full SO(3) local rotation via per-face deformation math applied in entity's local frame; world composite applies world Z-yaw deformation on top (composition order: local first, then world)
+  - **ID:** T-295
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-291, T-293
+  - **Stack:** T-279..T-295 S-C-core
+  - **Acceptance:** (1) A DETACHED rectangular entity pitching forward looks correct from any world Z-yaw; (2) deformation math reused (single source of truth across world and per-canvas); (3) composition order correct (local rotation applied first inside canvas, then world Z-yaw at composite); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #958
+  - **Notes:** Stack S-C-core pos 4. Branch from C3 PR head; also requires C4 (T-293) merged first. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C7".
+  - **Links:**
 
-<!-- Tasks currently being worked on. Mirror of [~] items above. -->
+- [~] **render: SDF restriction decision deliverable (D2)** — record final restriction shape (effects-only or revised) as architecture decision in docs/design/entity-editor-epic.md §"Architectural decisions (locked)"
+  - **ID:** T-296
+  - **Area:** docs, engine/render
+  - **Model:** opus
+  - **Owner:** claude/T-296-sdf-restriction-decision
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Decision PR amends `docs/design/entity-editor-epic.md` §"Architectural decisions (locked)" with the final restriction shape; (2) decision rationale captured (cost of effects-only vs. keeping co-equal; references the D1 audit findings in T-281/PR #982); (3) migration plan exists (or is filed as D3) for any SHAPES authoring sites identified in D1; (4) unblocks Epic C C8 (#959) and lets D3/D4 proceed
+  - **Issue:** #960
+  - **Notes:** Part of Epic D (#937 — SDF runtime restriction). Blocked-by D1 (#945, T-281) is merged (PR #982). Phase: lands during Epic C C3–C5. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic D → D2".
+  - **Links:**
 
+- [~] **world: chunk container + ivec3 chunk-coords addressing (E1)** — spatial chunk buckets owning entities + voxel allocations; addressed by ivec3 chunk coords; sparse world over chunks; per-chunk entity index + voxel sub-pool
+  - **ID:** T-297
+  - **Area:** engine/world, engine/entity
+  - **Model:** opus
+  - **Owner:** claude/T-297-world-chunk-container
+  - **Blocked by:** (none)
+  - **Stack:** T-297..T-298 S-E-persist
+  - **Acceptance:** (1) Spawn N entities across M chunks; iterate the chunk index; (2) per-chunk voxel sub-pool allocated from the global pool; (3) existing demos run unchanged at default (1-chunk world); (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #963
+  - **Notes:** Stack S-E-stream pos 2 (E0 → E1 → E2 → E3 → E4); also base of S-E-persist (E1 → E6). Branch from E0 PR head (#981). Blocker E0 (T-280) is merged (PR #981). Replaces single-chunk `kWorldBoundMax` invariant (`engine/common/include/irreden/ir_constants.hpp:42`); includes migration path for existing demos. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E1".
+  - **Links:**
 
----
+- [~] **world: chunk disk persistence + lazy load (E6)** — chunks serialize to disk via .vxs; lazy load on residency request; per-chunk dirty tracking; only modified chunks re-saved
+  - **ID:** T-298
+  - **Area:** engine/world, engine/asset
+  - **Model:** opus
+  - **Owner:** claude/T-298-chunk-disk-persistence
+  - **Blocked by:** T-297
+  - **Stack:** T-297..T-298 S-E-persist
+  - **Acceptance:** (1) Save world; quit; restart; chunks load on-demand as camera moves; (2) visual state identical to pre-quit; (3) only modified chunks re-saved; disk usage scales with active content; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #968
+  - **Notes:** Stack S-E-persist pos 2 (E1 → E6). Branch from E1 PR head (#963). Chunks use .vxs DENSE-RLE format (#940, T-276 merged PR #972). Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E6".
+  - **Links:**
+
+- [~] **render: migrate Phase A render-side readers to C_WorldTransform** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase)
+  - **ID:** T-299
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** claude/T-299-render-readers-worldtransform
+  - **Blocked by:** (none)
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) Each listed render system reads C_WorldTransform.translation_/.rotation_ instead of C_PositionGlobal3D/C_Rotation; (2) legacy components still exist (retirement is T-302); (3) fleet-build clean on linux-debug and macos-debug; (4) render-debug-loop shot list pre/post pixel-identical (within bilinear tolerance for rotation-touching shaders); (5) voxel editor renders and interacts correctly — gizmos move, picking resolves, voxels position correctly
+  - **Issue:** #984
+  - **Notes:** Step 2 of transform migration decomposed from #736. Foundation already merged: PR #749/T-197 (C_LocalTransform + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM), PR #787/T-199-step-1 (COMPUTE_LIGHT_VOLUME proof-of-concept). Target files: system_sprites_to_screen.hpp, system_entity_canvas_to_framebuffer.hpp, system_shapes_to_trixel.hpp, system_voxel_picking.hpp, system_voxel_to_trixel.hpp, system_gizmo_drag.hpp, system_gizmo_screen_space_size.hpp, system_build_light_occlusion_grid.hpp, system_debug_culling_minimap.hpp, picking.hpp, gizmo.hpp. Pure mechanical swap: C_PositionGlobal3D pos → C_WorldTransform xform, pos.pos_ → xform.translation_; C_Rotation → xform.rotation_. Blocks T-300 → T-301 → T-302.
+  - **Links:**
+
+- [ ] **update: migrate Phase A update-side consumers to C_WorldTransform** — migrate ~15 update-pipeline systems and entity-spawn helpers from C_PositionGlobal3D/C_Position3D/C_Rotation to C_LocalTransform/C_WorldTransform; writers convert Euler C_Rotation to quat C_LocalTransform.rotation_
+  - **ID:** T-300
+  - **Area:** engine/prefabs/irreden/update, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-299
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) Each listed update system reads C_WorldTransform.translation_/.rotation_ and/or writes C_LocalTransform; (2) velocity integration, spring physics, periodic offsets, goto/reactive-return all behave identically post-migration; (3) fleet-build clean on both backends; (4) unit tests pass (test/ecs/*, test/asset/*); (5) IRShapeDebug + voxel editor + spring/note demos render identically
+  - **Issue:** #985
+  - **Notes:** T-199b — update-side continuation of #736 migration. Stacks on T-299. Target readers: system_periodic_idle_position_offset.hpp, system_apply_position_offset.hpp, system_rhythmic_launch.hpp, system_contact_note_burst.hpp, system_collision_note_platform.hpp, system_update_positions_global.hpp, system_periodic_idle_note_burst.hpp, system_particle_spawner.hpp, system_velocity.hpp, system_spring_platform.hpp, system_action_animation.hpp, system_reactive_return_3d.hpp, system_goto_3d.hpp, system_update_screen_view.hpp. Writers need Euler→quat: use glm::quat_cast(eulerAngles) at write sites. system_apply_position_offset.hpp may be deleted if epic #731 modifier migration has removed it — check current state first. Blocks T-301 → T-302.
+  - **Links:**
+
+- [ ] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
+  - **ID:** T-301
+  - **Area:** engine/prefabs/irreden/voxel, engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-300
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) C_VoxelPool and voxel systems use new SQT shape per the architectural decision; (2) GPU voxel-position upload path still works — voxel rendering pixel-identical pre/post; (3) voxel editor place/erase + scene save/load round-trip unchanged; (4) fleet-build clean on both backends; (5) engine/prefabs/irreden/voxel/CLAUDE.md updated with SoA decision rationale
+  - **Issue:** #986
+  - **Notes:** T-199c — voxel-side continuation; trickiest phase because C_VoxelPool SoA arrays back the GPU buffer upload path. Option A: one C_WorldTransform array per pool (wider per-voxel memory but uniform with rest of engine post-migration); Option B: keep position-only projection arrays refreshed from owning entity's C_WorldTransform once per pool tick (smaller; preserves current GPU upload contract). Worker should escalate via fleet:design-blocked when reaching the C_VoxelPool rewrite — architect input needed. Stacks on T-300. Blocks T-302.
+  - **Links:**
+
+- [ ] **engine: retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components** — delete all four legacy position/rotation component headers; remove from createEntity auto-attach set; migrate Lua bindings and script API to SQT equivalents; update CLAUDE.md
+  - **ID:** T-302
+  - **Area:** engine/prefabs/irreden/common, engine/script
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-301
+  - **Stack:** T-299..T-302 sqt-phase-a
+  - **Acceptance:** (1) grep -r "C_PositionGlobal3D" engine/ returns zero hits; (2) grep -r "C_Position3D" engine/ returns zero hits; (3) grep -r "C_Rotation" engine/ returns zero hits; (4) createEntity no longer auto-attaches legacy components; (5) fleet-build clean on linux-debug and macos-debug; (6) full test suite passes (test/ecs/*, test/asset/*, render-verify reference set); (7) IRShapeDebug, voxel editor, spring/note demos render identically; (8) CLAUDE.md retirement note added
+  - **Issue:** #987
+  - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
+  - **Links:**
 
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
-- [x] **T-088** — Modifier demo creation: modifier_demo visual showcase · Owner: claude/T-088-modifier-demo · PR: https://github.com/jakildev/IrredenEngine/pull/427
-- [x] **T-090** — Fleet: queue-manager bidirectional consistency pass · Owner: claude/T-090-queue-bidirectional-consistency · PR: https://github.com/jakildev/IrredenEngine/pull/425
-- [x] **T-087** — Sprite rendering: C_Sprite / C_SpriteSheet components + design note · Owner: claude/T-087-sprite-components · PR: https://github.com/jakildev/IrredenEngine/pull/417
-- [x] **T-086** — Input: audit and document gamepad support · Owner: claude/T-086-gamepad-audit · PR: https://github.com/jakildev/IrredenEngine/pull/415
-- [x] **T-070** — Render: screen-space sun shadow map — add bake pass (flag-guarded) · Owner: claude/T-070-screen-space-sun-shadow-bake · PR: https://github.com/jakildev/IrredenEngine/pull/406
-- [x] **T-083** — render/metal: fix getEntityIdAtMouseTrixel stale-pointer UAF after subData orphan-on-write · Owner: claude/T-083-metal-uaf-stale-pointer · PR: https://github.com/jakildev/IrredenEngine/pull/416
-- [x] **T-085** — fleet: option-B handoff should set fleet:changes-made before removing fleet:needs-fix · Owner: claude/T-085-changes-made-sequencing · PR: https://github.com/jakildev/IrredenEngine/pull/414
-- [x] **T-084** — merger: dedupe semantic-conflict re-comments when sha pair unchanged · Owner: claude/T-084-merger-dedupe-conflict-comments · PR: https://github.com/jakildev/IrredenEngine/pull/413
-- [x] **T-068** — Render/shader: SDF fast-path redesign under non-zero Z-yaw + snap-mode/voxel-pool alignment · Owner: claude/T-068-sdf-cardinal-snap-align · PR: https://github.com/jakildev/IrredenEngine/pull/412
-- [x] **T-058** — Render: screen-space 2D residual yaw composite pass (GLSL+MSL) · Owner: claude/T-058-screen-residual-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/405
-- [x] **T-082** — Fleet: factor CLAUDE.md status-prose sections to prevent parallel-PR rebase conflicts · Owner: claude/T-082-status-prose-factor · PR: https://github.com/jakildev/IrredenEngine/pull/402
-- [x] **T-080** — Fleet: orchestration calibration — babysit cooldown, fleet-claim git-aware, stale-status auto-flip · Owner: claude/T-080-orchestration-calibration · PR: https://github.com/jakildev/IrredenEngine/pull/396
-- [x] **T-066** — Render/system: centralize GPU stage probes via SystemManager TickObserver · Owner: claude/T-066-tick-observer · PR: https://github.com/jakildev/IrredenEngine/pull/401
-- [x] **T-081** — Review-pr: detect oversized churn on CONFLICTING PRs + forked-from-other-PR signal · Owner: claude/T-081-review-pr-conflicting-churn · PR: https://github.com/jakildev/IrredenEngine/pull/400
-- [x] **T-079** — Fleet: permissions and summaries-on-exit — .claude/commands/ writes, rm allowlist, restore non-architect summaries · Owner: claude/T-079-permissions-and-summaries · PR: https://github.com/jakildev/IrredenEngine/pull/398
-- [x] **T-078** — Fleet: worktree contention — extend branch-lock filter, abort merger rebase on give-up, prevent parent-clone misroute · Owner: claude/T-078-worktree-contention · PR: https://github.com/jakildev/IrredenEngine/pull/397
-- [x] **T-069** — Metal: port entity-id readback into f_trixel_to_framebuffer · Owner: claude/T-069-metal-entity-id-readback · PR: https://github.com/jakildev/IrredenEngine/pull/394
-- [x] **T-065** — Render systems: migrate 12 files off function-local static onto SystemParams · Owner: claude/T-065-render-system-params · PR: https://github.com/jakildev/IrredenEngine/pull/382
-- [x] **T-075** — Fleet docs: calibrate Opus-only review checklist + process gaps (Tier 2) · Owner: claude/T-075-opus-only-checklist · PR: https://github.com/jakildev/IrredenEngine/pull/395
-- [x] **T-073** — ECS: support non-default-constructible component types in EntityManager::setComponent · Owner: claude/T-073-non-default-component · PR: https://github.com/jakildev/IrredenEngine/pull/392
+- [x] **T-287** — voxel: sparse occupancy bitmask in C_VoxelPool (B1) · Owner: claude/T-287-voxel-active-mask · PR: https://github.com/jakildev/IrredenEngine/pull/988
+- [x] **T-277** — render: runtime-sized voxel pools (B4) · Owner: claude/T-277-runtime-voxel-pools · PR: https://github.com/jakildev/IrredenEngine/pull/975
+- [x] **T-276** — asset: .vxs DENSE-RLE chunk variant (B3) · Owner: claude/T-276-vxs-rle-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/972
+- [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
+- [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
+- [x] **T-283** — fleet: filter fleet:epic in project_queue_manager_ingest · Owner: claude/T-283-epic-filter-projector · PR: https://github.com/jakildev/IrredenEngine/pull/980
+- [x] **T-282** — fleet: invalidate seen-hash on ingest lock-bail · Owner: claude/T-282-ingest-lock-bail-hash-invalidate · PR: https://github.com/jakildev/IrredenEngine/pull/978
+- [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
+- [x] **T-278** — editor AABB box-fill + line-fill + face-fill (A1) · Owner: claude/T-278-fill-tools · PR: https://github.com/jakildev/IrredenEngine/pull/976
+- [x] **T-215** — editor F-1.5 — save/load round-trip with metadata + JSON sidecar · Owner: claude/T-215-save-load-roundtrip · PR: https://github.com/jakildev/IrredenEngine/pull/933
+- [x] **T-213** — editor F-1.3 — layer system panel UI · Owner: claude/T-213-layer-system · PR: https://github.com/jakildev/IrredenEngine/pull/932
+- [x] **T-250** — docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs · Owner: claude/T-250-render-claude-md-cleanup · PR: https://github.com/jakildev/IrredenEngine/pull/931
+- [x] **T-271** — docs/roles: collapse redundant --repo flags in role-merger.md · Owner: claude/T-271-collapse-repo-flags · PR: https://github.com/jakildev/IrredenEngine/pull/925
+- [x] **T-214** — editor F-1.4 — animation scrubber + per-frame undo · Owner: claude/T-214-anim-scrubber-perframe-undo · PR: https://github.com/jakildev/IrredenEngine/pull/928
+- [x] **T-274** — docs/roles: decide whether queue-manager produces feedback; document either way · Owner: claude/T-274-queuemanager-feedback · PR: https://github.com/jakildev/IrredenEngine/pull/927
+- [x] **T-273** — fleet: verify and document merger.log rotation · Owner: claude/T-273-merger-log-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/926
+- [x] **T-270** — docs/roles: catch up architect doc on transient-loop, AMEND, game-repo wrinkle · Owner: claude/T-270-architect-doc-catchup · PR: https://github.com/jakildev/IrredenEngine/pull/923
+- [x] **T-269** — docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect · Owner: claude/T-269-clear-feedback-labels-wrapper · PR: https://github.com/jakildev/IrredenEngine/pull/922
+- [x] **T-268** — fleet: add fleet:awaiting-base to FLEET.md label dictionary · Owner: claude/T-268-label-drift-fix · PR: https://github.com/jakildev/IrredenEngine/pull/921
+- [x] **T-267** — docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers · Owner: claude/T-267-shrink-intro-boilerplate · PR: https://github.com/jakildev/IrredenEngine/pull/920

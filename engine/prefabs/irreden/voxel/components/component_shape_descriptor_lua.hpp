@@ -12,11 +12,17 @@ template <> inline void bindLuaType<IRComponents::C_ShapeDescriptor>(LuaScript &
         IRComponents::C_ShapeDescriptor,
         IRComponents::C_ShapeDescriptor(IRRender::ShapeType, IRMath::vec4, IRMath::Color)>(
         "C_ShapeDescriptor",
-        "shapeType", &IRComponents::C_ShapeDescriptor::shapeType_,
-        "params", &IRComponents::C_ShapeDescriptor::params_,
-        "color", &IRComponents::C_ShapeDescriptor::color_,
-        "flags", &IRComponents::C_ShapeDescriptor::flags_,
-        "lodLevel", &IRComponents::C_ShapeDescriptor::lodLevel_);
+        "shapeType",
+        &IRComponents::C_ShapeDescriptor::shapeType_,
+        "params",
+        &IRComponents::C_ShapeDescriptor::params_,
+        "color",
+        &IRComponents::C_ShapeDescriptor::color_,
+        "flags",
+        &IRComponents::C_ShapeDescriptor::flags_,
+        "lodMin",
+        &IRComponents::C_ShapeDescriptor::lodMin_
+    );
 }
 } // namespace IRScript
 

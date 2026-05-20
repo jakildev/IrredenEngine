@@ -13,11 +13,15 @@
 # Installed to ~/bin/fleet-claim by scripts/fleet/install.sh.
 #
 # Usage:
-#   fleet-claim claim "<task title>" <agent-name>
+#   fleet-claim claim "<task title>" <agent-name> [--stackable-on <pr-url>]
+#   fleet-claim claim-base <task-id>
+#   fleet-claim find-stackable-blockers <task-id>
 #   fleet-claim release "<task title>"
 #   fleet-claim check "<task title>"
 #   fleet-claim list [--with-age]
-#   fleet-claim cleanup [--repo <owner/repo>] ...
+#   fleet-claim cleanup [--repo <owner/repo>] [--gh] ...
+#   fleet-claim review-claim <pr-number> <agent>
+#   fleet-claim review-release <pr-number> <agent>
 #   fleet-claim clear-all
 #   fleet-claim stack "T-1 T-2 ..." <agent>
 #   fleet-claim release-stack <agent>
@@ -30,11 +34,67 @@
 #   fleet-claim molecule advance <agent> <task-id> <new-state> [--pr URL] [--commit SHA]
 #   fleet-claim molecule complete <agent>
 #   fleet-claim molecule rebase-downstream <agent> [task-id]
+#   fleet-claim reserve <task-id> <worktree> [branch]
+#   fleet-claim release-worktree <worktree>
+#   fleet-claim reservation-of <worktree>
+#   fleet-claim worktree-for-task <task-id>
+#   fleet-claim list-reservations
 
 set -euo pipefail
 
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
 MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
+RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
+FLEET_ENGINE_ROOT="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
+FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
+
+# --- master-side TASKS.md lock (T-138) ------------------------------------
+#
+# Beyond the local FS lock, claim/stack push a one-line TASKS.md update to
+# `origin/master` so a polling worker on any host (or a worker that sees
+# only origin/master/TASKS.md) can no longer mistake a claimed task for
+# free. The push uses pure git plumbing (hash-object + mktree +
+# commit-tree + push) — no working-tree mutation in the agent's worktree.
+#
+# Race resolution:
+#   - Two same-host workers race on the FS mkdir lock first; the loser
+#     never reaches master_lock_task.
+#   - Two cross-host workers (or workers whose FS claim layouts diverge)
+#     each win their FS lock; their master pushes race. One push lands
+#     fast-forward; the other detects non-FF, refetches, sees [~] already
+#     set, and aborts with "race lost on master push" — its FS claim is
+#     rolled back.
+#
+# Stranded [~] recovery:
+#   fleet-tasks-render preserves [~] when an active FS claim exists, so
+#   queue-tick won't immediately revert. When `fleet-claim check-stale`
+#   removes a stale FS claim, the next queue-tick re-derives without the
+#   FS-claim signal and reverts [~] → [ ]. No new metadata in TASKS.md.
+#
+# Opt-out:
+#   Set FLEET_CLAIM_NO_MASTER_LOCK=1 to skip the master push. Used by
+#   tests and any bootstrap scenario where origin is unreachable.
+#   `cmd_claim` falls back to FS-lock-only behavior with a stderr note.
+
+# --- claim sidecar layout --------------------------------------------------
+#
+# Each claim is the directory $CLAIMS_DIR/<slug>/ (atomic mkdir-as-lock).
+# A claim made with --stackable-on additionally writes a sibling file
+# $CLAIMS_DIR/<slug>.meta containing one line:
+#
+#   stackable_base_branch=<branch>
+#
+# claim-base reads it to tell commit-and-push which branch to base the
+# task's PR on; release / check-stale / cleanup all delete the sidecar
+# alongside the claim dir so it never outlives the claim.
+
+__remove_claim() {
+    # Remove a claim's directory and its --stackable-on sidecar (if any).
+    # Safe on missing slugs; leaves no orphan .meta behind.
+    local slug="$1"
+    rm -rf "$CLAIMS_DIR/$slug"
+    rm -f "$CLAIMS_DIR/${slug}.meta"
+}
 
 # --- global --repo <namespace> ---------------------------------------------
 #
@@ -79,6 +139,202 @@ slugify() {
     else
         echo "$base"
     fi
+}
+
+# --- cross-machine GitHub-label lock --------------------------------------
+#
+# T-138's master-push lock covers the cross-host task-claim race by writing
+# the `[~]` row to origin/master as part of the claim handshake. This
+# section adds a complementary GitHub-label primitive for the gaps T-138
+# doesn't cover:
+#
+#   - PR review claims  — reviewers (sonnet-reviewer, opus-reviewer) take a
+#                         `fleet:reviewing-<host>-<agent>` label on the PR
+#                         before reading the diff so two reviewers on
+#                         different hosts can't both work the same PR.
+#   - Cross-host smoke  — author roles' step 1b smoke pickup uses the same
+#                         primitive so two same-host author agents can't
+#                         race on the same `fleet:needs-<host>-smoke` PR.
+#
+# Tie-break: POST .../labels returns the resulting label set. Filter to the
+# `fleet:reviewing-` prefix and take the lexicographic minimum. If our
+# label is the min we own the lock; otherwise we lost the race, remove
+# our label, and the caller exits 1.
+#
+# Host disambiguation (`fleet:reviewing-<host>-<agent>`) is required for
+# correctness — both hosts can have an `opus-reviewer` agent.
+#
+# Stale label sweep runs from `fleet-queue-tick` via
+# `fleet-claim cleanup --gh`; orphan sentinels under ~/.fleet/orphans/
+# retry failed removals on the next cleanup pass. Both ops are idempotent
+# and safe under multiple concurrent queue-managers / queue-tick instances.
+
+derive_host() {
+    # Normalize uname output to one of: mac | windows | linux.
+    # WSL2 (/proc/version contains "Microsoft" or "WSL") maps to "windows"
+    # because the user runs the WSL2 fleet as their Windows fleet.
+    # FLEET_TEST_HOST overrides for test scaffolding.
+    if [[ -n "${FLEET_TEST_HOST:-}" ]]; then
+        echo "$FLEET_TEST_HOST"
+        return
+    fi
+    local u
+    u=$(uname -s 2>/dev/null || echo Unknown)
+    case "$u" in
+        Darwin) echo mac ;;
+        Linux)
+            if [[ -f /proc/version ]] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+                echo windows
+            else
+                echo linux
+            fi
+            ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) echo windows ;;
+        *) echo unknown ;;
+    esac
+}
+
+repo_from_ns() {
+    # Map the global REPO_NS to a real GitHub owner/repo path. Empty (or
+    # "engine") → engine; "game" → game. Unknown namespaces print nothing
+    # and the caller treats it as "no GH side, fall back to local-only".
+    case "${REPO_NS:-}" in
+        ""|engine) echo "jakildev/IrredenEngine" ;;
+        game)      echo "jakildev/irreden" ;;
+        *)         echo "" ;;
+    esac
+}
+
+# write_orphan_sentinel <repo> <issue-or-pr> <label> <reason>
+#   Drops a JSON sentinel under ~/.fleet/orphans/ so the cleanup pass
+#   retries the failed --remove-label later.
+write_orphan_sentinel() {
+    local repo="$1" issue="$2" label="$3" reason="$4"
+    local orphans_dir="${FLEET_ORPHANS_DIR:-$HOME/.fleet/orphans}"
+    mkdir -p "$orphans_dir"
+    local ts safe
+    ts=$(date -u +%Y%m%dT%H%M%SZ)
+    safe="${label//\//-}"
+    safe="${safe//:/-}"
+    local sentinel="$orphans_dir/${ts}-${safe}.json"
+    cat > "$sentinel" <<EOF
+{
+  "repo": "$repo",
+  "issue": $issue,
+  "label": "$label",
+  "reason": "$reason",
+  "created": "$ts"
+}
+EOF
+    echo "fleet-claim: WARN gh remove-label failed for '$label' on $repo#$issue; wrote sentinel $sentinel" >&2
+}
+
+# gh_release_label <repo> <issue-or-pr> <label>
+#   Retry-once-then-sentinel policy for removing a fleet:reviewing-* label.
+#   Exit 0 on successful removal (or label already absent). Exit 1 only
+#   after both attempts fail and the sentinel is written.
+gh_release_label() {
+    local repo="$1" issue="$2" label="$3"
+    if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
+        return 0
+    fi
+    sleep 2
+    if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
+        return 0
+    fi
+    write_orphan_sentinel "$repo" "$issue" "$label" "remove-label failed after retry"
+    return 1
+}
+
+# _acquire_label_on <repo> <pr-or-issue> <label> <label-prefix>
+#   Atomic-add + deterministic-min tie-break primitive. PRs and issues
+#   share GitHub's /issues/N/labels endpoint, so this works for both.
+#
+#   Returns 0 if our label is the lex-min of all <label-prefix>*
+#   labels on the response (we own the lock); 1 otherwise (we lost
+#   the race and self-removed our label). On API error, returns 1.
+_acquire_label_on() {
+    local repo="$1" target="$2" label="$3" prefix="$4"
+
+    local labels_json
+    if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
+            --method POST -f "labels[]=${label}" 2>&1); then
+        echo "fleet-claim: gh api POST labels failed on $repo#$target:" >&2
+        echo "$labels_json" >&2
+        return 1
+    fi
+
+    local min_label
+    min_label=$(echo "$labels_json" | python3 -c '
+import json, sys
+try:
+    labels = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+prefix = sys.argv[1]
+matching = sorted(l["name"] for l in labels if isinstance(l, dict) and l.get("name", "").startswith(prefix))
+if matching:
+    print(matching[0])
+' "$prefix" 2>/dev/null || echo "")
+
+    if [[ -z "$min_label" ]]; then
+        echo "fleet-claim: WARN gh api response missing ${prefix}* labels on $repo#$target; aborting" >&2
+        gh_release_label "$repo" "$target" "$label" || true
+        return 1
+    fi
+
+    if [[ "$min_label" != "$label" ]]; then
+        echo "fleet-claim: lost tie-break to ${min_label#$prefix} on $repo#$target" >&2
+        gh_release_label "$repo" "$target" "$label" || true
+        return 1
+    fi
+
+    return 0
+}
+
+# get_task_issue <task_id>
+#   Prints the GitHub issue number linked to a TASKS.md row, or empty
+#   if no Issue field is set. Reads origin/master so the answer matches
+#   what concurrent agents would compute, ignoring any local working-
+#   tree dirt. Empty output is the "no-issue" signal (free-pasted task);
+#   callers treat it as "skip issue-side bookkeeping".
+get_task_issue() {
+    local task_id="$1"
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" ]]; then
+        return 0
+    fi
+    local tasks_md
+    if ! tasks_md=$(git -C "$repo_root" show "origin/master:TASKS.md" 2>/dev/null); then
+        return 0
+    fi
+    FLEET_TASKS_MD="$tasks_md" python3 - "$task_id" <<'PYEOF'
+import os, re, sys
+task_id = sys.argv[1]
+content = os.environ.get("FLEET_TASKS_MD", "")
+current_id = None
+current_issue = None
+def flush():
+    if current_id == task_id and current_issue:
+        print(current_issue)
+        sys.exit(0)
+for line in content.splitlines():
+    if re.match(r"^- \[(.)\] \*\*(.+?)\*\*", line):
+        flush()
+        current_id = None
+        current_issue = None
+        continue
+    m = re.match(r"^\s+- \*\*ID:\*\*\s*(.+)", line)
+    if m:
+        current_id = m.group(1).strip()
+        continue
+    m = re.match(r"^\s+- \*\*Issue:\*\*\s*#(\d+)", line)
+    if m:
+        current_issue = m.group(1)
+        continue
+flush()
+PYEOF
 }
 
 # --- dependency checking --------------------------------------------------
@@ -257,21 +513,482 @@ sys.exit(0)
 PYEOF
 }
 
+# --- model-tag gate -------------------------------------------------------
+
+check_model_tag() {
+    # Refuse the claim if the calling role's model doesn't match the task's
+    # Model: field in TASKS.md. Gate is opt-in — no-op when:
+    #   • FLEET_ROLE_MODEL is unset or empty (manual / ad-hoc claim)
+    #   • task has no Model: field in TASKS.md
+    # Exits non-zero on mismatch; caller should return 1.
+    local task_id="$1"
+    local role_model="${FLEET_ROLE_MODEL:-}"
+
+    if [[ -z "$role_model" ]]; then
+        return 0
+    fi
+
+    local tasks_file=""
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -n "$repo_root" && -f "$repo_root/TASKS.md" ]]; then
+        tasks_file="$repo_root/TASKS.md"
+    fi
+
+    if [[ -z "$tasks_file" || ! -f "$tasks_file" ]]; then
+        return 0
+    fi
+
+    python3 - "$task_id" "$tasks_file" "$role_model" <<'PYEOF'
+import sys, re
+
+task_id = sys.argv[1]
+tasks_file = sys.argv[2]
+role_model = sys.argv[3].lower()
+
+with open(tasks_file) as f:
+    content = f.read()
+
+current_id = None
+task_model = None
+
+for line in content.splitlines():
+    if re.match(r'^- \[.\] \*\*.+\*\*', line):
+        current_id = None
+        continue
+
+    m_id = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
+    if m_id:
+        current_id = m_id.group(1).strip()
+        continue
+
+    m_model = re.match(r'^\s+- \*\*Model:\*\*\s*(.+)', line)
+    if m_model and current_id == task_id:
+        task_model = m_model.group(1).strip().lower()
+        break
+
+if task_model is None:
+    sys.exit(0)
+
+if task_model != role_model:
+    print(
+        f"fleet-claim: refuse {task_id} — tagged [{task_model}], "
+        f"this role is [{role_model}]; use a [{task_model}] agent",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+sys.exit(0)
+PYEOF
+}
+
+# --- master-side TASKS.md push helpers ------------------------------------
+
+master_lock_task() {
+    # Push a TASKS.md status update to origin/master via pure git plumbing.
+    # $1 = action ("lock" → flip [ ] → [~]; "unlock" → flip [~] → [ ])
+    # $2 = task ID (T-NNN)
+    # $3 = owner string ("opus-worker-1", "free", etc.)
+    #
+    # Exit codes:
+    #   0 — push succeeded (or no-op: row already in target state)
+    #   1 — race lost (TASKS.md shows the task in a state that means
+    #       another agent already claimed/released it)
+    #   2 — task not found in TASKS.md, or origin unreachable, or
+    #       protected push was rejected for a non-race reason
+    #
+    # Skipped entirely when FLEET_CLAIM_NO_MASTER_LOCK=1 — exits 0 with
+    # a stderr note. Tests and bootstrap-without-network use this.
+    local action="$1"
+    local task_id="$2"
+    local owner="$3"
+
+    if [[ "${FLEET_CLAIM_NO_MASTER_LOCK:-0}" == "1" ]]; then
+        echo "fleet-claim: master-lock skipped (FLEET_CLAIM_NO_MASTER_LOCK=1)" >&2
+        return 0
+    fi
+
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" || ! -f "$repo_root/TASKS.md" ]]; then
+        echo "fleet-claim: master-lock requires a git repo with TASKS.md (cwd: $(pwd))" >&2
+        return 2
+    fi
+
+    FLEET_REPO_ROOT="$repo_root" \
+    FLEET_LOCK_ACTION="$action" \
+    FLEET_LOCK_TASK_ID="$task_id" \
+    FLEET_LOCK_OWNER="$owner" \
+    python3 <<'PYEOF'
+import os, re, subprocess, sys
+
+repo = os.environ['FLEET_REPO_ROOT']
+action = os.environ['FLEET_LOCK_ACTION']
+task_id = os.environ['FLEET_LOCK_TASK_ID']
+owner = os.environ['FLEET_LOCK_OWNER']
+
+
+def run(args, **kw):
+    return subprocess.run(args, capture_output=True, text=True, **kw)
+
+
+def git(*args, check=False, **kw):
+    return run(['git', '-C', repo, *args], check=check, **kw)
+
+
+def fetch_master():
+    # Soft-fail when origin isn't configured or unreachable: the local
+    # FS lock alone is still a real lock for same-host races, so we
+    # warn and skip the master push rather than blocking the claim.
+    # Cross-host race resolution degrades silently in that env.
+    r = git('fetch', 'origin', 'master', '--quiet')
+    if r.returncode != 0:
+        sys.stderr.write(
+            "fleet-claim: master-lock skipped — fetch origin master failed "
+            f"(repo: {repo}). FS-lock-only mode.\n"
+        )
+        sys.exit(0)
+
+
+# Apply the [ ]/[~] flip + Owner update for $task_id. Returns
+# (new_content, decision) where decision is one of:
+#   'edited'    — row was modified, push needed
+#   'noop'      — row already in target state AND owned by $owner
+#                 (idempotent re-lock / same-agent re-unlock)
+#   'race-lost' — row state implies another agent already owns it
+#                 (or the task is done) — caller must roll back
+def edit_tasks_md(content, action, task_id, owner):
+    target_status = '~' if action == 'lock' else ' '
+    expect_status = ' ' if action == 'lock' else '~'
+
+    lines = content.splitlines(keepends=True)
+    out = []
+    found = False
+    decision = None
+
+    header_re = re.compile(r'^- \[([ ~x!])\] \*\*(.+?)\*\*(.*)$')
+    field_re = re.compile(r'^(\s+)- \*\*([^:]+):\*\*\s*(.*?)\s*$')
+
+    n = len(lines)
+    i = 0
+    while i < n:
+        line = lines[i]
+        m = header_re.match(line.rstrip('\n'))
+        if not m:
+            out.append(line)
+            i += 1
+            continue
+
+        # Read the whole block (header + field lines until next header
+        # or section break).
+        status = m.group(1)
+        j = i + 1
+        block = [line]
+        block_id_local = None
+        block_owner = None
+        field_indices = {}
+        while j < n:
+            nxt = lines[j]
+            if header_re.match(nxt.rstrip('\n')):
+                break
+            if nxt.startswith('## '):
+                break
+            fm = field_re.match(nxt.rstrip('\n'))
+            if fm:
+                key = fm.group(2).strip().lower()
+                field_indices[key] = len(block)
+                if key == 'id':
+                    block_id_local = fm.group(3).strip()
+                if key == 'owner':
+                    block_owner = fm.group(3).strip()
+            block.append(nxt)
+            j += 1
+
+        if block_id_local == task_id:
+            found = True
+            if status == target_status:
+                # Already in the target state. Whether that's a benign
+                # noop or a race-lost depends on Owner:
+                #   lock:   target=[~]. If Owner is us → noop (idempotent
+                #           re-lock). If Owner is someone else → race-lost.
+                #   unlock: target=[ ]. Already free; treat as noop
+                #           regardless of Owner (someone else may have
+                #           released first; nothing to do).
+                if action == 'lock':
+                    if (block_owner or 'free') == owner:
+                        decision = 'noop'
+                    else:
+                        decision = 'race-lost'
+                else:
+                    decision = 'noop'
+            elif status != expect_status:
+                # Wrong starting state — task may be [x] (done) or in some
+                # other terminal state. Don't try to overwrite.
+                decision = 'race-lost'
+            elif action == 'unlock' and (block_owner or 'free') != owner and owner != 'free':
+                # Sanity check: we're trying to release someone else's
+                # lock. Refuse — leave the row alone. (The free-target
+                # branch above already handles "owner==free" correctly.)
+                decision = 'race-lost'
+            else:
+                decision = 'edited'
+                new_header = re.sub(
+                    r'^(- \[)[ ~x!](\])',
+                    lambda mm: mm.group(1) + target_status + mm.group(2),
+                    block[0],
+                    count=1,
+                )
+                block[0] = new_header
+                if 'owner' in field_indices:
+                    idx = field_indices['owner']
+                    block[idx] = re.sub(
+                        r'^(\s+- \*\*Owner:\*\*\s*).*$',
+                        lambda mm: mm.group(1) + owner,
+                        block[idx].rstrip('\n'),
+                        count=1,
+                    ) + '\n'
+            out.extend(block)
+            i = j
+            continue
+
+        out.extend(block)
+        i = j
+
+    if not found:
+        return None, 'not-found'
+
+    return ''.join(out), decision
+
+
+fetch_master()
+
+for attempt in range(1, 4):
+    cur_master = git('rev-parse', 'origin/master').stdout.strip()
+    if not cur_master:
+        sys.stderr.write("fleet-claim: could not resolve origin/master\n")
+        sys.exit(2)
+
+    show = git('show', f'{cur_master}:TASKS.md')
+    if show.returncode != 0:
+        sys.stderr.write(f"fleet-claim: read TASKS.md from origin/master: {show.stderr}")
+        sys.exit(2)
+    content = show.stdout
+
+    new_content, decision = edit_tasks_md(content, action, task_id, owner)
+
+    if decision == 'not-found':
+        sys.stderr.write(f"fleet-claim: {task_id} not found in master/TASKS.md\n")
+        sys.exit(2)
+
+    if decision == 'noop':
+        sys.exit(0)
+
+    if decision == 'race-lost':
+        sys.stderr.write(
+            f"fleet-claim: {task_id} on master is not in expected state "
+            f"({'[ ]' if action == 'lock' else '[~]'}) — race lost\n"
+        )
+        sys.exit(1)
+
+    # Hash the new TASKS.md as a blob.
+    hp = subprocess.run(
+        ['git', '-C', repo, 'hash-object', '-w', '--stdin'],
+        input=new_content, capture_output=True, text=True,
+    )
+    if hp.returncode != 0:
+        sys.stderr.write(f"fleet-claim: hash-object failed: {hp.stderr}")
+        sys.exit(2)
+    new_blob = hp.stdout.strip()
+
+    # Read the master tree top-level entries; replace TASKS.md's blob.
+    ls = git('ls-tree', cur_master)
+    if ls.returncode != 0:
+        sys.stderr.write(f"fleet-claim: ls-tree failed: {ls.stderr}")
+        sys.exit(2)
+    new_tree_lines = []
+    seen_tasks_md = False
+    for line in ls.stdout.splitlines():
+        m = re.match(r'^(\S+) (\S+) (\S+)\t(.+)$', line)
+        if not m:
+            continue
+        mode, otype, sha, name = m.group(1), m.group(2), m.group(3), m.group(4)
+        if name == 'TASKS.md':
+            new_tree_lines.append(f'{mode} {otype} {new_blob}\t{name}')
+            seen_tasks_md = True
+        else:
+            new_tree_lines.append(line)
+    if not seen_tasks_md:
+        sys.stderr.write("fleet-claim: TASKS.md not found in origin/master tree\n")
+        sys.exit(2)
+
+    mt = subprocess.run(
+        ['git', '-C', repo, 'mktree'],
+        input='\n'.join(new_tree_lines) + '\n',
+        capture_output=True, text=True,
+    )
+    if mt.returncode != 0:
+        sys.stderr.write(f"fleet-claim: mktree failed: {mt.stderr}")
+        sys.exit(2)
+    new_tree = mt.stdout.strip()
+
+    msg_verb = 'claim' if action == 'lock' else 'release'
+    commit_msg = f"queue: {msg_verb} {task_id} ({owner})"
+
+    env = os.environ.copy()
+    # Use the user's git identity for the commit; fall back to a fleet
+    # identity if not configured (CI / fresh test env).
+    cfg_email = git('config', 'user.email').stdout.strip()
+    cfg_name = git('config', 'user.name').stdout.strip()
+    env.setdefault('GIT_AUTHOR_NAME', cfg_name or 'fleet-claim')
+    env.setdefault('GIT_AUTHOR_EMAIL', cfg_email or 'fleet-claim@local')
+    env.setdefault('GIT_COMMITTER_NAME', cfg_name or 'fleet-claim')
+    env.setdefault('GIT_COMMITTER_EMAIL', cfg_email or 'fleet-claim@local')
+
+    ct = subprocess.run(
+        ['git', '-C', repo, 'commit-tree', new_tree, '-p', cur_master, '-m', commit_msg],
+        capture_output=True, text=True, env=env,
+    )
+    if ct.returncode != 0:
+        sys.stderr.write(f"fleet-claim: commit-tree failed: {ct.stderr}")
+        sys.exit(2)
+    new_commit = ct.stdout.strip()
+
+    push = subprocess.run(
+        ['git', '-C', repo, 'push', 'origin', f'{new_commit}:refs/heads/master'],
+        capture_output=True, text=True,
+    )
+    if push.returncode == 0:
+        # Update local origin/master ref so subsequent reads see our push.
+        # Skip silently if the update-ref fails — the remote is the source
+        # of truth either way and the next fetch will catch up.
+        subprocess.run(
+            ['git', '-C', repo, 'update-ref', 'refs/remotes/origin/master', new_commit],
+            capture_output=True,
+        )
+        sys.exit(0)
+
+    err = (push.stderr or push.stdout).lower()
+    if ('non-fast-forward' in err or 'fetch first' in err
+            or 'rejected' in err and 'fetch' in err):
+        # Refetch and retry — another push won the race; we re-read and
+        # check whether the row is already in our target state.
+        fetch_master()
+        continue
+
+    sys.stderr.write(f"fleet-claim: push origin master failed: {push.stderr}")
+    sys.exit(2)
+
+# Out of retries. Treat as race lost — the row may now be [~] or [x].
+sys.stderr.write(f"fleet-claim: {task_id} master-lock retries exhausted; race lost\n")
+sys.exit(1)
+PYEOF
+}
+
 # --- subcommands ----------------------------------------------------------
 
 cmd_claim() {
     # Try to atomically claim a task. Exit 0 = claimed, exit 1 = taken.
-    # $1 = task ID (T-NNN), $2 = agent name
+    # $1 = task ID (T-NNN), $2 = agent name (optional; omit to pass flags directly)
+    # Optional flag: --stackable-on <pr-url> bypasses the blocker gate
+    # and records a sidecar .meta file so the worker branches its PR off
+    # the blocker's open PR head ref instead of master. Race mitigation:
+    # the PR's state is re-fetched here — MERGED falls back to a normal
+    # claim, CLOSED refuses the claim outright.
     local task_id="$1"
-    local agent="${2:-unknown}"
+    shift
+    local agent="unknown"
+    if [[ "${1:-}" != --* && $# -ge 1 ]]; then
+        agent="$1"
+        shift
+    fi
+    local stackable_pr=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --stackable-on)
+                if [[ -z "${2:-}" ]]; then
+                    echo "fleet-claim claim: --stackable-on requires a PR URL" >&2
+                    return 2
+                fi
+                stackable_pr="$2"
+                shift 2
+                ;;
+            --stackable-on=*)
+                stackable_pr="${1#--stackable-on=}"
+                shift
+                ;;
+            *)
+                echo "fleet-claim claim: unknown flag '$1'" >&2
+                return 2
+                ;;
+        esac
+    done
+
     local slug
     slug=$(slugify "$task_id")
 
     mkdir -p "$CLAIMS_DIR"
 
-    # Check dependency gate BEFORE attempting the atomic claim.
-    # This prevents claiming a task whose blockers aren't done yet.
-    if ! check_blockers "$task_id"; then
+    # Resolve --stackable-on first: re-verify the blocker PR's state.
+    # The scout's cached `stackable_blocker_pr` snapshot can go stale in
+    # the ~30s between projection write and worker pickup; this re-check
+    # closes the race so we don't claim against a vanished base.
+    local stackable_branch=""
+    if [[ -n "$stackable_pr" ]]; then
+        local pr_json pr_state pr_head
+        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName 2>/dev/null); then
+            echo "fleet-claim claim: failed to fetch PR state for $stackable_pr" >&2
+            return 1
+        fi
+        pr_state=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("state",""))')
+        pr_head=$(printf '%s' "$pr_json" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("headRefName",""))')
+        case "$pr_state" in
+            MERGED)
+                # Blocker landed in the gap — drop --stackable-on and let
+                # the standard blocker gate prove the task is unblocked.
+                echo "fleet-claim claim: $stackable_pr is MERGED — falling back to normal claim (base=master)" >&2
+                stackable_pr=""
+                ;;
+            OPEN)
+                if [[ -z "$pr_head" ]]; then
+                    echo "fleet-claim claim: $stackable_pr returned empty headRefName — refusing claim" >&2
+                    return 1
+                fi
+                stackable_branch="$pr_head"
+                ;;
+            "")
+                echo "fleet-claim claim: could not parse state for $stackable_pr" >&2
+                return 1
+                ;;
+            *)
+                # CLOSED (without merge) — the stack base is gone.
+                echo "fleet-claim claim: $stackable_pr state=$pr_state — cannot stack on a non-OPEN base" >&2
+                return 1
+                ;;
+        esac
+    fi
+
+    # Standard blocker gate. Skipped only when we have a verified-OPEN
+    # stack base — that's the whole point of --stackable-on.
+    if [[ -z "$stackable_branch" ]]; then
+        if ! check_blockers "$task_id"; then
+            return 1
+        fi
+    fi
+
+    # Model-tag gate: refuse when FLEET_ROLE_MODEL is set and doesn't match
+    # the task's Model: field. No-op when FLEET_ROLE_MODEL is unset or the
+    # task has no Model: field.
+    if ! check_model_tag "$task_id"; then
+        return 1
+    fi
+
+    # Reservation gate: refuse if the task is reserved for a different
+    # worktree than the requesting agent. The reservation acts as an
+    # authorization token — same-worktree claims pass through.
+    local reserved_worktree=""
+    reserved_worktree=$(reservation_holder_for_task "$task_id")
+    if [[ -n "$reserved_worktree" && "$reserved_worktree" != "$agent" ]]; then
+        echo "fleet-claim claim: $task_id is reserved for $reserved_worktree (refusing claim by $agent)" >&2
         return 1
     fi
 
@@ -279,7 +996,75 @@ cmd_claim() {
         echo "$agent" > "$CLAIMS_DIR/$slug/owner"
         echo "$task_id" > "$CLAIMS_DIR/$slug/title"
         date +%s     > "$CLAIMS_DIR/$slug/created"
-        echo "claimed: $task_id (slug: $slug, agent: $agent)"
+
+        # Cross-host visibility: stamp the linked GitHub issue with
+        # `fleet:claim-<host>-<agent>` so issue-tracker views show who
+        # claimed without anyone reading TASKS.md or the PR. Generic
+        # prefix `fleet:claim-` is the race-detection signal — if any
+        # other agent's `fleet:claim-*` is already on the issue, the
+        # acquire loses the lex-min tie-break and rolls back. Issue
+        # number comes from the row's `Issue: #N` field; tasks without
+        # one (free-pasted, no upstream issue) skip the stamp entirely.
+        local issue_num
+        issue_num=$(get_task_issue "$task_id" 2>/dev/null || echo "")
+        local issue_label_acquired=0
+        local issue_label=""
+        if [[ -n "$issue_num" ]] && command -v gh >/dev/null 2>&1; then
+            local host repo
+            host=$(derive_host)
+            repo=$(repo_from_ns)
+            if [[ -n "$repo" ]]; then
+                issue_label="fleet:claim-${host}-${agent}"
+                if _acquire_label_on "$repo" "$issue_num" "$issue_label" "fleet:claim-"; then
+                    issue_label_acquired=1
+                else
+                    __remove_claim "$slug"
+                    echo "fleet-claim claim: $task_id issue-side claim-label race lost on #$issue_num (another agent holds fleet:claim-*)" >&2
+                    return 1
+                fi
+            fi
+        fi
+
+        # Master-side TASKS.md push (T-138). Cross-host race resolution:
+        # if another agent already pushed [~] for this task while we were
+        # acquiring the FS lock, master_lock_task returns 1 — we roll
+        # back the FS claim so it doesn't shadow the real owner. Soft
+        # failures (origin unreachable, malformed TASKS.md) abort with
+        # the same rollback; the task should be re-attempted on the
+        # next iteration once origin is reachable again.
+        local lock_rc=0
+        master_lock_task lock "$task_id" "$agent" || lock_rc=$?
+        if [[ $lock_rc -ne 0 ]]; then
+            __remove_claim "$slug"
+            if [[ $issue_label_acquired -eq 1 ]]; then
+                gh_release_label "$(repo_from_ns)" "$issue_num" "$issue_label" || true
+            fi
+            if [[ $lock_rc -eq 1 ]]; then
+                echo "fleet-claim claim: $task_id master-lock race lost — another agent already claimed on origin/master" >&2
+            fi
+            return 1
+        fi
+
+        if [[ -n "$stackable_branch" ]]; then
+            echo "stackable_base_branch=$stackable_branch" > "$CLAIMS_DIR/${slug}.meta"
+            echo "claimed: $task_id (slug: $slug, agent: $agent, base: $stackable_branch)"
+        else
+            echo "claimed: $task_id (slug: $slug, agent: $agent)"
+        fi
+        # Auto-reserve: bind this worktree to this task so a crashed
+        # iteration resumes on the same pane (#521). Skip if a
+        # reservation already exists for this worktree — either
+        # idempotent re-claim (same task) or a stale reservation that
+        # T-122 startup will honor on next invocation. agent="unknown"
+        # means no caller-provided worktree name; skip the reservation
+        # in that case.
+        if [[ "$agent" != "unknown" ]]; then
+            local existing_resv
+            existing_resv=$(reservation_task_id "$agent")
+            if [[ -z "$existing_resv" ]]; then
+                cmd_reserve "$task_id" "$agent" "" >/dev/null 2>&1 || true
+            fi
+        fi
         return 0
     else
         local owner="unknown"
@@ -291,17 +1076,378 @@ cmd_claim() {
     fi
 }
 
+cmd_claim_base() {
+    # Print the base branch for a task's PR.
+    # Returns "master" by default, or the recorded stackable base when
+    # the task was claimed with --stackable-on. commit-and-push reads
+    # this at PR-open time to pick `--base` for `gh pr create`.
+    #
+    # Usage: fleet-claim claim-base <task-id>
+    local task_id="$1"
+    local slug
+    slug=$(slugify "$task_id")
+    local meta_file="$CLAIMS_DIR/${slug}.meta"
+    if [[ -f "$meta_file" ]]; then
+        local base
+        base=$(grep -E '^stackable_base_branch=' "$meta_file" 2>/dev/null \
+            | head -n1 | cut -d= -f2-)
+        if [[ -n "$base" ]]; then
+            echo "$base"
+            return 0
+        fi
+    fi
+    echo "master"
+}
+
+cmd_find_stackable_blockers() {
+    # If the task is single-T-NNN-blocked AND that blocker has an open
+    # PR on its Owner branch, print one tab-separated line:
+    #   <pr-url><TAB><headRefName><TAB><author-login><TAB><number>
+    # Otherwise print nothing (and exit 0). Multi-blocker tasks, free-
+    # text or PR-URL blockers, blockers with no claude/* Owner, and any
+    # ambiguity (zero or >1 matching open PRs) all map to the empty
+    # output — callers treat the result as a strictly optional hint.
+    #
+    # Reads TASKS.md from origin/master so the answer matches what the
+    # scout will compute, regardless of any local working-tree dirt.
+    #
+    # Usage: fleet-claim find-stackable-blockers <task-id>
+    local task_id="$1"
+    if [[ -z "$task_id" ]]; then
+        echo "usage: fleet-claim find-stackable-blockers <task-id>" >&2
+        return 2
+    fi
+
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" ]]; then
+        return 0
+    fi
+
+    local tasks_md
+    if ! tasks_md=$(git -C "$repo_root" show "origin/master:TASKS.md" 2>/dev/null); then
+        return 0
+    fi
+
+    FLEET_TASKS_MD="$tasks_md" python3 - "$task_id" <<'PYEOF'
+import sys, os, re, subprocess, json
+
+task_id = sys.argv[1]
+content = os.environ.get('FLEET_TASKS_MD', '')
+
+# Same TASKS.md shape parser as check_blockers — header lines are
+# "- [x|~| |!] **Title**", indented sub-fields are "  - **Field:** value".
+tasks = {}
+current_id = None
+current_blocked = None
+current_owner = None
+
+def flush():
+    if current_id:
+        tasks[current_id] = {
+            'blocked_by': current_blocked or '(none)',
+            'owner': current_owner or 'free',
+        }
+
+for line in content.splitlines():
+    m = re.match(r'^- \[(.)\] \*\*(.+?)\*\*', line)
+    if m:
+        flush()
+        current_id = None
+        current_blocked = None
+        current_owner = None
+        continue
+    m_id = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
+    if m_id:
+        current_id = m_id.group(1).strip()
+        continue
+    m_blocked = re.match(r'^\s+- \*\*Blocked by:\*\*\s*(.+)', line)
+    if m_blocked:
+        current_blocked = m_blocked.group(1).strip()
+        continue
+    m_owner = re.match(r'^\s+- \*\*Owner:\*\*\s*(.+)', line)
+    if m_owner:
+        current_owner = m_owner.group(1).strip()
+        continue
+flush()
+
+if task_id not in tasks:
+    sys.exit(0)
+
+blocked_by = tasks[task_id]['blocked_by']
+if blocked_by == '(none)' or not blocked_by:
+    sys.exit(0)
+
+# v1: single-blocker only. Multi-blocker stacking opens
+# cherry-pick / merge questions the merger has no machinery for; the
+# plan defers it to v2 explicitly.
+blockers = [b.strip() for b in blocked_by.split(',') if b.strip()]
+if len(blockers) != 1:
+    sys.exit(0)
+blocker = blockers[0]
+if not re.match(r'^T-\d+$', blocker):
+    sys.exit(0)
+
+if blocker not in tasks:
+    sys.exit(0)
+owner = tasks[blocker].get('owner', 'free')
+# Owner field holds the claude/* head branch once the blocker's PR is
+# open (queue-manager writes it on PR-open). Anything else means no PR
+# exists yet, or the task is unowned.
+if not owner.startswith('claude/'):
+    sys.exit(0)
+
+try:
+    r = subprocess.run(
+        ['gh', 'pr', 'list', '--head', owner, '--state', 'open',
+         '--json', 'url,headRefName,author,number'],
+        capture_output=True, text=True, timeout=15
+    )
+except (subprocess.SubprocessError, OSError):
+    sys.exit(0)
+if r.returncode != 0:
+    sys.exit(0)
+try:
+    prs = json.loads(r.stdout or '[]')
+except json.JSONDecodeError:
+    sys.exit(0)
+if len(prs) != 1:
+    sys.exit(0)
+
+pr = prs[0]
+url = pr.get('url', '')
+head = pr.get('headRefName', '')
+author = (pr.get('author') or {}).get('login', '')
+number = pr.get('number', '')
+if not url or not head:
+    sys.exit(0)
+print(f"{url}\t{head}\t{author}\t{number}")
+PYEOF
+}
+
+cmd_reclaim() {
+    # Manual recovery for a stranded `[~]` row whose Owner branch no
+    # longer exists on the remote (the worker died between the master
+    # push and the feature-branch push). Resets master to `[ ]`+free
+    # and drops any matching local FS claim. Called by humans /
+    # cleanup tools; auto-recovery via check-stale + the FS-claim
+    # signal in fleet-tasks-render handles the typical case.
+    #
+    # Usage: fleet-claim reclaim <task-id>
+    # Exit 0 — reclaimed (or row was already [ ]/[x]; nothing to do)
+    # Exit 1 — Owner branch IS reachable; refusing to clobber an
+    #          actively-held lock.
+    # Exit 2 — origin unreachable, malformed TASKS.md, etc.
+    local task_id="$1"
+    if [[ -z "$task_id" ]]; then
+        echo "usage: fleet-claim reclaim <task-id>" >&2
+        return 2
+    fi
+
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -z "$repo_root" || ! -f "$repo_root/TASKS.md" ]]; then
+        echo "fleet-claim reclaim: requires a git repo with TASKS.md" >&2
+        return 2
+    fi
+
+    if ! git -C "$repo_root" fetch origin master --quiet; then
+        echo "fleet-claim reclaim: fetch origin master failed" >&2
+        return 2
+    fi
+
+    # Read row state + Owner branch from master. The helper reads
+    # FLEET_RECLAIM_TASKS_MD from the env to avoid a broken-pipe
+    # interaction with `git show | python3` under `set -e + pipefail`
+    # (python's early sys.exit() closes the pipe; git's SIGPIPE then
+    # propagates to a non-zero command-substitution status).
+    local tasks_md_content
+    if ! tasks_md_content=$(git -C "$repo_root" show "origin/master:TASKS.md" 2>/dev/null); then
+        echo "fleet-claim reclaim: read TASKS.md from origin/master failed" >&2
+        return 2
+    fi
+    local owner_branch
+    owner_branch=$(FLEET_RECLAIM_TASKS_MD="$tasks_md_content" python3 - "$task_id" <<'PYEOF'
+import os, re, sys
+task_id = sys.argv[1]
+content = os.environ.get('FLEET_RECLAIM_TASKS_MD', '')
+block_status = None
+block_id = None
+block_owner = None
+header_re = re.compile(r'^- \[([ ~x!])\] \*\*(.+?)\*\*')
+field_re = re.compile(r'^\s+- \*\*([^:]+):\*\*\s*(.*?)\s*$')
+for line in content.splitlines():
+    m = header_re.match(line)
+    if m:
+        if block_id == task_id:
+            print(f"{block_status}\t{block_owner or 'free'}")
+            sys.exit(0)
+        block_status = m.group(1)
+        block_id = None
+        block_owner = None
+        continue
+    fm = field_re.match(line)
+    if fm:
+        key = fm.group(1).strip().lower()
+        if key == 'id':
+            block_id = fm.group(2).strip()
+        elif key == 'owner':
+            block_owner = fm.group(2).strip()
+if block_id == task_id:
+    print(f"{block_status}\t{block_owner or 'free'}")
+PYEOF
+    )
+
+    if [[ -z "$owner_branch" ]]; then
+        echo "fleet-claim reclaim: $task_id not found in master/TASKS.md" >&2
+        return 2
+    fi
+
+    local status="${owner_branch%%	*}"
+    local owner="${owner_branch#*	}"
+
+    if [[ "$status" != "~" ]]; then
+        echo "fleet-claim reclaim: $task_id is not in [~] state (status: [$status]) — nothing to reclaim"
+        return 0
+    fi
+
+    # If the Owner field looks like a branch name (claude/T-NNN-…),
+    # check whether the branch actually exists on origin. If yes,
+    # someone is actively holding the lock — refuse to clobber.
+    # If the Owner is just a worktree name (opus-worker-1) or "free",
+    # the worker died before the PR opened, so reclaim is safe.
+    if [[ "$owner" == claude/* ]]; then
+        if git -C "$repo_root" ls-remote --exit-code origin "refs/heads/$owner" >/dev/null 2>&1; then
+            echo "fleet-claim reclaim: $task_id Owner branch '$owner' still exists on origin — refusing to clobber" >&2
+            return 1
+        fi
+    fi
+
+    # Push [~]+owner → [ ]+free. Use master_lock_task with action=unlock,
+    # passing "free" so the Owner field is reset correctly. The sanity
+    # check's `owner != 'free'` clause is also bypassed by "free", so
+    # this is both correct and accepted by the helper.
+    local rc=0
+    master_lock_task unlock "$task_id" "free" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "fleet-claim reclaim: master push failed (rc=$rc)" >&2
+        return $rc
+    fi
+
+    # Drop any matching local FS claim. cmd_release is idempotent.
+    cmd_release "$task_id" >/dev/null 2>&1 || true
+
+    echo "reclaimed: $task_id (was [~]+$owner on master)"
+}
+
 cmd_release() {
     local title="$1"
     local slug
     slug=$(slugify "$title")
 
-    if [[ -d "$CLAIMS_DIR/$slug" ]]; then
-        rm -rf "$CLAIMS_DIR/$slug"
+    # An orphan .meta with no claim dir is also worth cleaning, so we
+    # check both — that's why this branches on (-d || -f .meta) rather
+    # than (-d) alone.
+    if [[ -d "$CLAIMS_DIR/$slug" || -f "$CLAIMS_DIR/${slug}.meta" ]]; then
+        # Capture the owner before remove so we can clear its
+        # reservation. Only release the reservation if it still points
+        # at THIS task — defensive against the worker having already
+        # rotated to a different task with a different reservation
+        # (shouldn't happen under the auto-reserve invariant, but a
+        # mismatched release is silently a no-op rather than wiping
+        # someone else's binding).
+        local owner=""
+        if [[ -f "$CLAIMS_DIR/$slug/owner" ]]; then
+            owner=$(cat "$CLAIMS_DIR/$slug/owner")
+        fi
+        __remove_claim "$slug"
+        if [[ -n "$owner" && "$owner" != "unknown" ]]; then
+            local reserved
+            reserved=$(reservation_task_id "$owner")
+            if [[ "$reserved" == "$title" ]]; then
+                cmd_release_worktree "$owner" >/dev/null 2>&1 || true
+            fi
+        fi
+        # Issue-side cleanup: drop `fleet:claim-<host>-<agent>` so the
+        # next claimant doesn't trip the lex-min lock on a stale label.
+        # Best-effort — failure here doesn't block the release because
+        # the queue-tick stale-sweep eventually catches orphans.
+        if [[ -n "$owner" && "$owner" != "unknown" ]] && command -v gh >/dev/null 2>&1; then
+            local issue_num host repo issue_label
+            issue_num=$(get_task_issue "$title" 2>/dev/null || echo "")
+            if [[ -n "$issue_num" ]]; then
+                host=$(derive_host)
+                repo=$(repo_from_ns)
+                if [[ -n "$repo" ]]; then
+                    issue_label="fleet:claim-${host}-${owner}"
+                    gh_release_label "$repo" "$issue_num" "$issue_label" || true
+                fi
+            fi
+        fi
         echo "released: $title (slug: $slug)"
     else
         echo "not claimed: $title (slug: $slug)"
     fi
+}
+
+# cmd_review_claim <pr-num> <agent>
+#   Atomically claim a PR for review (or cross-host smoke) work via a
+#   `fleet:reviewing-<host>-<agent>` label. Reviewer roles invoke this
+#   before reading the diff; author-role step 1b invokes it before
+#   building the cross-host smoke target. Returns 0 on success, 1 if
+#   another agent already holds the claim.
+#
+#   Reviewer-role policy: the verdict label-swap also `--remove-label`s
+#   `fleet:reviewing-<host>-<agent>`, so the lock is released as part of
+#   posting the verdict. `cmd_review_release` exists for abort paths.
+cmd_review_claim() {
+    local pr="$1" agent="${2:-unknown}"
+    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim review-claim: PR must be a number, got '$pr'" >&2
+        return 2
+    fi
+    local host label repo
+    host=$(derive_host)
+    label="fleet:reviewing-${host}-${agent}"
+    repo=$(repo_from_ns)
+
+    if [[ -z "$repo" ]]; then
+        echo "fleet-claim review-claim: WARN no GH repo for namespace '${REPO_NS:-engine}'; cannot acquire" >&2
+        return 1
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "fleet-claim review-claim: WARN 'gh' not on PATH; cannot acquire" >&2
+        return 1
+    fi
+
+    if ! _acquire_label_on "$repo" "$pr" "$label" "fleet:reviewing-"; then
+        return 1
+    fi
+
+    echo "review-claim acquired: $repo PR#$pr ($agent)"
+    return 0
+}
+
+# cmd_review_release <pr-num> <agent>
+#   Release a review claim. Mirrors gh_release_label semantics
+#   (retry-once-then-sentinel). Returns 0 on success, 1 if the second
+#   attempt failed (sentinel written; cleanup pass will retry).
+cmd_review_release() {
+    local pr="$1" agent="${2:-unknown}"
+    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim review-release: PR must be a number, got '$pr'" >&2
+        return 2
+    fi
+    local host label repo
+    host=$(derive_host)
+    label="fleet:reviewing-${host}-${agent}"
+    repo=$(repo_from_ns)
+
+    if [[ -z "$repo" ]] || ! command -v gh >/dev/null 2>&1; then
+        echo "review-release: no gh / unknown namespace; nothing to do" >&2
+        return 0
+    fi
+    gh_release_label "$repo" "$pr" "$label"
 }
 
 cmd_check() {
@@ -388,12 +1534,18 @@ cmd_list() {
 cmd_cleanup() {
     # Remove claims whose task title matches a merged or closed PR title.
     # Accepts zero or more --repo flags; defaults to jakildev/IrredenEngine.
+    # With --gh, ALSO sweeps stale fleet:reviewing-* labels off open PRs
+    # and replays any orphan sentinels from failed earlier removals.
+    # The GH pass is idempotent and safe under concurrent queue-tick
+    # invocations.
     mkdir -p "$CLAIMS_DIR"
 
     local -a repos=()
+    local do_gh=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --repo) repos+=("$2"); shift 2 ;;
+            --gh)   do_gh=1; shift ;;
             *)      shift ;;
         esac
     done
@@ -429,7 +1581,7 @@ cmd_cleanup() {
             if [[ "$slug" == "$ds" ]]; then
                 local title="$slug"
                 if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
-                rm -rf "$dir"
+                __remove_claim "$slug"
                 echo "cleaned: $title (merged/closed)"
                 cleaned=$((cleaned + 1))
                 break
@@ -442,10 +1594,218 @@ cmd_cleanup() {
     else
         echo "cleaned $cleaned stale claim(s)"
     fi
+
+    if [[ $do_gh -eq 1 ]]; then
+        cmd_cleanup_gh "${repos[@]}" || true
+        replay_orphans || true
+    fi
+}
+
+# cmd_cleanup_gh <repo> [<repo> ...]
+#   Sweeps stale fleet:reviewing-* labels off open PRs. A label is "stale"
+#   when it has been present > FLEET_CLAIM_STALE_SECS (default 1800 = 30
+#   min). No "live PR present" gate is needed — the PR IS the unit; > 30
+#   min means the reviewer crashed.
+#
+#   Idempotent: --remove-label on an absent label is a no-op, so two
+#   queue-tick invocations running this concurrently both succeed without
+#   error. No shared state is written; each pass reads GitHub fresh.
+cmd_cleanup_gh() {
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "fleet-claim cleanup --gh: 'gh' not on PATH; skipping" >&2
+        return 0
+    fi
+
+    local -a repos=("$@")
+    if [[ ${#repos[@]} -eq 0 ]]; then
+        repos=("jakildev/IrredenEngine")
+    fi
+
+    local stale_secs="${FLEET_CLAIM_STALE_SECS:-1800}"
+    local now
+    now=$(date +%s)
+    local total_removed=0
+
+    for repo in "${repos[@]}"; do
+        local prs_json pr_review_plan
+        prs_json=$(gh pr list --repo "$repo" --state open \
+            --json number,labels --limit 200 2>/dev/null || echo "[]")
+        pr_review_plan=$(echo "$prs_json" | python3 -c '
+import json, sys
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
+for pr in prs:
+    n = pr.get("number")
+    for l in (pr.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:reviewing-"):
+            print(f"{n}\t{name}")
+' 2>/dev/null || echo "")
+
+        [[ -z "$pr_review_plan" ]] && continue
+
+        while IFS=$'\t' read -r pr_num label_name; do
+            [[ -z "$pr_num" || -z "$label_name" ]] && continue
+
+            # Fetch label-add timestamp from the events API. Multiple
+            # add/remove cycles can exist; take the most recent add.
+            local added_at
+            added_at=$(gh api "repos/${repo}/issues/${pr_num}/events" \
+                --paginate \
+                --jq '.[] | select(.event=="labeled" and .label.name=="'"$label_name"'") | .created_at' \
+                2>/dev/null | tail -n1 || true)
+
+            [[ -z "$added_at" ]] && continue
+
+            local added_epoch
+            added_epoch=$(python3 -c "
+import sys, datetime
+try:
+    dt = datetime.datetime.strptime('$added_at', '%Y-%m-%dT%H:%M:%SZ')
+    print(int(dt.replace(tzinfo=datetime.timezone.utc).timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)
+
+            [[ "$added_epoch" -eq 0 ]] && continue
+
+            local age=$(( now - added_epoch ))
+            if [[ $age -lt $stale_secs ]]; then
+                continue
+            fi
+
+            if gh issue edit "$pr_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "cleanup --gh: removed stale '$label_name' on $repo PR#$pr_num (age: $((age / 60))m)"
+                total_removed=$((total_removed + 1))
+            else
+                write_orphan_sentinel "$repo" "$pr_num" "$label_name" \
+                    "cleanup --gh: PR remove-label failed"
+            fi
+        done <<< "$pr_review_plan"
+    done
+
+    # Second pass: sweep `fleet:claim-*` labels off CLOSED issues. The
+    # claim label sticks across `gh issue close` (GitHub preserves labels
+    # on state changes), so a worker who closed an issue via `Closes #N`
+    # in a merged PR — or the closed-issue auto-reaper inside fleet-tasks-
+    # render — leaves a stale label behind. Sweeping here keeps the issue
+    # tracker tidy and prevents future claimants from tripping the
+    # lex-min lock on an issue that was reopened later.
+    for repo in "${repos[@]}"; do
+        local claim_plan
+        claim_plan=$(gh issue list --repo "$repo" --state closed \
+            --search "label:\"fleet:queued\"" \
+            --json number,labels --limit 100 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:claim-"):
+            print(f"{n}\t{name}")
+' 2>/dev/null || echo "")
+
+        [[ -z "$claim_plan" ]] && continue
+
+        while IFS=$'\t' read -r issue_num label_name; do
+            [[ -z "$issue_num" || -z "$label_name" ]] && continue
+            if gh issue edit "$issue_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (closed)"
+                total_removed=$((total_removed + 1))
+            else
+                write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
+                    "cleanup --gh: closed-issue remove-label failed"
+            fi
+        done <<< "$claim_plan"
+    done
+
+    if [[ $total_removed -eq 0 ]]; then
+        echo "cleanup --gh: no stale labels"
+    else
+        echo "cleanup --gh: removed $total_removed stale label(s)"
+    fi
+}
+
+# replay_orphans
+#   Retries each sentinel under ~/.fleet/orphans/ (from earlier
+#   release/cleanup failures). On success, deletes the sentinel. On
+#   age > FLEET_ORPHAN_MAX_SECS (default 24h), abandons with a warning
+#   so the human can clean up manually via gh.
+replay_orphans() {
+    if ! command -v gh >/dev/null 2>&1; then
+        return 0
+    fi
+    local orphans_dir="${FLEET_ORPHANS_DIR:-$HOME/.fleet/orphans}"
+    [[ -d "$orphans_dir" ]] || return 0
+
+    local now
+    now=$(date +%s)
+    local max_age_secs="${FLEET_ORPHAN_MAX_SECS:-86400}"
+    local replayed=0 abandoned=0
+
+    shopt -s nullglob
+    for sentinel in "$orphans_dir"/*.json; do
+        [[ -f "$sentinel" ]] || continue
+
+        local fields
+        fields=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$sentinel'))
+    print(d.get('repo',''))
+    print(d.get('issue',''))
+    print(d.get('label',''))
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+
+        local repo issue label
+        repo=$(echo "$fields"  | sed -n '1p')
+        issue=$(echo "$fields" | sed -n '2p')
+        label=$(echo "$fields" | sed -n '3p')
+
+        if [[ -z "$repo" || -z "$issue" || -z "$label" ]]; then
+            echo "replay_orphans: malformed sentinel $sentinel; removing" >&2
+            rm -f "$sentinel" 2>/dev/null || true
+            continue
+        fi
+
+        if gh issue edit "$issue" --repo "$repo" --remove-label "$label" >/dev/null 2>&1; then
+            rm -f "$sentinel" 2>/dev/null || true
+            echo "replay_orphans: replayed remove of '$label' on $repo#$issue"
+            replayed=$((replayed + 1))
+            continue
+        fi
+
+        local sentinel_mtime age
+        sentinel_mtime=$(stat -c %Y "$sentinel" 2>/dev/null || stat -f %m "$sentinel" 2>/dev/null || echo "$now")
+        age=$(( now - sentinel_mtime ))
+        if [[ $age -gt $max_age_secs ]]; then
+            echo "replay_orphans: WARN abandoning $sentinel (age $((age / 3600))h > $((max_age_secs / 3600))h); remove '$label' on $repo#$issue manually" >&2
+            rm -f "$sentinel" 2>/dev/null || true
+            abandoned=$((abandoned + 1))
+        fi
+    done
+    shopt -u nullglob
+
+    if [[ $replayed -gt 0 || $abandoned -gt 0 ]]; then
+        echo "replay_orphans: $replayed replayed, $abandoned abandoned"
+    fi
 }
 
 cmd_check_stale() {
     # Release claims older than max_age seconds (default: 7200 = 2 hours).
+    # Also files a one-shot fleet:stuck-worktree GitHub issue for reservations
+    # older than 24h, capturing dirty files from the stalled worktree.
     local max_age="${1:-7200}"
     local now
     now=$(date +%s)
@@ -468,7 +1828,7 @@ cmd_check_stale() {
             if [[ -f "$dir/owner" ]]; then owner=$(cat "$dir/owner"); fi
             if [[ -f "$dir/title" ]]; then title=$(cat "$dir/title"); fi
             echo "stale ($((age / 60))m old): $title (owner: $owner)"
-            rm -rf "$dir"
+            __remove_claim "$slug"
             stale=$((stale + 1))
         fi
     done
@@ -478,6 +1838,68 @@ cmd_check_stale() {
     else
         echo "released $stale stale claim(s)"
     fi
+
+    # --- reservation staleness escalation ------------------------------------
+    # Reservations held for more than 24h without completing are escalated to
+    # a GitHub issue so the human can intervene. One-shot per reservation:
+    # once filed, a <worktree>.escalated sidecar prevents re-filing on
+    # subsequent check-stale runs.
+    local reservation_max_age=86400   # 24 hours
+    local label_ensured=0
+    if [[ ! -d "$RESERVATIONS_DIR" ]]; then
+        return 0
+    fi
+    while IFS=$'\t' read -r wt tid branch ts epoch; do
+        [[ -n "$wt" ]] || continue
+        local epoch_n=$(( ${epoch:-0} ))
+        [[ $epoch_n -gt 0 ]] || continue
+        local res_age=$(( now - epoch_n ))
+        [[ $res_age -ge $reservation_max_age ]] || continue
+
+        local escalated_flag="$RESERVATIONS_DIR/$wt.escalated"
+        [[ ! -f "$escalated_flag" ]] || continue
+
+        # Ensure the GitHub label exists — called at most once per check-stale run.
+        if [[ $label_ensured -eq 0 ]]; then
+            gh label create "fleet:stuck-worktree" \
+                --repo "$FLEET_GITHUB_REPO" \
+                --description "Worktree holding a reservation for >24h without completing" \
+                --color "d73a4a" 2>/dev/null || true
+            label_ensured=1
+        fi
+
+        # Capture dirty files from the worktree.
+        local worktree_path="$FLEET_ENGINE_ROOT/.claude/worktrees/$wt"
+        local dirty_section
+        if [[ -d "$worktree_path" ]]; then
+            local raw_dirty
+            raw_dirty=$(git -C "$worktree_path" status --porcelain 2>/dev/null || true)
+            dirty_section="${raw_dirty:-(clean — no uncommitted changes)}"
+        else
+            dirty_section="(worktree directory not found at $worktree_path)"
+        fi
+
+        local age_h=$(( res_age / 3600 ))
+        local branch_show="${branch:-(none)}"
+
+        local tmpfile
+        tmpfile=$(mktemp /tmp/fleet-stuck-XXXXXX)
+        printf 'Worktree **%s** has held a reservation for **%s** for %dh without completing the task.\n\n**Branch:** %s\n**Reserved:** %s\n\n**Dirty files in worktree:**\n```\n%s\n```\n\nAuto-filed by `fleet-claim check-stale`. Run `fleet-claim release-worktree %s` to clear the reservation once resolved.\n' \
+            "$wt" "$tid" "$age_h" "$branch_show" "$ts" "$dirty_section" "$wt" > "$tmpfile"
+
+        local issue_out
+        if issue_out=$(gh issue create \
+            --repo "$FLEET_GITHUB_REPO" \
+            --title "fleet: stuck worktree — $wt holding $tid for ${age_h}h" \
+            --body-file "$tmpfile" \
+            --label "fleet:stuck-worktree" 2>&1); then
+            echo "stuck-worktree: filed $issue_out for $wt ($tid, held ${age_h}h)"
+            touch "$escalated_flag"
+        else
+            echo "stuck-worktree: failed to file issue for $wt ($tid): $issue_out" >&2
+        fi
+        rm -f "$tmpfile"
+    done < <(reservations_dump)
 }
 
 cmd_stack() {
@@ -512,19 +1934,54 @@ cmd_stack() {
         # skip_ids so intra-stack dependencies don't block the claim.
         if ! check_blockers "$task_id" "" "$earlier_in_stack"; then
             echo "fleet-claim stack: $task_id has unresolved blockers" >&2
-            # Roll back
+            # Roll back FS claims AND any master-side [~] pushes for the
+            # tasks earlier in this stack — leaving them on master would
+            # let the next iteration see the chain as half-claimed.
             for prev in "${claimed[@]}"; do
+                master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
                 cmd_release "$prev"
             done
             return 1
         fi
         earlier_in_stack="$earlier_in_stack $task_id"
 
+        # Reservation gate (same as cmd_claim): refuse if any task in
+        # the stack is reserved for a different worktree.
+        local reserved_worktree=""
+        reserved_worktree=$(reservation_holder_for_task "$task_id")
+        if [[ -n "$reserved_worktree" && "$reserved_worktree" != "$agent" ]]; then
+            echo "fleet-claim stack: $task_id is reserved for $reserved_worktree (refusing claim by $agent) — rolling back" >&2
+            for prev in "${claimed[@]}"; do
+                master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
+                cmd_release "$prev"
+            done
+            return 1
+        fi
+
         if mkdir "$CLAIMS_DIR/$slug" 2>/dev/null; then
             echo "$agent" > "$CLAIMS_DIR/$slug/owner"
             echo "$task_id" > "$CLAIMS_DIR/$slug/title"
             date +%s     > "$CLAIMS_DIR/$slug/created"
             echo "stack" > "$CLAIMS_DIR/$slug/stack"
+
+            # Master-side TASKS.md push (T-138). Same rollback discipline
+            # as cmd_claim: lose the master race → release THIS slug AND
+            # all earlier stack entries (FS + master) so the chain ends
+            # in a clean state.
+            local lock_rc=0
+            master_lock_task lock "$task_id" "$agent" || lock_rc=$?
+            if [[ $lock_rc -ne 0 ]]; then
+                __remove_claim "$slug"
+                if [[ $lock_rc -eq 1 ]]; then
+                    echo "fleet-claim stack: $task_id master-lock race lost — rolling back" >&2
+                fi
+                for prev in "${claimed[@]}"; do
+                    master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
+                    cmd_release "$prev"
+                done
+                return 1
+            fi
+
             claimed+=("$task_id")
         else
             local owner="unknown"
@@ -533,6 +1990,7 @@ cmd_stack() {
             fi
             echo "fleet-claim stack: $task_id already claimed by $owner — rolling back" >&2
             for prev in "${claimed[@]}"; do
+                master_lock_task unlock "$prev" "free" >/dev/null 2>&1 || true
                 cmd_release "$prev"
             done
             return 1
@@ -1320,15 +2778,348 @@ cmd_molecule_rebase_downstream() {
     return 0
 }
 
+# --- worktree reservations ------------------------------------------------
+#
+# A reservation pins a future task to a specific worktree. Distinct from a
+# claim:
+#   claim       → "this agent OWNS this task RIGHT NOW" (one task per slug,
+#                  released at end of work)
+#   reservation → "this task is DESTINED for this worktree when worked on"
+#                  (one reservation per worktree, persists across multiple
+#                  claim/release cycles for the same task)
+#
+# Reservations let the human (or an orchestrator) route specific work to
+# specific panes — e.g. "the macOS-only render PR should land on
+# opus-worker-2 because that's the macOS pane". Workers consult their own
+# reservation on startup (reservation-of) and skip normal task pickup if
+# reserved. The dispatcher uses worktree-for-task to prefer the reserved
+# pane when firing a role's iteration.
+#
+# Storage: $RESERVATIONS_DIR/<worktree>.json — one file per worktree.
+# Atomic create via O_EXCL through Python; two concurrent reserves for the
+# same worktree race-and-fail at the filesystem layer.
+#
+# Lifecycle:
+#   reserve <task> <wt> [branch]  → write reservation file (fails if exists)
+#   release-worktree <wt>         → remove reservation file (idempotent)
+#   reservation-of <wt>           → print task ID for this worktree
+#   worktree-for-task <task>      → print worktree pinned to this task
+#   list-reservations             → table of all reservations
+#
+# Claim integration: cmd_claim and cmd_stack consult reservations and refuse
+# to grant a task that is reserved for a different worktree. Same-worktree
+# claims pass through unchanged. cmd_release does NOT touch reservations —
+# the explicit `release-worktree` step is what ends the reservation.
+# `clear-all` does NOT wipe reservations either — they survive fleet bounces
+# (mirrors molecule preservation).
+
+reservation_file() {
+    echo "$RESERVATIONS_DIR/$1.json"
+}
+
+reservation_task_id() {
+    # Print the task_id field of a worktree's reservation, or empty if
+    # the reservation file is missing or malformed. Bash callers use this
+    # to gate claim attempts and to surface "what was reserved" on release.
+    local worktree="$1"
+    local file
+    file=$(reservation_file "$worktree")
+    [[ -f "$file" ]] || return 0
+    python3 - "$file" <<'PYEOF'
+import sys, json
+try:
+    print(json.load(open(sys.argv[1])).get('task_id', ''))
+except Exception:
+    pass
+PYEOF
+}
+
+reservations_dump() {
+    # Emit one TSV row per active reservation:
+    #   <worktree>\t<task_id>\t<branch>\t<created_at>\t<created_epoch>
+    # Used by list-reservations and by reservation_holder_for_task.
+    [[ -d "$RESERVATIONS_DIR" ]] || return 0
+    python3 - "$RESERVATIONS_DIR" <<'PYEOF'
+import sys, json, os
+d = sys.argv[1]
+for name in sorted(os.listdir(d)):
+    if not name.endswith('.json'):
+        continue
+    path = os.path.join(d, name)
+    try:
+        data = json.load(open(path))
+    except Exception:
+        continue
+    worktree = name[:-5]
+    print(
+        f"{worktree}\t{data.get('task_id','')}\t{data.get('branch','')}"
+        f"\t{data.get('created_at','')}\t{data.get('created_epoch',0)}"
+    )
+PYEOF
+}
+
+reservation_holder_for_task() {
+    # Print the worktree name that has this task reserved, or empty.
+    # Used by cmd_claim and cmd_stack as a gate.
+    local task_id="$1"
+    while IFS=$'\t' read -r wt tid branch ts epoch; do
+        if [[ "$tid" == "$task_id" ]]; then
+            echo "$wt"
+            return 0
+        fi
+    done < <(reservations_dump)
+}
+
+cmd_reserve() {
+    # Atomic create-or-fail. Writes ~/.fleet/reservations/<worktree>.json.
+    # Fails if the worktree already has a reservation, or if the requested
+    # task is already reserved by another worktree.
+    #
+    # Usage: fleet-claim reserve <task-id> <worktree> [branch]
+    # Exit 0: reservation written.
+    # Exit 1: conflict (worktree busy, or task held by another worktree).
+    # Exit 2: usage error.
+    local task_id="$1"
+    local worktree="$2"
+    local branch="${3:-}"
+
+    if [[ -z "$task_id" || -z "$worktree" ]]; then
+        echo "usage: fleet-claim reserve <task-id> <worktree> [branch]" >&2
+        return 2
+    fi
+
+    mkdir -p "$RESERVATIONS_DIR"
+
+    # Cross-worktree conflict: refuse if the task is held by another
+    # worktree. Caught here (not at file create) so the error message
+    # names the actual conflicting holder.
+    local existing_holder=""
+    existing_holder=$(reservation_holder_for_task "$task_id")
+    if [[ -n "$existing_holder" && "$existing_holder" != "$worktree" ]]; then
+        echo "fleet-claim reserve: $task_id is already reserved for $existing_holder" >&2
+        return 1
+    fi
+
+    local file
+    file=$(reservation_file "$worktree")
+    local created_at
+    created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local created_epoch
+    created_epoch=$(date +%s)
+
+    # Atomic O_EXCL create: two concurrent reserves for the same
+    # worktree race-and-fail at the filesystem layer (errno EEXIST → 3).
+    if ! python3 - "$file" "$task_id" "$worktree" "$branch" "$created_at" "$created_epoch" <<'PYEOF'
+import sys, json, os, errno
+path, task_id, worktree, branch, created_at, created_epoch = sys.argv[1:7]
+flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+try:
+    fd = os.open(path, flags, 0o644)
+except OSError as e:
+    if e.errno == errno.EEXIST:
+        sys.exit(3)
+    raise
+with os.fdopen(fd, 'w') as f:
+    json.dump({
+        'task_id': task_id,
+        'worktree': worktree,
+        'branch': branch,
+        'created_at': created_at,
+        'created_epoch': int(created_epoch),
+    }, f, indent=2)
+    f.write('\n')
+PYEOF
+    then
+        local existing_task=""
+        existing_task=$(reservation_task_id "$worktree")
+        if [[ -n "$existing_task" ]]; then
+            echo "fleet-claim reserve: $worktree is already reserved for $existing_task" >&2
+        else
+            echo "fleet-claim reserve: failed to create reservation for $worktree" >&2
+        fi
+        return 1
+    fi
+
+    if [[ -n "$branch" ]]; then
+        echo "reserved: $task_id → $worktree (branch: $branch)"
+    else
+        echo "reserved: $task_id → $worktree"
+    fi
+}
+
+cmd_release_worktree() {
+    # Remove a worktree's reservation. Idempotent. Always exits 0
+    # (mirrors the molecule resume/complete contract — safe to call in
+    # parallel tool batches alongside other fleet-claim ops).
+    local worktree="$1"
+    if [[ -z "$worktree" ]]; then
+        echo "usage: fleet-claim release-worktree <worktree>" >&2
+        return 2
+    fi
+
+    local file
+    file=$(reservation_file "$worktree")
+    if [[ -f "$file" ]]; then
+        local task_id
+        task_id=$(reservation_task_id "$worktree")
+        rm -f "$file"
+        rm -f "$RESERVATIONS_DIR/$worktree.escalated"
+        echo "released reservation: $worktree (was: $task_id)"
+    else
+        echo "no reservation for worktree: $worktree" >&2
+    fi
+    return 0
+}
+
+cmd_worktree_for_task() {
+    # Print the worktree name reserved for a task, or empty if none.
+    # Empty stdout + exit 0 means "no reservation" (mirrors
+    # molecule_resume's stdout-is-the-channel idiom — callers
+    # discriminate via `[[ -n "$out" ]]`, not by exit code, so the
+    # call is safe in parallel tool batches).
+    local task_id="$1"
+    if [[ -z "$task_id" ]]; then
+        echo "usage: fleet-claim worktree-for-task <task-id>" >&2
+        return 2
+    fi
+    reservation_holder_for_task "$task_id"
+    return 0
+}
+
+cmd_reservation_of() {
+    # Print the task ID reserved for this worktree, or empty if none.
+    # Same stdout-channel contract as cmd_worktree_for_task.
+    local worktree="$1"
+    if [[ -z "$worktree" ]]; then
+        echo "usage: fleet-claim reservation-of <worktree>" >&2
+        return 2
+    fi
+    reservation_task_id "$worktree"
+    return 0
+}
+
+cmd_list_reservations() {
+    # Show all active reservations: worktree, task_id, branch, age.
+    # Age comes from the created_epoch field; format_duration_short
+    # is the same helper cmd_list --with-age uses.
+    mkdir -p "$RESERVATIONS_DIR"
+    local now
+    now=$(date +%s)
+    local found=0
+    while IFS=$'\t' read -r wt tid branch ts epoch; do
+        found=1
+        local age_str="?"
+        if [[ -n "$epoch" && "$epoch" -gt 0 ]]; then
+            age_str=$(format_duration_short $(( now - epoch )))
+        fi
+        local branch_show="${branch:-(no branch)}"
+        printf "  %-18s  %-10s  %-50s  (held %s)\n" "$wt" "$tid" "$branch_show" "$age_str"
+    done < <(reservations_dump)
+    if [[ $found -eq 0 ]]; then
+        echo "no active reservations"
+    fi
+}
+
+cmd_reservation_role() {
+    # Print the dispatcher role for a worktree's reservation, or empty
+    # if no reservation / task not found / Model unparseable. Maps the
+    # task's `Model:` field (sourced from the reservation's task_id)
+    # onto the dispatcher role tag:
+    #
+    #   Model: opus   → opus-worker
+    #   Model: sonnet → sonnet-author
+    #
+    # Used by fleet-dispatcher's per-role concurrency cap to count
+    # reserved-but-idle iterations alongside in-flight ones — a
+    # reservation represents paused work that will resume on the next
+    # tick and consume a slot.
+    #
+    # Searches engine TASKS.md first (origin/master), then game. A
+    # task_id slug is namespace-prefixed via the global --repo flag,
+    # but the reservation's task_id is stored without the prefix —
+    # checking both repos handles cross-repo reservations cheaply.
+    #
+    # Empty stdout + exit 0 = no answer (mirrors reservation-of's
+    # stdout-channel idiom — callers discriminate via `[[ -n ]]`).
+    local worktree="$1"
+    if [[ -z "$worktree" ]]; then
+        echo "usage: fleet-claim reservation-role <worktree>" >&2
+        return 2
+    fi
+    local task_id
+    task_id=$(reservation_task_id "$worktree")
+    [[ -n "$task_id" ]] || return 0
+
+    local engine_root="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
+    local game_root="${FLEET_GAME_ROOT:-$engine_root/creations/game}"
+
+    local model=""
+    local repo
+    for repo in "$engine_root" "$game_root"; do
+        [[ -d "$repo/.git" || -f "$repo/.git" ]] || continue
+        local tasks_md
+        tasks_md=$(git -C "$repo" show "origin/master:TASKS.md" 2>/dev/null) || continue
+        model=$(FLEET_TASKS_MD="$tasks_md" python3 - "$task_id" <<'PYEOF'
+import sys, os, re
+task_id = sys.argv[1]
+content = os.environ.get('FLEET_TASKS_MD', '')
+current_id = None
+current_model = None
+for line in content.splitlines():
+    if re.match(r'^- \[.\] \*\*', line):
+        if current_id == task_id and current_model:
+            print(current_model)
+            sys.exit(0)
+        current_id = None
+        current_model = None
+        continue
+    m = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
+    if m:
+        current_id = m.group(1).strip()
+        continue
+    m = re.match(r'^\s+- \*\*Model:\*\*\s*(.+)', line)
+    if m:
+        current_model = m.group(1).strip()
+        continue
+if current_id == task_id and current_model:
+    print(current_model)
+PYEOF
+)
+        [[ -n "$model" ]] && break
+    done
+
+    case "$model" in
+        opus*)   echo "opus-worker" ;;
+        sonnet*) echo "sonnet-author" ;;
+        *) ;;
+    esac
+    return 0
+}
+
 # --- main -----------------------------------------------------------------
 
 case "${1:-}" in
     claim)
         if [[ -z "${2:-}" ]]; then
-            echo "usage: fleet-claim claim \"<title>\" [agent-name]" >&2
+            echo "usage: fleet-claim claim \"<title>\" [agent-name] [--stackable-on <pr-url>]" >&2
             exit 2
         fi
-        cmd_claim "$2" "${3:-unknown}"
+        shift
+        cmd_claim "$@"
+        ;;
+    claim-base)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim claim-base <task-id>" >&2
+            exit 2
+        fi
+        cmd_claim_base "$2"
+        ;;
+    find-stackable-blockers)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim find-stackable-blockers <task-id>" >&2
+            exit 2
+        fi
+        cmd_find_stackable_blockers "$2"
         ;;
     release)
         if [[ -z "${2:-}" ]]; then
@@ -1336,6 +3127,13 @@ case "${1:-}" in
             exit 2
         fi
         cmd_release "$2"
+        ;;
+    reclaim)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim reclaim <task-id>" >&2
+            exit 2
+        fi
+        cmd_reclaim "$2"
         ;;
     check)
         if [[ -z "${2:-}" ]]; then
@@ -1390,8 +3188,60 @@ case "${1:-}" in
         shift
         cmd_cleanup "$@"
         ;;
+    review-claim)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] review-claim <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_review_claim "$2" "$3"
+        ;;
+    review-release)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] review-release <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_review_release "$2" "$3"
+        ;;
     clear-all)
         cmd_clear_all
+        ;;
+    reserve)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim reserve <task-id> <worktree> [branch]" >&2
+            exit 2
+        fi
+        cmd_reserve "$2" "$3" "${4:-}"
+        ;;
+    release-worktree)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim release-worktree <worktree>" >&2
+            exit 2
+        fi
+        cmd_release_worktree "$2"
+        ;;
+    reservation-of)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim reservation-of <worktree>" >&2
+            exit 2
+        fi
+        cmd_reservation_of "$2"
+        ;;
+    worktree-for-task)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim worktree-for-task <task-id>" >&2
+            exit 2
+        fi
+        cmd_worktree_for_task "$2"
+        ;;
+    list-reservations)
+        cmd_list_reservations
+        ;;
+    reservation-role)
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-claim reservation-role <worktree>" >&2
+            exit 2
+        fi
+        cmd_reservation_role "$2"
         ;;
     molecule)
         sub="${2:-}"
@@ -1459,9 +3309,47 @@ global options (must come BEFORE the subcommand):
                                 Engine and game share T-NNN IDs; this keeps
                                 their lock dirs distinct. Omit for engine.
 
+environment:
+  FLEET_CLAIM_NO_MASTER_LOCK=1  skip the master-side TASKS.md push that
+                                claim/stack normally do (T-138). Used by
+                                tests and bootstrap scenarios where origin
+                                is unreachable. Cross-host race resolution
+                                degrades to FS-lock-only when set.
+
 commands:
-  claim "<title>" [agent]       claim a task (exit 0=claimed, 1=taken)
-  release "<title>"             release a claim
+  claim "<title>" [agent] [--stackable-on <pr-url>]
+                                claim a task (exit 0=claimed, 1=taken).
+                                With --stackable-on, bypass the blocker
+                                gate and record a sibling .meta sidecar
+                                so the worker can branch its PR off the
+                                blocker's open PR head ref. The PR's
+                                state is re-fetched: MERGED falls back
+                                to a normal claim (base=master), CLOSED
+                                refuses (the stack base is gone).
+  claim-base <task-id>          print the base branch for this task's
+                                PR — "master" for normal claims, the
+                                recorded stackable_base_branch for a
+                                --stackable-on claim. Distinct from
+                                stack-base (which serves intra-author
+                                stack claims).
+  find-stackable-blockers <task-id>
+                                if exactly one T-NNN blocker has an
+                                open PR on its claude/* Owner branch,
+                                print one tab-separated line:
+                                <url><TAB><headRefName><TAB><author><TAB><number>.
+                                Empty stdout means no eligible blocker
+                                (multi-blocker, no PR open, ambiguous,
+                                etc.) — callers treat as a hint.
+  release "<title>"             release a claim (also clears the
+                                --stackable-on .meta sidecar).
+  reclaim <task-id>             manually unstick a [~] row whose Owner
+                                branch no longer exists on origin (the
+                                worker died between master push and PR
+                                open). Pushes [~] → [ ]+free. Refuses
+                                if the Owner branch IS on origin
+                                (someone holds the lock). check-stale
+                                + the FS-claim signal handle the
+                                typical case automatically.
   check "<title>"               check if free (exit 0=free, 1=taken)
   list                          list all active claims
   stack "T-1 T-2 ..." [agent]  atomically claim a dependency chain (all-or-nothing)
@@ -1473,12 +3361,50 @@ commands:
                                 record branch+PR for a stacked task
   stack-pr-state <agent>        print task/branch/pr table for agent's stack
   check-stale [max-secs]        release claims older than max-secs (default: 7200)
-  cleanup [--repo o/r] ...      remove claims for merged/closed PRs.
+  cleanup [--repo o/r] [--gh] ...
+                                Remove claims for merged/closed PRs. With
+                                --gh also sweeps stale fleet:reviewing-*
+                                labels off open GitHub PRs (>30 min age)
+                                and replays any ~/.fleet/orphans/
+                                sentinels. The --gh pass is idempotent
+                                and safe under concurrent invocations;
+                                fleet-queue-tick runs it once per tick.
                                 NOTE: cleanup's --repo takes a full owner/repo
                                 path (e.g. "jakildev/IrredenEngine"); it lives
                                 AFTER the subcommand and is unrelated to the
                                 global --repo namespace flag above.
+  review-claim <pr> <agent>     atomically claim a PR for review/smoke work
+                                via a fleet:reviewing-<host>-<agent> label.
+                                Exit 0 = owned; exit 1 = another agent
+                                holds it.
+  review-release <pr> <agent>   release a review claim (retry-once-then-
+                                sentinel; the verdict label swap normally
+                                already removed it, so this is the abort/
+                                cleanup path).
   clear-all                     wipe all claims (used by fleet-up on restart)
+
+reservation commands (worktree-pinning, distinct from claims):
+  reserve <task-id> <worktree> [branch]  pin a future task to a specific worktree.
+                                         Atomic O_EXCL create — fails if the worktree
+                                         already has a reservation, or if the task is
+                                         held by another worktree.
+  release-worktree <worktree>            remove a worktree's reservation. Idempotent;
+                                         always exits 0 (safe in parallel tool batches).
+  reservation-of <worktree>              print task ID reserved for a worktree, or empty
+                                         if none. Empty stdout + exit 0 = no reservation
+                                         (mirrors molecule_resume's stdout-channel idiom).
+  worktree-for-task <task-id>            print worktree pinned to a task, or empty.
+                                         Same stdout-channel contract as reservation-of.
+  list-reservations                      table of all active reservations with age.
+  reservation-role <worktree>            print dispatcher role tag for this worktree's
+                                         reservation (opus-worker / sonnet-author), or
+                                         empty if no reservation. Used by the dispatcher's
+                                         per-role concurrency cap.
+
+  Reservation gate: cmd_claim and cmd_stack refuse to grant a task that is reserved
+  for a different worktree than the requesting agent. cmd_release does NOT touch
+  reservations — they outlive single claim cycles. clear-all preserves reservations
+  (mirrors molecule preservation).
 
 molecule commands (crash-recovery state for stack claims):
   molecule list                          show all active molecules + per-task state
@@ -1510,6 +3436,20 @@ Dependency gate:
   URLs), the claim is refused. The cwd's git repo determines which
   TASKS.md is consulted — `cd` into the right worktree before claiming
   cross-repo tasks.
+
+Master-side TASKS.md lock (T-138):
+  After acquiring the local FS lock, claim/stack push a one-line
+  TASKS.md update to origin/master via pure git plumbing
+  (hash-object + mktree + commit-tree + push). The row is flipped from
+  [ ] to [~] and Owner is set to the agent name. This closes the
+  cross-host race window where a polling worker on another machine
+  reads origin/master/TASKS.md and sees a claimed task as still free.
+  Race semantics: a non-fast-forward push (someone else's claim landed
+  first) triggers a fetch + retry; if the row is now [~] from another
+  agent the FS lock is rolled back and the claim returns 1 ("race
+  lost on master push"). fleet-tasks-render preserves [~] in the
+  no-PR window via the same FS claim signal — when check-stale
+  prunes an abandoned claim the next render naturally reverts [~].
 
 Stack claiming:
   stack claims a chain of tasks atomically. If any task is already claimed

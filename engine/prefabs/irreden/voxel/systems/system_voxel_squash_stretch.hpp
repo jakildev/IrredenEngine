@@ -40,22 +40,19 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                 const vec3 blockCenter = (vec3(voxelSet.size_) - vec3(1.0f)) * 0.5f;
 
                 const float speed = length(velocity.velocity_);
-                vec3 velDir = speed > 0.0001f
-                    ? normalize(velocity.velocity_)
-                    : vec3(0.0f, 0.0f, 0.0f);
+                vec3 velDir =
+                    speed > 0.0001f ? normalize(velocity.velocity_) : vec3(0.0f, 0.0f, 0.0f);
 
                 // Compute acceleration
                 const vec3 accel = dt > 0.0001f
-                    ? (velocity.velocity_ - squashStretch.prevVelocity_) / dt
-                    : vec3(0.0f, 0.0f, 0.0f);
+                                       ? (velocity.velocity_ - squashStretch.prevVelocity_) / dt
+                                       : vec3(0.0f, 0.0f, 0.0f);
                 const bool prevVelPrimed = length(squashStretch.prevVelocity_) > 0.0001f ||
-                    length(velocity.velocity_) < 0.0001f;
+                                           length(velocity.velocity_) < 0.0001f;
                 squashStretch.prevVelocity_ = velocity.velocity_;
 
                 const float accelMag = length(accel);
-                vec3 accelDir = accelMag > 0.0001f
-                    ? normalize(accel)
-                    : vec3(0.0f, 0.0f, 0.0f);
+                vec3 accelDir = accelMag > 0.0001f ? normalize(accel) : vec3(0.0f, 0.0f, 0.0f);
 
                 // Optional smoothing
                 float useSpeed = speed;
@@ -75,12 +72,14 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                 }
 
                 // Weights: stretch from velocity, squash from acceleration
-                const float stretchWeight = squashStretch.stretchSpeedRef_ > 0.0f
-                    ? IRMath::min(useSpeed / squashStretch.stretchSpeedRef_, 1.0f)
-                    : 0.0f;
-                const float squashWeightRaw = prevVelPrimed && squashStretch.squashAccelRef_ > 0.0f
-                    ? IRMath::min(accelMag / squashStretch.squashAccelRef_, 1.0f)
-                    : 0.0f;
+                const float stretchWeight =
+                    squashStretch.stretchSpeedRef_ > 0.0f
+                        ? IRMath::min(useSpeed / squashStretch.stretchSpeedRef_, 1.0f)
+                        : 0.0f;
+                const float squashWeightRaw =
+                    prevVelPrimed && squashStretch.squashAccelRef_ > 0.0f
+                        ? IRMath::min(accelMag / squashStretch.squashAccelRef_, 1.0f)
+                        : 0.0f;
 
                 // Impact boost (event-driven)
                 float squashWeight = squashWeightRaw;
@@ -96,26 +95,28 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                     if (squashStretch.impactBoost_ > 0.0f &&
                         squashStretch.impactDurationSec_ > 0.0f &&
                         squashStretch.impactElapsedSec_ < squashStretch.impactDurationSec_) {
-                        const float t = squashStretch.impactElapsedSec_ /
-                                       squashStretch.impactDurationSec_;
+                        const float t =
+                            squashStretch.impactElapsedSec_ / squashStretch.impactDurationSec_;
                         const float boost = squashStretch.impactBoost_ * (1.0f - t);
                         squashWeight = IRMath::min(squashWeight + boost, 1.0f);
                     }
                 }
 
-                // Spring bias: extra squash when platform is CATCHING (impact) or ANTICIPATING (load)
+                // Spring bias: extra squash when platform is CATCHING (impact) or ANTICIPATING
+                // (load)
                 if (squashStretch.useSpringBias_ && squashStretch.springBias_ > 0.0f &&
                     launchOpt.has_value()) {
                     const auto &launch = *launchOpt.value();
                     if (launch.grounded_ && launch.lastPlatformEntity_ != IREntity::kNullEntity &&
                         IREntity::entityExists(launch.lastPlatformEntity_)) {
                         auto springOpt = IREntity::getComponentOptional<C_SpringPlatform>(
-                            launch.lastPlatformEntity_);
+                            launch.lastPlatformEntity_
+                        );
                         if (springOpt.has_value()) {
                             const auto state = springOpt.value()->state_;
                             if (state == SPRING_CATCHING || state == SPRING_ANTICIPATING) {
-                                squashWeight = IRMath::min(
-                                    squashWeight + squashStretch.springBias_, 1.0f);
+                                squashWeight =
+                                    IRMath::min(squashWeight + squashStretch.springBias_, 1.0f);
                             }
                         }
                     }
@@ -130,14 +131,14 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                     deformAxis = useVelDir;
                     primaryScale = 1.0f + squashStretch.stretchStrength_ * blend;
                     perpScale = squashStretch.volumePreserve_
-                        ? 1.0f / std::sqrt(primaryScale)
-                        : 1.0f - squashStretch.squashStrength_ * blend;
+                                    ? 1.0f / std::sqrt(primaryScale)
+                                    : 1.0f - squashStretch.squashStrength_ * blend;
                 } else if (blend < -0.0001f) {
                     deformAxis = accelDir;
                     primaryScale = 1.0f - squashStretch.squashStrength_ * (-blend);
                     perpScale = squashStretch.volumePreserve_
-                        ? 1.0f / std::sqrt(IRMath::max(primaryScale, 0.01f))
-                        : 1.0f;
+                                    ? 1.0f / std::sqrt(IRMath::max(primaryScale, 0.01f))
+                                    : 1.0f;
                 } else {
                     primaryScale = 1.0f;
                     perpScale = 1.0f;
@@ -150,37 +151,30 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                 if (launchOpt.has_value() && contactOpt.has_value() &&
                     squashStretch.impactDurationSec_ > 0.0f &&
                     squashStretch.impactElapsedSec_ < squashStretch.impactDurationSec_) {
-                    const float t = squashStretch.impactElapsedSec_ /
-                                   squashStretch.impactDurationSec_;
-                    impactScaleZ = IRMath::mix(
-                        squashStretch.impactSquashZ_, 1.0f, t);
-                    impactScaleXY = IRMath::mix(
-                        squashStretch.impactExpandXY_, 1.0f, t);
+                    const float t =
+                        squashStretch.impactElapsedSec_ / squashStretch.impactDurationSec_;
+                    impactScaleZ = IRMath::mix(squashStretch.impactSquashZ_, 1.0f, t);
+                    impactScaleXY = IRMath::mix(squashStretch.impactExpandXY_, 1.0f, t);
                 }
 
                 const bool hasDeform = primaryScale > 1.0001f || primaryScale < 0.999f ||
-                    impactScaleZ < 0.999f || impactScaleXY > 1.0001f;
+                                       impactScaleZ < 0.999f || impactScaleXY > 1.0001f;
 
                 if (!hasDeform) {
                     for (int i = 0; i < voxelSet.numVoxels_; i++) {
-                        voxelSet.positionOffsets_[i].pos_ = vec3(0.0f);
+                        voxelSet.positionOffsets_[i] = vec3(0.0f);
                     }
                     return;
                 }
 
                 const int safeCount = static_cast<int>(IRMath::min(
                     static_cast<size_t>(voxelSet.numVoxels_),
-                    IRMath::min(
-                        voxelSet.positions_.size(),
-                        voxelSet.positionOffsets_.size()
-                    )
+                    IRMath::min(voxelSet.positions_.size(), voxelSet.positionOffsets_.size())
                 ));
 
-                const float maxDistFromCenter =
-                    length(vec3(voxelSet.size_) - vec3(1.0f)) * 0.5f;
-                const float maxDistSq = maxDistFromCenter > 0.0001f
-                    ? maxDistFromCenter * maxDistFromCenter
-                    : 1.0f;
+                const float maxDistFromCenter = length(vec3(voxelSet.size_) - vec3(1.0f)) * 0.5f;
+                const float maxDistSq =
+                    maxDistFromCenter > 0.0001f ? maxDistFromCenter * maxDistFromCenter : 1.0f;
 
                 for (int i = 0; i < safeCount; i++) {
                     const vec3 local = voxelSet.positions_[i].pos_;
@@ -196,9 +190,8 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                     }
 
                     const float distSq = IRMath::dot(fromCenter, fromCenter);
-                    const float falloff = 1.0f -
-                        squashStretch.roundness_ *
-                            IRMath::clamp(distSq / maxDistSq, 0.0f, 1.0f);
+                    const float falloff = 1.0f - squashStretch.roundness_ *
+                                                     IRMath::clamp(distSq / maxDistSq, 0.0f, 1.0f);
                     scaled = fromCenter + (scaled - fromCenter) * falloff;
 
                     if (impactScaleZ < 0.999f) {
@@ -209,7 +202,7 @@ template <> struct System<VOXEL_SQUASH_STRETCH> {
                         scaled.y += fromCenter.y * (impactScaleXY - 1.0f) * falloff;
                     }
 
-                    voxelSet.positionOffsets_[i].pos_ = scaled - fromCenter;
+                    voxelSet.positionOffsets_[i] = scaled - fromCenter;
                 }
             }
         );

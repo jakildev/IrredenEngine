@@ -18,6 +18,14 @@
 
 namespace IRMath {
 
+/// Pi to float precision. Mirrors `glm::pi<float>()` but routes through the
+/// IRMath wrapper so callers don't have to reach for `glm::` directly.
+constexpr float kPi = 3.14159265358979323846f;
+/// Half pi (π/2). Used by cardinal-yaw snapping (see `rasterYawCardinalIndex`).
+constexpr float kHalfPi = 1.57079632679489661923f;
+/// Two pi (2π). Useful for full-revolution math and angle wrap.
+constexpr float kTwoPi = 6.28318530717958647692f;
+
 /// Loads a color palette from a file and returns it as a vector of Colors.
 std::vector<Color> createColorPaletteFromFile(const char *filename);
 
@@ -120,6 +128,24 @@ template <typename VecType> constexpr VecType cross(const VecType &value1, const
     return glm::cross(value1, value2);
 }
 
+// Hamilton product: in column-vector convention, rotates b first then a (bone hierarchy:
+// quatMul(parent_world, local)).
+inline vec4 quatMul(const vec4 &a, const vec4 &b) {
+    return vec4(
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z
+    );
+}
+
+// Rodrigues' formula: v + q.w*t + cross(q.xyz, t), t = 2*cross(q.xyz, v).
+inline vec3 rotateVectorByQuat(const vec3 &v, const vec4 &q) {
+    const vec3 u{q.x, q.y, q.z};
+    const vec3 t = 2.0f * glm::cross(u, v);
+    return v + q.w * t + glm::cross(u, t);
+}
+
 /// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
 /// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
 /// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.
@@ -181,6 +207,95 @@ constexpr float cos(float value) {
 /// Square root of @p value. GLM wrapper.
 constexpr float sqrt(float value) {
     return glm::sqrt(value);
+}
+
+/// Two-argument arctangent (radians). Result is in (-π, π]; sign matches
+/// GLSL/std::atan2 convention. GLM wrapper.
+inline float atan2(float y, float x) {
+    return glm::atan(y, x);
+}
+
+/// 2D rotation of @p v by @p angle radians around the origin. The rotation
+/// is CCW for positive angle in a Y-up coordinate system; the visible
+/// direction reverses when applied in a Y-down system.
+constexpr vec2 rotate2D(const vec2 v, float angle) {
+    const float c = glm::cos(angle);
+    const float s = glm::sin(angle);
+    return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
+}
+
+/// Strongly-typed index for the four camera-yaw cardinal snap points.
+/// Mirrors the 0..3 range used by `rasterYawCardinalIndex` in
+/// `shaders/ir_iso_common.glsl`. CPU and GPU MUST agree on the same index for
+/// any picking ↔ raster handshake.
+enum class CardinalIndex : int {
+    k0 = 0,   ///< rasterYaw ≈ 0      (identity)
+    k90 = 1,  ///< rasterYaw ≈ π/2
+    k180 = 2, ///< rasterYaw ≈ π
+    k270 = 3, ///< rasterYaw ≈ 3π/2
+};
+
+/// CPU mirror of `rasterYawCardinalIndex` in `shaders/ir_iso_common.glsl`.
+/// `IRPrefab::Camera::computeYawSplit` snaps `rasterYaw` to a multiple of
+/// pi/2; the round() defends against bit-wise drift only. Negative inputs
+/// fold via `(q mod 4 + 4) mod 4` into [0, 3]. CPU and GPU MUST resolve
+/// the same cardinal index for any picking ↔ raster handshake.
+constexpr CardinalIndex rasterYawCardinalIndex(float rasterYaw) {
+    const int q = static_cast<int>(glm::round(rasterYaw / kHalfPi));
+    return static_cast<CardinalIndex>(((q % 4) + 4) % 4);
+}
+
+/// CPU mirror of `rotateCardinalZ` in `shaders/ir_iso_common.glsl`.
+/// World→view = R_z(-rasterYaw) for the given cardinal snap. The voxel
+/// rasterizer applies this to world positions before iso projection, so
+/// any screen↔world picking inverse must compose its inverse on the
+/// recovered 3D position.
+constexpr ivec3 rotateCardinalZ(const ivec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return ivec3(v.y, -v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return ivec3(-v.y, v.x, v.z);
+    return v;
+}
+
+/// @overload Float variant for forward-projecting non-integer world
+/// positions (`C_PositionGlobal3D` with the modifier-driven offset
+/// already folded in) into the rasterYaw-rotated canvas frame. Same
+/// R_z(-rasterYaw) sign convention as the integer overload.
+constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return vec3(v.y, -v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return vec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return vec3(-v.y, v.x, v.z);
+    return v;
+}
+
+/// CPU mirror of `rotateCardinalZInv` in `shaders/ir_iso_common.glsl`.
+/// View→world = R_z(+rasterYaw). Use after `isoPixelToPos3D` to lift a
+/// reconstructed 3D position back to true world coordinates.
+constexpr vec3 rotateCardinalZInv(const vec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return vec3(-v.y, v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return vec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return vec3(v.y, -v.x, v.z);
+    return v;
+}
+
+/// Integer view→world variant matching GLSL `rotateCardinalZInvI`.
+constexpr ivec3 rotateCardinalZInvI(const ivec3 v, CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return ivec3(-v.y, v.x, v.z);
+    if (cardinalIndex == CardinalIndex::k180)
+        return ivec3(-v.x, -v.y, v.z);
+    if (cardinalIndex == CardinalIndex::k270)
+        return ivec3(v.y, -v.x, v.z);
+    return v;
 }
 
 /// Orthographic projection matrix.  Selects the depth range convention
@@ -338,6 +453,31 @@ inline IsoBounds2D visibleIsoViewport(
                       vec2(canvasSize) * 0.5f;
     vec2 halfExtent = vec2(canvasSize) / (zoom * 2.0f);
     return {viewCenter - halfExtent - vec2(margin), viewCenter + halfExtent + vec2(margin)};
+}
+
+/// Widens an iso-space AABB toward the sun to include off-screen shadow
+/// casters. A caster at `visiblePos + sunDir * t` (for `t ∈ [0,
+/// sweepDistance]`) casts a shadow onto the on-screen pixel at `visiblePos`,
+/// so the swept AABB is the visible AABB expanded by the iso projection of
+/// `sunDir * sweepDistance`.
+///
+/// Used by the iso rasterizers to include off-screen shadow casters: a
+/// surface inside the swept AABB but outside the visible AABB doesn't reach
+/// the framebuffer, but the screen-space sun-shadow bake projects its trixel
+/// distance into the sun-depth map, so the shadow it throws onto an
+/// on-screen pixel is still rendered.
+///
+/// @p sunDir is the direction from the world toward the sun (engine
+/// convention: +Z is down). @p sweepDistance is the maximum shadow throw
+/// length in voxels; pass 0 (or negative) to return @p visible unchanged.
+inline IsoBounds2D shadowFeederIsoBounds(IsoBounds2D visible, vec3 sunDir, float sweepDistance) {
+    if (sweepDistance <= 0.0f) {
+        return visible;
+    }
+    const vec2 shift = pos3DtoPos2DIso(sunDir * sweepDistance);
+    const vec2 lowExpand = vec2(glm::min(0.0f, shift.x), glm::min(0.0f, shift.y));
+    const vec2 highExpand = vec2(glm::max(0.0f, shift.x), glm::max(0.0f, shift.y));
+    return {visible.min_ + lowExpand, visible.max_ + highExpand};
 }
 
 /// Returns a conservative iso-space half-extent for a rectangular-prism

@@ -29,7 +29,8 @@ class ISystemParams {
 
 template <typename Params> class ISystemParamsImpl : public ISystemParams {
   public:
-    explicit ISystemParamsImpl(std::unique_ptr<Params> params) : params_(std::move(params)) {}
+    explicit ISystemParamsImpl(std::unique_ptr<Params> params)
+        : params_(std::move(params)) {}
 
     std::unique_ptr<Params> params_;
 };
@@ -104,7 +105,8 @@ class SystemManager {
         m_ticks[system].excludeArchetype_.insert(IREntity::getComponentType<Tag>());
     }
 
-    template <typename Params> void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
+    template <typename Params>
+    void setSystemParams(SystemId system, std::unique_ptr<Params> params) {
         m_systemParams[system] = std::make_unique<ISystemParamsImpl<Params>>(std::move(params));
     }
 
@@ -113,12 +115,43 @@ class SystemManager {
         return paramsImpl == nullptr ? nullptr : paramsImpl->params_.get();
     }
 
+    /// Runtime-archetype-typed parallel of `createSystem<...>`. The
+    /// include / exclude archetypes are passed as resolved `Archetype`
+    /// values (sets of `ComponentId`) rather than C++ template
+    /// parameters, and the body is a `std::function` that receives the
+    /// matched `ArchetypeNode*` directly. Used by the Lua-driven path
+    /// (`LuaScript::registerSystem`) where the component types are
+    /// known only at runtime; the body fires once per matched
+    /// archetype per tick (no per-entity dispatch by SystemManager —
+    /// caller's body decides whether to iterate the columns row-wise
+    /// or batch-process them).
+    SystemId createSystemDynamic(
+        std::string name,
+        Archetype includeArchetype,
+        Archetype excludeArchetype,
+        std::function<void(ArchetypeNode *)> body
+    );
+
+    /// Replace the per-archetype tick body of an existing system in place.
+    /// The system's `SystemId`, archetype filter, exclude archetype,
+    /// `SystemParams`, and any pipeline registrations are unchanged —
+    /// only the function invoked per matched `ArchetypeNode` is swapped.
+    /// In-flight entities continue using the new body on the next
+    /// pipeline tick with no special handling. Asserts on out-of-range
+    /// SystemId; the body must be non-empty (an empty `std::function`
+    /// would crash on the next dispatch).
+    void replaceSystemBody(SystemId system, std::function<void(ArchetypeNode *)> body);
+
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
     void executePipeline(IRTime::Events event);
     void executeSystem(SystemId system);
 
-    void setTimingEnabled(bool enabled) { m_timingEnabled = enabled; }
-    bool isTimingEnabled() const { return m_timingEnabled; }
+    void setTimingEnabled(bool enabled) {
+        m_timingEnabled = enabled;
+    }
+    bool isTimingEnabled() const {
+        return m_timingEnabled;
+    }
     void resetTimingStats();
 
     /// Take ownership of an observer; fires `onBeforeTick`/`onAfterTick`
@@ -127,10 +160,17 @@ class SystemManager {
     /// is a single bool check, so unregistered systems pay nothing.
     TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer);
     void unregisterTickObserver(TickObserverId id);
+    void clearTickObservers();
 
-    const std::string &getSystemName(SystemId id) const { return m_systemNames[id].name_; }
-    SystemId getSystemCount() const { return m_nextSystemId; }
-    const TimingAccum &getTimingAccum(SystemId id) const { return m_timingAccum[id]; }
+    const std::string &getSystemName(SystemId id) const {
+        return m_systemNames[id].name_;
+    }
+    SystemId getSystemCount() const {
+        return m_nextSystemId;
+    }
+    const TimingAccum &getTimingAccum(SystemId id) const {
+        return m_timingAccum[id];
+    }
     const std::unordered_map<IRTime::Events, std::list<SystemId>> &getPipelines() const {
         return m_systemPipelinesNew;
     }
@@ -201,10 +241,12 @@ class SystemManager {
                                 componentsTuple
                             );
                         }
-                    } else if constexpr (std::is_invocable_v<
-                                             FunctionTick,
-                                             Components &...,
-                                             std::optional<RelationComponents *>...>) {
+                    } else if constexpr (
+                        std::is_invocable_v<
+                            FunctionTick,
+                            Components &...,
+                            std::optional<RelationComponents *>...>
+                    ) {
                         auto componentsTuple =
                             std::make_tuple(std::ref(getComponentData<Components>(node))...);
                         EntityId relatedEntity =

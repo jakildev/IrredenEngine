@@ -2,11 +2,12 @@
 
 Engine-level mechanism that lets any component field be modulated by a
 vector of structured `(transform, parameter)` pairs. The pattern
-generalizes the existing `C_Position3D` + `C_PositionOffset3D` →
-`C_PositionGlobal3D` pipeline so other features (velocity drag,
-buff/debuff stacks, color modulation, etc.) can hand off the
-"compose base + N modifications → effective value" math to a shared
-resolver.
+generalizes the original `local + offset → global` position pipeline
+so other features (velocity drag, buff/debuff stacks, color
+modulation, etc.) can hand off the "compose base + N modifications →
+effective value" math to a shared resolver. T-192 migrated the
+per-entity offset channel itself onto the framework — see
+`POSITION_OFFSET_3D` at the bottom of this doc.
 
 This document specifies the framework's public contract and the
 locked design choices behind it. The runtime that backs these
@@ -313,6 +314,40 @@ Lua mirrors this (child 4): `ir.modifier.registerField`,
 `TransformKind` enum is exposed as
 `ir.modifier.ADD/MULTIPLY/SET/CLAMP_MIN/CLAMP_MAX/OVERRIDE`.
 
+### Named one-frame wrappers: `pushFrameLocal` / `pushOneFrame`
+
+Raw `push(..., ticksRemaining)` carries a subtle pipeline-ordering
+invariant that new callers almost always get wrong. The `ticksRemaining`
+value must be chosen based on where the caller sits relative to
+`MODIFIER_DECAY` in the UPDATE pipeline:
+
+| Caller position | Correct `ticksRemaining` | Named wrapper |
+|---|---|---|
+| INSIDE the resolver pipeline, after `MODIFIER_DECAY` | `1` | `pushFrameLocal` |
+| OUTSIDE the pipeline (Lua, input handler, command) | `2` | `pushOneFrame` |
+
+**`pushFrameLocal`** — caller runs after `MODIFIER_DECAY` in the same
+UPDATE tick. The entry survives this frame's compose, then next frame's
+DECAY removes it. The "use 2 to fire for one frame" rule does NOT apply
+here.
+
+**`pushOneFrame`** — caller runs outside the resolver pipeline (Lua,
+input handler, command). The entry must survive the next frame's DECAY
+(which runs before compose on the next tick) and compose; the frame after
+removes it. The extra tick is headroom so `DECAY` doesn't sweep the entry
+before its first compose.
+
+Both expose scalar (float) and vec3 overloads; the Lua surface adds
+`ir.modifier.pushFrameLocal`, `ir.modifier.pushOneFrame`,
+`ir.modifier.pushFrameLocalVec3`, `ir.modifier.pushOneFrameVec3`.
+
+Reserve raw `push(..., ticksRemaining)` for callers that genuinely need
+custom multi-frame decay (buffs, timed debuffs, cooldowns). For
+anything that should survive exactly one compose cycle, prefer the named
+wrappers — they encode the pipeline position in the API name so future
+writers don't need to read the `MODIFIER_DECAY` header to pick the right
+integer.
+
 ## Existing-pattern audit
 
 The engine already hand-rolls the "base + modulation → effective"
@@ -433,3 +468,208 @@ needs all four predecessors.
   kInvalidFieldId` — a default-constructed `Modifier{}` produces this
   state (`kind_ == ADD`, `field_ == 0`). Fail fast rather than silently
   adding an invalid modifier to the vector.
+
+## Writer-owned slot API — `upsertBySource` (T-208)
+
+The `push()` family always appends a new entry to the modifier vector and
+relies on `ticksRemaining_` decay to remove stale copies. That model forces
+every steady-state writer (e.g. an idle-bob system that fires every tick) to:
+
+1. Run `MODIFIER_DECAY` before itself in the pipeline, and
+2. Set `ticksRemaining_ = 1` to survive the current frame's compose and be
+   removed by the next frame's decay.
+
+This is fragile: it ties the system's pipeline position to the decay system,
+and the per-frame `push_back` allocates on the first tick and reallocates
+whenever the vector outgrows its capacity.
+
+`upsertBySource` (T-208) replaces this with a **writer-owned slot** pattern:
+
+### Slot contract
+
+The triple `(source_, field_, kind_)` is the slot key. At most one entry with
+a given triple may exist in the modifier vector (per-entity or global).
+Callers that own a slot call `upsertBySource` instead of `push` — on the first
+call the slot is created; on subsequent calls only `param_` is overwritten and
+`ticksRemaining_` is reset to `-1`. The slot persists until the source entity
+is destroyed or `removeBySource` is called explicitly.
+
+`push` remains the correct choice for **transient effects** that should expire
+naturally (e.g. a one-shot screen-shake, a key-triggered pulse). Use `push`
+with a `ticksRemaining` countdown when the caller does NOT own the slot
+long-term. Use `upsertBySource` when the caller writes the same slot every
+tick forever (e.g. idle-bob, a continuous aura).
+
+### API additions
+
+```cpp
+namespace IRPrefab::Modifier {
+
+// External writers (Lua, input handlers, init code) — performs the same
+// getComponentOptional + field-type checks as push().
+void upsertBySource(EntityId target, FieldBindingId field,
+                    TransformKind kind, float param, EntityId source);
+void upsertBySource(EntityId target, FieldBindingId field,
+                    TransformKind kind, IRMath::vec3 param, EntityId source);
+
+// Targeting the singleton globals entity.
+void upsertBySourceGlobal(FieldBindingId field, TransformKind kind,
+                           float param, EntityId source);
+void upsertBySourceGlobal(FieldBindingId field, TransformKind kind,
+                           IRMath::vec3 param, EntityId source);
+
+// For system ticks — caller already holds C_Modifiers& from archetype
+// iteration; skips getComponentOptional and the field-type registry probe.
+void upsertBySourceInPlace(C_Modifiers &mods, FieldBindingId field,
+                            TransformKind kind, float param, EntityId source);
+void upsertBySourceInPlace(C_Modifiers &mods, FieldBindingId field,
+                            TransformKind kind, IRMath::vec3 param, EntityId source);
+}
+```
+
+`upsertBySourceInPlace` is the canonical form for tick functions: it bypasses
+the `getComponentOptional` lookup and the registry type-check because the
+system already has the component reference from the archetype iterator and
+already knows the field type from init-time registration.
+
+### Pipeline impact
+
+`PERIODIC_IDLE_POSITION_OFFSET` (the first consumer) no longer requires
+`MODIFIER_DECAY` to run before it. The pipeline ordering becomes:
+
+```
+PERIODIC_IDLE → PERIODIC_IDLE_POSITION_OFFSET
+→ ... → GLOBAL_POSITION_3D → APPLY_POSITION_OFFSET
+```
+
+Existing creations that still run `MODIFIER_DECAY` before
+`PERIODIC_IDLE_POSITION_OFFSET` are safe — `MODIFIER_DECAY` leaves entries
+with `ticksRemaining_ == -1` untouched, so the upsert slot is never dropped by
+decay.
+
+## vec3 extension (T-191)
+
+The framework was extended in T-191 to carry vec3-typed fields
+alongside the scalar path. The shape stays parallel rather than
+variant-based:
+
+- `ModifierVec3` mirrors `Modifier` with `IRMath::vec3 param_` in
+  place of `float param_`. Stays trivially-copyable; `sizeof == 32`,
+  `alignof == 8`.
+- `ResolvedFieldVec3` mirrors `ResolvedField`. `C_Modifiers`,
+  `C_GlobalModifiers`, and `C_ResolvedFields` each carry both a
+  scalar vector (unchanged from v1) and a sibling vec3 vector —
+  one component, two internal columns.
+- The field registry tracks `FieldValueType::{SCALAR, VEC3}` per
+  binding id. `registerField` defaults to SCALAR; `registerFieldVec3`
+  declares a vec3 field. `push`/`pushGlobal` are overloaded on
+  scalar vs `vec3` param; pushing the wrong type silently no-ops
+  (caller bug, not data error).
+- Compose semantics are component-wise: ADD/MULTIPLY/SET apply
+  per-axis in push-order; CLAMP_MIN/CLAMP_MAX bound each axis
+  independently via `IRMath::max`/`IRMath::min`; OVERRIDE replaces
+  the entire vec3 and short-circuits prior ops. Resolver evaluation
+  order matches the scalar path — `composeForFieldVec3` is the vec3
+  twin of `composeForField`.
+- Resolver systems iterate both vectors on the same archetype each
+  tick (`MODIFIER_RESOLVE_GLOBAL`, `MODIFIER_RESOLVE_EXEMPT`).
+  Decay systems sweep both vectors. `removeBySource` sweeps both.
+- `LambdaModifier` stays scalar-only in v1. A `std::function<vec3
+  (vec3)>` channel and a quat modifier kind are Phase 2 follow-ups.
+- Lua surface: `IRModifier.registerFieldVec3`, `addVec3`,
+  `addGlobalVec3`, `applyToFieldVec3`, `resolvedVec3` mirror the
+  scalar Lua API. Param tables accept either an `IRMath::vec3`
+  userdata or a `{x, y, z}` keyed table via the `vec3FromLua`
+  helper.
+
+T-192 (the first consumer) deleted `C_PositionOffset3D` and migrated
+the idle-bob writer onto the `POSITION_OFFSET_3D` vec3 field
+(`engine/prefabs/irreden/common/position_modifier_fields.hpp`).
+`APPLY_POSITION_OFFSET` composes each bob-eligible entity's vec3
+modifiers locally against a vec3(0) base and adds the result to
+`C_PositionGlobal3D` — no resolver-pipeline registration is required
+just for the offset channel, only `MODIFIER_DECAY` running before the
+bob writer in the UPDATE pipeline. The reader-side sprite, hitbox,
+canvas-to-framebuffer, gizmo-drag, and picking systems read
+`C_PositionGlobal3D` directly; the `global + offset` manual sum is
+gone.
+
+## Inline-apply pattern (T-210)
+
+The `APPLY_POSITION_OFFSET` shape — *iterate
+`<TargetComponent, C_Modifiers>`, compose one vec3 field against a
+`vec3(0)` base, add the result to a vec3 member of the target
+component* — generalizes to any per-frame additive vec3 channel with
+exactly one consumer. Capturing the shape as a function-template
+factory keeps a future "screen-shake offset", "hit-stagger nudge", or
+"recoil sway" channel to one line of code:
+
+```cpp
+namespace IRPrefab::Modifier {
+
+template <typename TargetComponent, IRMath::vec3 TargetComponent::*Member>
+inline IRSystem::SystemId applyVec3ModifierTo(
+    const char *name,
+    IRComponents::FieldBindingId field
+);
+
+} // engine/prefabs/irreden/common/modifier_apply.hpp
+```
+
+`Member` is a member-pointer (compile-time, so the per-tick body
+collapses to `target.*Member += compose(...)` with no field-name
+lookup). `field` is captured at `create()` time because
+`FieldBindingId`s register lazily — the compile-time-template form
+("`Field` as a non-type template parameter") is rejected here because
+the field id is only known after `registerFieldVec3(...)` runs at
+init.
+
+`APPLY_POSITION_OFFSET` then reduces to:
+
+```cpp
+template <> struct System<APPLY_POSITION_OFFSET> {
+    static SystemId create() {
+        return IRPrefab::Modifier::applyVec3ModifierTo<
+            IRComponents::C_PositionGlobal3D,
+            &IRComponents::C_PositionGlobal3D::pos_>(
+            "ApplyPositionOffset",
+            IRPrefab::PositionModifier::positionOffsetField()
+        );
+    }
+};
+```
+
+### Inline-apply vs. structured-resolver: when to pick which
+
+Two compose-and-apply paths now coexist; pick by these gates:
+
+- **Inline-apply (`applyVec3ModifierTo`).** Exactly one consumer of
+  the vec3 field, ADD-onto-target semantics, and the channel does NOT
+  need `C_GlobalModifiers` integration. The compose runs once per
+  entity per frame and writes the destination directly. No
+  `C_ResolvedFields` slot consumed; no resolver tick on this field.
+- **Structured-resolver path
+  (`MODIFIER_RESOLVE_GLOBAL`/`_EXEMPT` + read from
+  `C_ResolvedFields`).** Two or more consumers want the same resolved
+  value, the channel needs global modifiers (e.g. "world-wide slow"
+  in modifier_demo), or the apply step is multiplicative / set-style
+  (e.g. `TRANSFORM_SCALE` folded into world transform). The cache
+  amortizes the compose across readers, and the global-modifier
+  archetype routing falls out for free.
+
+Globals integration is the single sharpest discriminator: the
+inline-apply factory reads only `mods.modifiersVec3_` on the
+iterating entity. `C_GlobalModifiers` are NOT folded in. Channels
+that must respond to globals — common case for a "buff/debuff that
+also moves the camera" — belong on the structured-resolver path.
+
+### Apply combine mode is fixed at ADD
+
+The factory's combine step is `target.*Member += result`, hard-coded.
+`MULTIPLY` / `SET` / `OVERRIDE` semantics already exist *inside*
+`composeForFieldVec3` (in the modifier vector itself); the outer apply
+step is the one knob that's fixed because the inline path's job is
+specifically the "per-frame additive delta" pattern. Channels that
+need a multiplicative or replace-style outer combine belong on the
+structured-resolver path (consumers read the resolved value and apply
+whatever combine they want).

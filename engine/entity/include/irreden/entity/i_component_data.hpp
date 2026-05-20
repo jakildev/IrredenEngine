@@ -35,6 +35,15 @@ class IComponentData {
     virtual void pushCopyData(IComponentData *dest, const int indexSource) = 0;
     virtual void removeDataAndPack(const int index) = 0;
     virtual void destroy(const int index) = 0;
+
+    // Append a default-constructed row. Default impl returns false because
+    // C++-typed components may have a deleted default ctor (e.g.
+    // C_CanvasAOTexture); callers MUST add those via the template
+    // setComponent<T> path with an explicit value. Lua-typed components
+    // (IComponentDataLuaTyped) override this to push the schema's defaults.
+    virtual bool appendDefaultRow() {
+        return false;
+    }
 };
 
 template <typename Component> class IComponentDataImpl : public IComponentData {

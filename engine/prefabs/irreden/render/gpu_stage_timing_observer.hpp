@@ -4,8 +4,11 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/profile/scope_timer.hpp>
 
+#include <algorithm>
 #include <memory>
+#include <array>
 #include <string_view>
 #include <unordered_map>
 
@@ -23,28 +26,144 @@ namespace IRRender {
 // fire.
 class GpuStageTimingObserver : public IRSystem::TickObserver {
   public:
+    ~GpuStageTimingObserver() override {
+        for (auto &[_, state] : m_stages) {
+            if (state.device_ == nullptr) {
+                continue;
+            }
+            for (GpuTimestampHandle handle : state.handles_) {
+                if (handle != kInvalidGpuTimestampHandle) {
+                    state.device_->destroyTimestampPair(handle);
+                }
+            }
+        }
+    }
+
     void tagStage(IRSystem::SystemId system, const GpuStageInfo &info) {
-        m_stages[system] = &info;
+        StageState state{};
+        state.info_ = &info;
+        state.device_ = IRRender::device();
+        if (state.device_ != nullptr && state.device_->supportsGpuTimestampPairs()) {
+            const int pairsInFlight =
+                std::clamp(state.device_->recommendedTimestampPairsInFlight(), 1, kSamplesInFlight);
+            for (int i = 0; i < pairsInFlight; ++i) {
+                state.handles_[i] = state.device_->createTimestampPair();
+            }
+        }
+        m_stages[system] = state;
     }
 
     void onBeforeTick(IRSystem::SystemId system) override {
-        if (!gpuStageTiming().enabled_) return;
         auto it = m_stages.find(system);
-        if (it == m_stages.end()) return;
-        IRRender::device()->finish();
-        m_t0 = SteadyClock::now();
+        if (it == m_stages.end())
+            return;
+
+        // CPU side is independent of GPU support / enable state — the histogram
+        // gates itself when disabled. The wall-clock cost (two `now()` calls
+        // + a hashmap lookup at scope exit) is well under a microsecond.
+        if (IRProfile::cpuFrameHistogram().enabled_) {
+            it->second.cpuT0_ = IRProfile::SteadyClock::now();
+            it->second.cpuActive_ = true;
+        } else {
+            it->second.cpuActive_ = false;
+        }
+
+        if (!gpuStageTiming().enabled_)
+            return;
+        if (useLegacyTiming()) {
+            IRRender::device()->finish();
+            m_t0 = SteadyClock::now();
+            return;
+        }
+
+        StageState &state = it->second;
+        resolveReadySamples(state);
+        const int slot = nextAvailableSlot(state);
+        if (slot < 0) {
+            state.activeSlot_ = -1;
+            return;
+        }
+        state.activeSlot_ = slot;
+        IRRender::device()->writeTimestamp(state.handles_[slot], TimestampSlot::START);
     }
 
     void onAfterTick(IRSystem::SystemId system) override {
-        if (!gpuStageTiming().enabled_) return;
         auto it = m_stages.find(system);
-        if (it == m_stages.end()) return;
-        IRRender::device()->finish();
-        gpuStageTiming().*(it->second->field_) = elapsedMs(m_t0, SteadyClock::now());
+        if (it == m_stages.end())
+            return;
+
+        if (it->second.cpuActive_) {
+            const auto cpuT1 = IRProfile::SteadyClock::now();
+            const double ms =
+                std::chrono::duration<double, std::milli>(cpuT1 - it->second.cpuT0_).count();
+            IRProfile::cpuFrameHistogram().record(it->second.info_->name_, ms);
+            it->second.cpuActive_ = false;
+        }
+
+        if (!gpuStageTiming().enabled_)
+            return;
+        if (useLegacyTiming()) {
+            IRRender::device()->finish();
+            gpuStageTiming().*(it->second.info_->field_) = elapsedMs(m_t0, SteadyClock::now());
+            return;
+        }
+
+        StageState &state = it->second;
+        if (state.activeSlot_ < 0) {
+            return;
+        }
+        IRRender::device()->writeTimestamp(state.handles_[state.activeSlot_], TimestampSlot::END);
+        state.pending_[state.activeSlot_] = true;
+        state.activeSlot_ = -1;
     }
 
   private:
-    std::unordered_map<IRSystem::SystemId, const GpuStageInfo *> m_stages;
+    static constexpr int kSamplesInFlight = 3;
+
+    struct StageState {
+        const GpuStageInfo *info_ = nullptr;
+        std::array<GpuTimestampHandle, kSamplesInFlight> handles_{};
+        std::array<bool, kSamplesInFlight> pending_{};
+        RenderDevice *device_ = nullptr;
+        int nextSlot_ = 0;
+        int activeSlot_ = -1;
+
+        // CPU sibling for the matching stage. Captured at `onBeforeTick`,
+        // committed at `onAfterTick` regardless of `gpuStageTiming().enabled_`
+        // — CPU timing is independent of GPU support / opt-in.
+        IRProfile::TimePoint cpuT0_{};
+        bool cpuActive_ = false;
+    };
+
+    static bool useLegacyTiming() {
+        return gpuStageTiming().legacyFinishTiming_ ||
+               !IRRender::device()->supportsGpuTimestampPairs();
+    }
+
+    static void resolveReadySamples(StageState &state) {
+        float ms = 0.0f;
+        for (int i = 0; i < kSamplesInFlight; ++i) {
+            if (!state.pending_[i])
+                continue;
+            if (IRRender::device()->readTimestampPairMs(state.handles_[i], ms)) {
+                gpuStageTiming().*(state.info_->field_) = ms;
+                state.pending_[i] = false;
+            }
+        }
+    }
+
+    static int nextAvailableSlot(StageState &state) {
+        for (int attempt = 0; attempt < kSamplesInFlight; ++attempt) {
+            const int slot = (state.nextSlot_ + attempt) % kSamplesInFlight;
+            if (state.handles_[slot] != kInvalidGpuTimestampHandle && !state.pending_[slot]) {
+                state.nextSlot_ = (slot + 1) % kSamplesInFlight;
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    std::unordered_map<IRSystem::SystemId, StageState> m_stages;
     TimePoint m_t0;
 };
 

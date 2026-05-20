@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""fleet-pr — read scout's per-PR cache, fall back to gh on cache miss.
+
+Subcommands:
+  view <N>      full PR detail (body + comments + reviews + inline review threads)
+  diff <N>      raw diff text
+  comments <N>  flat timeline of conversation + review-summary + inline comments
+
+Repo selection:
+  --repo {engine,game}  default: engine
+
+Cache miss policy: prints a single `fleet-pr: cache miss for <repo>#<N>;
+falling back to gh` line to stderr, then exec's the equivalent live `gh`
+call. Agents that prefer to know about cache misses can grep stderr;
+silent agents see normal stdout regardless.
+
+Source of truth: scripts/fleet/fleet-pr in the engine repo.
+Installed to ~/bin/fleet-pr by scripts/fleet/install.sh.
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+STATE_DIR = Path.home() / ".fleet" / "state"
+PRS_DIR = STATE_DIR / "prs"
+DIFFS_DIR = STATE_DIR / "diffs"
+REPOS_CACHE = STATE_DIR / "repos.json"
+
+# Hardcoded fallback if repos.json is missing. Keep in sync with
+# fleet-state-scout's REPO_KEY_TO_SLUG.
+DEFAULT_SLUGS = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+
+def repo_slug(repo_key):
+    try:
+        repos = json.loads(REPOS_CACHE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return DEFAULT_SLUGS.get(repo_key)
+    return repos.get(repo_key) or DEFAULT_SLUGS.get(repo_key)
+
+
+def warn(msg):
+    print(f"fleet-pr: {msg}", file=sys.stderr)
+
+
+def read_cached_pr(repo_key, pr_number):
+    path = PRS_DIR / repo_key / f"{pr_number}.json"
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError as e:
+        warn(f"cache file {path} is corrupt: {e}")
+        return None
+
+
+def fallback_gh(args, gh_cmd):
+    slug = repo_slug(args.repo)
+    if slug is None:
+        warn(f"unknown repo key: {args.repo}")
+        return 2
+    return subprocess.run(gh_cmd + ["--repo", slug]).returncode
+
+
+def cmd_view(args):
+    detail = read_cached_pr(args.repo, args.pr_number)
+    if detail is None:
+        warn(f"cache miss for {args.repo}#{args.pr_number}; falling back to gh")
+        return fallback_gh(args, [
+            "gh", "pr", "view", str(args.pr_number), "--comments",
+        ])
+
+    print(f"# PR #{detail['number']}: {detail.get('title', '')}")
+    print()
+    if detail.get("body"):
+        print(detail["body"])
+        print()
+
+    comments = detail.get("comments", [])
+    if comments:
+        print("## Comments")
+        for c in comments:
+            author = (c.get("author") or {}).get("login", "?")
+            print(f"\n### {author} at {c.get('createdAt', '')}")
+            print(c.get("body", ""))
+
+    reviews = detail.get("reviews", [])
+    if reviews:
+        print("\n## Reviews")
+        for r in reviews:
+            author = (r.get("author") or {}).get("login", "?")
+            state = r.get("state", "")
+            print(f"\n### {author} ({state}) at {r.get('submittedAt', '')}")
+            if r.get("body"):
+                print(r["body"])
+
+    inline = detail.get("inlineComments", [])
+    if inline:
+        print("\n## Inline review comments")
+        for ic in inline:
+            path = ic.get("path", "?")
+            line = ic.get("line") or ic.get("original_line") or "?"
+            user = (ic.get("user") or {}).get("login", "?")
+            body = ic.get("body", "")
+            print(f"\n[{path}:{line}] {user}")
+            print(body)
+
+    return 0
+
+
+def cmd_diff(args):
+    diff_dir = DIFFS_DIR / args.repo
+    if diff_dir.exists():
+        # GC keeps only the current head's diff per PR, but pick newest by
+        # mtime as a safety net in case GC is mid-tick.
+        candidates = sorted(
+            diff_dir.glob(f"{args.pr_number}-*.diff"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if candidates:
+            sys.stdout.write(candidates[0].read_text())
+            return 0
+
+    warn(f"diff cache miss for {args.repo}#{args.pr_number}; falling back to gh")
+    return fallback_gh(args, ["gh", "pr", "diff", str(args.pr_number)])
+
+
+def cmd_comments(args):
+    detail = read_cached_pr(args.repo, args.pr_number)
+    if detail is None:
+        warn(f"cache miss for {args.repo}#{args.pr_number}; falling back to gh")
+        return fallback_gh(args, [
+            "gh", "pr", "view", str(args.pr_number), "--comments",
+        ])
+
+    any_output = False
+    for c in detail.get("comments", []):
+        author = (c.get("author") or {}).get("login", "?")
+        body = (c.get("body") or "").rstrip()
+        print(f"[comment {c.get('createdAt', '')}] {author}: {body}")
+        any_output = True
+    for r in detail.get("reviews", []):
+        body = (r.get("body") or "").rstrip()
+        if not body:
+            continue
+        author = (r.get("author") or {}).get("login", "?")
+        state = r.get("state", "")
+        print(f"[review {r.get('submittedAt', '')} {state}] {author}: {body}")
+        any_output = True
+    for ic in detail.get("inlineComments", []):
+        path = ic.get("path", "?")
+        line = ic.get("line") or ic.get("original_line") or "?"
+        user = (ic.get("user") or {}).get("login", "?")
+        body = (ic.get("body") or "").rstrip()
+        print(f"[{path}:{line}] {user}: {body}")
+        any_output = True
+
+    if not any_output:
+        warn(f"no comments yet on {args.repo}#{args.pr_number}")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Read scout's per-PR cache.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    for name, fn in [("view", cmd_view), ("diff", cmd_diff), ("comments", cmd_comments)]:
+        sp = sub.add_parser(name)
+        sp.add_argument("pr_number", type=int)
+        sp.add_argument(
+            "--repo", default="engine", choices=["engine", "game"],
+            help="Which cached repo to read (default: engine).",
+        )
+        sp.set_defaults(handler=fn)
+    args = parser.parse_args()
+    sys.exit(args.handler(args))
+
+
+if __name__ == "__main__":
+    main()

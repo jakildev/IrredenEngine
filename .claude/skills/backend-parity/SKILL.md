@@ -14,13 +14,6 @@ description: >-
 
 # backend-parity
 
-Keeps the two graphics backends — **OpenGL** (used by `linux-debug` and
-`windows-debug` presets) and **Metal** (used by `macos-debug`) —
-functionally in sync. The engine's render module is written as one
-front-end + two backends, and feature work usually lands on whichever
-backend the author was running at the time. This skill catches the
-drift and ports the missing side.
-
 Running it requires a build host that matches the **lagging** backend:
 
 - Porting GLSL/OpenGL → MSL/Metal? You must be on **macOS** with the
@@ -33,21 +26,6 @@ You cannot port in a direction you can't build, because the skill's
 core rule is "no port lands without a clean build + smoke run on the
 target backend". Cross-compilation is not a substitute.
 
-## When to invoke
-
-Trigger when the user says:
-
-- "port to metal" / "metal parity" / "port this to MSL"
-- "sync the backends" / "audit render parity" / "find render drift"
-- "mirror PR 42 to metal" / "catch metal up on the last few renders"
-- "does metal have X?" (when X is a recently-added rendering feature)
-- Any phrase implying: one backend has something the other doesn't,
-  bring them into sync.
-
-Also consider invoking after any render PR that touched only GLSL or
-only MSL lands on master — but only with a user cue first. Do **not**
-auto-run this skill unprompted; it does nontrivial writes.
-
 ## Model expectations
 
 This is **Opus** work by default. The render backends and shader
@@ -55,8 +33,8 @@ translation touch core engine invariants — GPU buffer lifetime, compute
 dispatch sizing, iso-projection math, uniform/binding layout. A Sonnet
 agent that picks up a backend-parity task should escalate unless the
 gap is purely mechanical (e.g. a trailing debug-overlay vertex shader
-with no state changes). See the "Model split" section in top-level
-`CLAUDE.md`.
+with no state changes). See the "Model split" section in
+[`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md).
 
 ## Preconditions
 
@@ -96,40 +74,13 @@ Record the mode at the top of the PR body later.
 
 ### 2. Enumerate the deviation set
 
-The render module has a consistent directory split. Use it as the
-source of truth for parity:
-
-**Backend C++ sources (per pair):**
-
-| OpenGL path                                    | Metal path                                     |
-|------------------------------------------------|------------------------------------------------|
-| `engine/render/src/opengl/opengl_buffer.cpp`   | `engine/render/src/metal/metal_buffer.cpp`     |
-| `engine/render/src/opengl/opengl_framebuffer.cpp` | `engine/render/src/metal/metal_framebuffer.cpp` |
-| `engine/render/src/opengl/opengl_render_impl.cpp` | `engine/render/src/metal/metal_render_impl.cpp` |
-| `engine/render/src/opengl/opengl_shader.cpp`   | `engine/render/src/metal/metal_pipeline.cpp`   |
-| `engine/render/src/opengl/opengl_texture.cpp`  | `engine/render/src/metal/metal_texture.cpp`    |
-| `engine/render/src/opengl/opengl_vertex_layout.cpp` | *(bundled into metal_pipeline.cpp)*       |
-| *(glad.c)*                                     | `engine/render/src/metal/metal_runtime.cpp`    |
-|                                                | `engine/render/src/metal/metal_cocoa_bridge.mm` |
-|                                                | `engine/render/src/metal/metal_cpp_impl.cpp`   |
-
-**Headers** mirror under `engine/render/include/irreden/render/opengl/`
-and `.../metal/`.
-
-**Shaders:**
-
-| OpenGL location                                          | Metal location                                              |
-|----------------------------------------------------------|-------------------------------------------------------------|
-| `engine/render/src/shaders/*.glsl` (flat)                | `engine/render/src/shaders/metal/*.metal`                    |
-
-GLSL prefixes (`c_`, `v_`, `f_`, `g_`) indicate the stage. MSL files
-use one `.metal` file per shader with the stage inferred from the
-`kernel` / `vertex` / `fragment` declaration inside. A single `.metal`
-file sometimes bundles a vertex and a fragment stage together (see
-`framebuffer_to_screen.metal` for the canonical pattern). When porting
-a pair of GLSL v/f stages (e.g. `v_framebuffer_to_screen.glsl` +
-`f_framebuffer_to_screen.glsl`), produce **one** `.metal` file with
-both stages rather than two.
+OpenGL sources live under `engine/render/src/opengl/` and Metal counterparts
+under `engine/render/src/metal/` with matching names. Headers mirror under
+`engine/render/include/irreden/render/opengl/` and `.../metal/`. Shaders:
+`engine/render/src/shaders/*.glsl` (GLSL, prefixed per CLAUDE-BASELINE §Naming)
+↔ `engine/render/src/shaders/metal/*.metal` (MSL). MSL bundles a vertex + fragment
+pair into one `.metal` file — when porting GLSL v/f stages, produce **one** `.metal`
+file (see `framebuffer_to_screen.metal` for the canonical pattern).
 
 **Audit command** (to list missing counterparts when running on macOS
 porting GLSL → MSL):
@@ -154,10 +105,11 @@ and fragment stages should produce **both** `v_<key>.glsl` and
 
 **C++ backend audit:**
 
-```bash
-diff <(ls engine/render/src/opengl/ | sed 's/^opengl_//') \
-     <(ls engine/render/src/metal/   | sed 's/^metal_//')
-```
+Use the Glob tool to list backend source files and compare stems:
+- `engine/render/src/opengl/opengl_*.cpp`
+- `engine/render/src/metal/metal_*.cpp`
+
+Strip the `opengl_`/`metal_` prefix from each result and compare — any stem present on one side but absent on the other is a potential parity gap.
 
 Read the diff carefully — Metal has runtime-bridge files
 (`metal_runtime.cpp`, `metal_cocoa_bridge.mm`, `metal_cpp_impl.cpp`)
@@ -219,7 +171,7 @@ General rules:
   iso-projection helpers; the canonical forms live in
   `ir_iso_common.glsl` (GLSL) and should be mirrored in MSL as an
   equivalent header under `shaders/metal/` if more than two shaders
-  need them. See the Math section in top-level `CLAUDE.md`.
+  need them. See [`.claude/rules/cpp-math.md`](../../rules/cpp-math.md) for IRMath substitutions.
 - **Trailing sanity.** Every ported shader needs at least one
   end-to-end manual test: build the lagging preset, run
   `IRShapeDebug` (or whatever demo exercises the pipeline the shader
@@ -246,26 +198,13 @@ either:
 
 ### 5. Build the lagging backend
 
-After every port, the skill must **build the lagging preset clean**:
-
-**macOS (porting to Metal):**
-
-```bash
-cmake --build build --target IRShapeDebug -j$(sysctl -n hw.ncpu)
-```
-
-**Linux/WSL (porting to OpenGL):**
+After every port, the skill must **build the lagging preset clean**.
+Use `fleet-build` — it avoids the `$(nproc)` / `$(sysctl)` command-substitution
+gate and auto-detects the worktree's build tree. See [`docs/agents/BUILD.md`](../../../docs/agents/BUILD.md)
+for the host/preset mapping (and the Windows-native PATH-fix wrapper):
 
 ```bash
-cmake --build build --target IRShapeDebug -j$(nproc)
-```
-
-**Windows-native (porting to OpenGL):**
-
-Use the PATH-fix wrapper from `CLAUDE.md`:
-
-```bash
-cmd.exe /c "set PATH=C:\\msys64\\mingw64\\bin;%PATH% && \"C:/Program Files/CMake/bin/cmake.EXE\" --build C:/Users/evinj/VSCODE_PROJECTS/repos/IrredenEngine/build --target IRShapeDebug -- -j4" 2>&1
+fleet-build --target IRShapeDebug
 ```
 
 **Watch for the build-hygiene canary** — a "Built target" line without
@@ -282,12 +221,10 @@ submitting a half-port.
 
 A clean build is necessary but not sufficient. Also launch the
 demo that exercises the feature and confirm it doesn't crash on the
-first frame. At minimum:
+first frame:
 
 ```bash
-# macOS:
-cd build/creations/demos/shape_debug && ./IRShapeDebug
-# Linux/WSL: same (WSLg routes the window to Windows host)
+fleet-run --timeout 15 IRShapeDebug
 ```
 
 Let it render at least a few frames. If it's a deterministic scene,
@@ -330,9 +267,9 @@ Title format: `metal: <what you ported>` or `opengl: <what you ported>`
 depending on the lagging side.
 
 After the PR is open, `commit-and-push` hands control back. The
-reviewer agent (`review-pr` skill) takes over. If the user wants you
-to continue with more parity work on the same run, chain to
-`start-next-task` and pick the next gap.
+reviewer agent (`review-pr` skill) takes over. Wait for a user cue
+before starting the next parity gap — do not invoke `start-next-task`
+proactively.
 
 ## Cross-backend translation cheatsheet
 
@@ -367,25 +304,11 @@ call, read its threadgroup size, and encode it as
 
 ## Anti-patterns
 
-- ❌ Shipping a port without building the lagging preset. The whole
-  point of the skill is that you *verified* it builds and runs.
-- ❌ Shipping a port without smoke-running the demo. Build-clean ≠
-  parity.
-- ❌ `#ifdef METAL` / `#ifdef OPENGL` stubs that silently return
-  wrong values. Either port properly or stop and flag.
-- ❌ Bundling multiple unrelated parity fixes into one PR. One logical
-  feature per PR; the reviewer can't usefully sign off on "ports
-  three shaders and rewrites the framebuffer path".
-- ❌ Changing the leading backend mid-port. If the leading side has a
-  bug, file it separately and then port the correct behavior.
-  This skill is parity, not drive-by cleanup.
-- ❌ Hardcoding dispatch sizes instead of reusing
-  `voxelDispatchGridForCount()` or the equivalent math helper.
-- ❌ Inventing new uniform layouts "because MSL is different". Match
-  the CPU-side feeder struct exactly; if the feeder struct is wrong
-  for Metal, that's a separate refactor in a separate PR.
-- ❌ Running this skill on a host whose backend matches the
-  *leading* side. You cannot verify the port — stop.
+- `#ifdef METAL` / `#ifdef OPENGL` stubs that silently return wrong values.
+  Either port properly or stop and flag.
+- Changing the leading backend mid-port. If the leading side has a bug,
+  file it separately and then port the correct behavior. This skill is
+  parity, not drive-by cleanup.
 
 ## Re-port after review feedback
 

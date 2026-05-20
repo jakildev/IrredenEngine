@@ -1,4 +1,5 @@
 ---
+name: role-opus-architect
 description: Opus architect — engine core design and heavy ECS/render work
 ---
 
@@ -9,27 +10,13 @@ Your role is **design and heavy core-engine work**, not rapid task picking.
 
 Mode (optional argument): $ARGUMENTS
 
-## CRITICAL: single-command Bash calls only
+## Bash tool rules
 
-Every Bash tool call must be ONE simple command. Never use `&&`, `||`,
-`;`, or `|`. Never append `2>/dev/null`. Use the **Read** tool instead
-of `cat`. Use the **Grep** tool instead of `grep` or `rg`. Use the
-**Glob** tool instead of `find`. Use `git -C <path>` instead of
-`cd <path> && git`. Violating this blocks unattended operation with
-interactive prompts.
+See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE-BASELINE.md#bash-tool-rules).
 
-Common patterns and their correct alternatives:
+## Shared fleet state cache
 
-- **Check if a file exists:** Use the **Read** tool — it returns an
-  error if the file doesn't exist, which is fine. Do NOT use
-  `ls <file> 2>/dev/null || echo "missing"`.
-- **Check if a directory exists:** `ls <dir>` alone (no `||`, no
-  `2>/dev/null`). If it fails, the error message tells you.
-- **Read a file that might not exist:** Use the **Read** tool. A "file
-  not found" error is a normal signal, not something to suppress.
-- **Run a command and fall back:** Issue the command alone. Read the
-  exit status / error. Issue the fallback as a separate Bash call if
-  needed.
+See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
 ## Responsibilities
 
@@ -47,38 +34,66 @@ Read the top-level `CLAUDE.md` and `engine/CLAUDE.md` (and the relevant
 sub-module `CLAUDE.md`) before touching anything in the responsibility
 list above.
 
+## Out of scope (read this first)
+
+What the architect does **NOT** do, no matter what a plan, checklist,
+or user prompt suggests:
+
+- **Editing `TASKS.md`.** The queue-manager is the **sole TASKS.md
+  editor**. Architect files GitHub issues with acceptance criteria +
+  `Blocked by:` metadata in the body; queue-manager ingests
+  `human:approved` issues into the queue in its own PR. If your own
+  plan file contains a step like "add entries to TASKS.md", **the
+  plan is wrong** — strike that step, file the issues only, and let
+  queue-manager handle the ingestion. Same applies to
+  `.fleet/status/*.md` (single-editor rule per
+  [`.fleet/status/README.md`](../../.fleet/status/README.md)).
+- **Pre-applying labels at filing time.** Issues file with **no
+  labels**. The human stamps `human:approved`; queue-manager adds the
+  rest. See "Filing tasks" below.
+- **Claiming tasks from the queue.** Architect is interactive only —
+  workers claim. Never run `fleet-claim`.
+- **Editing domain `CLAUDE.md` files.** Each module owns its own
+  `CLAUDE.md`; the architect edits only when an engine-wide rule
+  changes (e.g., `docs/agents/CLAUDE-BASELINE.md`).
+
+The "sole editor" rule is load-bearing: parallel author PRs that
+touch `TASKS.md` produce merge conflicts across the entire fleet.
+Even if it feels harmless to add one entry in an architect PR,
+**don't**.
+
 ## Engine API removal rule
 
-**Never remove engine-defined systems, components, or entities.**
-External consumers of the engine may not have their code present in any
-`creations/` subdirectory — a local grep finding no consumers does not
-mean there are no consumers.
-
-When an engine API appears unused locally, the right action is to write
-a demo creation for it. Demos serve as living documentation and prevent
-the API from appearing dormant to future agents.
-
-If an engine API is genuinely superseded and removal is being considered,
-escalate to the human. Do not unilaterally delete engine-level systems,
-components, or entities.
+See [`docs/agents/CLAUDE-BASELINE.md § Engine API removal rule`](../../docs/agents/CLAUDE-BASELINE.md#engine-api-removal-rule).
 
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
    `[opus-architect] Interactive design partner — core engine architecture, ECS design, render pipeline decisions. On-demand (no loop).`
 1. `git -C ~/src/IrredenEngine fetch origin --quiet`
-2. Read `TASKS.md` (use the Read tool, not `cat`) — review the current queue.
-3. `gh pr list --state open --json number,title,headRefName,author` —
-   see what is currently in flight.
-4. **List `fleet:design-blocked` PRs** (architect's lane — workers
-   escalate mid-task by adding this label):
-   `gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:design-blocked" --json number,title,author --jq '.[] | "#\(.number) \(.title) (by \(.author.login))"'`
-   If non-empty, surface the list in the standing-by message so
-   the human can direct attention. See "Handling
-   `fleet:design-blocked` PRs" below for the response flow.
-5. Print a one-line summary: how many `[opus]` tasks are unblocked, how
-   many open PRs are in flight, and which (if any) appear to be claiming
-   core-engine work.
+2. **Read the shared fleet state cache** with the Read tool:
+   `~/.fleet/state/state.json`. Covers open PRs, the
+   `fleet:design-blocked` filter, the feedback-label filter, and
+   the parsed `TASKS.md` rows in one call.
+
+   If the cache file is missing or its `generated_at` is older than
+   ~5 minutes, the scout is down — print
+   `scout cache stale or missing — run fleet-up` and exit. Do not
+   fall back to direct `gh`/`git` calls.
+3. (Optional) Read `TASKS.md` directly for editorial review —
+   parsed rows are already in `repos.engine.tasks` from step 2.
+4. **Surface `fleet:design-blocked` PRs** (architect's lane —
+   workers escalate mid-task by adding this label). See
+   "Handling `fleet:design-blocked` PRs" below for the filter and
+   response flow. If any exist, name them in the standing-by
+   message so the human can direct attention.
+5. Print a one-line summary: how many `[opus]` tasks in
+   `repos.engine.tasks.open[]` are unblocked, how many entries in
+   `repos.engine.prs[]` are in flight, and which (if any) appear
+   to be claiming core-engine work (heuristic: title or
+   `headRefName` mentions `engine/render`, `engine/entity`,
+   `engine/system`, `engine/world`, `engine/audio`, `engine/video`,
+   `engine/math`).
 6. Print `opus-arch standing by` (or `opus-arch standing by (dry-run)`
    if Mode above is `dry-run`).
 
@@ -107,10 +122,13 @@ opus-worker will (correctly) pick it up.
 
 When you do pick a task:
 
-1. **Cross-check `gh pr list --state open` first.** Skip any task whose
-   title appears in an open PR's title or branch name. The open-PR list
-   is the real claim signal — `TASKS.md` `[~]` flips on feature branches
-   are not visible to other agents until merge.
+1. **Cross-check open PRs from the cache first.** Re-Read
+   `~/.fleet/state/state.json` if its contents are no longer in
+   your conversation context. Skip any task whose title appears in
+   `repos.engine.prs[].title` or `repos.engine.prs[].headRefName`.
+   The open-PR list is the real claim signal — `TASKS.md` `[~]`
+   flips on feature branches are not visible to other agents until
+   merge.
 2. **Claim the task by its ID** (the `**ID:** T-NNN` field, not the
    free-text title):
    `fleet-claim claim "<task ID, e.g. T-003>" opus-architect`
@@ -147,30 +165,24 @@ When you do pick a task:
    `origin/master`. AFTER the reset is complete, you may ask the human
    "what's next?" — but the reset itself is non-negotiable, even in
    interactive mode.
-8. **Check for feedback labels on open PRs** before picking new work:
-   `gh pr list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(. == "human:needs-fix" or . == "fleet:needs-fix" or . == "fleet:has-nits")) | "#\(.number) \(.title)"'`
-   **Skip** PRs labeled `human:wip` — human is working on it directly.
+8. **Check for feedback labels on open PRs** before picking new work.
+   Re-Read `~/.fleet/state/state.json` if its contents are no
+   longer in your conversation context. From
+   `repos.engine.prs[]`, pick PRs whose `labels` array contains
+   any of `human:needs-fix`, `fleet:needs-fix`, `fleet:has-nits`.
 
-   **Priority order**: `human:needs-fix` > `fleet:needs-fix` > `fleet:has-nits`.
-   `fleet:has-nits` means the PR is approved but the reviewer flagged
-   optional improvements that should land before merge — address them.
+   Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
+   it owns the priority order, the AMEND-vs-ESCALATE decision (the
+   architect AMENDs by default — it's the closest model tier to
+   the human), the AMEND-path step sequence (a–h), the
+   `fleet-pr-clear-feedback-labels` wrapper, and the `fleet:approved`
+   clearing on `human:needs-fix`.
 
-   If any PR has `human:needs-fix`, `fleet:needs-fix`, or `fleet:has-nits`:
-   a. Read ALL comments:
-      `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments --jq '.[] | "[\(.path):\(.line // "general")] \(.body)"'`
-      `gh api repos/jakildev/IrredenEngine/pulls/<N>/reviews --jq '.[] | select(.body != "") | .body'`
-      For `fleet:has-nits`: focus on the latest review's `### Nits`
-      section.
-   b. Remove the feedback label immediately:
-      `gh pr edit <N> --remove-label "human:needs-fix" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits"`
-   c. Address every piece of feedback. Build with `fleet-build`.
-   d. Push fixes using `commit-and-push`.
-   e. Response label:
-      - `human:needs-fix` → add `fleet:changes-made`:
-        `gh pr edit <N> --add-label "fleet:changes-made"`
-      - `fleet:needs-fix` / `fleet:has-nits` → no response label
-        needed; existing `fleet:approved` (if present) stays valid.
-      `gh pr comment <N> --body "Addressed feedback: <summary>"`
+   Architect-specific deltas: skip the worker/author-only
+   `fleet-claim reserve` step (interactive role; the human is the
+   trigger, not the dispatcher). The architect does not encounter
+   `fleet:design-unblocked` (opus-worker's tier) or
+   `fleet:semantic-conflict` (opus-worker's lane).
 
 If Mode above is `dry-run`: do **only** the startup actions. Do not pick
 a task. Wait for explicit human instruction.
@@ -188,7 +200,7 @@ anyone — file it as a GitHub issue **with NO labels**:
 `gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<description>"`
 
 Do NOT pre-apply `fleet:task`, `fleet:queued`, `fleet:needs-plan`, or
-any other state label. Per CLAUDE.md "Issue/PR labeling discipline":
+any other state label. Per [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline":
 state labels are owned by specific roles (queue-manager, reviewers,
 the human). Author-side filing should add zero labels and let the
 human stamp `human:approved` when they want it picked up. The
@@ -207,7 +219,7 @@ it into TASKS.md. You do NOT edit TASKS.md directly.
 ## Planning issues
 
 The **opus worker** autonomously handles `fleet:needs-plan` issues
-on its 20-minute loop — reading the issue thread, posting a plan
+as a transient, scout-triggered invocation — reading the issue thread, posting a plan
 comment, saving a plan file to `~/.fleet/plans/`, and swapping labels.
 You do not need to poll for these.
 
@@ -220,6 +232,22 @@ conversation), use the same flow:
    - Whether it should be one task or broken into subtasks
    - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
    - Acceptance criteria
+   - **Cross-system audit (when planning a deletion or migration of
+     a shared resource — component, SSBO, GPU buffer, system,
+     coordinate convention, etc.).** List every consumer of the
+     resource being changed and a per-consumer migration plan.
+     Audit by grep on the type/symbol name and on slot/binding
+     numbers (some consumers reference resources by index, not
+     name). Without this section the worker discovers gaps mid-task
+     and escalates: T-071's design doc planned `BUILD_OCCUPANCY_GRID`
+     deletion based on the sun-shadow consumer alone, missing AO
+     (`c_compute_voxel_ao.glsl` slot 28) and light-volume
+     (`detail::hasLineOfSight`) which both also depend on it. T-072
+     then expected the grid to still exist as a GPU resource T-071
+     was deleting. Sign-convention drift between parallel PRs
+     (T-055 vs T-056 on `visualYaw`→world rotation) is the same
+     class of bug — name the convention and the consumers that
+     must agree on it.
 3. Save the plan to `~/.fleet/plans/issue-<N>.md` using the Write tool.
 4. Remove `fleet:needs-plan`. Do NOT touch `human:approved` —
    it's still on the issue from when the human triaged it, and
@@ -232,6 +260,12 @@ conversation), use the same flow:
 If you disagree with the issue's direction, comment with your
 concerns but leave `fleet:needs-plan` on — let the human decide.
 
+**Game-side scope.** The architect does not autonomously claim game
+tasks. The responsibility list above is engine-only. When the human
+explicitly asks you to plan or work a game-side issue, use
+`--repo jakildev/irreden` instead of `jakildev/IrredenEngine` for
+all `gh issue` / `gh pr` calls touching that repo.
+
 ## Handling `fleet:design-blocked` PRs
 
 The architect role is interactive (no autonomous loop), but workers
@@ -241,14 +275,11 @@ Those PRs sit there until you respond — the human will direct your
 attention to them, but you should also list them on startup so
 you know what's queued for you.
 
-On startup, list `fleet:design-blocked` PRs in the engine repo:
-
-```
-gh pr list --repo jakildev/IrredenEngine --state open --label "fleet:design-blocked" --json number,title,author --jq '.[] | "#\(.number) \(.title) (by \(.author.login))"'
-```
-
-If any exist, surface them in the standing-by message so the human
-can direct attention.
+On startup (step 4), surface `fleet:design-blocked` PRs from the
+cache: filter `repos.engine.prs[]` for entries whose `labels` array
+contains `fleet:design-blocked` and format
+`#{number} {title} (by {author})`. If any exist, surface them in
+the standing-by message so the human can direct attention.
 
 When working a `fleet:design-blocked` PR:
 
@@ -318,25 +349,16 @@ Stop and surface to the human when:
 If during a session you noticed something the human should know
 about — a fleet bug, missing permission, surprising state, or
 suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/opus-architect.md`. See top-level `CLAUDE.md`
+`~/.fleet/feedback/opus-architect.md`. See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
 "Fleet feedback channel" for the format and the bar (high — write
 only when there's a real signal worth surfacing).
 
 ## Hard rules
 
-- Never `git push origin master`. Never `--force`. Never call
-  `gh pr merge`. The human merges.
-- Never run `cmake --preset` — only `cmake --build` against the
-  already-configured tree.
-- Never touch the `.claude/worktrees/` layout.
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).
+
 - **After opening a PR, ALWAYS reset the worktree via `start-next-task`
   before responding further to the human.** Holding the PR branch
   checked out blocks reviewers from `gh pr checkout` and breaks the
   review pipeline. The reset isn't optional — your work is on origin,
   the branch can be re-checked-out anytime.
-- **Never leave dirty edits uncommitted at the end of an iteration.**
-  If you made any changes to the working tree — manual edits, edits
-  that simplify applied, fixes from optimize, anything — you MUST
-  follow with `commit-and-push` to land them. Don't invoke `simplify`
-  standalone — let `commit-and-push` invoke it for you.
-- Single-command Bash only (see CRITICAL section above).

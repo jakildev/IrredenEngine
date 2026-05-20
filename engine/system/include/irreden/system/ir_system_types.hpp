@@ -31,6 +31,7 @@ enum SystemName {
     INPUT_GAMEPAD,
     ENTITY_HOVER_DETECT,
     HITBOX_MOUSE_TEST,
+    HITBOX_MOUSE_TEST_GUI,
 
     // Update systems
     SCREEN_VIEW,
@@ -52,6 +53,7 @@ enum SystemName {
     MIDI_DELAY_PROCESS,
     PLANT_GROW,
     GLOBAL_POSITION_3D,
+    PROPAGATE_TRANSFORM,
     APPLY_POSITION_OFFSET,
     VOXEL_SQUASH_STRETCH,
     UPDATE_VOXEL_SET_CHILDREN,
@@ -69,6 +71,9 @@ enum SystemName {
     ANIMATION_MOTION_COLOR_SHIFT,
     SPRING_PLATFORM,
     SPRING_COLOR,
+    SPRITE_ANIMATION_ADVANCE,
+    GIZMO_SCREEN_SPACE_SIZE,
+    LOD_UPDATE,
 
     // Modifier framework — runs at end of UPDATE, before RENDER reads
     // C_ResolvedFields. Order: decay all three vectors (per-entity,
@@ -85,6 +90,7 @@ enum SystemName {
     // Render systems
     RENDERING_SCREEN_VIEW,
     RENDERING_TILE_SELECTOR,
+    RESOLVE_SUN_DIRECTION,
     VOXEL_TO_TRIXEL_STAGE_1,
     VOXEL_TO_TRIXEL_STAGE_2,
     TRIXEL_TO_TRIXEL,
@@ -94,12 +100,16 @@ enum SystemName {
     TEXT_TO_TRIXEL,
     SCREEN_SPACE_RESIDUAL_ROTATE,
     FRAMEBUFFER_TO_SCREEN,
+    SPRITE_TO_SCREEN,
     DEBUG_OVERLAY,
     RENDERING_VELOCITY_2D_ISO,
     TEXTURE_SCROLL,
     UPDATE_VOXEL_POSITIONS_GPU,
+    UPDATE_GPU_PARTICLES,
+    RENDER_GPU_PARTICLES_TO_TRIXEL,
+    RENDER_STATELESS_PARTICLES_TO_TRIXEL,
     SHAPES_TO_TRIXEL,
-    BUILD_OCCUPANCY_GRID,
+    BUILD_LIGHT_OCCLUSION_GRID,
     COMPUTE_VOXEL_AO,
     BAKE_SUN_SHADOW_MAP,
     COMPUTE_SUN_SHADOW,
@@ -107,9 +117,48 @@ enum SystemName {
     LIGHTING_TO_TRIXEL,
     FOG_TO_TRIXEL,
     CAMERA_MOUSE_PAN,
+    VOXEL_PICKING,
     DEBUG_CULLING_MINIMAP,
     PERF_STATS_OVERLAY,
-    ENTITY_CANVAS_TO_FRAMEBUFFER
+    ENTITY_CANVAS_TO_FRAMEBUFFER,
+    WIDGET_INPUT,
+    WIDGET_APPLY_SLIDER,
+    WIDGET_APPLY_CHECKBOX,
+    WIDGET_APPLY_LIST,
+    WIDGET_APPLY_DROPDOWN,
+    WIDGET_APPLY_RADIO,
+    WIDGET_APPLY_TEXT_INPUT,
+    WIDGET_APPLY_SCROLL,
+    WIDGET_RENDER_PANEL,
+    WIDGET_RENDER_LABEL,
+    WIDGET_RENDER_BUTTON,
+    WIDGET_RENDER_SLIDER,
+    WIDGET_RENDER_CHECKBOX,
+    WIDGET_RENDER_LIST,
+    WIDGET_RENDER_DROPDOWN,
+    WIDGET_RENDER_RADIO,
+    WIDGET_RENDER_TEXT_INPUT,
+    WIDGET_RENDER_SCROLL,
+    WIDGET_RENDER_COLOR_SWATCH,
+
+    // Layout system (F-0.2)
+    LAYOUT_COMPUTE,
+    WIDGET_INPUT_SPLITTER,
+    WIDGET_RENDER_SPLITTER,
+    WIDGET_INPUT_PANEL_DRAG,
+    WIDGET_RENDER_DOCK_PREVIEW,
+
+    // Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3).
+    // GIZMO_HOVER reads the entity-id GPU readback and toggles
+    // C_GizmoHandle::hover_; GIZMO_DRAG drives the drag state machine
+    // (press → axis-projected translate / shift-snap rotate / scale).
+    GIZMO_HOVER,
+    GIZMO_DRAG,
+
+    // Reserved for tests of the registerSystem<> member-on-System<N>
+    // helper. Do not use from a creation or prefab system.
+    TEST_REGISTER_SYSTEM_A,
+    TEST_REGISTER_SYSTEM_B
 };
 
 template <typename... RelationComponents> struct RelationParams {

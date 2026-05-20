@@ -1,0 +1,99 @@
+# fleet-up.conf — fleet runtime configuration overrides.
+#
+# Copy to ~/.fleet/fleet-up.conf and edit values to tune. fleet-up and
+# fleet-dispatcher both source this file at startup; fleet-dispatcher
+# re-reads on next launch (kill+restart the dispatcher to pick up new
+# values mid-session).
+#
+# Bash-sourceable. Comments start with `#`. Values without quotes work
+# for integers; quote any value containing spaces.
+
+# --- Per-role concurrency caps ----------------------------------------------
+#
+# Soft cap on simultaneous iterations per role. The dispatcher counts
+# (in-flight + reserved) unique worktrees and defers fresh dispatches when
+# the role hits its cap. Reservations count because a paused iteration will
+# resume on the next tick and consume a slot — counting them up front
+# prevents the role from briefly exceeding its budget when a reserved-idle
+# pane wakes up alongside a normal dispatch to a free pane.
+#
+# Defaults match each role's current pane count under stock fleet-up
+# layout (2x opus-worker, 2x sonnet-author, 1 each of the rest), so under
+# default values no role hits its cap during normal operation. Tune up to
+# allow more parallelism (requires adding panes); tune down to throttle a
+# role that's burning too much credit budget.
+
+# FLEET_CONCURRENCY_OPUS_WORKER=2
+# FLEET_CONCURRENCY_SONNET_AUTHOR=2
+# FLEET_CONCURRENCY_SONNET_REVIEWER=1
+# FLEET_CONCURRENCY_OPUS_REVIEWER=1
+# FLEET_CONCURRENCY_QUEUE_MANAGER=1
+# FLEET_CONCURRENCY_MERGER=1
+
+# --- Usage gate (per-rate-limit-type thresholds) ----------------------------
+#
+# Soft, fleet-wide pre-emption: when any rate_limit_event observation
+# (latched by fleet-claude-stream into ~/.fleet/state/usage/<type>.json)
+# exceeds the threshold for its type, the dispatcher defers ALL fresh
+# dispatches until the window resets or utilization drops back below.
+# In-flight iterations finish normally; their next trigger waits.
+#
+# Per-type thresholds let the operator distinguish:
+#   - Short-window limits (e.g. five_hour) — pre-empt at 80% so 20%
+#     of the budget is left for in-flight work to finish cleanly.
+#   - Long-window limits (e.g. seven_day all-models weekly) — pre-empt
+#     only at 95% so typical operation isn't gated by mid-week burn.
+#
+# Built-in defaults (apply with no override):
+#   five_hour:  0.80
+#   seven_day:  0.95
+#   (any other type): 0.80
+#
+# Threshold lookup order:
+#   1. FLEET_DISPATCHER_USAGE_GATE_<TYPE_UPPER>  (per-type override)
+#   2. FLEET_DISPATCHER_USAGE_GATE               (global override)
+#   3. Built-in default (above)
+#
+# Stale window: observations older than this many seconds are ignored,
+# so the gate doesn't latch closed forever based on a single high
+# watermark. Default 1h.
+#
+# Reset grace: pad the resetsAt boundary so the gate doesn't flip open
+# on the exact second the latched window expires. Anthropic's rolling
+# window means util at resetsAt isn't zero — it's whatever the rest of
+# the window weighs, plus any side-channel consumption (e.g. interactive
+# architect chats) the fleet didn't observe. Without padding, the first
+# tick past resetsAt dispatches every queued trigger and they all walk
+# straight into the wall. Default 10 min.
+#
+# Sibling to FLEET_DISPATCHER_LIMIT_DELAY (per-pane post-mortem cooldown
+# after a usage_limit exit). Use --gate-status on fleet-dispatcher to
+# inspect the live state.
+
+# Global override (applies to any type without a per-type override).
+# FLEET_DISPATCHER_USAGE_GATE=0.80
+
+# Per-type overrides — uncomment + edit if you want different
+# thresholds than the built-in defaults.
+# FLEET_DISPATCHER_USAGE_GATE_FIVE_HOUR=0.80
+# FLEET_DISPATCHER_USAGE_GATE_SEVEN_DAY=0.95
+
+# FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
+# FLEET_DISPATCHER_RESET_GRACE_SECONDS=600
+
+# --- fleet-run default watchdog -------------------------------------------
+#
+# When fleet-run is invoked without an explicit --timeout, apply this
+# many seconds as a default watchdog. Catches the failure mode where a
+# fleet agent forgets to pass --timeout for a GUI/demo executable and
+# leaves a stuck process behind after the iteration ends.
+#
+# Unset (or 0) preserves the historic exec-the-binary behavior.
+# Per-call override: pass `--timeout N` for any N, or `--timeout 0` to
+# opt out for a specific run (e.g. interactive demo session).
+#
+# Recommended for fleet hosts: 300 (5 min) — long enough for legit
+# screenshot harnesses + integration tests, short enough to prevent
+# overnight pile-up of stuck windows.
+
+# FLEET_RUN_DEFAULT_TIMEOUT=300

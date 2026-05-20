@@ -65,7 +65,7 @@ Key API:
 
 ## MIDI Systems
 
-Register these in your creation's `initSystems()` under the appropriate pipeline:
+Register these in your creation's `initSystems()` under the appropriate pipeline (pipelines execute in order INPUT → UPDATE → RENDER; see [`engine/system/CLAUDE.md`](../../engine/system/CLAUDE.md) §Pipelines):
 
 | System | Pipeline | Purpose |
 |--------|----------|---------|
@@ -163,10 +163,8 @@ IREntity.createMidiSequence(seq)
 
 ## Reference Creation
 
-The engine-side `midi_polyrhythm` demo has been removed from this repo. The canonical full-Lua
-MIDI example now lives in the game repo. For structural reference (Lua bindings layout, CMake
-script-sync pattern, component packs), use `creations/demos/default/` as the closest surviving
-engine-side example.
+For structural reference (Lua bindings layout, CMake script-sync pattern, component packs),
+use `creations/demos/default/`.
 
 ## Checklist
 

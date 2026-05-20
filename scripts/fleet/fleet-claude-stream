@@ -29,7 +29,11 @@
 # Installed to ~/bin/fleet-claude-stream by scripts/fleet/install.sh.
 
 import json
+import os
+import pathlib
 import sys
+import tempfile
+import time
 
 # ANSI: dim/colors gracefully no-op in non-tty (we still keep them — tmux
 # panes always have a tty, and a plain `tee` of the pipe will show the
@@ -40,6 +44,15 @@ BLUE, CYAN = "\033[34m", "\033[36m"
 
 INPUT_PREVIEW_LEN = 100   # truncate tool inputs to this many chars
 RESULT_PREVIEW_LEN = 200  # truncate tool results to this many chars
+
+# Where rate_limit_event observations are latched for the dispatcher's
+# usage gate. One file per rateLimitType (e.g. five_hour, output_tokens),
+# overwritten with the latest observation. fleet-dispatcher reads these
+# at the top of dispatch_role and defers when any utilization is past
+# FLEET_DISPATCHER_USAGE_GATE (default 0.80).
+USAGE_DIR = pathlib.Path(
+    os.environ.get("FLEET_STATE_DIR", str(pathlib.Path.home() / ".fleet" / "state"))
+) / "usage"
 
 
 def emit(s):
@@ -115,6 +128,44 @@ def handle_result(event):
         emit(f"{RED}{event['result']}{RESET}\n")
 
 
+def latch_usage_observation(rl_type, info):
+    """Write the latest rate_limit_info to ~/.fleet/state/usage/<type>.json.
+
+    fleet-dispatcher reads these files to gate dispatch when any
+    utilization is past FLEET_DISPATCHER_USAGE_GATE. Each rateLimitType
+    gets its own file (overwritten); stale observations age out via the
+    `observed_at` timestamp the dispatcher checks.
+
+    Best-effort: any IO error is swallowed so a state-dir mishap can't
+    take down the live render of the pane.
+    """
+    if not isinstance(rl_type, str) or not rl_type:
+        return
+    safe_type = "".join(c if c.isalnum() or c in "_-" else "_" for c in rl_type)
+    if not safe_type:
+        return
+    payload = {
+        "rateLimitType": rl_type,
+        "utilization": info.get("utilization"),
+        "resetsAt": info.get("resetsAt"),
+        "observed_at": int(time.time()),
+    }
+    try:
+        USAGE_DIR.mkdir(parents=True, exist_ok=True)
+        target = USAGE_DIR / f"{safe_type}.json"
+        with tempfile.NamedTemporaryFile(
+            "w", dir=USAGE_DIR, prefix=f".{safe_type}.", suffix=".tmp", delete=False
+        ) as tmp:
+            json.dump(payload, tmp)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp_path = pathlib.Path(tmp.name)
+        os.replace(tmp_path, target)
+    except OSError:
+        # State-dir not writable, etc. Don't crash the stream renderer.
+        return
+
+
 # Known-benign claude stderr warnings — claude prints these AFTER the
 # result event has already been received and exits 0. Without
 # annotation they read as fatal errors in the pane scrollback even
@@ -160,6 +211,7 @@ def main():
             util = info.get("utilization", 0)
             rl_type = info.get("rateLimitType", "?")
             emit(f"\n{YELLOW}[rate-limit {rl_type} util={util:.0%}]{RESET}\n")
+            latch_usage_observation(rl_type, info)
         elif t == "stream_event":
             handle_stream_event(event)
         elif t == "assistant":

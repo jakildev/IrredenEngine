@@ -2,11 +2,26 @@ include(GoogleTest)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(IrredenEngineTest
+  asset/binary_io_test.cpp
+  asset/json_sidecar_test.cpp
+  asset/name_table_test.cpp
+  asset/rig_format_test.cpp
+  asset/sprite_sheet_test.cpp
+  asset/voxel_set_dense_test.cpp
+  asset/voxel_set_hybrid_test.cpp
+  asset/voxel_set_rle_test.cpp
+  asset/voxel_set_shapes_test.cpp
   audio/music_theory_test.cpp
   common/ir_platform_test.cpp
   ecs/entity_manager_test.cpp
+  ecs/hitbox_2d_gui_test.cpp
+  ecs/modifier_quat_runtime_test.cpp
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp
+  ecs/modifier_vec3_runtime_test.cpp
+  ecs/propagate_transform_test.cpp
+  ecs/sort_archetype_relational_test.cpp
+  ecs/skeleton_components_test.cpp
   ecs/system_exclude_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
@@ -19,11 +34,23 @@ add_executable(IrredenEngineTest
   math/sdf_test.cpp
   render/camera_yaw_test.cpp
   render/frame_data_sun_layout_test.cpp
-  render/light_volume_test.cpp
+  render/per_canvas_light_scope_test.cpp
+  render/picking_face_normal_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
+  render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
+  render/sprite_render_test.cpp
+  script/lua_command_test.cpp
+  script/lua_component_codegen_test.cpp
+  script/lua_component_register_test.cpp
+  script/lua_pipeline_register_test.cpp
+  script/lua_system_codegen_test.cpp
+  script/prefab_api_test.cpp
+  script/lua_system_coexistence_test.cpp
+  script/lua_system_register_test.cpp
   script/modifier_lua_test.cpp
+  system/register_system_test.cpp
   utility/ir_utility_test.cpp
 )
 
@@ -37,6 +64,58 @@ FetchContent_MakeAvailable(googletest)
 target_link_libraries(IrredenEngineTest PUBLIC
     IrredenEngine
     gtest_main
+)
+
+# Build lua_component_codegen_fixtures.hpp from the sibling .lua
+# schema and add the include path. The hand-test demo for the codegen
+# tool — exercises the full pipeline (Lua schema → C++ struct + Lua
+# binding + EntityManager registration) and runs as part of the
+# standard test suite.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lua_component_codegen_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_component_codegen_fixtures.hpp
+    DEFAULT_MODE CODEGEN
+)
+
+# Schema-error regression: feed the codegen binary a fixture with an
+# int32 overflow default in the explicit form (subprocess invocation in
+# lua_component_codegen_test.cpp). Path constants are passed via compile
+# definitions so the test resolves both at runtime regardless of cwd, and
+# the fixture file is added to the dependency graph so an edit triggers
+# a test rebuild.
+target_compile_definitions(IrredenEngineTest PRIVATE
+    IR_LUA_CODEGEN_BINARY="$<TARGET_FILE:ir_lua_codegen>"
+    IR_LUA_CODEGEN_OVERFLOW_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_component_codegen_overflow_fixture.lua"
+)
+add_dependencies(IrredenEngineTest ir_lua_codegen)
+
+# Build lua_system_codegen_fixtures.hpp from the sibling .lua fixture.
+# The codegen tool processes IRSystem.registerSystem({...}) calls, slices
+# the tick function source, parses the DSL subset, and emits typed C++
+# tick bodies + a registry helper. The explicit DEFAULT_MODE CODEGEN here
+# pins these fixtures to CODEGEN regardless of the IR_LUA_ECS_DEFAULT_MODE
+# cache var — these tests verify the typed-emission path and would
+# silently skip if the global flag flipped them to EVAL.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lua_system_codegen_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_system_codegen_fixtures.hpp
+    DEFAULT_MODE CODEGEN
+)
+
+# Coexistence fixture — one .lua file declaring one CODEGEN system
+# (no mode field, follows DEFAULT_MODE) and one EVAL system (explicit
+# mode='eval'). Exercises the helper's DEFAULT_MODE param path AND the
+# runtime mode-dispatch in IRSystem.registerSystem. The test also loads
+# the fixture .lua at runtime, so the path is threaded into the test
+# binary as a compile definition so the test source can pass it to
+# `LuaScript::scriptFile`.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lua_system_coexistence_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_system_coexistence_fixtures.hpp
+    DEFAULT_MODE CODEGEN
+)
+target_compile_definitions(IrredenEngineTest PRIVATE
+    IR_LUA_COEXIST_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_system_coexistence_fixtures.lua"
 )
 
 target_include_directories(IrredenEngineTest PRIVATE

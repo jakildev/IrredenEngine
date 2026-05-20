@@ -19,7 +19,7 @@ Prefabs are header-only files under `engine/prefabs/irreden/<domain>/`. They com
 
 1. Use include guard `COMPONENT_<NAME>_H`.
 2. Namespace `IRComponents`, struct name `C_<PascalName>`.
-3. Public members use trailing `_`. Private members use `m_` prefix.
+3. Follow naming conventions in [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Naming (public trailing `_`, private `m_` prefix, struct name `C_<PascalName>`).
 4. Provide a default constructor and at least one parameterized constructor.
 
 ```cpp
@@ -129,8 +129,7 @@ Systems support multiple event hooks via optional lambdas after the tick functio
 
 ### Anti-patterns
 
-- **Never** call `getComponent` or `getComponentOptional` inside a per-entity tick. Each call does hash-map + linear scan + hash-map lookups with profiler overhead.
-- Instead: include the component in the system's template parameters, store data at creation time, use `beginTick`/`endTick` for once-per-frame lookups, or use `relationTick` for per-parent-group lookups.
+- No `getComponent` / `getComponentOptional` in per-entity ticks, no structural changes (add/remove/create entity) mid-iteration — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full checklist, and [`.claude/rules/cpp-ecs.md`](../../rules/cpp-ecs.md) for alternative patterns (template-param widening, caching at creation time, `relationTick` for per-parent-group lookups, batching foreign-entity lookups).
 
 ## Creating a Command
 
@@ -193,11 +192,11 @@ After creating prefabs, the creation must:
 2. Add `createSystem<IRSystem::MY_SYSTEM>()` in the appropriate `registerPipeline()` call.
 3. Add `createCommand<IRCommand::MY_COMMAND>(...)` in `initCommands()`.
 
-Pipelines run in order: **INPUT -> UPDATE -> RENDER**. System order within a pipeline matters.
+See [`engine/system/CLAUDE.md`](../../engine/system/CLAUDE.md) §Pipelines for the INPUT → UPDATE → RENDER order and system ordering within each pipeline.
 
 ## Checklist
 
-- [ ] Component: `C_` prefix, `IRComponents` namespace, trailing `_` on public members
+- [ ] Component: `C_` prefix, `IRComponents` namespace (see CLAUDE-BASELINE §Naming for member conventions)
 - [ ] System: enum added to `ir_system_types.hpp` first
 - [ ] System: `System<NAME>` specialization with `create()`
 - [ ] Command: enum added to `ir_command_types.hpp` first

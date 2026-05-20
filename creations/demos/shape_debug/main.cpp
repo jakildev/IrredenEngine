@@ -6,9 +6,13 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/render/camera.hpp>
 
+#include <irreden/asset/voxel_set_format.hpp>
+#include <irreden/voxel/dense_bridge.hpp>
+
 #include <cstring>
 #include <cstdlib>
 #include <numbers>
+#include <string>
 // COMPONENTS
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -19,18 +23,19 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
-#include <irreden/render/components/component_occupancy_grid.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/camera.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
-#include <irreden/render/systems/system_build_occupancy_grid.hpp>
+#include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
@@ -40,6 +45,7 @@
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 
@@ -49,13 +55,40 @@
 
 namespace {
 
+// ROI crop tables are framebuffer-pixel coords; values below assume the
+// 1280x720 default game resolution (`kGameResolution`). On HiDPI hosts the
+// framebuffer is a power-of-two larger and the crops land in the upper-left
+// quadrant of the captured image — still useful for edge-fidelity inspection
+// at a given fixed offset. Pixel-precise crop placement is intentionally a
+// per-host iteration point; refine the coords as the demo's content evolves.
+constexpr IRVideo::RoiCrop kCropsZoom4Origin[] = {
+    {520, 280, 128, 128, "center_cube_top"},
+    {220, 280, 128, 128, "left_cube_silhouette"},
+    {820, 280, 128, 128, "right_cube_silhouette"},
+};
+
+constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
+    {520, 280, 128, 128, "center_cube_top"},
+    {300, 400, 128, 128, "lower_left_face"},
+};
+
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {1.0f, vec2(0, 0), "zoom1_origin"},
     {2.0f, vec2(0, 0), "zoom2_origin"},
-    {4.0f, vec2(0, 0), "zoom4_origin"},
+    {4.0f,
+     vec2(0, 0),
+     "zoom4_origin",
+     kCropsZoom4Origin,
+     sizeof(kCropsZoom4Origin) / sizeof(kCropsZoom4Origin[0])},
     {1.0f, vec2(1, 0), "zoom1_odd_offset"},
-    {8.0f, vec2(0, 0), "zoom8_origin"},
+    {8.0f,
+     vec2(0, 0),
+     "zoom8_origin",
+     kCropsZoom8Origin,
+     sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
     {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
+    // zoom16_lod_all_visible: active tier LOD_0, LOD_0 (red) tops the co-located stack.
+    {16.0f, vec2(0, 0), "zoom16_lod_all_visible"},
 };
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
@@ -68,7 +101,9 @@ float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
 bool g_initialYawSet = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
-bool g_screenSpaceShadow = false;
+// --load-vxs <path>: load a DENSE-mode .vxs and render frame 0 alongside the
+// built-in shape fixtures. Empty = not requested.
+std::string g_loadVxsPath;
 
 } // namespace
 
@@ -112,8 +147,11 @@ int main(int argc, char **argv) {
                 g_initialYawSet = true;
                 ++i;
             }
-        } else if (std::strcmp(argv[i], "--screen-space-shadow") == 0) {
-            g_screenSpaceShadow = true;
+        } else if (std::strcmp(argv[i], "--load-vxs") == 0) {
+            if (i + 1 < argc) {
+                g_loadVxsPath = argv[i + 1];
+                ++i;
+            }
         }
     }
 
@@ -137,10 +175,6 @@ int main(int argc, char **argv) {
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
     }
-    if (g_screenSpaceShadow) {
-        IRRender::setScreenSpaceShadowsEnabled(true);
-        IR_LOG_INFO("Screen-space sun-shadow lookup enabled");
-    }
     if (g_initialYawRadians != 0.0f) {
         IRPrefab::Camera::setYaw(g_initialYawRadians);
         IR_LOG_INFO(
@@ -160,7 +194,9 @@ int main(int argc, char **argv) {
 void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+        {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
     IRSystem::registerPipeline(
@@ -171,7 +207,7 @@ void initSystems() {
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_OCCUPANCY_GRID>(),
+        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
@@ -183,6 +219,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
         IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
+        IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
     };
 
     if (g_autoProfileFrames > 0) {
@@ -304,6 +341,13 @@ EntityId createVoxelPoolShape(
     } else if (g_checkerboard) {
         applyCheckerboard(vs, color);
     }
+    // The SDF-carving loop above writes alpha directly through
+    // `vs.voxels_[i].deactivate()` rather than going through a
+    // `C_VoxelSetNew` mutator method, so the pool's per-slot active mask
+    // (consumed by `c_voxel_visibility_compact`) is still pinned to the
+    // ctor's all-active state. Re-derive it from the live alphas so the
+    // compact shader skips carved-away interior slots.
+    vs.syncActiveMask();
 
     IR_LOG_INFO(
         "VoxelPool shape entity={} canvas={} total={} active={}",
@@ -435,6 +479,29 @@ void initEntities() {
         createSDFShape(vec3(xPos, kRowSeparationY, 0.0f), tc.type_, tc.params_, tc.color_);
     }
 
+    // Co-located trio, coarse-first: zoom1=blue(LOD_4 only), zoom4=green(LOD_2) tops,
+    // zoom16=red(LOD_0) tops.
+    constexpr float kLodFixtureY = -16.0f;
+    constexpr vec4 kLodSphereParams = vec4(3, 3, 3, 0);
+    struct LodFixture {
+        IRRender::LodLevel lodMin_;
+        Color color_;
+        const char *label_;
+    };
+    const LodFixture lodFixtures[] = {
+        {IRRender::LodLevel::LOD_4, Color{80, 130, 240, 255}, "LOD_4 (always visible)"},
+        {IRRender::LodLevel::LOD_2, Color{80, 240, 100, 255}, "LOD_2 (zoom>=4)"},
+        {IRRender::LodLevel::LOD_0, Color{240, 80, 80, 255}, "LOD_0 (zoom>=16 only)"},
+    };
+    constexpr int kNumLodFixtures = sizeof(lodFixtures) / sizeof(lodFixtures[0]);
+    for (int i = 0; i < kNumLodFixtures; ++i) {
+        const auto &lf = lodFixtures[i];
+        IR_LOG_INFO("--- {} ---", lf.label_);
+        C_ShapeDescriptor desc{IRRender::ShapeType::SPHERE, kLodSphereParams, lf.color_};
+        desc.lodMin_ = lf.lodMin_;
+        IREntity::createEntity(C_Position3D{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
+    }
+
     // Floor so AO / sun-shadow lighting has a surface to fall on. +Z is
     // downward in this iso convention, so shape bottoms sit at max +z ≈ 4
     // (sphere r4, cone h8); floor sits just below at z ≈ 5.
@@ -452,7 +519,6 @@ void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IR_LOG_INFO("Active canvas entity: {}", mainCanvas);
 
-    IREntity::setComponent(mainCanvas, C_OccupancyGrid{256});
     const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
@@ -473,6 +539,7 @@ void initEntities() {
     // nearby shapes. Cyan reads cleanly against the warm shape palette.
     IREntity::createEntity(
         C_Position3D{vec3(40.0f, 6.0f, -2.0f)},
+        C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );
 
@@ -481,4 +548,27 @@ void initEntities() {
     // the fog-of-war pass end-to-end. Radius chosen to cover the shape
     // row (kSpacingX * kNumCases / 2 ≈ 32) with some peripheral margin.
     IRPrefab::Fog::revealRadius(0, 0, 48);
+
+    // --load-vxs: load a DENSE-mode .vxs file (frame 0) and place the voxel
+    // set at the origin so it can be compared against the procedural shapes.
+    if (!g_loadVxsPath.empty()) {
+        auto loaded = IRAsset::loadDenseVoxelSet(g_loadVxsPath);
+        if (!loaded.ok()) {
+            IR_LOG_ERROR("--load-vxs: could not load '{}'", g_loadVxsPath);
+        } else if (loaded.value_.dense_.voxels_.size() != loaded.value_.dense_.voxelCount()) {
+            IR_LOG_ERROR("--load-vxs: voxel count mismatch in '{}'", g_loadVxsPath);
+        } else {
+            auto voxelSet = IRPrefab::DenseVoxel::toComponent(loaded.value_.dense_);
+            EntityId vxsEntity = IREntity::createEntity(
+                C_Position3D{vec3(-20.0f, -8.0f, 0.0f)},
+                std::move(voxelSet)
+            );
+            IR_LOG_INFO(
+                "--load-vxs: loaded '{}' -> entity {} ({} voxels)",
+                g_loadVxsPath,
+                vxsEntity,
+                loaded.value_.dense_.voxelCount()
+            );
+        }
+    }
 }

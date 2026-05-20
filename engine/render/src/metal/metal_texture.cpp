@@ -254,6 +254,21 @@ class MetalTexture3DImpl final : public Texture3DImpl {
         bindMetalTexture(unit, m_texture);
     }
 
+    void bindImage(
+        std::uint32_t unit,
+        TextureAccess,
+        TextureFormat,
+        int,
+        bool,
+        int
+    ) const override {
+        // Metal flattens sample/image bindings into one slot space; the
+        // shader-side `texture3d<…, access::*>` declaration carries the
+        // R/W intent, so we just route through the image-binding table
+        // (mirrors `MetalTexture2DImpl::bindImage`).
+        bindMetalImageTexture(unit, m_texture);
+    }
+
     void uploadSubImage3D(
         int width,
         int height,

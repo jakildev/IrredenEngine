@@ -24,6 +24,7 @@ World::World(const char *configFileName)
           m_worldConfig["monitor_index"].get_integer(),
           m_worldConfig["monitor_name"].get_string()
       }
+    , m_lua{}
     , m_entityManager{}
     , m_commandManager{}
     , m_systemManager{}
@@ -39,7 +40,6 @@ World::World(const char *configFileName)
     , m_audioManager{}
     , m_timeManager{}
     , m_videoManager{}
-    , m_lua{}
     , m_waitForFirstUpdateInput{
           m_worldConfig["start_updates_on_first_key_press"].get_boolean()
       }
@@ -55,6 +55,8 @@ World::World(const char *configFileName)
     IRRender::setHoveredTrixelVisible(m_worldConfig["hovered_trixel_visible"].get_boolean());
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::gpuStageTiming().enabled_ = m_worldConfig["gpu_stage_timing"].get_boolean();
+    IRRender::gpuStageTiming().legacyFinishTiming_ =
+        m_worldConfig["gpu_stage_timing_legacy"].get_boolean();
     IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
     GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
@@ -81,27 +83,40 @@ World::World(const char *configFileName)
 }
 
 World::~World() {
+    m_systemManager.clearTickObservers();
     IRE_LOG_INFO("Clean shutdown complete.");
 }
 
 void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings) {
     sol::state &lua = m_lua.lua();
-    sol::table ir = lua["ir"].valid()
-        ? lua["ir"].get<sol::table>()
-        : lua.create_named_table("ir");
-    sol::table render = ir["render"].valid()
-        ? ir["render"].get<sol::table>()
-        : lua.create_table();
+    sol::table ir = lua["ir"].valid() ? lua["ir"].get<sol::table>() : lua.create_named_table("ir");
+    sol::table render = ir["render"].valid() ? ir["render"].get<sol::table>() : lua.create_table();
     ir["render"] = render;
 
-    render["getFrameTimeBudgetMs"] = []() {
-        return IRRender::kFrameTimeBudgetMs;
-    };
-    render["isGpuTimingEnabled"] = []() {
-        return IRRender::gpuStageTiming().enabled_;
-    };
+    render["getFrameTimeBudgetMs"] = []() { return IRRender::kFrameTimeBudgetMs; };
+    render["isGpuTimingEnabled"] = []() { return IRRender::gpuStageTiming().enabled_; };
     render["setGpuTimingEnabled"] = [](bool enabled) {
         IRRender::gpuStageTiming().enabled_ = enabled;
+    };
+    render["isCpuTimingEnabled"] = []() { return IRProfile::cpuFrameHistogram().enabled_; };
+    render["setCpuTimingEnabled"] = [](bool enabled) {
+        IRProfile::cpuFrameHistogram().enabled_ = enabled;
+    };
+    render["getCpuPassTimings"] = [&lua]() {
+        sol::table out = lua.create_table();
+        int index = 1;
+        for (const auto &[name, stats] : IRProfile::cpuFrameHistogram().lastFrame()) {
+            sol::table row = lua.create_table();
+            row["name"] = name;
+            row["ms"] = stats.totalMs_;
+            row["maxMs"] = stats.maxMs_;
+            row["count"] = stats.count_;
+            out[index++] = row;
+        }
+        return out;
+    };
+    render["getCpuPassTiming"] = [](std::string_view name) {
+        return IRProfile::cpuFrameHistogram().lastFrameMs(name);
     };
     render["getPassTimings"] = [&lua]() {
         sol::table out = lua.create_table();
@@ -110,11 +125,11 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         int index = 1;
         for (const auto &info : registry) {
             sol::table row = lua.create_table();
-            row["name"]       = info.name_;
-            const float ms    = timing.*info.field_;
+            row["name"] = info.name_;
+            const float ms = timing.*info.field_;
             const float budget = IRRender::budgetMsFor(info);
-            row["ms"]         = ms;
-            row["budgetMs"]   = budget;
+            row["ms"] = ms;
+            row["budgetMs"] = budget;
             row["budgetShare"] = info.budgetShare_;
             row["overBudget"] = ms > budget;
             out[index++] = row;
@@ -123,12 +138,14 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
     };
     // Unknown names return 0.0f — indistinguishable from a pass that
     // legitimately took 0ms. Callers that need to detect typos should
-    // enumerate names via `getPassTimings` first. 15 stages, linear is fine.
+    // enumerate names via `getPassTimings` first. The registry is tiny,
+    // so linear lookup is fine.
     render["getPassTiming"] = [](std::string_view name) {
         const auto &registry = IRRender::gpuStageRegistry();
         const auto &timing = IRRender::gpuStageTiming();
         for (const auto &info : registry) {
-            if (info.name_ == name) return timing.*info.field_;
+            if (info.name_ == name)
+                return timing.*info.field_;
         }
         return 0.0f;
     };
@@ -201,6 +218,7 @@ void World::gameLoop() {
 
 void World::input() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
+    IR_PROFILE_SCOPE("input");
 
     m_inputManager.tick();
     m_inputManager.advanceInputState(IRTime::Events::INPUT);
@@ -227,6 +245,7 @@ void World::end() {
 void World::update() {
     m_timeManager.beginEvent<IRTime::UPDATE>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
+    IR_PROFILE_SCOPE("update");
 
     m_inputManager.advanceInputState(IRTime::Events::UPDATE);
     m_commandManager.executeUserKeyboardCommandsAll();
@@ -241,12 +260,19 @@ void World::update() {
 void World::render() {
     m_timeManager.beginEvent<IRTime::RENDER>();
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+    IR_PROFILE_SCOPE("render");
 
     m_inputManager.advanceInputState(IRTime::Events::RENDER);
     m_renderer.beginFrame();
     m_renderer.renderFrame();
     m_videoManager.render();
     m_renderer.presentFrame();
+
+    // Frame-aligned histogram swap: every IR_PROFILE_SCOPE that ran since the
+    // previous render() landed in the "current" map; the HUD reads the
+    // newly-swapped "last frame" map next frame, so display state is stable
+    // across the entire next-frame INPUT/UPDATE/RENDER cycle.
+    IRProfile::cpuFrameHistogram().endFrame();
 
     m_timeManager.endEvent<IRTime::RENDER>();
 }
@@ -260,11 +286,13 @@ void World::enableFrameTiming(bool enabled) {
         m_frameTotalUpdateTicks = 0;
         m_frameMaxUpdateTicksPerFrame = 0;
         m_systemManager.resetTimingStats();
+        IRRender::computeLightVolumeTiming().reset();
     }
 }
 
 void World::buildAndWriteProfileReport() {
-    if (!m_frameTimingEnabled) return;
+    if (!m_frameTimingEnabled)
+        return;
 
     IRProfile::ProfileReport report;
     report.totalFrames_ = static_cast<uint32_t>(m_frameTimesMs.size());
@@ -273,14 +301,37 @@ void World::buildAndWriteProfileReport() {
     report.maxUpdateTicksPerFrame_ = m_frameMaxUpdateTicksPerFrame;
     report.entityCount_ = IREntity::getLiveEntityCount();
     report.archetypeCount_ = static_cast<uint32_t>(m_entityManager.getArchetypeNodes().size());
+    const auto &lightVolumeTiming = IRRender::computeLightVolumeTiming();
+    report.cpuPhases_.push_back(
+        {"ComputeLightVolume::Clear",
+         lightVolumeTiming.clear_.totalMs_,
+         lightVolumeTiming.clear_.maxMs_,
+         lightVolumeTiming.clear_.sampleCount_}
+    );
+    report.cpuPhases_.push_back(
+        {"ComputeLightVolume::Populate",
+         lightVolumeTiming.populate_.totalMs_,
+         lightVolumeTiming.populate_.maxMs_,
+         lightVolumeTiming.populate_.sampleCount_}
+    );
+    report.cpuPhases_.push_back(
+        {"ComputeLightVolume::Upload",
+         lightVolumeTiming.upload_.totalMs_,
+         lightVolumeTiming.upload_.maxMs_,
+         lightVolumeTiming.upload_.sampleCount_}
+    );
 
     // Collect per-system timing, grouped by pipeline
     auto pipelineName = [](IRTime::Events e) -> const char * {
         switch (e) {
-            case IRTime::Events::INPUT:  return "INPUT";
-            case IRTime::Events::UPDATE: return "UPDATE";
-            case IRTime::Events::RENDER: return "RENDER";
-            default: return "OTHER";
+        case IRTime::Events::INPUT:
+            return "INPUT";
+        case IRTime::Events::UPDATE:
+            return "UPDATE";
+        case IRTime::Events::RENDER:
+            return "RENDER";
+        default:
+            return "OTHER";
         }
     };
 
@@ -288,7 +339,8 @@ void World::buildAndWriteProfileReport() {
     for (auto &[event, systemList] : pipelines) {
         for (auto systemId : systemList) {
             const auto &acc = m_systemManager.getTimingAccum(systemId);
-            if (acc.callCount_ == 0) continue;
+            if (acc.callCount_ == 0)
+                continue;
             IRProfile::SystemTimingEntry entry;
             entry.name_ = m_systemManager.getSystemName(systemId);
             entry.pipeline_ = pipelineName(event);
@@ -320,8 +372,10 @@ void World::buildAndWriteProfileReport() {
     }
 
     IRProfile::writeProfileReport(report, "save_files/profile_report.txt");
-    IRE_LOG_INFO("Profile report written to save_files/profile_report.txt ({} frames)",
-                 report.totalFrames_);
+    IRE_LOG_INFO(
+        "Profile report written to save_files/profile_report.txt ({} frames)",
+        report.totalFrames_
+    );
 }
 
 } // namespace IREngine

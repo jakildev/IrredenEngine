@@ -1,0 +1,7 @@
+cellWidth  16
+cellHeight 16
+margin     0
+padding    0
+anim spin 0 4 6
+anim hold_red 0 1 2
+anim hold_green 1 1 2

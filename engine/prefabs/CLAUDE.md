@@ -5,21 +5,29 @@ domain under `engine/prefabs/irreden/`. Everything here is compiled by whoever
 includes it — there is no prefab .cpp. Keep headers lean; heavy logic belongs
 in `engine/<module>/src/`.
 
-## Layout
+## Hard rules (read before editing)
 
-```
-engine/prefabs/irreden/
-  common/   — position, transform, name, player, tags, selection
-  update/   — physics, movement, collision, animation, particles
-  voxel/    — voxel pools, voxel sets, sculpting, shape descriptors
-  input/    — key/mouse/gamepad input components, hover detect, hitboxes
-  render/   — trixel canvases, framebuffers, cameras, text
-  audio/    — MIDI messages, sequences, channels, devices
-  video/    — screenshot + recording commands
-  asset/    — asset-related prefabs (currently small)
-  demo/     — demo-specific scratch prefabs (do not ship into creations)
-  wip/      — experimental prefabs not ready for production
-```
+Three rules that get violated most often when adding prefab systems and
+components. The full reasoning, allowlists, and canonical patterns live in
+[`.claude/rules/cpp-math.md`](../../.claude/rules/cpp-math.md),
+[`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md), and
+[`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) — those auto-load
+when you open any C++ file. The capsules here are reminders.
+
+- **Math primitives go through IRMath** — never `glm::*` or `std::sin/cos/sqrt/abs/min/max/clamp` outside `engine/math/`. See [`.claude/rules/cpp-math.md`](../../.claude/rules/cpp-math.md).
+- **System state lives on `System<N>` or in `SystemParams`.** Never
+  function-local `static` for mutable or system-owned state —
+  `static constexpr` / `static const` for genuine compile-time
+  constants is fine. Prefer the **member-on-`System<N>`** form via
+  `IRSystem::registerSystem<N, Cs...>(name)` (params as fields,
+  hooks as named member functions); the explicit `Params` +
+  `setSystemParams` form remains supported as an escape hatch.
+  Both forms have the same per-tick cost. Full pattern in
+  [`engine/system/CLAUDE.md`](../system/CLAUDE.md) and
+  [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md).
+- **No per-entity `getComponent` inside a system tick** — see [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md).
+
+## Layout
 
 Each domain has its own `CLAUDE.md` with the components/systems/commands
 catalog and the patterns specific to that domain. Read the nearest one
@@ -64,6 +72,8 @@ Component methods fall into three tiers:
 
 **(a) Pure data.** Fields and a constructor that initializes them. Most
 components in `common/`, `input/`, and tag-style components fall here.
+(`common/` currently houses both the legacy `C_Position3D` / `C_PositionGlobal3D`
+and the new `C_WorldTransform` / `C_LocalTransform` SQT pair; T-199 in flight.)
 
 **(b) Self-only helpers (allowed).** Methods that read or write only the
 component's own fields (and stack-locals derived from them). Examples:
@@ -118,17 +128,8 @@ and should be moved to a system, builder, or namespace.
 
 ## Anti-patterns
 
-- ❌ Per-entity `getComponent` inside a system tick function. Fix: add the
-  component to the system's template parameters.
-- ❌ Allocating memory in a hot tick path (`std::vector` push, string
-  concat, `new`). Reserve once at `beginTick`.
+ECS-general anti-patterns (getComponent in ticks, hot-path allocations, dirty flags, function-local static) live in [`.claude/rules/cpp-ecs.md`](../../.claude/rules/cpp-ecs.md) and [`.claude/rules/cpp-systems.md`](../../.claude/rules/cpp-systems.md). Prefab-specific anti-patterns:
+
 - ❌ Adding a new system without updating the `SystemName` enum.
-- ❌ Storing references to other entities' component storage across frames
-  — archetype changes invalidate addresses.
-- ❌ Cross-domain includes inside a prefab header (e.g. `voxel/` component
-  including `audio/` component). Prefabs are grouped by domain on purpose;
-  cross-domain composition belongs in a creation.
-- ❌ Function-local `static` for system-owned state. Use `SystemParams`
-  instead — same per-tick cost, correct lifetime, multi-instance safe.
-  See `engine/system/CLAUDE.md` "Don't use function-local `static` for
-  system state" for the rule, rationale, and canonical pattern.
+- ❌ Storing references to other entities' component storage across frames — archetype changes invalidate addresses.
+- ❌ Cross-domain includes inside a prefab header (e.g. `voxel/` component including `audio/` component). Prefabs are grouped by domain on purpose; cross-domain composition belongs in a creation.

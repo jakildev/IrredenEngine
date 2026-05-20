@@ -7,9 +7,11 @@
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/entity/prefabs.hpp>
 
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
-#include <irreden/common/components/component_position_offset_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 
+#include <tuple>
 #include <type_traits>
 
 namespace IREntity {
@@ -61,8 +63,9 @@ std::vector<ArchetypeNode *> queryArchetypeNodesRelational(
     const Archetype &excludeComponents = Archetype{}
 );
 
-inline std::vector<EntityId>
-collectEntitiesSimple(const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}) {
+inline std::vector<EntityId> collectEntitiesSimple(
+    const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}
+) {
     std::vector<EntityId> entities;
     auto nodes = queryArchetypeNodesSimple(includeComponents, excludeComponents);
     for (auto *node : nodes) {
@@ -76,8 +79,9 @@ collectEntitiesSimple(const Archetype &includeComponents, const Archetype &exclu
 }
 
 template <typename Component>
-inline void
-removeComponentsSimple(const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}) {
+inline void removeComponentsSimple(
+    const Archetype &includeComponents, const Archetype &excludeComponents = Archetype{}
+) {
     auto entities = collectEntitiesSimple(includeComponents, excludeComponents);
     for (auto entity : entities) {
         getEntityManager().removeComponent<Component>(entity);
@@ -116,11 +120,13 @@ template <typename Component, typename Function> void forEachComponent(Function 
             for (int i = 0; i < node->length_; ++i) {
                 function(entities[i], components[i]);
             }
-        } else if constexpr (std::is_invocable_v<
-                                 Function,
-                                 const Archetype &,
-                                 std::vector<EntityId> &,
-                                 std::vector<Component> &>) {
+        } else if constexpr (
+            std::is_invocable_v<
+                Function,
+                const Archetype &,
+                std::vector<EntityId> &,
+                std::vector<Component> &>
+        ) {
             function(node->type_, node->entities_, components);
         } else {
             IR_ASSERT(
@@ -137,11 +143,31 @@ bool isPureComponent(ComponentId component);
 bool isChildOfRelation(RelationId relation);
 NodeId getParentNodeFromRelation(RelationId relation);
 
+// Auto-attached components are added with default values only when the
+// caller hasn't supplied one. The duplicate-pack guard matters because
+// `insertEntityToNode` emplaces per pack element, not per archetype slot —
+// a duplicate type silently appends a second row into the same column
+// (entity record points at the first, the caller's value at row+1 is
+// orphaned).
 template <typename... Components> EntityId createEntity(const Components &...components) {
-    return getEntityManager().createEntity(
-        IRComponents::C_PositionGlobal3D{},
-        IRComponents::C_PositionOffset3D{},
-        components...
+    using GP = IRComponents::C_PositionGlobal3D;
+    using LT = IRComponents::C_LocalTransform;
+    using WT = IRComponents::C_WorldTransform;
+    constexpr bool kHasGP = (std::is_same_v<GP, Components> || ...);
+    constexpr bool kHasLT = (std::is_same_v<LT, Components> || ...);
+    constexpr bool kHasWT = (std::is_same_v<WT, Components> || ...);
+
+    auto defaults = std::tuple_cat(
+        std::conditional_t<kHasGP, std::tuple<>, std::tuple<GP>>{},
+        std::conditional_t<kHasLT, std::tuple<>, std::tuple<LT>>{},
+        std::conditional_t<kHasWT, std::tuple<>, std::tuple<WT>>{}
+    );
+
+    return std::apply(
+        [&](auto &&...defaultComponents) {
+            return getEntityManager().createEntity(defaultComponents..., components...);
+        },
+        defaults
     );
 }
 
@@ -260,12 +286,50 @@ template <typename Component> void removeComponentDeferred(EntityId entity) {
     getEntityManager().removeComponentDeferred<Component>(entity);
 }
 
-template <typename Component> void setComponentDeferred(EntityId entity, const Component &component) {
+template <typename Component>
+void setComponentDeferred(EntityId entity, const Component &component) {
     getEntityManager().setComponentDeferred<Component>(entity, component);
 }
 
 inline void flushStructuralChanges() {
     getEntityManager().flushStructuralChanges();
+}
+
+/// Singleton-component API. One entity per component type, lazily created
+/// on first access and cached by `ComponentId`. The cache survives entity
+/// destruction lazily — calls after `destroyAllEntities` re-create on
+/// demand.
+///
+/// Use for "global game state" components where exactly one record exists
+/// per world: framework-level globals (the modifier framework's
+/// `C_GlobalModifiers`), per-world settings, scratch containers. Do NOT
+/// use as a back door for "things that should be on the manager"; if the
+/// data is graphics-device-level state, it belongs on the manager.
+///
+/// Singleton entities are normal ECS entities and participate in
+/// archetype iteration. A `forEachComponent<T>` that matches `T` will see
+/// the singleton row.
+template <typename Component> EntityId singletonEntity() {
+    return getEntityManager().template getOrCreateSingleton<Component>();
+}
+
+template <typename Component> EntityId singletonEntityOrNull() {
+    return getEntityManager().getSingletonByComponentIdOrNull(
+        getEntityManager().template getComponentType<Component>()
+    );
+}
+
+template <typename Component> Component &singleton() {
+    return getComponent<Component>(singletonEntity<Component>());
+}
+
+template <typename Component> Component *singletonOrNull() {
+    EntityId entity = singletonEntityOrNull<Component>();
+    if (entity == kNullEntity) {
+        return nullptr;
+    }
+    auto opt = getComponentOptional<Component>(entity);
+    return opt.has_value() ? *opt : nullptr;
 }
 
 } // namespace IREntity

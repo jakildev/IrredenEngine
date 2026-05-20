@@ -17,34 +17,6 @@ Core engine static libraries. Everything here is shared by every creation.
   modules (`common/`, `math/`, `profile/`) do not depend on high-level
   ones (`render/`, `world/`).
 
-## Layer map (bottom-up)
-
-```
-common/   — shared primitives (ir_constants, ir_platform)
-math/     — GLM aliases, iso projection, easing, color, physics
-profile/  — easy_profiler + spdlog logging wrappers
-time/     — TimeManager + EventProfiler (fixed-step loop)
-
-entity/   — IRECS archetype store, EntityManager, Archetype, relations
-system/   — SystemManager, pipeline scheduler, SystemName enum
-command/  — CommandManager, input-triggered action binding
-
-input/    — InputManager, GLFW keyboard/mouse/gamepad polling
-window/   — IRGLFWWindow, OpenGL context bring-up
-render/   — RenderManager, RenderingResourceManager, trixel pipeline, shaders
-audio/    — AudioManager, MIDI in/out (RtMidi, RtAudio)
-video/    — VideoRecorder, ffmpeg encoder, screenshot path
-script/   — LuaScript, sol2 bindings, kHasLuaBinding<T> traits
-
-asset/    — trixel texture + SDF load/save
-world/    — World class, owns all managers above
-
-prefabs/  — header-only C_* / System<> / Command<> definitions, grouped
-            by domain: common/ update/ voxel/ input/ render/ audio/ video/
-```
-
-Read the `CLAUDE.md` inside each subdirectory for the module-specific story.
-
 ## `SystemName` enum is authoritative
 
 Every prefab system that uses the `System<NAME>::create()` template pattern
@@ -53,13 +25,50 @@ must have its `NAME` added to the `SystemName` enum in
 system under `engine/prefabs/**/systems/` and the enum value doesn't exist,
 the specialization won't link. Add the enum value **first**.
 
-## `createEntity` always adds position components
+## System-owned state lives on `System<N>` itself
 
-`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D` and
-`C_PositionOffset3D` to every entity, whether you asked for them or not. The
-rendered position is `global + offset`. You cannot opt out. Systems that
-want an entity's actual draw position should read `C_PositionGlobal3D +
-C_PositionOffset3D`, not `C_Position3D`.
+Prefer the **member-on-`System<N>`** form for system-owned state — declare
+the params as fields on the `System<N>` specialization, hooks (`tick`,
+`beginTick`, `endTick`, `relationTick`) as named member functions, and
+register via `IRSystem::registerSystem<N, Components...>("Name")`. The
+explicit `Params` + `setSystemParams` form remains supported as an escape
+hatch. See [`engine/system/CLAUDE.md`](system/CLAUDE.md) "Per-system
+parameters" for both shapes and the migration story.
+
+## Lua-driven ECS uses build-time codegen by default
+
+CODEGEN is the production runtime for Lua-defined components and systems
+— the build-time tool at `cmake/lua_codegen/` emits typed C++ struct +
+`IRSystem::createSystem<...>` specialisations from `.lua` schemas, so
+per-row work runs at native speed. EVAL (LuaJIT-backed sol2 dispatch via
+`bindLuaDrivenEcs()`) is the dev-iteration opt-out: per-system via
+`mode = "eval"` in the Lua source, or per-creation via
+`-DIR_LUA_ECS_DEFAULT_MODE=EVAL` for a hot-reloadable build flavor. See
+`engine/script/CLAUDE.md` "Per-system mode override + CODEGEN/EVAL
+coexistence" for the DSL subset, the per-system override, the
+CMake flag, and the hot-reload-only-in-EVAL contract.
+
+## `createEntity` auto-attaches transform components
+
+`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D`,
+`C_LocalTransform`, and `C_WorldTransform` to every entity, whether
+you asked for them or not. The free function detects when the caller
+supplies one of these types explicitly and skips the matching default
+so the caller-provided value lands cleanly. Legacy systems read
+`C_PositionGlobal3D` (updated by `GLOBAL_POSITION_3D` +
+`APPLY_POSITION_OFFSET`); the canonical SQT path reads
+`C_WorldTransform` (updated by `PROPAGATE_TRANSFORM` from
+`C_LocalTransform` composed with the parent chain — see
+`engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
+propagation").
+
+Per-frame additive offsets (idle bob, gizmo nudges, future per-frame
+perturbations) travel through the modifier framework's vec3 fields:
+`POSITION_OFFSET_3D` (folded into `C_PositionGlobal3D` by
+`APPLY_POSITION_OFFSET`) and the SQT-side `TRANSFORM_TRANSLATION` /
+`TRANSFORM_SCALE` (folded into `C_WorldTransform` by
+`PROPAGATE_TRANSFORM`). Entities that don't push such offsets don't
+need `C_Modifiers`.
 
 ## Manager globals
 

@@ -3,7 +3,6 @@
 #include <irreden/entity/archetype_graph.hpp>
 
 #include <iterator>
-#include <unordered_set>
 
 namespace IREntity {
 
@@ -52,38 +51,31 @@ void ArchetypeGraph::createAndConnectNode(ArchetypeNode *prevNode, ComponentId n
 
 // Not sure what happens here if a node has a parent with
 // a different archetype.
-std::vector<ArchetypeNode *> ArchetypeGraph::sortArchetypeNodesByRelationChildOf(
-    const std::vector<ArchetypeNode *> &nodes
+std::vector<ArchetypeNode *>
+ArchetypeGraph::sortArchetypeNodesByRelationChildOf(const std::vector<ArchetypeNode *> &nodes
 ) const {
-    // A breath first sort of nodes based on relation heirarchy
+    // BFS from true roots outward so parent archetypes appear before
+    // their children in the output — required for systems that propagate
+    // values down the hierarchy (e.g. SYSTEM_PROPAGATE_TRANSFORM).
     std::vector<ArchetypeNode *> sortedNodes;
     std::queue<ArchetypeNode *> nodeQueue;
 
-    // Step 1: Find all nodes that are children of some other nodes
-    std::unordered_set<NodeId> childNodes;
+    // Seed with roots: nodes that have no CHILD_OF relation of their own.
     for (const auto &node : nodes) {
-        RelationId childOfRelation = node->getChildOfRelation();
-        if (childOfRelation != kNullRelation) {
-            NodeId childNodeId = getParentNodeFromRelation(childOfRelation);
-            childNodes.insert(childNodeId);
-        }
-    }
-
-    // Step 2: Add nodes not in childNodes to the nodeQueue
-    for (const auto &node : nodes) {
-        if (childNodes.find(node->id_) == childNodes.end()) {
+        if (node->getChildOfRelation() == kNullRelation) {
             nodeQueue.push(node);
             sortedNodes.push_back(node);
         }
     }
 
-    // Step 3: Main BFS logic
+    // Walk outward: for each queued node, find children that point to it.
     while (!nodeQueue.empty()) {
         auto currentNode = nodeQueue.front();
         nodeQueue.pop();
         for (const auto &node : nodes) {
             RelationId childOfRelation = node->getChildOfRelation();
-            if (getParentNodeFromRelation(childOfRelation) == currentNode->id_) {
+            if (childOfRelation != kNullRelation &&
+                getParentNodeFromRelation(childOfRelation) == currentNode->id_) {
                 nodeQueue.push(node);
                 sortedNodes.push_back(node);
             }

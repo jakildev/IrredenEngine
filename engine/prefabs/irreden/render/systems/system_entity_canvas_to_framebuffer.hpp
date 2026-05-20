@@ -14,7 +14,6 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
-#include <irreden/common/components/component_position_offset_3d.hpp>
 
 #include <vector>
 
@@ -44,14 +43,12 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     }
 
     static SystemId create() {
-        SystemId s = createSystem<C_EntityCanvas, C_PositionGlobal3D, C_PositionOffset3D>(
+        SystemId s = createSystem<C_EntityCanvas, C_PositionGlobal3D>(
             "EntityCanvasToFramebuffer",
             [](IREntity::EntityId entityId,
                const C_EntityCanvas &entityCanvas,
-               const C_PositionGlobal3D &globalPos,
-               const C_PositionOffset3D &offsetPos) {
-                if (!entityCanvas.visible_ ||
-                    entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
+               const C_PositionGlobal3D &globalPos) {
+                if (!entityCanvas.visible_ || entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
                     static_cast<int>(getInstances().size()) >= kMaxEntityCanvasInstances) {
                     return;
                 }
@@ -59,7 +56,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
                     entityCanvas.canvasEntity_
                 );
-                if (!texOpt.has_value()) return;
+                if (!texOpt.has_value())
+                    return;
                 auto *canvasTextures = texOpt.value();
 
                 auto &framebuffer =
@@ -69,35 +67,27 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 vec2 cameraIso = IRRender::getCameraPosition2DIso();
                 vec2 cameraZoom = IRRender::getCameraZoom();
 
-                vec3 pos3D = globalPos.pos_ + offsetPos.pos_;
-                vec2 entityIso = pos3DtoPos2DIso(pos3D);
+                vec2 entityIso = pos3DtoPos2DIso(globalPos.pos_);
 
                 ivec2 mainCanvasSizeI = ivec2(mainCanvasSize);
                 vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
-                vec2 entityOnMainCanvas =
-                    canvasOriginZ1 + IRMath::floor(cameraIso) + entityIso;
+                vec2 entityOnMainCanvas = canvasOriginZ1 + IRMath::floor(cameraIso) + entityIso;
                 vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize;
 
                 vec2 isoPixelOffset =
                     IRMath::floor(
                         pos2DIsoToPos2DGameResolution(IRMath::fract(cameraIso), cameraZoom)
-                    ) * IRPlatform::kIsoToScreenSign;
+                    ) *
+                    IRPlatform::kIsoToScreenSign;
 
-                vec2 entityAPos = vec2(
-                    normalizedPos.x - 0.5f,
-                    0.5f - normalizedPos.y
-                );
+                vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
                 vec2 entityFbCenter = vec2(
-                    fbRes.x * 0.5f + isoPixelOffset.x +
-                        entityAPos.x * fbRes.x * cameraZoom.x,
-                    fbRes.y * 0.5f + isoPixelOffset.y +
-                        entityAPos.y * fbRes.y * cameraZoom.y
+                    fbRes.x * 0.5f + isoPixelOffset.x + entityAPos.x * fbRes.x * cameraZoom.x,
+                    fbRes.y * 0.5f + isoPixelOffset.y + entityAPos.y * fbRes.y * cameraZoom.y
                 );
 
                 vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize;
-                mat4 model = translate(
-                    mat4(1.0f), vec3(entityFbCenter, 0.0f)
-                );
+                mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
                 model = scale(
                     model,
                     vec3(
@@ -108,8 +98,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 );
 
                 FrameDataTrixelToFramebuffer fd{};
-                fd.mpMatrix_ =
-                    calcProjectionMatrix(fbRes) * model;
+                fd.mpMatrix_ = calcProjectionMatrix(fbRes) * model;
                 fd.canvasZoomLevel_ = cameraZoom;
                 fd.cameraTrixelOffset_ = -entityIso;
                 fd.textureOffset_ = vec2(0.0f);
@@ -123,12 +112,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 inst.textures_ = canvasTextures;
                 getInstances().push_back(inst);
             },
-            []() {
-                getInstances().clear();
-            },
+            []() { getInstances().clear(); },
             []() {
                 auto &allInstances = getInstances();
-                if (allInstances.empty()) return;
+                if (allInstances.empty())
+                    return;
 
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
@@ -140,9 +128,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                     IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
 
                 for (auto &inst : allInstances) {
-                    frameDataBuffer->subData(
-                        0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_
-                    );
+                    frameDataBuffer
+                        ->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
                     inst.textures_->bind(0, 1, 2);
                     IRRender::device()->setPolygonMode(PolygonMode::FILL);
                     IRRender::device()->drawElements(

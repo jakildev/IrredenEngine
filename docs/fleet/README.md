@@ -267,7 +267,7 @@ The two systems are independent and don't share state.
 ### Issue and PR labels — don't pre-apply state labels
 
 This is a real foot-gun and the rule lives in
-[`CLAUDE.md`](../../CLAUDE.md) "Issue/PR labeling discipline":
+[`docs/agents/FLEET.md`](../agents/FLEET.md) "Issue/PR labeling discipline":
 
 - `human:approved` — yours to set. Means "yes, work on this." Without
   it, the queue-manager doesn't ingest.
@@ -398,8 +398,12 @@ what you want and the agent does it.
   launcher scripts (`fleet-up`, `fleet-down`, `install.sh`) reference.
 - **[`TASKS.md`](../../TASKS.md)** — the shared task queue. Fleet
   authors pick from here.
-- **[`CLAUDE.md`](../../CLAUDE.md)** — agent-facing workflow rules,
-  Cursor-flow cues, model split, label discipline.
+- **[`CLAUDE.md`](../../CLAUDE.md)** — top-level agent intro: identity,
+  build quick-ref, layout, pointers.
+- **[`docs/agents/FLEET.md`](../agents/FLEET.md)** — fleet workflow rules,
+  Cursor-flow cues, model split, label discipline, feedback channel.
+- **[`docs/agents/BUILD.md`](../agents/BUILD.md)** — full build matrix
+  for Linux/WSL, Windows-native, and macOS.
 - **[`docs/agents/CLAUDE-BASELINE.md`](../agents/CLAUDE-BASELINE.md)** —
   cross-cutting rules every agent inherits (ECS footgun, naming, style,
   cross-repo isolation).

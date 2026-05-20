@@ -37,6 +37,16 @@ bool recordFrame(const std::uint8_t *rgbaData, int strideBytes);
 void configureScreenshotOutputDir(const std::string &outputDirPath);
 /// Queue a full-screen (composite) screenshot to be written on the next render frame.
 void requestScreenshot();
+/// Queue a full-screen screenshot plus per-ROI sub-image PNGs derived from the
+/// same framebuffer readback (no extra GPU work). Crop PNGs land next to the
+/// full-frame at @c screenshot_<n>_<shotLabel>__crop_<crop.label_>.png. The
+/// crop table is copied internally so the caller's storage is free to die
+/// after the call.
+void requestScreenshotWithCrops(
+    const char *shotLabel,
+    const RoiCrop *crops,
+    int numCrops
+);
 /// Queue a screenshot of the voxel canvas only — no UI or overlay layers.
 void requestCanvasScreenshot();
 /// @}

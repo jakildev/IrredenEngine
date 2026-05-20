@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 // Screen-space lighting application pass. Runs after all geometry has been
 // rasterized to the trixel canvas (voxels, shapes, text) and before
@@ -53,8 +53,11 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float sunIntensity;
     uniform float sunAmbient;
     uniform int shadowsEnabled;
-    uniform int shapeCasterCount;
-    uniform ivec4 _sunPadding;
+    uniform int aoEnabled;
+    uniform vec4 sunBasisU;
+    uniform vec4 sunBasisV;
+    uniform vec2 sunBufferOriginUV;
+    uniform vec2 sunBufferTexelSize;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
@@ -67,6 +70,22 @@ layout(binding = 3) uniform sampler2D paletteLUT;
 // 5 — keep the unit numbers in lockstep across GLSL and MSL.
 layout(rgba8, binding = 4) readonly uniform image2D canvasSunShadow;
 layout(binding = 5) uniform sampler3D lightVolume;
+
+// Phase 1c (#360): the light volume is camera-anchored. The CPU
+// uploads `lightVolumeWorldOrigin` (the world voxel that maps to the
+// volume's center texel) each frame; subtract it from `pos3D` before
+// converting to a sample coordinate. Mirrors LightVolumeParams in
+// ir_render_types.hpp — only `.xyz` is meaningful, `.w` is reserved.
+// Layout tombstones — must match the propagate/seed UBO layout
+// (c_seed_light_volume.glsl, c_propagate_light_volume.glsl). Lighting
+// only reads the origin; leading-underscore names mark the unused slots.
+layout(std140, binding = 23) uniform LightVolumeParams {
+    int _gridSize;
+    int _halfExtent;
+    int _lightCount;
+    float _stepFalloff;
+    ivec4 lightVolumeWorldOrigin;
+};
 
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
 // The volume covers world voxels in [-half, half) with one texel per
@@ -152,11 +171,19 @@ void main() {
 
         // Sample the light volume at the surface voxel. CLAMP_TO_EDGE
         // means out-of-volume samples read zero light (the border texels
-        // were cleared during BFS staging).
+        // were cleared during volume staging). The propagate pass stores
+        // unattenuated emit color in rgb and residual strength in alpha,
+        // so the visible contribution is `rgb * alpha` (linear falloff
+        // with Manhattan distance, zero past the light's radius).
+        // Phase 1c (#360): subtract the camera-anchored world origin so
+        // the sample maps to the texel the seed/propagate passes wrote.
+        const vec3 localPos =
+            pos3D - vec3(lightVolumeWorldOrigin.xyz);
         const vec3 sampleCoord =
-            (pos3D + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
+            (localPos + vec3(kLightVolumeHalfExtent) + vec3(0.5)) /
             vec3(kLightVolumeSize);
-        const vec3 light = texture(lightVolume, sampleCoord).rgb;
+        const vec4 lightSample = texture(lightVolume, sampleCoord);
+        const vec3 light = lightSample.rgb * lightSample.a;
         baseRgb = clamp(baseRgb + src.rgb * light, 0.0, 1.0);
     }
 

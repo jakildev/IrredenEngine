@@ -19,11 +19,7 @@ struct FrameDataSun {
     float sunIntensity;
     float sunAmbient;
     int shadowsEnabled;
-    int shapeCasterCount;
-    int occupancyBoundsCount;
     int aoEnabled;
-    int useScreenSpaceShadow;
-    int _sunPadding0;
     float4 sunBasisU;
     float4 sunBasisV;
     float2 sunBufferOriginUV;
@@ -77,10 +73,10 @@ kernel void c_bake_sun_shadow_map(
         return;
     }
 
-    uint packed = packSunDepth(sunZ);
+    uint packedDepth = packSunDepth(sunZ);
     atomic_fetch_min_explicit(
         &sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x],
-        packed,
+        packedDepth,
         memory_order_relaxed
     );
 }

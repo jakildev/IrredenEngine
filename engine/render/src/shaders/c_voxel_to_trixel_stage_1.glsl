@@ -7,7 +7,7 @@
  * Modified By: <your_name> <Month> <YYYY>
  */
 
-#version 460 core
+#version 450 core
 
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
 
@@ -37,8 +37,20 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
+// 12 B per voxel — must match C_Voxel layout in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+
+// Stage 1 writes distances only; voxels[] is unused here. It is bound so the
+// buffer slot layout stays identical across all three voxel-to-trixel stages
+// and for Phase 2 (#605), where stage 1 will multiply each voxel position by
+// bone_matrix[bone_id] before projecting.
 layout(std430, binding = 6) readonly buffer ColorBuffer {
-    uint colors[];
+    Voxel voxels[];
 };
 
 layout(std430, binding = 25) readonly buffer CompactedIndices {
@@ -66,7 +78,7 @@ void main() {
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
 
-    const int face = localIDToFace_2x3();
+    const int face = localIDToFace_2x3(gl_LocalInvocationID.xy);
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a

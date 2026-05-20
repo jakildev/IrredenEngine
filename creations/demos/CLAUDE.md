@@ -11,39 +11,17 @@ personal editors, experiments) live as gitignored subdirectories under
 Applies the rules in [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md).
 No opt-outs.
 
-## Current demos
+## Reference demos
 
-- `default/` — minimal example showing how to spin up a `World`, register
-  a component pack, and run a Lua script.
-- `shape_debug/` — stress test for the shape renderer and voxel pipeline
-  at varying subdivisions / zoom. Useful for chasing rendering glitches.
-- `midi_keyboard/` — keyboard-driven MIDI input demo.
-- `metal_clear_test/` — Metal-backend smoke test (clear-color only).
-- `lighting/` — lighting pipeline showcase (emissive voxels, light volume).
-- `modifier_demo/` — interactive modifier framework showcase. Eight cubes
-  each demonstrate one framework capability (Haste, Stun, Slow, Stack,
-  GlobalSlow, LambdaSine, SourceKill, Clamp) via number keys 1–8. Live
-  per-cube resolved-speed HUD. Canonical visual reference for the modifier
-  framework — see `engine/prefabs/irreden/common/CLAUDE.md`.
+Canonical starting points: `shape_debug` (C++-only reference and visual-regression
+smoke target), `default` (minimal Lua-driven), `lua_perf_grid` (codegen toolchain
+reference, T-106..T-108 pattern). Use `Glob creations/demos/*/` to see the full list.
 
 ## Adding a new demo
 
-1. Copy the closest matching existing demo (Lua-driven →
-   `default`, C++-only → `shape_debug`, minimal → `default`).
-2. Rename the target (`IRShapeDebug` → `IRYourName`) and update
-   `CMakeLists.txt`:
-   - `set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})`
-   - `add_executable(IRYourName main.cpp)` +
-     `target_link_libraries(IRYourName PUBLIC IrredenEngine)`
-   - The Windows DLL POST_BUILD step.
-   - Copy `engine/render/data`, `engine/data`,
-     `engine/render/src/shaders` to the runtime dir.
-   - An `IRYourNameRun` custom target with `WORKING_DIRECTORY
-     ${runtime_dir}` and `USES_TERMINAL`.
-3. Add `add_subdirectory(your_name)` to `creations/demos/CMakeLists.txt`.
-4. Build with `cmake --build build --target IRYourName`.
-5. Run with `IRYourNameRun` from VSCode, or manually with the PATH fix
-   from the top-level `CLAUDE.md`.
+Copy the closest demo, rename targets, add `add_subdirectory(your_name)` to
+`creations/demos/CMakeLists.txt`. See `shape_debug/CMakeLists.txt` for the
+canonical CMake shape.
 
 ## Conventions
 

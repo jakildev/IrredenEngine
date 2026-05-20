@@ -45,10 +45,18 @@ inline void writeColorTap(
     triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
 }
 
+// 12 B per voxel — must match C_Voxel layout in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+
 kernel void c_voxel_to_trixel_stage_2(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
-    device const uint* colors [[buffer(6)]],
+    device const Voxel* voxels [[buffer(6)]],
     device const uint2* entityIds [[buffer(13)]],
     device const uint* compactedVoxelIndices [[buffer(25)]],
     device const IndirectDispatchParamsRO& indirectParams [[buffer(26)]],
@@ -66,7 +74,7 @@ kernel void c_voxel_to_trixel_stage_2(
 
     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];
-    float4 voxelColor = unpackColor(colors[voxelIndex]);
+    float4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
     if (voxelColor.a == 0.0) {
         return;
     }

@@ -73,6 +73,32 @@ void VideoManager::toggleRecording() {
 
 void VideoManager::requestScreenshot() {
     m_screenshotRequested = true;
+    m_pendingScreenshotShotLabel.clear();
+    m_pendingScreenshotCrops.clear();
+}
+
+void VideoManager::requestScreenshotWithCrops(
+    const char *shotLabel,
+    const RoiCrop *crops,
+    int numCrops
+) {
+    m_screenshotRequested = true;
+    m_pendingScreenshotShotLabel = (shotLabel != nullptr) ? shotLabel : "";
+    m_pendingScreenshotCrops.clear();
+    if (crops == nullptr || numCrops <= 0) {
+        return;
+    }
+    m_pendingScreenshotCrops.reserve(static_cast<std::size_t>(numCrops));
+    for (int i = 0; i < numCrops; ++i) {
+        const RoiCrop &c = crops[i];
+        PendingCrop pc;
+        pc.x_ = c.x_;
+        pc.y_ = c.y_;
+        pc.w_ = c.w_;
+        pc.h_ = c.h_;
+        pc.label_ = (c.label_ != nullptr) ? c.label_ : "crop";
+        m_pendingScreenshotCrops.push_back(std::move(pc));
+    }
 }
 
 void VideoManager::requestCanvasScreenshot() {
@@ -327,19 +353,66 @@ void VideoManager::toggleCapture() {
     }
 }
 
-std::string VideoManager::getNextScreenshotFilePath() {
-    std::filesystem::path outputDir = std::filesystem::path(m_screenshotOutputDirPath);
-    std::filesystem::create_directories(outputDir);
-
+std::uint64_t VideoManager::reserveNextScreenshotIndex() {
+    std::filesystem::create_directories(m_screenshotOutputDirPath);
     for (;;) {
-        std::filesystem::path candidatePath =
-            outputDir /
-            IRUtility::formatNumberedFilename("screenshot_", m_nextScreenshotIndex, 6, ".png");
-        if (!std::filesystem::exists(candidatePath)) {
-            ++m_nextScreenshotIndex;
-            return candidatePath.string();
-        }
+        const std::uint64_t idx = m_nextScreenshotIndex;
         ++m_nextScreenshotIndex;
+        if (!std::filesystem::exists(screenshotFilePathForIndex(idx))) {
+            return idx;
+        }
+    }
+}
+
+std::string VideoManager::screenshotFilePathForIndex(std::uint64_t index) const {
+    return (std::filesystem::path(m_screenshotOutputDirPath) /
+            IRUtility::formatNumberedFilename("screenshot_", index, 6, ".png"))
+        .string();
+}
+
+void VideoManager::writePendingRoiCrops(
+    const std::uint8_t *frameData,
+    int frameWidth,
+    int frameHeight,
+    std::uint64_t shotIndex
+) {
+    if (m_pendingScreenshotCrops.empty()) {
+        return;
+    }
+    const std::string indexedPrefix =
+        IRUtility::formatNumberedFilename("screenshot_", shotIndex, 6, "");
+    const std::filesystem::path outputDir(m_screenshotOutputDirPath);
+    for (const PendingCrop &crop : m_pendingScreenshotCrops) {
+        const int x0 = std::max(0, crop.x_);
+        const int y0 = std::max(0, crop.y_);
+        const int x1 = std::min(frameWidth, crop.x_ + crop.w_);
+        const int y1 = std::min(frameHeight, crop.y_ + crop.h_);
+        const int outW = x1 - x0;
+        const int outH = y1 - y0;
+        if (outW <= 0 || outH <= 0) {
+            IRE_LOG_WARN(
+                "ROI crop '{}' for shot '{}' degenerate after clamp (rect={},{} {}x{} -> {}x{}); skipping",
+                crop.label_, m_pendingScreenshotShotLabel,
+                crop.x_, crop.y_, crop.w_, crop.h_, outW, outH
+            );
+            continue;
+        }
+        const std::size_t rowBytes = static_cast<std::size_t>(outW) * 4U;
+        std::vector<std::uint8_t> cropData(rowBytes * static_cast<std::size_t>(outH));
+        for (int y = 0; y < outH; ++y) {
+            const std::uint8_t *src =
+                frameData +
+                (static_cast<std::size_t>(y0 + y) * static_cast<std::size_t>(frameWidth) +
+                 static_cast<std::size_t>(x0)) *
+                    4U;
+            std::memcpy(cropData.data() + static_cast<std::size_t>(y) * rowBytes, src, rowBytes);
+        }
+        const std::string filename =
+            indexedPrefix + "_" + m_pendingScreenshotShotLabel +
+            "__crop_" + crop.label_ + ".png";
+        const std::string path = (outputDir / filename).string();
+        IRRender::writePNG(path.c_str(), outW, outH, 4, cropData.data());
+        IRE_LOG_INFO("Saved ROI crop: {}", path);
     }
 }
 
@@ -368,7 +441,8 @@ bool VideoManager::captureScreenshot() {
         return false;
     }
 
-    const std::string outputPath = getNextScreenshotFilePath();
+    const std::uint64_t shotIndex = reserveNextScreenshotIndex();
+    const std::string outputPath = screenshotFilePathForIndex(shotIndex);
     IRRender::writePNG(
         outputPath.c_str(),
         sourceResolution.x,
@@ -377,6 +451,15 @@ bool VideoManager::captureScreenshot() {
         imageData.data()
     );
     IRE_LOG_INFO("Saved screenshot: {}", outputPath);
+
+    writePendingRoiCrops(
+        imageData.data(),
+        sourceResolution.x,
+        sourceResolution.y,
+        shotIndex
+    );
+    m_pendingScreenshotShotLabel.clear();
+    m_pendingScreenshotCrops.clear();
     return true;
 }
 
@@ -411,7 +494,7 @@ bool VideoManager::captureCanvasScreenshot() {
         );
     }
 
-    const std::string outputPath = getNextScreenshotFilePath();
+    const std::string outputPath = screenshotFilePathForIndex(reserveNextScreenshotIndex());
     IRRender::writePNG(
         outputPath.c_str(),
         sourceResolution.x,

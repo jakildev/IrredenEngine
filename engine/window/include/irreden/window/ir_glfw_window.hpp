@@ -33,19 +33,26 @@ inline constexpr std::pair<int, int> kNoApiWindowHints[] = {
     {GLFW_CLIENT_API, GLFW_NO_API},
 };
 
-/// GLFW window hints for OpenGL 4.6 core profile with double-buffering.
+/// GLFW window hints for OpenGL 4.5 core profile with double-buffering.
+///
+/// 4.5 is the floor across our supported hosts. Native Linux/macOS GPU
+/// drivers and Windows-native expose 4.6, but WSLg's Mesa-d3d12 driver
+/// caps at 4.5 — and the engine uses no 4.6-only features (no SPIR-V,
+/// no `gl_HelperInvocation`, no 4.6 extensions). Targeting 4.5 keeps the
+/// shader floor at GLSL 4.50 and lets a single binary boot on every host.
 inline constexpr std::pair<int, int> kOpenGLWindowHints[] = {
     {GLFW_CONTEXT_VERSION_MAJOR, 4},
-    {GLFW_CONTEXT_VERSION_MINOR, 6},
+    {GLFW_CONTEXT_VERSION_MINOR, 5},
     {GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE},
     {GLFW_DOUBLEBUFFER, GLFW_TRUE},
 };
 
 // These checks gate GLFW/OpenGL setup, not shared renderer conventions.
 /// Number of GLFW hints active for the current backend.
-inline constexpr int kNumWindowHints = IRPlatform::kIsOpenGL
-    ? static_cast<int>(sizeof(kOpenGLWindowHints) / sizeof(kOpenGLWindowHints[0]))
-    : static_cast<int>(sizeof(kNoApiWindowHints) / sizeof(kNoApiWindowHints[0]));
+inline constexpr int kNumWindowHints =
+    IRPlatform::kIsOpenGL
+        ? static_cast<int>(sizeof(kOpenGLWindowHints) / sizeof(kOpenGLWindowHints[0]))
+        : static_cast<int>(sizeof(kNoApiWindowHints) / sizeof(kNoApiWindowHints[0]));
 
 /// Returns the GLFW hint at @p index for the current backend.
 inline const std::pair<int, int> &getWindowHint(int index) {

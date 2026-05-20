@@ -14,30 +14,6 @@ description: >-
 
 # attach-screenshots
 
-Automated before/after screenshot capture for engine rendering PRs.
-Reviewer agents can read a diff but cannot run the executable — so
-visual changes (AO, shadows, shape SDFs, parity fixes) often ship with
-no way to tell whether they *look right*. This skill closes that gap
-by running the demo twice — once at `origin/master`, once on the
-dirty tree — and committing paired PNGs to the branch.
-
-## When to invoke
-
-Trigger when:
-
-- The user says "attach screenshots", "add screenshots to this PR",
-  "capture before/after", "show me the visual diff".
-- A worker role is about to run `commit-and-push` on a diff that
-  touches visual code (render pipeline, shaders, render prefabs,
-  render-heavy demos). See "Trigger conditions" below.
-- The reviewer agent asks for a visual side-by-side and the worker
-  is addressing the feedback.
-
-Do **not** auto-invoke on pure doc passes, header-only refactors, or
-non-render code. Running the skill is not free — two builds and two
-timed demo runs. Reserve it for PRs where a reviewer genuinely needs
-to see pixels.
-
 ## Trigger conditions (diff-based)
 
 Invoke when `git diff --name-only origin/master...HEAD` or the dirty
@@ -182,13 +158,12 @@ Build and run:
 
 ```bash
 fleet-build --target <demo-name>
-fleet-run --timeout 30 <demo-name> --auto-screenshot 10
+fleet-run <demo-name> --auto-screenshot 10
 ```
 
-`IRShapeDebug` finishes its 6-shot sequence in ~3s; `--timeout 30`
-gives a safety margin for slower hosts without leaving windows open
-if something hangs. `fleet-run` reports `exited cleanly after Ns`
-on normal completion.
+`fleet-run` reports `exited cleanly after Ns` on normal completion.
+Do not add `--timeout` — auto-screenshot fires `closeWindow()` when the
+shot sequence is done; a timeout would mask hangs (see [BUILD.md §Timeout choices](../../../docs/agents/BUILD.md#timeout-choices)).
 
 If `fleet-build` or `fleet-run` fails, **restore** before
 propagating the failure:
@@ -228,7 +203,7 @@ second `rm` needed:
 
 ```bash
 fleet-build --target <demo-name>
-fleet-run --timeout 30 <demo-name> --auto-screenshot 10
+fleet-run <demo-name> --auto-screenshot 10
 ```
 
 Move the PNGs to the output directory with `-after` suffixes,
@@ -315,18 +290,10 @@ over stash:
 
 ## Anti-patterns
 
-- ❌ Committing screenshots in a separate commit. Stage and let
-  `commit-and-push` bundle them into the feature commit.
-- ❌ Running the capture from inside a worker role's tick function or
-  hot path. This skill is explicit, worker-invoked, and costs one
-  full rebuild + timed demo run per pass.
-- ❌ Capturing from any demo other than one that implements
-  `--auto-screenshot`. The "before" pass must be deterministic — a
-  hand-driven demo is not.
-- ❌ Deleting prior `docs/pr-screenshots/<other-branch>/` directories
+- Deleting prior `docs/pr-screenshots/<other-branch>/` directories
   "for tidiness". Each branch owns its own; historical branches are a
   visual changelog.
-- ❌ Invoking this skill on PRs that don't touch visual code. Pure
+- Invoking this skill on PRs that don't touch visual code. Pure
   refactors and doc passes should skip it — the build and run cost
   is not worth no-op screenshots.
 
@@ -359,7 +326,11 @@ What this skill does **not** do:
 - Pick game-creation run targets under `creations/game/` — the demo
   picker here only knows about `creations/demos/*/`.
 - Pixel-level regression diffing. Reviewers eyeball the paired PNGs;
-  an automated diff-gate would be a separate skill.
+  for "show me where the drift is" pipe a pair through
+  `tools/img_diff` (red-on-grey diff image) — and for aggregate
+  pass/fail metrics use `scripts/render-compare.py`. Both are
+  complementary read-only tools; this skill just produces the input
+  PNGs.
 
 ## Example
 

@@ -41,7 +41,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         return MTL::Size(8, 8, 1);
     }
     if (functionName == "c_voxel_visibility_compact" ||
-        functionName == "c_update_voxel_positions") {
+        functionName == "c_update_voxel_positions" ||
+        functionName == "c_update_gpu_particles" ||
+        functionName == "c_render_gpu_particles_to_trixel" ||
+        functionName == "c_render_stateless_particles_to_trixel") {
         return MTL::Size(64, 1, 1);
     }
     if (functionName == "c_trixel_to_trixel") {
@@ -59,6 +62,15 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_bake_sun_shadow_map" ||
         functionName == "c_clear_sun_shadow_map") {
         return MTL::Size(16, 16, 1);
+    }
+    if (functionName == "c_clear_light_volume") {
+        return MTL::Size(8, 8, 8);
+    }
+    if (functionName == "c_seed_light_volume") {
+        return MTL::Size(64, 1, 1);
+    }
+    if (functionName == "c_propagate_light_volume") {
+        return MTL::Size(8, 8, 4);
     }
     return MTL::Size(1, 1, 1);
 }

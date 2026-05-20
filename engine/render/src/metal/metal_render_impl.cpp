@@ -15,6 +15,21 @@ namespace IRRender {
 namespace {
 
 constexpr std::uint32_t kMaxMetalBindings = 32;
+constexpr NS::UInteger kTimestampAttachmentIndex = 0;
+
+struct MetalTimestampPair {
+    MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
+    bool hasStart_ = false;
+    bool hasEnd_ = false;
+};
+
+struct MetalTimestampSampleAttachment {
+    MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
+    NS::UInteger startSampleIndex_ = 0;
+    NS::UInteger endSampleIndex_ = 1;
+};
+
+MetalTimestampSampleAttachment g_nextComputeTimestampAttachment;
 
 MTL::PrimitiveType toMetalPrimitiveType(DrawMode drawMode) {
     switch (drawMode) {
@@ -82,6 +97,38 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
     }
 }
 
+MTL::ComputeCommandEncoder *createComputeEncoder(MTL::CommandBuffer *commandBuffer) {
+    if (commandBuffer == nullptr) {
+        return nullptr;
+    }
+    if (g_nextComputeTimestampAttachment.sampleBuffer_ == nullptr) {
+        return commandBuffer->computeCommandEncoder();
+    }
+
+    auto *descriptor = MTL::ComputePassDescriptor::alloc()->init();
+    auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
+    attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
+    attachment->setStartOfEncoderSampleIndex(g_nextComputeTimestampAttachment.startSampleIndex_);
+    attachment->setEndOfEncoderSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
+    auto *encoder = commandBuffer->computeCommandEncoder(descriptor);
+    descriptor->release();
+
+    g_nextComputeTimestampAttachment = {};
+    return encoder;
+}
+
+void attachTimestampSamples(MTL::RenderPassDescriptor *descriptor) {
+    if (descriptor == nullptr || g_nextComputeTimestampAttachment.sampleBuffer_ == nullptr) {
+        return;
+    }
+
+    auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
+    attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
+    attachment->setStartOfVertexSampleIndex(g_nextComputeTimestampAttachment.startSampleIndex_);
+    attachment->setEndOfFragmentSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
+    g_nextComputeTimestampAttachment = {};
+}
+
 MTL::RenderCommandEncoder *createRenderEncoder() {
     auto *commandBuffer = metalCommandBuffer();
     if (commandBuffer == nullptr) {
@@ -112,6 +159,7 @@ MTL::RenderCommandEncoder *createRenderEncoder() {
     const bool clearTarget = consumeMetalRenderTargetClear();
 
     auto *renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+    attachTimestampSamples(renderPassDescriptor);
     auto *colorAttachment = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachment->setTexture(colorTexture);
     colorAttachment->setLoadAction(clearTarget ? MTL::LoadActionClear : MTL::LoadActionLoad);
@@ -144,26 +192,60 @@ MTL::RenderCommandEncoder *createRenderEncoder() {
     return encoder;
 }
 
+MTL::CounterSet *findTimestampCounterSet(MTL::Device *device) {
+    if (device == nullptr) {
+        return nullptr;
+    }
+    auto *counterSets = device->counterSets();
+    if (counterSets == nullptr) {
+        return nullptr;
+    }
+    for (NS::UInteger i = 0; i < counterSets->count(); ++i) {
+        auto *counterSet = static_cast<MTL::CounterSet *>(counterSets->object(i));
+        if (counterSet != nullptr &&
+            counterSet->name() != nullptr &&
+            counterSet->name()->isEqualToString(MTL::CommonCounterSetTimestamp)) {
+            return counterSet;
+        }
+    }
+    return nullptr;
+}
+
 class MetalRenderDevice final : public RenderDevice {
   public:
     void init(MTL::Device *device, CA::MetalLayer *layer) {
-initializeMetalRuntime(device, layer);
-bindMetalDefaultRenderTarget();
+        initializeMetalRuntime(device, layer);
+        bindMetalDefaultRenderTarget();
+        m_timestampCounterSet = findTimestampCounterSet(device);
+        m_supportsTimestampPairs =
+            m_timestampCounterSet != nullptr &&
+            device->supportsCounterSampling(MTL::CounterSamplingPointAtStageBoundary);
+        if (!m_supportsTimestampPairs) {
+            IR_LOG_WARN(
+                "Metal timestamp counter sampling is unavailable; GPU stage timing will use legacy finish() fallback."
+            );
+        }
     }
 
     void shutdown() {
-shutdownMetalRuntime();
+        for (auto &pair : m_timestamps) {
+            releaseTimestampPair(pair);
+        }
+        m_timestamps.clear();
+        m_timestampCounterSet = nullptr;
+        m_supportsTimestampPairs = false;
+        shutdownMetalRuntime();
     }
 
     void beginFrame() override {
         auto *drawable = metalLayer()->nextDrawable();
         if (drawable == nullptr) {
-setMetalDrawable(nullptr);
-setMetalCommandBuffer(nullptr);
+            setMetalDrawable(nullptr);
+            setMetalCommandBuffer(nullptr);
             return;
         }
-setMetalDrawable(drawable);
-setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+        setMetalDrawable(drawable);
+        setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
     }
 
     void present() override {
@@ -179,17 +261,17 @@ setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
         // Now that the GPU has finished consuming any encoders that
         // captured orphaned buffers, it is safe to release them.
         releaseDeferredMetalBuffers();
-setMetalDrawable(nullptr);
-setMetalCommandBuffer(nullptr);
+        setMetalDrawable(nullptr);
+        setMetalCommandBuffer(nullptr);
     }
 
     void clearDefaultFramebuffer() override {
-bindMetalDefaultRenderTarget();
-requestMetalRenderTargetClear();
+        bindMetalDefaultRenderTarget();
+        requestMetalRenderTargetClear();
     }
 
     void bindDefaultFramebuffer() override {
-bindMetalDefaultRenderTarget();
+        bindMetalDefaultRenderTarget();
     }
 
     bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData) override {
@@ -262,7 +344,10 @@ bindMetalDefaultRenderTarget();
             return;
         }
 
-        auto *encoder = commandBuffer->computeCommandEncoder();
+        auto *encoder = createComputeEncoder(commandBuffer);
+        if (encoder == nullptr) {
+            return;
+        }
         encoder->setComputePipelineState(pipeline->getComputePipelineState());
         bindComputeResources(encoder);
         encoder->dispatchThreadgroups(
@@ -292,7 +377,10 @@ bindMetalDefaultRenderTarget();
             return;
         }
 
-        auto *encoder = commandBuffer->computeCommandEncoder();
+        auto *encoder = createComputeEncoder(commandBuffer);
+        if (encoder == nullptr) {
+            return;
+        }
         encoder->setComputePipelineState(pipeline->getComputePipelineState());
         bindComputeResources(encoder);
         encoder->dispatchThreadgroups(
@@ -414,15 +502,53 @@ metalCurrentDepthPixelFormat(),
         encoder->endEncoding();
     }
 
+    void drawArraysInstanced(
+        DrawMode drawMode, int first, int count, int instanceCount
+    ) override {
+        if (instanceCount <= 0) {
+            return;
+        }
+        auto *pipeline = activeMetalPipeline();
+        const auto &layout = activeMetalVertexLayout();
+        if (pipeline == nullptr || pipeline->isComputePipeline()) {
+            return;
+        }
+
+        auto *encoder = createRenderEncoder();
+        if (encoder == nullptr) {
+            return;
+        }
+
+        auto *pipelineState = pipeline->getRenderPipelineState(
+            metalCurrentColorPixelFormat(),
+            metalCurrentDepthPixelFormat(),
+            layout.vertexDescriptor_
+        );
+        IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
+        encoder->setRenderPipelineState(pipelineState);
+        if (metalCurrentDepthTexture() != nullptr) {
+            encoder->setDepthStencilState(currentMetalDepthStencilState());
+        }
+        bindRenderResources(encoder);
+        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        encoder->drawPrimitives(
+            toMetalPrimitiveType(drawMode),
+            static_cast<NS::UInteger>(first),
+            static_cast<NS::UInteger>(count),
+            static_cast<NS::UInteger>(instanceCount)
+        );
+        encoder->endEncoding();
+    }
+
     void setPolygonMode(PolygonMode) override {}
 
     void enableBlending() override {}
     void disableBlending() override {}
     void setDepthTest(bool enabled) override {
-setMetalDepthTestEnabled(enabled);
+        setMetalDepthTestEnabled(enabled);
     }
     void setDepthWrite(bool enabled) override {
-setMetalDepthWriteEnabled(enabled);
+        setMetalDepthWriteEnabled(enabled);
     }
     void clearTexImage(const Texture2D *textureWrapper, int level, const void *data) override {
         if (textureWrapper == nullptr) {
@@ -491,6 +617,120 @@ setMetalDepthWriteEnabled(enabled);
         releaseDeferredMetalBuffers();
         setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
     }
+
+    GpuTimestampHandle createTimestampPair() override {
+        if (!m_supportsTimestampPairs) {
+            return kInvalidGpuTimestampHandle;
+        }
+
+        auto *descriptor = MTL::CounterSampleBufferDescriptor::alloc()->init();
+        descriptor->setCounterSet(m_timestampCounterSet);
+        descriptor->setSampleCount(2);
+        descriptor->setStorageMode(MTL::StorageModeShared);
+
+        NS::Error *error = nullptr;
+        MTL::CounterSampleBuffer *sampleBuffer =
+            metalDevice()->newCounterSampleBuffer(descriptor, &error);
+        descriptor->release();
+
+        if (sampleBuffer == nullptr) {
+            const char *description =
+                error != nullptr && error->localizedDescription() != nullptr
+                    ? error->localizedDescription()->utf8String()
+                    : "<unknown>";
+            IR_LOG_WARN("Failed to create Metal timestamp counter sample buffer: {}", description);
+            m_supportsTimestampPairs = false;
+            return kInvalidGpuTimestampHandle;
+        }
+
+        const GpuTimestampHandle handle = m_nextTimestampHandle++;
+        m_timestamps.push_back(MetalTimestampPair{sampleBuffer, false, false});
+        return handle;
+    }
+
+    void destroyTimestampPair(GpuTimestampHandle handle) override {
+        MetalTimestampPair *pair = findTimestampPair(handle);
+        if (pair == nullptr) {
+            return;
+        }
+        releaseTimestampPair(*pair);
+    }
+
+    bool supportsGpuTimestampPairs() const override {
+        return m_supportsTimestampPairs;
+    }
+
+    int recommendedTimestampPairsInFlight() const override {
+        // This backend waits at present today, so one pair per tagged stage is
+        // enough and avoids exhausting Metal's limited sample-buffer quota.
+        return 1;
+    }
+
+    void writeTimestamp(GpuTimestampHandle handle, TimestampSlot slot) override {
+        MetalTimestampPair *pair = findTimestampPair(handle);
+        if (pair == nullptr || pair->sampleBuffer_ == nullptr) {
+            return;
+        }
+
+        if (slot == TimestampSlot::START) {
+            g_nextComputeTimestampAttachment = {
+                pair->sampleBuffer_,
+                0,
+                1
+            };
+            pair->hasStart_ = true;
+            pair->hasEnd_ = false;
+        } else {
+            pair->hasEnd_ = true;
+        }
+    }
+
+    bool readTimestampPairMs(GpuTimestampHandle handle, float &outMs) override {
+        MetalTimestampPair *pair = findTimestampPair(handle);
+        if (pair == nullptr || pair->sampleBuffer_ == nullptr) {
+            return false;
+        }
+        if (!pair->hasStart_ || !pair->hasEnd_) {
+            return false;
+        }
+
+        NS::Data *data = pair->sampleBuffer_->resolveCounterRange(NS::Range::Make(0, 2));
+        if (data == nullptr || data->length() < sizeof(MTL::CounterResultTimestamp) * 2) {
+            return false;
+        }
+        auto *samples = static_cast<MTL::CounterResultTimestamp *>(data->mutableBytes());
+        if (samples == nullptr ||
+            samples[0].timestamp == MTL::CounterErrorValue ||
+            samples[1].timestamp == MTL::CounterErrorValue ||
+            samples[1].timestamp < samples[0].timestamp) {
+            return false;
+        }
+
+        outMs = static_cast<float>(samples[1].timestamp - samples[0].timestamp) / 1'000'000.0f;
+        return true;
+    }
+
+  private:
+    MetalTimestampPair *findTimestampPair(GpuTimestampHandle handle) {
+        if (handle == kInvalidGpuTimestampHandle || handle > m_timestamps.size()) {
+            return nullptr;
+        }
+        return &m_timestamps[handle - 1];
+    }
+
+    void releaseTimestampPair(MetalTimestampPair &pair) {
+        if (pair.sampleBuffer_ != nullptr) {
+            pair.sampleBuffer_->release();
+            pair.sampleBuffer_ = nullptr;
+        }
+        pair.hasStart_ = false;
+        pair.hasEnd_ = false;
+    }
+
+    GpuTimestampHandle m_nextTimestampHandle = 1;
+    std::vector<MetalTimestampPair> m_timestamps;
+    MTL::CounterSet *m_timestampCounterSet = nullptr;
+    bool m_supportsTimestampPairs = false;
 };
 
 MetalRenderDevice g_metalRenderDevice;
@@ -503,7 +743,7 @@ std::unique_ptr<RenderImpl> createRenderer() {
 MetalRenderImpl::MetalRenderImpl()
     : m_device{MTL::CreateSystemDefaultDevice()} {
     IRE_LOG_INFO("Initializing Metal render implementation.");
-setMetalBootstrapDevice(m_device);
+    setMetalBootstrapDevice(m_device);
 }
 
 MetalRenderImpl::~MetalRenderImpl() {
@@ -542,7 +782,7 @@ void MetalRenderImpl::printInfo() {
 }
 
 void metalCallback_framebuffer_size(GLFWwindow *, int width, int height) {
-resizeMetalDrawable(width, height);
+    resizeMetalDrawable(width, height);
     IRE_LOG_INFO("Resized Metal viewport to {}x{}", width, height);
 }
 

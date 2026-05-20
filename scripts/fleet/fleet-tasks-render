@@ -1,0 +1,772 @@
+#!/usr/bin/env python3
+# fleet-tasks-render — recompute derived fields in TASKS.md from
+# GitHub state, idempotently.
+#
+# Why this exists
+# ===============
+#
+# TASKS.md is the shared queue. It mixes human-authored fields
+# (title, ID, Area, Model, Notes, Acceptance, Issue, Stack, Blocked
+# by) with derived fields (the [ ]/[~]/[x] status marker, Owner,
+# Done-section ordering, Blocked-by resolution against current
+# state). Today an LLM agent (queue-manager) hand-edits the derived
+# fields. That has been a steady source of drift and outage:
+#
+#   - "T-067 ghost row" — task closed via a different PR, row stays
+#     [~] with stale owner forever.
+#   - "PR #543 stranded merge" — PR's mergedAt is set but base !=
+#     master, so the commit is unreachable from origin/master and
+#     the task should NOT be flipped to [x] yet.
+#   - Queue-manager iteration interrupted mid-edit leaves dirty
+#     working tree; next iteration redoes the same edits and gets
+#     killed at the same point — what we hit on 2026-05-08.
+#
+# This script is the mechanical replacement for the bookkeeping
+# half of queue-manager. It reads TASKS.md, looks up matching PRs
+# via the scout cache (~/.fleet/state/state.json), and rewrites
+# the derived fields in place. The human-authored fields flow
+# through verbatim — if you didn't write that line, this script
+# doesn't touch it.
+#
+# Idempotence is the load-bearing invariant: running this script
+# twice on the same input produces the same output. An interrupted
+# iteration just re-runs and converges; there is no "stuck dirty
+# state" failure mode because the renderer owns the whole derived
+# subset.
+#
+# Source of truth: scripts/fleet/fleet-tasks-render in the engine
+# repo. Symlinked to ~/bin/fleet-tasks-render by install.sh.
+
+import argparse
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+from typing import Iterable, Optional
+
+# Per-line regexes that classify TASKS.md content. Keep these aligned
+# with fleet-state-scout's parser so the two stay drift-free.
+TASK_HEADER_RE = re.compile(r"^- \[([ ~x!])\] \*\*(.+?)\*\*\s*(?:—\s*(.*))?$")
+TASK_FIELD_RE = re.compile(r"^(\s+)- \*\*([^:]+?):\*\*\s*(.*?)\s*$")
+DONE_ENTRY_RE = re.compile(
+    r"^- \[x\] \*\*([^*]+?)\*\* — (.+?)(?:\s+·\s+Owner:\s+(\S+))?(?:\s+·\s+PR:\s+(\S+))?$"
+)
+SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
+TASK_ID_RE = re.compile(r"^T-\d+$")
+PR_TITLE_PREFIX_RE = re.compile(r"^(T-\d+):")
+
+# Sections that participate in derived rendering. Everything else is
+# pass-through (front matter, Done — last 20 sub-header notes,
+# trailing footer).
+OPEN_HEADER_RE = re.compile(r"^##\s+Open\s*$", re.IGNORECASE)
+DONE_HEADER_RE = re.compile(r"^##\s+Done\b", re.IGNORECASE)
+
+DEFAULT_DONE_LIMIT = 20
+
+DEFAULT_STATE_FILE = pathlib.Path(
+    os.environ.get("FLEET_STATE_DIR", str(pathlib.Path.home() / ".fleet" / "state"))
+) / "state.json"
+
+
+# ---------------------------------------------------------------------------
+# GitHub-state lookup
+# ---------------------------------------------------------------------------
+
+
+def load_pr_state(state_file: pathlib.Path, repo_key: str) -> dict[str, list[dict]]:
+    """Return {'open': [...], 'merged': [...], 'closed_issues': {N: {...}}}
+    for the given repo from the scout cache.
+
+    `closed_issues` is the set of closed `fleet:queued` issues (issue
+    number → issue record). Used to reap TASKS.md rows whose linked
+    Issue closed via a PR whose title doesn't match the canonical
+    `T-NNN:` prefix — the case that caused the T-166 / T-217 / T-279
+    ghost-row outage on 2026-05-18.
+
+    Falls back to a `gh pr list` shell-out if the cache is missing or
+    truncated. The cache is the fast path — every fleet pane's startup
+    already populates it.
+    """
+    state_obj = None
+    if state_file.is_file():
+        try:
+            state_obj = json.loads(state_file.read_text())
+        except (OSError, json.JSONDecodeError):
+            state_obj = None
+
+    out: dict = {"open": [], "merged": [], "closed_issues": {}}
+    if state_obj is not None:
+        repo_state = state_obj.get("repos", {}).get(repo_key, {})
+        out["open"] = list(repo_state.get("prs", []))
+        out["merged"] = list(repo_state.get("recent_merged_prs", []))
+        out["closed_issues"] = {
+            i["number"]: i for i in repo_state.get("closed_fleet_queued", [])
+        }
+        if out["open"] or out["merged"] or out["closed_issues"]:
+            return out
+
+    # Cache empty / unreadable. Shell out as a safety net so a fresh
+    # checkout (no scout running) can still render.
+    repo_slug = "jakildev/IrredenEngine" if repo_key == "engine" else "jakildev/irreden"
+    out["open"] = _gh_list(repo_slug, "open")
+    out["merged"] = _gh_list(repo_slug, "merged", limit=30)
+    # closed_issues stays empty on the fallback path — without the scout
+    # cache we accept that the closed-issue reaper is best-effort. The
+    # PR-title path still covers the common case; this fallback exists
+    # for fresh checkouts where no scout has run yet.
+    return out
+
+
+def _gh_list(repo: str, state: str, limit: int = 100) -> list[dict]:
+    fields = "number,title,headRefName,baseRefName,mergedAt,labels,state"
+    if state == "open":
+        fields = "number,title,headRefName,baseRefName,labels,state,updatedAt"
+    cmd = [
+        "gh", "pr", "list", "--repo", repo, "--state", state,
+        "--limit", str(limit), "--json", fields,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    try:
+        prs = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+    for pr in prs:
+        labels = pr.get("labels") or []
+        pr["labels"] = sorted(
+            (lbl.get("name", "") if isinstance(lbl, dict) else lbl)
+            for lbl in labels
+        )
+    return prs
+
+
+def index_prs_by_task_id(prs: Iterable[dict]) -> dict[str, list[dict]]:
+    """Group PRs by their `T-NNN:` title prefix. Multiple PRs per task
+    are kept as a list; the caller picks by recency.
+
+    PRs whose title doesn't start with `T-NNN:` are dropped — they're
+    fleet-tooling PRs not tied to a TASKS.md row.
+    """
+    out: dict[str, list[dict]] = {}
+    for pr in prs:
+        m = PR_TITLE_PREFIX_RE.match(pr.get("title", ""))
+        if not m:
+            continue
+        out.setdefault(m.group(1), []).append(pr)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# TASKS.md parsing — block-preserving
+# ---------------------------------------------------------------------------
+
+
+class TaskBlock:
+    """One open-section task entry, parsed but kept line-line so the
+    renderer can rewrite only the lines it owns and pass everything
+    else verbatim.
+
+    Layout:
+        header_line:  `- [STATUS] **TITLE** — SUMMARY`
+        field_lines:  list of (indent, key, value, raw_line) tuples
+                      keyed by the field's lowercase ASCII name
+        trailing:     blank lines / non-field lines that follow the
+                      block before the next task starts (e.g. the
+                      empty line between blocks).
+
+    The block is rebuilt by emit() — touching only header status and
+    the Owner / Blocked by / Status field lines.
+    """
+
+    HEADER_FIELD_KEYS = ("id", "area", "model", "owner", "blocked_by",
+                         "stack", "acceptance", "issue", "notes", "links")
+
+    def __init__(self) -> None:
+        self.status: str = " "
+        self.title: str = ""
+        self.summary: str = ""
+        self.fields: list[tuple[str, str, str, str]] = []
+        self.trailing: list[str] = []
+
+    def get_field(self, key: str) -> Optional[str]:
+        for _indent, fkey, value, _raw in self.fields:
+            if fkey == key:
+                return value
+        return None
+
+    def set_field(self, key: str, new_value: str) -> bool:
+        for i, (indent, fkey, _value, _raw) in enumerate(self.fields):
+            if fkey == key:
+                pretty_key = self.fields[i][3]
+                # Reuse the existing line's indent + key spelling so a
+                # field whose label is e.g. "Blocked by" round-trips
+                # case-correctly. Take the prefix up to ":**" and rebuild
+                # only the value side.
+                m = TASK_FIELD_RE.match(pretty_key)
+                if m:
+                    label = m.group(2)
+                    new_raw = f"{indent}- **{label}:** {new_value}".rstrip()
+                else:
+                    new_raw = f"{indent}- **{key.replace('_', ' ').title()}:** {new_value}"
+                self.fields[i] = (indent, fkey, new_value, new_raw)
+                return True
+        return False
+
+    @property
+    def task_id(self) -> Optional[str]:
+        v = self.get_field("id")
+        return v if v and TASK_ID_RE.match(v) else None
+
+    def emit(self) -> list[str]:
+        lines = [f"- [{self.status}] **{self.title}**"]
+        if self.summary:
+            lines[0] += f" — {self.summary}"
+        for _indent, _fkey, _value, raw in self.fields:
+            lines.append(raw)
+        lines.extend(self.trailing)
+        return lines
+
+
+def parse_tasks_md(text: str):
+    """Split TASKS.md into a renderable representation:
+        (front_matter, open_blocks, done_lines, post_done)
+
+    `front_matter` and `post_done` are passed through verbatim. Only
+    `open_blocks` and `done_lines` are touched by the renderer.
+
+    The Done section is parsed as a list of single-line entries (the
+    compact format) plus any inline comments / blanks that surround
+    them; the renderer rewrites the `[x]` lines and preserves the rest
+    of that section unchanged.
+    """
+    lines = text.splitlines()
+    front_matter: list[str] = []
+    open_blocks: list[TaskBlock] = []
+    done_section_header: Optional[str] = None
+    done_pre_lines: list[str] = []  # lines between `## Done` and first `[x]`
+    done_lines: list[str] = []      # the `[x]` entries themselves
+    post_done: list[str] = []       # any trailing footer
+
+    section: Optional[str] = None
+    current_block: Optional[TaskBlock] = None
+
+    def stash_block():
+        nonlocal current_block
+        if current_block is not None:
+            open_blocks.append(current_block)
+            current_block = None
+
+    for line in lines:
+        if section is None:
+            if OPEN_HEADER_RE.match(line):
+                section = "open"
+                front_matter.append(line)
+                continue
+            if DONE_HEADER_RE.match(line):
+                section = "done"
+                done_section_header = line
+                continue
+            front_matter.append(line)
+            continue
+
+        if section == "open":
+            if DONE_HEADER_RE.match(line):
+                stash_block()
+                section = "done"
+                done_section_header = line
+                continue
+            header_match = TASK_HEADER_RE.match(line)
+            if header_match:
+                stash_block()
+                current_block = TaskBlock()
+                current_block.status = header_match.group(1)
+                current_block.title = header_match.group(2)
+                current_block.summary = (header_match.group(3) or "").strip()
+                continue
+            if current_block is None:
+                # Stray line in the Open section before the first task —
+                # belongs to the "## Open" preamble (e.g. the
+                # `<!-- Add tasks below this line. -->` comment).
+                front_matter.append(line)
+                continue
+            field_match = TASK_FIELD_RE.match(line)
+            if field_match:
+                indent = field_match.group(1)
+                key = field_match.group(2).strip().lower().replace(" ", "_")
+                value = field_match.group(3)
+                current_block.fields.append((indent, key, value, line))
+                continue
+            # Non-field, non-header, non-section line — trailing
+            # whitespace / comments inside a task block.
+            current_block.trailing.append(line)
+            continue
+
+        if section == "done":
+            if DONE_ENTRY_RE.match(line):
+                done_lines.append(line)
+                continue
+            if SECTION_RE.match(line):
+                # New section after Done — treat everything from here
+                # on as post-Done passthrough.
+                post_done.append(line)
+                section = "post_done"
+                continue
+            if done_lines:
+                # Anything after the first `[x]` line that isn't another
+                # `[x]` is footer-style content (could be a trailing
+                # comment, etc.).
+                post_done.append(line)
+                continue
+            done_pre_lines.append(line)
+            continue
+
+        post_done.append(line)
+
+    stash_block()
+
+    return front_matter, open_blocks, (done_section_header, done_pre_lines, done_lines), post_done
+
+
+# ---------------------------------------------------------------------------
+# Status / Owner derivation
+# ---------------------------------------------------------------------------
+
+
+def pick_pr(prs: list[dict]) -> Optional[dict]:
+    """From a set of PRs sharing a T-NNN prefix, pick the one that
+    represents 'current state':
+        1. Newest merged-to-master PR (status [x]).
+        2. Otherwise, newest open PR (status [~]).
+        3. Otherwise, newest stranded merge — mergedAt set but base !=
+           master. The task is effectively still in progress because
+           the commit isn't reachable from master. Status [~].
+        4. Otherwise, None (status [ ]).
+    """
+    if not prs:
+        return None
+    merged_master = [p for p in prs
+                     if p.get("mergedAt") and p.get("baseRefName") == "master"]
+    if merged_master:
+        merged_master.sort(key=lambda p: p.get("mergedAt") or "", reverse=True)
+        return merged_master[0]
+    open_prs = [p for p in prs if not p.get("mergedAt")]
+    if open_prs:
+        open_prs.sort(key=lambda p: p.get("updatedAt") or "", reverse=True)
+        return open_prs[0]
+    stranded = [p for p in prs if p.get("mergedAt")
+                and p.get("baseRefName") != "master"]
+    if stranded:
+        stranded.sort(key=lambda p: p.get("mergedAt") or "", reverse=True)
+        return stranded[0]
+    return None
+
+
+def load_fs_claims(repo_key: str) -> set[str]:
+    """Return the set of task IDs that have an active fleet-claim FS lock.
+
+    Filters by the slug's namespace prefix so engine renders ignore game
+    claims and vice-versa. Engine slugs lack a prefix; game slugs are
+    `game-...`. The directory is read defensively — a malformed or
+    missing entry contributes nothing rather than aborting the render.
+
+    Used by `derive_status` to preserve [~] in the no-PR window between
+    `fleet-claim claim` (T-138 master-push) and the worker's first
+    `gh pr create`. Without this, the next queue-tick after the master
+    push would clobber [~] back to [ ] before the worker had a chance
+    to open the PR — the very race T-138 is meant to close.
+    """
+    claims_dir = pathlib.Path(
+        os.environ.get(
+            "FLEET_CLAIMS_DIR",
+            str(pathlib.Path.home() / ".fleet" / "claims"),
+        )
+    )
+    if not claims_dir.is_dir():
+        return set()
+    out: set[str] = set()
+    for entry in sorted(claims_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        slug = entry.name
+        # Stack metadata (`_stack_<agent>/`) is bookkeeping, not a claim.
+        if slug.startswith("_stack_"):
+            continue
+        if repo_key == "engine" and slug.startswith("game-"):
+            continue
+        if repo_key == "game" and not slug.startswith("game-"):
+            continue
+        title_file = entry / "title"
+        if not title_file.is_file():
+            continue
+        try:
+            tid = title_file.read_text().strip()
+        except OSError:
+            continue
+        if TASK_ID_RE.match(tid):
+            out.add(tid)
+    return out
+
+
+def derive_status(
+    task_id: str,
+    by_id: dict[str, list[dict]],
+    fs_claims: Optional[set[str]] = None,
+    existing_status: Optional[str] = None,
+    existing_owner: Optional[str] = None,
+    issue_number: Optional[int] = None,
+    closed_issues: Optional[dict[int, dict]] = None,
+) -> tuple[str, str, Optional[dict]]:
+    """Return (status_marker, owner_string, pr_or_None) for a task id.
+
+    If `issue_number` is provided and refers to an issue in
+    `closed_issues`, the row is reaped to `[x]` even when no
+    `T-NNN:`-prefixed PR is found. This catches the case where the
+    closing PR's title doesn't carry the task ID (e.g., manual close,
+    PR landed via a different task ID, freeform PR title) — without
+    this fallback the row strands in `## Open` forever.
+    """
+    pr = pick_pr(by_id.get(task_id, []))
+    if pr is None:
+        # No PR found. Before falling back to [ ]/free, check the
+        # closed-issue reaper: if the linked Issue is CLOSED, the
+        # deliverable landed via a PR the renderer can't see (wrong
+        # title prefix, or the PR has fallen out of the merged-PR
+        # cache window). Move the row to Done.
+        if (
+            issue_number is not None
+            and closed_issues
+            and issue_number in closed_issues
+        ):
+            return "x", "free", None  # synthetic [x]; no PR record to point at
+        # T-138 exception: if fleet-claim has just written [~] to master
+        # but the worker hasn't opened the PR yet, the FS claim is the
+        # only signal that the task is in-flight. Preserve [~] in that
+        # narrow window so this render doesn't overwrite the master-push
+        # we just made. `cmd_check_stale` later prunes abandoned FS
+        # claims; the next render after that reverts naturally to [ ].
+        if (
+            fs_claims
+            and task_id in fs_claims
+            and existing_status == "~"
+        ):
+            return "~", existing_owner or "free", None
+        return " ", "free", None
+    if pr.get("mergedAt") and pr.get("baseRefName") == "master":
+        return "x", "free", pr  # owner irrelevant for merged
+    if pr.get("mergedAt"):
+        # Stranded merge: PR is technically merged but base != master.
+        # Treat as still in-progress so the task isn't moved to Done.
+        head = pr.get("headRefName", "")
+        return "~", head or "free", pr
+    head = pr.get("headRefName", "")
+    return "~", head or "free", pr
+
+
+def render_blocked_by(value: str, status_by_id: dict[str, str]) -> str:
+    """Drop blockers that are now [x]; keep the rest.
+
+    Format: comma-separated list of task IDs (e.g. `T-127, T-128`) or
+    `(none)`. Free-text blockers (PR URLs, plain prose) are passed
+    through unchanged — the queue-manager doc allows e.g. PR URLs as
+    cross-repo blockers.
+    """
+    if not value or value.strip().lower() in {"(none)", "none"}:
+        return value or "(none)"
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    kept = []
+    for part in parts:
+        if TASK_ID_RE.match(part):
+            if status_by_id.get(part) != "x":
+                kept.append(part)
+            continue
+        # Free-text / URL — preserve verbatim.
+        kept.append(part)
+    return ", ".join(kept) if kept else "(none)"
+
+
+# ---------------------------------------------------------------------------
+# Done-section composition
+# ---------------------------------------------------------------------------
+
+
+def compose_done_section(
+    merged_prs: list[dict],
+    existing_done: list[str],
+    repo_slug: str,
+    limit: int = DEFAULT_DONE_LIMIT,
+) -> list[str]:
+    """Build a Done section from merged-to-master PRs.
+
+    Ordering is by `mergedAt` descending — the merged-PR cache is the
+    authoritative timeline, so tasks always land in the right slot
+    even when a single merge wave brings in PRs out of number order.
+
+    Existing entries from the input TASKS.md contribute two things:
+      - Hand-tuned `title` text. Queue-manager often polishes the title
+        when moving a task to Done (trim redundant prefixes, expand
+        abbreviations). Preserving the title preserves idempotence
+        across renderer runs and avoids gratuitous re-rendering churn
+        on every fleet tick.
+      - Carry-over for tasks older than the merged-PR cache window
+        (default 30). Those have no mergedAt available, so they sort
+        to the end of the list.
+    """
+    # Map task-id → existing hand-tuned title (the prose between
+    # `**T-NNN** —` and the ` · Owner:` separator).
+    existing_titles: dict[str, str] = {}
+    existing_order: list[str] = []
+    for line in existing_done:
+        m = DONE_ENTRY_RE.match(line)
+        if not m:
+            continue
+        tid = m.group(1)
+        if tid not in existing_titles:
+            existing_titles[tid] = m.group(2)
+            existing_order.append(tid)
+
+    # Bucket merged-to-master PRs by task id — keep the latest merge
+    # if a task has multiple matching PRs.
+    by_id: dict[str, tuple[str, str]] = {}  # tid → (mergedAt, line)
+    for pr in merged_prs:
+        if pr.get("baseRefName") != "master":
+            continue
+        if not pr.get("mergedAt"):
+            continue
+        m = PR_TITLE_PREFIX_RE.match(pr.get("title", ""))
+        if not m:
+            continue
+        tid = m.group(1)
+        # Prefer the existing hand-tuned title if we have one; fall
+        # back to the PR title's tail.
+        if tid in existing_titles:
+            title_text = existing_titles[tid]
+        else:
+            title_text = pr["title"][m.end():].lstrip(": ").strip()
+        head = pr.get("headRefName", "") or "unknown"
+        pr_url = f"https://github.com/{repo_slug}/pull/{pr['number']}"
+        line = f"- [x] **{tid}** — {title_text} · Owner: {head} · PR: {pr_url}"
+        existing = by_id.get(tid)
+        if existing is None or pr["mergedAt"] > existing[0]:
+            by_id[tid] = (pr["mergedAt"], line)
+
+    # Carry-over entries for tasks older than the cache window. They
+    # have no mergedAt — append them after the cache-sourced entries.
+    cache_ids = set(by_id.keys())
+    carry_over: list[str] = []
+    for tid in existing_order:
+        if tid in cache_ids:
+            continue
+        # Reconstruct the original line (we don't track raw text here).
+        # Fortunately existing_done preserves it verbatim.
+        for line in existing_done:
+            m = DONE_ENTRY_RE.match(line)
+            if m and m.group(1) == tid:
+                carry_over.append(line)
+                break
+
+    # Sort cache-sourced entries by mergedAt desc.
+    sorted_cache_entries = sorted(
+        by_id.values(), key=lambda x: x[0], reverse=True
+    )
+    output = [line for _mat, line in sorted_cache_entries] + carry_over
+    return output[:limit]
+
+
+# ---------------------------------------------------------------------------
+# Top-level render
+# ---------------------------------------------------------------------------
+
+
+def render(
+    text: str,
+    state_file: pathlib.Path = DEFAULT_STATE_FILE,
+    repo_key: str = "engine",
+    repo_slug: Optional[str] = None,
+    done_limit: int = DEFAULT_DONE_LIMIT,
+) -> str:
+    if repo_slug is None:
+        repo_slug = "jakildev/IrredenEngine" if repo_key == "engine" else "jakildev/irreden"
+
+    pr_state = load_pr_state(state_file, repo_key)
+    by_id = index_prs_by_task_id(pr_state["open"] + pr_state["merged"])
+
+    front, open_blocks, (done_header, done_pre, done_lines), post_done = parse_tasks_md(text)
+
+    # status_by_id is consulted by the blocker-resolution pass below.
+    # Pre-seed it from the merged-PR cache so blockers that reference
+    # already-done tasks (no longer in the Open section) are still
+    # detected as resolved.
+    status_by_id: dict[str, str] = {}
+    for tid, prs in by_id.items():
+        merged_master = [p for p in prs
+                         if p.get("mergedAt") and p.get("baseRefName") == "master"]
+        if merged_master:
+            status_by_id[tid] = "x"
+    # Also seed from the input Done section's [x] entries — covers tasks
+    # whose merge predates the cache window.
+    for line in done_lines:
+        m = DONE_ENTRY_RE.match(line)
+        if m:
+            status_by_id.setdefault(m.group(1), "x")
+
+    # FS claims (T-138): preserves [~] in the no-PR window after
+    # fleet-claim's master-push and before the worker's PR is opened.
+    fs_claims = load_fs_claims(repo_key)
+
+    closed_issues = pr_state.get("closed_issues") or {}
+
+    # First pass: derive status for each task. Detect newly-merged
+    # tasks so we can move them to Done.
+    block_decisions: list[tuple[TaskBlock, str, str, Optional[dict]]] = []
+    for block in open_blocks:
+        tid = block.task_id
+        if tid is None:
+            block_decisions.append((block, block.status, block.get_field("owner") or "free", None))
+            continue
+        existing_owner = block.get_field("owner")
+        issue_field = block.get_field("issue") or ""
+        m = re.match(r"#(\d+)", issue_field.strip())
+        issue_number = int(m.group(1)) if m else None
+        marker, owner, pr = derive_status(
+            tid, by_id, fs_claims=fs_claims,
+            existing_status=block.status,
+            existing_owner=existing_owner,
+            issue_number=issue_number,
+            closed_issues=closed_issues,
+        )
+        status_by_id[tid] = marker
+        block_decisions.append((block, marker, owner, pr))
+
+    # Second pass: rewrite blocks (status, owner, blocked-by). Tasks
+    # whose new status is `x` are moved to Done. The synthetic-[x] case
+    # (linked Issue closed but no PR found) gets a placeholder Done
+    # entry pointing at the issue URL so the human can click through.
+    surviving_blocks: list[TaskBlock] = []
+    moved_to_done: list[dict] = []
+    synthetic_done_lines: list[str] = []
+    for block, marker, owner, pr in block_decisions:
+        if marker == "x" and pr is not None:
+            moved_to_done.append(pr)
+            continue
+        if marker == "x" and pr is None:
+            tid = block.task_id or block.title
+            issue_field = block.get_field("issue") or ""
+            mm = re.match(r"#(\d+)", issue_field.strip())
+            issue_url = (
+                f"https://github.com/{repo_slug}/issues/{mm.group(1)}"
+                if mm else "(unknown)"
+            )
+            title_text = block.summary or block.title
+            synthetic_done_lines.append(
+                f"- [x] **{tid}** — {title_text} · Owner: (auto-reaped) · PR: {issue_url}"
+            )
+            continue
+        block.status = marker
+        block.set_field("owner", owner if marker == "~" else "free")
+        existing_blocked_by = block.get_field("blocked_by")
+        if existing_blocked_by is not None:
+            block.set_field(
+                "blocked_by",
+                render_blocked_by(existing_blocked_by, status_by_id),
+            )
+        surviving_blocks.append(block)
+
+    # Compose the new Done section. Include the freshly-moved blocks +
+    # everything already in the merged-PR cache, plus any synthetic [x]
+    # entries from the closed-issue reaper. Synthetic entries are
+    # prepended verbatim to existing_done so compose_done_section's
+    # title-carryover logic preserves them across renders.
+    if synthetic_done_lines:
+        done_lines = synthetic_done_lines + done_lines
+    new_done_lines = compose_done_section(
+        pr_state["merged"], done_lines, repo_slug, done_limit
+    )
+
+    # Stitch the output back together. Each block carries its own
+    # trailing blank line(s) — emit them verbatim so we don't insert
+    # double separators between blocks.
+    out_lines: list[str] = list(front)
+    for block in surviving_blocks:
+        out_lines.extend(block.emit())
+    if done_header:
+        # Ensure there is exactly one blank line between the last open
+        # block (or the front-matter end) and the Done header.
+        while out_lines and out_lines[-1] == "":
+            out_lines.pop()
+        out_lines.append("")
+        out_lines.append(done_header)
+    out_lines.extend(done_pre)
+    if new_done_lines and (not done_pre or done_pre[-1] != ""):
+        out_lines.append("")
+    out_lines.extend(new_done_lines)
+    out_lines.extend(post_done)
+
+    text_out = "\n".join(out_lines).rstrip("\n") + "\n"
+    return text_out
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "tasks_md",
+        nargs="?",
+        default=str(pathlib.Path.cwd() / "TASKS.md"),
+        help="Path to TASKS.md (default: ./TASKS.md)",
+    )
+    parser.add_argument(
+        "--in-place", action="store_true",
+        help="Rewrite the file in place instead of writing to stdout.",
+    )
+    parser.add_argument(
+        "--state-file", default=str(DEFAULT_STATE_FILE),
+        help="Scout-cache state.json (default: ~/.fleet/state/state.json)",
+    )
+    parser.add_argument(
+        "--repo", choices=["engine", "game"], default="engine",
+        help="Repo key for cache lookup (default: engine).",
+    )
+    parser.add_argument(
+        "--repo-slug",
+        help="Override repo slug for `gh` fallback (default: jakildev/IrredenEngine for engine).",
+    )
+    parser.add_argument(
+        "--done-limit", type=int, default=DEFAULT_DONE_LIMIT,
+        help=f"Max entries in the Done section (default: {DEFAULT_DONE_LIMIT}).",
+    )
+    args = parser.parse_args(argv)
+
+    src = pathlib.Path(args.tasks_md)
+    try:
+        text = src.read_text()
+    except OSError as e:
+        print(f"fleet-tasks-render: cannot read {src}: {e}", file=sys.stderr)
+        return 2
+
+    output = render(
+        text,
+        state_file=pathlib.Path(args.state_file),
+        repo_key=args.repo,
+        repo_slug=args.repo_slug,
+        done_limit=args.done_limit,
+    )
+
+    if args.in_place:
+        src.write_text(output)
+    else:
+        sys.stdout.write(output)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

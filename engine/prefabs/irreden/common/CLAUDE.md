@@ -6,14 +6,21 @@ in `update/`.
 
 ## Key components
 
-- `C_Position3D` — local vec3.
-- `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**.
-- `C_PositionOffset3D` — ephemeral delta added on top of global.
-  **Auto-added by `createEntity(...)`**.
-- `C_Rotation` — Euler vec3.
-- `C_Name` — debug/display string.
-- `C_Player` — tag for player-controlled entities.
-- `C_Selected` — tag for UI selection.
+- `C_Position3D` — local vec3 (legacy; T-199 in flight — superseded by
+  `C_LocalTransform` when consumers migrate; new code should prefer SQT).
+- `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**
+  (legacy parallel to `C_WorldTransform`; T-199 in flight — both still
+  active during the consumer sweep).
+  Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
+  the modifier framework's `POSITION_OFFSET_3D` vec3 field rather
+  than a dedicated component — see [`position_modifier_fields.hpp`](position_modifier_fields.hpp)
+  and the `APPLY_POSITION_OFFSET` system.
+- `C_Rotation` — Euler vec3 (legacy; T-199 in flight — superseded by the
+  quat field on `C_LocalTransform` when consumers migrate).
+- `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
+  pair. **Both auto-added by `createEntity(...)`**. See
+  [SQT transform pair + propagation](#sqt-transform-pair--propagation)
+  below.
 - `C_Modifiers` / `C_GlobalModifiers` / `C_NoGlobalModifiers` /
   `C_LambdaModifiers` / `C_ResolvedFields` — generic modifier
   framework. See [Modifier framework](#modifier-framework) below.
@@ -21,7 +28,72 @@ in `update/`.
 ## Systems
 
 None. Position math is read-only in `common/` — write paths live in
-`update/systems/` (velocity, physics, animation).
+`update/systems/` (velocity, physics, animation, transform propagation).
+
+## SQT transform pair + propagation
+
+`C_LocalTransform` holds the entity's transform relative to its parent
+in the `CHILD_OF` graph. `C_WorldTransform` holds the resolved
+world-space transform after parent-chain composition. Both are SQT
+(scale, quat-rotation, translation) with the engine's canonical
+quaternion layout `IRMath::vec4(qx, qy, qz, qw)` — identity is
+`vec4(0, 0, 0, 1)`. See `engine/math/CLAUDE.md` "Quaternions" for the
+algebra contract (`IRMath::quatMul`, `IRMath::rotateVectorByQuat`).
+
+`PROPAGATE_TRANSFORM` in
+[`update/systems/system_propagate_transform.hpp`](../update/systems/system_propagate_transform.hpp)
+walks the parent chain in topological order each tick and writes
+`C_WorldTransform`. The composition formula:
+
+```
+world.scale       = parent.world.scale * local.scale * modifier_scale
+world.rotation    = quatMul(parent.world.rotation, local.rotation)
+world.translation = parent.world.translation
+                  + rotateVectorByQuat(parent.world.scale * local.translation,
+                                       parent.world.rotation)
+                  + modifier_translation
+```
+
+Roots (no `CHILD_OF`, or parent's archetype lacks `C_WorldTransform`)
+use identity as the parent transform.
+
+**Modifier integration.** Per-frame perturbations (shake, recoil,
+wobble, animation-blend overlays) push vec3 modifiers under the
+`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` fields registered in
+[`transform_modifier_fields.hpp`](transform_modifier_fields.hpp). The
+propagation system reads the modifier-resolved values from
+`C_ResolvedFields` and folds them into the world transform per the
+formula above. Default fallbacks when no resolved field exists:
+translation `vec3(0)`, scale `vec3(1)` — i.e., no perturbation.
+Entities that don't push perturbations don't need `C_Modifiers`. The
+matching `ROTATION` quat field arrives with the quat modifier kind
+ticket (T-198); until then, `modifier_rotation` is identity.
+
+**Pipeline placement.** Register `PROPAGATE_TRANSFORM`
+after the modifier resolver pipeline so the resolved fields are
+current, and before any consumer (render, gizmo, physics) that reads
+`C_WorldTransform`.
+
+**Topological order is non-negotiable.** Iterating an archetype in
+arbitrary order computes stale-parent results for any non-root entity.
+The propagation system topo-sorts candidate archetype nodes per tick
+(by parent-chain depth) and processes them parents-first. Cost is
+O(N + passes × archetypes); passes ≤ tree depth.
+
+**`setParent` during a tick.** If a system calls `setParent` after the
+propagation step has run, the new child won't see its parent's
+transform until the next frame. This matches the existing "structural
+changes during iteration" rule — defer the relation change to a frame
+boundary if the visual must update the same frame.
+
+**Auto-attach + caller-supplied conflict.** `createEntity(...)`
+auto-attaches default `C_LocalTransform` and `C_WorldTransform`
+alongside `C_PositionGlobal3D`. The free function detects when the
+caller passes one of these types explicitly and skips the default for
+that type, so `createEntity(C_LocalTransform{vec3(5,6,7)})` produces an
+entity whose local translation is `(5,6,7)`, not the default `(0,0,0)`.
+Without that guard the duplicate type would emplace a second column
+row, leaving the caller's value orphaned at `row + 1`.
 
 ## Modifier framework
 
@@ -44,9 +116,22 @@ Runtime entry points (all `inline`, header-only):
 - `registerField(name)` / `fieldName(id)` / `fieldCount()` — dense
   registry, init-time only.
 - `push(target, field, kind, param, source, ticks)` — push one
-  structured modifier onto an entity. `pushGlobal(...)` targets the
-  singleton; `pushLambda(...)` writes the escape-hatch component.
-  All three reject `kInvalidFieldId` defensively.
+  **transient** modifier onto an entity (use `ticksRemaining` for decay).
+  `pushGlobal(...)` targets the singleton; `pushLambda(...)` writes the
+  escape-hatch component. All three reject `kInvalidFieldId` defensively.
+  Use `push` for one-shot effects (screen-shake, triggered pulses). Use
+  `upsertBySource` / `upsertBySourceInPlace` for steady-state writers.
+- `upsertBySource(target, field, kind, param, source)` — **steady-state
+  writer-owned slot** API. Slot key is `(source, field, kind)`. On hit:
+  overwrites `param_` and resets `ticksRemaining_ = -1` (no decay). On
+  miss: appends with `ticksRemaining_ = -1`. No `MODIFIER_DECAY`
+  dependency; the slot persists until `removeBySource` or source
+  destruction. `upsertBySourceGlobal(...)` targets the singleton.
+- `upsertBySourceInPlace(mods, field, kind, param, source)` — same slot
+  semantics as `upsertBySource` but takes a `C_Modifiers&` directly
+  (caller is a system tick that already holds the archetype reference);
+  skips `getComponentOptional` and the field-type check. Canonical for
+  system ticks that push the same slot every frame.
 - `removeBySource(source)` — sweeps every `C_Modifiers`,
   `C_GlobalModifiers`, and `C_LambdaModifiers` in the world,
   dropping entries whose `source_` matches. Wired automatically
@@ -67,6 +152,20 @@ Runtime entry points (all `inline`, header-only):
 - `globalsEntity()` — returns the singleton globals entity created by
   `registerResolverPipeline()`. Intended for tests and diagnostics;
   production code should use `pushGlobal` / `removeBySource`.
+
+Inline-apply factory: `IRPrefab::Modifier::applyVec3ModifierTo<
+TargetComponent, Member>(name, field)` in
+[`modifier_apply.hpp`](modifier_apply.hpp) generalizes the
+`APPLY_POSITION_OFFSET` shape — *iterate
+`<TargetComponent, C_Modifiers>`, compose one vec3 field against a
+`vec3(0)` base, ADD the result to a vec3 member of the target
+component*. Use it for any per-frame additive vec3 channel with
+exactly one consumer where global-modifier integration is not
+required. Channels with multiple readers, global-modifier needs, or
+multiplicative apply semantics belong on the structured-resolver
+path (`MODIFIER_RESOLVE_GLOBAL` / `_EXEMPT` + read from
+`C_ResolvedFields`). See `docs/design/modifiers.md` §"Inline-apply
+pattern" for the discriminator and rationale.
 
 Composition core lives in `modifier_compose.hpp` and is called from
 both the resolver tick and `applyToField`. Order is non-obvious:
@@ -92,11 +191,77 @@ capability (Haste, Stun, Slow, Stack, GlobalSlow, LambdaSine,
 SourceKill, Clamp) live. The HUD shows per-cube resolved speed
 each tick.
 
+### Typed fields: scalar vs vec3 vs quat
+
+Fields are typed at registration time. `IRPrefab::Modifier::registerField`
+declares a scalar field; `registerFieldVec3` declares a vec3 field;
+`registerFieldQuat` declares a quaternion field. `fieldType(id)` returns
+`FieldValueType::{SCALAR,VEC3,QUAT}`. The `push` overload set is
+type-driven: `push(target, field, kind, float, ...)` routes into
+`C_Modifiers::modifiers_` (scalar), `push(target, field, kind,
+IRMath::vec3, ...)` routes into `C_Modifiers::modifiersVec3_`, and
+`push(target, field, kind, IRMath::vec4, ...)` routes into
+`C_Modifiers::modifiersQuat_`. Pushing the wrong type against a typed
+field silently no-ops (caller bug — wrong-type push doesn't corrupt the
+resolved-field storage). The same applies to `pushGlobal`.
+
+Compose semantics for vec3 mirror the scalar path component-wise:
+`ADD`/`MULTIPLY`/`SET` apply per-axis in push-order; `OVERRIDE`
+replaces the entire vec3 and short-circuits prior ops; `CLAMP_MIN`/
+`CLAMP_MAX` bound each axis independently, always last. The compose
+helper is `composeForFieldVec3`; the per-frame resolver systems
+(`MODIFIER_RESOLVE_GLOBAL`, `MODIFIER_RESOLVE_EXEMPT`) iterate both
+scalar and vec3 vectors on the same `C_Modifiers` /
+`C_GlobalModifiers` archetype and write to the matching scalar /
+vec3 vector on `C_ResolvedFields`.
+
+Quat compose follows the engine's quaternion convention
+(`IRMath::vec4(qx, qy, qz, qw)`, identity `vec4(0, 0, 0, 1)`) and the
+non-commutative nature of quaternion multiplication:
+
+- `MULTIPLY` → **left-multiply, post-rotate**:
+  `resolved = mod * base` via `IRMath::quatMul(mod.param_, value)`.
+  Stacked MULTIPLYs apply outer-first in push-order: for `[r1, r2, r3]`,
+  `resolved = r3 * r2 * r1 * base`. Consumers using the
+  `quatMul(parent_world, local)` bone-chain idiom are post-rotating in
+  the same direction.
+- `OVERRIDE` → replace value; latest OVERRIDE wins across the
+  combined `(globals ++ entity_mods)` sequence; everything earlier is
+  discarded (same short-circuit semantics as scalar/vec3).
+- `SET` → replace value in push-order (no short-circuit).
+- `ADD` / `CLAMP_MIN` / `CLAMP_MAX` → not meaningful on a unit
+  quaternion. The push API fires `IR_ASSERT` in debug and silently
+  skips in release; the compose path also defensively drops them so
+  direct-vector construction can't slip nonsense through. A future
+  "clamp angle around an axis" variant would land as a separate
+  `CLAMP_ANGLE_AXIS` kind.
+
+The compose helper is `composeForFieldQuat`; the resolver systems
+iterate the quat vector alongside scalar and vec3 on the same
+`C_Modifiers` archetype. The compose pass normalizes the final
+resolved quat **once** at the end (gate: only if any modifier touched
+the value — identity-only fast path skips the normalize and returns the
+caller's base unchanged, so callers passing a non-unit `baseValue` to
+`applyToFieldQuat` see it round-trip when no modifier is active).
+
+`C_ResolvedFields` carries three parallel vectors: `fields_` (scalar),
+`fieldsVec3_` (vec3), and `fieldsQuat_` (quat). Read with `get(field)` /
+`getVec3(field)` / `getQuat(field)`; seed with `reset(field, base)` /
+`resetVec3(field, base)` / `resetQuat(field, base)`. A scalar, vec3, and
+quat field id may share the same name but are distinct `FieldBindingId`s,
+so their resolved values live in separate slots.
+
+`LambdaModifier` stays scalar-only in v1 — `C_LambdaModifiers` does
+not have vec3 or quat counterparts. A vec3 or quat lambda channel is a
+Phase 2 follow-up if a per-frame procedural rotation curve (rather
+than the structured `MULTIPLY` / `OVERRIDE` / `SET` modifiers covered
+above) is needed.
+
 Key invariants the design rests on:
 
-- `Modifier` stays **trivially-copyable**. Anything needing inline
-  `std::function` or `std::string` belongs in `C_LambdaModifiers`,
-  not `C_Modifiers`.
+- `Modifier`, `ModifierVec3`, and `ModifierQuat` all stay
+  **trivially-copyable**. Anything needing inline `std::function` or
+  `std::string` belongs in `C_LambdaModifiers`, not `C_Modifiers`.
 - Public API lives in the `IRPrefab::Modifier::` namespace per the
   prefab-layer principle in `engine/prefabs/irreden/render/CLAUDE.md`,
   NOT in `IRRender::` or any engine-library-level namespace.
@@ -122,13 +287,19 @@ runtime work and architect-gated decisions.
 
 ## Gotchas
 
-- **`createEntity` always adds `C_PositionGlobal3D` + `C_PositionOffset3D`.**
-  Rendered position is `global + offset`. Never infer a draw position
-  from `C_Position3D` alone — it is the *local* position and only the
+- **`createEntity` always adds `C_PositionGlobal3D`.** Rendered
+  position is whatever lives in `C_PositionGlobal3D` after the UPDATE
+  pipeline completes — `GLOBAL_POSITION_3D` writes `local + parent`
+  and `APPLY_POSITION_OFFSET` folds in the modifier-resolved
+  `POSITION_OFFSET_3D` vec3 field. Never infer a draw position from
+  `C_Position3D` alone — it is the *local* position and only the
   `common/` hierarchy resolves it.
 - **Don't duplicate position components.** Adding your own
   `C_PositionGlobal3D` second on top of the auto-added one leaves one
-  column stale and causes jitter.
+  column stale and causes jitter. `createEntity(...)` detects
+  user-supplied `C_PositionGlobal3D` / `C_LocalTransform` /
+  `C_WorldTransform` and skips the matching default; passing any
+  other auto-attached component twice is still a footgun.
 - **No systems means no ownership.** Any code is free to write to any
   position component here — that's the coordination-by-convention part.
   The `update/` domain's systems are the ones that write velocity-driven

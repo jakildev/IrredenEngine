@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
@@ -25,8 +25,14 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
-layout(std430, binding = 6) readonly buffer ColorBuffer {
-    uint colors[];
+// Per-slot active bitmask uploaded from `C_VoxelPool::m_activeMask`:
+// one uint32 per `kVoxelActiveMaskBits` (= 32) voxel slots; bit i mirrors
+// `m_voxelColors[i].color_.alpha_ != 0` at frame-upload time. The previous
+// path read `voxels[idx].colorPacked` purely to test alpha; this SSBO
+// replaces that read with a 1-bit lookup so inactive slots short-circuit
+// before touching the wider color SSBO. T-287 / #950.
+layout(std430, binding = 8) readonly buffer VoxelActiveMaskBuffer {
+    uint activeMask[];
 };
 
 layout(std430, binding = 24) readonly buffer ChunkVisibility {
@@ -53,9 +59,9 @@ void main() {
     if (idx < uint(voxelCount)) {
         uint chunkIdx = idx / uint(VOXEL_CHUNK_SIZE);
         if (chunkVisible[chunkIdx] != 0u) {
-            uint packedColor = colors[idx];
-            uint alpha = (packedColor >> 24) & 0xFFu;
-            if (alpha != 0u) {
+            // 32-bit word stride matches `kVoxelActiveMaskBits` on the CPU side.
+            uint maskWord = activeMask[idx >> 5u];
+            if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
                 if (cardinalIndex != 0) {
                     voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);

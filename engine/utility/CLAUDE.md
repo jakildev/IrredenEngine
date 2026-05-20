@@ -22,16 +22,6 @@ functions for reading files and composing paths. Used by `asset/`,
   `("screenshot", 7, 4, "png") → "screenshot_0007.png"`. Used for
   screenshot/recording serial numbers.
 
-## Internal layout
-
-```
-engine/utility/
-└── ir_utility.hpp            — umbrella
-    └── utility/
-        ├── file_utils.hpp
-        └── path_utils.hpp
-```
-
 ## Gotchas
 
 - **`readFileAsString` failure is build-mode dependent.** In debug builds

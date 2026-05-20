@@ -98,6 +98,8 @@ FLEET_DOWN_SRC="$SCRIPT_DIR/fleet-down"
 FLEET_DOWN_DEST="$HOME/bin/fleet-down"
 FLEET_CLAIM_SRC="$SCRIPT_DIR/fleet-claim"
 FLEET_CLAIM_DEST="$HOME/bin/fleet-claim"
+FLEET_COMMON_SRC="$SCRIPT_DIR/fleet-common.sh"
+FLEET_COMMON_DEST="$HOME/bin/fleet-common.sh"
 FLEET_BUILD_SRC="$SCRIPT_DIR/fleet-build"
 FLEET_BUILD_DEST="$HOME/bin/fleet-build"
 FLEET_DEBUG_SRC="$SCRIPT_DIR/fleet-debug"
@@ -122,6 +124,28 @@ FLEET_FEEDBACK_SRC="$SCRIPT_DIR/fleet-feedback"
 FLEET_FEEDBACK_DEST="$HOME/bin/fleet-feedback"
 FLEET_BUSY_SRC="$SCRIPT_DIR/fleet-worktree-busy-branches"
 FLEET_BUSY_DEST="$HOME/bin/fleet-worktree-busy-branches"
+FLEET_PR_SRC="$SCRIPT_DIR/fleet-pr"
+FLEET_PR_DEST="$HOME/bin/fleet-pr"
+FLEET_PR_CLEAR_SRC="$SCRIPT_DIR/fleet-pr-clear-feedback-labels"
+FLEET_PR_CLEAR_DEST="$HOME/bin/fleet-pr-clear-feedback-labels"
+FLEET_ISSUE_SRC="$SCRIPT_DIR/fleet-issue"
+FLEET_ISSUE_DEST="$HOME/bin/fleet-issue"
+FLEET_DISPATCHER_SRC="$SCRIPT_DIR/fleet-dispatcher"
+FLEET_DISPATCHER_DEST="$HOME/bin/fleet-dispatcher"
+FLEET_DISPATCH_WRAP_SRC="$SCRIPT_DIR/fleet-dispatch-wrap"
+FLEET_DISPATCH_WRAP_DEST="$HOME/bin/fleet-dispatch-wrap"
+FLEET_GATE_STATUS_SRC="$SCRIPT_DIR/fleet-gate-status"
+FLEET_GATE_STATUS_DEST="$HOME/bin/fleet-gate-status"
+FLEET_TASKS_RENDER_SRC="$SCRIPT_DIR/fleet-tasks-render"
+FLEET_TASKS_RENDER_DEST="$HOME/bin/fleet-tasks-render"
+FLEET_QUEUE_TICK_SRC="$SCRIPT_DIR/fleet-queue-tick"
+FLEET_QUEUE_TICK_DEST="$HOME/bin/fleet-queue-tick"
+FLEET_QUEUE_INGEST_SRC="$SCRIPT_DIR/fleet-queue-ingest"
+FLEET_QUEUE_INGEST_DEST="$HOME/bin/fleet-queue-ingest"
+FLEET_RECONCILE_AMENDMENTS_SRC="$SCRIPT_DIR/fleet-reconcile-amendments"
+FLEET_RECONCILE_AMENDMENTS_DEST="$HOME/bin/fleet-reconcile-amendments"
+FLEET_ITERATION_SUMMARY_SRC="$SCRIPT_DIR/fleet-iteration-summary"
+FLEET_ITERATION_SUMMARY_DEST="$HOME/bin/fleet-iteration-summary"
 WITNESS_SRC="$SCRIPT_DIR/witness"
 WITNESS_DEST="$HOME/bin/witness"
 
@@ -133,7 +157,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$WITNESS_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_COMMON_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_PR_CLEAR_SRC" "$FLEET_ISSUE_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_GATE_STATUS_SRC" "$FLEET_TASKS_RENDER_SRC" "$FLEET_QUEUE_TICK_SRC" "$FLEET_QUEUE_INGEST_SRC" "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_ITERATION_SUMMARY_SRC" "$WITNESS_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -155,6 +179,11 @@ fi
 if [[ -f "$FLEET_CLAIM_SRC" ]]; then
     ln -sf "$FLEET_CLAIM_SRC" "$FLEET_CLAIM_DEST"
     echo "symlinked $FLEET_CLAIM_DEST -> $FLEET_CLAIM_SRC"
+fi
+
+if [[ -f "$FLEET_COMMON_SRC" ]]; then
+    ln -sf "$FLEET_COMMON_SRC" "$FLEET_COMMON_DEST"
+    echo "symlinked $FLEET_COMMON_DEST -> $FLEET_COMMON_SRC"
 fi
 
 if [[ -f "$FLEET_BUILD_SRC" ]]; then
@@ -215,6 +244,61 @@ fi
 if [[ -f "$FLEET_BUSY_SRC" ]]; then
     ln -sf "$FLEET_BUSY_SRC" "$FLEET_BUSY_DEST"
     echo "symlinked $FLEET_BUSY_DEST -> $FLEET_BUSY_SRC"
+fi
+
+if [[ -f "$FLEET_PR_SRC" ]]; then
+    ln -sf "$FLEET_PR_SRC" "$FLEET_PR_DEST"
+    echo "symlinked $FLEET_PR_DEST -> $FLEET_PR_SRC"
+fi
+
+if [[ -f "$FLEET_PR_CLEAR_SRC" ]]; then
+    ln -sf "$FLEET_PR_CLEAR_SRC" "$FLEET_PR_CLEAR_DEST"
+    echo "symlinked $FLEET_PR_CLEAR_DEST -> $FLEET_PR_CLEAR_SRC"
+fi
+
+if [[ -f "$FLEET_ISSUE_SRC" ]]; then
+    ln -sf "$FLEET_ISSUE_SRC" "$FLEET_ISSUE_DEST"
+    echo "symlinked $FLEET_ISSUE_DEST -> $FLEET_ISSUE_SRC"
+fi
+
+if [[ -f "$FLEET_DISPATCHER_SRC" ]]; then
+    ln -sf "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCHER_DEST"
+    echo "symlinked $FLEET_DISPATCHER_DEST -> $FLEET_DISPATCHER_SRC"
+fi
+
+if [[ -f "$FLEET_DISPATCH_WRAP_SRC" ]]; then
+    ln -sf "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_DISPATCH_WRAP_DEST"
+    echo "symlinked $FLEET_DISPATCH_WRAP_DEST -> $FLEET_DISPATCH_WRAP_SRC"
+fi
+
+if [[ -f "$FLEET_GATE_STATUS_SRC" ]]; then
+    ln -sf "$FLEET_GATE_STATUS_SRC" "$FLEET_GATE_STATUS_DEST"
+    echo "symlinked $FLEET_GATE_STATUS_DEST -> $FLEET_GATE_STATUS_SRC"
+fi
+
+if [[ -f "$FLEET_TASKS_RENDER_SRC" ]]; then
+    ln -sf "$FLEET_TASKS_RENDER_SRC" "$FLEET_TASKS_RENDER_DEST"
+    echo "symlinked $FLEET_TASKS_RENDER_DEST -> $FLEET_TASKS_RENDER_SRC"
+fi
+
+if [[ -f "$FLEET_QUEUE_TICK_SRC" ]]; then
+    ln -sf "$FLEET_QUEUE_TICK_SRC" "$FLEET_QUEUE_TICK_DEST"
+    echo "symlinked $FLEET_QUEUE_TICK_DEST -> $FLEET_QUEUE_TICK_SRC"
+fi
+
+if [[ -f "$FLEET_QUEUE_INGEST_SRC" ]]; then
+    ln -sf "$FLEET_QUEUE_INGEST_SRC" "$FLEET_QUEUE_INGEST_DEST"
+    echo "symlinked $FLEET_QUEUE_INGEST_DEST -> $FLEET_QUEUE_INGEST_SRC"
+fi
+
+if [[ -f "$FLEET_RECONCILE_AMENDMENTS_SRC" ]]; then
+    ln -sf "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_RECONCILE_AMENDMENTS_DEST"
+    echo "symlinked $FLEET_RECONCILE_AMENDMENTS_DEST -> $FLEET_RECONCILE_AMENDMENTS_SRC"
+fi
+
+if [[ -f "$FLEET_ITERATION_SUMMARY_SRC" ]]; then
+    ln -sf "$FLEET_ITERATION_SUMMARY_SRC" "$FLEET_ITERATION_SUMMARY_DEST"
+    echo "symlinked $FLEET_ITERATION_SUMMARY_DEST -> $FLEET_ITERATION_SUMMARY_SRC"
 fi
 
 if [[ -f "$WITNESS_SRC" ]]; then

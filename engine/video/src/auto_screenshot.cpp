@@ -83,7 +83,14 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
             }
 
             if (!state->screenshotPending_) {
-                IRVideo::requestScreenshot();
+                const auto &shot = state->config_.shots_[state->currentShot_];
+                if (shot.numCrops_ > 0 && shot.crops_ != nullptr) {
+                    IRVideo::requestScreenshotWithCrops(
+                        shot.label_, shot.crops_, shot.numCrops_
+                    );
+                } else {
+                    IRVideo::requestScreenshot();
+                }
                 state->screenshotPending_ = true;
                 return;
             }

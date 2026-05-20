@@ -217,6 +217,25 @@ class OpenGLTexture3DImpl final : public Texture3DImpl {
         ENG_API->glBindTextureUnit(unit, m_handle);
     }
 
+    void bindImage(
+        std::uint32_t unit,
+        TextureAccess access,
+        TextureFormat format,
+        int level,
+        bool layered,
+        int layer
+    ) const override {
+        ENG_API->glBindImageTexture(
+            unit,
+            m_handle,
+            level,
+            layered ? GL_TRUE : GL_FALSE,
+            layer,
+            toGLTextureAccess(access),
+            toGLTextureFormat(format)
+        );
+    }
+
     void uploadSubImage3D(
         int width,
         int height,

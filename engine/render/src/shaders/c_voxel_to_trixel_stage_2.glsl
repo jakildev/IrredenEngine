@@ -1,4 +1,4 @@
-#version 460 core
+#version 450 core
 
 layout(local_size_x = 2, local_size_y = 3, local_size_z = 1) in;
 
@@ -24,8 +24,16 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
+// 12 B per voxel — must match C_Voxel layout in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+
 layout(std430, binding = 6) readonly buffer ColorBuffer {
-    uint colors[];
+    Voxel voxels[];
 };
 
 layout(std430, binding = 13) readonly buffer EntityIdBuffer {
@@ -68,8 +76,8 @@ void main() {
 
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
-    vec4 voxelColor = unpackColor(colors[voxelIndex]);
-    int face = localIDToFace_2x3();
+    vec4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
+    int face = localIDToFace_2x3(gl_LocalInvocationID.xy);
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
