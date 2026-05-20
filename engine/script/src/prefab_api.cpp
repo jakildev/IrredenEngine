@@ -2,10 +2,14 @@
 
 #include <irreden/asset/rig_format.hpp>
 #include <irreden/asset/voxel_set_format.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/math/sdf.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/entity_canvas.hpp>
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_component_factory.hpp>
@@ -139,6 +143,61 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         loadedVoxels = std::move(loadResult.value_);
     }
 
+    // Default rotation mode is GRID (today's behavior). DETACHED allocates
+    // a per-entity canvas via `IRPrefab::EntityCanvas::create` so the C3
+    // composite pass can thread `C_LocalTransform` through the per-canvas
+    // TRS without re-rasterizing voxels per frame.
+    IRComponents::RotationMode rotationMode = IRComponents::RotationMode::GRID;
+    if (sol::optional<std::string> modeOpt = prefab["rotation_mode"]; modeOpt) {
+        if (*modeOpt == "GRID") {
+            rotationMode = IRComponents::RotationMode::GRID;
+        } else if (*modeOpt == "DETACHED") {
+            rotationMode = IRComponents::RotationMode::DETACHED;
+        } else {
+            return makeError(
+                idStr,
+                path,
+                "rotation_mode='" + *modeOpt + "' not recognized (expected 'GRID' or 'DETACHED')"
+            );
+        }
+    }
+
+    bool unbounded = false;
+    if (sol::optional<bool> unboundedOpt = prefab["unbounded"]; unboundedOpt) {
+        unbounded = *unboundedOpt;
+    }
+
+    IRMath::ivec2 canvasSize{0};
+    std::string canvasName;
+    if (rotationMode == IRComponents::RotationMode::DETACHED) {
+        sol::optional<sol::table> sizeOpt = prefab["canvas_size"];
+        if (!sizeOpt) {
+            return makeError(
+                idStr,
+                path,
+                "rotation_mode='DETACHED' requires canvas_size = { x, y }"
+            );
+        }
+        sol::optional<int> wOpt = (*sizeOpt)["x"];
+        sol::optional<int> hOpt = (*sizeOpt)["y"];
+        if (!wOpt || !hOpt) {
+            return makeError(
+                idStr,
+                path,
+                "canvas_size must be a table with integer x and y fields"
+            );
+        }
+        if (*wOpt <= 0 || *hOpt <= 0) {
+            return makeError(idStr, path, "canvas_size.x and canvas_size.y must be positive");
+        }
+        canvasSize = IRMath::ivec2{*wOpt, *hOpt};
+        // Name the child canvas after the prefab id so entity-by-name lookup
+        // and debug tooling can find it later. Suffix keeps it distinct from
+        // the prefab's root entity name (which the setup callback typically
+        // owns).
+        canvasName = idStr + "_canvas";
+    }
+
     // Optional rig_ref — load and translate to C_JointHierarchy via the
     // existing prefab-side bridge.
     sol::optional<std::string> rigRef = prefab["rig_ref"];
@@ -170,6 +229,41 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // is set on the resulting entity (setComponent migrates the
     // archetype once, which is fine for spawn — it isn't in a tick).
     const IREntity::EntityId entity = IREntity::createEntity(IRComponents::C_Position3D{position});
+
+    // C_RotationMode is always attached so archetype-filtered systems
+    // (C3 composite, C6 grid rebuild) iterate prefab entities without
+    // per-entity `getComponentOptional`. Non-prefab entities stay
+    // implicitly GRID.
+    IREntity::setComponent(entity, IRComponents::C_RotationMode{rotationMode});
+
+    if (unbounded) {
+        // Auto-attached by createEntity above; mutate the existing column
+        // entry instead of replacing the whole component.
+        IREntity::getComponent<IRComponents::C_LocalTransform>(entity).unbounded_ = true;
+    }
+
+    // Track the canvas entity so the setup-error cleanup paths below can
+    // tear it down — the canvas is parented to mainFramebuffer (not the
+    // spawned root), so destroying the root leaves it stranded otherwise.
+    IREntity::EntityId detachedCanvasEntity = IREntity::kNullEntity;
+    if (rotationMode == IRComponents::RotationMode::DETACHED) {
+        if (IRRender::g_renderManager != nullptr) {
+            IRComponents::C_EntityCanvas wrapper =
+                IRPrefab::EntityCanvas::create(canvasName, canvasSize);
+            detachedCanvasEntity = wrapper.canvasEntity_;
+            IREntity::setComponent(entity, wrapper);
+        } else {
+            // Headless context (unit tests, asset-only tooling). The entity
+            // stays tagged DETACHED so a later
+            // `IRPrefab::RotationMode::setMode(entity, DETACHED, ...)` call
+            // — invoked once a RenderManager exists — picks the canvas up.
+            IRE_LOG_WARN(
+                "Prefab.spawn('{}'): rotation_mode='DETACHED' requested without "
+                "an active RenderManager; skipping canvas allocation.",
+                idStr.c_str()
+            );
+        }
+    }
 
     if (loadedRig) {
         IREntity::setComponent(entity, IRPrefab::Rig::toComponent(*loadedRig));
@@ -313,21 +407,24 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // silently no-op'ing.
     sol::object setupObj = prefab["setup"];
     if (setupObj.valid() && setupObj.get_type() != sol::type::lua_nil) {
-        if (setupObj.get_type() != sol::type::function) {
+        auto cleanup = [&]() {
             for (auto child : spawnedChildren) {
                 IREntity::destroyEntity(child);
             }
+            if (detachedCanvasEntity != IREntity::kNullEntity) {
+                IREntity::destroyEntity(detachedCanvasEntity);
+            }
             IREntity::destroyEntity(entity);
+        };
+        if (setupObj.get_type() != sol::type::function) {
+            cleanup();
             return makeError(idStr, path, "setup must be a function");
         }
         sol::protected_function setupFn = setupObj.as<sol::protected_function>();
         sol::protected_function_result setupResult = setupFn(IRScript::LuaEntity{entity});
         if (!setupResult.valid()) {
             sol::error err = setupResult;
-            for (auto child : spawnedChildren) {
-                IREntity::destroyEntity(child);
-            }
-            IREntity::destroyEntity(entity);
+            cleanup();
             return makeError(idStr, path, std::string{"setup callback failed: "} + err.what());
         }
     }

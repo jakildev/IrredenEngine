@@ -15,6 +15,11 @@
 // parent chain in topological order, composes parent.world * local
 // (with modifier-resolved per-frame perturbations folded in), and
 // writes C_WorldTransform.
+//
+// `unbounded_` opts into sub-trixel translation. Only meaningful when
+// the entity is `RotationMode::DETACHED` — GRID-mode entities snap
+// to world-grid cells regardless of this flag, so it is silently
+// ignored there. See `engine/prefabs/irreden/common/components/component_rotation_mode.hpp`.
 
 #include <irreden/ir_math.hpp>
 
@@ -24,6 +29,7 @@ struct C_LocalTransform {
     IRMath::vec3 scale_ = IRMath::vec3(1.0f, 1.0f, 1.0f);
     IRMath::vec4 rotation_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     IRMath::vec3 translation_ = IRMath::vec3(0.0f, 0.0f, 0.0f);
+    bool unbounded_ = false;
 
     C_LocalTransform() = default;
 

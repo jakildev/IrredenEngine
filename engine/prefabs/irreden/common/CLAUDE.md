@@ -20,7 +20,20 @@ in `update/`.
 - `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
   pair. **Both auto-added by `createEntity(...)`**. See
   [SQT transform pair + propagation](#sqt-transform-pair--propagation)
-  below.
+  below. `C_LocalTransform::unbounded_` opts into sub-trixel
+  translation; only meaningful when paired with
+  `C_RotationMode::DETACHED` (GRID-mode entities snap to world cells
+  regardless).
+- `C_RotationMode` (Epic C C2) — `enum class RotationMode { GRID,
+  DETACHED }`. GRID (default) puts the entity in the shared world
+  voxel pool with grid-quantized rotation; DETACHED lives in a
+  per-entity `C_EntityCanvas` so rotation runs through the per-canvas
+  TRS composite (C3) without re-rasterizing voxels. Attached by
+  `IRPrefab::Prefab::spawnPrefab` (default GRID, or `rotation_mode =
+  'DETACHED'` in the prefab table). Mutate at runtime with
+  `IRPrefab::RotationMode::setMode(entity, newMode, name, size)` —
+  allocates or destroys the canvas as needed. Non-prefab entities
+  without the component are implicitly GRID.
 - `C_ChunkMembership` — which streaming chunk an entity belongs to
   (Epic E / `IRPrefab::Chunk::ChunkKey`). **NOT auto-added** —
   single-chunk creations carry no chunk metadata. Attached by the
