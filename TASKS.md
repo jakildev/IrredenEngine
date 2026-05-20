@@ -259,11 +259,11 @@ Avoid:
   - **Notes:** Stack S-C-core pos 3. Branch from C2 PR head. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C3".
   - **Links:**
 
-- [ ] **math: continuous-yaw + deformation math helpers (CPU+GPU mirror) (C5)** — add IRMath::faceDeformationMatrix, pos3DtoPos2DIsoYawed, deformedTrixelIsoPixel, sqtToMat4, matrixApplyToVoxelGrid; GPU mirror in ir_iso_common.glsl; CPU/GPU bit-identical
+- [~] **math: continuous-yaw + deformation math helpers (CPU+GPU mirror) (C5)** — add IRMath::faceDeformationMatrix, pos3DtoPos2DIsoYawed, deformedTrixelIsoPixel, sqtToMat4, matrixApplyToVoxelGrid; GPU mirror in ir_iso_common.glsl; CPU/GPU bit-identical
   - **ID:** T-292
   - **Area:** engine/math, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Stack:** T-279..T-293 S-C-math
   - **Acceptance:** (1) Round-trip test computes deformation on CPU and GPU for all 4 cardinals + 8 mid-sector residual yaws; asserts bit-identical equality; (2) math goes through IRMath; no glm:: or std:: outside engine/math/ per cpp-math.md; (3) fleet-build clean on linux-debug and macos-debug
