@@ -379,10 +379,13 @@ constexpr ivec2 deformedTrixelIsoPixel(int face, int subPixel, float residualYaw
     ivec2 unyawed;
     if (face == kXFace) {
         unyawed = ivec2(1, 1 + subPixel);
-    } else if (face == kYFace) {
-        unyawed = ivec2(0, 1 + subPixel);
-    } else {
+    } else if (face == kZFace) {
         unyawed = ivec2(subPixel, 0);
+    } else {
+        unyawed = ivec2(
+            0,
+            1 + subPixel
+        ); // kYFace + out-of-range; mirrors faceOffset_2x3 GLSL fallthrough
     }
     const mat2 D = faceDeformationMatrix(face, residualYaw);
     const vec2 deformed = D * vec2(unyawed);
