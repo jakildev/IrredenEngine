@@ -366,7 +366,9 @@ void undoOne() {
         }
     }
     for (auto id : touchedSets) {
-        IREntity::getComponent<C_VoxelSetNew>(id).syncActiveMask();
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
+        set.syncActiveMask();
+        IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
     }
 }
 
