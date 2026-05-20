@@ -318,6 +318,10 @@ inline mat4 scale(const mat4 &matrix, const vec3 &value) {
     return glm::scale(matrix, value);
 }
 
+inline mat4 rotate(const mat4 &matrix, float angle, const vec3 &axis) {
+    return glm::rotate(matrix, angle, axis);
+}
+
 /// Sum of all components of @p value.
 constexpr int sumVecComponents(const ivec2 value) {
     return value.x + value.y;
