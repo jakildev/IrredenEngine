@@ -412,6 +412,12 @@ inline mat4 scale(const mat4 &matrix, const vec3 &value) {
     return glm::scale(matrix, value);
 }
 
+/// Rotation matrix that rotates @p matrix by @p angle radians around
+/// @p axis. GLM wrapper.
+inline mat4 rotate(const mat4 &matrix, float angle, const vec3 &axis) {
+    return glm::rotate(matrix, angle, axis);
+}
+
 /// Builds the local→world matrix from an SQT triple (scale, quaternion
 /// rotation, translation). Composition is `T · R · S`: a local point
 /// `p_local` maps to `R · (S · p_local) + t` — the same ordering that
