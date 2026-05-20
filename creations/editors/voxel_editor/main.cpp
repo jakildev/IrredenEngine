@@ -93,6 +93,12 @@
 // Scene save/load
 #include "scene_io.hpp"
 
+// Loft-tool mask rendering (trixel_rect fillRect, trixel_text renderText,
+// layout mouse-in-GUI-trixels helper).
+#include <irreden/render/trixel_rect.hpp>
+#include <irreden/render/trixel_text.hpp>
+#include <irreden/render/layout.hpp>
+
 using namespace IRComponents;
 using namespace IRMath;
 
@@ -225,6 +231,20 @@ struct FillToolState {
 };
 FillToolState g_fillTool;
 
+// Loft-from-profiles tool (A2). Two 2D boolean masks — XZ (front) and YZ
+// (side) — rendered as pixel grids on the GUI canvas. Voxels land only
+// where both mask projections overlap (CSG of two extrusions).
+constexpr ivec2 kLoftGridXZPos{4, 30};  // top-left of XZ cell grid
+constexpr ivec2 kLoftGridYZPos{76, 30}; // top-left of YZ cell grid (8 px gap)
+constexpr int kLoftCellPx = 4;          // trixel pixels per mask cell
+
+struct LoftToolState {
+    bool active_ = false;
+    std::vector<bool> maskXZ_; // [x + z * sizeX] — front (XZ) projection
+    std::vector<bool> maskYZ_; // [y + z * sizeY] — side (YZ) projection
+};
+LoftToolState g_loftTool;
+
 // Three auto-screenshot framings so the render-debug-loop / regression
 // harness records the palette panel and the editable scene from a
 // stable camera. Camera position is irrelevant to the GUI canvas but
@@ -255,6 +275,17 @@ IREntity::EntityId g_layerList = IREntity::kNullEntity;
 IREntity::EntityId g_layerVisCheckbox = IREntity::kNullEntity;
 IREntity::EntityId g_layerAddBtn = IREntity::kNullEntity;
 IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
+
+// Fill-mode status label — top-left status bar updated each frame with the
+// active fill mode (BOX / LINE / FACE) and active symmetry axes.
+IREntity::EntityId g_fillModeLabel = IREntity::kNullEntity;
+
+// Parametric shape bake panel widget entity IDs (T-286).
+IREntity::EntityId g_bakePanel = IREntity::kNullEntity;
+IREntity::EntityId g_bakeShapeList = IREntity::kNullEntity;
+IREntity::EntityId g_bakeParam1Slider = IREntity::kNullEntity;
+IREntity::EntityId g_bakeParam2Slider = IREntity::kNullEntity;
+IREntity::EntityId g_bakeButton = IREntity::kNullEntity;
 
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
@@ -528,6 +559,36 @@ void applyFillFace(
     }
 }
 
+// CPU SDF voxel bake — fill every voxel in `set` whose SDF value for
+// `shapeType`/`sdfParams` is ≤ kSurfaceThreshold. The shape is centered on
+// the voxel set; each voxel sample point is offset by 0.5 so integer indices
+// map to voxel centers. Always produces DENSE output (no SHAPES chunk).
+void applyFillSDF(
+    IREntity::EntityId entity,
+    C_VoxelSetNew &set,
+    IRMath::SDF::ShapeType shapeType,
+    vec4 sdfParams,
+    bool place,
+    Color color
+) {
+    const vec3 center = vec3(set.size_) * 0.5f;
+    for (int z = 0; z < set.size_.z; ++z) {
+        for (int y = 0; y < set.size_.y; ++y) {
+            for (int x = 0; x < set.size_.x; ++x) {
+                const vec3 sdfPos = vec3(x, y, z) - center + vec3(0.5f);
+                const float d = IRMath::SDF::evaluate(sdfPos, shapeType, sdfParams);
+                if (d > IRMath::SDF::kSurfaceThreshold)
+                    continue;
+                const ivec3 local{x, y, z};
+                const std::size_t flat =
+                    static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+                if (flat < set.voxels_.size())
+                    applyEdit(entity, set, local, flat, place, color);
+            }
+        }
+    }
+}
+
 // Update the ghost shape entity to visualize the fill region during drag.
 // Uses AABB bounds for box fill, or the dominant-axis extent for line fill.
 void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
@@ -577,6 +638,107 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     const vec3 halfExt = vec3(hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1) * 0.5f;
     ghostPos.pos_ = vec3(lo) + halfExt;
     ghost.params_ = vec4(halfExt.x, halfExt.y, halfExt.z, 0.0f);
+}
+
+// Build and upload a loft-mask grid to the GUI canvas in two subImage2D
+// calls (one per texture channel). sizeH cells on the horizontal axis,
+// sizeV cells on the vertical axis; z=0 maps to the bottom of the panel
+// so the display orientation matches the 3D view. colorBuf / distBuf are
+// reused across calls to avoid per-frame allocation.
+void drawLoftGrid(
+    C_TriangleCanvasTextures &canvas,
+    const std::vector<bool> &mask,
+    ivec2 gridPos,
+    int sizeH,
+    int sizeV,
+    std::vector<Color> &colorBuf,
+    std::vector<int> &distBuf
+) {
+    const int gw = sizeH * kLoftCellPx;
+    const int gh = sizeV * kLoftCellPx;
+    if (gridPos.x < 0 || gridPos.y < 0 || gridPos.x + gw > canvas.size_.x ||
+        gridPos.y + gh > canvas.size_.y)
+        return;
+
+    const std::size_t pixels = static_cast<std::size_t>(gw * gh);
+    colorBuf.resize(pixels);
+    distBuf.resize(pixels);
+
+    static constexpr Color kOn{180, 220, 180, 230};
+    static constexpr Color kOff{35, 38, 48, 220};
+
+    for (int vz = 0; vz < sizeV; ++vz) {
+        const int displayRow = (sizeV - 1 - vz) * kLoftCellPx;
+        for (int hx = 0; hx < sizeH; ++hx) {
+            const Color c = mask[static_cast<std::size_t>(hx + vz * sizeH)] ? kOn : kOff;
+            for (int py = 0; py < kLoftCellPx; ++py) {
+                for (int px = 0; px < kLoftCellPx; ++px) {
+                    const std::size_t idx =
+                        static_cast<std::size_t>((displayRow + py) * gw + hx * kLoftCellPx + px);
+                    colorBuf[idx] = c;
+                    distBuf[idx] = IRRender::kWidgetBackgroundDistance;
+                }
+            }
+        }
+    }
+
+    canvas.textureTriangleColors_.second->subImage2D(
+        gridPos.x,
+        gridPos.y,
+        gw,
+        gh,
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
+        colorBuf.data()
+    );
+    canvas.textureTriangleDistances_.second->subImage2D(
+        gridPos.x,
+        gridPos.y,
+        gw,
+        gh,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        distBuf.data()
+    );
+}
+
+// Place voxels in the editable set wherever both loft masks agree (CSG
+// intersection). Works entirely in local voxel indices: mask[x + z*sizeX]
+// is true when the front (XZ) profile includes column x at height z, and
+// mask[y + z*sizeY] when the side (YZ) profile includes column y at z.
+void applyLoft(Color color) {
+    if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+        return;
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const int sx = set.size_.x;
+    const int sy = set.size_.y;
+    const int sz = set.size_.z;
+    if (static_cast<int>(g_loftTool.maskXZ_.size()) < sx * sz)
+        return;
+    if (static_cast<int>(g_loftTool.maskYZ_.size()) < sy * sz)
+        return;
+    for (int z = 0; z < sz; ++z) {
+        for (int y = 0; y < sy; ++y) {
+            for (int x = 0; x < sx; ++x) {
+                if (!g_loftTool.maskXZ_[static_cast<std::size_t>(x + z * sx)])
+                    continue;
+                if (!g_loftTool.maskYZ_[static_cast<std::size_t>(y + z * sy)])
+                    continue;
+                const int flat = IRMath::index3DtoIndex1D({x, y, z}, set.size_);
+                if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
+                    continue;
+                applyEdit(
+                    g_editor.editableVoxelSet_,
+                    set,
+                    {x, y, z},
+                    static_cast<std::size_t>(flat),
+                    true,
+                    color
+                );
+            }
+        }
+    }
+    commitStroke();
 }
 
 // Copy the editable target's live voxels into frames_[idx].voxels_.
@@ -669,6 +831,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
     IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
     IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
+    IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
@@ -678,6 +841,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Left/Right arrow: previous/next frame");
     IR_LOG_INFO("  P: play/pause  A: add blank frame  D: duplicate  Backspace: delete frame");
     IR_LOG_INFO("  L: toggle loop mode (LOOP / PING-PONG)");
+    IR_LOG_INFO("  F: toggle loft mode (paint XZ+YZ profiles)  Enter: stamp  C: clear masks");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -713,6 +877,166 @@ void initSystems() {
         }
     );
     IRSystem::setSystemParams(scrollZoomSystem, std::move(scrollParams));
+
+    // Loft-mask render: draws the XZ and YZ mask grids onto the GUI canvas.
+    // Runs in the RENDER pipeline after TEXT_TO_TRIXEL (canvas clear) so
+    // the grids paint over the cleared canvas. colorBuf_ / distBuf_ are
+    // kept on params and grown to the largest grid size, never shrunk.
+    struct LoftRenderParams {
+        C_TriangleCanvasTextures *canvas_ = nullptr;
+        std::vector<Color> colorBuf_;
+        std::vector<int> distBuf_;
+    };
+    auto loftRenderData = std::make_unique<LoftRenderParams>();
+    auto *lrp = loftRenderData.get();
+    auto loftRenderSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorLoftRender",
+        [](const C_GuiElement &) {},
+        [lrp]() {
+            lrp->canvas_ =
+                &IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui"));
+        },
+        [lrp]() {
+            if (!IRVoxelEditor::g_loftTool.active_ || !lrp->canvas_)
+                return;
+            auto &loft = IRVoxelEditor::g_loftTool;
+            const int sx = IRVoxelEditor::kEditableSceneSize.x;
+            const int sy = IRVoxelEditor::kEditableSceneSize.y;
+            const int sz = IRVoxelEditor::kEditableSceneSize.z;
+            IRVoxelEditor::drawLoftGrid(
+                *lrp->canvas_,
+                loft.maskXZ_,
+                IRVoxelEditor::kLoftGridXZPos,
+                sx,
+                sz,
+                lrp->colorBuf_,
+                lrp->distBuf_
+            );
+            IRVoxelEditor::drawLoftGrid(
+                *lrp->canvas_,
+                loft.maskYZ_,
+                IRVoxelEditor::kLoftGridYZPos,
+                sy,
+                sz,
+                lrp->colorBuf_,
+                lrp->distBuf_
+            );
+            const int gridH = sz * IRVoxelEditor::kLoftCellPx;
+            IRRender::renderText(
+                *lrp->canvas_,
+                "XZ",
+                IRVoxelEditor::kLoftGridXZPos + ivec2(0, -12),
+                Color{200, 220, 200, 220}
+            );
+            IRRender::renderText(
+                *lrp->canvas_,
+                "YZ",
+                IRVoxelEditor::kLoftGridYZPos + ivec2(0, -12),
+                Color{200, 220, 200, 220}
+            );
+            IRRender::renderText(
+                *lrp->canvas_,
+                "LOFT  Shift=sym  C=clear  Enter=stamp  F=exit",
+                ivec2(IRVoxelEditor::kLoftGridXZPos.x, IRVoxelEditor::kLoftGridXZPos.y + gridH + 4),
+                Color{200, 200, 200, 180}
+            );
+        }
+    );
+    IRSystem::setSystemParams(loftRenderSystem, std::move(loftRenderData));
+
+    // Loft-mask input: detects left-click / drag over the XZ and YZ grid
+    // panels and toggles or paints mask cells. Toggle direction is fixed
+    // at the first PRESSED event for the duration of the drag stroke; Shift
+    // mirrors each painted cell horizontally within the same mask.
+    struct LoftInputParams {
+        vec2 mouseGuiTrixel_ = vec2(0.0f);
+        bool painting_ = false;
+        bool paintVal_ = true;
+    };
+    auto loftInputData = std::make_unique<LoftInputParams>();
+    auto *lip = loftInputData.get();
+    auto loftInputSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorLoftInput",
+        [](const C_GuiElement &) {},
+        [lip]() { lip->mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels(); },
+        [lip]() {
+            if (!IRVoxelEditor::g_loftTool.active_)
+                return;
+
+            const bool leftPressed =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+            const bool leftHeld =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD);
+            const bool leftReleased =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED);
+
+            if (leftReleased) {
+                lip->painting_ = false;
+                return;
+            }
+            if (!leftPressed && !leftHeld)
+                return;
+            if (!lip->painting_ && leftHeld)
+                return;
+
+            const int mx = static_cast<int>(lip->mouseGuiTrixel_.x);
+            const int my = static_cast<int>(lip->mouseGuiTrixel_.y);
+            const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+            const int sx = IRVoxelEditor::kEditableSceneSize.x;
+            const int sy = IRVoxelEditor::kEditableSceneSize.y;
+            const int sz = IRVoxelEditor::kEditableSceneSize.z;
+            const int cell = IRVoxelEditor::kLoftCellPx;
+
+            auto paintCell = [&](std::vector<bool> &mask, int hIdx, int vIdx, int sH, int sV) {
+                if (hIdx < 0 || hIdx >= sH || vIdx < 0 || vIdx >= sV)
+                    return;
+                const std::size_t flat = static_cast<std::size_t>(hIdx + vIdx * sH);
+                if (leftPressed) {
+                    lip->paintVal_ = !mask[flat];
+                    lip->painting_ = true;
+                }
+                if (!lip->painting_)
+                    return;
+                mask[flat] = lip->paintVal_;
+                if (shiftHeld) {
+                    const int mirror = sH - 1 - hIdx;
+                    if (mirror != hIdx)
+                        mask[static_cast<std::size_t>(mirror + vIdx * sH)] = lip->paintVal_;
+                }
+            };
+
+            // XZ grid
+            const ivec2 &xzP = IRVoxelEditor::kLoftGridXZPos;
+            if (mx >= xzP.x && mx < xzP.x + sx * cell && my >= xzP.y && my < xzP.y + sz * cell) {
+                paintCell(
+                    IRVoxelEditor::g_loftTool.maskXZ_,
+                    (mx - xzP.x) / cell,
+                    sz - 1 - (my - xzP.y) / cell,
+                    sx,
+                    sz
+                );
+                return;
+            }
+
+            // YZ grid
+            const ivec2 &yzP = IRVoxelEditor::kLoftGridYZPos;
+            if (mx >= yzP.x && mx < yzP.x + sy * cell && my >= yzP.y && my < yzP.y + sz * cell) {
+                paintCell(
+                    IRVoxelEditor::g_loftTool.maskYZ_,
+                    (mx - yzP.x) / cell,
+                    sz - 1 - (my - yzP.y) / cell,
+                    sy,
+                    sz
+                );
+                return;
+            }
+
+            // Click outside both grids — do not start a paint stroke.
+            if (leftPressed)
+                lip->painting_ = false;
+        }
+    );
+    IRSystem::setSystemParams(loftInputSystem, std::move(loftInputData));
 
     // Palette swatch poller: detect which swatch fired this frame,
     // update the active index, and mirror the selection bit onto every
@@ -756,8 +1080,31 @@ void initSystems() {
         [](const C_GuiElement &) {},
         []() {},
         []() {
+            // All 3D editing is suppressed in loft mode — the loft input system
+            // handles mouse events over the mask panels instead.
+            if (IRVoxelEditor::g_loftTool.active_)
+                return;
+
+            if (IRVoxelEditor::g_fillModeLabel != IREntity::kNullEntity) {
+                const bool shiftNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                const bool ctrlNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
+                std::string status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
+                const auto &sym = IRVoxelEditor::g_symmetry;
+                if (sym.enableX_ || sym.enableY_ || sym.enableZ_) {
+                    status += " |";
+                    if (sym.enableX_)
+                        status += " X";
+                    if (sym.enableY_)
+                        status += " Y";
+                    if (sym.enableZ_)
+                        status += " Z";
+                }
+                IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
+            }
+
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -1088,6 +1435,74 @@ void initSystems() {
         }
     );
 
+    // Shape bake system (T-286): runs in INPUT after WIDGET_APPLY_LIST so the
+    // list selection is committed, and after WIDGET_APPLY_SLIDER so slider
+    // values are committed. Reads the BAKE button and fires applyFillSDF.
+    auto bakeSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorBake",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_bakeButton == IREntity::kNullEntity)
+                return;
+            if (!IRPrefab::Widget::wasClicked(g_bakeButton))
+                return;
+            if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+                return;
+
+            static constexpr IRMath::SDF::ShapeType kShapeTypes[] = {
+                IRMath::SDF::ShapeType::BOX,
+                IRMath::SDF::ShapeType::SPHERE,
+                IRMath::SDF::ShapeType::CYLINDER,
+                IRMath::SDF::ShapeType::TORUS,
+                IRMath::SDF::ShapeType::CONE,
+                IRMath::SDF::ShapeType::ELLIPSOID,
+            };
+            static constexpr int kNumShapes = 6;
+
+            const int sel = (g_bakeShapeList != IREntity::kNullEntity)
+                                ? IRPrefab::Widget::listSelectedIndex(g_bakeShapeList)
+                                : 1;
+            const int idx = (sel >= 0 && sel < kNumShapes) ? sel : 1;
+            const IRMath::SDF::ShapeType shapeType = kShapeTypes[idx];
+
+            const float p1 = (g_bakeParam1Slider != IREntity::kNullEntity)
+                                 ? IRPrefab::Widget::sliderValue(g_bakeParam1Slider)
+                                 : 5.0f;
+            const float p2 = (g_bakeParam2Slider != IREntity::kNullEntity)
+                                 ? IRPrefab::Widget::sliderValue(g_bakeParam2Slider)
+                                 : 3.0f;
+
+            // Build SDF params for evaluate(): semantics depend on shape type.
+            // evaluate() computes halfSize = vec3(params)*0.5 for box-family shapes.
+            vec4 sdfParams{};
+            switch (shapeType) {
+            case IRMath::SDF::ShapeType::SPHERE:
+                sdfParams = vec4(p1, 0.0f, 0.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::TORUS:
+                sdfParams = vec4(p1, p2, 0.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::BOX:
+            case IRMath::SDF::ShapeType::ELLIPSOID:
+                sdfParams = vec4(p1 * 2.0f, p1 * 2.0f, p2 * 2.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::CYLINDER:
+            case IRMath::SDF::ShapeType::CONE:
+            default:
+                sdfParams = vec4(p1, p1, p2 * 2.0f, 0.0f);
+                break;
+            }
+
+            const Color placeColor = kPaletteColors[g_editor.activeSwatchIdx_];
+            auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+            applyFillSDF(g_editor.editableVoxelSet_, set, shapeType, sdfParams, true, placeColor);
+            commitStroke();
+            IR_LOG_INFO("Bake: shape {} P1={:.1f} P2={:.1f}", idx, p1, p2);
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
@@ -1098,6 +1513,8 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          scrubberSystem,
          layerSyncSystem,
+         loftInputSystem,
+         bakeSystem,
          paletteUpdateSystem,
          placeEraseSystem,
          scrollZoomSystem,
@@ -1126,6 +1543,7 @@ void initSystems() {
         // opaque-black overlay that hides the 3D scene. Widget renders
         // must come AFTER the clear so their pixels survive.
         IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+        loftRenderSystem,
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
         IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
@@ -1151,7 +1569,59 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    // Register camera commands individually so we can own the Escape binding.
+    // (registerCameraCommands() also binds Escape→CLOSE_WINDOW, which conflicts
+    // with the drag-cancel handler below — we handle Escape ourselves.)
+    IRCommand::createCommand<IRCommand::ZOOM_IN>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEqual
+    );
+    IRCommand::createCommand<IRCommand::ZOOM_OUT>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonMinus
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonA
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonD
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonA
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonD
+    );
 
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -1402,6 +1872,77 @@ void initCommands() {
         }
     );
 
+    // Escape: cancel drag if active, otherwise close the window.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEscape,
+        []() {
+            if (IRVoxelEditor::g_fillTool.dragging_) {
+                IRVoxelEditor::g_fillTool.dragging_ = false;
+                if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                    IREntity::getComponent<C_ShapeDescriptor>(
+                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    )
+                        .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+                }
+                IR_LOG_INFO("Fill drag cancelled (Escape).");
+                return;
+            }
+            IRWindow::closeWindow();
+        }
+    );
+
+    // F — toggle loft mode on/off. Cancels any active fill drag and hides
+    // the ghost shape so it doesn't linger over the mask panels.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonF,
+        []() {
+            auto &loft = IRVoxelEditor::g_loftTool;
+            loft.active_ = !loft.active_;
+            IRVoxelEditor::g_fillTool.dragging_ = false;
+            if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_)
+                    .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+            }
+            IR_LOG_INFO("Loft mode: %s", loft.active_ ? "ON" : "OFF");
+        }
+    );
+
+    // Enter — stamp the current loft masks into the scene using the active
+    // palette color. Does nothing if loft mode is inactive or masks are empty.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEnter,
+        []() {
+            if (!IRVoxelEditor::g_loftTool.active_)
+                return;
+            const Color placeColor =
+                IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
+            IRVoxelEditor::applyLoft(placeColor);
+            IR_LOG_INFO("Loft stamped.");
+        }
+    );
+
+    // C — clear both loft masks when in loft mode. No-op outside loft mode
+    // so the key stays available for future bindings.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonC,
+        []() {
+            if (!IRVoxelEditor::g_loftTool.active_)
+                return;
+            auto &loft = IRVoxelEditor::g_loftTool;
+            std::fill(loft.maskXZ_.begin(), loft.maskXZ_.end(), false);
+            std::fill(loft.maskYZ_.begin(), loft.maskYZ_.end(), false);
+            IR_LOG_INFO("Loft masks cleared.");
+        }
+    );
+
     // K: add a new layer (auto-named from count, immediately becomes active).
     // N is reserved for frame-animation's "add blank frame" binding.
     IRCommand::createCommand(
@@ -1636,6 +2177,11 @@ void initEntities() {
     IRVoxelEditor::g_sceneVoxelSetEntity = g_editor.editableVoxelSet_;
     {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const int sx = set.size_.x;
+        const int sy = set.size_.y;
+        const int sz = set.size_.z;
+        IRVoxelEditor::g_loftTool.maskXZ_.assign(static_cast<std::size_t>(sx * sz), false);
+        IRVoxelEditor::g_loftTool.maskYZ_.assign(static_cast<std::size_t>(sy * sz), false);
         set.deactivateAll();
         // Ground plane at z == size_.z - 1: flat gray, gives the user
         // something to click before placing any voxels themselves.
@@ -1768,6 +2314,42 @@ void initEntities() {
         "-"
     );
 
+    // Parametric shape bake panel (T-286). Sits below the LAYERS panel.
+    // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
+    // secondary params; BAKE writes DENSE voxels into the active entity.
+    constexpr ivec2 kBakePanelPos{130, 342};
+    constexpr ivec2 kBakePanelSize{120, 140};
+    IRVoxelEditor::g_bakePanel = IRPrefab::Widget::makePanel(kBakePanelPos, kBakePanelSize, "BAKE");
+    IREntity::setComponent(IRVoxelEditor::g_bakePanel, IRComponents::C_HitBox2DGui{kBakePanelSize});
+    IRVoxelEditor::g_bakeShapeList = IRPrefab::Widget::makeList(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 18),
+        ivec2(112, 66),
+        {"BOX", "SPHERE", "CYLINDER", "TORUS", "CONE", "ELLIPSOID"},
+        1,
+        11
+    );
+    IRVoxelEditor::g_bakeParam1Slider = IRPrefab::Widget::makeSlider(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 88),
+        ivec2(112, 14),
+        "P1",
+        0.5f,
+        12.0f,
+        8.0f
+    );
+    IRVoxelEditor::g_bakeParam2Slider = IRPrefab::Widget::makeSlider(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 106),
+        ivec2(112, 14),
+        "P2",
+        0.5f,
+        12.0f,
+        3.0f
+    );
+    IRVoxelEditor::g_bakeButton = IRPrefab::Widget::makeButton(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 124),
+        ivec2(112, 12),
+        "BAKE"
+    );
+
     // Ghost preview entity for drag-fill. Invisible until
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
     // frame and hides it again on RELEASED.
@@ -1781,4 +2363,9 @@ void initEntities() {
     );
     IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_).flags_ =
         IRMath::SDF::SHAPE_FLAG_NONE;
+
+    // Fill-mode status label — top-left of the GUI canvas. Updated each frame
+    // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
+    // symmetry axes are active so the user can see modifier state at a glance.
+    IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
 }
