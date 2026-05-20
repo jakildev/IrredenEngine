@@ -162,9 +162,8 @@ fi
 (The save path is `<exe-cwd>/save_files/screenshots/`; `fleet-run`
 cd's into the exe's directory before launching, so `save_files/`
 lands next to the binary under `build/`. The rotated `.prev.*`
-sibling is harmless — it gets swept whenever the worker reconfigures
-the build, and never appears in `git status` because `build/` is
-ignored.)
+sibling is harmless — it persists in `build/` (gitignored) until a
+clean build; it does not appear in `git status`.)
 
 Build and run:
 
