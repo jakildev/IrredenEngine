@@ -740,12 +740,47 @@ Lua side:
 **v1 scope notes** — three follow-up areas the editor will eventually
 land:
 
-- **Declarative `components = { C_Name = { ... } }` table** — needs a
-  reflection layer so an arbitrary C++ component type can be
-  constructed from a Lua table of named fields. The editor-epic doc
-  (Phase 5 risks) flags this as a design call. Use the `setup`
-  callback in the meantime — it lets the prefab call any Lua-bound
-  `IREntity.setComponent(entity, C_Foo.new(...))` directly.
+- **Declarative `components = { C_Name = { ... } }` table** — landed via
+  #698. The optional `components` table maps each component's binding
+  string (the name passed to `registerType<T>("C_Foo")`) to a table of
+  field overrides; spawn() runs each entry's registered factory after
+  rig / voxel attachment and before `setup`, so a `setup` callback
+  observes (and may freely overwrite) declaratively-attached
+  components.
+
+  ```lua
+  return {
+      prefab_version = 1,
+      components = {
+          C_ZoomLevel = { zoom = 5.0 },
+          -- ... any component whose *_lua.hpp opted in ...
+      },
+  }
+  ```
+
+  Wiring contract: each `*_lua.hpp` opts in by calling
+  `IRScript::registerComponentFactoryFor<C>(name, setFields)` after the
+  usertype registration. `setFields(C&, const sol::table&)` copies
+  override values out of the table into the default-constructed
+  component; the factory then attaches via `IREntity::setComponent`.
+  See `engine/prefabs/irreden/render/components/component_zoom_level_lua.hpp`
+  for the canonical opt-in shape.
+
+  Error modes (each destroys the partial entity + any spawned children
+  before returning):
+  - Top-level `components` value is not a table (e.g. `components = 42`)
+    → silently treated as absent. `sol::optional<sol::table>` returns
+    `nullopt` and the block is skipped, just like an omitted field.
+  - Per-entry value is not a table (e.g.
+    `components = { C_ZoomLevel = 42 }`) → "components['<name>'] must
+    be a table of field overrides".
+  - Component name has no registered factory → "no factory registered
+    for component '<name>'" with the binding-fix hint pointing at
+    `IRScript::registerComponentFactoryFor`.
+
+  v1 carry-over: components without a `*_lua.hpp` (and thus no
+  factory) remain unreachable from the declarative table — the `setup`
+  callback is still the escape hatch for those.
 - **`bind_point_overrides = { ... }`** — landed via T-181. The
   optional `bind_point_overrides` table on a prefab maps names to
   `{ offset = vec3, rotation = vec4, boneId = uint }` (any subset);
