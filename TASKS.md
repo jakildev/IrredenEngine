@@ -235,11 +235,11 @@ Avoid:
   - **Notes:** Stack S-B-render pos 4. Branch from B2 PR head. Remove per-frame loop at system_update_voxel_positions_gpu.hpp:59,85. Push from mutation site via Buffer::subData. No dirty_ flag per cpp-ecs §"No dirty flags". Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B5".
   - **Links:**
 
-- [ ] **engine: C_RotationMode enum + component (GRID vs DETACHED) (C2)** — new C_RotationMode component at engine/prefabs/irreden/common/components/component_rotation_mode.hpp; GRID (default) + DETACHED modes; UNBOUNDED bool on C_LocalTransform
+- [~] **engine: C_RotationMode enum + component (GRID vs DETACHED) (C2)** — new C_RotationMode component at engine/prefabs/irreden/common/components/component_rotation_mode.hpp; GRID (default) + DETACHED modes; UNBOUNDED bool on C_LocalTransform
   - **ID:** T-290
   - **Area:** engine/prefabs/irreden/common
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) Spawning DETACHED allocates a child entity canvas via IRPrefab::EntityCanvas::create(); (2) spawning GRID (default) writes into the world voxel pool unchanged; (3) runtime mode change re-allocates correctly; (4) fleet-build clean on linux-debug and macos-debug
