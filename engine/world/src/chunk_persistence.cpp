@@ -32,24 +32,14 @@ std::string filenameForKey(IRPrefab::Chunk::ChunkKey key) {
            ".vxs";
 }
 
-std::string joinPath(const std::string &base, const std::string &child) {
-    if (base.empty()) {
-        return child;
-    }
-    if (base.back() == '/' || base.back() == '\\') {
-        return base + child;
-    }
-    return base + '/' + child;
-}
-
 } // namespace
 
 ChunkDiskPersistence::ChunkDiskPersistence(std::string saveRoot)
     : m_saveRoot{std::move(saveRoot)}
-    , m_chunksDir{joinPath(m_saveRoot, "chunks")} {}
+    , m_chunksDir{(std::filesystem::path{m_saveRoot} / "chunks").string()} {}
 
 std::string ChunkDiskPersistence::chunkPath(IRPrefab::Chunk::ChunkKey key) const {
-    return joinPath(m_chunksDir, filenameForKey(key));
+    return (std::filesystem::path{m_chunksDir} / filenameForKey(key)).string();
 }
 
 IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
@@ -66,8 +56,9 @@ IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
     std::error_code ec;
     std::filesystem::create_directories(m_chunksDir, ec);
     if (ec) {
-        const std::string msg = "ChunkDiskPersistence::saveChunk: create_directories failed: " +
-                                ec.message() + " (" + m_chunksDir + ")";
+        const std::string msg =
+            "ChunkDiskPersistence::saveChunk: create_directories failed: " + ec.message() + " (" +
+            m_chunksDir + ")";
         IRE_LOG_ERROR("{}", msg);
         return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::OpenFailed, msg);
     }

@@ -101,18 +101,14 @@ void ChunkResidencyManager::requestResident(
     s.key_ = key;
     s.state_ = ChunkResidencyState::LOADING;
 
-    // Try the persistence side first so the load happens before any
-    // alloc-side observable state changes — if `loadChunk` returns a
-    // mismatched record count, we still want to fall through to a
-    // fresh allocation rather than abort.
-    std::optional<std::vector<IRAsset::VoxelRecord>> loaded;
-    if (m_config.persistence_) {
-        loaded = m_config.persistence_->loadChunk(key);
-    }
-
     // E1 skeleton: synchronous allocate + transition to RESIDENT. The
     // async load/upload pipeline lands in E3.
     if (m_config.poolAllocator_ && m_config.voxelsPerChunk_ > 0) {
+        std::optional<std::vector<IRAsset::VoxelRecord>> loaded;
+        if (m_config.persistence_) {
+            loaded = m_config.persistence_->loadChunk(key);
+        }
+
         s.state_ = ChunkResidencyState::UPLOADING;
         s.poolAllocation_ = m_config.poolAllocator_(m_config.voxelsPerChunk_);
 
