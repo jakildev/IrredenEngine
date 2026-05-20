@@ -703,11 +703,26 @@ return {
     prefab_version = 1,                  -- REQUIRED, must equal 1
     voxel_ref      = "creations/...vxs", -- OPTIONAL, loaded via loadVoxelSet
     rig_ref        = "creations/...rig", -- OPTIONAL, loaded via loadRig
+    rotation_mode  = "GRID" | "DETACHED",-- OPTIONAL, default "GRID"
+    unbounded      = true | false,        -- OPTIONAL, default false
+    canvas_size    = { x = 64, y = 64 }, -- REQUIRED when rotation_mode = "DETACHED"
     setup          = function(entity)    -- OPTIONAL, user-provided
         IREntity.setComponent(entity, ...)
     end,
 }
 ```
+
+`rotation_mode` (Epic C C2) attaches `C_RotationMode` to the spawned
+root. GRID (default) renders into the world voxel pool with grid-
+quantized rotation; DETACHED allocates a per-entity `C_EntityCanvas`
+via `IRPrefab::EntityCanvas::create()` so a future C3 composite pass
+threads the entity's `C_LocalTransform` through the per-canvas TRS
+without per-voxel rebake. `canvas_size = { x, y }` is required for
+DETACHED — sized in trixels — and is ignored for GRID. `unbounded =
+true` sets `C_LocalTransform::unbounded_` for sub-trixel positioning;
+only meaningful with DETACHED. Unknown `rotation_mode` strings,
+missing `canvas_size`, or non-positive width/height surface a schema
+error and the spawn fails cleanly.
 
 C++ surface lives at `engine/script/include/irreden/script/prefab_api.hpp`
 in `namespace IRPrefab::Prefab`:
