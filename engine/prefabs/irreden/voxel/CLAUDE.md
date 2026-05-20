@@ -63,7 +63,9 @@ for single voxels and particles.
   stable entity ids. Math helper:
   `IRPrefab::GridRotation::worldCellForGridVoxel` in `grid_rotation.hpp`
   — call directly from creations that need the same mapping outside
-  the pipeline.
+  the pipeline. Creations that spawn entities with `C_RotationMode::GRID`
+  must register `REBUILD_GRID_VOXELS` in their UPDATE pipeline after
+  `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces silent no-ops.
 - `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**

@@ -36,9 +36,7 @@ inline bool isIdentityTransform(const IRComponents::C_WorldTransform &wt) {
 /// unchanged; non-identity transforms apply scale → rotate → translate and
 /// snap each axis to the nearest integer cell.
 inline IRMath::vec3 worldCellForGridVoxel(
-    IRMath::vec3 localVoxel,
-    IRMath::vec3 localOffset,
-    const IRComponents::C_WorldTransform &wt
+    IRMath::vec3 localVoxel, IRMath::vec3 localOffset, const IRComponents::C_WorldTransform &wt
 ) {
     const IRMath::vec3 composed = localVoxel + localOffset;
     if (isIdentityTransform(wt)) {
@@ -47,11 +45,7 @@ inline IRMath::vec3 worldCellForGridVoxel(
     const IRMath::vec3 scaled = wt.scale_ * composed;
     const IRMath::vec3 rotated = IRMath::rotateVectorByQuat(scaled, wt.rotation_);
     const IRMath::vec3 world = wt.translation_ + rotated;
-    return IRMath::vec3(
-        static_cast<float>(IRMath::round(world.x)),
-        static_cast<float>(IRMath::round(world.y)),
-        static_cast<float>(IRMath::round(world.z))
-    );
+    return IRMath::vec3(IRMath::round(world.x), IRMath::round(world.y), IRMath::round(world.z));
 }
 
 } // namespace IRPrefab::GridRotation
