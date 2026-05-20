@@ -130,6 +130,12 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool) {
             }
             continue;
         }
+        IR_ASSERT(
+            runEnd <= globals.size(),
+            "flushPendingPositionRanges: runEnd {} exceeds globals.size() {}",
+            runEnd,
+            globals.size()
+        );
         buf->subData(
             static_cast<std::ptrdiff_t>(runStart * kStride),
             (runEnd - runStart) * kStride,
@@ -138,6 +144,12 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool) {
         runStart = s;
         runEnd = e;
     }
+    IR_ASSERT(
+        runEnd <= globals.size(),
+        "flushPendingPositionRanges: runEnd {} exceeds globals.size() {}",
+        runEnd,
+        globals.size()
+    );
     buf->subData(
         static_cast<std::ptrdiff_t>(runStart * kStride),
         (runEnd - runStart) * kStride,

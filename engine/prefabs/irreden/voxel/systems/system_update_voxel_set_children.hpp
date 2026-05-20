@@ -35,23 +35,18 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             lastCanvas_ = canvas;
         }
         C_VoxelPool &pool = *lastPool_;
-        const bool changed = voxelSet.updateAsChild(
+        // updateAsChild returns the number of positions written, or 0 if the
+        // parent is unchanged (static voxel scene pays zero bytes/frame on
+        // the GPU side). Using the exact count avoids queuing stale tail
+        // slots if the pool-bounds guard fires (safeCount < numVoxels_).
+        const int writtenCount = voxelSet.updateAsChild(
             position.pos_,
             pool.getPositionGlobals(),
             pool.getPositions(),
             pool.getPositionOffsets()
         );
-        // Queue the rewritten slice for a coalesced GPU push at the
-        // next `VOXEL_TO_TRIXEL_STAGE_1` tick — see `cpp-ecs.md`
-        // pending-list-flush rule. `updateAsChild` returns `false`
-        // whenever the parent position is unchanged from the prior
-        // tick, so a static voxel scene queues nothing and pays zero
-        // position bytes/frame on the GPU side.
-        if (changed && voxelSet.numVoxels_ > 0) {
-            pool.queuePositionRange(
-                voxelSet.voxelStartIdx_,
-                static_cast<size_t>(voxelSet.numVoxels_)
-            );
+        if (writtenCount > 0) {
+            pool.queuePositionRange(voxelSet.voxelStartIdx_, static_cast<size_t>(writtenCount));
         }
         if (voxelSet.ownerEntityId_ == IREntity::kNullEntity && entityId != IREntity::kNullEntity &&
             voxelSet.numVoxels_ > 0) {
