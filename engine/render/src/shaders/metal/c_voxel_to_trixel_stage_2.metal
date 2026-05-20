@@ -85,6 +85,14 @@ kernel void c_voxel_to_trixel_stage_2(
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];
 
+    // mat2 D = faceDeformationMatrix(face, residualYaw). Identity at
+    // residualYaw==0 — see c_voxel_to_trixel_stage_1.metal for the contract.
+    const float2x2 D = float2x2(
+        frameData.faceDeform[face].xy,
+        frameData.faceDeform[face].zw
+    );
+    const int2 trixelOffset = roundHalfUp(D * float2(localId));
+
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
     // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
@@ -104,7 +112,7 @@ kernel void c_voxel_to_trixel_stage_2(
                 frameData.frameCanvasOffset,
                 frameData.voxelRenderOptions
             ) +
-            int2(localId) +
+            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
         writeColorTap(
             canvasPixel,
@@ -141,7 +149,7 @@ kernel void c_voxel_to_trixel_stage_2(
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const int2 canvasPixel =
-        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionFixed);
+        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
     writeColorTap(
         canvasPixel,
         voxelDistance,

@@ -168,6 +168,10 @@ int roundHalfUp(float v) {
     return int(floor(v + 0.5));
 }
 
+ivec2 roundHalfUp(vec2 v) {
+    return ivec2(floor(v + vec2(0.5)));
+}
+
 ivec2 trixelOriginOffsetX1(ivec2 trixelCanvasSize) {
     return trixelCanvasSize / ivec2(2);
 }

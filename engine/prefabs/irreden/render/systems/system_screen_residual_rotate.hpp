@@ -45,7 +45,11 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
                                          IRRender::getCameraPosition2DIso(),
                                          name.name_
                                      );
-        frameData_.residualYaw = IRPrefab::Camera::getResidualYaw();
+        // residualYaw_ is left at its default 0 — the stage is a passthrough
+        // after T-293, with residual yaw folded into the trixel emit
+        // shaders' faceDeform[] (camera.hpp no longer drives the screen-
+        // space residual composite). Field preserved for UBO layout
+        // backward compat.
         frameDataBuf_->subData(0, sizeof(FrameDataScreenResidualRotate), &frameData_);
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
         IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
