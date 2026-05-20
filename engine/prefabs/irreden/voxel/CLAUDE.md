@@ -15,13 +15,24 @@ for single voxels and particles.
   `components/component_voxel.hpp` and the per-pipeline shaders for the
   struct mirror.
 - `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
-  tracks per-chunk bounds for visibility culling. **One pool per canvas entity.**
+  tracks per-chunk bounds for visibility culling, and owns a per-slot
+  active-mask (`m_activeMask`) that mirrors `m_voxelColors[i].color_.alpha_ != 0`.
+  The mask is uploaded to slot `kBufferIndex_VoxelActiveMask` each frame
+  and read by `c_voxel_visibility_compact.{glsl,metal}` in place of the
+  per-voxel alpha test (T-287). Push-at-mutation: mutations through
+  `C_VoxelSetNew`'s helpers sync the mask automatically; raw `voxels_[i]`
+  span writes must follow with `vs.syncActiveMask()`. **One pool per
+  canvas entity.**
 - `C_VoxelSetNew` — owns a span of voxels from a pool; pushes local → global
   position updates; supports reshape (box/sphere SDF). Use the provided
   helpers instead of iterating voxels individually: `deactivateAll()`,
   `activateAll()`, `changeVoxelColor(ivec3, Color)`, `changeVoxelColorAll(Color)`,
   `fillPlane(int axis, int planeIndex, Color)` (activates a single face slice),
-  `reshape(Shape3D)` (box or sphere fill).
+  `reshape(Shape3D)` (box or sphere fill). All of these keep the pool's
+  active-mask in sync. If a caller bypasses them and writes alpha through
+  the raw `voxels_` span (e.g. an SDF-carving loop calling
+  `voxels_[i].deactivate()` per slot), it must follow up with
+  `syncActiveMask()` so the GPU compaction stage sees the new active set.
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint

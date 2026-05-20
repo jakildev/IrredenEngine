@@ -311,6 +311,61 @@ void RenderManager::deallocateVoxels(size_t startIndex, size_t size, std::string
     (*poolOpt.value()).deallocateVoxels(startIndex, size);
 }
 
+namespace {
+// Shared lookup for the active-mask routes below — same shape as
+// deallocateVoxels but returning the pool so the call site can route
+// to whichever mask helper it needs.
+C_VoxelPool *lookupPoolForMaskOp(
+    const std::unordered_map<std::string, EntityId> &canvasMap, const std::string &canvasName
+) {
+    auto it = canvasMap.find(canvasName);
+    if (it == canvasMap.end() || !IREntity::entityExists(it->second)) {
+        return nullptr;
+    }
+    auto poolOpt = IREntity::getComponentOptional<C_VoxelPool>(it->second);
+    if (!poolOpt.has_value()) {
+        return nullptr;
+    }
+    return &(*poolOpt.value());
+}
+} // namespace
+
+void RenderManager::markVoxelPoolRangeActive(
+    size_t startIndex, size_t count, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        pool->setActiveMaskRange(startIndex, count);
+    }
+}
+
+void RenderManager::markVoxelPoolRangeInactive(
+    size_t startIndex, size_t count, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        pool->clearActiveMaskRange(startIndex, count);
+    }
+}
+
+void RenderManager::markVoxelPoolVoxelActive(
+    size_t voxelIndex, bool active, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        if (active) {
+            pool->setActiveBit(voxelIndex);
+        } else {
+            pool->clearActiveBit(voxelIndex);
+        }
+    }
+}
+
+void RenderManager::resyncVoxelPoolRangeFromColors(
+    size_t startIndex, size_t count, std::string canvasName
+) {
+    if (auto *pool = lookupPoolForMaskOp(m_canvasMap, canvasName)) {
+        pool->resyncActiveMaskFromColors(startIndex, count);
+    }
+}
+
 EntityId RenderManager::getCanvas(std::string canvasName) {
     return m_canvasMap[canvasName];
 }

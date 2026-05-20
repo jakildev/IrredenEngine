@@ -78,6 +78,32 @@ inline VoxelPoolAllocation allocateVoxels(unsigned int size, std::string canvasN
 inline void deallocateVoxels(size_t startIndex, size_t size, std::string canvasName = "main") {
     getRenderManager().deallocateVoxels(startIndex, size, canvasName);
 }
+
+/// Push-at-mutation accessors for the per-slot active-mask owned by
+/// @c C_VoxelPool. Callers that wrote into the color span via
+/// @c VoxelPoolAllocation must follow up with one of these so the GPU
+/// compact shader (`c_voxel_visibility_compact`) sees the same active
+/// set as the CPU. See @c engine/prefabs/irreden/voxel/components/component_voxel_pool.hpp
+/// "Active-slot mask" for the bit semantics.
+inline void
+markVoxelPoolRangeActive(size_t startIndex, size_t count, std::string canvasName = "main") {
+    getRenderManager().markVoxelPoolRangeActive(startIndex, count, canvasName);
+}
+
+inline void
+markVoxelPoolRangeInactive(size_t startIndex, size_t count, std::string canvasName = "main") {
+    getRenderManager().markVoxelPoolRangeInactive(startIndex, count, canvasName);
+}
+
+inline void
+markVoxelPoolVoxelActive(size_t voxelIndex, bool active, std::string canvasName = "main") {
+    getRenderManager().markVoxelPoolVoxelActive(voxelIndex, active, canvasName);
+}
+
+inline void
+resyncVoxelPoolRangeFromColors(size_t startIndex, size_t count, std::string canvasName = "main") {
+    getRenderManager().resyncVoxelPoolRangeFromColors(startIndex, count, canvasName);
+}
 /// @}
 
 /// @{

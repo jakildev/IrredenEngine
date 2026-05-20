@@ -283,6 +283,7 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
         else
             v.deactivate();
     }
+    set.syncActiveMask();
 }
 
 // Apply a single placement / erasure edit to the voxel set, appending
@@ -311,6 +312,7 @@ void applyEdit(
         set.voxels_[flat].deactivate();
         set.voxels_[flat].layer_id_ = 0;
     }
+    set.syncActiveMask();
 }
 
 void commitStroke() {
@@ -345,6 +347,7 @@ void undoOne() {
     // path, so the getComponent lookup below assumes the set is alive
     // without an extra liveness check. A future refactor that adds
     // entity removal must guard this loop.
+    std::vector<IREntity::EntityId> touchedSets;
     for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
         // editable set lives for the session — no teardown path
         auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
@@ -353,6 +356,12 @@ void undoOne() {
         if (flat < set.voxels_.size()) {
             set.voxels_[flat] = it->prev_;
         }
+        if (std::find(touchedSets.begin(), touchedSets.end(), it->voxelSet_) == touchedSets.end()) {
+            touchedSets.push_back(it->voxelSet_);
+        }
+    }
+    for (auto id : touchedSets) {
+        IREntity::getComponent<C_VoxelSetNew>(id).syncActiveMask();
     }
 }
 
@@ -425,16 +434,25 @@ void applyFillLine(
     const int dz = IRMath::abs(delta.z);
     int axis = 0;
     int steps = dx;
-    if (dy > steps) { axis = 1; steps = dy; }
-    if (dz > steps) { axis = 2; steps = dz; }
+    if (dy > steps) {
+        axis = 1;
+        steps = dy;
+    }
+    if (dz > steps) {
+        axis = 2;
+        steps = dz;
+    }
     const int dirX = delta.x > 0 ? 1 : -1;
     const int dirY = delta.y > 0 ? 1 : -1;
     const int dirZ = delta.z > 0 ? 1 : -1;
     for (int i = 0; i <= steps; ++i) {
         ivec3 pos = worldA;
-        if (axis == 0) pos.x += dirX * i;
-        else if (axis == 1) pos.y += dirY * i;
-        else pos.z += dirZ * i;
+        if (axis == 0)
+            pos.x += dirX * i;
+        else if (axis == 1)
+            pos.y += dirY * i;
+        else
+            pos.z += dirZ * i;
         ivec3 local{};
         std::size_t flat = 0;
         if (worldVoxelToLocal(set, gpos, pos, local, flat))
@@ -454,16 +472,20 @@ void applyFillFace(
     Color color
 ) {
     int fixedAxis = -1;
-    if (faceNormal.x != 0) fixedAxis = 0;
-    else if (faceNormal.y != 0) fixedAxis = 1;
-    else if (faceNormal.z != 0) fixedAxis = 2;
-    if (fixedAxis < 0) return;
+    if (faceNormal.x != 0)
+        fixedAxis = 0;
+    else if (faceNormal.y != 0)
+        fixedAxis = 1;
+    else if (faceNormal.z != 0)
+        fixedAxis = 2;
+    if (fixedAxis < 0)
+        return;
 
     const ivec3 origin = IRMath::roundVec3HalfUp(gpos.pos_);
     const ivec3 startLocal = worldHit - origin;
-    if (startLocal.x < 0 || startLocal.x >= set.size_.x ||
-        startLocal.y < 0 || startLocal.y >= set.size_.y ||
-        startLocal.z < 0 || startLocal.z >= set.size_.z) return;
+    if (startLocal.x < 0 || startLocal.x >= set.size_.x || startLocal.y < 0 ||
+        startLocal.y >= set.size_.y || startLocal.z < 0 || startLocal.z >= set.size_.z)
+        return;
 
     const int totalCells = set.size_.x * set.size_.y * set.size_.z;
     std::vector<bool> visited(static_cast<std::size_t>(totalCells), false);
@@ -477,7 +499,8 @@ void applyFillFace(
     };
 
     const int startFlat = IRMath::index3DtoIndex1D(startLocal, set.size_);
-    if (startFlat < 0 || static_cast<std::size_t>(startFlat) >= set.voxels_.size()) return;
+    if (startFlat < 0 || static_cast<std::size_t>(startFlat) >= set.voxels_.size())
+        return;
     visited[static_cast<std::size_t>(startFlat)] = true;
 
     std::queue<ivec3> q;
@@ -486,16 +509,19 @@ void applyFillFace(
         const ivec3 cur = q.front();
         q.pop();
         const int flat = IRMath::index3DtoIndex1D(cur, set.size_);
-        if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size()) continue;
+        if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
+            continue;
         applyEdit(entity, set, cur, static_cast<std::size_t>(flat), place, color);
         for (const auto &step : neighborSteps) {
             const ivec3 nb = cur + step;
-            if (nb.x < 0 || nb.x >= set.size_.x ||
-                nb.y < 0 || nb.y >= set.size_.y ||
-                nb.z < 0 || nb.z >= set.size_.z) continue;
+            if (nb.x < 0 || nb.x >= set.size_.x || nb.y < 0 || nb.y >= set.size_.y || nb.z < 0 ||
+                nb.z >= set.size_.z)
+                continue;
             const int nbFlat = IRMath::index3DtoIndex1D(nb, set.size_);
-            if (nbFlat < 0 || static_cast<std::size_t>(nbFlat) >= visited.size()) continue;
-            if (visited[static_cast<std::size_t>(nbFlat)]) continue;
+            if (nbFlat < 0 || static_cast<std::size_t>(nbFlat) >= visited.size())
+                continue;
+            if (visited[static_cast<std::size_t>(nbFlat)])
+                continue;
             visited[static_cast<std::size_t>(nbFlat)] = true;
             q.push(nb);
         }
@@ -505,7 +531,8 @@ void applyFillFace(
 // Update the ghost shape entity to visualize the fill region during drag.
 // Uses AABB bounds for box fill, or the dominant-axis extent for line fill.
 void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
-    if (g_fillTool.ghostEntity_ == IREntity::kNullEntity) return;
+    if (g_fillTool.ghostEntity_ == IREntity::kNullEntity)
+        return;
     auto &ghost = IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_);
     auto &ghostPos = IREntity::getComponent<C_Position3D>(g_fillTool.ghostEntity_);
     ghost.flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_HOLLOW |
@@ -519,22 +546,33 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
         const int dy = IRMath::abs(delta.y);
         const int dz = IRMath::abs(delta.z);
         ivec3 lineEnd = worldA;
-        if (dx >= dy && dx >= dz) lineEnd.x = worldB.x;
-        else if (dy >= dz) lineEnd.y = worldB.y;
-        else lineEnd.z = worldB.z;
-        lo = ivec3{IRMath::min(worldA.x, lineEnd.x),
-                   IRMath::min(worldA.y, lineEnd.y),
-                   IRMath::min(worldA.z, lineEnd.z)};
-        hi = ivec3{IRMath::max(worldA.x, lineEnd.x),
-                   IRMath::max(worldA.y, lineEnd.y),
-                   IRMath::max(worldA.z, lineEnd.z)};
+        if (dx >= dy && dx >= dz)
+            lineEnd.x = worldB.x;
+        else if (dy >= dz)
+            lineEnd.y = worldB.y;
+        else
+            lineEnd.z = worldB.z;
+        lo = ivec3{
+            IRMath::min(worldA.x, lineEnd.x),
+            IRMath::min(worldA.y, lineEnd.y),
+            IRMath::min(worldA.z, lineEnd.z)
+        };
+        hi = ivec3{
+            IRMath::max(worldA.x, lineEnd.x),
+            IRMath::max(worldA.y, lineEnd.y),
+            IRMath::max(worldA.z, lineEnd.z)
+        };
     } else {
-        lo = ivec3{IRMath::min(worldA.x, worldB.x),
-                   IRMath::min(worldA.y, worldB.y),
-                   IRMath::min(worldA.z, worldB.z)};
-        hi = ivec3{IRMath::max(worldA.x, worldB.x),
-                   IRMath::max(worldA.y, worldB.y),
-                   IRMath::max(worldA.z, worldB.z)};
+        lo = ivec3{
+            IRMath::min(worldA.x, worldB.x),
+            IRMath::min(worldA.y, worldB.y),
+            IRMath::min(worldA.z, worldB.z)
+        };
+        hi = ivec3{
+            IRMath::max(worldA.x, worldB.x),
+            IRMath::max(worldA.y, worldB.y),
+            IRMath::max(worldA.z, worldB.z)
+        };
     }
     const vec3 halfExt = vec3(hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1) * 0.5f;
     ghostPos.pos_ = vec3(lo) + halfExt;
@@ -759,9 +797,13 @@ void initSystems() {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
                     auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
                     IRVoxelEditor::applyFillFace(
-                        hit->entity_, set, gpos,
-                        hit->voxelPos_ + hit->faceNormal_, hit->faceNormal_,
-                        true, placeColor
+                        hit->entity_,
+                        set,
+                        gpos,
+                        hit->voxelPos_ + hit->faceNormal_,
+                        hit->faceNormal_,
+                        true,
+                        placeColor
                     );
                     IRVoxelEditor::commitStroke();
                 }
@@ -794,7 +836,9 @@ void initSystems() {
                     const bool shiftHeld =
                         IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
                     IRVoxelEditor::updateGhostShape(
-                        IRVoxelEditor::g_fillTool.dragStartWorld_, endPos, shiftHeld
+                        IRVoxelEditor::g_fillTool.dragStartWorld_,
+                        endPos,
+                        shiftHeld
                     );
                 }
             }
@@ -804,17 +848,17 @@ void initSystems() {
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
                     IREntity::getComponent<C_ShapeDescriptor>(
                         IRVoxelEditor::g_fillTool.ghostEntity_
-                    ).flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+                    )
+                        .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
-                const IREntity::EntityId targetEntity =
-                    IRVoxelEditor::g_fillTool.dragStartEntity_;
-                if (targetEntity == IREntity::kNullEntity) return;
+                const IREntity::EntityId targetEntity = IRVoxelEditor::g_fillTool.dragStartEntity_;
+                if (targetEntity == IREntity::kNullEntity)
+                    return;
                 auto &set = IREntity::getComponent<C_VoxelSetNew>(targetEntity);
                 auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(targetEntity);
                 const ivec3 startPos = IRVoxelEditor::g_fillTool.dragStartWorld_;
                 const ivec3 endPos = IRVoxelEditor::g_fillTool.lastEndWorld_;
-                const bool shiftHeld =
-                    IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
 
                 if (startPos == endPos) {
                     ivec3 local{};
@@ -823,11 +867,23 @@ void initSystems() {
                         IRVoxelEditor::applyEdit(targetEntity, set, local, flat, true, placeColor);
                 } else if (shiftHeld) {
                     IRVoxelEditor::applyFillLine(
-                        targetEntity, set, gpos, startPos, endPos, true, placeColor
+                        targetEntity,
+                        set,
+                        gpos,
+                        startPos,
+                        endPos,
+                        true,
+                        placeColor
                     );
                 } else {
                     IRVoxelEditor::applyFillAABB(
-                        targetEntity, set, gpos, startPos, endPos, true, placeColor
+                        targetEntity,
+                        set,
+                        gpos,
+                        startPos,
+                        endPos,
+                        true,
+                        placeColor
                     );
                 }
                 IRVoxelEditor::commitStroke();
@@ -988,6 +1044,7 @@ void initSystems() {
                         else
                             v.deactivate();
                     }
+                    set.syncActiveMask();
                     g_layerManager.deleteLayer(delId);
                 }
             }
@@ -1423,7 +1480,11 @@ void initCommands() {
                 IRVoxelEditor::g_symmetry
             );
             if (res.ok_)
-                IR_LOG_INFO("Scene saved to {}/{}", IRVoxelEditor::kSceneSaveDir, IRVoxelEditor::kSceneBaseName);
+                IR_LOG_INFO(
+                    "Scene saved to {}/{}",
+                    IRVoxelEditor::kSceneSaveDir,
+                    IRVoxelEditor::kSceneBaseName
+                );
             else
                 IR_LOG_ERROR("Save failed: {}", res.errorMsg_);
         }
@@ -1463,9 +1524,8 @@ void initCommands() {
             IRVoxelEditor::g_symmetry = loaded.symmetry_;
 
             if (!loaded.layers_.empty())
-                IRVoxelEditor::g_layerManager.resetAndLoad(
-                    loaded.layers_, loaded.activeLayerId_, loaded.nextLayerId_
-                );
+                IRVoxelEditor::g_layerManager
+                    .resetAndLoad(loaded.layers_, loaded.activeLayerId_, loaded.nextLayerId_);
 
             // Reset per-frame undo state to match the new frame count.
             editor.undoRecords_ = {};
@@ -1719,7 +1779,6 @@ void initEntities() {
             Color{240, 240, 240, 200}
         }
     );
-    IREntity::getComponent<C_ShapeDescriptor>(
-        IRVoxelEditor::g_fillTool.ghostEntity_
-    ).flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_).flags_ =
+        IRMath::SDF::SHAPE_FLAG_NONE;
 }

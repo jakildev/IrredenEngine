@@ -341,6 +341,13 @@ EntityId createVoxelPoolShape(
     } else if (g_checkerboard) {
         applyCheckerboard(vs, color);
     }
+    // The SDF-carving loop above writes alpha directly through
+    // `vs.voxels_[i].deactivate()` rather than going through a
+    // `C_VoxelSetNew` mutator method, so the pool's per-slot active mask
+    // (consumed by `c_voxel_visibility_compact`) is still pinned to the
+    // ctor's all-active state. Re-derive it from the live alphas so the
+    // compact shader skips carved-away interior slots.
+    vs.syncActiveMask();
 
     IR_LOG_INFO(
         "VoxelPool shape entity={} canvas={} total={} active={}",

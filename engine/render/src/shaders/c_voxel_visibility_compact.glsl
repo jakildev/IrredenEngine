@@ -25,16 +25,14 @@ layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
 };
 
-// 12 B per voxel — must match C_Voxel layout in
-// engine/prefabs/irreden/voxel/components/component_voxel.hpp.
-struct Voxel {
-    uint colorPacked;       // [0:3]  RGBA8
-    uint materialFlagBone;  // [4]    material_id | [5] flags | [6] bone_id | [7] layer_id
-    uint reserved;          // [8:11] reserved
-};
-
-layout(std430, binding = 6) readonly buffer ColorBuffer {
-    Voxel voxels[];
+// Per-slot active bitmask uploaded from `C_VoxelPool::m_activeMask`:
+// one uint32 per `kVoxelActiveMaskBits` (= 32) voxel slots; bit i mirrors
+// `m_voxelColors[i].color_.alpha_ != 0` at frame-upload time. The previous
+// path read `voxels[idx].colorPacked` purely to test alpha; this SSBO
+// replaces that read with a 1-bit lookup so inactive slots short-circuit
+// before touching the wider color SSBO. T-287 / #950.
+layout(std430, binding = 8) readonly buffer VoxelActiveMaskBuffer {
+    uint activeMask[];
 };
 
 layout(std430, binding = 24) readonly buffer ChunkVisibility {
@@ -61,9 +59,9 @@ void main() {
     if (idx < uint(voxelCount)) {
         uint chunkIdx = idx / uint(VOXEL_CHUNK_SIZE);
         if (chunkVisible[chunkIdx] != 0u) {
-            uint packedColor = voxels[idx].colorPacked;
-            uint alpha = (packedColor >> 24) & 0xFFu;
-            if (alpha != 0u) {
+            // 32-bit word stride matches `kVoxelActiveMaskBits` on the CPU side.
+            uint maskWord = activeMask[idx >> 5u];
+            if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
                 if (cardinalIndex != 0) {
                     voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);

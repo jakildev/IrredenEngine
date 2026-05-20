@@ -120,6 +120,14 @@ struct C_VoxelSetNew {
                 }
             }
         }
+        // Default `color` is opaque (alpha=255 from `IRMath::Color`'s ctor),
+        // so the fast-path is `markRangeActive`. The fallback handles a caller
+        // who passes a transparent color.
+        if (color.alpha_ != 0) {
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+        } else {
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+        }
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
     }
 
@@ -203,6 +211,9 @@ struct C_VoxelSetNew {
                 }
             }
         }
+        // Dense payload is a mix of active and inactive slots, so
+        // resync from per-voxel alpha rather than the fast bulk path.
+        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
 
@@ -227,12 +238,19 @@ struct C_VoxelSetNew {
     }
 
     void changeVoxelColor(ivec3 index, Color color) {
-        voxels_[index3DtoIndex1D(index, size_)].color_ = color;
+        const int idx = index3DtoIndex1D(index, size_);
+        voxels_[idx].color_ = color;
+        IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, color.alpha_ != 0);
     }
 
     void changeVoxelColorAll(Color color) {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].color_ = color;
+        }
+        if (color.alpha_ != 0) {
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+        } else {
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
         }
     }
 
@@ -240,12 +258,14 @@ struct C_VoxelSetNew {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].deactivate();
         }
+        IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
     }
 
     void activateAll() {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].activate();
         }
+        IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
     }
 
     // Activates all voxels in the plane perpendicular to `axis` at `planeIndex`
@@ -255,17 +275,20 @@ struct C_VoxelSetNew {
         const ivec3 sz = size_;
         const int dim0 = (axis + 1) % 3;
         const int dim1 = (axis + 2) % 3;
-        for (int a = 0; a < sz[dim0]; ++a) {
-            for (int b = 0; b < sz[dim1]; ++b) {
-                ivec3 coord{0, 0, 0};
-                coord[axis] = planeIndex;
-                coord[dim0] = a;
-                coord[dim1] = b;
-                const int idx = IRMath::index3DtoIndex1D(coord, sz);
-                voxels_[idx].color_ = color;
-                voxels_[idx].activate();
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](IRComponents::C_VoxelPool &pool) {
+            for (int a = 0; a < sz[dim0]; ++a) {
+                for (int b = 0; b < sz[dim1]; ++b) {
+                    ivec3 coord{0, 0, 0};
+                    coord[axis] = planeIndex;
+                    coord[dim0] = a;
+                    coord[dim1] = b;
+                    const int idx = IRMath::index3DtoIndex1D(coord, sz);
+                    voxels_[idx].color_ = color;
+                    voxels_[idx].activate();
+                    pool.setActiveBit(voxelStartIdx_ + idx);
+                }
             }
-        }
+        });
     }
 
     // take positions of all voxels in voxel object and form a new shape. This could
@@ -288,6 +311,7 @@ struct C_VoxelSetNew {
                     }
                 }
             }
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
         }
         if (shape3D == Shape3D::SPHERE) {
             vec3 center = vec3(size_) / 2.0f;
@@ -306,6 +330,10 @@ struct C_VoxelSetNew {
                     }
                 }
             }
+            // Sphere splits the span into active interior + inactive
+            // exterior — resync from per-voxel alpha rather than picking
+            // bulk active/inactive.
+            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
         }
     }
 
@@ -352,6 +380,28 @@ struct C_VoxelSetNew {
     void freeInvisableVoxels(bool withAnimation = false) {
         // Voxel pool will have to resort allocation and free
         // a whole chunk at a time
+    }
+
+    // Re-derive the pool's per-slot active mask from this set's color
+    // alphas. Required after any caller mutates voxel alpha through the
+    // raw `voxels_` span (`voxels_[i].activate()`, `voxels_[i].deactivate()`,
+    // or `voxels_[i].color_ = ...` with a different alpha) without going
+    // through one of the mutator methods above. Bypassing the mutators is
+    // the common pattern for SDF-carved voxel shapes that allocate a
+    // dense box then deactivate exterior slots in a loop (see
+    // `creations/demos/shape_debug/main.cpp::createVoxelPoolShape`).
+    // Without this sync, the visibility-compact shader would emit
+    // deactivated slots (mask still set from the ctor) and stage 2
+    // would overwrite surface pixels with the transparent inactive
+    // ones at the same iso depth.
+    void syncActiveMask() {
+        if (numVoxels_ <= 0) {
+            return;
+        }
+        IRPrefab::VoxelPool::resyncRangeFromColors(
+            voxelStartIdx_,
+            static_cast<std::size_t>(numVoxels_)
+        );
     }
 
     // int addVoxelSceneNode

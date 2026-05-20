@@ -13,4 +13,5 @@ static void carveSphere(IRComponents::C_VoxelSetNew &vs, float radius) {
             vs.voxels_[i].deactivate();
         }
     }
+    vs.syncActiveMask();
 }
