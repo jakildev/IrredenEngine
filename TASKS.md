@@ -259,11 +259,11 @@ Avoid:
   - **Notes:** Stack S-C-math pos 2 (C1 → C5 → C4 → C8). Branch from C1 PR head (#943). Helpers in engine/math/include/irreden/; GPU mirror in engine/render/src/shaders/ir_iso_common.glsl. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C5".
   - **Links:**
 
-- [ ] **render: geometric trixel deformation (replaces T-322 bilinear residual) (C4)** — add mat2 faceDeform[3] to FrameDataVoxelToTrixel + FrameDataShapesToTrixel UBOs; apply faceDeform in 2D iso space in c_voxel_to_trixel_stage_1/2.glsl and c_shapes_to_trixel.glsl; remove T-322 screen-space bilinear residual path
+- [~] **render: geometric trixel deformation (replaces T-322 bilinear residual) (C4)** — add mat2 faceDeform[3] to FrameDataVoxelToTrixel + FrameDataShapesToTrixel UBOs; apply faceDeform in 2D iso space in c_voxel_to_trixel_stage_1/2.glsl and c_shapes_to_trixel.glsl; remove T-322 screen-space bilinear residual path
   - **ID:** T-293
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-292
   - **Stack:** T-279..T-293 S-C-math
   - **Acceptance:** (1) Camera yaws continuously through 360°; voxel + SDF entities deform smoothly with no bilinear blur; (2) no visible "snap" at cardinal boundaries; (3) T-322 screen-space bilinear residual path removed; engine/prefabs/irreden/render/camera.hpp no longer drives it; (4) fleet-build clean on linux-debug and macos-debug
