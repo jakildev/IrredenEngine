@@ -347,6 +347,7 @@ void undoOne() {
     // path, so the getComponent lookup below assumes the set is alive
     // without an extra liveness check. A future refactor that adds
     // entity removal must guard this loop.
+    std::vector<IREntity::EntityId> touchedSets;
     for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
         // editable set lives for the session — no teardown path
         auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
@@ -355,8 +356,13 @@ void undoOne() {
         if (flat < set.voxels_.size()) {
             set.voxels_[flat] = it->prev_;
         }
+        if (std::find(touchedSets.begin(), touchedSets.end(), it->voxelSet_) == touchedSets.end()) {
+            touchedSets.push_back(it->voxelSet_);
+        }
     }
-    IREntity::getComponent<C_VoxelSetNew>(rec.edits_.front().voxelSet_).syncActiveMask();
+    for (auto id : touchedSets) {
+        IREntity::getComponent<C_VoxelSetNew>(id).syncActiveMask();
+    }
 }
 
 // Computes the local index inside `set` for a world voxel position.
