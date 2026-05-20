@@ -26,6 +26,18 @@ constexpr float kHalfPi = 1.57079632679489661923f;
 /// Two pi (2π). Useful for full-revolution math and angle wrap.
 constexpr float kTwoPi = 6.28318530717958647692f;
 
+/// Face-index constants for the three visible iso faces. CPU mirror of the
+/// `kXFace`/`kYFace`/`kZFace` integer constants in `shaders/ir_iso_common.glsl`
+/// and `shaders/metal/ir_iso_common.metal`. Distinct from the legacy `FaceType`
+/// enum in `ir_math_types.hpp` (which is 1-indexed with `NONE_FACE` first);
+/// these match the shader convention so any helper that crosses the CPU↔GPU
+/// boundary can use the same integer in both directions.
+/// @{
+constexpr int kXFace = 0;
+constexpr int kYFace = 1;
+constexpr int kZFace = 2;
+/// @}
+
 /// Loads a color palette from a file and returns it as a vector of Colors.
 std::vector<Color> createColorPaletteFromFile(const char *filename);
 
@@ -298,6 +310,85 @@ constexpr ivec3 rotateCardinalZInvI(const ivec3 v, CardinalIndex cardinalIndex) 
     return v;
 }
 
+/// Iso projection of a world point under a continuous Z-yaw camera.
+///
+/// Equivalent to `pos3DtoPos2DIso(R_z(-yaw) · world)` — applies the world→view
+/// rotation for camera yaw @p visualYaw, then projects to iso. Sign convention
+/// matches `rotateCardinalZ` (world→view = R_z(-yaw)) so this is the smooth
+/// extension of the cardinal-snap projection used by the voxel rasterizer.
+///
+/// Use cases: CPU iso-bounds computation under continuous yaw, picking
+/// pre-image, debug overlay placement. The voxel/SDF rasterizer itself
+/// emits at the cardinal `rasterYaw` and applies `faceDeformationMatrix` for
+/// the leftover `residualYaw`; this helper is the cleaner CPU-side path
+/// when the caller has the full `visualYaw` and doesn't need the split.
+///
+/// GPU mirror: `pos3DtoPos2DIsoYawed` in `shaders/ir_iso_common.glsl`.
+constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
+    const float c = glm::cos(visualYaw);
+    const float s = glm::sin(visualYaw);
+    const float vx = worldPos.x * c + worldPos.y * s;
+    const float vy = -worldPos.x * s + worldPos.y * c;
+    return vec2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
+}
+
+/// 2x2 deformation matrix that maps a face's un-yawed iso-pixel offset to the
+/// offset under residual yaw @p residualYaw (in `[-π/4, π/4]`).
+///
+/// Geometric construction: each face contributes one "u" tangent (in-plane,
+/// rotates with the world's Z-yaw) and one "v" tangent (along world Z, fixed
+/// under Z-yaw). The original iso-projection columns `M_0` map (u, v) → iso;
+/// rotating the world by `R_z(-φ)` produces new columns `M_φ`. The returned
+/// `mat2 D_φ = M_φ · M_0⁻¹` post-multiplies an iso-pixel offset emitted at
+/// the cardinal `rasterYaw` to recover its position at the continuous yaw.
+///
+/// Closed form per face (with `c = cos(φ)`, `s = sin(φ)`):
+/// - X face: `[c-s, 0; 1-(c+s), 1]`
+/// - Y face: `[c+s, 0; c-s-1, 1]`
+/// - Z face: `[c, s; -s, c]` = `R_z(-φ)` in 2D iso space
+///
+/// At `residualYaw == 0` all three are identity, so the cardinal-snap path
+/// is bit-identical to the un-yawed projection. `@p face` uses the shader
+/// convention `kXFace`/`kYFace`/`kZFace` (0/1/2); other values return identity.
+///
+/// GPU mirror: `faceDeformationMatrix` in `shaders/ir_iso_common.glsl`.
+constexpr mat2 faceDeformationMatrix(int face, float residualYaw) {
+    const float c = glm::cos(residualYaw);
+    const float s = glm::sin(residualYaw);
+    if (face == kXFace) {
+        return mat2(c - s, 1.0f - (c + s), 0.0f, 1.0f);
+    }
+    if (face == kYFace) {
+        return mat2(c + s, c - s - 1.0f, 0.0f, 1.0f);
+    }
+    if (face == kZFace) {
+        return mat2(c, -s, s, c);
+    }
+    return mat2(1.0f, 0.0f, 0.0f, 1.0f);
+}
+
+/// Residual-yaw-deformed trixel iso-pixel offset within the 2x3 face diamond.
+///
+/// CPU mirror of `deformedTrixelIsoPixel` in `shaders/ir_iso_common.glsl`:
+/// takes the un-yawed offset from `faceOffset_2x3(face, subPixel)`, applies
+/// `faceDeformationMatrix(face, residualYaw)`, and rounds back to integer
+/// iso pixels via @ref roundHalfUp. `@p subPixel` is 0 or 1 (selects the
+/// upper or lower trixel of the face's vertical pair); `@p face` uses the
+/// shader convention `kXFace`/`kYFace`/`kZFace`.
+constexpr ivec2 deformedTrixelIsoPixel(int face, int subPixel, float residualYaw) {
+    ivec2 unyawed;
+    if (face == kXFace) {
+        unyawed = ivec2(1, 1 + subPixel);
+    } else if (face == kYFace) {
+        unyawed = ivec2(0, 1 + subPixel);
+    } else {
+        unyawed = ivec2(subPixel, 0);
+    }
+    const mat2 D = faceDeformationMatrix(face, residualYaw);
+    const vec2 deformed = D * vec2(unyawed);
+    return ivec2(roundHalfUp(deformed.x), roundHalfUp(deformed.y));
+}
+
 /// Orthographic projection matrix.  Selects the depth range convention
 /// ([0,1] for Metal/Vulkan, [-1,1] for OpenGL) from IRPlatform::kGfx.
 inline mat4 ortho(float left, float right, float bottom, float top, float nearZ, float farZ) {
@@ -316,6 +407,40 @@ inline mat4 translate(const mat4 &matrix, const vec3 &position) {
 /// Scaling matrix that scales @p matrix by @p value. GLM wrapper.
 inline mat4 scale(const mat4 &matrix, const vec3 &value) {
     return glm::scale(matrix, value);
+}
+
+/// Builds the local→world matrix from an SQT triple (scale, quaternion
+/// rotation, translation). Composition is `T · R · S`: a local point
+/// `p_local` maps to `R · (S · p_local) + t` — the same ordering that
+/// `SYSTEM_PROPAGATE_TRANSFORM` applies when composing parent and child
+/// transforms.
+///
+/// Quaternion layout is the engine canon: `vec4(qx, qy, qz, qw)` with `.w`
+/// the scalar. Implementation rotates the scaled basis vectors via
+/// @ref rotateVectorByQuat so the matrix-form rotation stays bit-identical
+/// to the per-vector quaternion-rotate path used elsewhere in the engine.
+///
+/// GPU mirror: `sqtToMat4` in `shaders/ir_iso_common.glsl`.
+inline mat4 sqtToMat4(const vec3 &scaleVec, const vec4 &rotationQuat, const vec3 &translation) {
+    const vec3 col0 = rotateVectorByQuat(vec3(scaleVec.x, 0.0f, 0.0f), rotationQuat);
+    const vec3 col1 = rotateVectorByQuat(vec3(0.0f, scaleVec.y, 0.0f), rotationQuat);
+    const vec3 col2 = rotateVectorByQuat(vec3(0.0f, 0.0f, scaleVec.z), rotationQuat);
+    return mat4(vec4(col0, 0.0f), vec4(col1, 0.0f), vec4(col2, 0.0f), vec4(translation, 1.0f));
+}
+
+/// Applies an SRT (or any affine) matrix @p transform to an integer voxel
+/// grid cell @p cell, returning the destination integer cell with half-up
+/// rounding. Use when GRID-mode rotation needs to re-rasterize a set of
+/// authored voxels into world-grid cells under a parent or local transform.
+///
+/// Affine matrices keep `w == 1`, so the perspective divide is omitted. The
+/// round goes through @ref roundHalfUp so CPU and GPU agree on the destination
+/// cell at half-integer positions.
+///
+/// GPU mirror: `matrixApplyToVoxelGrid` in `shaders/ir_iso_common.glsl`.
+inline ivec3 matrixApplyToVoxelGrid(const mat4 &transform, const ivec3 &cell) {
+    const vec4 worldPos = transform * vec4(vec3(cell), 1.0f);
+    return roundVec3HalfUp(vec3(worldPos));
 }
 
 /// Sum of all components of @p value.

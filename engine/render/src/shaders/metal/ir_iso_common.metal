@@ -313,6 +313,75 @@ inline float3 trixelCanvasPixelToWorld3D(
     );
 }
 
+// Continuous-yaw + per-face deformation math (T-292; consumed by T-293).
+// Mirrors shaders/ir_iso_common.glsl and IRMath::pos3DtoPos2DIsoYawed /
+// faceDeformationMatrix / deformedTrixelIsoPixel / sqtToMat4 /
+// matrixApplyToVoxelGrid in engine/math/include/irreden/ir_math.hpp.
+
+inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
+    const float vx = worldPos.x * c + worldPos.y * s;
+    const float vy = -worldPos.x * s + worldPos.y * c;
+    return float2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
+}
+
+// 2x2 deformation matrix per face for residual yaw. At residualYaw == 0 all
+// three return identity. `face` uses the kXFace / kYFace / kZFace convention;
+// other values return identity. CPU mirror: IRMath::faceDeformationMatrix.
+inline float2x2 faceDeformationMatrix(int face, float residualYaw) {
+    const float c = cos(residualYaw);
+    const float s = sin(residualYaw);
+    if (face == kXFace) {
+        return float2x2(float2(c - s, 1.0f - (c + s)), float2(0.0f, 1.0f));
+    }
+    if (face == kYFace) {
+        return float2x2(float2(c + s, c - s - 1.0f), float2(0.0f, 1.0f));
+    }
+    if (face == kZFace) {
+        return float2x2(float2(c, -s), float2(s, c));
+    }
+    return float2x2(float2(1.0f, 0.0f), float2(0.0f, 1.0f));
+}
+
+inline int2 deformedTrixelIsoPixel(int face, int subPixel, float residualYaw) {
+    const int2 unyawed = faceOffset_2x3(face, subPixel);
+    const float2x2 D = faceDeformationMatrix(face, residualYaw);
+    const float2 deformed = D * float2(unyawed);
+    return int2(roundHalfUp(deformed.x), roundHalfUp(deformed.y));
+}
+
+// Builds the local->world matrix from an SQT triple (scale, quaternion
+// rotation, translation). Composition is T * R * S; quaternion layout matches
+// the engine canon: float4(qx, qy, qz, qw) with .w the scalar; identity is
+// (0, 0, 0, 1). CPU mirror: IRMath::sqtToMat4.
+inline float4x4 sqtToMat4(float3 scaleVec, float4 rotationQuat, float3 translation) {
+    const float x = rotationQuat.x;
+    const float y = rotationQuat.y;
+    const float z = rotationQuat.z;
+    const float w = rotationQuat.w;
+    const float3 col0 = float3(1.0f - 2.0f * (y * y + z * z),
+                               2.0f * (x * y + w * z),
+                               2.0f * (x * z - w * y)) * scaleVec.x;
+    const float3 col1 = float3(2.0f * (x * y - w * z),
+                               1.0f - 2.0f * (x * x + z * z),
+                               2.0f * (y * z + w * x)) * scaleVec.y;
+    const float3 col2 = float3(2.0f * (x * z + w * y),
+                               2.0f * (y * z - w * x),
+                               1.0f - 2.0f * (x * x + y * y)) * scaleVec.z;
+    return float4x4(
+        float4(col0, 0.0f),
+        float4(col1, 0.0f),
+        float4(col2, 0.0f),
+        float4(translation, 1.0f)
+    );
+}
+
+inline int3 matrixApplyToVoxelGrid(float4x4 transformMat, int3 cell) {
+    const float4 worldPos = transformMat * float4(float3(cell), 1.0f);
+    return roundHalfUp(float3(worldPos.x, worldPos.y, worldPos.z));
+}
+
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the
 // FrameDataVoxelToTrixel UBO in the GLSL pipeline.  std140 padding rules from
 // GLSL collapse cleanly into Metal's natural packing here.
