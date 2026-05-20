@@ -98,8 +98,11 @@ void ChunkResidencyManager::migrateEntity(
 
     if (auto src = m_slots.find(oldKey); src != m_slots.end()) {
         auto &owned = src->second.ownedEntities_;
-        owned.erase(std::remove(owned.begin(), owned.end(), id), owned.end());
-        src->second.dirty_ = true;
+        auto newEnd = std::remove(owned.begin(), owned.end(), id);
+        if (newEnd != owned.end()) {
+            owned.erase(newEnd, owned.end());
+            src->second.dirty_ = true;
+        }
     }
 
     if (m_slots.find(newKey) == m_slots.end()) {

@@ -115,10 +115,11 @@ class ChunkResidencyManager {
     /// callers don't read a half-attached voxel pool.
     bool isResident(IRPrefab::Chunk::ChunkKey key) const;
 
-    /// Pointer-or-nullptr accessor. The pointer is stable until the
-    /// next requestEvict on the same key (the underlying storage is an
-    /// unordered_map, so erase invalidates references to that bucket
-    /// only).
+    /// Pointer-or-nullptr accessor. The returned pointer is valid until
+    /// the next mutation of the resident set (any call to requestResident
+    /// or requestEvict, on this key or any other) — unordered_map may
+    /// rehash on insert, invalidating all references. Do not cache the
+    /// pointer across mutating calls.
     const ChunkResidencySlot *slot(IRPrefab::Chunk::ChunkKey key) const;
     ChunkResidencySlot *slot(IRPrefab::Chunk::ChunkKey key);
 
