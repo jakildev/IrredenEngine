@@ -768,14 +768,15 @@ land:
 
   Error modes (each destroys the partial entity + any spawned children
   before returning):
-  - `components` value is not a table → schema error at the parent
-    schema-validation pass (current message: "components['<name>'] must
-    be a table of field overrides").
+  - Top-level `components` value is not a table (e.g. `components = 42`)
+    → silently treated as absent. `sol::optional<sol::table>` returns
+    `nullopt` and the block is skipped, just like an omitted field.
+  - Per-entry value is not a table (e.g.
+    `components = { C_ZoomLevel = 42 }`) → "components['<name>'] must
+    be a table of field overrides".
   - Component name has no registered factory → "no factory registered
     for component '<name>'" with the binding-fix hint pointing at
     `IRScript::registerComponentFactoryFor`.
-  - Component name resolves but the entry's value is not a table →
-    same "must be a table" message scoped to that entry.
 
   v1 carry-over: components without a `*_lua.hpp` (and thus no
   factory) remain unreachable from the declarative table — the `setup`

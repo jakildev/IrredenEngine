@@ -776,9 +776,8 @@ TEST_F(PrefabApi, ComponentsTableNonTableEntryErrors) {
 }
 
 TEST_F(PrefabApi, ComponentsRunBeforeSetupCallback) {
-    // Declarative components must be visible from `setup` so the callback
-    // can read/extend them. Stash the spawned `zoom_` into a Lua global
-    // and verify it equals the declarative override.
+    // Verify components attach before setup runs: final zoom is 7.5f and
+    // setup callback executed ('ran' flag set).
     IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
 
     PrefabFiles f = writeFixtureSet(
