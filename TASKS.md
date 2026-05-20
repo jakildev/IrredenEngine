@@ -187,18 +187,6 @@ Avoid:
   - **Notes:** Stack S-A-author pos 3. Branch from A4 PR head. Mask widget reuses trixel-rect helpers. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A2".
   - **Links:**
 
-- [~] **editor: parametric-shape voxel bake (always DENSE) (A3)** — editor exposes "bake parametric shape into voxels"; picks primitive (sphere/box/capsule/cylinder/torus/etc.), sets params, voxelizes into active entity via CPU SDF path
-  - **ID:** T-286
-  - **Area:** engine/prefabs/irreden/editor, engine/math
-  - **Model:** sonnet
-  - **Owner:** claude/T-286-parametric-voxel-bake
-  - **Blocked by:** T-285
-  - **Stack:** T-284..T-286 S-A-author
-  - **Acceptance:** (1) Bake a radius-8 sphere; rasterized result matches GPU SDF output within 1 trixel; (2) bake at least 5 primitive types (sphere, box, capsule, cylinder, torus); (3) resulting .vxs round-trips cleanly through save/load; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #949
-  - **Notes:** Stack S-A-author pos 4. Branch from A2 PR head. Always emits DENSE voxel set — no SHAPES chunk (SDF restriction tracked in #937). CPU path uses engine/math/include/irreden/math/sdf.hpp. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A3".
-  - **Links:**
-
 - [~] **voxel: face-aware rendering (per-voxel face bits) (B2)** — 6 face-occupancy bits in C_Voxel::flags_; maintained at edit time by SYSTEM_UPDATE_FACE_OCCUPANCY; shader skips emit on blocked faces
   - **ID:** T-288
   - **Area:** engine/prefabs/irreden/voxel, engine/render, shaders/glsl
@@ -381,6 +369,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-286** — editor parametric-shape voxel bake (always DENSE) (A3) · Owner: claude/T-286-parametric-voxel-bake · PR: https://github.com/jakildev/IrredenEngine/pull/993
 - [x] **T-287** — voxel: sparse occupancy bitmask in C_VoxelPool (B1) · Owner: claude/T-287-voxel-active-mask · PR: https://github.com/jakildev/IrredenEngine/pull/988
 - [x] **T-277** — render: runtime-sized voxel pools (B4) · Owner: claude/T-277-runtime-voxel-pools · PR: https://github.com/jakildev/IrredenEngine/pull/975
 - [x] **T-276** — asset: .vxs DENSE-RLE chunk variant (B3) · Owner: claude/T-276-vxs-rle-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/972
@@ -400,4 +389,3 @@ Avoid:
 - [x] **T-270** — docs/roles: catch up architect doc on transient-loop, AMEND, game-repo wrinkle · Owner: claude/T-270-architect-doc-catchup · PR: https://github.com/jakildev/IrredenEngine/pull/923
 - [x] **T-269** — docs/roles: adopt fleet-pr-clear-feedback-labels wrapper in sonnet-author + architect · Owner: claude/T-269-clear-feedback-labels-wrapper · PR: https://github.com/jakildev/IrredenEngine/pull/922
 - [x] **T-268** — fleet: add fleet:awaiting-base to FLEET.md label dictionary · Owner: claude/T-268-label-drift-fix · PR: https://github.com/jakildev/IrredenEngine/pull/921
-- [x] **T-267** — docs/roles: shrink intro boilerplate (Bash rules, cache, repo-slug discovery) to pointers · Owner: claude/T-267-shrink-intro-boilerplate · PR: https://github.com/jakildev/IrredenEngine/pull/920
