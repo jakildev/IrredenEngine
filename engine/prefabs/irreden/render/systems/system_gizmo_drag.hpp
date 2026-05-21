@@ -184,9 +184,8 @@ template <> struct System<GIZMO_DRAG> {
 
         auto &anchorLocal = IREntity::getComponent<IRComponents::C_Position3D>(dragAnchor_);
         auto &anchorGlobal = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(dragAnchor_);
-        // APPLY_POSITION_OFFSET folds the modifier-driven offset channel
-        // into globalPos earlier in the frame, so the world-space anchor
-        // read here matches the rendered position.
+        // Anchor world-space read migrates to C_WorldTransform.translation_
+        // in T-299 (render-side SQT reader pass).
         const IRMath::vec3 anchorWorld = anchorGlobal.pos_;
 
         dragStartAnchorPos_ = anchorLocal.pos_;

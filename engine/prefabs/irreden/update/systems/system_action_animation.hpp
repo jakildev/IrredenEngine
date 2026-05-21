@@ -5,7 +5,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_action_animation.hpp>
 #include <irreden/update/components/component_animation_clip.hpp>
@@ -23,15 +23,15 @@ template <> struct System<ACTION_ANIMATION> {
     static SystemId create() {
         static std::unordered_map<IREntity::EntityId, const C_AnimationClip*> clipCache;
 
-        return createSystem<C_ActionAnimation, C_Position3D, C_ContactEvent>(
+        return createSystem<C_ActionAnimation, C_LocalTransform, C_ContactEvent>(
             "ActionAnimation",
             [](C_ActionAnimation &anim,
-               C_Position3D &position,
+               C_LocalTransform &localXform,
                const C_ContactEvent &contact) {
                 if (anim.bindingCount_ <= 0) return;
 
                 if (!anim.originInitialized_) {
-                    anim.origin_ = position.pos_;
+                    anim.origin_ = localXform.translation_;
                     anim.originInitialized_ = true;
                 }
 
@@ -112,7 +112,7 @@ template <> struct System<ACTION_ANIMATION> {
 
                 // --- Hold position when idle ---
                 if (!anim.isPlaying()) {
-                    position.pos_ = anim.origin_ +
+                    localXform.translation_ = anim.origin_ +
                         anim.direction_ * anim.currentDisplacement_;
                     return;
                 }
@@ -148,7 +148,7 @@ template <> struct System<ACTION_ANIMATION> {
                     startDisp, phase.endDisplacement_, eased);
 
                 anim.currentDisplacement_ = displacement;
-                position.pos_ = anim.origin_ + anim.direction_ * displacement;
+                localXform.translation_ = anim.origin_ + anim.direction_ * displacement;
 
                 // --- Phase completion ---
                 if (t >= 1.0) {
@@ -167,7 +167,7 @@ template <> struct System<ACTION_ANIMATION> {
                         anim.currentDisplacement_ =
                             clip->phases_[clip->phaseCount_ - 1].endDisplacement_;
                         anim.stopClip();
-                        position.pos_ = anim.origin_ +
+                        localXform.translation_ = anim.origin_ +
                             anim.direction_ * anim.currentDisplacement_;
                         return;
                     }

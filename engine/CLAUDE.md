@@ -55,8 +55,10 @@ CMake flag, and the hot-reload-only-in-EVAL contract.
 you asked for them or not. The free function detects when the caller
 supplies one of these types explicitly and skips the matching default
 so the caller-provided value lands cleanly. Legacy systems read
-`C_PositionGlobal3D` (updated by `GLOBAL_POSITION_3D` +
-`APPLY_POSITION_OFFSET`); the canonical SQT path reads
+`C_PositionGlobal3D` (updated by `GLOBAL_POSITION_3D` from
+`C_Position3D` + parent chain — currently unwritten by Phase 2
+writers, T-299 migrates the remaining render-side readers to
+`C_WorldTransform`); the canonical SQT path reads
 `C_WorldTransform` (updated by `PROPAGATE_TRANSFORM` from
 `C_LocalTransform` composed with the parent chain — see
 `engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
@@ -64,11 +66,11 @@ propagation").
 
 Per-frame additive offsets (idle bob, gizmo nudges, future per-frame
 perturbations) travel through the modifier framework's vec3 fields:
-`POSITION_OFFSET_3D` (folded into `C_PositionGlobal3D` by
-`APPLY_POSITION_OFFSET`) and the SQT-side `TRANSFORM_TRANSLATION` /
-`TRANSFORM_SCALE` (folded into `C_WorldTransform` by
-`PROPAGATE_TRANSFORM`). Entities that don't push such offsets don't
-need `C_Modifiers`.
+`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` (folded into
+`C_WorldTransform` by `PROPAGATE_TRANSFORM`). Entities that don't
+push such offsets don't need `C_Modifiers`. The legacy
+`POSITION_OFFSET_3D` / `APPLY_POSITION_OFFSET` channel was retired in
+T-300 Phase 2.
 
 ## Manager globals
 

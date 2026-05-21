@@ -116,8 +116,8 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excl
             // fetched per-entity because the API has no multi-component
             // form. Safe: createEntity guarantees C_PositionGlobal3D on
             // every entity. Acceptable: this path fires on click frames
-            // only. APPLY_POSITION_OFFSET has already folded any modifier-
-            // driven offset into globalPos for this frame.
+            // only. Reader migrates to C_WorldTransform.translation_ in
+            // T-299 (render-side SQT reader pass).
             auto &gpos = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(id);
             const IRMath::vec3 worldPos = gpos.pos_;
             const IRMath::vec3 rotatedPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);

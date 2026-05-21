@@ -229,8 +229,9 @@ void registerLuaBindings() {
 
         // Batch creation functions — every bob-eligible entity also
         // carries C_Modifiers so PERIODIC_IDLE_POSITION_OFFSET can push
-        // a per-frame vec3 modifier and APPLY_POSITION_OFFSET can
-        // compose it into C_PositionGlobal3D.
+        // a per-frame vec3 modifier and PROPAGATE_TRANSFORM can fold
+        // it (via the TRANSFORM_TRANSLATION channel) into
+        // C_WorldTransform.translation_.
         luaScript.registerCreateEntityBatchFunction<
             C_Position3D,
             C_VoxelSetNew,

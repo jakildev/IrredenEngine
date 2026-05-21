@@ -19,10 +19,10 @@ namespace IRSystem {
 
 /// Screen-composite sprite pass. Iterates entities with C_Sprite +
 /// C_PositionGlobal3D, computes an iso-projected screen position and
-/// depth for each (APPLY_POSITION_OFFSET has already folded any
-/// per-frame offset into C_PositionGlobal3D), sorts back-to-front
-/// grouped by atlas texture, and issues one drawArraysInstanced call
-/// per atlas. Sprites bypass the trixel pipeline entirely — alpha-
+/// depth for each, sorts back-to-front grouped by atlas texture, and
+/// issues one drawArraysInstanced call per atlas. Reader migrates to
+/// C_WorldTransform.translation_ in T-299 (render-side SQT reader
+/// pass). Sprites bypass the trixel pipeline entirely — alpha-
 /// blended quads land directly on the default framebuffer at the
 /// FRAMEBUFFER_TO_SCREEN pipeline stage, after the trixel composite
 /// finishes.
