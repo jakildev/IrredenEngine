@@ -354,14 +354,18 @@ struct C_VoxelSetNew {
     // `positionOffsets_`, `globalPositions_`, `voxels_`) become invalid
     // after such a migration; only `voxelStartIdx_` and `numVoxels_` remain
     // stable because they are plain scalars on this struct.
-    bool updateAsChild(
+    // Returns the number of positions actually written (safeCount), or 0 if
+    // the parent position is unchanged (early-out). Callers use the return
+    // value to queue exactly the written range for GPU upload — avoids
+    // queuing stale slots in the rare case the pool-bounds guard fires.
+    int updateAsChild(
         C_Position3D parentPosition,
         std::vector<C_PositionGlobal3D> &poolGlobalsOut,
         const std::vector<C_Position3D> &poolPositions,
         const std::vector<vec3> &poolOffsets
     ) {
         if (hasLastParentPosition_ && parentPosition.pos_ == lastParentPosition_) {
-            return false;
+            return 0;
         }
         lastParentPosition_ = parentPosition.pos_;
         hasLastParentPosition_ = true;
@@ -380,7 +384,7 @@ struct C_VoxelSetNew {
                                                       poolOffsets[voxelStartIdx_ + i] +
                                                       parentPosition.pos_;
         }
-        return safeCount > 0;
+        return safeCount;
     }
 
     // TODO: get rid of all unneeded voxels

@@ -324,6 +324,31 @@ struct C_VoxelPool {
         }
     }
 
+    // Queue a slice of position-globals to upload to the GPU position
+    // SSBO on the next `flushPendingPositionRanges` call. Mirrors the
+    // pending-list-flush pattern documented in `cpp-ecs.md`: the
+    // mutating system (UPDATE_VOXEL_SET_CHILDREN) queues the affected
+    // slice; the GPU-buffer-owning system (VOXEL_TO_TRIXEL_STAGE_1)
+    // coalesces contiguous queued ranges into one `subData` per run.
+    void queuePositionRange(size_t startIdx, size_t count) {
+        if (count == 0) {
+            return;
+        }
+        m_pendingPositionRanges.emplace_back(startIdx, count);
+    }
+
+    const std::vector<std::pair<size_t, size_t>> &getPendingPositionRanges() const {
+        return m_pendingPositionRanges;
+    }
+
+    std::vector<std::pair<size_t, size_t>> &getPendingPositionRanges() {
+        return m_pendingPositionRanges;
+    }
+
+    void clearPendingPositionRanges() {
+        m_pendingPositionRanges.clear();
+    }
+
   private:
     int m_voxelPoolSize;
     ivec3 m_voxelPoolSize3D;
@@ -339,6 +364,11 @@ struct C_VoxelPool {
     std::vector<std::pair<size_t, size_t>> m_freeVoxelSpans;
     std::map<size_t, std::set<std::pair<size_t, size_t>>> m_freeSpanLookup;
     std::vector<ChunkBounds> m_chunkBounds;
+    // Per-frame queue of position-global slices whose CPU contents were
+    // rewritten since the last GPU flush. Drained + coalesced by
+    // VOXEL_TO_TRIXEL_STAGE_1; capacity is preserved across frames so
+    // a steady-state moving scene avoids per-frame allocation.
+    std::vector<std::pair<size_t, size_t>> m_pendingPositionRanges;
 
     int m_voxelPoolIndex = 0;
 

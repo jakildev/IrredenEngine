@@ -5,7 +5,9 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/ir_time.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/profile/scope_timer.hpp>
 #include <irreden/render/camera.hpp>
 
 // Components
@@ -103,6 +105,8 @@ struct CliOverrides {
     int gridSize_ = 64;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    bool waveAmplitudeSet_ = false;
+    float waveAmplitude_ = 0.0f;
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
@@ -185,6 +189,9 @@ void applyCliOverrides() {
     if (g_cliOverrides.zoomSet_) {
         g_settings.initialZoom_ = g_cliOverrides.zoom_;
     }
+    if (g_cliOverrides.waveAmplitudeSet_) {
+        g_settings.waveAmplitude_ = g_cliOverrides.waveAmplitude_;
+    }
 }
 
 void parseArgs(int argc, char **argv) {
@@ -216,6 +223,12 @@ void parseArgs(int argc, char **argv) {
                 g_cliOverrides.zoom_ = zoom;
                 g_cliOverrides.zoomSet_ = true;
             }
+            ++i;
+        } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
+            // 0.0 = static scene (no per-frame voxel motion). Useful for
+            // isolating per-frame upload cost in profiler runs.
+            g_cliOverrides.waveAmplitude_ = static_cast<float>(std::atof(argv[i + 1]));
+            g_cliOverrides.waveAmplitudeSet_ = true;
             ++i;
         }
     }
@@ -489,6 +502,35 @@ void initSystems() {
                 ++g_autoProfileCount;
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
+                    // Dump the last completed frame's CPU + GPU per-stage
+                    // ms so PR bodies can quote concrete before/after numbers
+                    // without screenshotting the HUD. Single-frame value, but
+                    // representative at the steady state perf_grid settles
+                    // into after warmup.
+                    const auto &cpu = IRProfile::cpuFrameHistogram();
+                    const auto &gpu = IRRender::gpuStageTiming();
+                    IR_LOG_INFO(
+                        "Auto-profile stats — FPS:{:.1f} frame:{:.3f}ms",
+                        IRTime::renderFps(),
+                        IRTime::renderFrameTimeMs()
+                    );
+                    IR_LOG_INFO(
+                        "Auto-profile CPU — voxelStage1:{:.3f} voxelStage2:{:.3f} "
+                        "voxelCompact:{:.3f} input:{:.3f} update:{:.3f} render:{:.3f}",
+                        cpu.lastFrameMs("voxelStage1"),
+                        cpu.lastFrameMs("voxelStage2"),
+                        cpu.lastFrameMs("voxelCompact"),
+                        cpu.lastFrameMs("input"),
+                        cpu.lastFrameMs("update"),
+                        cpu.lastFrameMs("render")
+                    );
+                    IR_LOG_INFO(
+                        "Auto-profile GPU — voxelStage1:{:.3f} voxelStage2:{:.3f} "
+                        "voxelCompact:{:.3f}",
+                        gpu.voxelStage1Ms_,
+                        gpu.voxelStage2Ms_,
+                        gpu.voxelCompactMs_
+                    );
                     IRWindow::closeWindow();
                 }
             }
