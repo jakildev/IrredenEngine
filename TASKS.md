@@ -258,6 +258,127 @@ Avoid:
   - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
+- [ ] **math: IRMath grid-iteration and 3D-mask helpers** — add iterateAABB, apply3DMaskIntersection, and perpendicularAxes helpers; refactor editor triple-loops and axis-swizzle sites to use them
+  - **ID:** T-303
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) No behavior change in any tool; (2) `grep -rn 'for (int z' creations/editors/voxel_editor/main.cpp` drops to near zero (only irreducible loops remain); (3) `grep -rn '(axis + 1) % 3' engine/ creations/` returns no hits; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1011
+  - **Notes:** iterateAABB mirrors naming of IRMath::index3DtoIndex1D. apply3DMaskIntersection used by loft CSG tool. perpendicularAxes replaces (axis+1)%3 / (axis+2)%3 inlines. Call sites: voxel_editor/main.cpp applyFillAABB ~L385, applyFillSDF ~L559, applyLoft ~L662; component_voxel_set.hpp fillPlane; applyFillFace.
+  - **Links:**
+
+- [ ] **render: extract mask-grid pixel packing into renderer helper** — move loft drawLoftGrid pixel-pack + subImage2D body into IRRender::drawMaskGridOntoCanvas; add IRRender::hitTestGridCell; editor calls helper instead of composing texture upload directly
+  - **ID:** T-304
+  - **Area:** engine/render, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `grep -rn 'subImage2D' creations/editors/voxel_editor/` returns zero hits; (2) loft tool pixel-identical before/after (exercise XZ and YZ grids in IRVoxelEditor); (3) new header engine/render/include/irreden/render/mask_grid_painter.hpp exported via ir_render.hpp; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1012
+  - **Notes:** Renderer-leak: non-render modules must not compose texture uploads directly. Refactoring quadruple-nested loop at voxel_editor/main.cpp drawLoftGrid ~L599-659 and mouse hit-test at ~L725-800. Pattern: joins IRRender::fillRect / drawBorder / renderText family in trixel_rect.hpp and trixel_text.hpp. Compute-shader follow-up deferred (motivate with profiling only).
+  - **Links:**
+
+- [ ] **editor: IRMath::evaluateSDFGrid batch helper + refactor applyFillSDF** — add evaluateSDFGrid to engine/math; remove SDF evaluation math from voxel_editor applyFillSDF, leaving only the placement loop
+  - **ID:** T-305
+  - **Area:** engine/math, engine/prefabs/irreden/editor
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) applyFillSDF contains no math beyond placement decision; (2) SDF bake produces identical voxels before/after; (3) IRMath::evaluateSDFGrid has unit test covering at least sphere and box primitives; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1013
+  - **Notes:** applyFillSDF at voxel_editor/main.cpp ~L559-589. Reuse IRMath::iterateAABB (T-303) for the placement loop if it lands first; otherwise T-303 refactor adapts against this iteration. Pattern: IRMath::pos3DtoPos2DIso is the existing model for batch-suitable helpers. Longer-term compute-shader path deferred (separate issue once profiling motivates it).
+  - **Links:**
+
+- [ ] **asset: scene_io metadata index + voxel-record byte constant dedup** — build unordered_map in loadEditorScene to replace O(N·M) linear-scan; hoist kRecordBytes to file-scope constexpr in voxel_set_format.cpp
+  - **ID:** T-306
+  - **Area:** engine/asset
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Loading large scene (≥1k frames) no slower; (2) `grep -n 'kRecordBytes' engine/asset/src/voxel_set_format.cpp` returns exactly one declaration plus use sites; (3) all existing save/load round-trip tests pass unchanged; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1014
+  - **Notes:** Two mechanical cleanups bundled. (1) scene_io.hpp loadEditorScene ~L204-278 calls metaGet 20+ times each O(N) linear scan; fix: build unordered_map<string,string> at top. (2) kRecordBytes = 12 declared locally in readVoxelRecordsChunk ~L458 and makeVoxelRecordsRleChunk ~L487; hoist to namespace{} constexpr. Pattern: PR #972 writeVoxelRecordBody/readVoxelRecordBody are the model for save/load deduplication.
+  - **Links:**
+
+- [ ] **skills: decompose /simplify into parallel subagents and add render-leak / hot-path rules** — rewrite .claude/skills/simplify/SKILL.md to dispatch 5 parallel Haiku/Sonnet subagents for reuse detection; add explicit rules for triple-nested loops, renderer-leaks, SDF-grid-on-CPU, and linear-search-in-hot-path smells
+  - **ID:** T-307
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) /simplify on synthetic diff with (a) triple-nested loop in creations/, (b) subImage2D in creations/, (c) new function name duplicating existing IRMath helper, (d) linear-search in save path flags all four; (2) skill completes in roughly same wall-clock as today due to parallel dispatch; (3) re-run against PR #976 #991 #993 #933 diffs would have surfaced A1–A4 smells; (4) fleet-build clean
+  - **Issue:** #1015
+  - **Notes:** SKILL.md rewrite ~644 lines today → ~850 estimated. New section "1b. Dispatch reuse-detection subagents (async)": grep-function-names (Haiku), grep-utility-candidates (Haiku), scan-loop-patterns (Haiku), scan-render-leak (Sonnet), scan-call-sequence-dup (Sonnet). 30s timeout; missing results skipped. Section 6 trimmed from ~170 prose to ~50 lines consuming subagent results. 3-line touch to commit-and-push/SKILL.md. Extended example report block. Companion A1–A4 = T-303, T-304, T-305, T-306.
+  - **Links:**
+
+- [ ] **demos: named config preset files to replace CLI-flag sprawl (IRPerfGrid + friends)** — add --config-preset <path> engine-level flag; migrate IRPerfGrid first; update perf_grid_matrix.sh to sweep presets; document preset format
+  - **ID:** T-308
+  - **Area:** creations/demos, tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRPerfGrid --config-preset configs/perf/zoom8_full_sub4.lua loads and overrides demo defaults correctly; (2) perf_grid_matrix.sh sweeps config files instead of flag tuples; (3) --subdivision-mode / --base-subdivisions removed or remain as overrides composing on top of preset; (4) preset format documented in docs/perf/README.md and demo CLAUDE.md; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1017
+  - **Notes:** Engine-level flag in IREngine::init or shared parseStandardArgv helper. Each preset is a Lua table (or .irconf) overriding world-config / demo-config fields applied after demo's applyConfigTable(). PR #1016 added --subdivision-mode / --base-subdivisions that this supersedes. Follow-up: migrate other affected demos one at a time.
+  - **Links:**
+
+- [ ] **render: split visible vs shadow-feeder voxel compaction to fix sub² cull bloat at high zoom** — classify voxels into visible and feeder compaction lists; depth-only fast path for feeder voxels (no sub² multiplier, no color/entityID); new feeder-to-distances compute shader; design doc required first
+  - **ID:** T-309
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** https://github.com/jakildev/IrredenEngine/pull/1019
+  - **Acceptance:** (1) One-pager design doc posted on #1020 and committed before implementation; (2) At zoom 8, visible/total ratio improves measurably toward 1/zoom² ideal; (3) Sun-shadow correctness unchanged — render-verify reference set pixel-identical pre/post; (4) perf_grid_matrix.sh re-run shows improvement at zoom 4+; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1020
+  - **Notes:** Root cause: system_voxel_to_trixel.hpp:253-257 inflates cull bounds via IRMath::shadowFeederIsoBounds for off-screen shadow casters within kSunShadowMaxDistance (64 voxels). At zoom 4, shadow-feeder expansion (~32 iso-x + ~128 iso-y) is 2–4× larger than visible region (~32×32 iso px). Open design questions: does sun-shadow bake need feeder voxels at full sub resolution? Does buildChunkVisibilityMask need same split? Other trixelDistances readers? Implementation: multi-PR series stacked on PR #1019 diagnostic work.
+  - **Links:**
+
+- [ ] **perf: async GL_TIMESTAMP / MTLCounterSample queries to replace glFinish per-stage timing** — double-buffered GL_TIME_ELAPSED query objects for OpenGL; MTLCounterSampleBuffer for Metal; read frame N-1 result at frame N top; no CPU stall
+  - **ID:** T-310
+  - **Area:** engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Per-stage GPU ms timing works without glFinish stall; (2) Double-buffered query objects read frame N-1 result at top of frame N; (3) legacyFinishTiming_ preserved as A/B opt-in until async path proves equivalent; (4) Works on both OpenGL (GL_TIME_ELAPSED / GL_TIMESTAMP) and Metal (MTLCounterSampleBuffer) backends; (5) Matrix run confirms async vs legacy timing within 5% on same hardware; (6) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1021
+  - **Notes:** Wire into gpu_stage_timing_observer.hpp. One PR for OpenGL, one for Metal, rebased to land together after confirming equivalent on a matrix run. Prereq for T-311 (CI regression gate) so per-frame glFinish tax is removed before CI measure. PR #1019 added cull-effectiveness readback gated on gpuStageTiming().enabled_.
+  - **Links:**
+
+- [ ] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
+  - **ID:** T-311
+  - **Area:** tooling, build
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-310
+  - **Acceptance:** (1) CI job re-runs perf_grid_matrix.sh on PRs touching engine/render/, engine/prefabs/irreden/render/, engine/system/, engine/math/; (2) compare_perf_runs.py diff posted as sticky PR comment; (3) >10% mean-frame-ms regression fails required CI check; (4) >5% improvement labels PR perf:improved; (5) check_regression.py exits non-zero on regression-over-threshold; (6) inter-run jitter variance audit <5% on master before enabling gate; (7) fleet-build clean
+  - **Issue:** #1022
+  - **Notes:** CI workflow YAML + scripts/perf/check_regression.py + docs/perf/README.md update. Baseline stored as docs/perf/baseline_<date>_<sha>.json. Blocked by T-310 so CI matrix run doesn't pay glFinish throughput tax per PR.
+  - **Links:**
+
+- [ ] **perf: Catch2 microbench harness for engine/math hot paths** — add bench_iso_projection.cpp, bench_sdf.cpp, bench_trixel.cpp under engine/math/tests/; output to save_files/bench/<sha>.json; wire into scripts/perf/
+  - **ID:** T-312
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) bench_iso_projection.cpp covers pos3DtoPos2DIso, pos3DtoPos2DScreen, pos3DtoDistance, isoDepthShift; (2) bench_sdf.cpp covers box, taperedBox, wedge, curvedPanel and other SDF primitives; (3) bench_trixel.cpp covers trixel projection/intersection helpers; (4) Catch2 BENCHMARK output written to save_files/bench/<sha>.json; (5) wired into scripts/perf/ alongside matrix run; (6) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1023
+  - **Notes:** Unit-level perf net complementing matrix-level perf_grid_matrix.sh. Follow-up PRs add benches as hot paths are identified. Microbench results appear in PR body for perf-relevant changes alongside matrix output.
+  - **Links:**
+
+- [ ] **perf: Lua-vs-C++ parity tracking dashboard from scripts/perf/ matrix runs** — add lua_cpp_parity.py computing lua_ms/cpp_ms per (zoom, sub_mode, sub_base) cell; flag >20% gap; extend perf_grid_matrix.sh with --target both mode
+  - **ID:** T-313
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) lua_cpp_parity.py produces markdown table per (zoom, sub_mode, sub_base) cell; (2) flags cells >20% gap over C++ baseline; (3) perf_grid_matrix.sh --target both mode captures IRPerfGrid and IRLuaPerfGrid in one run; (4) documented in docs/perf/README.md; (5) fleet-build clean
+  - **Issue:** #1024
+  - **Notes:** Dashboard answers "is codegen/EVAL path drifting from C++ baseline?" Useful for code-review of Lua-driven ECS work and as dashboard between releases. Follow-up: weekly CI job runs parity check on master.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
