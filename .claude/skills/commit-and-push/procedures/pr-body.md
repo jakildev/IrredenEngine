@@ -15,10 +15,20 @@ stack modes apply a delta to the canonical template.
 ## Notes for reviewer
 <optional — include only when the reviewer needs specific guidance>
 
+Closes #<issue-N>
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
 Omit `## Notes for reviewer` when there is nothing non-obvious to call out.
+Omit the `Closes #<issue-N>` line when the task's `Issue:` field is `(none)`
+(e.g. cleanup PRs, fleet-tooling PRs filed without a tracking issue).
+
+The `Closes #N` line is what makes GitHub auto-close the originating issue on
+merge. Without it, the closed-issue auto-reaper in `fleet-tasks-render` still
+moves the TASKS.md row to Done (via the PR title's `T-NNN:` prefix), but the
+GitHub issue side stays open and accumulates. Always include it when an Issue
+number exists.
 
 ## Fleet stack delta
 
@@ -33,7 +43,8 @@ Stacked on: <previous PR URL, or "master" for the first PR>
 Full chain: T-<A>, T-<B>, T-<C>
 ```
 
-Also add `Closes #<issue-N>` before the robot footer. Drop `## Notes for reviewer`.
+Drop `## Notes for reviewer`. The `Closes #<issue-N>` line is already in the
+canonical template above — keep it as written.
 
 ## Cursor stack delta
 
@@ -47,5 +58,8 @@ When the parent PR merges, change this PR's base to `master`
 (via the GitHub UI or `gh pr edit <N> --base master`).
 ```
 
-No `Full chain:` line and no `Closes #<issue-N>`. Drop `## Notes for reviewer`.
+No `Full chain:` line. **Drop the `Closes #<issue-N>` line** — closing the
+issue while the parent PR is still open would orphan downstream review work.
+The leaf PR in the cursor-stack chain (the one that re-targets master) carries
+the `Closes` line instead. Drop `## Notes for reviewer`.
 `$parent_pr_ref` is the parent PR URL (or branch name if no PR exists yet). Use `<<EOF` (no quotes) in the HEREDOC so that `$parent_pr_ref` expands; `<<'EOF'` suppresses expansion and embeds the literal string.
