@@ -18,241 +18,142 @@ description: >-
 
 # optimize
 
+A performance pass on freshly written or modified hot-path code.
+
+**This skill never tells you how to run a profiling step twice.** Every
+repeatable step is a script in `scripts/perf/`. The skill picks the
+script, runs it, reads the data, applies engine-specific fixes, and
+re-runs the same script to confirm the win. Engine knowledge that
+*doesn't* fit in a script lives in `reference/` files this skill points
+at — instrumentation recipes, the curated bottleneck catalog, partner
+skills, big-win case studies.
+
+If you find yourself writing prose instructions for the next agent on
+how to run profiling, stop — extract a script in `scripts/perf/` and
+have the skill call it. See [`reference/script_first.md`](reference/script_first.md)
+for the principle and where the boundary sits.
+
+## When to invoke
+
+Run optimize when the diff touches:
+
+- System tick functions (`engine/system/`, `engine/prefabs/irreden/.../systems/`, per-entity loops in creations)
+- Render pipeline stages (`engine/render/`, `engine/prefabs/irreden/render/`, shaders)
+- Audio / video processing (`engine/audio/`, `engine/video/`, ffmpeg paths, MIDI handling)
+- Math hot paths (`engine/math/` functions called from per-entity loops or per-pixel shader code)
+- Anything the author suspects is slow
+
+Skip optimize when the diff is tests, docs, build/CI, or pure refactors that preserve hot-path structure.
+
 ## Flow
 
-### 1. Identify the hot path
+### 1. Triage
 
 ```bash
 git diff --stat
 git diff
 ```
 
-For each touched file, ask:
-- Does this run per-frame?
-- Does this run per-entity inside a system tick?
-- Does this run per-pixel inside a shader?
-- Does this run per-sample in audio?
+Does any touched file run per-frame, per-entity, per-pixel, or per-sample? If yes → continue. Otherwise stop and let simplify run.
 
-If yes to any, that file is a candidate for profiling. Group
-candidates by **CPU-bound** (system ticks, math) and **GPU-bound**
-(shaders, dispatch sizes, frame buffer ops). Some changes are both.
+### 2. Baseline
 
-### 2. CPU profiling
-
-The engine has CPU profiling via `engine/profile/` — easy_profiler
-under the hood, exposed through the `IR_PROFILE_*` macros in
-`engine/profile/include/irreden/ir_profile.hpp`. Read
-`engine/profile/CLAUDE.md` for the full surface.
-
-**Instrument the hot path:**
-
-```cpp
-void IRSGlowPulse::tickEntity(C_GlowPulse& glow, C_Color& color) {
-    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
-    // ... existing logic
-}
-```
-
-Wrap the **entry point** of the new code (system tick function,
-pipeline stage, audio callback). For inner sub-blocks worth
-isolating, use `IR_PROFILE_BLOCK("name", color)` / `IR_PROFILE_END_BLOCK`.
-
-Use the named `IR_PROFILER_COLOR_*` constants from
-`engine/profile/include/irreden/ir_profile.hpp` (`_RENDER`,
-`_ENTITY_OPS`, `_COMMANDS`, etc.). Every existing call site uses
-the named constants — raw ARGB hex literals are an anti-pattern.
-Pick the constant that matches the module of the system you're
-instrumenting; the colors group related blocks visually in the
-easy_profiler timeline.
-
-**Run with profiling enabled:**
+If the change touches `engine/render/`, `engine/prefabs/irreden/render/`, `engine/system/`, or a creation's hot path, capture a baseline before any code change:
 
 ```bash
-fleet-build --target <executable>
-fleet-run --timeout 15 <executable>
+scripts/perf/perf_grid_matrix.sh --label baseline
 ```
 
-`CPUProfiler::setEnabled(true)` is the runtime gate — check the
-creation's startup to confirm it's on, or temporarily enable in the
-demo's main.
+This writes one cell per `(zoom, sub_mode, sub_base)` combo into `save_files/perf/<sha>-baseline/`. The script is the canonical recipe — its `--help` lists the matrix sizes and target overrides. Don't paraphrase the flags in this skill or in PR bodies.
 
-The profiler dumps a `.prof` file when the executable exits. Open it
-with the `profiler_gui` tool from easy_profiler (the human runs this
-— you can't render the GUI from here). Ask the human for the
-hotspot read.
+For micro changes (one helper in `engine/math/`, one system tick body), `--quick` is enough — 2 cells, ~30s.
 
-If `IR_PROFILE_*` macros are no-ops (release build) or disabled at
-runtime, the run produces no data — switch the build to debug or
-re-enable the profiler before re-running.
+For broad changes, default matrix (12 cells, ~3 min) or `--full` (30 cells, ~10 min).
 
-### 3. GPU profiling
+### 3. Scan the diff for known smells
 
-The engine has **per-pass GPU stage timing** wired into the render
-pipeline. Every named GPU stage brackets its work with
-`device()->finish()` + `std::chrono::steady_clock` samples and writes
-the per-frame millisecond cost into `IRRender::gpuStageTiming()`.
+Cross-reference the diff against the curated catalog in [`reference/common_bottlenecks.md`](reference/common_bottlenecks.md). Each entry has the pattern, a file:line example from the codebase, the symptom in profiler output, and the canonical fix. Auto-flag any match.
 
-Enable it by setting `gpu_stage_timing = true` in the creation's
-`.irconf` file, or flip it at runtime from Lua:
+The catalog gets seeded with patterns this skill has found in prior runs. Step 7 below is where new patterns land.
 
-```lua
-ir.render.setGpuTimingEnabled(true)
--- ... let the scene render for a few frames ...
-local budget = ir.render.getFrameTimeBudgetMs()   -- 16.667
-for _, row in ipairs(ir.render.getPassTimings()) do
-    print(row.name, row.ms, row.budgetMs, row.overBudget)
-end
+### 4. Profile (if smell-scan was inconclusive)
+
+Two surfaces, both pointed at from this skill's references:
+
+- **CPU**: `IR_PROFILE_FUNCTION` / `IR_PROFILE_BLOCK` + easy_profiler — see [`reference/cpu_profiling.md`](reference/cpu_profiling.md).
+- **GPU**: per-stage timing via `ir.render.getPassTimings()` and `ir.render.getVoxelCullStats()` — see [`reference/gpu_profiling.md`](reference/gpu_profiling.md).
+
+The reference files have the instrumentation patterns. The skill body does not repeat them.
+
+### 5. Fix and re-measure
+
+Apply the fix. Then:
+
+```bash
+scripts/perf/perf_grid_matrix.sh --label head
+scripts/perf/compare_perf_runs.py \
+    save_files/perf/<baseline-sha>-baseline \
+    save_files/perf/<head-sha>-head
 ```
 
-`getPassTimings()` returns an ordered list of
-`{name, ms, budgetMs, budgetShare, overBudget}` rows; a row whose
-`overBudget` is true has exceeded its allocated slice of the 16.67 ms
-frame budget. `getPassTiming(name)` fetches a single pass by name.
+`compare_perf_runs.py` produces a markdown table with per-cell frame avg/p99, per-pass GPU breakdown, cull effectiveness, and top CPU systems. Flags regressions ≥10% and improvements ≥5% (configurable).
 
-When the flag is on, the end-of-run profile report
-(`save_files/profile_report.txt`) also includes the per-stage sum so
-pre/post A/B comparisons can be read from disk.
-
-Real async `GL_TIMESTAMP` / Metal counter-sample queries are not wired
-yet — the current path uses `glFinish()`-style stalls, which measure
-GPU cost accurately but at a small per-frame throughput cost. Default
-is **off**; leave it off in release runs. Turn it on while optimizing,
-then turn it off.
-
-Complementary tools when you need a finer single-frame view:
-
-- **RenderDoc / Xcode GPU capture** for a single-frame breakdown if
-  the human can run it (GUI tools; you can't drive them from here).
-  Tell the human which pass to focus on based on
-  `getPassTimings()` hot rows.
-- **Shader-side counters** as a proxy: a debug uniform incremented
-  per work-group, read back via SSBO, gives coarse "is this pass even
-  running" data.
-
-**Do not merge hot-path GPU work blind** — if a render PR's
-`getPassTimings()` output shows a pass over its budget share, either
-fix the regression or surface it explicitly in the PR body with
-before/after numbers.
-
-### 4. Engine-specific optimizations to check
-
-For **CPU hotspots** in system ticks:
-
-- Per-entity `getComponent<C_Foo>()` and allocation in per-entity paths — see [`.claude/rules/cpp-ecs-smells.md`](../../rules/cpp-ecs-smells.md) for the full pattern catalogue. After applying the fix, re-run the benchmark to verify the measured ms improvement.
-- `std::map` / `std::unordered_map` lookups in the inner loop →
-  replace with a flat array indexed by entity ID, or move the
-  lookup outside the loop.
-- Virtual dispatch in the inner loop → if the type is known at
-  compile time, devirtualize via templates.
-
-For **GPU hotspots**:
-
-- Hand-rolled compute dispatch sizes → use
-  `voxelDispatchGridForCount()`. Wrong dispatch sizes either waste
-  workgroups (overestimate) or miss work (underestimate).
-- Compute shader workgroup-size mismatch with the dispatched size —
-  read the shader's `layout(local_size_x = ...)` and confirm the CPU
-  side's dispatch math accounts for it.
-- Excessive uniform block updates per frame → batch into one update.
-- Texture-format mismatch causing implicit conversions in the
-  fragment shader.
-- Read-back via `glReadPixels` or `glGetBufferSubData` synchronously
-  — kills the frame, force a fence + multi-frame ringbuffer instead.
-
-For **shader hot paths**:
-
-- Repeated math sequences across multiple shaders that should be in
-  a shared `.glsl` include (e.g. `ir_iso_common.glsl` for iso
-  projection math).
-- Per-pixel work that could be per-vertex — move it.
-- Branchy conditionals on a uniform value → consider a permutation.
-
-### 5. Measure, don't guess
-
-For each change you make based on profiling, **re-run the same
-benchmark** and confirm the improvement. A "fix" that doesn't move
-the needle isn't an optimization — revert it and look elsewhere.
-Pre/post numbers belong in the PR body so the reviewer doesn't have
-to re-profile.
-
-If pre/post measurement isn't possible (e.g. GPU pass without timer
-queries), say so explicitly in the PR — never claim "this is faster"
-without numbers.
+**A fix that doesn't move the needle isn't an optimization.** Revert it and look elsewhere.
 
 ### 6. Report
 
-Print a compact summary:
+Paste the `compare_perf_runs.py` output into the PR body. The skill's own report is six lines:
 
 ```
 optimize: <N> hot-path file(s) profiled
-  CPU hotspots:
-    - <path:line> — <function> — <ms before> → <ms after> (<change>)
-    - ...
-  GPU hotspots:
-    - <pass name> — <observation> — <action taken or blocker>
-  applied <X> optimization(s)
-  reported <Y> finding(s) needing more measurement
-  baselines: <link to docs/perf-reports/ entry, if added>
+  CPU hotspots: <count fixed> / <count flagged>
+  GPU hotspots: <count fixed> / <count flagged>
+  matrix delta: <best-case improvement> at <cell>
+  worst regression: <pp> at <cell>
+  reference updates: <appended bottleneck patterns>
 ```
 
-If the touched code didn't actually need optimization (after
-profiling, no hotspot), say so — the value here is the confidence,
-not the changes.
+If profiling found no hotspot, say so — the value here is the confidence, not the changes.
+
+### 7. Self-improve (mandatory)
+
+**This is what makes the skill compound.** Every run that finds a new bottleneck pattern, a new partner-skill cross-ref, or a new repeatable profiling step **must** update the reference in the same PR as the optimization fix:
+
+- New pattern → append to [`reference/common_bottlenecks.md`](reference/common_bottlenecks.md) with file:line example, symptom, and fix sketch.
+- New repeatable shell sequence → extract to `scripts/perf/<name>.{sh,py}` and have this skill point at it. Don't grow `SKILL.md` prose.
+- New partner skill found useful → add a line to [`reference/partner_skills.md`](reference/partner_skills.md).
+- New big win (>5% frame time at the worst-case matrix cell) → add a short case study to [`reference/big_wins.md`](reference/big_wins.md) with the PR link.
+
+If a step was hard, the next agent should have it as a script or a reference entry. The reference grows; the playbook stays small.
 
 ## Coordinating with simplify
 
-Run optimize **first** when the change is performance-relevant.
+Optimize runs **first** when the change is performance-relevant.
+
 Optimize may:
+
 - Add `IR_PROFILE_*` blocks at hot-path entry points
-- Add explanatory comments documenting non-obvious perf trade-offs
-  (e.g. "// pre-sized to avoid realloc in tick — see PR #N")
+- Add explanatory comments documenting non-obvious perf trade-offs (e.g. `// pre-sized to avoid realloc in tick — see PR #N`)
 - Restructure a tick function for better cache behavior
 
-Simplify, run after, will respect those additions because:
-- `IR_PROFILE_*` macros are part of the engine's profiling story,
-  not "debug logs"
-- Comments that explain a perf rationale are kept (they explain a
-  non-obvious why)
+Simplify, run after, respects those additions because `IR_PROFILE_*` macros are engine profiling, not debug logs, and perf-rationale comments are kept (they explain non-obvious why).
 
-If you're working on a non-perf-critical change (docs, tests,
-mechanical refactor), skip optimize and run simplify directly.
+For non-perf changes, skip optimize and run simplify directly.
 
 ## What this skill does NOT do
 
-- **Doesn't replace human profiling judgment.** A 0.1 ms regression
-  in a cold path may be fine; a 0.1 ms regression on the per-entity
-  hot path at 50K entities is 5 ms/frame. Surface the data, let the
-  human decide.
-- **Doesn't optimize without measuring.** Speculative optimization
-  is worth less than the readability it costs. Always measure.
+- **Doesn't replace human profiling judgment.** A 0.1 ms regression in a cold path may be fine; a 0.1 ms regression on the per-entity hot path at 50K entities is 5 ms/frame. Surface the data, let the human decide.
+- **Doesn't optimize without measuring.** Speculative optimization is worth less than the readability it costs. Always measure.
 - **Doesn't push.** Edits the working tree only.
-- **Doesn't run RenderDoc or other GUI profilers.** Hand off the
-  capture instructions and ask the human to run it.
+- **Doesn't run RenderDoc or other GUI profilers.** Hand off the capture instructions and ask the human to run it.
+- **Doesn't grow itself.** Prose belongs in `reference/`; recipes belong in `scripts/perf/`. If the playbook is getting longer, something needs to move out.
 
-## Example
+## See also
 
-User: "I added a new lighting pass — optimize it before I push"
-
-```
-optimize: 3 files profiled (engine/render/, shaders/glsl/)
-
-CPU hotspots: none. The new pass is GPU-bound.
-
-GPU profiling: `ir.render.setGpuTimingEnabled(true)` + 300-frame
-averages from `ir.render.getPassTimings()`:
-  - lightingToTrixel:    0.4 ms → 3.0 ms  (budget 1.7 ms — OVER)
-  - trixelToFb:          2.1 ms → 2.1 ms  (budget 2.5 ms — ok)
-  - fbToScreen:          0.3 ms → 0.3 ms  (budget 0.8 ms — ok)
-  - total frame:        14.2 ms → 16.8 ms (+2.6 ms, 16% over budget)
-
-Hotspot confirmed: lightingToTrixel jumped 2.6 ms on its own —
-matches the per-pixel 3x3x3 sample loop I added.
-
-Optimization applied:
-  - Switched to a 2D shadow texture lookup once per pixel instead
-    of per-sample, then modulated by the precomputed AO texture.
-  - Re-measured lightingToTrixel: 0.7 ms (within budget).
-  - Total frame: 14.5 ms ± 0.3 (+0.3 ms over original — acceptable).
-
-ready for simplify pass.
-```
+- [`reference/script_first.md`](reference/script_first.md) — why scripts beat prose for recurring work
+- [`reference/profiling_recipe.md`](reference/profiling_recipe.md) — concrete commands for the matrix → diff loop
+- [`reference/cpu_profiling.md`](reference/cpu_profiling.md) — `IR_PROFILE_*` macros and the easy_profiler workflow
+- [`reference/gpu_profiling.md`](reference/gpu_profiling.md) — `getPassTimings()`, `getVoxelCullStats()`, async timer queries
+- [`reference/common_bottlenecks.md`](reference/common_bottlenecks.md) — curated bottleneck catalog with file:line examples
+- [`reference/big_wins.md`](reference/big_wins.md) — case studies of the largest wins
+- [`reference/partner_skills.md`](reference/partner_skills.md) — `simplify`, `render-verify`, `render-debug-loop`, etc.
