@@ -104,8 +104,7 @@ TEST(SdfEvaluateGrid, BoxInteriorBelowSurfaceThreshold) {
         if (d <= IRMath::SDF::kSurfaceThreshold)
             ++filledCount;
     }
-    EXPECT_GT(filledCount, 0);
-    EXPECT_LE(static_cast<std::size_t>(filledCount), grid.size());
+    EXPECT_EQ(static_cast<std::size_t>(filledCount), grid.size());
 }
 
 TEST(SdfEvaluateGrid, UndersizedSpanIsNoop) {
