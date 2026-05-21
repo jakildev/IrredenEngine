@@ -226,7 +226,7 @@ Avoid:
   - **ID:** T-300
   - **Area:** engine/prefabs/irreden/update, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-300-update-side-worldtransform
   - **Blocked by:** (none)
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) Each listed update system reads C_WorldTransform.translation_/.rotation_ and/or writes C_LocalTransform; (2) velocity integration, spring physics, periodic offsets, goto/reactive-return all behave identically post-migration; (3) fleet-build clean on both backends; (4) unit tests pass (test/ecs/*, test/asset/*); (5) IRShapeDebug + voxel editor + spring/note demos render identically; (6) SYSTEM_PROPAGATE_TRANSFORM runs in every UPDATE pipeline that has a transform-consuming entity (architect-added scope per PR #1000 — engine-default registration preferred over per-creation if structurally viable)
