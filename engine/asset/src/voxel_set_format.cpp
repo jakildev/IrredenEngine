@@ -33,6 +33,8 @@ struct ShapeTypeNameEntry {
 };
 // On-disk size of one packed VoxelRecord; caps reserve() against a corrupt count.
 constexpr std::uint64_t kRecordBytes = 12;
+// On-disk size of one vec3 (3 × f32); caps frame-offset reserve() against a corrupt count.
+constexpr std::uint64_t kVec3Bytes = 12;
 
 constexpr ShapeTypeNameEntry kShapeTypeTable[] = {
     {static_cast<std::uint32_t>(IRMath::SDF::ShapeType::BOX), "BOX"},
@@ -681,8 +683,6 @@ readFramesChunk(std::span<const std::uint8_t> body, std::size_t voxelCount) {
             return forwardError<FramesLoadResult>(offCountR);
         FramePose frame;
         frame.frameIndex_ = frameIdxR.value_;
-        // Cap reserve by remaining bytes / 12 B per vec3.
-        constexpr std::uint64_t kVec3Bytes = 12;
         frame.offsets_.reserve(cappedReserve(offCountR.value_, r.remaining() / kVec3Bytes));
         for (std::uint64_t off_i = 0; off_i < offCountR.value_; ++off_i) {
             auto vR = IRMath::BinaryIO::readVec3(r);
