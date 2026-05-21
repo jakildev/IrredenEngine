@@ -1,11 +1,12 @@
 #ifndef GPU_STAGE_TIMING_H
 #define GPU_STAGE_TIMING_H
 
-#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <string_view>
+
+#include <irreden/ir_math.hpp>
 
 namespace IRRender {
 
@@ -80,7 +81,7 @@ struct CpuPhaseTiming {
 
     void record(double ms) {
         totalMs_ += ms;
-        maxMs_ = std::max(maxMs_, ms);
+        maxMs_ = IRMath::max(maxMs_, ms);
         ++sampleCount_;
     }
 
@@ -123,8 +124,8 @@ struct VoxelCullAccumulator {
     void record(std::uint32_t visible, std::uint32_t total) {
         visibleSum_ += visible;
         totalSum_ += total;
-        maxVisible_ = std::max(maxVisible_, visible);
-        maxTotal_ = std::max(maxTotal_, total);
+        maxVisible_ = IRMath::max(maxVisible_, visible);
+        maxTotal_ = IRMath::max(maxTotal_, total);
         ++sampleCount_;
     }
 
