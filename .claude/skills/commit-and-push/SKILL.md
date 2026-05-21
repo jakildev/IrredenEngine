@@ -229,6 +229,8 @@ gh pr create --base master --title "<scope>: <title>" --body "$(cat <<'EOF'
 ## Test plan
 - [ ] <check>
 
+Closes #<issue-N>
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
@@ -236,6 +238,16 @@ EOF
 
 Title should match the commit title for a single commit; use a broader title
 for multi-commit PRs.
+
+**`Closes #N` line (required when the task has an `Issue:` field).** This is
+what makes GitHub auto-close the originating issue on merge. Without it the
+TASKS.md row still reaps via the title's `T-NNN:` prefix (per
+`fleet-tasks-render`'s closed-issue fallback) but the GitHub issue side
+stays open and the queue silently accumulates stale items. Omit the line
+only when the task's `Issue:` field is `(none)` — cleanup PRs, fleet-tooling
+PRs filed without a tracking issue, etc. See
+[`procedures/pr-body.md`](procedures/pr-body.md) for the full template and
+the stack-mode exceptions (cursor-stack non-leaf PRs deliberately drop it).
 
 **PR labels — `fleet:wip` (important):** For the **default Cursor /
 human-ready** single-PR open to `master`, **do not** pass
