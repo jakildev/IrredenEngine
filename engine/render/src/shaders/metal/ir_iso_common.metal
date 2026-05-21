@@ -171,6 +171,10 @@ inline int roundHalfUp(float v) {
     return int(floor(v + 0.5f));
 }
 
+inline int2 roundHalfUp(float2 v) {
+    return int2(floor(v + float2(0.5)));
+}
+
 inline int2 trixelOriginOffsetX1(int2 trixelCanvasSize) {
     return trixelCanvasSize / int2(2);
 }
@@ -395,10 +399,15 @@ struct FrameDataVoxelToTrixel {
     int2 canvasSizePixels;
     int2 cullIsoMin;
     int2 cullIsoMax;
-    float visualYaw;    // not consumed in T-055 — scaffolded for T-058
+    float visualYaw;
     float rasterYaw;    // consumed: cardinal-snap basis selection
-    float residualYaw;  // not consumed in T-055 — scaffolded for T-058
-    float _yawPadding;  // not consumed in T-055 — scaffolded for T-058
+    float residualYaw;  // baked into faceDeform[] CPU-side
+    float _yawPadding;
+    // Per-face deformation matrix packed column-major: .xy = col0, .zw = col1
+    // of IRMath::faceDeformationMatrix(face, residualYaw). Identity when
+    // residualYaw==0 so cardinal-snap stays bit-identical pixel-for-pixel.
+    // Mirrors the GLSL `vec4 faceDeform[3]` in c_voxel_to_trixel_stage_*.glsl.
+    float4 faceDeform[3];
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

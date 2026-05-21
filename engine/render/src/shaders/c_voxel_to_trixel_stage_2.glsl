@@ -18,6 +18,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float rasterYaw;
     uniform float residualYaw;
     uniform float _yawPadding;
+    // Per-face deformation matrix packed column-major into vec4 (see
+    // c_voxel_to_trixel_stage_1.glsl for the layout). T-293.
+    uniform vec4 faceDeform[3];
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -86,6 +89,11 @@ void main() {
     // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
     // pixel-for-pixel against master.
 
+    // mat2 D = faceDeformationMatrix(face, residualYaw). Identity at
+    // residualYaw==0 — see c_voxel_to_trixel_stage_1.glsl for the contract.
+    const mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
+    const ivec2 trixelOffset = roundHalfUp(D * vec2(gl_LocalInvocationID.xy));
+
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {
@@ -95,7 +103,7 @@ void main() {
             pos3DtoDistance(voxelPositionInt), face);
         const ivec2 canvasPixel =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
-            ivec2(gl_LocalInvocationID.xy) +
+            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
         writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
         return;
@@ -119,6 +127,6 @@ void main() {
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const ivec2 canvasPixel =
-        frameOffsetFixed + ivec2(gl_LocalInvocationID.xy) + pos3DtoPos2DIso(microPositionFixed);
+        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
     writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
 }

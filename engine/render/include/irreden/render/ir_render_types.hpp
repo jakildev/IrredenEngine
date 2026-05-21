@@ -129,12 +129,23 @@ struct FrameDataVoxelToCanvas {
     // continuous angle written by gameplay; rasterYaw_ is the cardinal-snap
     // multiple of pi/2 nearest visualYaw_; residualYaw_ = visualYaw_ -
     // rasterYaw_. The integer trixel rasterizer picks a basis permutation
-    // from rasterYaw_; the screen-space residual composite pass consumes
-    // residualYaw_.
+    // from rasterYaw_; the trixel emit shader applies faceDeform_[face] to
+    // its sub-pixel offset in 2D iso space to recover the continuous yaw
+    // geometrically (T-293, replaces the screen-space bilinear residual
+    // composite from T-058 / T-322).
     float visualYaw_ = 0.0f;
     float rasterYaw_ = 0.0f;
     float residualYaw_ = 0.0f;
     float _yawPadding_ = 0.0f;
+    // Per-face residual-yaw deformation packed column-major: .xy = col0,
+    // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw_).
+    // Identity (col0=(1,0), col1=(0,1)) when residualYaw_ == 0. Indexed by
+    // IRMath::kXFace / kYFace / kZFace (0/1/2). std140 vec4 array stride
+    // is 16 B so this is 48 B; mirrored as `vec4 faceDeform[3]` in the
+    // GLSL/Metal UBO declarations.
+    vec4 faceDeform_[3] = {vec4(1.0f, 0.0f, 0.0f, 1.0f),
+                           vec4(1.0f, 0.0f, 0.0f, 1.0f),
+                           vec4(1.0f, 0.0f, 0.0f, 1.0f)};
 };
 
 struct FrameDataTrixelToTrixel {
@@ -243,8 +254,9 @@ struct GPUShapesFrameData {
     // multiple of pi/2 nearest visualYaw, residualYaw = visualYaw - rasterYaw.
     // The shapes shader rasterizes at rasterYaw so the SDF surface lands on
     // the same integer voxel lattice as the voxel pool's cardinal-snap raster
-    // (T-055); the screen-space residual composite pass (T-058) then rotates
-    // the trixel framebuffer by residualYaw to recover continuous yaw.
+    // (T-055), then applies faceDeform[face] to its sub-pixel offset to
+    // recover continuous yaw geometrically (T-293, replaces the screen-space
+    // bilinear residual composite from T-058 / T-322).
     float visualYaw = 0.0f;
     float rasterYaw = 0.0f;
     float residualYaw = 0.0f;
@@ -252,7 +264,32 @@ struct GPUShapesFrameData {
     // computes tileIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * tileGridX so
     // the dispatch stays within GL_MAX_COMPUTE_WORK_GROUP_COUNT[0].
     int tileGridX = 1;
+    // Explicit 8-byte pad so faceDeform lands on the 16-byte boundary GLSL
+    // std140 enforces for `vec4 arr[3]`. glm::vec4 has 4-byte alignment in
+    // this codebase's GLM config (see GpuParticle's 32-byte assertion); the
+    // compiler would otherwise pack faceDeform at offset 72 while the
+    // shader UBO places it at 80, silently reading the wrong words.
+    ivec2 _faceDeformPad_ = ivec2(0);
+    // Per-face residual-yaw deformation packed column-major: .xy = col0,
+    // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
+    // Identity (col0=(1,0), col1=(0,1)) when residualYaw == 0. Indexed by
+    // IRMath::kXFace / kYFace / kZFace (0/1/2). std140 vec4 array stride
+    // is 16 B so this is 48 B; mirrored as `vec4 faceDeform[3]` in the
+    // GLSL/Metal UBO declarations.
+    vec4 faceDeform[3] = {vec4(1.0f, 0.0f, 0.0f, 1.0f),
+                          vec4(1.0f, 0.0f, 0.0f, 1.0f),
+                          vec4(1.0f, 0.0f, 0.0f, 1.0f)};
 };
+static_assert(offsetof(GPUShapesFrameData, faceDeform) == 80,
+              "GPUShapesFrameData::faceDeform must align at the 16-byte boundary "
+              "GLSL std140 enforces for vec4 arr[3]");
+static_assert(sizeof(GPUShapesFrameData) == 128,
+              "GPUShapesFrameData size must mirror its std140 GLSL block");
+static_assert(offsetof(FrameDataVoxelToCanvas, faceDeform_) == 80,
+              "FrameDataVoxelToCanvas::faceDeform_ must align at the 16-byte boundary "
+              "GLSL std140 enforces for vec4 arr[3]");
+static_assert(sizeof(FrameDataVoxelToCanvas) == 128,
+              "FrameDataVoxelToCanvas size must mirror its std140 GLSL block");
 
 struct FrameDataSun {
     // xyz = unit vector pointing from surfaces toward the sun; w unused.

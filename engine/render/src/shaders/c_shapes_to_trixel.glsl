@@ -26,12 +26,22 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     // exact multiple of pi/2) and a residual component (residualYaw, in
     // [-pi/4, pi/4]). The SDF rasterizes at rasterYaw — so its output lines
     // up trixel-for-trixel with the voxel pool's cardinal-snap raster
-    // (T-055) — and the screen-space residual composite pass (T-058)
-    // rotates the framebuffer by residualYaw to recover continuous yaw.
+    // (T-055) — and `faceDeform[face]` deforms its sub-pixel offset in 2D
+    // iso space to recover continuous yaw geometrically (T-293; replaces
+    // the screen-space bilinear residual composite of T-058 / T-322).
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
     uniform int tileGridX;
+    // CPU mirror inserts 8 bytes of pad here so the next field lands at the
+    // std140-required 16-byte boundary; declare it explicitly on the GLSL
+    // side too so the std140 block size matches the C++ sizeof exactly.
+    uniform ivec2 _faceDeformPad;
+    // Per-face deformation matrix packed column-major into vec4: .xy = col0,
+    // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
+    // Identity at residualYaw==0 so the cardinal-snap path stays bit-
+    // identical pixel-for-pixel against rasterYaw-only master.
+    uniform vec4 faceDeform[3];
 };
 
 struct ShapeDescriptor {
@@ -910,9 +920,13 @@ void main() {
 
     for (int face = 0; face < 3; face++) {
         int depthEncoded = encodeDepthWithFace(baseDepth, face);
+        // mat2 D = faceDeformationMatrix(face, residualYaw) applied to the
+        // un-yawed iso-pixel offset. Identity at residualYaw==0; otherwise
+        // deforms the trixel pair geometrically (T-293).
+        mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
 
         for (int subPixel = 0; subPixel < 2; subPixel++) {
-            ivec2 offset = faceOffset_2x3(face, subPixel);
+            ivec2 offset = roundHalfUp(D * vec2(faceOffset_2x3(face, subPixel)));
             ivec2 canvasPixel = baseCanvasPixel + offset;
 
             if (!isInsideCanvas(canvasPixel, canvasSize)) continue;
