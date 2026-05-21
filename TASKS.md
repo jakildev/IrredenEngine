@@ -210,11 +210,11 @@ Avoid:
   - **Notes:** T-199b — update-side continuation of #736 migration. Architect reordered the chain on PR #1000 (2026-05-19): T-300 now stacks on master directly, T-299 is downstream. Rationale: of 19 creations using shape/sprite/voxel/canvas/gizmo components, only 5 have PROPAGATE_TRANSFORM wired (and only for C_LightSource per T-199 step 1) — migrating readers first would render every shape/sprite/voxel/gizmo at world origin in the other 14 creations because nothing populates C_WorldTransform from the legacy C_PositionGlobal3D channel. Target readers: system_periodic_idle_position_offset.hpp, system_apply_position_offset.hpp, system_rhythmic_launch.hpp, system_contact_note_burst.hpp, system_collision_note_platform.hpp, system_update_positions_global.hpp, system_periodic_idle_note_burst.hpp, system_particle_spawner.hpp, system_velocity.hpp, system_spring_platform.hpp, system_action_animation.hpp, system_reactive_return_3d.hpp, system_goto_3d.hpp, system_update_screen_view.hpp. Writers need Euler→quat: use glm::quat(glm::vec3(eulerAngles)) for Euler angles; glm::quat_cast(rotMat) only if working from a rotation matrix. system_apply_position_offset.hpp may be deleted if epic #731 modifier migration has removed it — check current state first. Architect added PROPAGATE_TRANSFORM wiring scope: prefer engine-default registration; document why and fall back to per-creation if Option A is structurally infeasible. Blocks T-299 → T-301 → T-302.
   - **Links:**
 
-- [ ] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
+- [~] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
   - **ID:** T-301
   - **Area:** engine/prefabs/irreden/voxel, engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-300
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) C_VoxelPool and voxel systems use new SQT shape per the architectural decision; (2) GPU voxel-position upload path still works — voxel rendering pixel-identical pre/post; (3) voxel editor place/erase + scene save/load round-trip unchanged; (4) fleet-build clean on both backends; (5) engine/prefabs/irreden/voxel/CLAUDE.md updated with SoA decision rationale
