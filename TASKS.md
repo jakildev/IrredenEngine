@@ -210,11 +210,11 @@ Avoid:
   - **Notes:** T-199b — update-side continuation of #736 migration. Architect reordered the chain on PR #1000 (2026-05-19): T-300 now stacks on master directly, T-299 is downstream. Rationale: of 19 creations using shape/sprite/voxel/canvas/gizmo components, only 5 have PROPAGATE_TRANSFORM wired (and only for C_LightSource per T-199 step 1) — migrating readers first would render every shape/sprite/voxel/gizmo at world origin in the other 14 creations because nothing populates C_WorldTransform from the legacy C_PositionGlobal3D channel. Target readers: system_periodic_idle_position_offset.hpp, system_apply_position_offset.hpp, system_rhythmic_launch.hpp, system_contact_note_burst.hpp, system_collision_note_platform.hpp, system_update_positions_global.hpp, system_periodic_idle_note_burst.hpp, system_particle_spawner.hpp, system_velocity.hpp, system_spring_platform.hpp, system_action_animation.hpp, system_reactive_return_3d.hpp, system_goto_3d.hpp, system_update_screen_view.hpp. Writers need Euler→quat: use glm::quat(glm::vec3(eulerAngles)) for Euler angles; glm::quat_cast(rotMat) only if working from a rotation matrix. system_apply_position_offset.hpp may be deleted if epic #731 modifier migration has removed it — check current state first. Architect added PROPAGATE_TRANSFORM wiring scope: prefer engine-default registration; document why and fall back to per-creation if Option A is structurally infeasible. Blocks T-299 → T-301 → T-302.
   - **Links:**
 
-- [~] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
+- [ ] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
   - **ID:** T-301
   - **Area:** engine/prefabs/irreden/voxel, engine/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** T-300
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) C_VoxelPool and voxel systems use new SQT shape per the architectural decision; (2) GPU voxel-position upload path still works — voxel rendering pixel-identical pre/post; (3) voxel editor place/erase + scene save/load round-trip unchanged; (4) fleet-build clean on both backends; (5) engine/prefabs/irreden/voxel/CLAUDE.md updated with SoA decision rationale
@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
-- [~] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
-  - **ID:** T-311
-  - **Area:** tooling, build
-  - **Model:** sonnet
-  - **Owner:** claude/T-311-ci-baseline-gate
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) CI job re-runs perf_grid_matrix.sh on PRs touching engine/render/, engine/prefabs/irreden/render/, engine/system/, engine/math/; (2) compare_perf_runs.py diff posted as sticky PR comment; (3) >10% mean-frame-ms regression fails required CI check; (4) >5% improvement labels PR perf:improved; (5) check_regression.py exits non-zero on regression-over-threshold; (6) inter-run jitter variance audit <5% on master before enabling gate; (7) fleet-build clean
-  - **Issue:** #1022
-  - **Notes:** CI workflow YAML + scripts/perf/check_regression.py + docs/perf/README.md update. Baseline stored as docs/perf/baseline_<date>_<sha>.json. Blocked by T-310 so CI matrix run doesn't pay glFinish throughput tax per PR.
-  - **Links:**
-
 - [~] **perf: Lua-vs-C++ parity tracking dashboard from scripts/perf/ matrix runs** — add lua_cpp_parity.py computing lua_ms/cpp_ms per (zoom, sub_mode, sub_base) cell; flag >20% gap; extend perf_grid_matrix.sh with --target both mode
   - **ID:** T-313
   - **Area:** tooling
@@ -260,6 +249,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-311** — perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs · Owner: claude/T-311-ci-baseline-gate · PR: https://github.com/jakildev/IrredenEngine/pull/1039
 - [x] **T-305** — math: IRMath::SDF::evaluateGrid batch helper + refactor applyFillSDF · Owner: claude/T-305-sdf-grid-batch · PR: https://github.com/jakildev/IrredenEngine/pull/1029
 - [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
 - [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
@@ -279,4 +269,3 @@ Avoid:
 - [x] **T-296** — docs: lock SDF restriction decision (D2) · Owner: claude/T-296-sdf-restriction-decision · PR: https://github.com/jakildev/IrredenEngine/pull/996
 - [x] **T-288** — voxel: face-aware shader skip + per-voxel face-occlusion bits (B2) · Owner: claude/T-288-voxel-face-occupancy · PR: https://github.com/jakildev/IrredenEngine/pull/994
 - [x] **T-286** — editor parametric-shape voxel bake (always DENSE) (A3) · Owner: claude/T-286-parametric-voxel-bake · PR: https://github.com/jakildev/IrredenEngine/pull/993
-- [x] **T-285** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/948
