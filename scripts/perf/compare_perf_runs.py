@@ -36,9 +36,6 @@ FRAME_RE = re.compile(
     r"p99=([\d.]+)ms\s+min=([\d.]+)ms\s+max=([\d.]+)ms"
 )
 ENTITY_RE = re.compile(r"Entity count:\s+(\d+)\s+\((\d+)\s+archetypes\)")
-CULL_VISIBLE_RE = re.compile(r"^Visible\s+([\d.]+)\s+(\d+)\s+(\d+)")
-CULL_TOTAL_RE = re.compile(r"^Total\s+([\d.]+)\s+(\d+)\s+(\d+)")
-CULL_RATIO_RE = re.compile(r"^Ratio:\s+([\d.]+)")
 SYSTEM_RE = re.compile(
     r"^(INPUT|UPDATE|RENDER)\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+"
     r"([\d.]+)\s+(\d+)\s+(\d+)"
@@ -76,16 +73,6 @@ class GpuStage:
 
 
 @dataclass
-class CullStats:
-    avg_visible: float = 0.0
-    avg_total: float = 0.0
-    max_visible: int = 0
-    max_total: int = 0
-    samples: int = 0
-    ratio: float = 0.0
-
-
-@dataclass
 class CellReport:
     cell_id: str
     frame: FrameTiming = field(default_factory=FrameTiming)
@@ -93,7 +80,6 @@ class CellReport:
     archetype_count: int = 0
     systems: List[SystemTiming] = field(default_factory=list)
     gpu_stages: List[GpuStage] = field(default_factory=list)
-    cull: CullStats = field(default_factory=CullStats)
     raw: str = ""
 
     def system_by_name(self, name: str) -> Optional[SystemTiming]:
@@ -144,9 +130,6 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
         if s.startswith("--- GPU stage timing"):
             section = "gpu"
             continue
-        if s.startswith("--- Voxel cull stats"):
-            section = "cull"
-            continue
         if s.startswith("--- CPU phase timing"):
             section = "cpu_phase"
             continue
@@ -177,21 +160,6 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     avg_ms=float(m.group(2)),
                     max_ms=float(m.group(3)),
                 ))
-        elif section == "cull":
-            m = CULL_VISIBLE_RE.match(s)
-            if m:
-                report.cull.avg_visible = float(m.group(1))
-                report.cull.max_visible = int(m.group(2))
-                report.cull.samples = int(m.group(3))
-                continue
-            m = CULL_TOTAL_RE.match(s)
-            if m:
-                report.cull.avg_total = float(m.group(1))
-                report.cull.max_total = int(m.group(2))
-                continue
-            m = CULL_RATIO_RE.match(s)
-            if m:
-                report.cull.ratio = float(m.group(1))
     return report
 
 
@@ -278,27 +246,6 @@ def render_markdown(
     matched = sorted(set(base) & set(head))
     base_only = sorted(set(base) - set(head))
     head_only = sorted(set(head) - set(base))
-
-    if not cpu_only:
-        has_cull = any(c.cull.samples > 0 for c in list(base.values()) + list(head.values()))
-        if has_cull:
-            out.append("## voxel cull effectiveness (visible / total)")
-            out.append("")
-            out.append("| cell | ratio (base→head) | avg visible | total |")
-            out.append("|------|-------------------|-------------|-------|")
-            for cell_id in matched:
-                bc = base[cell_id].cull
-                hc = head[cell_id].cull
-                if bc.samples == 0 and hc.samples == 0:
-                    continue
-                ratio_delta_pp = (hc.ratio - bc.ratio) * 100.0  # percentage points
-                out.append(
-                    f"| `{cell_id}` "
-                    f"| {bc.ratio:.3f} → {hc.ratio:.3f} ({ratio_delta_pp:+.1f}pp) "
-                    f"| {bc.avg_visible:.0f} → {hc.avg_visible:.0f} "
-                    f"| {bc.avg_total:.0f} → {hc.avg_total:.0f} |"
-                )
-            out.append("")
 
     if not cpu_only:
         out.append("## frame timing (ms)")

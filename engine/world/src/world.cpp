@@ -149,25 +149,6 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         }
         return 0.0f;
     };
-    // Voxel cull diagnostic. Returns last-sampled visible + total
-    // voxel counts plus the running average + max collected since the
-    // last enableFrameTiming(true). Only populated while
-    // gpu_stage_timing is enabled.
-    render["getVoxelCullStats"] = [&lua]() {
-        sol::table out = lua.create_table();
-        const auto &timing = IRRender::gpuStageTiming();
-        const auto &acc = IRRender::voxelCullAccumulator();
-        out["visible"] = timing.visibleVoxelCount_;
-        out["total"] = timing.totalVoxelCount_;
-        out["samples"] = acc.sampleCount_;
-        out["avgVisible"] =
-            acc.sampleCount_ > 0 ? static_cast<double>(acc.visibleSum_) / acc.sampleCount_ : 0.0;
-        out["avgTotal"] =
-            acc.sampleCount_ > 0 ? static_cast<double>(acc.totalSum_) / acc.sampleCount_ : 0.0;
-        out["maxVisible"] = acc.maxVisible_;
-        out["maxTotal"] = acc.maxTotal_;
-        return out;
-    };
 
     for (const auto &bind : bindings) {
         bind(m_lua);
@@ -306,7 +287,6 @@ void World::enableFrameTiming(bool enabled) {
         m_frameMaxUpdateTicksPerFrame = 0;
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
-        IRRender::voxelCullAccumulator().reset();
     }
 }
 
@@ -340,13 +320,6 @@ void World::buildAndWriteProfileReport() {
          lightVolumeTiming.upload_.maxMs_,
          lightVolumeTiming.upload_.sampleCount_}
     );
-
-    const auto &cull = IRRender::voxelCullAccumulator();
-    report.voxelCullStats_.visibleSum_ = cull.visibleSum_;
-    report.voxelCullStats_.totalSum_ = cull.totalSum_;
-    report.voxelCullStats_.maxVisible_ = cull.maxVisible_;
-    report.voxelCullStats_.maxTotal_ = cull.maxTotal_;
-    report.voxelCullStats_.sampleCount_ = cull.sampleCount_;
 
     // Collect per-system timing, grouped by pipeline
     auto pipelineName = [](IRTime::Events e) -> const char * {

@@ -294,25 +294,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
         syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
 
-        // Cull diagnostic readback (gated by gpu_stage_timing.enabled_).
-        // The buffer still holds the prior frame's visibleCount; reading
-        // it here — before we zero it for this frame's compact pass —
-        // requires no explicit fence: the driver serializes the CPU read
-        // against the prior frame's already-retired compact write.
-        // Frame N+1 reads frame N's value; the first frame reports 0,
-        // contributing a 1/N bias to the running average — negligible
-        // over typical measurement runs.
-        if (gpuStageTiming().enabled_) {
-            VoxelIndirectDispatchParams previous{};
-            indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);
-            gpuStageTiming().visibleVoxelCount_ = previous.visibleCount;
-            gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(liveVoxelCount);
-            voxelCullAccumulator().record(
-                previous.visibleCount,
-                static_cast<std::uint32_t>(liveVoxelCount)
-            );
-        }
-
         const VoxelIndirectDispatchParams zeroed{};
         indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
 

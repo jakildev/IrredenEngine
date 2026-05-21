@@ -167,32 +167,6 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
         std::fprintf(f, "\n");
     }
 
-    // --- Voxel cull stats ---
-    if (report.voxelCullStats_.sampleCount_ > 0) {
-        const auto &c = report.voxelCullStats_;
-        const double samples = static_cast<double>(c.sampleCount_);
-        const double avgVisible = static_cast<double>(c.visibleSum_) / samples;
-        const double avgTotal = static_cast<double>(c.totalSum_) / samples;
-        const double ratio = avgTotal > 0.0 ? avgVisible / avgTotal : 0.0;
-        std::fprintf(f, "--- Voxel cull stats ---\n");
-        std::fprintf(f, "%-12s %14s %14s %10s\n", "", "Avg", "Max", "Samples");
-        std::fprintf(
-            f,
-            "%-12s %14.1f %14u %10u\n",
-            "Visible",
-            avgVisible,
-            c.maxVisible_,
-            c.sampleCount_
-        );
-        std::fprintf(f, "%-12s %14.1f %14u %10u\n", "Total", avgTotal, c.maxTotal_, c.sampleCount_);
-        std::fprintf(
-            f,
-            "Ratio:       %14.4f (visible/total — 1.0 = no cull, 0.0 = all culled)\n",
-            ratio
-        );
-        std::fprintf(f, "\n");
-    }
-
     // --- CPU phase timing ---
     if (!report.cpuPhases_.empty()) {
         std::fprintf(f, "--- CPU phase timing ---\n");
