@@ -23,6 +23,21 @@ scripts/perf/compare_perf_runs.py \
     save_files/perf/<head-sha>-head
 ```
 
+In a fleet worktree, plain `git checkout master` is unsafe — the main
+clone (or another worktree) already has `master` checked out and git
+will refuse, or the in-flight feature branch ends up orphaned. Use a
+worktree-safe alternative:
+
+- **Throwaway baseline worktree** (recommended):
+  ```bash
+  git worktree add /tmp/perf-baseline master
+  (cd /tmp/perf-baseline && scripts/perf/perf_grid_matrix.sh --label baseline)
+  git worktree remove /tmp/perf-baseline
+  ```
+- **Sibling clean clone** if you already maintain one (e.g.
+  `~/src/IrredenEngine.baseline`): run the matrix there and reference
+  its `save_files/perf/` output by absolute path when diffing.
+
 ## Quick check (no baseline, just see the current state)
 
 ```bash

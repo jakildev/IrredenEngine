@@ -60,7 +60,9 @@ benefit from the same script? If yes, extract.
 
 ## Cross-reference
 
-This principle is engine-wide, not optimize-specific. See
+This principle is engine-wide, not optimize-specific. The engine-wide
+version of this rule will live in
 [`docs/agents/CLAUDE-BASELINE.md`](../../../../docs/agents/CLAUDE-BASELINE.md)
-§"Script-first for repeatable work" for the version of this rule that
-applies across every skill and role.
+§"Script-first for repeatable work" (forthcoming — added by the
+follow-up PR that cross-references this file from CLAUDE-BASELINE and
+FLEET.md).
