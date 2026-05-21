@@ -82,7 +82,9 @@ them without editing config files.
 
 When `gpu_stage_timing` is enabled, `VOXEL_TO_TRIXEL_STAGE_1` reads the
 prior frame's `IndirectDispatchParams.visibleCount` before zeroing the
-buffer for the new frame. The result is a sync-free per-frame sample of
+buffer for the new frame. No explicit fence is required — the driver
+serializes the CPU read against the prior frame's already-retired write.
+The result is a per-frame sample of
 *how many voxels survived the iso-bounds cull*, alongside the pool's
 live count. The matrix script surfaces this as the `cull (vis/total)`
 column on `perf_summary.py` and a dedicated `voxel cull effectiveness`
