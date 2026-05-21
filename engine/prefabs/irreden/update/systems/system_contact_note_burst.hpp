@@ -8,7 +8,7 @@
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_particle_burst.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_velocity_drag.hpp>
@@ -111,7 +111,7 @@ template <> struct System<CONTACT_NOTE_BURST> {
                         burst.pHoverOscSpeed_, burst.hoverSpeedVariance_);
 
                     IREntity::EntityId entity = IREntity::createEntity(
-                        C_Position3D{spawnPos},
+                        C_LocalTransform{spawnPos},
                         C_VoxelSetNew{ivec3(1, 1, 1), color},
                         C_Velocity3D{vel},
                         C_VelocityDrag{
@@ -133,7 +133,6 @@ template <> struct System<CONTACT_NOTE_BURST> {
                         },
                         C_Lifetime{burst.lifetime_}
                     );
-                    IREntity::setComponent(entity, C_PositionGlobal3D{spawnPos});
                     if (burst.gravityEnabled_) {
                         IREntity::setComponent(entity, C_HasGravity{});
                     }

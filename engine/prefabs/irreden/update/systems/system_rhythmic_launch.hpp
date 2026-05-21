@@ -5,8 +5,8 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
 
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_rhythmic_launch.hpp>
@@ -29,19 +29,21 @@ template <> struct System<RHYTHMIC_LAUNCH> {
         static std::unordered_map<IREntity::EntityId, PlatformSnapshot> platformCache;
 
         return createSystem<
-            C_Position3D,
-            C_PositionGlobal3D,
+            C_LocalTransform,
             C_Velocity3D,
             C_ContactEvent,
             C_RhythmicLaunch>(
             "RhythmicLaunch",
-            [](C_Position3D &position,
-               C_PositionGlobal3D &globalPosition,
+            [](C_LocalTransform &localXform,
                C_Velocity3D &velocity,
                const C_ContactEvent &contact,
                C_RhythmicLaunch &launch) {
                 const float dt = IRTime::deltaTime(IRTime::UPDATE);
 
+                // Platform position/velocity reads still go through the legacy
+                // C_Position3D / C_Velocity3D channel — reader migration is
+                // Phase 3 scope (T-300 update-side readers). After Phase 3
+                // these become C_WorldTransform.translation_ reads.
                 auto fetchPlatform =
                     [](IREntity::EntityId id) -> PlatformSnapshot {
                     auto it = platformCache.find(id);
@@ -67,8 +69,7 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                 };
 
                 if (launch.frozen_) {
-                    position.pos_ = launch.frozenPos_;
-                    globalPosition.pos_ = launch.frozenPos_;
+                    localXform.translation_ = launch.frozenPos_;
                     velocity.velocity_ = vec3(0.0f);
                     return;
                 }
@@ -78,7 +79,7 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                         !launch.grounded_ &&
                         velocity.velocity_.z >= 0.0f) {
                         launch.frozen_ = true;
-                        launch.frozenPos_ = position.pos_;
+                        launch.frozenPos_ = localXform.translation_;
                         velocity.velocity_ = vec3(0.0f);
                         return;
                     }
@@ -93,8 +94,7 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                     launch.grounded_ = true;
                     launch.lastPlatformEntity_ = contact.otherEntity_;
                     PlatformSnapshot plat = fetchPlatform(contact.otherEntity_);
-                    position.pos_.z = plat.position_.z - launch.restOffsetZ_;
-                    globalPosition.pos_ = position.pos_;
+                    localXform.translation_.z = plat.position_.z - launch.restOffsetZ_;
                     velocity.velocity_ = plat.velocity_;
                 }
 
@@ -110,9 +110,8 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                     }
                     PlatformSnapshot plat =
                         fetchPlatform(launch.lastPlatformEntity_);
-                    position.pos_.z =
+                    localXform.translation_.z =
                         plat.position_.z - launch.restOffsetZ_;
-                    globalPosition.pos_ = position.pos_;
                     velocity.velocity_ = plat.velocity_;
                 }
 

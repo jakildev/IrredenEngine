@@ -59,10 +59,10 @@ the ECS surface.
 - `SPRITE_TO_SCREEN` — optional screen-composite pass that draws every
   entity holding `C_Sprite + C_PositionGlobal3D` as a textured alpha-
   blended quad, sorted back-to-front and grouped by atlas (one
-  `drawArraysInstanced` per atlas). World position is read directly
-  from `C_PositionGlobal3D` (modifier-driven offsets have already been
-  folded in by `APPLY_POSITION_OFFSET` earlier in the UPDATE
-  pipeline). Bypasses the trixel pipeline; runs after the main
+  `drawArraysInstanced` per atlas). Reads world position from
+  `C_PositionGlobal3D` today; migrates to `C_WorldTransform.translation_`
+  in T-299 (render-side SQT reader pass). Bypasses the trixel
+  pipeline; runs after the main
   canvas's `FRAMEBUFFER_TO_SCREEN` tick. Empty-case fast-path means a
   creation can register the system unconditionally — zero sprites =
   zero draws.

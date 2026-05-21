@@ -10,11 +10,13 @@ in `update/`.
   `C_LocalTransform` when consumers migrate; new code should prefer SQT).
 - `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**
   (legacy parallel to `C_WorldTransform`; T-199 in flight — both still
-  active during the consumer sweep).
-  Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
-  the modifier framework's `POSITION_OFFSET_3D` vec3 field rather
-  than a dedicated component — see [`position_modifier_fields.hpp`](position_modifier_fields.hpp)
-  and the `APPLY_POSITION_OFFSET` system.
+  active during the consumer sweep, but writers retired in T-300
+  Phase 2 so this field is `(0,0,0)` until T-299 migrates the
+  remaining render-side readers to `C_WorldTransform.translation_`).
+  Ephemeral per-frame deltas (idle bob, gizmo nudges) now travel
+  through the `TRANSFORM_TRANSLATION` modifier field — see
+  [`transform_modifier_fields.hpp`](transform_modifier_fields.hpp)
+  and `SYSTEM_PROPAGATE_TRANSFORM`.
 - `C_Rotation` — Euler vec3 (legacy; T-199 in flight — superseded by the
   quat field on `C_LocalTransform` when consumers migrate).
 - `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
@@ -176,7 +178,7 @@ Runtime entry points (all `inline`, header-only):
 Inline-apply factory: `IRPrefab::Modifier::applyVec3ModifierTo<
 TargetComponent, Member>(name, field)` in
 [`modifier_apply.hpp`](modifier_apply.hpp) generalizes the
-`APPLY_POSITION_OFFSET` shape — *iterate
+retired-in-T-300-Phase-2 `APPLY_POSITION_OFFSET` shape — *iterate
 `<TargetComponent, C_Modifiers>`, compose one vec3 field against a
 `vec3(0)` base, ADD the result to a vec3 member of the target
 component*. Use it for any per-frame additive vec3 channel with
@@ -307,13 +309,15 @@ runtime work and architect-gated decisions.
 
 ## Gotchas
 
-- **`createEntity` always adds `C_PositionGlobal3D`.** Rendered
-  position is whatever lives in `C_PositionGlobal3D` after the UPDATE
-  pipeline completes — `GLOBAL_POSITION_3D` writes `local + parent`
-  and `APPLY_POSITION_OFFSET` folds in the modifier-resolved
-  `POSITION_OFFSET_3D` vec3 field. Never infer a draw position from
-  `C_Position3D` alone — it is the *local* position and only the
-  `common/` hierarchy resolves it.
+- **`createEntity` always adds `C_PositionGlobal3D`.** Legacy field
+  written by `GLOBAL_POSITION_3D` (`local + parent`) — but in the
+  T-300/T-299 SQT migration window the writer chain is dormant
+  (`C_Position3D` has no remaining writers post-T-300 Phase 2). The
+  canonical rendered position now lives in `C_WorldTransform`,
+  composed by `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform`
+  plus the parent chain and the `TRANSFORM_TRANSLATION` /
+  `TRANSFORM_SCALE` modifier-resolved fields. Render-side readers
+  migrate to `C_WorldTransform.translation_` in T-299.
 - **Don't duplicate position components.** Adding your own
   `C_PositionGlobal3D` second on top of the auto-added one leaves one
   column stale and causes jitter. `createEntity(...)` detects

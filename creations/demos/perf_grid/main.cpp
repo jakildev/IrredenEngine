@@ -45,7 +45,6 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/common/systems/system_modifier_decay.hpp>
-#include <irreden/update/systems/system_apply_position_offset.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
 #include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -549,7 +548,6 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
     IRSystem::registerPipeline(

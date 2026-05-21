@@ -335,8 +335,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // SHAPES voxel_ref attachment — one child entity per ShapeRecord,
     // CHILD_OF the spawned root so per-record `offset_` composes
     // through the standard C_Position3D + parent's C_PositionGlobal3D
-    // path (any modifier-driven offset on the parent is already baked
-    // into globalPos by APPLY_POSITION_OFFSET). Per-record
+    // path. Per-record
     // `rotation_`, `csgOp_`, and `boneId_` are
     // persisted but not consumed by the current renderer; loading them
     // is a no-op until a runtime system reads them (T-181 wires bone
