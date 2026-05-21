@@ -325,6 +325,9 @@ def main() -> int:
     p.add_argument("--cpu-only", action="store_true")
     args = p.parse_args()
 
+    if args.gpu_only and args.cpu_only:
+        p.error("--gpu-only and --cpu-only are mutually exclusive")
+
     base_dir = Path(args.baseline).resolve()
     head_dir = Path(args.head).resolve()
 

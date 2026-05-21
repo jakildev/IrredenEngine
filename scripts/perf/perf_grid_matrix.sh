@@ -10,8 +10,8 @@
 #   scripts/perf/perf_grid_matrix.sh --target IRLuaPerfGrid
 #   scripts/perf/perf_grid_matrix.sh --label baseline    # output dir suffix
 #   scripts/perf/perf_grid_matrix.sh --frames 600        # frames per cell (default 300)
-#   scripts/perf/perf_grid_matrix.sh --full              # extended matrix (24 cells)
-#   scripts/perf/perf_grid_matrix.sh --quick             # smoke matrix (3 cells)
+#   scripts/perf/perf_grid_matrix.sh --full              # extended matrix (30 cells)
+#   scripts/perf/perf_grid_matrix.sh --quick             # smoke matrix (2 cells)
 #   scripts/perf/perf_grid_matrix.sh --grid-size 32      # smaller grid (default 64)
 #
 # Output:
