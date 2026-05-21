@@ -169,7 +169,7 @@ revisited per-phase:
 | **Single-window invariant lifted only at Phase 8** | Real multi-window has cost; defer until single-window editor proves valuable first. |
 | **Rotation architecture** | `C_LocalTransform` (SQT) per entity; `C_RotationMode` enum (`GRID` vs `DETACHED`); world rotation is Z-axis only via per-face geometric trixel deformation (replaces screen-space bilinear residual); pitch/roll allowed only on detached canvases per-entity. Locked design in engine epic `#936` (successor to `#310`). |
 | **World streaming** | Sparse over chunks; finite GPU residency budget; LRU + camera-radius eviction; one-frame upload budget enforced via low-LOD fallback for off-budget chunks. Locked design in engine epic `#938`. |
-| **SHAPES/HYBRID author flow deprecated (pending decision)** | Primary entity shapes are voxels-only; SDF runtime restricted to special effects (auras, fields, lighting occluders). Decision tracked in engine epic `#937`; lands during Epic C C3–C5. |
+| **SHAPES/HYBRID writer path deprecated; SDF runtime retained for editor chrome + effects + lighting blockers** | Restriction shape is **tri-mode**, not effects-only: the SDF runtime stays for (a) editor chrome (gizmos, axis indicators, selection highlight, debug culling minimap), (b) forward-looking effects (auras, fields, soft glows, gameplay shaders), and (c) `BUILD_LIGHT_OCCLUSION_GRID` blockers using `C_LightBlocker`. Only the *writer-side* SHAPES/HYBRID authoring path retires — the editor never exposes SDF authoring, and the parametric-shape bake (Epic A A3, `#934`) always emits `DENSE`. `VoxelSetMode::SHAPES` / `HYBRID` remain legacy-readable so existing `.vxs` assets continue to `Prefab::spawn` as `C_ShapeDescriptor` children. Rationale: the D1 audit (`docs/design/sdf-runtime-audit.md`, `#945`) found editor chrome and lighting blockers are intrinsic SDF consumers (gizmo screen-space sizing rewrites `params_` per tick; `BUILD_LIGHT_OCCLUSION_GRID` reads `shapeType_` + `params_` against the blocker bitfield) — both cost epic-scale rework to migrate to voxel pools, and the strict "effects-only" framing would have forced that migration without benefit. Decision tracked in engine epic `#937`; migration plan in `#961` (D3); `#690` / `#721` disposition under D4. |
 
 ## Engine vs. game work split
 
@@ -235,13 +235,18 @@ SDF primitives extend the `ShapeType` enum + add an `sdf<NAME>`
 GLSL/Metal pair — **no format version bump required** (extensibility
 rule #2 below).
 
-> **Deprecation note (pending decision):** the SHAPES and HYBRID author
-> flows are being restricted to "effects only" per engine epic `#937`.
-> Primary entity authoring is voxels-only — editor never exposes SDF
-> primitive authoring; the parametric-shape bake operation (Epic A A3,
-> `#934`) always emits a DENSE chunk. SDF runtime path stays for sun
-> shadow / light volume occluders and special-effect entities (auras,
-> fields, glows). Decision deliverable lands during Epic C C3–C5.
+> **Deprecation note (locked, D2 / `#960`):** the SHAPES and HYBRID
+> *writer* paths are deprecated per engine epic `#937`. The editor
+> never exposes SDF primitive authoring; the parametric-shape bake
+> (Epic A A3, `#934`) always emits a DENSE chunk. `VoxelSetMode::SHAPES`
+> / `HYBRID` remain **legacy-readable** so existing `.vxs` assets
+> still `Prefab::spawn` their SDF children. The SDF runtime itself
+> stays for editor chrome, special-effect entities (auras, fields,
+> glows), and `BUILD_LIGHT_OCCLUSION_GRID` lighting blockers — see
+> the "SHAPES/HYBRID writer path deprecated…" row in
+> [Architectural decisions (locked)](#architectural-decisions-locked)
+> and `docs/design/sdf-runtime-audit.md` (D1 / `#945`) for full
+> rationale. Migration plan in `#961` (D3).
 
 ### GPU upload
 
