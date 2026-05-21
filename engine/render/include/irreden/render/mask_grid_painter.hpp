@@ -3,16 +3,15 @@
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <optional>
 #include <vector>
 
 namespace IRRender {
 
-// Per-system scratch storage for batched mask-grid uploads. Mirrors the
-// RectFillScratch pattern in trixel_rect.hpp: a render system threads one
-// instance through every call across the frame so the color/distance
-// buffers grow to the largest grid ever drawn and stay sized after that.
+// Per-system scratch storage for batched mask-grid uploads; reused across
+// XZ/YZ calls to avoid per-frame allocation.
 struct MaskGridPaintScratch {
     std::vector<IRMath::Color> colors_;
     std::vector<int> distances_;
@@ -60,6 +59,9 @@ inline void drawMaskGridOntoCanvas(
 
     const std::size_t cellsExpected =
         static_cast<std::size_t>(gridSize.x) * static_cast<std::size_t>(gridSize.y);
+    IR_ASSERT(mask.size() >= cellsExpected,
+              "drawMaskGridOntoCanvas: mask undersized for gridSize ({} < {})",
+              mask.size(), cellsExpected);
     if (mask.size() < cellsExpected) return;
 
     const std::size_t pixels = static_cast<std::size_t>(gridW) * static_cast<std::size_t>(gridH);
