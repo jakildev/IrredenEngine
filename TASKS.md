@@ -301,17 +301,6 @@ Avoid:
   - **Notes:** CI workflow YAML + scripts/perf/check_regression.py + docs/perf/README.md update. Baseline stored as docs/perf/baseline_<date>_<sha>.json. Blocked by T-310 so CI matrix run doesn't pay glFinish throughput tax per PR.
   - **Links:**
 
-- [~] **perf: Catch2 microbench harness for engine/math hot paths** — add bench_iso_projection.cpp, bench_sdf.cpp, bench_trixel.cpp under engine/math/tests/; output to save_files/bench/<sha>.json; wire into scripts/perf/
-  - **ID:** T-312
-  - **Area:** engine/math
-  - **Model:** sonnet
-  - **Owner:** claude/T-312-math-microbench-harness
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) bench_iso_projection.cpp covers pos3DtoPos2DIso, pos3DtoPos2DScreen, pos3DtoDistance, isoDepthShift; (2) bench_sdf.cpp covers box, taperedBox, wedge, curvedPanel and other SDF primitives; (3) bench_trixel.cpp covers trixel projection/intersection helpers; (4) Catch2 BENCHMARK output written to save_files/bench/<sha>.json; (5) wired into scripts/perf/ alongside matrix run; (6) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1023
-  - **Notes:** Unit-level perf net complementing matrix-level perf_grid_matrix.sh. Follow-up PRs add benches as hot paths are identified. Microbench results appear in PR body for perf-relevant changes alongside matrix output.
-  - **Links:**
-
 - [~] **perf: Lua-vs-C++ parity tracking dashboard from scripts/perf/ matrix runs** — add lua_cpp_parity.py computing lua_ms/cpp_ms per (zoom, sub_mode, sub_base) cell; flag >20% gap; extend perf_grid_matrix.sh with --target both mode
   - **ID:** T-313
   - **Area:** tooling
@@ -327,6 +316,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
 - [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
 - [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
 - [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
@@ -346,4 +336,3 @@ Avoid:
 - [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
 - [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
 - [x] **T-283** — fleet: filter fleet:epic in project_queue_manager_ingest · Owner: claude/T-283-epic-filter-projector · PR: https://github.com/jakildev/IrredenEngine/pull/980
-- [x] **T-282** — fleet: invalidate seen-hash on ingest lock-bail · Owner: claude/T-282-ingest-lock-bail-hash-invalidate · PR: https://github.com/jakildev/IrredenEngine/pull/978
