@@ -305,3 +305,101 @@ vec3 trixelCanvasPixelToWorld3D(
         rasterYawCardinalIndex(rasterYaw)
     );
 }
+
+// Continuous-yaw + per-face deformation math (T-292; consumed by T-293).
+// Mirrors IRMath::pos3DtoPos2DIsoYawed / faceDeformationMatrix /
+// deformedTrixelIsoPixel / sqtToMat4 / matrixApplyToVoxelGrid in
+// engine/math/include/irreden/ir_math.hpp; CPU and GPU MUST agree at all 4
+// cardinal yaws and across the [-pi/4, pi/4] residual range.
+
+// Iso projection of a world point under a continuous Z-yaw camera.
+// Equivalent to pos3DtoPos2DIso(R_z(-yaw) * world). Sign convention matches
+// rotateCardinalZ (world->view = R_z(-yaw)) so this is the smooth extension
+// of the cardinal-snap projection used by the voxel rasterizer.
+vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
+    float c = cos(visualYaw);
+    float s = sin(visualYaw);
+    float vx = worldPos.x * c + worldPos.y * s;
+    float vy = -worldPos.x * s + worldPos.y * c;
+    return vec2(-vx + vy, -vx - vy + 2.0 * worldPos.z);
+}
+
+// 2x2 deformation matrix that maps a face's un-yawed iso-pixel offset to the
+// offset under residual yaw `residualYaw` (in [-pi/4, pi/4]).
+//
+// Derivation: each face contributes one "u" tangent (in-plane, rotates with
+// world Z-yaw) and one "v" tangent (along world Z, fixed under Z-yaw). The
+// returned mat2 D = M_phi * M_0^-1 post-multiplies an iso-pixel offset
+// emitted at the cardinal rasterYaw to recover its position under the
+// continuous yaw. At residualYaw == 0 all three are identity, so the
+// cardinal-snap path stays bit-identical to the un-yawed projection.
+//
+// `face` uses the kXFace / kYFace / kZFace integer convention; other values
+// return identity. CPU mirror: IRMath::faceDeformationMatrix.
+mat2 faceDeformationMatrix(int face, float residualYaw) {
+    float c = cos(residualYaw);
+    float s = sin(residualYaw);
+    if (face == kXFace) {
+        return mat2(c - s, 1.0 - (c + s), 0.0, 1.0);
+    }
+    if (face == kYFace) {
+        return mat2(c + s, c - s - 1.0, 0.0, 1.0);
+    }
+    if (face == kZFace) {
+        return mat2(c, -s, s, c);
+    }
+    return mat2(1.0, 0.0, 0.0, 1.0);
+}
+
+// Residual-yaw-deformed trixel iso-pixel offset within the 2x3 face diamond.
+// Applies faceDeformationMatrix to the un-yawed offset from faceOffset_2x3
+// and rounds back to integer iso pixels via roundHalfUp so CPU and GPU
+// resolve half-integer drift to the same cell.
+//
+// `subPixel` is 0 or 1; `face` uses the kXFace / kYFace / kZFace convention.
+// CPU mirror: IRMath::deformedTrixelIsoPixel.
+ivec2 deformedTrixelIsoPixel(int face, int subPixel, float residualYaw) {
+    ivec2 unyawed = faceOffset_2x3(face, subPixel);
+    mat2 D = faceDeformationMatrix(face, residualYaw);
+    vec2 deformed = D * vec2(unyawed);
+    return ivec2(roundHalfUp(deformed.x), roundHalfUp(deformed.y));
+}
+
+// Builds the local->world matrix from an SQT triple (scale, quaternion
+// rotation, translation). Composition is T * R * S: local p maps to
+// R * (S * p) + t — the same ordering SYSTEM_PROPAGATE_TRANSFORM uses when
+// composing parent and child transforms. Quaternion layout matches the
+// engine canon: vec4(qx, qy, qz, qw) with .w the scalar; identity is
+// (0, 0, 0, 1). CPU mirror: IRMath::sqtToMat4.
+mat4 sqtToMat4(vec3 scaleVec, vec4 rotationQuat, vec3 translation) {
+    float x = rotationQuat.x;
+    float y = rotationQuat.y;
+    float z = rotationQuat.z;
+    float w = rotationQuat.w;
+    // mat3 R from unit quaternion (column-major).
+    vec3 col0 = vec3(1.0 - 2.0 * (y * y + z * z),
+                     2.0 * (x * y + w * z),
+                     2.0 * (x * z - w * y)) * scaleVec.x;
+    vec3 col1 = vec3(2.0 * (x * y - w * z),
+                     1.0 - 2.0 * (x * x + z * z),
+                     2.0 * (y * z + w * x)) * scaleVec.y;
+    vec3 col2 = vec3(2.0 * (x * z + w * y),
+                     2.0 * (y * z - w * x),
+                     1.0 - 2.0 * (x * x + y * y)) * scaleVec.z;
+    return mat4(
+        vec4(col0, 0.0),
+        vec4(col1, 0.0),
+        vec4(col2, 0.0),
+        vec4(translation, 1.0)
+    );
+}
+
+// Applies an SRT (or any affine) matrix to an integer voxel grid cell,
+// returning the destination integer cell with half-up rounding. Used by the
+// GRID-mode rotation path (T-294) to re-rasterize authored voxels into
+// world-grid cells under a parent or local transform. CPU mirror:
+// IRMath::matrixApplyToVoxelGrid.
+ivec3 matrixApplyToVoxelGrid(mat4 transformMat, ivec3 cell) {
+    vec4 worldPos = transformMat * vec4(vec3(cell), 1.0);
+    return roundHalfUp(vec3(worldPos));
+}
