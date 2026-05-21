@@ -35,16 +35,26 @@
 
 namespace IRComponents {
 
+// kFirst / kLast bracket the valid range so binding-layer range checks
+// (e.g. the `rotation_mode` schema validator in
+// `engine/script/src/prefab_api.cpp`) stay automatic when a new mode
+// is added — bumping kLast in lockstep keeps the validator honest
+// without each call site re-hard-coding the latest sentinel. Pattern
+// is documented in `.claude/rules/cpp-lua-enums.md`.
 enum class RotationMode : std::uint8_t {
     GRID = 0,
     DETACHED = 1,
+
+    kFirst = GRID,
+    kLast = DETACHED,
 };
 
 struct C_RotationMode {
     RotationMode mode_ = RotationMode::GRID;
 
     C_RotationMode() = default;
-    explicit C_RotationMode(RotationMode mode) : mode_{mode} {}
+    explicit C_RotationMode(RotationMode mode)
+        : mode_{mode} {}
 };
 
 } // namespace IRComponents

@@ -169,8 +169,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             );
         }
         const lua_Integer raw = modeObj.as<lua_Integer>();
-        if (raw < static_cast<lua_Integer>(IRComponents::RotationMode::GRID) ||
-            raw > static_cast<lua_Integer>(IRComponents::RotationMode::DETACHED)) {
+        if (raw < static_cast<lua_Integer>(IRComponents::RotationMode::kFirst) ||
+            raw > static_cast<lua_Integer>(IRComponents::RotationMode::kLast)) {
             return makeError(
                 idStr,
                 path,
