@@ -296,10 +296,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         // Cull diagnostic readback (gated by gpu_stage_timing.enabled_).
         // The buffer still holds the prior frame's visibleCount; reading
-        // it here — before we zero it for this frame's compact pass — is
-        // a sync-free way to surface culling effectiveness. Frame N+1
-        // reads frame N's value; the first frame reports 0 and is
-        // discarded by the running average's sampleCount_.
+        // it here — before we zero it for this frame's compact pass —
+        // requires no explicit fence: the driver serializes the CPU read
+        // against the prior frame's already-retired compact write.
+        // Frame N+1 reads frame N's value; the first frame reports 0,
+        // contributing a 1/N bias to the running average — negligible
+        // over typical measurement runs.
         if (gpuStageTiming().enabled_) {
             VoxelIndirectDispatchParams previous{};
             indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);

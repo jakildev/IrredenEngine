@@ -160,8 +160,10 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         out["visible"] = timing.visibleVoxelCount_;
         out["total"] = timing.totalVoxelCount_;
         out["samples"] = acc.sampleCount_;
-        out["avgVisible"] = acc.sampleCount_ > 0 ? acc.visibleSum_ / acc.sampleCount_ : 0;
-        out["avgTotal"] = acc.sampleCount_ > 0 ? acc.totalSum_ / acc.sampleCount_ : 0;
+        out["avgVisible"] =
+            acc.sampleCount_ > 0 ? static_cast<double>(acc.visibleSum_) / acc.sampleCount_ : 0.0;
+        out["avgTotal"] =
+            acc.sampleCount_ > 0 ? static_cast<double>(acc.totalSum_) / acc.sampleCount_ : 0.0;
         out["maxVisible"] = acc.maxVisible_;
         out["maxTotal"] = acc.maxTotal_;
         return out;
