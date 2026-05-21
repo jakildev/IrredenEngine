@@ -127,6 +127,7 @@ jobs:
 
           gh pr comment "$PR_NUMBER" --body-file /tmp/perf_comment.md
 
+          # empty on early-exit (no-baseline path); downstream steps check == '0'/'1'
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
