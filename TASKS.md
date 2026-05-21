@@ -186,11 +186,11 @@ Avoid:
   - **Notes:** Stack S-C-core pos 4. Branch from C3 PR head; also requires C4 (T-293) merged first. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C7".
   - **Links:**
 
-- [~] **render: migrate Phase A render-side readers to C_WorldTransform** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase)
+- [ ] **render: migrate Phase A render-side readers to C_WorldTransform** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase)
   - **ID:** T-299
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** T-300
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) Each listed render system reads C_WorldTransform.translation_/.rotation_ instead of C_PositionGlobal3D/C_Rotation; (2) legacy components still exist (retirement is T-302); (3) fleet-build clean on linux-debug and macos-debug; (4) render-debug-loop shot list pre/post pixel-identical (within bilinear tolerance for rotation-touching shaders); (5) voxel editor renders and interacts correctly — gizmos move, picking resolves, voxels position correctly
@@ -202,7 +202,7 @@ Avoid:
   - **ID:** T-300
   - **Area:** engine/prefabs/irreden/update, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-300-T-299-sqt-phase-a
   - **Blocked by:** (none)
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) Each listed update system reads C_WorldTransform.translation_/.rotation_ and/or writes C_LocalTransform; (2) velocity integration, spring physics, periodic offsets, goto/reactive-return all behave identically post-migration; (3) fleet-build clean on both backends; (4) unit tests pass (test/ecs/*, test/asset/*); (5) IRShapeDebug + voxel editor + spring/note demos render identically; (6) SYSTEM_PROPAGATE_TRANSFORM runs in every UPDATE pipeline that has a transform-consuming entity (architect-added scope per PR #1000 — engine-default registration preferred over per-creation if structurally viable)
@@ -234,17 +234,6 @@ Avoid:
   - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
-- [~] **editor: IRMath::evaluateSDFGrid batch helper + refactor applyFillSDF** — add evaluateSDFGrid to engine/math; remove SDF evaluation math from voxel_editor applyFillSDF, leaving only the placement loop
-  - **ID:** T-305
-  - **Area:** engine/math, engine/prefabs/irreden/editor
-  - **Model:** opus
-  - **Owner:** claude/T-305-sdf-grid-batch
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) applyFillSDF contains no math beyond placement decision; (2) SDF bake produces identical voxels before/after; (3) IRMath::evaluateSDFGrid has unit test covering at least sphere and box primitives; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1013
-  - **Notes:** applyFillSDF at voxel_editor/main.cpp ~L559-589. Reuse IRMath::iterateAABB (T-303) for the placement loop if it lands first; otherwise T-303 refactor adapts against this iteration. Pattern: IRMath::pos3DtoPos2DIso is the existing model for batch-suitable helpers. Longer-term compute-shader path deferred (separate issue once profiling motivates it).
-  - **Links:**
-
 - [~] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
   - **ID:** T-311
   - **Area:** tooling, build
@@ -271,6 +260,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-305** — math: IRMath::SDF::evaluateGrid batch helper + refactor applyFillSDF · Owner: claude/T-305-sdf-grid-batch · PR: https://github.com/jakildev/IrredenEngine/pull/1029
 - [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
 - [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
 - [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
@@ -290,4 +280,3 @@ Avoid:
 - [x] **T-288** — voxel: face-aware shader skip + per-voxel face-occlusion bits (B2) · Owner: claude/T-288-voxel-face-occupancy · PR: https://github.com/jakildev/IrredenEngine/pull/994
 - [x] **T-286** — editor parametric-shape voxel bake (always DENSE) (A3) · Owner: claude/T-286-parametric-voxel-bake · PR: https://github.com/jakildev/IrredenEngine/pull/993
 - [x] **T-285** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/948
-- [x] **T-284** — editor selection rectangle + ghost preview during fill (A4) · Owner: claude/T-284-fill-ghost-ui · PR: https://github.com/jakildev/IrredenEngine/pull/989
