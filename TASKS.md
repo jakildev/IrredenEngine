@@ -312,11 +312,11 @@ Avoid:
   - **Notes:** Engine-level flag in IREngine::init or shared parseStandardArgv helper. Each preset is a Lua table (or .irconf) overriding world-config / demo-config fields applied after demo's applyConfigTable(). PR #1016 added --subdivision-mode / --base-subdivisions that this supersedes. Follow-up: migrate other affected demos one at a time.
   - **Links:**
 
-- [ ] **render: split visible vs shadow-feeder voxel compaction to fix sub² cull bloat at high zoom** — classify voxels into visible and feeder compaction lists; depth-only fast path for feeder voxels (no sub² multiplier, no color/entityID); new feeder-to-distances compute shader; design doc required first
+- [~] **render: split visible vs shadow-feeder voxel compaction to fix sub² cull bloat at high zoom** — classify voxels into visible and feeder compaction lists; depth-only fast path for feeder voxels (no sub² multiplier, no color/entityID); new feeder-to-distances compute shader; design doc required first
   - **ID:** T-309
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** https://github.com/jakildev/IrredenEngine/pull/1019
   - **Acceptance:** (1) One-pager design doc posted on #1020 and committed before implementation; (2) At zoom 8, visible/total ratio improves measurably toward 1/zoom² ideal; (3) Sun-shadow correctness unchanged — render-verify reference set pixel-identical pre/post; (4) perf_grid_matrix.sh re-run shows improvement at zoom 4+; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1020
