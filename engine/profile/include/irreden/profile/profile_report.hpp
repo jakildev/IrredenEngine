@@ -34,6 +34,18 @@ struct CpuPhaseEntry {
     uint32_t sampleCount_ = 0;
 };
 
+/// Voxel cull-effectiveness summary populated from a per-frame
+/// accumulator in VOXEL_TO_TRIXEL_STAGE_1. avgVisible / avgTotal at
+/// zoom Z answer "did culling actually shrink the working set?" A
+/// flat ratio across zooms is the signature of broken culling.
+struct VoxelCullStatsSummary {
+    uint64_t visibleSum_ = 0;
+    uint64_t totalSum_ = 0;
+    uint32_t maxVisible_ = 0;
+    uint32_t maxTotal_ = 0;
+    uint32_t sampleCount_ = 0;
+};
+
 /// Aggregated data for a profile report, populated by World at shutdown.
 struct ProfileReport {
     std::vector<float> frameTimesMs_;
@@ -45,6 +57,7 @@ struct ProfileReport {
     std::vector<SystemTimingEntry> systemTimings_;
     std::vector<GpuStageEntry> gpuStages_;
     std::vector<CpuPhaseEntry> cpuPhases_;
+    VoxelCullStatsSummary voxelCullStats_;
 };
 
 /// Write a plain-text profile report to the given file path.

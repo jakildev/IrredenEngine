@@ -42,17 +42,20 @@ def main() -> int:
     print(f"location: `{run_dir}`")
     print(f"cells: {len(cells)}")
     print()
-    print("| cell | frame avg | p99 | entities | top GPU stage |")
-    print("|------|-----------|-----|----------|---------------|")
+    print("| cell | frame avg | p99 | entities | cull (vis/total) | top GPU stage |")
+    print("|------|-----------|-----|----------|------------------|---------------|")
     for cell_id in sorted(cells):
         c = cells[cell_id]
         top_gpu = ""
         if c.gpu_stages:
             top = max(c.gpu_stages, key=lambda s: s.avg_ms)
             top_gpu = f"`{top.name}` ({top.avg_ms:.2f}ms)"
+        cull = ""
+        if c.cull.samples > 0:
+            cull = f"{c.cull.ratio:.2f} ({c.cull.avg_visible:.0f}/{c.cull.avg_total:.0f})"
         print(
             f"| `{cell_id}` | {c.frame.avg:.2f}ms | {c.frame.p99:.2f}ms "
-            f"| {c.entity_count} | {top_gpu} |"
+            f"| {c.entity_count} | {cull} | {top_gpu} |"
         )
     return 0
 

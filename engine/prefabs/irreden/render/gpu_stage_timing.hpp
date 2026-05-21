@@ -1,11 +1,12 @@
 #ifndef GPU_STAGE_TIMING_H
 #define GPU_STAGE_TIMING_H
 
-#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <string_view>
+
+#include <irreden/ir_math.hpp>
 
 namespace IRRender {
 
@@ -34,6 +35,14 @@ struct GpuStageTiming {
     float fbToScreenMs_ = 0.0f;
     std::uint32_t visibleShapeCount_ = 0;
     std::uint32_t shapeGroupsZ_ = 0;
+    // Cull diagnostic. Populated by VOXEL_TO_TRIXEL_STAGE_1 each frame
+    // from the prior frame's indirect-dispatch params + the current
+    // pool live count, so the readback is sync-free (frame N+1 reads
+    // frame N's already-written value before zeroing the buffer).
+    // Reports the *last* sampled frame; running averages live in
+    // VoxelCullAccumulator below.
+    std::uint32_t visibleVoxelCount_ = 0;
+    std::uint32_t totalVoxelCount_ = 0;
     // Only flipped between frames by Lua on the main thread (Lua runs in
     // INPUT/UPDATE, never RENDER). Stable across the RENDER pipeline, so
     // probes can read `enabled_` twice and rely on both values matching.
@@ -72,7 +81,7 @@ struct CpuPhaseTiming {
 
     void record(double ms) {
         totalMs_ += ms;
-        maxMs_ = std::max(maxMs_, ms);
+        maxMs_ = IRMath::max(maxMs_, ms);
         ++sampleCount_;
     }
 
@@ -97,6 +106,40 @@ struct ComputeLightVolumeTiming {
 
 inline ComputeLightVolumeTiming &computeLightVolumeTiming() {
     static ComputeLightVolumeTiming instance;
+    return instance;
+}
+
+// Running cull-effectiveness accumulator. Each per-frame sample comes
+// from VOXEL_TO_TRIXEL_STAGE_1 reading the prior frame's indirect
+// dispatch params. The world's profile-report builder drains this at
+// shutdown; `enableFrameTiming(true)` calls reset() so each measurement
+// run starts from zero.
+struct VoxelCullAccumulator {
+    std::uint64_t visibleSum_ = 0;
+    std::uint64_t totalSum_ = 0;
+    std::uint32_t maxVisible_ = 0;
+    std::uint32_t maxTotal_ = 0;
+    std::uint32_t sampleCount_ = 0;
+
+    void record(std::uint32_t visible, std::uint32_t total) {
+        visibleSum_ += visible;
+        totalSum_ += total;
+        maxVisible_ = IRMath::max(maxVisible_, visible);
+        maxTotal_ = IRMath::max(maxTotal_, total);
+        ++sampleCount_;
+    }
+
+    void reset() {
+        visibleSum_ = 0;
+        totalSum_ = 0;
+        maxVisible_ = 0;
+        maxTotal_ = 0;
+        sampleCount_ = 0;
+    }
+};
+
+inline VoxelCullAccumulator &voxelCullAccumulator() {
+    static VoxelCullAccumulator instance;
     return instance;
 }
 
