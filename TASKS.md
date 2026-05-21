@@ -210,18 +210,6 @@ Avoid:
   - **Notes:** Stack S-C-core pos 4. Branch from C3 PR head; also requires C4 (T-293) merged first. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C7".
   - **Links:**
 
-- [~] **world: chunk disk persistence + lazy load (E6)** — chunks serialize to disk via .vxs; lazy load on residency request; per-chunk dirty tracking; only modified chunks re-saved
-  - **ID:** T-298
-  - **Area:** engine/world, engine/asset
-  - **Model:** opus
-  - **Owner:** claude/T-298-chunk-disk-persistence
-  - **Blocked by:** (none)
-  - **Stack:** T-297..T-298 S-E-persist
-  - **Acceptance:** (1) Save world; quit; restart; chunks load on-demand as camera moves; (2) visual state identical to pre-quit; (3) only modified chunks re-saved; disk usage scales with active content; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #968
-  - **Notes:** Stack S-E-persist pos 2 (E1 → E6). Branch from E1 PR head (#963). Chunks use .vxs DENSE-RLE format (#940, T-276 merged PR #972). Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic E → E6".
-  - **Links:**
-
 - [ ] **render: migrate Phase A render-side readers to C_WorldTransform** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase)
   - **ID:** T-299
   - **Area:** engine/prefabs/irreden/render
@@ -274,6 +262,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-298** — world: chunk disk persistence + lazy load (E6) · Owner: claude/T-298-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/998
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
 - [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
 - [x] **T-289** — voxel: push-at-mutation position upload (no per-frame re-upload) (B5) · Owner: claude/T-289-voxel-pos-push-at-mutation · PR: https://github.com/jakildev/IrredenEngine/pull/999
@@ -293,4 +282,3 @@ Avoid:
 - [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
 - [x] **T-278** — editor AABB box-fill + line-fill + face-fill (A1) · Owner: claude/T-278-fill-tools · PR: https://github.com/jakildev/IrredenEngine/pull/976
 - [x] **T-215** — editor F-1.5 — save/load round-trip with metadata + JSON sidecar · Owner: claude/T-215-save-load-roundtrip · PR: https://github.com/jakildev/IrredenEngine/pull/933
-- [x] **T-213** — editor F-1.3 — layer system panel UI · Owner: claude/T-213-layer-system · PR: https://github.com/jakildev/IrredenEngine/pull/932
