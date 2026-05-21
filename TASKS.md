@@ -290,11 +290,11 @@ Avoid:
   - **Notes:** Two mechanical cleanups bundled. (1) scene_io.hpp loadEditorScene ~L204-278 calls metaGet 20+ times each O(N) linear scan; fix: build unordered_map<string,string> at top. (2) kRecordBytes = 12 declared locally in readVoxelRecordsChunk ~L458 and makeVoxelRecordsRleChunk ~L487; hoist to namespace{} constexpr. Pattern: PR #972 writeVoxelRecordBody/readVoxelRecordBody are the model for save/load deduplication.
   - **Links:**
 
-- [ ] **skills: decompose /simplify into parallel subagents and add render-leak / hot-path rules** — rewrite .claude/skills/simplify/SKILL.md to dispatch 5 parallel Haiku/Sonnet subagents for reuse detection; add explicit rules for triple-nested loops, renderer-leaks, SDF-grid-on-CPU, and linear-search-in-hot-path smells
+- [~] **skills: decompose /simplify into parallel subagents and add render-leak / hot-path rules** — rewrite .claude/skills/simplify/SKILL.md to dispatch 5 parallel Haiku/Sonnet subagents for reuse detection; add explicit rules for triple-nested loops, renderer-leaks, SDF-grid-on-CPU, and linear-search-in-hot-path smells
   - **ID:** T-307
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) /simplify on synthetic diff with (a) triple-nested loop in creations/, (b) subImage2D in creations/, (c) new function name duplicating existing IRMath helper, (d) linear-search in save path flags all four; (2) skill completes in roughly same wall-clock as today due to parallel dispatch; (3) re-run against PR #976 #991 #993 #933 diffs would have surfaced A1–A4 smells; (4) fleet-build clean
   - **Issue:** #1015
