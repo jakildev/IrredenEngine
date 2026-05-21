@@ -13,6 +13,9 @@ compile_commands.json
 .cache/
 CMakeUserPresets.json
 
+# runtime output from creations (profile reports, screenshots, perf matrix runs)
+save_files/
+
 # editor files: keep shareable config, ignore local state
 .vscode/*
 !.vscode/settings.json

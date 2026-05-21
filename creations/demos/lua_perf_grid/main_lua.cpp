@@ -84,6 +84,10 @@ struct CliOverrides {
     int gridSize_ = 16;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    bool subdivisionModeSet_ = false;
+    IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+    bool baseSubdivisionsSet_ = false;
+    int baseSubdivisions_ = 1;
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
@@ -149,6 +153,31 @@ void parseArgs(int argc, char **argv) {
             if (zoom > 0.0f) {
                 g_cliOverrides.zoom_ = zoom;
                 g_cliOverrides.zoomSet_ = true;
+            }
+            ++i;
+        } else if (std::strcmp(argv[i], "--subdivision-mode") == 0 && i + 1 < argc) {
+            std::string mode = argv[i + 1];
+            if (mode == "none") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else if (mode == "position_only") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else if (mode == "full") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else {
+                IR_LOG_WARN(
+                    "Unknown --subdivision-mode '{}'; expected none|position_only|full",
+                    mode
+                );
+            }
+            ++i;
+        } else if (std::strcmp(argv[i], "--base-subdivisions") == 0 && i + 1 < argc) {
+            int sub = std::atoi(argv[i + 1]);
+            if (sub > 0) {
+                g_cliOverrides.baseSubdivisions_ = sub;
+                g_cliOverrides.baseSubdivisionsSet_ = true;
             }
             ++i;
         }
@@ -440,6 +469,12 @@ int main(int argc, char **argv) {
     IREngine::init(argv[0]);
     if (g_autoProfileFrames > 0) {
         IREngine::enableFrameTiming(true);
+    }
+    if (g_cliOverrides.subdivisionModeSet_) {
+        IRRender::setSubdivisionMode(g_cliOverrides.subdivisionMode_);
+    }
+    if (g_cliOverrides.baseSubdivisionsSet_) {
+        IRRender::setVoxelRenderSubdivisions(g_cliOverrides.baseSubdivisions_);
     }
     IREngine::gameLoop();
     return 0;
