@@ -31,7 +31,7 @@ import pathlib
 import re
 import subprocess
 import sys
-from typing import Iterable, Optional
+from typing import Optional
 
 # How long a fleet:wip PR can sit untouched before we flag it. Picked at
 # 7 days because:
@@ -143,8 +143,9 @@ def sweep_stale_prs(
                 f"- **Push a commit** — re-arms the timer. The `fleet:stalled` "
                 f"  label is sticky, but agents should treat its presence as "
                 f"  \"human-tracked\" and resume work normally.\n\n"
-                f"Filed by `fleet-stale-sweep`. This comment is one-shot; "
-                f"the label won't be re-added if removed."
+                f"Filed by `fleet-stale-sweep`. Removing this label re-arms "
+                f"the timer; the sweep will re-comment on the next tick if "
+                f"the PR is still idle."
             )
             try:
                 subprocess.run(
@@ -180,7 +181,7 @@ def fetch_open_epics(repo_slug: str) -> list[dict]:
             [
                 "gh", "issue", "list", "--repo", repo_slug,
                 "--label", "fleet:epic", "--state", "open",
-                "--limit", "100",
+                "--limit", "100",  # 100 epics is well above current fleet scale
                 "--json", "number,title,body,labels",
             ],
             check=True, capture_output=True, text=True,

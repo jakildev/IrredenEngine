@@ -657,9 +657,9 @@ Specifically, **never pass these via `--label` when filing**:
 - `fleet:stalled` — owned by **`fleet-stale-sweep`** (invoked from
   `fleet-queue-tick`). Added to a `fleet:wip` PR that hasn't been pushed
   in 7+ days, along with a one-shot human comment listing the three
-  options (merge / close / push to re-arm). Sticky and idempotent: the
-  sweep only flags each PR once, so removing the label doesn't trigger
-  a re-comment. The human owns the resolution — the fleet won't
+  options (merge / close / push to re-arm). Sticky: removing the label
+  re-arms the timer; the sweep will re-comment on the next tick if the
+  PR is still idle. The human owns the resolution — the fleet won't
   re-free the TASKS.md row automatically (that would race the worker
   if it ever resumes). Closing the PR is the canonical reap path.
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` — owned by
