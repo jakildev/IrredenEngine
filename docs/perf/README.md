@@ -78,6 +78,35 @@ script):
 The subdivision flags exist precisely so the matrix script can sweep
 them without editing config files.
 
+## Voxel cull stats — the "is culling working?" diagnostic
+
+When `gpu_stage_timing` is enabled, `VOXEL_TO_TRIXEL_STAGE_1` reads the
+prior frame's `IndirectDispatchParams.visibleCount` before zeroing the
+buffer for the new frame. No explicit fence is required — the driver
+serializes the CPU read against the prior frame's already-retired write.
+The result is a per-frame sample of
+*how many voxels survived the iso-bounds cull*, alongside the pool's
+live count. The matrix script surfaces this as the `cull (vis/total)`
+column on `perf_summary.py` and a dedicated `voxel cull effectiveness`
+table on `compare_perf_runs.py`.
+
+What to look for:
+
+- **Ratio shrinks with zoom**, roughly as `1/zoom²` once the camera is
+  past full-screen coverage. If the ratio stays flat or shrinks much
+  less than `1/zoom²` while zoom goes up, that's the signature of an
+  ineffective viewport cull — frame time grows with the
+  subdivision-driven work multiplier while the visible set barely
+  changes.
+- **Same ratio across two PRs at the same `(zoom, sub_mode, sub_base)`
+  cell** is the no-regression baseline for any optimization PR that
+  claims to improve culling — pre-PR vs post-PR ratios at the same
+  cell.
+
+Lua surface for ad-hoc inspection: `ir.render.getVoxelCullStats()`
+returns `{visible, total, samples, avgVisible, avgTotal, maxVisible,
+maxTotal}`.
+
 ## Committed baselines
 
 When a major phase lands (Phase 1a GPU light volume, T-289 push-at-mutation,
