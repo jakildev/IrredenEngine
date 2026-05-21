@@ -35,7 +35,11 @@ This repo runs a parallel-agent workflow. The rules:
    role's "Out of scope" section for the per-role formulation.
 
 See `TASKS.md` for the current queue and `.claude/skills/` for the exact
-commit/PR/review flows.
+commit/PR/review flows. When extending a skill or writing a role-doc
+procedure, follow [`docs/agents/CLAUDE-BASELINE.md` §"Script-first for
+repeatable work"](CLAUDE-BASELINE.md#script-first-for-repeatable-work) —
+multi-step shell sequences belong in `scripts/<area>/`, not in skill
+prose.
 
 ### How `fleet-claim` enforces single-claim atomicity
 

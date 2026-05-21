@@ -193,6 +193,62 @@ starting a third copy.
 
 ---
 
+## Script-first for repeatable work
+
+Peer principle to "Point, don't dump" — same goal, different medium.
+"Point, don't dump" applies to **knowledge**; this applies to
+**runnable steps**.
+
+**Rule:** when you find yourself instructing an agent to run the same
+multi-step shell sequence more than once — across runs of the same
+skill, across sibling skills, or across role loops — extract it to a
+script in `scripts/<area>/` and have the skill or role invoke the
+script. Skills are for judgment; scripts are for mechanics.
+
+A skill that walks through a profiling protocol, a build flow, or a
+release checklist in prose is a bug — replace the prose with a script
+invocation. The win compounds: scripts are testable, diff-able, and
+reusable across human and agent runs, while prose has to be re-read
+and re-interpreted every time.
+
+**Two-strike rule.** First time you write a multi-step shell sequence
+in a PR body or skill, it's prose. Second time you'd write something
+similar, **stop and extract a script**. The two-strike threshold is
+what triggers the move; below that, prose is fine.
+
+**Where does it live?**
+
+| Lives in… | Examples |
+|-----------|----------|
+| `scripts/<area>/` (`perf/`, `fleet/`, `render/`) | Multi-step shell/python: matrix runs, regression gates, diff renderers, baseline rotators, build checks. Anything with arguments and an exit code. |
+| Skill `reference/` files | The decision tree the agent walks, curated catalogs of patterns, partner-skill cross-refs, big-win case studies. Anything an agent **reads** but doesn't **run**. |
+| `SKILL.md` body | Triage decisions, the playbook's branching logic, the report template. Anything that requires judgment. |
+
+**When NOT to make a script:**
+
+- Single-use commands tied to a specific PR or issue (e.g. "reproduce
+  bug X by running Y with these args") — these live in the PR / issue
+  body, not in `scripts/`.
+- Decisions that require human judgment (which optimization to pick,
+  whether a trade-off is acceptable) — these stay as guidance in the
+  skill body.
+- One-off measurement queries during a specific investigation —
+  scratch shell commands in the conversation are fine. Promote to a
+  script only when the same query runs twice.
+
+**Worked example.** The `optimize` skill landed PR #1016 (matrix
+script, comparator, summary, README) **before** the skill rewrite in
+PR #1025. The new `SKILL.md` is 159 lines because the runnable steps
+are all in `scripts/perf/`; the catalog of patterns is in
+`reference/common_bottlenecks.md`. Agents invoke the skill, the skill
+calls the scripts, the scripts produce the markdown that goes into
+the PR body. No agent ever re-derives the flags or the diff format.
+
+This principle is recent; existing prose-heavy skills will be migrated
+as they're touched. New skills must follow it from the start.
+
+---
+
 ## Canonical-home map
 
 Where each cross-cutting rule lives. When authoring or improving an
@@ -200,7 +256,7 @@ agent-facing doc, link to the canonical home rather than restating.
 
 | Topic | Canonical home |
 |---|---|
-| ECS footgun · Naming · Style · IRMath · Bash rules · Cross-repo isolation · Engine API removal · Encode contracts in code · Deprecation markers · Hard rules for fleet roles · What belongs in agent-facing docs · Citing source in filed artifacts | this doc (`docs/agents/CLAUDE-BASELINE.md`) |
+| ECS footgun · Naming · Style · IRMath · Bash rules · Cross-repo isolation · Engine API removal · Encode contracts in code · Deprecation markers · Hard rules for fleet roles · What belongs in agent-facing docs · Script-first for repeatable work · Citing source in filed artifacts | this doc (`docs/agents/CLAUDE-BASELINE.md`) |
 | Build commands · presets · `fleet-build` · `fleet-run` | `docs/agents/BUILD.md` |
 | Fleet workflow · labels · cursor cues · model split · cross-platform parity · stacking | `docs/agents/FLEET.md` |
 | Cross-host smoke validation (OpenGL ↔ Metal) | `docs/agents/FLEET-CROSS-HOST-SMOKE.md` |
