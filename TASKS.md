@@ -291,11 +291,11 @@ Avoid:
   - **Notes:** applyFillSDF at voxel_editor/main.cpp ~L559-589. Reuse IRMath::iterateAABB (T-303) for the placement loop if it lands first; otherwise T-303 refactor adapts against this iteration. Pattern: IRMath::pos3DtoPos2DIso is the existing model for batch-suitable helpers. Longer-term compute-shader path deferred (separate issue once profiling motivates it).
   - **Links:**
 
-- [ ] **asset: scene_io metadata index + voxel-record byte constant dedup** — build unordered_map in loadEditorScene to replace O(N·M) linear-scan; hoist kRecordBytes to file-scope constexpr in voxel_set_format.cpp
+- [~] **asset: scene_io metadata index + voxel-record byte constant dedup** — build unordered_map in loadEditorScene to replace O(N·M) linear-scan; hoist kRecordBytes to file-scope constexpr in voxel_set_format.cpp
   - **ID:** T-306
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) Loading large scene (≥1k frames) no slower; (2) `grep -n 'kRecordBytes' engine/asset/src/voxel_set_format.cpp` returns exactly one declaration plus use sites; (3) all existing save/load round-trip tests pass unchanged; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1014
