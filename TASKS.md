@@ -356,11 +356,11 @@ Avoid:
   - **Notes:** Unit-level perf net complementing matrix-level perf_grid_matrix.sh. Follow-up PRs add benches as hot paths are identified. Microbench results appear in PR body for perf-relevant changes alongside matrix output.
   - **Links:**
 
-- [ ] **perf: Lua-vs-C++ parity tracking dashboard from scripts/perf/ matrix runs** — add lua_cpp_parity.py computing lua_ms/cpp_ms per (zoom, sub_mode, sub_base) cell; flag >20% gap; extend perf_grid_matrix.sh with --target both mode
+- [~] **perf: Lua-vs-C++ parity tracking dashboard from scripts/perf/ matrix runs** — add lua_cpp_parity.py computing lua_ms/cpp_ms per (zoom, sub_mode, sub_base) cell; flag >20% gap; extend perf_grid_matrix.sh with --target both mode
   - **ID:** T-313
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) lua_cpp_parity.py produces markdown table per (zoom, sub_mode, sub_base) cell; (2) flags cells >20% gap over C++ baseline; (3) perf_grid_matrix.sh --target both mode captures IRPerfGrid and IRLuaPerfGrid in one run; (4) documented in docs/perf/README.md; (5) fleet-build clean
   - **Issue:** #1024
