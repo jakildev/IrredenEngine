@@ -10,9 +10,13 @@ description: >-
   finds per-entity getComponent in tick functions, allocation in hot
   loops, ECS naming convention slips, opportunities to reuse existing
   helpers, dead code, debug logs left behind, tautological comments,
-  and stale or drifting CLAUDE.md / role / skill docs — applying safe
-  fixes inline and reporting anything that needs human judgment.
-  Saves a review-fix-rereview round-trip.
+  triple-nested loops over voxel volumes, renderer leaks from
+  creation code, CPU-side SDF grid evaluation, linear-search in
+  save/load hot paths, and stale or drifting CLAUDE.md / role / skill
+  docs. Dispatches a parallel reuse-detection subagent fan-out so the
+  reuse pass runs concurrently with the main checks. Applies safe
+  fixes inline and reports anything that needs human judgment. Saves
+  a review-fix-rereview round-trip.
 ---
 
 # simplify
@@ -39,6 +43,51 @@ Group the touched files by module — `engine/render/`,
 relevant `CLAUDE.md` files in those directories define module-specific
 rules that override the defaults below; read them before touching
 anything in their scope.
+
+### 1b. Dispatch reuse-detection subagents (async)
+
+Before walking sections 2–5 inline, fan out the reuse-detection pass
+to subagents that run in parallel. This is the highest-leverage check
+the skill performs — recent editor PRs (#933, #976, #991, #993) all
+shipped with smells that an explicit reuse pass would have caught:
+triple-nested voxel loops, renderer leaks from creation code, CPU-side
+SDF grid evaluation, and O(N²) metadata linear scans in save/load.
+
+In a single message, dispatch **all five** subagents below via the
+`Agent` tool. They run concurrently with the inline checks in
+sections 2–5; their findings feed section 6.
+
+| Subagent | Tier | What it finds |
+|---|---|---|
+| `simplify-grep-function-names` | Haiku | New function names that duplicate existing ones in the tree. |
+| `simplify-grep-utility-candidates` | Haiku | New functions that look like utilities and should live in `engine/math`, `ir_container_utils.hpp`, the renderer, etc. |
+| `simplify-scan-loop-patterns` | Haiku | Triple-nested voxel/grid loops, per-entity loops that allocate, repeated `getComponent` in inner loops, linear-search in save/load paths. |
+| `simplify-scan-render-leak` | Sonnet | Non-render code calling renderer primitives directly (`subImage2D`, vertex composition, GL/Metal calls); CPU-side SDF grid evaluation; math that belongs in a shader. |
+| `simplify-scan-call-sequence-dup` | Sonnet | New function bodies with ≥70% call-sequence overlap to existing functions (catches structural duplicates that pure name-match misses). |
+
+Each subagent returns a tight findings list with `high` / `medium` /
+`deferred` confidence. They're read-only — the parent (this skill)
+decides what to auto-apply.
+
+**Briefing each subagent:** pass the diff scope (the touched file
+list from `git diff --name-only`) and a short note that you're the
+parent simplify skill. The subagent definitions in `.claude/agents/`
+carry the rule set; you don't need to re-explain it. Example
+briefing:
+
+```
+Subagent: simplify-scan-loop-patterns
+Prompt: "Diff scope: <paste file list>. Scan these files for the
+loop-pattern smells documented in your agent definition. Return the
+findings list only — no preamble. Cap at 20 findings."
+```
+
+If a subagent times out or errors, skip its results and continue —
+the inline checks below are still authoritative for sections 2–5;
+the subagent fan-out is additive coverage, not a gating step.
+
+While the subagents run, proceed with sections 2–5 inline. Collect
+their findings when each returns and consume them in section 6.
 
 ### 2. ECS smells
 
@@ -189,15 +238,61 @@ If the diff touches `system_*ao*`, `system_*shadow*`, `system_*flood*`,
   expanding by `C_LightSource::radius_` — off-screen sources must
   still seed on-screen tiles.
 
-### 6. Reuse opportunities (the highest-leverage check)
+### 6. Reuse opportunities — consume subagent results
 
-For every new function or block of logic, search for similar code
-that already exists. The signal is strong enough to justify a
-`Grep` round even if you think the code is novel:
+By the time sections 2–5 finish, the five reuse-detection subagents
+dispatched in section 1b should have returned (timeout 30 s; missing
+results are skipped, not blocking). Collect the findings and act on
+them by confidence tier:
 
-- Same name → likely a duplicate
-- Same call sequence (3+ identical lines, possibly with different
-  variable names) → extract a shared helper
+**High confidence — auto-apply mechanical rewrites.**
+
+- `simplify-grep-function-names` returned `high`: exact name match in
+  the same module subtree with a compatible signature. Replace the
+  new definition with a call to the existing function; remove the
+  redundant body.
+- `simplify-grep-utility-candidates` returned `high`: the function
+  body uses only math/std/container types and would slot directly
+  into the cited canonical home with no engine-specific dependencies.
+  Move the definition; update the call sites.
+- `simplify-scan-call-sequence-dup` returned `high` (≥90 % overlap on
+  a function <30 lines): rewrite the new function as a call to the
+  existing one.
+
+For every auto-applied rewrite, re-run the build check in section 10
+— mechanical rewrites that touch headers or change call sites can
+still break compilation.
+
+**Medium confidence — report to the author for review.**
+
+- Cross-module name matches, 70–89 % structural overlap on small
+  functions, ≥90 % overlap on a larger function (>30 lines), or
+  utility candidates that pull one engine-specific dependency along.
+- Loop-pattern hits (`simplify-scan-loop-patterns`): triple-nested
+  voxel/grid loops in `creations/` or editor code, quadruple-nested
+  pixel-pack loops, repeated `getComponent` in inner loops,
+  allocation in per-entity loops, linear-search in save/load paths,
+  CPU-side SDF grid evaluation. Each has a canonical fix the subagent
+  cites; surface to the author and let them apply.
+- Renderer-leak hits (`simplify-scan-render-leak`): direct backend
+  texture writes from non-render code (`subImage2D`,
+  `glTextureSubImage2D`, `MTLTexture` calls, etc.), hand-rolled
+  pixel-pack code outside `engine/render/`, direct framebuffer or
+  canvas allocation outside the renderer.
+
+The author decides whether to address now or in a follow-up.
+
+**Deferred — surface as "pick a home" or "worth a glance".**
+
+- Utility candidates that don't match any existing canonical home —
+  the author picks IRMath, ir_container_utils, a new module, or
+  leaves in place.
+- Call-sequence overlap 50–69 % — included so the author can confirm
+  it's not the same function written twice.
+
+Beyond the subagent findings, the older inline rules still apply for
+patterns the subagents don't cover:
+
 - Same math sequence in shaders → check `engine/math/` (CPU) or
   shader includes like `ir_iso_common.glsl` (GPU). If the helper
   exists, use it; if it doesn't but the sequence appears 3+ times,
@@ -206,6 +301,13 @@ that already exists. The signal is strong enough to justify a
   `IRE_LOG_*` (engine) or `IR_LOG_*` (game) macros from
   `engine/profile/include/irreden/ir_profile.hpp`. They route to the
   right sink and compile to no-ops in release.
+
+**If the subagent fan-out failed entirely** (all five timed out or
+errored): fall back to the prior-art prose pass — for every new
+function or block of logic, grep the engine + creations tree for the
+name and the first two distinctive call targets, and surface what
+you find. The subagents are a speedup, not a correctness gate; the
+reuse pass still happens, just inline and slower.
 
 Prefer existing helpers over inline duplication, even if the
 duplication is shorter.
@@ -431,17 +533,28 @@ never push a simplify pass that broke the build.
 ### 11. Report
 
 Print a compact summary so the author knows what changed and what
-needs their attention:
+needs their attention. The reuse findings (from the section 1b
+subagent dispatch) are reported as a nested block so they're easy to
+scan separately from the main inline-check findings:
 
 ```
 simplify: <N> file(s), <M> hunk(s)
   applied <X> auto-fix(es):
     - <path:line> — <one-line description>
+  reuse findings (from subagent dispatch):
+    applied <A> high-confidence rewrite(s):
+      - <path:line> — <description> — replaced with <existing>
+    reported <B> medium-confidence finding(s):
+      - <path:line> — <smell> — <suggested fix>
+    deferred <C> finding(s):
+      - <path:line> — <observation> — <decision the author needs to make>
   reported <Y> finding(s) for review:
     - <path:line> — <issue> — <suggested fix>
 ```
 
-Empty sections — drop them rather than writing "None".
+Empty sections — drop them rather than writing "None". If the
+subagent fan-out returned nothing actionable, omit the entire `reuse
+findings` block.
 
 If everything was either fixed in place or reverted, report a clean
 working tree and let `commit-and-push` proceed.
@@ -463,10 +576,10 @@ working tree and let `commit-and-push` proceed.
 ## Example
 
 User says "simplify before I commit". The diff touches a new render
-system and a creation demo.
+system, a creation demo, and an editor file.
 
 ```
-simplify: 4 files, 11 hunks
+simplify: 5 files, 14 hunks
   applied 3 auto-fixes:
     - engine/prefabs/irreden/render/systems/IRSGlowPulse.hpp:34
       moved getComponent<C_Color> out of tick, added C_Color to
@@ -475,6 +588,25 @@ simplify: 4 files, 11 hunks
       `std::cout << "made canvas " << id` debug log
     - engine/render/include/irreden/render/IRCanvas.hpp:18 —
       removed tautological `/// Returns the canvas ID` doc comment
+  reuse findings (from subagent dispatch):
+    applied 1 high-confidence rewrite:
+      - creations/demos/IRDemoFoo/src/main.cpp:212 — `mulMat4Vec3`
+        duplicated engine/math/include/irreden/math/ir_math.hpp:344
+        `IRMath::transformPoint`; replaced with the existing call
+    reported 2 medium-confidence findings:
+      - creations/editors/IRVoxelEditor/src/main.cpp:1408 — triple-
+        nested loop over voxel grid; replace with
+        `IRMath::forEachCell3D` (engine/math/include/irreden/math/
+        ir_math.hpp:512)
+      - creations/editors/IRVoxelEditor/src/main.cpp:1602 —
+        `subImage2D` call from creation code; extract pack-and-
+        upload into a renderer helper under
+        engine/render/include/irreden/render/ (see
+        mask_grid_painter.hpp for the canonical pattern)
+    deferred 1 finding:
+      - creations/demos/IRDemoFoo/src/main.cpp:88 — `clampWrap`
+        looks like a utility but mixes with demo-specific state;
+        pick a home: extract to IRMath or leave in place
   reported 1 finding for review:
     - creations/demos/IRDemoFoo/src/main.cpp:55 — `shared_ptr<Foo>`
       where `unique_ptr` would do, but the demo passes the pointer
@@ -484,5 +616,5 @@ simplify: 4 files, 11 hunks
 ```
 
 The author commits via `commit-and-push` knowing the diff is
-already polished. If the reported finding matters, the author
-addresses it; otherwise, ship.
+already polished. If the reported findings matter, the author
+addresses them; otherwise, ship.
