@@ -268,17 +268,6 @@ Avoid:
   - **Notes:** SKILL.md rewrite ~644 lines today → ~850 estimated. New section "1b. Dispatch reuse-detection subagents (async)": grep-function-names (Haiku), grep-utility-candidates (Haiku), scan-loop-patterns (Haiku), scan-render-leak (Sonnet), scan-call-sequence-dup (Sonnet). 30s timeout; missing results skipped. Section 6 trimmed from ~170 prose to ~50 lines consuming subagent results. 3-line touch to commit-and-push/SKILL.md. Extended example report block. Companion A1–A4 = T-303, T-304, T-305, T-306.
   - **Links:**
 
-- [~] **render: split visible vs shadow-feeder voxel compaction to fix sub² cull bloat at high zoom** — classify voxels into visible and feeder compaction lists; depth-only fast path for feeder voxels (no sub² multiplier, no color/entityID); new feeder-to-distances compute shader; design doc required first
-  - **ID:** T-309
-  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** claude/T-309-feeder-split
-  - **Blocked by:** https://github.com/jakildev/IrredenEngine/pull/1019
-  - **Acceptance:** (1) One-pager design doc posted on #1020 and committed before implementation; (2) At zoom 8, visible/total ratio improves measurably toward 1/zoom² ideal; (3) Sun-shadow correctness unchanged — render-verify reference set pixel-identical pre/post; (4) perf_grid_matrix.sh re-run shows improvement at zoom 4+; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1020
-  - **Notes:** Root cause: system_voxel_to_trixel.hpp:253-257 inflates cull bounds via IRMath::shadowFeederIsoBounds for off-screen shadow casters within kSunShadowMaxDistance (64 voxels). At zoom 4, shadow-feeder expansion (~32 iso-x + ~128 iso-y) is 2–4× larger than visible region (~32×32 iso px). Open design questions: does sun-shadow bake need feeder voxels at full sub resolution? Does buildChunkVisibilityMask need same split? Other trixelDistances readers? Implementation: multi-PR series stacked on PR #1019 diagnostic work.
-  - **Links:**
-
 - [~] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
   - **ID:** T-311
   - **Area:** tooling, build
@@ -305,6 +294,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
 - [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
 - [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
 - [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
@@ -316,12 +306,11 @@ Avoid:
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
 - [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
 - [x] **T-289** — voxel: push-at-mutation position upload (no per-frame re-upload) (B5) · Owner: claude/T-289-voxel-pos-push-at-mutation · PR: https://github.com/jakildev/IrredenEngine/pull/999
-- [x] **T-284** — editor selection rectangle + ghost preview during fill (A4) · Owner: claude/T-284-fill-ghost-ui · PR: https://github.com/jakildev/IrredenEngine/pull/989
 - [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
 - [x] **T-297** — world: chunk container + ivec3 chunk-coords addressing (E1) · Owner: claude/T-297-world-chunk-container · PR: https://github.com/jakildev/IrredenEngine/pull/997
 - [x] **T-296** — docs: lock SDF restriction decision (D2) · Owner: claude/T-296-sdf-restriction-decision · PR: https://github.com/jakildev/IrredenEngine/pull/996
 - [x] **T-288** — voxel: face-aware shader skip + per-voxel face-occlusion bits (B2) · Owner: claude/T-288-voxel-face-occupancy · PR: https://github.com/jakildev/IrredenEngine/pull/994
 - [x] **T-286** — editor parametric-shape voxel bake (always DENSE) (A3) · Owner: claude/T-286-parametric-voxel-bake · PR: https://github.com/jakildev/IrredenEngine/pull/993
+- [x] **T-284** — editor selection rectangle + ghost preview during fill (A4) · Owner: claude/T-284-fill-ghost-ui · PR: https://github.com/jakildev/IrredenEngine/pull/989
 - [x] **T-287** — voxel: sparse occupancy bitmask in C_VoxelPool (B1) · Owner: claude/T-287-voxel-active-mask · PR: https://github.com/jakildev/IrredenEngine/pull/988
 - [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
-- [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
