@@ -654,6 +654,14 @@ Specifically, **never pass these via `--label` when filing**:
   label). Set on claim / early fleet-worker PRs; remove when ready for
   review. **Do not** add on **Cursor / human-ready** PRs to `master`
   (those should be reviewable immediately). Don't add to issues.
+- `fleet:stalled` — owned by **`fleet-stale-sweep`** (invoked from
+  `fleet-queue-tick`). Added to a `fleet:wip` PR that hasn't been pushed
+  in 7+ days, along with a one-shot human comment listing the three
+  options (merge / close / push to re-arm). Sticky and idempotent: the
+  sweep only flags each PR once, so removing the label doesn't trigger
+  a re-comment. The human owns the resolution — the fleet won't
+  re-free the TASKS.md row automatically (that would race the worker
+  if it ever resumes). Closing the PR is the canonical reap path.
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` — owned by
   the **author's `commit-and-push`** (set at PR creation based on
   `uname -s`). Records which host the PR was opened from so the

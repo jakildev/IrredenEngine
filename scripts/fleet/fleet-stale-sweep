@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+# fleet-stale-sweep — close-the-loop pass for two stuck states the rest
+# of the fleet pipeline doesn't reap on its own:
+#
+#   1. **Stale fleet:wip PRs.** A worker opened a PR, then stopped pushing
+#      to it. Nothing wakes the worker; nothing re-frees the TASKS.md row
+#      (because the PR is still open, the renderer correctly keeps the row
+#      [~]). The PR can sit for weeks. We add the `fleet:stalled` label
+#      and post a one-time comment so the human can decide: merge, close
+#      (which auto-reaps the row), or ping the worker.
+#
+#   2. **Epic issues whose children are all closed.** `fleet:epic` issues
+#      are deliberately skipped by the queue-manager (they're not tasks),
+#      so they never get auto-closed by the `Closes #N` mechanism. The
+#      label catalog already says "queue-manager auto-closes when all
+#      children close" — this script makes that real. Children are
+#      detected from `- [ ] #N` / `- [x] #N` checkbox lines in the epic
+#      body.
+#
+# Pure mechanical, no LLM. Invoked by fleet-queue-tick after the
+# TASKS.md sync. Idempotent: re-running on the same state is a no-op.
+#
+# Source of truth: scripts/fleet/fleet-stale-sweep in the engine repo.
+# Installed to ~/bin/fleet-stale-sweep by scripts/fleet/install.sh.
+
+import argparse
+import datetime as dt
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+from typing import Iterable, Optional
+
+# How long a fleet:wip PR can sit untouched before we flag it. Picked at
+# 7 days because:
+#   - shorter than that (3-5 days) is normal for a worker juggling a
+#     stack — false positives drown the human in noise.
+#   - longer than 7 days (e.g. 14) lets PRs strand for two full week-
+#     long fleet runs before the human even notices, which is the
+#     specific failure mode this script exists to prevent (T-118 / PR
+#     #549 was 13 days stale at audit).
+STALE_DAYS_DEFAULT = 7
+
+STATE_FILE = pathlib.Path(
+    os.environ.get("FLEET_STATE_DIR", str(pathlib.Path.home() / ".fleet" / "state"))
+) / "state.json"
+
+# Epic body parsers. GitHub renders both `- [ ]` and `- [x]` as
+# checkboxes. We treat anything in either form as a child reference;
+# the actual open/closed verdict comes from the live issue state, not
+# the checkbox character (which often drifts).
+EPIC_CHILD_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*#(\d+)\b")
+
+REPO_KEY_TO_SLUG = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+
+def log(msg: str) -> None:
+    ts = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"[{ts} stale-sweep] {msg}", file=sys.stderr)
+
+
+def load_state() -> Optional[dict]:
+    if not STATE_FILE.is_file():
+        log(f"state file not found: {STATE_FILE}")
+        return None
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        log(f"failed to read state.json: {e}")
+        return None
+
+
+def parse_iso8601(s: str) -> Optional[dt.datetime]:
+    if not s:
+        return None
+    # GitHub returns "2026-05-21T22:25:34Z"; replace trailing Z so
+    # fromisoformat (pre-3.11) handles it.
+    try:
+        return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Stale-PR sweep
+# ---------------------------------------------------------------------------
+
+
+def sweep_stale_prs(
+    state: dict,
+    *,
+    stale_days: int = STALE_DAYS_DEFAULT,
+    dry_run: bool = False,
+) -> int:
+    """Add fleet:stalled + one-time comment to fleet:wip PRs that haven't
+    been touched in `stale_days`. Returns the number of PRs flagged."""
+    now = dt.datetime.now(dt.timezone.utc)
+    threshold = now - dt.timedelta(days=stale_days)
+    flagged = 0
+
+    for repo_key, repo_state in state.get("repos", {}).items():
+        repo_slug = REPO_KEY_TO_SLUG.get(repo_key)
+        if not repo_slug:
+            continue
+        for pr in repo_state.get("prs", []):
+            labels = set(pr.get("labels", []))
+            # Only sweep fleet:wip (worker-claimed but not yet handed off
+            # for review). A PR that's already in the review/feedback
+            # cycle has its own poll loop; flagging it here would be noise.
+            if "fleet:wip" not in labels:
+                continue
+            # Idempotent: don't re-flag.
+            if "fleet:stalled" in labels:
+                continue
+            updated = parse_iso8601(pr.get("updatedAt", ""))
+            if updated is None or updated > threshold:
+                continue
+
+            age_days = (now - updated).days
+            number = pr.get("number")
+            log(f"{repo_key}#{number} stale {age_days}d (fleet:wip, last touch {pr.get('updatedAt')})")
+            if dry_run:
+                flagged += 1
+                continue
+
+            comment = (
+                f"## fleet:stalled\n\n"
+                f"This PR has been labeled `fleet:wip` with no activity for "
+                f"**{age_days} days** (last update {pr.get('updatedAt')}). "
+                f"The TASKS.md row for this work stays `[~]` while the PR is "
+                f"open, so no other agent will pick the task up.\n\n"
+                f"Pick one:\n"
+                f"- **Merge** — if the work is done, drop `fleet:wip` and let "
+                f"  the reviewer flow take over.\n"
+                f"- **Close** — if the work was abandoned. Closing the PR "
+                f"  reaps the TASKS.md row automatically via the "
+                f"  closed-issue / abandoned-row path in `fleet-tasks-render`.\n"
+                f"- **Push a commit** — re-arms the timer. The `fleet:stalled` "
+                f"  label is sticky, but agents should treat its presence as "
+                f"  \"human-tracked\" and resume work normally.\n\n"
+                f"Filed by `fleet-stale-sweep`. This comment is one-shot; "
+                f"the label won't be re-added if removed."
+            )
+            try:
+                subprocess.run(
+                    [
+                        "gh", "pr", "comment", str(number),
+                        "--repo", repo_slug, "--body", comment,
+                    ],
+                    check=True, capture_output=True, text=True,
+                )
+                subprocess.run(
+                    [
+                        "gh", "pr", "edit", str(number),
+                        "--repo", repo_slug, "--add-label", "fleet:stalled",
+                    ],
+                    check=True, capture_output=True, text=True,
+                )
+                flagged += 1
+                log(f"flagged {repo_key}#{number} as fleet:stalled")
+            except subprocess.CalledProcessError as e:
+                log(f"failed to flag {repo_key}#{number}: {e.stderr.strip() if e.stderr else e}")
+
+    return flagged
+
+
+# ---------------------------------------------------------------------------
+# Epic auto-close
+# ---------------------------------------------------------------------------
+
+
+def fetch_open_epics(repo_slug: str) -> list[dict]:
+    try:
+        out = subprocess.run(
+            [
+                "gh", "issue", "list", "--repo", repo_slug,
+                "--label", "fleet:epic", "--state", "open",
+                "--limit", "100",
+                "--json", "number,title,body,labels",
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        return json.loads(out.stdout)
+    except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        log(f"fetch_open_epics {repo_slug}: {e}")
+        return []
+
+
+def fetch_issue_state(repo_slug: str, number: int) -> Optional[str]:
+    """Return 'OPEN'/'CLOSED' for an issue, or None on error.
+
+    Falls through to None (treat as still open / not safe to close
+    parent) if the issue doesn't exist — guards against typo'd
+    references in an epic body wrongly reaping the parent.
+    """
+    try:
+        out = subprocess.run(
+            [
+                "gh", "issue", "view", str(number),
+                "--repo", repo_slug, "--json", "state",
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        return json.loads(out.stdout).get("state")
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        return None
+
+
+def extract_child_issue_numbers(epic_body: str) -> list[int]:
+    """Pull `#N` references from `- [ ]` / `- [x]` checklist lines.
+
+    We deliberately restrict to checklist form. Epics often mention
+    related issues in prose ("see also #123") that aren't children;
+    reaping the parent when a co-mentioned issue closes would be wrong.
+    """
+    out = []
+    for line in (epic_body or "").splitlines():
+        m = EPIC_CHILD_RE.match(line)
+        if m:
+            out.append(int(m.group(1)))
+    # Preserve order but dedupe.
+    seen = set()
+    deduped = []
+    for n in out:
+        if n in seen:
+            continue
+        seen.add(n)
+        deduped.append(n)
+    return deduped
+
+
+def sweep_epics(state: dict, *, dry_run: bool = False) -> int:
+    """For each open fleet:epic, close it if all checklist children are
+    closed. Returns the number of epics reaped."""
+    reaped = 0
+
+    for repo_key in state.get("repos", {}):
+        repo_slug = REPO_KEY_TO_SLUG.get(repo_key)
+        if not repo_slug:
+            continue
+        for epic in fetch_open_epics(repo_slug):
+            number = epic["number"]
+            children = extract_child_issue_numbers(epic.get("body", ""))
+            if not children:
+                # No checklist children — opt-in mechanism. Epic body has
+                # to use the `- [ ] #N` form for auto-close to apply.
+                continue
+
+            # Build a child-state map. Any unknown / errored lookup
+            # disqualifies the epic this pass (safe-by-default).
+            child_states = {}
+            unknown = False
+            for child in children:
+                st = fetch_issue_state(repo_slug, child)
+                if st is None:
+                    unknown = True
+                    break
+                child_states[child] = st
+
+            if unknown:
+                log(f"{repo_key}#{number} epic: child lookup failed; deferring")
+                continue
+
+            open_children = [c for c, s in child_states.items() if s != "CLOSED"]
+            if open_children:
+                # Still has open work — leave it alone.
+                continue
+
+            log(f"{repo_key}#{number} epic: all {len(children)} children closed; reaping")
+            if dry_run:
+                reaped += 1
+                continue
+
+            comment = (
+                f"## Epic reaped\n\n"
+                f"All {len(children)} child issues in this epic's checklist "
+                f"are now closed:\n\n"
+                + "\n".join(f"- #{c} ✓" for c in children)
+                + f"\n\nClosing per the `fleet:epic` label contract "
+                f"(_\"queue-manager auto-closes when all children close\"_). "
+                f"If new follow-up work emerges, file a fresh issue rather "
+                f"than reopening this one — the epic served its tracking role."
+            )
+            try:
+                subprocess.run(
+                    [
+                        "gh", "issue", "comment", str(number),
+                        "--repo", repo_slug, "--body", comment,
+                    ],
+                    check=True, capture_output=True, text=True,
+                )
+                subprocess.run(
+                    [
+                        "gh", "issue", "close", str(number),
+                        "--repo", repo_slug, "--reason", "completed",
+                    ],
+                    check=True, capture_output=True, text=True,
+                )
+                reaped += 1
+                log(f"closed {repo_key}#{number}")
+            except subprocess.CalledProcessError as e:
+                log(f"failed to close {repo_key}#{number}: {e.stderr.strip() if e.stderr else e}")
+
+    return reaped
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Sweep stale fleet:wip PRs and auto-close fully-completed fleet:epic issues."
+    )
+    parser.add_argument(
+        "--stale-days", type=int, default=STALE_DAYS_DEFAULT,
+        help=f"PR is stale after N days of fleet:wip with no update (default {STALE_DAYS_DEFAULT}).",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Log what would be done; make no GitHub writes.",
+    )
+    parser.add_argument(
+        "--skip-prs", action="store_true",
+        help="Skip the stale-PR pass (run only the epic-auto-close pass).",
+    )
+    parser.add_argument(
+        "--skip-epics", action="store_true",
+        help="Skip the epic-auto-close pass (run only the stale-PR pass).",
+    )
+    args = parser.parse_args()
+
+    state = load_state()
+    if state is None:
+        return 1
+
+    flagged = 0
+    if not args.skip_prs:
+        flagged = sweep_stale_prs(
+            state, stale_days=args.stale_days, dry_run=args.dry_run,
+        )
+
+    reaped = 0
+    if not args.skip_epics:
+        reaped = sweep_epics(state, dry_run=args.dry_run)
+
+    if flagged or reaped:
+        log(f"summary: {flagged} stale PR(s) flagged, {reaped} epic(s) reaped")
+    else:
+        log("summary: nothing to do")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
