@@ -633,7 +633,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager merger; do
+for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 
