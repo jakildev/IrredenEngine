@@ -22,13 +22,20 @@ struct ShapesFrameData {
     // Continuous Z-yaw is split into a cardinal-snap component (rasterYaw,
     // exact multiple of pi/2) and a residual component (residualYaw, in
     // [-pi/4, pi/4]). The SDF rasterizes at rasterYaw so its output lines up
-    // with the voxel pool's cardinal-snap raster (T-055); the screen-space
-    // residual composite pass (T-058) rotates the framebuffer by residualYaw
-    // to recover continuous yaw.
+    // with the voxel pool's cardinal-snap raster (T-055), then applies
+    // faceDeform[face] to its sub-pixel offset to recover continuous yaw
+    // geometrically (T-293; replaces the T-058 / T-322 bilinear path).
     float visualYaw;
     float rasterYaw;
     float residualYaw;
     int tileGridX;
+    // 8-byte pad so faceDeform lands at the 16-byte boundary GLSL std140
+    // enforces — same pad the C++ FrameDataVoxelToCanvas mirror inserts.
+    int2 _faceDeformPad;
+    // Per-face deformation matrix packed column-major: .xy = col0, .zw = col1
+    // of IRMath::faceDeformationMatrix(face, residualYaw). Identity when
+    // residualYaw==0. Mirrors the GLSL `vec4 faceDeform[3]`.
+    float4 faceDeform[3];
 };
 
 struct ShapeDescriptor {
@@ -1006,9 +1013,18 @@ kernel void c_shapes_to_trixel(
 
     for (int face = 0; face < 3; ++face) {
         const int depthEncoded = encodeDepthWithFace(baseDepth, face);
+        // mat2 D = faceDeformationMatrix(face, residualYaw) applied to the
+        // un-yawed iso-pixel offset. Identity at residualYaw==0; otherwise
+        // deforms the trixel pair geometrically (T-293).
+        const float2x2 D = float2x2(
+            frameData.faceDeform[face].xy,
+            frameData.faceDeform[face].zw
+        );
 
         for (int subPixel = 0; subPixel < 2; ++subPixel) {
-            const int2 offset = faceOffset_2x3(face, subPixel);
+            const int2 offset = roundHalfUp(
+                D * float2(faceOffset_2x3(face, subPixel))
+            );
             const int2 canvasPixel = baseCanvasPixel + offset;
 
             if (!isInsideCanvas(canvasPixel, frameData.canvasSize)) {

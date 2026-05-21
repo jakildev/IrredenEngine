@@ -27,10 +27,16 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 canvasSizePixels;         // trixel canvas dimensions
     uniform ivec2 cullIsoMin;               // iso-space cull viewport (matches CPU chunk mask)
     uniform ivec2 cullIsoMax;
-    uniform float visualYaw;                // continuous Z-yaw (radians); not consumed in T-055 — scaffolded for T-058
-    uniform float rasterYaw;                // cardinal-snap multiple of pi/2 nearest visualYaw; consumed in T-055
-    uniform float residualYaw;              // visualYaw - rasterYaw, in [-pi/4, pi/4]; not consumed in T-055 — scaffolded for T-058
-    uniform float _yawPadding;              // not consumed in T-055 — scaffolded for T-058
+    uniform float visualYaw;                // continuous Z-yaw (radians)
+    uniform float rasterYaw;                // cardinal-snap multiple of pi/2 nearest visualYaw
+    uniform float residualYaw;              // visualYaw - rasterYaw, in [-pi/4, pi/4]
+    uniform float _yawPadding;
+    // Per-face deformation matrix packed column-major into vec4: .xy = col0,
+    // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw). Indexed
+    // by kXFace/kYFace/kZFace. Identity at residualYaw==0 so the cardinal-
+    // snap path stays bit-identical pixel-for-pixel against rasterYaw-only
+    // master (T-293).
+    uniform vec4 faceDeform[3];
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -108,6 +114,13 @@ void main() {
     // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
     // pixel-for-pixel against master.
 
+    // mat2 D = faceDeformationMatrix(face, residualYaw), reconstructed from
+    // the std140-packed UBO entry. Identity at residualYaw==0 so the
+    // resulting `ivec2 trixelOffset` collapses to faceOffset_2x3(face,
+    // subPixel) — bit-identical pixel positions against the pre-T-293 path.
+    const mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
+    const ivec2 trixelOffset = roundHalfUp(D * vec2(gl_LocalInvocationID.xy));
+
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {
@@ -117,7 +130,7 @@ void main() {
             pos3DtoDistance(voxelPositionInt), face);
         const ivec2 canvasPixel =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
-            ivec2(gl_LocalInvocationID.xy) +
+            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
         writeDistanceTap(canvasPixel, voxelDistance);
         return;
@@ -141,6 +154,6 @@ void main() {
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const ivec2 canvasPixel =
-        frameOffsetFixed + ivec2(gl_LocalInvocationID.xy) + pos3DtoPos2DIso(microPositionFixed);
+        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
     writeDistanceTap(canvasPixel, voxelDistance);
 }

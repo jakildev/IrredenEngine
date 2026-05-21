@@ -180,16 +180,22 @@ vec2 getMainCanvasSizeTrixels();
 /// Multiple iso-space mouse position variants are maintained because the render
 /// and update pipelines run at different rates and the camera offset matters.
 ///
-/// All four helpers below invert the @c SCREEN_SPACE_RESIDUAL_ROTATE
-/// composite (`R2D(-residualYaw)` around the framebuffer center) so the
-/// returned coordinates match what the rasterizer wrote — under any
-/// visualYaw, not just yaw=0. The 2D variants stay in the **trixel canvas
-/// frame**: under non-zero rasterYaw the canvas iso position
-/// = `M · R_z(rasterYaw) · world`, not `M · world`. The trixel-index
-/// lookup path (@ref mouseTrixelPositionWorld → GPU comparison) requires
-/// this frame to match the rasterized canvas; for true world-frame
-/// coordinates use @ref mouseWorldPos3DAtIsoDepth, which composes the
-/// additional `R_z(-rasterYaw)` lift.
+/// After T-293 the screen-space bilinear residual composite is gone —
+/// `SCREEN_SPACE_RESIDUAL_ROTATE` is a pure framebuffer passthrough, and
+/// residual yaw is folded into per-face `faceDeform[]` matrices that the
+/// trixel emit shaders apply in 2D iso space. The picking helpers below
+/// therefore no longer apply a `R2D(-residualYaw)` inverse: the cursor's
+/// framebuffer pixel maps directly into the trixel-canvas frame. The 2D
+/// variants stay in the **trixel canvas frame**: under non-zero rasterYaw
+/// the canvas iso position = `M · R_z(rasterYaw) · world`, not `M · world`.
+/// The trixel-index lookup path (@ref mouseTrixelPositionWorld → GPU
+/// comparison) requires this frame to match the rasterized canvas; for
+/// true world-frame coordinates use @ref mouseWorldPos3DAtIsoDepth, which
+/// composes the additional `R_z(-rasterYaw)` lift.
+///
+/// Iso-space picking accuracy at non-cardinal yaws is bounded by the
+/// geometric trixel deformation (a small per-face offset the picking
+/// math does not reverse-compose today; follow-up).
 
 /// Mouse position in iso canvas coordinates **as seen on screen** — no camera offset.
 /// Use this to align UI overlays to the render output.
@@ -204,8 +210,10 @@ vec2 mousePosition2DIsoWorldRender();
 /// cursor at any visualYaw.
 ivec2 mouseTrixelPositionWorld();
 /// Mouse position lifted to a 3D world point in the **unrotated world frame**
-/// at the given **canvas-frame** iso depth. Composes the full picking inverse
-/// `R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen`.
+/// at the given **canvas-frame** iso depth. Composes the picking inverse
+/// `R_z(-rasterYaw) · isoPixelToPos3D · screen` — after T-293 the screen-
+/// space residual rotation is gone, so the `R2D(-residualYaw)` half of
+/// the chain is no longer needed.
 ///
 /// @p canvasIsoDepth is iso depth in the **rasterYaw-rotated canvas frame**
 /// (= `rotated.x + rotated.y + rotated.z`), NOT in the unrotated world frame

@@ -36,9 +36,10 @@ systems that populate button state. The underlying polling lives in
 - `HITBOX_MOUSE_TEST_GUI` (INPUT pipeline) — tests `C_HitBox2DGui +
   C_GuiPosition` against the mouse projected into GUI-canvas-trixel
   coordinates. Computes the projection once per frame in `beginTick`
-  by inverting the screen-residual-yaw rotation (matching
-  `HITBOX_MOUSE_TEST`'s convention) and scaling
-  `mouseFb / framebufferRes * guiCanvasSize`.
+  by scaling `mouseFb / framebufferRes * guiCanvasSize` — after T-293
+  the screen-residual-yaw rotation is gone (folded into the trixel
+  emit shaders' `faceDeform[]`), so no inverse rotation step is
+  needed.
 - `SYSTEM_ENTITY_HOVER_DETECT` (INPUT pipeline) — dispatches
   `onHovered`/`onUnhovered`/`onClicked`/`onRightClicked` callbacks for
   entities whose hover state changed. Resolves the hovered entity from

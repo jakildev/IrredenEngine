@@ -228,6 +228,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.visualYaw = visualYaw;
             frameData_.rasterYaw = rasterYaw;
             frameData_.residualYaw = residualYaw;
+            // Residual yaw is folded into faceDeform per-face for the
+            // shapes shader (T-293, replaces the T-058 / T-322 bilinear
+            // path). Identity at residualYaw==0.
+            const mat2 fdX = IRMath::faceDeformationMatrix(IRMath::kXFace, residualYaw);
+            const mat2 fdY = IRMath::faceDeformationMatrix(IRMath::kYFace, residualYaw);
+            const mat2 fdZ = IRMath::faceDeformationMatrix(IRMath::kZFace, residualYaw);
+            frameData_.faceDeform[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
+            frameData_.faceDeform[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
+            frameData_.faceDeform[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
 
             shapeDescBuf_
                 ->subData(0, gpuShapes.size() * sizeof(GPUShapeDescriptor), gpuShapes.data());

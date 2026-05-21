@@ -72,12 +72,20 @@ inline void buildVoxelFrameData(
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
 
-    // visualYaw_, residualYaw_, and _yawPadding_ not consumed in T-055; scaffolded for T-058
-    // (screen-space residual composite)
+    // rasterYaw picks the integer trixel basis permutation (T-055);
+    // residualYaw is folded into faceDeform_[] which the trixel emit shader
+    // applies to each sub-pixel offset in 2D iso space (T-293, replaces the
+    // T-058 / T-322 screen-space bilinear residual composite).
     frameData.visualYaw_ = IRPrefab::Camera::getYaw();
     const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
     frameData.rasterYaw_ = rasterYaw;
     frameData.residualYaw_ = residualYaw;
+    const mat2 fdX = IRMath::faceDeformationMatrix(IRMath::kXFace, residualYaw);
+    const mat2 fdY = IRMath::faceDeformationMatrix(IRMath::kYFace, residualYaw);
+    const mat2 fdZ = IRMath::faceDeformationMatrix(IRMath::kZFace, residualYaw);
+    frameData.faceDeform_[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
+    frameData.faceDeform_[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
+    frameData.faceDeform_[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
 }
 
 inline void

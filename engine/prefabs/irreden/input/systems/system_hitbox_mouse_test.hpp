@@ -5,32 +5,24 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
-#include <irreden/ir_platform.hpp>
 
 #include <irreden/input/components/component_hitbox_2d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/camera.hpp>
 
-#include <cmath>
-
 using namespace IRComponents;
 using namespace IRMath;
 
 namespace IRSystem {
 
-// Mirrors `kIdentityYawEpsilon` in `f_screen_residual_rotate.glsl`. Below
-// this magnitude the screen composite passes the canvas through pixel-
-// identical, so the picking-side inverse must skip its rotation too or a
-// yaw=0 hover would shift by sub-pixel rounding.
-inline constexpr float kHitboxIdentityYawEpsilon = 1e-6f;
-
 template <> struct System<HITBOX_MOUSE_TEST> {
     static SystemId create() {
-        // `s_mouseCanvas` holds the cursor in the trixel-canvas-pixel
-        // frame (pre-residual-composite); the per-entity tick compares
-        // against entity centers in that same frame, so the inverse
-        // rotation happens once at beforeTick rather than per entity.
+        // After T-293 the framebuffer is no longer post-rotated by
+        // residualYaw (the trixel emit handles continuous yaw geometrically
+        // via faceDeform[]), so the cursor's framebuffer pixel IS its
+        // canvas-pixel position — no inverse residual rotation needed
+        // here. `s_mouseCanvas` therefore just caches `mouseFb`.
         static vec2 s_mouseCanvas;
         static vec2 s_cameraIso;
         static vec2 s_cameraZoom;
@@ -62,24 +54,8 @@ template <> struct System<HITBOX_MOUSE_TEST> {
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
                 s_fbResHalf = vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
-
-                const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
-                s_cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
-
-                // Inverse-rotate the mouse out of the post-composite
-                // framebuffer-pixel frame into the canvas-pixel frame the
-                // forward projection above lands in. Sign matches the
-                // shader (`cos(-residualYaw)`) on the backend whose pixel
-                // Y axis aligns with framebuffer-texture Y; flips on
-                // OpenGL where the output framebuffer Y is inverted.
-                const vec2 mouseFb = IRRender::getMousePositionOutputView();
-                if (std::abs(residualYaw) < kHitboxIdentityYawEpsilon) {
-                    s_mouseCanvas = mouseFb;
-                } else {
-                    const float effectiveAngle = -residualYaw * IRPlatform::kGfx.screenYDirection_;
-                    s_mouseCanvas =
-                        IRMath::rotate2D(mouseFb - s_fbResHalf, effectiveAngle) + s_fbResHalf;
-                }
+                s_cardinalIndex = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
+                s_mouseCanvas = IRRender::getMousePositionOutputView();
             }
         );
     }

@@ -89,6 +89,17 @@ kernel void c_voxel_to_trixel_stage_1(
     // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
     // pixel-for-pixel against master.
 
+    // mat2 D = faceDeformationMatrix(face, residualYaw), reconstructed from
+    // the std140-packed UBO entry. Identity at residualYaw==0 so the
+    // resulting trixelOffset collapses to int2(localId) — bit-identical
+    // pixel positions against the pre-T-293 path. Metal mat2 mirror of
+    // the GLSL `mat2(faceDeform[face].xy, faceDeform[face].zw)`.
+    const float2x2 D = float2x2(
+        frameData.faceDeform[face].xy,
+        frameData.faceDeform[face].zw
+    );
+    const int2 trixelOffset = roundHalfUp(D * float2(localId));
+
     if (frameData.voxelRenderOptions.x == 0) {
         int3 voxelPositionInt = int3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {
@@ -103,7 +114,7 @@ kernel void c_voxel_to_trixel_stage_1(
                 frameData.frameCanvasOffset,
                 frameData.voxelRenderOptions
             ) +
-            int2(localId) +
+            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
         writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
         return;
@@ -130,6 +141,6 @@ kernel void c_voxel_to_trixel_stage_1(
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const int2 canvasPixel =
-        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionFixed);
+        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
     writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
 }
