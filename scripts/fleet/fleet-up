@@ -206,8 +206,9 @@ ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
-ensure_worktree "$ENGINE" .claude/worktrees/queue-manager     fleet/queue-manager
-ensure_worktree "$ENGINE" .claude/worktrees/merger            fleet/merger
+ensure_worktree "$ENGINE" .claude/worktrees/queue-manager        fleet/queue-manager
+ensure_worktree "$ENGINE" .claude/worktrees/queue-manager-ingest fleet/queue-manager-ingest
+ensure_worktree "$ENGINE" .claude/worktrees/merger               fleet/merger
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
@@ -463,8 +464,9 @@ reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scrat
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
-reset_worktree "$ENGINE/.claude/worktrees/queue-manager"   claude/queue-manager-scratch
-reset_worktree "$ENGINE/.claude/worktrees/merger"          claude/merger-scratch
+reset_worktree "$ENGINE/.claude/worktrees/queue-manager"        claude/queue-manager-scratch
+reset_worktree "$ENGINE/.claude/worktrees/queue-manager-ingest" claude/queue-manager-ingest-scratch
+reset_worktree "$ENGINE/.claude/worktrees/merger"               claude/merger-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
@@ -631,7 +633,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager merger; do
+for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 

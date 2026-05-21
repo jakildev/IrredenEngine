@@ -392,8 +392,9 @@ git worktree add -b fleet/opus-worker-2   .claude/worktrees/opus-worker-2   orig
 git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  origin/master
 git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
 git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
-git worktree add -b fleet/queue-manager   .claude/worktrees/queue-manager   origin/master
-git worktree add -b fleet/merger          .claude/worktrees/merger          origin/master
+git worktree add -b fleet/queue-manager        .claude/worktrees/queue-manager        origin/master
+git worktree add -b fleet/queue-manager-ingest .claude/worktrees/queue-manager-ingest origin/master
+git worktree add -b fleet/merger               .claude/worktrees/merger               origin/master
 
 cd ~/src/IrredenEngine/creations/game
 git fetch origin master
