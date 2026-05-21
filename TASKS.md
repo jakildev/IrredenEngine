@@ -223,24 +223,12 @@ Avoid:
   - **Notes:** Stack S-C-core pos 3. Branch from C2 PR head. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C3".
   - **Links:**
 
-- [~] **math: continuous-yaw + deformation math helpers (CPU+GPU mirror) (C5)** — add IRMath::faceDeformationMatrix, pos3DtoPos2DIsoYawed, deformedTrixelIsoPixel, sqtToMat4, matrixApplyToVoxelGrid; GPU mirror in ir_iso_common.glsl; CPU/GPU bit-identical
-  - **ID:** T-292
-  - **Area:** engine/math, shaders/glsl
-  - **Model:** opus
-  - **Owner:** claude/T-292-yaw-deformation-math
-  - **Blocked by:** (none)
-  - **Stack:** T-279..T-293 S-C-math
-  - **Acceptance:** (1) Round-trip test computes deformation on CPU and GPU for all 4 cardinals + 8 mid-sector residual yaws; asserts bit-identical equality; (2) math goes through IRMath; no glm:: or std:: outside engine/math/ per cpp-math.md; (3) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #955
-  - **Notes:** Stack S-C-math pos 2 (C1 → C5 → C4 → C8). Branch from C1 PR head (#943). Helpers in engine/math/include/irreden/; GPU mirror in engine/render/src/shaders/ir_iso_common.glsl. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C5".
-  - **Links:**
-
 - [~] **render: geometric trixel deformation (replaces T-322 bilinear residual) (C4)** — add mat2 faceDeform[3] to FrameDataVoxelToTrixel + FrameDataShapesToTrixel UBOs; apply faceDeform in 2D iso space in c_voxel_to_trixel_stage_1/2.glsl and c_shapes_to_trixel.glsl; remove T-322 screen-space bilinear residual path
   - **ID:** T-293
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** claude/T-293-geometric-trixel-deformation
-  - **Blocked by:** T-292
+  - **Blocked by:** (none)
   - **Stack:** T-279..T-293 S-C-math
   - **Acceptance:** (1) Camera yaws continuously through 360°; voxel + SDF entities deform smoothly with no bilinear blur; (2) no visible "snap" at cardinal boundaries; (3) T-322 screen-space bilinear residual path removed; engine/prefabs/irreden/render/camera.hpp no longer drives it; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #956
@@ -334,6 +322,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
 - [x] **T-297** — world: chunk container + ivec3 chunk-coords addressing (E1) · Owner: claude/T-297-world-chunk-container · PR: https://github.com/jakildev/IrredenEngine/pull/997
 - [x] **T-296** — docs: lock SDF restriction decision (D2) · Owner: claude/T-296-sdf-restriction-decision · PR: https://github.com/jakildev/IrredenEngine/pull/996
 - [x] **T-288** — voxel: face-aware shader skip + per-voxel face-occlusion bits (B2) · Owner: claude/T-288-voxel-face-occupancy · PR: https://github.com/jakildev/IrredenEngine/pull/994
@@ -353,4 +342,3 @@ Avoid:
 - [x] **T-271** — docs/roles: collapse redundant --repo flags in role-merger.md · Owner: claude/T-271-collapse-repo-flags · PR: https://github.com/jakildev/IrredenEngine/pull/925
 - [x] **T-214** — editor F-1.4 — animation scrubber + per-frame undo · Owner: claude/T-214-anim-scrubber-perframe-undo · PR: https://github.com/jakildev/IrredenEngine/pull/928
 - [x] **T-274** — docs/roles: decide whether queue-manager produces feedback; document either way · Owner: claude/T-274-queuemanager-feedback · PR: https://github.com/jakildev/IrredenEngine/pull/927
-- [x] **T-273** — fleet: verify and document merger.log rotation · Owner: claude/T-273-merger-log-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/926
