@@ -240,9 +240,10 @@ If the diff touches `system_*ao*`, `system_*shadow*`, `system_*flood*`,
 
 ### 6. Reuse opportunities — consume subagent results
 
-By the time sections 2–5 finish, the five reuse-detection subagents
-dispatched in section 1b should have returned (timeout 30 s; missing
-results are skipped, not blocking). Collect the findings and act on
+By the time sections 2–5 finish (typically 30–60 s of inline work),
+the five reuse-detection subagents dispatched in section 1b should have
+returned; if a subagent hasn't completed when section 6 starts, skip
+its results — they are not blocking. Collect the findings and act on
 them by confidence tier:
 
 **High confidence — auto-apply mechanical rewrites.**
@@ -279,6 +280,11 @@ still break compilation.
   `glTextureSubImage2D`, `MTLTexture` calls, etc.), hand-rolled
   pixel-pack code outside `engine/render/`, direct framebuffer or
   canvas allocation outside the renderer.
+
+Deduplication: if `simplify-scan-loop-patterns` and
+`simplify-scan-render-leak` both flag the same SDF-grid loop (loop-
+patterns pattern 6, render-leak pattern 3), report it once under the
+renderer-leak bucket (it's an architectural smell, not just a perf one).
 
 The author decides whether to address now or in a follow-up.
 

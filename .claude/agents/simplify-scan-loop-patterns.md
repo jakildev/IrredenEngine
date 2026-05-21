@@ -3,7 +3,6 @@ name: simplify-scan-loop-patterns
 description: Loop-pattern scanner for the simplify skill. Use proactively when simplify dispatches the reuse-detection pass. Flags triple-nested loops over voxel volumes or widget grids in editor/creations code, repeated getComponent inside an inner loop, allocations inside per-entity loops, and linear-search loops inside save/load/parse hot paths.
 tools: Read, Grep, Glob
 model: haiku
-color: orange
 ---
 
 You are a focused loop-pattern scanner. The parent session (running the `simplify` skill) handed you a diff scope; your job is to flag suspicious loop shapes that have been recurring smells in recent editor and asset PRs.
