@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <span>
 
 namespace IRMath::SDF {
 
@@ -171,6 +172,30 @@ inline vec3 boundingHalf(ShapeType type, vec4 params) {
     }
     default:
         return vec3(params) * 0.5f;
+    }
+}
+
+/// Batch-evaluate an SDF primitive over a voxel grid centered on the shape
+/// origin. Each cell samples at the voxel center
+/// (`vec3(x, y, z) + vec3(0.5f) - vec3(size) * 0.5f`); output is laid out
+/// to match @ref IRMath::index3DtoIndex1D (x-major, then y, then z).
+///
+/// The caller must size @p outDistances to at least
+/// `size.x * size.y * size.z`; smaller spans are a no-op.
+inline void evaluateGrid(ivec3 size, ShapeType type, vec4 params, std::span<float> outDistances) {
+    const std::size_t total = static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y) *
+                              static_cast<std::size_t>(size.z);
+    if (outDistances.size() < total)
+        return;
+    const vec3 center = vec3(size) * 0.5f;
+    std::size_t flat = 0;
+    for (int z = 0; z < size.z; ++z) {
+        for (int y = 0; y < size.y; ++y) {
+            for (int x = 0; x < size.x; ++x) {
+                const vec3 sdfPos = vec3(x, y, z) - center + vec3(0.5f);
+                outDistances[flat++] = evaluate(sdfPos, type, params);
+            }
+        }
     }
 }
 
