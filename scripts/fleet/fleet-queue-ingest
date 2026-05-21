@@ -29,7 +29,11 @@ ENGINE="${FLEET_ENGINE:-$HOME/src/IrredenEngine}"
 LOCK_DIR="${FLEET_QUEUE_INGEST_LOCK:-$HOME/.fleet/state/queue-ingest.lock}"
 LOG_FILE="$HOME/.fleet/logs/queue-ingest.log"
 PROJECTION_FILE="$HOME/.fleet/state/projections/queue-manager-ingest.json"
-QM_WT="$ENGINE/.claude/worktrees/queue-manager"
+# Dedicated worktree (fleet-queue-tick owns the queue-manager one). When
+# scout fires both on the same projection change, the shared .git/index.lock
+# races — queue-tick wins, queue-ingest's silenced checkout fails under
+# set -e, and the spent seen-hash strands the trigger. Provisioned by fleet-up.
+QM_WT="$ENGINE/.claude/worktrees/queue-manager-ingest"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
