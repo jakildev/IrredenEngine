@@ -163,52 +163,16 @@ Avoid:
   - **Links:**
 
 
-- [~] **editor: selection rectangle + ghost preview during fill (A4)** — ghost voxels render during drag (no commit until mouse-up); snap-to-grid visible; modifier keys for axis-lock and symmetry override
-  - **ID:** T-284
-  - **Area:** engine/prefabs/irreden/editor
-  - **Model:** sonnet
-  - **Owner:** claude/T-284-fill-ghost-ui
-  - **Blocked by:** (none)
-  - **Stack:** T-284..T-286 S-A-author
-  - **Acceptance:** (1) Hovering during box-fill drag shows ghost voxels at the AABB extent; (2) commit on mouse release; cancel on Escape; (3) modifier keys for axis-lock visible in the UI; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #947
-  - **Notes:** Stack S-A-author pos 2 (A1 → A4 → A2 → A3). A1 (T-278, PR #976) merged — branch from master. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A4".
-  - **Links:**
-
 - [~] **editor: loft from 2 profiles (CSG of two extrusions) (A2)** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect
   - **ID:** T-285
   - **Area:** engine/prefabs/irreden/editor
   - **Model:** sonnet
   - **Owner:** claude/T-285-editor-loft-profiles
-  - **Blocked by:** T-284
+  - **Blocked by:** (none)
   - **Stack:** T-284..T-286 S-A-author
   - **Acceptance:** (1) Author a sphere-like shape from two circle profiles; (2) author a chair-like shape from front + side silhouettes; (3) mask widgets snap to grid; modifier key for symmetry plane; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #948
   - **Notes:** Stack S-A-author pos 3. Branch from A4 PR head. Mask widget reuses trixel-rect helpers. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A2".
-  - **Links:**
-
-- [~] **voxel: push-at-mutation position upload (no per-frame re-upload) (B5)** — remove per-frame full-pool position upload; push positions at allocation and on entity-moved/bone-matrix-update only
-  - **ID:** T-289
-  - **Area:** engine/prefabs/irreden/render, engine/render
-  - **Model:** opus
-  - **Owner:** claude/T-289-voxel-pos-push-at-mutation
-  - **Blocked by:** (none)
-  - **Stack:** T-287..T-289 S-B-render
-  - **Acceptance:** (1) perf_grid with 100 static voxel entities idle = zero position bytes/frame uploaded (verified via GPU buffer-write counter); (2) PR includes before/after numbers via T-275 profiler; (3) moving entities still upload correctly (push-at-mutation); (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #952
-  - **Notes:** Stack S-B-render pos 4. Branch from B2 PR head. Remove per-frame loop at system_update_voxel_positions_gpu.hpp:59,85. Push from mutation site via Buffer::subData. No dirty_ flag per cpp-ecs §"No dirty flags". Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic B → B5".
-  - **Links:**
-
-- [~] **engine: C_RotationMode enum + component (GRID vs DETACHED) (C2)** — new C_RotationMode component at engine/prefabs/irreden/common/components/component_rotation_mode.hpp; GRID (default) + DETACHED modes; UNBOUNDED bool on C_LocalTransform
-  - **ID:** T-290
-  - **Area:** engine/prefabs/irreden/common
-  - **Model:** opus
-  - **Owner:** claude/T-290-rotation-mode-component
-  - **Blocked by:** (none)
-  - **Stack:** T-279..T-295 S-C-core
-  - **Acceptance:** (1) Spawning DETACHED allocates a child entity canvas via IRPrefab::EntityCanvas::create(); (2) spawning GRID (default) writes into the world voxel pool unchanged; (3) runtime mode change re-allocates correctly; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #953
-  - **Notes:** Stack S-C-core pos 2. Branch from C1 PR head (#943). UNBOUNDED is bool flag on C_LocalTransform indicating sub-trixel positioning — only meaningful with DETACHED. Modes set at spawn via Prefab; mutable at runtime with re-allocation cost. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C2".
   - **Links:**
 
 - [~] **render: wire detached-canvas rotation through composite TRS (C3)** — thread C_LocalTransform through per-canvas TRS for DETACHED entities at system_entity_canvas_to_framebuffer.hpp:98-100; support both voxel and SDF entities
@@ -216,7 +180,7 @@ Avoid:
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
   - **Owner:** claude/T-291-detached-canvas-rotation
-  - **Blocked by:** T-290
+  - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) A DETACHED rectangular entity spins smoothly around its local Z axis without voxel re-rasterization; (2) perf_grid shows constant per-frame cost regardless of rotation rate; (3) works for both voxel and SDF entities; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #954
@@ -322,6 +286,9 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
+- [x] **T-289** — voxel: push-at-mutation position upload (no per-frame re-upload) (B5) · Owner: claude/T-289-voxel-pos-push-at-mutation · PR: https://github.com/jakildev/IrredenEngine/pull/999
+- [x] **T-284** — editor selection rectangle + ghost preview during fill (A4) · Owner: claude/T-284-fill-ghost-ui · PR: https://github.com/jakildev/IrredenEngine/pull/989
 - [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
 - [x] **T-297** — world: chunk container + ivec3 chunk-coords addressing (E1) · Owner: claude/T-297-world-chunk-container · PR: https://github.com/jakildev/IrredenEngine/pull/997
 - [x] **T-296** — docs: lock SDF restriction decision (D2) · Owner: claude/T-296-sdf-restriction-decision · PR: https://github.com/jakildev/IrredenEngine/pull/996
@@ -339,6 +306,3 @@ Avoid:
 - [x] **T-215** — editor F-1.5 — save/load round-trip with metadata + JSON sidecar · Owner: claude/T-215-save-load-roundtrip · PR: https://github.com/jakildev/IrredenEngine/pull/933
 - [x] **T-213** — editor F-1.3 — layer system panel UI · Owner: claude/T-213-layer-system · PR: https://github.com/jakildev/IrredenEngine/pull/932
 - [x] **T-250** — docs: engine/render/CLAUDE.md — fix dead render-baselines pointer, trim catalogs · Owner: claude/T-250-render-claude-md-cleanup · PR: https://github.com/jakildev/IrredenEngine/pull/931
-- [x] **T-271** — docs/roles: collapse redundant --repo flags in role-merger.md · Owner: claude/T-271-collapse-repo-flags · PR: https://github.com/jakildev/IrredenEngine/pull/925
-- [x] **T-214** — editor F-1.4 — animation scrubber + per-frame undo · Owner: claude/T-214-anim-scrubber-perframe-undo · PR: https://github.com/jakildev/IrredenEngine/pull/928
-- [x] **T-274** — docs/roles: decide whether queue-manager produces feedback; document either way · Owner: claude/T-274-queuemanager-feedback · PR: https://github.com/jakildev/IrredenEngine/pull/927
