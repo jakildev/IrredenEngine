@@ -634,12 +634,25 @@ metalCurrentDepthPixelFormat(),
         descriptor->release();
 
         if (sampleBuffer == nullptr) {
-            const char *description =
-                error != nullptr && error->localizedDescription() != nullptr
-                    ? error->localizedDescription()->utf8String()
-                    : "<unknown>";
-            IR_LOG_WARN("Failed to create Metal timestamp counter sample buffer: {}", description);
-            m_supportsTimestampPairs = false;
+            // Per-pair failure (quota exhaustion mid-tagStage loop is the
+            // common cause) is non-fatal: stages that already got valid
+            // pairs keep timing, the observer no-ops on this stage's invalid
+            // handles (see `nextAvailableSlot`), and `useLegacyTiming` does
+            // not flip — global state matches the constructor probe, not
+            // a per-call result. Log once so the operator notices the
+            // degradation but doesn't get spammed.
+            if (!m_loggedTimestampAllocFailure) {
+                const char *description =
+                    error != nullptr && error->localizedDescription() != nullptr
+                        ? error->localizedDescription()->utf8String()
+                        : "<unknown>";
+                IR_LOG_WARN(
+                    "Failed to create Metal timestamp counter sample buffer "
+                    "(quota likely exhausted; later-tagged stages skip per-stage GPU timing): {}",
+                    description
+                );
+                m_loggedTimestampAllocFailure = true;
+            }
             return kInvalidGpuTimestampHandle;
         }
 
@@ -661,8 +674,18 @@ metalCurrentDepthPixelFormat(),
     }
 
     int recommendedTimestampPairsInFlight() const override {
-        // This backend waits at present today, so one pair per tagged stage is
-        // enough and avoids exhausting Metal's limited sample-buffer quota.
+        // Today's Metal pipeline blocks at `present()` (one frame of GPU work
+        // in flight, then `waitUntilCompleted`), so a single `MTL::CounterSampleBuffer`
+        // per tagged stage is sufficient: by the top of frame N+1 the GPU has
+        // already finished frame N's samples and `resolveCounterRange` returns
+        // valid data without stalling. Bumping past 1 is wasted on this
+        // pipeline and risks exhausting the device's limited sample-buffer
+        // quota (Apple Silicon devices observed at ~stages × 2 = ~40-pair
+        // ceiling, 2026-05-21). Once `present()` is made async (separate task),
+        // raise this to 2-3 so frame N-2 readback survives the deeper
+        // GPU latency without dropping per-frame samples. The per-pair
+        // graceful-fallback in `createTimestampPair` keeps already-tagged
+        // stages timing-functional even when a future bump exceeds quota.
         return 1;
     }
 
@@ -731,6 +754,7 @@ metalCurrentDepthPixelFormat(),
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;
     bool m_supportsTimestampPairs = false;
+    bool m_loggedTimestampAllocFailure = false;
 };
 
 MetalRenderDevice g_metalRenderDevice;
