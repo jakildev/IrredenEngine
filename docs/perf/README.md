@@ -58,13 +58,60 @@ scripts/perf/perf_summary.py save_files/perf/<sha>
 Customize what to vary by editing the matrix arrays at the top of
 `perf_grid_matrix.sh` — keep the defaults narrow so PR runs stay fast.
 
+## Config presets
+
+Named, version-controlled test configs live in
+`creations/demos/perf_grid/configs/perf/`. Each is a Lua file containing a
+`perf_grid` table that overrides demo defaults:
+
+```lua
+-- configs/perf/zoom8_full_sub4.lua
+perf_grid = {
+    zoom = 8,
+    subdivision_mode = "full",   -- "none" | "position_only" | "full"
+    base_subdivisions = 4,
+    -- Any field from the demo's perf_grid config table is valid here:
+    -- mode, grid_size, spacing, wave_amplitude, wave_period_seconds, wave_offscreen
+}
+```
+
+Apply a preset at the CLI:
+
+```bash
+fleet-run IRPerfGrid --config-preset configs/perf/zoom8_full_sub4.lua
+```
+
+Priority order (highest wins): CLI flags > preset > `config.lua` defaults.
+
+Sweep a preset directory with the matrix script:
+
+```bash
+scripts/perf/perf_grid_matrix.sh \
+    --presets creations/demos/perf_grid/configs/perf \
+    --label my-branch
+```
+
+Relative paths for `--presets` are resolved from the engine root.
+
+### Shipped presets
+
+| File | Description |
+|---|---|
+| `zoom1_none_base1.lua` | Minimal — no subdivision, zoom=1; fast smoke cell |
+| `zoom4_full_base1.lua` | Moderate — zoom=4, full subdivision, base=1 |
+| `zoom8_full_sub4.lua` | Heavy — zoom=8, full subdivision, base=4 |
+| `zoom16_full_base1.lua` | Extreme zoom / cull-audit at zoom=16 |
+
 ## CLI flags the scripts depend on
 
 `IRPerfGrid` and `IRLuaPerfGrid` accept these flags (used by the matrix
-script):
+script). All of these can also be set inside a preset file (except
+`--auto-profile` and `--config-preset` itself):
 
 - `--auto-profile <N>` — collect N frames of timing then exit; writes
   `save_files/profile_report.txt`.
+- `--config-preset <path>` — load a Lua preset file (relative to the
+  exe directory, or absolute). Applied after `config.lua`, before CLI flags.
 - `--zoom <F>` — initial camera zoom (snapped to power of 2 in
   `[kTrixelCanvasZoomMin, kTrixelCanvasZoomMax]`).
 - `--subdivision-mode <none|position_only|full>` — overrides the
@@ -74,9 +121,6 @@ script):
 - `--mode <voxel_set|sdf>` (IRPerfGrid only) — voxel-pool vs SDF-only
   geometry.
 - `--grid-size <N>` — overrides the demo's default grid size.
-
-The subdivision flags exist precisely so the matrix script can sweep
-them without editing config files.
 
 ## Voxel cull stats — the "is culling working?" diagnostic
 

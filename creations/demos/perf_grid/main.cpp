@@ -96,6 +96,13 @@ struct PerfGridSettings {
     float wavePeriodSeconds_ = 4.0f;
     bool waveOffscreen_ = false;
     float initialZoom_ = 0.5f;
+    // Subdivision — config/preset-settable; CLI overrides both.
+    // Only applied if explicit_ is true so the engine's built-in default
+    // is undisturbed when neither config nor CLI specifies these.
+    IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+    bool subdivisionModeExplicit_ = false;
+    int baseSubdivisions_ = 1;
+    bool baseSubdivisionsExplicit_ = false;
 };
 
 struct CliOverrides {
@@ -111,6 +118,7 @@ struct CliOverrides {
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
     int baseSubdivisions_ = 1;
+    std::string configPreset_; // path from --config-preset, empty if absent
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
@@ -166,13 +174,7 @@ template <typename T> void readLuaValue(sol::table table, const char *key, T &ou
     }
 }
 
-void applyConfigTable() {
-    IRScript::LuaScript configScript{IREngine::resolveScriptPath("config.lua").c_str()};
-    sol::table perfGrid = configScript.getTable("perf_grid");
-    if (!perfGrid.valid()) {
-        return;
-    }
-
+void applyPerfGridTable(sol::table perfGrid) {
     std::string mode = modeName(g_settings.mode_);
     readLuaValue(perfGrid, "mode", mode);
     g_settings.mode_ = parseMode(mode);
@@ -181,6 +183,52 @@ void applyConfigTable() {
     readLuaValue(perfGrid, "wave_amplitude", g_settings.waveAmplitude_);
     readLuaValue(perfGrid, "wave_period_seconds", g_settings.wavePeriodSeconds_);
     readLuaValue(perfGrid, "wave_offscreen", g_settings.waveOffscreen_);
+    // zoom, subdivision_mode, and base_subdivisions are also settable from
+    // config.lua and preset files (not just CLI flags).
+    readLuaValue(perfGrid, "zoom", g_settings.initialZoom_);
+
+    std::string subModeStr;
+    readLuaValue(perfGrid, "subdivision_mode", subModeStr);
+    if (subModeStr == "none") {
+        g_settings.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
+        g_settings.subdivisionModeExplicit_ = true;
+    } else if (subModeStr == "position_only") {
+        g_settings.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
+        g_settings.subdivisionModeExplicit_ = true;
+    } else if (subModeStr == "full") {
+        g_settings.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+        g_settings.subdivisionModeExplicit_ = true;
+    }
+
+    int baseSub = 0;
+    readLuaValue(perfGrid, "base_subdivisions", baseSub);
+    if (baseSub > 0) {
+        g_settings.baseSubdivisions_ = baseSub;
+        g_settings.baseSubdivisionsExplicit_ = true;
+    }
+}
+
+void applyConfigTable() {
+    IRScript::LuaScript configScript{IREngine::resolveScriptPath("config.lua").c_str()};
+    sol::table perfGrid = configScript.getTable("perf_grid");
+    if (!perfGrid.valid()) {
+        return;
+    }
+    applyPerfGridTable(perfGrid);
+}
+
+void applyConfigPreset(const std::string &presetPath) {
+    if (presetPath.empty()) {
+        return;
+    }
+    IRScript::LuaScript presetScript{presetPath.c_str()};
+    sol::table perfGrid = presetScript.getTable("perf_grid");
+    if (!perfGrid.valid()) {
+        IR_LOG_WARN("--config-preset '{}': no perf_grid table found, skipping", presetPath);
+        return;
+    }
+    IR_LOG_INFO("Applying config preset: {}", presetPath);
+    applyPerfGridTable(perfGrid);
 }
 
 void applyCliOverrides() {
@@ -196,10 +244,20 @@ void applyCliOverrides() {
     if (g_cliOverrides.waveAmplitudeSet_) {
         g_settings.waveAmplitude_ = g_cliOverrides.waveAmplitude_;
     }
+    // CLI subdivision flags supersede config/preset values.
+    if (g_cliOverrides.subdivisionModeSet_) {
+        g_settings.subdivisionMode_ = g_cliOverrides.subdivisionMode_;
+        g_settings.subdivisionModeExplicit_ = true;
+    }
+    if (g_cliOverrides.baseSubdivisionsSet_) {
+        g_settings.baseSubdivisions_ = g_cliOverrides.baseSubdivisions_;
+        g_settings.baseSubdivisionsExplicit_ = true;
+    }
 }
 
 void parseArgs(int argc, char **argv) {
     IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
+    g_cliOverrides.configPreset_ = IREngine::parseConfigPresetArg(argc, argv);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--auto-profile") == 0) {
             g_autoProfileFrames = 300;
@@ -451,6 +509,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: perf_grid");
     IREngine::init(argv[0]);
     applyConfigTable();
+    applyConfigPreset(g_cliOverrides.configPreset_);
     applyCliOverrides();
     validateSettings();
 
@@ -458,11 +517,11 @@ int main(int argc, char **argv) {
         IREngine::enableFrameTiming(true);
     }
 
-    if (g_cliOverrides.subdivisionModeSet_) {
-        IRRender::setSubdivisionMode(g_cliOverrides.subdivisionMode_);
+    if (g_settings.subdivisionModeExplicit_) {
+        IRRender::setSubdivisionMode(g_settings.subdivisionMode_);
     }
-    if (g_cliOverrides.baseSubdivisionsSet_) {
-        IRRender::setVoxelRenderSubdivisions(g_cliOverrides.baseSubdivisions_);
+    if (g_settings.baseSubdivisionsExplicit_) {
+        IRRender::setVoxelRenderSubdivisions(g_settings.baseSubdivisions_);
     }
 
     initSystems();
