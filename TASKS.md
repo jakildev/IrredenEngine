@@ -163,18 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **editor: loft from 2 profiles (CSG of two extrusions) (A2)** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect
-  - **ID:** T-285
-  - **Area:** engine/prefabs/irreden/editor
-  - **Model:** sonnet
-  - **Owner:** claude/T-285-editor-loft-profiles
-  - **Blocked by:** (none)
-  - **Stack:** T-284..T-286 S-A-author
-  - **Acceptance:** (1) Author a sphere-like shape from two circle profiles; (2) author a chair-like shape from front + side silhouettes; (3) mask widgets snap to grid; modifier key for symmetry plane; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #948
-  - **Notes:** Stack S-A-author pos 3. Branch from A4 PR head. Mask widget reuses trixel-rect helpers. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A2".
-  - **Links:**
-
 - [~] **voxel: GRID-mode rotation re-rasterizes voxels on transform change (C6)** — SYSTEM_REBUILD_GRID_VOXELS runs on entities with changed C_LocalTransform; rotates authored voxels to world-grid cells; last-writer-wins on cell collisions (deterministic by entity ID)
   - **ID:** T-294
   - **Area:** engine/prefabs/irreden/voxel, engine/render
@@ -257,17 +245,6 @@ Avoid:
   - **Notes:** applyFillSDF at voxel_editor/main.cpp ~L559-589. Reuse IRMath::iterateAABB (T-303) for the placement loop if it lands first; otherwise T-303 refactor adapts against this iteration. Pattern: IRMath::pos3DtoPos2DIso is the existing model for batch-suitable helpers. Longer-term compute-shader path deferred (separate issue once profiling motivates it).
   - **Links:**
 
-- [~] **skills: decompose /simplify into parallel subagents and add render-leak / hot-path rules** — rewrite .claude/skills/simplify/SKILL.md to dispatch 5 parallel Haiku/Sonnet subagents for reuse detection; add explicit rules for triple-nested loops, renderer-leaks, SDF-grid-on-CPU, and linear-search-in-hot-path smells
-  - **ID:** T-307
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-307-simplify-subagent-decomposition
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) /simplify on synthetic diff with (a) triple-nested loop in creations/, (b) subImage2D in creations/, (c) new function name duplicating existing IRMath helper, (d) linear-search in save path flags all four; (2) skill completes in roughly same wall-clock as today due to parallel dispatch; (3) re-run against PR #976 #991 #993 #933 diffs would have surfaced A1–A4 smells; (4) fleet-build clean
-  - **Issue:** #1015
-  - **Notes:** SKILL.md rewrite ~644 lines today → ~850 estimated. New section "1b. Dispatch reuse-detection subagents (async)": grep-function-names (Haiku), grep-utility-candidates (Haiku), scan-loop-patterns (Haiku), scan-render-leak (Sonnet), scan-call-sequence-dup (Sonnet). 30s timeout; missing results skipped. Section 6 trimmed from ~170 prose to ~50 lines consuming subagent results. 3-line touch to commit-and-push/SKILL.md. Extended example report block. Companion A1–A4 = T-303, T-304, T-305, T-306.
-  - **Links:**
-
 - [~] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
   - **ID:** T-311
   - **Area:** tooling, build
@@ -294,6 +271,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
 - [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
 - [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
 - [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
@@ -311,6 +289,5 @@ Avoid:
 - [x] **T-296** — docs: lock SDF restriction decision (D2) · Owner: claude/T-296-sdf-restriction-decision · PR: https://github.com/jakildev/IrredenEngine/pull/996
 - [x] **T-288** — voxel: face-aware shader skip + per-voxel face-occlusion bits (B2) · Owner: claude/T-288-voxel-face-occupancy · PR: https://github.com/jakildev/IrredenEngine/pull/994
 - [x] **T-286** — editor parametric-shape voxel bake (always DENSE) (A3) · Owner: claude/T-286-parametric-voxel-bake · PR: https://github.com/jakildev/IrredenEngine/pull/993
+- [x] **T-285** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/948
 - [x] **T-284** — editor selection rectangle + ghost preview during fill (A4) · Owner: claude/T-284-fill-ghost-ui · PR: https://github.com/jakildev/IrredenEngine/pull/989
-- [x] **T-287** — voxel: sparse occupancy bitmask in C_VoxelPool (B1) · Owner: claude/T-287-voxel-active-mask · PR: https://github.com/jakildev/IrredenEngine/pull/988
-- [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
