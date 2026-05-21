@@ -269,11 +269,11 @@ Avoid:
   - **Notes:** iterateAABB mirrors naming of IRMath::index3DtoIndex1D. apply3DMaskIntersection used by loft CSG tool. perpendicularAxes replaces (axis+1)%3 / (axis+2)%3 inlines. Call sites: voxel_editor/main.cpp applyFillAABB ~L385, applyFillSDF ~L559, applyLoft ~L662; component_voxel_set.hpp fillPlane; applyFillFace.
   - **Links:**
 
-- [ ] **render: extract mask-grid pixel packing into renderer helper** — move loft drawLoftGrid pixel-pack + subImage2D body into IRRender::drawMaskGridOntoCanvas; add IRRender::hitTestGridCell; editor calls helper instead of composing texture upload directly
+- [~] **render: extract mask-grid pixel packing into renderer helper** — move loft drawLoftGrid pixel-pack + subImage2D body into IRRender::drawMaskGridOntoCanvas; add IRRender::hitTestGridCell; editor calls helper instead of composing texture upload directly
   - **ID:** T-304
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `grep -rn 'subImage2D' creations/editors/voxel_editor/` returns zero hits; (2) loft tool pixel-identical before/after (exercise XZ and YZ grids in IRVoxelEditor); (3) new header engine/render/include/irreden/render/mask_grid_painter.hpp exported via ir_render.hpp; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1012
