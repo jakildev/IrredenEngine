@@ -1915,7 +1915,7 @@ void initCommands() {
                 IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_)
                     .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
             }
-            IR_LOG_INFO("Loft mode: %s", loft.active_ ? "ON" : "OFF");
+            IR_LOG_INFO("Loft mode: {}", loft.active_ ? "ON" : "OFF");
         }
     );
 
