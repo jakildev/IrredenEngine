@@ -44,9 +44,10 @@ def _group_by_target(
     cpp: Dict[str, CellReport] = {}
     lua: Dict[str, CellReport] = {}
     for cell_id, report in cells.items():
-        if f"target={cpp_name}" in cell_id:
+        segments = cell_id.split(",")
+        if f"target={cpp_name}" in segments:
             cpp[_dim_key(cell_id)] = report
-        elif f"target={lua_name}" in cell_id:
+        elif f"target={lua_name}" in segments:
             lua[_dim_key(cell_id)] = report
     return cpp, lua
 
@@ -82,7 +83,7 @@ def render_markdown(
         "| dims | cpp avg (ms) | lua avg (ms) | ratio | delta (ms) | p99 cpp | p99 lua |"
     )
     lines.append(
-        "|------|-------------|-------------|-------|------------|---------|---------|"
+        "|------|------------|------------|-------|------------|---------|---------|"
     )
 
     for key in matched:
