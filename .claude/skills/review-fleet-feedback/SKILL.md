@@ -56,12 +56,12 @@ MARKER=$(cat ~/.fleet/feedback/.last-reviewed 2>/dev/null || echo "")
 - If `MARKER` is empty or unparseable, default to a 7-day window. Tell the user: "No `.last-reviewed` found — defaulting to last 7d. The marker will be created on completion."
 - If `MARKER` is present, compute the duration from `MARKER` to `now()` in hours, then pad by 1h for clock skew. Pass that as `--since Nh` to `fleet-feedback` in step 2.
 
-Duration math (Python one-liner):
+Duration math (Python one-liner). The marker is written by `date -u` (step 8), so the comparison must also be in UTC — using `datetime.now()` here would skew `--since` by the host's UTC offset:
 ```bash
 SINCE=$(python3 -c "
 from datetime import datetime
 m = datetime.fromisoformat('$MARKER')
-h = int((datetime.now() - m).total_seconds() // 3600) + 1
+h = int((datetime.utcnow() - m).total_seconds() // 3600) + 1
 print(f'{h}h')
 ")
 ```
@@ -116,7 +116,7 @@ For every cluster:
 - **Look up open fixes** (`status ∈ {proposed, applied, recurring}`) whose `signature` matches.
 - **If a matching `applied` fix has entries in this cluster newer than its `applied_at`:** the fix didn't close the loop. Update the row in place: `status: recurring`, bump `recurrence_count`, set `last_recurrence_at` to the cluster's `last_seen`. Surface as **RECURRING**.
 - **If a matching `proposed` fix has entries newer than its `proposed_at`:** the proposal is still active but the pattern is still happening — surface as **STILL PROPOSED — N new occurrences** to nudge the human.
-- **If a matching `applied` fix has had no entries since `applied_at` AND `(now - applied_at) ≥ 7 days`:** auto-promote to `closed`. Set `verified_closed_at` to now. Surface in **Closed this run**.
+- **If a matching `applied` fix has `last_recurrence_at` null or before `applied_at` AND `(now - applied_at) ≥ 7 days`:** auto-promote to `closed`. Set `verified_closed_at` to now. Surface in **Closed this run**. The check uses the stored `last_recurrence_at` rather than "no entries in this cluster this run" because a previous run's bumped marker can hide a recurrence outside the current window — `last_recurrence_at` is the cross-run invariant.
 - **If no matching open fix exists** for the cluster: it's a fresh cluster — falls through to step 5.
 
 ### 5. Draft fix proposals for fresh clusters
@@ -226,7 +226,7 @@ One JSON object per line. New rows append; updates rewrite the file (fine — lo
 | `proposed` | `applied` | Human confirms during step 7 |
 | `proposed` | `dropped` | Human drops during step 7 |
 | `applied` | `recurring` | Step 4 sees fresh entries after `applied_at` |
-| `applied` | `closed` | Step 4 sees no entries for ≥7 days after `applied_at` |
+| `applied` | `closed` | Step 4 sees `last_recurrence_at` null-or-before-`applied_at` and `(now - applied_at) ≥ 7d` |
 | `recurring` | `applied` | Human re-applies a tweaked fix (manual JSON edit, or surface a fresh proposal next run that supersedes) |
 | `recurring` | `dropped` | Give up |
 
