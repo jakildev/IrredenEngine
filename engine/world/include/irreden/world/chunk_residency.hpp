@@ -1,15 +1,18 @@
 #ifndef IRREDEN_WORLD_CHUNK_RESIDENCY_H
 #define IRREDEN_WORLD_CHUNK_RESIDENCY_H
 
-// Chunk-residency manager skeleton (Epic E / E1). Owns the sparse map
-// from chunk-coord to per-chunk residency slot, the per-chunk voxel sub-
-// pool, and the per-chunk entity manifest. Designed in
+// Chunk-residency manager (Epic E). Owns the sparse map from chunk-coord
+// to per-chunk residency slot, the per-chunk voxel sub-pool, and the
+// per-chunk entity manifest. Designed in
 // docs/design/world-streaming.md §"Topic 2 — Residency manager API".
 //
-// E1 scope: data model + synchronous request/evict + entity ownership +
-// per-chunk voxel sub-pool from an injected allocator. Async upload
-// pipeline, eviction policy, prefetch ring, and dirty-tracking save
-// path are deferred to E2/E3/E6.
+// E1 added the data model + synchronous request/evict + entity ownership +
+// per-chunk voxel sub-pool from an injected allocator. E6 (this slice)
+// adds optional disk persistence — when a `ChunkDiskPersistence` pointer
+// is wired in Config, `requestResident` first attempts to load the chunk
+// from disk and seed the pool slice, and `requestEvict` saves dirty
+// chunks before dropping the slot. Async upload pipeline, eviction
+// policy, and the residency worker pool are still deferred to E2/E3.
 //
 // Single-chunk creations stay zero-overhead — the manager is only
 // constructed when a creation opts into streaming.
@@ -24,6 +27,8 @@
 #include <vector>
 
 namespace IRWorld {
+
+class ChunkDiskPersistence;
 
 /// What does the caller want this request urgency-classed as?
 /// VISIBLE_RENDER and PREFETCH_RING are camera-derived; FORCED is the
@@ -90,6 +95,18 @@ class ChunkResidencyManager {
         /// from the disk record in the eventual streaming path; the
         /// E1 skeleton uses one number for every chunk.
         unsigned int voxelsPerChunk_ = 0;
+
+        /// Optional disk-persistence sink. When set:
+        /// - `requestResident` first tries `persistence_->loadChunk(key)`
+        ///   and, if the file exists and the record count matches the
+        ///   pool slice, seeds the slice from disk. Missing files leave
+        ///   the slice in its default-allocated state (fresh chunk).
+        /// - `requestEvict` saves dirty chunks before dropping the slot,
+        ///   matching the design's "snapshot-at-schedule-time" rule
+        ///   (today's synchronous path makes the snapshot implicit —
+        ///   we save then erase in the same call).
+        /// Caller owns the persistence object; the manager only borrows.
+        ChunkDiskPersistence *persistence_ = nullptr;
     };
 
     ChunkResidencyManager() = default;
@@ -130,11 +147,25 @@ class ChunkResidencyManager {
     /// slot just bumps lastTouchedFrame_.
     void requestResident(IRPrefab::Chunk::ChunkKey key, RequestPriority priority);
 
-    /// Drop the chunk from the resident set. Pool allocation is currently
-    /// leaked back to the global pool's free-list when the allocator
-    /// supports it (today's RenderManager pool is bump-style — see
+    /// Drop the chunk from the resident set. When `Config::persistence_`
+    /// is wired and the slot's `dirty_` bit is set, the chunk is saved
+    /// to disk before erasure. Pool allocation is currently leaked back
+    /// to the global pool's free-list when the allocator supports it
+    /// (today's RenderManager pool is bump-style — see
     /// engine/render/CLAUDE.md). E2 introduces the dealloc path.
     void requestEvict(IRPrefab::Chunk::ChunkKey key);
+
+    /// Force-save every resident slot whose `dirty_` bit is set
+    /// (design's "save-all path"). On success the slot's `dirty_` bit
+    /// clears so subsequent eviction skips the redundant save. Slots
+    /// stay resident; only the on-disk copy is refreshed.
+    ///
+    /// Synchronous in this v1 — the editor's save-snapshot button
+    /// calls this and blocks until all per-chunk writes finish. E3's
+    /// worker pool turns each per-chunk save into a queued job; the
+    /// surface stays the same (the method still blocks until the
+    /// queue drains).
+    void flushPendingSaves();
 
     // ── Entity ownership ─────────────────────────────────────────────
 

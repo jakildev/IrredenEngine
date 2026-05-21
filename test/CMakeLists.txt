@@ -54,6 +54,7 @@ add_executable(IrredenEngineTest
   system/register_system_test.cpp
   utility/ir_utility_test.cpp
   world/chunk_coord_test.cpp
+  world/chunk_persistence_test.cpp
   world/chunk_residency_manager_test.cpp
 )
 
