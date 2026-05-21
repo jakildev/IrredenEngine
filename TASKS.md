@@ -301,11 +301,11 @@ Avoid:
   - **Notes:** SKILL.md rewrite ~644 lines today → ~850 estimated. New section "1b. Dispatch reuse-detection subagents (async)": grep-function-names (Haiku), grep-utility-candidates (Haiku), scan-loop-patterns (Haiku), scan-render-leak (Sonnet), scan-call-sequence-dup (Sonnet). 30s timeout; missing results skipped. Section 6 trimmed from ~170 prose to ~50 lines consuming subagent results. 3-line touch to commit-and-push/SKILL.md. Extended example report block. Companion A1–A4 = T-303, T-304, T-305, T-306.
   - **Links:**
 
-- [ ] **demos: named config preset files to replace CLI-flag sprawl (IRPerfGrid + friends)** — add --config-preset <path> engine-level flag; migrate IRPerfGrid first; update perf_grid_matrix.sh to sweep presets; document preset format
+- [~] **demos: named config preset files to replace CLI-flag sprawl (IRPerfGrid + friends)** — add --config-preset <path> engine-level flag; migrate IRPerfGrid first; update perf_grid_matrix.sh to sweep presets; document preset format
   - **ID:** T-308
   - **Area:** creations/demos, tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRPerfGrid --config-preset configs/perf/zoom8_full_sub4.lua loads and overrides demo defaults correctly; (2) perf_grid_matrix.sh sweeps config files instead of flag tuples; (3) --subdivision-mode / --base-subdivisions removed or remain as overrides composing on top of preset; (4) preset format documented in docs/perf/README.md and demo CLAUDE.md; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1017
