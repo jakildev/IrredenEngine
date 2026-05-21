@@ -246,17 +246,6 @@ Avoid:
   - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
-- [~] **math: IRMath grid-iteration and 3D-mask helpers** — add iterateAABB, apply3DMaskIntersection, and perpendicularAxes helpers; refactor editor triple-loops and axis-swizzle sites to use them
-  - **ID:** T-303
-  - **Area:** engine/math
-  - **Model:** sonnet
-  - **Owner:** claude/T-303-irmath-grid-helpers
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) No behavior change in any tool; (2) `grep -rn 'for (int z' creations/editors/voxel_editor/main.cpp` drops to near zero (only irreducible loops remain); (3) `grep -rn '(axis + 1) % 3' engine/ creations/` returns no hits; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1011
-  - **Notes:** iterateAABB mirrors naming of IRMath::index3DtoIndex1D. apply3DMaskIntersection used by loft CSG tool. perpendicularAxes replaces (axis+1)%3 / (axis+2)%3 inlines. Call sites: voxel_editor/main.cpp applyFillAABB ~L385, applyFillSDF ~L559, applyLoft ~L662; component_voxel_set.hpp fillPlane; applyFillFace.
-  - **Links:**
-
 - [~] **render: extract mask-grid pixel packing into renderer helper** — move loft drawLoftGrid pixel-pack + subImage2D body into IRRender::drawMaskGridOntoCanvas; add IRRender::hitTestGridCell; editor calls helper instead of composing texture upload directly
   - **ID:** T-304
   - **Area:** engine/render, engine/prefabs/irreden/render
@@ -290,11 +279,11 @@ Avoid:
   - **Notes:** Two mechanical cleanups bundled. (1) scene_io.hpp loadEditorScene ~L204-278 calls metaGet 20+ times each O(N) linear scan; fix: build unordered_map<string,string> at top. (2) kRecordBytes = 12 declared locally in readVoxelRecordsChunk ~L458 and makeVoxelRecordsRleChunk ~L487; hoist to namespace{} constexpr. Pattern: PR #972 writeVoxelRecordBody/readVoxelRecordBody are the model for save/load deduplication.
   - **Links:**
 
-- [~] **skills: decompose /simplify into parallel subagents and add render-leak / hot-path rules** — rewrite .claude/skills/simplify/SKILL.md to dispatch 5 parallel Haiku/Sonnet subagents for reuse detection; add explicit rules for triple-nested loops, renderer-leaks, SDF-grid-on-CPU, and linear-search-in-hot-path smells
+- [ ] **skills: decompose /simplify into parallel subagents and add render-leak / hot-path rules** — rewrite .claude/skills/simplify/SKILL.md to dispatch 5 parallel Haiku/Sonnet subagents for reuse detection; add explicit rules for triple-nested loops, renderer-leaks, SDF-grid-on-CPU, and linear-search-in-hot-path smells
   - **ID:** T-307
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) /simplify on synthetic diff with (a) triple-nested loop in creations/, (b) subImage2D in creations/, (c) new function name duplicating existing IRMath helper, (d) linear-search in save path flags all four; (2) skill completes in roughly same wall-clock as today due to parallel dispatch; (3) re-run against PR #976 #991 #993 #933 diffs would have surfaced A1–A4 smells; (4) fleet-build clean
   - **Issue:** #1015
@@ -316,7 +305,7 @@ Avoid:
   - **ID:** T-309
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-309-feeder-split
   - **Blocked by:** https://github.com/jakildev/IrredenEngine/pull/1019
   - **Acceptance:** (1) One-pager design doc posted on #1020 and committed before implementation; (2) At zoom 8, visible/total ratio improves measurably toward 1/zoom² ideal; (3) Sun-shadow correctness unchanged — render-verify reference set pixel-identical pre/post; (4) perf_grid_matrix.sh re-run shows improvement at zoom 4+; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1020
@@ -327,7 +316,7 @@ Avoid:
   - **ID:** T-310
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-310-async-gpu-timers
   - **Blocked by:** (none)
   - **Acceptance:** (1) Per-stage GPU ms timing works without glFinish stall; (2) Double-buffered query objects read frame N-1 result at top of frame N; (3) legacyFinishTiming_ preserved as A/B opt-in until async path proves equivalent; (4) Works on both OpenGL (GL_TIME_ELAPSED / GL_TIMESTAMP) and Metal (MTLCounterSampleBuffer) backends; (5) Matrix run confirms async vs legacy timing within 5% on same hardware; (6) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1021
@@ -349,7 +338,7 @@ Avoid:
   - **ID:** T-312
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-312-math-microbench-harness
   - **Blocked by:** (none)
   - **Acceptance:** (1) bench_iso_projection.cpp covers pos3DtoPos2DIso, pos3DtoPos2DScreen, pos3DtoDistance, isoDepthShift; (2) bench_sdf.cpp covers box, taperedBox, wedge, curvedPanel and other SDF primitives; (3) bench_trixel.cpp covers trixel projection/intersection helpers; (4) Catch2 BENCHMARK output written to save_files/bench/<sha>.json; (5) wired into scripts/perf/ alongside matrix run; (6) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1023
@@ -360,7 +349,7 @@ Avoid:
   - **ID:** T-313
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-313-lua-cpp-parity-dashboard
   - **Blocked by:** (none)
   - **Acceptance:** (1) lua_cpp_parity.py produces markdown table per (zoom, sub_mode, sub_base) cell; (2) flags cells >20% gap over C++ baseline; (3) perf_grid_matrix.sh --target both mode captures IRPerfGrid and IRLuaPerfGrid in one run; (4) documented in docs/perf/README.md; (5) fleet-build clean
   - **Issue:** #1024
@@ -371,6 +360,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
 - [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
 - [x] **T-298** — world: chunk disk persistence + lazy load (E6) · Owner: claude/T-298-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/998
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
@@ -390,4 +380,3 @@ Avoid:
 - [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
 - [x] **T-278** — editor AABB box-fill + line-fill + face-fill (A1) · Owner: claude/T-278-fill-tools · PR: https://github.com/jakildev/IrredenEngine/pull/976
 - [x] **T-277** — render: runtime-sized voxel pools (B4) · Owner: claude/T-277-runtime-voxel-pools · PR: https://github.com/jakildev/IrredenEngine/pull/975
-- [x] **T-276** — asset: .vxs DENSE-RLE chunk variant (B3) · Owner: claude/T-276-vxs-rle-chunk · PR: https://github.com/jakildev/IrredenEngine/pull/972
