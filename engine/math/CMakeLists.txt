@@ -36,3 +36,7 @@ target_include_directories(
 #         ${PROJECT_BINARY_DIR}/libglm_sharedd.dll
 #     DEPENDS glm
 # )
+
+if(IRREDEN_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
