@@ -258,11 +258,11 @@ Avoid:
   - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
-- [ ] **math: IRMath grid-iteration and 3D-mask helpers** — add iterateAABB, apply3DMaskIntersection, and perpendicularAxes helpers; refactor editor triple-loops and axis-swizzle sites to use them
+- [~] **math: IRMath grid-iteration and 3D-mask helpers** — add iterateAABB, apply3DMaskIntersection, and perpendicularAxes helpers; refactor editor triple-loops and axis-swizzle sites to use them
   - **ID:** T-303
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) No behavior change in any tool; (2) `grep -rn 'for (int z' creations/editors/voxel_editor/main.cpp` drops to near zero (only irreducible loops remain); (3) `grep -rn '(axis + 1) % 3' engine/ creations/` returns no hits; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1011
