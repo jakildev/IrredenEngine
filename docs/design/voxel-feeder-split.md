@@ -42,8 +42,9 @@ What's wasted: feeders go through the *same* code path as visible
 voxels — compact, stage 1 at `sub²` invocations per voxel, stage 2
 color + entity-id writes. None of those extra writes reach the
 on-screen framebuffer (feeders are off-viewport by definition) and
-they don't contribute to AO/lighting/fog (those shaders sample only
-visible-region canvas pixels). The only output a feeder needs is
+they don't contribute to AO/lighting/fog (those shaders early-out on
+empty pixels; any feeder-written canvas pixels produce results unused by
+the framebuffer). The only output a feeder needs is
 **iso-pixel depth on the canvas distance texture**, consumed by the
 sun bake.
 
@@ -135,7 +136,7 @@ require uploading two masks per frame. Not worth it.
 Where the split *does* live: the compact shader needs both AABBs in
 the per-frame UBO:
 
-- `cullIsoMin/Max` (current field, repurposed) → swept feeder AABB.
+- `cullIsoMin/Max` (current field, unchanged) — swept feeder AABB.
 - `visibleIsoMin/Max` (new fields) → un-swept visible AABB.
 
 Compact classifies into list A or B based on which AABB contains the
@@ -151,7 +152,7 @@ finds:
 | Shader                              | Reads when         | Needs feeders? |
 |-------------------------------------|--------------------|----------------|
 | `c_bake_sun_shadow_map.glsl`        | all canvas pixels  | **yes**        |
-| `c_compute_sun_shadow.glsl`         | all canvas pixels  | no (reads sun map, not feeders) |
+| `c_compute_sun_shadow.glsl`         | all canvas pixels  | no (reads canvas distance texture for surface reconstruction only; shadow comparison comes from `sunDepthBuf`, baked with feeder contributions by `BAKE_SUN_SHADOW_MAP`) |
 | `c_compute_voxel_ao.glsl`           | visible + AO margin | no             |
 | `c_lighting_to_trixel.glsl`         | visible pixels     | no             |
 | `c_voxel_to_trixel_stage_2.glsl`    | visible pixels     | no             |
