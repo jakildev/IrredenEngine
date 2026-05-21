@@ -175,11 +175,11 @@ Avoid:
   - **Notes:** Stack S-A-author pos 2 (A1 → A4 → A2 → A3). A1 (T-278, PR #976) merged — branch from master. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A4".
   - **Links:**
 
-- [~] **editor: loft from 2 profiles (CSG of two extrusions) (A2)** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect
+- [ ] **editor: loft from 2 profiles (CSG of two extrusions) (A2)** — author front (XZ) and side (YZ) silhouettes on 2D mask overlay; voxels placed where both masks intersect
   - **ID:** T-285
   - **Area:** engine/prefabs/irreden/editor
   - **Model:** sonnet
-  - **Owner:** claude/T-285-editor-loft-profiles
+  - **Owner:** free
   - **Blocked by:** T-284
   - **Stack:** T-284..T-286 S-A-author
   - **Acceptance:** (1) Author a sphere-like shape from two circle profiles; (2) author a chair-like shape from front + side silhouettes; (3) mask widgets snap to grid; modifier key for symmetry plane; (4) fleet-build clean on linux-debug and macos-debug
