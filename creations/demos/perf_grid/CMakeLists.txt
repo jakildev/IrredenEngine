@@ -32,6 +32,8 @@ add_custom_target(IRPerfGridAssets
         ${PROJECT_SOURCE_DIR}/engine/data ${IR_PERF_GRID_RUNTIME_DIR}/data
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_PERF_GRID_RUNTIME_DIR}/shaders
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/configs ${IR_PERF_GRID_RUNTIME_DIR}/configs
     DEPENDS
         ${IR_PERF_GRID_CONFIG_LUA_DST}
 )
@@ -47,6 +49,8 @@ add_custom_target(IRPerfGridRun
         ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_PERF_GRID_RUNTIME_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_PERF_GRID_SCRIPTS_DIR}/config.lua
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/configs ${IR_PERF_GRID_RUNTIME_DIR}/configs
     COMMAND $<TARGET_FILE:IRPerfGrid>
     DEPENDS IRPerfGrid
     WORKING_DIRECTORY ${IR_PERF_GRID_RUNTIME_DIR}
