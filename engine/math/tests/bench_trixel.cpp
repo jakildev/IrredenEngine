@@ -17,9 +17,12 @@ TEST_CASE("deformedTrixelIsoPixel throughput") {
     // across the 24 (face, subPixel, yaw) combinations. constexpr inputs
     // with a small iteration count are fully foldable; std::vector breaks that.
     const std::vector<int> faces{
-        IRMath::kXFace, IRMath::kXFace,
-        IRMath::kYFace, IRMath::kYFace,
-        IRMath::kZFace, IRMath::kZFace,
+        IRMath::kXFace,
+        IRMath::kXFace,
+        IRMath::kYFace,
+        IRMath::kYFace,
+        IRMath::kZFace,
+        IRMath::kZFace,
     };
     const std::vector<int> subPixels{0, 1, 0, 1, 0, 1};
     const std::vector<float> yawSamples{0.0f, 0.25f, -0.25f, 0.1f};
@@ -67,6 +70,8 @@ TEST_CASE("trixel origin offsets") {
         acc += IRMath::trixelOriginOffsetY4(size);
         acc += IRMath::trixelOriginOffsetZ1(size);
         acc += IRMath::trixelOriginOffsetZ2(size);
+        acc += IRMath::trixelOriginOffsetZ3(size);
+        acc += IRMath::trixelOriginOffsetZ4(size);
         return acc;
     };
 }
