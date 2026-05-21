@@ -19,6 +19,18 @@ live in [`engine/prefabs/irreden/world/`](../prefabs/irreden/world/);
 full design contract in
 [`docs/design/world-streaming.md`](../../docs/design/world-streaming.md).
 
+`engine/world/include/irreden/world/chunk_persistence.hpp` declares
+`IRWorld::ChunkDiskPersistence` — per-chunk `.vxs` save/load under a
+`<saveRoot>/chunks/` directory. One file per chunk; filename embeds
+the signed chunk coord (e.g. `+00003_-00007_+00011.vxs`). When wired
+on `ChunkResidencyManager::Config::persistence_`, the manager loads
+the chunk slice from disk on first `requestResident` and saves dirty
+chunks on `requestEvict`. `flushPendingSaves()` is the editor's
+save-all hook. Synchronous in v1; E2/E3 lift the same calls into the
+residency worker pool without changing the surface. Entity-level
+state (components beyond the chunk's voxel pool) belongs to the
+parallel world-snapshot path (#199), not this layer.
+
 Most code never touches `World` directly. It accesses managers via the
 `IR<Module>::get*Manager()` free functions in each module's `ir_*.hpp`
 header, which reach through the global pointers `World` sets up at
