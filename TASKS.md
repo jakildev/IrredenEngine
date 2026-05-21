@@ -323,11 +323,11 @@ Avoid:
   - **Notes:** Root cause: system_voxel_to_trixel.hpp:253-257 inflates cull bounds via IRMath::shadowFeederIsoBounds for off-screen shadow casters within kSunShadowMaxDistance (64 voxels). At zoom 4, shadow-feeder expansion (~32 iso-x + ~128 iso-y) is 2–4× larger than visible region (~32×32 iso px). Open design questions: does sun-shadow bake need feeder voxels at full sub resolution? Does buildChunkVisibilityMask need same split? Other trixelDistances readers? Implementation: multi-PR series stacked on PR #1019 diagnostic work.
   - **Links:**
 
-- [ ] **perf: async GL_TIMESTAMP / MTLCounterSample queries to replace glFinish per-stage timing** — double-buffered GL_TIME_ELAPSED query objects for OpenGL; MTLCounterSampleBuffer for Metal; read frame N-1 result at frame N top; no CPU stall
+- [~] **perf: async GL_TIMESTAMP / MTLCounterSample queries to replace glFinish per-stage timing** — double-buffered GL_TIME_ELAPSED query objects for OpenGL; MTLCounterSampleBuffer for Metal; read frame N-1 result at frame N top; no CPU stall
   - **ID:** T-310
   - **Area:** engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) Per-stage GPU ms timing works without glFinish stall; (2) Double-buffered query objects read frame N-1 result at top of frame N; (3) legacyFinishTiming_ preserved as A/B opt-in until async path proves equivalent; (4) Works on both OpenGL (GL_TIME_ELAPSED / GL_TIMESTAMP) and Metal (MTLCounterSampleBuffer) backends; (5) Matrix run confirms async vs legacy timing within 5% on same hardware; (6) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1021
