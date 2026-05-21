@@ -268,22 +268,11 @@ Avoid:
   - **Notes:** applyFillSDF at voxel_editor/main.cpp ~L559-589. Reuse IRMath::iterateAABB (T-303) for the placement loop if it lands first; otherwise T-303 refactor adapts against this iteration. Pattern: IRMath::pos3DtoPos2DIso is the existing model for batch-suitable helpers. Longer-term compute-shader path deferred (separate issue once profiling motivates it).
   - **Links:**
 
-- [~] **asset: scene_io metadata index + voxel-record byte constant dedup** — build unordered_map in loadEditorScene to replace O(N·M) linear-scan; hoist kRecordBytes to file-scope constexpr in voxel_set_format.cpp
-  - **ID:** T-306
-  - **Area:** engine/asset
-  - **Model:** sonnet
-  - **Owner:** claude/T-306-scene-io-metadata-index
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Loading large scene (≥1k frames) no slower; (2) `grep -n 'kRecordBytes' engine/asset/src/voxel_set_format.cpp` returns exactly one declaration plus use sites; (3) all existing save/load round-trip tests pass unchanged; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1014
-  - **Notes:** Two mechanical cleanups bundled. (1) scene_io.hpp loadEditorScene ~L204-278 calls metaGet 20+ times each O(N) linear scan; fix: build unordered_map<string,string> at top. (2) kRecordBytes = 12 declared locally in readVoxelRecordsChunk ~L458 and makeVoxelRecordsRleChunk ~L487; hoist to namespace{} constexpr. Pattern: PR #972 writeVoxelRecordBody/readVoxelRecordBody are the model for save/load deduplication.
-  - **Links:**
-
 - [~] **skills: decompose /simplify into parallel subagents and add render-leak / hot-path rules** — rewrite .claude/skills/simplify/SKILL.md to dispatch 5 parallel Haiku/Sonnet subagents for reuse detection; add explicit rules for triple-nested loops, renderer-leaks, SDF-grid-on-CPU, and linear-search-in-hot-path smells
   - **ID:** T-307
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-307-simplify-subagent-decomposition
   - **Blocked by:** (none)
   - **Acceptance:** (1) /simplify on synthetic diff with (a) triple-nested loop in creations/, (b) subImage2D in creations/, (c) new function name duplicating existing IRMath helper, (d) linear-search in save path flags all four; (2) skill completes in roughly same wall-clock as today due to parallel dispatch; (3) re-run against PR #976 #991 #993 #933 diffs would have surfaced A1–A4 smells; (4) fleet-build clean
   - **Issue:** #1015
@@ -327,7 +316,7 @@ Avoid:
   - **ID:** T-311
   - **Area:** tooling, build
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-311-ci-baseline-gate
   - **Blocked by:** T-310
   - **Acceptance:** (1) CI job re-runs perf_grid_matrix.sh on PRs touching engine/render/, engine/prefabs/irreden/render/, engine/system/, engine/math/; (2) compare_perf_runs.py diff posted as sticky PR comment; (3) >10% mean-frame-ms regression fails required CI check; (4) >5% improvement labels PR perf:improved; (5) check_regression.py exits non-zero on regression-over-threshold; (6) inter-run jitter variance audit <5% on master before enabling gate; (7) fleet-build clean
   - **Issue:** #1022
@@ -360,6 +349,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
 - [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
 - [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
 - [x] **T-298** — world: chunk disk persistence + lazy load (E6) · Owner: claude/T-298-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/998
@@ -379,4 +369,3 @@ Avoid:
 - [x] **T-282** — fleet: invalidate seen-hash on ingest lock-bail · Owner: claude/T-282-ingest-lock-bail-hash-invalidate · PR: https://github.com/jakildev/IrredenEngine/pull/978
 - [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
 - [x] **T-278** — editor AABB box-fill + line-fill + face-fill (A1) · Owner: claude/T-278-fill-tools · PR: https://github.com/jakildev/IrredenEngine/pull/976
-- [x] **T-277** — render: runtime-sized voxel pools (B4) · Owner: claude/T-277-runtime-voxel-pools · PR: https://github.com/jakildev/IrredenEngine/pull/975
