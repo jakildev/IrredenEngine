@@ -279,23 +279,12 @@ Avoid:
   - **Notes:** Root cause: system_voxel_to_trixel.hpp:253-257 inflates cull bounds via IRMath::shadowFeederIsoBounds for off-screen shadow casters within kSunShadowMaxDistance (64 voxels). At zoom 4, shadow-feeder expansion (~32 iso-x + ~128 iso-y) is 2–4× larger than visible region (~32×32 iso px). Open design questions: does sun-shadow bake need feeder voxels at full sub resolution? Does buildChunkVisibilityMask need same split? Other trixelDistances readers? Implementation: multi-PR series stacked on PR #1019 diagnostic work.
   - **Links:**
 
-- [~] **perf: async GL_TIMESTAMP / MTLCounterSample queries to replace glFinish per-stage timing** — double-buffered GL_TIME_ELAPSED query objects for OpenGL; MTLCounterSampleBuffer for Metal; read frame N-1 result at frame N top; no CPU stall
-  - **ID:** T-310
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-310-async-gpu-timers
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Per-stage GPU ms timing works without glFinish stall; (2) Double-buffered query objects read frame N-1 result at top of frame N; (3) legacyFinishTiming_ preserved as A/B opt-in until async path proves equivalent; (4) Works on both OpenGL (GL_TIME_ELAPSED / GL_TIMESTAMP) and Metal (MTLCounterSampleBuffer) backends; (5) Matrix run confirms async vs legacy timing within 5% on same hardware; (6) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1021
-  - **Notes:** Wire into gpu_stage_timing_observer.hpp. One PR for OpenGL, one for Metal, rebased to land together after confirming equivalent on a matrix run. Prereq for T-311 (CI regression gate) so per-frame glFinish tax is removed before CI measure. PR #1019 added cull-effectiveness readback gated on gpuStageTiming().enabled_.
-  - **Links:**
-
 - [~] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
   - **ID:** T-311
   - **Area:** tooling, build
   - **Model:** sonnet
   - **Owner:** claude/T-311-ci-baseline-gate
-  - **Blocked by:** T-310
+  - **Blocked by:** (none)
   - **Acceptance:** (1) CI job re-runs perf_grid_matrix.sh on PRs touching engine/render/, engine/prefabs/irreden/render/, engine/system/, engine/math/; (2) compare_perf_runs.py diff posted as sticky PR comment; (3) >10% mean-frame-ms regression fails required CI check; (4) >5% improvement labels PR perf:improved; (5) check_regression.py exits non-zero on regression-over-threshold; (6) inter-run jitter variance audit <5% on master before enabling gate; (7) fleet-build clean
   - **Issue:** #1022
   - **Notes:** CI workflow YAML + scripts/perf/check_regression.py + docs/perf/README.md update. Baseline stored as docs/perf/baseline_<date>_<sha>.json. Blocked by T-310 so CI matrix run doesn't pay glFinish throughput tax per PR.
@@ -316,6 +305,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
 - [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
 - [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
 - [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
@@ -335,4 +325,3 @@ Avoid:
 - [x] **T-287** — voxel: sparse occupancy bitmask in C_VoxelPool (B1) · Owner: claude/T-287-voxel-active-mask · PR: https://github.com/jakildev/IrredenEngine/pull/988
 - [x] **T-281** — render: C_ShapeDescriptor usage audit + docs/design/sdf-runtime-audit.md (D1) · Owner: claude/T-281-sdf-runtime-audit · PR: https://github.com/jakildev/IrredenEngine/pull/982
 - [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
-- [x] **T-283** — fleet: filter fleet:epic in project_queue_manager_ingest · Owner: claude/T-283-epic-filter-projector · PR: https://github.com/jakildev/IrredenEngine/pull/980
