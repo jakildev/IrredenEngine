@@ -345,11 +345,11 @@ Avoid:
   - **Notes:** CI workflow YAML + scripts/perf/check_regression.py + docs/perf/README.md update. Baseline stored as docs/perf/baseline_<date>_<sha>.json. Blocked by T-310 so CI matrix run doesn't pay glFinish throughput tax per PR.
   - **Links:**
 
-- [ ] **perf: Catch2 microbench harness for engine/math hot paths** — add bench_iso_projection.cpp, bench_sdf.cpp, bench_trixel.cpp under engine/math/tests/; output to save_files/bench/<sha>.json; wire into scripts/perf/
+- [~] **perf: Catch2 microbench harness for engine/math hot paths** — add bench_iso_projection.cpp, bench_sdf.cpp, bench_trixel.cpp under engine/math/tests/; output to save_files/bench/<sha>.json; wire into scripts/perf/
   - **ID:** T-312
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) bench_iso_projection.cpp covers pos3DtoPos2DIso, pos3DtoPos2DScreen, pos3DtoDistance, isoDepthShift; (2) bench_sdf.cpp covers box, taperedBox, wedge, curvedPanel and other SDF primitives; (3) bench_trixel.cpp covers trixel projection/intersection helpers; (4) Catch2 BENCHMARK output written to save_files/bench/<sha>.json; (5) wired into scripts/perf/ alongside matrix run; (6) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1023
