@@ -63,10 +63,28 @@ for single voxels and particles.
 
 - `UPDATE_VOXEL_SET_CHILDREN` (UPDATE pipeline) — pushes per-voxel-set
   global-position updates into the pool, also registers ownership lookups.
-  Voxel sets whose `C_PositionGlobal3D` is unchanged from the prior tick
-  early-out of `updateAsChild` and contribute nothing to the per-pool
-  GPU position queue (`C_VoxelPool::queuePositionRange`) — a static
-  voxel scene pays zero CPU→GPU position bytes/frame.
+  Translate-only path: voxels move with the entity's `C_PositionGlobal3D`
+  but no rotation/scale composition. Voxel sets whose `C_PositionGlobal3D`
+  is unchanged from the prior tick early-out of `updateAsChild` and
+  contribute nothing to the per-pool GPU position queue
+  (`C_VoxelPool::queuePositionRange`) — a static voxel scene pays zero
+  CPU→GPU position bytes/frame.
+- `REBUILD_GRID_VOXELS` (UPDATE pipeline, T-294) — Epic C C6. Runs AFTER
+  `UPDATE_VOXEL_SET_CHILDREN`. Re-rasterizes GRID-mode entities (entities
+  carrying `C_RotationMode::GRID`, the default) into rotated world cells
+  whenever their `C_WorldTransform` changes. Cache lives on
+  `C_VoxelSetNew::lastRebuild*_`; ticks are O(1) when the transform is
+  unchanged. DETACHED-mode entities are skipped — they rotate through
+  the per-canvas TRS composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`) and
+  never touch the world voxel pool's globals. Cell aliasing
+  (multiple authored voxels collapsing into one world cell after
+  rotation) is accepted by design; render-order is deterministic given
+  stable entity ids. Math helper:
+  `IRPrefab::GridRotation::worldCellForGridVoxel` in `grid_rotation.hpp`
+  — call directly from creations that need the same mapping outside
+  the pipeline. Creations that spawn entities with `C_RotationMode::GRID`
+  must register `REBUILD_GRID_VOXELS` in their UPDATE pipeline after
+  `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces silent no-ops.
 - `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**
