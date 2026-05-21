@@ -17,6 +17,7 @@
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
@@ -188,7 +189,10 @@ void initSystems() {
             IRPrefab::Widget::setLabelText(IRWidgetsDemo::g_statusLabel, buf);
         }
     );
-    IRSystem::registerPipeline(IRTime::Events::UPDATE, {pollId});
+    IRSystem::registerPipeline(
+        IRTime::Events::UPDATE,
+        {pollId, IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()}
+    );
 
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),

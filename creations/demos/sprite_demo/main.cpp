@@ -15,6 +15,7 @@
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_sprite_animation_advance.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 
 // COMMANDS
 #include <irreden/common/command_suite_camera.hpp>
@@ -55,7 +56,8 @@ int main(int argc, char **argv) {
 void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::SPRITE_ANIMATION_ADVANCE>()}
+        {IRSystem::createSystem<IRSystem::SPRITE_ANIMATION_ADVANCE>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()}
     );
 
     IRSystem::registerPipeline(
