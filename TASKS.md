@@ -246,17 +246,6 @@ Avoid:
   - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
-- [~] **render: extract mask-grid pixel packing into renderer helper** — move loft drawLoftGrid pixel-pack + subImage2D body into IRRender::drawMaskGridOntoCanvas; add IRRender::hitTestGridCell; editor calls helper instead of composing texture upload directly
-  - **ID:** T-304
-  - **Area:** engine/render, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-304-render-mask-grid-helper
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `grep -rn 'subImage2D' creations/editors/voxel_editor/` returns zero hits; (2) loft tool pixel-identical before/after (exercise XZ and YZ grids in IRVoxelEditor); (3) new header engine/render/include/irreden/render/mask_grid_painter.hpp exported via ir_render.hpp; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1012
-  - **Notes:** Renderer-leak: non-render modules must not compose texture uploads directly. Refactoring quadruple-nested loop at voxel_editor/main.cpp drawLoftGrid ~L599-659 and mouse hit-test at ~L725-800. Pattern: joins IRRender::fillRect / drawBorder / renderText family in trixel_rect.hpp and trixel_text.hpp. Compute-shader follow-up deferred (motivate with profiling only).
-  - **Links:**
-
 - [~] **editor: IRMath::evaluateSDFGrid batch helper + refactor applyFillSDF** — add evaluateSDFGrid to engine/math; remove SDF evaluation math from voxel_editor applyFillSDF, leaving only the placement loop
   - **ID:** T-305
   - **Area:** engine/math, engine/prefabs/irreden/editor
@@ -349,6 +338,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
 - [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
 - [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
 - [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
@@ -368,4 +358,3 @@ Avoid:
 - [x] **T-283** — fleet: filter fleet:epic in project_queue_manager_ingest · Owner: claude/T-283-epic-filter-projector · PR: https://github.com/jakildev/IrredenEngine/pull/980
 - [x] **T-282** — fleet: invalidate seen-hash on ingest lock-bail · Owner: claude/T-282-ingest-lock-bail-hash-invalidate · PR: https://github.com/jakildev/IrredenEngine/pull/978
 - [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
-- [x] **T-278** — editor AABB box-fill + line-fill + face-fill (A1) · Owner: claude/T-278-fill-tools · PR: https://github.com/jakildev/IrredenEngine/pull/976
