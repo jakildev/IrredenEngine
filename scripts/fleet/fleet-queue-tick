@@ -113,6 +113,20 @@ if [[ -d "$GAME/.git" ]]; then
     fi
 fi
 
+# --- Stale fleet:wip PR + epic auto-close sweep ---
+#
+# Catches two leaks the rest of the pipeline doesn't reap:
+#   (1) fleet:wip PRs that haven't been pushed to in 7+ days — gets a
+#       one-shot fleet:stalled label + comment so the human can decide
+#       whether to merge, close, or kick the worker.
+#   (2) fleet:epic issues whose checklist children (`- [ ] #N` form) are
+#       all closed — the label catalog already promises auto-close,
+#       this delivers it.
+#
+# Pure mechanical, idempotent. Runs every tick (not gated on TASKS.md
+# changes) — both conditions evolve independently of TASKS.md churn.
+fleet-stale-sweep >> "$LOG_FILE" 2>&1 || true
+
 if [[ $changed -eq 0 ]]; then
     log "TASKS.md unchanged — no commit"
 else

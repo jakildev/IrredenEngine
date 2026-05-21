@@ -98,6 +98,7 @@ LABELS=(
     "fleet:needs-plan|fbca04|Needs an architect plan before a worker can pick it up"
     "fleet:in-progress|c5def5|A fleet worker has claimed this task"
     "fleet:wip|c5def5|Fleet worker is mid-task on the corresponding PR"
+    "fleet:stalled|fbca04|fleet-stale-sweep flagged a fleet:wip PR that's been idle 7+ days; human decides to merge / close / re-arm"
     "fleet:changes-made|c5def5|Worker addressed feedback; awaiting re-review"
     "fleet:approved|0e8a16|Reviewer agent approved; safe for human merge"
     "fleet:has-nits|fbca04|Approved but author should clean up nits before merge"
