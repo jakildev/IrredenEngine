@@ -35,12 +35,19 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             lastCanvas_ = canvas;
         }
         C_VoxelPool &pool = *lastPool_;
-        voxelSet.updateAsChild(
+        // updateAsChild returns the number of positions written, or 0 if the
+        // parent is unchanged (static voxel scene pays zero bytes/frame on
+        // the GPU side). Using the exact count avoids queuing stale tail
+        // slots if the pool-bounds guard fires (safeCount < numVoxels_).
+        const int writtenCount = voxelSet.updateAsChild(
             position.pos_,
             pool.getPositionGlobals(),
             pool.getPositions(),
             pool.getPositionOffsets()
         );
+        if (writtenCount > 0) {
+            pool.queuePositionRange(voxelSet.voxelStartIdx_, static_cast<size_t>(writtenCount));
+        }
         if (voxelSet.ownerEntityId_ == IREntity::kNullEntity && entityId != IREntity::kNullEntity &&
             voxelSet.numVoxels_ > 0) {
             voxelSet.ownerEntityId_ = entityId;
