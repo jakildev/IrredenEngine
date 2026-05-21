@@ -29,8 +29,9 @@ in `update/`.
   voxel pool with grid-quantized rotation; DETACHED lives in a
   per-entity `C_EntityCanvas` so rotation runs through the per-canvas
   TRS composite (C3) without re-rasterizing voxels. Attached by
-  `IRPrefab::Prefab::spawnPrefab` (default GRID, or `rotation_mode =
-  'DETACHED'` in the prefab table). Mutate at runtime with
+  `IRPrefab::Prefab::spawnPrefab` (default GRID, or
+  `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab
+  table — the enum value, not the string). Mutate at runtime with
   `IRPrefab::RotationMode::setMode(entity, newMode, name, size)` —
   allocates or destroys the canvas as needed. Non-prefab entities
   without the component are implicitly GRID.

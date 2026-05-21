@@ -72,3 +72,10 @@ In any system `tick` function:
 - **Hand-written `IRTime` / `SystemName` string keys** in new C++ binding code
   (`t["NAME"] = ...`). Use `IR_BIND_TIME(NAME)` / `IR_BIND_SYS(NAME)` so the
   key is derived from the enum and stays in sync.
+
+- **C++ binding code checking a Lua string name against a fixed value set**
+  (`if (s == "GRID") ... else if (s == "DETACHED")`). Expose the C++ enum as
+  a Lua integer table (`IRComponent.RotationMode.{GRID,DETACHED}`) and accept
+  the integer at the binding boundary. See
+  [`cpp-lua-enums.md`](cpp-lua-enums.md) for the full pattern and
+  allowlist.

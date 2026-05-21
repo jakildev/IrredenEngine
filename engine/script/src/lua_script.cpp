@@ -4,6 +4,7 @@
 
 #include <irreden/ir_system.hpp>
 
+#include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
@@ -445,6 +446,19 @@ void LuaScript::bindLuaDrivenEcs() {
     };
 
     m_lua["IRComponent"]["register"] = registerComponent;
+
+    // Enum-typed schema values get a Lua table mirror so prefab files and
+    // creation scripts spell them as `IRComponent.X.Y` rather than the
+    // string "Y" — keeps Lua-side authoring in lockstep with the C++ enum
+    // and avoids string-name lookups in the C++ binding code (see
+    // .claude/rules/cpp-lua-enums.md).
+    sol::table rotationModeTable = m_lua.create_table();
+#define IR_BIND_ROTMODE(name)                                                                      \
+    rotationModeTable[#name] = static_cast<lua_Integer>(IRComponents::RotationMode::name)
+    IR_BIND_ROTMODE(GRID);
+    IR_BIND_ROTMODE(DETACHED);
+#undef IR_BIND_ROTMODE
+    m_lua["IRComponent"]["RotationMode"] = rotationModeTable;
 
     m_lua.new_usertype<IRScript::LuaEntity>(
         "LuaEntity",

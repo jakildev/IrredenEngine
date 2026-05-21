@@ -146,20 +146,39 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // Default rotation mode is GRID (today's behavior). DETACHED allocates
     // a per-entity canvas via `IRPrefab::EntityCanvas::create` so the C3
     // composite pass can thread `C_LocalTransform` through the per-canvas
-    // TRS without re-rasterizing voxels per frame.
+    // TRS without re-rasterizing voxels per frame. The schema accepts the
+    // `IRComponent.RotationMode.{GRID,DETACHED}` enum value (an integer),
+    // not a string — string-name lookups are deliberately avoided so the
+    // Lua surface stays in lockstep with the C++ enum.
     IRComponents::RotationMode rotationMode = IRComponents::RotationMode::GRID;
-    if (sol::optional<std::string> modeOpt = prefab["rotation_mode"]; modeOpt) {
-        if (*modeOpt == "GRID") {
-            rotationMode = IRComponents::RotationMode::GRID;
-        } else if (*modeOpt == "DETACHED") {
-            rotationMode = IRComponents::RotationMode::DETACHED;
-        } else {
+    sol::object modeObj = prefab["rotation_mode"];
+    if (modeObj.valid() && modeObj.get_type() != sol::type::lua_nil) {
+        if (modeObj.get_type() == sol::type::string) {
             return makeError(
                 idStr,
                 path,
-                "rotation_mode='" + *modeOpt + "' not recognized (expected 'GRID' or 'DETACHED')"
+                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED} "
+                "value; string names are not accepted"
             );
         }
+        if (!modeObj.is<lua_Integer>()) {
+            return makeError(
+                idStr,
+                path,
+                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED} value"
+            );
+        }
+        const lua_Integer raw = modeObj.as<lua_Integer>();
+        if (raw < static_cast<lua_Integer>(IRComponents::RotationMode::GRID) ||
+            raw > static_cast<lua_Integer>(IRComponents::RotationMode::DETACHED)) {
+            return makeError(
+                idStr,
+                path,
+                "rotation_mode=" + std::to_string(raw) +
+                    " not recognized (expected IRComponent.RotationMode.GRID or .DETACHED)"
+            );
+        }
+        rotationMode = static_cast<IRComponents::RotationMode>(raw);
     }
 
     bool unbounded = false;
@@ -168,7 +187,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     }
     if (unbounded && rotationMode != IRComponents::RotationMode::DETACHED) {
         IRE_LOG_WARN(
-            "Prefab.spawn('{}'): unbounded=true has no effect with rotation_mode='GRID'.",
+            "Prefab.spawn('{}'): unbounded=true has no effect with "
+            "rotation_mode=IRComponent.RotationMode.GRID.",
             idStr.c_str()
         );
     }
@@ -181,7 +201,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             return makeError(
                 idStr,
                 path,
-                "rotation_mode='DETACHED' requires canvas_size = { x, y }"
+                "rotation_mode=IRComponent.RotationMode.DETACHED requires canvas_size = { x, y }"
             );
         }
         sol::optional<int> wOpt = (*sizeOpt)["x"];
@@ -264,8 +284,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             // `IRPrefab::RotationMode::setMode(entity, DETACHED, ...)` call
             // — invoked once a RenderManager exists — picks the canvas up.
             IRE_LOG_WARN(
-                "Prefab.spawn('{}'): rotation_mode='DETACHED' requested without "
-                "an active RenderManager; skipping canvas allocation.",
+                "Prefab.spawn('{}'): rotation_mode=IRComponent.RotationMode.DETACHED "
+                "requested without an active RenderManager; skipping canvas allocation.",
                 idStr.c_str()
             );
         }
@@ -382,8 +402,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 return makeError(
                     idStr,
                     path,
-                    std::string{"components['"} + *nameOpt +
-                        "'] must be a table of field overrides"
+                    std::string{"components['"} + *nameOpt + "'] must be a table of field overrides"
                 );
             }
             const ComponentFactory *factory = findComponentFactory(*nameOpt);

@@ -703,9 +703,11 @@ return {
     prefab_version = 1,                  -- REQUIRED, must equal 1
     voxel_ref      = "creations/...vxs", -- OPTIONAL, loaded via loadVoxelSet
     rig_ref        = "creations/...rig", -- OPTIONAL, loaded via loadRig
-    rotation_mode  = "GRID" | "DETACHED",-- OPTIONAL, default "GRID"
-    unbounded      = true | false,        -- OPTIONAL, default false
-    canvas_size    = { x = 64, y = 64 }, -- REQUIRED when rotation_mode = "DETACHED"
+    rotation_mode  = IRComponent.RotationMode.GRID
+                  | IRComponent.RotationMode.DETACHED,
+                                         -- OPTIONAL, default GRID
+    unbounded      = true | false,       -- OPTIONAL, default false
+    canvas_size    = { x = 64, y = 64 }, -- REQUIRED when DETACHED
     setup          = function(entity)    -- OPTIONAL, user-provided
         IREntity.setComponent(entity, ...)
     end,
@@ -720,9 +722,21 @@ threads the entity's `C_LocalTransform` through the per-canvas TRS
 without per-voxel rebake. `canvas_size = { x, y }` is required for
 DETACHED — sized in trixels — and is ignored for GRID. `unbounded =
 true` sets `C_LocalTransform::unbounded_` for sub-trixel positioning;
-only meaningful with DETACHED. Unknown `rotation_mode` strings,
-missing `canvas_size`, or non-positive width/height surface a schema
-error and the spawn fails cleanly.
+only meaningful with DETACHED.
+
+**The schema accepts the `IRComponent.RotationMode.{GRID,DETACHED}`
+enum value (an integer), not a string.** String-name lookups —
+`rotation_mode = 'GRID'` — surface a schema error with the
+`IRComponent.RotationMode.X` spelling in the diagnostic. This keeps
+the Lua-side authoring surface in lockstep with the C++ enum, the
+same way `IRModifier.Transform.X`, `IRTime.X`, `IRSystem.SystemName.X`,
+`IRCommand.CommandName.X` already work. See
+[`.claude/rules/cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)
+for the general rule.
+
+Out-of-range integers, missing `canvas_size`, or non-positive
+width/height also surface a schema error and the spawn fails
+cleanly.
 
 C++ surface lives at `engine/script/include/irreden/script/prefab_api.hpp`
 in `namespace IRPrefab::Prefab`:
