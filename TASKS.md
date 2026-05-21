@@ -280,11 +280,11 @@ Avoid:
   - **Notes:** Renderer-leak: non-render modules must not compose texture uploads directly. Refactoring quadruple-nested loop at voxel_editor/main.cpp drawLoftGrid ~L599-659 and mouse hit-test at ~L725-800. Pattern: joins IRRender::fillRect / drawBorder / renderText family in trixel_rect.hpp and trixel_text.hpp. Compute-shader follow-up deferred (motivate with profiling only).
   - **Links:**
 
-- [ ] **editor: IRMath::evaluateSDFGrid batch helper + refactor applyFillSDF** — add evaluateSDFGrid to engine/math; remove SDF evaluation math from voxel_editor applyFillSDF, leaving only the placement loop
+- [~] **editor: IRMath::evaluateSDFGrid batch helper + refactor applyFillSDF** — add evaluateSDFGrid to engine/math; remove SDF evaluation math from voxel_editor applyFillSDF, leaving only the placement loop
   - **ID:** T-305
   - **Area:** engine/math, engine/prefabs/irreden/editor
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) applyFillSDF contains no math beyond placement decision; (2) SDF bake produces identical voxels before/after; (3) IRMath::evaluateSDFGrid has unit test covering at least sphere and box primitives; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1013
