@@ -94,9 +94,11 @@
 #include "scene_io.hpp"
 
 // Loft-tool mask rendering (trixel_rect fillRect, trixel_text renderText,
+// mask_grid_painter drawMaskGridOntoCanvas + hitTestGridCell,
 // layout mouse-in-GUI-trixels helper).
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/trixel_text.hpp>
+#include <irreden/render/mask_grid_painter.hpp>
 #include <irreden/render/layout.hpp>
 
 using namespace IRComponents;
@@ -641,67 +643,10 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     ghost.params_ = vec4(halfExt.x, halfExt.y, halfExt.z, 0.0f);
 }
 
-// Build and upload a loft-mask grid to the GUI canvas in two subImage2D
-// calls (one per texture channel). sizeH cells on the horizontal axis,
-// sizeV cells on the vertical axis; z=0 maps to the bottom of the panel
-// so the display orientation matches the 3D view. colorBuf / distBuf are
-// reused across calls to avoid per-frame allocation.
-void drawLoftGrid(
-    C_TriangleCanvasTextures &canvas,
-    const std::vector<bool> &mask,
-    ivec2 gridPos,
-    int sizeH,
-    int sizeV,
-    std::vector<Color> &colorBuf,
-    std::vector<int> &distBuf
-) {
-    const int gw = sizeH * kLoftCellPx;
-    const int gh = sizeV * kLoftCellPx;
-    if (gridPos.x < 0 || gridPos.y < 0 || gridPos.x + gw > canvas.size_.x ||
-        gridPos.y + gh > canvas.size_.y)
-        return;
-
-    const std::size_t pixels = static_cast<std::size_t>(gw * gh);
-    colorBuf.resize(pixels);
-    distBuf.resize(pixels);
-
-    static constexpr Color kOn{180, 220, 180, 230};
-    static constexpr Color kOff{35, 38, 48, 220};
-
-    for (int vz = 0; vz < sizeV; ++vz) {
-        const int displayRow = (sizeV - 1 - vz) * kLoftCellPx;
-        for (int hx = 0; hx < sizeH; ++hx) {
-            const Color c = mask[static_cast<std::size_t>(hx + vz * sizeH)] ? kOn : kOff;
-            for (int py = 0; py < kLoftCellPx; ++py) {
-                for (int px = 0; px < kLoftCellPx; ++px) {
-                    const std::size_t idx =
-                        static_cast<std::size_t>((displayRow + py) * gw + hx * kLoftCellPx + px);
-                    colorBuf[idx] = c;
-                    distBuf[idx] = IRRender::kWidgetBackgroundDistance;
-                }
-            }
-        }
-    }
-
-    canvas.textureTriangleColors_.second->subImage2D(
-        gridPos.x,
-        gridPos.y,
-        gw,
-        gh,
-        IRRender::PixelDataFormat::RGBA,
-        IRRender::PixelDataType::UNSIGNED_BYTE,
-        colorBuf.data()
-    );
-    canvas.textureTriangleDistances_.second->subImage2D(
-        gridPos.x,
-        gridPos.y,
-        gw,
-        gh,
-        IRRender::PixelDataFormat::RED_INTEGER,
-        IRRender::PixelDataType::INT32,
-        distBuf.data()
-    );
-}
+// Loft mask cell colors. Painted onto the GUI canvas by
+// IRRender::drawMaskGridOntoCanvas in the EditorLoftRender system.
+constexpr Color kLoftCellOn{180, 220, 180, 230};
+constexpr Color kLoftCellOff{35, 38, 48, 220};
 
 // Place voxels in the editable set wherever both loft masks agree (CSG
 // intersection). Works entirely in local voxel indices: mask[x + z*sizeX]
@@ -879,12 +824,12 @@ void initSystems() {
 
     // Loft-mask render: draws the XZ and YZ mask grids onto the GUI canvas.
     // Runs in the RENDER pipeline after TEXT_TO_TRIXEL (canvas clear) so
-    // the grids paint over the cleared canvas. colorBuf_ / distBuf_ are
-    // kept on params and grown to the largest grid size, never shrunk.
+    // the grids paint over the cleared canvas. Pixel-packing + texture
+    // upload live in IRRender::drawMaskGridOntoCanvas (mask_grid_painter.hpp);
+    // scratch_ is grown to the largest grid size and reused across frames.
     struct LoftRenderParams {
         C_TriangleCanvasTextures *canvas_ = nullptr;
-        std::vector<Color> colorBuf_;
-        std::vector<int> distBuf_;
+        IRRender::MaskGridPaintScratch scratch_;
     };
     auto loftRenderData = std::make_unique<LoftRenderParams>();
     auto *lrp = loftRenderData.get();
@@ -902,23 +847,27 @@ void initSystems() {
             const int sx = IRVoxelEditor::kEditableSceneSize.x;
             const int sy = IRVoxelEditor::kEditableSceneSize.y;
             const int sz = IRVoxelEditor::kEditableSceneSize.z;
-            IRVoxelEditor::drawLoftGrid(
+            IRRender::drawMaskGridOntoCanvas(
                 *lrp->canvas_,
                 loft.maskXZ_,
+                ivec2(sx, sz),
                 IRVoxelEditor::kLoftGridXZPos,
-                sx,
-                sz,
-                lrp->colorBuf_,
-                lrp->distBuf_
+                IRVoxelEditor::kLoftCellPx,
+                IRVoxelEditor::kLoftCellOn,
+                IRVoxelEditor::kLoftCellOff,
+                IRRender::kWidgetBackgroundDistance,
+                lrp->scratch_
             );
-            IRVoxelEditor::drawLoftGrid(
+            IRRender::drawMaskGridOntoCanvas(
                 *lrp->canvas_,
                 loft.maskYZ_,
+                ivec2(sy, sz),
                 IRVoxelEditor::kLoftGridYZPos,
-                sy,
-                sz,
-                lrp->colorBuf_,
-                lrp->distBuf_
+                IRVoxelEditor::kLoftCellPx,
+                IRVoxelEditor::kLoftCellOn,
+                IRVoxelEditor::kLoftCellOff,
+                IRRender::kWidgetBackgroundDistance,
+                lrp->scratch_
             );
             const int gridH = sz * IRVoxelEditor::kLoftCellPx;
             IRRender::renderText(
@@ -978,18 +927,18 @@ void initSystems() {
             if (!lip->painting_ && leftHeld)
                 return;
 
-            const int mx = static_cast<int>(lip->mouseGuiTrixel_.x);
-            const int my = static_cast<int>(lip->mouseGuiTrixel_.y);
+            const ivec2 mouseGui(
+                static_cast<int>(lip->mouseGuiTrixel_.x),
+                static_cast<int>(lip->mouseGuiTrixel_.y)
+            );
             const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
             const int sx = IRVoxelEditor::kEditableSceneSize.x;
             const int sy = IRVoxelEditor::kEditableSceneSize.y;
             const int sz = IRVoxelEditor::kEditableSceneSize.z;
             const int cell = IRVoxelEditor::kLoftCellPx;
 
-            auto paintCell = [&](std::vector<bool> &mask, int hIdx, int vIdx, int sH, int sV) {
-                if (hIdx < 0 || hIdx >= sH || vIdx < 0 || vIdx >= sV)
-                    return;
-                const std::size_t flat = static_cast<std::size_t>(hIdx + vIdx * sH);
+            auto paintCell = [&](std::vector<bool> &mask, ivec2 cellHV, int sH) {
+                const std::size_t flat = static_cast<std::size_t>(cellHV.x + cellHV.y * sH);
                 if (leftPressed) {
                     lip->paintVal_ = !mask[flat];
                     lip->painting_ = true;
@@ -998,35 +947,28 @@ void initSystems() {
                     return;
                 mask[flat] = lip->paintVal_;
                 if (shiftHeld) {
-                    const int mirror = sH - 1 - hIdx;
-                    if (mirror != hIdx)
-                        mask[static_cast<std::size_t>(mirror + vIdx * sH)] = lip->paintVal_;
+                    const int mirror = sH - 1 - cellHV.x;
+                    if (mirror != cellHV.x)
+                        mask[static_cast<std::size_t>(mirror + cellHV.y * sH)] = lip->paintVal_;
                 }
             };
 
-            // XZ grid
-            const ivec2 &xzP = IRVoxelEditor::kLoftGridXZPos;
-            if (mx >= xzP.x && mx < xzP.x + sx * cell && my >= xzP.y && my < xzP.y + sz * cell) {
-                paintCell(
-                    IRVoxelEditor::g_loftTool.maskXZ_,
-                    (mx - xzP.x) / cell,
-                    sz - 1 - (my - xzP.y) / cell,
-                    sx,
-                    sz
-                );
+            if (auto hit = IRRender::hitTestGridCell(
+                    mouseGui,
+                    IRVoxelEditor::kLoftGridXZPos,
+                    cell,
+                    ivec2(sx, sz)
+                )) {
+                paintCell(IRVoxelEditor::g_loftTool.maskXZ_, *hit, sx);
                 return;
             }
-
-            // YZ grid
-            const ivec2 &yzP = IRVoxelEditor::kLoftGridYZPos;
-            if (mx >= yzP.x && mx < yzP.x + sy * cell && my >= yzP.y && my < yzP.y + sz * cell) {
-                paintCell(
-                    IRVoxelEditor::g_loftTool.maskYZ_,
-                    (mx - yzP.x) / cell,
-                    sz - 1 - (my - yzP.y) / cell,
-                    sy,
-                    sz
-                );
+            if (auto hit = IRRender::hitTestGridCell(
+                    mouseGui,
+                    IRVoxelEditor::kLoftGridYZPos,
+                    cell,
+                    ivec2(sy, sz)
+                )) {
+                paintCell(IRVoxelEditor::g_loftTool.maskYZ_, *hit, sy);
                 return;
             }
 
