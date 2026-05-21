@@ -722,7 +722,7 @@ void applyLoft(Color color) {
         g_loftTool.maskXZ_,
         {sx, sz},
         g_loftTool.maskYZ_,
-        {sy, sz},
+        sy,
         [&](int x, int y, int z) {
             const int flat = IRMath::index3DtoIndex1D({x, y, z}, set.size_);
             if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
