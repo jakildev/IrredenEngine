@@ -7,13 +7,17 @@ for single voxels and particles.
 ## Key components
 
 - `C_Voxel` — per-voxel record (12 B std430): RGBA color + `material_id`,
-  `flags` (bit-packed `VoxelFlags::kAoContrib | kEmissive | kInteractive`),
-  `bone_id`, `layer_id` (editor layer membership; 0 = default layer).
-  Default ctor sets `flags = kAoContrib` and the rest zero so v1 scenes
-  render unchanged. Usually handled as spans inside a `C_VoxelPool`.
-  Layout matches the GPU SSBO at slot 6 — see
-  `components/component_voxel.hpp` and the per-pipeline shaders for the
-  struct mirror.
+  `flags` (bit-packed: bit 0 `kAoContrib`, bit 1 `kEmissive`, bits 2..7
+  face-occlusion bits `kFaceOccluded{Neg,Pos}{X,Y,Z}`), `bone_id`,
+  `layer_id` (editor layer membership; 0 = default layer). Default ctor
+  sets `flags = kAoContrib` and the rest zero so v1 scenes render
+  unchanged. Face-occlusion bits are maintained by
+  `IRPrefab::Voxel::recomputeFaceOccupancy` (`voxel/face_occupancy.hpp`),
+  invoked from set-level `C_VoxelSetNew` mutators (`reshape`, `fillPlane`,
+  `activate/deactivateAll`, dense-data ctor). Voxels usually handled as
+  spans inside a `C_VoxelPool`. Layout matches the GPU SSBO at slot 6 —
+  see `components/component_voxel.hpp` and the per-pipeline shaders for
+  the struct mirror.
 - `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
   tracks per-chunk bounds for visibility culling, and owns a per-slot
   active-mask (`m_activeMask`) that mirrors `m_voxelColors[i].color_.alpha_ != 0`.

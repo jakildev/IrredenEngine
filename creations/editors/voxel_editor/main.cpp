@@ -315,6 +315,7 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
             v.deactivate();
     }
     set.syncActiveMask();
+    IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
 }
 
 // Apply a single placement / erasure edit to the voxel set, appending
@@ -362,6 +363,10 @@ void commitStroke() {
         g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
         g_editor.undoRecords_.pop_front();
     }
+    if (g_sceneVoxelSetEntity != IREntity::kNullEntity) {
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+        IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
+    }
 }
 
 void undoOne() {
@@ -392,7 +397,9 @@ void undoOne() {
         }
     }
     for (auto id : touchedSets) {
-        IREntity::getComponent<C_VoxelSetNew>(id).syncActiveMask();
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
+        set.syncActiveMask();
+        IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
     }
 }
 
@@ -1392,6 +1399,7 @@ void initSystems() {
                             v.deactivate();
                     }
                     set.syncActiveMask();
+                    IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
                     g_layerManager.deleteLayer(delId);
                 }
             }

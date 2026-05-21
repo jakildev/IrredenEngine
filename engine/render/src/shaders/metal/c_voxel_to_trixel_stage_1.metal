@@ -43,6 +43,12 @@ struct Voxel {
     uint reserved;
 };
 
+// Face-occlusion bit indices — mirror VoxelFlags::kFaceOccluded{Neg,Pos}{X,Y,Z}
+// in engine/prefabs/irreden/voxel/components/component_voxel.hpp.
+constant uint kVoxelFlagFaceNegX = 1u << 2;
+constant uint kVoxelFlagFaceNegY = 1u << 4;
+constant uint kVoxelFlagFaceNegZ = 1u << 6;
+
 kernel void c_voxel_to_trixel_stage_1(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
@@ -65,6 +71,18 @@ kernel void c_voxel_to_trixel_stage_1(
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     const int2 canvasSize = frameData.canvasSizePixels;
+
+    // Face-aware skip: see c_voxel_to_trixel_stage_1.glsl for the matching
+    // GLSL block. Only the iso-visible world-axis -X/-Y/-Z faces are
+    // checked at cardinalIndex==0; non-zero cardinal rotations fall back
+    // to emitting all faces until a follow-up wires the rotation-aware
+    // lookup.
+    if (cardinalIndex == 0) {
+        const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+        if (face == kXFace && (flagsByte & kVoxelFlagFaceNegX) != 0u) return;
+        if (face == kYFace && (flagsByte & kVoxelFlagFaceNegY) != 0u) return;
+        if (face == kZFace && (flagsByte & kVoxelFlagFaceNegZ) != 0u) return;
+    }
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
