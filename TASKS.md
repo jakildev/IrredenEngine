@@ -268,17 +268,6 @@ Avoid:
   - **Notes:** SKILL.md rewrite ~644 lines today → ~850 estimated. New section "1b. Dispatch reuse-detection subagents (async)": grep-function-names (Haiku), grep-utility-candidates (Haiku), scan-loop-patterns (Haiku), scan-render-leak (Sonnet), scan-call-sequence-dup (Sonnet). 30s timeout; missing results skipped. Section 6 trimmed from ~170 prose to ~50 lines consuming subagent results. 3-line touch to commit-and-push/SKILL.md. Extended example report block. Companion A1–A4 = T-303, T-304, T-305, T-306.
   - **Links:**
 
-- [~] **demos: named config preset files to replace CLI-flag sprawl (IRPerfGrid + friends)** — add --config-preset <path> engine-level flag; migrate IRPerfGrid first; update perf_grid_matrix.sh to sweep presets; document preset format
-  - **ID:** T-308
-  - **Area:** creations/demos, tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-308-config-preset-flag
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRPerfGrid --config-preset configs/perf/zoom8_full_sub4.lua loads and overrides demo defaults correctly; (2) perf_grid_matrix.sh sweeps config files instead of flag tuples; (3) --subdivision-mode / --base-subdivisions removed or remain as overrides composing on top of preset; (4) preset format documented in docs/perf/README.md and demo CLAUDE.md; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1017
-  - **Notes:** Engine-level flag in IREngine::init or shared parseStandardArgv helper. Each preset is a Lua table (or .irconf) overriding world-config / demo-config fields applied after demo's applyConfigTable(). PR #1016 added --subdivision-mode / --base-subdivisions that this supersedes. Follow-up: migrate other affected demos one at a time.
-  - **Links:**
-
 - [~] **render: split visible vs shadow-feeder voxel compaction to fix sub² cull bloat at high zoom** — classify voxels into visible and feeder compaction lists; depth-only fast path for feeder voxels (no sub² multiplier, no color/entityID); new feeder-to-distances compute shader; design doc required first
   - **ID:** T-309
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl
@@ -338,6 +327,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
 - [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
 - [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
 - [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
@@ -357,4 +347,3 @@ Avoid:
 - [x] **T-280** — world streaming design doc (E0) · Owner: claude/T-280-world-streaming-design · PR: https://github.com/jakildev/IrredenEngine/pull/981
 - [x] **T-283** — fleet: filter fleet:epic in project_queue_manager_ingest · Owner: claude/T-283-epic-filter-projector · PR: https://github.com/jakildev/IrredenEngine/pull/980
 - [x] **T-282** — fleet: invalidate seen-hash on ingest lock-bail · Owner: claude/T-282-ingest-lock-bail-hash-invalidate · PR: https://github.com/jakildev/IrredenEngine/pull/978
-- [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
