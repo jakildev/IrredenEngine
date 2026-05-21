@@ -568,8 +568,9 @@ void applyFillFace(
 
 // CPU SDF voxel bake — fill every voxel in `set` whose SDF value for
 // `shapeType`/`sdfParams` is ≤ kSurfaceThreshold. The shape is centered on
-// the voxel set; each voxel sample point is offset by 0.5 so integer indices
-// map to voxel centers. Always produces DENSE output (no SHAPES chunk).
+// the voxel set; the SDF math is batched into `IRMath::SDF::evaluateGrid`,
+// so this function only owns the placement decision. Always produces
+// DENSE output (no SHAPES chunk).
 void applyFillSDF(
     IREntity::EntityId entity,
     C_VoxelSetNew &set,
@@ -578,15 +579,17 @@ void applyFillSDF(
     bool place,
     Color color
 ) {
-    const vec3 center = vec3(set.size_) * 0.5f;
+    const std::size_t total = static_cast<std::size_t>(set.size_.x) *
+                              static_cast<std::size_t>(set.size_.y) *
+                              static_cast<std::size_t>(set.size_.z);
+    std::vector<float> distances(total);
+    IRMath::SDF::evaluateGrid(set.size_, shapeType, sdfParams, distances);
     IRMath::iterateAABB({0, 0, 0}, set.size_ - ivec3(1), [&](int x, int y, int z) {
-        const vec3 sdfPos = vec3(x, y, z) - center + vec3(0.5f);
-        const float d = IRMath::SDF::evaluate(sdfPos, shapeType, sdfParams);
-        if (d > IRMath::SDF::kSurfaceThreshold)
-            return;
         const ivec3 local{x, y, z};
         const std::size_t flat =
             static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+        if (distances[flat] > IRMath::SDF::kSurfaceThreshold)
+            return;
         if (flat < set.voxels_.size())
             applyEdit(entity, set, local, flat, place, color);
     });
