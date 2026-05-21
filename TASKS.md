@@ -175,24 +175,12 @@ Avoid:
   - **Notes:** Stack S-A-author pos 3. Branch from A4 PR head. Mask widget reuses trixel-rect helpers. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic A → A2".
   - **Links:**
 
-- [~] **render: wire detached-canvas rotation through composite TRS (C3)** — thread C_LocalTransform through per-canvas TRS for DETACHED entities at system_entity_canvas_to_framebuffer.hpp:98-100; support both voxel and SDF entities
-  - **ID:** T-291
-  - **Area:** engine/render, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** claude/T-291-detached-canvas-rotation
-  - **Blocked by:** (none)
-  - **Stack:** T-279..T-295 S-C-core
-  - **Acceptance:** (1) A DETACHED rectangular entity spins smoothly around its local Z axis without voxel re-rasterization; (2) perf_grid shows constant per-frame cost regardless of rotation rate; (3) works for both voxel and SDF entities; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #954
-  - **Notes:** Stack S-C-core pos 3. Branch from C2 PR head. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C3".
-  - **Links:**
-
 - [~] **voxel: GRID-mode rotation re-rasterizes voxels on transform change (C6)** — SYSTEM_REBUILD_GRID_VOXELS runs on entities with changed C_LocalTransform; rotates authored voxels to world-grid cells; last-writer-wins on cell collisions (deterministic by entity ID)
   - **ID:** T-294
   - **Area:** engine/prefabs/irreden/voxel, engine/render
   - **Model:** opus
   - **Owner:** claude/T-294-grid-mode-rotation
-  - **Blocked by:** T-291
+  - **Blocked by:** (none)
   - **Acceptance:** (1) A cube rotated 45° around Z occupies a different set of world voxel cells than at 0°; (2) rotation snaps to grid (aliasing accepted by design — documented in the system header); (3) deterministic across frames; cell collisions documented; (4) interacts cleanly with Epic E E5 (entity chunk migration) for rotated entities crossing chunk boundaries; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #957
   - **Notes:** Off-stack fork from C3; does NOT block S-C-core's C3 → C7 chain. Branch from C3 PR head. Push-at-mutation; no dirty flag per cpp-ecs. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C6".
@@ -203,7 +191,7 @@ Avoid:
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
   - **Owner:** claude/T-295-detached-canvas-so3
-  - **Blocked by:** T-291
+  - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) A DETACHED rectangular entity pitching forward looks correct from any world Z-yaw; (2) deformation math reused (single source of truth across world and per-canvas); (3) composition order correct (local rotation applied first inside canvas, then world Z-yaw at composite); (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #958
@@ -262,7 +250,7 @@ Avoid:
   - **ID:** T-303
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-303-irmath-grid-helpers
   - **Blocked by:** (none)
   - **Acceptance:** (1) No behavior change in any tool; (2) `grep -rn 'for (int z' creations/editors/voxel_editor/main.cpp` drops to near zero (only irreducible loops remain); (3) `grep -rn '(axis + 1) % 3' engine/ creations/` returns no hits; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1011
@@ -273,7 +261,7 @@ Avoid:
   - **ID:** T-304
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-304-render-mask-grid-helper
   - **Blocked by:** (none)
   - **Acceptance:** (1) `grep -rn 'subImage2D' creations/editors/voxel_editor/` returns zero hits; (2) loft tool pixel-identical before/after (exercise XZ and YZ grids in IRVoxelEditor); (3) new header engine/render/include/irreden/render/mask_grid_painter.hpp exported via ir_render.hpp; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1012
@@ -284,7 +272,7 @@ Avoid:
   - **ID:** T-305
   - **Area:** engine/math, engine/prefabs/irreden/editor
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-305-sdf-grid-batch
   - **Blocked by:** (none)
   - **Acceptance:** (1) applyFillSDF contains no math beyond placement decision; (2) SDF bake produces identical voxels before/after; (3) IRMath::evaluateSDFGrid has unit test covering at least sphere and box primitives; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1013
@@ -295,7 +283,7 @@ Avoid:
   - **ID:** T-306
   - **Area:** engine/asset
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-306-scene-io-metadata-index
   - **Blocked by:** (none)
   - **Acceptance:** (1) Loading large scene (≥1k frames) no slower; (2) `grep -n 'kRecordBytes' engine/asset/src/voxel_set_format.cpp` returns exactly one declaration plus use sites; (3) all existing save/load round-trip tests pass unchanged; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1014
@@ -383,6 +371,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
 - [x] **T-298** — world: chunk disk persistence + lazy load (E6) · Owner: claude/T-298-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/998
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
 - [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
@@ -402,4 +391,3 @@ Avoid:
 - [x] **T-282** — fleet: invalidate seen-hash on ingest lock-bail · Owner: claude/T-282-ingest-lock-bail-hash-invalidate · PR: https://github.com/jakildev/IrredenEngine/pull/978
 - [x] **T-275** — render IRProfile ScopeTimer + per-stage CPU timing (B0) · Owner: claude/T-275-profile-scope-timer · PR: https://github.com/jakildev/IrredenEngine/pull/977
 - [x] **T-278** — editor AABB box-fill + line-fill + face-fill (A1) · Owner: claude/T-278-fill-tools · PR: https://github.com/jakildev/IrredenEngine/pull/976
-- [x] **T-215** — editor F-1.5 — save/load round-trip with metadata + JSON sidecar · Owner: claude/T-215-save-load-roundtrip · PR: https://github.com/jakildev/IrredenEngine/pull/933
