@@ -82,9 +82,7 @@ inline void gameLoop() {
 }
 
 // Scans argv for the first --config-preset <path> pair and returns the
-// path string, or an empty string if the flag is absent. Demos call this
-// once during their parseArgs phase so preset loading is centralised here
-// rather than repeated per-demo.
+// path string, or an empty string if the flag is absent.
 inline std::string parseConfigPresetArg(int argc, char **argv) {
     for (int i = 1; i + 1 < argc; ++i) {
         if (std::strcmp(argv[i], "--config-preset") == 0) {

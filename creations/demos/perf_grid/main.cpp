@@ -202,6 +202,7 @@ void applyPerfGridTable(sol::table perfGrid) {
 
     int baseSub = 0;
     readLuaValue(perfGrid, "base_subdivisions", baseSub);
+    // 0 treated as absent; valid subdivision counts are >= 1.
     if (baseSub > 0) {
         g_settings.baseSubdivisions_ = baseSub;
         g_settings.baseSubdivisionsExplicit_ = true;
