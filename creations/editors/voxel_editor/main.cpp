@@ -446,14 +446,12 @@ void applyFillAABB(
         IRMath::max(worldA.y, worldB.y),
         IRMath::max(worldA.z, worldB.z)
     };
-    for (int z = lo.z; z <= hi.z; ++z)
-        for (int y = lo.y; y <= hi.y; ++y)
-            for (int x = lo.x; x <= hi.x; ++x) {
-                ivec3 local{};
-                std::size_t flat = 0;
-                if (worldVoxelToLocal(set, gpos, {x, y, z}, local, flat))
-                    applyEdit(entity, set, local, flat, place, color);
-            }
+    IRMath::iterateAABB(lo, hi, [&](int x, int y, int z) {
+        ivec3 local{};
+        std::size_t flat = 0;
+        if (worldVoxelToLocal(set, gpos, {x, y, z}, local, flat))
+            applyEdit(entity, set, local, flat, place, color);
+    });
 }
 
 // Fill voxels along the dominant axis between worldA and worldB.
@@ -529,12 +527,12 @@ void applyFillFace(
     std::vector<bool> visited(static_cast<std::size_t>(totalCells), false);
 
     // 4-connected neighbor offsets in the plane perpendicular to fixedAxis
-    const ivec3 neighborSteps[4] = {
-        fixedAxis == 0 ? ivec3{0, 1, 0} : ivec3{1, 0, 0},
-        fixedAxis == 0 ? ivec3{0, -1, 0} : ivec3{-1, 0, 0},
-        fixedAxis == 2 ? ivec3{0, 1, 0} : ivec3{0, 0, 1},
-        fixedAxis == 2 ? ivec3{0, -1, 0} : ivec3{0, 0, -1},
-    };
+    auto [dim0, dim1] = IRMath::perpendicularAxes(fixedAxis);
+    ivec3 step0{0, 0, 0};
+    ivec3 step1{0, 0, 0};
+    step0[dim0] = 1;
+    step1[dim1] = 1;
+    const ivec3 neighborSteps[4] = {step0, -step0, step1, -step1};
 
     const int startFlat = IRMath::index3DtoIndex1D(startLocal, set.size_);
     if (startFlat < 0 || static_cast<std::size_t>(startFlat) >= set.voxels_.size())
@@ -579,21 +577,17 @@ void applyFillSDF(
     Color color
 ) {
     const vec3 center = vec3(set.size_) * 0.5f;
-    for (int z = 0; z < set.size_.z; ++z) {
-        for (int y = 0; y < set.size_.y; ++y) {
-            for (int x = 0; x < set.size_.x; ++x) {
-                const vec3 sdfPos = vec3(x, y, z) - center + vec3(0.5f);
-                const float d = IRMath::SDF::evaluate(sdfPos, shapeType, sdfParams);
-                if (d > IRMath::SDF::kSurfaceThreshold)
-                    continue;
-                const ivec3 local{x, y, z};
-                const std::size_t flat =
-                    static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
-                if (flat < set.voxels_.size())
-                    applyEdit(entity, set, local, flat, place, color);
-            }
-        }
-    }
+    IRMath::iterateAABB({0, 0, 0}, set.size_ - ivec3(1), [&](int x, int y, int z) {
+        const vec3 sdfPos = vec3(x, y, z) - center + vec3(0.5f);
+        const float d = IRMath::SDF::evaluate(sdfPos, shapeType, sdfParams);
+        if (d > IRMath::SDF::kSurfaceThreshold)
+            return;
+        const ivec3 local{x, y, z};
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+        if (flat < set.voxels_.size())
+            applyEdit(entity, set, local, flat, place, color);
+    });
 }
 
 // Update the ghost shape entity to visualize the fill region during drag.
@@ -724,27 +718,25 @@ void applyLoft(Color color) {
         return;
     if (static_cast<int>(g_loftTool.maskYZ_.size()) < sy * sz)
         return;
-    for (int z = 0; z < sz; ++z) {
-        for (int y = 0; y < sy; ++y) {
-            for (int x = 0; x < sx; ++x) {
-                if (!g_loftTool.maskXZ_[static_cast<std::size_t>(x + z * sx)])
-                    continue;
-                if (!g_loftTool.maskYZ_[static_cast<std::size_t>(y + z * sy)])
-                    continue;
-                const int flat = IRMath::index3DtoIndex1D({x, y, z}, set.size_);
-                if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
-                    continue;
-                applyEdit(
-                    g_editor.editableVoxelSet_,
-                    set,
-                    {x, y, z},
-                    static_cast<std::size_t>(flat),
-                    true,
-                    color
-                );
-            }
+    IRMath::apply3DMaskIntersection(
+        g_loftTool.maskXZ_,
+        {sx, sz},
+        g_loftTool.maskYZ_,
+        sy,
+        [&](int x, int y, int z) {
+            const int flat = IRMath::index3DtoIndex1D({x, y, z}, set.size_);
+            if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
+                return;
+            applyEdit(
+                g_editor.editableVoxelSet_,
+                set,
+                {x, y, z},
+                static_cast<std::size_t>(flat),
+                true,
+                color
+            );
         }
-    }
+    );
     commitStroke();
 }
 

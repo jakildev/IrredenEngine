@@ -11,6 +11,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <utility>
 #include <vector>
 
 // TODO: The game engine needs transformations for voxel sets
@@ -809,6 +810,43 @@ constexpr int index2DtoIndex1D(const ivec2 index, const ivec2 size) {
 /// Linearises a 3D index into a 1D array index (z-major, row-major order).
 constexpr int index3DtoIndex1D(const ivec3 index, const ivec3 size) {
     return index.z * size.x * size.y + index.y * size.x + index.x;
+}
+
+/// Perpendicular axis pair for structured bindings; avoids repeating (axis+k)%3 at each call site.
+constexpr std::pair<int, int> perpendicularAxes(int axis) {
+    return {(axis + 1) % 3, (axis + 2) % 3};
+}
+
+/// Invokes @p cb(x, y, z) for every integer grid cell in the inclusive
+/// AABB [lo, hi]. Use this to retire hand-written triple-nested loops over voxel volumes.
+template <typename Callback> inline void iterateAABB(ivec3 lo, ivec3 hi, Callback cb) {
+    for (int z = lo.z; z <= hi.z; ++z)
+        for (int y = lo.y; y <= hi.y; ++y)
+            for (int x = lo.x; x <= hi.x; ++x)
+                cb(x, y, z);
+}
+
+/// Invokes @p cb(x, y, z) for every cell where both 2D masks agree.
+/// @p maskXZ is indexed as [x + z * sizeXZ.x] (front/XZ silhouette);
+/// @p maskYZ is indexed as [y + z * sizeY] (side/YZ silhouette).
+/// sizeXZ.y is the shared Z extent; sizeY is the Y extent.
+template <typename Callback>
+inline void apply3DMaskIntersection(
+    const std::vector<bool> &maskXZ,
+    ivec2 sizeXZ,
+    const std::vector<bool> &maskYZ,
+    int sizeY,
+    Callback cb
+) {
+    for (int z = 0; z < sizeXZ.y; ++z)
+        for (int y = 0; y < sizeY; ++y)
+            for (int x = 0; x < sizeXZ.x; ++x) {
+                if (!maskXZ[static_cast<std::size_t>(x + z * sizeXZ.x)])
+                    continue;
+                if (!maskYZ[static_cast<std::size_t>(y + z * sizeY)])
+                    continue;
+                cb(x, y, z);
+            }
 }
 
 // ISOMETRIC THINGS
