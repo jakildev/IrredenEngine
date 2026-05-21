@@ -17,6 +17,7 @@ profiler, no per-cell stopwatch.
 | `scripts/perf/perf_grid_matrix.sh`    | Run `IRPerfGrid` (or `IRLuaPerfGrid`) across a zoom × subdivision matrix |
 | `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                            |
 | `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body                      |
+| `scripts/perf/check_regression.py`    | Same as compare, but exits non-zero on regression — used by CI gate    |
 
 All scripts are stdlib-only and run from anywhere in the repo. The
 matrix script writes `save_files/perf/<git-sha>[-<label>]/` so multiple
@@ -159,17 +160,45 @@ generated via `perf_summary.py`. Subsequent PRs diff against the most
 recent baseline. The older free-form file
 `docs/perf/metal_perf_grid_baseline.md` remains as historical context.
 
-## Where this is going
+## CI regression gate
 
-A CI gate (`perf/baseline-ci-gate` issue) will eventually re-run the
-matrix on every PR touching `engine/render/`, `engine/system/`, or
-`engine/math/` and post `compare_perf_runs.py` output as a PR comment.
-Until that lands, the human author (or an `/optimize` skill run) does
-the comparison locally and pastes the markdown into the PR body.
+`.github/workflows/perf-gate.yml` wires the matrix into CI:
 
-The current GPU timings use `glFinish()`-style synchronous bracketing
-(see `engine/prefabs/irreden/render/gpu_stage_timing.hpp`). That is
-accurate but adds a small per-frame overhead — keep `gpu_stage_timing`
-off in shipping builds, on during a matrix run. Replacing the sync path
-with async `GL_TIMESTAMP` / `MTLCounterSample` queries is tracked in
-the `perf/async-gpu-timers` issue.
+| Trigger | What it does |
+|---------|--------------|
+| Push to `master` (perf paths) | Runs `--quick` matrix, commits result to `docs/perf/baseline_latest/` |
+| PR touching perf paths | Runs `--quick` matrix, compares against `baseline_latest/`, posts a markdown table as a PR comment |
+
+**Pass/fail rules:**
+
+- Any cell where `mean frame avg` regresses by **>10%** fails the check.
+  The author must justify or fix before merging.
+- Any cell that improves by **>5%** causes the `perf:improved` label to
+  be added to the PR automatically.
+
+**Gate script (also usable locally):**
+
+```bash
+scripts/perf/check_regression.py <baseline_dir> <head_dir> [--regress-pct N]
+# Exit 0: pass. Exit 1: regression detected. Exit 2: usage error.
+```
+
+`check_regression.py` wraps `compare_perf_runs.py` — same args, same
+markdown table, but also exits non-zero on regression.
+
+**Host stability note:** GitHub Actions `ubuntu-latest` runners are
+shared and can have run-to-run timing jitter of 5–15%. The gate uses
+`--quick` (2 cells) to reduce wall time and variance. If the gate
+produces false positives, lower `--regress-pct` conservatively or
+migrate to a dedicated self-hosted Linux runner for stability.
+
+**No baseline yet?** The gate posts a "no baseline" comment and exits
+clean. A baseline is committed the next time a perf-relevant change
+lands on master.
+
+## GPU timing implementation note
+
+The current GPU timings use async `GL_TIMESTAMP` / `MTLCounterSample`
+queries (see T-310). The original `glFinish()`-style synchronous
+bracketing added per-frame overhead — keep `gpu_stage_timing` off in
+shipping builds, on during a matrix run.
