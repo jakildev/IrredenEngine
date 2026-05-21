@@ -3,7 +3,6 @@
 #include <irreden/asset/rig_format.hpp>
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
@@ -250,11 +249,13 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         loadedRig = std::move(rigResult.value_);
     }
 
-    // Create the entity. C_Position3D + the auto-added position
-    // components arrive in one createEntity call; the joint hierarchy
-    // is set on the resulting entity (setComponent migrates the
-    // archetype once, which is fine for spawn — it isn't in a tick).
-    const IREntity::EntityId entity = IREntity::createEntity(IRComponents::C_Position3D{position});
+    // Create the entity. The caller-supplied C_LocalTransform plus the
+    // auto-added C_WorldTransform / C_PositionGlobal3D arrive in one
+    // createEntity call; the joint hierarchy is set on the resulting
+    // entity (setComponent migrates the archetype once, which is fine
+    // for spawn — it isn't in a tick).
+    const IREntity::EntityId entity =
+        IREntity::createEntity(IRComponents::C_LocalTransform{position});
 
     // C_RotationMode is always attached so archetype-filtered systems
     // (C3 composite, C6 grid rebuild) iterate prefab entities without
@@ -334,8 +335,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
 
     // SHAPES voxel_ref attachment — one child entity per ShapeRecord,
     // CHILD_OF the spawned root so per-record `offset_` composes
-    // through the standard C_Position3D + parent's C_PositionGlobal3D
-    // path. Per-record
+    // through the child's C_LocalTransform and the parent chain that
+    // PROPAGATE_TRANSFORM resolves into C_WorldTransform. Per-record
     // `rotation_`, `csgOp_`, and `boneId_` are
     // persisted but not consumed by the current renderer; loading them
     // is a no-op until a runtime system reads them (T-181 wires bone
@@ -361,7 +362,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             };
             descriptor.flags_ = record.flags_;
             const IREntity::EntityId child =
-                IREntity::createEntity(IRComponents::C_Position3D{record.offset_}, descriptor);
+                IREntity::createEntity(IRComponents::C_LocalTransform{record.offset_}, descriptor);
             IREntity::setParent(child, entity);
             spawnedChildren.push_back(child);
         }

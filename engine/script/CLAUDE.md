@@ -860,10 +860,9 @@ SHAPES or HYBRID `.vxs`, `Prefab.spawn` attaches one child entity
 per `ShapeRecord` under the spawned root via `IREntity::setParent`.
 Each child carries:
 
-- `C_Position3D{record.offset_}` — record-local position; the
-  CHILD_OF relation + `system_update_positions_global` compose it
-  with the parent's position so the rendered position is
-  `parent.global + record.offset`.
+- `C_LocalTransform{record.offset_}` — record-local position;
+  `PROPAGATE_TRANSFORM` walks the CHILD_OF chain and composes it
+  with the parent's transform into the child's `C_WorldTransform`.
 - `C_ShapeDescriptor{shapeType, params, color}` with `flags_`
   copied from the record. The SDF primitive renders through the
   normal `SHAPES_TO_TRIXEL` pass once a canvas is active.

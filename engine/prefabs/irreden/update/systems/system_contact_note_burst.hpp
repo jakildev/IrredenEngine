@@ -9,7 +9,7 @@
 #include <irreden/update/components/component_particle_burst.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_velocity_drag.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
@@ -23,19 +23,17 @@ namespace IRSystem {
 
 template <> struct System<CONTACT_NOTE_BURST> {
     static SystemId create() {
-        return createSystem<C_ContactEvent, C_ParticleBurst, C_VoxelSetNew, C_PositionGlobal3D>(
+        return createSystem<C_ContactEvent, C_ParticleBurst, C_VoxelSetNew, C_WorldTransform>(
             "ContactNoteBurst",
             [](const C_ContactEvent &contact,
                C_ParticleBurst &burst,
                C_VoxelSetNew &voxelSet,
-               C_PositionGlobal3D &globalPos) {
+               C_WorldTransform &worldXform) {
                 if (!contact.entered_) {
                     return;
                 }
 
-
-                const vec3 blockCenter =
-                    globalPos.pos_ + vec3(voxelSet.size_) * 0.5f;
+                const vec3 blockCenter = worldXform.translation_ + vec3(voxelSet.size_) * 0.5f;
                 const vec3 halfSize = vec3(voxelSet.size_) * 0.5f;
                 Color color = voxelSet.voxels_[0].color_;
                 float spd = burst.speed_;
@@ -49,10 +47,9 @@ template <> struct System<CONTACT_NOTE_BURST> {
                 for (int i = 0; i < burst.count_; i++) {
                     vec3 vel;
                     if (burst.useDirectionOverride_ && burst.directionStrength_ > 0.0f) {
-                        const vec3 dir =
-                            IRMath::length(burst.directionOverride_) > 0.0001f
-                                ? IRMath::normalize(burst.directionOverride_)
-                                : vec3(0.0f, 0.0f, -1.0f);
+                        const vec3 dir = IRMath::length(burst.directionOverride_) > 0.0001f
+                                             ? IRMath::normalize(burst.directionOverride_)
+                                             : vec3(0.0f, 0.0f, -1.0f);
                         const float str = burst.directionStrength_;
                         const float scatter = spd * burst.directionScatter_;
                         vec3 primary = spd * dir * str;
@@ -64,15 +61,12 @@ template <> struct System<CONTACT_NOTE_BURST> {
                         vec3 randPerp = vec3(
                             randomFloat(-scatter, scatter),
                             randomFloat(-scatter, scatter),
-                            randomFloat(-scatter * 0.5f, scatter * 0.5f));
+                            randomFloat(-scatter * 0.5f, scatter * 0.5f)
+                        );
                         vel = primary + randPerp * (1.0f - str);
                     } else {
-                        float zVel =
-                            zSign * (spdZUp + randomFloat(-spdZVariance, spdZVariance));
-                        vel = vec3(
-                            randomFloat(-spdXY, spdXY),
-                            randomFloat(-spdXY, spdXY),
-                            zVel);
+                        float zVel = zSign * (spdZUp + randomFloat(-spdZVariance, spdZVariance));
+                        vel = vec3(randomFloat(-spdXY, spdXY), randomFloat(-spdXY, spdXY), zVel);
                     }
 
                     vec3 faceOffset;
@@ -83,32 +77,35 @@ template <> struct System<CONTACT_NOTE_BURST> {
                         faceOffset = vec3(
                             IRMath::clamp(ax, -halfSize.x, halfSize.x),
                             IRMath::clamp(ay, -halfSize.y, halfSize.y),
-                            downward ? halfSize.z : -halfSize.z);
+                            downward ? halfSize.z : -halfSize.z
+                        );
                     } else {
                         faceOffset = vec3(
                             randomFloat(-halfSize.x, halfSize.x),
                             randomFloat(-halfSize.y, halfSize.y),
-                            downward ? halfSize.z : -halfSize.z);
+                            downward ? halfSize.z : -halfSize.z
+                        );
                     }
 
                     const vec3 spawnPos = isoDepthShift(
-                        blockCenter + faceOffset
-                            + vec3(0.0f, 0.0f, burst.spawnOffsetZ_),
-                        burst.isoDepthOffset_);
+                        blockCenter + faceOffset + vec3(0.0f, 0.0f, burst.spawnOffsetZ_),
+                        burst.isoDepthOffset_
+                    );
 
                     auto applyVariance = [](float base, float variance) -> float {
-                        if (variance <= 0.0f) return base;
+                        if (variance <= 0.0f)
+                            return base;
                         return base * randomFloat(1.0f - variance, 1.0f + variance);
                     };
 
-                    float driftDelay = applyVariance(
-                        burst.pDriftDelaySeconds_, burst.hoverStartVariance_);
-                    float hoverDur = applyVariance(
-                        burst.pHoverDurationSec_, burst.hoverDurationVariance_);
-                    float hoverAmp = applyVariance(
-                        burst.pHoverOscAmplitude_, burst.hoverAmplitudeVariance_);
-                    float hoverSpd = applyVariance(
-                        burst.pHoverOscSpeed_, burst.hoverSpeedVariance_);
+                    float driftDelay =
+                        applyVariance(burst.pDriftDelaySeconds_, burst.hoverStartVariance_);
+                    float hoverDur =
+                        applyVariance(burst.pHoverDurationSec_, burst.hoverDurationVariance_);
+                    float hoverAmp =
+                        applyVariance(burst.pHoverOscAmplitude_, burst.hoverAmplitudeVariance_);
+                    float hoverSpd =
+                        applyVariance(burst.pHoverOscSpeed_, burst.hoverSpeedVariance_);
 
                     IREntity::EntityId entity = IREntity::createEntity(
                         C_LocalTransform{spawnPos},
@@ -137,13 +134,16 @@ template <> struct System<CONTACT_NOTE_BURST> {
                         IREntity::setComponent(entity, C_HasGravity{});
                     }
                     if (burst.glowEnabled_) {
-                        IREntity::setComponent(entity, C_SpawnGlow{
-                            color,
-                            burst.glowColor_,
-                            burst.glowHoldSeconds_,
-                            burst.glowFadeSeconds_,
-                            burst.glowEasing_
-                        });
+                        IREntity::setComponent(
+                            entity,
+                            C_SpawnGlow{
+                                color,
+                                burst.glowColor_,
+                                burst.glowHoldSeconds_,
+                                burst.glowFadeSeconds_,
+                                burst.glowEasing_
+                            }
+                        );
                     }
                 }
             }

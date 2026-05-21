@@ -5,8 +5,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/update/components/component_collider_iso3d_aabb.hpp>
 #include <irreden/update/components/component_collision_layer.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
@@ -22,24 +21,24 @@ inline bool overlaps1D(float minA, float maxA, float minB, float maxB) {
 }
 
 inline void getAabbWorld(
-    const C_PositionGlobal3D &position,
+    const C_WorldTransform &transform,
     const C_ColliderIso3DAABB &collider,
     vec3 &outMin,
     vec3 &outMax
 ) {
-    vec3 center = position.pos_ + collider.centerOffset_;
+    vec3 center = transform.translation_ + collider.centerOffset_;
     outMin = center - collider.halfExtents_;
     outMax = center + collider.halfExtents_;
 }
 
 inline bool broadPhaseIsoDepth(
-    const C_PositionGlobal3D &positionA,
+    const C_WorldTransform &transformA,
     const C_ColliderIso3DAABB &a,
-    const C_PositionGlobal3D &positionB,
+    const C_WorldTransform &transformB,
     const C_ColliderIso3DAABB &b
 ) {
-    vec3 centerA = positionA.pos_ + a.centerOffset_;
-    vec3 centerB = positionB.pos_ + b.centerOffset_;
+    vec3 centerA = transformA.translation_ + a.centerOffset_;
+    vec3 centerB = transformB.translation_ + b.centerOffset_;
 
     vec2 isoA = pos3DtoPos2DIso(centerA);
     vec2 isoB = pos3DtoPos2DIso(centerB);
@@ -59,17 +58,17 @@ inline bool broadPhaseIsoDepth(
 }
 
 inline bool narrowPhaseAabb(
-    const C_PositionGlobal3D &positionA,
+    const C_WorldTransform &transformA,
     const C_ColliderIso3DAABB &a,
-    const C_PositionGlobal3D &positionB,
+    const C_WorldTransform &transformB,
     const C_ColliderIso3DAABB &b,
     vec3 &outMinA,
     vec3 &outMaxA,
     vec3 &outMinB,
     vec3 &outMaxB
 ) {
-    getAabbWorld(positionA, a, outMinA, outMaxA);
-    getAabbWorld(positionB, b, outMinB, outMaxB);
+    getAabbWorld(transformA, a, outMinA, outMaxA);
+    getAabbWorld(transformB, b, outMinB, outMaxB);
 
     return overlaps1D(outMinA.x, outMaxA.x, outMinB.x, outMaxB.x) &&
            overlaps1D(outMinA.y, outMaxA.y, outMinB.y, outMaxB.y) &&
@@ -92,14 +91,14 @@ inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, v
 template <> struct System<COLLISION_NOTE_PLATFORM> {
     static SystemId create() {
         return createSystem<
-            C_PositionGlobal3D,
+            C_WorldTransform,
             C_ColliderIso3DAABB,
             C_CollisionLayer,
             C_ContactEvent>(
             "CollisionNotePlatform",
             [](const Archetype &,
                std::vector<IREntity::EntityId> &entities,
-               std::vector<C_PositionGlobal3D> &positions,
+               std::vector<C_WorldTransform> &transforms,
                std::vector<C_ColliderIso3DAABB> &colliders,
                std::vector<C_CollisionLayer> &layers,
                std::vector<C_ContactEvent> &events) {
@@ -107,7 +106,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
 
                 auto allColliderNodes = IREntity::queryArchetypeNodesSimple(
                     IREntity::getArchetype<
-                        C_PositionGlobal3D,
+                        C_WorldTransform,
                         C_ColliderIso3DAABB,
                         C_CollisionLayer,
                         C_ContactEvent>()
@@ -116,7 +115,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                 for (int i = 0; i < static_cast<int>(entities.size()); i++) {
                     IR_PROFILE_BLOCK("CollisionBlockScan", IR_PROFILER_COLOR_UPDATE);
                     auto &selfEntity = entities[i];
-                    auto &selfPos = positions[i];
+                    auto &selfTransform = transforms[i];
                     auto &selfCollider = colliders[i];
                     auto &selfLayer = layers[i];
                     auto &selfEvent = events[i];
@@ -130,8 +129,8 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
 
                     for (auto *otherNode : allColliderNodes) {
                         auto &otherEntities = otherNode->entities_;
-                        auto &otherPositions =
-                            IREntity::getComponentData<C_PositionGlobal3D>(otherNode);
+                        auto &otherTransforms =
+                            IREntity::getComponentData<C_WorldTransform>(otherNode);
                         auto &otherColliders =
                             IREntity::getComponentData<C_ColliderIso3DAABB>(otherNode);
                         auto &otherLayers = IREntity::getComponentData<C_CollisionLayer>(otherNode);
@@ -147,22 +146,22 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                                 continue;
                             }
 
-                            auto &otherPos = otherPositions[j];
+                            auto &otherTransform = otherTransforms[j];
                             auto &otherCollider = otherColliders[j];
 
                             if (!detail::broadPhaseIsoDepth(
-                                    selfPos,
+                                    selfTransform,
                                     selfCollider,
-                                    otherPos,
+                                    otherTransform,
                                     otherCollider
                                 )) {
                                 continue;
                             }
 
                             if (!detail::narrowPhaseAabb(
-                                    selfPos,
+                                    selfTransform,
                                     selfCollider,
-                                    otherPos,
+                                    otherTransform,
                                     otherCollider,
                                     blockMin,
                                     blockMax,
@@ -174,10 +173,14 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
 
                             foundAnyContact = true;
                             detail::markContact(
-                                selfEvent, otherEntities[j], vec3(0.0f, 0.0f, 1.0f)
+                                selfEvent,
+                                otherEntities[j],
+                                vec3(0.0f, 0.0f, 1.0f)
                             );
                             detail::markContact(
-                                otherEvents[j], selfEntity, vec3(0.0f, 0.0f, -1.0f)
+                                otherEvents[j],
+                                selfEntity,
+                                vec3(0.0f, 0.0f, -1.0f)
                             );
                             break;
                         }
