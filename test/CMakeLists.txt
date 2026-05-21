@@ -52,6 +52,8 @@ add_executable(IrredenEngineTest
   script/modifier_lua_test.cpp
   system/register_system_test.cpp
   utility/ir_utility_test.cpp
+  world/chunk_coord_test.cpp
+  world/chunk_residency_manager_test.cpp
 )
 
 FetchContent_Declare(

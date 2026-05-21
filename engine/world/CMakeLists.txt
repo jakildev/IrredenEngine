@@ -1,5 +1,6 @@
 add_library(IrredenEngineWorld STATIC
     src/world.cpp
+    src/chunk_residency.cpp
 )
 
 target_link_libraries(IrredenEngineWorld PUBLIC
