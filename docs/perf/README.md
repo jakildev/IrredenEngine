@@ -12,12 +12,13 @@ profiler, no per-cell stopwatch.
 
 ## The scripts
 
-| Script                                | What it does                                                           |
-|---------------------------------------|------------------------------------------------------------------------|
-| `scripts/perf/perf_grid_matrix.sh`    | Run `IRPerfGrid` (or `IRLuaPerfGrid`) across a zoom × subdivision matrix |
-| `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                            |
-| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body                      |
-| `scripts/perf/check_regression.py`    | Same as compare, but exits non-zero on regression — used by CI gate    |
+| Script                                | What it does                                                                       |
+|---------------------------------------|------------------------------------------------------------------------------------|
+| `scripts/perf/perf_grid_matrix.sh`    | Run `IRPerfGrid` (or `IRLuaPerfGrid`, or both) across a zoom × subdivision matrix |
+| `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                                        |
+| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body                                  |
+| `scripts/perf/check_regression.py`    | Same as compare, but exits non-zero on regression — used by CI gate                |
+| `scripts/perf/lua_cpp_parity.py`      | Lua-vs-C++ overhead table from a `--target both` run                               |
 
 All scripts are stdlib-only and run from anywhere in the repo. The
 matrix script writes `save_files/perf/<git-sha>[-<label>]/` so multiple
@@ -151,6 +152,39 @@ What to look for:
 Lua surface for ad-hoc inspection: `ir.render.getVoxelCullStats()`
 returns `{visible, total, samples, avgVisible, avgTotal, maxVisible,
 maxTotal}`.
+
+## Lua-vs-C++ parity
+
+`IRLuaPerfGrid` mirrors `IRPerfGrid` but drives the scene through the
+codegen/EVAL path instead of hand-written C++ systems. Comparing the two
+answers: *is the Lua hot path drifting from the C++ baseline?*
+
+Run both targets in one pass, then generate the parity table:
+
+```bash
+scripts/perf/perf_grid_matrix.sh --target both --label parity
+scripts/perf/lua_cpp_parity.py save_files/perf/<sha>-parity
+```
+
+`lua_cpp_parity.py` prints a markdown table with `ratio = lua_avg /
+cpp_avg` and `delta = lua_avg - cpp_avg` per `(zoom, sub_mode,
+sub_base)` cell. Cells where the Lua overhead exceeds the threshold
+(default 20%) are flagged with ⚠. Paste the output into the PR body
+whenever a change touches codegen or the EVAL path.
+
+Options:
+
+```
+lua_cpp_parity.py <run_dir> [--gap-pct N] [--cpp NAME] [--lua NAME]
+```
+
+- `--gap-pct N` — change the flagging threshold (default 20)
+- `--cpp / --lua` — override target names if non-default builds were used
+
+The matrix script stores each cell under
+`target=IRPerfGrid,zoom=…` / `target=IRLuaPerfGrid,zoom=…`, so both
+sets live in the same output directory and the parity script can cross-
+reference them without a second run directory.
 
 ## Committed baselines
 
