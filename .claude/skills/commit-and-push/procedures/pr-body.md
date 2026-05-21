@@ -58,8 +58,9 @@ When the parent PR merges, change this PR's base to `master`
 (via the GitHub UI or `gh pr edit <N> --base master`).
 ```
 
-No `Full chain:` line. **Drop the `Closes #<issue-N>` line** — closing the
-issue while the parent PR is still open would orphan downstream review work.
-The leaf PR in the cursor-stack chain (the one that re-targets master) carries
-the `Closes` line instead. Drop `## Notes for reviewer`.
+No `Full chain:` line. **Drop the `Closes #<issue-N>` line** — the parent PR
+closes the shared issue when it merges to master. Avoid duplicating `Closes #N`
+on the child while the parent is still in review. The parent PR (which targets
+master directly via the canonical template) carries the `Closes` line and closes
+the shared issue when it merges first. Drop `## Notes for reviewer`.
 `$parent_pr_ref` is the parent PR URL (or branch name if no PR exists yet). Use `<<EOF` (no quotes) in the HEREDOC so that `$parent_pr_ref` expands; `<<'EOF'` suppresses expansion and embeds the literal string.
