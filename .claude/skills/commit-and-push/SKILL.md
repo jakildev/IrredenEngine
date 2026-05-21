@@ -117,8 +117,10 @@ Skill: simplify
 
 `simplify` reads the same diff you gathered and looks for things like
 per-entity `getComponent` inside system ticks, duplicated helpers, naming-
-convention slips, and other project-specific smells. It applies fixes
-directly.
+convention slips, and other project-specific smells. It dispatches a
+parallel reuse-detection subagent fan-out (five scanners running
+concurrently) and surfaces an aggregated reuse-findings block alongside
+its main findings. It applies fixes directly.
 
 **Always run simplify, regardless of file types.** No "doc-only"
 or "small change" carve-out. The skill has a doc-side section
