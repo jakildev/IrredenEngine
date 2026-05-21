@@ -104,16 +104,12 @@ inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf)
 // Drain `pool.getPendingPositionRanges()` to the position SSBO as one
 // `subData` per contiguous run. Mirrors `C_GPUParticlePool::flushPendingSpawns`
 // — sort, coalesce, emit. Empty list is a fast-path no-op so a static
-// voxel scene pays zero bytes/frame. The named-buffer pointer is read
-// via `getNamedResource` rather than the system's cached `voxelPosBuf_`
-// so the helper can sit next to its sibling `syncEntityIds`; the named
-// lookup is O(1) and only hits when the pool actually has queued work.
-inline void flushPendingPositionRanges(C_VoxelPool &pool) {
+// voxel scene pays zero bytes/frame.
+inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
     auto &ranges = pool.getPendingPositionRanges();
     if (ranges.empty()) {
         return;
     }
-    Buffer *buf = IRRender::getNamedResource<Buffer>("VoxelPositionBuffer");
     constexpr size_t kStride = sizeof(C_PositionGlobal3D);
     const auto &globals = pool.getPositionGlobals();
 
@@ -271,7 +267,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             voxelPool.clearPendingPositionRanges();
             lastUploadedCanvas_ = entity;
         } else {
-            flushPendingPositionRanges(voxelPool);
+            flushPendingPositionRanges(voxelPool, voxelPosBuf_);
         }
         voxelColorBuf_->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
         // Active-mask covers the live prefix; upload the matching whole-word
