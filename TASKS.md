@@ -323,11 +323,11 @@ Avoid:
   - **Notes:** Wire into gpu_stage_timing_observer.hpp. One PR for OpenGL, one for Metal, rebased to land together after confirming equivalent on a matrix run. Prereq for T-311 (CI regression gate) so per-frame glFinish tax is removed before CI measure. PR #1019 added cull-effectiveness readback gated on gpuStageTiming().enabled_.
   - **Links:**
 
-- [ ] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
+- [~] **perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs** — commit perf baseline after relevant merges; gate PRs with compare_perf_runs.py output; >10% regression fails check; >5% improvement labels PR perf:improved
   - **ID:** T-311
   - **Area:** tooling, build
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** T-310
   - **Acceptance:** (1) CI job re-runs perf_grid_matrix.sh on PRs touching engine/render/, engine/prefabs/irreden/render/, engine/system/, engine/math/; (2) compare_perf_runs.py diff posted as sticky PR comment; (3) >10% mean-frame-ms regression fails required CI check; (4) >5% improvement labels PR perf:improved; (5) check_regression.py exits non-zero on regression-over-threshold; (6) inter-run jitter variance audit <5% on master before enabling gate; (7) fleet-build clean
   - **Issue:** #1022
