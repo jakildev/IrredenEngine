@@ -134,11 +134,13 @@ fi
 
 log "pushing $commits_ahead bookkeeping commit(s) to origin/master"
 push_ok=0
+rebase_failed=0
 for attempt in 1 2 3; do
     git -C "$QM_WT" fetch origin --quiet
     if ! git -C "$QM_WT" rebase origin/master >>"$LOG_FILE" 2>&1; then
         log "rebase failed on attempt $attempt — aborting and bailing"
         git -C "$QM_WT" rebase --abort 2>/dev/null || true
+        rebase_failed=1
         break
     fi
     if git -C "$QM_WT" push origin HEAD:master >>"$LOG_FILE" 2>&1; then
@@ -150,7 +152,11 @@ for attempt in 1 2 3; do
 done
 
 if (( push_ok == 0 )); then
-    log "push failed after 3 attempts; commits remain on local fleet-queue-ingest branch"
+    if (( rebase_failed )); then
+        log "rebase failed; commits remain on local fleet-queue-ingest branch"
+    else
+        log "push failed after $attempt attempt(s); commits remain on local fleet-queue-ingest branch"
+    fi
     exit 1
 fi
 
