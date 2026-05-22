@@ -37,6 +37,40 @@ void some_inner_block() {
 Don't wrap helpers called from a tick — easy_profiler's per-scope cost
 adds up if you put it inside the per-entity loop. Wrap the tick itself.
 
+## When the tick itself is the hotspot — sub-tick breakdown
+
+The matrix's "top CPU systems" table tells you *which* system is slow.
+It does not tell you *which line of the tick*. When a once-per-frame
+system tick (a render-pipeline stage, not a per-entity loop) is the
+hotspot, break it down with `IR_PROFILE_SCOPE` sub-blocks:
+
+```cpp
+void tick(...) {
+    { IR_PROFILE_SCOPE("vs1_clear");  clearCanvasAndDistances(...); }
+    { IR_PROFILE_SCOPE("vs1_pos");    /* position upload */ }
+    { IR_PROFILE_SCOPE("vs1_color");  /* color upload */ }
+    // ...
+}
+```
+
+This is **not** the "don't wrap helpers" anti-pattern above — that
+caveat is about per-*entity*-loop bodies, where the scope cost is paid
+N times. A render-stage tick runs **once per frame**, so a handful of
+sub-scopes cost a few µs total. Name them `<system>_<region>` so they
+group in the dump.
+
+Surfacing them: `perf_grid`'s `--auto-profile` dump prints **every**
+`IR_PROFILE_SCOPE` that ran last frame, sorted by total ms (the
+`Auto-profile CPU-scope — <name>: <ms>` lines in each matrix `.log`).
+So any sub-scope you add shows up in the matrix output with no extra
+wiring. Leave the scopes on the one or two regions that turned out to
+matter — they are cheap permanent regression sensors on the hot path.
+
+This is how `common_bottlenecks.md` #12 was localized: the matrix
+flagged `SingleVoxelToCanvasFirst` as the hotspot, and `vs1_*`
+sub-scopes pinned it to the position-upload region (`vs1_pos`: 8 ms at
+zoom 1, 56 ms at zoom 8 — same scene).
+
 ## Per-frame CPU histogram (the HUD-facing one)
 
 `IR_PROFILE_SCOPE(name)` is a different scope timer that feeds the
