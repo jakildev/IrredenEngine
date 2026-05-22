@@ -35,8 +35,8 @@ the ECS surface.
 - `C_VoxelSelection` / `C_VoxelSelectionHighlight` — editor selection
   state and the tag that marks the highlight entity. The picking system
   (`VOXEL_PICKING`) mutates the selection on left-click; the highlight
-  carries `C_Position3D + C_ShapeDescriptor` so the picked-voxel marker
-  renders through the normal SDF path. Created hidden by the editor;
+  carries `C_LocalTransform + C_WorldTransform + C_ShapeDescriptor` so
+  the picked-voxel marker renders through the normal SDF path. Created hidden by the editor;
   toggled via `SHAPE_FLAG_VISIBLE` when a hit/miss happens.
 - `C_ActiveLodLevel` — singleton row written by `LOD_UPDATE` each frame
   with the camera-zoom-derived `IRRender::LodLevel`. Read by
@@ -57,12 +57,11 @@ the ECS surface.
   framebuffer.
 - `FRAMEBUFFER_TO_SCREEN` — final blit with camera pan/zoom.
 - `SPRITE_TO_SCREEN` — optional screen-composite pass that draws every
-  entity holding `C_Sprite + C_PositionGlobal3D` as a textured alpha-
+  entity holding `C_Sprite + C_WorldTransform` as a textured alpha-
   blended quad, sorted back-to-front and grouped by atlas (one
-  `drawArraysInstanced` per atlas). World position is read directly
-  from `C_PositionGlobal3D` (modifier-driven offsets have already been
-  folded in by `APPLY_POSITION_OFFSET` earlier in the UPDATE
-  pipeline). Bypasses the trixel pipeline; runs after the main
+  `drawArraysInstanced` per atlas). Reads world position from
+  `C_WorldTransform.translation_`. Bypasses the trixel
+  pipeline; runs after the main
   canvas's `FRAMEBUFFER_TO_SCREEN` tick. Empty-case fast-path means a
   creation can register the system unconditionally — zero sprites =
   zero draws.
@@ -118,7 +117,7 @@ drag math.
   point projected onto a fixed iso-depth plane through the anchor,
   and the cursor's canvas-iso angle around the anchor. Each frame the
   mouse is down, applies kind-specific math to the anchor's
-  `C_Position3D` (translate) or to per-anchor accumulators on the
+  `C_LocalTransform` (translate) or to per-anchor accumulators on the
   system (rotate / scale): TRANSLATE_ARROW projects cursor world
   delta onto the handle's unit axis; ROTATE_RING tracks the canvas-
   iso angle change with Shift snapping to 15° (π/12); SCALE_STICK
@@ -182,17 +181,17 @@ cleaned up.
 `gizmo.hpp` exposes `IRPrefab::Gizmo::` builders that spawn the editor's
 transform handles (translate / rotate / scale) and marker primitives
 (joint / bind-point / IK) as small groups of child entities under a
-returned group root. Each emitted handle carries `C_PositionGlobal3D +
-C_Position3D + C_ShapeDescriptor + C_GizmoHandle + C_Name`; geometry
+returned group root. Each emitted handle carries `C_LocalTransform +
+C_WorldTransform + C_ShapeDescriptor + C_GizmoHandle + C_Name`; geometry
 comes from the SDF primitives in `IRMath::SDF::ShapeType`
 (`CYLINDER`, `CONE`, `TORUS`, `SPHERE`, `BOX`) rendered by the existing
 `SHAPES_TO_TRIXEL` pass — no new render stage is introduced.
 
 ```cpp
 // Place a translate gizmo at the origin, then attach it to a selection
-// target by re-parenting or by writing C_Position3D::pos_.
+// target by re-parenting or by writing C_LocalTransform::translation_.
 EntityId gizmo = IRPrefab::Gizmo::createTranslateGizmo();
-IREntity::getComponent<C_Position3D>(gizmo).pos_ = anchor;
+IREntity::getComponent<C_LocalTransform>(gizmo).translation_ = anchor;
 ```
 
 Phase 2 (T-164) wires the runtime polish: the
@@ -320,7 +319,7 @@ when extending or composing widgets:
 
 ## Gotchas
 
-- **SQT transition (T-199 in flight).** `C_Position3D` / `C_PositionGlobal3D` references in this file are accurate-but-aging — new code should prefer `C_LocalTransform` + `C_WorldTransform`; legacy usages will be swept by the T-199 consumer migration.
+- **SQT transition (T-299/T-300 landed; voxel pending T-301).** Render-side and update-side readers/writers now use `C_LocalTransform` + `C_WorldTransform`. The voxel pipeline (`VOXEL_TO_TRIXEL` GPU stride, `C_VoxelPool` SoA) still reads the legacy `C_Position3D` / `C_PositionGlobal3D` channel — that channel and `SYSTEM_GLOBAL_POSITION_3D` stay alive until the voxel migration (T-301) lands.
 - **Canvas texture lifetime.** The 3 GPU textures owned by
   `C_TriangleCanvasTextures` are created in the ctor and only freed in
   `onDestroy()`. Destroying a canvas entity mid-frame while a system

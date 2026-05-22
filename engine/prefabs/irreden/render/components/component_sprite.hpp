@@ -8,12 +8,12 @@ namespace IRComponents {
 
 /// Per-instance 2D sprite. A sprite is screen-composite content drawn at
 /// the FRAMEBUFFER_TO_SCREEN pipeline stage — it bypasses the trixel
-/// pipeline entirely. Pair with @c C_Position3D; the SPRITES_TO_SCREEN
-/// system iso-projects the position each frame to derive the screen
+/// pipeline entirely. Pair with @c C_LocalTransform; the SPRITES_TO_SCREEN
+/// system iso-projects the world position each frame to derive the screen
 /// position and the sort depth.
 ///
 /// Anchor is in local UV space (`{0.5, 0.0}` = bottom-center). Quad
-/// origin = `isoProject(C_Position3D.pos_) - anchor_ * size_`.
+/// origin = `isoProject(C_WorldTransform.translation_) - anchor_ * size_`.
 ///
 /// @c uvRect_ is `(u0, v0, u1, v1)` in normalized [0, 1] texture coords.
 /// For a still sprite this is the whole texture; for an animated sprite

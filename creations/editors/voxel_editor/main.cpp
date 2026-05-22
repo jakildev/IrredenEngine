@@ -9,6 +9,7 @@
 #include <irreden/ir_video.hpp>
 
 // Components
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -34,6 +35,7 @@
 
 // Systems
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -601,7 +603,7 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     if (g_fillTool.ghostEntity_ == IREntity::kNullEntity)
         return;
     auto &ghost = IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_);
-    auto &ghostPos = IREntity::getComponent<C_Position3D>(g_fillTool.ghostEntity_);
+    auto &ghostTransform = IREntity::getComponent<C_LocalTransform>(g_fillTool.ghostEntity_);
     ghost.flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_HOLLOW |
                    IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
 
@@ -642,7 +644,7 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
         };
     }
     const vec3 halfExt = vec3(hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1) * 0.5f;
-    ghostPos.pos_ = vec3(lo) + halfExt;
+    ghostTransform.translation_ = vec3(lo) + halfExt;
     ghost.params_ = vec4(halfExt.x, halfExt.y, halfExt.z, 0.0f);
 }
 
@@ -1186,6 +1188,7 @@ void initSystems() {
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
          IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
@@ -2052,7 +2055,7 @@ void initEntities() {
     constexpr float kFloorZ = 2.0f;
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, kFloorZ)},
+        C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(40.0f, 40.0f, 1.0f, 0.0f),
@@ -2061,7 +2064,7 @@ void initEntities() {
     );
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(16.0f, 0.5f, 0.5f, 0.0f),
@@ -2070,7 +2073,7 @@ void initEntities() {
     );
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(0.5f, 16.0f, 0.5f, 0.0f),
@@ -2079,7 +2082,7 @@ void initEntities() {
     );
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(1.5f, 1.5f, 1.5f, 0.0f),
@@ -2091,22 +2094,28 @@ void initEntities() {
     // visual references for the gizmo render pass.
     {
         IREntity::EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
-        IREntity::getComponent<C_Position3D>(translateGizmo).pos_ = vec3(-12.0f, 12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(translateGizmo).translation_ =
+            vec3(-12.0f, 12.0f, -3.0f);
 
         IREntity::EntityId rotateGizmo = IRPrefab::Gizmo::createRotateGizmo();
-        IREntity::getComponent<C_Position3D>(rotateGizmo).pos_ = vec3(12.0f, 12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(rotateGizmo).translation_ =
+            vec3(12.0f, 12.0f, -3.0f);
 
         IREntity::EntityId scaleGizmo = IRPrefab::Gizmo::createScaleGizmo();
-        IREntity::getComponent<C_Position3D>(scaleGizmo).pos_ = vec3(-12.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(scaleGizmo).translation_ =
+            vec3(-12.0f, -12.0f, -3.0f);
 
         IREntity::EntityId jointMarker = IRPrefab::Gizmo::createJointMarker();
-        IREntity::getComponent<C_Position3D>(jointMarker).pos_ = vec3(8.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(jointMarker).translation_ =
+            vec3(8.0f, -12.0f, -3.0f);
 
         IREntity::EntityId bindPointMarker = IRPrefab::Gizmo::createBindPointMarker();
-        IREntity::getComponent<C_Position3D>(bindPointMarker).pos_ = vec3(12.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(bindPointMarker).translation_ =
+            vec3(12.0f, -12.0f, -3.0f);
 
         IREntity::EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
-        IREntity::getComponent<C_Position3D>(ikMarker).pos_ = vec3(16.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(ikMarker).translation_ =
+            vec3(16.0f, -12.0f, -3.0f);
     }
 
     // Editable voxel set — the place/erase target. Allocated empty
@@ -2299,7 +2308,7 @@ void initEntities() {
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
     // frame and hides it again on RELEASED.
     IRVoxelEditor::g_fillTool.ghostEntity_ = IREntity::createEntity(
-        C_Position3D{vec3(0.0f)},
+        C_LocalTransform{vec3(0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(0.5f, 0.5f, 0.5f, 0.0f),

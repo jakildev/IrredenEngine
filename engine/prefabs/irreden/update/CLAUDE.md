@@ -28,11 +28,12 @@ in the `UPDATE` pipeline unless explicitly noted.
 - `PERIODIC_IDLE` — advances per-entity `C_PeriodicIdle` timer.
 - `PERIODIC_IDLE_POSITION_OFFSET` — upserts the resolved bob value as a
   vec3 ADD modifier on the entity's `C_Modifiers` each tick via
-  `upsertBySourceInPlace` (under the `POSITION_OFFSET_3D` field).
-  Slot key is `(entity, POSITION_OFFSET_3D, ADD)` — one entry per
+  `upsertBySourceInPlace` (under the `TRANSFORM_TRANSLATION` field).
+  Slot key is `(entity, TRANSFORM_TRANSLATION, ADD)` — one entry per
   bob-eligible entity, updated in place. No `ticksRemaining_` countdown;
-  no `MODIFIER_DECAY` dependency. `APPLY_POSITION_OFFSET` later folds the
-  composed value into `C_PositionGlobal3D`.
+  no `MODIFIER_DECAY` dependency. `PROPAGATE_TRANSFORM` later folds the
+  resolved value into `C_WorldTransform.translation_` per the SQT
+  formula.
 - `PROPAGATE_TRANSFORM` — walks the `CHILD_OF` parent chain in
   topological order and writes `C_WorldTransform` from each entity's
   `C_LocalTransform` composed with the parent chain. Modifier-resolved

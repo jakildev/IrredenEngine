@@ -12,6 +12,7 @@
 #include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/common/components/component_name.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/math/sdf.hpp>
@@ -179,7 +180,7 @@ inline EntityId createVoxelPoolShape(
 inline EntityId
 createSdfShape(vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color) {
     return IREntity::createEntity(
-        C_Position3D{position},
+        C_LocalTransform{position},
         C_ShapeDescriptor{type, shapeParams, color}
     );
 }
@@ -265,7 +266,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addDirectional_) {
         IREntity::createEntity(
-            C_Position3D{vec3(0.0f)},
             C_LocalTransform{vec3(0.0f)},
             C_LightSource{
                 LightType::DIRECTIONAL,
@@ -281,7 +281,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addEmissive_) {
         IREntity::createEntity(
-            C_Position3D{vec3(24.0f, 6.0f, -2.0f)},
             C_LocalTransform{vec3(24.0f, 6.0f, -2.0f)},
             C_LightSource{
                 LightType::EMISSIVE,
@@ -294,7 +293,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addPoint_) {
         IREntity::createEntity(
-            C_Position3D{vec3(34.0f, -7.0f, -1.0f)},
             C_LocalTransform{vec3(34.0f, -7.0f, -1.0f)},
             C_LightSource{
                 LightType::POINT,
@@ -307,7 +305,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addSpot_) {
         IREntity::createEntity(
-            C_Position3D{vec3(10.0f, -10.0f, -2.0f)},
             C_LocalTransform{vec3(10.0f, -10.0f, -2.0f)},
             C_LightSource{
                 LightType::SPOT,

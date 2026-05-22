@@ -4,7 +4,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -16,7 +16,7 @@ namespace IRSystem {
 //   scale = pixelSize_ / zoomSnapshot_
 //   shape.params_ = handle.referenceParams_ * scale
 //   if (!handle.isAnchor_) {
-//       pos.pos_ = handle.referenceLocalPos_ * scale
+//       localTransform.translation_ = handle.referenceLocalPos_ * scale
 //   }
 //
 // Writes are derived from the per-handle `referenceParams_` /
@@ -25,18 +25,18 @@ namespace IRSystem {
 // pixel size across the full zoom range.
 //
 // `isAnchor_` distinguishes single-entity gizmo markers (joint, IK) whose
-// own `C_Position3D` IS the world-space anchor (the editor writes it
+// own `C_LocalTransform` IS the world-space anchor (the editor writes it
 // post-construction) from child handles parented under a group root.
-// For anchors we scale only `params_`; touching `pos_` would clobber the
-// editor's placement.
+// For anchors we scale only `params_`; touching `translation_` would
+// clobber the editor's placement.
 //
 // `pixelSize_` is a per-system knob the caller can tune. `1.0f` means
 // the handle renders at its Phase 1 world-space size when zoom == 1.0;
 // raising it makes every handle proportionally bigger in pixels.
 //
-// Must run BEFORE `GLOBAL_POSITION_3D` in the UPDATE pipeline so the
-// rescaled local positions propagate into `C_PositionGlobal3D` the same
-// frame; `SHAPES_TO_TRIXEL` reads `C_PositionGlobal3D` in RENDER.
+// Must run BEFORE `PROPAGATE_TRANSFORM` in the UPDATE pipeline so the
+// rescaled local translations propagate into `C_WorldTransform` the same
+// frame; `SHAPES_TO_TRIXEL` reads `C_WorldTransform` in RENDER.
 //
 // Z-yaw safety: the rescaled `C_ShapeDescriptor::params_` is consumed
 // by `system_shapes_to_trixel` AFTER the rotate snapshot, so the
@@ -60,11 +60,11 @@ template <> struct System<GIZMO_SCREEN_SPACE_SIZE> {
     void tick(
         IRComponents::C_GizmoHandle &handle,
         IRComponents::C_ShapeDescriptor &shape,
-        IRComponents::C_Position3D &pos
+        IRComponents::C_LocalTransform &localTransform
     ) {
         shape.params_ = handle.referenceParams_ * scaleSnapshot_;
         if (!handle.isAnchor_) {
-            pos.pos_ = handle.referenceLocalPos_ * scaleSnapshot_;
+            localTransform.translation_ = handle.referenceLocalPos_ * scaleSnapshot_;
         }
     }
 
@@ -73,7 +73,7 @@ template <> struct System<GIZMO_SCREEN_SPACE_SIZE> {
             GIZMO_SCREEN_SPACE_SIZE,
             IRComponents::C_GizmoHandle,
             IRComponents::C_ShapeDescriptor,
-            IRComponents::C_Position3D>("GizmoScreenSpaceSize");
+            IRComponents::C_LocalTransform>("GizmoScreenSpaceSize");
     }
 };
 

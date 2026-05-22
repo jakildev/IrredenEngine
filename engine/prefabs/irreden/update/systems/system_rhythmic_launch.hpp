@@ -5,8 +5,8 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_rhythmic_launch.hpp>
@@ -28,22 +28,19 @@ template <> struct System<RHYTHMIC_LAUNCH> {
     static SystemId create() {
         static std::unordered_map<IREntity::EntityId, PlatformSnapshot> platformCache;
 
-        return createSystem<
-            C_Position3D,
-            C_PositionGlobal3D,
-            C_Velocity3D,
-            C_ContactEvent,
-            C_RhythmicLaunch>(
+        return createSystem<C_LocalTransform, C_Velocity3D, C_ContactEvent, C_RhythmicLaunch>(
             "RhythmicLaunch",
-            [](C_Position3D &position,
-               C_PositionGlobal3D &globalPosition,
+            [](C_LocalTransform &localXform,
                C_Velocity3D &velocity,
                const C_ContactEvent &contact,
                C_RhythmicLaunch &launch) {
                 const float dt = IRTime::deltaTime(IRTime::UPDATE);
 
-                auto fetchPlatform =
-                    [](IREntity::EntityId id) -> PlatformSnapshot {
+                // Platform position is the platform entity's resolved
+                // world translation (C_WorldTransform, composed by
+                // PROPAGATE_TRANSFORM). Velocity stays on C_Velocity3D —
+                // not a position component.
+                auto fetchPlatform = [](IREntity::EntityId id) -> PlatformSnapshot {
                     auto it = platformCache.find(id);
                     if (it != platformCache.end()) {
                         return it->second;
@@ -52,13 +49,11 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                     if (!IREntity::entityExists(id)) {
                         return snap;
                     }
-                    auto posOpt =
-                        IREntity::getComponentOptional<C_Position3D>(id);
-                    if (posOpt.has_value()) {
-                        snap.position_ = posOpt.value()->pos_;
+                    auto worldOpt = IREntity::getComponentOptional<C_WorldTransform>(id);
+                    if (worldOpt.has_value()) {
+                        snap.position_ = worldOpt.value()->translation_;
                     }
-                    auto velOpt =
-                        IREntity::getComponentOptional<C_Velocity3D>(id);
+                    auto velOpt = IREntity::getComponentOptional<C_Velocity3D>(id);
                     if (velOpt.has_value()) {
                         snap.velocity_ = velOpt.value()->velocity_;
                     }
@@ -67,18 +62,16 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                 };
 
                 if (launch.frozen_) {
-                    position.pos_ = launch.frozenPos_;
-                    globalPosition.pos_ = launch.frozenPos_;
+                    localXform.translation_ = launch.frozenPos_;
                     velocity.velocity_ = vec3(0.0f);
                     return;
                 }
 
                 if (launch.atMaxLaunches()) {
-                    if (launch.freezeAtApexWhenDone_ &&
-                        !launch.grounded_ &&
+                    if (launch.freezeAtApexWhenDone_ && !launch.grounded_ &&
                         velocity.velocity_.z >= 0.0f) {
                         launch.frozen_ = true;
-                        launch.frozenPos_ = position.pos_;
+                        launch.frozenPos_ = localXform.translation_;
                         velocity.velocity_ = vec3(0.0f);
                         return;
                     }
@@ -93,37 +86,30 @@ template <> struct System<RHYTHMIC_LAUNCH> {
                     launch.grounded_ = true;
                     launch.lastPlatformEntity_ = contact.otherEntity_;
                     PlatformSnapshot plat = fetchPlatform(contact.otherEntity_);
-                    position.pos_.z = plat.position_.z - launch.restOffsetZ_;
-                    globalPosition.pos_ = position.pos_;
+                    localXform.translation_.z = plat.position_.z - launch.restOffsetZ_;
                     velocity.velocity_ = plat.velocity_;
                 }
 
                 // ── Grounded snap ──
-                if (launch.grounded_ &&
-                    launch.lastPlatformEntity_ != IREntity::kNullEntity) {
+                if (launch.grounded_ && launch.lastPlatformEntity_ != IREntity::kNullEntity) {
                     if (velocity.velocity_.z > 0.0f) {
                         velocity.velocity_.z = 0.0f;
                     }
-                    if (contact.touching_ &&
-                        contact.otherEntity_ != IREntity::kNullEntity) {
+                    if (contact.touching_ && contact.otherEntity_ != IREntity::kNullEntity) {
                         launch.lastPlatformEntity_ = contact.otherEntity_;
                     }
-                    PlatformSnapshot plat =
-                        fetchPlatform(launch.lastPlatformEntity_);
-                    position.pos_.z =
-                        plat.position_.z - launch.restOffsetZ_;
-                    globalPosition.pos_ = position.pos_;
+                    PlatformSnapshot plat = fetchPlatform(launch.lastPlatformEntity_);
+                    localXform.translation_.z = plat.position_.z - launch.restOffsetZ_;
                     velocity.velocity_ = plat.velocity_;
                 }
 
                 // ── Launch check ──
-                if (launch.grounded_ &&
-                    launch.elapsedSeconds_ >= launch.periodSeconds_ &&
+                if (launch.grounded_ && launch.elapsedSeconds_ >= launch.periodSeconds_ &&
                     !launch.atMaxLaunches()) {
                     if (launch.lastPlatformEntity_ != IREntity::kNullEntity) {
-                        auto springOpt =
-                            IREntity::getComponentOptional<C_SpringPlatform>(
-                                launch.lastPlatformEntity_);
+                        auto springOpt = IREntity::getComponentOptional<C_SpringPlatform>(
+                            launch.lastPlatformEntity_
+                        );
                         if (springOpt.has_value()) {
                             springOpt.value()->launchRequested_ = true;
                         }

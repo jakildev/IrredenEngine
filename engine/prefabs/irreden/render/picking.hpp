@@ -38,6 +38,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
@@ -114,12 +115,11 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excl
 
             // forEachComponent iterates one component type; position is
             // fetched per-entity because the API has no multi-component
-            // form. Safe: createEntity guarantees C_PositionGlobal3D on
+            // form. Safe: createEntity guarantees C_WorldTransform on
             // every entity. Acceptable: this path fires on click frames
-            // only. APPLY_POSITION_OFFSET has already folded any modifier-
-            // driven offset into globalPos for this frame.
-            auto &gpos = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(id);
-            const IRMath::vec3 worldPos = gpos.pos_;
+            // only.
+            auto &xform = IREntity::getComponent<IRComponents::C_WorldTransform>(id);
+            const IRMath::vec3 worldPos = xform.translation_;
             const IRMath::vec3 rotatedPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);
             const IRMath::vec3 boundHalf = IRMath::SDF::boundingHalf(sd.shapeType_, sd.params_);
 

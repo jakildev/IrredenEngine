@@ -14,11 +14,11 @@
 #include <irreden/update/systems/system_velocity.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
 #include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
-#include <irreden/update/systems/system_apply_position_offset.hpp>
 #include <irreden/audio/systems/system_periodic_idle_midi_trigger.hpp>
 #include <irreden/audio/systems/system_midi_sequence_out.hpp>
 #include <irreden/audio/systems/system_audio_midi_message_out.hpp>
@@ -68,7 +68,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::OUTPUT_MIDI_MESSAGE_OUT>(),
          IRSystem::createSystem<IRSystem::GOTO_3D>(),
          IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );

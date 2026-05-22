@@ -8,7 +8,8 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 
@@ -17,10 +18,11 @@ namespace IRSystem {
 // Editor gizmo drag — drives the interaction state machine over the
 // per-frame hover flag GIZMO_HOVER just wrote. One drag is active at a
 // time; the dragged handle's anchor entity (typically the gizmo group)
-// gets its C_Position3D / accumulated rotation / accumulated scale
+// gets its C_LocalTransform / accumulated rotation / accumulated scale
 // updated until the mouse button releases.
 //
-// Pipeline: INPUT, after GIZMO_HOVER. Mutates anchor `C_Position3D::pos_`
+// Pipeline: INPUT, after GIZMO_HOVER. Mutates anchor
+// `C_LocalTransform::translation_`
 // (translate) and accumulates rotate / scale state on the system params
 // — render-side application of rotate/scale is a follow-up once a
 // canonical rotation/scale component lands.
@@ -31,7 +33,7 @@ namespace IRSystem {
 //     through the anchor.
 //   - Each frame, recompute the cursor world point at THAT SAME plane
 //     and project the world delta onto the handle's unit axis.
-//   - anchor.pos_ = startPos + axisUnit * dot(worldDelta, axisUnit).
+//   - anchor.translation_ = startPos + axisUnit * dot(worldDelta, axisUnit).
 //   Fixing the plane prevents the gizmo from running away from the
 //   cursor as its iso depth changes.
 //
@@ -182,14 +184,12 @@ template <> struct System<GIZMO_DRAG> {
         dragKind_ = handle.kind_;
         dragAxis_ = handle.axis_;
 
-        auto &anchorLocal = IREntity::getComponent<IRComponents::C_Position3D>(dragAnchor_);
-        auto &anchorGlobal = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(dragAnchor_);
-        // APPLY_POSITION_OFFSET folds the modifier-driven offset channel
-        // into globalPos earlier in the frame, so the world-space anchor
-        // read here matches the rendered position.
-        const IRMath::vec3 anchorWorld = anchorGlobal.pos_;
+        auto &anchorLocal = IREntity::getComponent<IRComponents::C_LocalTransform>(dragAnchor_);
+        auto &anchorWorldTransform =
+            IREntity::getComponent<IRComponents::C_WorldTransform>(dragAnchor_);
+        const IRMath::vec3 anchorWorld = anchorWorldTransform.translation_;
 
-        dragStartAnchorPos_ = anchorLocal.pos_;
+        dragStartAnchorPos_ = anchorLocal.translation_;
         dragPlaneIsoDepth_ = canvasIsoDepthOfAnchor(anchorWorld);
         dragStartCursorWorld_ = IRRender::mouseWorldPos3DAtIsoDepth(dragPlaneIsoDepth_);
         dragStartCursorScreen_ = mouseScreen_;
@@ -209,7 +209,7 @@ template <> struct System<GIZMO_DRAG> {
     }
 
     void applyDrag() {
-        auto &anchorLocal = IREntity::getComponent<IRComponents::C_Position3D>(dragAnchor_);
+        auto &anchorLocal = IREntity::getComponent<IRComponents::C_LocalTransform>(dragAnchor_);
 
         switch (dragKind_) {
         case IRComponents::GizmoKind::TRANSLATE_ARROW: {
@@ -218,7 +218,7 @@ template <> struct System<GIZMO_DRAG> {
                 IRRender::mouseWorldPos3DAtIsoDepth(dragPlaneIsoDepth_);
             const IRMath::vec3 worldDelta = cursorWorld - dragStartCursorWorld_;
             const float along = IRMath::dot(worldDelta, axisUnit);
-            anchorLocal.pos_ = dragStartAnchorPos_ + axisUnit * along;
+            anchorLocal.translation_ = dragStartAnchorPos_ + axisUnit * along;
             break;
         }
         case IRComponents::GizmoKind::ROTATE_RING: {

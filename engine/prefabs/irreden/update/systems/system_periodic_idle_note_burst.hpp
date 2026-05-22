@@ -8,8 +8,8 @@
 #include <irreden/update/components/component_periodic_idle.hpp>
 #include <irreden/update/components/component_particle_burst.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_velocity_drag.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
@@ -21,12 +21,12 @@ namespace IRSystem {
 
 template <> struct System<PERIODIC_IDLE_NOTE_BURST> {
     static SystemId create() {
-        return createSystem<C_PeriodicIdle, C_ParticleBurst, C_VoxelSetNew, C_PositionGlobal3D>(
+        return createSystem<C_PeriodicIdle, C_ParticleBurst, C_VoxelSetNew, C_WorldTransform>(
             "PeriodicIdleNoteBurst",
             [](C_PeriodicIdle &idle,
                C_ParticleBurst &burst,
                C_VoxelSetNew &voxelSet,
-               C_PositionGlobal3D &globalPos) {
+               C_WorldTransform &worldXform) {
                 if (!idle.cycleCompleted_) {
                     return;
                 }
@@ -39,7 +39,7 @@ template <> struct System<PERIODIC_IDLE_NOTE_BURST> {
                         vec3(spd * 2.0f, spd * 2.0f, spd * 1.5f)
                     );
                     IREntity::createEntity(
-                        C_Position3D{globalPos.pos_},
+                        C_LocalTransform{worldXform.translation_},
                         C_VoxelSetNew{ivec3(1, 1, 1), color},
                         C_Velocity3D{vel},
                         C_VelocityDrag{},

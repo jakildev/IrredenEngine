@@ -5,7 +5,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_spring_platform.hpp>
@@ -22,25 +22,25 @@ template <> struct System<SPRING_PLATFORM> {
     static SystemId create() {
         return createSystem<
             C_SpringPlatform,
-            C_Position3D,
+            C_LocalTransform,
             C_Velocity3D,
             C_ContactEvent>(
             "SpringPlatform",
             [](C_SpringPlatform &spring,
-               C_Position3D &position,
+               C_LocalTransform &localXform,
                C_Velocity3D &velocity,
                const C_ContactEvent &contact) {
                 const float dt = IRTime::deltaTime(IRTime::UPDATE);
                 if (dt <= 0.0f) return;
 
                 if (!spring.originInitialized_) {
-                    spring.origin_ = position.pos_;
+                    spring.origin_ = localXform.translation_;
                     spring.originInitialized_ = true;
                 }
 
                 spring.previousDisplacement_ = spring.displacement_;
                 spring.displacement_ = IRMath::dot(
-                    position.pos_ - spring.origin_, spring.direction_);
+                    localXform.translation_ - spring.origin_, spring.direction_);
 
                 const float lockPoint = spring.length_ * spring.lockRatio_;
                 const float maxOvershoot = spring.length_ * spring.overshootRatio_;
@@ -95,13 +95,13 @@ template <> struct System<SPRING_PLATFORM> {
                             spring.displacement_ = IRMath::mix(
                                 spring.displacement_, lockPoint, rate);
                             spring.springVelocity_ = 0.0f;
-                            position.pos_ =
+                            localXform.translation_ =
                                 spring.origin_ + spring.direction_ * spring.displacement_;
 
                             if (std::abs(spring.displacement_ - lockPoint) < 0.01f) {
                                 spring.displacement_ = lockPoint;
                                 spring.state_ = SPRING_LOCKED;
-                                position.pos_ =
+                                localXform.translation_ =
                                     spring.origin_ + spring.direction_ * lockPoint;
                             }
                         } else {
@@ -125,7 +125,7 @@ template <> struct System<SPRING_PLATFORM> {
                 // ── LOCKED ──
                 if (spring.state_ == SPRING_LOCKED) {
                     spring.springVelocity_ = 0.0f;
-                    position.pos_ = spring.origin_ + spring.direction_ * lockPoint;
+                    localXform.translation_ = spring.origin_ + spring.direction_ * lockPoint;
                     if (contact.touching_ &&
                         contact.otherEntity_ != IREntity::kNullEntity) {
                         auto launchOpt =
@@ -210,7 +210,7 @@ template <> struct System<SPRING_PLATFORM> {
                         spring.state_ = SPRING_IDLE;
                         spring.oscillationCount_ = 0;
                         spring.catchReachedMax_ = false;
-                        position.pos_ = spring.origin_;
+                        localXform.translation_ = spring.origin_;
                     }
                 }
 
@@ -230,7 +230,7 @@ template <> struct System<SPRING_PLATFORM> {
                     spring.displacement_ = IRMath::mix(
                         spring.displacement_, 0.0f, rate);
                     spring.springVelocity_ = 0.0f;
-                    position.pos_ =
+                    localXform.translation_ =
                         spring.origin_ + spring.direction_ * spring.displacement_;
 
                     if (std::abs(spring.displacement_) < 0.01f) {
@@ -238,7 +238,7 @@ template <> struct System<SPRING_PLATFORM> {
                         spring.state_ = SPRING_IDLE;
                         spring.oscillationCount_ = 0;
                         spring.catchReachedMax_ = false;
-                        position.pos_ = spring.origin_;
+                        localXform.translation_ = spring.origin_;
                     }
                 }
 

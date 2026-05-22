@@ -225,10 +225,10 @@ TEST_F(PrefabApi, SpawnAttachesPosition) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(7.0f, 8.0f, 9.0f));
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
-    const auto &pos = IREntity::getComponent<IRComponents::C_Position3D>(r.entity_);
-    EXPECT_FLOAT_EQ(pos.pos_.x, 7.0f);
-    EXPECT_FLOAT_EQ(pos.pos_.y, 8.0f);
-    EXPECT_FLOAT_EQ(pos.pos_.z, 9.0f);
+    const auto &pos = IREntity::getComponent<IRComponents::C_LocalTransform>(r.entity_);
+    EXPECT_FLOAT_EQ(pos.translation_.x, 7.0f);
+    EXPECT_FLOAT_EQ(pos.translation_.y, 8.0f);
+    EXPECT_FLOAT_EQ(pos.translation_.z, 9.0f);
 }
 
 // ---- voxel_ref load -------------------------------------------------------
@@ -371,22 +371,23 @@ TEST_F(PrefabApi, SpawnAttachesShapesAsChildren) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(10.0f, 20.0f, 30.0f));
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
-    // Collect every C_ShapeDescriptor + C_Position3D entity in the world.
+    // Collect every C_ShapeDescriptor + C_LocalTransform entity in the world.
     // The fixture starts with an empty manager, so these are exactly the
     // SHAPES children attached by spawn (the root entity owns
-    // C_Position3D but no C_ShapeDescriptor).
+    // C_LocalTransform but no C_ShapeDescriptor).
     struct ChildSnapshot {
         IRMath::vec3 offset_;
         IRRender::ShapeType shapeType_;
         IRMath::Color color_;
     };
     std::vector<ChildSnapshot> children;
-    // forEachComponent only supports a single component type; getComponent<C_Position3D> per-entity
-    // is the cleanest option available until the API gains multi-component iteration.
+    // forEachComponent only supports a single component type;
+    // getComponent<C_LocalTransform> per-entity is the cleanest option
+    // available until the API gains multi-component iteration.
     IREntity::forEachComponent<IRComponents::C_ShapeDescriptor>(
         [&](IREntity::EntityId id, IRComponents::C_ShapeDescriptor &desc) {
-            const auto &pos = IREntity::getComponent<IRComponents::C_Position3D>(id);
-            children.push_back({pos.pos_, desc.shapeType_, desc.color_});
+            const auto &pos = IREntity::getComponent<IRComponents::C_LocalTransform>(id);
+            children.push_back({pos.translation_, desc.shapeType_, desc.color_});
         }
     );
 

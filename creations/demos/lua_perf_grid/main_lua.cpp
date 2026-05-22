@@ -295,7 +295,6 @@ void configureLightingAndCanvas() {
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, -64.0f)},
         C_LocalTransform{vec3(0.0f, 0.0f, -64.0f)},
         C_LightSource{
             LightType::EMISSIVE,

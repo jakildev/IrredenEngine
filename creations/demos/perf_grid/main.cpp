@@ -13,6 +13,7 @@
 // Components
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_name.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
@@ -45,7 +46,6 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/common/systems/system_modifier_decay.hpp>
-#include <irreden/update/systems/system_apply_position_offset.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
 #include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
 #include <irreden/update/systems/system_update_positions_global.hpp>
@@ -459,7 +459,7 @@ void createGridEntities() {
                     );
                 } else {
                     IREntity::createEntity(
-                        C_Position3D{pos},
+                        C_LocalTransform{pos},
                         C_ShapeDescriptor{
                             IRRender::ShapeType::BOX,
                             vec4(1.0f, 1.0f, 1.0f, 0.0f),
@@ -486,7 +486,6 @@ void configureLightingAndCanvas() {
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, -64.0f)},
         C_LocalTransform{vec3(0.0f, 0.0f, -64.0f)},
         C_LightSource{
             LightType::EMISSIVE,
@@ -549,7 +548,6 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
     IRSystem::registerPipeline(

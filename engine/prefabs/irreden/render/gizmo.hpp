@@ -15,7 +15,7 @@
 // Phase 3 (T-165) wires hover detection + drag interaction via the
 // `GIZMO_HOVER` / `GIZMO_DRAG` INPUT-pipeline systems; each spawned
 // handle carries `baseColor_` (for the hover tint round-trip) and
-// `anchorEntity_` (the entity whose `C_Position3D` drag mutates — the
+// `anchorEntity_` (the entity whose `C_LocalTransform` drag mutates — the
 // gizmo group parent for multi-handle gizmos, `kNullEntity` for
 // single-marker handles that should be hoverable but not draggable).
 
@@ -24,7 +24,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_name.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -54,8 +54,8 @@ constexpr float kIKMarkerBaseRadius = 1.1f;
 constexpr float kIKMarkerHeight = 2.2f;
 
 using IRComponents::C_GizmoHandle;
+using IRComponents::C_LocalTransform;
 using IRComponents::C_Name;
-using IRComponents::C_Position3D;
 using IRComponents::C_ShapeDescriptor;
 using IRComponents::GizmoAxis;
 using IRComponents::GizmoKind;
@@ -116,7 +116,7 @@ inline IREntity::EntityId spawnHandle(
     // downstream systems. Phase 2 screen-space sizing reads
     // `referenceParams_` / `referenceLocalPos_` as the unscaled baseline
     // and writes scaled copies back each UPDATE tick. `isAnchor_` is
-    // true for single-entity markers whose own `C_Position3D` is the
+    // true for single-entity markers whose own `C_LocalTransform` is the
     // world-space anchor (the editor writes it post-construction) —
     // Phase 2 then scales params but leaves pos alone. Phase 3 records
     // `baseColor_` for the hover-tint round-trip and `anchorEntity_` =
@@ -127,7 +127,7 @@ inline IREntity::EntityId spawnHandle(
     // no-op.
     const bool isAnchor = (parent == IREntity::kNullEntity);
     IREntity::EntityId handle = IREntity::createEntity(
-        C_Position3D{localPos},
+        C_LocalTransform{localPos},
         shapeDesc,
         C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor, color, parent},
         C_Name{name}
@@ -139,7 +139,7 @@ inline IREntity::EntityId spawnHandle(
 }
 
 inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name) {
-    IREntity::EntityId group = IREntity::createEntity(C_Position3D{vec3(0.0f)}, C_Name{name});
+    IREntity::EntityId group = IREntity::createEntity(C_LocalTransform{vec3(0.0f)}, C_Name{name});
     if (parent != IREntity::kNullEntity) {
         IREntity::setParent(group, parent);
     }

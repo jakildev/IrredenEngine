@@ -7,7 +7,7 @@
 #include <irreden/ir_constants.hpp>
 
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -70,19 +70,19 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     IRRender::LodLevel activeLod_ = IRRender::LodLevel::LOD_4;
 
     void tick(
-        IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_PositionGlobal3D &pos
+        IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
     ) {
         if (IRRender::shouldSkipAtLod(shape.lodMin_, activeLod_)) {
             return;
         }
         if (cullBounds_.has_value()) {
-            vec3 viewPos = pos.pos_;
+            vec3 viewPos = xform.translation_;
             vec3 sizeForExtent = vec3(shape.params_);
             if (!yawZero_) {
                 viewPos = vec3(
-                    yawCos_ * pos.pos_.x + yawSin_ * pos.pos_.y,
-                    -yawSin_ * pos.pos_.x + yawCos_ * pos.pos_.y,
-                    pos.pos_.z
+                    yawCos_ * xform.translation_.x + yawSin_ * xform.translation_.y,
+                    -yawSin_ * xform.translation_.x + yawCos_ * xform.translation_.y,
+                    xform.translation_.z
                 );
                 const float absC = IRMath::abs(yawCos_);
                 const float absS = IRMath::abs(yawSin_);
@@ -112,7 +112,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             return;
         }
         GPUShapeDescriptor desc{};
-        desc.worldPosition = vec4(pos.pos_, 1.0f);
+        desc.worldPosition = vec4(xform.translation_, 1.0f);
         desc.params = shape.params_;
         desc.shapeType = static_cast<std::uint32_t>(shape.shapeType_);
         desc.color = shape.color_.toPackedRGBA();
@@ -353,7 +353,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             kBufferIndex_ShapeTileDescriptors
         );
 
-        SystemId systemId = registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_PositionGlobal3D>(
+        SystemId systemId = registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_WorldTransform>(
             "ShapesToTrixel"
         );
         auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
