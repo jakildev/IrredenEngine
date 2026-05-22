@@ -434,15 +434,14 @@ inline vec4 octahedralSnapResidual(const vec4 &rotation) {
     constexpr float h = 0.5f;
     constexpr float r = 0.70710678118654752f; // 1 / sqrt(2)
     static const vec4 kOctahedral[24] = {
-        vec4(0, 0, 0, 1),                                              // identity
-        vec4(1, 0, 0, 0),    vec4(0, 1, 0, 0),    vec4(0, 0, 1, 0),    // 180 face
-        vec4(h, h, h, h),    vec4(h, h, -h, h),   vec4(h, -h, h, h),   // 120 vertex
-        vec4(h, -h, -h, h),  vec4(-h, h, h, h),   vec4(-h, h, -h, h),
-        vec4(-h, -h, h, h),  vec4(-h, -h, -h, h),
-        vec4(r, 0, 0, r),    vec4(-r, 0, 0, r),   vec4(0, r, 0, r),    // 90 face
-        vec4(0, -r, 0, r),   vec4(0, 0, r, r),    vec4(0, 0, -r, r),
-        vec4(r, r, 0, 0),    vec4(r, -r, 0, 0),   vec4(r, 0, r, 0),    // 180 edge
-        vec4(r, 0, -r, 0),   vec4(0, r, r, 0),    vec4(0, r, -r, 0),
+        vec4(0, 0, 0, 1),                                          // identity
+        vec4(1, 0, 0, 0),    vec4(0, 1, 0, 0),  vec4(0, 0, 1, 0),  // 180 face
+        vec4(h, h, h, h),    vec4(h, h, -h, h), vec4(h, -h, h, h), // 120 vertex
+        vec4(h, -h, -h, h),  vec4(-h, h, h, h), vec4(-h, h, -h, h), vec4(-h, -h, h, h),
+        vec4(-h, -h, -h, h), vec4(r, 0, 0, r),  vec4(-r, 0, 0, r),  vec4(0, r, 0, r), // 90 face
+        vec4(0, -r, 0, r),   vec4(0, 0, r, r),  vec4(0, 0, -r, r),  vec4(r, r, 0, 0),
+        vec4(r, -r, 0, 0),   vec4(r, 0, r, 0), // 180 edge
+        vec4(r, 0, -r, 0),   vec4(0, r, r, 0),  vec4(0, r, -r, 0),
     };
     int best = 0;
     float bestDot = -1.0f;

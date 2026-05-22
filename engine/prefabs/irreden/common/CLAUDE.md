@@ -29,8 +29,10 @@ in `update/`.
 - `C_RotationMode` (Epic C C2) — `enum class RotationMode { GRID,
   DETACHED }`. GRID (default) puts the entity in the shared world
   voxel pool with grid-quantized rotation; DETACHED lives in a
-  per-entity `C_EntityCanvas` so rotation runs through the per-canvas
-  TRS composite (C3) without re-rasterizing voxels. Attached by
+  per-entity `C_EntityCanvas` whose voxel emit bakes the entity's full
+  SO(3) rotation directly (T-295, via `PROPAGATE_CANVAS_ROTATION` →
+  `C_CanvasLocalRotation`) — the composite stage just places the canvas.
+  Attached by
   `IRPrefab::Prefab::spawnPrefab` (default GRID, or
   `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab
   table — the enum value, not the string). Mutate at runtime with

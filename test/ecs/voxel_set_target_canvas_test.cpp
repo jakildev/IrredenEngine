@@ -27,8 +27,7 @@ class VoxelSetTargetCanvasTest : public ::testing::Test {
 };
 
 TEST_F(VoxelSetTargetCanvasTest, VoxelSetAllocatesFromExplicitCanvasPool) {
-    const IREntity::EntityId canvas =
-        IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
 
     const IREntity::EntityId object = IREntity::createEntity(
         C_VoxelSetNew{ivec3(4, 4, 4), Color{200, 100, 50, 255}, true, canvas}
@@ -44,17 +43,11 @@ TEST_F(VoxelSetTargetCanvasTest, VoxelSetAllocatesFromExplicitCanvasPool) {
 }
 
 TEST_F(VoxelSetTargetCanvasTest, SeparateCanvasesKeepIsolatedPools) {
-    const IREntity::EntityId canvasA =
-        IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
-    const IREntity::EntityId canvasB =
-        IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
+    const IREntity::EntityId canvasA = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
+    const IREntity::EntityId canvasB = IREntity::createEntity(C_VoxelPool{ivec3(8, 8, 8)});
 
-    IREntity::createEntity(
-        C_VoxelSetNew{ivec3(3, 3, 3), Color{255, 0, 0, 255}, true, canvasA}
-    );
-    IREntity::createEntity(
-        C_VoxelSetNew{ivec3(2, 2, 2), Color{0, 0, 255, 255}, true, canvasB}
-    );
+    IREntity::createEntity(C_VoxelSetNew{ivec3(3, 3, 3), Color{255, 0, 0, 255}, true, canvasA});
+    IREntity::createEntity(C_VoxelSetNew{ivec3(2, 2, 2), Color{0, 0, 255, 255}, true, canvasB});
 
     // Each canvas's pool holds only its own voxel set — no cross-pool bleed.
     EXPECT_EQ(IREntity::getComponent<C_VoxelPool>(canvasA).getLiveVoxelCount(), 27);
@@ -64,8 +57,7 @@ TEST_F(VoxelSetTargetCanvasTest, SeparateCanvasesKeepIsolatedPools) {
 TEST_F(VoxelSetTargetCanvasTest, EntityKeyedAllocateOnNullCanvasIsEmpty) {
     // A null / pool-less canvas degrades to an empty allocation rather than
     // dereferencing a missing pool.
-    const auto allocation =
-        IRPrefab::VoxelPool::allocate(16u, IREntity::kNullEntity);
+    const auto allocation = IRPrefab::VoxelPool::allocate(16u, IREntity::kNullEntity);
     EXPECT_EQ(allocation.startIndex_, 0u);
     EXPECT_TRUE(allocation.voxels_.empty());
 }

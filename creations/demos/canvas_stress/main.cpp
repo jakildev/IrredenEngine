@@ -84,7 +84,9 @@ void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color
     constexpr ivec3 kCubeSize{10, 10, 10};
 
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
-        "detached_canvas_" + std::to_string(index), kCanvasSize, kPoolSize
+        "detached_canvas_" + std::to_string(index),
+        kCanvasSize,
+        kPoolSize
     );
 
     // The voxel cube lives inside the detached canvas's pool. Its position is
@@ -123,11 +125,14 @@ void readConfig() {
         return;
     }
     sol::object gridSize = table["main_grid_size"];
-    if (gridSize.is<int>()) g_settings.mainGridSize_ = gridSize.as<int>();
+    if (gridSize.is<int>())
+        g_settings.mainGridSize_ = gridSize.as<int>();
     sol::object detachedCount = table["detached_count"];
-    if (detachedCount.is<int>()) g_settings.detachedCount_ = detachedCount.as<int>();
+    if (detachedCount.is<int>())
+        g_settings.detachedCount_ = detachedCount.as<int>();
     sol::object zoom = table["initial_zoom"];
-    if (zoom.is<float>()) g_settings.initialZoom_ = zoom.as<float>();
+    if (zoom.is<float>())
+        g_settings.initialZoom_ = zoom.as<float>();
 }
 
 void parseArgs(int argc, char **argv) {
@@ -230,9 +235,10 @@ void initEntities() {
     // or the canvases overlap — kDetachedSpacing is sized for the 64-trixel canvas.
     const int detached = IRMath::max(0, g_settings.detachedCount_);
     constexpr float kDetachedSpacing = 160.0f;
-    const int cols = IRMath::max(1, static_cast<int>(IRMath::ceil(IRMath::sqrt(
-        static_cast<float>(IRMath::max(detached, 1))
-    ))));
+    const int cols = IRMath::max(
+        1,
+        static_cast<int>(IRMath::ceil(IRMath::sqrt(static_cast<float>(IRMath::max(detached, 1)))))
+    );
     const int rows = (detached + cols - 1) / IRMath::max(cols, 1);
     const float colCenter = (static_cast<float>(cols) - 1.0f) * 0.5f;
     const float rowCenter = (static_cast<float>(IRMath::max(rows, 1)) - 1.0f) * 0.5f;

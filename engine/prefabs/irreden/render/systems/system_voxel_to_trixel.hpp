@@ -256,7 +256,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const auto &cull = IRRender::getCullViewport();
 
         buildVoxelFrameData(
-            frameData_, triangleCanvasTextures, liveVoxelCount, canvasLocalRotation.rotation_
+            frameData_,
+            triangleCanvasTextures,
+            liveVoxelCount,
+            canvasLocalRotation.rotation_
         );
 
         const int renderMode = frameData_.voxelRenderOptions_.x;
@@ -488,14 +491,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_IndirectDispatchParams
         );
 
-        SystemId systemId =
-            registerSystem<
-                VOXEL_TO_TRIXEL_STAGE_1,
-                C_VoxelPool,
-                C_TriangleCanvasTextures,
-                C_CanvasLocalRotation>(
-                "SingleVoxelToCanvasFirst"
-            );
+        SystemId systemId = registerSystem<
+            VOXEL_TO_TRIXEL_STAGE_1,
+            C_VoxelPool,
+            C_TriangleCanvasTextures,
+            C_CanvasLocalRotation>("SingleVoxelToCanvasFirst");
         auto *p = getSystemParams<System<VOXEL_TO_TRIXEL_STAGE_1>>(systemId);
         p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");

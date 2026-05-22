@@ -15,12 +15,7 @@ namespace {
 
 constexpr float kTolerance = 1e-5f;
 
-constexpr float kCardinalYaws[4] = {
-    0.0f,
-    IRMath::kHalfPi,
-    IRMath::kPi,
-    3.0f * IRMath::kHalfPi
-};
+constexpr float kCardinalYaws[4] = {0.0f, IRMath::kHalfPi, IRMath::kPi, 3.0f * IRMath::kHalfPi};
 
 // Eight residual yaws spanning the [-pi/4, pi/4] residual range, including
 // the boundary, mid-sector, and a couple of small-angle samples.
@@ -35,7 +30,7 @@ constexpr float kResidualYaws[8] = {
     IRMath::kPi / 4.0f,
 };
 
-void expectMat2Near(const IRMath::mat2& actual, const IRMath::mat2& expected, float tol) {
+void expectMat2Near(const IRMath::mat2 &actual, const IRMath::mat2 &expected, float tol) {
     EXPECT_NEAR(actual[0][0], expected[0][0], tol);
     EXPECT_NEAR(actual[0][1], expected[0][1], tol);
     EXPECT_NEAR(actual[1][0], expected[1][0], tol);
@@ -148,7 +143,7 @@ IRMath::vec4 quatAxisAngle(IRMath::vec3 axis, float angle) {
     return IRMath::vec4(a.x * s, a.y * s, a.z * s, IRMath::cos(angle * 0.5f));
 }
 
-void expectQuatNearIdentity(const IRMath::vec4& q, float tol) {
+void expectQuatNearIdentity(const IRMath::vec4 &q, float tol) {
     // q and -q are the same rotation; identity is (0,0,0,±1).
     EXPECT_NEAR(IRMath::abs(q.w), 1.0f, tol);
     EXPECT_NEAR(q.x, 0.0f, tol);
@@ -164,13 +159,13 @@ TEST(OctahedralSnapResidualTest, IdentityResidualIsIdentity) {
 // Every one of the 24 cube orientations snaps to itself — residual identity.
 TEST(OctahedralSnapResidualTest, OctahedralElementsResidualIsIdentity) {
     const IRMath::vec4 elements[]{
-        quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kHalfPi),       // 90 about X
-        quatAxisAngle(IRMath::vec3(0, 1, 0), IRMath::kPi),           // 180 about Y
-        quatAxisAngle(IRMath::vec3(0, 0, 1), 3.0f * IRMath::kHalfPi),// 270 about Z
-        quatAxisAngle(IRMath::vec3(1, 1, 1), IRMath::kTwoPi / 3.0f), // 120 about diagonal
-        quatAxisAngle(IRMath::vec3(1, 1, 0), IRMath::kPi),           // 180 about edge
+        quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kHalfPi),        // 90 about X
+        quatAxisAngle(IRMath::vec3(0, 1, 0), IRMath::kPi),            // 180 about Y
+        quatAxisAngle(IRMath::vec3(0, 0, 1), 3.0f * IRMath::kHalfPi), // 270 about Z
+        quatAxisAngle(IRMath::vec3(1, 1, 1), IRMath::kTwoPi / 3.0f),  // 120 about diagonal
+        quatAxisAngle(IRMath::vec3(1, 1, 0), IRMath::kPi),            // 180 about edge
     };
-    for (const IRMath::vec4& e : elements) {
+    for (const IRMath::vec4 &e : elements) {
         expectQuatNearIdentity(IRMath::octahedralSnapResidual(e), 1e-4f);
     }
 }
@@ -211,7 +206,7 @@ TEST(Pos3DtoPos2DIsoYawedTest, ZeroYawMatchesUnyawedProjection) {
         IRMath::vec3(3, -2, 4),
         IRMath::vec3(-5, 7, -3)
     };
-    for (const auto& p : samples) {
+    for (const auto &p : samples) {
         const IRMath::vec2 expected = IRMath::pos3DtoPos2DIso(p);
         const IRMath::vec2 actual = IRMath::pos3DtoPos2DIsoYawed(p, 0.0f);
         EXPECT_NEAR(actual.x, expected.x, kTolerance);
@@ -327,8 +322,7 @@ TEST(SqtToMat4Test, PureTranslationIsoMatrixForm) {
 
 TEST(SqtToMat4Test, PureScaleMatrixHasScaledColumns) {
     const IRMath::vec3 s(2.0f, 3.0f, 4.0f);
-    const IRMath::mat4 M =
-        IRMath::sqtToMat4(s, IRMath::vec4(0, 0, 0, 1), IRMath::vec3(0.0f));
+    const IRMath::mat4 M = IRMath::sqtToMat4(s, IRMath::vec4(0, 0, 0, 1), IRMath::vec3(0.0f));
     EXPECT_NEAR(M[0][0], s.x, kTolerance);
     EXPECT_NEAR(M[1][1], s.y, kTolerance);
     EXPECT_NEAR(M[2][2], s.z, kTolerance);
@@ -354,9 +348,8 @@ TEST(SqtToMat4Test, RotationAgreesWithRotateVectorByQuat) {
 
     const IRMath::mat4 M = IRMath::sqtToMat4(IRMath::vec3(1.0f), q, IRMath::vec3(0.0f));
 
-    const IRMath::vec3 bases[3] = {
-        IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)
-    };
+    const IRMath::vec3 bases[3] =
+        {IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)};
     for (int i = 0; i < 3; ++i) {
         const IRMath::vec3 expected = IRMath::rotateVectorByQuat(bases[i], q);
         const IRMath::vec4 applied = M * IRMath::vec4(bases[i], 1.0f);
@@ -393,7 +386,7 @@ TEST(MatrixApplyToVoxelGridTest, IdentityLeavesCellsUnchanged) {
         IRMath::ivec3(-5, 7, -2),
         IRMath::ivec3(127, -128, 64)
     };
-    for (const auto& c : cells) {
+    for (const auto &c : cells) {
         const IRMath::ivec3 r = IRMath::matrixApplyToVoxelGrid(I, c);
         EXPECT_EQ(r.x, c.x);
         EXPECT_EQ(r.y, c.y);

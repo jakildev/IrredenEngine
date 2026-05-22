@@ -34,10 +34,9 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
         if (rotationMode.mode_ != IRComponents::RotationMode::DETACHED) {
             return;
         }
-        auto canvasRotation =
-            IREntity::getComponentOptional<IRComponents::C_CanvasLocalRotation>(
-                entityCanvas.canvasEntity_
-            );
+        auto canvasRotation = IREntity::getComponentOptional<IRComponents::C_CanvasLocalRotation>(
+            entityCanvas.canvasEntity_
+        );
         if (canvasRotation.has_value()) {
             canvasRotation.value()->rotation_ = localTransform.rotation_;
         }
