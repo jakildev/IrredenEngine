@@ -3,6 +3,7 @@
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/profile/scope_timer.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
@@ -121,6 +122,20 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
     constexpr size_t kStride = sizeof(C_PositionGlobal3D);
     const auto &globals = pool.getPositionGlobals();
 
+    // A saturated queue no longer represents a small moved subset — the
+    // ranges cover most of the live buffer (every moving voxel set
+    // re-queued across N catch-up update ticks). Sorting + coalescing
+    // thousands of fragments costs more than one whole-live-range
+    // upload, so take that path. See C_VoxelPool::kMaxPendingPositionRanges.
+    if (ranges.size() >= C_VoxelPool::kMaxPendingPositionRanges) {
+        const int liveCount = pool.getLiveVoxelCount();
+        if (liveCount > 0) {
+            buf->subData(0, static_cast<size_t>(liveCount) * kStride, globals.data());
+        }
+        pool.clearPendingPositionRanges();
+        return;
+    }
+
     std::sort(ranges.begin(), ranges.end());
     size_t runStart = ranges.front().first;
     size_t runEnd = runStart + ranges.front().second;
@@ -214,7 +229,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // stateless-particles demo, any pure-shape or pure-particle scene).
         // Keep this above the early-return so an empty voxel pool no
         // longer dictates whether the canvas refreshes.
-        clearCanvasAndDistances(entity, triangleCanvasTextures);
+        {
+            IR_PROFILE_SCOPE("vs1_clear");
+            clearCanvasAndDistances(entity, triangleCanvasTextures);
+        }
 
         if (liveVoxelCount == 0)
             return;
@@ -272,16 +290,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // by another canvas's mutator pushes since both write to the
         // shared `voxelPosBuf_`, so on a canvas switch we re-seed the
         // whole live range and drain this pool's queue.
-        if (lastUploadedCanvas_ != entity) {
-            voxelPosBuf_->subData(
-                0,
-                liveVoxelCount * sizeof(C_PositionGlobal3D),
-                voxelPool.getPositionGlobals().data()
-            );
-            voxelPool.clearPendingPositionRanges();
-            lastUploadedCanvas_ = entity;
-        } else {
-            flushPendingPositionRanges(voxelPool, voxelPosBuf_);
+        {
+            IR_PROFILE_SCOPE("vs1_pos");
+            if (lastUploadedCanvas_ != entity) {
+                voxelPosBuf_->subData(
+                    0,
+                    liveVoxelCount * sizeof(C_PositionGlobal3D),
+                    voxelPool.getPositionGlobals().data()
+                );
+                voxelPool.clearPendingPositionRanges();
+                lastUploadedCanvas_ = entity;
+            } else {
+                flushPendingPositionRanges(voxelPool, voxelPosBuf_);
+            }
         }
         voxelColorBuf_->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
         // Active-mask covers the live prefix; upload the matching whole-word

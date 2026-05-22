@@ -324,14 +324,31 @@ struct C_VoxelPool {
         }
     }
 
+    // Cap on queued position ranges. The fixed-timestep loop runs
+    // UPDATE_VOXEL_SET_CHILDREN once per update tick, and a slow render
+    // frame accumulates several update ticks before VOXEL_TO_TRIXEL_STAGE_1
+    // drains the queue. Every moving voxel set re-queues its range each
+    // tick, so the list can reach (update ticks) × (moving sets) entries —
+    // millions in a stress scene. Past this cap the sort + coalesce in
+    // `flushPendingPositionRanges` costs far more than one whole-live-range
+    // upload, so the flusher treats a saturated queue as "re-upload
+    // everything" and further queue calls become no-ops (the full upload
+    // covers the dropped ranges anyway).
+    static constexpr std::size_t kMaxPendingPositionRanges = 8192;
+
     // Queue a slice of position-globals to upload to the GPU position
     // SSBO on the next `flushPendingPositionRanges` call. Mirrors the
     // pending-list-flush pattern documented in `cpp-ecs.md`: the
     // mutating system (UPDATE_VOXEL_SET_CHILDREN) queues the affected
     // slice; the GPU-buffer-owning system (VOXEL_TO_TRIXEL_STAGE_1)
     // coalesces contiguous queued ranges into one `subData` per run.
+    // Saturating `kMaxPendingPositionRanges` switches the flusher to a
+    // single whole-buffer upload — see `flushPendingPositionRanges`.
     void queuePositionRange(size_t startIdx, size_t count) {
         if (count == 0) {
+            return;
+        }
+        if (m_pendingPositionRanges.size() >= kMaxPendingPositionRanges) {
             return;
         }
         m_pendingPositionRanges.emplace_back(startIdx, count);

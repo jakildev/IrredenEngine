@@ -117,3 +117,26 @@ worst-case matrix cell) land here as part of the optimization PR.
   hypothesis, **measure the next layer down**. The frame time was
   growing with zoom — the next-layer-down was "is culling actually
   shrinking the working set?" and the answer was "barely."
+
+## Pending-position-range catch-up blowup (optimize audit, 2026-05-21)
+
+- **What**: `C_VoxelPool`'s pending-position-range queue accumulated
+  one range per moving voxel set per UPDATE tick; the fixed-timestep
+  loop runs several UPDATE ticks per render frame, so
+  `VOXEL_TO_TRIXEL_STAGE_1`'s per-frame `std::sort` of the queue grew
+  to millions of entries. Capped the queue; a saturated queue falls
+  back to one whole-live-range upload.
+- **Where**:
+  `engine/prefabs/irreden/voxel/components/component_voxel_pool.hpp`
+  (`kMaxPendingPositionRanges` + capped `queuePositionRange`),
+  `engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp`
+  (`flushPendingPositionRanges` saturation path).
+- **Win**: `IRPerfGrid` frame time fell **55–66 % on every one of the
+  12 matrix cells** — zoom 8 / full 176 ms → 65 ms, zoom 1 / full
+  58 ms → 23 ms. `SingleVoxelToCanvasFirst` 19–62 ms → flat ~4.9 ms.
+  The feedback loop unwound: a faster render frame runs fewer
+  catch-up UPDATE ticks, so the UPDATE pipeline cost dropped too.
+- **Lesson**: Any UPDATE-populated / RENDER-drained queue is suspect
+  when UPDATE can run multiple times per render frame. The tell is a
+  system whose CPU cost tracks *frame time* rather than scene
+  content — sub-tick `IR_PROFILE_SCOPE` blocks pinpoint the region.
