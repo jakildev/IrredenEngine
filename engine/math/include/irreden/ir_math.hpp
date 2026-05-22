@@ -368,6 +368,54 @@ constexpr mat2 faceDeformationMatrix(int face, float residualYaw) {
     return mat2(1.0f, 0.0f, 0.0f, 1.0f);
 }
 
+/// SO(3) generalization of @ref faceDeformationMatrix: the 2x2 matrix that
+/// maps a face's un-rotated iso-pixel offset to its offset after the entity
+/// is rotated by the quaternion @p rotationQuat — any axis, not just world Z.
+///
+/// Each face spans two world tangents (u, v). The un-rotated iso columns
+/// `M_0(face) = [iso(u) | iso(v)]` are constant per face; rotating the entity
+/// gives `M_R(face) = [iso(R·u) | iso(R·v)]`, and the returned
+/// `D = M_R · M_0⁻¹` post-multiplies an iso-pixel offset. At identity rotation
+/// `D` is the identity. A pure-Z quaternion reduces to
+/// `faceDeformationMatrix(face, -yaw)` — the camera-residual sign convention
+/// is opposite the entity-rotation sign.
+///
+/// A face rotated edge-on projects both tangents parallel, so `D` becomes
+/// singular — it flattens that face's offsets onto a line, which is the
+/// correct projection of a face seen edge-on. `D` is always finite (it is
+/// applied directly to offsets, never inverted), so no degeneracy guard is
+/// needed. Used by T-295 for DETACHED-canvas rotation baked into the voxel
+/// emit. GPU mirror: `faceDeformationMatrixSO3` in `shaders/ir_iso_common.glsl`.
+inline mat2 faceDeformationMatrixSO3(int face, const vec4 &rotationQuat) {
+    // Per-face world tangents and the constant inverse of the un-rotated iso
+    // basis M_0(face). M_0 columns are iso(u), iso(v); the inverses below are
+    // those 2x2 matrices inverted (column-major, glm `mat2(c0x,c0y,c1x,c1y)`).
+    vec3 u;
+    vec3 v;
+    mat2 m0Inv;
+    if (face == kXFace) {
+        u = vec3(0.0f, 1.0f, 0.0f);
+        v = vec3(0.0f, 0.0f, 1.0f);
+        m0Inv = mat2(1.0f, 0.5f, 0.0f, 0.5f);
+    } else if (face == kYFace) {
+        u = vec3(1.0f, 0.0f, 0.0f);
+        v = vec3(0.0f, 0.0f, 1.0f);
+        m0Inv = mat2(-1.0f, -0.5f, 0.0f, 0.5f);
+    } else if (face == kZFace) {
+        u = vec3(1.0f, 0.0f, 0.0f);
+        v = vec3(0.0f, 1.0f, 0.0f);
+        m0Inv = mat2(-0.5f, 0.5f, -0.5f, -0.5f);
+    } else {
+        return mat2(1.0f, 0.0f, 0.0f, 1.0f);
+    }
+    const vec3 ru = rotateVectorByQuat(u, rotationQuat);
+    const vec3 rv = rotateVectorByQuat(v, rotationQuat);
+    // iso() linear part: (-x + y, -x - y + 2z) — see engine/math/CLAUDE.md.
+    const vec2 colU = vec2(-ru.x + ru.y, -ru.x - ru.y + 2.0f * ru.z);
+    const vec2 colV = vec2(-rv.x + rv.y, -rv.x - rv.y + 2.0f * rv.z);
+    return mat2(colU, colV) * m0Inv;
+}
+
 /// Residual-yaw-deformed trixel iso-pixel offset within the 2x3 face diamond.
 ///
 /// CPU mirror of `deformedTrixelIsoPixel` in `shaders/ir_iso_common.glsl`:

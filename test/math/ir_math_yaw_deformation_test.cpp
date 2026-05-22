@@ -94,6 +94,49 @@ TEST(FaceDeformationMatrixTest, OutOfRangeFaceReturnsIdentity) {
 }
 
 // ---------------------------------------------------------------------------
+// faceDeformationMatrixSO3 (T-295)
+// ---------------------------------------------------------------------------
+
+namespace {
+// Pure-Z quaternion for angle theta (engine layout vec4(qx,qy,qz,qw)).
+IRMath::vec4 quatRotateZ(float theta) {
+    return IRMath::vec4(0.0f, 0.0f, IRMath::sin(theta * 0.5f), IRMath::cos(theta * 0.5f));
+}
+} // namespace
+
+TEST(FaceDeformationMatrixSO3Test, IdentityRotationIsIdentity) {
+    const IRMath::mat2 identity(1.0f, 0.0f, 0.0f, 1.0f);
+    const IRMath::vec4 identityQuat(0.0f, 0.0f, 0.0f, 1.0f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(IRMath::kXFace, identityQuat), identity, 1e-4f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(IRMath::kYFace, identityQuat), identity, 1e-4f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(IRMath::kZFace, identityQuat), identity, 1e-4f);
+}
+
+// A pure-Z entity rotation must reduce to the Z-only helper. The sign flips:
+// the camera-residual yaw of faceDeformationMatrix is opposite an entity
+// rotating its own frame, so SO3(theta) == faceDeformationMatrix(-theta).
+TEST(FaceDeformationMatrixSO3Test, PureZQuatMatchesZOnlyHelper) {
+    const int faces[3] = {IRMath::kXFace, IRMath::kYFace, IRMath::kZFace};
+    for (float theta : kResidualYaws) {
+        const IRMath::vec4 quat = quatRotateZ(theta);
+        for (int face : faces) {
+            expectMat2Near(
+                IRMath::faceDeformationMatrixSO3(face, quat),
+                IRMath::faceDeformationMatrix(face, -theta),
+                1e-4f
+            );
+        }
+    }
+}
+
+TEST(FaceDeformationMatrixSO3Test, OutOfRangeFaceReturnsIdentity) {
+    const IRMath::mat2 identity(1.0f, 0.0f, 0.0f, 1.0f);
+    const IRMath::vec4 quat = quatRotateZ(IRMath::kPi / 5.0f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(-1, quat), identity, 1e-4f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(99, quat), identity, 1e-4f);
+}
+
+// ---------------------------------------------------------------------------
 // pos3DtoPos2DIsoYawed
 // ---------------------------------------------------------------------------
 
