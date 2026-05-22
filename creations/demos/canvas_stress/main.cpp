@@ -20,6 +20,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
+#include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
@@ -67,7 +68,15 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 // One detached object: a per-entity canvas (textures + voxel pool), a voxel
 // cube allocated into that pool, and a world entity carrying C_EntityCanvas
 // + RotationMode::DETACHED that ENTITY_CANVAS_TO_FRAMEBUFFER composites.
-void spawnDetachedVoxelObject(int index, vec3 worldPos, float yawRadians, Color color) {
+// Unit quaternion for a rotation of `angle` radians about `axis`.
+vec4 quatAxisAngle(vec3 axis, float angle) {
+    const vec3 a = IRMath::normalize(axis);
+    const float h = angle * 0.5f;
+    const float s = IRMath::sin(h);
+    return vec4(a.x * s, a.y * s, a.z * s, IRMath::cos(h));
+}
+
+void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color color) {
     constexpr ivec2 kCanvasSize{64, 64};
     constexpr ivec3 kPoolSize{16, 16, 16};
     constexpr ivec3 kCubeSize{6, 6, 6};
@@ -84,13 +93,12 @@ void spawnDetachedVoxelObject(int index, vec3 worldPos, float yawRadians, Color 
     );
 
     // The world entity carries the canvas wrapper + DETACHED rotation mode.
-    // C_LocalTransform's quaternion is a pure-Z yaw; ENTITY_CANVAS_TO_FRAMEBUFFER
-    // threads it into the composite TRS (T-291). T-295 will replace this with
-    // full SO(3) baked inside the canvas.
-    const vec4 yawQuat{0.0f, 0.0f, IRMath::sin(yawRadians * 0.5f), IRMath::cos(yawRadians * 0.5f)};
+    // PROPAGATE_CANVAS_ROTATION copies C_LocalTransform's full SO(3) quaternion
+    // onto the canvas; VOXEL_TO_TRIXEL_STAGE_1 bakes it into the voxel emit
+    // (T-295). The composite stage places the canvas axis-aligned.
     IREntity::createEntity(
         C_Position3D{worldPos},
-        C_LocalTransform{vec3(0.0f), yawQuat},
+        C_LocalTransform{vec3(0.0f), rotationQuat},
         C_RotationMode{RotationMode::DETACHED},
         canvas
     );
@@ -158,7 +166,8 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
+         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>()}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
@@ -214,9 +223,9 @@ void initEntities() {
     }
 
     // Detached entities: a grid of per-entity canvases, each at a distinct
-    // Z-yaw. The world spacing must exceed the detached canvas footprint
-    // (composited at canvasSize / mainCanvasSize of the framebuffer) or the
-    // canvases overlap — kDetachedSpacing is sized for the 64-trixel canvas.
+    // SO(3) rotation. The world spacing must exceed the detached canvas
+    // footprint (composited at canvasSize / mainCanvasSize of the framebuffer)
+    // or the canvases overlap — kDetachedSpacing is sized for the 64-trixel canvas.
     const int detached = IRMath::max(0, g_settings.detachedCount_);
     constexpr float kDetachedSpacing = 80.0f;
     const int cols = IRMath::max(1, static_cast<int>(IRMath::ceil(IRMath::sqrt(
@@ -225,6 +234,14 @@ void initEntities() {
     const int rows = (detached + cols - 1) / IRMath::max(cols, 1);
     const float colCenter = (static_cast<float>(cols) - 1.0f) * 0.5f;
     const float rowCenter = (static_cast<float>(IRMath::max(rows, 1)) - 1.0f) * 0.5f;
+    // Rotation axes cycled per entity so the grid shows yaw, pitch, roll, and
+    // a mixed diagonal — full SO(3) baked into each canvas by T-295.
+    constexpr vec3 kAxes[]{
+        {0.0f, 0.0f, 1.0f}, // yaw
+        {1.0f, 0.0f, 0.0f}, // pitch
+        {0.0f, 1.0f, 0.0f}, // roll
+        {1.0f, 1.0f, 1.0f}, // mixed diagonal
+    };
     for (int i = 0; i < detached; ++i) {
         const int col = i % cols;
         const int row = i / cols;
@@ -233,10 +250,13 @@ void initEntities() {
             (static_cast<float>(row) - rowCenter) * kDetachedSpacing,
             0.0f
         };
-        // Spread Z-yaw across [0, 90°) so the composite Z-yaw (T-291) is
-        // visibly distinct per canvas.
-        const float yaw = IRMath::kPi * 0.5f * static_cast<float>(i) /
-                          static_cast<float>(IRMath::max(detached, 1));
+        // Angle ramps across [0, 30°); axis cycles so adjacent canvases differ.
+        // The per-face SO(3) deformation (T-295) skews each voxel face — clean
+        // for moderate rotation; past ~40° the forward-mapped trixels gap and
+        // the low-res detached canvas magnifies it into scanline stripes.
+        const float angle = IRMath::kPi / 6.0f * static_cast<float>(i) /
+                            static_cast<float>(IRMath::max(detached - 1, 1));
+        const vec4 rotation = quatAxisAngle(kAxes[i % 4], angle);
         constexpr Color kDistinct[]{
             {230, 70, 70, 255},
             {70, 210, 90, 255},
@@ -246,7 +266,7 @@ void initEntities() {
             {70, 210, 210, 255},
         };
         const Color color = kDistinct[i % 6];
-        spawnDetachedVoxelObject(i, worldPos, yaw, color);
+        spawnDetachedVoxelObject(i, worldPos, rotation, color);
     }
 
     IR_LOG_INFO(

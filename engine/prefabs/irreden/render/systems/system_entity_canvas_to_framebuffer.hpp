@@ -13,9 +13,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
-#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
-#include <irreden/common/components/component_rotation_mode.hpp>
 
 #include <vector>
 
@@ -46,13 +44,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
 
     static SystemId create() {
         SystemId s =
-            createSystem<C_EntityCanvas, C_WorldTransform, C_LocalTransform, C_RotationMode>(
+            createSystem<C_EntityCanvas, C_WorldTransform>(
                 "EntityCanvasToFramebuffer",
                 [](IREntity::EntityId entityId,
                    const C_EntityCanvas &entityCanvas,
-                   const C_WorldTransform &worldTransform,
-                   const C_LocalTransform &localTransform,
-                   const C_RotationMode &rotationMode) {
+                   const C_WorldTransform &worldTransform) {
                     if (!entityCanvas.visible_ ||
                         entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
                         static_cast<int>(getInstances().size()) >= kMaxEntityCanvasInstances) {
@@ -93,22 +89,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                     );
 
                     vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize;
+                    // Placement only: the composite places each detached canvas
+                    // texture at the entity's iso position, axis-aligned. A
+                    // DETACHED entity's full SO(3) rotation is baked into the
+                    // canvas texture itself by the voxel emit (T-295, via
+                    // PROPAGATE_CANVAS_ROTATION → C_CanvasLocalRotation →
+                    // VOXEL_TO_TRIXEL_STAGE_1), so the composite TRS no longer
+                    // applies any rotation.
                     mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
-                    // DETACHED entities thread C_LocalTransform's Z-yaw into the
-                    // composite TRS so the canvas spins around its local Z axis
-                    // without per-voxel rebake. Extract the heading by rotating
-                    // the local +X axis and taking its angle in the XY plane —
-                    // exact for pure-Z rotations, the natural Z-projection for
-                    // mixed quats. Full SO(3) inside the canvas (pitch/roll plus
-                    // world-Z deformation on top) lands in T-295 (C7).
-                    if (rotationMode.mode_ == RotationMode::DETACHED) {
-                        const vec3 xRotated = IRMath::rotateVectorByQuat(
-                            vec3(1.0f, 0.0f, 0.0f),
-                            localTransform.rotation_
-                        );
-                        const float yawZ = IRMath::atan2(xRotated.y, xRotated.x);
-                        model = IRMath::rotate(model, yawZ, vec3(0.0f, 0.0f, 1.0f));
-                    }
                     model = scale(
                         model,
                         vec3(

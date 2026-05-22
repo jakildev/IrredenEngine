@@ -384,8 +384,11 @@ constexpr mat2 faceDeformationMatrix(int face, float residualYaw) {
 /// singular — it flattens that face's offsets onto a line, which is the
 /// correct projection of a face seen edge-on. `D` is always finite (it is
 /// applied directly to offsets, never inverted), so no degeneracy guard is
-/// needed. Used by T-295 for DETACHED-canvas rotation baked into the voxel
-/// emit. GPU mirror: `faceDeformationMatrixSO3` in `shaders/ir_iso_common.glsl`.
+/// needed.
+///
+/// CPU-only by design: T-295's `buildVoxelFrameData` bakes the result into the
+/// `faceDeform_` UBO that the voxel-emit shader already applies, so the shader
+/// stays rotation-agnostic — there is no GPU-side mirror to keep in sync.
 inline mat2 faceDeformationMatrixSO3(int face, const vec4 &rotationQuat) {
     // Per-face world tangents and the constant inverse of the un-rotated iso
     // basis M_0(face). M_0 columns are iso(u), iso(v); the inverses below are

@@ -14,6 +14,7 @@
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
@@ -59,7 +60,10 @@ buildChunkVisibilityMask(C_VoxelPool &pool, IsoBounds2D viewport) {
 }
 
 inline void buildVoxelFrameData(
-    FrameDataVoxelToCanvas &frameData, const C_TriangleCanvasTextures &canvas, int liveVoxelCount
+    FrameDataVoxelToCanvas &frameData,
+    const C_TriangleCanvasTextures &canvas,
+    int liveVoxelCount,
+    const vec4 &canvasRotation
 ) {
     const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
@@ -72,10 +76,30 @@ inline void buildVoxelFrameData(
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
 
-    // rasterYaw picks the integer trixel basis permutation (T-055);
-    // residualYaw is folded into faceDeform_[] which the trixel emit shader
-    // applies to each sub-pixel offset in 2D iso space (T-293, replaces the
-    // T-058 / T-322 screen-space bilinear residual composite).
+    // A non-zero `canvasRotation` marks a detached entity canvas (the main
+    // world canvas keeps the all-zero `C_CanvasLocalRotation` sentinel). A
+    // detached canvas rasterizes its voxels in the entity's own model space
+    // — camera yaw zeroed — and `faceDeform_` carries the full SO(3)
+    // per-face deformation for the entity's rotation (T-295).
+    const bool detachedCanvas = canvasRotation.x != 0.0f || canvasRotation.y != 0.0f ||
+                                canvasRotation.z != 0.0f || canvasRotation.w != 0.0f;
+    if (detachedCanvas) {
+        frameData.visualYaw_ = 0.0f;
+        frameData.rasterYaw_ = 0.0f;
+        frameData.residualYaw_ = 0.0f;
+        const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, canvasRotation);
+        const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, canvasRotation);
+        const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, canvasRotation);
+        frameData.faceDeform_[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
+        frameData.faceDeform_[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
+        frameData.faceDeform_[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
+        return;
+    }
+
+    // Main world canvas: rasterYaw picks the integer trixel basis permutation
+    // (T-055); residualYaw is folded into faceDeform_[] which the trixel emit
+    // shader applies to each sub-pixel offset in 2D iso space (T-293, replaces
+    // the T-058 / T-322 screen-space bilinear residual composite).
     frameData.visualYaw_ = IRPrefab::Camera::getYaw();
     const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
     frameData.rasterYaw_ = rasterYaw;
@@ -201,7 +225,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     void tick(
         IREntity::EntityId entity,
         C_VoxelPool &voxelPool,
-        C_TriangleCanvasTextures &triangleCanvasTextures
+        C_TriangleCanvasTextures &triangleCanvasTextures,
+        const C_CanvasLocalRotation &canvasLocalRotation
     ) {
         const int liveVoxelCount = voxelPool.getLiveVoxelCount();
 
@@ -226,7 +251,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         );
         const auto &cull = IRRender::getCullViewport();
 
-        buildVoxelFrameData(frameData_, triangleCanvasTextures, liveVoxelCount);
+        buildVoxelFrameData(
+            frameData_, triangleCanvasTextures, liveVoxelCount, canvasLocalRotation.rotation_
+        );
 
         const int renderMode = frameData_.voxelRenderOptions_.x;
         const int effectiveSub = frameData_.voxelRenderOptions_.y;
@@ -458,7 +485,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         );
 
         SystemId systemId =
-            registerSystem<VOXEL_TO_TRIXEL_STAGE_1, C_VoxelPool, C_TriangleCanvasTextures>(
+            registerSystem<
+                VOXEL_TO_TRIXEL_STAGE_1,
+                C_VoxelPool,
+                C_TriangleCanvasTextures,
+                C_CanvasLocalRotation>(
                 "SingleVoxelToCanvasFirst"
             );
         auto *p = getSystemParams<System<VOXEL_TO_TRIXEL_STAGE_1>>(systemId);
