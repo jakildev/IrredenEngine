@@ -47,7 +47,7 @@ IREntity.createEntityBatchPolyrhythm(
     ivec3.new(num_voices, 1, 1),
     function(params)
         local x = (params.index.x - (num_voices - 1) * 0.5) * spacing
-        return C_Position3D.new(vec3.new(x, 0.0, 0.0))
+        return C_LocalTransform.new(vec3.new(x, 0.0, 0.0))
     end,
     function(params)
         local voice = voices[params.index.x + 1]

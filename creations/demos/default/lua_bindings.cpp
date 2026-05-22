@@ -229,19 +229,17 @@ void registerLuaBindings() {
 
         // Batch creation functions — every bob-eligible entity also
         // carries C_Modifiers so PERIODIC_IDLE_POSITION_OFFSET can push a
-        // per-frame vec3 modifier. NOTE: for these voxel entities the bob
-        // is dormant during the T-300 -> T-301 migration window — the
-        // modifier folds into C_WorldTransform.translation_, but the voxel
-        // render path still reads C_PositionGlobal3D (composed from
-        // C_Position3D). T-301 migrates voxel entities onto C_WorldTransform
-        // and the bob reconnects. See PR #1041.
+        // per-frame vec3 modifier into TRANSFORM_TRANSLATION. The modifier
+        // folds into C_WorldTransform.translation_; UPDATE_VOXEL_SET_CHILDREN
+        // reads that translation as the voxel-set parent position, so the
+        // bob reconnects directly through the SQT chain.
         luaScript.registerCreateEntityBatchFunction<
-            C_Position3D,
+            C_LocalTransform,
             C_VoxelSetNew,
             C_PeriodicIdle,
             C_Modifiers>("createEntityBatchVoxelPeriodicIdle");
         luaScript.registerCreateEntityBatchFunction<
-            C_Position3D,
+            C_LocalTransform,
             C_VoxelSetNew,
             C_PeriodicIdle,
             C_MidiNote,

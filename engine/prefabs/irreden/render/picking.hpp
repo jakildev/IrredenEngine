@@ -37,7 +37,6 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>

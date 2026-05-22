@@ -9,7 +9,6 @@
 #include <irreden/render/camera.hpp>
 
 // Components
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
@@ -85,7 +84,7 @@ void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color
     // The voxel cube lives inside the detached canvas's pool. Its position is
     // canvas-local (centered at the canvas origin), not the world position.
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f)},
+        C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{kCubeSize, color, true, canvas.canvasEntity_}
     );
 
@@ -94,8 +93,7 @@ void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color
     // onto the canvas; VOXEL_TO_TRIXEL_STAGE_1 bakes it into the voxel emit
     // (T-295). The composite stage places the canvas axis-aligned.
     IREntity::createEntity(
-        C_Position3D{worldPos},
-        C_LocalTransform{vec3(0.0f), rotationQuat},
+        C_LocalTransform{worldPos, rotationQuat},
         C_RotationMode{RotationMode::DETACHED},
         canvas
     );
@@ -216,7 +214,7 @@ void initEntities() {
                 0.0f
             };
             IREntity::createEntity(
-                C_Position3D{pos},
+                C_LocalTransform{pos},
                 C_VoxelSetNew{ivec3(3, 3, 3), gridColor(x, y, n), true}
             );
         }

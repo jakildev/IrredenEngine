@@ -14,7 +14,6 @@
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -425,7 +424,7 @@ void createGridEntities() {
         const ivec3 size{n, n, n};
         const vec3 originOffset{-(n - 1) * 0.5f * g_settings.spacing_};
         EntityId rootEntity = IREntity::createEntity(
-            C_Position3D{originOffset},
+            C_LocalTransform{originOffset},
             C_VoxelSetNew{size, color, true},
             C_Modifiers{}
         );
@@ -455,7 +454,7 @@ void createGridEntities() {
 
                 if (g_settings.mode_ == PerfGridMode::VoxelSet) {
                     IREntity::createEntity(
-                        C_Position3D{pos},
+                        C_LocalTransform{pos},
                         C_VoxelSetNew{ivec3(1, 1, 1), color, false},
                         idle,
                         C_Modifiers{}

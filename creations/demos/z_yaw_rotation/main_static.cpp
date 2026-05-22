@@ -9,7 +9,6 @@
 
 // COMPONENTS
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
@@ -128,7 +127,7 @@ void initEntities() {
         ivec3 half{3, 3, 3};
         ivec3 size = half * 2 + ivec3(1);
         IREntity::createEntity(
-            C_Position3D{vec3(0.0f, -kRingRadius, 0.0f)},
+            C_LocalTransform{vec3(0.0f, -kRingRadius, 0.0f)},
             C_VoxelSetNew{size, Color{100, 200, 220, 255}, true}
         );
     }
@@ -149,7 +148,7 @@ void initEntities() {
         };
         ivec3 size = half * 2 + ivec3(1);
         EntityId e = IREntity::createEntity(
-            C_Position3D{vec3(0.0f, kRingRadius, 0.0f)},
+            C_LocalTransform{vec3(0.0f, kRingRadius, 0.0f)},
             C_VoxelSetNew{size, Color{180, 100, 220, 255}, true}
         );
         auto &vs = IREntity::getComponent<C_VoxelSetNew>(e);

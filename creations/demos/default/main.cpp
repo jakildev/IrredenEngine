@@ -95,16 +95,16 @@ void initEntities() {
         for (int y = 0; y < partitions.y; y++) {
             for (int z = 0; z < partitions.z; z++) {
                 EntityId parent = IREntity::createEntity(
-                    C_Position3D{
+                    C_LocalTransform{vec3(
                         static_cast<float>(x * 16),
                         static_cast<float>(y * 16),
                         static_cast<float>(z * 16)
-                    }
+                    )}
                 );
                 auto entities = IREntity::createEntityBatchWithFunctions_Ext(
                     batchSize / partitions,
                     IREntity::CreateEntityExtraParams{.relation = {Relation::CHILD_OF, parent}},
-                    [](ivec3 index) { return C_Position3D{0, 0, 0}; },
+                    [](ivec3 index) { return C_LocalTransform{vec3(0.0f)}; },
                     [batchSize, partitions](ivec3 index) {
                         Color color{
                             roundFloatToByte(

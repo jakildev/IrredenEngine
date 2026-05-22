@@ -26,8 +26,8 @@
 
 // Engine components touched by the demo's grid + render pipeline.
 #include <irreden/common/components/component_name.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_3d_lua.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -275,7 +275,7 @@ void createGridEntities() {
         for (int y = 0; y < n; ++y) {
             for (int x = 0; x < n; ++x) {
                 IREntity::createEntity(
-                    C_Position3D{positionForCell(x, y, z)},
+                    C_LocalTransform{positionForCell(x, y, z)},
                     C_VoxelSetNew{ivec3(1, 1, 1), colorForCell(x, y, z, n), false},
                     makeWaveState(x, y, z)
                 );
@@ -349,12 +349,12 @@ void registerLuaBindings() {
         // wired (g_scriptsDir was set by the surrounding init() call).
         script.bindLuaDrivenEcs();
 
-        // Pre-bind C_Position3D so an EVAL-mode wave-tick body could touch
-        // it via `arch.C_Position3D` if a future revision inlines the
-        // position update — currently the wave system writes to its own
+        // Pre-bind C_LocalTransform so an EVAL-mode wave-tick body could
+        // touch it via `arch.C_LocalTransform` if a future revision inlines
+        // the position update — currently the wave system writes to its own
         // Lua-defined component only, but the binding is cheap and matches
         // lua_pipeline_demo's component-pack pattern.
-        script.registerTypeFromTraits<IRComponents::C_Position3D>();
+        script.registerTypeFromTraits<IRComponents::C_LocalTransform>();
 
         // T-106..T-108: pre-register every Lua-defined component declared
         // in main.lua as a C++ struct + binding. The runtime `IRComponent.

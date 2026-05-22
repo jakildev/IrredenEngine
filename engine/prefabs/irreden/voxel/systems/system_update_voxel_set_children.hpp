@@ -3,8 +3,7 @@
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/components/component_player.hpp>
 #include <irreden/ir_render.hpp>
 
@@ -25,7 +24,11 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         lastPool_ = nullptr;
     }
 
-    void tick(IREntity::EntityId &entityId, C_VoxelSetNew &voxelSet, C_PositionGlobal3D &position) {
+    void tick(
+        IREntity::EntityId &entityId,
+        C_VoxelSetNew &voxelSet,
+        const C_WorldTransform &worldTransform
+    ) {
         IREntity::EntityId canvas = voxelSet.canvasEntity_;
         if (canvas == IREntity::kNullEntity) {
             canvas = IRRender::getActiveCanvasEntity();
@@ -40,7 +43,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         // the GPU side). Using the exact count avoids queuing stale tail
         // slots if the pool-bounds guard fires (safeCount < numVoxels_).
         const int writtenCount = voxelSet.updateAsChild(
-            position.pos_,
+            worldTransform.translation_,
             pool.getPositionGlobals(),
             pool.getPositions(),
             pool.getPositionOffsets()
@@ -60,7 +63,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     }
 
     static SystemId create() {
-        return registerSystem<UPDATE_VOXEL_SET_CHILDREN, C_VoxelSetNew, C_PositionGlobal3D>(
+        return registerSystem<UPDATE_VOXEL_SET_CHILDREN, C_VoxelSetNew, C_WorldTransform>(
             "UpdateVoxelSetChildren"
         );
     }

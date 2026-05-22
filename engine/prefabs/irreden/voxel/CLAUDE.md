@@ -62,9 +62,11 @@ for single voxels and particles.
 ## Key systems
 
 - `UPDATE_VOXEL_SET_CHILDREN` (UPDATE pipeline) — pushes per-voxel-set
-  global-position updates into the pool, also registers ownership lookups.
-  Translate-only path: voxels move with the entity's `C_PositionGlobal3D`
-  but no rotation/scale composition. Voxel sets whose `C_PositionGlobal3D`
+  world-position updates into the pool, also registers ownership lookups.
+  Translate-only path: voxels move with the entity's
+  `C_WorldTransform.translation_` (composed by `PROPAGATE_TRANSFORM` from
+  `C_LocalTransform` + parent chain + `TRANSFORM_TRANSLATION` modifiers)
+  but no per-set rotation/scale composition. Voxel sets whose translation
   is unchanged from the prior tick early-out of `updateAsChild` and
   contribute nothing to the per-pool GPU position queue
   (`C_VoxelPool::queuePositionRange`) — a static voxel scene pays zero

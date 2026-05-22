@@ -10,8 +10,7 @@
 
 // Components
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -412,7 +411,7 @@ void undoOne() {
 // the set's bounds; false otherwise.
 bool worldVoxelToLocal(
     const C_VoxelSetNew &set,
-    const C_PositionGlobal3D &globalPos,
+    const C_WorldTransform &worldTransform,
     ivec3 worldVoxel,
     ivec3 &outLocal,
     std::size_t &outFlat
@@ -420,7 +419,7 @@ bool worldVoxelToLocal(
     if (set.numVoxels_ <= 0 || set.voxels_.empty()) {
         return false;
     }
-    const ivec3 origin = IRMath::roundVec3HalfUp(globalPos.pos_);
+    const ivec3 origin = IRMath::roundVec3HalfUp(worldTransform.translation_);
     outLocal = worldVoxel - origin;
     if (outLocal.x < 0 || outLocal.x >= set.size_.x || outLocal.y < 0 ||
         outLocal.y >= set.size_.y || outLocal.z < 0 || outLocal.z >= set.size_.z) {
@@ -434,7 +433,7 @@ bool worldVoxelToLocal(
 void applyFillAABB(
     IREntity::EntityId entity,
     C_VoxelSetNew &set,
-    const C_PositionGlobal3D &gpos,
+    const C_WorldTransform &gpos,
     ivec3 worldA,
     ivec3 worldB,
     bool place,
@@ -462,7 +461,7 @@ void applyFillAABB(
 void applyFillLine(
     IREntity::EntityId entity,
     C_VoxelSetNew &set,
-    const C_PositionGlobal3D &gpos,
+    const C_WorldTransform &gpos,
     ivec3 worldA,
     ivec3 worldB,
     bool place,
@@ -505,7 +504,7 @@ void applyFillLine(
 void applyFillFace(
     IREntity::EntityId entity,
     C_VoxelSetNew &set,
-    const C_PositionGlobal3D &gpos,
+    const C_WorldTransform &gpos,
     ivec3 worldHit,
     ivec3 faceNormal,
     bool place,
@@ -521,7 +520,7 @@ void applyFillFace(
     if (fixedAxis < 0)
         return;
 
-    const ivec3 origin = IRMath::roundVec3HalfUp(gpos.pos_);
+    const ivec3 origin = IRMath::roundVec3HalfUp(gpos.translation_);
     const ivec3 startLocal = worldHit - origin;
     if (startLocal.x < 0 || startLocal.x >= set.size_.x || startLocal.y < 0 ||
         startLocal.y >= set.size_.y || startLocal.z < 0 || startLocal.z >= set.size_.z)
@@ -1070,7 +1069,7 @@ void initSystems() {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
-                    auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
+                    auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
                     ivec3 local{};
                     std::size_t flat = 0;
                     if (IRVoxelEditor::worldVoxelToLocal(set, gpos, hit->voxelPos_, local, flat)) {
@@ -1088,7 +1087,7 @@ void initSystems() {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
-                    auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
+                    auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
                     IRVoxelEditor::applyFillFace(
                         hit->entity_,
                         set,
@@ -1148,7 +1147,7 @@ void initSystems() {
                 if (targetEntity == IREntity::kNullEntity)
                     return;
                 auto &set = IREntity::getComponent<C_VoxelSetNew>(targetEntity);
-                auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(targetEntity);
+                auto &gpos = IREntity::getComponent<C_WorldTransform>(targetEntity);
                 const ivec3 startPos = IRVoxelEditor::g_fillTool.dragStartWorld_;
                 const ivec3 endPos = IRVoxelEditor::g_fillTool.lastEndWorld_;
                 const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
@@ -2124,7 +2123,7 @@ void initEntities() {
     // first click to land on. Architect D1: the size is a named
     // constant on the editor side, not hardcoded inline.
     g_editor.editableVoxelSet_ = IREntity::createEntity(
-        C_Position3D{IRVoxelEditor::kEditableSceneOrigin},
+        C_LocalTransform{IRVoxelEditor::kEditableSceneOrigin},
         C_VoxelSetNew{IRVoxelEditor::kEditableSceneSize, Color{200, 200, 210, 255}}
     );
     IRVoxelEditor::g_sceneVoxelSetEntity = g_editor.editableVoxelSet_;
@@ -2146,11 +2145,11 @@ void initEntities() {
     // on. Their colors stay fixed so it's obvious which click landed
     // on the editable set versus a satellite.
     IREntity::createEntity(
-        C_Position3D{vec3(-16.0f, 0.0f, -6.0f)},
+        C_LocalTransform{vec3(-16.0f, 0.0f, -6.0f)},
         C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
     );
     IREntity::createEntity(
-        C_Position3D{vec3(16.0f, 0.0f, -6.0f)},
+        C_LocalTransform{vec3(16.0f, 0.0f, -6.0f)},
         C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
     );
 

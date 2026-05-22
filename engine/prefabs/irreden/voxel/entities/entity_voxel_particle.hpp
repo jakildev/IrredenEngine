@@ -8,7 +8,7 @@
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_math.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
@@ -28,7 +28,7 @@ template <> struct Prefab<PrefabTypes::kVoxelParticle> {
 
     static EntityId create(vec3 position, Color color, int lifetime = 120) {
         EntityId entity = IRECS::createEntity();
-        IRECS::setComponent(entity, C_Position3D{position});
+        IRECS::setComponent(entity, C_LocalTransform{position});
         IRECS::setComponent(entity, C_VoxelSetNew{ivec3(1, 1, 1), color});
         const float periodAmplitude = 64.0f;
         const float periodVariance = 8.0f;

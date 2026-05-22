@@ -29,11 +29,11 @@
 //  - `numVoxels_ <= 0` — headless / pre-canvas staging.
 //  - Cached `lastRebuildWorldTransform_*` matches live world transform.
 
-#include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/voxel_pool_allocation.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
@@ -72,8 +72,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         const bool unchanged = voxelSet.hasLastRebuildWorldTransform_ &&
                                voxelSet.lastRebuildWorldRotation_ == worldTransform.rotation_ &&
                                voxelSet.lastRebuildWorldScale_ == worldTransform.scale_ &&
-                               voxelSet.lastRebuildWorldTranslation_ ==
-                                   worldTransform.translation_;
+                               voxelSet.lastRebuildWorldTranslation_ == worldTransform.translation_;
         if (unchanged) {
             return;
         }
@@ -88,9 +87,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         }
         C_VoxelPool &pool = *lastPool_;
 
-        const std::vector<C_Position3D> &poolPositions = pool.getPositions();
+        const std::vector<IRRender::VoxelGpuPosition> &poolPositions = pool.getPositions();
         const std::vector<vec3> &poolOffsets = pool.getPositionOffsets();
-        std::vector<C_PositionGlobal3D> &poolGlobals = pool.getPositionGlobals();
+        std::vector<IRRender::VoxelGpuPosition> &poolGlobals = pool.getPositionGlobals();
 
         const size_t baseIdx = voxelSet.voxelStartIdx_;
         const size_t availPositions =
@@ -105,7 +104,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         );
         for (int i = 0; i < safeCount; ++i) {
             poolGlobals[baseIdx + i].pos_ = IRPrefab::GridRotation::worldCellForGridVoxel(
-                poolPositions[baseIdx + i].pos_, poolOffsets[baseIdx + i], worldTransform
+                poolPositions[baseIdx + i].pos_,
+                poolOffsets[baseIdx + i],
+                worldTransform
             );
         }
 

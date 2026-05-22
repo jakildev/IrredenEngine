@@ -321,7 +321,7 @@ when extending or composing widgets:
 
 ## Gotchas
 
-- **SQT transition (T-299/T-300 landed; voxel pending T-301).** Render-side and update-side readers/writers now use `C_LocalTransform` + `C_WorldTransform`. The voxel pipeline (`VOXEL_TO_TRIXEL` GPU stride, `C_VoxelPool` SoA) still reads the legacy `C_Position3D` / `C_PositionGlobal3D` channel — that channel and `SYSTEM_GLOBAL_POSITION_3D` stay alive until the voxel migration (T-301) lands.
+- **SQT transition (T-299/T-300/T-301a landed; legacy retirement pending T-301b/T-302).** All render-side, update-side, and voxel-side readers/writers now use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` channel and `SYSTEM_GLOBAL_POSITION_3D` stay alive for non-voxel consumers (editor gizmos, `modifier_demo`) until T-301b retires the writer, then T-302 deletes the component headers.
 - **Canvas texture lifetime.** The 3 GPU textures owned by
   `C_TriangleCanvasTextures` are created in the ctor and only freed in
   `onDestroy()`. Destroying a canvas entity mid-frame while a system
