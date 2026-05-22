@@ -164,5 +164,5 @@ kernel void c_voxel_to_trixel_stage_1(
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance, localId, distanceScratch, canvasSize);
+    emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, distanceScratch, canvasSize);
 }
