@@ -46,8 +46,8 @@ constexpr std::uint32_t kParticlesPerEmitter = 64u;
 // zoom needs a field big enough to look populated on its own.
 constexpr float kFieldHalfExtent = 160.0f;
 constexpr float kBaseLifetimeSeconds = 4.0f;
-constexpr float kBaseUpwardVelocity = 6.0f;  // voxels/sec along -Z (visually up)
-constexpr float kGravityZ = 4.0f;            // pulls particles back down (+Z is down)
+constexpr float kBaseUpwardVelocity = 6.0f; // voxels/sec along -Z (visually up)
+constexpr float kGravityZ = 4.0f;           // pulls particles back down (+Z is down)
 constexpr float kVelocityJitter = 3.0f;
 constexpr float kPositionJitter = 2.0f;
 
@@ -66,8 +66,7 @@ void parseArgs(int argc, char **argv) {
 
 void configureCanvas() {
     const IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-    const ivec2 canvasSize =
-        IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     // Particles render as 2x3 voxel diamonds with face-priority depth
     // encoding; the lighting pass uses the per-pixel face normal to apply
     // 3-tone shading. Without these canvas-side textures bound the
@@ -112,8 +111,7 @@ void seedEmitters() {
         // spawnRate = particlesPerEmitter / baseLifetime so the staggered
         // phase offsets fully cover the lifetime: subIndex (0..N-1) maps to
         // spawnOffset (0..lifetime), keeping every emitter steady-state.
-        e.spawnRate_ =
-            static_cast<float>(kParticlesPerEmitter) / kBaseLifetimeSeconds;
+        e.spawnRate_ = static_cast<float>(kParticlesPerEmitter) / kBaseLifetimeSeconds;
         e.baseColorPacked_ = IRMath::randomColor().toPackedRGBA();
         e.emitterFlags_ = 0u;
         e.particlesPerEmitter_ = kParticlesPerEmitter;
@@ -154,7 +152,6 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
         IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
         IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),

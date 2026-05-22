@@ -92,8 +92,11 @@ enum SystemName {
     RENDERING_SCREEN_VIEW,
     RENDERING_TILE_SELECTOR,
     RESOLVE_SUN_DIRECTION,
+    // Complete voxel→trixel rasterization for every voxel-pool canvas:
+    // compact, stage-1, and stage-2 dispatches run in one per-canvas tick.
+    // (The former separate VOXEL_TO_TRIXEL_STAGE_2 system clobbered the
+    // shared voxel SSBOs across multi-canvas scenes — see system_voxel_to_trixel.hpp.)
     VOXEL_TO_TRIXEL_STAGE_1,
-    VOXEL_TO_TRIXEL_STAGE_2,
     TRIXEL_TO_TRIXEL,
     TRIXEL_TO_FRAMEBUFFER_FRAME_DATA,
     TRIXEL_TO_FRAMEBUFFER,

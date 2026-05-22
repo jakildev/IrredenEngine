@@ -7,6 +7,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_window.hpp>
 
+#include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
@@ -36,18 +37,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const C_TriangleCanvasTextures &triangleCanvasTextures,
         const C_Name &
     ) {
-        auto &framebuffer =
-            IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-        auto &frameData =
-            IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        auto &frameData = IREntity::getComponent<C_FrameDataTrixelToFramebuffer>("mainFramebuffer");
         vec2 framebufferResolution = vec2(framebuffer.getResolutionPlusBuffer());
         const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
         const IRRender::SubdivisionMode renderMode = IRRender::getSubdivisionMode();
-        auto renderBehavior =
-            IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(entity);
-        const C_TrixelCanvasRenderBehavior behavior = renderBehavior.has_value()
-                                                          ? (*renderBehavior.value())
-                                                          : C_TrixelCanvasRenderBehavior{};
+        auto renderBehavior = IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(entity);
+        const C_TrixelCanvasRenderBehavior behavior =
+            renderBehavior.has_value() ? (*renderBehavior.value()) : C_TrixelCanvasRenderBehavior{};
         auto zoomLevel = IREntity::getComponentOptional<C_ZoomLevel>(entity);
         const vec2 baseCanvasZoom =
             behavior.useCameraZoom_
@@ -55,18 +52,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 : (zoomLevel.has_value() ? (*zoomLevel.value()).zoom_ : vec2(1.0f));
 
         frameData.frameData_.canvasZoomLevel_ = baseCanvasZoom;
-        if (behavior.applyRenderSubdivisions_ &&
-            renderMode != IRRender::SubdivisionMode::NONE) {
+        if (behavior.applyRenderSubdivisions_ && renderMode != IRRender::SubdivisionMode::NONE) {
             frameData.frameData_.canvasZoomLevel_ /= vec2(effectiveSubdivisions);
         }
 
-        frameData.frameData_.cameraTrixelOffset_ = behavior.useCameraPositionIso_
-                                                       ? IRRender::getCameraPosition2DIso()
-                                                       : vec2(0.0f);
+        frameData.frameData_.cameraTrixelOffset_ =
+            behavior.useCameraPositionIso_ ? IRRender::getCameraPosition2DIso() : vec2(0.0f);
         frameData.frameData_.cameraTrixelOffset_ +=
             vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
-        if (behavior.applyRenderSubdivisions_ &&
-            renderMode != IRRender::SubdivisionMode::NONE) {
+        if (behavior.applyRenderSubdivisions_ && renderMode != IRRender::SubdivisionMode::NONE) {
             frameData.frameData_.cameraTrixelOffset_ *= vec2(effectiveSubdivisions);
         }
         frameData.frameData_.textureOffset_ = vec2(0);
@@ -85,8 +79,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         } else {
             const ivec2 hoverSubdiv = IRRender::mouseTrixelPositionWorld();
             const float subdiv = static_cast<float>(effectiveSubdivisions);
-            frameData.frameData_.mouseHoveredTriangleIndex_ =
-                vec2(hoverSubdiv) / vec2(subdiv);
+            frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(hoverSubdiv) / vec2(subdiv);
             frameData.frameData_.effectiveSubdivisionsForHover_ = vec2(subdiv, 0.0f);
             frameData.frameData_.showHoverHighlight_ =
                 (IRRender::isHoveredTrixelVisible() ? 1.0f : 0.0f);
@@ -109,8 +102,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
         program_->use();
         quadVao_->bind();
-        auto &framebuffer =
-            IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
         framebuffer.bindFramebuffer();
         framebuffer.clear();
     }
@@ -142,15 +134,19 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             kBufferIndex_HoveredEntityId
         );
 
-        SystemId id = registerSystem<TRIXEL_TO_FRAMEBUFFER,
-                                     C_TriangleCanvasTextures,
-                                     C_Name>("CanvasToFramebuffer");
+        // Exclude detached per-entity canvases: those are composited at the
+        // owning entity's iso position by ENTITY_CANVAS_TO_FRAMEBUFFER. Without
+        // the exclude this full-screen pass would also blit each detached
+        // canvas across the whole framebuffer (a second camera-scaled copy).
+        SystemId id = registerSystem<
+            TRIXEL_TO_FRAMEBUFFER,
+            C_TriangleCanvasTextures,
+            C_Name,
+            Exclude<C_DetachedCanvas>>("CanvasToFramebuffer");
         auto *sys = getSystemParams<System<TRIXEL_TO_FRAMEBUFFER>>(id);
-        sys->frameDataBuf_ =
-            IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
+        sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
-        sys->program_ =
-            IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         IRRender::tagGpuStage(id, "trixelToFb");
         return id;

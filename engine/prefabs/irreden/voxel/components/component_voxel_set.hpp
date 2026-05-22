@@ -79,15 +79,23 @@ struct C_VoxelSetNew {
     // meaningful when `pendingVoxels_` is non-empty.
     ivec3 pendingBoundsMin_ = ivec3(0);
 
+    // `targetCanvas` selects which canvas's voxel pool this set allocates
+    // from. `kNullEntity` (the default) keeps the historical behavior —
+    // the currently-active canvas, normally "main". Pass a detached
+    // entity's per-entity canvas to render this set into that canvas.
     C_VoxelSetNew(
-        ivec3 size, Color color = IRColors::kGreen, bool centerAroundOrigin = false
-        // int voxelPoolId = 0
+        ivec3 size,
+        Color color = IRColors::kGreen,
+        bool centerAroundOrigin = false,
+        IREntity::EntityId targetCanvas = IREntity::kNullEntity
     )
         : numVoxels_{size.x * size.y * size.z}
         , size_{size} {
         const int requestedVoxels = size.x * size.y * size.z;
-        canvasEntity_ = IRPrefab::VoxelPool::activeCanvasEntity();
-        auto allocation = IRPrefab::VoxelPool::allocate(requestedVoxels);
+        canvasEntity_ = targetCanvas != IREntity::kNullEntity
+                            ? targetCanvas
+                            : IRPrefab::VoxelPool::activeCanvasEntity();
+        auto allocation = IRPrefab::VoxelPool::allocate(requestedVoxels, canvasEntity_);
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
         positionOffsets_ = allocation.positionOffsets_;
@@ -116,7 +124,11 @@ struct C_VoxelSetNew {
             // and this is a no-op). The dealloc is kept for symmetry with
             // a hypothetical future allocator that returns partial spans.
             // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
-            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(
+                voxelStartIdx_,
+                static_cast<size_t>(numVoxels_),
+                canvasEntity_
+            );
             numVoxels_ = 0;
             size_ = ivec3(0);
             return;
@@ -138,9 +150,9 @@ struct C_VoxelSetNew {
         // so the fast-path is `markRangeActive`. The fallback handles a caller
         // who passes a transparent color.
         if (color.alpha_ != 0) {
-            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         } else {
-            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
@@ -160,10 +172,17 @@ struct C_VoxelSetNew {
     // `pendingVoxels_` without a canvas, allocates from the pool with one.
     // Bounds + ordering semantics live in `voxel/CLAUDE.md` "C_VoxelSetNew
     // headless / staged mode" and `voxel/dense_bridge.hpp`.
-    C_VoxelSetNew(ivec3 boundsMin, ivec3 boundsMax, std::span<const C_Voxel> voxels)
+    C_VoxelSetNew(
+        ivec3 boundsMin,
+        ivec3 boundsMax,
+        std::span<const C_Voxel> voxels,
+        IREntity::EntityId targetCanvas = IREntity::kNullEntity
+    )
         : numVoxels_{0}
         , size_{boundsMax - boundsMin} {
-        canvasEntity_ = IRPrefab::VoxelPool::activeCanvasEntityOrNull();
+        canvasEntity_ = targetCanvas != IREntity::kNullEntity
+                            ? targetCanvas
+                            : IRPrefab::VoxelPool::activeCanvasEntityOrNull();
         const ivec3 extent = size_;
         const std::size_t requestedVoxels = (extent.x > 0 && extent.y > 0 && extent.z > 0)
                                                 ? static_cast<std::size_t>(extent.x) *
@@ -185,7 +204,10 @@ struct C_VoxelSetNew {
             return;
         }
 
-        auto allocation = IRPrefab::VoxelPool::allocate(static_cast<unsigned int>(requestedVoxels));
+        auto allocation = IRPrefab::VoxelPool::allocate(
+            static_cast<unsigned int>(requestedVoxels),
+            canvasEntity_
+        );
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
         positionOffsets_ = allocation.positionOffsets_;
@@ -210,7 +232,11 @@ struct C_VoxelSetNew {
             // and this is a no-op). The dealloc is kept for symmetry with
             // a hypothetical future allocator that returns partial spans.
             // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
-            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(
+                voxelStartIdx_,
+                static_cast<size_t>(numVoxels_),
+                canvasEntity_
+            );
             size_ = ivec3(0);
             numVoxels_ = 0;
             return;
@@ -228,7 +254,7 @@ struct C_VoxelSetNew {
         }
         // Dense payload is a mix of active and inactive slots, so
         // resync from per-voxel alpha rather than the fast bulk path.
-        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
+        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
@@ -248,7 +274,11 @@ struct C_VoxelSetNew {
         // never touches the pool — so this guard skips exactly the cases
         // that have nothing to release.
         if (numVoxels_ > 0) {
-            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(
+                voxelStartIdx_,
+                static_cast<size_t>(numVoxels_),
+                canvasEntity_
+            );
             IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
         }
     }
@@ -256,7 +286,7 @@ struct C_VoxelSetNew {
     void changeVoxelColor(ivec3 index, Color color) {
         const int idx = index3DtoIndex1D(index, size_);
         voxels_[idx].color_ = color;
-        IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, color.alpha_ != 0);
+        IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, color.alpha_ != 0, canvasEntity_);
     }
 
     void changeVoxelColorAll(Color color) {
@@ -264,9 +294,9 @@ struct C_VoxelSetNew {
             voxels_[i].color_ = color;
         }
         if (color.alpha_ != 0) {
-            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         } else {
-            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
     }
 
@@ -274,7 +304,7 @@ struct C_VoxelSetNew {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].deactivate();
         }
-        IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+        IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
@@ -282,7 +312,7 @@ struct C_VoxelSetNew {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].activate();
         }
-        IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+        IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
@@ -329,7 +359,7 @@ struct C_VoxelSetNew {
                     }
                 }
             }
-            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         if (shape3D == Shape3D::SPHERE) {
             vec3 center = vec3(size_) / 2.0f;
@@ -351,7 +381,7 @@ struct C_VoxelSetNew {
             // Sphere splits the span into active interior + inactive
             // exterior — resync from per-voxel alpha rather than picking
             // bulk active/inactive.
-            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
@@ -423,7 +453,8 @@ struct C_VoxelSetNew {
         }
         IRPrefab::VoxelPool::resyncRangeFromColors(
             voxelStartIdx_,
-            static_cast<std::size_t>(numVoxels_)
+            static_cast<std::size_t>(numVoxels_),
+            canvasEntity_
         );
     }
 

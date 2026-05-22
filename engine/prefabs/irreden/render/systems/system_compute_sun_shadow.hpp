@@ -9,7 +9,7 @@
 // later by LIGHTING_TO_TRIXEL.
 //
 // Pipeline order: must run after BAKE_SUN_SHADOW_MAP (writes the depth
-// map this pass reads) and after VOXEL_TO_TRIXEL_STAGE_2 / SHAPES_TO_TRIXEL
+// map this pass reads) and after VOXEL_TO_TRIXEL_STAGE_1 / SHAPES_TO_TRIXEL
 // (so the distance texture is populated), and before LIGHTING_TO_TRIXEL
 // which folds the shadow factor into final color.
 

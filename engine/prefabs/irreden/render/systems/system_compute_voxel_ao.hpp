@@ -6,7 +6,7 @@
 // pixel, and writes a grayscale AO factor to the canvas AO texture.
 //
 // Pipeline order constraint: must run after all geometry stages
-// (VOXEL_TO_TRIXEL_STAGE_2, SHAPES_TO_TRIXEL) so the distance texture is
+// (VOXEL_TO_TRIXEL_STAGE_1, SHAPES_TO_TRIXEL) so the distance texture is
 // fully populated, and before LIGHTING_TO_TRIXEL which consumes the AO
 // texture.
 
