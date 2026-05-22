@@ -71,6 +71,29 @@ session uncovers lands here in the same PR as the fix.
   flush). Never add a `bool dirty_` flag — full rule:
   `.claude/rules/cpp-ecs.md` §"No dirty flags on components".
 
+### 12. Pending-range queue accumulates across fixed-timestep catch-up ticks
+
+- **Pattern**: A per-frame "pending ranges" / dirty list populated by a
+  system in the **UPDATE** pipeline and drained by a system in the
+  **RENDER** pipeline. UPDATE runs N times per render frame (fixed-timestep
+  catch-up); a moving entity re-queues its range every UPDATE tick, so the
+  list grows to `N × (queuing entities)` and the RENDER-side drain (often a
+  `std::sort` + coalesce) blows up super-linearly. Worse: a slow frame
+  raises N, which slows the frame further — a feedback spiral.
+- **Where**: `C_VoxelPool::queuePositionRange` / `flushPendingPositionRanges`
+  in `engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp`
+  (fixed in the PR that added this entry).
+- **Symptom**: A RENDER system's CPU avg scales with *frame time* rather
+  than with scene content — `SingleVoxelToCanvasFirst` measured 14 ms at a
+  46 ms frame but 62 ms at a 181 ms frame on the *same* scene. Sub-tick
+  `IR_PROFILE_SCOPE` blocks localize it to the queue-drain region.
+- **Fix**: Cap the queue. Once it saturates the queued ranges no longer
+  describe a small moved subset — fall back to one whole-buffer upload and
+  drop further queue calls (the full upload covers them). Caps both the
+  drain CPU cost and the queue's memory / `push_back` cost. The deeper fix
+  is dedupe-at-queue-time or drain-per-UPDATE-tick; the saturation cap is
+  the contained, provably-correct version.
+
 ---
 
 ## GPU bottlenecks (render pipeline)

@@ -61,6 +61,9 @@
 #include <cstdlib>
 #include <numbers>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 // IRPerfGrid stress test: voxel_set vs sdf share the same lattice (positions,
 // colors, periodic-idle wave). They are *not* lighting-equivalent today:
@@ -620,6 +623,22 @@ void initSystems() {
                         cpu.lastFrameMs("update"),
                         cpu.lastFrameMs("render")
                     );
+                    // Self-describing per-scope dump: every IR_PROFILE_SCOPE
+                    // that ran last frame, sorted by total ms descending. Lets
+                    // a profiling pass localize cost inside a system tick
+                    // without re-editing this hard-coded list each time.
+                    {
+                        std::vector<std::pair<std::string_view, double>> scopes;
+                        for (const auto &[name, stats] : cpu.lastFrame()) {
+                            scopes.emplace_back(name, stats.totalMs_);
+                        }
+                        std::sort(scopes.begin(), scopes.end(), [](const auto &a, const auto &b) {
+                            return a.second > b.second;
+                        });
+                        for (const auto &[name, ms] : scopes) {
+                            IR_LOG_INFO("Auto-profile CPU-scope — {}: {:.3f}ms", name, ms);
+                        }
+                    }
                     IR_LOG_INFO(
                         "Auto-profile GPU — voxelStage1:{:.3f} voxelStage2:{:.3f} "
                         "voxelCompact:{:.3f}",
