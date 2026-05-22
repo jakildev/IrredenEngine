@@ -11,6 +11,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/render/entities/entity_sprite_sheet.hpp>
 #include <irreden/render/sprite_animation.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -44,7 +45,7 @@ inline void bindSpriteNamespace(LuaScript &luaScript) {
     };
 
     // ir.sprite.create(sheetEntityId, x, y, z) → entityId
-    // Creates a sprite entity with C_Position3D, C_Sprite, and
+    // Creates a sprite entity with C_LocalTransform, C_Sprite, and
     // C_SpriteAnimation. The initial C_Sprite size is derived from the
     // first frame of the sheet. Call ir.sprite.playAnimation afterward
     // to start playback.
@@ -68,7 +69,7 @@ inline void bindSpriteNamespace(LuaScript &luaScript) {
             );
         }
         return IREntity::createEntity(
-            IRComponents::C_Position3D{IRMath::vec3{x, y, z}},
+            IRComponents::C_LocalTransform{IRMath::vec3{x, y, z}},
             C_Sprite{texHandle, frameSize},
             C_SpriteAnimation{}
         );

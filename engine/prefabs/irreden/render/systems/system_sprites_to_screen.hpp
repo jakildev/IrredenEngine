@@ -5,7 +5,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_sprite.hpp>
 #include <irreden/render/texture.hpp>
 
@@ -18,11 +18,10 @@ using namespace IRMath;
 namespace IRSystem {
 
 /// Screen-composite sprite pass. Iterates entities with C_Sprite +
-/// C_PositionGlobal3D, computes an iso-projected screen position and
+/// C_WorldTransform, computes an iso-projected screen position and
 /// depth for each, sorts back-to-front grouped by atlas texture, and
-/// issues one drawArraysInstanced call per atlas. Reader migrates to
-/// C_WorldTransform.translation_ in T-299 (render-side SQT reader
-/// pass). Sprites bypass the trixel pipeline entirely — alpha-
+/// issues one drawArraysInstanced call per atlas. Sprites bypass the
+/// trixel pipeline entirely — alpha-
 /// blended quads land directly on the default framebuffer at the
 /// FRAMEBUFFER_TO_SCREEN pipeline stage, after the trixel composite
 /// finishes.
@@ -58,7 +57,7 @@ template <> struct System<SPRITE_TO_SCREEN> {
     std::vector<Group> groups_;
 
     void
-    tick(const IRComponents::C_Sprite &sprite, const IRComponents::C_PositionGlobal3D &global) {
+    tick(const IRComponents::C_Sprite &sprite, const IRComponents::C_WorldTransform &worldTransform) {
         if (sprite.textureHandle_ == 0) {
             return;
         }
@@ -73,7 +72,7 @@ template <> struct System<SPRITE_TO_SCREEN> {
             }
             return;
         }
-        const vec3 worldPos = global.pos_;
+        const vec3 worldPos = worldTransform.translation_;
         IRRender::SpriteRenderEntry entry{};
         entry.textureHandle_ = sprite.textureHandle_;
         entry.isoDepth_ = static_cast<int>(pos3DtoDistance(worldPos));
@@ -158,7 +157,7 @@ template <> struct System<SPRITE_TO_SCREEN> {
         SystemId id = registerSystem<
             SPRITE_TO_SCREEN,
             IRComponents::C_Sprite,
-            IRComponents::C_PositionGlobal3D>("SpritesToScreen");
+            IRComponents::C_WorldTransform>("SpritesToScreen");
         auto *sys = getSystemParams<System<SPRITE_TO_SCREEN>>(id);
         sys->frameDataBuf_ =
             IRRender::getNamedResource<IRRender::Buffer>("SpritesToScreenFrameData");

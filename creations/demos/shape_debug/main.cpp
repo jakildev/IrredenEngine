@@ -372,7 +372,7 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
     } else if (g_checkerboard) {
         desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
     }
-    EntityId entity = IREntity::createEntity(C_Position3D{position}, desc);
+    EntityId entity = IREntity::createEntity(C_LocalTransform{position}, desc);
     auto &sd = IREntity::getComponent<C_ShapeDescriptor>(entity);
     IR_LOG_INFO(
         "SDF shape entity={} canvas={} type={} params=({},{},{},{})",
@@ -501,7 +501,7 @@ void initEntities() {
         IR_LOG_INFO("--- {} ---", lf.label_);
         C_ShapeDescriptor desc{IRRender::ShapeType::SPHERE, kLodSphereParams, lf.color_};
         desc.lodMin_ = lf.lodMin_;
-        IREntity::createEntity(C_Position3D{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
+        IREntity::createEntity(C_LocalTransform{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
     }
 
     // Floor so AO / sun-shadow lighting has a surface to fall on. +Z is
@@ -540,7 +540,6 @@ void initEntities() {
     // falloff is visible across both the voxel-pool and SDF copies of the
     // nearby shapes. Cyan reads cleanly against the warm shape palette.
     IREntity::createEntity(
-        C_Position3D{vec3(40.0f, 6.0f, -2.0f)},
         C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );

@@ -14,7 +14,7 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 
 #include <vector>
@@ -46,11 +46,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
 
     static SystemId create() {
         SystemId s =
-            createSystem<C_EntityCanvas, C_PositionGlobal3D, C_LocalTransform, C_RotationMode>(
+            createSystem<C_EntityCanvas, C_WorldTransform, C_LocalTransform, C_RotationMode>(
                 "EntityCanvasToFramebuffer",
                 [](IREntity::EntityId entityId,
                    const C_EntityCanvas &entityCanvas,
-                   const C_PositionGlobal3D &globalPos,
+                   const C_WorldTransform &worldTransform,
                    const C_LocalTransform &localTransform,
                    const C_RotationMode &rotationMode) {
                     if (!entityCanvas.visible_ ||
@@ -73,7 +73,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                     vec2 cameraIso = IRRender::getCameraPosition2DIso();
                     vec2 cameraZoom = IRRender::getCameraZoom();
 
-                    vec2 entityIso = pos3DtoPos2DIso(globalPos.pos_);
+                    vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
 
                     ivec2 mainCanvasSizeI = ivec2(mainCanvasSize);
                     vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));

@@ -8,6 +8,7 @@
 #include <irreden/render/camera.hpp>
 
 // COMPONENTS
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -119,7 +120,7 @@ void initEntities() {
 
     // North-west: SDF sphere
     IREntity::createEntity(
-        C_Position3D{vec3(-kRingRadius, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(-kRingRadius, 0.0f, 0.0f)},
         C_ShapeDescriptor{IRRender::ShapeType::SPHERE, vec4(4, 4, 4, 0), Color{220, 140, 80, 255}}
     );
 
@@ -135,7 +136,7 @@ void initEntities() {
 
     // South-east: SDF box
     IREntity::createEntity(
-        C_Position3D{vec3(kRingRadius, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(kRingRadius, 0.0f, 0.0f)},
         C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(6, 6, 6, 0), Color{100, 220, 140, 255}}
     );
 
