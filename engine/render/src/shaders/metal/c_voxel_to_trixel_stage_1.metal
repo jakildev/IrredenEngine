@@ -35,6 +35,31 @@ inline void writeDistanceTap(
     );
 }
 
+// Emit a face's 2x3 trixel block through the deformation matrix D, super-
+// sampling the source block by D's magnification so a stretching deformation
+// (detached-canvas pitch/roll, T-295) fills the face with no forward-mapping
+// gaps. `n` collapses to 1 whenever both D columns are <= 1 px (identity /
+// camera-residual-yaw path), keeping that path byte-identical to master.
+inline void emitDeformedFace(
+    int2 base,
+    float2x2 D,
+    int voxelDistance,
+    uint2 localId,
+    device atomic_int* distanceScratch,
+    int2 canvasSize
+) {
+    const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, 6);
+    const float inv = 1.0 / float(n);
+    for (int sy = 0; sy < n; ++sy) {
+        for (int sx = 0; sx < n; ++sx) {
+            const float2 src = float2(localId) + float2(float(sx), float(sy)) * inv;
+            writeDistanceTap(
+                base + roundHalfUp(D * src), voxelDistance, distanceScratch, canvasSize
+            );
+        }
+    }
+}
+
 // 12 B per voxel — must match C_Voxel layout in
 // engine/prefabs/irreden/voxel/components/component_voxel.hpp.
 struct Voxel {
@@ -89,16 +114,15 @@ kernel void c_voxel_to_trixel_stage_1(
     // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
     // pixel-for-pixel against master.
 
-    // mat2 D = faceDeformationMatrix(face, residualYaw), reconstructed from
-    // the std140-packed UBO entry. Identity at residualYaw==0 so the
-    // resulting trixelOffset collapses to int2(localId) — bit-identical
-    // pixel positions against the pre-T-293 path. Metal mat2 mirror of
-    // the GLSL `mat2(faceDeform[face].xy, faceDeform[face].zw)`.
+    // mat2 D = faceDeformationMatrix(face, residualYaw) — or the SO(3) form
+    // for a detached canvas. Identity at residualYaw==0 so emitDeformedFace
+    // collapses to a single tap at int2(localId) — bit-identical pixel
+    // positions against the pre-T-293 path. Metal mat2 mirror of the GLSL
+    // `mat2(faceDeform[face].xy, faceDeform[face].zw)`.
     const float2x2 D = float2x2(
         frameData.faceDeform[face].xy,
         frameData.faceDeform[face].zw
     );
-    const int2 trixelOffset = roundHalfUp(D * float2(localId));
 
     if (frameData.voxelRenderOptions.x == 0) {
         int3 voxelPositionInt = int3(round(voxelPosition.xyz));
@@ -108,15 +132,14 @@ kernel void c_voxel_to_trixel_stage_1(
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face
         );
-        const int2 canvasPixel =
+        const int2 base =
             trixelFrameOffset(
                 frameData.trixelCanvasOffsetZ1,
                 frameData.frameCanvasOffset,
                 frameData.voxelRenderOptions
             ) +
-            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
-        writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
+        emitDeformedFace(base, D, voxelDistance, localId, distanceScratch, canvasSize);
         return;
     }
 
@@ -140,7 +163,6 @@ kernel void c_voxel_to_trixel_stage_1(
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
-    const int2 canvasPixel =
-        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
-    writeDistanceTap(canvasPixel, voxelDistance, distanceScratch, canvasSize);
+    const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+    emitDeformedFace(base, D, voxelDistance, localId, distanceScratch, canvasSize);
 }

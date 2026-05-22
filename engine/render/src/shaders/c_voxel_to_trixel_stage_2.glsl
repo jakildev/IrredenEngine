@@ -73,6 +73,28 @@ void writeColorTap(
     }
 }
 
+// Emit a face's 2x3 trixel block through the deformation matrix D, super-
+// sampling the source block by D's magnification so a stretching deformation
+// (detached-canvas pitch/roll, T-295) fills the face with no forward-mapping
+// gaps. `n` collapses to 1 whenever both D columns are <= 1 px (identity /
+// camera-residual-yaw path), keeping that path byte-identical to master.
+void emitDeformedFace(
+    const ivec2 base,
+    const mat2 D,
+    const int voxelDistance,
+    const vec4 voxelColor,
+    const uint voxelIndex
+) {
+    int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, 6);
+    float inv = 1.0 / float(n);
+    for (int sy = 0; sy < n; ++sy) {
+        for (int sx = 0; sx < n; ++sx) {
+            vec2 src = vec2(gl_LocalInvocationID.xy) + vec2(float(sx), float(sy)) * inv;
+            writeColorTap(base + roundHalfUp(D * src), voxelDistance, voxelColor, voxelIndex);
+        }
+    }
+}
+
 void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
@@ -89,10 +111,11 @@ void main() {
     // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
     // pixel-for-pixel against master.
 
-    // mat2 D = faceDeformationMatrix(face, residualYaw). Identity at
-    // residualYaw==0 — see c_voxel_to_trixel_stage_1.glsl for the contract.
+    // mat2 D = faceDeformationMatrix(face, residualYaw) — or the SO(3) form
+    // for a detached canvas. Identity at residualYaw==0 — see
+    // c_voxel_to_trixel_stage_1.glsl for the contract. emitDeformedFace
+    // super-samples the source block when D magnifies.
     const mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
-    const ivec2 trixelOffset = roundHalfUp(D * vec2(gl_LocalInvocationID.xy));
 
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
@@ -101,11 +124,10 @@ void main() {
         }
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face);
-        const ivec2 canvasPixel =
+        const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
-            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
-        writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
+        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
         return;
     }
 
@@ -126,7 +148,6 @@ void main() {
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
-    const ivec2 canvasPixel =
-        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
-    writeColorTap(canvasPixel, voxelDistance, voxelColor, voxelIndex);
+    const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+    emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
 }

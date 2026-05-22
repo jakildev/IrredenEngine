@@ -84,6 +84,22 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
     imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
 }
 
+// Emit a face's 2x3 trixel block through the deformation matrix D, super-
+// sampling the source block by D's magnification so a stretching deformation
+// (detached-canvas pitch/roll, T-295) fills the face with no forward-mapping
+// gaps. `n` collapses to 1 whenever both D columns are <= 1 px (identity /
+// camera-residual-yaw path), keeping that path byte-identical to master.
+void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance) {
+    int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, 6);
+    float inv = 1.0 / float(n);
+    for (int sy = 0; sy < n; ++sy) {
+        for (int sx = 0; sx < n; ++sx) {
+            vec2 src = vec2(gl_LocalInvocationID.xy) + vec2(float(sx), float(sy)) * inv;
+            writeDistanceTap(base + roundHalfUp(D * src), voxelDistance);
+        }
+    }
+}
+
 void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
@@ -119,7 +135,6 @@ void main() {
     // resulting `ivec2 trixelOffset` collapses to faceOffset_2x3(face,
     // subPixel) — bit-identical pixel positions against the pre-T-293 path.
     const mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
-    const ivec2 trixelOffset = roundHalfUp(D * vec2(gl_LocalInvocationID.xy));
 
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
@@ -128,11 +143,10 @@ void main() {
         }
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face);
-        const ivec2 canvasPixel =
+        const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
-            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
-        writeDistanceTap(canvasPixel, voxelDistance);
+        emitDeformedFace(base, D, voxelDistance);
         return;
     }
 
@@ -153,7 +167,6 @@ void main() {
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
-    const ivec2 canvasPixel =
-        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
-    writeDistanceTap(canvasPixel, voxelDistance);
+    const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+    emitDeformedFace(base, D, voxelDistance);
 }

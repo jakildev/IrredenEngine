@@ -45,6 +45,44 @@ inline void writeColorTap(
     triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
 }
 
+// Emit a face's 2x3 trixel block through the deformation matrix D, super-
+// sampling the source block by D's magnification so a stretching deformation
+// (detached-canvas pitch/roll, T-295) fills the face with no forward-mapping
+// gaps. `n` collapses to 1 whenever both D columns are <= 1 px (identity /
+// camera-residual-yaw path), keeping that path byte-identical to master.
+inline void emitDeformedFace(
+    int2 base,
+    float2x2 D,
+    int voxelDistance,
+    float4 voxelColor,
+    uint2 packedEntityId,
+    uint2 localId,
+    int2 canvasSize,
+    device const atomic_int* distanceScratch,
+    texture2d<float, access::write> triangleCanvasColors,
+    texture2d<int, access::write> triangleCanvasDistances,
+    texture2d<uint, access::write> triangleCanvasEntityIds
+) {
+    const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, 6);
+    const float inv = 1.0 / float(n);
+    for (int sy = 0; sy < n; ++sy) {
+        for (int sx = 0; sx < n; ++sx) {
+            const float2 src = float2(localId) + float2(float(sx), float(sy)) * inv;
+            writeColorTap(
+                base + roundHalfUp(D * src),
+                voxelDistance,
+                voxelColor,
+                packedEntityId,
+                canvasSize,
+                distanceScratch,
+                triangleCanvasColors,
+                triangleCanvasDistances,
+                triangleCanvasEntityIds
+            );
+        }
+    }
+}
+
 // 12 B per voxel — must match C_Voxel layout in
 // engine/prefabs/irreden/voxel/components/component_voxel.hpp.
 struct Voxel {
@@ -85,13 +123,14 @@ kernel void c_voxel_to_trixel_stage_2(
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];
 
-    // mat2 D = faceDeformationMatrix(face, residualYaw). Identity at
-    // residualYaw==0 — see c_voxel_to_trixel_stage_1.metal for the contract.
+    // mat2 D = faceDeformationMatrix(face, residualYaw) — or the SO(3) form
+    // for a detached canvas. Identity at residualYaw==0 — see
+    // c_voxel_to_trixel_stage_1.metal for the contract. emitDeformedFace
+    // super-samples the source block when D magnifies.
     const float2x2 D = float2x2(
         frameData.faceDeform[face].xy,
         frameData.faceDeform[face].zw
     );
-    const int2 trixelOffset = roundHalfUp(D * float2(localId));
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
@@ -106,19 +145,20 @@ kernel void c_voxel_to_trixel_stage_2(
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face
         );
-        const int2 canvasPixel =
+        const int2 base =
             trixelFrameOffset(
                 frameData.trixelCanvasOffsetZ1,
                 frameData.frameCanvasOffset,
                 frameData.voxelRenderOptions
             ) +
-            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
-        writeColorTap(
-            canvasPixel,
+        emitDeformedFace(
+            base,
+            D,
             voxelDistance,
             voxelColor,
             packedEntityId,
+            localId,
             canvasSize,
             distanceScratch,
             triangleCanvasColors,
@@ -148,13 +188,14 @@ kernel void c_voxel_to_trixel_stage_2(
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
-    const int2 canvasPixel =
-        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
-    writeColorTap(
-        canvasPixel,
+    const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+    emitDeformedFace(
+        base,
+        D,
         voxelDistance,
         voxelColor,
         packedEntityId,
+        localId,
         canvasSize,
         distanceScratch,
         triangleCanvasColors,
