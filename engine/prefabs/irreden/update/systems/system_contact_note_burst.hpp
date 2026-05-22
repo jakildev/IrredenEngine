@@ -55,7 +55,7 @@ template <> struct System<CONTACT_NOTE_BURST> {
                         vec3 primary = spd * dir * str;
                         // Only override Z when direction is nearly horizontal (so we add downward)
                         // When dir.z is upward (negative), keep it for "up then fall" behavior
-                        if (burst.downward_ && std::abs(dir.z) < 0.01f) {
+                        if (burst.downward_ && IRMath::abs(dir.z) < 0.01f) {
                             primary.z = zSign * (spdZUp + randomFloat(-spdZVariance, spdZVariance));
                         }
                         vec3 randPerp = vec3(

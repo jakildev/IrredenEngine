@@ -20,7 +20,7 @@ struct C_VoxelSelection {
 
 // Tag identifying the visual highlight entity. The picking system both
 // reads C_VoxelSelection state from this entity and writes the entity's
-// C_Position3D / C_ShapeDescriptor visibility flag.
+// C_LocalTransform / C_WorldTransform and C_ShapeDescriptor visibility flag.
 struct C_VoxelSelectionHighlight {};
 
 } // namespace IRComponents
