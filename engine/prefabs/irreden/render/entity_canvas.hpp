@@ -18,6 +18,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -61,16 +62,19 @@ createWithVoxelPool(std::string canvasName, IRMath::ivec2 canvasSize, IRMath::iv
 }
 
 /// Attach a `C_VoxelPool` to the child canvas entity, upgrading it for
-/// voxel-pool consumers. No-op if the canvas isn't initialized.
-/// Prerequisite: the canvas entity must already carry `C_DetachedCanvas` so
-/// it is excluded from the `TRIXEL_TO_FRAMEBUFFER` full-screen pass.
-/// `EntityCanvas::create` and `createWithVoxelPool` attach the tag
-/// automatically; if you constructed the canvas entity by another path,
-/// call `IREntity::setComponent(canvas, C_DetachedCanvas{})` first.
+/// voxel-pool consumers, and a `C_CanvasLocalRotation` (which
+/// `VOXEL_TO_TRIXEL_STAGE_1` requires on every voxel-pool canvas — a
+/// `kTrixelCanvas`-spawned canvas lacks it). No-op if the canvas isn't
+/// initialized. Prerequisite: the canvas entity must already carry
+/// `C_DetachedCanvas` so it is excluded from the `TRIXEL_TO_FRAMEBUFFER`
+/// full-screen pass. `EntityCanvas::create` and `createWithVoxelPool` attach
+/// the tag automatically; if you constructed the canvas entity by another
+/// path, call `IREntity::setComponent(canvas, C_DetachedCanvas{})` first.
 inline void addVoxelPool(const IRComponents::C_EntityCanvas &entityCanvas, IRMath::ivec3 poolSize) {
     if (entityCanvas.canvasEntity_ == IREntity::kNullEntity)
         return;
     IREntity::setComponent(entityCanvas.canvasEntity_, IRComponents::C_VoxelPool{poolSize});
+    IREntity::setComponent(entityCanvas.canvasEntity_, IRComponents::C_CanvasLocalRotation{});
 }
 
 /// Resize the child canvas's textures and update the wrapper's cached

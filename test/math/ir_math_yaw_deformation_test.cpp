@@ -15,12 +15,7 @@ namespace {
 
 constexpr float kTolerance = 1e-5f;
 
-constexpr float kCardinalYaws[4] = {
-    0.0f,
-    IRMath::kHalfPi,
-    IRMath::kPi,
-    3.0f * IRMath::kHalfPi
-};
+constexpr float kCardinalYaws[4] = {0.0f, IRMath::kHalfPi, IRMath::kPi, 3.0f * IRMath::kHalfPi};
 
 // Eight residual yaws spanning the [-pi/4, pi/4] residual range, including
 // the boundary, mid-sector, and a couple of small-angle samples.
@@ -35,7 +30,7 @@ constexpr float kResidualYaws[8] = {
     IRMath::kPi / 4.0f,
 };
 
-void expectMat2Near(const IRMath::mat2& actual, const IRMath::mat2& expected, float tol) {
+void expectMat2Near(const IRMath::mat2 &actual, const IRMath::mat2 &expected, float tol) {
     EXPECT_NEAR(actual[0][0], expected[0][0], tol);
     EXPECT_NEAR(actual[0][1], expected[0][1], tol);
     EXPECT_NEAR(actual[1][0], expected[1][0], tol);
@@ -94,6 +89,104 @@ TEST(FaceDeformationMatrixTest, OutOfRangeFaceReturnsIdentity) {
 }
 
 // ---------------------------------------------------------------------------
+// faceDeformationMatrixSO3 (T-295)
+// ---------------------------------------------------------------------------
+
+namespace {
+// Pure-Z quaternion for angle theta (engine layout vec4(qx,qy,qz,qw)).
+IRMath::vec4 quatRotateZ(float theta) {
+    return IRMath::vec4(0.0f, 0.0f, IRMath::sin(theta * 0.5f), IRMath::cos(theta * 0.5f));
+}
+} // namespace
+
+TEST(FaceDeformationMatrixSO3Test, IdentityRotationIsIdentity) {
+    const IRMath::mat2 identity(1.0f, 0.0f, 0.0f, 1.0f);
+    const IRMath::vec4 identityQuat(0.0f, 0.0f, 0.0f, 1.0f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(IRMath::kXFace, identityQuat), identity, 1e-4f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(IRMath::kYFace, identityQuat), identity, 1e-4f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(IRMath::kZFace, identityQuat), identity, 1e-4f);
+}
+
+// A pure-Z entity rotation must reduce to the Z-only helper. The sign flips:
+// the camera-residual yaw of faceDeformationMatrix is opposite an entity
+// rotating its own frame, so SO3(theta) == faceDeformationMatrix(-theta).
+TEST(FaceDeformationMatrixSO3Test, PureZQuatMatchesZOnlyHelper) {
+    const int faces[3] = {IRMath::kXFace, IRMath::kYFace, IRMath::kZFace};
+    for (float theta : kResidualYaws) {
+        const IRMath::vec4 quat = quatRotateZ(theta);
+        for (int face : faces) {
+            expectMat2Near(
+                IRMath::faceDeformationMatrixSO3(face, quat),
+                IRMath::faceDeformationMatrix(face, -theta),
+                1e-4f
+            );
+        }
+    }
+}
+
+TEST(FaceDeformationMatrixSO3Test, OutOfRangeFaceReturnsIdentity) {
+    const IRMath::mat2 identity(1.0f, 0.0f, 0.0f, 1.0f);
+    const IRMath::vec4 quat = quatRotateZ(IRMath::kPi / 5.0f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(-1, quat), identity, 1e-4f);
+    expectMat2Near(IRMath::faceDeformationMatrixSO3(99, quat), identity, 1e-4f);
+}
+
+// ---------------------------------------------------------------------------
+// octahedralSnapResidual (T-295)
+// ---------------------------------------------------------------------------
+
+namespace {
+void expectQuatNearIdentity(const IRMath::vec4 &q, float tol) {
+    // q and -q are the same rotation; identity is (0,0,0,±1).
+    EXPECT_NEAR(IRMath::abs(q.w), 1.0f, tol);
+    EXPECT_NEAR(q.x, 0.0f, tol);
+    EXPECT_NEAR(q.y, 0.0f, tol);
+    EXPECT_NEAR(q.z, 0.0f, tol);
+}
+} // namespace
+
+TEST(OctahedralSnapResidualTest, IdentityResidualIsIdentity) {
+    expectQuatNearIdentity(IRMath::octahedralSnapResidual(IRMath::vec4(0, 0, 0, 1)), 1e-4f);
+}
+
+// Every one of the 24 cube orientations snaps to itself — residual identity.
+TEST(OctahedralSnapResidualTest, OctahedralElementsResidualIsIdentity) {
+    const IRMath::vec4 elements[]{
+        IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kHalfPi),        // 90 about X
+        IRMath::quatAxisAngle(IRMath::vec3(0, 1, 0), IRMath::kPi),            // 180 about Y
+        IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), 3.0f * IRMath::kHalfPi), // 270 about Z
+        IRMath::quatAxisAngle(IRMath::vec3(1, 1, 1), IRMath::kTwoPi / 3.0f),  // 120 about diagonal
+        IRMath::quatAxisAngle(IRMath::vec3(1, 1, 0), IRMath::kPi),            // 180 about edge
+    };
+    for (const IRMath::vec4 &e : elements) {
+        expectQuatNearIdentity(IRMath::octahedralSnapResidual(e), 1e-4f);
+    }
+}
+
+// A rotation smaller than the nearest snap boundary keeps identity as its
+// snap, so the residual is the input unchanged.
+TEST(OctahedralSnapResidualTest, SmallRotationPassesThrough) {
+    const IRMath::vec4 small = IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kPi / 15.0f);
+    const IRMath::vec4 residual = IRMath::octahedralSnapResidual(small);
+    EXPECT_NEAR(residual.x, small.x, 1e-4f);
+    EXPECT_NEAR(residual.y, small.y, 1e-4f);
+    EXPECT_NEAR(residual.z, small.z, 1e-4f);
+    EXPECT_NEAR(residual.w, small.w, 1e-4f);
+}
+
+// A near-180 rotation snaps to the 180 octahedral element, shrinking the
+// residual to the small leftover — the property T-295 relies on to keep the
+// per-face deformation in its clean range.
+TEST(OctahedralSnapResidualTest, NearOctahedralRotationShrinksResidual) {
+    const IRMath::vec4 near180 =
+        IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kPi - IRMath::kPi / 18.0f); // 170 deg
+    const IRMath::vec4 residual = IRMath::octahedralSnapResidual(near180);
+    // Residual half-angle ~5 deg → w ~cos(5 deg) ~0.996; far tighter than the
+    // 170 deg input (w ~0.087).
+    EXPECT_GT(IRMath::abs(residual.w), 0.99f);
+}
+
+// ---------------------------------------------------------------------------
 // pos3DtoPos2DIsoYawed
 // ---------------------------------------------------------------------------
 
@@ -106,7 +199,7 @@ TEST(Pos3DtoPos2DIsoYawedTest, ZeroYawMatchesUnyawedProjection) {
         IRMath::vec3(3, -2, 4),
         IRMath::vec3(-5, 7, -3)
     };
-    for (const auto& p : samples) {
+    for (const auto &p : samples) {
         const IRMath::vec2 expected = IRMath::pos3DtoPos2DIso(p);
         const IRMath::vec2 actual = IRMath::pos3DtoPos2DIsoYawed(p, 0.0f);
         EXPECT_NEAR(actual.x, expected.x, kTolerance);
@@ -222,8 +315,7 @@ TEST(SqtToMat4Test, PureTranslationIsoMatrixForm) {
 
 TEST(SqtToMat4Test, PureScaleMatrixHasScaledColumns) {
     const IRMath::vec3 s(2.0f, 3.0f, 4.0f);
-    const IRMath::mat4 M =
-        IRMath::sqtToMat4(s, IRMath::vec4(0, 0, 0, 1), IRMath::vec3(0.0f));
+    const IRMath::mat4 M = IRMath::sqtToMat4(s, IRMath::vec4(0, 0, 0, 1), IRMath::vec3(0.0f));
     EXPECT_NEAR(M[0][0], s.x, kTolerance);
     EXPECT_NEAR(M[1][1], s.y, kTolerance);
     EXPECT_NEAR(M[2][2], s.z, kTolerance);
@@ -249,9 +341,8 @@ TEST(SqtToMat4Test, RotationAgreesWithRotateVectorByQuat) {
 
     const IRMath::mat4 M = IRMath::sqtToMat4(IRMath::vec3(1.0f), q, IRMath::vec3(0.0f));
 
-    const IRMath::vec3 bases[3] = {
-        IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)
-    };
+    const IRMath::vec3 bases[3] =
+        {IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)};
     for (int i = 0; i < 3; ++i) {
         const IRMath::vec3 expected = IRMath::rotateVectorByQuat(bases[i], q);
         const IRMath::vec4 applied = M * IRMath::vec4(bases[i], 1.0f);
@@ -288,7 +379,7 @@ TEST(MatrixApplyToVoxelGridTest, IdentityLeavesCellsUnchanged) {
         IRMath::ivec3(-5, 7, -2),
         IRMath::ivec3(127, -128, 64)
     };
-    for (const auto& c : cells) {
+    for (const auto &c : cells) {
         const IRMath::ivec3 r = IRMath::matrixApplyToVoxelGrid(I, c);
         EXPECT_EQ(r.x, c.x);
         EXPECT_EQ(r.y, c.y);

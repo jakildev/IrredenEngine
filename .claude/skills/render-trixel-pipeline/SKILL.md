@@ -20,15 +20,21 @@ equations".
 
 Stage 1 (`c_voxel_to_trixel_stage_1.glsl`) writes only depth via
 `imageAtomicMin`. Stage 2 (`c_voxel_to_trixel_stage_2.glsl`) reads that depth
-before writing color and entity IDs. Never merge or reorder these two — the
+before writing color and entity IDs. Never reorder these two dispatches — the
 `imageAtomicMin` in Stage 1 is the only thing that resolves overdraw; if Stage
 2 runs first, every voxel writes unconditionally and the color pass is garbage.
 
-A minimal creation needs exactly four systems in the RENDER pipeline:
-`VOXEL_TO_TRIXEL_STAGE_1`, `VOXEL_TO_TRIXEL_STAGE_2`,
-`TRIXEL_TO_FRAMEBUFFER`, `FRAMEBUFFER_TO_SCREEN`. All other systems
-(lighting passes, SHAPES_TO_TRIXEL, TRIXEL_TO_TRIXEL, etc.) are optional
-overlays inserted between Stage 2 and TRIXEL_TO_FRAMEBUFFER.
+Both dispatches run inside the **single** `VOXEL_TO_TRIXEL_STAGE_1` system —
+one per-canvas tick does compact → stage-1 → stage-2. They were once two
+separate systems, but the shared voxel SSBOs meant a separate stage-2 system
+clobbered multi-canvas scenes (it ran only after stage-1 had ticked every
+canvas); folding stage-2 into the stage-1 tick keeps each canvas atomic.
+
+A minimal creation needs exactly three systems in the RENDER pipeline:
+`VOXEL_TO_TRIXEL_STAGE_1`, `TRIXEL_TO_FRAMEBUFFER`, `FRAMEBUFFER_TO_SCREEN`.
+All other systems (lighting passes, SHAPES_TO_TRIXEL, TRIXEL_TO_TRIXEL, etc.)
+are optional overlays inserted between `VOXEL_TO_TRIXEL_STAGE_1` and
+`TRIXEL_TO_FRAMEBUFFER`.
 
 ## Trixel compositing (CHILD_OF)
 

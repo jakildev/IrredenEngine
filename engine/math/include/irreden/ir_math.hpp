@@ -159,6 +159,14 @@ inline vec3 rotateVectorByQuat(const vec3 &v, const vec4 &q) {
     return v + q.w * t + glm::cross(u, t);
 }
 
+// Unit quaternion for a rotation of `angle` radians about a (possibly
+// non-unit) axis. Layout: vec4(qx, qy, qz, qw) — same as C_LocalTransform.
+inline vec4 quatAxisAngle(const vec3 &axis, float angle) {
+    const vec3 a = normalize(axis);
+    const float h = angle * 0.5f;
+    return vec4(a.x * sin(h), a.y * sin(h), a.z * sin(h), cos(h));
+}
+
 /// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
 /// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
 /// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.
@@ -366,6 +374,100 @@ constexpr mat2 faceDeformationMatrix(int face, float residualYaw) {
         return mat2(c, -s, s, c);
     }
     return mat2(1.0f, 0.0f, 0.0f, 1.0f);
+}
+
+/// SO(3) generalization of @ref faceDeformationMatrix: the 2x2 matrix that
+/// maps a face's un-rotated iso-pixel offset to its offset after the entity
+/// is rotated by the quaternion @p rotationQuat — any axis, not just world Z.
+///
+/// Each face spans two world tangents (u, v). The un-rotated iso columns
+/// `M_0(face) = [iso(u) | iso(v)]` are constant per face; rotating the entity
+/// gives `M_R(face) = [iso(R·u) | iso(R·v)]`, and the returned
+/// `D = M_R · M_0⁻¹` post-multiplies an iso-pixel offset. At identity rotation
+/// `D` is the identity. A pure-Z quaternion reduces to
+/// `faceDeformationMatrix(face, -yaw)` — the camera-residual sign convention
+/// is opposite the entity-rotation sign.
+///
+/// A face rotated edge-on projects both tangents parallel, so `D` becomes
+/// singular — it flattens that face's offsets onto a line, which is the
+/// correct projection of a face seen edge-on. `D` is always finite (it is
+/// applied directly to offsets, never inverted), so no degeneracy guard is
+/// needed.
+///
+/// CPU-only by design: T-295's `buildVoxelFrameData` bakes the result into the
+/// `faceDeform_` UBO that the voxel-emit shader already applies, so the shader
+/// stays rotation-agnostic — there is no GPU-side mirror to keep in sync.
+inline mat2 faceDeformationMatrixSO3(int face, const vec4 &rotationQuat) {
+    // Per-face world tangents and the constant inverse of the un-rotated iso
+    // basis M_0(face). M_0 columns are iso(u), iso(v); the inverses below are
+    // those 2x2 matrices inverted (column-major, glm `mat2(c0x,c0y,c1x,c1y)`).
+    vec3 u;
+    vec3 v;
+    mat2 m0Inv;
+    if (face == kXFace) {
+        u = vec3(0.0f, 1.0f, 0.0f);
+        v = vec3(0.0f, 0.0f, 1.0f);
+        m0Inv = mat2(1.0f, 0.5f, 0.0f, 0.5f);
+    } else if (face == kYFace) {
+        u = vec3(1.0f, 0.0f, 0.0f);
+        v = vec3(0.0f, 0.0f, 1.0f);
+        m0Inv = mat2(-1.0f, -0.5f, 0.0f, 0.5f);
+    } else if (face == kZFace) {
+        u = vec3(1.0f, 0.0f, 0.0f);
+        v = vec3(0.0f, 1.0f, 0.0f);
+        m0Inv = mat2(-0.5f, 0.5f, -0.5f, -0.5f);
+    } else {
+        return mat2(1.0f, 0.0f, 0.0f, 1.0f);
+    }
+    const vec3 ru = rotateVectorByQuat(u, rotationQuat);
+    const vec3 rv = rotateVectorByQuat(v, rotationQuat);
+    // iso() linear part: (-x + y, -x - y + 2z) — see engine/math/CLAUDE.md.
+    const vec2 colU = vec2(-ru.x + ru.y, -ru.x - ru.y + 2.0f * ru.z);
+    const vec2 colV = vec2(-rv.x + rv.y, -rv.x - rv.y + 2.0f * rv.z);
+    return mat2(colU, colV) * m0Inv;
+}
+
+/// Snap a rotation to the nearest of the 24 cube (chiral octahedral)
+/// orientations and return the residual rotation `R_snap⁻¹ · R`, normalized
+/// to the `w >= 0` hemisphere.
+///
+/// A cube is invariant under all 24 octahedral rotations, so the snap is
+/// visually a no-op — but it bounds the residual to the octahedral covering
+/// radius. T-295 deforms a detached canvas's voxel emit by this residual
+/// rather than the full rotation, keeping `faceDeformationMatrixSO3`'s
+/// per-face skew in its clean (small-angle) range so pitch / roll do not
+/// degrade into forward-mapped scanline gaps. (Non-cube voxel objects also
+/// need `R_snap` applied as a coordinate permutation — a separate step.)
+inline vec4 octahedralSnapResidual(const vec4 &rotation) {
+    constexpr float h = 0.5f;
+    constexpr float r = 0.70710678118654752f; // 1 / sqrt(2)
+    static const vec4 kOctahedral[24] = {
+        vec4(0, 0, 0, 1),                                          // identity
+        vec4(1, 0, 0, 0),    vec4(0, 1, 0, 0),  vec4(0, 0, 1, 0),  // 180 face
+        vec4(h, h, h, h),    vec4(h, h, -h, h), vec4(h, -h, h, h), // 120 vertex
+        vec4(h, -h, -h, h),  vec4(-h, h, h, h), vec4(-h, h, -h, h), vec4(-h, -h, h, h),
+        vec4(-h, -h, -h, h), vec4(r, 0, 0, r),  vec4(-r, 0, 0, r),  vec4(0, r, 0, r), // 90 face
+        vec4(0, -r, 0, r),   vec4(0, 0, r, r),  vec4(0, 0, -r, r),  vec4(r, r, 0, 0),
+        vec4(r, -r, 0, 0),   vec4(r, 0, r, 0), // 180 edge
+        vec4(r, 0, -r, 0),   vec4(0, r, r, 0),  vec4(0, r, -r, 0),
+    };
+    int best = 0;
+    float bestDot = -1.0f;
+    for (int i = 0; i < 24; ++i) {
+        // q and -q are the same rotation, so compare on |dot|.
+        const float d = glm::abs(glm::dot(rotation, kOctahedral[i]));
+        if (d > bestDot) {
+            bestDot = d;
+            best = i;
+        }
+    }
+    const vec4 &s = kOctahedral[best];
+    const vec4 sConjugate = vec4(-s.x, -s.y, -s.z, s.w);
+    vec4 residual = quatMul(sConjugate, rotation);
+    if (residual.w < 0.0f) {
+        residual = vec4(-residual.x, -residual.y, -residual.z, -residual.w);
+    }
+    return residual;
 }
 
 /// Residual-yaw-deformed trixel iso-pixel offset within the 2x3 face diamond.

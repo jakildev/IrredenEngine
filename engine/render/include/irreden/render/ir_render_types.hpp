@@ -136,7 +136,12 @@ struct FrameDataVoxelToCanvas {
     float visualYaw_ = 0.0f;
     float rasterYaw_ = 0.0f;
     float residualYaw_ = 0.0f;
-    float _yawPadding_ = 0.0f;
+    // 1.0 for a detached entity canvas; 0.0 for the world canvas. Used by
+    // the voxel emit shaders to gate super-sampling (emitDeformedFace n > 1)
+    // to the detached path only, keeping the world canvas on T-293's single-tap
+    // behavior and preserving its perf baseline. Occupies the std140 padding
+    // slot after residualYaw_ so no struct padding changes.
+    float isDetachedCanvas_ = 0.0f;
     // Per-face residual-yaw deformation packed column-major: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw_).
     // Identity (col0=(1,0), col1=(0,1)) when residualYaw_ == 0. Indexed by

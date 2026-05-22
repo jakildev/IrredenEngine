@@ -4,6 +4,7 @@
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
@@ -23,6 +24,7 @@ template <> struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
             C_VoxelPool{voxelPoolSize},
             C_SizeTriangles{triangleCanvasSize},
             C_TriangleCanvasTextures{triangleCanvasSize},
+            C_CanvasLocalRotation{},
             C_Name{canvasName}
         );
         if (framebuffer == kNullEntity) {

@@ -30,7 +30,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;                // continuous Z-yaw (radians)
     uniform float rasterYaw;                // cardinal-snap multiple of pi/2 nearest visualYaw
     uniform float residualYaw;              // visualYaw - rasterYaw, in [-pi/4, pi/4]
-    uniform float _yawPadding;
+    // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
+    // emitDeformedFace super-sampling (n > 1) to the detached path only.
+    uniform float isDetachedCanvas;
     // Per-face deformation matrix packed column-major into vec4: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw). Indexed
     // by kXFace/kYFace/kZFace. Identity at residualYaw==0 so the cardinal-
@@ -84,6 +86,24 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
     imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
 }
 
+// Emit a face's 2x3 trixel block through the deformation matrix D. For
+// detached canvases (isDetachedCanvas == 1.0), super-samples by D's
+// magnification so SO(3) pitch/roll rotations (T-295) fill the face with no
+// forward-mapping gaps. For the world canvas (isDetachedCanvas == 0.0),
+// n is capped at 1 — single-tap behavior identical to T-293's baseline.
+// At residualYaw==0 on any canvas the identity D also collapses n to 1.
+void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance) {
+    int maxN = isDetachedCanvas > 0.5 ? 6 : 1;
+    int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
+    float inv = 1.0 / float(n);
+    for (int sy = 0; sy < n; ++sy) {
+        for (int sx = 0; sx < n; ++sx) {
+            vec2 src = vec2(gl_LocalInvocationID.xy) + vec2(float(sx), float(sy)) * inv;
+            writeDistanceTap(base + roundHalfUp(D * src), voxelDistance);
+        }
+    }
+}
+
 void main() {
     uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
     if (compactedIdx >= visibleCount) return;
@@ -119,7 +139,6 @@ void main() {
     // resulting `ivec2 trixelOffset` collapses to faceOffset_2x3(face,
     // subPixel) — bit-identical pixel positions against the pre-T-293 path.
     const mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
-    const ivec2 trixelOffset = roundHalfUp(D * vec2(gl_LocalInvocationID.xy));
 
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
@@ -128,11 +147,10 @@ void main() {
         }
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face);
-        const ivec2 canvasPixel =
+        const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
-            trixelOffset +
             pos3DtoPos2DIso(voxelPositionInt);
-        writeDistanceTap(canvasPixel, voxelDistance);
+        emitDeformedFace(base, D, voxelDistance);
         return;
     }
 
@@ -153,7 +171,6 @@ void main() {
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, face);
-    const ivec2 canvasPixel =
-        frameOffsetFixed + trixelOffset + pos3DtoPos2DIso(microPositionFixed);
-    writeDistanceTap(canvasPixel, voxelDistance);
+    const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+    emitDeformedFace(base, D, voxelDistance);
 }
