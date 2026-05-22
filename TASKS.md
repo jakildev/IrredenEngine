@@ -178,7 +178,7 @@ Avoid:
   - **ID:** T-295
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** claude/T-295-detached-canvas-so3
+  - **Owner:** claude/t295-canvas-so3
   - **Blocked by:** (none)
   - **Stack:** T-279..T-295 S-C-core
   - **Acceptance:** (1) A DETACHED rectangular entity pitching forward looks correct from any world Z-yaw; (2) deformation math reused (single source of truth across world and per-canvas); (3) composition order correct (local rotation applied first inside canvas, then world Z-yaw at composite); (4) fleet-build clean on linux-debug and macos-debug
@@ -186,47 +186,23 @@ Avoid:
   - **Notes:** Stack S-C-core pos 4. Branch from C3 PR head; also requires C4 (T-293) merged first. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C7".
   - **Links:**
 
-- [ ] **render: migrate Phase A render-side readers to C_WorldTransform** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase)
-  - **ID:** T-299
-  - **Area:** engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** T-300
-  - **Stack:** T-299..T-302 sqt-phase-a
-  - **Acceptance:** (1) Each listed render system reads C_WorldTransform.translation_/.rotation_ instead of C_PositionGlobal3D/C_Rotation; (2) legacy components still exist (retirement is T-302); (3) fleet-build clean on linux-debug and macos-debug; (4) render-debug-loop shot list pre/post pixel-identical (within bilinear tolerance for rotation-touching shaders); (5) voxel editor renders and interacts correctly — gizmos move, picking resolves, voxels position correctly
-  - **Issue:** #984
-  - **Notes:** Step 2 of transform migration decomposed from #736. Foundation already merged: PR #749/T-197 (C_LocalTransform + C_WorldTransform + SYSTEM_PROPAGATE_TRANSFORM), PR #787/T-199-step-1 (COMPUTE_LIGHT_VOLUME proof-of-concept). Target files: system_sprites_to_screen.hpp, system_entity_canvas_to_framebuffer.hpp, system_shapes_to_trixel.hpp, system_voxel_picking.hpp, system_voxel_to_trixel.hpp, system_gizmo_drag.hpp, system_gizmo_screen_space_size.hpp, system_build_light_occlusion_grid.hpp, system_debug_culling_minimap.hpp, picking.hpp, gizmo.hpp. Pure mechanical swap: C_PositionGlobal3D pos → C_WorldTransform xform, pos.pos_ → xform.translation_; C_Rotation → xform.rotation_. Architect inverted the original chain on PR #1000 (2026-05-19) — T-300 (writers + PROPAGATE_TRANSFORM wiring) must land first; only after that does the mechanical reader swap render correctly across the 14 creations that don't yet have PROPAGATE_TRANSFORM wired. See PR #1000 architect-direction comment for the full rationale. Unblocks when T-300 merges; parallel to T-301.
-  - **Links:**
-
-- [ ] **update: migrate Phase A update-side consumers to C_WorldTransform** — migrate ~15 update-pipeline systems and entity-spawn helpers from C_PositionGlobal3D/C_Position3D/C_Rotation to C_LocalTransform/C_WorldTransform; writers convert Euler C_Rotation to quat C_LocalTransform.rotation_
-  - **ID:** T-300
-  - **Area:** engine/prefabs/irreden/update, engine/prefabs/irreden/render
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Stack:** T-299..T-302 sqt-phase-a
-  - **Acceptance:** (1) Each listed update system reads C_WorldTransform.translation_/.rotation_ and/or writes C_LocalTransform; (2) velocity integration, spring physics, periodic offsets, goto/reactive-return all behave identically post-migration; (3) fleet-build clean on both backends; (4) unit tests pass (test/ecs/*, test/asset/*); (5) IRShapeDebug + voxel editor + spring/note demos render identically; (6) SYSTEM_PROPAGATE_TRANSFORM runs in every UPDATE pipeline that has a transform-consuming entity (architect-added scope per PR #1000 — engine-default registration preferred over per-creation if structurally viable)
-  - **Issue:** #985
-  - **Notes:** T-199b — update-side continuation of #736 migration. Architect reordered the chain on PR #1000 (2026-05-19): T-300 now stacks on master directly, T-299 is downstream. Rationale: of 19 creations using shape/sprite/voxel/canvas/gizmo components, only 5 have PROPAGATE_TRANSFORM wired (and only for C_LightSource per T-199 step 1) — migrating readers first would render every shape/sprite/voxel/gizmo at world origin in the other 14 creations because nothing populates C_WorldTransform from the legacy C_PositionGlobal3D channel. Target readers: system_periodic_idle_position_offset.hpp, system_apply_position_offset.hpp, system_rhythmic_launch.hpp, system_contact_note_burst.hpp, system_collision_note_platform.hpp, system_update_positions_global.hpp, system_periodic_idle_note_burst.hpp, system_particle_spawner.hpp, system_velocity.hpp, system_spring_platform.hpp, system_action_animation.hpp, system_reactive_return_3d.hpp, system_goto_3d.hpp, system_update_screen_view.hpp. Writers need Euler→quat: use glm::quat(glm::vec3(eulerAngles)) for Euler angles; glm::quat_cast(rotMat) only if working from a rotation matrix. system_apply_position_offset.hpp may be deleted if epic #731 modifier migration has removed it — check current state first. Architect added PROPAGATE_TRANSFORM wiring scope: prefer engine-default registration; document why and fall back to per-creation if Option A is structurally infeasible. Blocks T-299 → T-301 → T-302.
-  - **Links:**
-
-- [~] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
+- [ ] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
   - **ID:** T-301
   - **Area:** engine/prefabs/irreden/voxel, engine/render
   - **Model:** opus
-  - **Owner:** claude/T-301-voxel-sqt-migration
-  - **Blocked by:** T-300
+  - **Owner:** free
+  - **Blocked by:** (none)
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) C_VoxelPool and voxel systems use new SQT shape per the architectural decision; (2) GPU voxel-position upload path still works — voxel rendering pixel-identical pre/post; (3) voxel editor place/erase + scene save/load round-trip unchanged; (4) fleet-build clean on both backends; (5) engine/prefabs/irreden/voxel/CLAUDE.md updated with SoA decision rationale
   - **Issue:** #986
   - **Notes:** T-199c — voxel-side continuation; trickiest phase because C_VoxelPool SoA arrays back the GPU buffer upload path. Option A: one C_WorldTransform array per pool (wider per-voxel memory but uniform with rest of engine post-migration); Option B: keep position-only projection arrays refreshed from owning entity's C_WorldTransform once per pool tick (smaller; preserves current GPU upload contract). Worker should escalate via fleet:design-blocked when reaching the C_VoxelPool rewrite — architect input needed. Stacks on T-300. Blocks T-302.
   - **Links:**
 
-- [~] **engine: retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components** — delete all four legacy position/rotation component headers; remove from createEntity auto-attach set; migrate Lua bindings and script API to SQT equivalents; update CLAUDE.md
+- [ ] **engine: retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components** — delete all four legacy position/rotation component headers; remove from createEntity auto-attach set; migrate Lua bindings and script API to SQT equivalents; update CLAUDE.md
   - **ID:** T-302
   - **Area:** engine/prefabs/irreden/common, engine/script
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** T-301
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) grep -r "C_PositionGlobal3D" engine/ returns zero hits; (2) grep -r "C_Position3D" engine/ returns zero hits; (3) grep -r "C_Rotation" engine/ returns zero hits; (4) createEntity no longer auto-attaches legacy components; (5) fleet-build clean on linux-debug and macos-debug; (6) full test suite passes (test/ecs/*, test/asset/*, render-verify reference set); (7) IRShapeDebug, voxel editor, spring/note demos render identically; (8) CLAUDE.md retirement note added
@@ -255,6 +231,6 @@ Avoid:
 - [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
 - [x] **T-289** — voxel: push-at-mutation position upload (no per-frame re-upload) (B5) · Owner: claude/T-289-voxel-pos-push-at-mutation · PR: https://github.com/jakildev/IrredenEngine/pull/999
 - [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
+- [x] **T-299** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/984
+- [x] **T-300** — migrate ~15 update-pipeline systems and entity-spawn helpers from C_PositionGlobal3D/C_Position3D/C_Rotation to C_LocalTransform/C_WorldTransform; writers convert Euler C_Rotation to quat C_LocalTransform.rotation_ · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/985
 - [x] **T-297** — world: chunk container + ivec3 chunk-coords addressing (E1) · Owner: claude/T-297-world-chunk-container · PR: https://github.com/jakildev/IrredenEngine/pull/997
-- [x] **T-296** — docs: lock SDF restriction decision (D2) · Owner: claude/T-296-sdf-restriction-decision · PR: https://github.com/jakildev/IrredenEngine/pull/996
-- [x] **T-288** — voxel: face-aware shader skip + per-voxel face-occlusion bits (B2) · Owner: claude/T-288-voxel-face-occupancy · PR: https://github.com/jakildev/IrredenEngine/pull/994
