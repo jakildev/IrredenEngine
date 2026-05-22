@@ -191,6 +191,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // slots this dispatch is about to read). For the steady single-
     // canvas case the tracker is set on the first tick and never
     // re-fires.
+    // NOTE: with N detached canvases every canvas triggers a mismatch on
+    // the other N-1 ticks, producing N full position SSBO re-seeds per
+    // frame. The pending-range coalescing optimization (used for the
+    // single-canvas path) is bypassed for all but the last-ticked canvas.
+    // Profile this path if the scene voxel count grows significantly.
     IREntity::EntityId lastUploadedCanvas_ = IREntity::kNullEntity;
 
     void tick(
