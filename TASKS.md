@@ -174,24 +174,12 @@ Avoid:
   - **Notes:** Off-stack fork from C3; does NOT block S-C-core's C3 → C7 chain. Branch from C3 PR head. Push-at-mutation; no dirty flag per cpp-ecs. Plan ref: `.claude/plans/okay-lets-go-through-idempotent-giraffe.md` §"Epic C → C6".
   - **Links:**
 
-- [~] **voxel: migrate voxel-side to C_WorldTransform — C_VoxelPool SoA design decision** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays)
-  - **ID:** T-301
-  - **Area:** engine/prefabs/irreden/voxel, engine/render
-  - **Model:** opus
-  - **Owner:** opus-worker-1
-  - **Blocked by:** (none)
-  - **Stack:** T-299..T-302 sqt-phase-a
-  - **Acceptance:** (1) C_VoxelPool and voxel systems use new SQT shape per the architectural decision; (2) GPU voxel-position upload path still works — voxel rendering pixel-identical pre/post; (3) voxel editor place/erase + scene save/load round-trip unchanged; (4) fleet-build clean on both backends; (5) engine/prefabs/irreden/voxel/CLAUDE.md updated with SoA decision rationale
-  - **Issue:** #986
-  - **Notes:** T-199c — voxel-side continuation; trickiest phase because C_VoxelPool SoA arrays back the GPU buffer upload path. Option A: one C_WorldTransform array per pool (wider per-voxel memory but uniform with rest of engine post-migration); Option B: keep position-only projection arrays refreshed from owning entity's C_WorldTransform once per pool tick (smaller; preserves current GPU upload contract). Worker should escalate via fleet:design-blocked when reaching the C_VoxelPool rewrite — architect input needed. Stacks on T-300. Blocks T-302.
-  - **Links:**
-
 - [ ] **engine: retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components** — delete all four legacy position/rotation component headers; remove from createEntity auto-attach set; migrate Lua bindings and script API to SQT equivalents; update CLAUDE.md
   - **ID:** T-302
   - **Area:** engine/prefabs/irreden/common, engine/script
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-301
+  - **Blocked by:** (none)
   - **Stack:** T-299..T-302 sqt-phase-a
   - **Acceptance:** (1) grep -r "C_PositionGlobal3D" engine/ returns zero hits; (2) grep -r "C_Position3D" engine/ returns zero hits; (3) grep -r "C_Rotation" engine/ returns zero hits; (4) createEntity no longer auto-attaches legacy components; (5) fleet-build clean on linux-debug and macos-debug; (6) full test suite passes (test/ecs/*, test/asset/*, render-verify reference set); (7) IRShapeDebug, voxel editor, spring/note demos render identically; (8) CLAUDE.md retirement note added
   - **Issue:** #987
@@ -217,8 +205,8 @@ Avoid:
 - [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
 - [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
+- [x] **T-301** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/986
 - [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
 - [x] **T-289** — voxel: push-at-mutation position upload (no per-frame re-upload) (B5) · Owner: claude/T-289-voxel-pos-push-at-mutation · PR: https://github.com/jakildev/IrredenEngine/pull/999
 - [x] **T-298** — world: chunk disk persistence + lazy load (E6) · Owner: claude/T-298-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/998
 - [x] **T-299** — migrate ~11 render-pipeline systems from C_PositionGlobal3D/C_Rotation to C_WorldTransform (pure reader migration, no writer changes in this phase) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/984
-- [x] **T-300** — migrate ~15 update-pipeline systems and entity-spawn helpers from C_PositionGlobal3D/C_Position3D/C_Rotation to C_LocalTransform/C_WorldTransform; writers convert Euler C_Rotation to quat C_LocalTransform.rotation_ · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/985
