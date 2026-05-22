@@ -77,9 +77,11 @@ vec4 quatAxisAngle(vec3 axis, float angle) {
 }
 
 void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color color) {
-    constexpr ivec2 kCanvasSize{64, 64};
+    // A higher-resolution canvas + cube keeps the per-face SO(3) deformation's
+    // forward-mapping gaps sub-pixel once the composite magnifies the canvas.
+    constexpr ivec2 kCanvasSize{128, 128};
     constexpr ivec3 kPoolSize{16, 16, 16};
-    constexpr ivec3 kCubeSize{6, 6, 6};
+    constexpr ivec3 kCubeSize{10, 10, 10};
 
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "detached_canvas_" + std::to_string(index), kCanvasSize, kPoolSize
@@ -227,7 +229,7 @@ void initEntities() {
     // footprint (composited at canvasSize / mainCanvasSize of the framebuffer)
     // or the canvases overlap — kDetachedSpacing is sized for the 64-trixel canvas.
     const int detached = IRMath::max(0, g_settings.detachedCount_);
-    constexpr float kDetachedSpacing = 80.0f;
+    constexpr float kDetachedSpacing = 160.0f;
     const int cols = IRMath::max(1, static_cast<int>(IRMath::ceil(IRMath::sqrt(
         static_cast<float>(IRMath::max(detached, 1))
     ))));

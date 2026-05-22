@@ -87,9 +87,13 @@ inline void buildVoxelFrameData(
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
         frameData.residualYaw_ = 0.0f;
-        const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, canvasRotation);
-        const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, canvasRotation);
-        const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, canvasRotation);
+        // Snap to the nearest of the 24 cube orientations and deform by the
+        // residual only: a cube is invariant under the snap, so this keeps
+        // the per-face skew small enough to stay clean (T-295).
+        const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation);
+        const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, residual);
+        const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, residual);
+        const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, residual);
         frameData.faceDeform_[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
         frameData.faceDeform_[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
         frameData.faceDeform_[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
