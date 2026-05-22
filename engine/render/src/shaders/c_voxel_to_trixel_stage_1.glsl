@@ -30,7 +30,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;                // continuous Z-yaw (radians)
     uniform float rasterYaw;                // cardinal-snap multiple of pi/2 nearest visualYaw
     uniform float residualYaw;              // visualYaw - rasterYaw, in [-pi/4, pi/4]
-    uniform float _yawPadding;
+    // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
+    // emitDeformedFace super-sampling (n > 1) to the detached path only.
+    uniform float isDetachedCanvas;
     // Per-face deformation matrix packed column-major into vec4: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw). Indexed
     // by kXFace/kYFace/kZFace. Identity at residualYaw==0 so the cardinal-
@@ -84,13 +86,15 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
     imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
 }
 
-// Emit a face's 2x3 trixel block through the deformation matrix D, super-
-// sampling the source block by D's magnification so a stretching deformation
-// (detached-canvas pitch/roll, T-295) fills the face with no forward-mapping
-// gaps. `n` collapses to 1 whenever both D columns are <= 1 px (identity /
-// camera-residual-yaw path), keeping that path byte-identical to master.
+// Emit a face's 2x3 trixel block through the deformation matrix D. For
+// detached canvases (isDetachedCanvas == 1.0), super-samples by D's
+// magnification so SO(3) pitch/roll rotations (T-295) fill the face with no
+// forward-mapping gaps. For the world canvas (isDetachedCanvas == 0.0),
+// n is capped at 1 — single-tap behavior identical to T-293's baseline.
+// At residualYaw==0 on any canvas the identity D also collapses n to 1.
 void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance) {
-    int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, 6);
+    int maxN = isDetachedCanvas > 0.5 ? 6 : 1;
+    int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
         for (int sx = 0; sx < n; ++sx) {

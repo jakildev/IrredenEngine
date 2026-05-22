@@ -402,7 +402,10 @@ struct FrameDataVoxelToTrixel {
     float visualYaw;
     float rasterYaw;    // consumed: cardinal-snap basis selection
     float residualYaw;  // baked into faceDeform[] CPU-side
-    float _yawPadding;
+    // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
+    // emitDeformedFace super-sampling to the detached path only — see
+    // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.
+    float isDetachedCanvas;
     // Per-face deformation matrix packed column-major: .xy = col0, .zw = col1
     // of IRMath::faceDeformationMatrix(face, residualYaw). Identity when
     // residualYaw==0 so cardinal-snap stays bit-identical pixel-for-pixel.

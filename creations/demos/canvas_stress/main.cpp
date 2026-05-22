@@ -68,13 +68,6 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 // One detached object: a per-entity canvas (textures + voxel pool), a voxel
 // cube allocated into that pool, and a world entity carrying C_EntityCanvas
 // + RotationMode::DETACHED that ENTITY_CANVAS_TO_FRAMEBUFFER composites.
-// Unit quaternion for a rotation of `angle` radians about `axis`.
-vec4 quatAxisAngle(vec3 axis, float angle) {
-    const vec3 a = IRMath::normalize(axis);
-    const float h = angle * 0.5f;
-    const float s = IRMath::sin(h);
-    return vec4(a.x * s, a.y * s, a.z * s, IRMath::cos(h));
-}
 
 void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color color) {
     // A higher-resolution canvas + cube keeps the per-face SO(3) deformation's
@@ -264,7 +257,7 @@ void initEntities() {
         // the low-res detached canvas magnifies it into scanline stripes.
         const float angle = IRMath::kPi / 6.0f * static_cast<float>(i) /
                             static_cast<float>(IRMath::max(detached - 1, 1));
-        const vec4 rotation = quatAxisAngle(kAxes[i % 4], angle);
+        const vec4 rotation = IRMath::quatAxisAngle(kAxes[i % 4], angle);
         constexpr Color kDistinct[]{
             {230, 70, 70, 255},
             {70, 210, 90, 255},

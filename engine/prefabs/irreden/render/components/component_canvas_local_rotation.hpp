@@ -20,11 +20,22 @@ namespace IRComponents {
 // (0,0,0,1) when the detached entity is unrotated. Layout matches IRMath /
 // C_LocalTransform: vec4(qx, qy, qz, qw).
 struct C_CanvasLocalRotation {
-    IRMath::vec4 rotation_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    // All-zero, non-unit quaternion used as the "not a detached canvas" sentinel.
+    // PROPAGATE_CANVAS_ROTATION always overwrites with a unit quaternion (including
+    // identity (0,0,0,1) for an unrotated detached entity), so this value is only
+    // ever present on the world canvas which PROPAGATE_CANVAS_ROTATION never touches.
+    static constexpr IRMath::vec4 kSentinelNoRotation{0.0f, 0.0f, 0.0f, 0.0f};
+
+    IRMath::vec4 rotation_ = kSentinelNoRotation;
 
     C_CanvasLocalRotation() = default;
     explicit C_CanvasLocalRotation(IRMath::vec4 rotation)
         : rotation_{rotation} {}
+
+    bool isDetached() const noexcept {
+        return rotation_.x != 0.0f || rotation_.y != 0.0f ||
+               rotation_.z != 0.0f || rotation_.w != 0.0f;
+    }
 };
 
 } // namespace IRComponents

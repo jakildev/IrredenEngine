@@ -45,11 +45,9 @@ inline void writeColorTap(
     triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
 }
 
-// Emit a face's 2x3 trixel block through the deformation matrix D, super-
-// sampling the source block by D's magnification so a stretching deformation
-// (detached-canvas pitch/roll, T-295) fills the face with no forward-mapping
-// gaps. `n` collapses to 1 whenever both D columns are <= 1 px (identity /
-// camera-residual-yaw path), keeping that path byte-identical to master.
+// Emit a face's 2x3 trixel block through the deformation matrix D.
+// Super-sampling gated by isDetached — see c_voxel_to_trixel_stage_1.glsl
+// for the full super-sampling contract.
 inline void emitDeformedFace(
     int2 base,
     float2x2 D,
@@ -57,13 +55,15 @@ inline void emitDeformedFace(
     float4 voxelColor,
     uint2 packedEntityId,
     uint2 localId,
+    bool isDetached,
     int2 canvasSize,
     device const atomic_int* distanceScratch,
     texture2d<float, access::write> triangleCanvasColors,
     texture2d<int, access::write> triangleCanvasDistances,
     texture2d<uint, access::write> triangleCanvasEntityIds
 ) {
-    const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, 6);
+    const int maxN = isDetached ? 6 : 1;
+    const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     const float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
         for (int sx = 0; sx < n; ++sx) {
@@ -159,6 +159,7 @@ kernel void c_voxel_to_trixel_stage_2(
             voxelColor,
             packedEntityId,
             localId,
+            frameData.isDetachedCanvas > 0.5f,
             canvasSize,
             distanceScratch,
             triangleCanvasColors,
@@ -196,6 +197,7 @@ kernel void c_voxel_to_trixel_stage_2(
         voxelColor,
         packedEntityId,
         localId,
+        frameData.isDetachedCanvas > 0.5f,
         canvasSize,
         distanceScratch,
         triangleCanvasColors,

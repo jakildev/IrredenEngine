@@ -63,7 +63,7 @@ inline void buildVoxelFrameData(
     FrameDataVoxelToCanvas &frameData,
     const C_TriangleCanvasTextures &canvas,
     int liveVoxelCount,
-    const vec4 &canvasRotation
+    const C_CanvasLocalRotation &canvasRotation
 ) {
     const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
@@ -77,12 +77,12 @@ inline void buildVoxelFrameData(
     frameData.canvasSizePixels_ = canvas.size_;
 
     // A non-zero `canvasRotation` marks a detached entity canvas (the main
-    // world canvas keeps the all-zero `C_CanvasLocalRotation` sentinel). A
-    // detached canvas rasterizes its voxels in the entity's own model space
-    // — camera yaw zeroed — and `faceDeform_` carries the full SO(3)
+    // world canvas keeps the all-zero `C_CanvasLocalRotation::kSentinelNoRotation`
+    // sentinel). A detached canvas rasterizes its voxels in the entity's own
+    // model space — camera yaw zeroed — and `faceDeform_` carries the full SO(3)
     // per-face deformation for the entity's rotation (T-295).
-    const bool detachedCanvas = canvasRotation.x != 0.0f || canvasRotation.y != 0.0f ||
-                                canvasRotation.z != 0.0f || canvasRotation.w != 0.0f;
+    const bool detachedCanvas = canvasRotation.isDetached();
+    frameData.isDetachedCanvas_ = detachedCanvas ? 1.0f : 0.0f;
     if (detachedCanvas) {
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
@@ -90,7 +90,7 @@ inline void buildVoxelFrameData(
         // Snap to the nearest of the 24 cube orientations and deform by the
         // residual only: a cube is invariant under the snap, so this keeps
         // the per-face skew small enough to stay clean (T-295).
-        const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation);
+        const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation.rotation_);
         const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, residual);
         const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, residual);
         const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, residual);
@@ -259,7 +259,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameData_,
             triangleCanvasTextures,
             liveVoxelCount,
-            canvasLocalRotation.rotation_
+            canvasLocalRotation
         );
 
         const int renderMode = frameData_.voxelRenderOptions_.x;

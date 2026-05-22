@@ -159,6 +159,14 @@ inline vec3 rotateVectorByQuat(const vec3 &v, const vec4 &q) {
     return v + q.w * t + glm::cross(u, t);
 }
 
+// Unit quaternion for a rotation of `angle` radians about a (possibly
+// non-unit) axis. Layout: vec4(qx, qy, qz, qw) — same as C_LocalTransform.
+inline vec4 quatAxisAngle(const vec3 &axis, float angle) {
+    const vec3 a = normalize(axis);
+    const float h = angle * 0.5f;
+    return vec4(a.x * sin(h), a.y * sin(h), a.z * sin(h), cos(h));
+}
+
 /// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
 /// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
 /// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.

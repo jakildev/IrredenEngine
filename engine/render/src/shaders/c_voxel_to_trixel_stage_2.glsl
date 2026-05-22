@@ -17,7 +17,9 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;
+    // 1.0 for a detached entity canvas, 0.0 for the world canvas — see
+    // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.
+    uniform float isDetachedCanvas;
     // Per-face deformation matrix packed column-major into vec4 (see
     // c_voxel_to_trixel_stage_1.glsl for the layout). T-293.
     uniform vec4 faceDeform[3];
@@ -73,11 +75,8 @@ void writeColorTap(
     }
 }
 
-// Emit a face's 2x3 trixel block through the deformation matrix D, super-
-// sampling the source block by D's magnification so a stretching deformation
-// (detached-canvas pitch/roll, T-295) fills the face with no forward-mapping
-// gaps. `n` collapses to 1 whenever both D columns are <= 1 px (identity /
-// camera-residual-yaw path), keeping that path byte-identical to master.
+// Emit a face's 2x3 trixel block through the deformation matrix D.
+// Super-sampling gated by isDetachedCanvas — see stage-1 for the contract.
 void emitDeformedFace(
     const ivec2 base,
     const mat2 D,
@@ -85,7 +84,8 @@ void emitDeformedFace(
     const vec4 voxelColor,
     const uint voxelIndex
 ) {
-    int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, 6);
+    int maxN = isDetachedCanvas > 0.5 ? 6 : 1;
+    int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
         for (int sx = 0; sx < n; ++sx) {

@@ -136,13 +136,6 @@ TEST(FaceDeformationMatrixSO3Test, OutOfRangeFaceReturnsIdentity) {
 // ---------------------------------------------------------------------------
 
 namespace {
-// Unit quaternion for a rotation of `angle` about a (possibly non-unit) axis.
-IRMath::vec4 quatAxisAngle(IRMath::vec3 axis, float angle) {
-    const IRMath::vec3 a = IRMath::normalize(axis);
-    const float s = IRMath::sin(angle * 0.5f);
-    return IRMath::vec4(a.x * s, a.y * s, a.z * s, IRMath::cos(angle * 0.5f));
-}
-
 void expectQuatNearIdentity(const IRMath::vec4 &q, float tol) {
     // q and -q are the same rotation; identity is (0,0,0,±1).
     EXPECT_NEAR(IRMath::abs(q.w), 1.0f, tol);
@@ -159,11 +152,11 @@ TEST(OctahedralSnapResidualTest, IdentityResidualIsIdentity) {
 // Every one of the 24 cube orientations snaps to itself — residual identity.
 TEST(OctahedralSnapResidualTest, OctahedralElementsResidualIsIdentity) {
     const IRMath::vec4 elements[]{
-        quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kHalfPi),        // 90 about X
-        quatAxisAngle(IRMath::vec3(0, 1, 0), IRMath::kPi),            // 180 about Y
-        quatAxisAngle(IRMath::vec3(0, 0, 1), 3.0f * IRMath::kHalfPi), // 270 about Z
-        quatAxisAngle(IRMath::vec3(1, 1, 1), IRMath::kTwoPi / 3.0f),  // 120 about diagonal
-        quatAxisAngle(IRMath::vec3(1, 1, 0), IRMath::kPi),            // 180 about edge
+        IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kHalfPi),        // 90 about X
+        IRMath::quatAxisAngle(IRMath::vec3(0, 1, 0), IRMath::kPi),            // 180 about Y
+        IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), 3.0f * IRMath::kHalfPi), // 270 about Z
+        IRMath::quatAxisAngle(IRMath::vec3(1, 1, 1), IRMath::kTwoPi / 3.0f),  // 120 about diagonal
+        IRMath::quatAxisAngle(IRMath::vec3(1, 1, 0), IRMath::kPi),            // 180 about edge
     };
     for (const IRMath::vec4 &e : elements) {
         expectQuatNearIdentity(IRMath::octahedralSnapResidual(e), 1e-4f);
@@ -173,7 +166,7 @@ TEST(OctahedralSnapResidualTest, OctahedralElementsResidualIsIdentity) {
 // A rotation smaller than the nearest snap boundary keeps identity as its
 // snap, so the residual is the input unchanged.
 TEST(OctahedralSnapResidualTest, SmallRotationPassesThrough) {
-    const IRMath::vec4 small = quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kPi / 15.0f);
+    const IRMath::vec4 small = IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kPi / 15.0f);
     const IRMath::vec4 residual = IRMath::octahedralSnapResidual(small);
     EXPECT_NEAR(residual.x, small.x, 1e-4f);
     EXPECT_NEAR(residual.y, small.y, 1e-4f);
@@ -186,7 +179,7 @@ TEST(OctahedralSnapResidualTest, SmallRotationPassesThrough) {
 // per-face deformation in its clean range.
 TEST(OctahedralSnapResidualTest, NearOctahedralRotationShrinksResidual) {
     const IRMath::vec4 near180 =
-        quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kPi - IRMath::kPi / 18.0f); // 170 deg
+        IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kPi - IRMath::kPi / 18.0f); // 170 deg
     const IRMath::vec4 residual = IRMath::octahedralSnapResidual(near180);
     // Residual half-angle ~5 deg → w ~cos(5 deg) ~0.996; far tighter than the
     // 170 deg input (w ~0.087).
