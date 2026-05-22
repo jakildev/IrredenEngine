@@ -34,12 +34,11 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │  UPDATE pipeline: game logic, voxel mutation                     │
 ├──────────────────────────────────────────────────────────────────┤
 │  RENDER pipeline (systems in order):                             │
-│    VOXEL_TO_TRIXEL_STAGE_1                                       │
+│    VOXEL_TO_TRIXEL_STAGE_1  (one per-canvas tick does all of:)   │
 │      • upload voxel pos/col/ids to SSBOs                         │
 │      • clear distance texture to kTrixelDistanceMaxDistance      │
 │      • c_voxel_visibility_compact.glsl → visible index list      │
 │      • c_voxel_to_trixel_stage_1.glsl  → distance writes         │
-│    VOXEL_TO_TRIXEL_STAGE_2                                       │
 │      • c_voxel_to_trixel_stage_2.glsl  → color + entity id       │
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
 │    COMPUTE_VOXEL_AO                                              │

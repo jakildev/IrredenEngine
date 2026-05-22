@@ -47,8 +47,10 @@ the ECS surface.
 
 ## Key systems
 
-- `VOXEL_TO_TRIXEL_STAGE_1` / `STAGE_2` — compute-shader voxel
-  rasterization to the 3 canvas textures.
+- `VOXEL_TO_TRIXEL_STAGE_1` — compute-shader voxel rasterization to the
+  3 canvas textures. Runs compact + stage-1 + stage-2 dispatches in one
+  per-canvas tick (the former separate `VOXEL_TO_TRIXEL_STAGE_2` system
+  clobbered the shared voxel SSBOs across multi-canvas scenes).
 - `TRIXEL_TO_TRIXEL` — compositing between trixel textures.
 - `TEXT_TO_TRIXEL` — glyph rasterization (cap: 8192 glyph commands per
   frame).

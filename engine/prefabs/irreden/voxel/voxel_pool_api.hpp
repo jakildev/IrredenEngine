@@ -93,22 +93,83 @@ inline void resyncRangeFromColors(
     IRRender::resyncVoxelPoolRangeFromColors(startIndex, count, canvasName);
 }
 
+namespace detail {
+
+// Resolve the C_VoxelPool owned by a canvas entity, or nullptr when the
+// entity is null / destroyed / has no pool. The entity-keyed pool ops
+// below route through this so any canvas that owns a pool — including a
+// detached entity's per-entity canvas — is a valid target, without
+// needing a RenderManager canvas-name-map entry.
+inline IRComponents::C_VoxelPool *poolForCanvas(IREntity::EntityId canvasEntity) {
+    if (canvasEntity == IREntity::kNullEntity || !IREntity::entityExists(canvasEntity)) {
+        return nullptr;
+    }
+    auto poolOpt = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(canvasEntity);
+    return poolOpt.has_value() ? poolOpt.value() : nullptr;
+}
+
+} // namespace detail
+
+// Entity-keyed pool ops. The name-keyed forms above resolve through
+// RenderManager's canvas-name map, which only carries the ctor-time
+// "main" / "background" / "gui" canvases. These forms take the canvas
+// entity directly, so a detached entity's per-entity canvas can own and
+// grow its own voxel pool. `C_VoxelSetNew` captures its target canvas in
+// `canvasEntity_` and routes every pool op through these.
+inline IRRender::VoxelPoolAllocation allocate(unsigned int size, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        return pool->allocateVoxels(size);
+    }
+    return IRRender::VoxelPoolAllocation{};
+}
+
+inline void deallocate(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        pool->deallocateVoxels(startIndex, count);
+    }
+}
+
+inline void
+markRangeActive(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        pool->setActiveMaskRange(startIndex, count);
+    }
+}
+
+inline void
+markRangeInactive(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        pool->clearActiveMaskRange(startIndex, count);
+    }
+}
+
+inline void markVoxelActive(
+    std::size_t startIndex, std::size_t voxelIdx, bool active, IREntity::EntityId canvasEntity
+) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        if (active) {
+            pool->setActiveBit(startIndex + voxelIdx);
+        } else {
+            pool->clearActiveBit(startIndex + voxelIdx);
+        }
+    }
+}
+
+inline void
+resyncRangeFromColors(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        pool->resyncActiveMaskFromColors(startIndex, count);
+    }
+}
+
 // Performs a single canvas-entity lookup and calls fn(C_VoxelPool&).
 // Prefer this over calling markVoxelActive N times to avoid N RenderManager
 // lookups; fillPlane-style loops that activate many individual slots benefit
 // from calling pool.setActiveBit(absIdx) directly on the resolved pool.
 template <typename Fn> inline void withPoolByEntity(IREntity::EntityId canvasEntity, Fn &&fn) {
-    if (canvasEntity == IREntity::kNullEntity) {
-        return;
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        fn(*pool);
     }
-    if (!IREntity::entityExists(canvasEntity)) {
-        return;
-    }
-    auto poolOpt = IREntity::getComponentOptional<IRComponents::C_VoxelPool>(canvasEntity);
-    if (!poolOpt.has_value()) {
-        return;
-    }
-    fn(*poolOpt.value());
 }
 
 } // namespace IRPrefab::VoxelPool

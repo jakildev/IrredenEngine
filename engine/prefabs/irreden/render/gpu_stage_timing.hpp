@@ -150,14 +150,15 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
 //
 // Per-system mapping post-T-066 (one observer fire per `SystemId`):
 //   `voxelStage1`  ← VOXEL_TO_TRIXEL_STAGE_1 (covers former canvasClear +
-//                    voxelCompact + voxelStage1 sub-stages)
-//   `voxelStage2`  ← VOXEL_TO_TRIXEL_STAGE_2
+//                    voxelCompact + voxelStage1 + voxelStage2 sub-stages —
+//                    the stage-2 dispatch was merged into STAGE_1)
 //   `shapePass1`   ← SHAPES_TO_TRIXEL (covers former shapePass0 + shapePass1)
 //   The remaining 8 names map 1:1 to single-stage systems.
 //
-// Three rows have no current writer: `canvasClear`, `voxelCompact`,
-// `shapePass0` (folded into the per-system measurement above), and
-// `shapeCompact` (no system has ever written it; reserved for a
+// Four rows have no current writer: `canvasClear`, `voxelCompact`,
+// `voxelStage2`, `shapePass0` (folded into the per-system measurement
+// above — `voxelStage2`'s dispatch now runs inside VOXEL_TO_TRIXEL_STAGE_1),
+// and `shapeCompact` (no system has ever written it; reserved for a
 // future shape-compaction pass). They stay in the registry to keep
 // the Lua API and perf overlay stable; their reported value is 0.0f.
 inline const std::array<GpuStageInfo, 20> &gpuStageRegistry() {

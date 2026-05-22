@@ -166,6 +166,7 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
+    ShaderProgram *stage2Program_ = nullptr;
     Buffer *frameDataBuf_ = nullptr;
     Buffer *voxelPosBuf_ = nullptr;
     Buffer *voxelColorBuf_ = nullptr;
@@ -190,6 +191,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // slots this dispatch is about to read). For the steady single-
     // canvas case the tracker is set on the first tick and never
     // re-fires.
+    // NOTE: with N detached canvases every canvas triggers a mismatch on
+    // the other N-1 ticks, producing N full position SSBO re-seeds per
+    // frame. The pending-range coalescing optimization (used for the
+    // single-canvas path) is bypassed for all but the last-ticked canvas.
+    // Profile this path if the scene voxel count grows significantly.
     IREntity::EntityId lastUploadedCanvas_ = IREntity::kNullEntity;
 
     void tick(
@@ -329,6 +335,26 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
         IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+        // Stage 2 runs in the SAME per-canvas tick rather than as a separate
+        // system. The compact + position/color SSBOs (`voxelPosBuf_`,
+        // `voxelColorBuf_`, `CompactedVoxelIndices`, `IndirectDispatchParams`)
+        // are single-instance, shared across every voxel-pool canvas. A
+        // separate STAGE_2 system runs after STAGE_1 has ticked *all*
+        // canvases, so those buffers only ever hold the last canvas's data —
+        // every detached canvas would rasterize the wrong voxels. Folding the
+        // stage-2 dispatch in here keeps each canvas's upload→compact→stage1
+        // →stage2 sequence atomic before the next canvas overwrites the
+        // buffers.
+        stage2Program_->use();
+        triangleCanvasTextures.getTextureColors()
+            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        triangleCanvasTextures.getTextureDistances()
+            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+        triangleCanvasTextures.getTextureEntityIds()
+            ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+        IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
     }
 
     void beginTick() {
@@ -357,6 +383,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "SingleVoxel2",
+            std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<Buffer>(
             "SingleVoxelFrameData",
@@ -434,6 +464,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         auto *p = getSystemParams<System<VOXEL_TO_TRIXEL_STAGE_1>>(systemId);
         p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
+        p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->voxelPosBuf_ = IRRender::getNamedResource<Buffer>("VoxelPositionBuffer");
         p->voxelColorBuf_ = IRRender::getNamedResource<Buffer>("VoxelColorBuffer");
@@ -446,47 +477,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // collapse into voxelStage1's measurement; their registry slots
         // remain at 0.0f for API-compatibility.
         IRRender::tagGpuStage(systemId, "voxelStage1");
-        return systemId;
-    }
-};
-
-template <> struct System<VOXEL_TO_TRIXEL_STAGE_2> {
-    ShaderProgram *stage2Program_ = nullptr;
-    Buffer *indirectBuf_ = nullptr;
-
-    void tick(const C_VoxelPool &voxelPool, C_TriangleCanvasTextures &triangleCanvasTextures) {
-        if (voxelPool.getLiveVoxelCount() == 0)
-            return;
-
-        triangleCanvasTextures.getTextureColors()
-            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-        triangleCanvasTextures.getTextureDistances()
-            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
-        triangleCanvasTextures.getTextureEntityIds()
-            ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-
-        IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-    }
-
-    void beginTick() {
-        stage2Program_->use();
-    }
-
-    static SystemId create() {
-        IRRender::createNamedResource<ShaderProgram>(
-            "SingleVoxel2",
-            std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
-        );
-
-        SystemId systemId =
-            registerSystem<VOXEL_TO_TRIXEL_STAGE_2, C_VoxelPool, C_TriangleCanvasTextures>(
-                "SingleVoxelToCanvasSecond"
-            );
-        auto *p = getSystemParams<System<VOXEL_TO_TRIXEL_STAGE_2>>(systemId);
-        p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
-        p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
-        IRRender::tagGpuStage(systemId, "voxelStage2");
         return systemId;
     }
 };

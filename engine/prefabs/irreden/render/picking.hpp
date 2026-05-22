@@ -25,7 +25,7 @@
 //
 //   - **GPU readback (`IRRender::getEntityIdAtMouseTrixel`)** — the O(1)
 //     GPU alternative. Reads the entity-id texture written by
-//     `VOXEL_TO_TRIXEL_STAGE_2` and `SHAPES_TO_TRIXEL` (via a
+//     `VOXEL_TO_TRIXEL_STAGE_1` and `SHAPES_TO_TRIXEL` (via a
 //     persistent-mapped buffer) and returns the frontmost entity at the
 //     cursor pixel in O(1). The trade-off is a one-frame lag (the buffer
 //     holds the previous frame's render) and it yields the entity only
