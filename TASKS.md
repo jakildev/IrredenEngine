@@ -239,25 +239,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **Tools: ir-build / ir-run migration (sub-task 2 of #1074)** — port fleet-build/fleet-run to ir-build/ir-run with ir-acquire cpu/gpu wiring; leave old paths as one-line exec shims
-  - **ID:** T-329
-  - **Area:** engine/tools/bin, scripts/fleet, docs/agents
-  - **Model:** opus
-  - **Owner:** claude/T-329-ir-build-run
-  - **Blocked by:** (none)
-  - **Stack:** T-318..T-331 ir-tools-split
-  - **Acceptance:** fleet-build --target IRShapeDebug works via shim; ir-build --target IRShapeDebug works directly; ir-acquire --info during build shows cpu slot held; ir-acquire --info during --auto-screenshot shows gpu lock held; two parallel ir-build invocations serialize on CPU budget (workers=1) or halve per-build cap (workers=2)
-  - **Issue:** #1099
-  - **Notes:** Sub-task 2 of #1074. Wiring: ir-build wraps cmake in ir-acquire cpu; ir-run --auto-screenshot → ir-acquire gpu; ir-run --auto-profile → ir-acquire benchmark; interactive ir-run → no acquire. Rewrite fleet-build/fleet-run as exec shims. Update install.sh for both name sets. Update BUILD.md + role-doc references (old names keep working). T-318 (sub-task 1) already merged.
-  - **Links:**
-
-
 - [~] **Tools: ir-perf-grid + hardware-fingerprinted baselines + synthetic-load normalization (sub-task 3 of #1074)** — ir-perf-grid binary wrapping ir-acquire benchmark; baselines keyed by host fingerprint; ir_ref_bench normalization for cross-host comparisons
   - **ID:** T-330
   - **Area:** engine/tools/bin, engine/tools/bench, engine/tools/py, docs/perf, build
   - **Model:** opus
   - **Owner:** opus-worker-2
-  - **Blocked by:** T-329
+  - **Blocked by:** (none)
   - **Stack:** T-318..T-331 ir-tools-split
   - **Acceptance:** ir-perf-grid runs matrix end-to-end, writes baseline under fingerprinted layout; two consecutive runs on same host produce stable raw + normalized numbers (within 2%); different-host run emits informational host-mismatch path, not regression alert; perf-gate.yml passes against existing master baseline after migration
   - **Issue:** #1100
@@ -269,8 +256,8 @@ Avoid:
   - **ID:** T-331
   - **Area:** docs, .claude/commands
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
-  - **Blocked by:** T-329
+  - **Owner:** claude/T-331-acquire-late-release-early-docs
+  - **Blocked by:** (none)
   - **Stack:** T-318..T-331 ir-tools-split
   - **Acceptance:** rule lives in exactly one canonical place (FLEET.md § "Resource coordination" or engine/tools/README.md); each of role-opus-worker.md, role-sonnet-author.md, role-opus-architect.md references it; no duplicated prose; grep confirms single canonical location
   - **Issue:** #1101
@@ -329,6 +316,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
 - [x] **T-326** — demos: adopt standardControlSystems() bundle across all demos · Owner: claude/T-326-adopt-standard-camera-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1095
 - [x] **T-221** — engine/job/ + SystemAccess traits (multithreading epic Phase 1) · Owner: claude/T-221-job-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/1086
 - [x] **T-318** — engine/tools: ir-host-probe + ir-acquire (sub-task 1 of #1074) · Owner: claude/T-318-engine-tools · PR: https://github.com/jakildev/IrredenEngine/pull/1102
@@ -345,7 +333,6 @@ Avoid:
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
 - [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
-- [x] **T-313** — perf: Lua-vs-C++ parity dashboard · Owner: claude/T-313-lua-cpp-parity-dashboard · PR: https://github.com/jakildev/IrredenEngine/pull/1037
 - [x] **T-311** — perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs · Owner: claude/T-311-ci-baseline-gate · PR: https://github.com/jakildev/IrredenEngine/pull/1039
 - [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
-- [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
+- [x] **T-313** — perf: Lua-vs-C++ parity dashboard · Owner: claude/T-313-lua-cpp-parity-dashboard · PR: https://github.com/jakildev/IrredenEngine/pull/1037
