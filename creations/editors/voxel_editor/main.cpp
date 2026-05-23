@@ -1431,7 +1431,7 @@ void initSystems() {
          bakeSystem,
          paletteUpdateSystem,
          placeEraseSystem,
-         IRSystem::createSystem<IRSystem::CAMERA_SCROLL_ZOOM>(),
+         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
          IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
     );

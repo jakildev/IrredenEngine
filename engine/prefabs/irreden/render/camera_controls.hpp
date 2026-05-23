@@ -52,10 +52,7 @@ inline std::list<IRSystem::SystemId> standardControlSystems() {
     };
 }
 
-/// Standard keyboard bindings (WASD pan, +/- zoom, Escape close).
-/// Thin wrapper around IRCommand::registerCameraCommands so demos can
-/// pair the systems-side bundle above with a single matching command-
-/// side call.
+// Pairs with standardControlSystems(); wraps IRCommand::registerCameraCommands.
 inline void registerStandardKeyboardCommands() {
     IRCommand::registerCameraCommands();
 }
