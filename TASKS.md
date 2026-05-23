@@ -175,6 +175,54 @@ Avoid:
   - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
   - **Links:**
 
+
+- [ ] **Render: low game-resolution mode + sub-pixel / screen-pixel camera smoothing** — restore low-resolution rendering with anti-vibration sub-pixel camera smoothing and a per-entity screen-pixel-precision opt-in
+  - **ID:** T-314
+  - **Area:** engine/render, shaders/glsl, shaders/metal
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) slow camera pan at low game resolution shows no per-frame +/-1px jitter in auto-screenshot diff; (2) game-resolution canvases snap to game-pixel grid; camera tracks at screen-pixel precision; (3) screen-pixel-smooth flagged entity moves smoothly between game pixels; unflagged entities snap; (4) fleet-build clean on linux-debug and macos-debug; OpenGL/Metal parity for any shader change
+  - **Issue:** #1048
+  - **Notes:** Audit system_framebuffer_to_screen.hpp existing sub-pixel path first; anti-vibration rule: decompose camera position once into game-pixel-integer + screen-pixel-remainder and use consistently throughout. Per-entity screen-pixel-smooth opt-in routes through existing SPRITE_TO_SCREEN post-upscale pass. kSizeExtraPixelBuffer margin must cover max one-frame shift. Demo at 320x180 slow pan. Filed by architect (Cursor session).
+  - **Links:**
+
+
+- [ ] **Perf: VOXEL_TO_TRIXEL_STAGE_1 per-frame canvas+distance clear** — eliminate ~4.4 ms/frame CPU→GPU texture clear by switching to GPU-side clear or a persistent scratch buffer
+  - **ID:** T-315
+  - **Area:** engine/render, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** vs1_clear scope in perf_grid auto-profile drops well under 1 ms; render-verify passes with no visual regression
+  - **Issue:** #1050
+  - **Notes:** Metal clearTexImage allocates a full-texture std::vector + memset + CPU replaceRegion each frame for the distance texture. Fix: GPU-side compute/blit clear or load-action clear. Also cross-check OpenGL clearTexImage path for same pattern. vs1_clear IR_PROFILE_SCOPE was added in PR #1049.
+  - **Links:**
+
+
+- [ ] **Perf: Metal Buffer::subData orphans + full-copies the whole buffer on every call** — eliminate per-frame full-buffer memcpy by tracking GPU-idle state and writing in place on first access per frame
+  - **ID:** T-316
+  - **Area:** engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** per-frame buffer-orphan memcpy volume drops to near zero in steady state; IRPerfGrid matrix shows measurable frame improvement and no regression; render-verify clean on Metal backend
+  - **Issue:** #1051
+  - **Notes:** Metal-only. MetalBufferImpl::subData allocates a new full-size MTLBuffer + whole-buffer memcpy on every write. Since present() calls waitUntilCompleted(), GPU is idle at frame start — first write can be in-place. Fix: per-buffer encoded-since-orphan flag reset at beginFrame(); only second+ write to an already-encoded buffer orphans. Correctness-sensitive: wrong call → GPU reads torn data → visual corruption. Needs render-verify.
+  - **Links:**
+
+
+- [ ] **Render: camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate** — add auto-rotate mode to canvas_stress demo and Ctrl+middle-drag camera yaw rotation keybind
+  - **ID:** T-317
+  - **Area:** engine/prefabs/irreden/render, creations/demos/canvas_stress
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) canvas_stress with auto_rotate config flag/--auto-rotate CLI continuously rotates camera yaw; (2) Ctrl+middle-drag rotates camera yaw; middle-drag without Ctrl still pans unchanged; (3) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1053
+  - **Notes:** Part A: copy AutoYawRotate pattern from z_yaw_rotation/main_static.cpp; canvas_stress PR #1045 already merged. Part B: extend CAMERA_MOUSE_PAN or add sibling system; detect kModifierControl on middle-press; map horizontal delta to yaw. No new static state — use registerSystem member pattern. Filed by architect (Cursor session).
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
