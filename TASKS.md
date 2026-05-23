@@ -228,11 +228,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **tools: engine-level concurrency + perf primitives** — introduce ir-build, ir-run, ir-acquire, ir-perf-grid as engine-owned coordination layer; hardware-fingerprinted baselines + synthetic-load normalization
+- [~] **tools: engine-level concurrency + perf primitives** — introduce ir-build, ir-run, ir-acquire, ir-perf-grid as engine-owned coordination layer; hardware-fingerprinted baselines + synthetic-load normalization
   - **ID:** T-318
   - **Area:** build, tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** ir-build/ir-run/ir-acquire/ir-perf-grid exist in engine/tools/bin/; concurrency_test.sh passes lock/budget slot tests and slot-release-on-PID-death; ir-acquire benchmark acquires cpu+gpu+perf in one shot; fleet-build/fleet-run shim to ir-build/ir-run; hardware-fingerprinted baselines at docs/perf/baseline_latest/<fingerprint>/; CI smoke (ir-build IRPerfGrid && ir-run --auto-profile 30 && compare) passes
   - **Issue:** #1074
