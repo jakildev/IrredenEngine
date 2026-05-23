@@ -235,7 +235,33 @@ if [[ -n "$acquire_verb" ]]; then
 fi
 
 # --- No timeout: interactive mode, exec replaces this process --------------
+# Exception: `--auto-screenshot` is a self-terminating verb. The demo is
+# expected to call `closeWindow()` and exit 0 after its last shot — any
+# non-zero return is a crash on shutdown (e.g. T-336's Metal static-
+# destruction segfault that lands AFTER screenshots are saved). We still
+# need to surface that distinction at the script level, so swap exec for
+# a run-and-validate path when the verb is gpu/screenshot. Interactive
+# mode (no verb, no timeout) keeps the exec path so signals and stdin
+# pass straight through.
 if [[ -z "$TIMEOUT" ]]; then
+    if [[ "$acquire_verb" == "gpu" ]]; then
+        echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*"
+        cd "$EXE_DIR"
+        # Disarm `set -e` around the run so we can inspect the exit code
+        # ourselves rather than letting bash bail out on the first non-
+        # zero (which is exactly the signal we want to surface).
+        set +e
+        "${acquire_prefix[@]}" "./$EXE_NAME" "$@"
+        rc=$?
+        set -e
+        if [[ $rc -ne 0 ]]; then
+            echo "ir-run: $EXE_NAME crashed on shutdown (exit code $rc) — " \
+                 "screenshots may have been saved before the crash, but the " \
+                 "process did not exit cleanly. See engine/render/CLAUDE.md " \
+                 "and T-336 for the canonical static-destruction symptom." >&2
+        fi
+        exit "$rc"
+    fi
     if (( ${#acquire_prefix[@]} > 0 )); then
         echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*"
     else
