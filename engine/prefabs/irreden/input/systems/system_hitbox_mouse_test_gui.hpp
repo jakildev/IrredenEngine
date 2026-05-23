@@ -48,10 +48,10 @@ template <> struct System<HITBOX_MOUSE_TEST_GUI> {
 
         // After T-293 the GUI canvas composites into a framebuffer that no
         // longer post-rotates by residualYaw (SCREEN_SPACE_RESIDUAL_ROTATE
-        // is a passthrough; continuous yaw lives in the trixel emit
-        // shaders' faceDeform[]). The cursor's framebuffer pixel maps
-        // directly onto GUI-canvas-trixel coords without an inverse
-        // rotation step.
+        // was a passthrough, retired T-323; continuous yaw lives in the
+        // trixel emit shaders' faceDeform[]). The cursor's framebuffer
+        // pixel maps directly onto GUI-canvas-trixel coords without an
+        // inverse rotation step.
         const vec2 mouseFb = IRRender::getMousePositionOutputView();
 
         // The GUI canvas texture (size = mainCanvasSize / guiScale)

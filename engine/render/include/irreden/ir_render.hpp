@@ -181,7 +181,7 @@ vec2 getMainCanvasSizeTrixels();
 /// and update pipelines run at different rates and the camera offset matters.
 ///
 /// After T-293 the screen-space bilinear residual composite is gone —
-/// `SCREEN_SPACE_RESIDUAL_ROTATE` is a pure framebuffer passthrough, and
+/// `SCREEN_SPACE_RESIDUAL_ROTATE` was a pure passthrough (retired T-323), and
 /// residual yaw is folded into per-face `faceDeform[]` matrices that the
 /// trixel emit shaders apply in 2D iso space. The picking helpers below
 /// therefore no longer apply a `R2D(-residualYaw)` inverse: the cursor's
