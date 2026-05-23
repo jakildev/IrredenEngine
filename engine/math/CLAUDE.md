@@ -32,6 +32,13 @@ Helpers:
 **Never inline these equations in system code.** Always call the helpers
 so there's one place to fix a coordinate-system bug.
 
+The (1,1,1) iso-depth axis is the load-bearing geometry behind the
+closed-form `isoPixelToPos3D` inverse and every "sum of components =
+depth" shortcut in picking / hitbox / gizmo / SDF cull. World-camera
+rotation around any axis other than Z silently breaks those shortcuts;
+see [`docs/design/iso-depth-axis-invariant.md`](../../docs/design/iso-depth-axis-invariant.md)
+for the full consumer map and the cost of widening to SO(3).
+
 ## Layout helpers
 
 `layout.hpp` — grid, zigzag, circle, spiral, helix, and arc-path placement helpers. Each returns a `vec3` for index `i` in `[0, count)`, called in a loop. Gotcha: most helpers take a `PlaneIso` argument — `XY` vs `YZ` axis swap is the #1 source of wrong depth and is silent at compile time.
