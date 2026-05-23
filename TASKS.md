@@ -198,22 +198,11 @@ Avoid:
   - **Notes:** Metal-only. MetalBufferImpl::subData allocates a new full-size MTLBuffer + whole-buffer memcpy on every write. Since present() calls waitUntilCompleted(), GPU is idle at frame start — first write can be in-place. Fix: per-buffer encoded-since-orphan flag reset at beginFrame(); only second+ write to an already-encoded buffer orphans. Correctness-sensitive: wrong call → GPU reads torn data → visual corruption. Needs render-verify.
   - **Links:**
 
-
-- [~] **Render: camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate** — add auto-rotate mode to canvas_stress demo and Ctrl+middle-drag camera yaw rotation keybind
-  - **ID:** T-317
-  - **Area:** engine/prefabs/irreden/render, creations/demos/canvas_stress
-  - **Model:** sonnet
-  - **Owner:** claude/T-317-camera-rotation
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) canvas_stress with auto_rotate config flag/--auto-rotate CLI continuously rotates camera yaw; (2) Ctrl+middle-drag rotates camera yaw; middle-drag without Ctrl still pans unchanged; (3) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1053
-  - **Notes:** Part A: copy AutoYawRotate pattern from z_yaw_rotation/main_static.cpp; canvas_stress PR #1045 already merged. Part B: extend CAMERA_MOUSE_PAN or add sibling system; detect kModifierControl on middle-press; map horizontal delta to yaw. No new static state — use registerSystem member pattern. Filed by architect (Cursor session).
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
 - [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
 - [x] **T-313** — perf: Lua-vs-C++ parity dashboard · Owner: claude/T-313-lua-cpp-parity-dashboard · PR: https://github.com/jakildev/IrredenEngine/pull/1037
@@ -233,4 +222,3 @@ Avoid:
 - [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
 - [x] **T-301** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/986
 - [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
-- [x] **T-289** — voxel: push-at-mutation position upload (no per-frame re-upload) (B5) · Owner: claude/T-289-voxel-pos-push-at-mutation · PR: https://github.com/jakildev/IrredenEngine/pull/999
