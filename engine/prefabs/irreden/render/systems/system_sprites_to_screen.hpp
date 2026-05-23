@@ -55,9 +55,17 @@ template <> struct System<SPRITE_TO_SCREEN> {
     std::vector<IRRender::SpriteRenderEntry> entries_;
     std::vector<IRRender::GpuSpriteInstance> gpuScratch_;
     std::vector<Group> groups_;
+    /// Cached at beginTick so per-sprite ticks don't repeat the lookup or
+    /// the cameraSubPixelOffsets() call. `gameGridOrigin_` is the screen
+    /// position of the framebuffer's game-pixel grid origin — sprites with
+    /// `screenPixelSmooth_ = false` snap their anchor to this grid so they
+    /// stay pixel-locked to the world the trixel composite paints.
+    vec2 gameGridOrigin_{0.0f};
+    vec2 scaleFactor_{1.0f};
 
-    void
-    tick(const IRComponents::C_Sprite &sprite, const IRComponents::C_WorldTransform &worldTransform) {
+    void tick(
+        const IRComponents::C_Sprite &sprite, const IRComponents::C_WorldTransform &worldTransform
+    ) {
         if (sprite.textureHandle_ == 0) {
             return;
         }
@@ -84,13 +92,30 @@ template <> struct System<SPRITE_TO_SCREEN> {
             static_cast<float>(sprite.tint_.blue_) / 255.0f,
             static_cast<float>(sprite.tint_.alpha_) / 255.0f
         );
-        entry.screenPos_ = computeScreenAnchor(worldPos) - sprite.anchor_ * sprite.size_;
+        const vec2 anchor = computeScreenAnchor(worldPos);
+        const vec2 snappedAnchor = sprite.screenPixelSmooth_
+                                       ? anchor
+                                       : snapToGameGrid(anchor, gameGridOrigin_, scaleFactor_);
+        entry.screenPos_ = snappedAnchor - sprite.anchor_ * sprite.size_;
         entries_.push_back(entry);
     }
 
     void beginTick() {
         entries_.clear();
         groups_.clear();
+        // Mirror the framebuffer-to-screen blit so sprites that opt out of
+        // `screenPixelSmooth_` land on the same game-pixel grid as the
+        // trixel composite. One call per frame; the per-sprite snap is a
+        // round/mul.
+        const ivec2 scaleFactor = IRRender::getOutputScaleFactor();
+        const IRMath::CameraSubPixelOffsets sub = IRMath::cameraSubPixelOffsets(
+            IRRender::getCameraPosition2DIso(),
+            IRRender::getCameraZoom(),
+            scaleFactor
+        );
+        const vec2 viewport = vec2(IRRender::getViewport());
+        gameGridOrigin_ = viewport * 0.5f + vec2(sub.screenPxResidual_);
+        scaleFactor_ = vec2(scaleFactor);
     }
 
     void endTick() {
@@ -202,6 +227,15 @@ template <> struct System<SPRITE_TO_SCREEN> {
     }
 
   private:
+    /// Snaps @p anchor to the framebuffer's game-pixel grid (origin =
+    /// @p gridOrigin, cell size = @p cellPx). The grid origin matches the
+    /// trixel composite's screen-pixel residual so the snapped sprite sits
+    /// on the same pixel as the world content under it.
+    static vec2 snapToGameGrid(vec2 anchor, vec2 gridOrigin, vec2 cellPx) {
+        const vec2 deltaCells = (anchor - gridOrigin) / cellPx;
+        return gridOrigin + IRMath::floor(deltaCells + vec2(0.5f)) * cellPx;
+    }
+
     /// Anchor-point screen position before subtracting `anchor_ * size_`.
     /// Sprites share the same iso → screen transform as the trixel
     /// composite: iso delta from the camera, scaled by the per-trixel

@@ -118,19 +118,18 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
                                                );
 
         mat4 model = mat4(1.0f);
-        if (name == "main") {
-            vec2 framebufferPositionOffset = IRMath::floor(
-                IRMath::fract(
-                    IRMath::pos2DIsoToPos2DGameResolution(
-                        IRMath::fract(cameraPositionIso),
-                        IRRender::getCameraZoom()
-                    )
-                ) *
-                IRPlatform::kIsoToScreenSign * vec2(scaleFactor)
+        // Anti-vibration decomposition — see `IRMath::cameraSubPixelOffsets`
+        // and the parallel call sites in `TRIXEL_TO_FRAMEBUFFER` /
+        // `FRAMEBUFFER_TO_SCREEN`. Only the main framebuffer carries the
+        // camera-driven sub-pixel residual; other framebuffers (if added)
+        // composite from canvas/world space without a screen residual.
+        if (name == "mainFramebuffer") {
+            const IRMath::CameraSubPixelOffsets sub = IRMath::cameraSubPixelOffsets(
+                cameraPositionIso,
+                IRRender::getCameraZoom(),
+                scaleFactor
             );
-            offset += framebufferPositionOffset;
-        } else if (name == "background") {
-            offset += IRPlatform::kIsoToScreenSign * vec2(scaleFactor);
+            offset += vec2(sub.screenPxResidual_);
         }
         model = IRMath::translate(model, vec3(offset.x, offset.y, 0.0f));
         model = IRMath::scale(

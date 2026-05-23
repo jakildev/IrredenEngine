@@ -868,6 +868,49 @@ constexpr vec2 pos2DIsoToPos2DGameResolution(const vec2 position, const vec2 zoo
     return position * zoomLevel * vec2(2, 1);
 }
 
+/// Camera sub-pixel decomposition for the trixel-canvas → framebuffer →
+/// screen blit chain. See @ref cameraSubPixelOffsets.
+struct CameraSubPixelOffsets {
+    /// Game-pixel offset for the trixel-canvas-to-framebuffer placement
+    /// (the translate term in `TRIXEL_TO_FRAMEBUFFER::calcModelMatrix`).
+    ivec2 framebufferGamePxOffset_;
+
+    /// Screen-pixel residual for the framebuffer-to-screen upscale blit
+    /// (the translate term in `FRAMEBUFFER_TO_SCREEN::calcModelMatrix`).
+    ivec2 screenPxResidual_;
+};
+
+/// Decomposes the camera's sub-iso-pixel position into a game-pixel-integer
+/// portion (for the framebuffer placement) and a screen-pixel residual (for
+/// the upscale blit).
+///
+/// The two outputs are derived from the SAME `subIsoGamePx` quantity with
+/// one IRMath::floor() per term, so the pair can never disagree at game-
+/// pixel boundaries — that is the anti-vibration invariant that prevents
+/// per-frame +/-1px jitter as a smoothly-moving camera crosses a game-pixel
+/// boundary at low game resolutions.
+///
+/// `IRPlatform::kIsoToScreenSign` is applied internally on both outputs:
+/// the game-pixel offset multiplies by sign AFTER floor() (to match the
+/// trixel-to-framebuffer convention); the screen residual multiplies by
+/// sign INSIDE floor() (so floor() always rounds toward -infinity in the
+/// motion direction, keeping the upscale residual monotone with camera
+/// motion). Both conventions are preserved as-is from the legacy split
+/// across `TRIXEL_TO_FRAMEBUFFER`, `FRAMEBUFFER_TO_SCREEN`, and
+/// `SCREEN_SPACE_RESIDUAL_ROTATE`; the helper is the single source of
+/// truth for both.
+constexpr CameraSubPixelOffsets
+cameraSubPixelOffsets(const vec2 cameraIso, const vec2 zoomLevel, const ivec2 scaleFactor) {
+    const vec2 subIsoGamePx = pos2DIsoToPos2DGameResolution(IRMath::fract(cameraIso), zoomLevel);
+    const vec2 gamePxFloor = IRMath::floor(subIsoGamePx);
+    const vec2 subGamePxResidual = subIsoGamePx - gamePxFloor;
+    const vec2 sign = IRPlatform::kIsoToScreenSign;
+    return CameraSubPixelOffsets{
+        ivec2(gamePxFloor) * ivec2(sign),
+        ivec2(IRMath::floor(subGamePxResidual * sign * vec2(scaleFactor))),
+    };
+}
+
 /// Inverse iso projection selecting the 3D position at a specific Z level,
 /// reading from the bottom Z face.
 template <ivec3 size>

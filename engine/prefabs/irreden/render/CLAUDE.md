@@ -24,7 +24,13 @@ the ECS surface.
   atlas GPU texture handle — **freed in `onDestroy()`**; callers must not
   call `destroyResource` manually. See
   [`docs/design/sprites.md`](../../../../docs/design/sprites.md) for the
-  full data model, depth semantics, and cross-task scope.
+  full data model, depth semantics, and cross-task scope. The
+  `C_Sprite::screenPixelSmooth_` flag opts a sprite out of the default
+  game-pixel snap (it lands at floating-point screen precision instead);
+  reserve for the player avatar or a camera-locked entity that should
+  move between game pixels. See
+  [`IRMath::cameraSubPixelOffsets`](../../../math/include/irreden/ir_math.hpp)
+  for the granularity hierarchy the flag participates in.
 - `C_GizmoHandle` — marker on editor gizmo entities, tagging handle kind
   (translate-arrow, rotate-ring, scale-stick / scale-center, joint /
   bind-point / IK marker) + axis. Visible geometry comes from a sibling

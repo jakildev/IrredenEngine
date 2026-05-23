@@ -31,8 +31,8 @@ inline void bindSpriteNamespace(LuaScript &luaScript) {
 
     auto spriteTbl = lua.create_table();
 
-    spriteTbl["ONCE"]      = static_cast<int>(SpriteLoopMode::ONCE);
-    spriteTbl["LOOP"]      = static_cast<int>(SpriteLoopMode::LOOP);
+    spriteTbl["ONCE"] = static_cast<int>(SpriteLoopMode::ONCE);
+    spriteTbl["LOOP"] = static_cast<int>(SpriteLoopMode::LOOP);
     spriteTbl["PING_PONG"] = static_cast<int>(SpriteLoopMode::PING_PONG);
 
     // ir.sprite.loadSheet(name, path) → entityId
@@ -44,12 +44,18 @@ inline void bindSpriteNamespace(LuaScript &luaScript) {
         return IREntity::createEntity(std::move(sheet));
     };
 
-    // ir.sprite.create(sheetEntityId, x, y, z) → entityId
+    // ir.sprite.create(sheetEntityId, x, y, z, screenPixelSmooth?) → entityId
     // Creates a sprite entity with C_LocalTransform, C_Sprite, and
     // C_SpriteAnimation. The initial C_Sprite size is derived from the
     // first frame of the sheet. Call ir.sprite.playAnimation afterward
-    // to start playback.
-    spriteTbl["create"] = [](EntityId sheetEntity, float x, float y, float z) -> EntityId {
+    // to start playback. `screenPixelSmooth` defaults to false (sprite
+    // snaps to the game-pixel grid); pass true for the player avatar or
+    // a camera-locked entity that should move between game pixels.
+    spriteTbl["create"] = [](EntityId sheetEntity,
+                             float x,
+                             float y,
+                             float z,
+                             sol::optional<bool> screenPixelSmoothOpt) -> EntityId {
         auto sheetOpt = IREntity::getComponentOptional<C_SpriteSheet>(sheetEntity);
         IRMath::vec2 frameSize{16.0f, 16.0f};
         IRRender::ResourceId texHandle = 0;
@@ -68,24 +74,24 @@ inline void bindSpriteNamespace(LuaScript &luaScript) {
                 sheetEntity
             );
         }
+        C_Sprite sprite{texHandle, frameSize};
+        sprite.screenPixelSmooth_ = screenPixelSmoothOpt.value_or(false);
         return IREntity::createEntity(
             IRComponents::C_LocalTransform{IRMath::vec3{x, y, z}},
-            C_Sprite{texHandle, frameSize},
+            std::move(sprite),
             C_SpriteAnimation{}
         );
     };
 
     // ir.sprite.playAnimation(spriteEnt, sheetEnt, animName, loopMode?, speed?)
-    spriteTbl["playAnimation"] = [](
-        EntityId spriteEnt,
-        EntityId sheetEnt,
-        const std::string &animName,
-        sol::optional<int> loopModeOpt,
-        sol::optional<float> speedOpt
-    ) {
+    spriteTbl["playAnimation"] = [](EntityId spriteEnt,
+                                    EntityId sheetEnt,
+                                    const std::string &animName,
+                                    sol::optional<int> loopModeOpt,
+                                    sol::optional<float> speedOpt) {
         const auto loopMode = loopModeOpt.has_value()
-            ? static_cast<SpriteLoopMode>(loopModeOpt.value())
-            : SpriteLoopMode::LOOP;
+                                  ? static_cast<SpriteLoopMode>(loopModeOpt.value())
+                                  : SpriteLoopMode::LOOP;
         const float speed = speedOpt.value_or(1.0f);
         IRPrefab::Sprite::playAnimation(spriteEnt, sheetEnt, animName, loopMode, speed);
     };

@@ -159,12 +159,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
 
     static mat4
     calcModelMatrix(const vec2 &resolution, const vec2 &cameraPositionIso, const vec2 &zoomLevel) {
-        // Match the renderer's net screen-vs-iso Y convention for sub-pixel camera offsets.
-        vec2 isoPixelOffset =
-            IRMath::floor(
-                IRMath::pos2DIsoToPos2DGameResolution(IRMath::fract(cameraPositionIso), zoomLevel)
-            ) *
-            IRPlatform::kIsoToScreenSign;
+        // Game-pixel half of the anti-vibration decomposition (see
+        // `IRMath::cameraSubPixelOffsets`). `FRAMEBUFFER_TO_SCREEN` consumes
+        // the matching `screenPxResidual_` from the same helper to keep the
+        // two stages byte-for-byte consistent at game-pixel boundaries.
+        const IRMath::CameraSubPixelOffsets sub =
+            IRMath::cameraSubPixelOffsets(cameraPositionIso, zoomLevel, ivec2(1));
+        const vec2 isoPixelOffset = vec2(sub.framebufferGamePxOffset_);
         mat4 model = mat4(1.0f);
         model = translate(
             model,
