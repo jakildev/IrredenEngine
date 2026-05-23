@@ -11,6 +11,7 @@
 // Components
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/render/components/component_camera_yaw.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -18,6 +19,7 @@
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/systems/system_camera_mouse_rotate.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
@@ -27,6 +29,7 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 // Prefab helpers
+#include <irreden/render/camera.hpp>
 #include <irreden/render/entity_canvas.hpp>
 
 // Command suites
@@ -54,7 +57,11 @@ struct CanvasStressSettings {
     int detachedCount_ = 5;
     float initialZoom_ = 1.0f;
     float cameraYaw_ = 0.0f;
+    bool autoRotate_ = false;
 };
+
+// 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
+constexpr float kYawDeltaPerFrame = IRMath::kPi / 360.0f;
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
@@ -124,6 +131,9 @@ void readConfig() {
     sol::object zoom = table["initial_zoom"];
     if (zoom.is<float>())
         g_settings.initialZoom_ = zoom.as<float>();
+    sol::object autoRotate = table["auto_rotate"];
+    if (autoRotate.is<bool>())
+        g_settings.autoRotate_ = autoRotate.as<bool>();
 }
 
 void parseArgs(int argc, char **argv) {
@@ -132,6 +142,8 @@ void parseArgs(int argc, char **argv) {
         if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
             g_settings.cameraYaw_ = static_cast<float>(std::atof(argv[i + 1]));
             ++i;
+        } else if (std::strcmp(argv[i], "--auto-rotate") == 0) {
+            g_settings.autoRotate_ = true;
         }
     }
 }
@@ -174,11 +186,23 @@ void initSystems() {
 
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
+        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_ROTATE>(),
     };
+
+    if (g_settings.autoRotate_) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_CameraYaw>(
+                "AutoYawRotate",
+                [](C_CameraYaw &) {},
+                []() { IRPrefab::Camera::rotateYaw(kYawDeltaPerFrame); }
+            )
+        );
+    }
+
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>());
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};

@@ -25,4 +25,5 @@ canvas_stress = {
     main_grid_size = 5,
     detached_count = 9,
     initial_zoom = 0.4,
+    auto_rotate = false,
 }
