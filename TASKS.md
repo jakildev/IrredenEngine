@@ -256,7 +256,7 @@ Avoid:
   - **ID:** T-325
   - **Area:** engine/prefabs/irreden/render, engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-325-camera-controls-bundle
   - **Blocked by:** (none)
   - **Acceptance:** (1) system_camera_scroll_zoom.hpp, system_camera_trackpad_pan.hpp (optionally system_camera_trackpad_rotate.hpp) exist as engine prefabs with SystemName entries; (2) IRPrefab::Camera::standardControlSystems() and registerStandardKeyboardCommands() exposed; (3) voxel_editor inline scrollZoomSystem replaced by CAMERA_SCROLL_ZOOM, behavior unchanged; (4) on macOS, Space+two-finger trackpad drag pans camera in IRCanvasStress; (5) without Space, two-finger drag zooms; (6) mouse-wheel zoom and middle-drag pan unchanged on Linux+Windows; (7) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1083
