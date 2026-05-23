@@ -854,9 +854,10 @@ void LuaScript::bindLuaDrivenSystems() {
                         "Concurrency::PARALLEL_FOR but EVAL bodies are "
                         "sol::protected_function calls into LuaJIT — "
                         "both sol2 and LuaJIT GC are single-threaded. "
-                        "Forcing Concurrency::MAIN_THREAD; switch to "
+                        "Forcing Concurrency::MAIN_THREAD. When codegen "
+                        "lifts the batch-form restriction, switch to "
                         "mode='codegen' for native-speed parallel "
-                        "dispatch.",
+                        "dispatch (tracked in #1120).",
                         systemName.c_str()
                     );
                 }
