@@ -94,10 +94,11 @@ cull-bounds math, no GPU staging cost for culled shapes, no shader
 change. `LodLevel` indexes go DOWN as detail goes UP (`LOD_0` =
 highest detail at zoom ≥ 16, `LOD_4` = silhouette tier always
 drawn), and a shape's default `lodMin_ = LOD_4` means an unmarked
-shape renders at every zoom. Register before `GLOBAL_POSITION_3D` in
-the UPDATE pipeline so the singleton is current by the time RENDER
-ticks. Phase 1 only filters `SHAPES_TO_TRIXEL`; DENSE-mode voxel
-LOD, rig LOD, and multi-tier `.vxs` composition are out of scope.
+shape renders at every zoom. Register before `PROPAGATE_TRANSFORM`
+in the UPDATE pipeline so the singleton is current by the time
+RENDER ticks. Phase 1 only filters `SHAPES_TO_TRIXEL`; DENSE-mode
+voxel LOD, rig LOD, and multi-tier `.vxs` composition are out of
+scope.
 
 ## Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3)
 
@@ -321,7 +322,7 @@ when extending or composing widgets:
 
 ## Gotchas
 
-- **SQT transition (T-299/T-300/T-301a landed; legacy retirement pending T-301b/T-302).** All render-side, update-side, and voxel-side readers/writers now use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` channel and `SYSTEM_GLOBAL_POSITION_3D` stay alive for non-voxel consumers (editor gizmos, `modifier_demo`) until T-301b retires the writer, then T-302 deletes the component headers.
+- **SQT transition complete (T-299/T-300/T-301a/T-302).** All render-side, update-side, and voxel-side readers/writers use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation` components and `SYSTEM_GLOBAL_POSITION_3D` were deleted in T-302; consumers read `C_WorldTransform.translation_` and the SQT quat directly.
 - **Canvas texture lifetime.** The 3 GPU textures owned by
   `C_TriangleCanvasTextures` are created in the ctor and only freed in
   `onDestroy()`. Destroying a canvas entity mid-frame while a system

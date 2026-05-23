@@ -82,8 +82,8 @@ Callbacks are `sol::protected_function` (Lua) or plain `std::function`
 - **Only gamepad 0 is queried.** Gamepad axis reads are hardcoded to
   `irGamepadId = 0`. Supporting multiple pads requires edits to the
   gamepad system, not just additional entities.
-- **Hover needs hitbox + position.** No fallback — an entity with only a
-  `C_Position3D` will never register a hover.
+- **Hover needs hitbox + transform.** No fallback — an entity with only
+  a `C_LocalTransform` / `C_WorldTransform` will never register a hover.
 - **No window-focus tracking.** Input fires regardless of whether the
   window has focus. If this matters, filter in the system using a GLFW
   focus query.

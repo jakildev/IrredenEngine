@@ -41,7 +41,7 @@
         "PeriodStage",
         "LuaEntity",
         "CreateEntityCallbackParams",
-        "C_Position3D",
+        "C_LocalTransform",
         "C_Velocity3D",
         "C_VoxelSetNew",
         "C_PeriodicIdle",

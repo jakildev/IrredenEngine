@@ -621,7 +621,7 @@ namespace {
 // Resolve one entry of a `components` / `excludes` list to a
 // `ComponentId`. Lists may hold either:
 //   - a string (the Lua name of a C++ component bound via
-//     `lua_component_pack`, e.g. "C_Position3D", or the user name of a
+//     `lua_component_pack`, e.g. "C_LocalTransform", or the user name of a
 //     Lua-defined component, e.g. "Hp"); OR
 //   - a table handle returned by `IRComponent.register` (as produced
 //     by T-100, holding `componentId` + `typeName` + `fields`).

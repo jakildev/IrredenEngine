@@ -250,10 +250,10 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     }
 
     // Create the entity. The caller-supplied C_LocalTransform plus the
-    // auto-added C_WorldTransform / C_PositionGlobal3D arrive in one
-    // createEntity call; the joint hierarchy is set on the resulting
-    // entity (setComponent migrates the archetype once, which is fine
-    // for spawn — it isn't in a tick).
+    // auto-added C_WorldTransform arrive in one createEntity call; the
+    // joint hierarchy is set on the resulting entity (setComponent
+    // migrates the archetype once, which is fine for spawn — it isn't
+    // in a tick).
     const IREntity::EntityId entity =
         IREntity::createEntity(IRComponents::C_LocalTransform{position});
 

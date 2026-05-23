@@ -50,19 +50,17 @@ CMake flag, and the hot-reload-only-in-EVAL contract.
 
 ## `createEntity` auto-attaches transform components
 
-`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D`,
-`C_LocalTransform`, and `C_WorldTransform` to every entity, whether
-you asked for them or not. The free function detects when the caller
-supplies one of these types explicitly and skips the matching default
-so the caller-provided value lands cleanly. Legacy systems read
-`C_PositionGlobal3D` (updated by `GLOBAL_POSITION_3D` from
-`C_Position3D` + parent chain — currently unwritten by Phase 2
-writers, T-299 migrates the remaining render-side readers to
-`C_WorldTransform`); the canonical SQT path reads
-`C_WorldTransform` (updated by `PROPAGATE_TRANSFORM` from
-`C_LocalTransform` composed with the parent chain — see
+`IREntity::createEntity(...)` implicitly adds `C_LocalTransform` and
+`C_WorldTransform` to every entity, whether you asked for them or
+not. The free function detects when the caller supplies one of these
+types explicitly and skips the matching default so the caller-
+provided value lands cleanly. Consumers read `C_WorldTransform`
+(updated by `PROPAGATE_TRANSFORM` from `C_LocalTransform` composed
+with the parent chain — see
 `engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
-propagation").
+propagation"). The legacy `C_Position3D` / `C_PositionGlobal3D` /
+`C_Rotation` channel and its `SYSTEM_GLOBAL_POSITION_3D` writer were
+retired in T-302; use `C_LocalTransform` + `C_WorldTransform`.
 
 Per-frame additive offsets (idle bob, gizmo nudges, future per-frame
 perturbations) travel through the modifier framework's vec3 fields:

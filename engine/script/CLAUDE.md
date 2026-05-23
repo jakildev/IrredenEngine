@@ -105,7 +105,7 @@ and register via its own `lua_component_pack.hpp`:
 // ... only what this creation needs ...
 
 void registerLuaComponentPack(LuaScript& script) {
-    script.registerTypesFromTraits<C_Position3D, C_ZoomLevel /* ... */>();
+    script.registerTypesFromTraits<C_LocalTransform, C_ZoomLevel /* ... */>();
 }
 ```
 
@@ -427,13 +427,13 @@ component sets and a tick body, both resolved against the same
 ```lua
 local sysId = IRSystem.registerSystem({
     name = "MoveByVelocity",
-    components = { IRComponent.C_Position3D, IRComponent.C_Velocity3D, C_Marker },
+    components = { IRComponent.C_LocalTransform, IRComponent.C_Velocity3D, C_Marker },
     excludes = { IRComponent.C_NoMove },
     tick = function(arch)
         for i = 0, arch.length - 1 do
-            local pos = arch.C_Position3D:at(i)
+            local xf  = arch.C_LocalTransform:at(i)
             local vel = arch.C_Velocity3D:at(i)
-            arch.C_Position3D:setAt(i, C_Position3D.new(pos.x + vel.x, pos.y, pos.z))
+            arch.C_LocalTransform:setAt(i, C_LocalTransform.new(vec3(xf.translation_x + vel.x, xf.translation_y, xf.translation_z)))
         end
     end,
 })
@@ -441,7 +441,7 @@ local sysId = IRSystem.registerSystem({
 
 - **Component handle rule.** Always reference engine C++ components in
   `components` / `excludes` lists using the `IRComponent.C_Name` handle,
-  never as a bare string like `"C_Position3D"`. After `bindLuaDrivenEcs()`
+  never as a bare string like `"C_LocalTransform"`. After `bindLuaDrivenEcs()`
   + `registerType<T>("C_Name", ...)`, `IRComponent.C_Name` is a handle
   table `{ typeName, componentId }` identical in shape to what
   `IRComponent.register` returns for Lua-defined components. Both forms
@@ -549,7 +549,7 @@ which prefab systems Lua may spell:
 script.bindLuaDrivenEcs();
 script.registerPrefabSystems<
     IRSystem::LIFETIME,
-    IRSystem::GLOBAL_POSITION_3D,
+    IRSystem::PROPAGATE_TRANSFORM,
     IRSystem::FRAMEBUFFER_TO_SCREEN
 >();
 // Also valid: cache an externally-created prefab id under its enum name.
@@ -565,12 +565,12 @@ local SystemName = IRSystem.SystemName
 
 local luaSysId = IRSystem.registerSystem({
     name = "MyLuaSys",
-    components = { IRComponent.C_Position3D },
+    components = { IRComponent.C_LocalTransform },
     tick = function(arch) ... end,
 })
 
 IRSystem.registerPipeline(IRTime.UPDATE, {
-    IRSystem.systemId(SystemName.GLOBAL_POSITION_3D),
+    IRSystem.systemId(SystemName.PROPAGATE_TRANSFORM),
     IRSystem.systemId(SystemName.LIFETIME),
     luaSysId,
     IRSystem.systemId(SystemName.MODIFIER_DECAY),

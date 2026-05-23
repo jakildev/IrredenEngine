@@ -225,7 +225,7 @@ ivec2 mouseTrixelPositionWorld();
 /// same frame as the iso pixel — the rotated canvas frame.
 ///
 /// To target the iso-depth plane through a known world-frame reference
-/// point (e.g. an entity's `C_PositionGlobal3D`), rotate it into the
+/// point (e.g. an entity's `C_WorldTransform.translation_`), rotate it into the
 /// canvas frame and take its iso depth:
 /// @code
 ///   const ivec3 worldRef = ... ;  // e.g. entity world position

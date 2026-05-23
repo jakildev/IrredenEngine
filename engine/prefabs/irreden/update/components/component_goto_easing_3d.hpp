@@ -4,23 +4,21 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
-
 using namespace IRMath;
 
 namespace IRComponents {
 
 struct C_GotoEasing3D {
-    C_Position3D startPos_;
-    C_Position3D endPos_;
+    IRMath::vec3 startPos_;
+    IRMath::vec3 endPos_;
     int durationFrames_;
     int currentFrame_;
     GLMEasingFunction easingFunction_;
     bool done_ = false;
 
     C_GotoEasing3D(
-        C_Position3D start,
-        C_Position3D end,
+        IRMath::vec3 start,
+        IRMath::vec3 end,
         float durationSeconds,
         IREasingFunctions easingFunction = IREasingFunctions::kLinearInterpolation
     )
@@ -31,7 +29,7 @@ struct C_GotoEasing3D {
         , easingFunction_{kEasingFunctions.at(easingFunction)} {}
 
     C_GotoEasing3D()
-        : C_GotoEasing3D{C_Position3D{}, C_Position3D{}, 0.0f} {}
+        : C_GotoEasing3D{IRMath::vec3{0.0f}, IRMath::vec3{0.0f}, 0.0f} {}
 };
 
 } // namespace IRComponents

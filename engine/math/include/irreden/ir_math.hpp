@@ -282,8 +282,8 @@ constexpr ivec3 rotateCardinalZ(const ivec3 v, CardinalIndex cardinalIndex) {
 }
 
 /// @overload Float variant for forward-projecting non-integer world
-/// positions (`C_PositionGlobal3D` with the modifier-driven offset
-/// already folded in) into the rasterYaw-rotated canvas frame. Same
+/// positions (`C_WorldTransform.translation_` with the modifier-driven
+/// offset already folded in) into the rasterYaw-rotated canvas frame. Same
 /// R_z(-rasterYaw) sign convention as the integer overload.
 constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
     if (cardinalIndex == CardinalIndex::k90)

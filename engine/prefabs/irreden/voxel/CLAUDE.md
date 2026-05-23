@@ -100,13 +100,14 @@ records:
 
 - **SHAPES / HYBRID shape half** — one child entity per
   `IRAsset::ShapeRecord`, parented via `IREntity::setParent`. Each
-  child gets `C_Position3D{record.offset_}` plus
+  child gets `C_LocalTransform{record.offset_}` plus
   `C_ShapeDescriptor` populated from `record.shapeTypeId_` /
-  `params_` / `color_` / `flags_`. CHILD_OF composition keeps the
-  rendered position equal to `parent.global + record.offset`. Per-
-  record `rotation_`, `csgOp_`, and `boneId_` are loaded but not
-  attached in v1 (no renderer consumes them; T-181 wires bone
-  binding).
+  `params_` / `color_` / `flags_`. `SYSTEM_PROPAGATE_TRANSFORM`
+  composes the parent's `C_WorldTransform` with the child's
+  `C_LocalTransform` so the rendered translation equals
+  `parent.world + record.offset`. Per-record `rotation_`, `csgOp_`,
+  and `boneId_` are loaded but not attached in v1 (no renderer
+  consumes them; T-181 wires bone binding).
 - **DENSE / HYBRID dense half** — `C_VoxelSetNew` attached to the
   spawned root entity via `IRPrefab::DenseVoxel::toComponent`
   (`voxel/dense_bridge.hpp`). The bridge translates
