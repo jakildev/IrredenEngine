@@ -74,14 +74,12 @@ vec2 getMainCanvasSizeTrixels() {
 
 namespace {
 
-// After T-293, residual yaw is folded into faceDeform[] in the trixel emit
-// shaders rather than applied as a screen-space bilinear post-rotation —
-// SCREEN_SPACE_RESIDUAL_ROTATE is a pure framebuffer passthrough now. The
-// screen-space inverse rotation that used to undo the bilinear composite
-// is therefore dead; the picking chain no longer needs a residualYaw
-// inverse step. Iso-space picking accuracy at non-cardinal yaws is bounded
-// by the geometric trixel deformation, which is a small per-face offset
-// the picking math doesn't reverse-compose today (follow-up).
+// Residual yaw is folded into faceDeform[] in the trixel emit shaders (T-293);
+// the screen-space residual-rotate stage has been fully retired (T-323). The
+// picking chain therefore needs no residualYaw inverse step. Iso-space picking
+// accuracy at non-cardinal yaws is bounded by the geometric trixel deformation,
+// which is a small per-face offset the picking math doesn't reverse-compose today
+// (follow-up).
 vec2 mouseCanvasIso() {
     return IRMath::pos2DScreenToPos2DIso(
                IRRender::getMousePositionOutputView(),
@@ -115,9 +113,9 @@ vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
     const vec3 rotatedWorld = IRMath::isoPixelToPos3D(
         static_cast<int>(glm::floor(canvasIso.x)),
         static_cast<int>(glm::floor(canvasIso.y)),
-        canvasIsoDepth);
-    return IRMath::rotateCardinalZInv(rotatedWorld,
-                                      IRMath::rasterYawCardinalIndex(rasterYaw));
+        canvasIsoDepth
+    );
+    return IRMath::rotateCardinalZInv(rotatedWorld, IRMath::rasterYawCardinalIndex(rasterYaw));
 }
 
 ivec2 mouseTrixelPositionWorld() {

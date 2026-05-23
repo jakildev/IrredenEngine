@@ -275,7 +275,8 @@ inline int3 rotateCardinalZInvI(int3 v, int cardinalIndex) {
     return v;
 }
 
-// Convenience wrapper for T-057 (picking inverse) and T-058 (screen-space residual pass).
+// Convenience wrapper for T-057 (picking inverse). T-058 (screen-space residual
+// pass) was retired by T-323 — residual yaw lives in faceDeform[] (T-293).
 // Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
 // can reference it from ir_iso_common directly.
 inline float3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {

@@ -70,20 +70,6 @@ struct SpriteRenderEntry {
     vec4 tintRgba_ = vec4(1.0f);
 };
 
-/// Per-frame UBO for the SCREEN_SPACE_RESIDUAL_ROTATE pass. The model+offset
-/// pair mirrors FrameDataFramebuffer so this stage can act as a drop-in
-/// replacement for FRAMEBUFFER_TO_SCREEN; residualYaw_ is the leftover yaw
-/// (visualYaw - rasterYaw, in [-pi/4, pi/4]) the fragment shader applies as
-/// a 2D rotation in pixel space around the framebuffer center.
-struct FrameDataScreenResidualRotate {
-    mat4 mvpMatrix;
-    // Always zero today; if non-zero, adjust the rotation center in the fragment
-    // shader (currently anchored at ts * 0.5) to account for the scroll offset.
-    vec2 textureOffset;
-    float residualYaw = 0.0f;
-    float _pad0 = 0.0f;
-};
-
 /// CPU mirror of the @c HoveredEntityIdBuffer SSBO layout (binding 14).
 /// The fragment shader writes the hovered entity id + depth here every frame;
 /// @c IRRender::getEntityIdAtMouseTrixel reads it back via persistent map.
@@ -369,10 +355,6 @@ constexpr std::uint32_t kBufferIndex_GlyphDrawCommands = 12;
 constexpr std::uint32_t kBufferIndex_VoxelEntityIds = 13;
 constexpr std::uint32_t kBufferIndex_HoveredEntityId = 14;
 constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
-// Slot 16 is also used by Metal compute shaders (c_voxel_to_trixel_stage_*, c_shapes_to_trixel)
-// for the distanceScratch SSBO; the reuse is safe because compute and render encoders maintain
-// independent argument tables.
-constexpr std::uint32_t kBufferIndex_FrameDataScreenResidualRotate = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
@@ -473,7 +455,7 @@ constexpr int kLightVolumePropagateIterations = 32;
 /// stride is 64 bytes per record. Decoded in `c_seed_light_volume`.
 struct GPULightSource {
     /// xyz = world-space origin in voxel units (round-half-up of
-    /// `C_WorldTransform.translation_`); w = `LightType` cast to float.
+    /// `C_PositionGlobal3D`); w = `LightType` cast to float.
     vec4 originAndType_ = vec4(0.0f);
     /// xyz = emissive RGB in [0, 1]; w = intensity scalar.
     vec4 colorAndIntensity_ = vec4(0.0f);

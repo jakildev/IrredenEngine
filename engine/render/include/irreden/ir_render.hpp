@@ -181,10 +181,11 @@ vec2 getMainCanvasSizeTrixels();
 /// and update pipelines run at different rates and the camera offset matters.
 ///
 /// After T-293 the screen-space bilinear residual composite is gone —
-/// `SCREEN_SPACE_RESIDUAL_ROTATE` is a pure framebuffer passthrough, and
 /// residual yaw is folded into per-face `faceDeform[]` matrices that the
-/// trixel emit shaders apply in 2D iso space. The picking helpers below
-/// therefore no longer apply a `R2D(-residualYaw)` inverse: the cursor's
+/// trixel emit shaders apply in 2D iso space (the residual-rotate stage that was
+/// a passthrough since T-293 has been fully retired by T-323).
+/// The picking helpers below therefore no longer apply a `R2D(-residualYaw)`
+/// inverse: the cursor's
 /// framebuffer pixel maps directly into the trixel-canvas frame. The 2D
 /// variants stay in the **trixel canvas frame**: under non-zero rasterYaw
 /// the canvas iso position = `M · R_z(rasterYaw) · world`, not `M · world`.
@@ -225,7 +226,7 @@ ivec2 mouseTrixelPositionWorld();
 /// same frame as the iso pixel — the rotated canvas frame.
 ///
 /// To target the iso-depth plane through a known world-frame reference
-/// point (e.g. an entity's `C_WorldTransform.translation_`), rotate it into the
+/// point (e.g. an entity's `C_PositionGlobal3D`), rotate it into the
 /// canvas frame and take its iso depth:
 /// @code
 ///   const ivec3 worldRef = ... ;  // e.g. entity world position

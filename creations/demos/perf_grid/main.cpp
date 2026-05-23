@@ -39,7 +39,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
@@ -47,6 +47,7 @@
 #include <irreden/common/systems/system_modifier_decay.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
 #include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
+#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
@@ -572,6 +573,7 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
          IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
          IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
+         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
@@ -609,7 +611,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
         IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
+        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
     };
 
     if (g_autoProfileFrames > 0) {
