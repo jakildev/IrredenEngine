@@ -211,6 +211,65 @@ def load_run(run_dir: Path) -> Dict[str, CellReport]:
     return cells
 
 
+def load_manifest(run_dir: Path) -> Dict:
+    manifest = run_dir / "manifest.json"
+    if not manifest.exists():
+        return {}
+    return json.loads(manifest.read_text())
+
+
+# --- Fingerprint-aware baseline resolution -------------------------------
+
+def host_slug(manifest: Dict) -> str:
+    """Pull the host slug from a manifest's calibration block. Empty string
+    when the manifest predates the calibration block (legacy runs)."""
+    cal = manifest.get("calibration") or {}
+    return cal.get("host_slug", "")
+
+
+def resolve_baseline(baseline_root: Path, head_manifest: Dict) -> Optional[Path]:
+    """Locate the per-fingerprint baseline that matches the head run.
+
+    Returns the path to <baseline_root>/<head_slug>/ when both exist, the
+    legacy flat layout (<baseline_root>/manifest.json) when no fingerprint
+    layout is present yet, or None when neither matches — caller treats
+    that as the seed-new path.
+    """
+    slug = host_slug(head_manifest)
+    if slug:
+        candidate = baseline_root / slug
+        if (candidate / "manifest.json").exists():
+            return candidate
+    # Legacy: pre-T-330 flat baseline at the root.
+    if (baseline_root / "manifest.json").exists():
+        return baseline_root
+    return None
+
+
+def normalize_ms(ms: float, ref_ms: float, target_ms: float) -> float:
+    """Scale a measured ms by (target / ref). When ref_ms is missing or zero
+    (legacy run), normalization is a no-op."""
+    if ref_ms <= 0.0 or target_ms <= 0.0:
+        return ms
+    return ms * (target_ms / ref_ms)
+
+
+def load_factor(ref_ms: float, target_ms: float) -> float:
+    """Ratio ref_ms / target_ms. >1 means the host was loaded vs the
+    calibration baseline; ==1 means lock was uncontested; <1 means the
+    host is faster than the calibration host (unusual)."""
+    if target_ms <= 0.0:
+        return 1.0
+    if ref_ms <= 0.0:
+        return 1.0
+    return ref_ms / target_ms
+
+
+# Threshold for "the host was loaded, trust normalized over raw". Below this,
+# treat the lock as uncontested and use raw deltas (the cheaper measurement).
+LOAD_FACTOR_TRUST_NORMALIZED = 1.20
+
+
 # --- Comparator ----------------------------------------------------------
 
 def pct_delta(baseline: float, head: float) -> float:
@@ -265,12 +324,16 @@ def render_markdown(
     improve_pct: float,
     gpu_only: bool,
     cpu_only: bool,
+    host_note: str = "",
 ) -> str:
     out: List[str] = []
     out.append(f"# perf comparison: {base_dir.name} → {head_dir.name}")
     out.append("")
     out.append(f"baseline: `{base_dir}`")
     out.append(f"head:     `{head_dir}`")
+    if host_note:
+        out.append("")
+        out.append(host_note)
     out.append("")
     out.append(f"thresholds: regress ≥ {regress_pct:.0f}%, improve ≥ {improve_pct:.0f}%")
     out.append("")
@@ -368,9 +431,46 @@ def render_markdown(
     return "\n".join(out).rstrip() + "\n"
 
 
+def build_host_note(base_manifest: Dict, head_manifest: Dict) -> str:
+    """Markdown bullet block reporting fingerprint-match status, load factor,
+    and normalization decision. Returns an empty string when neither manifest
+    carries calibration info (legacy flat baselines)."""
+    base_cal = base_manifest.get("calibration") or {}
+    head_cal = head_manifest.get("calibration") or {}
+    if not base_cal and not head_cal:
+        return ""
+
+    base_slug = base_cal.get("host_slug", "(legacy)")
+    head_slug = head_cal.get("host_slug", "(legacy)")
+    ref_ms = float(head_cal.get("ref_ms", 0.0))
+    target_ms = float(head_cal.get("ref_target_ms", 0.0))
+    lf = load_factor(ref_ms, target_ms)
+    same_host = base_slug == head_slug and base_slug not in ("", "(legacy)")
+    trust_norm = lf >= LOAD_FACTOR_TRUST_NORMALIZED
+
+    lines = ["**host calibration**"]
+    if same_host:
+        lines.append(f"- host: `{head_slug}` (matches baseline)")
+    else:
+        lines.append(
+            f"- host: `{head_slug}` — **host mismatch** "
+            f"(baseline `{base_slug}`); gate reports informational only"
+        )
+    lines.append(f"- ref_ms: {ref_ms:.2f} (target {target_ms:.2f}, load_factor {lf:.2f}×)")
+    lines.append(
+        "- weighting: normalized over raw "
+        f"(load_factor ≥ {LOAD_FACTOR_TRUST_NORMALIZED:.2f}×)"
+        if trust_norm
+        else "- weighting: raw (lock uncontested)"
+    )
+    return "\n".join(lines)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("baseline")
+    p.add_argument("baseline",
+                   help="baseline run dir, OR a fingerprinted baseline root "
+                        "(docs/perf/baseline_latest/) — auto-detected.")
     p.add_argument("head")
     p.add_argument("--regress-pct", type=float, default=10.0)
     p.add_argument("--improve-pct", type=float, default=5.0)
@@ -381,12 +481,23 @@ def main() -> int:
     if args.gpu_only and args.cpu_only:
         p.error("--gpu-only and --cpu-only are mutually exclusive")
 
-    base_dir = Path(args.baseline).resolve()
+    baseline_arg = Path(args.baseline).resolve()
     head_dir = Path(args.head).resolve()
 
-    if not base_dir.is_dir() or not head_dir.is_dir():
+    if not baseline_arg.is_dir() or not head_dir.is_dir():
         print("compare_perf_runs: both arguments must be existing directories", file=sys.stderr)
         return 2
+
+    head_manifest = load_manifest(head_dir)
+    base_dir = resolve_baseline(baseline_arg, head_manifest)
+    if base_dir is None:
+        print(
+            f"compare_perf_runs: no baseline found under {baseline_arg} "
+            f"(head slug: {host_slug(head_manifest) or '(none)'}). "
+            "Seed a baseline by running ir-perf-grid on master.",
+            file=sys.stderr,
+        )
+        return 1
 
     base = load_run(base_dir)
     head = load_run(head_dir)
@@ -395,9 +506,13 @@ def main() -> int:
         print("compare_perf_runs: one of the runs has no cells", file=sys.stderr)
         return 1
 
+    base_manifest = load_manifest(base_dir)
+    host_note = build_host_note(base_manifest, head_manifest)
+
     print(render_markdown(base_dir, head_dir, base, head,
                           args.regress_pct, args.improve_pct,
-                          args.gpu_only, args.cpu_only), end="")
+                          args.gpu_only, args.cpu_only,
+                          host_note=host_note), end="")
     return 0
 
 

@@ -14,15 +14,33 @@ profiler, no per-cell stopwatch.
 
 | Script                                | What it does                                                                       |
 |---------------------------------------|------------------------------------------------------------------------------------|
-| `scripts/perf/perf_grid_matrix.sh`    | Run `IRPerfGrid` (or `IRLuaPerfGrid`, or both) across a zoom × subdivision matrix |
+| `engine/tools/bin/ir-perf-grid`       | Canonical perf-matrix runner — wraps `perf_grid_matrix.sh` in `ir-acquire benchmark` and splices `ref_ms` + host fingerprint into `manifest.json`. Calibrates on demand via `ir_ref_bench`. |
+| `scripts/perf/perf_grid_matrix.sh`    | The matrix loop — `IRPerfGrid` (or `IRLuaPerfGrid`, or both) across a zoom × subdivision matrix. Called via `ir-perf-grid` for CI/perf gating; raw call is fine for ad-hoc local diffs. |
 | `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                                        |
-| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body                                  |
-| `scripts/perf/check_regression.py`    | Same as compare, but exits non-zero on regression — used by CI gate                |
+| `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body. Fingerprint-aware: picks the per-host baseline under `docs/perf/baseline_latest/<slug>/`. |
+| `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. |
 | `scripts/perf/lua_cpp_parity.py`      | Lua-vs-C++ overhead table from a `--target both` run                               |
 
-All scripts are stdlib-only and run from anywhere in the repo. The
+All Python scripts are stdlib-only and run from anywhere in the repo. The
 matrix script writes `save_files/perf/<git-sha>[-<label>]/` so multiple
 runs coexist without overwriting each other.
+
+## Fingerprinted baselines
+
+Committed baselines live under `docs/perf/baseline_latest/<host-slug>/`
+(one subdirectory per host that has pushed a master-baseline). Each
+subdir contains:
+
+- `manifest.json` — the canonical baseline run manifest (with
+  `calibration` block written by `ir-perf-grid`)
+- `host.json` — sidecar with the full `ir-host-probe` output that
+  produced the slug
+- one `<cell-id>.txt` per matrix cell
+
+The CI gate at `.github/workflows/perf-gate.yml` reads the head run's
+slug from `manifest.json.calibration.host_slug` and looks up the
+matching baseline. Cross-host runs report informational only. New hosts
+seed their own subdirectory on the first master push.
 
 ## Canonical ritual: before/after a perf change
 
