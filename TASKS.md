@@ -313,11 +313,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Investigate + fix macOS demo segfault/non-clean shutdown** — reproduce the shutdown crash on macOS (e.g. IRPerfGrid); identify root cause; apply targeted fix; harden run/verify tooling to validate exit codes
+- [~] **Investigate + fix macOS demo segfault/non-clean shutdown** — reproduce the shutdown crash on macOS (e.g. IRPerfGrid); identify root cause; apply targeted fix; harden run/verify tooling to validate exit codes
   - **ID:** T-336
   - **Area:** engine/render, creations/demos
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** IRPerfGrid and at least two other representative demos exit cleanly on macOS (exit code 0, no crash reporter dialog); fix verified on macos-debug preset; fleet-build / ir-run wrapper does not mask the non-zero exit code; no regression on linux-debug
   - **Issue:** #1116
