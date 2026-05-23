@@ -327,6 +327,22 @@ if [[ -f "$WITNESS_SRC" ]]; then
     echo "symlinked $WITNESS_DEST -> $WITNESS_SRC"
 fi
 
+# Engine-level ir-* tools (T-318 sub-task 1). These live under
+# engine/tools/bin/ — they're not fleet-specific, but they share the
+# install pattern. Symlink whichever ones are present in this checkout
+# so the next sub-tasks (ir-build / ir-run migration, ir-perf-grid) can
+# add themselves to this loop with a one-line append.
+IR_TOOLS_BIN="$REPO_ROOT/engine/tools/bin"
+if [[ -d "$IR_TOOLS_BIN" ]]; then
+    for ir_src in "$IR_TOOLS_BIN"/ir-*; do
+        [[ -f "$ir_src" ]] || continue
+        [[ -x "$ir_src" ]] || chmod +x "$ir_src"
+        ir_dest="$HOME/bin/$(basename "$ir_src")"
+        ln -sf "$ir_src" "$ir_dest"
+        echo "symlinked $ir_dest -> $ir_src"
+    done
+fi
+
 # Bash programmable completion (fleet-run / fleet-build). Loaded by the
 # bash-completion package from XDG path on many Linux setups and
 # Homebrew bash-completion@2 on macOS.

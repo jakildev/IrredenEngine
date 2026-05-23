@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# ir-host-probe — emit a deterministic JSON fingerprint of this host.
+#
+# Output is cached at $XDG_CACHE_HOME/irreden/host-fingerprint.json (or
+# ~/.cache/irreden/) and invalidated when the probe-output checksum changes.
+# Re-probe is cheap (~50ms) so the cache exists mostly to give baselines
+# a stable filename until the probe output materially changes.
+#
+# Usage:
+#   ir-host-probe               # print the cached (or fresh) fingerprint
+#   ir-host-probe --refresh     # re-probe and rewrite the cache
+#   ir-host-probe --slug        # print just the slug (used by other ir-* tools)
+
+set -euo pipefail
+
+# --- Resolve our lib via the symlink-aware pattern fleet-build uses. -------
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+HELPERS="$SCRIPT_DIR/../lib/concurrency_helpers.sh"
+
+if [[ ! -f "$HELPERS" ]]; then
+    echo "ir-host-probe: missing $HELPERS" >&2
+    exit 1
+fi
+# shellcheck source=../lib/concurrency_helpers.sh
+source "$HELPERS"
+
+PY="$IR_TOOLS_DIR/py/ir_hardware_probe.py"
+CACHE="$IR_CACHE_ROOT/host-fingerprint.json"
+
+mode=full
+refresh=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --refresh) refresh=true ;;
+        --slug)    mode=slug ;;
+        -h|--help)
+            sed -n '2,20p' "$0"
+            exit 0
+            ;;
+        *)
+            echo "ir-host-probe: unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+if $refresh || [[ ! -f "$CACHE" ]]; then
+    python3 "$PY" > "$CACHE.tmp"
+    mv "$CACHE.tmp" "$CACHE"
+fi
+
+case "$mode" in
+    full)
+        cat "$CACHE"
+        ;;
+    slug)
+        python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["slug"])' "$CACHE"
+        ;;
+esac

@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# ir-acquire — engine-level resource coordinator.
+#
+# Acquires CPU slots, GPU exclusivity, and/or perf-measurement exclusivity,
+# then exec()s the wrapped command with those resources held. Locks are
+# released automatically on exit (normal, signal, or process death).
+#
+# Usage:
+#   ir-acquire cpu N -- <cmd...>          # take N CPU slots, run cmd, release
+#   ir-acquire gpu -- <cmd...>            # take the GPU lock, run cmd, release
+#   ir-acquire perf -- <cmd...>           # take the perf lock, run cmd, release
+#   ir-acquire benchmark -- <cmd...>      # take (budget-1) CPU + GPU + perf
+#   ir-acquire --info                     # show what's currently held
+#
+# Flags (before the resource verb):
+#   --nonblock        fail fast if any required lock is contended
+#   --timeout SECS    wait at most SECS for each lock (default 600)
+#
+# Reservation semantics — "acquire-late, release-early":
+#   Hold a lock for the operation that needs it and nothing more. The script
+#   wraps a single command. Don't keep a perf lock open while drafting the
+#   next PR comment; reclaim per measurement. The trap on EXIT makes this
+#   automatic for normal use.
+
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+HELPERS="$SCRIPT_DIR/../lib/concurrency_helpers.sh"
+
+if [[ ! -f "$HELPERS" ]]; then
+    echo "ir-acquire: missing $HELPERS" >&2
+    exit 1
+fi
+# shellcheck source=../lib/concurrency_helpers.sh
+source "$HELPERS"
+
+# Release everything we hold on any kind of exit.
+trap 'ir_release_all' EXIT INT TERM HUP
+
+usage() {
+    sed -n '2,28p' "$0"
+}
+
+nonblock=false
+timeout_secs=""
+
+# Pre-verb flags
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --nonblock) nonblock=true; shift ;;
+        --timeout)  timeout_secs="$2"; shift 2 ;;
+        --info)
+            ir_print_lock_state
+            exit 0
+            ;;
+        -h|--help) usage; exit 0 ;;
+        *) break ;;
+    esac
+done
+
+if [[ $# -lt 1 ]]; then
+    usage
+    exit 2
+fi
+
+verb="$1"
+shift
+
+acquire_args=()
+$nonblock && acquire_args+=(--nonblock)
+[[ -n "$timeout_secs" ]] && acquire_args+=(--timeout "$timeout_secs")
+
+case "$verb" in
+    cpu)
+        if [[ $# -lt 1 || "$1" == "--" ]]; then
+            echo "ir-acquire cpu: need a slot count (e.g. ir-acquire cpu 4 -- make)" >&2
+            exit 2
+        fi
+        count="$1"
+        shift
+        ir_acquire_cpu "$count" "${acquire_args[@]}"
+        ;;
+    gpu)
+        ir_acquire_exclusive lock gpu "${acquire_args[@]}"
+        ;;
+    perf)
+        ir_acquire_exclusive lock perf "${acquire_args[@]}"
+        ;;
+    benchmark)
+        # The canonical heavy-measurement lock. cpu = budget-1 leaves one
+        # core for the OS / shell / responsiveness so a runaway worker
+        # doesn't lock up the whole box. The order matters: take cpu first
+        # (most contended), then gpu, then perf — releases happen in
+        # reverse via the trap.
+        budget="$(ir_cpu_budget)"
+        cpu_take=$(( budget - 1 ))
+        (( cpu_take < 1 )) && cpu_take=1
+        ir_acquire_cpu "$cpu_take" "${acquire_args[@]}"
+        ir_acquire_exclusive lock gpu "${acquire_args[@]}"
+        ir_acquire_exclusive lock perf "${acquire_args[@]}"
+        ;;
+    *)
+        echo "ir-acquire: unknown verb '$verb' (cpu|gpu|perf|benchmark|--info)" >&2
+        exit 2
+        ;;
+esac
+
+# Skip the optional '--' separator if present.
+if [[ $# -gt 0 && "$1" == "--" ]]; then
+    shift
+fi
+
+if [[ $# -lt 1 ]]; then
+    # No command — sleep until SIGINT/SIGTERM. Useful for manual experiments
+    # ("hold the gpu lock for 30s while I run X by hand").
+    echo "ir-acquire: held; ctrl-c or kill -TERM $$ to release" >&2
+    while true; do sleep 60; done
+fi
+
+# Run the command with the locks held; trap releases on exit.
+"$@"
