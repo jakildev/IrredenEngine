@@ -277,11 +277,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **render: compose camera rotation into DETACHED canvas SO(3) bake** — fix PROPAGATE_CANVAS_ROTATION to compose camera yaw into per-canvas rotation so DETACHED entities rotate with the world camera
+- [~] **render: compose camera rotation into DETACHED canvas SO(3) bake** — fix PROPAGATE_CANVAS_ROTATION to compose camera yaw into per-canvas rotation so DETACHED entities rotate with the world camera
   - **ID:** T-319
   - **Area:** engine/prefabs/irreden/render, engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRCanvasStress --auto-rotate shows DETACHED cubes rotating with world (camera-space stationary when entity rotation is identity), not screen-fixed; (2) IRCanvasStress default renders identically to today; (3) DETACHED cube under combined camera+entity yaw matches GRID cube of same net world-Z rotation; (4) C_CanvasLocalRotation header comment updated to describe camera-composed semantics; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1075
