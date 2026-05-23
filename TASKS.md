@@ -163,25 +163,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **Job: vendor enkiTS + access-derivation traits** — stand up engine/job/ static lib with enkiTS, public IRJobs API, worker lifecycle hooks, and SystemAccess derivation traits in engine/system/
-  - **ID:** T-221
-  - **Area:** engine/job, engine/system, engine/world
-  - **Model:** opus
-  - **Owner:** claude/T-221-job-foundation
-  - **Blocked by:** (none)
-  - **Stack:** T-220..T-225 ecs-multithreading
-  - **Acceptance:** engine/job/ builds clean on linux-debug and macos-debug; IRJobs::parallelFor(0,1024,256,...) smoke-test runs reporting expected worker IDs; IRJobs::isMainThread() true from main thread / false from workers; deriveAccessFromSignature unit tests cover all three tick-signature forms; T-220's perf-gate baseline passes; Apple Silicon logs P-core cap decision at startup
-  - **Issue:** #1068
-  - **Notes:** Phase 1 of #226. Vendors enkiTS at engine/job/third_party/enkiTS/ (zlib license). Public API: parallelFor, run, pinTo, isMainThread, workerId, workerCount. WorldConfig gains worker_thread_count (default max(1, hw-2)); on Apple Silicon cap to P-core count via sysctlbyname. Worker startup: EASY_THREAD + seed thread-local RNG. Pool alive between World::start() and World::stop(). AccessDerivation traits (SystemAccess, tag types, deriveAccessFromSignature) pure unit-test surface — unused at this phase. T-222 and T-223 depend on this.
-  - **Links:**
-
-
 - [~] **System: Concurrency::PARALLEL_FOR + single-system access validation** — land actual per-tick parallel dispatch, registration-time safety checks, IR_ASSERT_MAIN_THREAD guards, and three POC system ports
   - **ID:** T-222
   - **Area:** engine/system, creations/demos
   - **Model:** opus
   - **Owner:** claude/T-222-parallel-for-validation
-  - **Blocked by:** T-221
+  - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** perf_grid_matrix.sh 262K cell shows ≥2× UPDATE throughput at worker_threads=hw-2 vs 0; VELOCITY_3D/VELOCITY_DRAG/ANIMATION_COLOR pass IrredenEngineTest; unsafe parallel systems (EntityId+no-ParallelSafe, batch-form) rejected at registration (unit-tested); IR_ASSERT_MAIN_THREAD fires from worker thread in debug (unit-tested); no regression on T-220's perf-gate
   - **Issue:** #1069
@@ -194,7 +181,7 @@ Avoid:
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-221, T-222
+  - **Blocked by:** T-222
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** lua_perf_grid (CODEGEN) at 262K entities with worker_threads=hw-2 within ±10% of C++ perf_grid; EVAL mode with concurrency="parallel_for" warns clearly and runs serial; codegen tool errors on bogus concurrency value; Lua parallel_for + EntityId first param gets registration-time FATAL
   - **Issue:** #1070
@@ -256,7 +243,7 @@ Avoid:
   - **ID:** T-328
   - **Area:** engine/system, engine/math, engine/prefabs/irreden/update
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-328-system-poc-ports-systemaccess-fix
   - **Blocked by:** T-222
   - **Acceptance:** randomFloat/randomBool/randomInt route through IRJobs::workerRng() (unit-tested); ANIMATION_COLOR static caches replaced with member fields on registerSystem form; VELOCITY_DRAG + ANIMATION_COLOR opt in to PARALLEL_FOR where safe; deriveAccessFromSignature correctly handles tag-bearing packs via TypeList filter; T-222 validator workaround in system_concurrency_test.cpp replaced with proper deriveAccessFromSignature call; const C_Foo dispatch path covered by unit test
   - **Issue:** #1096
@@ -268,7 +255,7 @@ Avoid:
   - **ID:** T-329
   - **Area:** engine/tools/bin, scripts/fleet, docs/agents
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-329-ir-build-run
   - **Blocked by:** (none)
   - **Stack:** T-318..T-331 ir-tools-split
   - **Acceptance:** fleet-build --target IRShapeDebug works via shim; ir-build --target IRShapeDebug works directly; ir-acquire --info during build shows cpu slot held; ir-acquire --info during --auto-screenshot shows gpu lock held; two parallel ir-build invocations serialize on CPU budget (workers=1) or halve per-build cap (workers=2)
@@ -343,7 +330,7 @@ Avoid:
   - **ID:** T-335
   - **Area:** engine/system, test/system
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-335-parallel-dispatch-test
   - **Blocked by:** T-222
   - **Acceptance:** new test in test/system/ ticks PARALLEL_FOR system over >=kDefaultGrainSize entities and asserts every row processed exactly once; TSAN-friendly variant using vector<atomic<int>> catches worker overlap; existing 894 tests pass; optional: test confirms PARALLEL_FOR + relation-form rejected at registration (requires T-334)
   - **Issue:** #1107
@@ -354,6 +341,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-221** — engine/job/ + SystemAccess traits (multithreading epic Phase 1) · Owner: claude/T-221-job-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/1086
 - [x] **T-318** — engine/tools: ir-host-probe + ir-acquire (sub-task 1 of #1074) · Owner: claude/T-318-engine-tools · PR: https://github.com/jakildev/IrredenEngine/pull/1102
 - [x] **T-327** — broaden cross-host smoke criteria; add windows-* + verified-* labels · Owner: claude/T-327-cross-host-smoke-windows · PR: https://github.com/jakildev/IrredenEngine/pull/1098
 - [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
@@ -373,4 +361,3 @@ Avoid:
 - [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
 - [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
 - [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
-- [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
