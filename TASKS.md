@@ -251,6 +251,105 @@ Avoid:
   - **Notes:** Mechanical adoption — no design decisions needed (those happen in T-325). Re-grep creations/demos and creations/editors for CAMERA_MOUSE_PAN and registerCameraCommands at PR time for authoritative demo list. Demos that intentionally skip certain controls (e.g. UI-only demos conflicting with widget interactions) stay on manual path with a comment in the PR description.
   - **Links:**
 
+
+- [ ] **System: complete T-222 POC ports + SystemAccess tag-shadow fix** — fix per-worker RNG, migrate ANIMATION_COLOR static caches, port VELOCITY_DRAG + ANIMATION_COLOR to PARALLEL_FOR, fix tag-shadow in SystemAccess deriveAccessFromSignature; address const C_Foo dispatch UB
+  - **ID:** T-328
+  - **Area:** engine/system, engine/math, engine/prefabs/irreden/update
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-222
+  - **Acceptance:** randomFloat/randomBool/randomInt route through IRJobs::workerRng() (unit-tested); ANIMATION_COLOR static caches replaced with member fields on registerSystem form; VELOCITY_DRAG + ANIMATION_COLOR opt in to PARALLEL_FOR where safe; deriveAccessFromSignature correctly handles tag-bearing packs via TypeList filter; T-222 validator workaround in system_concurrency_test.cpp replaced with proper deriveAccessFromSignature call; const C_Foo dispatch path covered by unit test
+  - **Issue:** #1096
+  - **Notes:** Deferred from T-222 (PR #1097). Sub-tasks: A) route rand()-based IRMath::randomFloat/randomBool/randomInt through per-worker IRJobs::workerRng() mt19937; B) ANIMATION_COLOR: move colorTrackCache/clipCache to member fields, convert to registerSystem + tick() form; C) VELOCITY_DRAG + ANIMATION_COLOR PARALLEL_FOR opt-in after A+B (replace std::sin/std::abs with IRMath in VELOCITY_DRAG diff); D) ~30 LOC TypeList filter to partition tag types out of component pack before invocability probes; E) unit test exposing const C_Foo dispatch UB (see issue comment from jakildev). Lands before T-223.
+  - **Links:**
+
+
+- [ ] **Tools: ir-build / ir-run migration (sub-task 2 of #1074)** — port fleet-build/fleet-run to ir-build/ir-run with ir-acquire cpu/gpu wiring; leave old paths as one-line exec shims
+  - **ID:** T-329
+  - **Area:** engine/tools/bin, scripts/fleet, docs/agents
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-318..T-331 ir-tools-split
+  - **Acceptance:** fleet-build --target IRShapeDebug works via shim; ir-build --target IRShapeDebug works directly; ir-acquire --info during build shows cpu slot held; ir-acquire --info during --auto-screenshot shows gpu lock held; two parallel ir-build invocations serialize on CPU budget (workers=1) or halve per-build cap (workers=2)
+  - **Issue:** #1099
+  - **Notes:** Sub-task 2 of #1074. Wiring: ir-build wraps cmake in ir-acquire cpu; ir-run --auto-screenshot → ir-acquire gpu; ir-run --auto-profile → ir-acquire benchmark; interactive ir-run → no acquire. Rewrite fleet-build/fleet-run as exec shims. Update install.sh for both name sets. Update BUILD.md + role-doc references (old names keep working). T-318 (sub-task 1) already merged.
+  - **Links:**
+
+
+- [ ] **Tools: ir-perf-grid + hardware-fingerprinted baselines + synthetic-load normalization (sub-task 3 of #1074)** — ir-perf-grid binary wrapping ir-acquire benchmark; baselines keyed by host fingerprint; ir_ref_bench normalization for cross-host comparisons
+  - **ID:** T-330
+  - **Area:** engine/tools/bin, engine/tools/bench, engine/tools/py, docs/perf, build
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-329
+  - **Stack:** T-318..T-331 ir-tools-split
+  - **Acceptance:** ir-perf-grid runs matrix end-to-end, writes baseline under fingerprinted layout; two consecutive runs on same host produce stable raw + normalized numbers (within 2%); different-host run emits informational host-mismatch path, not regression alert; perf-gate.yml passes against existing master baseline after migration
+  - **Issue:** #1100
+  - **Notes:** Sub-task 3 of #1074. Three deliverables: (1) ir-perf-grid binary wrapping matrix in ir-acquire benchmark + running ir_ref_bench for ref_ms; (2) baseline reorg to docs/perf/baseline_latest/<fingerprint>/ with host.json sidecars; (3) ir_ref_bench.cpp (~50ms IRMath isoToScreen + SDF + trixel bench). Comparator: same fingerprint → gate fires; different → informational; no match → seed baseline. Contended lock: weight normalized over raw. Calibration cache at ~/.cache/irreden/calibration/<fingerprint>.json; invalidated when engine/math/ SHA changes or max_age_days exceeded.
+  - **Links:**
+
+
+- [ ] **Docs: acquire-late, release-early rule in worker-role docs (sub-task 4 of #1074)** — canonical lock-discipline rule in FLEET.md; one-line pointer from each of the three worker role docs
+  - **ID:** T-331
+  - **Area:** docs, .claude/commands
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-329
+  - **Stack:** T-318..T-331 ir-tools-split
+  - **Acceptance:** rule lives in exactly one canonical place (FLEET.md § "Resource coordination" or engine/tools/README.md); each of role-opus-worker.md, role-sonnet-author.md, role-opus-architect.md references it; no duplicated prose; grep confirms single canonical location
+  - **Issue:** #1101
+  - **Notes:** Sub-task 4 of #1074. Doc-only. Rule text per issue: acquire immediately before the operation that needs it; release immediately after; never hold across decide/draft/read-feedback steps; perf measurement holds perf lock for perf-grid run only. Should land after T-329 so the rule references a wired tool.
+  - **Links:**
+
+
+- [ ] **System: migrate UPDATE pipeline to multi-system groups + measure perf_grid_matrix speedup (T-224 follow-up)** — const-correctness audit of prefab systems to unlock real parallel groups; run perf matrix and file speedup report
+  - **ID:** T-332
+  - **Area:** engine/system, creations/demos
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-224
+  - **Acceptance:** at least one demo's UPDATE pipeline has a real parallel group accepted by the T-224 validator; perf_grid_matrix.sh shows additional speedup beyond T-222's baseline; speedup number filed to docs/perf-reports/threading_phase3.md; no regressions on existing demos
+  - **Issue:** #1103
+  - **Notes:** Deferred from T-224 (infrastructure landed; migration + measurement deferred). Gating work: most prefab systems haven't declared const opt-in on tick params; validator conservatively classifies all reads as writes and rejects every multi-system grouping. Per-prefab const-correctness audit is required first. Part of epic #226.
+  - **Links:**
+
+
+- [ ] **System: pre-resolve component-vector refs on main thread before PARALLEL_FOR dispatch** — eliminate operator[] race on EntityManager from worker threads; pre-bind component vectors before parallelFor call
+  - **ID:** T-333
+  - **Area:** engine/system, engine/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-222
+  - **Acceptance:** worker bodies under PARALLEL_FOR no longer call m_pureComponentTypes::operator[]; ThreadSanitizer-clean parallelFor dispatch over archetype with >=kDefaultGrainSize entities; VELOCITY_3D continues to tick correctly
+  - **Issue:** #1105
+  - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #1). Latent UB: getComponentData<C>(node) calls m_pureComponentTypes[typeName] (operator[], non-const) from each worker. Works today on libstdc++/libc++/MSVC by coincidence; real race as PARALLEL_FOR broadens (T-223, T-225). Cleanest fix: pre-resolve component vectors in SystemManager::executeSystem before IRJobs::parallelFor, pass as std::tuple into rangedFn. Smaller fix: switch to m_pureComponentTypes.at(typeName). Part of epic #226. Should land before T-223.
+  - **Links:**
+
+
+- [ ] **System: PARALLEL_FOR + relation-form validator gap** — add validator rule rejecting PARALLEL_FOR systems using relation-form tick; add SystemAccess::isRelationForm_ bit
+  - **ID:** T-334
+  - **Area:** engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-222
+  - **Acceptance:** validateConcurrencyForAccess rejects PARALLEL_FOR + relation-form at registration time; unit test in system_concurrency_test.cpp confirms rejection (mirrors BatchFormRejected shape); existing relation-form systems (all currently SERIAL) tick unchanged
+  - **Issue:** #1106
+  - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #2). rangedFn's relation branch calls getRelatedEntityFromArchetype + getComponentOptional<RelComps> — both EntityManager hash-map lookups that race under PARALLEL_FOR. Not a real bug today (no system combines relations + PARALLEL_FOR) but must land before T-223 broadens rollout. Preferred fix: add isRelationForm_ bit to SystemAccess (set from relation-form trait branch), add validator rule. Part of epic #226.
+  - **Links:**
+
+
+- [ ] **Test/System: integration test that PARALLEL_FOR dispatch parallelizes and processes every row** — fixture ticks PARALLEL_FOR system over >=kDefaultGrainSize entities, asserts every entity processed exactly once
+  - **ID:** T-335
+  - **Area:** engine/system, test/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-222
+  - **Acceptance:** new test in test/system/ ticks PARALLEL_FOR system over >=kDefaultGrainSize entities and asserts every row processed exactly once; TSAN-friendly variant using vector<atomic<int>> catches worker overlap; existing 894 tests pass; optional: test confirms PARALLEL_FOR + relation-form rejected at registration (requires T-334)
+  - **Issue:** #1107
+  - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #3). Core test: spin up EntityManager + SystemManager + JobManager(2), register PARALLEL_FOR system with atomic counter tick body, populate 4096 entities (forces multiple kDefaultGrainSize=512 chunks), tick once, assert counter==4096. Optional relation-form rejection test depends on T-334 landing first. Part of epic #226.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
