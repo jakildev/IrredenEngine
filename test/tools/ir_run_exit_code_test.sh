@@ -22,10 +22,11 @@ BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
 # ir-run's --auto-screenshot detection wraps in ir-acquire gpu; that
-# requires a real lock dir. Override to a tmp dir so we don't trample
-# the user's host locks.
-export IR_ACQUIRE_LOCK_DIR
-IR_ACQUIRE_LOCK_DIR="$(mktemp -d)"
+# really takes the GPU lock. Point IR_LOCK_ROOT (read by
+# concurrency_helpers.sh) at a tmp dir so we don't trample the user's
+# host locks and parallel CI jobs don't serialize on this test.
+export IR_LOCK_ROOT
+IR_LOCK_ROOT="$(mktemp -d)"
 
 mkdir -p "$BUILD_DIR/creations/demos/clean/scripts"
 cat > "$BUILD_DIR/creations/demos/clean/IRFakeClean" <<'EOF'

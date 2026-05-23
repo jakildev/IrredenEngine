@@ -70,10 +70,13 @@ ir_worktree_root() {
 
 # Lock dir lives in a runtime-temp location so it survives across shells but
 # clears on reboot. XDG_RUNTIME_DIR is Linux-only; macOS doesn't set it.
-if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
-    IR_LOCK_ROOT="${XDG_RUNTIME_DIR}/irreden/locks"
-else
-    IR_LOCK_ROOT="/tmp/irreden-${USER:-$(id -un)}/locks"
+# A pre-set IR_LOCK_ROOT wins (used by tests to isolate from host locks).
+if [[ -z "${IR_LOCK_ROOT:-}" ]]; then
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+        IR_LOCK_ROOT="${XDG_RUNTIME_DIR}/irreden/locks"
+    else
+        IR_LOCK_ROOT="/tmp/irreden-${USER:-$(id -un)}/locks"
+    fi
 fi
 IR_CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/irreden"
 
