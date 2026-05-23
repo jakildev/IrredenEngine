@@ -15,13 +15,18 @@
 #   scripts/perf/perf_grid_matrix.sh --quick             # smoke matrix (2 cells)
 #   scripts/perf/perf_grid_matrix.sh --grid-size 32      # smaller grid (default 64)
 #   scripts/perf/perf_grid_matrix.sh --presets <dir>     # sweep *.lua preset files
+#   scripts/perf/perf_grid_matrix.sh --threading-baseline
+#       # 9-cell threading baseline: {4K,32K,262K} entities × {0,1,hw-2} worker_threads.
+#       # Use this before T-221 lands to capture the serial-execution floor so
+#       # the after-threading run shows the real speedup on the UPDATE pipeline.
 #
 # Output:
 #   save_files/perf/<git-sha>[-<label>]/<cell-id>.txt    # raw profile_report.txt
 #   save_files/perf/<git-sha>[-<label>]/manifest.json    # cell metadata + git state
 #
-# Cell ID format (matrix mode): target=<exe>,zoom=<z>,sub_mode=<m>,sub_base=<n>[,grid=<g>]
-# Cell ID format (preset mode):  target=<exe>,preset=<filename-without-ext>
+# Cell ID format (matrix mode):    target=<exe>,zoom=<z>,sub_mode=<m>,sub_base=<n>[,grid=<g>]
+# Cell ID format (preset mode):    target=<exe>,preset=<filename-without-ext>
+# Cell ID format (threading mode): target=<exe>,grid=<g>,worker_threads=<n>
 #
 # Skills/agents: for before/after comparisons invoke once per tree and diff
 # with compare_perf_runs.py. For Lua-vs-C++ parity, use --target both and
@@ -39,6 +44,15 @@ else
     }
 fi
 
+# sysctl on macOS, nproc on Linux/Windows-MSYS2.
+hw_concurrency() {
+    if command -v nproc >/dev/null 2>&1; then
+        nproc
+    else
+        sysctl -n hw.ncpu 2>/dev/null || echo 4
+    fi
+}
+
 ENGINE_ROOT="$(detect_engine_root)"
 TARGET="IRPerfGrid"
 TARGET_BOTH=false
@@ -48,6 +62,7 @@ GRID_SIZE=""
 TIMEOUT=90
 MATRIX="default"
 PRESETS_DIR=""
+THREADING_BASELINE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -66,8 +81,9 @@ while [[ $# -gt 0 ]]; do
         --quick) MATRIX="quick"; shift ;;
         --default) MATRIX="default"; shift ;;
         --presets) PRESETS_DIR="$2"; shift 2 ;;
+        --threading-baseline) THREADING_BASELINE=true; shift ;;
         -h|--help)
-            sed -n '2,28p' "$0"
+            sed -n '2,35p' "$0"
             exit 0
             ;;
         *)
@@ -83,7 +99,18 @@ else
     TARGETS=("$TARGET")
 fi
 
-if [[ -n "$PRESETS_DIR" ]]; then
+if $THREADING_BASELINE; then
+    # 9-cell baseline: 3 grid sizes × 3 worker_thread values.
+    # worker_threads is stored for cell-ID differentiation; the exe stubs it
+    # until T-221 wires enkiTS. Numbers should be near-identical across the
+    # worker_threads axis — that's the serial-execution floor for T-221 to beat.
+    HW_N=$(hw_concurrency)
+    HW_MINUS_2=$(( HW_N > 2 ? HW_N - 2 : 1 ))
+    THREADING_GRID_SIZES=(16 32 64)
+    THREADING_WORKER_THREADS=(0 1 "$HW_MINUS_2")
+    CELL_COUNT=$(( ${#THREADING_GRID_SIZES[@]} * ${#THREADING_WORKER_THREADS[@]} * ${#TARGETS[@]} ))
+    if [[ -z "$LABEL" ]]; then LABEL="threading-baseline"; fi
+elif [[ -n "$PRESETS_DIR" ]]; then
     # Resolve relative PRESETS_DIR relative to ENGINE_ROOT so preset absolute
     # paths are valid when passed through fleet-run to the demo's cwd.
     if [[ "$PRESETS_DIR" != /* ]]; then
@@ -126,7 +153,9 @@ fi
 OUT_DIR="$ENGINE_ROOT/save_files/perf/$RUN_NAME"
 mkdir -p "$OUT_DIR"
 
-if [[ -n "$PRESETS_DIR" ]]; then
+if $THREADING_BASELINE; then
+    echo "perf_grid_matrix: target=$TARGET_LABEL threading-baseline cells=$CELL_COUNT frames=$FRAMES hw=$HW_N out=$OUT_DIR"
+elif [[ -n "$PRESETS_DIR" ]]; then
     echo "perf_grid_matrix: target=$TARGET_LABEL presets=$PRESETS_DIR cells=$CELL_COUNT frames=$FRAMES out=$OUT_DIR"
 else
     echo "perf_grid_matrix: target=$TARGET_LABEL matrix=$MATRIX cells=$CELL_COUNT frames=$FRAMES out=$OUT_DIR"
@@ -149,10 +178,11 @@ find_latest_report() {
 
 # manifest.json header — we append cell entries inside the loop.
 MANIFEST="$OUT_DIR/manifest.json"
+_MATRIX_KEY="$($THREADING_BASELINE && echo "threading_baseline" || echo "$MATRIX")"
 {
     echo "{"
     echo "  \"target\": \"$TARGET_LABEL\","
-    echo "  \"matrix\": \"$MATRIX\","
+    echo "  \"matrix\": \"$_MATRIX_KEY\","
     echo "  \"frames\": $FRAMES,"
     echo "  \"git_sha\": \"$SHA\","
     echo "  \"git_dirty\": $([[ -n "$DIRTY" ]] && echo true || echo false),"
@@ -203,7 +233,25 @@ EOF
 FIRST=1
 INDEX=0
 
-if [[ -n "$PRESETS_DIR" ]]; then
+if $THREADING_BASELINE; then
+    for RUN_TARGET in "${TARGETS[@]}"; do
+        for TG_SIZE in "${THREADING_GRID_SIZES[@]}"; do
+            for TW in "${THREADING_WORKER_THREADS[@]}"; do
+                INDEX=$((INDEX + 1))
+                CELL_ID="target=${RUN_TARGET},grid=${TG_SIZE},worker_threads=${TW}"
+                CELL_ARGS=(--auto-profile "$FRAMES"
+                           --grid-size "$TG_SIZE"
+                           --zoom 1
+                           --subdivision-mode full
+                           --base-subdivisions 1
+                           --worker-threads "$TW")
+                run_cell "$RUN_TARGET" "$CELL_ID" \
+                    "\"grid\": $TG_SIZE, \"worker_threads\": $TW" \
+                    "${CELL_ARGS[@]}"
+            done
+        done
+    done
+elif [[ -n "$PRESETS_DIR" ]]; then
     for RUN_TARGET in "${TARGETS[@]}"; do
         for PRESET in "${PRESET_FILES[@]}"; do
             INDEX=$((INDEX + 1))

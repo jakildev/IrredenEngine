@@ -77,6 +77,10 @@ inline void enableFrameTiming(bool enabled) {
     getWorld().enableFrameTiming(enabled);
 }
 
+inline int entityCountOverride() {
+    return getWorld().entityCountOverride();
+}
+
 inline void gameLoop() {
     getWorld().gameLoop();
 }

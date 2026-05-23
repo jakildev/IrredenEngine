@@ -42,20 +42,25 @@ def main() -> int:
     print(f"location: `{run_dir}`")
     print(f"cells: {len(cells)}")
     print()
-    print("| cell | frame avg | p99 | entities | cull (vis/total) | top GPU stage |")
-    print("|------|-----------|-----|----------|------------------|---------------|")
+    print("| cell | frame avg | p99 | entities | cull (vis/total) | top UPDATE system | top GPU stage |")
+    print("|------|-----------|-----|----------|------------------|-------------------|---------------|")
     for cell_id in sorted(cells):
         c = cells[cell_id]
         top_gpu = ""
         if c.gpu_stages:
             top = max(c.gpu_stages, key=lambda s: s.avg_ms)
             top_gpu = f"`{top.name}` ({top.avg_ms:.2f}ms)"
+        top_update = ""
+        update_systems = [s for s in c.systems if s.pipeline == "UPDATE"]
+        if update_systems:
+            top_u = max(update_systems, key=lambda s: s.avg_ms)
+            top_update = f"`{top_u.name}` ({top_u.avg_ms:.3f}ms)"
         cull = ""
         if c.cull.samples > 0:
             cull = f"{c.cull.ratio:.2f} ({c.cull.avg_visible:.0f}/{c.cull.avg_total:.0f})"
         print(
             f"| `{cell_id}` | {c.frame.avg:.2f}ms | {c.frame.p99:.2f}ms "
-            f"| {c.entity_count} | {cull} | {top_gpu} |"
+            f"| {c.entity_count} | {cull} | {top_update} | {top_gpu} |"
         )
     return 0
 
