@@ -93,6 +93,8 @@ while (( i <= nargs )); do
                 val="${!next}"
                 user_jobs="$val"
                 i=$next
+            else
+                echo "ir-build: -j requires a value; using default" >&2
             fi
             ;;
         -j*)
