@@ -263,22 +263,11 @@ Avoid:
   - **Notes:** Mechanical adoption — no design decisions needed (those happen in T-325). Re-grep creations/demos and creations/editors for CAMERA_MOUSE_PAN and registerCameraCommands at PR time for authoritative demo list. Demos that intentionally skip certain controls (e.g. UI-only demos conflicting with widget interactions) stay on manual path with a comment in the PR description.
   - **Links:**
 
-
-- [~] **fleet: broaden cross-host smoke criteria; add windows-* and verified-* labels** — extend smoke-label path filter to system/ and CMake files; wire Windows authoring; create fleet:needs-windows-smoke and fleet:verified-* labels
-  - **ID:** T-327
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-327-cross-host-smoke-windows
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) PR touching only engine/system/ triggers smoke procedure; (2) PR touching only CMakeLists.txt triggers smoke procedure; (3) PR authored from MSYS2 Windows gets fleet:authored-on-windows and reviewer adds the correct two smoke labels per updated table; (4) existing rendering PR smoke behavior unchanged; (5) five new labels (fleet:needs-windows-smoke, fleet:authored-on-windows, fleet:verified-linux, fleet:verified-macos, fleet:verified-windows) exist in engine repo with correct descriptions; (6) fleet:needs-linux-smoke and fleet:needs-macos-smoke descriptions updated to drop "Render PR"
-  - **Issue:** #1091
-  - **Notes:** Files: .claude/skills/review-pr/procedures/cross-host-smoke.md (path filter L15-21, game-skip note L54, smoke-label table L31-35); .claude/skills/commit-and-push/procedures/host-label.md (Windows case L23-27, scope note L40-42). Cross-repo: companion platform-catchup skill jakildev/irreden#65 consumes these labels; game-repo twin jakildev/irreden#66 mirrors new labels into game-repo namespace.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-327** — broaden cross-host smoke criteria; add windows-* + verified-* labels · Owner: claude/T-327-cross-host-smoke-windows · PR: https://github.com/jakildev/IrredenEngine/pull/1098
 - [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
 - [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
 - [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
@@ -298,4 +287,3 @@ Avoid:
 - [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
 - [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
 - [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
-- [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
