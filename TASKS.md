@@ -289,11 +289,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **System: PARALLEL_FOR + relation-form validator gap** — add validator rule rejecting PARALLEL_FOR systems using relation-form tick; add SystemAccess::isRelationForm_ bit
+- [~] **System: PARALLEL_FOR + relation-form validator gap** — add validator rule rejecting PARALLEL_FOR systems using relation-form tick; add SystemAccess::isRelationForm_ bit
   - **ID:** T-334
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-222
   - **Acceptance:** validateConcurrencyForAccess rejects PARALLEL_FOR + relation-form at registration time; unit test in system_concurrency_test.cpp confirms rejection (mirrors BatchFormRejected shape); existing relation-form systems (all currently SERIAL) tick unchanged
   - **Issue:** #1106
