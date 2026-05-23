@@ -94,6 +94,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
 
     ~MetalTexture2DImpl() override {
         releaseImageAtomicScratchBuffer(m_texture);
+        removeClearSourceBuffer(m_texture);
         if (m_texture != nullptr) {
             m_texture->release();
             m_texture = nullptr;
@@ -200,6 +201,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
 
         // Refill the source buffer only when the per-pixel clear value changes.
         // Constant per-frame clears (black, max-distance, zero) never trigger a refill.
+        IR_ASSERT(pixelSize <= m_clearPixelData.size(), "pixel size exceeds change-detection cache — widen m_clearPixelData");
         const bool nullClear = (data == nullptr);
         const bool patternChanged =
             (pixelSize != m_clearPixelSize) ||

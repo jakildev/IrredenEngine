@@ -244,6 +244,20 @@ class MetalRenderDevice final : public RenderDevice {
         shutdownMetalRuntime();
     }
 
+    void releaseClearSourceBuffer(MTL::Texture *texture) {
+        if (texture == nullptr) {
+            return;
+        }
+        const auto it = m_clearSourceBuffers.find(texture);
+        if (it == m_clearSourceBuffers.end()) {
+            return;
+        }
+        if (it->second != nullptr) {
+            it->second->release();
+        }
+        m_clearSourceBuffers.erase(it);
+    }
+
     void beginFrame() override {
         auto *drawable = metalLayer()->nextDrawable();
         if (drawable == nullptr) {
@@ -584,8 +598,10 @@ metalCurrentDepthPixelFormat(),
             static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytesPerPixel;
 
         // Get or create a persistent SharedMode source buffer for this texture.
-        // The buffer is filled once (or when the clear pattern changes) and
-        // blitted GPU-side every frame — no per-frame CPU allocation or stall.
+        // The buffer is filled once at first call for this texture; data changes
+        // on later calls are silently ignored. Current callers always pass the
+        // same constant clear pattern, so this is benign.
+        // Blitted GPU-side every frame — no per-frame CPU allocation or stall.
         MTL::Buffer *clearBuf = nullptr;
         {
             const auto it = m_clearSourceBuffers.find(texture);
@@ -811,6 +827,10 @@ metalCurrentDepthPixelFormat(),
 
 MetalRenderDevice g_metalRenderDevice;
 } // namespace
+
+void removeClearSourceBuffer(MTL::Texture *texture) {
+    g_metalRenderDevice.releaseClearSourceBuffer(texture);
+}
 
 std::unique_ptr<RenderImpl> createRenderer() {
     return std::make_unique<MetalRenderImpl>();
