@@ -108,12 +108,12 @@ fi
 # fleet currently only opens same-repo PRs (the bot uses jakildev's
 # account), so refs/heads/<head> is sufficient. If that ever changes,
 # add a fallback to `pull/<N>/head` here.
-if ! git fetch origin "$head_ref" 2>&1 >/dev/null; then
+if ! git fetch origin "$head_ref" >/dev/null 2>&1; then
     echo "fleet-pr-checkout-detached: git fetch origin $head_ref failed" >&2
     exit 1
 fi
 
-if ! git checkout --detach "origin/$head_ref" 2>&1 >/dev/null; then
+if ! git checkout --detach "origin/$head_ref" >/dev/null 2>&1; then
     echo "fleet-pr-checkout-detached: git checkout --detach origin/$head_ref failed" >&2
     exit 1
 fi

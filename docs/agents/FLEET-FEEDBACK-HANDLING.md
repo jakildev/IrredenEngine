@@ -382,7 +382,9 @@ cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>
 Then add `--repo jakildev/irreden` to all `gh pr edit` /
 `gh pr comment` / `gh issue create` calls in this protocol. The
 bash cwd persists across calls in the same iteration, so a single
-`cd` covers everything until the next fresh launch.
+`cd` covers everything until the next fresh launch. Step b's
+checkout also needs the repo flag for game PRs:
+`fleet-pr-checkout-detached <N> --repo jakildev/irreden`.
 
 ---
 
