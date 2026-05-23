@@ -11,6 +11,8 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cstdint>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -18,6 +20,21 @@
 // rotation in 3D space
 
 namespace IRMath {
+
+/// Per-thread `std::mt19937` used by every `IRMath::random*` call.
+///
+/// Each OS thread holds its own RNG state (`thread_local`), so concurrent
+/// calls from IRJob workers never race. Threads default to a seed of `0`;
+/// `IRJob::JobManager` calls @ref seedThreadRng on the main thread at
+/// construction and on each worker the first time it enters a task body,
+/// so worker N's RNG is deterministically seeded from `N`. Outside the
+/// job system, callers can call @ref seedThreadRng directly (mirrors
+/// `std::srand` but per-thread).
+std::mt19937 &threadRng();
+
+/// Seeds the calling thread's RNG (see @ref threadRng). Idempotent —
+/// the most recent call wins.
+void seedThreadRng(uint32_t seed);
 
 /// Pi to float precision. Mirrors `glm::pi<float>()` but routes through the
 /// IRMath wrapper so callers don't have to reach for `glm::` directly.

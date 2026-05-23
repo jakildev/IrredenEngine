@@ -298,11 +298,15 @@ always serialize on the main thread regardless of policy.
 - `PARALLEL_FOR + mainThreadOnly_` → FATAL. Pick one — the
   `MainThread` tag is explicit "do not parallelize".
 
-The first system to opt in is `VELOCITY_3D` (T-222 POC). The other
-two POC ports from #1069 (`VELOCITY_DRAG`, `ANIMATION_COLOR`) need
-prior thread-safety audits (`IRMath::randomFloat` per-worker
-seeding; function-local static caches inside the
-`ANIMATION_COLOR` body) and are deferred to follow-up issues.
+The first system to opt in is `VELOCITY_3D` (T-222 POC). T-328
+completed the other two POC ports from #1069: `VELOCITY_DRAG` is now
+`PARALLEL_FOR` (per-thread `IRMath::randomFloat` makes its
+`postHoverVelocity` reset path thread-safe); `ANIMATION_COLOR` stays
+`SERIAL` with `IR_ASSERT_MAIN_THREAD` because the tick reads the
+active clip's components through `IREntity::getComponentOptional` on
+a foreign entity id, and the entity manager is not yet thread-safe
+(T-225 owns the deferred-mutation surface). Re-evaluate the
+`ANIMATION_COLOR` opt-in after T-225 lands.
 
 ### IR_ASSERT_MAIN_THREAD
 

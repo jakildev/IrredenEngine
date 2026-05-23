@@ -57,7 +57,12 @@ Stored as `vec4(qx, qy, qz, qw)` — `.w` is the scalar (identity: `(0,0,0,1)`).
 
 ## Random
 
-`randomBool/Int/Float` and `randomVec<T>/randomColor` — uses `std::rand`; seed for determinism.
+`randomBool/Int/Float` and `randomVec<T>/randomColor` route through a
+per-thread `std::mt19937` (`IRMath::threadRng()`), so concurrent calls
+from IRJob workers do not race. Threads default to a seed of `0`;
+`IRJob::JobManager` reseeds the main thread and each worker from its
+enkiTS id so cross-run determinism holds for a fixed worker count.
+Non-job threads can seed explicitly via `IRMath::seedThreadRng(seed)`.
 
 ## Gotchas
 

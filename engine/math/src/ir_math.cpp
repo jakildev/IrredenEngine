@@ -4,16 +4,40 @@
 
 namespace IRMath {
 
+namespace {
+
+// Default-seeded per-thread RNG. `IRJob::JobManager` reseeds the main
+// thread to id `0` at construction and each worker to its enkiTS id
+// the first time the worker enters a task body. Threads created
+// outside the job system keep this default seed until they call
+// `seedThreadRng` themselves.
+thread_local std::mt19937 t_rng{0u};
+
+} // namespace
+
+std::mt19937 &threadRng() {
+    return t_rng;
+}
+
+void seedThreadRng(uint32_t seed) {
+    t_rng.seed(seed);
+}
+
 const bool randomBool() {
-    return rand() % 2 == 0;
+    std::uniform_int_distribution<int> dist(0, 1);
+    return dist(t_rng) == 0;
 }
 
 const int randomInt(const int min, const int max) {
-    return min + (rand() % (max - min + 1));
+    std::uniform_int_distribution<int> dist(min, max);
+    return dist(t_rng);
 }
 
 const float randomFloat(const float min, const float max) {
-    return min + (static_cast<float>(rand()) / static_cast<float>(RAND_MAX / (max - min)));
+    // uniform_real_distribution is [min, max) by spec; range tests
+    // tolerate either bound so the half-open is fine.
+    std::uniform_real_distribution<float> dist(min, max);
+    return dist(t_rng);
 }
 const Color randomColor() {
     return Color{
@@ -217,22 +241,19 @@ vec3 layoutZigZagPath(
         float x, y;
         if (arm % 2 == 0) {
             x = -static_cast<float>((arm / 2) * S);
-            y =  static_cast<float>((arm / 2) * S + pos);
+            y = static_cast<float>((arm / 2) * S + pos);
         } else {
             x = -static_cast<float>(((arm - 1) / 2) * S + 1 + pos);
-            y =  static_cast<float>(((arm + 1) / 2) * S - 1);
+            y = static_cast<float>(((arm + 1) / 2) * S - 1);
         }
         return vec2(x, y);
     };
 
-    const vec2 cur  = zigzagPos(idx);
+    const vec2 cur = zigzagPos(idx);
     const vec2 last = zigzagPos(count - 1);
     const vec2 center(last.x * 0.5f, last.y * 0.5f);
 
-    const vec2 p(
-        (cur.x - center.x) * spacingPrimary,
-        (cur.y - center.y) * spacingSecondary
-    );
+    const vec2 p((cur.x - center.x) * spacingPrimary, (cur.y - center.y) * spacingSecondary);
     return mapPlaneToVec3(p, depth, plane);
 }
 
@@ -266,23 +287,23 @@ vec3 layoutSquareSpiral(int index, float spacing, PlaneIso plane, float depth) {
         }
     }
 
-    return mapPlaneToVec3(vec2(static_cast<float>(x), static_cast<float>(y)) * spacing, depth, plane);
+    return mapPlaneToVec3(
+        vec2(static_cast<float>(x), static_cast<float>(y)) * spacing,
+        depth,
+        plane
+    );
 }
 
 vec3 layoutCircle(
-    int index,
-    int count,
-    float radius,
-    float startAngleRad,
-    PlaneIso plane,
-    float depth
+    int index, int count, float radius, float startAngleRad, PlaneIso plane, float depth
 ) {
     if (count <= 0) {
         return mapPlaneToVec3(vec2(0.0f), depth, plane);
     }
     const int idx = std::clamp(index, 0, count - 1);
     const float pi = glm::pi<float>();
-    const float angle = startAngleRad + (static_cast<float>(idx) / static_cast<float>(count)) * 2.0f * pi;
+    const float angle =
+        startAngleRad + (static_cast<float>(idx) / static_cast<float>(count)) * 2.0f * pi;
     const float x = radius * std::cos(angle);
     const float y = radius * std::sin(angle);
     return mapPlaneToVec3(vec2(x, y), depth, plane);
@@ -292,9 +313,9 @@ vec3 layoutHelix(
     int index, int count, float radius, float turns, float heightSpan, CoordinateAxis axis
 ) {
     const int countSafe = std::max(1, count);
-    const float t =
-        (countSafe <= 1) ? 0.0f : (static_cast<float>(std::clamp(index, 0, countSafe - 1)) /
-                                    static_cast<float>(countSafe - 1));
+    const float t = (countSafe <= 1) ? 0.0f
+                                     : (static_cast<float>(std::clamp(index, 0, countSafe - 1)) /
+                                        static_cast<float>(countSafe - 1));
     const float angle = t * turns * 2.0f * glm::pi<float>();
     const float c = std::cos(angle);
     const float s = std::sin(angle);
@@ -324,9 +345,9 @@ vec3 layoutPathTangentArcs(
     // Chain of half-circles, each tangent to the next (centers 2*radius apart).
     // After each 180°, rotation switches CW/CCW so the path stays continuous.
     const int countSafe = std::max(1, count);
-    float t =
-        (countSafe <= 1) ? 0.0f : (static_cast<float>(std::clamp(index, 0, countSafe - 1)) /
-                                    static_cast<float>(countSafe - 1));
+    float t = (countSafe <= 1) ? 0.0f
+                               : (static_cast<float>(std::clamp(index, 0, countSafe - 1)) /
+                                  static_cast<float>(countSafe - 1));
     if (invert) {
         t = 1.0f - t;
     }

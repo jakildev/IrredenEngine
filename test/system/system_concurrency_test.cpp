@@ -107,19 +107,34 @@ TEST(SystemConcurrencyValidator, PerEntityIdFormRejectedWithoutParallelSafe) {
 }
 
 TEST(SystemConcurrencyValidator, PerEntityIdFormAcceptedWithParallelSafe) {
-    // Direct SystemAccess construction sidesteps a known T-221 trait
-    // limitation: `deriveAccessFromSignature` cannot derive
-    // `usesEntityId_` AND `parallelSafe_` from the SAME call when
-    // tags share the Components pack, because `InvocableWithEntityId`
-    // probes invocability with the tag types in argument position.
-    // The validator's predicate is the surface under test here — what
-    // it does with a SystemAccess that has BOTH flags set — not the
-    // trait's signature-detection-through-tags surface. See T-221
-    // follow-up filed against #1068 for the trait fix.
-    SystemAccess access{};
-    access.usesEntityId_ = true;
-    access.parallelSafe_ = true;
+    // Combining EntityId + ParallelSafe in the Components pack must
+    // derive BOTH flags — the trait filters tag types out of the
+    // signature probes (T-328 sub-task D), so the pack mixing a real
+    // tick signature with markers like `ParallelSafe` no longer
+    // suppresses `usesEntityId_`.
+    auto access =
+        deriveAccessFromSignature<void(IREntity::EntityId &, C_VelA &), C_VelA, ParallelSafe>();
+
+    EXPECT_TRUE(access.usesEntityId_);
+    EXPECT_TRUE(access.parallelSafe_);
     EXPECT_TRUE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));
+}
+
+TEST(SystemAccessTagFilter, EntityIdAndMainThreadComposeWithSignatureProbe) {
+    // The signature probes used to fail when tag types appeared in the
+    // Components pack alongside a real `EntityId`-aware tick signature.
+    // Sub-task D filters tags before probing; this asserts the combined
+    // derivation now returns the expected flags from a single call.
+    auto access = deriveAccessFromSignature<
+        void(IREntity::EntityId &, C_VelA &),
+        C_VelA,
+        ParallelSafe,
+        MainThread>();
+
+    EXPECT_TRUE(access.usesEntityId_);
+    EXPECT_FALSE(access.isBatchForm_);
+    EXPECT_TRUE(access.parallelSafe_);
+    EXPECT_TRUE(access.mainThreadOnly_);
 }
 
 TEST(SystemConcurrencyValidator, BatchFormRejected) {

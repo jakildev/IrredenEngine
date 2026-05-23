@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_job.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/job/job_manager.hpp>
 
 #include <atomic>
@@ -141,6 +142,63 @@ TEST_F(IRJobFixture, WorkerRngIsSeededFromWorkerId) {
     std::mt19937 expected(0u);
     const auto expectedFirst = expected();
     EXPECT_EQ(IRJob::workerRng()(), expectedFirst);
+}
+
+TEST_F(IRJobFixture, IRMathThreadRngSharesStorageWithIRJobWorkerRng) {
+    // Single source of truth: IRJob::workerRng() is a thin forwarder
+    // over IRMath::threadRng(). Mutating one must be observed by the
+    // other on the same thread.
+    IRMath::seedThreadRng(123u);
+    std::mt19937 expected(123u);
+    EXPECT_EQ(IRJob::workerRng()(), expected());
+    EXPECT_EQ(IRMath::threadRng()(), expected());
+}
+
+TEST_F(IRJobFixture, IRMathRandomFromWorkersDoesNotRace) {
+    // Mirror the barrier strategy in `ParallelForRunsOnAtLeastOneWorker`
+    // to force at least 2 chunks to be in-flight before any body runs;
+    // otherwise enkiTS' work-stealing can pump every chunk on the main
+    // thread under `WaitforTask` and the "worker actually ran on a
+    // worker" property is left to luck. With that barrier in place we
+    // can assert the parallel-safety property directly: per-worker RNG
+    // state is isolated (no torn ints, no out-of-range values, no
+    // crashes) and at least one non-main worker contributed samples.
+    constexpr int kChunkCount = 32;
+    constexpr int kSamplesPerChunk = 16;
+    std::vector<int> samples(kChunkCount * kSamplesPerChunk, -1);
+    std::atomic<int> workerBitmask{0};
+    std::atomic<int> startedCount{0};
+    std::atomic<bool> release{false};
+
+    auto body = [&](int rangeBegin, int rangeEnd) {
+        startedCount.fetch_add(1, std::memory_order_relaxed);
+        while (!release.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        const int worker = IRJob::workerId();
+        workerBitmask.fetch_or(1 << worker, std::memory_order_relaxed);
+        for (int chunk = rangeBegin; chunk < rangeEnd; ++chunk) {
+            for (int i = 0; i < kSamplesPerChunk; ++i) {
+                samples[chunk * kSamplesPerChunk + i] = IRMath::randomInt(0, 1000);
+            }
+        }
+    };
+
+    std::thread releaser([&]() {
+        while (startedCount.load(std::memory_order_acquire) < 2) {
+            std::this_thread::yield();
+        }
+        release.store(true, std::memory_order_release);
+    });
+    IRJob::parallelFor(0, kChunkCount, 1, body);
+    releaser.join();
+
+    for (int i = 0; i < static_cast<int>(samples.size()); ++i) {
+        EXPECT_GE(samples[i], 0) << "sample " << i << " below range";
+        EXPECT_LE(samples[i], 1000) << "sample " << i << " above range";
+    }
+    EXPECT_NE(workerBitmask.load() & ~1, 0)
+        << "expected at least one non-main worker bit set; mask=" << workerBitmask.load();
 }
 
 TEST(IRJobManagerTest, ManagerClearsGlobalPointerOnDestruction) {
