@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+# ir-run — find and run a built executable, with verb-conditional
+# ir-acquire wrapping.
+#
+# Avoids the `cd <dir> && ./<exe>` pattern that triggers Claude Code's
+# compound-command security gate, and runs the executable from its
+# own directory so sibling data/, shaders/, and scripts/ are on its
+# CWD.
+#
+# The run is wrapped with ir-acquire when the program's args indicate
+# exclusive resource use:
+#   --auto-screenshot N  → ir-acquire gpu
+#   --auto-profile N     → ir-acquire benchmark (cpu(budget-1) + gpu + perf)
+#   interactive (none)   → no acquire (human-supervised)
+# Two parallel screenshot-capture runs on macOS serialize automatically,
+# and a perf measurement does not share cores with a concurrent build.
+#
+# Usage:
+#   ir-run IrredenEngineTest --gtest_brief=1
+#   ir-run IRShapeDebug
+#   ir-run --timeout 5 IRShapeDebug          # auto-kill after 5 seconds
+#   ir-run --timeout 0 IRShapeDebug          # explicit opt-out of any default
+#   ir-run --build-dir /path/to/build IrredenEngineTest
+#   ir-run --targets [--plain|--plan|--built] [--build-dir DIR]
+#
+# Fleet agents should always use --timeout for interactive (non-
+# auto-screenshot) GUI executables to avoid leaving windows open and
+# stealing focus from the human.
+#
+# Default timeout (safety net): if --timeout is not passed, the env
+# var FLEET_RUN_DEFAULT_TIMEOUT (seconds) is honored. Unset or 0 means
+# "no watchdog" (exec the binary as before). Per-invocation `--timeout
+# 0` opts out for that call when you want to run interactively under
+# a set default.
+#
+# Source of truth: engine/tools/bin/ir-run in the engine repo.
+# Installed to ~/bin/ir-run (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+# Walk through symlinks to the real script location so we can locate
+# the helpers library + ir-acquire sibling regardless of how ir-run
+# was invoked (direct, ~/bin symlink, or via the fleet-run shim).
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+HELPERS="$SCRIPT_DIR/../lib/concurrency_helpers.sh"
+IR_ACQUIRE="$SCRIPT_DIR/ir-acquire"
+
+if [[ ! -f "$HELPERS" ]]; then
+    echo "ir-run: missing $HELPERS" >&2
+    exit 1
+fi
+if [[ ! -x "$IR_ACQUIRE" ]]; then
+    echo "ir-run: missing or non-executable $IR_ACQUIRE" >&2
+    exit 1
+fi
+# shellcheck source=../lib/concurrency_helpers.sh
+source "$HELPERS"
+
+BUILD_DIR=""
+TIMEOUT=""
+TIMEOUT_EXPLICIT=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build-dir)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "ir-run: --build-dir requires a directory path" >&2
+                exit 2
+            fi
+            BUILD_DIR="$2"
+            shift 2
+            ;;
+        --timeout|-t)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                echo "ir-run: --timeout|-t requires a non-negative integer (seconds); 0 disables" >&2
+                exit 2
+            fi
+            TIMEOUT="$2"
+            TIMEOUT_EXPLICIT=1
+            shift 2
+            ;;
+        --targets)
+            shift
+            # fleet-run-targets still lives under scripts/fleet/. It uses
+            # the same worktree-root build-dir detection ir-run does, so
+            # we hand off cleanly. Resolve from the invoker's worktree
+            # (IR_ENGINE_ROOT is the script's source clone, which may be
+            # a different worktree when invoked via ~/bin symlink).
+            WORKTREE_ROOT="$(ir_worktree_root)"
+            HELPER="$WORKTREE_ROOT/scripts/fleet/fleet-run-targets"
+            if [[ ! -x "$HELPER" ]]; then
+                echo "ir-run: missing $HELPER (fleet-run-targets is currently engine-tooling-adjacent; expected under scripts/fleet/)" >&2
+                exit 1
+            fi
+            if [[ -n "$BUILD_DIR" ]]; then
+                exec "$HELPER" --build-dir "$BUILD_DIR" "$@"
+            fi
+            exec "$HELPER" "$@"
+            ;;
+        --help|-h)
+            cat <<'USAGE'
+usage: ir-run [options] <executable-name> [args...]
+   or: ir-run [options] --targets [list-options...]
+
+Run mode
+  Finds <executable-name> anywhere under the build tree, cd's to that
+  executable's directory, and runs it so sibling data/, shaders/, and
+  scripts/ are on the process cwd.
+
+  Arguments after <executable-name> are passed through to the program.
+
+  Verb-conditional ir-acquire wrapping:
+    --auto-screenshot N  → wrapped in ir-acquire gpu
+    --auto-profile N     → wrapped in ir-acquire benchmark (cpu+gpu+perf)
+    no exclusive verb    → no acquire (interactive / unit-test mode)
+
+  Options (run mode):
+    --build-dir <dir>   CMake build directory (must contain the built binary).
+                        Default: see "Build directory" below.
+    --timeout N | -t N  Run under a watchdog: kill after N whole seconds.
+                        Exit 0 if still running at timeout (treat as healthy
+                        for smoke tests). Exit 1 if the process died early
+                        with non-zero status. `--timeout 0` is the explicit
+                        opt-out (exec the binary, no watchdog). Omit for the
+                        FLEET_RUN_DEFAULT_TIMEOUT default if set, else exec.
+
+  Env vars:
+    FLEET_RUN_DEFAULT_TIMEOUT   Default for --timeout when not passed.
+                                Unset or 0 = no watchdog (historic behavior).
+                                Set in ~/.fleet/fleet-up.conf or shell init
+                                to catch fleet agents that forgot --timeout.
+
+  Build directory (when not using --build-dir):
+    1. $IRREDEN_BUILD_DIR if set
+    2. <git-worktree-root>/build from git rev-parse
+    3. $IR_ENGINE_ROOT/build if not in a git worktree
+
+Target listing mode
+  ir-run --targets [list-options...]
+
+  Delegates to scripts/fleet/fleet-run-targets (same as running that
+  script). Full option reference is printed below.
+
+Compat
+  scripts/fleet/fleet-run is a one-line shim that execs ir-run; old
+  fleet-run invocations continue to work unchanged.
+
+Other fleet tools (build, tmux fleet, claims, …): fleet-help
+
+USAGE
+            WORKTREE_ROOT="$(ir_worktree_root)"
+            HELPER="$WORKTREE_ROOT/scripts/fleet/fleet-run-targets"
+            if [[ -f "$HELPER" ]]; then
+                echo "---------- ir-run --targets (full options) ----------"
+                bash "$HELPER" --help
+            else
+                echo "ir-run: warning: $HELPER not found; target-listing help omitted." >&2
+            fi
+            exit 0
+            ;;
+        --) shift; break ;;
+        -*) echo "ir-run: unknown option '$1' (try ir-run --help)" >&2; exit 2 ;;
+        *) break ;;
+    esac
+done
+
+if [[ $# -eq 0 ]]; then
+    echo "usage: ir-run [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
+    echo "       ir-run --targets [--plain | --plan | --built] [--build-dir <dir>]" >&2
+    echo "       ir-run --help" >&2
+    exit 2
+fi
+
+# Apply FLEET_RUN_DEFAULT_TIMEOUT when --timeout was not passed. 0 (or
+# unset) means "no watchdog" — preserves the historic behavior of
+# `ir-run <exe>` exec'ing the binary in the current shell.
+if (( ! TIMEOUT_EXPLICIT )) && [[ -n "${FLEET_RUN_DEFAULT_TIMEOUT:-}" ]]; then
+    TIMEOUT="$FLEET_RUN_DEFAULT_TIMEOUT"
+fi
+
+if [[ -n "$TIMEOUT" ]]; then
+    if ! [[ "$TIMEOUT" =~ ^(0|[1-9][0-9]*)$ ]]; then
+        echo "ir-run: timeout must be a non-negative integer (seconds), got '$TIMEOUT'" >&2
+        exit 2
+    fi
+    if [[ "$TIMEOUT" == "0" ]]; then
+        TIMEOUT=""
+    fi
+fi
+
+EXE_NAME="$1"
+shift
+
+# Remaining "$@" is the program's args. Detect --auto-screenshot or
+# --auto-profile so we know which ir-acquire verb to wrap with.
+acquire_verb=""
+for arg in "$@"; do
+    case "$arg" in
+        --auto-screenshot) acquire_verb="gpu" ;;
+        --auto-profile)    acquire_verb="benchmark" ;;
+    esac
+done
+
+# Default build dir: invoker's worktree, not the script-source clone.
+if [[ -z "$BUILD_DIR" ]]; then
+    WORKTREE_ROOT="$(ir_worktree_root)"
+    BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
+fi
+
+if [[ ! -d "$BUILD_DIR" ]]; then
+    echo "ir-run: build directory $BUILD_DIR does not exist." >&2
+    echo "        run 'ir-build --target $EXE_NAME' first." >&2
+    exit 1
+fi
+
+# Find the executable in the build tree.
+EXE_PATH=$(find "$BUILD_DIR" -maxdepth 5 -name "$EXE_NAME" -type f -perm -u=x 2>/dev/null | head -1)
+
+if [[ -z "$EXE_PATH" ]]; then
+    echo "ir-run: could not find executable '$EXE_NAME' in $BUILD_DIR" >&2
+    echo "        build it first: ir-build --target $EXE_NAME" >&2
+    exit 1
+fi
+
+EXE_DIR=$(dirname "$EXE_PATH")
+
+# Pre-compose the ir-acquire prefix (empty when no exclusive verb).
+# Using an array preserves quoting around exe args containing spaces.
+# gpu and benchmark are the only verbs ir-run dispatches; both take no
+# args other than the wrapped command.
+acquire_prefix=()
+if [[ -n "$acquire_verb" ]]; then
+    acquire_prefix=("$IR_ACQUIRE" "$acquire_verb" "--")
+fi
+
+# --- No timeout: interactive mode, exec replaces this process --------------
+if [[ -z "$TIMEOUT" ]]; then
+    if (( ${#acquire_prefix[@]} > 0 )); then
+        echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $*"
+    else
+        echo "ir-run: $EXE_PATH $*"
+    fi
+    cd "$EXE_DIR"
+    exec "${acquire_prefix[@]}" "./$EXE_NAME" "$@"
+fi
+
+# --- Timeout mode: launch, wait, kill, report ------------------------------
+if (( ${#acquire_prefix[@]} > 0 )); then
+    echo "ir-run: ${acquire_prefix[*]} $EXE_PATH $* (timeout: ${TIMEOUT}s)"
+else
+    echo "ir-run: $EXE_PATH $* (timeout: ${TIMEOUT}s)"
+fi
+cd "$EXE_DIR"
+"${acquire_prefix[@]}" "./$EXE_NAME" "$@" &
+PID=$!
+
+# Wait for either the timeout or the process to exit early (crash).
+elapsed=0
+while [[ $elapsed -lt $TIMEOUT ]]; do
+    if ! kill -0 "$PID" 2>/dev/null; then
+        # Process exited before timeout — check if it crashed.
+        exit_code=0
+        wait "$PID" 2>/dev/null || exit_code=$?
+        if [[ $exit_code -eq 0 ]]; then
+            echo "ir-run: $EXE_NAME exited cleanly after ${elapsed}s"
+            exit 0
+        else
+            echo "ir-run: $EXE_NAME crashed after ${elapsed}s (exit code $exit_code)"
+            exit 1
+        fi
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+
+# Process survived the timeout — it's healthy. Kill it.
+kill "$PID" 2>/dev/null
+wait "$PID" 2>/dev/null || true
+echo "ir-run: $EXE_NAME ran for ${TIMEOUT}s without crashing — killed"
+exit 0
