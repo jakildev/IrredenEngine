@@ -15,40 +15,38 @@ using namespace IRMath;
 namespace IRSystem {
 
 template <> struct System<CAMERA_MOUSE_PAN> {
-    static SystemId create() {
-        static bool s_dragging = false;
-        static vec2 s_dragStartMouse = vec2(0.0f);
-        static vec2 s_dragStartCameraPos = vec2(0.0f);
+    bool dragging_ = false;
+    vec2 dragStartMouse_ = vec2(0.0f);
+    vec2 dragStartCameraPos_ = vec2(0.0f);
 
-        return createSystem<C_Camera, C_Position2DIso>(
-            "CameraMousePan",
-            [](C_Camera &, C_Position2DIso &camPos) {
-                bool middlePressed =
-                    IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::PRESSED);
-                bool middleDown =
-                    IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::HELD);
+    void tick(C_Camera &, C_Position2DIso &camPos) {
+        const bool middlePressed =
+            IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::PRESSED);
+        const bool middleDown =
+            IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::HELD);
 
-                if (middlePressed && !s_dragging) {
-                    // Yield to CAMERA_MOUSE_ROTATE when Ctrl is held.
-                    if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl)) {
-                        s_dragging = true;
-                        s_dragStartMouse = IRInput::getMousePositionScreen();
-                        s_dragStartCameraPos = camPos.pos_;
-                    }
-                }
-
-                if (s_dragging && middleDown) {
-                    vec2 currentMouse = IRInput::getMousePositionScreen();
-                    vec2 deltaPx = currentMouse - s_dragStartMouse;
-                    vec2 deltaIso =
-                        screenDeltaToIsoDelta(deltaPx, IRRender::getTriangleStepSizeScreen());
-
-                    camPos.pos_ = s_dragStartCameraPos + deltaIso;
-                } else {
-                    s_dragging = false;
-                }
+        if (middlePressed && !dragging_) {
+            // Yield to CAMERA_MOUSE_ROTATE when Ctrl is held.
+            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl)) {
+                dragging_ = true;
+                dragStartMouse_ = IRInput::getMousePositionScreen();
+                dragStartCameraPos_ = camPos.pos_;
             }
-        );
+        }
+
+        if (dragging_ && middleDown) {
+            const vec2 currentMouse = IRInput::getMousePositionScreen();
+            const vec2 deltaPx = currentMouse - dragStartMouse_;
+            const vec2 deltaIso =
+                screenDeltaToIsoDelta(deltaPx, IRRender::getTriangleStepSizeScreen());
+            camPos.pos_ = dragStartCameraPos_ + deltaIso;
+        } else {
+            dragging_ = false;
+        }
+    }
+
+    static SystemId create() {
+        return registerSystem<CAMERA_MOUSE_PAN, C_Camera, C_Position2DIso>("CameraMousePan");
     }
 };
 
