@@ -301,11 +301,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **editors/voxel_editor: migrate EditorViewportRotate to member-on-System<N> form** — refactor the inline EditorViewportRotate system to follow the T-317 CAMERA_MOUSE_ROTATE pattern
+- [~] **editors/voxel_editor: migrate EditorViewportRotate to member-on-System<N> form** — refactor the inline EditorViewportRotate system to follow the T-317 CAMERA_MOUSE_ROTATE pattern
   - **ID:** T-324
   - **Area:** creations/editors/voxel_editor
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) EditorViewportRotate no longer uses setSystemParams(std::move(...)); (2) voxel editor right-drag camera rotation behaves identically (same sensitivity); (3) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1080
