@@ -20,8 +20,6 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera_yaw.hpp>
-#include <irreden/render/components/component_zoom_level.hpp>
-#include <irreden/input/components/component_mouse_scroll.hpp>
 
 // Gizmo primitives (T-152, F-0.5 Phase 1)
 #include <irreden/render/gizmo.hpp>
@@ -52,6 +50,7 @@
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
 #include <irreden/render/systems/system_gizmo_drag.hpp>
@@ -210,11 +209,6 @@ namespace {
 constexpr float kRotationSensitivity = 0.004f;
 
 SymmetryState g_symmetry;
-
-struct ScrollZoomParams {
-    IREntity::EntityId cameraEntity_ = IREntity::kNullEntity;
-    int scrollDelta_ = 0;
-};
 
 struct RotateParams {
     bool firstRotFrame_ = true;
@@ -799,31 +793,6 @@ int main(int argc, char **argv) {
 
 void initSystems() {
     using IRVoxelEditor::RotateParams;
-    using IRVoxelEditor::ScrollZoomParams;
-
-    auto scrollParams = std::make_unique<ScrollZoomParams>();
-    auto *sp = scrollParams.get();
-    auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(
-        "EditorScrollZoom",
-        [sp](C_MouseScroll &scroll) {
-            if (scroll.yoffset_ > 0.0)
-                ++sp->scrollDelta_;
-            else if (scroll.yoffset_ < 0.0)
-                --sp->scrollDelta_;
-        },
-        [sp]() { sp->cameraEntity_ = IREntity::getEntity("camera"); },
-        [sp]() {
-            if (sp->scrollDelta_ != 0) {
-                auto &zoom = IREntity::getComponent<C_ZoomLevel>(sp->cameraEntity_);
-                for (int i = 0; i < sp->scrollDelta_; ++i)
-                    zoom.zoomIn();
-                for (int i = 0; i > sp->scrollDelta_; --i)
-                    zoom.zoomOut();
-                sp->scrollDelta_ = 0;
-            }
-        }
-    );
-    IRSystem::setSystemParams(scrollZoomSystem, std::move(scrollParams));
 
     // Loft-mask render: draws the XZ and YZ mask grids onto the GUI canvas.
     // Runs in the RENDER pipeline after TEXT_TO_TRIXEL (canvas clear) so
@@ -1460,7 +1429,7 @@ void initSystems() {
          bakeSystem,
          paletteUpdateSystem,
          placeEraseSystem,
-         scrollZoomSystem,
+         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
          IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
     );

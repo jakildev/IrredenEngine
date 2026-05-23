@@ -17,23 +17,23 @@
 
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
-#include <irreden/render/systems/system_camera_mouse_rotate.hpp>
+#include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 // Prefab helpers
 #include <irreden/render/camera.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/entity_canvas.hpp>
 
 // Command suites
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstring>
@@ -177,17 +177,16 @@ void initSystems() {
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>()}
+         IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
+         IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
-        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
+         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_ROTATE>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
 
     if (g_settings.autoRotate_) {
         renderPipeline.push_back(
@@ -213,7 +212,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 
