@@ -200,11 +200,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Job: vendor enkiTS + access-derivation traits** — stand up engine/job/ static lib with enkiTS, public IRJobs API, worker lifecycle hooks, and SystemAccess derivation traits in engine/system/
+- [~] **Job: vendor enkiTS + access-derivation traits** — stand up engine/job/ static lib with enkiTS, public IRJobs API, worker lifecycle hooks, and SystemAccess derivation traits in engine/system/
   - **ID:** T-221
   - **Area:** engine/job, engine/system, engine/world
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** engine/job/ builds clean on linux-debug and macos-debug; IRJobs::parallelFor(0,1024,256,...) smoke-test runs reporting expected worker IDs; IRJobs::isMainThread() true from main thread / false from workers; deriveAccessFromSignature unit tests cover all three tick-signature forms; T-220's perf-gate baseline passes; Apple Silicon logs P-core cap decision at startup
