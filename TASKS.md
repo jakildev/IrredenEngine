@@ -180,7 +180,7 @@ Avoid:
   - **ID:** T-222
   - **Area:** engine/system, creations/demos
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-222-parallel-for-validation
   - **Blocked by:** T-221
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** perf_grid_matrix.sh 262K cell shows ≥2× UPDATE throughput at worker_threads=hw-2 vs 0; VELOCITY_3D/VELOCITY_DRAG/ANIMATION_COLOR pass IrredenEngineTest; unsafe parallel systems (EntityId+no-ParallelSafe, batch-form) rejected at registration (unit-tested); IR_ASSERT_MAIN_THREAD fires from worker thread in debug (unit-tested); no regression on T-220's perf-gate
@@ -268,7 +268,7 @@ Avoid:
   - **ID:** T-326
   - **Area:** creations/demos, creations/editors/voxel_editor
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-326-adopt-standard-camera-bundle
   - **Blocked by:** T-325
   - **Acceptance:** (1) every demo in creations/demos/ uses standardControlSystems() or opts out with a comment; (2) voxel_editor uses bundle for standard set, keeps editor-specific systems (right-drag rotate, scrubber, animation playback); (3) no regressions on mouse-wheel zoom, middle-drag pan, keyboard WASD across demos; (4) on macOS every demo gains trackpad two-finger pan; (5) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1084
