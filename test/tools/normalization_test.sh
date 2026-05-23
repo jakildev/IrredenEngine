@@ -218,9 +218,7 @@ set -e
 check "B: raw regression >10% → exit 1" "[[ $B_STATUS -eq 1 ]]"
 check "B: 'FAIL' on stderr"             'grep -q "FAIL" "$WORK/B.err"'
 
-# Scenario C: same host, head's *raw* +20% but ref_ms 1.5× → normalized = +20%/1.5 = ~+13%, still fails.
-# But if ref_ms is 2× target, normalized = +20%/2 = +10% — at threshold, also fails.
-# Use ref=3× target to push normalized below 10% threshold.
+# Scenario C: same host, head's raw +20% but ref=3× target so the normalized head lands well below the 10% threshold even when raw frame time is elevated.
 write_run "$WORK/head_loaded_no_regress" "a-slug" 11.5 150.0
 set +e
 python3 "$SCRIPTS_PERF/check_regression.py" \
