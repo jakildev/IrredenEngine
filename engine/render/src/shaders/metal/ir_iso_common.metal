@@ -402,7 +402,10 @@ struct FrameDataVoxelToTrixel {
     int2 cullIsoMax;
     float visualYaw;
     float rasterYaw;    // consumed: cardinal-snap basis selection
-    float residualYaw;  // baked into faceDeform[] CPU-side
+    // baked into faceDeform[] CPU-side. The pre-T-293 screen-space residual
+    // composite (T-058 / T-322) that consumed this as a post-trixel rotation
+    // was retired by T-323.
+    float residualYaw;
     // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
     // emitDeformedFace super-sampling to the detached path only — see
     // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.
