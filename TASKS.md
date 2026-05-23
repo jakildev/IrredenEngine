@@ -252,11 +252,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **System: complete T-222 POC ports + SystemAccess tag-shadow fix** — fix per-worker RNG, migrate ANIMATION_COLOR static caches, port VELOCITY_DRAG + ANIMATION_COLOR to PARALLEL_FOR, fix tag-shadow in SystemAccess deriveAccessFromSignature; address const C_Foo dispatch UB
+- [~] **System: complete T-222 POC ports + SystemAccess tag-shadow fix** — fix per-worker RNG, migrate ANIMATION_COLOR static caches, port VELOCITY_DRAG + ANIMATION_COLOR to PARALLEL_FOR, fix tag-shadow in SystemAccess deriveAccessFromSignature; address const C_Foo dispatch UB
   - **ID:** T-328
   - **Area:** engine/system, engine/math, engine/prefabs/irreden/update
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-222
   - **Acceptance:** randomFloat/randomBool/randomInt route through IRJobs::workerRng() (unit-tested); ANIMATION_COLOR static caches replaced with member fields on registerSystem form; VELOCITY_DRAG + ANIMATION_COLOR opt in to PARALLEL_FOR where safe; deriveAccessFromSignature correctly handles tag-bearing packs via TypeList filter; T-222 validator workaround in system_concurrency_test.cpp replaced with proper deriveAccessFromSignature call; const C_Foo dispatch path covered by unit test
   - **Issue:** #1096
