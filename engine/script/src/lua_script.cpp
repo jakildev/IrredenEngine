@@ -605,6 +605,7 @@ void LuaScript::bindLuaDrivenEcs() {
     // `bindModifierFramework` populates `IRModifier`.
     detail::bindIRTimeEvents(*this);
     detail::bindSystemNameEnum(*this);
+    detail::bindConcurrencyEnum(*this);
     detail::bindRegisterPipelineAndSystemId(*this, prefabSystemIds());
     detail::bindModifierFramework(*this);
     detail::bindPrefabApi(*this);
@@ -808,6 +809,61 @@ void LuaScript::bindLuaDrivenSystems() {
             excludeIds = resolveComponentList(*excludes, "excludes", systemName, *this, em);
         }
 
+        // T-223: optional `concurrency` field. Accept the integer-typed
+        // `IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}` table
+        // entry only; string names are rejected per the cpp-lua-enums
+        // rule. PARALLEL_FOR is structurally unsafe for EVAL — the body
+        // is a sol::protected_function call and both sol2 and LuaJIT's
+        // GC are single-threaded — so PARALLEL_FOR is forced to
+        // MAIN_THREAD with a one-time per-system warning so the misuse
+        // surfaces in the log. MAIN_THREAD is the explicit "do not pull
+        // me onto a worker" tag for pipeline groups (T-224); SERIAL is
+        // the legacy default.
+        IRSystem::Concurrency concurrency = IRSystem::Concurrency::SERIAL;
+        sol::object concObj = args["concurrency"];
+        if (concObj.valid() && concObj.get_type() != sol::type::lua_nil) {
+            if (concObj.get_type() == sol::type::string) {
+                throw sol::error{
+                    "IRSystem.registerSystem: '" + systemName +
+                    "' field 'concurrency' must be an IRSystem.Concurrency.* "
+                    "value (e.g. IRSystem.Concurrency.MAIN_THREAD), not a string"
+                };
+            }
+            if (!concObj.is<lua_Integer>()) {
+                throw sol::error{
+                    "IRSystem.registerSystem: '" + systemName +
+                    "' field 'concurrency' must be an integer-typed "
+                    "IRSystem.Concurrency.* value"
+                };
+            }
+            const lua_Integer raw = concObj.as<lua_Integer>();
+            if (raw < static_cast<lua_Integer>(IRSystem::Concurrency::SERIAL) ||
+                raw > static_cast<lua_Integer>(IRSystem::Concurrency::MAIN_THREAD)) {
+                throw sol::error{
+                    "IRSystem.registerSystem: '" + systemName +
+                    "' field 'concurrency' = " + std::to_string(raw) +
+                    " is out of range; use IRSystem.Concurrency.{SERIAL,"
+                    "PARALLEL_FOR,MAIN_THREAD}"
+                };
+            }
+            concurrency = static_cast<IRSystem::Concurrency>(raw);
+            if (concurrency == IRSystem::Concurrency::PARALLEL_FOR) {
+                if (m_warnedParallelForEvalSystems.insert(systemName).second) {
+                    IRE_LOG_WARN(
+                        "Lua EVAL system '{}' requested "
+                        "Concurrency::PARALLEL_FOR but EVAL bodies are "
+                        "sol::protected_function calls into LuaJIT — "
+                        "both sol2 and LuaJIT GC are single-threaded. "
+                        "Forcing Concurrency::MAIN_THREAD; switch to "
+                        "mode='codegen' for native-speed parallel "
+                        "dispatch.",
+                        systemName.c_str()
+                    );
+                }
+                concurrency = IRSystem::Concurrency::MAIN_THREAD;
+            }
+        }
+
         IREntity::Archetype includeArchetype{includeIds.begin(), includeIds.end()};
         IREntity::Archetype excludeArchetype{excludeIds.begin(), excludeIds.end()};
 
@@ -858,7 +914,8 @@ void LuaScript::bindLuaDrivenSystems() {
             systemName,
             std::move(includeArchetype),
             std::move(excludeArchetype),
-            std::move(body)
+            std::move(body),
+            concurrency
         );
         m_luaSystemTicks.emplace(systemId, tickRef);
         return sol::make_object(m_lua, static_cast<lua_Integer>(systemId));

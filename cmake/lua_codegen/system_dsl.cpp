@@ -1398,6 +1398,29 @@ void emitSystem(
 
     out += emitter.str();
     out += "        }\n";
+    // T-223: thread the per-system concurrency value through to the
+    // engine-side createSystem<>'s trailing Concurrency arg. The
+    // trailing-argument shape requires the begin/end/relation tick + the
+    // exclude-archetype slots to be filled first; pass the zero-value
+    // sentinels (`nullptr` lambdas, default-constructed `RelationParams`,
+    // and an empty `IREntity::Archetype`) so the named positional carries
+    // the meaning. SERIAL is the no-op default and is emitted explicitly
+    // for diffability — a reader sees the policy at a glance instead of
+    // having to look up the function's default.
+    const char *concCpp = "IRSystem::Concurrency::SERIAL";
+    switch (record.concurrency_) {
+        case Concurrency::SERIAL:       concCpp = "IRSystem::Concurrency::SERIAL"; break;
+        case Concurrency::PARALLEL_FOR: concCpp = "IRSystem::Concurrency::PARALLEL_FOR"; break;
+        case Concurrency::MAIN_THREAD:  concCpp = "IRSystem::Concurrency::MAIN_THREAD"; break;
+    }
+    out += "        ,\n";
+    out += "        /* functionBeginTick */ nullptr,\n";
+    out += "        /* functionEndTick */ nullptr,\n";
+    out += "        /* extraParams */ {},\n";
+    out += "        /* functionRelationTick */ nullptr,\n";
+    out += "        /* concurrency */ ";
+    out += concCpp;
+    out += "\n";
     out += "    );\n";
     out += "}\n\n";
 }

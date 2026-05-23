@@ -329,13 +329,15 @@ inline SystemId createSystemDynamic(
     std::string name,
     IREntity::Archetype includeArchetype,
     IREntity::Archetype excludeArchetype,
-    std::function<void(IREntity::ArchetypeNode *)> body
+    std::function<void(IREntity::ArchetypeNode *)> body,
+    Concurrency concurrency = Concurrency::SERIAL
 ) {
     return getSystemManager().createSystemDynamic(
         std::move(name),
         std::move(includeArchetype),
         std::move(excludeArchetype),
-        std::move(body)
+        std::move(body),
+        concurrency
     );
 }
 

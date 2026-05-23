@@ -49,7 +49,8 @@ SystemId SystemManager::createSystemDynamic(
     std::string name,
     Archetype includeArchetype,
     Archetype excludeArchetype,
-    std::function<void(ArchetypeNode *)> body
+    std::function<void(ArchetypeNode *)> body,
+    Concurrency concurrency
 ) {
     m_systemNames.emplace_back(C_Name{std::move(name)});
     SystemId newSystemId = m_nextSystemId++;
@@ -68,9 +69,20 @@ SystemId SystemManager::createSystemDynamic(
     m_relations.emplace_back(C_SystemRelation{Relation::NONE});
     m_systemParams.emplace_back(nullptr);
     m_timingAccum.emplace_back();
-    // T-222: dynamic systems are SERIAL-only (the body is opaque to
-    // chunking) and have no compile-time access descriptor.
-    m_concurrency.emplace_back(Concurrency::SERIAL);
+    // T-222: dynamic systems are PARALLEL_FOR-ineligible (the body is
+    // opaque to row-level chunking — `m_ticks[…].rangedFunctionTick_` is
+    // never populated). T-223 still accepts SERIAL / MAIN_THREAD so the
+    // Lua surface can tag EVAL systems as MAIN_THREAD to opt them out of
+    // pipeline-group parallelism (the sol2 / LuaJIT GC singletons are
+    // not thread-safe). PARALLEL_FOR is normalized to MAIN_THREAD by the
+    // Lua-side `IRSystem.registerSystem` shim before reaching here; the
+    // assert is a defence in depth for any future direct C++ caller.
+    IR_ASSERT(
+        concurrency != Concurrency::PARALLEL_FOR,
+        "createSystemDynamic: PARALLEL_FOR not supported for runtime-typed "
+        "systems (no row-level ranged tick). Use SERIAL or MAIN_THREAD."
+    );
+    m_concurrency.emplace_back(concurrency);
     m_grainSize.emplace_back(kDefaultGrainSize);
     m_systemAccess.emplace_back();
     return newSystemId;

@@ -495,4 +495,100 @@ TEST_F(LuaSystemRegisterTest, ExcludesFilterDropsTaggedArchetype) {
     EXPECT_FLOAT_EQ(IREntity::getComponent<TestPos>(entitySkip).x, 1.0f);
 }
 
+// ---- T-223: Concurrency field ----------------------------------------------
+
+TEST_F(LuaSystemRegisterTest, ConcurrencyExposedAsIntegerTable) {
+    auto &lua = m_lua.lua();
+    EXPECT_TRUE(lua["IRSystem"]["Concurrency"].valid());
+    EXPECT_EQ(
+        lua["IRSystem"]["Concurrency"]["SERIAL"].get<lua_Integer>(),
+        static_cast<lua_Integer>(IRSystem::Concurrency::SERIAL)
+    );
+    EXPECT_EQ(
+        lua["IRSystem"]["Concurrency"]["PARALLEL_FOR"].get<lua_Integer>(),
+        static_cast<lua_Integer>(IRSystem::Concurrency::PARALLEL_FOR)
+    );
+    EXPECT_EQ(
+        lua["IRSystem"]["Concurrency"]["MAIN_THREAD"].get<lua_Integer>(),
+        static_cast<lua_Integer>(IRSystem::Concurrency::MAIN_THREAD)
+    );
+}
+
+TEST_F(LuaSystemRegisterTest, MainThreadConcurrencyStored) {
+    auto &lua = m_lua.lua();
+    auto regResult = lua.safe_script(
+        R"(
+        sysId = IRSystem.registerSystem({
+            name = 'MainThreadSys',
+            components = { 'TestPos' },
+            concurrency = IRSystem.Concurrency.MAIN_THREAD,
+            tick = function(arch) end,
+        })
+        return sysId
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(regResult.valid()) << sol::error{regResult}.what();
+    const IRSystem::SystemId sysId = regResult.get<lua_Integer>();
+    EXPECT_EQ(m_system_manager.getConcurrency(sysId), IRSystem::Concurrency::MAIN_THREAD);
+}
+
+TEST_F(LuaSystemRegisterTest, ParallelForUnderEvalForcedToMainThread) {
+    auto &lua = m_lua.lua();
+    auto regResult = lua.safe_script(
+        R"(
+        sysId = IRSystem.registerSystem({
+            name = 'WouldBeParallelSys',
+            components = { 'TestPos' },
+            concurrency = IRSystem.Concurrency.PARALLEL_FOR,
+            tick = function(arch) end,
+        })
+        return sysId
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(regResult.valid()) << sol::error{regResult}.what();
+    const IRSystem::SystemId sysId = regResult.get<lua_Integer>();
+    // EVAL bodies are sol2 calls — both sol2 and LuaJIT GC are
+    // single-threaded, so PARALLEL_FOR is downgraded to MAIN_THREAD
+    // rather than dispatched to workers.
+    EXPECT_EQ(m_system_manager.getConcurrency(sysId), IRSystem::Concurrency::MAIN_THREAD);
+}
+
+TEST_F(LuaSystemRegisterTest, ConcurrencyStringRejected) {
+    auto &lua = m_lua.lua();
+    auto regResult = lua.safe_script(
+        R"(
+        IRSystem.registerSystem({
+            name = 'StringConcurrencyBad',
+            components = { 'TestPos' },
+            concurrency = 'parallel_for',
+            tick = function(arch) end,
+        })
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(regResult.valid());
+    const std::string err = sol::error{regResult}.what();
+    EXPECT_NE(err.find("IRSystem.Concurrency"), std::string::npos) << err;
+}
+
+TEST_F(LuaSystemRegisterTest, ConcurrencyOutOfRangeRejected) {
+    auto &lua = m_lua.lua();
+    auto regResult = lua.safe_script(
+        R"(
+        IRSystem.registerSystem({
+            name = 'OutOfRangeBad',
+            components = { 'TestPos' },
+            concurrency = 99,
+            tick = function(arch) end,
+        })
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(regResult.valid());
+    const std::string err = sol::error{regResult}.what();
+    EXPECT_NE(err.find("out of range"), std::string::npos) << err;
+}
+
 } // namespace

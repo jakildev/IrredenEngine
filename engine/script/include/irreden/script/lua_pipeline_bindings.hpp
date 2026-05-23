@@ -160,6 +160,30 @@ inline void bindSystemNameEnum(LuaScript &script) {
     lua["IRSystem"]["SystemName"] = t;
 }
 
+// T-223: bind `IRSystem::Concurrency` as an integer table at
+// `IRSystem.Concurrency.{SERIAL, PARALLEL_FOR, MAIN_THREAD}`. The same
+// rationale as `IRSystem.SystemName` — strings drift; enum-keyed table
+// stays in sync with the C++ definition. Used by the optional
+// `concurrency` field on `IRSystem.registerSystem({...})` (EVAL +
+// CODEGEN paths) so Lua code can request a policy that mirrors the
+// hand-written C++ `createSystem<...>(...)` trailing `Concurrency` arg.
+inline void bindConcurrencyEnum(LuaScript &script) {
+    sol::state &lua = script.lua();
+    if (!lua["IRSystem"].valid()) {
+        lua["IRSystem"] = lua.create_table();
+    }
+    if (lua["IRSystem"]["Concurrency"].valid()) {
+        return; // idempotent
+    }
+    sol::table t = lua.create_table();
+#define IR_BIND_CONCURRENCY(name) t[#name] = static_cast<lua_Integer>(IRSystem::Concurrency::name)
+    IR_BIND_CONCURRENCY(SERIAL);
+    IR_BIND_CONCURRENCY(PARALLEL_FOR);
+    IR_BIND_CONCURRENCY(MAIN_THREAD);
+#undef IR_BIND_CONCURRENCY
+    lua["IRSystem"]["Concurrency"] = t;
+}
+
 // Bind `IRSystem.systemId(name)` and `IRSystem.registerPipeline(event, ids)`.
 // `prefabSystemIds` is the per-LuaScript map populated by C++-side
 // `registerPrefabSystem<N>()` calls; passed by pointer so the closure

@@ -239,9 +239,16 @@ struct ParsedBody {
 // `docs/design/lua-driven-ecs.md`.
 enum class SystemMode { CODEGEN, EVAL };
 
+// Mirrors `IRSystem::Concurrency` (engine/system/include/irreden/system/
+// ir_system_types.hpp). Kept as a separate enum here so system_dsl.hpp
+// stays free of an engine-header include — the codegen tool's link surface
+// is sol2 + Lua, not the engine static libraries.
+enum class Concurrency { SERIAL = 0, PARALLEL_FOR = 1, MAIN_THREAD = 2 };
+
 struct SystemRecord {
     std::string name_;                       // e.g. "MoveByVelocity"
     SystemMode mode_ = SystemMode::CODEGEN;  // per-system mode override
+    Concurrency concurrency_ = Concurrency::SERIAL;  // T-223 opt-in
     std::vector<std::string> components_;    // include archetype, in declared order
     std::vector<std::string> excludes_;      // exclude archetype, in declared order
     std::string sourceFile_;                 // resolved file path

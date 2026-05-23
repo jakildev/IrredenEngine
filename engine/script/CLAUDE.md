@@ -489,6 +489,34 @@ local sysId = IRSystem.registerSystem({
 - **No begin/end ticks yet.** Lua-side `beginTick` / `endTick`
   hooks are not exposed; add them when a use case needs
   frame-scoped setup or teardown.
+- **Optional `concurrency` field** (T-223). Accepts the integer-typed
+  `IRSystem.Concurrency.{SERIAL, PARALLEL_FOR, MAIN_THREAD}` enum
+  value; default `SERIAL` matches the legacy behavior. The codegen
+  path threads the value through to the emitted
+  `IRSystem::createSystem<...>(...)` call's trailing concurrency
+  arg — engine-side `detail::validateConcurrencyForAccess` runs at
+  template instantiation time and FATALs on the same invalid
+  combinations a hand-written C++ system would (`PARALLEL_FOR` +
+  batch-form tick, `PARALLEL_FOR` + entity-id form without
+  `ParallelSafe`, `PARALLEL_FOR` + `MainThread` tag). The EVAL path
+  is more conservative: an EVAL system body is a
+  `sol::protected_function` call into LuaJIT, and **both sol2 and
+  LuaJIT's GC are single-threaded** — running an EVAL body on a
+  worker thread is unsound. The runtime shim therefore forces
+  `PARALLEL_FOR` → `MAIN_THREAD` (with a one-shot per-system warning
+  naming the spec) so the misuse surfaces in the log. Per the
+  [`cpp-lua-enums`](../../.claude/rules/cpp-lua-enums.md) rule the
+  field rejects string values (`concurrency = "parallel_for"`) with
+  a diagnostic pointing at the `IRSystem.Concurrency.*` spelling;
+  out-of-range integers raise an explicit error.
+
+  CODEGEN v1 caveat: the codegen tick body emits the per-archetype
+  batch form (`for i = 0, arch.length - 1 do ... end` lowered to a
+  single batch lambda over `vector<C_Foo>&` columns). The T-222
+  validator rejects `PARALLEL_FOR` + batch-form, so a CODEGEN
+  system spec asking for `PARALLEL_FOR` will FATAL at registration.
+  Lifting that restriction needs the codegen tool to emit the
+  per-component form instead — tracked as a follow-up issue.
 
 ## Hot-reload of Lua system bodies (`IRSystem.replaceSystemBody`)
 
