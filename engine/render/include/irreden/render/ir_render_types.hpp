@@ -455,7 +455,7 @@ constexpr int kLightVolumePropagateIterations = 32;
 /// stride is 64 bytes per record. Decoded in `c_seed_light_volume`.
 struct GPULightSource {
     /// xyz = world-space origin in voxel units (round-half-up of
-    /// `C_PositionGlobal3D`); w = `LightType` cast to float.
+    /// `C_WorldTransform.translation_`); w = `LightType` cast to float.
     vec4 originAndType_ = vec4(0.0f);
     /// xyz = emissive RGB in [0, 1]; w = intensity scalar.
     vec4 colorAndIntensity_ = vec4(0.0f);
