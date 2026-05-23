@@ -14,8 +14,6 @@ template <IRSystem::SystemEvent event> struct C_SystemEvent;
 template <> struct C_SystemEvent<IRSystem::BEGIN_TICK> {
     std::function<void()> functionBeginTick_;
 
-    // std::vector<std::function<void(IRECS::ArchetypeNode*)>> tickFunctions_ ;
-
     C_SystemEvent(const std::function<void()> &function)
         : functionBeginTick_(function) {}
     C_SystemEvent()
@@ -25,8 +23,12 @@ template <> struct C_SystemEvent<IRSystem::BEGIN_TICK> {
 template <> struct C_SystemEvent<IRSystem::TICK> {
     /// Whole-node dispatch — body iterates `[0, node->length_)` internally.
     using TickFn = std::function<void(IREntity::ArchetypeNode *)>;
-    /// Range-aware dispatch — body covers `[rangeBegin, rangeEnd)` only.
-    using RangedTickFn = std::function<void(IREntity::ArchetypeNode *, int, int)>;
+    /// Main-thread binder — invoked once per dispatched archetype node
+    /// to resolve component vectors and return a worker closure that
+    /// covers `[rangeBegin, rangeEnd)` of the resolved rows. See the
+    /// `prepareRangedTick_` field below for the full contract.
+    using PrepareRangedTickFn = std::function<
+        std::function<void(int rangeBegin, int rangeEnd)>(IREntity::ArchetypeNode *)>;
 
     /// Whole-node dispatch — the body iterates `[0, node->length_)`
     /// internally. The legacy form; every system has one. For
@@ -34,44 +36,51 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
     /// path SystemManager invokes.
     TickFn functionTick_;
 
-    /// Range-aware dispatch — `[rangeBegin, rangeEnd)` substitutes the
-    /// internal loop bounds. Populated by `createSystem<...>` (template
-    /// path) for tick signatures the runtime can chunk safely; empty
-    /// for `createSystemDynamic` (the Lua-driven dynamic body is opaque
-    /// to chunking) and for the per-archetype batch form (the body
-    /// consumes the whole column). `Concurrency::PARALLEL_FOR` requires
-    /// this slot to be populated; the validator rejects otherwise.
-    RangedTickFn rangedFunctionTick_;
+    /// Main-thread binder for `Concurrency::PARALLEL_FOR` dispatch.
+    /// SystemManager calls this **once on the main thread** per matched
+    /// archetype node before fanning chunks out to `IRJob::parallelFor`.
+    /// The binder resolves the per-component vector references from the
+    /// node (going through `EntityManager::getComponentType<>` →
+    /// `m_pureComponentTypes` hash lookup, which is NOT safe under
+    /// concurrent reads from worker threads), captures them in a
+    /// `void(rangeBegin, rangeEnd)` closure, and returns it for workers
+    /// to invoke without ever touching EntityManager state. Populated
+    /// by the template `createSystem<...>` path for tick signatures the
+    /// runtime can chunk safely; empty for `createSystemDynamic`
+    /// (opaque body) and the per-archetype batch form (consumes the
+    /// whole column) — the registration validator rejects
+    /// `PARALLEL_FOR` in both cases.
+    PrepareRangedTickFn prepareRangedTick_;
 
     IREntity::Archetype archetype_;
     IREntity::Archetype excludeArchetype_;
 
     C_SystemEvent(
         TickFn tickFunction,
-        RangedTickFn rangedTickFunction,
+        PrepareRangedTickFn prepareRangedTick,
         IREntity::Archetype archetype,
         IREntity::Archetype excludeArchetype = {}
     )
         : functionTick_(std::move(tickFunction))
-        , rangedFunctionTick_(std::move(rangedTickFunction))
+        , prepareRangedTick_(std::move(prepareRangedTick))
         , archetype_(std::move(archetype))
         , excludeArchetype_(std::move(excludeArchetype)) {}
 
     /// Legacy two-arg overload — used by `createSystemDynamic`. Leaves
-    /// `rangedFunctionTick_` empty (validator rejects PARALLEL_FOR).
+    /// `prepareRangedTick_` empty (validator rejects PARALLEL_FOR).
     C_SystemEvent(
         TickFn tickFunction,
         IREntity::Archetype archetype,
         IREntity::Archetype excludeArchetype = {}
     )
         : functionTick_(std::move(tickFunction))
-        , rangedFunctionTick_()
+        , prepareRangedTick_()
         , archetype_(std::move(archetype))
         , excludeArchetype_(std::move(excludeArchetype)) {}
 
     C_SystemEvent()
         : functionTick_()
-        , rangedFunctionTick_() {}
+        , prepareRangedTick_() {}
 };
 
 template <> struct C_SystemEvent<IRSystem::END_TICK> {
