@@ -39,13 +39,15 @@ value is what production runs against.
   several engines for a decade.
 
 The vendor wrapper at `engine/job/third_party/enkiTS/` pins the
-upstream tag via the `IR_ENKITS_GIT_TAG` cache variable (default
-`v1.11`). Override at configure time for a fully reproducible
-build. The wrapper forces `CXX_STANDARD 17` on the enkiTS target
-specifically because v1.11's `TaskScheduler.cpp` uses
-`std::is_pod` (removed in C++23, which the rest of the engine
-builds at). Drop the override once we pin to a revision that has
-migrated off `is_pod`.
+upstream revision via the `IR_ENKITS_GIT_TAG` cache variable. The
+default is the v1.11 commit SHA (`6ffccbdb…`) with
+`GIT_SHALLOW FALSE`, which is reproducible by default. Override at
+configure time with a branch/tag (and set `GIT_SHALLOW TRUE` in
+`FetchContent_Declare`) when you want a mutable reference. The
+wrapper forces `CXX_STANDARD 17` on the enkiTS target specifically
+because v1.11's `TaskScheduler.cpp` uses `std::is_pod` (removed in
+C++23, which the rest of the engine builds at). Drop the override
+once we pin to a revision that has migrated off `is_pod`.
 
 ## Thread-local state
 
