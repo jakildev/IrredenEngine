@@ -25,8 +25,7 @@ template <> struct System<VELOCITY_3D> {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     void tick(C_LocalTransform &localXform, const C_Velocity3D &velocity) {
-        localXform.translation_ +=
-            velocity.velocity_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
+        localXform.translation_ += velocity.velocity_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
     }
 
     static SystemId create() {

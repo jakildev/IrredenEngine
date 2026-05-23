@@ -297,79 +297,80 @@ class SystemManager {
             return;
         } else {
 
-        // Row-iterating forms: build the range-aware lambda once,
-        // synthesize the per-node entry as a thin wrapper that calls
-        // it with `[0, length)`. Wrapped in an `else` so the
-        // unsupported-signature static_assert below only fires when
-        // the batch-form branch above has NOT discarded this code.
-        auto rangedFn = [functionTick, extraParams](
-                            ArchetypeNode *node, int rangeBegin, int rangeEnd
-                        ) {
-            if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
-                auto componentsTuple = std::make_tuple(
-                    std::ref(node->entities_),
-                    std::ref(getComponentData<Components>(node))...
-                );
-                for (int i = rangeBegin; i < rangeEnd; i++) {
-                    std::apply(
-                        [i, &functionTick](auto &&...components) {
-                            functionTick(components[i]...);
-                        },
-                        componentsTuple
+            // Row-iterating forms: build the range-aware lambda once,
+            // synthesize the per-node entry as a thin wrapper that calls
+            // it with `[0, length)`. Wrapped in an `else` so the
+            // unsupported-signature static_assert below only fires when
+            // the batch-form branch above has NOT discarded this code.
+            auto rangedFn = [functionTick,
+                             extraParams](ArchetypeNode *node, int rangeBegin, int rangeEnd) {
+                if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
+                    auto componentsTuple = std::make_tuple(
+                        std::ref(node->entities_),
+                        std::ref(getComponentData<Components>(node))...
                     );
-                }
-            } else if constexpr (InvocableWithComponents<FunctionTick, Components...>) {
-                auto componentsTuple =
-                    std::make_tuple(std::ref(getComponentData<Components>(node))...);
-                for (int i = rangeBegin; i < rangeEnd; i++) {
-                    std::apply(
-                        [i, &functionTick](auto &&...components) {
-                            functionTick(components[i]...);
-                        },
-                        componentsTuple
-                    );
-                }
-            } else if constexpr (
-                std::is_invocable_v<
-                    FunctionTick,
-                    Components &...,
-                    std::optional<RelationComponents *>...>
-            ) {
-                auto componentsTuple =
-                    std::make_tuple(std::ref(getComponentData<Components>(node))...);
-                EntityId relatedEntity =
-                    getRelatedEntityFromArchetype(node->type_, extraParams.relation_);
-                auto relationComponentTuple =
-                    std::make_tuple(getComponentOptional<RelationComponents>(relatedEntity)...);
+                    for (int i = rangeBegin; i < rangeEnd; i++) {
+                        std::apply(
+                            [i, &functionTick](auto &&...components) {
+                                functionTick(components[i]...);
+                            },
+                            componentsTuple
+                        );
+                    }
+                } else if constexpr (InvocableWithComponents<FunctionTick, Components...>) {
+                    auto componentsTuple =
+                        std::make_tuple(std::ref(getComponentData<Components>(node))...);
+                    for (int i = rangeBegin; i < rangeEnd; i++) {
+                        std::apply(
+                            [i, &functionTick](auto &&...components) {
+                                functionTick(components[i]...);
+                            },
+                            componentsTuple
+                        );
+                    }
+                } else if constexpr (
+                    std::is_invocable_v<
+                        FunctionTick,
+                        Components &...,
+                        std::optional<RelationComponents *>...>
+                ) {
+                    auto componentsTuple =
+                        std::make_tuple(std::ref(getComponentData<Components>(node))...);
+                    EntityId relatedEntity =
+                        getRelatedEntityFromArchetype(node->type_, extraParams.relation_);
+                    auto relationComponentTuple =
+                        std::make_tuple(getComponentOptional<RelationComponents>(relatedEntity)...);
 
-                for (int i = rangeBegin; i < rangeEnd; i++) {
-                    std::apply(
-                        [&functionTick](auto &&...args) { functionTick(args...); },
-                        std::tuple_cat(
-                            std::make_tuple(std::ref(
-                                std::get<std::vector<Components> &>(componentsTuple)[i]
-                            )...),
-                            relationComponentTuple
-                        )
-                    );
+                    for (int i = rangeBegin; i < rangeEnd; i++) {
+                        std::apply(
+                            [&functionTick](auto &&...args) { functionTick(args...); },
+                            std::tuple_cat(
+                                std::make_tuple(
+                                    std::ref(
+                                        std::get<std::vector<Components> &>(componentsTuple)[i]
+                                    )...
+                                ),
+                                relationComponentTuple
+                            )
+                        );
+                    }
+                } else {
+                    static_assert(false, "Unsupported tick function signature.");
                 }
-            } else {
-                static_assert(false, "Unsupported tick function signature.");
-            }
-        };
-        std::function<void(ArchetypeNode *, int, int)> rangedFnErased{std::move(rangedFn)};
-        auto rangedFnCopy = rangedFnErased;
-        auto perNodeFn = [rangedFnCopy = std::move(rangedFnCopy)](ArchetypeNode *node) {
-            rangedFnCopy(node, 0, node->length_);
-        };
-        m_ticks.emplace_back(
-            C_SystemEvent<TICK>{
-                std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
-                std::move(rangedFnErased),
-                getArchetype<Components...>(),
-                std::move(excludeArchetype)
-            }
-        );
+            };
+            std::function<void(ArchetypeNode *, int, int)> rangedFnErased{std::move(rangedFn)};
+            auto rangedFnCopy = rangedFnErased;
+            auto perNodeFn = [rangedFnCopy = std::move(rangedFnCopy)](ArchetypeNode *node) {
+                rangedFnCopy(node, 0, node->length_);
+            };
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
+                    std::move(rangedFnErased),
+                    getArchetype<Components...>(),
+                    std::move(excludeArchetype)
+                }
+            );
         }
     }
 

@@ -71,7 +71,9 @@ class JobManagerFixture : public ::testing::Test {
         // identity without depending on hardware_concurrency.
         m_jobs = std::make_unique<IRJob::JobManager>(2);
     }
-    void TearDown() override { m_jobs.reset(); }
+    void TearDown() override {
+        m_jobs.reset();
+    }
     std::unique_ptr<IRJob::JobManager> m_jobs;
 };
 
@@ -84,8 +86,7 @@ class JobManagerFixture : public ::testing::Test {
 TEST(SystemConcurrencyValidator, PerComponentFormAcceptsParallelFor) {
     // void tick(C_VelA&, const C_VelB&) — the canonical clean case.
     // Writes C_VelA, reads C_VelB, no EntityId, not batch form.
-    auto access =
-        deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
+    auto access = deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
 
     EXPECT_FALSE(access.usesEntityId_);
     EXPECT_FALSE(access.isBatchForm_);
@@ -96,9 +97,7 @@ TEST(SystemConcurrencyValidator, PerEntityIdFormRejectedWithoutParallelSafe) {
     // void tick(EntityId, C_VelA&) — id-aware form. Without an
     // explicit ParallelSafe tag, the body is presumed to dereference
     // the id into a non-thread-safe singleton.
-    auto access = deriveAccessFromSignature<
-        void(IREntity::EntityId &, C_VelA &),
-        C_VelA>();
+    auto access = deriveAccessFromSignature<void(IREntity::EntityId &, C_VelA &), C_VelA>();
 
     EXPECT_TRUE(access.usesEntityId_);
     EXPECT_FALSE(access.parallelSafe_);
@@ -129,11 +128,7 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
     // so row-level chunking would re-enter it with overlapping
     // vectors. PARALLEL_FOR is structurally incompatible.
     auto access = deriveAccessFromSignature<
-        void(
-            const IREntity::Archetype &,
-            std::vector<IREntity::EntityId> &,
-            std::vector<C_VelA> &
-        ),
+        void(const IREntity::Archetype &, std::vector<IREntity::EntityId> &, std::vector<C_VelA> &),
         C_VelA>();
 
     EXPECT_TRUE(access.isBatchForm_);
@@ -146,9 +141,7 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
 TEST(SystemConcurrencyValidator, MainThreadTagRejectsParallelFor) {
     // The MainThread tag is explicit "do not parallelize"; the
     // validator must FATAL rather than silently downgrade.
-    auto access = deriveAccessFromSignature<
-        void(C_VelA &),
-        C_VelA, MainThread>();
+    auto access = deriveAccessFromSignature<void(C_VelA &), C_VelA, MainThread>();
 
     EXPECT_TRUE(access.mainThreadOnly_);
     EXPECT_FALSE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));

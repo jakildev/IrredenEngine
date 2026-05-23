@@ -136,9 +136,9 @@ void SystemManager::executeSystem(SystemId system) {
     EntityId previousRelatedEntity = kNullEntity;
     const Concurrency concurrency =
         system < m_concurrency.size() ? m_concurrency[system] : Concurrency::SERIAL;
-    const int grainSize =
-        (system < m_grainSize.size() && m_grainSize[system] > 0) ? m_grainSize[system]
-                                                                 : kDefaultGrainSize;
+    const int grainSize = (system < m_grainSize.size() && m_grainSize[system] > 0)
+                              ? m_grainSize[system]
+                              : kDefaultGrainSize;
     const auto &tickEvent = m_ticks[system];
 
     for (auto node : nodes) {
@@ -147,10 +147,9 @@ void SystemManager::executeSystem(SystemId system) {
         }
         previousRelatedEntity = handleRelationTick(node, system, previousRelatedEntity);
 
-        if (concurrency == Concurrency::PARALLEL_FOR
-            && static_cast<bool>(tickEvent.rangedFunctionTick_)
-            && node->length_ > grainSize
-            && g_jobManager != nullptr) {
+        if (concurrency == Concurrency::PARALLEL_FOR &&
+            static_cast<bool>(tickEvent.rangedFunctionTick_) && node->length_ > grainSize &&
+            g_jobManager != nullptr) {
             // Worker fan-out: split [0, length) into grainSize chunks
             // and run each on the pool. enkiTS' WaitforTask pumps the
             // main thread, so this blocks until every chunk finishes.

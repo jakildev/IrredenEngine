@@ -23,11 +23,16 @@ template <> struct C_SystemEvent<IRSystem::BEGIN_TICK> {
 };
 
 template <> struct C_SystemEvent<IRSystem::TICK> {
+    /// Whole-node dispatch — body iterates `[0, node->length_)` internally.
+    using TickFn = std::function<void(IREntity::ArchetypeNode *)>;
+    /// Range-aware dispatch — body covers `[rangeBegin, rangeEnd)` only.
+    using RangedTickFn = std::function<void(IREntity::ArchetypeNode *, int, int)>;
+
     /// Whole-node dispatch — the body iterates `[0, node->length_)`
     /// internally. The legacy form; every system has one. For
     /// `Concurrency::SERIAL` and `Concurrency::MAIN_THREAD` this is the
     /// path SystemManager invokes.
-    std::function<void(IREntity::ArchetypeNode *)> functionTick_;
+    TickFn functionTick_;
 
     /// Range-aware dispatch — `[rangeBegin, rangeEnd)` substitutes the
     /// internal loop bounds. Populated by `createSystem<...>` (template
@@ -36,15 +41,14 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
     /// to chunking) and for the per-archetype batch form (the body
     /// consumes the whole column). `Concurrency::PARALLEL_FOR` requires
     /// this slot to be populated; the validator rejects otherwise.
-    std::function<void(IREntity::ArchetypeNode *, int rangeBegin, int rangeEnd)>
-        rangedFunctionTick_;
+    RangedTickFn rangedFunctionTick_;
 
     IREntity::Archetype archetype_;
     IREntity::Archetype excludeArchetype_;
 
     C_SystemEvent(
-        std::function<void(IREntity::ArchetypeNode *)> tickFunction,
-        std::function<void(IREntity::ArchetypeNode *, int, int)> rangedTickFunction,
+        TickFn tickFunction,
+        RangedTickFn rangedTickFunction,
         IREntity::Archetype archetype,
         IREntity::Archetype excludeArchetype = {}
     )
@@ -56,7 +60,7 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
     /// Legacy two-arg overload — used by `createSystemDynamic`. Leaves
     /// `rangedFunctionTick_` empty (validator rejects PARALLEL_FOR).
     C_SystemEvent(
-        std::function<void(IREntity::ArchetypeNode *)> tickFunction,
+        TickFn tickFunction,
         IREntity::Archetype archetype,
         IREntity::Archetype excludeArchetype = {}
     )

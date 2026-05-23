@@ -25,10 +25,10 @@
 ///   the macro never spuriously FATALs in pre-init code.
 #define IR_ASSERT_MAIN_THREAD()                                                                    \
     IR_ASSERT(                                                                                     \
-        ::IRJob::isMainThread(),                                                                  \
+        ::IRJob::isMainThread(),                                                                   \
         "IR_ASSERT_MAIN_THREAD: called from worker thread (workerId={}); this API mutates a "      \
         "non-thread-safe singleton and must run on the main thread.",                              \
-        ::IRJob::workerId()                                                                       \
+        ::IRJob::workerId()                                                                        \
     )
 
 #endif /* IR_ASSERT_MAIN_THREAD_H */
