@@ -276,11 +276,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: broaden cross-host smoke criteria; add windows-* and verified-* labels** — extend smoke-label path filter to system/ and CMake files; wire Windows authoring; create fleet:needs-windows-smoke and fleet:verified-* labels
+- [~] **fleet: broaden cross-host smoke criteria; add windows-* and verified-* labels** — extend smoke-label path filter to system/ and CMake files; wire Windows authoring; create fleet:needs-windows-smoke and fleet:verified-* labels
   - **ID:** T-327
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) PR touching only engine/system/ triggers smoke procedure; (2) PR touching only CMakeLists.txt triggers smoke procedure; (3) PR authored from MSYS2 Windows gets fleet:authored-on-windows and reviewer adds the correct two smoke labels per updated table; (4) existing rendering PR smoke behavior unchanged; (5) five new labels (fleet:needs-windows-smoke, fleet:authored-on-windows, fleet:verified-linux, fleet:verified-macos, fleet:verified-windows) exist in engine repo with correct descriptions; (6) fleet:needs-linux-smoke and fleet:needs-macos-smoke descriptions updated to drop "Render PR"
   - **Issue:** #1091
