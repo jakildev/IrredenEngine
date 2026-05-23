@@ -40,6 +40,9 @@ struct C_VelB {
 struct C_Slot {
     int idx_ = 0;
 };
+struct C_Counter {
+    int n_ = 0;
+};
 
 using IRSystem::AlsoReads;
 using IRSystem::AlsoWrites;
@@ -92,7 +95,8 @@ class JobManagerFixture : public ::testing::Test {
 TEST(SystemConcurrencyValidator, PerComponentFormAcceptsParallelFor) {
     // void tick(C_VelA&, const C_VelB&) — the canonical clean case.
     // Writes C_VelA, reads C_VelB, no EntityId, not batch form.
-    auto access = deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
+    auto access =
+        deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
 
     EXPECT_FALSE(access.usesEntityId_);
     EXPECT_FALSE(access.isBatchForm_);
@@ -103,7 +107,9 @@ TEST(SystemConcurrencyValidator, PerEntityIdFormRejectedWithoutParallelSafe) {
     // void tick(EntityId, C_VelA&) — id-aware form. Without an
     // explicit ParallelSafe tag, the body is presumed to dereference
     // the id into a non-thread-safe singleton.
-    auto access = deriveAccessFromSignature<void(IREntity::EntityId &, C_VelA &), C_VelA>();
+    auto access = deriveAccessFromSignature<
+        void(IREntity::EntityId &, C_VelA &),
+        C_VelA>();
 
     EXPECT_TRUE(access.usesEntityId_);
     EXPECT_FALSE(access.parallelSafe_);
@@ -134,7 +140,11 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
     // so row-level chunking would re-enter it with overlapping
     // vectors. PARALLEL_FOR is structurally incompatible.
     auto access = deriveAccessFromSignature<
-        void(const IREntity::Archetype &, std::vector<IREntity::EntityId> &, std::vector<C_VelA> &),
+        void(
+            const IREntity::Archetype &,
+            std::vector<IREntity::EntityId> &,
+            std::vector<C_VelA> &
+        ),
         C_VelA>();
 
     EXPECT_TRUE(access.isBatchForm_);
@@ -147,7 +157,9 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
 TEST(SystemConcurrencyValidator, MainThreadTagRejectsParallelFor) {
     // The MainThread tag is explicit "do not parallelize"; the
     // validator must FATAL rather than silently downgrade.
-    auto access = deriveAccessFromSignature<void(C_VelA &), C_VelA, MainThread>();
+    auto access = deriveAccessFromSignature<
+        void(C_VelA &),
+        C_VelA, MainThread>();
 
     EXPECT_TRUE(access.mainThreadOnly_);
     EXPECT_FALSE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));
@@ -214,13 +226,13 @@ class ParallelDispatchFixture : public ::testing::Test {
 TEST_F(ParallelDispatchFixture, AllEntitiesDispatchedParallelFor) {
     constexpr int kEntityCount = 4096;
     for (int i = 0; i < kEntityCount; ++i) {
-        IREntity::createEntity(C_VelA{});
+        IREntity::createEntity(C_Counter{});
     }
 
     std::atomic<int> total{0};
-    auto sysId = IRSystem::createSystem<C_VelA>(
+    auto sysId = IRSystem::createSystem<C_Counter>(
         "ParallelDispatchTotal",
-        [&total](C_VelA &) { total.fetch_add(1, std::memory_order_relaxed); },
+        [&total](C_Counter &) { total.fetch_add(1, std::memory_order_relaxed); },
         nullptr,
         nullptr,
         {},
