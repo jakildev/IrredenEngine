@@ -1,6 +1,7 @@
 #include <irreden/job/job_manager.hpp>
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_platform.hpp>
 #include <irreden/ir_profile.hpp>
 
 #include <TaskScheduler.h>
@@ -11,6 +12,8 @@
 #include <random>
 #include <thread>
 
+// sys/sysctl.h only exists on Apple platforms — this guard is
+// unavoidable for a system header that doesn't exist elsewhere.
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #endif
@@ -53,19 +56,21 @@ void registerSelf(enki::TaskScheduler &scheduler) {
 
 namespace {
 
-#ifdef __APPLE__
-/// Apple Silicon performance-core count via sysctl. Returns the
-/// detected P-core count or `-1` if the sysctl key is absent (Intel
-/// Macs, older OS releases). Caller treats `-1` as "no cap".
+/// Apple Silicon P-core count via sysctl. Returns the detected count,
+/// or -1 if absent (Intel Mac, older OS) or on non-Apple platforms.
+/// Caller treats -1 as "no cap".
 int querySysctlPCoreCount() {
+#ifdef __APPLE__
     int pcoreCount = 0;
     size_t sz = sizeof(pcoreCount);
     if (sysctlbyname("hw.perflevel0.physicalcpu", &pcoreCount, &sz, nullptr, 0) != 0) {
         return -1;
     }
     return pcoreCount > 0 ? pcoreCount : -1;
-}
+#else
+    return -1;
 #endif
+}
 
 } // namespace
 
@@ -83,17 +88,17 @@ int JobManager::resolveWorkerCount(int requested) {
         target = IRMath::max(1, requested);
     }
 
-#ifdef __APPLE__
-    const int pcores = querySysctlPCoreCount();
-    if (pcores > 0 && target > pcores) {
-        IRE_LOG_INFO(
-            "JobManager: capping worker count {} -> {} (Apple Silicon P-core limit)",
-            target,
-            pcores
-        );
-        target = pcores;
+    if constexpr (IRPlatform::kIsMacOS) {
+        const int pcores = querySysctlPCoreCount();
+        if (pcores > 0 && target > pcores) {
+            IRE_LOG_INFO(
+                "JobManager: capping worker count {} -> {} (Apple Silicon P-core limit)",
+                target,
+                pcores
+            );
+            target = pcores;
+        }
     }
-#endif
 
     if (target > hwCapped) {
         target = hwCapped;
