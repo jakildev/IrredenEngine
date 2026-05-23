@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace IRRender {
@@ -234,6 +235,12 @@ class MetalRenderDevice final : public RenderDevice {
         m_timestamps.clear();
         m_timestampCounterSet = nullptr;
         m_supportsTimestampPairs = false;
+        for (auto &[texture, buf] : m_clearSourceBuffers) {
+            if (buf != nullptr) {
+                buf->release();
+            }
+        }
+        m_clearSourceBuffers.clear();
         shutdownMetalRuntime();
     }
 
@@ -573,30 +580,74 @@ metalCurrentDepthPixelFormat(),
         } else if (pixelFormat == MTL::PixelFormatRGBA32Float) {
             bytesPerPixel = 16;
         }
+        const std::size_t totalBytes =
+            static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytesPerPixel;
 
-        std::vector<std::uint8_t> clearData(
-            static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytesPerPixel
-        );
-        if (data != nullptr) {
-            for (std::size_t i = 0; i < clearData.size(); i += bytesPerPixel) {
-                std::memcpy(clearData.data() + i, data, bytesPerPixel);
+        // Get or create a persistent SharedMode source buffer for this texture.
+        // The buffer is filled once (or when the clear pattern changes) and
+        // blitted GPU-side every frame — no per-frame CPU allocation or stall.
+        MTL::Buffer *clearBuf = nullptr;
+        {
+            const auto it = m_clearSourceBuffers.find(texture);
+            if (it == m_clearSourceBuffers.end()) {
+                clearBuf = metalDevice()->newBuffer(
+                    totalBytes, MTL::ResourceStorageModeShared
+                );
+                IR_ASSERT(clearBuf != nullptr, "Failed to create Metal clearTexImage buffer");
+                auto *bytes = static_cast<std::uint8_t *>(clearBuf->contents());
+                if (data != nullptr) {
+                    for (std::size_t i = 0; i < totalBytes; i += bytesPerPixel) {
+                        std::memcpy(bytes + i, data, bytesPerPixel);
+                    }
+                } else {
+                    std::memset(bytes, 0, totalBytes);
+                }
+                m_clearSourceBuffers[texture] = clearBuf;
+            } else {
+                clearBuf = it->second;
+            }
+        }
+
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer != nullptr) {
+            // GPU-side blit: no per-frame allocation, no replaceRegion stall.
+            auto *blit = commandBuffer->blitCommandEncoder();
+            blit->copyFromBuffer(
+                clearBuf,
+                0,
+                static_cast<NS::UInteger>(width * bytesPerPixel),
+                totalBytes,
+                MTL::Size::Make(width, height, 1),
+                texture,
+                0,
+                static_cast<NS::UInteger>(level),
+                MTL::Origin::Make(0, 0, 0)
+            );
+            blit->endEncoding();
+
+            // Mirror the clear into the image atomic scratch buffer so atomic
+            // image-min sees the same starting state as the texture itself.
+            if (pixelFormat == MTL::PixelFormatR32Sint) {
+                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                    scratch != nullptr) {
+                    auto *blit2 = commandBuffer->blitCommandEncoder();
+                    blit2->copyFromBuffer(clearBuf, 0, scratch, 0, totalBytes);
+                    blit2->endEncoding();
+                }
             }
         } else {
-            std::memset(clearData.data(), 0, clearData.size());
-        }
-        texture->replaceRegion(
-            MTL::Region::Make2D(0, 0, width, height),
-            static_cast<NS::UInteger>(level),
-            clearData.data(),
-            static_cast<NS::UInteger>(width * bytesPerPixel)
-        );
-
-        // Mirror the clear into the image atomic scratch buffer so atomic
-        // image-min sees the same starting state as the texture itself.
-        if (pixelFormat == MTL::PixelFormatR32Sint) {
-            if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
-                scratch != nullptr) {
-                std::memcpy(scratch->contents(), clearData.data(), clearData.size());
+            // No command buffer (e.g. during startup init): fall back to replaceRegion.
+            texture->replaceRegion(
+                MTL::Region::Make2D(0, 0, width, height),
+                static_cast<NS::UInteger>(level),
+                clearBuf->contents(),
+                static_cast<NS::UInteger>(width * bytesPerPixel)
+            );
+            if (pixelFormat == MTL::PixelFormatR32Sint) {
+                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                    scratch != nullptr) {
+                    std::memcpy(scratch->contents(), clearBuf->contents(), totalBytes);
+                }
             }
         }
     }
@@ -755,6 +806,7 @@ metalCurrentDepthPixelFormat(),
     MTL::CounterSet *m_timestampCounterSet = nullptr;
     bool m_supportsTimestampPairs = false;
     bool m_loggedTimestampAllocFailure = false;
+    std::unordered_map<MTL::Texture *, MTL::Buffer *> m_clearSourceBuffers;
 };
 
 MetalRenderDevice g_metalRenderDevice;
