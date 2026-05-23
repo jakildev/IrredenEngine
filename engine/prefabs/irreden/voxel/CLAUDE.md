@@ -229,9 +229,11 @@ animation clips that want to address joints by string.
   canvas the dense-data ctor stages to `pendingVoxels_`; the element-count
   ctor asserts (use the dense ctor for headless construction). Check
   `numVoxels_ > 0` after construction either way.
-- **Position lag by one frame.** `C_PositionGlobal3D` on a voxel set is
-  only pushed to the pool by `system_update_voxel_set_children`. Any
-  system that moves the entity must run **before** that system in the
+- **Position lag by one frame.** `C_WorldTransform.translation_` on a
+  voxel set is only pushed to the pool by
+  `system_update_voxel_set_children`. Any system that writes the
+  entity's translation (or upstream modifier resolver +
+  `PROPAGATE_TRANSFORM`) must run **before** that system in the
   pipeline or voxels lag a frame.
 - **`onDestroy()` must run.** Destroying a voxel set without the
   destructor (e.g. by bypassing the entity manager) leaks its span.
