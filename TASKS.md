@@ -312,6 +312,18 @@ Avoid:
   - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #3). Core test: spin up EntityManager + SystemManager + JobManager(2), register PARALLEL_FOR system with atomic counter tick body, populate 4096 entities (forces multiple kDefaultGrainSize=512 chunks), tick once, assert counter==4096. Optional relation-form rejection test depends on T-334 landing first. Part of epic #226.
   - **Links:**
 
+
+- [ ] **Investigate + fix macOS demo segfault/non-clean shutdown** — reproduce the shutdown crash on macOS (e.g. IRPerfGrid); identify root cause; apply targeted fix; harden run/verify tooling to validate exit codes
+  - **ID:** T-336
+  - **Area:** engine/render, creations/demos
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** IRPerfGrid and at least two other representative demos exit cleanly on macOS (exit code 0, no crash reporter dialog); fix verified on macos-debug preset; fleet-build / ir-run wrapper does not mask the non-zero exit code; no regression on linux-debug
+  - **Issue:** #1116
+  - **Notes:** Reported on macOS; IRPerfGrid cited as one reproducer. Root cause unknown — may involve Metal resource teardown order, ECS world destructor sequencing, or missing signal handler. Also investigate whether run/verify skills should assert clean exit code after demo auto-screenshot runs.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
