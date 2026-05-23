@@ -305,6 +305,30 @@ The skill drives any creation that supports `--auto-screenshot` (today:
 SDF shapes, lighting, and backend parity. See `engine/render/CLAUDE.md`
 "Verifying render changes" for the exceptions list.
 
+### Resource coordination
+
+`ir-acquire` gates CPU-heavy builds and GPU-heavy bench runs so parallel
+fleet workers don't saturate the machine. The rule for holding that lock:
+
+**Acquire late, release early.** Acquire a lock immediately before the
+operation that needs it and release immediately after. Never hold a lock
+across "decide what to do next," "draft a comment," or "read review
+feedback." Idle reasoning time should never block another worker's build.
+
+Examples:
+
+- A **build** step acquires the cpu lock for exactly the cmake invocation
+  (via `exec ir-acquire cpu … -- cmake --build …`) and releases on exit.
+  The lock is NOT held during the simplify pass, the commit, or the PR
+  comment that follows.
+- A **perf measurement** holds the perf lock for the perf-grid run only
+  — not for the `optimize` analysis or `simplify` pass that follows.
+  Claim → measure → release; iterate without the lock; reclaim only for
+  the next measurement.
+
+This applies to every role that calls `ir-build`, `ir-run`, or any other
+tool that wraps `ir-acquire`.
+
 ---
 
 ## Stacked PRs

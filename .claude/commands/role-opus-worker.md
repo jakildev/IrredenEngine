@@ -28,6 +28,10 @@ See [docs/agents/CLAUDE-BASELINE.md § Bash tool rules](../../docs/agents/CLAUDE
 
 See [docs/agents/FLEET-CACHE.md](../../docs/agents/FLEET-CACHE.md).
 
+## Resource coordination
+
+See [docs/agents/FLEET.md § Resource coordination](../../docs/agents/FLEET.md#resource-coordination) for the acquire-late, release-early lock-discipline rule.
+
 ## Exit protocol
 
 See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNTIME.md#exit-protocol--transient-roles)
