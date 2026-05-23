@@ -264,6 +264,78 @@ Avoid:
   - **Notes:** Phase 4 of #226. Per-worker staging in EntityManager: setComponentDeferred, removeComponentDeferred, markEntityForDeletion, createEntity (deferred) backed by per-worker buffers indexed by IRJobs::workerId(). Main thread uses buffer 0. Drain in flushStructuralChanges() (existing serial fence). createEntity uses atomic counter for unique IDs (not per-worker ranges — avoids sparse archetype index). Drain order deterministic (workerId order) for auto-screenshot reproducibility. Lifts mutates_archetype_graph conflict check from T-224.
   - **Links:**
 
+
+- [ ] **tools: engine-level concurrency + perf primitives** — introduce ir-build, ir-run, ir-acquire, ir-perf-grid as engine-owned coordination layer; hardware-fingerprinted baselines + synthetic-load normalization
+  - **ID:** T-318
+  - **Area:** build, tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** ir-build/ir-run/ir-acquire/ir-perf-grid exist in engine/tools/bin/; concurrency_test.sh passes lock/budget slot tests and slot-release-on-PID-death; ir-acquire benchmark acquires cpu+gpu+perf in one shot; fleet-build/fleet-run shim to ir-build/ir-run; hardware-fingerprinted baselines at docs/perf/baseline_latest/<fingerprint>/; CI smoke (ir-build IRPerfGrid && ir-run --auto-profile 30 && compare) passes
+  - **Issue:** #1074
+  - **Notes:** Three-PR sequence in issue body: (1) ir-host-probe + ir-acquire; (2) ir-build/ir-run migration + shims (fleet-build/fleet-run become one-line exec shims); (3) ir-perf-grid + fingerprinting + normalization. Shared lock dir: ${XDG_RUNTIME_DIR}/irreden/locks/ (Linux) / /tmp/irreden-$USER/locks/ (macOS) — engine + game builds coordinate CPU without either repo knowing the other. Concurrency.toml committed engine defaults; ~/.config/irreden/host.toml uncommitted per-host overrides; env vars highest priority. Solo-dev default (IR_FLEET_WORKERS unset) acquires ir-acquire instantly at full nproc — humans pay no concurrency tax.
+  - **Links:**
+
+
+- [ ] **render: compose camera rotation into DETACHED canvas SO(3) bake** — fix PROPAGATE_CANVAS_ROTATION to compose camera yaw into per-canvas rotation so DETACHED entities rotate with the world camera
+  - **ID:** T-319
+  - **Area:** engine/prefabs/irreden/render, engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) IRCanvasStress --auto-rotate shows DETACHED cubes rotating with world (camera-space stationary when entity rotation is identity), not screen-fixed; (2) IRCanvasStress default renders identically to today; (3) DETACHED cube under combined camera+entity yaw matches GRID cube of same net world-Z rotation; (4) C_CanvasLocalRotation header comment updated to describe camera-composed semantics; (5) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1075
+  - **Notes:** Bug in T-295: entity rotation copied directly to canvas without composing camera yaw. Fix: canvasRotation_ = quatInverse(R_camera) * entityRotation; snapshot R_camera in beginTick (one global lookup, not per-entity). Expose IRPrefab::Camera::getRotationQuat() returning quatAxisAngle(z, getYaw()) for now — full SO(3) camera is filed separately (#1076, fleet:needs-plan). Emit shader unchanged — faceDeformationMatrixSO3 already eats arbitrary quaternion. GRID world canvas sentinel-zero path unchanged.
+  - **Links:**
+
+
+- [ ] **docs: iso-depth-axis invariant design doc** — document why (1,1,1) world-camera Z-yaw-only is invariant for GRID entities and map every call site with cost-to-break annotations
+  - **ID:** T-320
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) docs/design/iso-depth-axis-invariant.md exists; (2) all consumers cited with file:line (picking.hpp:65,173,219; system_hitbox_mouse_test.hpp:57; system_gizmo_drag.hpp:289,296; system_shapes_to_trixel.hpp:421; c_shapes_to_trixel.glsl:197,682,684; c_voxel_to_trixel_stage_1.glsl:30; ir_math.hpp:171,260 — re-grep fresh at write time); (3) engine/math/CLAUDE.md and engine/render/CLAUDE.md link to it; (4) companion issues #1075 and #1076 cross-referenced
+  - **Issue:** #1077
+  - **Notes:** ~half page prose + per-site cost table. Sections: what the invariant is, why GRID depends on it (integer trixel raster + depth-axis-aligned picking/SDF), why DETACHED doesn't (faceDeformationMatrixSO3 + camera composition in T-319), full call-site map, cost-to-break per site (easy/hard/rewrite). Sets trajectory for any future free-camera epic.
+  - **Links:**
+
+
+- [ ] **engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system** — replace inline camera-yaw-rotation lambdas in canvas_stress and z_yaw_rotation with a shared member-on-System<N> prefab
+  - **ID:** T-321
+  - **Area:** engine/prefabs/irreden/render, engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) system_auto_yaw_rotate.hpp exists following T-317 CAMERA_MOUSE_ROTATE member-on-System<N> shape; (2) AUTO_YAW_ROTATE added to SystemName enum near CAMERA_MOUSE_ROTATE; (3) canvas_stress/main.cpp and z_yaw_rotation/main_static.cpp use prefab system, inline lambdas deleted; (4) IRCanvasStress --auto-rotate and IRZYawRotationStatic rotate at same rate as before; (5) fleet-build clean linux-debug and macos-debug
+  - **Issue:** #1078
+  - **Notes:** Sources to replace: canvas_stress/main.cpp:189-195, z_yaw_rotation/main_static.cpp:80-82. voxel_editor EditorViewportRotate (main.cpp:1203-1227) is mouse-driven and stays creation-local — filed separately as T-324.
+  - **Links:**
+
+
+- [ ] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
+  - **ID:** T-323
+  - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) grep -rn SCREEN_SPACE_RESIDUAL_ROTATE engine creations returns zero hits; (2) every demo that used the stage renders identically (render-verify or auto-screenshot diff); (3) voxel_to_trixel_stage_1/stage_2 shaders gain retirement note referencing T-293; (4) fleet-build clean linux-debug and macos-debug
+  - **Issue:** #1079
+  - **Notes:** Stage is a passthrough since T-293 folded residualYaw into faceDeform_. Audit all of creations/ (including private creations/game/) for consumers before deletion. Delete: v_screen_residual_rotate.glsl, f_screen_residual_rotate.glsl, Metal twins, FrameDataScreenResidualRotate UBO, ScreenSpaceResidualRotateProgram + ScreenSpaceResidualRotateFrameData named resources, SCREEN_SPACE_RESIDUAL_ROTATE SystemName entry. Independent of #1075 and camera-SO(3) work.
+  - **Links:**
+
+
+- [ ] **editors/voxel_editor: migrate EditorViewportRotate to member-on-System<N> form** — refactor the inline EditorViewportRotate system to follow the T-317 CAMERA_MOUSE_ROTATE pattern
+  - **ID:** T-324
+  - **Area:** creations/editors/voxel_editor
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) EditorViewportRotate no longer uses setSystemParams(std::move(...)); (2) voxel editor right-drag camera rotation behaves identically (same sensitivity); (3) fleet-build clean linux-debug and macos-debug
+  - **Issue:** #1080
+  - **Notes:** Refactor main.cpp:1203-1227. State (firstRotFrame_, prevMouseX_) moves onto System<N> specialization (preferred — add enum entry if framework allows) or shared_ptr struct as fallback. Stays creation-local, not promoted to engine prefab. Independent of #1075 and camera-SO(3) work.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
