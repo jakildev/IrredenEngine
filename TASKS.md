@@ -176,11 +176,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Render: low game-resolution mode + sub-pixel / screen-pixel camera smoothing** — restore low-resolution rendering with anti-vibration sub-pixel camera smoothing and a per-entity screen-pixel-precision opt-in
+- [~] **Render: low game-resolution mode + sub-pixel / screen-pixel camera smoothing** — restore low-resolution rendering with anti-vibration sub-pixel camera smoothing and a per-entity screen-pixel-precision opt-in
   - **ID:** T-314
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) slow camera pan at low game resolution shows no per-frame +/-1px jitter in auto-screenshot diff; (2) game-resolution canvases snap to game-pixel grid; camera tracks at screen-pixel precision; (3) screen-pixel-smooth flagged entity moves smoothly between game pixels; unflagged entities snap; (4) fleet-build clean on linux-debug and macos-debug; OpenGL/Metal parity for any shader change
   - **Issue:** #1048
