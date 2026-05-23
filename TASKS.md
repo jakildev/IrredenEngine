@@ -336,6 +336,30 @@ Avoid:
   - **Notes:** Refactor main.cpp:1203-1227. State (firstRotFrame_, prevMouseX_) moves onto System<N> specialization (preferred — add enum entry if framework allows) or shared_ptr struct as fallback. Stays creation-local, not promoted to engine prefab. Independent of #1075 and camera-SO(3) work.
   - **Links:**
 
+
+- [ ] **render: unified camera-controls bundle + trackpad gesture support** — extract CAMERA_SCROLL_ZOOM + CAMERA_TRACKPAD_PAN prefabs and expose IRPrefab::Camera::standardControlSystems() bundle with Space+two-finger pan on macOS
+  - **ID:** T-325
+  - **Area:** engine/prefabs/irreden/render, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) system_camera_scroll_zoom.hpp, system_camera_trackpad_pan.hpp (optionally system_camera_trackpad_rotate.hpp) exist as engine prefabs with SystemName entries; (2) IRPrefab::Camera::standardControlSystems() and registerStandardKeyboardCommands() exposed; (3) voxel_editor inline scrollZoomSystem replaced by CAMERA_SCROLL_ZOOM, behavior unchanged; (4) on macOS, Space+two-finger trackpad drag pans camera in IRCanvasStress; (5) without Space, two-finger drag zooms; (6) mouse-wheel zoom and middle-drag pan unchanged on Linux+Windows; (7) fleet-build clean linux-debug and macos-debug
+  - **Issue:** #1083
+  - **Notes:** Three parts: (A) extract CAMERA_SCROLL_ZOOM from voxel_editor inline scrollZoomSystem (main.cpp:807-827), member-on-System<N> form, gates on modifier-none so Space+scroll routes to pan; (B) CAMERA_TRACKPAD_PAN: Space+scroll xoffset/yoffset → iso pan delta via screenDeltaToIsoDelta, CAMERA_TRACKPAD_ROTATE optional secondary modifier; (C) standardControlSystems() bundles pan/rotate/zoom/trackpad systems. Pipeline placement: CAMERA_SCROLL_ZOOM → INPUT pipeline (consumes ephemeral C_MouseScroll); others → RENDER pipeline. Modifier choice: Space (per issue title; standard hand-tool convention in image editors). Demo adoption is T-326.
+  - **Links:**
+
+
+- [ ] **demos: adopt standardControlSystems() bundle across all demos** — migrate every demo's initSystems to IRPrefab::Camera::standardControlSystems() after T-325 lands
+  - **ID:** T-326
+  - **Area:** creations/demos, creations/editors/voxel_editor
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-325
+  - **Acceptance:** (1) every demo in creations/demos/ uses standardControlSystems() or opts out with a comment; (2) voxel_editor uses bundle for standard set, keeps editor-specific systems (right-drag rotate, scrubber, animation playback); (3) no regressions on mouse-wheel zoom, middle-drag pan, keyboard WASD across demos; (4) on macOS every demo gains trackpad two-finger pan; (5) fleet-build clean linux-debug and macos-debug
+  - **Issue:** #1084
+  - **Notes:** Mechanical adoption — no design decisions needed (those happen in T-325). Re-grep creations/demos and creations/editors for CAMERA_MOUSE_PAN and registerCameraCommands at PR time for authoritative demo list. Demos that intentionally skip certain controls (e.g. UI-only demos conflicting with widget interactions) stay on manual path with a comment in the PR description.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
