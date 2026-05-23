@@ -37,7 +37,10 @@
 //
 // Pipeline placement: after the modifier resolver pipeline so the
 // resolved fields are current, and before any consumer (render, gizmo,
-// physics) that reads C_WorldTransform.
+// physics) that reads C_WorldTransform. Creations that do not register
+// the resolver pipeline still see modifier-driven translation/scale —
+// the fallback path below composes from C_Modifiers directly when
+// C_ResolvedFields is absent (or has no entry for the field).
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -46,6 +49,7 @@
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/common/modifier_compose.hpp>
 #include <irreden/common/transform_modifier_fields.hpp>
 
 #include <unordered_set>
@@ -66,6 +70,8 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         const auto scaleField = IRPrefab::TransformModifier::scaleField();
         const auto resolvedFieldsComponentId =
             IREntity::getComponentType<IRComponents::C_ResolvedFields>();
+        const auto modifiersComponentId =
+            IREntity::getComponentType<IRComponents::C_Modifiers>();
 
         const auto archetype = IREntity::getArchetype<
             IRComponents::C_LocalTransform,
@@ -141,7 +147,9 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         }
 
         for (auto *node : ordered_) {
-            composeNode(node, translationField, scaleField, resolvedFieldsComponentId);
+            composeNode(
+                node, translationField, scaleField, resolvedFieldsComponentId, modifiersComponentId
+            );
         }
     }
 
@@ -164,7 +172,8 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         IREntity::ArchetypeNode *node,
         IRComponents::FieldBindingId translationField,
         IRComponents::FieldBindingId scaleField,
-        IREntity::ComponentId resolvedFieldsComponentId
+        IREntity::ComponentId resolvedFieldsComponentId,
+        IREntity::ComponentId modifiersComponentId
     ) {
         IRComponents::C_WorldTransform parentWorld{};
         IREntity::EntityId parent =
@@ -182,14 +191,23 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         auto &worlds =
             IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
 
-        // Resolved-field column is optional — only present on entities
-        // that opted into the modifier framework. Reading the column once
-        // per node (vs. once per entity) keeps the modifier path on the
-        // batched, cache-friendly path.
+        // Resolved-field and modifier columns are both optional. Resolved
+        // wins when the creation registered the resolver pipeline +
+        // attached C_ResolvedFields; otherwise we fall back to composing
+        // directly from C_Modifiers so the per-frame additive offset
+        // (idle bob, gizmo nudge) still reaches the world transform
+        // without forcing every creation to wire the resolver pipeline.
+        // Reading both columns once per node keeps the inner loop on the
+        // batched cache-friendly path.
         std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
         if (node->type_.contains(resolvedFieldsComponentId)) {
             resolvedCol =
                 &IREntity::getComponentData<IRComponents::C_ResolvedFields>(node);
+        }
+        std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
+        if (resolvedCol == nullptr && node->type_.contains(modifiersComponentId)) {
+            modifiersCol =
+                &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
         }
 
         for (int i = 0; i < node->length_; ++i) {
@@ -201,6 +219,14 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 modTranslation =
                     (*resolvedCol)[i].getVec3(translationField, IRMath::vec3(0.0f));
                 modScale = (*resolvedCol)[i].getVec3(scaleField, IRMath::vec3(1.0f));
+            } else if (modifiersCol != nullptr) {
+                const auto &modsVec3 = (*modifiersCol)[i].modifiersVec3_;
+                modTranslation = IRPrefab::Modifier::detail::composeForFieldVec3(
+                    IRMath::vec3(0.0f), translationField, modsVec3
+                );
+                modScale = IRPrefab::Modifier::detail::composeForFieldVec3(
+                    IRMath::vec3(1.0f), scaleField, modsVec3
+                );
             }
 
             const IRMath::vec3 worldScale =

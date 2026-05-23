@@ -59,7 +59,7 @@ IREntity.createEntityBatchVoxelPeriodicIdle(
         -- Centered grid with integer world coordinates and one empty voxel gap.
         local x = (index.x - cx) * world_spacing
         local y = (index.y - cy) * world_spacing
-        return C_Position3D.new(vec3.new(x, y, 0.0))
+        return C_LocalTransform.new(vec3.new(x, y, 0.0))
     end,
     function(params)
         local index = params.index

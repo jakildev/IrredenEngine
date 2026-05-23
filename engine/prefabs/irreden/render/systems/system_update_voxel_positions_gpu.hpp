@@ -24,15 +24,15 @@
 //   6. PERF: The shader's linear entity search (for loop over entityCount)
 //      will be O(entities) per voxel thread. Replace with a prefix-sum
 //      offset table or binary search for scale.
-// DEPENDENCIES: C_VoxelPool, C_Position3D, GPUEntityTransform,
+// DEPENDENCIES: C_VoxelPool, IRRender::VoxelGpuPosition, GPUEntityTransform,
 //   GPUUpdateParams (ir_render_types.hpp).
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_entity.hpp>
 
+#include <irreden/render/voxel_pool_allocation.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
 
 #include <vector>
 
@@ -54,7 +54,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         IRRender::createNamedResource<Buffer>(
             "LocalVoxelPositionBuffer",
             nullptr,
-            maxSingleVoxels * sizeof(C_Position3D),
+            maxSingleVoxels * sizeof(IRRender::VoxelGpuPosition),
             BUFFER_STORAGE_MAP_WRITE | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_LocalVoxelPositions
@@ -80,7 +80,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
             IRRender::getNamedResource<Buffer>("LocalVoxelPositionBuffer")
                 ->mapRange(
                     0,
-                    maxSingleVoxels * sizeof(C_Position3D),
+                    maxSingleVoxels * sizeof(IRRender::VoxelGpuPosition),
                     BUFFER_STORAGE_MAP_WRITE | BUFFER_STORAGE_MAP_PERSISTENT |
                         BUFFER_STORAGE_MAP_COHERENT
                 );
@@ -93,7 +93,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
                     std::memcpy(
                         mappedLocalPositions,
                         voxelPool.getPositions().data(),
-                        voxelPool.getLiveVoxelCount() * sizeof(C_Position3D)
+                        voxelPool.getLiveVoxelCount() * sizeof(IRRender::VoxelGpuPosition)
                     );
                     localPositionsUploaded = true;
                 }

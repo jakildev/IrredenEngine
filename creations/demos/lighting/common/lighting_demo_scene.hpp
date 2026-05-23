@@ -13,7 +13,6 @@
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/math/sdf.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
@@ -160,7 +159,7 @@ inline EntityId createVoxelPoolShape(
     vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color, ivec3 halfExtent
 ) {
     EntityId entity = IREntity::createEntity(
-        C_Position3D{position},
+        C_LocalTransform{position},
         C_VoxelSetNew{halfExtent * 2 + ivec3(1), color, true}
     );
     auto &voxelSet = IREntity::getComponent<C_VoxelSetNew>(entity);

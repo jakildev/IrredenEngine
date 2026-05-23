@@ -33,11 +33,9 @@ struct C_VoxelSetNew {
     // SYSTEM_REBUILD_GRID_VOXELS push-at-mutation cache. The rebuild system
     // compares the entity's live `C_WorldTransform` against these values
     // each tick and only re-rasterizes the pool span when something
-    // changed — quaternion rotation, scale, or world translation.
-    // Translation is tracked separately from `lastParentPosition_` because
-    // the rebuild system reads `C_WorldTransform.translation_` (SQT-chain
-    // composed) while UPDATE_VOXEL_SET_CHILDREN reads `C_PositionGlobal3D`
-    // (T-199 transition; the two converge once consumers migrate).
+    // changed — quaternion rotation, scale, or world translation. Mirrors
+    // the `lastParentPosition_` early-out UPDATE_VOXEL_SET_CHILDREN uses
+    // (both systems now read `C_WorldTransform.translation_` — T-301a).
     vec4 lastRebuildWorldRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     vec3 lastRebuildWorldScale_ = vec3(1.0f, 1.0f, 1.0f);
     vec3 lastRebuildWorldTranslation_ = vec3(0.0f);
@@ -49,17 +47,18 @@ struct C_VoxelSetNew {
     // pointer made the diff resolve to a wild index).
     size_t voxelStartIdx_ = 0;
 
-    // local voxel position
-    std::span<C_Position3D> positions_;
+    // Local voxel position (16-byte GPU stride POD; see VoxelGpuPosition).
+    std::span<IRRender::VoxelGpuPosition> positions_;
 
     // Per-voxel deformation offset authored by VOXEL_SQUASH_STRETCH.
-    // Internal pool scratch state — not the engine-level entity offset
-    // channel (which travels through the modifier framework's
-    // POSITION_OFFSET_3D vec3 field and lands on C_PositionGlobal3D).
+    // CPU-only scratch — summed into the world position by
+    // UPDATE_VOXEL_SET_CHILDREN, never uploaded directly to the GPU.
     std::span<vec3> positionOffsets_;
 
-    // global voxel position recalculated each update
-    std::span<C_PositionGlobal3D> globalPositions_;
+    // World voxel position recalculated each update. Same 16-byte stride
+    // as positions_ so the std430 SSBO upload stride matches the GPU
+    // contract in c_voxel_to_trixel_stage_1.
+    std::span<IRRender::VoxelGpuPosition> globalPositions_;
 
     std::span<C_Voxel> voxels_;
 
@@ -141,7 +140,8 @@ struct C_VoxelSetNew {
             for (int y = 0; y < size.y; y++) {
                 for (int z = 0; z < size.z; z++) {
                     vec3 pos = vec3(x, y, z) + offset;
-                    positions_[index3DtoIndex1D(ivec3(x, y, z), size)] = C_Position3D{pos};
+                    positions_[index3DtoIndex1D(ivec3(x, y, z), size)] =
+                        IRRender::VoxelGpuPosition{pos, 0.0f};
                     voxels_[index3DtoIndex1D(ivec3(x, y, z), size)].color_ = color;
                 }
             }
@@ -247,7 +247,8 @@ struct C_VoxelSetNew {
             for (int y = 0; y < extent.y; ++y) {
                 for (int z = 0; z < extent.z; ++z) {
                     const int idx = index3DtoIndex1D(ivec3(x, y, z), extent);
-                    positions_[idx] = C_Position3D{vec3(x, y, z) + originOffset};
+                    positions_[idx] =
+                        IRRender::VoxelGpuPosition{vec3(x, y, z) + originOffset, 0.0f};
                     voxels_[idx] = voxels[idx];
                 }
             }
@@ -401,15 +402,15 @@ struct C_VoxelSetNew {
     // value to queue exactly the written range for GPU upload — avoids
     // queuing stale slots in the rare case the pool-bounds guard fires.
     int updateAsChild(
-        C_Position3D parentPosition,
-        std::vector<C_PositionGlobal3D> &poolGlobalsOut,
-        const std::vector<C_Position3D> &poolPositions,
+        vec3 parentPosition,
+        std::vector<IRRender::VoxelGpuPosition> &poolGlobalsOut,
+        const std::vector<IRRender::VoxelGpuPosition> &poolPositions,
         const std::vector<vec3> &poolOffsets
     ) {
-        if (hasLastParentPosition_ && parentPosition.pos_ == lastParentPosition_) {
+        if (hasLastParentPosition_ && parentPosition == lastParentPosition_) {
             return 0;
         }
-        lastParentPosition_ = parentPosition.pos_;
+        lastParentPosition_ = parentPosition;
         hasLastParentPosition_ = true;
         const size_t writableTail =
             poolGlobalsOut.size() > voxelStartIdx_ ? poolGlobalsOut.size() - voxelStartIdx_ : 0u;
@@ -424,7 +425,7 @@ struct C_VoxelSetNew {
         for (int i = 0; i < safeCount; i++) {
             poolGlobalsOut[voxelStartIdx_ + i].pos_ = poolPositions[voxelStartIdx_ + i].pos_ +
                                                       poolOffsets[voxelStartIdx_ + i] +
-                                                      parentPosition.pos_;
+                                                      parentPosition;
         }
         return safeCount;
     }

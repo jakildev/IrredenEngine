@@ -4,8 +4,7 @@
 #include <irreden/ir_ecs.hpp>
 #include <irreden/ir_math.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 
 using namespace IRMath;
@@ -15,11 +14,7 @@ namespace IRECS {
 
 template <> struct Prefab<PrefabTypes::kSingleVoxel> {
     static EntityId create(vec3 position, Color color = IRColors::kGreen) {
-        return IRECS::createEntity(
-            C_Position3D{position},
-            C_PositionGlobal3D{position},
-            C_Voxel{color}
-        );
+        return IRECS::createEntity(C_LocalTransform{position}, C_Voxel{color});
     }
 };
 

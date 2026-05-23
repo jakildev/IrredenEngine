@@ -65,7 +65,7 @@ IREntity.createEntityBatchVoxelPeriodicIdle(
         local y = ny * 100.0 + wave_xz * 18.0
         local z = nz * 100.0 + wave_xy * 30.0 - radius_xy * 20.0
 
-        return C_Position3D.new(vec3.new(x, y, z))
+        return C_LocalTransform.new(vec3.new(x, y, z))
     end,
     function(params)
         local index = params.index

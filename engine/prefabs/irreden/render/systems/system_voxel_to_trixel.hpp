@@ -9,10 +9,9 @@
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/common/components/component_tags_all.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/common/components/component_position_2d.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
+#include <irreden/render/voxel_pool_allocation.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
@@ -147,7 +146,7 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
     if (ranges.empty()) {
         return;
     }
-    constexpr size_t kStride = sizeof(C_PositionGlobal3D);
+    constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
     const auto &globals = pool.getPositionGlobals();
 
     // A saturated queue no longer represents a small moved subset — the
@@ -329,7 +328,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             if (lastUploadedCanvas_ != entity) {
                 voxelPosBuf_->subData(
                     0,
-                    liveVoxelCount * sizeof(C_PositionGlobal3D),
+                    liveVoxelCount * sizeof(IRRender::VoxelGpuPosition),
                     voxelPool.getPositionGlobals().data()
                 );
                 voxelPool.clearPendingPositionRanges();
@@ -455,7 +454,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<Buffer>(
             "VoxelPositionBuffer",
             nullptr,
-            maxSingleVoxels * sizeof(C_Position3D),
+            maxSingleVoxels * sizeof(IRRender::VoxelGpuPosition),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_SingleVoxelPositions

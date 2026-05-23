@@ -14,7 +14,7 @@
 #include <numbers>
 #include <string>
 // COMPONENTS
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
@@ -317,7 +317,7 @@ EntityId createVoxelPoolShape(
 ) {
     ivec3 size = halfExtent * 2 + ivec3(1);
     EntityId entity =
-        IREntity::createEntity(C_Position3D{position}, C_VoxelSetNew{size, color, true});
+        IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
 
     auto sdfType = static_cast<IRMath::SDF::ShapeType>(type);
@@ -560,7 +560,7 @@ void initEntities() {
         } else {
             auto voxelSet = IRPrefab::DenseVoxel::toComponent(loaded.value_.dense_);
             EntityId vxsEntity = IREntity::createEntity(
-                C_Position3D{vec3(-20.0f, -8.0f, 0.0f)},
+                C_LocalTransform{vec3(-20.0f, -8.0f, 0.0f)},
                 std::move(voxelSet)
             );
             IR_LOG_INFO(

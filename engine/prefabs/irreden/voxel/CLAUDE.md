@@ -62,9 +62,11 @@ for single voxels and particles.
 ## Key systems
 
 - `UPDATE_VOXEL_SET_CHILDREN` (UPDATE pipeline) — pushes per-voxel-set
-  global-position updates into the pool, also registers ownership lookups.
-  Translate-only path: voxels move with the entity's `C_PositionGlobal3D`
-  but no rotation/scale composition. Voxel sets whose `C_PositionGlobal3D`
+  world-position updates into the pool, also registers ownership lookups.
+  Translate-only path: voxels move with the entity's
+  `C_WorldTransform.translation_` (composed by `PROPAGATE_TRANSFORM` from
+  `C_LocalTransform` + parent chain + `TRANSFORM_TRANSLATION` modifiers)
+  but no per-set rotation/scale composition. Voxel sets whose translation
   is unchanged from the prior tick early-out of `updateAsChild` and
   contribute nothing to the per-pool GPU position queue
   (`C_VoxelPool::queuePositionRange`) — a static voxel scene pays zero
@@ -227,9 +229,11 @@ animation clips that want to address joints by string.
   canvas the dense-data ctor stages to `pendingVoxels_`; the element-count
   ctor asserts (use the dense ctor for headless construction). Check
   `numVoxels_ > 0` after construction either way.
-- **Position lag by one frame.** `C_PositionGlobal3D` on a voxel set is
-  only pushed to the pool by `system_update_voxel_set_children`. Any
-  system that moves the entity must run **before** that system in the
+- **Position lag by one frame.** `C_WorldTransform.translation_` on a
+  voxel set is only pushed to the pool by
+  `system_update_voxel_set_children`. Any system that writes the
+  entity's translation (or upstream modifier resolver +
+  `PROPAGATE_TRANSFORM`) must run **before** that system in the
   pipeline or voxels lag a frame.
 - **`onDestroy()` must run.** Destroying a voxel set without the
   destructor (e.g. by bypassing the entity manager) leaks its span.
