@@ -12,13 +12,12 @@
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_sprite_animation_advance.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 
 // COMMANDS
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstring>
@@ -65,13 +64,16 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-        IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -86,6 +88,6 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }

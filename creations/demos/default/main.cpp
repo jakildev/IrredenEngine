@@ -24,11 +24,9 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_gui_elements.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
-
 // COMMAND SUITES
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/camera_controls.hpp>
 
 #include <irreden/render/commands/command_toggle_gui.hpp>
 
@@ -64,19 +62,20 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()}
     );
 
-    IRSystem::registerPipeline(
-        IRTime::Events::RENDER,
-        {IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+    auto renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
          IRSystem::createSystem<IRSystem::GUI_TEXT_RENDER>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
+    IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
     IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
         InputTypes::KEY_MOUSE,

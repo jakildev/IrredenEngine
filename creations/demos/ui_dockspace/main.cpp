@@ -17,7 +17,7 @@
 // Systems — input
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
@@ -42,7 +42,6 @@
 #include <irreden/render/widget_theme.hpp>
 
 // Commands
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <list>
@@ -93,19 +92,22 @@ void initSystems() {
         }
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::LAYOUT_COMPUTE>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SPLITTER>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_DOCK_PREVIEW>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::LAYOUT_COMPUTE>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SPLITTER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DOCK_PREVIEW>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (IRDockspaceDemo::g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -120,7 +122,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

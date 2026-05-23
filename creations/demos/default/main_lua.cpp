@@ -32,7 +32,7 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_debug_culling_minimap.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
@@ -77,10 +77,10 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()}
     );
 
-    IRSystem::registerPipeline(
-        IRTime::Events::RENDER,
-        {IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+    auto renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
          IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
          IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
@@ -90,4 +90,5 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
+    IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }

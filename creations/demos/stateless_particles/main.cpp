@@ -15,7 +15,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
@@ -26,7 +26,6 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdint>
@@ -148,20 +147,23 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -176,7 +178,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

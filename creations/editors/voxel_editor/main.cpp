@@ -49,7 +49,7 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
@@ -68,9 +68,6 @@
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
-
-// Command suites
-#include <irreden/common/command_suite_camera.hpp>
 
 // Frame-based animation state (T-214, F-1.4)
 #include "animation.hpp"
@@ -1434,38 +1431,41 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        rotateSystem,
-        animPlaybackSystem,
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        // TEXT_TO_TRIXEL clears the GUI canvas to transparent in its
-        // beginTick (`canvasTextures_->clear()`). Without this stage,
-        // the GUI canvas keeps stale pixels — when composited over the
-        // main canvas by TRIXEL_TO_FRAMEBUFFER, the result is an
-        // opaque-black overlay that hides the 3D scene. Widget renders
-        // must come AFTER the clear so their pixels survive.
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        loftRenderSystem,
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-        IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.push_front(animPlaybackSystem);
+    renderPipeline.push_front(rotateSystem);
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            // TEXT_TO_TRIXEL clears the GUI canvas to transparent in its
+            // beginTick (`canvasTextures_->clear()`). Without this stage,
+            // the GUI canvas keeps stale pixels — when composited over the
+            // main canvas by TRIXEL_TO_FRAMEBUFFER, the result is an
+            // opaque-black overlay that hides the 3D scene. Widget renders
+            // must come AFTER the clear so their pixels survive.
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            loftRenderSystem,
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+        }
+    );
 
     if (IRVoxelEditor::g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
