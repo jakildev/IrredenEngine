@@ -46,6 +46,28 @@ IR_TOOLS_DIR="$IR_ENGINE_ROOT/engine/tools"
 IR_DEFAULTS_TOML="$IR_TOOLS_DIR/concurrency.toml"
 IR_HOST_TOML="${IR_HOST_TOML:-$HOME/.config/irreden/host.toml}"
 
+# ir_worktree_root — the *invoker's* worktree, distinct from IR_ENGINE_ROOT
+# (which resolves to the script's own checkout via symlink walk-up). The
+# distinction matters because ir-build / ir-run are typically symlinked from
+# ~/bin/ into the main clone, but each fleet worktree builds into its own
+# <worktree>/build/. We want the build dir to follow the cwd, not the script
+# source.
+ir_worktree_root() {
+    local root
+    root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$IR_ENGINE_ROOT")"
+    # In a nested worktree (.claude/worktrees/<name>), the worktree's own
+    # CMakePresets.json sits at the root. Walk up only when it's missing
+    # (older checkouts, ad-hoc layouts).
+    if [[ ! -f "$root/CMakePresets.json" ]]; then
+        if [[ -f "$root/../../CMakePresets.json" ]]; then
+            root="$(cd "$root/../.." && pwd)"
+        elif [[ -f "$root/../CMakePresets.json" ]]; then
+            root="$(cd "$root/.." && pwd)"
+        fi
+    fi
+    echo "$root"
+}
+
 # Lock dir lives in a runtime-temp location so it survives across shells but
 # clears on reboot. XDG_RUNTIME_DIR is Linux-only; macOS doesn't set it.
 if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then

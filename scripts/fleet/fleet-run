@@ -1,224 +1,36 @@
 #!/usr/bin/env bash
-# fleet-run — find and run a built executable from its own directory.
+# fleet-run — backwards-compatible shim for ir-run.
 #
-# Avoids the `cd <dir> && ./<exe>` pattern that triggers Claude Code's
-# compound-command security gate and blocks unattended operation.
+# Execs ir-run (engine/tools/bin/ir-run) with the same arguments.
+# The worktree-aware build dir, exe lookup, --timeout watchdog,
+# --targets delegation, and verb-conditional ir-acquire wrapping
+# (--auto-screenshot → gpu, --auto-profile → benchmark) all live
+# in ir-run.
 #
-# The executable runs from its own directory so sibling data/, shaders/,
-# and scripts/ directories are on its CWD (required by most creations).
-#
-# Usage:
-#   fleet-run IrredenEngineTest --gtest_brief=1
-#   fleet-run IRShapeDebug
-#   fleet-run --timeout 5 IRShapeDebug       # auto-kill after 5 seconds
-#   fleet-run --timeout 0 IRShapeDebug       # explicit opt-out of any default
-#   fleet-run --build-dir /path/to/build IrredenEngineTest
-#   fleet-run --targets [--plain|--plan|--built] [--build-dir DIR]
-#
-# Fleet agents should always use --timeout for GUI executables to avoid
-# leaving windows open and stealing focus from the human.
-#
-# Default timeout (safety net): if --timeout is not passed, the env var
-# FLEET_RUN_DEFAULT_TIMEOUT (seconds) is honored. Unset or 0 means "no
-# watchdog" (exec the binary as before). Set in ~/.fleet/fleet-up.conf or
-# your shell init to catch agents that forgot to pass --timeout — observed
-# failure mode is stuck demo windows lingering on the WSL host after a
-# fleet iteration crashed. Per-invocation `--timeout 0` opts out for that
-# call when you want to run interactively under a set default.
-#
-# Source of truth: scripts/fleet/fleet-run in the engine repo.
+# Source of truth: scripts/fleet/fleet-run in the engine repo (shim).
 # Installed to ~/bin/fleet-run (as a symlink) by scripts/fleet/install.sh.
+# The real implementation lives at engine/tools/bin/ir-run, which is
+# also symlinked into ~/bin/.
 
 set -euo pipefail
 
-# --- Shared helpers (detect_engine_root) ---
-_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
-if [[ ! -f "$_FLEET_COMMON_SH" ]]; then
-    echo "fleet-run: missing fleet-common.sh (expected next to fleet-run)" >&2
-    exit 1
-fi
-# shellcheck source=fleet-common.sh
-source "$_FLEET_COMMON_SH"
+# Resolve ir-run through the symlinked-script discipline used by every
+# other ir-* tool. Prefer the source tree adjacent to this shim (works
+# from a worktree before install.sh runs); fall back to PATH lookup.
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+IR_RUN="$SCRIPT_DIR/../../engine/tools/bin/ir-run"
 
-BUILD_DIR=""
-TIMEOUT=""
-TIMEOUT_EXPLICIT=0
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --build-dir)
-            if [[ $# -lt 2 || "$2" == -* ]]; then
-                echo "fleet-run: --build-dir requires a directory path" >&2
-                exit 2
-            fi
-            BUILD_DIR="$2"
-            shift 2
-            ;;
-        --timeout|-t)
-            if [[ $# -lt 2 || "$2" == -* ]]; then
-                echo "fleet-run: --timeout|-t requires a non-negative integer (seconds); 0 disables" >&2
-                exit 2
-            fi
-            TIMEOUT="$2"
-            TIMEOUT_EXPLICIT=1
-            shift 2
-            ;;
-        --targets)
-            shift
-            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            HELPER="$SCRIPT_DIR/fleet-run-targets"
-            if [[ ! -f "$HELPER" ]]; then
-                echo "fleet-run: missing $HELPER (expected next to fleet-run in the repo)" >&2
-                exit 1
-            fi
-            if [[ -n "$BUILD_DIR" ]]; then
-                exec "$HELPER" --build-dir "$BUILD_DIR" "$@"
-            fi
-            exec "$HELPER" "$@"
-            ;;
-        --help|-h)
-            cat <<'USAGE'
-usage: fleet-run [options] <executable-name> [args...]
-   or: fleet-run [options] --targets [list-options...]
-
-Run mode
-  Finds <executable-name> anywhere under the build tree, cd's to that
-  executable's directory, and runs it so sibling data/, shaders/, and
-  scripts/ are on the process cwd.
-
-  Arguments after <executable-name> are passed through to the program.
-
-  Options (run mode):
-    --build-dir <dir>   CMake build directory (must contain the built binary).
-                        Default: see "Build directory" below.
-    --timeout N | -t N  Run under a watchdog: kill after N whole seconds.
-                        Exit 0 if still running at timeout (treat as healthy
-                        for smoke tests). Exit 1 if the process died early
-                        with non-zero status. `--timeout 0` is the explicit
-                        opt-out (exec the binary, no watchdog). Omit for the
-                        FLEET_RUN_DEFAULT_TIMEOUT default if set, else exec.
-
-  Env vars:
-    FLEET_RUN_DEFAULT_TIMEOUT   Default for --timeout when not passed.
-                                Unset or 0 = no watchdog (historic behavior).
-                                Set in ~/.fleet/fleet-up.conf or shell init
-                                to catch fleet agents that forgot --timeout.
-
-  Build directory (when not using --build-dir):
-    1. $IRREDEN_BUILD_DIR if set
-    2. <git-worktree-root>/build from git rev-parse
-    3. $HOME/src/IrredenEngine/build if not in a git worktree
-
-Target listing mode
-  fleet-run --targets [list-options...]
-
-  Delegates to scripts/fleet/fleet-run-targets (same as running that script).
-  Full option reference is printed below.
-
-Other fleet tools (build, tmux fleet, claims, …): fleet-help
-
-USAGE
-            HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-run-targets"
-            if [[ -f "$HELPER" ]]; then
-                echo "---------- fleet-run --targets (full options) ----------"
-                bash "$HELPER" --help
-            else
-                echo "fleet-run: warning: $HELPER not found; target-listing help omitted." >&2
-            fi
-            exit 0
-            ;;
-        --) shift; break ;;
-        -*) echo "fleet-run: unknown option '$1' (try fleet-run --help)" >&2; exit 2 ;;
-        *) break ;;
-    esac
-done
-
-if [[ $# -eq 0 ]]; then
-    echo "usage: fleet-run [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
-    echo "       fleet-run --targets [--plain | --plan | --built] [--build-dir <dir>]" >&2
-    echo "       fleet-run --help" >&2
-    exit 2
+if [[ -x "$IR_RUN" ]]; then
+    exec "$IR_RUN" "$@"
 fi
 
-# Apply FLEET_RUN_DEFAULT_TIMEOUT when --timeout was not passed.
-# 0 (or unset) means "no watchdog" — preserves the historic behavior of
-# `fleet-run <exe>` exec'ing the binary in the current shell. Any
-# positive integer in the env becomes the default.
-if (( ! TIMEOUT_EXPLICIT )) && [[ -n "${FLEET_RUN_DEFAULT_TIMEOUT:-}" ]]; then
-    TIMEOUT="$FLEET_RUN_DEFAULT_TIMEOUT"
+# Fall back to PATH-resolved ir-run (~/bin/ir-run after install.sh).
+if command -v ir-run >/dev/null 2>&1; then
+    exec ir-run "$@"
 fi
 
-if [[ -n "$TIMEOUT" ]]; then
-    if ! [[ "$TIMEOUT" =~ ^(0|[1-9][0-9]*)$ ]]; then
-        echo "fleet-run: timeout must be a non-negative integer (seconds), got '$TIMEOUT'" >&2
-        exit 2
-    fi
-    # 0 = explicit no-timeout. Clear so the rest of the script treats
-    # this the same as "--timeout not passed".
-    if [[ "$TIMEOUT" == "0" ]]; then
-        TIMEOUT=""
-    fi
-fi
-
-EXE_NAME="$1"
-shift
-
-# Default build dir: same auto-detection logic as fleet-build.
-if [[ -z "$BUILD_DIR" ]]; then
-    WORKTREE_ROOT=$(detect_engine_root)
-    BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
-fi
-
-if [[ ! -d "$BUILD_DIR" ]]; then
-    echo "fleet-run: build directory $BUILD_DIR does not exist." >&2
-    echo "           run 'fleet-build --target $EXE_NAME' first." >&2
-    exit 1
-fi
-
-# Find the executable in the build tree.
-EXE_PATH=$(find "$BUILD_DIR" -name "$EXE_NAME" -type f -perm -u=x 2>/dev/null | head -1)
-
-if [[ -z "$EXE_PATH" ]]; then
-    echo "fleet-run: could not find executable '$EXE_NAME' in $BUILD_DIR" >&2
-    echo "           build it first: fleet-build --target $EXE_NAME" >&2
-    exit 1
-fi
-
-EXE_DIR=$(dirname "$EXE_PATH")
-
-# --- No timeout: interactive mode, exec replaces this process --------------
-if [[ -z "$TIMEOUT" ]]; then
-    echo "fleet-run: $EXE_PATH $*"
-    cd "$EXE_DIR"
-    exec "./$EXE_NAME" "$@"
-fi
-
-# --- Timeout mode: launch, wait, kill, report ------------------------------
-echo "fleet-run: $EXE_PATH $* (timeout: ${TIMEOUT}s)"
-cd "$EXE_DIR"
-"./$EXE_NAME" "$@" &
-PID=$!
-
-# Wait for either the timeout or the process to exit early (crash).
-elapsed=0
-while [[ $elapsed -lt $TIMEOUT ]]; do
-    if ! kill -0 "$PID" 2>/dev/null; then
-        # Process exited before timeout — check if it crashed.
-        exit_code=0
-        wait "$PID" 2>/dev/null || exit_code=$?
-        if [[ $exit_code -eq 0 ]]; then
-            echo "fleet-run: $EXE_NAME exited cleanly after ${elapsed}s"
-            exit 0
-        else
-            echo "fleet-run: $EXE_NAME crashed after ${elapsed}s (exit code $exit_code)"
-            exit 1
-        fi
-    fi
-    sleep 1
-    elapsed=$((elapsed + 1))
-done
-
-# Process survived the timeout — it's healthy. Kill it.
-kill "$PID" 2>/dev/null
-wait "$PID" 2>/dev/null || true
-echo "fleet-run: $EXE_NAME ran for ${TIMEOUT}s without crashing — killed"
-exit 0
+echo "fleet-run: cannot find ir-run (expected at $IR_RUN or on PATH)" >&2
+echo "           run scripts/fleet/install.sh to set up the symlinks" >&2
+exit 1

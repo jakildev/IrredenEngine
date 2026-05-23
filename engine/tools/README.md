@@ -12,17 +12,24 @@ primitives and host probe they will sit on top of.
 
 ## Status
 
-Sub-task 1 of issue #1074 (T-318). Lands:
+Sub-tasks 1–2 of issue #1074 (T-318, T-329). Lands:
 
 - `ir-host-probe` — deterministic hardware fingerprint
 - `ir-acquire` — CPU / GPU / perf lock primitives + `benchmark` canned mode
+- `ir-build` — cmake wrapper, wraps the build in `ir-acquire cpu`
+- `ir-run` — exe runner, verb-conditional `ir-acquire` (`gpu` for
+  `--auto-screenshot`, `benchmark` for `--auto-profile`)
 - shared library (`lib/concurrency_helpers.sh`) and engine defaults
   (`concurrency.toml`)
 - `test/tools/concurrency_test.sh` / `test/tools/calibration_test.sh`
 
-Sub-tasks 2–4 (`ir-build` / `ir-run` migration; `ir-perf-grid` +
-fingerprinted baselines; doc-only worker-role updates) are split into
-follow-up issues per the parent issue's "Suggested PR sequence".
+`scripts/fleet/fleet-build` and `scripts/fleet/fleet-run` are one-line
+shims that exec into `ir-build` / `ir-run`. Old invocations continue to
+work; agents need not rewrite call sites.
+
+Sub-tasks 3–4 (`ir-perf-grid` + fingerprinted baselines; doc-only
+worker-role updates) are split into follow-up issues per the parent
+issue's "Suggested PR sequence".
 
 ## Inventory
 
@@ -30,6 +37,8 @@ follow-up issues per the parent issue's "Suggested PR sequence".
 |---|---|
 | `bin/ir-host-probe` | Print this host's JSON fingerprint. Cached at `$XDG_CACHE_HOME/irreden/host-fingerprint.json`. |
 | `bin/ir-acquire` | Acquire CPU slots, GPU, perf, or all three (`benchmark`). Releases on command exit. |
+| `bin/ir-build` | `cmake --build` wrapper, holds `ir-acquire cpu` for the build window. Each worktree builds into its own `build/`. |
+| `bin/ir-run` | Run a built executable from its own directory; wraps `--auto-screenshot` in `ir-acquire gpu` and `--auto-profile` in `ir-acquire benchmark`. |
 | `lib/concurrency_helpers.sh` | Sourced by `bin/ir-*`. Lock primitives + 3-layer config resolver. |
 | `py/ir_hardware_probe.py` | Python module called by `ir-host-probe`. Linux + macOS. |
 | `concurrency.toml` | Committed engine defaults — first layer of the three-layer config. |

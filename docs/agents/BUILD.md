@@ -42,14 +42,33 @@ it in a dedicated PR, not to work around it.
 
 In all three cases:
 
-- **Each worktree has its own build tree.** `fleet-build` auto-detects
-  the worktree root (`git rev-parse --show-toplevel`) and uses
-  `<worktree>/build/`. If the build hasn't been configured yet,
-  `fleet-build` runs `cmake --preset` automatically. Agents edit
-  files in their own worktree and build there — no need to touch the
-  main clone.
+- **Each worktree has its own build tree.** `ir-build` (and the legacy
+  `fleet-build` shim) auto-detects the worktree root
+  (`git rev-parse --show-toplevel`) and uses `<worktree>/build/`. If
+  the build hasn't been configured yet, `ir-build` runs `cmake
+  --preset` automatically. Agents edit files in their own worktree and
+  build there — no need to touch the main clone.
 - `CMAKE_CXX_STANDARD` is **23**; your compiler must support it.
   (gcc ≥ 13 on Linux/WSL, gcc ≥ 13 via MSYS2 on Windows.)
+
+### `ir-build` / `ir-run` (canonical) vs `fleet-build` / `fleet-run` (aliases)
+
+The canonical build/run wrappers live at `engine/tools/bin/ir-build`
+and `engine/tools/bin/ir-run` — they coordinate the same machine
+across the fleet, a solo dev, and CI, so the canonical home is
+engine-tools, not fleet. `scripts/fleet/fleet-build` and
+`scripts/fleet/fleet-run` are one-line shims that `exec` into the
+canonical names; every existing invocation continues to work.
+
+`ir-build` wraps `cmake --build` in `ir-acquire cpu N`, and `ir-run`
+wraps `--auto-screenshot` runs in `ir-acquire gpu` (and
+`--auto-profile` in `ir-acquire benchmark`). Two parallel fleet
+workers therefore serialize on the configured CPU budget or split it
+in half (`IR_FLEET_WORKERS=2` → each build caps at `budget/2` cores)
+without any per-call accounting.
+
+Use whichever name you prefer; the rest of this doc mixes them and
+both keep working.
 
 ---
 
