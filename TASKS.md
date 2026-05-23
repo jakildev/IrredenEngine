@@ -264,18 +264,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **editors/voxel_editor: migrate EditorViewportRotate to member-on-System<N> form** — refactor the inline EditorViewportRotate system to follow the T-317 CAMERA_MOUSE_ROTATE pattern
-  - **ID:** T-324
-  - **Area:** creations/editors/voxel_editor
-  - **Model:** sonnet
-  - **Owner:** claude/T-324-editor-viewport-rotate
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) EditorViewportRotate no longer uses setSystemParams(std::move(...)); (2) voxel editor right-drag camera rotation behaves identically (same sensitivity); (3) fleet-build clean linux-debug and macos-debug
-  - **Issue:** #1080
-  - **Notes:** Refactor main.cpp:1203-1227. State (firstRotFrame_, prevMouseX_) moves onto System<N> specialization (preferred — add enum entry if framework allows) or shared_ptr struct as fallback. Stays creation-local, not promoted to engine prefab. Independent of #1075 and camera-SO(3) work.
-  - **Links:**
-
-
 - [~] **render: unified camera-controls bundle + trackpad gesture support** — extract CAMERA_SCROLL_ZOOM + CAMERA_TRACKPAD_PAN prefabs and expose IRPrefab::Camera::standardControlSystems() bundle with Space+two-finger pan on macOS
   - **ID:** T-325
   - **Area:** engine/prefabs/irreden/render, engine/system
@@ -315,6 +303,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
 - [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
 - [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
 - [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
@@ -334,4 +323,3 @@ Avoid:
 - [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
 - [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
 - [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
-- [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
