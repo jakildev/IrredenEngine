@@ -34,8 +34,10 @@ const int randomInt(const int min, const int max) {
 }
 
 const float randomFloat(const float min, const float max) {
-    // uniform_real_distribution is [min, max) by spec; range tests
-    // tolerate either bound so the half-open is fine.
+    // uniform_real_distribution is [min, max) — half-open, upper bound
+    // excluded. This differs from the prior rand()-based implementation
+    // which was [min, max] (closed). Range tests tolerate either bound;
+    // callers must not rely on sampling the exact upper bound.
     std::uniform_real_distribution<float> dist(min, max);
     return dist(t_rng);
 }

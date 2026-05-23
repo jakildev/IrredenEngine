@@ -21,103 +21,6 @@ using namespace IRMath;
 namespace IRSystem {
 
 template <> struct System<ANIMATION_COLOR> {
-    // Per-tick caches replacing the prior function-local statics. Live
-    // on the System<N> instance so the engine owns the lifetime and
-    // multi-instance use cannot cross-talk. `endTick` clears both so
-    // entity-id reuse across frames never returns stale data.
-    std::unordered_map<IREntity::EntityId, const C_AnimClipColorTrack *> colorTrackCache_;
-    std::unordered_map<IREntity::EntityId, const C_AnimationClip *> clipCache_;
-
-    const C_AnimClipColorTrack *fetchColorTrack(IREntity::EntityId id) {
-        if (id == IREntity::kNullEntity) {
-            return nullptr;
-        }
-        auto it = colorTrackCache_.find(id);
-        if (it != colorTrackCache_.end()) {
-            return it->second;
-        }
-        auto opt = IREntity::getComponentOptional<C_AnimClipColorTrack>(id);
-        const C_AnimClipColorTrack *ptr = opt.has_value() ? opt.value() : nullptr;
-        colorTrackCache_[id] = ptr;
-        return ptr;
-    }
-
-    const C_AnimationClip *fetchClip(IREntity::EntityId id) {
-        if (id == IREntity::kNullEntity) {
-            return nullptr;
-        }
-        auto it = clipCache_.find(id);
-        if (it != clipCache_.end()) {
-            return it->second;
-        }
-        auto opt = IREntity::getComponentOptional<C_AnimationClip>(id);
-        const C_AnimationClip *ptr = opt.has_value() ? opt.value() : nullptr;
-        clipCache_[id] = ptr;
-        return ptr;
-    }
-
-    static double computeClipProgress(const C_ActionAnimation &anim, const C_AnimationClip &clip) {
-        if (clip.phaseCount_ <= 0) {
-            return 1.0;
-        }
-        if (anim.currentPhase_ < 0) {
-            return 0.0;
-        }
-        if (anim.currentPhase_ >= clip.phaseCount_) {
-            return 1.0;
-        }
-
-        double totalDuration = 0.0;
-        double elapsedBeforeCurrent = 0.0;
-        for (int i = 0; i < clip.phaseCount_; ++i) {
-            const double phaseDur = IRMath::max(0.001, clip.phases_[i].durationSeconds_);
-            totalDuration += phaseDur;
-            if (i < anim.currentPhase_) {
-                elapsedBeforeCurrent += phaseDur;
-            }
-        }
-        if (totalDuration <= 0.0) {
-            return 1.0;
-        }
-
-        const double currentPhaseDur =
-            IRMath::max(0.001, clip.phases_[anim.currentPhase_].durationSeconds_);
-        const double phaseT = IRMath::clamp(anim.phaseElapsed_ / currentPhaseDur, 0.0, 1.0);
-        const double elapsed = elapsedBeforeCurrent + (phaseT * currentPhaseDur);
-        return IRMath::clamp(elapsed / totalDuration, 0.0, 1.0);
-    }
-
-    static double computeElapsedAtPhaseStart(const C_AnimationClip &clip, int phase) {
-        if (phase <= 0) {
-            return 0.0;
-        }
-        const int phaseClamped = IRMath::clamp(phase, 0, clip.phaseCount_);
-        double elapsed = 0.0;
-        for (int i = 0; i < phaseClamped; ++i) {
-            elapsed += IRMath::max(0.001, clip.phases_[i].durationSeconds_);
-        }
-        return elapsed;
-    }
-
-    static double
-    computeCurrentClipElapsed(const C_ActionAnimation &anim, const C_AnimationClip &clip) {
-        if (clip.phaseCount_ <= 0) {
-            return 0.0;
-        }
-        if (anim.currentPhase_ <= 0) {
-            const double phaseDur = IRMath::max(0.001, clip.phases_[0].durationSeconds_);
-            return IRMath::clamp(anim.phaseElapsed_, 0.0, phaseDur);
-        }
-        if (anim.currentPhase_ >= clip.phaseCount_) {
-            return computeElapsedAtPhaseStart(clip, clip.phaseCount_);
-        }
-
-        const double phaseDur =
-            IRMath::max(0.001, clip.phases_[anim.currentPhase_].durationSeconds_);
-        return computeElapsedAtPhaseStart(clip, anim.currentPhase_) +
-               IRMath::clamp(anim.phaseElapsed_, 0.0, phaseDur);
-    }
-
     void
     tick(const C_ActionAnimation &anim, C_AnimColorState &colorState, C_VoxelSetNew &voxelSet) {
         // The body looks up the active clip's components through
@@ -303,8 +206,8 @@ template <> struct System<ANIMATION_COLOR> {
     }
 
     void endTick() {
-        colorTrackCache_.clear();
-        clipCache_.clear();
+        m_colorTrackCache.clear();
+        m_clipCache.clear();
     }
 
     static SystemId create() {
@@ -313,6 +216,104 @@ template <> struct System<ANIMATION_COLOR> {
             const C_ActionAnimation,
             C_AnimColorState,
             C_VoxelSetNew>("AnimationColor");
+    }
+
+private:
+    // Per-tick caches replacing the prior function-local statics. Live
+    // on the System<N> instance so the engine owns the lifetime and
+    // multi-instance use cannot cross-talk. `endTick` clears both so
+    // entity-id reuse across frames never returns stale data.
+    std::unordered_map<IREntity::EntityId, const C_AnimClipColorTrack *> m_colorTrackCache;
+    std::unordered_map<IREntity::EntityId, const C_AnimationClip *> m_clipCache;
+
+    const C_AnimClipColorTrack *fetchColorTrack(IREntity::EntityId id) {
+        if (id == IREntity::kNullEntity) {
+            return nullptr;
+        }
+        auto it = m_colorTrackCache.find(id);
+        if (it != m_colorTrackCache.end()) {
+            return it->second;
+        }
+        auto opt = IREntity::getComponentOptional<C_AnimClipColorTrack>(id);
+        const C_AnimClipColorTrack *ptr = opt.has_value() ? opt.value() : nullptr;
+        m_colorTrackCache[id] = ptr;
+        return ptr;
+    }
+
+    const C_AnimationClip *fetchClip(IREntity::EntityId id) {
+        if (id == IREntity::kNullEntity) {
+            return nullptr;
+        }
+        auto it = m_clipCache.find(id);
+        if (it != m_clipCache.end()) {
+            return it->second;
+        }
+        auto opt = IREntity::getComponentOptional<C_AnimationClip>(id);
+        const C_AnimationClip *ptr = opt.has_value() ? opt.value() : nullptr;
+        m_clipCache[id] = ptr;
+        return ptr;
+    }
+
+    static double computeClipProgress(const C_ActionAnimation &anim, const C_AnimationClip &clip) {
+        if (clip.phaseCount_ <= 0) {
+            return 1.0;
+        }
+        if (anim.currentPhase_ < 0) {
+            return 0.0;
+        }
+        if (anim.currentPhase_ >= clip.phaseCount_) {
+            return 1.0;
+        }
+
+        double totalDuration = 0.0;
+        double elapsedBeforeCurrent = 0.0;
+        for (int i = 0; i < clip.phaseCount_; ++i) {
+            const double phaseDur = IRMath::max(0.001, clip.phases_[i].durationSeconds_);
+            totalDuration += phaseDur;
+            if (i < anim.currentPhase_) {
+                elapsedBeforeCurrent += phaseDur;
+            }
+        }
+        if (totalDuration <= 0.0) {
+            return 1.0;
+        }
+
+        const double currentPhaseDur =
+            IRMath::max(0.001, clip.phases_[anim.currentPhase_].durationSeconds_);
+        const double phaseT = IRMath::clamp(anim.phaseElapsed_ / currentPhaseDur, 0.0, 1.0);
+        const double elapsed = elapsedBeforeCurrent + (phaseT * currentPhaseDur);
+        return IRMath::clamp(elapsed / totalDuration, 0.0, 1.0);
+    }
+
+    static double computeElapsedAtPhaseStart(const C_AnimationClip &clip, int phase) {
+        if (phase <= 0) {
+            return 0.0;
+        }
+        const int phaseClamped = IRMath::clamp(phase, 0, clip.phaseCount_);
+        double elapsed = 0.0;
+        for (int i = 0; i < phaseClamped; ++i) {
+            elapsed += IRMath::max(0.001, clip.phases_[i].durationSeconds_);
+        }
+        return elapsed;
+    }
+
+    static double
+    computeCurrentClipElapsed(const C_ActionAnimation &anim, const C_AnimationClip &clip) {
+        if (clip.phaseCount_ <= 0) {
+            return 0.0;
+        }
+        if (anim.currentPhase_ <= 0) {
+            const double phaseDur = IRMath::max(0.001, clip.phases_[0].durationSeconds_);
+            return IRMath::clamp(anim.phaseElapsed_, 0.0, phaseDur);
+        }
+        if (anim.currentPhase_ >= clip.phaseCount_) {
+            return computeElapsedAtPhaseStart(clip, clip.phaseCount_);
+        }
+
+        const double phaseDur =
+            IRMath::max(0.001, clip.phases_[anim.currentPhase_].durationSeconds_);
+        return computeElapsedAtPhaseStart(clip, anim.currentPhase_) +
+               IRMath::clamp(anim.phaseElapsed_, 0.0, phaseDur);
     }
 };
 
