@@ -12,9 +12,8 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
-
 // SYSTEMS
+#include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -73,16 +72,8 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    // Drive the camera yaw each frame. Anchored on C_CameraYaw (the engine's
-    // camera entity always has this component), so endTick fires exactly once.
-    auto yawRotateSystem = IRSystem::createSystem<C_CameraYaw>(
-        "AutoYawRotate",
-        [](C_CameraYaw &) {},
-        []() { IRPrefab::Camera::rotateYaw(kYawDeltaPerFrame); }
-    );
-
     std::list<IRSystem::SystemId> renderPipeline = {
-        yawRotateSystem,
+        IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame),
         IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
