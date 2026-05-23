@@ -264,11 +264,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Tools: ir-build / ir-run migration (sub-task 2 of #1074)** — port fleet-build/fleet-run to ir-build/ir-run with ir-acquire cpu/gpu wiring; leave old paths as one-line exec shims
+- [~] **Tools: ir-build / ir-run migration (sub-task 2 of #1074)** — port fleet-build/fleet-run to ir-build/ir-run with ir-acquire cpu/gpu wiring; leave old paths as one-line exec shims
   - **ID:** T-329
   - **Area:** engine/tools/bin, scripts/fleet, docs/agents
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Stack:** T-318..T-331 ir-tools-split
   - **Acceptance:** fleet-build --target IRShapeDebug works via shim; ir-build --target IRShapeDebug works directly; ir-acquire --info during build shows cpu slot held; ir-acquire --info during --auto-screenshot shows gpu lock held; two parallel ir-build invocations serialize on CPU budget (workers=1) or halve per-build cap (workers=2)
