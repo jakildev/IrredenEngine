@@ -244,6 +244,23 @@ Order in the list is execution order. Systems run sequentially — no
 parallelism. A creation registers its pipelines during init; changing them
 mid-frame is supported but uncommon.
 
+## SystemAccess derivation (T-221, unused in Phase 1)
+
+`engine/system/include/irreden/system/system_access.hpp` defines
+`deriveAccessFromSignature<TickFn, Components...>()` — a constexpr
+trait that returns a `SystemAccess` descriptor (reads / writes set,
+`usesEntityId_`, `isBatchForm_`, plus tag flags `Spawns`, `Destroys`,
+`MainThread`, `ParallelSafe`, `AlsoReads<...>`, `AlsoWrites<...>`).
+The descriptor is the input T-222 (`PARALLEL_FOR` single-system
+validation) and T-224 (cross-system access validator) will use to
+decide whether a system can be scheduled on the worker pool. **No
+system consumes the descriptor yet** in Phase 1 — pure unit-test
+surface; reads vs writes is signalled by `const`-ness on the
+component in the template pack (`createSystem<const C_Foo, C_Bar>`
+records `C_Foo` as read and `C_Bar` as written). New systems can opt
+in to the const-as-read marker; legacy systems stay conservative
+(all writes).
+
 ## Gotchas
 
 - **Archetype mutations in a TICK will skip or revisit entities.** If you

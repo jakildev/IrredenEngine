@@ -28,6 +28,7 @@ World::World(const char *configFileName)
     , m_entityManager{}
     , m_commandManager{}
     , m_systemManager{}
+    , m_jobManager{static_cast<int>(m_worldConfig["worker_thread_count"].get_integer())}
     , m_inputManager{}
     , m_renderingResourceManager{}
     , m_renderer{
