@@ -104,21 +104,21 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
 
         mat4 model = mat4(1.0f);
 
-        // Pixel perfect part
-        if (name == "main") {
-            vec2 framebufferPositionOffset = IRMath::floor(
-                IRMath::fract(
-                    IRMath::pos2DIsoToPos2DGameResolution(
-                        IRMath::fract(cameraPositionIso),
-                        IRRender::getCameraZoom()
-                    )
-                ) *
-                IRPlatform::kIsoToScreenSign * vec2(scaleFactor)
+        // Screen-pixel half of the anti-vibration decomposition (see
+        // `IRMath::cameraSubPixelOffsets`). `TRIXEL_TO_FRAMEBUFFER` consumes
+        // the matching `framebufferGamePxOffset_` from the same helper —
+        // both terms derive from one floor() chain so they cannot disagree
+        // at game-pixel boundaries. The name check matches the framebuffer
+        // entity created by `RenderManager` (see `kFramebuffer` prefab,
+        // `render_manager.cpp:47`); only the main framebuffer carries the
+        // camera-driven sub-pixel residual.
+        if (name == "mainFramebuffer") {
+            const IRMath::CameraSubPixelOffsets sub = IRMath::cameraSubPixelOffsets(
+                cameraPositionIso,
+                IRRender::getCameraZoom(),
+                scaleFactor
             );
-            offset += framebufferPositionOffset;
-        } else if (name == "background") {
-            // Need to offset by one pixel here but not exactly sure why atm
-            offset += IRPlatform::kIsoToScreenSign * vec2(scaleFactor);
+            offset += vec2(sub.screenPxResidual_);
         }
         model = IRMath::translate(model, vec3(offset.x, offset.y, 0.0f));
         model = IRMath::scale(

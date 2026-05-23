@@ -43,114 +43,115 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     }
 
     static SystemId create() {
-        SystemId s =
-            createSystem<C_EntityCanvas, C_WorldTransform>(
-                "EntityCanvasToFramebuffer",
-                [](IREntity::EntityId entityId,
-                   const C_EntityCanvas &entityCanvas,
-                   const C_WorldTransform &worldTransform) {
-                    if (!entityCanvas.visible_ ||
-                        entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
-                        static_cast<int>(getInstances().size()) >= kMaxEntityCanvasInstances) {
-                        return;
-                    }
-
-                    auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
-                        entityCanvas.canvasEntity_
-                    );
-                    if (!texOpt.has_value())
-                        return;
-                    auto *canvasTextures = texOpt.value();
-
-                    auto &framebuffer =
-                        IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-                    vec2 fbRes = vec2(framebuffer.getResolutionPlusBuffer());
-                    vec2 mainCanvasSize = IRRender::getMainCanvasSizeTrixels();
-                    vec2 cameraIso = IRRender::getCameraPosition2DIso();
-                    vec2 cameraZoom = IRRender::getCameraZoom();
-
-                    vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
-
-                    ivec2 mainCanvasSizeI = ivec2(mainCanvasSize);
-                    vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
-                    vec2 entityOnMainCanvas = canvasOriginZ1 + IRMath::floor(cameraIso) + entityIso;
-                    vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize;
-
-                    vec2 isoPixelOffset =
-                        IRMath::floor(
-                            pos2DIsoToPos2DGameResolution(IRMath::fract(cameraIso), cameraZoom)
-                        ) *
-                        IRPlatform::kIsoToScreenSign;
-
-                    vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
-                    vec2 entityFbCenter = vec2(
-                        fbRes.x * 0.5f + isoPixelOffset.x + entityAPos.x * fbRes.x * cameraZoom.x,
-                        fbRes.y * 0.5f + isoPixelOffset.y + entityAPos.y * fbRes.y * cameraZoom.y
-                    );
-
-                    vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize;
-                    // Placement only: the composite places each detached canvas
-                    // texture at the entity's iso position, axis-aligned. A
-                    // DETACHED entity's full SO(3) rotation is baked into the
-                    // canvas texture itself by the voxel emit (T-295, via
-                    // PROPAGATE_CANVAS_ROTATION → C_CanvasLocalRotation →
-                    // VOXEL_TO_TRIXEL_STAGE_1), so the composite TRS no longer
-                    // applies any rotation.
-                    mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
-                    model = scale(
-                        model,
-                        vec3(
-                            fbRes.x * cameraZoom.x * entityScale.x,
-                            fbRes.y * cameraZoom.y * entityScale.y,
-                            1.0f
-                        )
-                    );
-
-                    FrameDataTrixelToFramebuffer fd{};
-                    fd.mpMatrix_ = calcProjectionMatrix(fbRes) * model;
-                    fd.canvasZoomLevel_ = cameraZoom;
-                    fd.cameraTrixelOffset_ = -entityIso;
-                    fd.textureOffset_ = vec2(0.0f);
-                    fd.distanceOffset_ = 0;
-                    fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
-                    fd.effectiveSubdivisionsForHover_ = vec2(1.0f);
-                    fd.showHoverHighlight_ = 0.0f;
-
-                    CanvasInstance inst{};
-                    inst.frameData_ = fd;
-                    inst.textures_ = canvasTextures;
-                    getInstances().push_back(inst);
-                },
-                []() { getInstances().clear(); },
-                []() {
-                    auto &allInstances = getInstances();
-                    if (allInstances.empty())
-                        return;
-
-                    auto &framebuffer =
-                        IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-                    framebuffer.bindFramebuffer();
-
-                    IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
-                    IRRender::getNamedResource<VAO>("QuadVAO")->bind();
-                    auto *frameDataBuffer =
-                        IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
-
-                    for (auto &inst : allInstances) {
-                        frameDataBuffer
-                            ->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
-                        inst.textures_->bind(0, 1, 2);
-                        IRRender::device()->setPolygonMode(PolygonMode::FILL);
-                        IRRender::device()->drawElements(
-                            DrawMode::TRIANGLES,
-                            IRShapes2D::kQuadIndicesLength,
-                            IndexType::UNSIGNED_SHORT
-                        );
-                    }
-
-                    IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        SystemId s = createSystem<C_EntityCanvas, C_WorldTransform>(
+            "EntityCanvasToFramebuffer",
+            [](IREntity::EntityId entityId,
+               const C_EntityCanvas &entityCanvas,
+               const C_WorldTransform &worldTransform) {
+                if (!entityCanvas.visible_ || entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
+                    static_cast<int>(getInstances().size()) >= kMaxEntityCanvasInstances) {
+                    return;
                 }
-            );
+
+                auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
+                    entityCanvas.canvasEntity_
+                );
+                if (!texOpt.has_value())
+                    return;
+                auto *canvasTextures = texOpt.value();
+
+                auto &framebuffer =
+                    IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+                vec2 fbRes = vec2(framebuffer.getResolutionPlusBuffer());
+                vec2 mainCanvasSize = IRRender::getMainCanvasSizeTrixels();
+                vec2 cameraIso = IRRender::getCameraPosition2DIso();
+                vec2 cameraZoom = IRRender::getCameraZoom();
+
+                vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
+
+                ivec2 mainCanvasSizeI = ivec2(mainCanvasSize);
+                vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
+                vec2 entityOnMainCanvas = canvasOriginZ1 + IRMath::floor(cameraIso) + entityIso;
+                vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize;
+
+                // Game-pixel half of the anti-vibration decomposition —
+                // see `IRMath::cameraSubPixelOffsets`. Matches the
+                // `TRIXEL_TO_FRAMEBUFFER` call site so detached canvases
+                // composite onto the same sub-pixel-snapped grid as the
+                // main canvas.
+                const IRMath::CameraSubPixelOffsets subPixelOffsets =
+                    IRMath::cameraSubPixelOffsets(cameraIso, cameraZoom, ivec2(1));
+                vec2 isoPixelOffset = vec2(subPixelOffsets.framebufferGamePxOffset_);
+
+                vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
+                vec2 entityFbCenter = vec2(
+                    fbRes.x * 0.5f + isoPixelOffset.x + entityAPos.x * fbRes.x * cameraZoom.x,
+                    fbRes.y * 0.5f + isoPixelOffset.y + entityAPos.y * fbRes.y * cameraZoom.y
+                );
+
+                vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize;
+                // Placement only: the composite places each detached canvas
+                // texture at the entity's iso position, axis-aligned. A
+                // DETACHED entity's full SO(3) rotation is baked into the
+                // canvas texture itself by the voxel emit (T-295, via
+                // PROPAGATE_CANVAS_ROTATION → C_CanvasLocalRotation →
+                // VOXEL_TO_TRIXEL_STAGE_1), so the composite TRS no longer
+                // applies any rotation.
+                mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
+                model = scale(
+                    model,
+                    vec3(
+                        fbRes.x * cameraZoom.x * entityScale.x,
+                        fbRes.y * cameraZoom.y * entityScale.y,
+                        1.0f
+                    )
+                );
+
+                FrameDataTrixelToFramebuffer fd{};
+                fd.mpMatrix_ = calcProjectionMatrix(fbRes) * model;
+                fd.canvasZoomLevel_ = cameraZoom;
+                fd.cameraTrixelOffset_ = -entityIso;
+                fd.textureOffset_ = vec2(0.0f);
+                fd.distanceOffset_ = 0;
+                fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
+                fd.effectiveSubdivisionsForHover_ = vec2(1.0f);
+                fd.showHoverHighlight_ = 0.0f;
+
+                CanvasInstance inst{};
+                inst.frameData_ = fd;
+                inst.textures_ = canvasTextures;
+                getInstances().push_back(inst);
+            },
+            []() { getInstances().clear(); },
+            []() {
+                auto &allInstances = getInstances();
+                if (allInstances.empty())
+                    return;
+
+                auto &framebuffer =
+                    IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+                framebuffer.bindFramebuffer();
+
+                IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
+                IRRender::getNamedResource<VAO>("QuadVAO")->bind();
+                auto *frameDataBuffer =
+                    IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
+
+                for (auto &inst : allInstances) {
+                    frameDataBuffer
+                        ->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
+                    inst.textures_->bind(0, 1, 2);
+                    IRRender::device()->setPolygonMode(PolygonMode::FILL);
+                    IRRender::device()->drawElements(
+                        DrawMode::TRIANGLES,
+                        IRShapes2D::kQuadIndicesLength,
+                        IndexType::UNSIGNED_SHORT
+                    );
+                }
+
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            }
+        );
         IRRender::tagGpuStage(s, "entityCanvasToFb");
         return s;
     }
