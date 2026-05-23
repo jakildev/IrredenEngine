@@ -566,13 +566,22 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    IRSystem::registerPipeline(
+    // T-332: First multi-system parallel group in a demo's UPDATE pipeline.
+    // PERIODIC_IDLE writes only C_PeriodicIdle and MODIFIER_DECAY writes only
+    // C_Modifiers — disjoint write sets per SystemAccess derivation, so the
+    // T-224 cross-system validator approves co-execution. The remaining four
+    // groups stay serial: PERIODIC_IDLE_POSITION_OFFSET reads C_PeriodicIdle
+    // (read-after-write on the prior group) and writes C_Modifiers, then
+    // PROPAGATE_TRANSFORM and UPDATE_VOXEL_SET_CHILDREN form a strict
+    // producer→consumer chain on C_WorldTransform. See
+    // docs/perf-reports/threading_phase3.md for measurement.
+    IRSystem::registerPipelineGroups(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
-         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
-         IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
+        {{IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
+          IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
+         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()},
+         {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()},
+         {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
