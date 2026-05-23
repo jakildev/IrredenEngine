@@ -388,12 +388,12 @@ class MetalRenderDevice final : public RenderDevice {
         }
         encoder->setComputePipelineState(pipeline->getComputePipelineState());
         bindComputeResources(encoder);
+        markMetalBufferEncoded(mtlIndirectBuffer);
         encoder->dispatchThreadgroups(
             mtlIndirectBuffer,
             static_cast<NS::UInteger>(offset),
             pipeline->getThreadsPerThreadgroup()
         );
-        markMetalBufferEncoded(mtlIndirectBuffer);
         encoder->endEncoding();
     }
     void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
