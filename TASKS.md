@@ -290,11 +290,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Docs: acquire-late, release-early rule in worker-role docs (sub-task 4 of #1074)** — canonical lock-discipline rule in FLEET.md; one-line pointer from each of the three worker role docs
+- [~] **Docs: acquire-late, release-early rule in worker-role docs (sub-task 4 of #1074)** — canonical lock-discipline rule in FLEET.md; one-line pointer from each of the three worker role docs
   - **ID:** T-331
   - **Area:** docs, .claude/commands
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** T-329
   - **Stack:** T-318..T-331 ir-tools-split
   - **Acceptance:** rule lives in exactly one canonical place (FLEET.md § "Resource coordination" or engine/tools/README.md); each of role-opus-worker.md, role-sonnet-author.md, role-opus-architect.md references it; no duplicated prose; grep confirms single canonical location
