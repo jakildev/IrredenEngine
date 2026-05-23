@@ -1196,33 +1196,31 @@ void initSystems() {
     // scene clicks under the palette. Gizmo input lands after the
     // widget chain so an over-gizmo click doesn't trip the scene-
     // edit path either.
-    auto rotParams = std::make_unique<RotateParams>();
-    auto *rp = rotParams.get();
+    auto rotState = std::make_shared<RotateParams>();
     auto rotateSystem = IRSystem::createSystem<C_CameraYaw>(
         "EditorViewportRotate",
         [](C_CameraYaw &) {},
-        [rp]() {
+        [rotState]() {
             bool rightPressed =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
             bool rightHeld =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::HELD);
 
             if (rightPressed) {
-                rp->firstRotFrame_ = true;
+                rotState->firstRotFrame_ = true;
             }
 
             if (rightHeld) {
                 vec2 mouse = IRInput::getMousePositionScreen();
-                if (!rp->firstRotFrame_) {
-                    float deltaX = mouse.x - rp->prevMouseX_;
+                if (!rotState->firstRotFrame_) {
+                    float deltaX = mouse.x - rotState->prevMouseX_;
                     IRPrefab::Camera::rotateYaw(deltaX * IRVoxelEditor::kRotationSensitivity);
                 }
-                rp->prevMouseX_ = mouse.x;
-                rp->firstRotFrame_ = false;
+                rotState->prevMouseX_ = mouse.x;
+                rotState->firstRotFrame_ = false;
             }
         }
     );
-    IRSystem::setSystemParams(rotateSystem, std::move(rotParams));
 
     // Scrubber + FPS sync (T-214). Runs in INPUT, after WIDGET_APPLY_SLIDER
     // so the drag value is already committed to C_WidgetSlider::currentValue_.
