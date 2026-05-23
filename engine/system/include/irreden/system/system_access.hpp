@@ -261,6 +261,92 @@ constexpr SystemAccess deriveAccessFromSignature() {
     return out;
 }
 
+// ----------------------------------------------------------------------
+// Cross-system pipeline-group conflict check (T-224)
+// ----------------------------------------------------------------------
+
+/// One conflict surfaced between two systems in the same pipeline
+/// group. Returned by `findPipelineGroupConflict` so the caller (the
+/// SystemManager validator, or a unit test) can render a precise
+/// diagnostic that names both systems and the offending component.
+///
+/// `kind_` selects which conflict fired; `componentKey_` is the
+/// `typeKey<T>` of the offending component for the write/write,
+/// write/read, and read/write cases (`nullptr` for the kind-only
+/// cases — `MAIN_THREAD` and double-spawner).
+enum class GroupConflictKind {
+    NONE,
+    MAIN_THREAD_IN_GROUP,
+    WRITE_WRITE,
+    WRITE_READ, // A writes, B reads
+    READ_WRITE, // A reads, B writes
+    TWO_SPAWNERS,
+};
+
+struct GroupConflict {
+    GroupConflictKind kind_{GroupConflictKind::NONE};
+    std::size_t indexA_{0};
+    std::size_t indexB_{0};
+    const void *componentKey_{nullptr};
+};
+
+/// Returns the first conflict between two distinct accesses in
+/// `accesses[0..n)`. Returns `kind_ == NONE` when the group is clean.
+///
+/// The validator is the canonical "Phase 3" cross-system check from
+/// the multithreading epic (#226 Layer 4). Rules, in scan order so
+/// the diagnostic surfaces the strongest claim first:
+///
+/// 1. Any system in the group is `mainThreadOnly_`. `MAIN_THREAD`
+///    can't share a group with anything — pick another group.
+/// 2. Two systems are both `mutatesArchetypeGraph_`. Concurrent
+///    spawners would race on the archetype allocator. (T-225 lifts
+///    this when per-worker deferred mutation lands.)
+/// 3. Writes/reads/writes pairwise conflict on a `componentKey_`.
+///    Symmetric: both directions are reported. (`WRITE_WRITE`
+///    triggers when A and B both write the same key; `WRITE_READ`
+///    when A writes and B reads; `READ_WRITE` when A reads and B
+///    writes. The kind names which side is the writer so callers
+///    can render the directional message without re-querying the
+///    accesses.)
+///
+/// Pure function over `SystemAccess` so unit tests can construct
+/// fixtures without an `IRSystem::createSystem` path. No allocation,
+/// constexpr-friendly. O(group² · components) in the worst case;
+/// groups are tiny (≤8 in practice) so the cost is irrelevant.
+inline GroupConflict findPipelineGroupConflict(const SystemAccess *accesses, std::size_t n) {
+    for (std::size_t i = 0; i < n; ++i) {
+        if (accesses[i].mainThreadOnly_) {
+            return GroupConflict{GroupConflictKind::MAIN_THREAD_IN_GROUP, i, i, nullptr};
+        }
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = i + 1; j < n; ++j) {
+            const SystemAccess &a = accesses[i];
+            const SystemAccess &b = accesses[j];
+            if (a.mutatesArchetypeGraph_ && b.mutatesArchetypeGraph_) {
+                return GroupConflict{GroupConflictKind::TWO_SPAWNERS, i, j, nullptr};
+            }
+            for (std::size_t wi = 0; wi < a.writeCount_; ++wi) {
+                if (b.writesType(a.writes_[wi])) {
+                    return GroupConflict{GroupConflictKind::WRITE_WRITE, i, j, a.writes_[wi]};
+                }
+            }
+            for (std::size_t wi = 0; wi < a.writeCount_; ++wi) {
+                if (b.readsType(a.writes_[wi])) {
+                    return GroupConflict{GroupConflictKind::WRITE_READ, i, j, a.writes_[wi]};
+                }
+            }
+            for (std::size_t wi = 0; wi < b.writeCount_; ++wi) {
+                if (a.readsType(b.writes_[wi])) {
+                    return GroupConflict{GroupConflictKind::READ_WRITE, i, j, b.writes_[wi]};
+                }
+            }
+        }
+    }
+    return GroupConflict{};
+}
+
 } // namespace IRSystem
 
 #endif /* SYSTEM_ACCESS_H */

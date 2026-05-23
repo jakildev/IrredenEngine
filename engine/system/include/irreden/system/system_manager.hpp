@@ -173,6 +173,26 @@ class SystemManager {
     void replaceSystemBody(SystemId system, std::function<void(ArchetypeNode *)> body);
 
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
+
+    /// T-224: pipeline-groups API. Each inner vector is a "parallel
+    /// group" of systems that the cross-system validator (see
+    /// `validateAllPipelineGroups`) has cleared to co-execute on the
+    /// worker pool. Groups themselves run sequentially in declaration
+    /// order; `flushStructuralChanges` runs between groups, never
+    /// between systems within a group (group members are required to
+    /// be structurally clean by the validator). Replaces any prior
+    /// registration for `event`.
+    void
+    registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
+
+    /// T-224: validate every registered pipeline group against the
+    /// cross-system access rules in `system_access.hpp`. Call once
+    /// after all systems and pipelines are registered, before the
+    /// loop starts. FATALs on the first conflict found, naming both
+    /// systems + the offending component. A group of size <= 1 is
+    /// trivially clean and skipped.
+    void validateAllPipelineGroups() const;
+
     void executePipeline(IRTime::Events event);
     void executeSystem(SystemId system);
 
@@ -201,8 +221,24 @@ class SystemManager {
     const TimingAccum &getTimingAccum(SystemId id) const {
         return m_timingAccum[id];
     }
+    /// Flattened, declaration-order view of every pipeline's systems —
+    /// preserved for callers that iterate pipelines for timing /
+    /// telemetry (perf overlay, profile report) and don't care about
+    /// the group partition. Groups are inlined in declaration order:
+    /// `[[a,b], [c]]` reads as `[a, b, c]`. Built lazily from
+    /// `m_systemPipelineGroups` on first read after a registration.
     const std::unordered_map<IRTime::Events, std::list<SystemId>> &getPipelines() const {
-        return m_systemPipelinesNew;
+        refreshFlattenedPipelines();
+        return m_flattenedPipelines;
+    }
+
+    /// T-224: read the group partition for `event` directly (one
+    /// vector per parallel group, in declaration order). Empty if
+    /// no pipeline was registered for `event`.
+    const std::vector<std::vector<SystemId>> &getPipelineGroups(IRTime::Events event) const {
+        static const std::vector<std::vector<SystemId>> kEmpty;
+        auto it = m_systemPipelineGroups.find(event);
+        return it == m_systemPipelineGroups.end() ? kEmpty : it->second;
     }
 
   private:
@@ -216,7 +252,19 @@ class SystemManager {
     std::vector<ErasedParamsPtr> m_systemParams;
     std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
-    std::unordered_map<IRTime::Events, std::list<SystemId>> m_systemPipelinesNew;
+    /// T-224: canonical pipeline storage is per-group. The legacy
+    /// `registerPipeline(list<SystemId>)` translates each system into
+    /// its own one-element group so existing call sites are
+    /// unchanged.
+    std::unordered_map<IRTime::Events, std::vector<std::vector<SystemId>>> m_systemPipelineGroups;
+
+    /// Lazy mirror for `getPipelines()`'s flattened view. Rebuilt by
+    /// `refreshFlattenedPipelines` after any group registration; the
+    /// flag tracks whether the mirror is current.
+    mutable std::unordered_map<IRTime::Events, std::list<SystemId>> m_flattenedPipelines;
+    mutable bool m_flattenedPipelinesDirty{true};
+
+    void refreshFlattenedPipelines() const;
 
     bool m_timingEnabled = false;
     std::vector<TimingAccum> m_timingAccum;

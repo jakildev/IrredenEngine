@@ -240,9 +240,59 @@ IRSystem::registerPipeline(IRTime::Events::UPDATE, {
 });
 ```
 
-Order in the list is execution order. Systems run sequentially — no
-parallelism. A creation registers its pipelines during init; changing them
+Order in the list is execution order. A creation registers its pipelines during init; changing them
 mid-frame is supported but uncommon.
+
+### Pipeline groups (T-224)
+
+`registerPipelineGroups` lets a creation declare which systems are
+safe to **co-execute** within a single UPDATE/RENDER tick. Each inner
+brace is a *parallel group* — its members run concurrently on the
+IRJobs worker pool. Groups themselves run sequentially in declaration
+order; `IREntity::flushStructuralChanges` runs between groups (never
+between systems within a group — the validator ensures group members
+don't mutate the archetype graph at the same time).
+
+```cpp
+IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, {
+    { velocity, drag, gravity },   // group 0: parallel — disjoint writes
+    { globalPosition },            // group 1: serial
+    { lifetime },                  // group 2: serial — spawner / destroyer
+});
+```
+
+Legacy `registerPipeline(list<SystemId>)` is sugar for one-system-per-group —
+every existing call site keeps its prior dispatch semantics bit-for-bit.
+
+**Cross-system access validator.** `IRSystem::validateAllPipelineGroups()`
+runs once at `World::start()`, after every system + every pipeline is
+registered. For each multi-system group it walks the registered
+`SystemAccess` descriptors and FATALs (with both system names + the
+offending component) on the first conflict:
+
+- `mainThreadOnly_` on any group member — `MainThread`-tagged systems
+  cannot co-execute. Pick another group.
+- `writes_` of A intersects `writes_` of B — concurrent writes to the
+  same component column race. Split across groups.
+- `writes_` of A intersects `reads_` of B (or vice-versa) — the
+  reader would observe a torn snapshot. Split across groups.
+- Two `mutatesArchetypeGraph_` (`Spawns` / `Destroys`) systems in the
+  same group — concurrent archetype-graph mutations race on the
+  allocator. T-225 lifts this when per-worker deferred mutations land.
+
+The validator is implemented by `findPipelineGroupConflict` in
+`system_access.hpp` — a pure function over a `SystemAccess` array
+that tests can call directly with hand-built fixtures. The
+SystemManager path wraps it with the per-group iteration + the
+IR_ASSERT diagnostic.
+
+**Dispatch.** `executePipeline` walks the group sequence. Single-system
+groups dispatch serially (identical to the pre-T-224 path). Multi-system
+groups fan out via `IRJobs::parallelFor(0, group.size(), 1, ...)` so each
+system runs on a worker; `flushStructuralChanges` runs once per group on
+the main thread before the next group starts. When `g_jobManager` is
+null (unit tests, pre-`World` init), groups fall back to serial
+in-declaration-order dispatch.
 
 ## SystemAccess derivation (T-221)
 

@@ -88,16 +88,161 @@ void SystemManager::replaceSystemBody(SystemId system, std::function<void(Archet
 }
 
 void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> pipeline) {
-    m_systemPipelinesNew[event] = pipeline;
+    // T-224: legacy single-list form becomes a per-system group
+    // sequence. Each system runs as its own one-element group, which
+    // dispatches serially through the same code path as before —
+    // bit-for-bit equivalent to the previous behavior for existing
+    // call sites.
+    std::vector<std::vector<SystemId>> groups;
+    groups.reserve(pipeline.size());
+    for (SystemId s : pipeline) {
+        groups.push_back({s});
+    }
+    registerPipelineGroups(event, std::move(groups));
+}
+
+void SystemManager::registerPipelineGroups(
+    IRTime::Events event, std::vector<std::vector<SystemId>> groups
+) {
+    m_systemPipelineGroups[event] = std::move(groups);
+    m_flattenedPipelinesDirty = true;
+}
+
+void SystemManager::refreshFlattenedPipelines() const {
+    if (!m_flattenedPipelinesDirty) {
+        return;
+    }
+    m_flattenedPipelines.clear();
+    for (const auto &[event, groups] : m_systemPipelineGroups) {
+        std::list<SystemId> flat;
+        for (const auto &group : groups) {
+            for (SystemId id : group) {
+                flat.push_back(id);
+            }
+        }
+        m_flattenedPipelines.emplace(event, std::move(flat));
+    }
+    m_flattenedPipelinesDirty = false;
+}
+
+void SystemManager::validateAllPipelineGroups() const {
+    for (const auto &[event, groups] : m_systemPipelineGroups) {
+        for (std::size_t gi = 0; gi < groups.size(); ++gi) {
+            const auto &group = groups[gi];
+            if (group.size() <= 1) {
+                continue;
+            }
+            std::vector<SystemAccess> accesses;
+            accesses.reserve(group.size());
+            for (SystemId id : group) {
+                accesses.push_back(getSystemAccess(id));
+            }
+            GroupConflict c = findPipelineGroupConflict(accesses.data(), accesses.size());
+            if (c.kind_ == GroupConflictKind::NONE) {
+                continue;
+            }
+            const std::string &nameA = getSystemName(group[c.indexA_]);
+            const std::string &nameB = getSystemName(group[c.indexB_]);
+            switch (c.kind_) {
+            case GroupConflictKind::MAIN_THREAD_IN_GROUP:
+                IR_ASSERT(
+                    false,
+                    "registerPipelineGroups: system '{}' (group {}) carries the "
+                    "IRSystem::MainThread tag and cannot share a parallel group "
+                    "with another system. Move it to its own group.",
+                    nameA,
+                    gi
+                );
+                break;
+            case GroupConflictKind::TWO_SPAWNERS:
+                IR_ASSERT(
+                    false,
+                    "registerPipelineGroups: systems '{}' and '{}' (group {}) both "
+                    "mutate the archetype graph (IRSystem::Spawns/Destroys). Two "
+                    "spawners in the same group race on the archetype allocator. "
+                    "Split them across groups (T-225 will lift this).",
+                    nameA,
+                    nameB,
+                    gi
+                );
+                break;
+            case GroupConflictKind::WRITE_WRITE:
+                IR_ASSERT(
+                    false,
+                    "registerPipelineGroups: systems '{}' and '{}' (group {}) both "
+                    "write the same component column. Concurrent writes are a "
+                    "data race; split them across groups.",
+                    nameA,
+                    nameB,
+                    gi
+                );
+                break;
+            case GroupConflictKind::WRITE_READ:
+                IR_ASSERT(
+                    false,
+                    "registerPipelineGroups: system '{}' writes a component that "
+                    "system '{}' reads (group {}). The reader would observe a "
+                    "torn snapshot; split them across groups.",
+                    nameA,
+                    nameB,
+                    gi
+                );
+                break;
+            case GroupConflictKind::READ_WRITE:
+                IR_ASSERT(
+                    false,
+                    "registerPipelineGroups: system '{}' reads a component that "
+                    "system '{}' writes (group {}). The reader would observe a "
+                    "torn snapshot; split them across groups.",
+                    nameA,
+                    nameB,
+                    gi
+                );
+                break;
+            case GroupConflictKind::NONE:
+                break;
+            }
+        }
+    }
 }
 
 void SystemManager::executePipeline(IRTime::Events event) {
     IREntity::flushStructuralChanges();
-    auto &systemOrder = m_systemPipelinesNew[event];
-    for (SystemId system : systemOrder) {
-        executeSystem(system);
+    auto it = m_systemPipelineGroups.find(event);
+    if (it == m_systemPipelineGroups.end()) {
+        IREntity::flushStructuralChanges();
+        return;
     }
-    IREntity::flushStructuralChanges();
+    const auto &groups = it->second;
+    for (const auto &group : groups) {
+        if (group.size() == 1) {
+            executeSystem(group[0]);
+        } else if (!group.empty()) {
+            // T-224: parallel group — fan out across the worker pool.
+            // grainSize=1 makes each task one system; the validator
+            // already guarantees no two members conflict.
+            if (g_jobManager != nullptr) {
+                IRJobs::parallelFor(
+                    0,
+                    static_cast<int>(group.size()),
+                    1,
+                    [&group, this](int begin, int end) {
+                        for (int k = begin; k < end; ++k) {
+                            executeSystem(group[k]);
+                        }
+                    }
+                );
+            } else {
+                // No worker pool (unit tests, pre-World init) — fall
+                // back to serial dispatch in declaration order so the
+                // pipeline still runs.
+                for (SystemId id : group) {
+                    executeSystem(id);
+                }
+            }
+        }
+        IREntity::flushStructuralChanges();
+    }
 }
 
 void SystemManager::executeSystem(SystemId system) {
@@ -189,7 +334,9 @@ void SystemManager::executeSystem(SystemId system) {
         entry.second->onAfterTick(system);
     }
 
-    IREntity::flushStructuralChanges();
+    // T-224: structural-changes flush moved up to `executePipeline`
+    // (per-group, not per-system) so multi-system parallel groups
+    // don't race on the entity manager's deferred-mutation buffer.
 }
 
 EntityId SystemManager::handleRelationTick(
