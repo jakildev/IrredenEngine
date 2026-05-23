@@ -36,6 +36,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/math)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/entity)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/system)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/job)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/window)
 # command is declared before script + world because both link it
@@ -87,6 +88,7 @@ target_link_libraries(
     IrredenEngineMath
     IrredenEngineEntity
     IrredenEngineSystem
+    IrredenEngineJob
     # IrredenEngineComponent
     IrredenEngineTime
     IrredenEngineCommand

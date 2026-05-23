@@ -7,6 +7,7 @@ add_library(IrredenEngineWorld STATIC
 target_link_libraries(IrredenEngineWorld PUBLIC
     IrredenEngineEntity
     IrredenEngineSystem
+    IrredenEngineJob
     IrredenEngineProfile
     IrredenEngineTime
     IrredenEngineAudio

@@ -129,6 +129,7 @@ For more advanced setups, the root `CMakeLists.txt` still supports `IRREDEN_USER
 | [StbImage](https://github.com/nothings/stb/tree/master) | IRRender | Multi-format image loading. | [Details](/docs/text/dependencies/stb_image.md) |
 | [MeshOptimizer](https://github.com/zeux/meshoptimizer) | IRRender | Mesh storage and size optimization. | [Details](/docs/text/dependencies/mesh_optimizer.md) |
 | [Assimp](https://github.com/assimp/assimp) | IRRender | Multi-format 3D file loader. | [Details](/docs/text/dependencies/assimp.md) |
+| [enkiTS](https://github.com/dougbinks/enkiTS) | IRJob | Lock-free work-stealing task scheduler for parallel job dispatch. | [Details](/docs/text/dependencies/enkits.md) |
 | [Lua](https://www.lua.org/manual/5.3/) | IRScript | Scripting language for C/C++. | [Details](/docs/text/dependencies/lua.md) |
 | [FFMpeg](https://ffmpeg.org/) | IRVideo | Compression and encoding algorithms. | [Details](/docs/text/dependencies/ffmpeg.md)
 <!-- -   GoogleTest -->

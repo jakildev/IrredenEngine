@@ -6,6 +6,7 @@
 #include <irreden/ir_command.hpp>
 // #include <irreden/command/command_manager.hpp>
 #include <irreden/system/system_manager.hpp>
+#include <irreden/job/job_manager.hpp>
 #include <irreden/render/render_manager.hpp>
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/ir_audio.hpp>
@@ -45,6 +46,10 @@ class World {
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
+    // T-221: worker pool. Lives between World construction and
+    // destruction; sets g_jobManager. No engine system schedules on
+    // it yet (T-222 is the first consumer).
+    IRJob::JobManager m_jobManager;
     IRInput::InputManager m_inputManager;
     IRCommand::CommandManager m_commandManager;
     IRRender::RenderingResourceManager m_renderingResourceManager;

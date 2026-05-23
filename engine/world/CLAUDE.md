@@ -44,12 +44,17 @@ construction time.
    window size, MIDI device, video-capture defaults, etc.).
 2. Constructs every manager in dependency order:
    `IRGLFWWindow` → `LuaScript` → `EntityManager` → `SystemManager` →
-   `InputManager` → `CommandManager` → `RenderingResourceManager` →
-   `RenderManager` → `AudioManager` → `TimeManager` → `VideoManager`.
+   `JobManager` → `InputManager` → `CommandManager` →
+   `RenderingResourceManager` → `RenderManager` → `AudioManager` →
+   `TimeManager` → `VideoManager`.
    `LuaScript` leads the manager block so `sol::state` outlives
    `EntityManager` — archetype columns can hold `sol::object` refs from
    Lua-defined components (T-100), and C++ destructs members in reverse
-   declaration order.
+   declaration order. `JobManager` slots in after `SystemManager`
+   because the worker pool sits below the engine's high-level managers
+   (renderer, input, video) and consumes only `WorldConfig` —
+   see `engine/job/CLAUDE.md` for the IRJob surface and lifetime
+   contract (Phase 1 of the multithreading epic #226).
 3. Sets the globals: `g_entityManager = &m_entityManager;`, etc.
 4. Calls `initEngineSystems()`, `initIRInputSystems()`,
    `initIRUpdateSystems()`, `initIRRenderSystems()` to register the

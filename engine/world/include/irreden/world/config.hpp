@@ -162,6 +162,10 @@ class WorldConfig {
             "entity_count_override",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
         );
+        m_config.addEntry(
+            "worker_thread_count",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(-1)
+        );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }
