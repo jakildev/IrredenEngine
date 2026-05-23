@@ -240,18 +240,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **render: compose camera rotation into DETACHED canvas SO(3) bake** — fix PROPAGATE_CANVAS_ROTATION to compose camera yaw into per-canvas rotation so DETACHED entities rotate with the world camera
-  - **ID:** T-319
-  - **Area:** engine/prefabs/irreden/render, engine/render
-  - **Model:** opus
-  - **Owner:** claude/T-319-propagate-canvas-rotation
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) IRCanvasStress --auto-rotate shows DETACHED cubes rotating with world (camera-space stationary when entity rotation is identity), not screen-fixed; (2) IRCanvasStress default renders identically to today; (3) DETACHED cube under combined camera+entity yaw matches GRID cube of same net world-Z rotation; (4) C_CanvasLocalRotation header comment updated to describe camera-composed semantics; (5) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1075
-  - **Notes:** Bug in T-295: entity rotation copied directly to canvas without composing camera yaw. Fix: canvasRotation_ = quatInverse(R_camera) * entityRotation; snapshot R_camera in beginTick (one global lookup, not per-entity). Expose IRPrefab::Camera::getRotationQuat() returning quatAxisAngle(z, getYaw()) for now — full SO(3) camera is filed separately (#1076, fleet:needs-plan). Emit shader unchanged — faceDeformationMatrixSO3 already eats arbitrary quaternion. GRID world canvas sentinel-zero path unchanged.
-  - **Links:**
-
-
 - [~] **docs: iso-depth-axis invariant design doc** — document why (1,1,1) world-camera Z-yaw-only is invariant for GRID entities and map every call site with cost-to-break annotations
   - **ID:** T-320
   - **Area:** docs
@@ -327,6 +315,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
 - [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
 - [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
 - [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
@@ -346,4 +335,3 @@ Avoid:
 - [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
 - [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
 - [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
-- [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
