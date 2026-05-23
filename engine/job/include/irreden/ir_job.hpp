@@ -1,22 +1,13 @@
 #ifndef IR_JOB_H
 #define IR_JOB_H
 
+#include <irreden/job/ir_job_types.hpp>
+
 #include <functional>
 #include <random>
 #include <string_view>
 
 namespace IRJob {
-
-class JobManager;
-
-/// Worker-pool task surface.
-///
-/// Phase 1 of the multithreading epic (#226). The pool is constructed
-/// by `World` from `WorldConfig::worker_thread_count` and torn down
-/// with `World`. No engine system actually runs on workers yet — T-222
-/// is the first consumer; T-225 covers thread-safe deferred entity
-/// mutations. Until then, every API here is a foundation surface
-/// validated by the unit-test smoke suite only.
 
 /// Splits `[begin, end)` into chunks of at most `grainSize` and runs
 /// `fn(rangeBegin, rangeEnd)` for each chunk on a worker thread.

@@ -162,11 +162,6 @@ class WorldConfig {
             "entity_count_override",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
         );
-        // T-221 (Phase 1 of the multithreading epic, #226). `-1` ==
-        // auto-detect: JobManager picks `max(1, hardware_concurrency()
-        // - 2)`, capped to the P-core count on Apple Silicon. Override
-        // only for benchmarking; the auto value is what production
-        // runs against.
         m_config.addEntry(
             "worker_thread_count",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(-1)
