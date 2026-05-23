@@ -163,18 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Render: low game-resolution mode + sub-pixel / screen-pixel camera smoothing** — restore low-resolution rendering with anti-vibration sub-pixel camera smoothing and a per-entity screen-pixel-precision opt-in
-  - **ID:** T-314
-  - **Area:** engine/render, shaders/glsl, shaders/metal
-  - **Model:** opus
-  - **Owner:** claude/T-314-lowres-subpixel
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) slow camera pan at low game resolution shows no per-frame +/-1px jitter in auto-screenshot diff; (2) game-resolution canvases snap to game-pixel grid; camera tracks at screen-pixel precision; (3) screen-pixel-smooth flagged entity moves smoothly between game pixels; unflagged entities snap; (4) fleet-build clean on linux-debug and macos-debug; OpenGL/Metal parity for any shader change
-  - **Issue:** #1048
-  - **Notes:** Audit system_framebuffer_to_screen.hpp existing sub-pixel path first; anti-vibration rule: decompose camera position once into game-pixel-integer + screen-pixel-remainder and use consistently throughout. Per-entity screen-pixel-smooth opt-in routes through existing SPRITE_TO_SCREEN post-upscale pass. kSizeExtraPixelBuffer margin must cover max one-frame shift. Demo at 320x180 slow pan. Filed by architect (Cursor session).
-  - **Links:**
-
-
 - [~] **Perf: VOXEL_TO_TRIXEL_STAGE_1 per-frame canvas+distance clear** — eliminate ~4.4 ms/frame CPU→GPU texture clear by switching to GPU-side clear or a persistent scratch buffer
   - **ID:** T-315
   - **Area:** engine/render, shaders/metal
@@ -364,6 +352,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
 - [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
 - [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
@@ -383,4 +372,3 @@ Avoid:
 - [x] **T-294** — SYSTEM_REBUILD_GRID_VOXELS runs on entities with changed C_LocalTransform; rotates authored voxels to world-grid cells; last-writer-wins on cell collisions (deterministic by entity ID) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/957
 - [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
 - [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
-- [x] **T-301** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/986
