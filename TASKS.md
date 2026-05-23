@@ -187,11 +187,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Perf: worker_threads axis + entity-count override in perf_grid_matrix** — pre-phase-1 measurement surface for multithreading epic; adds worker_threads axis and entity_count_override to perf_grid_matrix.sh, WorldConfig, and report emitters; files threading baseline doc
+- [~] **Perf: worker_threads axis + entity-count override in perf_grid_matrix** — pre-phase-1 measurement surface for multithreading epic; adds worker_threads axis and entity_count_override to perf_grid_matrix.sh, WorldConfig, and report emitters; files threading baseline doc
   - **ID:** T-220
   - **Area:** build, engine/world, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** perf-gate.yml runs threading-baseline matrix on master; docs/perf-reports/threading_baseline.md exists with {4K, 32K, 262K} × {0, 1, hw-2} cells (all serial today); existing perf-gate cells pass with no regression
