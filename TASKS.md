@@ -163,18 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Perf: VOXEL_TO_TRIXEL_STAGE_1 per-frame canvas+distance clear** — eliminate ~4.4 ms/frame CPU→GPU texture clear by switching to GPU-side clear or a persistent scratch buffer
-  - **ID:** T-315
-  - **Area:** engine/render, shaders/metal
-  - **Model:** sonnet
-  - **Owner:** claude/T-315-gpu-side-canvas-clear
-  - **Blocked by:** (none)
-  - **Acceptance:** vs1_clear scope in perf_grid auto-profile drops well under 1 ms; render-verify passes with no visual regression
-  - **Issue:** #1050
-  - **Notes:** Metal clearTexImage allocates a full-texture std::vector + memset + CPU replaceRegion each frame for the distance texture. Fix: GPU-side compute/blit clear or load-action clear. Also cross-check OpenGL clearTexImage path for same pattern. vs1_clear IR_PROFILE_SCOPE was added in PR #1049.
-  - **Links:**
-
-
 - [~] **Perf: worker_threads axis + entity-count override in perf_grid_matrix** — pre-phase-1 measurement surface for multithreading epic; adds worker_threads axis and entity_count_override to perf_grid_matrix.sh, WorldConfig, and report emitters; files threading baseline doc
   - **ID:** T-220
   - **Area:** build, engine/world, docs
@@ -352,6 +340,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
 - [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
 - [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
@@ -371,4 +360,3 @@ Avoid:
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
 - [x] **T-294** — SYSTEM_REBUILD_GRID_VOXELS runs on entities with changed C_LocalTransform; rotates authored voxels to world-grid cells; last-writer-wins on cell collisions (deterministic by entity ID) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/957
 - [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
-- [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
