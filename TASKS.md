@@ -202,11 +202,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **System: pipeline groups + cross-system access validation** — add registerPipelineGroups API and registration-time cross-system conflict validator; migrate engine UPDATE pipeline
+- [~] **System: pipeline groups + cross-system access validation** — add registerPipelineGroups API and registration-time cross-system conflict validator; migrate engine UPDATE pipeline
   - **ID:** T-224
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-222
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** validator rejects: conflicting-write group (unit-tested), MAIN_THREAD system in group (unit-tested), two spawners in group (unit-tested); engine UPDATE pipeline reorganized; IRShapeDebug --auto-screenshot 60 unchanged; perf_grid_matrix shows additional speedup beyond T-222's number
