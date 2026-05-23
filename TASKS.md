@@ -243,7 +243,7 @@ Avoid:
   - **ID:** T-330
   - **Area:** engine/tools/bin, engine/tools/bench, engine/tools/py, docs/perf, build
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-330-ir-perf-grid
   - **Blocked by:** (none)
   - **Stack:** T-318..T-331 ir-tools-split
   - **Acceptance:** ir-perf-grid runs matrix end-to-end, writes baseline under fingerprinted layout; two consecutive runs on same host produce stable raw + normalized numbers (within 2%); different-host run emits informational host-mismatch path, not regression alert; perf-gate.yml passes against existing master baseline after migration
