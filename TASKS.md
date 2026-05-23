@@ -206,7 +206,7 @@ Avoid:
   - **ID:** T-224
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-224-pipeline-groups
   - **Blocked by:** T-222
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** validator rejects: conflicting-write group (unit-tested), MAIN_THREAD system in group (unit-tested), two spawners in group (unit-tested); engine UPDATE pipeline reorganized; IRShapeDebug --auto-screenshot 60 unchanged; perf_grid_matrix shows additional speedup beyond T-222's number
@@ -219,7 +219,7 @@ Avoid:
   - **ID:** T-225
   - **Area:** engine/entity, engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-225-parallel-spawn
   - **Blocked by:** T-224
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** stress test: PARALLEL_FOR system spawning 10K entities across all workers produces same archetype graph as serial; stress test: concurrent destruction of 10K entities across workers produces correct null state; T-224 validator accepts group containing two Spawns systems (unit-tested); no regression on T-222's ≥2× speedup
@@ -232,7 +232,7 @@ Avoid:
   - **ID:** T-318
   - **Area:** build, tooling
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-318-engine-tools
   - **Blocked by:** (none)
   - **Acceptance:** ir-build/ir-run/ir-acquire/ir-perf-grid exist in engine/tools/bin/; concurrency_test.sh passes lock/budget slot tests and slot-release-on-PID-death; ir-acquire benchmark acquires cpu+gpu+perf in one shot; fleet-build/fleet-run shim to ir-build/ir-run; hardware-fingerprinted baselines at docs/perf/baseline_latest/<fingerprint>/; CI smoke (ir-build IRPerfGrid && ir-run --auto-profile 30 && compare) passes
   - **Issue:** #1074
@@ -240,27 +240,15 @@ Avoid:
   - **Links:**
 
 
-- [~] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
+- [ ] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
   - **ID:** T-323
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) grep -rn SCREEN_SPACE_RESIDUAL_ROTATE engine creations returns zero hits; (2) every demo that used the stage renders identically (render-verify or auto-screenshot diff); (3) voxel_to_trixel_stage_1/stage_2 shaders gain retirement note referencing T-293; (4) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1079
   - **Notes:** Stage is a passthrough since T-293 folded residualYaw into faceDeform_. Audit all of creations/ (including private creations/game/) for consumers before deletion. Delete: v_screen_residual_rotate.glsl, f_screen_residual_rotate.glsl, Metal twins, FrameDataScreenResidualRotate UBO, ScreenSpaceResidualRotateProgram + ScreenSpaceResidualRotateFrameData named resources, SCREEN_SPACE_RESIDUAL_ROTATE SystemName entry. Independent of #1075 and camera-SO(3) work.
-  - **Links:**
-
-
-- [~] **render: unified camera-controls bundle + trackpad gesture support** — extract CAMERA_SCROLL_ZOOM + CAMERA_TRACKPAD_PAN prefabs and expose IRPrefab::Camera::standardControlSystems() bundle with Space+two-finger pan on macOS
-  - **ID:** T-325
-  - **Area:** engine/prefabs/irreden/render, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-325-camera-controls-bundle
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) system_camera_scroll_zoom.hpp, system_camera_trackpad_pan.hpp (optionally system_camera_trackpad_rotate.hpp) exist as engine prefabs with SystemName entries; (2) IRPrefab::Camera::standardControlSystems() and registerStandardKeyboardCommands() exposed; (3) voxel_editor inline scrollZoomSystem replaced by CAMERA_SCROLL_ZOOM, behavior unchanged; (4) on macOS, Space+two-finger trackpad drag pans camera in IRCanvasStress; (5) without Space, two-finger drag zooms; (6) mouse-wheel zoom and middle-drag pan unchanged on Linux+Windows; (7) fleet-build clean linux-debug and macos-debug
-  - **Issue:** #1083
-  - **Notes:** Three parts: (A) extract CAMERA_SCROLL_ZOOM from voxel_editor inline scrollZoomSystem (main.cpp:807-827), member-on-System<N> form, gates on modifier-none so Space+scroll routes to pan; (B) CAMERA_TRACKPAD_PAN: Space+scroll xoffset/yoffset → iso pan delta via screenDeltaToIsoDelta, CAMERA_TRACKPAD_ROTATE optional secondary modifier; (C) standardControlSystems() bundles pan/rotate/zoom/trackpad systems. Pipeline placement: CAMERA_SCROLL_ZOOM → INPUT pipeline (consumes ephemeral C_MouseScroll); others → RENDER pipeline. Modifier choice: Space (per issue title; standard hand-tool convention in image editors). Demo adoption is T-326.
   - **Links:**
 
 
@@ -269,7 +257,7 @@ Avoid:
   - **Area:** creations/demos, creations/editors/voxel_editor
   - **Model:** sonnet
   - **Owner:** claude/T-326-adopt-standard-camera-bundle
-  - **Blocked by:** T-325
+  - **Blocked by:** (none)
   - **Acceptance:** (1) every demo in creations/demos/ uses standardControlSystems() or opts out with a comment; (2) voxel_editor uses bundle for standard set, keeps editor-specific systems (right-drag rotate, scrubber, animation playback); (3) no regressions on mouse-wheel zoom, middle-drag pan, keyboard WASD across demos; (4) on macOS every demo gains trackpad two-finger pan; (5) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1084
   - **Notes:** Mechanical adoption — no design decisions needed (those happen in T-325). Re-grep creations/demos and creations/editors for CAMERA_MOUSE_PAN and registerCameraCommands at PR time for authoritative demo list. Demos that intentionally skip certain controls (e.g. UI-only demos conflicting with widget interactions) stay on manual path with a comment in the PR description.
@@ -280,7 +268,7 @@ Avoid:
   - **ID:** T-327
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-327-cross-host-smoke-windows
   - **Blocked by:** (none)
   - **Acceptance:** (1) PR touching only engine/system/ triggers smoke procedure; (2) PR touching only CMakeLists.txt triggers smoke procedure; (3) PR authored from MSYS2 Windows gets fleet:authored-on-windows and reviewer adds the correct two smoke labels per updated table; (4) existing rendering PR smoke behavior unchanged; (5) five new labels (fleet:needs-windows-smoke, fleet:authored-on-windows, fleet:verified-linux, fleet:verified-macos, fleet:verified-windows) exist in engine repo with correct descriptions; (6) fleet:needs-linux-smoke and fleet:needs-macos-smoke descriptions updated to drop "Render PR"
   - **Issue:** #1091
@@ -291,6 +279,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
 - [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
 - [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
 - [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
@@ -310,4 +299,3 @@ Avoid:
 - [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
 - [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
 - [x] **T-304** — render: extract mask-grid pixel packing into renderer helper · Owner: claude/T-304-render-mask-grid-helper · PR: https://github.com/jakildev/IrredenEngine/pull/1031
-- [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
