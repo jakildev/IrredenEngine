@@ -7,15 +7,18 @@ project(enkiTS LANGUAGES CXX)
 # FetchContent_MakeAvailable is enough; no native Makefile invocation
 # (the LuaJIT precedent next door) needed.
 #
-# Override IR_ENKITS_GIT_TAG to a commit SHA for a reproducible build.
+# Default pins the v1.11 commit SHA for a reproducible build. Override
+# IR_ENKITS_GIT_TAG to a branch or tag name (and set GIT_SHALLOW TRUE in
+# the FetchContent_Declare below) for a mutable reference.
 # The tag is the only knob: enkiTS' own CMakeLists.txt builds a static
 # library called `enkiTS` by default, which we re-export as the IMPORTED
 # target `enkits` to keep the engine-side link name consistent with the
 # `lua` rename in `engine/script/third_party/luajit/CMakeLists.txt`.
 include(FetchContent)
 
-set(IR_ENKITS_GIT_TAG "v1.11" CACHE STRING
-    "enkiTS git ref (branch, tag, or commit) to fetch and build")
+# v1.11 — 6ffccbdb1000253d8d513dd7a5ae9226e5023a5c
+set(IR_ENKITS_GIT_TAG "6ffccbdb1000253d8d513dd7a5ae9226e5023a5c" CACHE STRING
+    "enkiTS commit SHA (or branch/tag) to fetch and build")
 
 # Force-disable enkiTS' optional targets so the vendor add_subdirectory
 # does not pollute our `all` target with example binaries or its test
@@ -30,7 +33,7 @@ FetchContent_Declare(
     enkiTS_src
     GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
     GIT_TAG        ${IR_ENKITS_GIT_TAG}
-    GIT_SHALLOW    TRUE
+    GIT_SHALLOW    FALSE
 )
 
 FetchContent_MakeAvailable(enkiTS_src)

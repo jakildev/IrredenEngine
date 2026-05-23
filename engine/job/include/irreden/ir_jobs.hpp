@@ -37,8 +37,9 @@ void parallelFor(
 void run(std::string_view name, const std::function<void()> &fn);
 
 /// Pins a single task to a specific worker thread (`workerId` is
-/// 1-based — `1` runs on worker 0 in enkiTS terms; `0` would mean the
-/// main thread, which is rejected). Blocks until the task finishes.
+/// 1-based — `1` runs on enkiTS thread 1 (the first worker thread);
+/// `0` is the main thread in enkiTS numbering and is rejected).
+/// Blocks until the task finishes.
 void pinTo(int workerId, const std::function<void()> &fn);
 
 /// True when called from the thread that constructed the active

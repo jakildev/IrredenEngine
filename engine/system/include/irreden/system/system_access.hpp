@@ -77,6 +77,9 @@ struct SystemAccess {
     /// functions in practice take 2-4 components; doubling to 16
     /// covers tagged `AlsoReads<...>`/`AlsoWrites<...>` chains
     /// without growing the struct's static footprint past 256 bytes.
+    /// `appendRead`/`appendWrite` silently drop entries beyond this
+    /// limit — intentional for Phase 1 simplicity (unreachable in
+    /// practice with the current 2–4 component cap).
     static constexpr std::size_t kMaxAccess = 16;
 
     const void *reads_[kMaxAccess]{};

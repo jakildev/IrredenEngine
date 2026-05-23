@@ -65,18 +65,17 @@ TEST_F(IRJobsFixture, ParallelForEmptyRangeIsNoOp) {
 }
 
 TEST_F(IRJobsFixture, ParallelForRunsOnAtLeastOneWorker) {
-    // enkiTS work-stealing makes it valid for the calling thread to
-    // execute every chunk if it can keep up — `parallelFor` does NOT
-    // guarantee any specific chunk lands on a worker thread. To force
-    // workers in (so we exercise the cross-thread `detail::registerSelf`
-    // path), gate every body on a barrier the main thread sets only
-    // after the dispatch returns to its WaitforTask spin.
+    // Probabilistic guarantee, not a structural invariant: enkiTS
+    // work-stealing allows the main thread to pump all chunks via
+    // WaitforTask before either worker wakes. In practice with grain=1
+    // and 2 active workers this is astronomically unlikely.
     //
-    // The first chunk hits the barrier on whatever thread enkiTS picked
-    // (main or worker). Once the atomic is flipped, every remaining
-    // chunk proceeds; the union of observed worker ids must include at
-    // least one non-zero id (`1` or `2`), proving the body executed off
-    // the main thread.
+    // Strategy: gate every chunk body on a barrier released only after
+    // `startedCount >= 2` tasks are in-flight. A separate releaser
+    // thread flips the barrier; `parallelFor` drives WaitforTask on
+    // main. The union of observed worker ids must then include at
+    // least one non-zero id (`1` or `2`), proving at least one chunk
+    // executed off the main thread.
     std::atomic<int> startedCount{0};
     std::atomic<bool> release{false};
     std::atomic<int> workerSet{0};
