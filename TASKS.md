@@ -264,11 +264,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **demos: adopt standardControlSystems() bundle across all demos** — migrate every demo's initSystems to IRPrefab::Camera::standardControlSystems() after T-325 lands
+- [~] **demos: adopt standardControlSystems() bundle across all demos** — migrate every demo's initSystems to IRPrefab::Camera::standardControlSystems() after T-325 lands
   - **ID:** T-326
   - **Area:** creations/demos, creations/editors/voxel_editor
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** T-325
   - **Acceptance:** (1) every demo in creations/demos/ uses standardControlSystems() or opts out with a comment; (2) voxel_editor uses bundle for standard set, keeps editor-specific systems (right-drag rotate, scrubber, animation playback); (3) no regressions on mouse-wheel zoom, middle-drag pan, keyboard WASD across demos; (4) on macOS every demo gains trackpad two-finger pan; (5) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1084
