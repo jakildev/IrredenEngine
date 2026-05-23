@@ -1027,4 +1027,51 @@ TEST(HitboxProjectionTest, HoverDoesNotFireOutsideHalfExtentUnderYaw) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// quatInverse — conjugate-based inverse for unit quaternions.
+// quatMul(q, quatInverse(q)) must yield the identity quaternion for any
+// unit quaternion produced by quatAxisAngle.
+// ---------------------------------------------------------------------------
+
+TEST(QuatInverseTest, IdentityIsOwnInverse) {
+    const IRMath::vec4 identity(0.0f, 0.0f, 0.0f, 1.0f);
+    const IRMath::vec4 result = IRMath::quatInverse(identity);
+    EXPECT_NEAR(result.x, 0.0f, kTolerance);
+    EXPECT_NEAR(result.y, 0.0f, kTolerance);
+    EXPECT_NEAR(result.z, 0.0f, kTolerance);
+    EXPECT_NEAR(result.w, 1.0f, kTolerance);
+}
+
+TEST(QuatInverseTest, RoundTripZAxisIsIdentity) {
+    // Z-axis rotation is the production path used by T-319's camera composition.
+    const IRMath::vec4 q =
+        IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), IRMath::kHalfPi);
+    const IRMath::vec4 result = IRMath::quatMul(q, IRMath::quatInverse(q));
+    EXPECT_NEAR(result.x, 0.0f, kTolerance);
+    EXPECT_NEAR(result.y, 0.0f, kTolerance);
+    EXPECT_NEAR(result.z, 0.0f, kTolerance);
+    EXPECT_NEAR(result.w, 1.0f, kTolerance);
+}
+
+TEST(QuatInverseTest, RoundTripArbitraryAxisIsIdentity) {
+    // Verify the round-trip holds for a non-trivial axis (diagonal).
+    const IRMath::vec4 q =
+        IRMath::quatAxisAngle(IRMath::vec3(1.0f, 1.0f, 1.0f), IRMath::kPi / 3.0f);
+    const IRMath::vec4 result = IRMath::quatMul(q, IRMath::quatInverse(q));
+    EXPECT_NEAR(result.x, 0.0f, kTolerance);
+    EXPECT_NEAR(result.y, 0.0f, kTolerance);
+    EXPECT_NEAR(result.z, 0.0f, kTolerance);
+    EXPECT_NEAR(result.w, 1.0f, kTolerance);
+}
+
+TEST(QuatInverseTest, DoubleInverseIsOriginal) {
+    const IRMath::vec4 q =
+        IRMath::quatAxisAngle(IRMath::vec3(0.0f, 1.0f, 0.0f), IRMath::kHalfPi / 2.0f);
+    const IRMath::vec4 result = IRMath::quatInverse(IRMath::quatInverse(q));
+    EXPECT_NEAR(result.x, q.x, kTolerance);
+    EXPECT_NEAR(result.y, q.y, kTolerance);
+    EXPECT_NEAR(result.z, q.z, kTolerance);
+    EXPECT_NEAR(result.w, q.w, kTolerance);
+}
+
 } // namespace
