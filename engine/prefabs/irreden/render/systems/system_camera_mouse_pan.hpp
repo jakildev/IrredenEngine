@@ -23,19 +23,18 @@ template <> struct System<CAMERA_MOUSE_PAN> {
         return createSystem<C_Camera, C_Position2DIso>(
             "CameraMousePan",
             [](C_Camera &, C_Position2DIso &camPos) {
-                bool middlePressed = IRInput::checkKeyMouseButton(
-                    IRInput::kMouseButtonMiddle,
-                    IRInput::PRESSED
-                );
-                bool middleDown = IRInput::checkKeyMouseButton(
-                    IRInput::kMouseButtonMiddle,
-                    IRInput::HELD
-                );
+                bool middlePressed =
+                    IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::PRESSED);
+                bool middleDown =
+                    IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::HELD);
 
                 if (middlePressed && !s_dragging) {
-                    s_dragging = true;
-                    s_dragStartMouse = IRInput::getMousePositionScreen();
-                    s_dragStartCameraPos = camPos.pos_;
+                    // Yield to CAMERA_MOUSE_ROTATE when Ctrl is held.
+                    if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl)) {
+                        s_dragging = true;
+                        s_dragStartMouse = IRInput::getMousePositionScreen();
+                        s_dragStartCameraPos = camPos.pos_;
+                    }
                 }
 
                 if (s_dragging && middleDown) {
