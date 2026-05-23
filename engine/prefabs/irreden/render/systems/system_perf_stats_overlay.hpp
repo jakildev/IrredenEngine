@@ -6,7 +6,6 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_time.hpp>
 
-#include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/profile/scope_timer.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
@@ -50,6 +49,12 @@ inline constexpr double kPerfStatsEmaAlpha = 0.15;
 // dominant fix for the "vibrating numbers" complaint.
 inline constexpr int kPerfStatsRefreshFrames = 4;
 
+// Sentinel tag placed on the overlay text entity at creation time so the
+// system iterates exactly one entity (the text entity) rather than all
+// C_Name-bearing entities. beginTick/endTick fire even when zero entities
+// match, so the real work in those hooks is unaffected.
+struct C_PerfStatsOverlayTag {};
+
 template <> struct System<PERF_STATS_OVERLAY> {
     // Cached GUI canvas pointer + width, refreshed each beginTick to survive
     // a canvas swap. nullptr until the first beginTick.
@@ -73,6 +78,10 @@ template <> struct System<PERF_STATS_OVERLAY> {
     // Per-stage EMA, indexed parallel to IRRender::gpuStageRegistry(). One
     // slot per registry entry — adding a stage to the registry surfaces here
     // automatically with no edit to this system.
+    static_assert(
+        std::tuple_size_v<
+            std::remove_reference_t<decltype(IRRender::gpuStageRegistry())>> == 20,
+        "EMA arrays must be resized to match gpuStageRegistry size");
     std::array<double, 20> gpuStageMsEma_{};
     std::array<double, 20> cpuStageMsEma_{};
 
@@ -98,11 +107,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
         canvasWidth_ = canvas_->size_.x;
     }
 
-    void tick(const IRComponents::C_Name &) {
-        // No per-entity work. The system uses C_Name as a non-empty
-        // archetype filter so endTick fires every frame; the per-entity body
-        // does nothing.
-    }
+    void tick(C_PerfStatsOverlayTag &) {}
 
     void endTick() {
         if (canvas_ == nullptr) return;
@@ -139,7 +144,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
     }
 
     static SystemId create() {
-        return registerSystem<PERF_STATS_OVERLAY, IRComponents::C_Name>("PerfStatsOverlay");
+        return registerSystem<PERF_STATS_OVERLAY, C_PerfStatsOverlayTag>("PerfStatsOverlay");
     }
 
   private:
@@ -173,8 +178,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
     // Short display label for a registry stage name. The registry uses
     // camelCase identifiers that are too long for the narrow overlay column
     // (~13 chars at fontSize=1 / 240-trixel canvas). Each branch returns a
-    // ≤13-char uppercase label that still reads recognizably. Unmatched
-    // names fall through to the truncated registry name itself.
+    // ≤13-char uppercase label that still reads recognizably. Returns nullptr
+    // when no alias is defined — the caller uses %.*s with the raw name then.
     static const char *stageLabel(std::string_view name) {
         if (name == "canvasClear") return "CLEAR";
         if (name == "voxelCompact") return "VOX-COMPACT";
@@ -196,7 +201,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
         if (name == "entityCanvasToFb") return "ENT-FB";
         if (name == "screenSpaceResidualRotate") return "SCREEN-ROT";
         if (name == "fbToScreen") return "FB-SCREEN";
-        return name.data();
+        return nullptr;
     }
 
     std::string buildText() {
@@ -263,13 +268,19 @@ template <> struct System<PERF_STATS_OVERLAY> {
         out.append("GPU STAGES (MS)\n");
         for (std::size_t i = 0; i < registry.size(); ++i) {
             const auto &info = registry[i];
-            std::snprintf(
-                line,
-                sizeof(line),
-                "  %-13s %6.2f\n",
-                stageLabel(info.name_),
-                gpuStageMsEma_[i]
-            );
+            const char *label = stageLabel(info.name_);
+            if (label != nullptr) {
+                std::snprintf(line, sizeof(line), "  %-13s %6.2f\n", label, gpuStageMsEma_[i]);
+            } else {
+                std::snprintf(
+                    line,
+                    sizeof(line),
+                    "  %.*s %6.2f\n",
+                    static_cast<int>(info.name_.size()),
+                    info.name_.data(),
+                    gpuStageMsEma_[i]
+                );
+            }
             out.append(line);
         }
 
@@ -322,7 +333,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
                 columnTrixels(),
                 0,
                 1
-            }
+            },
+            C_PerfStatsOverlayTag{}
         );
     }
 
