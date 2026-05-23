@@ -240,18 +240,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **docs: iso-depth-axis invariant design doc** — document why (1,1,1) world-camera Z-yaw-only is invariant for GRID entities and map every call site with cost-to-break annotations
-  - **ID:** T-320
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** claude/T-320-iso-depth-axis-invariant
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) docs/design/iso-depth-axis-invariant.md exists; (2) all consumers cited with file:line (picking.hpp:65,173,219; system_hitbox_mouse_test.hpp:57; system_gizmo_drag.hpp:289,296; system_shapes_to_trixel.hpp:421; c_shapes_to_trixel.glsl:197,682,684; c_voxel_to_trixel_stage_1.glsl:30; ir_math.hpp:171,260 — re-grep fresh at write time); (3) engine/math/CLAUDE.md and engine/render/CLAUDE.md link to it; (4) companion issues #1075 and #1076 cross-referenced
-  - **Issue:** #1077
-  - **Notes:** ~half page prose + per-site cost table. Sections: what the invariant is, why GRID depends on it (integer trixel raster + depth-axis-aligned picking/SDF), why DETACHED doesn't (faceDeformationMatrixSO3 + camera composition in T-319), full call-site map, cost-to-break per site (easy/hard/rewrite). Sets trajectory for any future free-camera epic.
-  - **Links:**
-
-
 - [ ] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
   - **ID:** T-323
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
@@ -303,6 +291,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
 - [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
 - [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
 - [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
@@ -315,7 +304,6 @@ Avoid:
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
 - [x] **T-313** — perf: Lua-vs-C++ parity dashboard · Owner: claude/T-313-lua-cpp-parity-dashboard · PR: https://github.com/jakildev/IrredenEngine/pull/1037
 - [x] **T-311** — perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs · Owner: claude/T-311-ci-baseline-gate · PR: https://github.com/jakildev/IrredenEngine/pull/1039
-- [x] **T-305** — math: IRMath::SDF::evaluateGrid batch helper + refactor applyFillSDF · Owner: claude/T-305-sdf-grid-batch · PR: https://github.com/jakildev/IrredenEngine/pull/1029
 - [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
 - [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
 - [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
