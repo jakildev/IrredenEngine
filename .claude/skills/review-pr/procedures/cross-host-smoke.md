@@ -37,7 +37,7 @@ Read the candidate's labels (already in the cache as `repos.engine.prs[].labels`
 | `fleet:authored-on-linux` | `fleet:needs-macos-smoke`, `fleet:needs-windows-smoke` |
 | `fleet:authored-on-macos` | `fleet:needs-linux-smoke`, `fleet:needs-windows-smoke` |
 | `fleet:authored-on-windows` | `fleet:needs-linux-smoke`, `fleet:needs-macos-smoke` |
-| None (pre-fix PR) | All three labels |
+| None (unrecognized host or pre-fix PR) | All three labels |
 
 ```bash
 # Linux author:

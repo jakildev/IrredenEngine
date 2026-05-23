@@ -646,9 +646,10 @@ Specifically, **never pass these via `--label` when filing**:
   it (observed on issues #270-#273, #287).
 - `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
   `fleet:blocker` — owned by the **reviewer agents** as PR verdicts.
-- `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` — owned by the
+- `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` / `fleet:needs-windows-smoke` — owned by the
   **reviewer agents**, added after the verdict to request a cross-host
-  build + run validation.
+  build + run validation. `fleet:needs-windows-smoke` is cleared by
+  `platform-catchup`, not an author agent.
 - `fleet:wip` — owned by the **fleet author worker** while a **claimed /
   in-progress** PR is not ready for fleet review (reviewers **skip** this
   label). Set on claim / early fleet-worker PRs; remove when ready for
@@ -662,13 +663,16 @@ Specifically, **never pass these via `--label` when filing**:
   PR is still idle. The human owns the resolution — the fleet won't
   re-free the TASKS.md row automatically (that would race the worker
   if it ever resumes). Closing the PR is the canonical reap path.
-- `fleet:authored-on-linux` / `fleet:authored-on-macos` — owned by
+- `fleet:authored-on-linux` / `fleet:authored-on-macos` / `fleet:authored-on-windows` — owned by
   the **author's `commit-and-push`** (set at PR creation based on
   `uname -s`). Records which host the PR was opened from so the
   reviewer's cross-host smoke step subtracts the author's host
   (no point asking for a smoke label on the host that just built
   and ran the demo). Permanent label — it's a fact about the PR,
   not a state. Don't add to issues.
+- `fleet:verified-linux` / `fleet:verified-macos` / `fleet:verified-windows` — set by the
+  **smoking agent** (or `platform-catchup` for Windows) on a successful smoke
+  run. Permanent audit trail; not used by the merge gate. Don't add to issues.
 - `fleet:in-progress` — generic "a worker has claimed this issue"
   marker. Today this is mostly superseded by the dynamic per-host
   `fleet:claim-<host>-<agent>` issue label (see below); the static
