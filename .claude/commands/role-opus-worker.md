@@ -194,9 +194,10 @@ Do the work, then exit cleanly:
    `fleet:has-nits`, `fleet:design-unblocked`.
 
    Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
-   it owns the priority order, busy-branch filter, AMEND-vs-ESCALATE
-   decision, the AMEND-path step sequence (a–h), label cycles, and
-   the game-side `cd` + `--repo jakildev/irreden` wrinkle. The
+   it owns the priority order, the detached-HEAD checkout flow,
+   AMEND-vs-ESCALATE decision, the AMEND-path step sequence (a–h),
+   label cycles, and the game-side `cd` + `--repo jakildev/irreden`
+   wrinkle. The
    opus-worker is in scope for **all four tiers** including
    `fleet:design-unblocked`. Reserve the worktree on the
    `human:needs-fix` / `human:blocker` AMEND paths via the
@@ -231,14 +232,14 @@ Do the work, then exit cleanly:
     `headRefName`. If the base PR also has `fleet:semantic-conflict`,
     SKIP this candidate — resolve the base first.
 
-    **Branch-lock filter.** `gh pr checkout <N>` fails with "branch is
-    already used by worktree at …" when another agent (typically the
-    merger mid-rebase, or another opus-worker that also picked up the
-    PR) already has the branch checked out. List the busy branches
-    once and drop any candidate whose `headRefName` appears there:
-    `fleet-worktree-busy-branches`
-    Mirrors the same filter used by the feedback PR pickup loop in
-    step 1 (PR #336) and the merger's step 3.5.
+    **No branch-lock filter.** This step uses `fleet-pr-checkout-detached`
+    (step c below), which checks out the head ref in detached HEAD —
+    no `branch is already used by worktree` collision with the
+    merger mid-rebase, the operator inspecting the PR locally, or
+    another worker that picked up the same candidate. Concurrency
+    against parallel rebases is handled at push time by
+    `--force-with-lease` (step h): the loser exits clean and the
+    next iteration retries.
 
     Game repo is intentionally out of scope for v1: the merger is
     engine-only, so no game PR ever gets the label.
@@ -256,8 +257,9 @@ Do the work, then exit cleanly:
        so you don't need to re-discover them:
        `fleet-pr comments <N>` (engine; for game PRs add `--repo game`).
        Look for the comment ending in `— fleet merger`.
-    c. Check out the PR (this also fetches the head branch):
-       `gh pr checkout <N> --repo jakildev/IrredenEngine`
+    c. Check out the PR in detached HEAD (fetches head ref + writes
+       the `.git/fleet-amend-ref` sentinel for the step h push):
+       `fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine`
     d. Identify the rebase target. For most PRs `baseRefName` is
        `master`; for stacked PRs it's the upstream branch. Use
        whichever the PR is actually based on, NOT always master:
@@ -282,8 +284,10 @@ Do the work, then exit cleanly:
        touched, fix it inline and rebuild. If the failure is in
        unrelated code, your resolution introduced a regression —
        jump to step j (escalate).
-    h. Push:
-       `git push --force-with-lease`
+    h. Push. You're on detached HEAD (from step c), so the wrapper
+       reads the head ref from `.git/fleet-amend-ref` and runs
+       `git push --force-with-lease origin HEAD:<head-ref>`:
+       `fleet-pr-amend-push`
        If the lease check fails (someone pushed in parallel), add
        `fleet:merger-cooldown` so the next iteration doesn't
        re-attempt immediately, then jump to step k (reset):

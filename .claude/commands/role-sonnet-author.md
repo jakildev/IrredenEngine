@@ -98,9 +98,10 @@ Each iteration:
    `human:blocker`, `fleet:needs-fix`, `fleet:has-nits`.
 
    Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
-   it owns the priority order, busy-branch filter, AMEND-vs-ESCALATE
-   decision, the AMEND-path step sequence (a–h), label cycles, and
-   the `fleet-pr-clear-feedback-labels` wrapper. Sonnet-author is
+   it owns the priority order, the detached-HEAD checkout flow,
+   AMEND-vs-ESCALATE decision, the AMEND-path step sequence (a–h),
+   label cycles, and the `fleet-pr-clear-feedback-labels` wrapper.
+   Sonnet-author is
    engine-only and does NOT handle `fleet:design-unblocked` (only
    opus-worker originates design escalations). Sonnet-author also
    does NOT handle `fleet:semantic-conflict` — that label is

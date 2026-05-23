@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# fleet-pr-amend-push — push the detached-HEAD amendment back to the
+# PR's head ref. Sibling to fleet-pr-checkout-detached.
+#
+# Why this exists
+# ---------------
+# After `fleet-pr-checkout-detached <N>`, the worker is on detached
+# HEAD pointing at `origin/<head-ref>`. The conventional `git push`
+# (with no refspec) refuses to push a detached HEAD because there's
+# no local branch name to map to. The right form is:
+#
+#     git push --force-with-lease origin HEAD:<head-ref>
+#
+# This wrapper reads the head ref name from the sentinel
+# `.git/fleet-amend-ref` (written by fleet-pr-checkout-detached) and
+# runs the push. On success it removes the sentinel so a subsequent
+# `commit-and-push` invocation in the same worktree falls back to
+# the normal (non-amend) flow.
+#
+# The `--force-with-lease` (vs plain `--force`) is the only safety
+# belt against a concurrent amendment from another worktree (another
+# worker, the merger mid-rebase, the operator pushing from the main
+# clone). If the remote ref moved between fetch and push, the lease
+# fails, the wrapper exits non-zero, and the caller's role retries
+# on the next iteration.
+#
+# Usage
+# -----
+#   fleet-pr-amend-push
+#
+# Exit status:
+#   0  push succeeded; sentinel removed
+#   1  sentinel missing, push failed, or git in a bad state
+#   2  usage error
+#
+# Source of truth: scripts/fleet/fleet-pr-amend-push in the engine
+# repo. Installed to ~/bin/ by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        -h|--help)
+            sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        *)
+            echo "fleet-pr-amend-push: takes no arguments" >&2
+            exit 2
+            ;;
+    esac
+fi
+
+git_dir=$(git rev-parse --git-dir 2>/dev/null || true)
+if [[ -z "$git_dir" ]]; then
+    echo "fleet-pr-amend-push: not inside a git worktree" >&2
+    exit 1
+fi
+
+sentinel="$git_dir/fleet-amend-ref"
+if [[ ! -f "$sentinel" ]]; then
+    echo "fleet-pr-amend-push: $sentinel missing — was fleet-pr-checkout-detached run in this worktree?" >&2
+    exit 1
+fi
+
+head_ref=$(cat "$sentinel")
+if [[ -z "$head_ref" ]]; then
+    echo "fleet-pr-amend-push: sentinel $sentinel is empty" >&2
+    exit 1
+fi
+
+# Defense against stale sentinels: refuse if HEAD isn't detached.
+# A stale sentinel from a previous (abandoned) iteration would
+# otherwise push the current branch's commits to the old PR's head
+# ref. `git symbolic-ref -q HEAD` succeeds (exit 0) only on a named
+# branch; on detached HEAD it exits non-zero.
+if git symbolic-ref -q HEAD >/dev/null 2>&1; then
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    echo "fleet-pr-amend-push: HEAD is on branch '$branch', not detached — sentinel may be stale" >&2
+    echo "  expected: detached HEAD at origin/$head_ref (from fleet-pr-checkout-detached)" >&2
+    echo "  if the sentinel is stale, remove it: rm $sentinel" >&2
+    exit 1
+fi
+
+# Push with force-with-lease. Quoting HEAD:$head_ref defensively in
+# case a future fleet adopts head refs with shell-significant chars
+# (today they're all `claude/...` which is safe, but cheap to harden).
+if ! git push --force-with-lease origin "HEAD:$head_ref"; then
+    echo "fleet-pr-amend-push: push failed — lease may be broken (concurrent amendment) or remote rejected the push" >&2
+    exit 1
+fi
+
+# Clean up the sentinel so subsequent commit-and-push in this worktree
+# falls back to the normal flow (or so a stale sentinel doesn't
+# accidentally route a future commit to the wrong ref).
+rm -f "$sentinel"
+
+printf 'fleet-pr-amend-push: pushed HEAD to origin/%s\n' "$head_ref"

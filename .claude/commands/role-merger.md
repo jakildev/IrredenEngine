@@ -224,9 +224,10 @@ exit cleanly:
      `--is-ancestor` non-zero-as-expected pattern as step 5a.6 —
      do not treat as a script error.)
 
-   Drop any "tip moved" candidate whose `headRefName` appears in
-   `fleet-worktree-busy-branches` (same rule as step 3.5; another
-   worktree owns the branch and `git checkout` would fail).
+   No busy-branch filter is needed — step a uses
+   `git checkout --detach` so another worktree holding the branch
+   doesn't matter; concurrency safety against parallel rebases is
+   handled at push time by `--force-with-lease`.
 
    **Cap:** PRs handled here count against the "2 candidates per
    iteration" cap shared with step 2.5 and step 4. If the
@@ -236,8 +237,9 @@ exit cleanly:
 
    For each "tip moved" candidate within the cap:
 
-   a. **Check out the child:**
-      `git checkout -B <headRefName> origin/<headRefName>`
+   a. **Check out the child (detached, no branch-claim collision):**
+      `git fetch origin <headRefName>`
+      `git checkout --detach origin/<headRefName>`
 
    b. **Try rebase onto the new upstream tip:**
       `git rebase origin/<baseRefName>`
@@ -251,7 +253,9 @@ exit cleanly:
 
       **Clean rebase (exit 0).** The child's commits replayed
       onto the new upstream tip without intervention.
-      - `git push --force-with-lease`
+      - `git push --force-with-lease origin HEAD:<headRefName>`
+        (explicit refspec — detached HEAD from step a has no
+        local branch to push by name)
       - Run `rm -f .merger-body.md`, then write `.merger-body.md`
         with the **Write** tool:
         ```
@@ -271,8 +275,10 @@ exit cleanly:
       **Conflict (non-zero exit).** The new upstream tip is not
       compatible with the child's commits. Hand off:
       - `git rebase --abort`
-      - **Switch back to scratch immediately** (same release-the-
-        branch rule as step 5d.iii):
+      - Reset to scratch for cleanup. With detached HEAD this is
+        no longer needed to "release" the branch (detached HEAD
+        never claimed it), but the reset still gets the worktree
+        back to a known starting state for the next candidate:
         `git switch claude/merger-scratch`
       - Run `rm -f .merger-body.md`, then write `.merger-body.md`
         with the **Write** tool:
@@ -338,21 +344,14 @@ exit cleanly:
    CONFLICTING list already has ≥2 candidates, defer all UNKNOWN
    refreshes to the next iteration.
 
-3.5. **Drop candidates whose head branch is held by another worktree.**
-   A branch can only be checked out in one worktree at a time. If an
-   opus-worker is mid-resolution of `fleet:semantic-conflict` on
-   `claude/T-NNN-foo`, step 5a's `git checkout -B claude/T-NNN-foo`
-   will fail with "branch is already used by worktree at …" and the
-   merger has no useful work it can do on that PR this iteration.
-
-   List the busy branches once (any path inside the engine clone
-   resolves to the same worktree set):
-   `fleet-worktree-busy-branches`
-
-   For each candidate from step 3, drop it if its `headRefName`
-   appears in that list. The dropped candidate stays in flight under
-   whichever worktree holds it; retry on the next iteration. Log:
-   `… N candidates dropped (branch held by another worktree)`.
+3.5. **No busy-branch filter.** Step 5.a uses `git checkout --detach`,
+   which doesn't claim the branch ref — the merger can rebase on
+   the same commit another worktree has checked out (an opus-worker
+   mid-resolution of `fleet:semantic-conflict` on the same PR, the
+   operator inspecting it from the main clone, etc.). Concurrency
+   against parallel rebases is handled at push time by
+   `--force-with-lease` in step 5: if the remote ref moved, the
+   loser exits clean and retries on the next iteration.
 
 4. **Process at most 2 candidates per iteration.** Auto-resolution
    pushes a force-with-lease, which retriggers CI and reviewers.
@@ -360,11 +359,15 @@ exit cleanly:
 
 5. For each candidate, in oldest-first order:
 
-   **a. Check out the PR branch.** Use the headRefName from the
-      PR list (since `gh pr checkout` would force a non-detached
-      checkout, which is what we want here):
+   **a. Check out the PR (detached HEAD).** Detached avoids the
+      `branch is already used by worktree` collision with the
+      operator's main clone or an opus-worker on the same PR.
+      `git rebase` works fine on detached HEAD; the resulting
+      commits live at HEAD and get pushed back to the branch ref
+      explicitly in step e (`git push --force-with-lease origin
+      HEAD:<headRefName>`):
       `git fetch origin <headRefName>`
-      `git checkout -B <headRefName> origin/<headRefName>`
+      `git checkout --detach origin/<headRefName>`
 
    **a.5. Stacked-PR check.** Read the candidate's `baseRefName` from
       the PR list fetched in step 2 — no extra API call needed. If the
@@ -524,7 +527,8 @@ exit cleanly:
       **Clean rebase (exit 0).** No conflicts at all — the PR's
       commits replayed without intervention. Proceed to **step e**
       (post-rebase hunk check) before pushing.
-      - `git push --force-with-lease`
+      - `git push --force-with-lease origin HEAD:<headRefName>`
+        (explicit refspec — detached HEAD has no local branch name)
       - Write `.merger-body.md` with:
         ```
         Merger: rebased onto current master without conflicts.
@@ -563,7 +567,7 @@ exit cleanly:
            completes (no further conflicts):
            Proceed to **step e** (post-rebase hunk check) before
            pushing.
-           - `git push --force-with-lease`
+           - `git push --force-with-lease origin HEAD:<headRefName>`
            - Comment + cooldown label as in the clean-rebase case,
              with body noting "Merger: TASKS.md sort-merged
              auto-resolved, then rebased onto master."
@@ -602,12 +606,12 @@ exit cleanly:
 
       **iii. Anything else (semantic conflict).**
          - `git rebase --abort`
-         - **Immediately switch back to scratch** so the PR's branch is
-           released even if the steps below crash or hit a usage limit
-           before step f runs. Otherwise the next agent that tries to
-           `gh pr checkout` this branch hits "branch is already used by
-           worktree at .../merger" and the conflict-resolution lane is
-           unreachable until the merger reboots:
+         - Reset to scratch. With detached HEAD (step a) this no
+           longer matters for unblocking other agents — detached
+           HEAD never claimed the branch — but the reset still
+           gets the worktree back to a known starting state for the
+           next candidate even if subsequent steps crash or hit a
+           usage limit:
            `git switch claude/merger-scratch`
          - **Dedup check.** If `fleet:semantic-conflict` is already in
            this PR's cached labels (from step 2), the merger may have
@@ -642,7 +646,8 @@ exit cleanly:
            `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
            for the PR side. The `origin/<headRefName>` ref is required
            because `git switch claude/merger-scratch` left HEAD on
-           master — a bare `git log -- <file>` would log master twice.
+           master (and the prior detached HEAD is gone) — a bare
+           `git log -- <file>` would log master twice.
            Write to `.merger-body.md`:
            ```
            Merger: cannot auto-resolve mechanically. The PR has
@@ -698,8 +703,9 @@ exit cleanly:
 
    **f. Reset to scratch.** After processing each PR (success OR
       fail), return to the scratch branch so the next iteration
-      starts clean and so other agents are not blocked from
-      checking out the same branch:
+      starts clean. With detached HEAD in step a this reset no
+      longer matters for unblocking other agents (the branch was
+      never claimed) — it's purely worktree hygiene:
       `git checkout -B claude/merger-scratch origin/master`
 
 6. **Shutdown.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
