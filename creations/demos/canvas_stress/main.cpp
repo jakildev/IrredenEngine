@@ -11,7 +11,6 @@
 // Components
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -19,6 +18,7 @@
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 #include <irreden/render/systems/system_camera_mouse_rotate.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
@@ -191,11 +191,7 @@ void initSystems() {
 
     if (g_settings.autoRotate_) {
         renderPipeline.push_back(
-            IRSystem::createSystem<C_CameraYaw>(
-                "AutoYawRotate",
-                [](C_CameraYaw &) {},
-                []() { IRPrefab::Camera::rotateYaw(kYawDeltaPerFrame); }
-            )
+            IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame)
         );
     }
 
