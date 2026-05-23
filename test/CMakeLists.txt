@@ -56,6 +56,7 @@ add_executable(IrredenEngineTest
   script/modifier_lua_test.cpp
   system/register_system_test.cpp
   system/system_access_test.cpp
+  system/system_concurrency_test.cpp
   job/ir_job_test.cpp
   utility/ir_utility_test.cpp
   world/chunk_coord_test.cpp

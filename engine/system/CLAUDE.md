@@ -244,22 +244,79 @@ Order in the list is execution order. Systems run sequentially — no
 parallelism. A creation registers its pipelines during init; changing them
 mid-frame is supported but uncommon.
 
-## SystemAccess derivation (T-221, unused in Phase 1)
+## SystemAccess derivation (T-221)
 
 `engine/system/include/irreden/system/system_access.hpp` defines
 `deriveAccessFromSignature<TickFn, Components...>()` — a constexpr
 trait that returns a `SystemAccess` descriptor (reads / writes set,
 `usesEntityId_`, `isBatchForm_`, plus tag flags `Spawns`, `Destroys`,
 `MainThread`, `ParallelSafe`, `AlsoReads<...>`, `AlsoWrites<...>`).
-The descriptor is the input T-222 (`PARALLEL_FOR` single-system
-validation) and T-224 (cross-system access validator) will use to
-decide whether a system can be scheduled on the worker pool. **No
-system consumes the descriptor yet** in Phase 1 — pure unit-test
-surface; reads vs writes is signalled by `const`-ness on the
+T-222 wired the descriptor into `IRSystem::createSystem` as the
+input to the `PARALLEL_FOR` single-system validator (see below);
+T-224 will compose it across pipeline groups for cross-system
+validation. Reads vs writes is signalled by `const`-ness on the
 component in the template pack (`createSystem<const C_Foo, C_Bar>`
 records `C_Foo` as read and `C_Bar` as written). New systems can opt
 in to the const-as-read marker; legacy systems stay conservative
 (all writes).
+
+## Concurrency policy + PARALLEL_FOR dispatch (T-222)
+
+`IRSystem::Concurrency` (defined in `ir_system_types.hpp`) is a
+per-system enum: `SERIAL` (default, legacy behavior), `PARALLEL_FOR`
+(row chunks fan out to the IRJob worker pool), or `MAIN_THREAD`
+(forced main-thread; serializes like SERIAL but documents intent).
+
+A system opts into PARALLEL_FOR by either:
+
+- **`registerSystem<N, Cs...>` form** — declare
+  `static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;`
+  (and optionally `static constexpr int kGrainSize = …;`) on the
+  `System<N>` specialization. The detector falls back to SERIAL /
+  `kDefaultGrainSize` when not declared, so legacy specs are
+  unchanged.
+- **`createSystem<Cs...>` free function** — pass `Concurrency` and
+  optional `grainSize` as the trailing parameters (after begin/end/
+  relation ticks).
+
+`SystemManager::executeSystem` reads the per-system Concurrency at
+dispatch time and, for `PARALLEL_FOR` systems with a populated
+range-aware tick fn and a node larger than the grain size, drives
+`IRJob::parallelFor(0, node->length_, grainSize, ...)`. The
+`beginTick` / `endTick` hooks and the archetype-node iteration order
+always serialize on the main thread regardless of policy.
+
+**Registration-time validation** (in `IRSystem::createSystem`):
+
+- `PARALLEL_FOR + usesEntityId_ + !parallelSafe_` → FATAL. The per-
+  entity-id form passes the iterated `EntityId` to the body; without
+  an explicit `ParallelSafe` opt-in the body is presumed to look up
+  another entity through it (non-thread-safe on managers).
+- `PARALLEL_FOR + isBatchForm_` → FATAL. The per-archetype batch
+  form consumes the whole column; row-level chunking would re-enter
+  the body with overlapping handles.
+- `PARALLEL_FOR + mainThreadOnly_` → FATAL. Pick one — the
+  `MainThread` tag is explicit "do not parallelize".
+
+The first system to opt in is `VELOCITY_3D` (T-222 POC). The other
+two POC ports from #1069 (`VELOCITY_DRAG`, `ANIMATION_COLOR`) need
+prior thread-safety audits (`IRMath::randomFloat` per-worker
+seeding; function-local static caches inside the
+`ANIMATION_COLOR` body) and are deferred to follow-up issues.
+
+### IR_ASSERT_MAIN_THREAD
+
+`engine/system/include/irreden/system/ir_assert_main_thread.hpp`
+exposes `IR_ASSERT_MAIN_THREAD()` — a debug-only macro that calls
+`IRJob::isMainThread()` and FATALs with the offending worker id.
+Used to guard manager-entry surfaces that mutate non-thread-safe
+singletons (`g_entityManager`, `g_systemManager`, render / audio /
+sol2 bindings) when called from inside a `PARALLEL_FOR` system
+body. Catches the "lambda body escapes into a global" case the
+`SystemAccess` trait cannot see from the tick signature alone. No-op
+in `IR_RELEASE` builds and safe to call when `g_jobManager ==
+nullptr` (unit tests / pre-`World` startup return `true` as the
+default).
 
 ## Gotchas
 

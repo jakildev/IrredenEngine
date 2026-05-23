@@ -30,4 +30,5 @@ target_link_libraries(
     # IrredenEngineInput
     IrredenEngineEntity
     IrredenEngineTime
+    IrredenEngineJob
 )

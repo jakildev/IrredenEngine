@@ -6,6 +6,7 @@
 #include <irreden/ir_time.hpp>
 
 #include <irreden/system/ir_system_types.hpp>
+#include <irreden/system/system_access.hpp>
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/system/components/component_system_event.hpp>
@@ -81,7 +82,10 @@ class SystemManager {
         FunctionEndTick functionEndTick = nullptr,
         RelationParams<RelationComponents...> extraParams = {},
         FunctionRelationTick functionRelationTick = nullptr,
-        Archetype excludeArchetype = {}
+        Archetype excludeArchetype = {},
+        Concurrency concurrency = Concurrency::SERIAL,
+        int grainSize = kDefaultGrainSize,
+        SystemAccess accessDescriptor = {}
     ) {
         m_systemNames.emplace_back(C_Name{name});
         SystemId newSystemId = m_nextSystemId++;
@@ -94,7 +98,33 @@ class SystemManager {
         m_relations.emplace_back(C_SystemRelation{extraParams.relation_});
         m_systemParams.emplace_back(nullptr);
         m_timingAccum.emplace_back();
+        m_concurrency.emplace_back(concurrency);
+        m_grainSize.emplace_back(grainSize > 0 ? grainSize : 1);
+        m_systemAccess.emplace_back(accessDescriptor);
         return newSystemId;
+    }
+
+    /// Per-system concurrency policy, parallel to `m_ticks`. Read by
+    /// `executeSystem` to branch between serial dispatch and the
+    /// `IRJob::parallelFor` worker fan-out.
+    Concurrency getConcurrency(SystemId system) const {
+        return system < m_concurrency.size() ? m_concurrency[system] : Concurrency::SERIAL;
+    }
+
+    /// Per-system chunk size for `Concurrency::PARALLEL_FOR`. Tunable
+    /// per-system via the trailing `grainSize` parameter to
+    /// `createSystem`; defaults to `kDefaultGrainSize` (512).
+    int getGrainSize(SystemId system) const {
+        return system < m_grainSize.size() ? m_grainSize[system] : kDefaultGrainSize;
+    }
+
+    /// Constexpr access descriptor recorded at registration time.
+    /// `Concurrency::PARALLEL_FOR` only validates well if this is
+    /// populated (the entry-point wrapper in `ir_system.hpp` derives it
+    /// from the tick function's signature). Empty for dynamic systems.
+    const SystemAccess &getSystemAccess(SystemId system) const {
+        static const SystemAccess kEmpty{};
+        return system < m_systemAccess.size() ? m_systemAccess[system] : kEmpty;
     }
 
     template <typename Tag> void addSystemTag(SystemId system) {
@@ -194,6 +224,14 @@ class SystemManager {
     std::uint32_t m_nextObserverId = 1;
     std::vector<std::pair<TickObserverId, std::unique_ptr<TickObserver>>> m_observers;
 
+    // T-222: per-system concurrency policy + grain size + access
+    // descriptor. Parallel to m_ticks; emplaced in createSystem,
+    // defaulted (SERIAL / kDefaultGrainSize / empty) for
+    // createSystemDynamic.
+    std::vector<Concurrency> m_concurrency;
+    std::vector<int> m_grainSize;
+    std::vector<SystemAccess> m_systemAccess;
+
     // Begin tick functions happen once per system before tick function(s)
     template <typename FunctionBeginTick>
     void insertBeginTickFunction(FunctionBeginTick functionBeginTick) {
@@ -207,87 +245,132 @@ class SystemManager {
     }
 
     // Tick functions are operated on each entity in the system
-    // matching the archetype. This can happen a variery of ways
+    // matching the archetype. The runtime stores **two** dispatch
+    // shapes per system (T-222 Phase 2 of the multithreading epic):
+    //
+    //   - `rangedTick(node, begin, end)` — invokes the body across
+    //     `[begin, end)`. Populated for every signature that iterates
+    //     entities row-by-row (per-component, per-entity-id,
+    //     optional-relations). The per-archetype batch form
+    //     (`InvocableWithNodeVectors`) consumes the whole column and
+    //     is intentionally unchunkable — `rangedTick` is empty in that
+    //     case; the per-node `functionTick_` does the dispatch.
+    //   - `functionTick(node)` — back-compat per-node entry. For the
+    //     row-iterating forms it's a thin `rangedTick(node, 0, length)`
+    //     wrapper; for the batch form it carries the body directly.
+    //
+    // `Concurrency::PARALLEL_FOR` requires `rangedTick` to be
+    // populated; the entry-point validator in `ir_system.hpp` rejects
+    // batch-form + PARALLEL_FOR.
     template <typename... Components, typename... RelationComponents, typename FunctionTick>
     void insertTickFunction(
         FunctionTick functionTick,
         RelationParams<RelationComponents...> extraParams,
         Archetype excludeArchetype
     ) {
+        if constexpr (InvocableWithNodeVectors<FunctionTick, Components...>) {
+            // Per-archetype batch form: the body sees the whole column,
+            // never row-by-row. No ranged variant — chunking would
+            // require splitting the vector, which the body's contract
+            // disallows.
+            auto perNodeFn = [functionTick](ArchetypeNode *node) {
+                auto paramTuple = std::make_tuple(
+                    node->type_,
+                    std::ref(node->entities_),
+                    std::ref(getComponentData<Components>(node))...
+                );
+                std::apply(
+                    [&functionTick](auto &&...args) {
+                        functionTick(std::forward<decltype(args)>(args)...);
+                    },
+                    paramTuple
+                );
+            };
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
+                    std::function<void(ArchetypeNode *, int, int)>{},
+                    getArchetype<Components...>(),
+                    std::move(excludeArchetype)
+                }
+            );
+            return;
+        } else {
+
+        // Row-iterating forms: build the range-aware lambda once,
+        // synthesize the per-node entry as a thin wrapper that calls
+        // it with `[0, length)`. Wrapped in an `else` so the
+        // unsupported-signature static_assert below only fires when
+        // the batch-form branch above has NOT discarded this code.
+        auto rangedFn = [functionTick, extraParams](
+                            ArchetypeNode *node, int rangeBegin, int rangeEnd
+                        ) {
+            if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
+                auto componentsTuple = std::make_tuple(
+                    std::ref(node->entities_),
+                    std::ref(getComponentData<Components>(node))...
+                );
+                for (int i = rangeBegin; i < rangeEnd; i++) {
+                    std::apply(
+                        [i, &functionTick](auto &&...components) {
+                            functionTick(components[i]...);
+                        },
+                        componentsTuple
+                    );
+                }
+            } else if constexpr (InvocableWithComponents<FunctionTick, Components...>) {
+                auto componentsTuple =
+                    std::make_tuple(std::ref(getComponentData<Components>(node))...);
+                for (int i = rangeBegin; i < rangeEnd; i++) {
+                    std::apply(
+                        [i, &functionTick](auto &&...components) {
+                            functionTick(components[i]...);
+                        },
+                        componentsTuple
+                    );
+                }
+            } else if constexpr (
+                std::is_invocable_v<
+                    FunctionTick,
+                    Components &...,
+                    std::optional<RelationComponents *>...>
+            ) {
+                auto componentsTuple =
+                    std::make_tuple(std::ref(getComponentData<Components>(node))...);
+                EntityId relatedEntity =
+                    getRelatedEntityFromArchetype(node->type_, extraParams.relation_);
+                auto relationComponentTuple =
+                    std::make_tuple(getComponentOptional<RelationComponents>(relatedEntity)...);
+
+                for (int i = rangeBegin; i < rangeEnd; i++) {
+                    std::apply(
+                        [&functionTick](auto &&...args) { functionTick(args...); },
+                        std::tuple_cat(
+                            std::make_tuple(std::ref(
+                                std::get<std::vector<Components> &>(componentsTuple)[i]
+                            )...),
+                            relationComponentTuple
+                        )
+                    );
+                }
+            } else {
+                static_assert(false, "Unsupported tick function signature.");
+            }
+        };
+        std::function<void(ArchetypeNode *, int, int)> rangedFnErased{std::move(rangedFn)};
+        auto rangedFnCopy = rangedFnErased;
+        auto perNodeFn = [rangedFnCopy = std::move(rangedFnCopy)](ArchetypeNode *node) {
+            rangedFnCopy(node, 0, node->length_);
+        };
         m_ticks.emplace_back(
             C_SystemEvent<TICK>{
-                [functionTick, extraParams](ArchetypeNode *node) {
-                    if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
-                        auto componentsTuple = std::make_tuple(
-                            std::ref(node->entities_),
-                            std::ref(getComponentData<Components>(node))...
-                        );
-                        for (int i = 0; i < node->length_; i++) {
-                            std::apply(
-                                [i, &functionTick](auto &&...components) {
-                                    functionTick(components[i]...);
-                                },
-                                componentsTuple
-                            );
-                        }
-                    } else if constexpr (InvocableWithComponents<FunctionTick, Components...>) {
-                        auto componentsTuple =
-                            std::make_tuple(std::ref(getComponentData<Components>(node))...);
-                        for (int i = 0; i < node->length_; i++) {
-                            std::apply(
-                                [i, &functionTick](auto &&...components) {
-                                    functionTick(components[i]...);
-                                },
-                                componentsTuple
-                            );
-                        }
-                    } else if constexpr (
-                        std::is_invocable_v<
-                            FunctionTick,
-                            Components &...,
-                            std::optional<RelationComponents *>...>
-                    ) {
-                        auto componentsTuple =
-                            std::make_tuple(std::ref(getComponentData<Components>(node))...);
-                        EntityId relatedEntity =
-                            getRelatedEntityFromArchetype(node->type_, extraParams.relation_);
-                        auto relationComponentTuple = std::make_tuple(
-                            getComponentOptional<RelationComponents>(relatedEntity)...
-                        );
-
-                        for (int i = 0; i < node->length_; i++) {
-                            std::apply(
-                                [&functionTick](auto &&...args) { functionTick(args...); },
-                                std::tuple_cat(
-                                    std::make_tuple(
-                                        std::ref(
-                                            std::get<std::vector<Components> &>(componentsTuple)[i]
-                                        )...
-                                    ),
-                                    relationComponentTuple
-                                )
-                            );
-                        }
-                    } else if constexpr (InvocableWithNodeVectors<FunctionTick, Components...>) {
-                        auto paramTuple = std::make_tuple(
-                            node->type_,
-                            std::ref(node->entities_),
-                            std::ref(getComponentData<Components>(node))...
-                        );
-                        std::apply(
-                            [&functionTick](auto &&...args) {
-                                functionTick(std::forward<decltype(args)>(args)...);
-                            },
-                            paramTuple
-                        );
-                    } else {
-                        static_assert(false, "Unsupported tick function signature.");
-                    }
-                },
+                std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
+                std::move(rangedFnErased),
                 getArchetype<Components...>(),
                 std::move(excludeArchetype)
             }
         );
+        }
     }
 
     // End tick functions happen once per system after tick function(s)

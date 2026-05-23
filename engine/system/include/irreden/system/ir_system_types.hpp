@@ -11,6 +11,34 @@ using SystemId = EntityId;
 
 enum SystemTickModifiers { SYSTEM_MODIFIER_NONE = 0, SYSTEM_MODIFIER_WITH_ENTITY = 1 };
 
+/// Per-system dispatch policy. T-222 Phase 2 of the multithreading epic
+/// (#226). Default `SERIAL` keeps every existing system unchanged.
+///
+/// - `SERIAL`        — run the tick on the main thread, one archetype
+///                     node at a time (legacy behavior).
+/// - `PARALLEL_FOR`  — within each matched archetype node, split the
+///                     entity range into chunks of `grainSize` and
+///                     dispatch each chunk to a worker via
+///                     `IRJob::parallelFor`. `beginTick`/`endTick` and
+///                     archetype iteration order still serialize on the
+///                     main thread.
+/// - `MAIN_THREAD`   — like `SERIAL`, but documents that the system
+///                     MUST run on the main thread (Lua-bound side
+///                     effects, GPU calls, etc.). Set by the validator
+///                     when a tick body uses a not-safe surface.
+enum class Concurrency {
+    SERIAL = 0,
+    PARALLEL_FOR,
+    MAIN_THREAD,
+};
+
+/// Default chunk size for `Concurrency::PARALLEL_FOR`. Workload-dependent
+/// in the general case; documented as a constant for now per #1069. A
+/// per-system override is accepted via the trailing `int grainSize`
+/// parameter to `createSystem` or the optional `static constexpr int
+/// kGrainSize` member on a `System<N>` specialization.
+inline constexpr int kDefaultGrainSize = 512;
+
 enum SystemEvent {
     BEGIN_TICK,
     TICK,

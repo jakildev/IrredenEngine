@@ -23,21 +23,51 @@ template <> struct C_SystemEvent<IRSystem::BEGIN_TICK> {
 };
 
 template <> struct C_SystemEvent<IRSystem::TICK> {
+    /// Whole-node dispatch — the body iterates `[0, node->length_)`
+    /// internally. The legacy form; every system has one. For
+    /// `Concurrency::SERIAL` and `Concurrency::MAIN_THREAD` this is the
+    /// path SystemManager invokes.
     std::function<void(IREntity::ArchetypeNode *)> functionTick_;
+
+    /// Range-aware dispatch — `[rangeBegin, rangeEnd)` substitutes the
+    /// internal loop bounds. Populated by `createSystem<...>` (template
+    /// path) for tick signatures the runtime can chunk safely; empty
+    /// for `createSystemDynamic` (the Lua-driven dynamic body is opaque
+    /// to chunking) and for the per-archetype batch form (the body
+    /// consumes the whole column). `Concurrency::PARALLEL_FOR` requires
+    /// this slot to be populated; the validator rejects otherwise.
+    std::function<void(IREntity::ArchetypeNode *, int rangeBegin, int rangeEnd)>
+        rangedFunctionTick_;
+
     IREntity::Archetype archetype_;
     IREntity::Archetype excludeArchetype_;
 
     C_SystemEvent(
-        const std::function<void(IREntity::ArchetypeNode *)> &tickFunctions,
+        std::function<void(IREntity::ArchetypeNode *)> tickFunction,
+        std::function<void(IREntity::ArchetypeNode *, int, int)> rangedTickFunction,
         IREntity::Archetype archetype,
         IREntity::Archetype excludeArchetype = {}
     )
-        : functionTick_(tickFunctions)
+        : functionTick_(std::move(tickFunction))
+        , rangedFunctionTick_(std::move(rangedTickFunction))
+        , archetype_(std::move(archetype))
+        , excludeArchetype_(std::move(excludeArchetype)) {}
+
+    /// Legacy two-arg overload — used by `createSystemDynamic`. Leaves
+    /// `rangedFunctionTick_` empty (validator rejects PARALLEL_FOR).
+    C_SystemEvent(
+        std::function<void(IREntity::ArchetypeNode *)> tickFunction,
+        IREntity::Archetype archetype,
+        IREntity::Archetype excludeArchetype = {}
+    )
+        : functionTick_(std::move(tickFunction))
+        , rangedFunctionTick_()
         , archetype_(std::move(archetype))
         , excludeArchetype_(std::move(excludeArchetype)) {}
 
     C_SystemEvent()
-        : functionTick_() {}
+        : functionTick_()
+        , rangedFunctionTick_() {}
 };
 
 template <> struct C_SystemEvent<IRSystem::END_TICK> {

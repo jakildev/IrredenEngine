@@ -2,6 +2,7 @@
 #include <irreden/system/system_manager.hpp>
 
 #include <irreden/common/components/component_name.hpp>
+#include <irreden/ir_job.hpp>
 
 #include <chrono>
 
@@ -67,6 +68,11 @@ SystemId SystemManager::createSystemDynamic(
     m_relations.emplace_back(C_SystemRelation{Relation::NONE});
     m_systemParams.emplace_back(nullptr);
     m_timingAccum.emplace_back();
+    // T-222: dynamic systems are SERIAL-only (the body is opaque to
+    // chunking) and have no compile-time access descriptor.
+    m_concurrency.emplace_back(Concurrency::SERIAL);
+    m_grainSize.emplace_back(kDefaultGrainSize);
+    m_systemAccess.emplace_back();
     return newSystemId;
 }
 
@@ -128,12 +134,40 @@ void SystemManager::executeSystem(SystemId system) {
 
     uint64_t entityCount = 0;
     EntityId previousRelatedEntity = kNullEntity;
+    const Concurrency concurrency =
+        system < m_concurrency.size() ? m_concurrency[system] : Concurrency::SERIAL;
+    const int grainSize =
+        (system < m_grainSize.size() && m_grainSize[system] > 0) ? m_grainSize[system]
+                                                                 : kDefaultGrainSize;
+    const auto &tickEvent = m_ticks[system];
+
     for (auto node : nodes) {
         if (m_timingEnabled) {
             entityCount += static_cast<uint64_t>(node->length_);
         }
         previousRelatedEntity = handleRelationTick(node, system, previousRelatedEntity);
-        m_ticks[system].functionTick_(node);
+
+        if (concurrency == Concurrency::PARALLEL_FOR
+            && static_cast<bool>(tickEvent.rangedFunctionTick_)
+            && node->length_ > grainSize
+            && g_jobManager != nullptr) {
+            // Worker fan-out: split [0, length) into grainSize chunks
+            // and run each on the pool. enkiTS' WaitforTask pumps the
+            // main thread, so this blocks until every chunk finishes.
+            const auto &rangedFn = tickEvent.rangedFunctionTick_;
+            IRJob::parallelFor(
+                0,
+                node->length_,
+                grainSize,
+                [&rangedFn, node](int rangeBegin, int rangeEnd) {
+                    rangedFn(node, rangeBegin, rangeEnd);
+                }
+            );
+        } else {
+            // SERIAL / MAIN_THREAD path, and the small-node /
+            // no-pool fallback for PARALLEL_FOR.
+            tickEvent.functionTick_(node);
+        }
     }
     m_endTicks[system].functionEndTick_();
 
