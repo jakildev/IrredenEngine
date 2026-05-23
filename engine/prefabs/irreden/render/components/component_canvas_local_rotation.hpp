@@ -6,10 +6,14 @@
 namespace IRComponents {
 
 // Per-entity SO(3) rotation propagated onto a voxel-pool canvas entity by
-// PROPAGATE_CANVAS_ROTATION — for a detached canvas, copied each tick from the
-// parent entity's C_LocalTransform. VOXEL_TO_TRIXEL_STAGE_1 reads it and bakes
-// full SO(3) rotation into the voxel emit via IRMath::faceDeformationMatrixSO3
-// (T-295), rasterizing the detached voxels in the entity's own model space.
+// PROPAGATE_CANVAS_ROTATION — for a detached canvas, composed each tick as
+// `quatInverse(R_camera) * entityRotation` where R_camera is the world-camera
+// rotation snapshot at begin-tick (T-319). This bakes the entity rotation in
+// the camera's frame so the canvas content tracks the world as the camera
+// rotates, mirroring GRID-mode behavior. VOXEL_TO_TRIXEL_STAGE_1 reads it and
+// bakes full SO(3) rotation into the voxel emit via
+// IRMath::faceDeformationMatrixSO3 (T-295), rasterizing the detached voxels
+// in the camera-composed model space.
 //
 // The default (0,0,0,0) — an all-zero, non-unit quaternion — is the
 // "not a detached canvas" sentinel: it is never a valid rotation, so the
@@ -33,8 +37,8 @@ struct C_CanvasLocalRotation {
         : rotation_{rotation} {}
 
     bool isDetached() const noexcept {
-        return rotation_.x != 0.0f || rotation_.y != 0.0f ||
-               rotation_.z != 0.0f || rotation_.w != 0.0f;
+        return rotation_.x != 0.0f || rotation_.y != 0.0f || rotation_.z != 0.0f ||
+               rotation_.w != 0.0f;
     }
 };
 

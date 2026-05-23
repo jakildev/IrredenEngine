@@ -167,6 +167,15 @@ inline vec4 quatAxisAngle(const vec3 &axis, float angle) {
     return vec4(a.x * sin(h), a.y * sin(h), a.z * sin(h), cos(h));
 }
 
+// Inverse of a UNIT quaternion — conjugate (negate xyz, keep w). For
+// non-unit input the result is the conjugate, not the true inverse;
+// callers must pass unit quaternions (which is what every IRMath
+// producer — `quatAxisAngle`, identity, `quatMul` of unit operands —
+// returns).
+inline vec4 quatInverse(const vec4 &q) {
+    return vec4(-q.x, -q.y, -q.z, q.w);
+}
+
 /// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
 /// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
 /// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.
