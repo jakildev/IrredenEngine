@@ -200,11 +200,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Perf: Metal Buffer::subData orphans + full-copies the whole buffer on every call** — eliminate per-frame full-buffer memcpy by tracking GPU-idle state and writing in place on first access per frame
+- [~] **Perf: Metal Buffer::subData orphans + full-copies the whole buffer on every call** — eliminate per-frame full-buffer memcpy by tracking GPU-idle state and writing in place on first access per frame
   - **ID:** T-316
   - **Area:** engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** per-frame buffer-orphan memcpy volume drops to near zero in steady state; IRPerfGrid matrix shows measurable frame improvement and no regression; render-verify clean on Metal backend
   - **Issue:** #1051
