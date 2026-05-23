@@ -117,7 +117,6 @@ For more advanced setups, the root `CMakeLists.txt` still supports `IRREDEN_USER
 
 | Name | Owning Module | Description/Usage  | Integration Details |
 | ---- | -------| ------------------ | ------------------- |
-| [enkiTS](https://github.com/dougbinks/enkiTS) | IRJob | Lock-free MPMC work-stealing task scheduler for the worker pool. | Vendored under `engine/job/third_party/enkiTS/`. |
 | [RtAudio](https://github.com/thestk/rtaudio) | IRAudio | Realtime audio input/output. | [Details](/docs/text/dependencies/rtaudio.md)|
 | [RtMidi](https://github.com/thestk/rtmidi) | IRAudio | Realtime MIDI input/output. | [Details](/docs/text/dependencies/rtmidi.md) |
 | [GLFW](https://github.com/glfw/glfw) | IRInput | OpenGL window creation, inputs, and events. | [Details](/docs/text/dependencies/glfw.md) |
