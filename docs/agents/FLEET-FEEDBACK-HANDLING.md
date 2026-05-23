@@ -51,31 +51,38 @@ manual conflict resolution flow lives in the worker role's step
 `human:needs-fix`, which sonnet-author DOES pick up via the normal
 cycle.
 
-## Branch-claim filter (busy-branch skip)
+## Detached-HEAD checkout (no busy-branch filter)
 
-A PR's branch can only be checked out in one worktree at a time —
-git refuses to share. After a fleet kill+restart, the worker that
-originally opened a PR still has its branch checked out and should
-address the feedback. Trying anyway just earns a `gh pr checkout`
-failure (`branch is already used by worktree at ...`) after you've
-already invested reasoning.
+Git refuses to check out the same local branch in two worktrees at
+a time. The fleet historically worked around this with a busy-branch
+filter — workers read `git worktree list`, found the PR's head ref
+already checked out somewhere, and skipped the iteration. That
+correctly avoided `gh pr checkout` errors, but it ALSO meant the
+operator inspecting a PR locally (or any other worktree happening to
+have the branch checked out) silently blocked every worker iteration
+on that PR until the holder switched away.
 
-List the busy branches with the shared helper. It reads
-`git worktree list --porcelain` and emits one branch name per line,
-excluding the caller's own worktree:
+Workers now use **detached HEAD** instead. A detached HEAD doesn't
+claim the branch ref, so any number of worktrees can have the same
+commit checked out simultaneously — the operator's main clone, two
+workers, and the merger can all sit on the same commit. Concurrency
+safety against concurrent amendments comes from `--force-with-lease`
+at push time: if the remote ref moved between fetch and push, the
+loser exits clean and the next iteration retries.
 
-```
-fleet-worktree-busy-branches --repo ~/src/IrredenEngine
-fleet-worktree-busy-branches --repo ~/src/IrredenEngine/creations/game
-```
+Use `fleet-pr-checkout-detached <N> [--repo <slug>]` instead of
+`gh pr checkout <N>`. The wrapper fetches the PR's head ref, runs
+`git checkout --detach origin/<head-ref>`, and writes a
+`.git/fleet-amend-ref` sentinel that `fleet-pr-amend-push` reads
+to route the amendment push to the right ref.
 
-For each candidate PR, match its `headRefName` against the relevant
-repo's busy-branch list and skip the PR if its head branch is in
-the set.
+There is **no busy-branch filter**. Any candidate PR that survives
+the label filters at the top of this doc is fair game; the worker
+checks it out detached and proceeds.
 
 ## Reading the feedback
 
-For each flagged PR (after the busy-branch filter):
+For each flagged PR:
 
 ```
 fleet-pr comments <N>
@@ -175,20 +182,19 @@ that needs justification in the linked issue.
 
 ### Step b — claim the branch and remove the feedback label
 
-**First, check out the PR.** `fleet-worktree-busy-branches` is a
-fast-path filter; git is the source of truth and can change between
-the helper call and the checkout (observed TOCTOU on PRs #402,
-#406, #425). Do this BEFORE removing any label so a stale-busy-
-branch list cannot leave the PR in a labeless state:
+**First, check out the PR in detached HEAD.** The wrapper fetches
+the PR's head ref and checks it out detached — no busy-branch
+filter, no `branch is already used by worktree` error. Do this
+BEFORE removing any label so a checkout failure (network, unknown
+ref, fork PR) cannot leave the PR in a labeless state:
 
 ```
-gh pr checkout <N> --repo jakildev/IrredenEngine
+fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine
 ```
 
-If checkout fails with `branch is already used by worktree at
-...`, **do NOT remove the feedback label**. Skip this PR and move
-to the next iteration — the label stays on the PR so the agent
-that does own the worktree can pick it up.
+If the wrapper fails (e.g. fetch error), **do NOT remove the
+feedback label**. Skip this PR and move to the next iteration —
+the label stays on the PR so a retry has something to pick up.
 
 With checkout confirmed, **remove the feedback label** to prevent
 another agent from also picking it up:
@@ -263,7 +269,28 @@ If the touched code has an executable target, run it (see
 
 ### Step d — push the fixes
 
-Use the `commit-and-push` skill to land the amendment.
+You're on a detached HEAD pointing at the PR's head ref; the
+`commit-and-push` skill's normal `git push -u origin HEAD` flow
+doesn't apply. Stage and commit as usual (the simplify pass still
+applies — run `/simplify` before staging), then:
+
+```
+fleet-pr-amend-push
+```
+
+The wrapper reads the head ref name from the `.git/fleet-amend-ref`
+sentinel that `fleet-pr-checkout-detached` wrote in step b, and
+runs `git push --force-with-lease origin HEAD:<head-ref>`. The
+`--force-with-lease` is the safety belt against concurrent
+amendments (another worker, the operator pushing from the main
+clone, the merger mid-rebase) — if the remote moved between the
+fetch in step b and the push here, the lease fails and the
+iteration exits clean for the next retry.
+
+Do NOT invoke the `commit-and-push` skill here: it would try to
+`git push -u origin HEAD` (fails on detached HEAD) and then open a
+new PR (one already exists for this head ref). The wrapper handles
+the right push semantics for amendments.
 
 ### Step e — swap the in-progress label for the done label
 
