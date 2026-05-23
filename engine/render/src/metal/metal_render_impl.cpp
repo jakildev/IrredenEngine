@@ -238,6 +238,8 @@ class MetalRenderDevice final : public RenderDevice {
             releaseTimestampPair(pair);
         }
         m_timestamps.clear();
+        // counterSets() returns a non-owning pointer (the MTL::Device owns
+        // the set), so we clear the reference without ->release().
         m_timestampCounterSet = nullptr;
         m_supportsTimestampPairs = false;
         for (auto &[texture, buf] : m_clearSourceBuffers) {
