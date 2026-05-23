@@ -663,6 +663,17 @@ def enrich_stackable_blocker_prs(state):
             }
 
 
+# Narrowed label sets stored in the per-role hash item. Storing the full
+# pr["labels"] list here re-flips the projection hash on every transient
+# label change (merger toggling fleet:merger-cooldown, reviewers swapping
+# fleet:changes-made ↔ fleet:needs-fix, smoke gates flipping
+# fleet:needs-linux-smoke), waking the role to find nothing actionable.
+# Same anti-pattern project_merger already documents and avoids — keep
+# only the labels each role's own decision logic actually keys on.
+_SONNET_AUTHOR_RELEVANT_LABELS = FEEDBACK_LABELS
+_OPUS_WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
+
+
 def project_sonnet_author(state):
     items = []
     for repo, repo_state in state["repos"].items():
@@ -674,9 +685,9 @@ def project_sonnet_author(state):
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
-            if labels & FEEDBACK_LABELS:
+            if labels & _SONNET_AUTHOR_RELEVANT_LABELS:
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
-                              "labels": pr["labels"]})
+                              "labels": sorted(labels & _SONNET_AUTHOR_RELEVANT_LABELS)})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -694,9 +705,9 @@ def project_opus_worker(state):
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
-            if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
+            if labels & _OPUS_WORKER_RELEVANT_LABELS:
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
-                              "labels": pr["labels"]})
+                              "labels": sorted(labels & _OPUS_WORKER_RELEVANT_LABELS)})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -729,7 +740,8 @@ def project_opus_reviewer(state):
                 continue
             if not (labels & flag_labels):
                 continue
-            items.append({"repo": repo, "pr": pr["number"], "labels": pr["labels"]})
+            items.append({"repo": repo, "pr": pr["number"],
+                          "labels": sorted(labels & flag_labels)})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
