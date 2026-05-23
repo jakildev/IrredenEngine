@@ -265,6 +265,23 @@ uses the engine's backend — cross-host applies at engine level) and
 for non-render engine PRs (tooling, docs, non-render modules — these
 don't exercise backends and don't benefit from cross-host smoke).
 
+## Iso-depth-axis invariant (world-camera Z-yaw-only for GRID)
+
+The integer trixel raster, picking, hitbox cardinal-snap, gizmo drag,
+and the SDF analytic AABB cull all assume the world-space (1,1,1)
+direction is the iso depth axis. World-camera pitch or roll silently
+breaks those shortcuts — every "sum of components = depth" closed form
+and every cardinal-index API loses meaning. DETACHED entities are
+exempt (they raster through `faceDeformationMatrixSO3`, which is
+axis-agnostic, and the per-canvas SO(3) bake absorbs arbitrary camera
+rotation).
+
+Future free-camera work (orbit, perspective preview, cinematics) should
+cost itself against the consumer map and "how to break it" table in
+[`docs/design/iso-depth-axis-invariant.md`](../../docs/design/iso-depth-axis-invariant.md)
+before scoping. Sized similarly to T-054 / T-055 combined; DETACHED-only
+pitch/roll is free via issue #1076 + #1075.
+
 ## Lighting culling invariants
 
 The render cull (`visibleIsoViewport` → `buildChunkVisibilityMask` in
