@@ -365,7 +365,7 @@ class SystemManager {
             return;
         } else {
 
-// Row-iterating forms: build a main-thread binder
+            // Row-iterating forms: build a main-thread binder
             // (`prepareRangedTick`) that resolves the per-component
             // vector refs from the node once via `getComponentData<>` —
             // which goes through `EntityManager::m_pureComponentTypes`,
