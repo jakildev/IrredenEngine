@@ -139,6 +139,19 @@ constexpr SystemId createSystem(
     // see the TODO at `InvocableWithOptionalRelations` in
     // ir_system_types.hpp — so we fold `isRelationForm_` in here where
     // both packs are in scope.
+    //
+    // TODO: const-qualified relation components. If a caller declares
+    // `RelationParams<const RelComp>`, the probe below instantiates as
+    // `std::optional<const RelComp*>`, which does NOT match the
+    // `std::optional<RelComp*>` parameter passed by `rangedFn`'s
+    // relation branch (`system_manager.hpp` — search for the relation
+    // dispatch site). The probe returns false, `isRelationForm_` stays
+    // unset, and the PARALLEL_FOR guard silently doesn't fire. No
+    // current system uses `const T` in `RelationParams`, so this is a
+    // latent edge case rather than a live bug — strip cv via
+    // `std::remove_cvref_t<TickRelationComponents>` here (and at the
+    // dispatch site if it ever takes a const pointer) before flipping
+    // the bit.
     constexpr SystemAccess accessDescriptor = []() {
         SystemAccess a = deriveAccessFromSignature<FunctionTick, TickComponents...>();
         if constexpr (sizeof...(TickRelationComponents) > 0) {
