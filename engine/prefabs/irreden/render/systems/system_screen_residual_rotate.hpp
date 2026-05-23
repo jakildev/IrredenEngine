@@ -5,7 +5,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
@@ -33,18 +33,17 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
 
     void tick(
         const C_TrixelCanvasFramebuffer &framebuffer,
-        const C_Position3D &cameraPosition,
+        const C_WorldTransform &cameraWorldXform,
         const C_Name &name
     ) {
         framebuffer.bindTextures(0, 1);
-        frameData_.mvpMatrix =
-            calcProjectionMatrix() * calcModelMatrix(
-                                         framebuffer.getResolution(),
-                                         framebuffer.getResolutionPlusBuffer(),
-                                         cameraPosition.pos_,
-                                         IRRender::getCameraPosition2DIso(),
-                                         name.name_
-                                     );
+        frameData_.mvpMatrix = calcProjectionMatrix() * calcModelMatrix(
+                                                            framebuffer.getResolution(),
+                                                            framebuffer.getResolutionPlusBuffer(),
+                                                            cameraWorldXform.translation_,
+                                                            IRRender::getCameraPosition2DIso(),
+                                                            name.name_
+                                                        );
         // residualYaw_ is left at its default 0 — the stage is a passthrough
         // after T-293, with residual yaw folded into the trixel emit
         // shaders' faceDeform[] (camera.hpp no longer drives the screen-
@@ -79,10 +78,11 @@ template <> struct System<SCREEN_SPACE_RESIDUAL_ROTATE> {
             kBufferIndex_FrameDataScreenResidualRotate
         );
 
-        SystemId id = registerSystem<SCREEN_SPACE_RESIDUAL_ROTATE,
-                                     C_TrixelCanvasFramebuffer,
-                                     C_Position3D,
-                                     C_Name>("ScreenSpaceResidualRotate");
+        SystemId id = registerSystem<
+            SCREEN_SPACE_RESIDUAL_ROTATE,
+            C_TrixelCanvasFramebuffer,
+            C_WorldTransform,
+            C_Name>("ScreenSpaceResidualRotate");
         auto *sys = getSystemParams<System<SCREEN_SPACE_RESIDUAL_ROTATE>>(id);
         sys->frameDataBuf_ =
             IRRender::getNamedResource<Buffer>("ScreenSpaceResidualRotateFrameData");

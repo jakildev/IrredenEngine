@@ -6,19 +6,15 @@ in `update/`.
 
 ## Key components
 
-- `C_Position3D` — local vec3 (legacy; T-199 in flight — superseded by
-  `C_LocalTransform` when consumers migrate; new code should prefer SQT).
-- `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**
-  (legacy parallel to `C_WorldTransform`; T-199 in flight — both still
-  active during the consumer sweep, but writers retired in T-300
-  Phase 2 so this field is `(0,0,0)` until T-299 migrates the
-  remaining render-side readers to `C_WorldTransform.translation_`).
-  Ephemeral per-frame deltas (idle bob, gizmo nudges) now travel
-  through the `TRANSFORM_TRANSLATION` modifier field — see
-  [`transform_modifier_fields.hpp`](transform_modifier_fields.hpp)
-  and `SYSTEM_PROPAGATE_TRANSFORM`.
-- `C_Rotation` — Euler vec3 (legacy; T-199 in flight — superseded by the
-  quat field on `C_LocalTransform` when consumers migrate).
+> **Retired (T-302):** `C_Position3D`, `C_PositionGlobal3D`,
+> `C_Rotation`, and the `SYSTEM_GLOBAL_POSITION_3D` writer were
+> deleted in T-302. The canonical replacement is the
+> `C_LocalTransform` / `C_WorldTransform` SQT pair below.
+> Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
+> the `TRANSFORM_TRANSLATION` modifier field — see
+> [`transform_modifier_fields.hpp`](transform_modifier_fields.hpp)
+> and `SYSTEM_PROPAGATE_TRANSFORM`.
+
 - `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
   pair. **Both auto-added by `createEntity(...)`**. See
   [SQT transform pair + propagation](#sqt-transform-pair--propagation)
@@ -311,19 +307,16 @@ runtime work and architect-gated decisions.
 
 ## Gotchas
 
-- **`createEntity` always adds `C_PositionGlobal3D`.** Legacy field
-  written by `GLOBAL_POSITION_3D` (`local + parent`) — but in the
-  T-300/T-299 SQT migration window the writer chain is dormant
-  (`C_Position3D` has no remaining writers post-T-300 Phase 2). The
-  canonical rendered position now lives in `C_WorldTransform`,
-  composed by `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform`
-  plus the parent chain and the `TRANSFORM_TRANSLATION` /
-  `TRANSFORM_SCALE` modifier-resolved fields. Render-side readers
-  migrate to `C_WorldTransform.translation_` in T-299.
-- **Don't duplicate position components.** Adding your own
-  `C_PositionGlobal3D` second on top of the auto-added one leaves one
-  column stale and causes jitter. `createEntity(...)` detects
-  user-supplied `C_PositionGlobal3D` / `C_LocalTransform` /
+- **`createEntity` always adds `C_LocalTransform` and
+  `C_WorldTransform`.** The canonical rendered position lives in
+  `C_WorldTransform.translation_`, composed by
+  `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform` plus the
+  parent chain and the `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE`
+  modifier-resolved fields.
+- **Don't duplicate transform components.** Adding your own
+  `C_LocalTransform` or `C_WorldTransform` second on top of the
+  auto-added one leaves one column stale and causes jitter.
+  `createEntity(...)` detects user-supplied `C_LocalTransform` /
   `C_WorldTransform` and skips the matching default; passing any
   other auto-attached component twice is still a footgun.
 - **No systems means no ownership.** Any code is free to write to any

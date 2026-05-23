@@ -72,8 +72,8 @@ template <> struct System<GIZMO_DRAG> {
     // gizmo's drag from appearing as the new gizmo's current state.
     // endTick() reads these on the press→release transition to log the
     // final per-drag value. Wiring rotate / scale to an accumulating
-    // render-side component is a follow-up once a canonical
-    // C_Rotation / C_Scale pair lands.
+    // render-side component is a follow-up — the canonical channel is
+    // the quat on C_LocalTransform plus a future C_Scale.
     IREntity::EntityId accumOwner_ = IREntity::kNullEntity;
     float accumRotateAngle_ = 0.0f;
     float accumScaleUniform_ = 1.0f;

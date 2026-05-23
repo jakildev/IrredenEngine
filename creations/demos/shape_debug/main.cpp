@@ -28,7 +28,6 @@
 #include <irreden/render/camera.hpp>
 
 // SYSTEMS
-#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
@@ -196,7 +195,6 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>()}

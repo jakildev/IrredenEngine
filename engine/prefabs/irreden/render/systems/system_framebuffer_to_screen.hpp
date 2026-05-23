@@ -5,7 +5,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
@@ -31,18 +31,17 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
 
     void tick(
         const C_TrixelCanvasFramebuffer &framebuffer,
-        const C_Position3D &cameraPosition,
+        const C_WorldTransform &cameraWorldXform,
         const C_Name &name
     ) {
         framebuffer.bindTextures(0, 1);
-        frameData_.mvpMatrix =
-            calcProjectionMatrix() * calcModelMatrix(
-                                         framebuffer.getResolution(),
-                                         framebuffer.getResolutionPlusBuffer(),
-                                         cameraPosition.pos_,
-                                         IRRender::getCameraPosition2DIso(),
-                                         name.name_
-                                     );
+        frameData_.mvpMatrix = calcProjectionMatrix() * calcModelMatrix(
+                                                            framebuffer.getResolution(),
+                                                            framebuffer.getResolutionPlusBuffer(),
+                                                            cameraWorldXform.translation_,
+                                                            IRRender::getCameraPosition2DIso(),
+                                                            name.name_
+                                                        );
         frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &frameData_);
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
         IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
@@ -72,10 +71,11 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
             kBufferIndex_FramebufferFrameDataUniform
         );
 
-        SystemId id = registerSystem<FRAMEBUFFER_TO_SCREEN,
-                                     C_TrixelCanvasFramebuffer,
-                                     C_Position3D,
-                                     C_Name>("FramebufferToScreen");
+        SystemId id = registerSystem<
+            FRAMEBUFFER_TO_SCREEN,
+            C_TrixelCanvasFramebuffer,
+            C_WorldTransform,
+            C_Name>("FramebufferToScreen");
         auto *sys = getSystemParams<System<FRAMEBUFFER_TO_SCREEN>>(id);
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("FramebufferToScreenFrameData");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("FramebufferToScreenProgram");

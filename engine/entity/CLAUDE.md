@@ -213,21 +213,22 @@ precedes the load, which already clears the cache).
 
 ## Position + transform components are automatic
 
-`createEntity(...)` always adds `C_PositionGlobal3D`,
-`C_LocalTransform`, and `C_WorldTransform`. You cannot opt out, but
-the free-function wrapper detects when the caller passes one of these
-types explicitly and skips the matching default — so
-`createEntity(C_LocalTransform{...})` lands the caller's value rather
-than emplacing a duplicate column row.
+`createEntity(...)` always adds `C_LocalTransform` and
+`C_WorldTransform`. You cannot opt out, but the free-function
+wrapper detects when the caller passes one of these types
+explicitly and skips the matching default — so
+`createEntity(C_LocalTransform{...})` lands the caller's value
+rather than emplacing a duplicate column row.
 
-The legacy `C_PositionGlobal3D` channel and the canonical
-`C_WorldTransform` channel coexist during the T-199 migration; see
-`engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
-propagation" for the SQT formula and pipeline placement. Per-frame
-additive offsets travel through the modifier framework's vec3 fields
-(`POSITION_OFFSET_3D` for the legacy channel,
-`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` for the SQT channel).
-Entities that don't push offsets don't need `C_Modifiers`.
+Rendered position lives in `C_WorldTransform.translation_`,
+composed by `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform`
+plus the parent chain — see `engine/prefabs/irreden/common/CLAUDE.md`
+"SQT transform pair + propagation" for the formula and pipeline
+placement. Per-frame additive offsets travel through the modifier
+framework's `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` vec3 fields;
+entities that don't push offsets don't need `C_Modifiers`. The
+legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation`
+components and their writer chain were retired in T-302.
 
 ## Relations
 

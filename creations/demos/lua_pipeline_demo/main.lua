@@ -12,11 +12,11 @@ local SystemName = IRSystem.SystemName
 local tickCounterSysId = IRSystem.registerSystem({
     name = "TickCounterLua",
     -- No entity is created in this demo so no archetype matches
-    -- C_Position3D — the per-archetype tick body never fires. The point
-    -- of including this Lua system is to verify pipeline composition
+    -- C_LocalTransform — the per-archetype tick body never fires. The
+    -- point of including this Lua system is to verify pipeline composition
     -- mixes prefab and Lua-defined SystemIds in the same list without
     -- crashing.
-    components = { IRComponent.C_Position3D },
+    components = { IRComponent.C_LocalTransform },
     tick = function(arch)
         -- Body stays trivial; the demo's success signal is the engine
         -- reaching the game loop with a Lua-driven pipeline + exiting
@@ -26,7 +26,7 @@ local tickCounterSysId = IRSystem.registerSystem({
 })
 
 IRSystem.registerPipeline(IRTime.UPDATE, {
-    IRSystem.systemId(SystemName.GLOBAL_POSITION_3D),
+    IRSystem.systemId(SystemName.PROPAGATE_TRANSFORM),
     IRSystem.systemId(SystemName.LIFETIME),
     IRSystem.systemId(SystemName.MODIFIER_DECAY),
     IRSystem.systemId(SystemName.GLOBAL_MODIFIER_DECAY),

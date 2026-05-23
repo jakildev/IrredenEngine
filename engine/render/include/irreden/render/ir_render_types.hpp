@@ -148,9 +148,9 @@ struct FrameDataVoxelToCanvas {
     // IRMath::kXFace / kYFace / kZFace (0/1/2). std140 vec4 array stride
     // is 16 B so this is 48 B; mirrored as `vec4 faceDeform[3]` in the
     // GLSL/Metal UBO declarations.
-    vec4 faceDeform_[3] = {vec4(1.0f, 0.0f, 0.0f, 1.0f),
-                           vec4(1.0f, 0.0f, 0.0f, 1.0f),
-                           vec4(1.0f, 0.0f, 0.0f, 1.0f)};
+    vec4 faceDeform_[3] = {
+        vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f)
+    };
 };
 
 struct FrameDataTrixelToTrixel {
@@ -281,20 +281,27 @@ struct GPUShapesFrameData {
     // IRMath::kXFace / kYFace / kZFace (0/1/2). std140 vec4 array stride
     // is 16 B so this is 48 B; mirrored as `vec4 faceDeform[3]` in the
     // GLSL/Metal UBO declarations.
-    vec4 faceDeform[3] = {vec4(1.0f, 0.0f, 0.0f, 1.0f),
-                          vec4(1.0f, 0.0f, 0.0f, 1.0f),
-                          vec4(1.0f, 0.0f, 0.0f, 1.0f)};
+    vec4 faceDeform[3] = {
+        vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f)
+    };
 };
-static_assert(offsetof(GPUShapesFrameData, faceDeform) == 80,
-              "GPUShapesFrameData::faceDeform must align at the 16-byte boundary "
-              "GLSL std140 enforces for vec4 arr[3]");
-static_assert(sizeof(GPUShapesFrameData) == 128,
-              "GPUShapesFrameData size must mirror its std140 GLSL block");
-static_assert(offsetof(FrameDataVoxelToCanvas, faceDeform_) == 80,
-              "FrameDataVoxelToCanvas::faceDeform_ must align at the 16-byte boundary "
-              "GLSL std140 enforces for vec4 arr[3]");
-static_assert(sizeof(FrameDataVoxelToCanvas) == 128,
-              "FrameDataVoxelToCanvas size must mirror its std140 GLSL block");
+static_assert(
+    offsetof(GPUShapesFrameData, faceDeform) == 80,
+    "GPUShapesFrameData::faceDeform must align at the 16-byte boundary "
+    "GLSL std140 enforces for vec4 arr[3]"
+);
+static_assert(
+    sizeof(GPUShapesFrameData) == 128, "GPUShapesFrameData size must mirror its std140 GLSL block"
+);
+static_assert(
+    offsetof(FrameDataVoxelToCanvas, faceDeform_) == 80,
+    "FrameDataVoxelToCanvas::faceDeform_ must align at the 16-byte boundary "
+    "GLSL std140 enforces for vec4 arr[3]"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 128,
+    "FrameDataVoxelToCanvas size must mirror its std140 GLSL block"
+);
 
 struct FrameDataSun {
     // xyz = unit vector pointing from surfaces toward the sun; w unused.
@@ -466,7 +473,7 @@ constexpr int kLightVolumePropagateIterations = 32;
 /// stride is 64 bytes per record. Decoded in `c_seed_light_volume`.
 struct GPULightSource {
     /// xyz = world-space origin in voxel units (round-half-up of
-    /// `C_PositionGlobal3D`); w = `LightType` cast to float.
+    /// `C_WorldTransform.translation_`); w = `LightType` cast to float.
     vec4 originAndType_ = vec4(0.0f);
     /// xyz = emissive RGB in [0, 1]; w = intensity scalar.
     vec4 colorAndIntensity_ = vec4(0.0f);

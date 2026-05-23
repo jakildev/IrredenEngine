@@ -15,7 +15,6 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_2d_iso.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>

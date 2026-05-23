@@ -3,7 +3,6 @@
 #include <irreden/asset/rig_format.hpp>
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_render.hpp>

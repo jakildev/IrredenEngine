@@ -12,7 +12,7 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 
-#include <irreden/common/components/component_position_3d_lua.hpp>
+#include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/modifier.hpp>
 
 // Prefab-system specializations — must be visible at the
@@ -21,7 +21,7 @@
 // modifier.hpp above.
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
 namespace {
@@ -37,24 +37,16 @@ void registerLuaBindings() {
         // Lua. The single call wires every Lua-driven ECS surface.
         script.bindLuaDrivenEcs();
 
-        // Component pack: bind C_Position3D so the Lua-defined system
-        // can read it via `arch.C_Position3D:at(i)`.
-        script.registerType<IRComponents::C_Position3D, IRComponents::C_Position3D(vec3)>(
-            "C_Position3D",
-            "x",
-            [](IRComponents::C_Position3D &p) { return p.pos_.x; },
-            "y",
-            [](IRComponents::C_Position3D &p) { return p.pos_.y; },
-            "z",
-            [](IRComponents::C_Position3D &p) { return p.pos_.z; }
-        );
+        // Component pack: bind C_LocalTransform so the Lua-defined system
+        // can read it via `arch.C_LocalTransform:at(i)`.
+        script.registerTypeFromTraits<IRComponents::C_LocalTransform>();
 
         // Make every prefab system the demo wants to compose into
         // pipelines available to Lua via `IRSystem.systemId(SystemName.X)`.
         script.registerPrefabSystems<
             IRSystem::INPUT_KEY_MOUSE,
             IRSystem::LIFETIME,
-            IRSystem::GLOBAL_POSITION_3D,
+            IRSystem::PROPAGATE_TRANSFORM,
             IRSystem::FRAMEBUFFER_TO_SCREEN>();
 
         // Modifier resolver pipeline. `registerResolverPipeline()` does

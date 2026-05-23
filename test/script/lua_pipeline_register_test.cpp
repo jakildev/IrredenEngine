@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_3d_lua.hpp>
 #include <irreden/common/modifier.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
@@ -69,18 +69,18 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
 // ---- IRComponent.C_Name handle (C++ component handle exposure) -----------
 
 TEST_F(LuaPipelineRegisterTest, CppComponentHandleAvailableAfterRegisterType) {
-    m_lua.registerTypeFromTraits<IRComponents::C_Position3D>();
+    m_lua.registerTypeFromTraits<IRComponents::C_LocalTransform>();
     auto &lua = m_lua.lua();
     // Handle table should exist with a non-zero componentId.
     auto tableResult = lua.safe_script(
-        "return type(IRComponent.C_Position3D) == 'table'",
+        "return type(IRComponent.C_LocalTransform) == 'table'",
         sol::script_pass_on_error
     );
     ASSERT_TRUE(tableResult.valid()) << tableResult.get<sol::error>().what();
     EXPECT_TRUE(tableResult.get<bool>());
 
     auto idResult = lua.safe_script(
-        "return (IRComponent.C_Position3D.componentId or 0) ~= 0",
+        "return (IRComponent.C_LocalTransform.componentId or 0) ~= 0",
         sol::script_pass_on_error
     );
     ASSERT_TRUE(idResult.valid());
@@ -91,7 +91,7 @@ TEST_F(LuaPipelineRegisterTest, CppComponentHandleAvailableAfterRegisterType) {
         R"(
         local sysId = IRSystem.registerSystem({
             name = "HandleTestSys",
-            components = { IRComponent.C_Position3D },
+            components = { IRComponent.C_LocalTransform },
             tick = function(arch) end,
         })
         return type(sysId) == "number"
@@ -136,7 +136,7 @@ TEST_F(LuaPipelineRegisterTest, RegisterPipelineAcceptsMixedSystemIds) {
     m_lua.registerPrefabSystem<IRSystem::LIFETIME>();
     auto &lua = m_lua.lua();
     // Use a Lua-defined component so the test fixture doesn't need a
-    // creation-style lua_component_pack with `C_Position3D` registered.
+    // creation-style lua_component_pack with `C_LocalTransform` registered.
     auto result = lua.safe_script(
         R"(
         local Marker = IRComponent.register("PipelineMarker", { count = 0 })

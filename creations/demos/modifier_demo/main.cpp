@@ -16,7 +16,6 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 // Systems
-#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
@@ -488,7 +487,6 @@ void initSystems() {
             resolver.modifierResolveLambda_,
             consumeId,
             hudId,
-            IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
             IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
         }
     );

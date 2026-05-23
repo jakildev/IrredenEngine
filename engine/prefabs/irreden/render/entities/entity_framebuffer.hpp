@@ -3,7 +3,6 @@
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 
@@ -18,10 +17,12 @@ template <> struct Prefab<PrefabTypes::kFramebuffer> {
         ivec2 framebufferExtraPixelBufferSize,
         float startZoomLevel = 1.0f
     ) {
+        // C_LocalTransform / C_WorldTransform auto-attach in createEntity;
+        // FRAMEBUFFER_TO_SCREEN reads C_WorldTransform.translation_ for the
+        // camera-offset math (default identity translation == vec3(0)).
         EntityId framebufer = createEntity(
             C_Name{framebufferName},
             C_TrixelCanvasFramebuffer{framebufferSize, framebufferExtraPixelBufferSize},
-            C_Position3D{vec3(0.0f)},
             C_FrameDataTrixelToFramebuffer{},
             C_ZoomLevel{startZoomLevel}
         );
