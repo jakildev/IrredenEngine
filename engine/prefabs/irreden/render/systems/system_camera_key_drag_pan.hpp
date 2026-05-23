@@ -24,6 +24,9 @@ namespace IRSystem {
 // user is not in pan mode. While engaged, the drag tracks left-held
 // regardless of whether Space stays down.
 //
+// Yields to CAMERA_KEY_DRAG_ROTATE when Alt is also held at press time
+// (Space+Alt → rotate wins, same as Ctrl-gating in CAMERA_MOUSE_PAN).
+//
 // Note: Space-down at left-press will engage camera pan AND fall
 // through to whichever left-click consumers also fire (widget input,
 // gizmo drag, voxel picking) — those systems do not check for Space.
@@ -36,19 +39,16 @@ template <> struct System<CAMERA_KEY_DRAG_PAN> {
     vec2 dragStartCameraPos_ = vec2(0.0f);
 
     void tick(C_Camera &, C_Position2DIso &camPos) {
-        const bool leftPressed = IRInput::checkKeyMouseButton(
-            IRInput::kMouseButtonLeft, IRInput::PRESSED
-        );
-        const bool leftDown = IRInput::checkKeyMouseButton(
-            IRInput::kMouseButtonLeft, IRInput::HELD
-        ) || leftPressed;
-        const bool spaceHeld = IRInput::checkKeyMouseButton(
-            IRInput::kKeyButtonSpace, IRInput::HELD
-        ) || IRInput::checkKeyMouseButton(
-            IRInput::kKeyButtonSpace, IRInput::PRESSED
-        );
+        const bool leftPressed =
+            IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+        const bool leftDown =
+            IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD);
+        const bool spaceHeld =
+            IRInput::checkKeyMouseButton(IRInput::kKeyButtonSpace, IRInput::HELD) ||
+            IRInput::checkKeyMouseButton(IRInput::kKeyButtonSpace, IRInput::PRESSED);
+        const bool altHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt);
 
-        if (leftPressed && spaceHeld && !dragging_) {
+        if (leftPressed && spaceHeld && !altHeld && !dragging_) {
             dragging_ = true;
             dragStartMouse_ = IRInput::getMousePositionScreen();
             dragStartCameraPos_ = camPos.pos_;
@@ -66,9 +66,7 @@ template <> struct System<CAMERA_KEY_DRAG_PAN> {
     }
 
     static SystemId create() {
-        return registerSystem<CAMERA_KEY_DRAG_PAN, C_Camera, C_Position2DIso>(
-            "CameraKeyDragPan"
-        );
+        return registerSystem<CAMERA_KEY_DRAG_PAN, C_Camera, C_Position2DIso>("CameraKeyDragPan");
     }
 };
 

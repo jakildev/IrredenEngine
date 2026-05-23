@@ -18,6 +18,7 @@
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
+#include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
@@ -179,7 +180,8 @@ void initSystems() {
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
-        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
+         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create()}
     );
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
