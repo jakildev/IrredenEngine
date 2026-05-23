@@ -24,6 +24,7 @@
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
@@ -176,7 +177,8 @@ void initSystems() {
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>()}
+         IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
+         IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
