@@ -86,6 +86,44 @@ deferred API:
 - `flushStructuralChanges()` — apply queued changes at a safe point (the
   frame boundary in most pipelines).
 
+### Per-worker buffers + thread safety (T-225)
+
+The deferred API is callable from worker threads inside a
+`PARALLEL_FOR` system body. The mechanism is per-worker staging:
+
+- The `EntityManager` holds `m_workerStaging`, a vector indexed by
+  `IRJobs::workerId()` (slot `0` = main thread, slots `1..N` =
+  IRJobs worker threads). Workers append to their own slot; no
+  lock is needed on the producer side.
+- The vector is sized at `World` construction time, immediately
+  after `JobManager` is constructed, via
+  `EntityManager::resizeWorkerStaging(workerCount + 1)`. Worker
+  count must not change after that point — if the pool resized
+  mid-frame, queued worker writes would land in the wrong slot.
+- `createEntity` from a worker is also safe: the EntityId is
+  allocated atomically via `m_nextEntityId.fetch_add(1)` and
+  returned to the caller immediately. The actual archetype-node
+  insertion is staged into the worker's slot and runs on the
+  main thread at the next `flushStructuralChanges`. Callers may
+  hold the ID but must not call `getComponent` / `setComponent`
+  on it until after flush.
+- `markEntityForDeletion` from a worker queues into the worker's
+  slot; `destroyMarkedEntities` (run from `World::update` on the
+  main thread) drains the legacy main vector first, then each
+  worker slot in order.
+- `flushStructuralChanges` runs on the main thread (asserted)
+  and drains the legacy vectors first, then each per-worker slot
+  in `workerId` order. The drain order is deterministic so
+  `--auto-screenshot` reproducibility holds across sessions —
+  the same set of worker spawns/destroys produces the same
+  archetype-node row layout.
+
+The atomic ID counter replaced the old recycle pool. IDs are no
+longer reused; the `IR_ENTITY_ID_BITS` (25-bit) space gives ~33M
+entities per session, sufficient for current workloads. Long-running
+sessions that approach the cap should switch to a tiered allocator —
+not yet needed.
+
 ## Pre-destroy hooks
 
 `EntityManager::registerPreDestroyHook(callback)` registers a

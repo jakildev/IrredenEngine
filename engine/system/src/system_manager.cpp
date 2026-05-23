@@ -174,28 +174,15 @@ void SystemManager::validateAllPipelineGroups() const {
                 );
                 break;
             case GroupConflictKind::TWO_SPAWNERS:
-                IR_ASSERT(
-                    false,
-                    "registerPipelineGroups: systems '{}' and '{}' (group {}) both "
-                    "mutate the archetype graph (IRSystem::Spawns/Destroys). Two "
-                    "spawners in the same group race on the archetype allocator. "
-                    "Split them across groups (T-225 will lift this).",
-                    nameA,
-                    nameB,
-                    gi
-                );
+                // T-225: validator no longer produces this kind —
+                // per-worker deferred-mutation buffers cover
+                // concurrent archetype-graph mutation. Kept as an
+                // exhaustive-switch sentinel; unreachable in practice.
                 break;
             case GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP:
-                IR_ASSERT(
-                    false,
-                    "registerPipelineGroups: system '{}' (group {}) carries "
-                    "IRSystem::Spawns or IRSystem::Destroys and cannot share a "
-                    "parallel group with siblings — the deferred-mutation queue "
-                    "is not thread-safe in Phase 1. Move it to its own group "
-                    "(T-225 will lift this).",
-                    nameA,
-                    gi
-                );
+                // T-225 lifted this restriction — per-worker deferred-mutation
+                // buffers make mutators safe in parallel groups.
+                // Kept as exhaustive-switch sentinel; unreachable in practice.
                 break;
             case GroupConflictKind::WRITE_WRITE:
                 IR_ASSERT(

@@ -1,26 +1,39 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_jobs.hpp>
 
 #include <irreden/entity/entity_manager.hpp>
+#include <irreden/job/job_manager.hpp>
 
 #include <memory>
 
 namespace IREntity {
 
 EntityManager::EntityManager()
-    : m_entityPool{}
-    , m_entityIndex{}
+    : m_entityIndex{}
     , m_archetypeGraph{}
     , m_pureComponentTypes{}
     , m_pureComponentVectors{}
     , m_liveEntityCount{0}
     , m_entitiesMarkedForDeletion{}
-    , m_pendingComponentRemovals{} {
-    for (EntityId entity = IR_RESERVED_ENTITIES; entity < IR_MAX_ENTITIES; entity++) {
-        m_entityPool.push(entity);
-    }
+    , m_pendingComponentRemovals{}
+    , m_workerStaging(1) {
+    // T-225: start with a single staging slot for the main thread.
+    // `resizeWorkerStaging` grows the vector to
+    // `IRJobs::workerCount() + 1` once `JobManager` is constructed.
     g_entityManager = this;
     IRE_LOG_INFO("Created EntityManager (IR_MAX_ENTITIES={})", static_cast<int>(IR_MAX_ENTITIES));
+}
+
+void EntityManager::resizeWorkerStaging(std::size_t workerSlots) {
+    IR_ASSERT(
+        workerSlots >= 1,
+        "EntityManager::resizeWorkerStaging requires at least one slot (main thread)"
+    );
+    if (workerSlots <= m_workerStaging.size()) {
+        return;
+    }
+    m_workerStaging.resize(workerSlots);
 }
 
 EntityManager::~EntityManager() {
@@ -30,14 +43,47 @@ EntityManager::~EntityManager() {
 }
 
 EntityId EntityManager::allocateEntity() {
-    IR_ASSERT(m_liveEntityCount < IR_MAX_ENTITIES, "Max entity size reached");
-    EntityId id = m_entityPool.front();
-    m_entityPool.pop();
+    EntityId id = allocateEntityIdAtomic();
     m_entityIndex.emplace(id & IR_ENTITY_ID_BITS, EntityRecord{nullptr, -1});
     m_liveEntityCount++;
 
     IRE_LOG_DEBUG("Created entity={}", id);
     return id;
+}
+
+EntityId EntityManager::allocateEntityIdAtomic() {
+    // T-225: ID allocation is the only contended op when workers spawn
+    // entities from a `PARALLEL_FOR` body. `fetch_add` on `m_nextEntityId`
+    // is cheap (one CAS-loop iteration on x86, single RMW on Apple
+    // Silicon) and amortised over per-row work it is invisible. IDs are
+    // monotonically allocated — no recycle pool — so the `IR_ENTITY_ID_BITS`
+    // (25-bit) space gives ~33M entities per session.
+    EntityId id = m_nextEntityId.fetch_add(1, std::memory_order_relaxed);
+    IR_ASSERT(id < IR_MAX_ENTITIES, "Max entity size reached");
+    return id;
+}
+
+bool EntityManager::isMainThreadForDeferred() const {
+    // No JobManager → unit tests + pre-`World` startup → always main.
+    if (g_jobManager == nullptr) {
+        return true;
+    }
+    return g_jobManager->isMainThread();
+}
+
+int EntityManager::workerSlotForCurrentThread() const {
+    // Slot 0 is main; 1..workerCount() are IRJobs workers. If the
+    // worker pool returns a slot beyond the staging vector (caller
+    // forgot to call `resizeWorkerStaging` after constructing
+    // JobManager) fall back to slot 0 — correctness over performance.
+    if (g_jobManager == nullptr) {
+        return 0;
+    }
+    const int wid = g_jobManager->workerId();
+    if (wid < 0 || static_cast<std::size_t>(wid) >= m_workerStaging.size()) {
+        return 0;
+    }
+    return wid;
 }
 
 void EntityManager::addNewEntityToBaseNode(EntityId id) {
@@ -48,10 +94,11 @@ void EntityManager::addNewEntityToBaseNode(EntityId id) {
 }
 
 void EntityManager::returnEntityToPool(EntityId entity) {
+    // T-225: the recycle pool is gone (replaced by the atomic
+    // `m_nextEntityId` counter). Destroy just removes the entity
+    // from the index — the ID itself is permanently retired.
     m_entityIndex.erase(entity & IR_ENTITY_ID_BITS);
     --m_liveEntityCount;
-    entity &= IR_ENTITY_ID_BITS;
-    m_entityPool.push(entity);
 }
 
 EntityId EntityManager::setFlags(EntityId entity, EntityId flags) {
@@ -63,7 +110,12 @@ EntityId EntityManager::setFlags(EntityId entity, EntityId flags) {
 }
 
 void EntityManager::markEntityForDeletion(EntityId &entity) {
-    m_entitiesMarkedForDeletion.push_back(entity);
+    // T-225: route into the per-worker buffer. Workers write only
+    // their own slot; the flag bit on the caller's `entity` ref is
+    // the caller's memory, not ours. `destroyMarkedEntities`
+    // drains every slot serially on the main thread.
+    int slot = workerSlotForCurrentThread();
+    m_workerStaging[slot].markedForDeletion_.push_back(entity);
     entity |= IR_ENTITY_FLAG_MARKED_FOR_DELETION;
 }
 
@@ -147,10 +199,27 @@ void EntityManager::destroyComponent(
 }
 
 void EntityManager::destroyMarkedEntities() {
-    for (int i = 0; i < m_entitiesMarkedForDeletion.size(); ++i) {
+    IR_ASSERT(
+        isMainThreadForDeferred(),
+        "EntityManager::destroyMarkedEntities must run on the main thread"
+    );
+    // T-225: drain the legacy main-thread list first (callers that
+    // bypass the per-worker buffer — pre-`World` startup, e.g. — still
+    // funnel through this vector).
+    for (std::size_t i = 0; i < m_entitiesMarkedForDeletion.size(); ++i) {
         this->destroyEntity(m_entitiesMarkedForDeletion.at(i));
     }
     m_entitiesMarkedForDeletion.clear();
+    // Then per-worker buffers in workerId order. Deterministic order is
+    // required so `--auto-screenshot` reproducibility holds across
+    // sessions: the same set of spawn/destroy operations issued from the
+    // same workers must produce the same archetype-node row order.
+    for (auto &staging : m_workerStaging) {
+        for (std::size_t i = 0; i < staging.markedForDeletion_.size(); ++i) {
+            this->destroyEntity(staging.markedForDeletion_[i]);
+        }
+        staging.markedForDeletion_.clear();
+    }
 }
 
 void EntityManager::removeComponentById(EntityId entity, ComponentId componentType) {
@@ -168,9 +237,39 @@ void EntityManager::removeComponentById(EntityId entity, ComponentId componentTy
 }
 
 void EntityManager::flushStructuralChanges() {
-    while (!m_pendingComponentRemovals.empty() || !m_pendingStructuralChanges.empty()) {
-        auto pendingComponentRemovals = std::move(m_pendingComponentRemovals);
+    IR_ASSERT(
+        isMainThreadForDeferred(),
+        "EntityManager::flushStructuralChanges must run on the main thread"
+    );
+    // T-225: keep looping until every staging buffer (legacy main +
+    // per-worker) is empty. A structural-change lambda may queue
+    // further changes; the legacy single-buffer flush handled this
+    // with a while loop and we preserve that semantics.
+    auto haveWork = [this]() {
+        if (!m_pendingComponentRemovals.empty() || !m_pendingStructuralChanges.empty()) {
+            return true;
+        }
+        for (const auto &staging : m_workerStaging) {
+            if (!staging.componentRemovals_.empty() || !staging.structuralChanges_.empty()) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    while (haveWork()) {
+        // Coalesce all component removals (legacy + per-worker) into
+        // one batch so the existing `removalsByComponentAndNode`
+        // grouping still amortises the archetype walk.
+        std::vector<PendingComponentRemoval> pendingComponentRemovals =
+            std::move(m_pendingComponentRemovals);
         m_pendingComponentRemovals.clear();
+        for (auto &staging : m_workerStaging) {
+            for (auto &removal : staging.componentRemovals_) {
+                pendingComponentRemovals.push_back(removal);
+            }
+            staging.componentRemovals_.clear();
+        }
 
         using RemovalGroupsByNode = std::unordered_map<ArchetypeNode *, std::vector<EntityId>>;
         std::unordered_map<ComponentId, RemovalGroupsByNode> removalsByComponentAndNode;
@@ -225,8 +324,21 @@ void EntityManager::flushStructuralChanges() {
             }
         }
 
-        auto pendingStructuralChanges = std::move(m_pendingStructuralChanges);
+        // Drain structural-change lambdas in deterministic order:
+        // legacy main vector first, then per-worker slots 0..N. The
+        // archetype-graph mutations that result MUST be deterministic
+        // across runs so `--auto-screenshot` reproducibility holds —
+        // running per-worker slots in `workerId` order is the only
+        // ordering that satisfies this.
+        std::vector<std::function<void()>> pendingStructuralChanges =
+            std::move(m_pendingStructuralChanges);
         m_pendingStructuralChanges.clear();
+        for (auto &staging : m_workerStaging) {
+            for (auto &op : staging.structuralChanges_) {
+                pendingStructuralChanges.push_back(std::move(op));
+            }
+            staging.structuralChanges_.clear();
+        }
 
         for (auto &operation : pendingStructuralChanges) {
             operation();
