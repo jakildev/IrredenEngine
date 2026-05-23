@@ -591,4 +591,22 @@ TEST_F(LuaSystemRegisterTest, ConcurrencyOutOfRangeRejected) {
     EXPECT_NE(err.find("out of range"), std::string::npos) << err;
 }
 
+TEST_F(LuaSystemRegisterTest, ConcurrencyDefaultsToSerialWhenFieldOmitted) {
+    auto &lua = m_lua.lua();
+    auto regResult = lua.safe_script(
+        R"(
+        sysId = IRSystem.registerSystem({
+            name = 'NoConcurrencyField',
+            components = { 'TestPos' },
+            tick = function(arch) end,
+        })
+        return sysId
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(regResult.valid()) << sol::error{regResult}.what();
+    const IRSystem::SystemId sysId = regResult.get<lua_Integer>();
+    EXPECT_EQ(m_system_manager.getConcurrency(sysId), IRSystem::Concurrency::SERIAL);
+}
+
 } // namespace

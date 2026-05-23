@@ -243,6 +243,7 @@ enum class SystemMode { CODEGEN, EVAL };
 // ir_system_types.hpp). Kept as a separate enum here so system_dsl.hpp
 // stays free of an engine-header include — the codegen tool's link surface
 // is sol2 + Lua, not the engine static libraries.
+// Values must match IRSystem::Concurrency in engine/system/include/irreden/system/ir_system_types.hpp
 enum class Concurrency { SERIAL = 0, PARALLEL_FOR = 1, MAIN_THREAD = 2 };
 
 struct SystemRecord {
