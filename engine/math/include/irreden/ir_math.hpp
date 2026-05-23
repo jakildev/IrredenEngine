@@ -905,9 +905,8 @@ struct CameraSubPixelOffsets {
 /// sign INSIDE floor() (so floor() always rounds toward -infinity in the
 /// motion direction, keeping the upscale residual monotone with camera
 /// motion). Both conventions are preserved as-is from the legacy split
-/// across `TRIXEL_TO_FRAMEBUFFER`, `FRAMEBUFFER_TO_SCREEN`, and
-/// `SCREEN_SPACE_RESIDUAL_ROTATE`; the helper is the single source of
-/// truth for both.
+/// across `TRIXEL_TO_FRAMEBUFFER` and `FRAMEBUFFER_TO_SCREEN`; the helper
+/// is the single source of truth for both.
 constexpr CameraSubPixelOffsets
 cameraSubPixelOffsets(const vec2 cameraIso, const vec2 zoomLevel, const ivec2 scaleFactor) {
     const vec2 subIsoGamePx = pos2DIsoToPos2DGameResolution(IRMath::fract(cameraIso), zoomLevel);

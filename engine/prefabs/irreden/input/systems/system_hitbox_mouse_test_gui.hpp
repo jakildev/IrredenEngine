@@ -40,18 +40,16 @@ template <> struct System<HITBOX_MOUSE_TEST_GUI> {
         // would assert here on the first frame.
         EntityId guiCanvas = IRRender::getCanvas("gui");
         auto &canvasTextures = IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas);
-        auto &framebuffer =
-            IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
 
         const vec2 fbRes = vec2(framebuffer.getResolutionPlusBuffer());
         const vec2 guiSize = vec2(canvasTextures.size_);
 
-        // After T-293 the GUI canvas composites into a framebuffer that no
-        // longer post-rotates by residualYaw (SCREEN_SPACE_RESIDUAL_ROTATE
-        // is a passthrough; continuous yaw lives in the trixel emit
-        // shaders' faceDeform[]). The cursor's framebuffer pixel maps
-        // directly onto GUI-canvas-trixel coords without an inverse
-        // rotation step.
+        // After T-293 the GUI canvas composites into a framebuffer with no
+        // screen-space residual rotation (continuous yaw lives in the trixel
+        // emit shaders' faceDeform[]; the residual-rotate stage was retired by
+        // T-323). The cursor's framebuffer pixel maps directly onto
+        // GUI-canvas-trixel coords without an inverse rotation step.
         const vec2 mouseFb = IRRender::getMousePositionOutputView();
 
         // The GUI canvas texture (size = mainCanvasSize / guiScale)
@@ -66,7 +64,8 @@ template <> struct System<HITBOX_MOUSE_TEST_GUI> {
 
     static SystemId create() {
         return registerSystem<HITBOX_MOUSE_TEST_GUI, C_HitBox2DGui, C_GuiPosition>(
-            "HitBoxMouseTestGui");
+            "HitBoxMouseTestGui"
+        );
     }
 };
 

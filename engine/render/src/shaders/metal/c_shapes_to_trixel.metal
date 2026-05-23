@@ -24,7 +24,7 @@ struct ShapesFrameData {
     // [-pi/4, pi/4]). The SDF rasterizes at rasterYaw so its output lines up
     // with the voxel pool's cardinal-snap raster (T-055), then applies
     // faceDeform[face] to its sub-pixel offset to recover continuous yaw
-    // geometrically (T-293; replaces the T-058 / T-322 bilinear path).
+    // geometrically (T-293; the T-058 / T-322 bilinear path retired by T-323).
     float visualYaw;
     float rasterYaw;
     float residualYaw;
@@ -837,9 +837,9 @@ kernel void c_shapes_to_trixel(
     // in c_shapes_to_trixel.glsl. The shapes shader rasterizes at rasterYaw
     // (cardinal-snap multiple of pi/2 nearest visualYaw) so its output
     // lines up trixel-for-trixel with the voxel pool's cardinal-snap
-    // raster (T-055); the screen-space residual composite pass (T-058)
-    // rotates the framebuffer by residualYaw to recover continuous yaw.
-    // cos/sin tables are bit-exact at cardinal yaws — safer than
+    // raster (T-055); continuous yaw is recovered geometrically via
+    // faceDeform[] (T-293; the screen-space residual composite pass T-058
+    // was retired by T-323). cos/sin tables are bit-exact at cardinal yaws — safer than
     // cos(rasterYaw), which drifts by ULP from an exact pi/2 multiple
     // after the UBO upload. At cardinalIndex==0 the rotation is identity,
     // every line below collapses to the integer-only yaw=0 path, and the
@@ -946,8 +946,8 @@ kernel void c_shapes_to_trixel(
     // post-rotation. Smooth mode goes through findSurfaceDepth where the
     // analytical fast paths (sphere, cylinder, box, ellipsoid) and the
     // general SDF search still operate at rasterYaw — residualYaw is
-    // handled downstream by the screen-space residual composite pass
-    // (T-058).
+    // applied geometrically via faceDeform[] downstream (T-293; the
+    // screen-space residual composite pass T-058 was retired by T-323).
     const int surfaceD = !smoothMode
         ? snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
                           dExtent, cardinalIndex)

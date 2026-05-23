@@ -275,7 +275,8 @@ inline int3 rotateCardinalZInvI(int3 v, int cardinalIndex) {
     return v;
 }
 
-// Convenience wrapper for T-057 (picking inverse) and T-058 (screen-space residual pass).
+// Convenience wrapper for T-057 (picking inverse). T-058 (screen-space residual
+// pass) was retired by T-323 — residual yaw lives in faceDeform[] (T-293).
 // Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
 // can reference it from ir_iso_common directly.
 inline float3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
@@ -401,7 +402,10 @@ struct FrameDataVoxelToTrixel {
     int2 cullIsoMax;
     float visualYaw;
     float rasterYaw;    // consumed: cardinal-snap basis selection
-    float residualYaw;  // baked into faceDeform[] CPU-side
+    // baked into faceDeform[] CPU-side. The pre-T-293 screen-space residual
+    // composite (T-058 / T-322) that consumed this as a post-trixel rotation
+    // was retired by T-323.
+    float residualYaw;
     // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
     // emitDeformedFace super-sampling to the detached path only — see
     // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.

@@ -13,7 +13,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_gpu_particles_to_trixel.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_update_gpu_particles.hpp>
@@ -140,7 +140,7 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_GPU_PARTICLES>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::RENDER_GPU_PARTICLES_TO_TRIXEL>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
-    renderPipeline.push_back(IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};

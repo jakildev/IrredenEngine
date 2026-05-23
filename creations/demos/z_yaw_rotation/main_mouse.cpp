@@ -33,7 +33,7 @@
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 
@@ -145,7 +145,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
         IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
+        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
     };
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);

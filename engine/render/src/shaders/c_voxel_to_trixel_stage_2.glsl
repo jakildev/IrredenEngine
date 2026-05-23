@@ -16,6 +16,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 cullIsoMax;
     uniform float visualYaw;
     uniform float rasterYaw;
+    // Pre-T-293 screen-space residual composite (T-058 / T-322) retired by
+    // T-323; consumed inline via faceDeform[] in the trixel emit below.
     uniform float residualYaw;
     // 1.0 for a detached entity canvas, 0.0 for the world canvas — see
     // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.

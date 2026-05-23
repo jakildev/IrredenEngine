@@ -27,8 +27,9 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     // [-pi/4, pi/4]). The SDF rasterizes at rasterYaw — so its output lines
     // up trixel-for-trixel with the voxel pool's cardinal-snap raster
     // (T-055) — and `faceDeform[face]` deforms its sub-pixel offset in 2D
-    // iso space to recover continuous yaw geometrically (T-293; replaces
-    // the screen-space bilinear residual composite of T-058 / T-322).
+    // iso space to recover continuous yaw geometrically (T-293; the
+    // screen-space bilinear residual composite of T-058 / T-322 was
+    // retired by T-323).
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
@@ -726,9 +727,9 @@ void main() {
     // Cardinal-snap Z-yaw consumed by the SDF path. The shapes shader
     // rasterizes at rasterYaw (the cardinal-snap multiple of pi/2 nearest
     // visualYaw) so its output lines up trixel-for-trixel with the voxel
-    // pool's cardinal-snap raster (T-055); the screen-space residual
-    // composite pass (T-058) rotates the framebuffer by residualYaw to
-    // recover continuous yaw. cos/sin tables are bit-exact at cardinal
+    // pool's cardinal-snap raster (T-055); continuous yaw is recovered
+    // geometrically via faceDeform[] (T-293; the screen-space residual
+    // composite of T-058 was retired by T-323). cos/sin tables are bit-exact at cardinal
     // yaws — safer than cos(rasterYaw), which drifts by ULP from an exact
     // pi/2 multiple after the UBO upload. At cardinalIndex==0 the
     // rotation is identity, every line below collapses to the integer-
@@ -838,8 +839,8 @@ void main() {
     // post-rotation. Smooth mode goes through findSurfaceDepth where the
     // analytical fast paths (sphere, cylinder, box, ellipsoid) and the
     // general SDF search still operate at rasterYaw — residualYaw is
-    // handled downstream by the screen-space residual composite pass
-    // (T-058).
+    // applied geometrically via faceDeform[] downstream (T-293; the
+    // screen-space residual composite pass T-058 was retired by T-323).
     int surfaceD = !smoothMode
         ? snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
                           dExtent, cardinalIndex)

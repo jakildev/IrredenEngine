@@ -29,7 +29,11 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 cullIsoMax;
     uniform float visualYaw;                // continuous Z-yaw (radians)
     uniform float rasterYaw;                // cardinal-snap multiple of pi/2 nearest visualYaw
-    uniform float residualYaw;              // visualYaw - rasterYaw, in [-pi/4, pi/4]
+    // visualYaw - rasterYaw, in [-pi/4, pi/4]. The pre-T-293 screen-space
+    // residual composite (T-058 / T-322) that consumed this value as a
+    // post-trixel rotation was retired by T-323; faceDeform[] below now
+    // absorbs it during the trixel emit instead.
+    uniform float residualYaw;
     // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
     // emitDeformedFace super-sampling (n > 1) to the detached path only.
     uniform float isDetachedCanvas;
