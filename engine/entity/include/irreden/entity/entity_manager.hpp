@@ -474,6 +474,13 @@ class EntityManager {
     // TODO: Remove when entity is destroyed
     std::unordered_map<std::string, EntityId> m_namedEntities;
     EntityId m_liveEntityCount;
+    // Legacy main-thread deferred-mutation queues. After T-225 all
+    // public API writes go through m_workerStaging[0] (main thread)
+    // or m_workerStaging[slot] (workers), so these will always be
+    // empty in a correctly-running post-T-225 World. Retained as a
+    // safety net: flushStructuralChanges / destroyMarkedEntities drain
+    // them first, so any internal path that bypasses the public API
+    // (migration glue, future low-level ECS work) still gets picked up.
     std::vector<EntityId> m_entitiesMarkedForDeletion;
     std::vector<PendingComponentRemoval> m_pendingComponentRemovals;
     std::vector<std::function<void()>> m_pendingStructuralChanges;

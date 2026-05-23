@@ -22,9 +22,7 @@ target_link_libraries(
     IrredenEngineEntity PUBLIC
     IrredenEngineProfile
     IrredenEngineMath
-    # T-225: per-worker deferred-mutation buffers query
-    # `IRJobs::JobManager::workerId` / `isMainThread` to route into
-    # the per-worker staging slot.
+    # T-225: per-worker deferred-mutation buffers query IRJobs::workerId
     IrredenEngineJob
     # IrredenEngineInput
 )

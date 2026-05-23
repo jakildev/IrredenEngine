@@ -72,10 +72,12 @@ bool EntityManager::isMainThreadForDeferred() const {
 }
 
 int EntityManager::workerSlotForCurrentThread() const {
-    // Slot 0 is main; 1..workerCount() are IRJobs workers. If the
-    // worker pool returns a slot beyond the staging vector (caller
-    // forgot to call `resizeWorkerStaging` after constructing
-    // JobManager) fall back to slot 0 — correctness over performance.
+    // Slot 0 is main; 1..workerCount() are IRJobs workers. Out-of-range
+    // wid is unreachable in a correctly configured World — it guards
+    // against misconfigured setups where resizeWorkerStaging was never
+    // called. Falling back to slot 0 routes the write to the main-thread
+    // staging buffer, which is safe because the scheduler guarantees
+    // workers and flushStructuralChanges never run concurrently.
     if (g_jobManager == nullptr) {
         return 0;
     }
