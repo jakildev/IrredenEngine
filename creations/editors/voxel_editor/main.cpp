@@ -69,9 +69,6 @@
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
 
-// Command suites
-#include <irreden/common/command_suite_camera.hpp>
-
 // Frame-based animation state (T-214, F-1.4)
 #include "animation.hpp"
 
