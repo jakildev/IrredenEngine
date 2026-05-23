@@ -17,9 +17,7 @@
 
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
-#include <irreden/render/systems/system_camera_mouse_rotate.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_screen_residual_rotate.hpp>
@@ -30,10 +28,10 @@
 
 // Prefab helpers
 #include <irreden/render/camera.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/entity_canvas.hpp>
 
 // Command suites
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstring>
@@ -184,10 +182,7 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_ROTATE>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
 
     if (g_settings.autoRotate_) {
         renderPipeline.push_back(
@@ -213,7 +208,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

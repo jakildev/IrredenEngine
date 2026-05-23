@@ -1,0 +1,68 @@
+#ifndef SYSTEM_CAMERA_KEY_DRAG_ROTATE_H
+#define SYSTEM_CAMERA_KEY_DRAG_ROTATE_H
+
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_input.hpp>
+#include <irreden/ir_math.hpp>
+
+#include <irreden/render/camera.hpp>
+#include <irreden/render/components/component_camera_yaw.hpp>
+
+using namespace IRComponents;
+using namespace IRMath;
+
+namespace IRSystem {
+
+// Alt + left-mouse drag: rotates camera yaw. Mirror of
+// CAMERA_MOUSE_ROTATE but bound to Alt+left so trackpad users (no
+// middle button) have a rotate gesture.
+//
+// Modifier gate is latched at the left-press frame: if Alt wasn't
+// held at PRESSED, no rotation engages — keeps widget/gizmo/picking
+// left-click safe.
+template <> struct System<CAMERA_KEY_DRAG_ROTATE> {
+    static constexpr float kPixelsPerRevolution = 1280.0f;
+
+    bool dragging_ = false;
+    vec2 dragStartMouse_ = vec2(0.0f);
+    float dragStartYaw_ = 0.0f;
+
+    void tick(C_CameraYaw &) {}
+
+    void endTick() {
+        const bool leftPressed = IRInput::checkKeyMouseButton(
+            IRInput::kMouseButtonLeft, IRInput::PRESSED
+        );
+        const bool leftDown = IRInput::checkKeyMouseButton(
+            IRInput::kMouseButtonLeft, IRInput::HELD
+        ) || leftPressed;
+        const bool altHeld =
+            IRInput::checkKeyMouseModifiers(IRInput::kModifierAlt);
+
+        if (leftPressed && altHeld && !dragging_) {
+            dragging_ = true;
+            dragStartMouse_ = IRInput::getMousePositionScreen();
+            dragStartYaw_ = IRPrefab::Camera::getYaw();
+        }
+
+        if (dragging_ && leftDown) {
+            const vec2 currentMouse = IRInput::getMousePositionScreen();
+            const float deltaPx = currentMouse.x - dragStartMouse_.x;
+            const float yawDelta =
+                (deltaPx / kPixelsPerRevolution) * IRMath::kTwoPi;
+            IRPrefab::Camera::setYaw(dragStartYaw_ + yawDelta);
+        } else {
+            dragging_ = false;
+        }
+    }
+
+    static SystemId create() {
+        return registerSystem<CAMERA_KEY_DRAG_ROTATE, C_CameraYaw>(
+            "CameraKeyDragRotate"
+        );
+    }
+};
+
+} // namespace IRSystem
+
+#endif /* SYSTEM_CAMERA_KEY_DRAG_ROTATE_H */
