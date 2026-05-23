@@ -228,18 +228,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **tools: engine-level concurrency + perf primitives** — introduce ir-build, ir-run, ir-acquire, ir-perf-grid as engine-owned coordination layer; hardware-fingerprinted baselines + synthetic-load normalization
-  - **ID:** T-318
-  - **Area:** build, tooling
-  - **Model:** opus
-  - **Owner:** claude/T-318-engine-tools
-  - **Blocked by:** (none)
-  - **Acceptance:** ir-build/ir-run/ir-acquire/ir-perf-grid exist in engine/tools/bin/; concurrency_test.sh passes lock/budget slot tests and slot-release-on-PID-death; ir-acquire benchmark acquires cpu+gpu+perf in one shot; fleet-build/fleet-run shim to ir-build/ir-run; hardware-fingerprinted baselines at docs/perf/baseline_latest/<fingerprint>/; CI smoke (ir-build IRPerfGrid && ir-run --auto-profile 30 && compare) passes
-  - **Issue:** #1074
-  - **Notes:** Three-PR sequence in issue body: (1) ir-host-probe + ir-acquire; (2) ir-build/ir-run migration + shims (fleet-build/fleet-run become one-line exec shims); (3) ir-perf-grid + fingerprinting + normalization. Shared lock dir: ${XDG_RUNTIME_DIR}/irreden/locks/ (Linux) / /tmp/irreden-$USER/locks/ (macOS) — engine + game builds coordinate CPU without either repo knowing the other. Concurrency.toml committed engine defaults; ~/.config/irreden/host.toml uncommitted per-host overrides; env vars highest priority. Solo-dev default (IR_FLEET_WORKERS unset) acquires ir-acquire instantly at full nproc — humans pay no concurrency tax.
-  - **Links:**
-
-
 - [ ] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
   - **ID:** T-323
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
@@ -267,6 +255,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-318** — engine/tools: ir-host-probe + ir-acquire (sub-task 1 of #1074) · Owner: claude/T-318-engine-tools · PR: https://github.com/jakildev/IrredenEngine/pull/1102
 - [x] **T-327** — broaden cross-host smoke criteria; add windows-* + verified-* labels · Owner: claude/T-327-cross-host-smoke-windows · PR: https://github.com/jakildev/IrredenEngine/pull/1098
 - [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
 - [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
@@ -286,4 +275,3 @@ Avoid:
 - [x] **T-309** — render: split visible vs shadow-feeder voxel compaction (design doc) · Owner: claude/T-309-feeder-split · PR: https://github.com/jakildev/IrredenEngine/pull/1036
 - [x] **T-310** — render: graceful per-pair fallback for Metal timestamp allocation · Owner: claude/T-310-async-gpu-timers · PR: https://github.com/jakildev/IrredenEngine/pull/1035
 - [x] **T-312** — perf: Catch2 microbench harness for engine/math hot paths · Owner: claude/T-312-math-microbench-harness · PR: https://github.com/jakildev/IrredenEngine/pull/1034
-- [x] **T-308** — demos: named config preset files (IRPerfGrid + friends) · Owner: claude/T-308-config-preset-flag · PR: https://github.com/jakildev/IrredenEngine/pull/1032
