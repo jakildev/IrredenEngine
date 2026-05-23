@@ -9,8 +9,8 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -25,7 +25,6 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
@@ -335,7 +334,7 @@ inline void initEntities(const DemoConfig &config) {
 }
 
 inline void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 
@@ -351,18 +350,21 @@ inline void initSystems(const DemoConfig &config) {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+        }
+    );
 
     // Demo-supplied tick (e.g. animated sun direction). Runs first in the
     // render pipeline so subsequent systems pick up the updated state.

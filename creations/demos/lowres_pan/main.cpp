@@ -18,8 +18,8 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/camera_controls.hpp>
 
 // lowres_pan exercises the sub-pixel-smooth camera path at a low game
 // resolution. The shot list steps the camera in fractional iso increments;
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     IREngine::init(argv[0]);
     initSystems();
     initEntities();
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
     IREngine::gameLoop();
     return 0;
@@ -80,12 +80,16 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};

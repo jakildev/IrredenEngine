@@ -11,7 +11,7 @@
 #include <irreden/render/gpu_particles.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_render_gpu_particles_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
@@ -19,7 +19,6 @@
 #include <irreden/render/systems/system_update_gpu_particles.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdint>
@@ -127,11 +126,14 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+        }
+    );
     if (g_spawnsPerFrame > 0) {
         // Insert spawner ahead of UPDATE_GPU_PARTICLES so its writes land
         // in the same-frame pending-list flush.
@@ -155,7 +157,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

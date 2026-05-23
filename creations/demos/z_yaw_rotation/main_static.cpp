@@ -21,12 +21,11 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 
 // COMMAND SUITES
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/camera_controls.hpp>
 
 #include "common.hpp"
 
@@ -72,15 +71,18 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame),
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.push_front(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame));
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -95,7 +97,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

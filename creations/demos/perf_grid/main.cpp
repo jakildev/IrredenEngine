@@ -31,7 +31,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
@@ -51,7 +51,6 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 // Command suites
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
@@ -589,28 +588,31 @@ void initSystems() {
     IRProfile::cpuFrameHistogram().enabled_ = true;
     IRRender::gpuStageTiming().enabled_ = true;
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-        // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
-        // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
-        // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
-        // must be overlay → text → trixel-to-fb for the HUD to land on
-        // screen — matches the lighting demo wiring.
-        IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
+            // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
+            // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
+            // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
+            // must be overlay → text → trixel-to-fb for the HUD to land on
+            // screen — matches the lighting demo wiring.
+            IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(
@@ -685,7 +687,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 
