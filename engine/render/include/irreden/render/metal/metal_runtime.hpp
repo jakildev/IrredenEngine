@@ -110,4 +110,8 @@ void releaseImageAtomicScratchBuffer(MTL::Texture *texture);
 void setCurrentImageAtomicScratch(MTL::Buffer *buffer);
 MTL::Buffer *currentImageAtomicScratch();
 
+// Called from MetalTexture2DImpl's destructor; prevents a recycled texture
+// address from aliasing a stale entry in the clear-source-buffer map.
+void removeClearSourceBuffer(MTL::Texture *texture);
+
 } // namespace IRRender
