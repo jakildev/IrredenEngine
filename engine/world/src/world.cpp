@@ -296,6 +296,10 @@ void World::render() {
     m_timeManager.endEvent<IRTime::RENDER>();
 }
 
+int World::entityCountOverride() {
+    return m_worldConfig["entity_count_override"].get_integer();
+}
+
 void World::enableFrameTiming(bool enabled) {
     m_frameTimingEnabled = enabled;
     m_systemManager.setTimingEnabled(enabled);

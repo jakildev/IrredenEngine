@@ -55,6 +55,7 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <numbers>
@@ -119,6 +120,8 @@ struct CliOverrides {
     IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
     bool baseSubdivisionsSet_ = false;
     int baseSubdivisions_ = 1;
+    // Accepted and recorded for manifest/cell-ID purposes; ignored until T-221.
+    int workerThreads_ = 0;
     std::string configPreset_; // path from --config-preset, empty if absent
 };
 
@@ -319,6 +322,14 @@ void parseArgs(int argc, char **argv) {
                 g_cliOverrides.baseSubdivisionsSet_ = true;
             }
             ++i;
+        } else if (std::strcmp(argv[i], "--worker-threads") == 0 && i + 1 < argc) {
+            // Accepted for cell-ID purposes by perf_grid_matrix.sh; ignored
+            // until T-221 wires enkiTS thread-pool sizing.
+            int wt = std::atoi(argv[i + 1]);
+            if (wt >= 0) {
+                g_cliOverrides.workerThreads_ = wt;
+            }
+            ++i;
         }
     }
 }
@@ -512,6 +523,20 @@ int main(int argc, char **argv) {
     applyConfigTable();
     applyConfigPreset(g_cliOverrides.configPreset_);
     applyCliOverrides();
+
+    // entity_count_override in config.lua overrides grid_size when nonzero
+    // and the caller hasn't already set --grid-size explicitly.
+    if (!g_cliOverrides.gridSizeSet_) {
+        const int eco = IREngine::entityCountOverride();
+        if (eco > 0) {
+            const int cbrtCount = static_cast<int>(std::cbrt(static_cast<double>(eco)) + 0.5);
+            if (cbrtCount > 0) {
+                g_settings.gridSize_ = cbrtCount;
+                IR_LOG_INFO("entity_count_override={} → grid_size={}", eco, cbrtCount);
+            }
+        }
+    }
+
     validateSettings();
 
     if (g_autoProfileFrames > 0) {

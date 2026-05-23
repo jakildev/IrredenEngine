@@ -31,6 +31,7 @@ class World {
     void setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings);
     void runScript(const char *fileName);
     void enableFrameTiming(bool enabled);
+    int entityCountOverride();
 
     // void setPlayer(const IREntity::EntityId& player);
     // void setCameraPosition3D(const vec3& position);

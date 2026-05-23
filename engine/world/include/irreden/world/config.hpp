@@ -158,6 +158,10 @@ class WorldConfig {
             "gpu_stage_timing_legacy",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
         );
+        m_config.addEntry(
+            "entity_count_override",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
+        );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }
