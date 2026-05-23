@@ -7,6 +7,7 @@
 // run before the camera is fully wired without crashing.
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_math.hpp>
 
 #include <irreden/render/components/component_camera_yaw.hpp>
 
@@ -33,9 +34,11 @@ namespace detail {
 
 inline IRComponents::C_CameraYaw *cameraYawComponent() {
     const IREntity::EntityId camera = IREntity::getEntity("camera");
-    if (camera == IREntity::kNullEntity) return nullptr;
+    if (camera == IREntity::kNullEntity)
+        return nullptr;
     auto opt = IREntity::getComponentOptional<IRComponents::C_CameraYaw>(camera);
-    if (!opt.has_value()) return nullptr;
+    if (!opt.has_value())
+        return nullptr;
     return *opt;
 }
 
@@ -43,37 +46,58 @@ inline IRComponents::C_CameraYaw *cameraYawComponent() {
 
 /// Set the camera's continuous Z-yaw to @p yaw radians (normalized to [-π, π)).
 inline void setYaw(float yaw) {
-    if (auto *c = detail::cameraYawComponent()) c->setVisualYaw(yaw);
+    if (auto *c = detail::cameraYawComponent())
+        c->setVisualYaw(yaw);
 }
 
 /// Read the camera's continuous Z-yaw (radians, in [-π, π)).
 /// Returns 0 if the camera entity has no yaw component yet.
 inline float getYaw() {
-    if (auto *c = detail::cameraYawComponent()) return c->visualYaw_;
+    if (auto *c = detail::cameraYawComponent())
+        return c->visualYaw_;
     return 0.0f;
 }
 
 /// Add @p delta (radians) to the camera's yaw, normalized to [-π, π).
 inline void rotateYaw(float delta) {
-    if (auto *c = detail::cameraYawComponent()) c->rotate(delta);
+    if (auto *c = detail::cameraYawComponent())
+        c->rotate(delta);
 }
 
 /// Both halves of the yaw split in one call. Prefer this over calling
 /// `getRasterYaw()` and `getResidualYaw()` separately when a caller needs
 /// both — it does the camera lookup and the split math once.
-inline std::pair<float, float> getYawSplit() { return computeYawSplit(getYaw()); }
+inline std::pair<float, float> getYawSplit() {
+    return computeYawSplit(getYaw());
+}
 
 /// Cardinal-snap component of yaw — multiple of π/2 nearest visualYaw.
 /// Consumed by the integer trixel raster shader to pick a basis permutation.
 /// Still pays for the full split math; use `getYawSplit()` when both halves
 /// are needed.
-inline float getRasterYaw() { return getYawSplit().first; }
+inline float getRasterYaw() {
+    return getYawSplit().first;
+}
 
 /// Sub-cardinal residual in [-π/4, π/4]; consumed by the screen-space
 /// residual composite pass to apply the leftover continuous rotation.
 /// Still pays for the full split math; use `getYawSplit()` when both halves
 /// are needed.
-inline float getResidualYaw() { return getYawSplit().second; }
+inline float getResidualYaw() {
+    return getYawSplit().second;
+}
+
+/// Camera world rotation as a unit quaternion. For T-319 this is just the
+/// Z-yaw embedded as `quatAxisAngle(z, yaw)`; the full SO(3) camera surface
+/// (issue #1076) will populate full pitch/roll, and the
+/// `PROPAGATE_CANVAS_ROTATION` camera-space composition picks it up
+/// transparently without further code change.
+///
+/// Returns identity (0,0,0,1) when the camera entity has no yaw component
+/// yet — preserves the no-op contract of `getYaw()`.
+inline IRMath::vec4 getRotationQuat() {
+    return IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), getYaw());
+}
 
 } // namespace IRPrefab::Camera
 
