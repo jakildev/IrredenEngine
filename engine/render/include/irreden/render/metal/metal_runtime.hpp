@@ -83,12 +83,22 @@ MTL::Texture *metalCurrentDepthTexture();
 MTL::PixelFormat metalCurrentColorPixelFormat();
 MTL::PixelFormat metalCurrentDepthPixelFormat();
 
-// Buffer orphaning: every subData() allocates a fresh MTL::Buffer and
-// defer-releases the old one so already-encoded encoders keep their
-// pre-write snapshot. See metal_runtime.cpp for the lifetime contract.
+// Buffer orphaning: subData() orphans an MTL::Buffer (allocates a fresh
+// one + defers release of the old) only when the buffer has been encoded
+// into a command encoder since the previous wait point. The
+// encoded-since-last-wait set drives that decision — the set is populated
+// at every encoder bind site (see metal_render_impl.cpp's
+// bindRenderResources / bindComputeResources / dispatch + draw paths) and
+// cleared inside releaseDeferredMetalBuffers() after the GPU has finished
+// consuming the prior frame's encoders. Until a buffer enters the set in
+// the current frame, subData() writes in place — no alloc, no full-buffer
+// copy. See metal_runtime.cpp for the lifetime contract.
 void deferReleaseMetalBuffer(MTL::Buffer *buffer);
 void releaseDeferredMetalBuffers();
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer);
+
+void markMetalBufferEncoded(MTL::Buffer *buffer);
+bool wasMetalBufferEncoded(MTL::Buffer *buffer);
 
 // Per-texture scratch buffer mirroring an R32I distance texture, used as
 // the target for `device atomic_int*` min ops because MSL has no portable

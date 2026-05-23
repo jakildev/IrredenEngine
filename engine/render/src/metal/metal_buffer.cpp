@@ -54,7 +54,24 @@ class MetalBufferImpl final : public BufferImpl {
             "Metal buffer subData write exceeded buffer size"
         );
 
-        // Orphan-on-write: see deferReleaseMetalBuffer in metal_runtime.cpp.
+        const std::size_t writeOffset = static_cast<std::size_t>(offset);
+
+        // Fast path: the GPU is not reading this buffer through any
+        // command encoder queued since the last wait, so writing the
+        // patch directly into its `contents()` is safe. Saves the
+        // newBuffer alloc + whole-buffer head/tail memcpy that the
+        // orphan path below otherwise pays on every call. See
+        // metal_runtime.hpp's "Buffer orphaning" block for the contract.
+        if (!wasMetalBufferEncoded(m_buffer)) {
+            std::uint8_t *dst = static_cast<std::uint8_t *>(m_buffer->contents());
+            std::memcpy(dst + writeOffset, data, size);
+            return;
+        }
+
+        // Slow path: the buffer is already encoded into an in-flight
+        // encoder. We must not mutate its contents (the GPU may read the
+        // pre-write snapshot). Orphan: allocate a fresh buffer, copy
+        // head + new patch + tail, swap, defer-release the old.
         auto *newBuffer = metalDevice()->newBuffer(
             static_cast<NS::UInteger>(m_size),
             MTL::ResourceStorageModeShared
@@ -63,7 +80,6 @@ class MetalBufferImpl final : public BufferImpl {
 
         std::uint8_t *src = static_cast<std::uint8_t *>(m_buffer->contents());
         std::uint8_t *dst = static_cast<std::uint8_t *>(newBuffer->contents());
-        const std::size_t writeOffset = static_cast<std::size_t>(offset);
         if (writeOffset > 0) {
             std::memcpy(dst, src, writeOffset);
         }
@@ -110,8 +126,10 @@ class MetalBufferImpl final : public BufferImpl {
     void unmap() override {}
 
   private:
-    // mutable: subData is const on the BufferImpl interface but orphans the
-    // backing buffer on every write (see subData).
+    // mutable: subData is const on the BufferImpl interface but may
+    // orphan the backing buffer (allocate a fresh MTL::Buffer + swap)
+    // when the previous one is already encoded into an in-flight
+    // command encoder. See subData for the in-place vs. orphan decision.
     mutable MTL::Buffer *m_buffer = nullptr;
     std::size_t m_size = 0;
 };

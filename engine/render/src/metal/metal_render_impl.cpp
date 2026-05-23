@@ -55,12 +55,14 @@ void bindRenderResources(MTL::RenderCommandEncoder *encoder) {
         if (uniform.buffer_ != nullptr) {
             encoder->setVertexBuffer(uniform.buffer_, uniform.offset_, i);
             encoder->setFragmentBuffer(uniform.buffer_, uniform.offset_, i);
+            markMetalBufferEncoded(uniform.buffer_);
         }
 
         const auto &storage = boundMetalBuffer(BufferTarget::SHADER_STORAGE, i);
         if (storage.buffer_ != nullptr) {
             encoder->setVertexBuffer(storage.buffer_, storage.offset_, i);
             encoder->setFragmentBuffer(storage.buffer_, storage.offset_, i);
+            markMetalBufferEncoded(storage.buffer_);
         }
 
         if (MTL::Texture *texture = boundMetalTexture(i); texture != nullptr) {
@@ -75,11 +77,13 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
         const auto &uniform = boundMetalBuffer(BufferTarget::UNIFORM, i);
         if (uniform.buffer_ != nullptr) {
             encoder->setBuffer(uniform.buffer_, uniform.offset_, i);
+            markMetalBufferEncoded(uniform.buffer_);
         }
 
         const auto &storage = boundMetalBuffer(BufferTarget::SHADER_STORAGE, i);
         if (storage.buffer_ != nullptr) {
             encoder->setBuffer(storage.buffer_, storage.offset_, i);
+            markMetalBufferEncoded(storage.buffer_);
         }
 
         if (MTL::Texture *texture = boundMetalTexture(i); texture != nullptr) {
@@ -94,6 +98,7 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
     // See metal_runtime.hpp for the rationale; binding slot is fixed.
     if (MTL::Buffer *scratch = currentImageAtomicScratch(); scratch != nullptr) {
         encoder->setBuffer(scratch, 0, kMetalImageAtomicScratchSlot);
+        markMetalBufferEncoded(scratch);
     }
 }
 
@@ -388,6 +393,7 @@ class MetalRenderDevice final : public RenderDevice {
             static_cast<NS::UInteger>(offset),
             pipeline->getThreadsPerThreadgroup()
         );
+        markMetalBufferEncoded(mtlIndirectBuffer);
         encoder->endEncoding();
     }
     void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
@@ -414,6 +420,8 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
+        markMetalBufferEncoded(layout.indexBuffer_);
         encoder->drawIndexedPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(count),
@@ -451,6 +459,8 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
+        markMetalBufferEncoded(layout.indexBuffer_);
         encoder->drawIndexedPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(count),
@@ -494,6 +504,7 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),
@@ -531,6 +542,7 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),
