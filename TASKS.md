@@ -163,24 +163,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **engine: retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components** — delete all four legacy position/rotation component headers; remove from createEntity auto-attach set; migrate Lua bindings and script API to SQT equivalents; update CLAUDE.md
-  - **ID:** T-302
-  - **Area:** engine/prefabs/irreden/common, engine/script
-  - **Model:** opus
-  - **Owner:** opus-worker-1
-  - **Blocked by:** (none)
-  - **Stack:** T-299..T-302 sqt-phase-a
-  - **Acceptance:** (1) grep -r "C_PositionGlobal3D" engine/ returns zero hits; (2) grep -r "C_Position3D" engine/ returns zero hits; (3) grep -r "C_Rotation" engine/ returns zero hits; (4) createEntity no longer auto-attaches legacy components; (5) fleet-build clean on linux-debug and macos-debug; (6) full test suite passes (test/ecs/*, test/asset/*, render-verify reference set); (7) IRShapeDebug, voxel editor, spring/note demos render identically; (8) CLAUDE.md retirement note added
-  - **Issue:** #987
-  - **Notes:** T-199d — deletion phase, closes the #736 migration chain. Deletions: component_position_3d.hpp + _lua.hpp, component_position_global_3d.hpp, component_position_offset_3d.hpp (if not already deleted by epic #731 modifier migration), component_rotation.hpp. Watch for creations/ consumers missed by engine audit — build fails loudly. Lua migrations: engine/script/src/prefab_api.cpp and lua_sprite_namespace.hpp. This closes a multi-phase migration — diff should be mostly red. Stacks on T-301.
-  - **Links:**
-
-
 - [~] **Render: low game-resolution mode + sub-pixel / screen-pixel camera smoothing** — restore low-resolution rendering with anti-vibration sub-pixel camera smoothing and a per-entity screen-pixel-precision opt-in
   - **ID:** T-314
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-314-lowres-subpixel
   - **Blocked by:** (none)
   - **Acceptance:** (1) slow camera pan at low game resolution shows no per-frame +/-1px jitter in auto-screenshot diff; (2) game-resolution canvases snap to game-pixel grid; camera tracks at screen-pixel precision; (3) screen-pixel-smooth flagged entity moves smoothly between game pixels; unflagged entities snap; (4) fleet-build clean on linux-debug and macos-debug; OpenGL/Metal parity for any shader change
   - **Issue:** #1048
@@ -192,7 +179,7 @@ Avoid:
   - **ID:** T-315
   - **Area:** engine/render, shaders/metal
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-315-gpu-side-canvas-clear
   - **Blocked by:** (none)
   - **Acceptance:** vs1_clear scope in perf_grid auto-profile drops well under 1 ms; render-verify passes with no visual regression
   - **Issue:** #1050
@@ -204,7 +191,7 @@ Avoid:
   - **ID:** T-316
   - **Area:** engine/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-316-metal-buffer-no-orphan
   - **Blocked by:** (none)
   - **Acceptance:** per-frame buffer-orphan memcpy volume drops to near zero in steady state; IRPerfGrid matrix shows measurable frame improvement and no regression; render-verify clean on Metal backend
   - **Issue:** #1051
@@ -216,7 +203,7 @@ Avoid:
   - **ID:** T-317
   - **Area:** engine/prefabs/irreden/render, creations/demos/canvas_stress
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-317-camera-rotation
   - **Blocked by:** (none)
   - **Acceptance:** (1) canvas_stress with auto_rotate config flag/--auto-rotate CLI continuously rotates camera yaw; (2) Ctrl+middle-drag rotates camera yaw; middle-drag without Ctrl still pans unchanged; (3) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1053
@@ -227,6 +214,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
 - [x] **T-313** — perf: Lua-vs-C++ parity dashboard · Owner: claude/T-313-lua-cpp-parity-dashboard · PR: https://github.com/jakildev/IrredenEngine/pull/1037
 - [x] **T-311** — perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs · Owner: claude/T-311-ci-baseline-gate · PR: https://github.com/jakildev/IrredenEngine/pull/1039
@@ -246,4 +234,3 @@ Avoid:
 - [x] **T-301** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/986
 - [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
 - [x] **T-289** — voxel: push-at-mutation position upload (no per-frame re-upload) (B5) · Owner: claude/T-289-voxel-pos-push-at-mutation · PR: https://github.com/jakildev/IrredenEngine/pull/999
-- [x] **T-298** — world: chunk disk persistence + lazy load (E6) · Owner: claude/T-298-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/998
