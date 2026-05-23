@@ -159,12 +159,16 @@ cmd_calibrate() {
         samples+=("$ms")
     done
 
-    # Median via python — five elements, sort, pick middle.
+    # Median via python — pass samples as distinct positionals so a stray
+    # newline or non-numeric token from extract_ref_ms can't escape the
+    # single-quoted string literal that the previous "'${samples[*]}'.split()"
+    # form was vulnerable to.
     local median
-    median="$(python3 -c "
-xs = sorted([float(a) for a in '${samples[*]}'.split()])
+    median="$(python3 -c '
+import sys
+xs = sorted(float(a) for a in sys.argv[1:])
 print(xs[len(xs)//2])
-")"
+' "${samples[@]}")"
 
     local slug
     slug="$("$IR_HOST_PROBE" --slug)"
@@ -174,18 +178,19 @@ print(xs[len(xs)//2])
     target_ms="$(_ir_config perf ref_bench_target_ms IR_REF_BENCH_TARGET_MS)"
     [[ -z "$target_ms" ]] && target_ms=50
 
-    python3 -c "
+    python3 -c '
 import json, sys
-samples = [float(s) for s in '${samples[*]}'.split()]
+slug, median, target_ms, sha = sys.argv[1:5]
+samples = [float(s) for s in sys.argv[5:]]
 out = {
-    'slug': '$slug',
-    'median_ms': float('$median'),
-    'samples_ms': samples,
-    'target_ms': float('$target_ms'),
-    'math_sha': '$sha',
+    "slug": slug,
+    "median_ms": float(median),
+    "samples_ms": samples,
+    "target_ms": float(target_ms),
+    "math_sha": sha,
 }
 print(json.dumps(out, indent=2))
-" > "$path"
+' "$slug" "$median" "$target_ms" "$sha" "${samples[@]}" > "$path"
 
     echo "ir-perf-grid: wrote $path (median ${median}ms, target ${target_ms}ms)"
     cat "$path"

@@ -227,7 +227,7 @@ python3 "$SCRIPTS_PERF/check_regression.py" \
     "$WORK/baselines2" "$WORK/head_loaded_no_regress" >"$WORK/C.out" 2>"$WORK/C.err"
 C_STATUS=$?
 set -e
-# raw delta = +15%, normalized delta = +15% * (50/150) = -61.7%
+# head avg → normalize_ms(11.5, 150.0, 50.0) = 11.5*(50/150) ≈ 3.83ms → -61.7% vs 10ms baseline → gate passes
 check "C: loaded host normalized below threshold → exit 0" "[[ $C_STATUS -eq 0 ]]"
 check "C: stderr cites 'normalized'" 'grep -q "normalized" "$WORK/C.err"'
 
