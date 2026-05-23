@@ -301,11 +301,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system** — replace inline camera-yaw-rotation lambdas in canvas_stress and z_yaw_rotation with a shared member-on-System<N> prefab
+- [~] **engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system** — replace inline camera-yaw-rotation lambdas in canvas_stress and z_yaw_rotation with a shared member-on-System<N> prefab
   - **ID:** T-321
   - **Area:** engine/prefabs/irreden/render, engine/system
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) system_auto_yaw_rotate.hpp exists following T-317 CAMERA_MOUSE_ROTATE member-on-System<N> shape; (2) AUTO_YAW_ROTATE added to SystemName enum near CAMERA_MOUSE_ROTATE; (3) canvas_stress/main.cpp and z_yaw_rotation/main_static.cpp use prefab system, inline lambdas deleted; (4) IRCanvasStress --auto-rotate and IRZYawRotationStatic rotate at same rate as before; (5) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1078
