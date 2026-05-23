@@ -118,6 +118,32 @@ The deferred API is callable from worker threads inside a
   the same set of worker spawns/destroys produces the same
   archetype-node row layout.
 
+#### Not callable from workers
+
+The following APIs must only be called from the **main thread**. Calling them
+from a `PARALLEL_FOR` worker body bypasses per-worker staging and produces a
+data race in release builds (the `isMainThreadForDeferred()` assert catches
+misuse only in debug builds):
+
+**Eager mutation APIs** (directly modify the archetype graph in place):
+- `setComponent<C>(id, value)` — use `setComponentDeferred` instead
+- `removeComponent<C>(id)` — use `removeComponentDeferred` instead
+- `removeComponentById(id, componentId)`
+- `destroyEntity(id)` — use `markEntityForDeletion` instead
+- `setComponents(id, ...)` (multi-component overloads)
+- `insertNewComponent<C>(id, value)`
+- `createEntityBatch(...)` / `createEntitiesBatch(...)` — batch paths do not
+  route through per-worker staging
+
+**Flush APIs** (drain staging buffers; assert main-thread at entry):
+- `flushStructuralChanges()`
+- `destroyMarkedEntities()`
+
+A worker-callable `Spawns` or `Destroys` system in a `PARALLEL_FOR` group must
+use only the deferred API. The validator lifts `MUTATOR_IN_PARALLEL_GROUP`
+(T-225) for systems that follow this contract; it cannot enforce the contract
+at the call site — use the deferred variants deliberately.
+
 The atomic ID counter replaced the old recycle pool. IDs are no
 longer reused; the `IR_ENTITY_ID_BITS` (25-bit) space gives ~33M
 entities per session, sufficient for current workloads. Long-running
