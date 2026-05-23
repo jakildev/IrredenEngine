@@ -8,6 +8,8 @@
 #include <irreden/system/system_manager.hpp>
 
 #include <functional>
+#include <optional>
+#include <type_traits>
 
 namespace IRSystem {
 extern SystemManager *g_systemManager;
@@ -32,9 +34,9 @@ template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
     }
 };
 
-// T-222: validate that a system's compile-time access descriptor is
-// compatible with its requested Concurrency policy. Three rules,
-// distilled from the multithreading epic (#226 §"Layer 4"):
+// T-222 / T-334: validate that a system's compile-time access
+// descriptor is compatible with its requested Concurrency policy. Four
+// rules, distilled from the multithreading epic (#226 §"Layer 4"):
 //
 //   - PARALLEL_FOR + usesEntityId_ + !parallelSafe_ → FATAL. The
 //     per-entity-id tick form passes the iterated EntityId to the
@@ -44,6 +46,11 @@ template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
 //   - PARALLEL_FOR + isBatchForm_ → FATAL. The per-archetype batch
 //     form consumes the whole column; row-level chunking would
 //     re-enter the body N times with overlapping handles.
+//   - PARALLEL_FOR + isRelationForm_ → FATAL. The relation branch in
+//     `rangedFn` calls `getRelatedEntityFromArchetype` +
+//     `getComponentOptional` on `EntityManager` from inside the per-
+//     row loop, which races on the manager's archetype map from
+//     worker threads.
 //   - PARALLEL_FOR + mainThreadOnly_ → FATAL. The `MainThread` tag is
 //     explicit "do not parallelize", and silently downgrading would
 //     hide the conflict.
@@ -71,6 +78,16 @@ validateConcurrencyForAccess(const std::string &name, Concurrency c, SystemAcces
         "per-archetype batch tick form. The batch form consumes the "
         "whole entity column; row-level chunking would re-enter the "
         "body with overlapping data.",
+        name
+    );
+    IR_ASSERT(
+        !access.isRelationForm_,
+        "System '{}' requested Concurrency::PARALLEL_FOR with the "
+        "relation tick form (RelationParams<...> + std::optional<...*> "
+        "in the tick signature). The relation branch resolves the "
+        "related entity and its components via EntityManager lookups "
+        "inside the per-row loop; those manager accesses are not "
+        "thread-safe.",
         name
     );
     IR_ASSERT(
@@ -117,9 +134,25 @@ constexpr SystemId createSystem(
     // Derive access descriptor from the tick signature + component
     // pack. The wrapper passes it through so SystemManager records it
     // alongside the Concurrency for the validator + future cross-system
-    // validation (T-224).
-    constexpr SystemAccess accessDescriptor =
-        deriveAccessFromSignature<FunctionTick, TickComponents...>();
+    // validation (T-224). `deriveAccessFromSignature` can't see the
+    // relation pack — two ambiguous packs in a free-function template,
+    // see the TODO at `InvocableWithOptionalRelations` in
+    // ir_system_types.hpp — so we fold `isRelationForm_` in here where
+    // both packs are in scope.
+    constexpr SystemAccess accessDescriptor = []() {
+        SystemAccess a = deriveAccessFromSignature<FunctionTick, TickComponents...>();
+        if constexpr (sizeof...(TickRelationComponents) > 0) {
+            if constexpr (
+                std::is_invocable_v<
+                    FunctionTick,
+                    std::remove_cvref_t<TickComponents> &...,
+                    std::optional<TickRelationComponents *>...>
+            ) {
+                a.isRelationForm_ = true;
+            }
+        }
+        return a;
+    }();
     detail::validateConcurrencyForAccess(name, concurrency, accessDescriptor);
 
     return detail::CallCreateSystem<typename Partition::Included>::run(

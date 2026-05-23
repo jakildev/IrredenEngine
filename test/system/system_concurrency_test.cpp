@@ -67,6 +67,9 @@ constexpr bool isParallelForAcceptable(Concurrency c, SystemAccess access) {
     if (access.isBatchForm_) {
         return false;
     }
+    if (access.isRelationForm_) {
+        return false;
+    }
     if (access.mainThreadOnly_) {
         return false;
     }
@@ -167,6 +170,29 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
     // SERIAL stays acceptable; the batch form is fine on the main
     // thread.
     EXPECT_TRUE(isParallelForAcceptable(Concurrency::SERIAL, access));
+}
+
+TEST(SystemConcurrencyValidator, RelationFormRejected) {
+    // T-334: a tick with `(Components&..., std::optional<RelComps*>...)`
+    // is the relation form. `rangedFn`'s relation branch in
+    // system_manager.hpp calls `getRelatedEntityFromArchetype` +
+    // `getComponentOptional` on `EntityManager` inside the per-row
+    // loop, which would race on the manager from worker threads.
+    //
+    // The trait CANNOT see the second pack (`RelationComponents...`)
+    // because the two packs collide in a free-function template form
+    // (see the TODO at `InvocableWithOptionalRelations` in
+    // ir_system_types.hpp). createSystem folds the bit in via a
+    // constexpr lambda where both packs are in scope, so we exercise
+    // the validator's contract here by constructing the descriptor
+    // directly — same shape as PerEntityIdFormAcceptedWithParallelSafe.
+    SystemAccess access{};
+    access.isRelationForm_ = true;
+    EXPECT_FALSE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));
+    // SERIAL / MAIN_THREAD stay acceptable; the relation form is fine
+    // on the main thread.
+    EXPECT_TRUE(isParallelForAcceptable(Concurrency::SERIAL, access));
+    EXPECT_TRUE(isParallelForAcceptable(Concurrency::MAIN_THREAD, access));
 }
 
 TEST(SystemConcurrencyValidator, MainThreadTagRejectsParallelFor) {
