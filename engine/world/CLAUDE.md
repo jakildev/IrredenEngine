@@ -53,7 +53,7 @@ construction time.
    declaration order. `JobManager` slots in after `SystemManager`
    because the worker pool sits below the engine's high-level managers
    (renderer, input, video) and consumes only `WorldConfig` —
-   see `engine/job/CLAUDE.md` for the IRJobs surface and lifetime
+   see `engine/job/CLAUDE.md` for the IRJob surface and lifetime
    contract (Phase 1 of the multithreading epic #226).
 3. Sets the globals: `g_entityManager = &m_entityManager;`, etc.
 4. Calls `initEngineSystems()`, `initIRInputSystems()`,

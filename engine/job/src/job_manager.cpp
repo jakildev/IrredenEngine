@@ -15,9 +15,9 @@
 #include <sys/sysctl.h>
 #endif
 
-IRJobs::JobManager *g_jobManager = nullptr;
+IRJob::JobManager *g_jobManager = nullptr;
 
-namespace IRJobs {
+namespace IRJob {
 
 namespace detail {
 
@@ -146,4 +146,4 @@ int JobManager::workerId() const {
     return detail::t_workerId;
 }
 
-} // namespace IRJobs
+} // namespace IRJob

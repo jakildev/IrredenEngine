@@ -22,13 +22,13 @@ struct C_ForeignW {
 
 using IRSystem::AlsoReads;
 using IRSystem::AlsoWrites;
+using IRSystem::deriveAccessFromSignature;
 using IRSystem::Destroys;
 using IRSystem::Exclude;
 using IRSystem::MainThread;
 using IRSystem::ParallelSafe;
 using IRSystem::Spawns;
 using IRSystem::SystemAccess;
-using IRSystem::deriveAccessFromSignature;
 using IRSystem::typeKey;
 
 } // namespace
@@ -38,9 +38,7 @@ using IRSystem::typeKey;
 // ----------------------------------------------------------------------
 
 TEST(SystemAccessTest, PerComponentInfersWritesByDefault) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &, C_AccessB &),
-        C_AccessA, C_AccessB>();
+    auto access = deriveAccessFromSignature<void(C_AccessA &, C_AccessB &), C_AccessA, C_AccessB>();
 
     EXPECT_FALSE(access.usesEntityId_);
     EXPECT_FALSE(access.isBatchForm_);
@@ -54,7 +52,8 @@ TEST(SystemAccessTest, PerComponentInfersWritesByDefault) {
 TEST(SystemAccessTest, ConstInPackInfersRead) {
     auto access = deriveAccessFromSignature<
         void(const C_AccessA &, C_AccessB &),
-        const C_AccessA, C_AccessB>();
+        const C_AccessA,
+        C_AccessB>();
 
     EXPECT_EQ(access.readCount_, 1u);
     EXPECT_EQ(access.writeCount_, 1u);
@@ -64,9 +63,7 @@ TEST(SystemAccessTest, ConstInPackInfersRead) {
 }
 
 TEST(SystemAccessTest, NoFalseAccessForUnreferencedTypes) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &),
-        C_AccessA>();
+    auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA>();
 
     EXPECT_FALSE(access.readsType<C_AccessC>());
     EXPECT_FALSE(access.writesType<C_AccessC>());
@@ -77,9 +74,7 @@ TEST(SystemAccessTest, NoFalseAccessForUnreferencedTypes) {
 // ----------------------------------------------------------------------
 
 TEST(SystemAccessTest, EntityIdParamFlipsUsesEntityId) {
-    auto access = deriveAccessFromSignature<
-        void(IREntity::EntityId &, C_AccessA &),
-        C_AccessA>();
+    auto access = deriveAccessFromSignature<void(IREntity::EntityId &, C_AccessA &), C_AccessA>();
 
     EXPECT_TRUE(access.usesEntityId_);
     EXPECT_FALSE(access.isBatchForm_);
@@ -87,9 +82,8 @@ TEST(SystemAccessTest, EntityIdParamFlipsUsesEntityId) {
 }
 
 TEST(SystemAccessTest, EntityIdParamConstReadIsHonored) {
-    auto access = deriveAccessFromSignature<
-        void(IREntity::EntityId &, const C_AccessA &),
-        const C_AccessA>();
+    auto access =
+        deriveAccessFromSignature<void(IREntity::EntityId &, const C_AccessA &), const C_AccessA>();
 
     EXPECT_TRUE(access.usesEntityId_);
     EXPECT_TRUE(access.readsType<C_AccessA>());
@@ -102,8 +96,11 @@ TEST(SystemAccessTest, EntityIdParamConstReadIsHonored) {
 
 TEST(SystemAccessTest, BatchSignatureFlipsIsBatchForm) {
     auto access = deriveAccessFromSignature<
-        void(const IREntity::Archetype &, std::vector<IREntity::EntityId> &,
-             std::vector<C_AccessA> &),
+        void(
+            const IREntity::Archetype &,
+            std::vector<IREntity::EntityId> &,
+            std::vector<C_AccessA> &
+        ),
         C_AccessA>();
 
     EXPECT_FALSE(access.usesEntityId_);
@@ -116,9 +113,7 @@ TEST(SystemAccessTest, BatchSignatureFlipsIsBatchForm) {
 // ----------------------------------------------------------------------
 
 TEST(SystemAccessTest, SpawnsTagFlipsBothSpawnsAndArchetypeGraph) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &),
-        C_AccessA, Spawns>();
+    auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA, Spawns>();
 
     EXPECT_TRUE(access.spawns_);
     EXPECT_TRUE(access.mutatesArchetypeGraph_);
@@ -126,9 +121,7 @@ TEST(SystemAccessTest, SpawnsTagFlipsBothSpawnsAndArchetypeGraph) {
 }
 
 TEST(SystemAccessTest, DestroysTagFlipsBothDestroysAndArchetypeGraph) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &),
-        C_AccessA, Destroys>();
+    auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA, Destroys>();
 
     EXPECT_TRUE(access.destroys_);
     EXPECT_TRUE(access.mutatesArchetypeGraph_);
@@ -136,18 +129,15 @@ TEST(SystemAccessTest, DestroysTagFlipsBothDestroysAndArchetypeGraph) {
 }
 
 TEST(SystemAccessTest, MainThreadAndParallelSafeTagsCompose) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &),
-        C_AccessA, MainThread, ParallelSafe>();
+    auto access =
+        deriveAccessFromSignature<void(C_AccessA &), C_AccessA, MainThread, ParallelSafe>();
 
     EXPECT_TRUE(access.mainThreadOnly_);
     EXPECT_TRUE(access.parallelSafe_);
 }
 
 TEST(SystemAccessTest, AlsoReadsAddsForeignReadEntry) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &),
-        C_AccessA, AlsoReads<C_ForeignR>>();
+    auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA, AlsoReads<C_ForeignR>>();
 
     EXPECT_TRUE(access.writesType<C_AccessA>());
     EXPECT_TRUE(access.readsType<C_ForeignR>());
@@ -155,9 +145,7 @@ TEST(SystemAccessTest, AlsoReadsAddsForeignReadEntry) {
 }
 
 TEST(SystemAccessTest, AlsoWritesAddsForeignWriteEntry) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &),
-        C_AccessA, AlsoWrites<C_ForeignW>>();
+    auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA, AlsoWrites<C_ForeignW>>();
 
     EXPECT_TRUE(access.writesType<C_AccessA>());
     EXPECT_TRUE(access.writesType<C_ForeignW>());
@@ -179,9 +167,7 @@ TEST(SystemAccessTest, AlsoReadsAndAlsoWritesAcceptMultipleTypes) {
 }
 
 TEST(SystemAccessTest, ExcludeContributesNoAccess) {
-    auto access = deriveAccessFromSignature<
-        void(C_AccessA &),
-        C_AccessA, Exclude<C_AccessB>>();
+    auto access = deriveAccessFromSignature<void(C_AccessA &), C_AccessA, Exclude<C_AccessB>>();
 
     EXPECT_TRUE(access.writesType<C_AccessA>());
     EXPECT_FALSE(access.readsType<C_AccessB>());
@@ -205,7 +191,10 @@ TEST(SystemAccessTest, TypeKeyIsStableAndUnique) {
 TEST(SystemAccessTest, DeriveAccessFromSignatureIsConstexpr) {
     constexpr SystemAccess access = deriveAccessFromSignature<
         void(C_AccessA &, const C_AccessB &),
-        C_AccessA, const C_AccessB, Spawns, ParallelSafe>();
+        C_AccessA,
+        const C_AccessB,
+        Spawns,
+        ParallelSafe>();
 
     static_assert(access.writeCount_ == 1u, "C_AccessA should be the only write");
     static_assert(access.readCount_ == 1u, "C_AccessB should be the only read");

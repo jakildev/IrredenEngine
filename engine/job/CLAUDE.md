@@ -1,4 +1,4 @@
-# engine/job/ — IRJobs worker pool
+# engine/job/ — IRJob worker pool
 
 Phase 1 of the multithreading epic (#226). The module stands up an
 enkiTS-backed worker pool that `World` owns for its lifetime; no
@@ -6,9 +6,9 @@ engine system schedules on it yet — T-222 is the first consumer.
 
 ## Entry point
 
-`engine/job/include/irreden/ir_jobs.hpp` — `IRJobs::parallelFor`,
-`IRJobs::run`, `IRJobs::pinTo`, `IRJobs::isMainThread`,
-`IRJobs::workerId`, `IRJobs::workerCount`, `IRJobs::workerRng`. The
+`engine/job/include/irreden/ir_job.hpp` — `IRJob::parallelFor`,
+`IRJob::run`, `IRJob::pinTo`, `IRJob::isMainThread`,
+`IRJob::workerId`, `IRJob::workerCount`, `IRJob::workerRng`. The
 global pointer `g_jobManager` follows the same `g_*Manager` pattern
 as `g_entityManager` — set by `JobManager`'s ctor, cleared by its
 dtor, valid only between `World` construction and destruction.
@@ -56,7 +56,7 @@ entry (`ir-worker-N`) via `::profiler::registerThread`, which is
 idempotent per OS thread. The same first-touch path seeds a
 per-worker `thread_local std::mt19937` from the worker id, so any
 system that needs a deterministic per-worker RNG can pull
-`IRJobs::workerRng()` instead of carrying its own thread-local
+`IRJob::workerRng()` instead of carrying its own thread-local
 random state. The main thread is seeded from id `0` at
 `JobManager` construction.
 
@@ -77,17 +77,17 @@ random state. The main thread is seeded from id `0` at
   for worker writes; the right pattern is "queue, flush on main."
 - **`std::thread` users (`VideoRecorder`, RtMidi / RtAudio
   callbacks, future audio threads) stay on `std::thread`.** Those
-  are callback-driven and isolated; consolidating them into IRJobs
+  are callback-driven and isolated; consolidating them into IRJob
   is explicitly out of scope.
 
 ## Gotchas
 
-- **`IRJobs::run` may execute on the calling thread.** enkiTS'
+- **`IRJob::run` may execute on the calling thread.** enkiTS'
   `WaitforTask` actively pumps work, so a single `TaskSet` of size
   1 can land on the dispatching thread if the workers are busy or
   the body finishes before they wake. Use `pinTo(workerId, ...)`
   when the body MUST run on a worker (e.g. for `IR_ASSERT(!
-  IRJobs::isMainThread())` to fire).
+  IRJob::isMainThread())` to fire).
 - **`parallelFor`'s callback is `(int rangeBegin, int rangeEnd)`,
   half-open.** Matches the iteration convention used everywhere else
   in the engine; do not assume enkiTS' raw `TaskSetPartition.start`

@@ -1,6 +1,6 @@
 add_library(IrredenEngineJob STATIC
     src/job_manager.cpp
-    src/ir_jobs.cpp
+    src/ir_job.cpp
 )
 
 add_subdirectory(third_party/enkiTS)

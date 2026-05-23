@@ -1,7 +1,7 @@
 #ifndef JOB_MANAGER_H
 #define JOB_MANAGER_H
 
-#include <irreden/ir_jobs.hpp>
+#include <irreden/ir_job.hpp>
 
 #include <memory>
 #include <thread>
@@ -10,7 +10,7 @@ namespace enki {
 class TaskScheduler;
 }
 
-namespace IRJobs {
+namespace IRJob {
 
 /// Owns the enkiTS `TaskScheduler` and the worker-pool lifetime.
 ///
@@ -39,7 +39,9 @@ class JobManager {
     /// Number of worker threads created (does NOT count the main
     /// thread). Will be at least 1 — a single-worker pool is still
     /// useful for offloading from the main thread.
-    int workerCount() const { return m_workerCount; }
+    int workerCount() const {
+        return m_workerCount;
+    }
 
     bool isMainThread() const;
 
@@ -48,9 +50,11 @@ class JobManager {
     /// that need to distinguish must combine with `isMainThread()`.
     int workerId() const;
 
-    /// Direct access for the free functions in `ir_jobs.hpp`. Not
+    /// Direct access for the free functions in `ir_job.hpp`. Not
     /// intended for engine code outside this module.
-    enki::TaskScheduler &scheduler() { return *m_scheduler; }
+    enki::TaskScheduler &scheduler() {
+        return *m_scheduler;
+    }
 
   private:
     /// Resolves a requested worker count into the actual count after
@@ -63,6 +67,6 @@ class JobManager {
     int m_workerCount;
 };
 
-} // namespace IRJobs
+} // namespace IRJob
 
 #endif /* JOB_MANAGER_H */

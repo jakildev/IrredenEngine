@@ -1,4 +1,4 @@
-#include <irreden/ir_jobs.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/job/job_manager.hpp>
 
 #include <irreden/ir_math.hpp>
@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <string>
 
-namespace IRJobs {
+namespace IRJob {
 
 namespace detail {
 // Forward decl — defined in job_manager.cpp. The free functions need
@@ -23,15 +23,13 @@ extern thread_local bool t_registered;
 } // namespace detail
 
 void parallelFor(
-    int begin,
-    int end,
-    int grainSize,
-    const std::function<void(int rangeBegin, int rangeEnd)> &fn
+    int begin, int end, int grainSize, const std::function<void(int rangeBegin, int rangeEnd)> &fn
 ) {
-    IR_ASSERT(g_jobManager != nullptr, "IRJobs::parallelFor: no active JobManager");
+    IR_ASSERT(g_jobManager != nullptr, "IRJob::parallelFor: no active JobManager");
     IR_ASSERT(
         g_jobManager->isMainThread(),
-        "IRJobs::parallelFor: must be called from the main thread; nested worker dispatch is not supported in T-221"
+        "IRJob::parallelFor: must be called from the main thread; nested worker dispatch is not "
+        "supported in T-221"
     );
     if (begin >= end) {
         return;
@@ -59,11 +57,8 @@ void parallelFor(
 }
 
 void run(std::string_view name, const std::function<void()> &fn) {
-    IR_ASSERT(g_jobManager != nullptr, "IRJobs::run: no active JobManager");
-    IR_ASSERT(
-        g_jobManager->isMainThread(),
-        "IRJobs::run: must be called from the main thread"
-    );
+    IR_ASSERT(g_jobManager != nullptr, "IRJob::run: no active JobManager");
+    IR_ASSERT(g_jobManager->isMainThread(), "IRJob::run: must be called from the main thread");
     enki::TaskScheduler &scheduler = g_jobManager->scheduler();
 
     // Capture name by value (small string copy is cheap; the task
@@ -84,24 +79,18 @@ void run(std::string_view name, const std::function<void()> &fn) {
 }
 
 void pinTo(int workerId, const std::function<void()> &fn) {
-    IR_ASSERT(g_jobManager != nullptr, "IRJobs::pinTo: no active JobManager");
-    IR_ASSERT(
-        g_jobManager->isMainThread(),
-        "IRJobs::pinTo: must be called from the main thread"
-    );
+    IR_ASSERT(g_jobManager != nullptr, "IRJob::pinTo: no active JobManager");
+    IR_ASSERT(g_jobManager->isMainThread(), "IRJob::pinTo: must be called from the main thread");
     IR_ASSERT(
         workerId >= 1 && workerId <= g_jobManager->workerCount(),
-        "IRJobs::pinTo: workerId out of range [1, workerCount()]"
+        "IRJob::pinTo: workerId out of range [1, workerCount()]"
     );
     enki::TaskScheduler &scheduler = g_jobManager->scheduler();
 
-    enki::LambdaPinnedTask task(
-        static_cast<uint32_t>(workerId),
-        [&fn]() {
-            detail::registerSelf(g_jobManager->scheduler());
-            fn();
-        }
-    );
+    enki::LambdaPinnedTask task(static_cast<uint32_t>(workerId), [&fn]() {
+        detail::registerSelf(g_jobManager->scheduler());
+        fn();
+    });
     scheduler.AddPinnedTask(&task);
     scheduler.WaitforTask(&task);
 }
@@ -134,4 +123,4 @@ std::mt19937 &workerRng() {
     return detail::t_workerRng;
 }
 
-} // namespace IRJobs
+} // namespace IRJob

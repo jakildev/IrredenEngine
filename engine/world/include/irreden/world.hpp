@@ -49,7 +49,7 @@ class World {
     // T-221: worker pool. Lives between World construction and
     // destruction; sets g_jobManager. No engine system schedules on
     // it yet (T-222 is the first consumer).
-    IRJobs::JobManager m_jobManager;
+    IRJob::JobManager m_jobManager;
     IRInput::InputManager m_inputManager;
     IRCommand::CommandManager m_commandManager;
     IRRender::RenderingResourceManager m_renderingResourceManager;

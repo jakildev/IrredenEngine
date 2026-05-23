@@ -1,11 +1,11 @@
-#ifndef IR_JOBS_H
-#define IR_JOBS_H
+#ifndef IR_JOB_H
+#define IR_JOB_H
 
 #include <functional>
 #include <random>
 #include <string_view>
 
-namespace IRJobs {
+namespace IRJob {
 
 class JobManager;
 
@@ -26,10 +26,7 @@ class JobManager;
 /// Safe to call from the main thread; calling from a worker would
 /// deadlock under enkiTS and is asserted.
 void parallelFor(
-    int begin,
-    int end,
-    int grainSize,
-    const std::function<void(int rangeBegin, int rangeEnd)> &fn
+    int begin, int end, int grainSize, const std::function<void(int rangeBegin, int rangeEnd)> &fn
 );
 
 /// Fires a single named task on a worker and blocks until it finishes.
@@ -62,13 +59,13 @@ int workerCount();
 /// The main thread also gets one, seeded from `0`.
 std::mt19937 &workerRng();
 
-} // namespace IRJobs
+} // namespace IRJob
 
 /// Global pointer to the active JobManager. Set by `JobManager`'s ctor,
 /// cleared by its dtor. Same `g_*Manager` pattern as
 /// `g_entityManager` / `g_systemManager`. Valid only between
 /// `World` construction and destruction; do not store across frames
 /// outside `World`'s lifetime.
-extern IRJobs::JobManager *g_jobManager;
+extern IRJob::JobManager *g_jobManager;
 
-#endif /* IR_JOBS_H */
+#endif /* IR_JOB_H */

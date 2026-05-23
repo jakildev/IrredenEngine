@@ -112,8 +112,12 @@ struct SystemAccess {
         return false;
     }
 
-    template <typename T> constexpr bool readsType() const { return readsType(typeKey<T>); }
-    template <typename T> constexpr bool writesType() const { return writesType(typeKey<T>); }
+    template <typename T> constexpr bool readsType() const {
+        return readsType(typeKey<T>);
+    }
+    template <typename T> constexpr bool writesType() const {
+        return writesType(typeKey<T>);
+    }
 };
 
 // ----------------------------------------------------------------------
@@ -152,10 +156,10 @@ template <typename... Ts> struct IsAlsoWrites<AlsoWrites<Ts...>> : std::true_typ
 };
 
 template <typename T>
-inline constexpr bool kIsTag = IsExclude<T>::value || IsSpawnsTag<T>::value
-                               || IsDestroysTag<T>::value || IsMainThreadTag<T>::value
-                               || IsParallelSafeTag<T>::value || IsAlsoReads<T>::value
-                               || IsAlsoWrites<T>::value;
+inline constexpr bool kIsTag =
+    IsExclude<T>::value || IsSpawnsTag<T>::value || IsDestroysTag<T>::value ||
+    IsMainThreadTag<T>::value || IsParallelSafeTag<T>::value || IsAlsoReads<T>::value ||
+    IsAlsoWrites<T>::value;
 
 // ----------------------------------------------------------------------
 // Access-set assembly
