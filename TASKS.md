@@ -339,11 +339,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Test/System: integration test that PARALLEL_FOR dispatch parallelizes and processes every row** — fixture ticks PARALLEL_FOR system over >=kDefaultGrainSize entities, asserts every entity processed exactly once
+- [~] **Test/System: integration test that PARALLEL_FOR dispatch parallelizes and processes every row** — fixture ticks PARALLEL_FOR system over >=kDefaultGrainSize entities, asserts every entity processed exactly once
   - **ID:** T-335
   - **Area:** engine/system, test/system
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** T-222
   - **Acceptance:** new test in test/system/ ticks PARALLEL_FOR system over >=kDefaultGrainSize entities and asserts every row processed exactly once; TSAN-friendly variant using vector<atomic<int>> catches worker overlap; existing 894 tests pass; optional: test confirms PARALLEL_FOR + relation-form rejected at registration (requires T-334)
   - **Issue:** #1107
