@@ -191,7 +191,7 @@ Avoid:
   - **ID:** T-220
   - **Area:** build, engine/world, docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-220-worker-threads-perf-axis
   - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** perf-gate.yml runs threading-baseline matrix on master; docs/perf-reports/threading_baseline.md exists with {4K, 32K, 262K} × {0, 1, hw-2} cells (all serial today); existing perf-gate cells pass with no regression
