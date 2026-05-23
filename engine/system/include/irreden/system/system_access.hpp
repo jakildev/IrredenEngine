@@ -281,6 +281,13 @@ enum class GroupConflictKind {
     WRITE_READ, // A writes, B reads
     READ_WRITE, // A reads, B writes
     TWO_SPAWNERS,
+    /// A single mutator (`Spawns` or `Destroys`) sharing a parallel
+    /// group with any non-mutator. The EntityManager's deferred
+    /// mutation queue is not thread-safe in Phase 1 of the
+    /// multithreading epic — T-225 lifts this when the per-worker
+    /// queue lands. Until then, any mutator must run in a singleton
+    /// group.
+    MUTATOR_IN_PARALLEL_GROUP,
 };
 
 struct GroupConflict {
@@ -290,25 +297,29 @@ struct GroupConflict {
     const void *componentKey_{nullptr};
 };
 
-/// Returns the first conflict between two distinct accesses in
+/// Returns the first conflict between distinct accesses in
 /// `accesses[0..n)`. Returns `kind_ == NONE` when the group is clean.
 ///
 /// The validator is the canonical "Phase 3" cross-system check from
-/// the multithreading epic (#226 Layer 4). Rules, in scan order so
-/// the diagnostic surfaces the strongest claim first:
+/// the multithreading epic (#226 Layer 4). Scan order:
 ///
-/// 1. Any system in the group is `mainThreadOnly_`. `MAIN_THREAD`
-///    can't share a group with anything — pick another group.
-/// 2. Two systems are both `mutatesArchetypeGraph_`. Concurrent
-///    spawners would race on the archetype allocator. (T-225 lifts
-///    this when per-worker deferred mutation lands.)
-/// 3. Writes/reads/writes pairwise conflict on a `componentKey_`.
-///    Symmetric: both directions are reported. (`WRITE_WRITE`
-///    triggers when A and B both write the same key; `WRITE_READ`
-///    when A writes and B reads; `READ_WRITE` when A reads and B
-///    writes. The kind names which side is the writer so callers
-///    can render the directional message without re-querying the
-///    accesses.)
+/// 1. `MAIN_THREAD_IN_GROUP` — checked first across all systems so
+///    the diagnostic surfaces the strongest claim ("MAIN_THREAD never
+///    co-executes") when multiple conflicts coexist.
+/// 2. `MUTATOR_IN_PARALLEL_GROUP` — checked next across all systems,
+///    for the same priority reason (the deferred-mutation queue
+///    isn't thread-safe in Phase 1, so a mutator forbids ANY parallel
+///    siblings, not just other mutators).
+/// 3. Pairwise (i<j) conflict checks. Within each pair, scanned in
+///    order: `TWO_SPAWNERS`, then component-set overlaps
+///    (`WRITE_WRITE`, `WRITE_READ`, `READ_WRITE`). The kind names
+///    which side is the writer so callers can render the directional
+///    message without re-querying the accesses.
+///
+/// Across the whole group the scan is not strictly "strongest claim
+/// wins" — e.g. a `WRITE_WRITE` between pair (0,1) is surfaced before
+/// a later pair-(0,2) `TWO_SPAWNERS`. The intra-pair priority IS
+/// strongest-first, which is what the diagnostic needs in practice.
 ///
 /// Pure function over `SystemAccess` so unit tests can construct
 /// fixtures without an `IRSystem::createSystem` path. No allocation,
@@ -318,6 +329,13 @@ inline GroupConflict findPipelineGroupConflict(const SystemAccess *accesses, std
     for (std::size_t i = 0; i < n; ++i) {
         if (accesses[i].mainThreadOnly_) {
             return GroupConflict{GroupConflictKind::MAIN_THREAD_IN_GROUP, i, i, nullptr};
+        }
+    }
+    if (n > 1) {
+        for (std::size_t i = 0; i < n; ++i) {
+            if (accesses[i].mutatesArchetypeGraph_) {
+                return GroupConflict{GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP, i, i, nullptr};
+            }
         }
     }
     for (std::size_t i = 0; i < n; ++i) {

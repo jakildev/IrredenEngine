@@ -36,11 +36,21 @@ template <typename Params> class ISystemParamsImpl : public ISystemParams {
     std::unique_ptr<Params> params_;
 };
 
-/// Observer hook fired before and after every system tick. Used by the
-/// render layer to bracket GPU-stage timing samples around per-system work
-/// without inlining `device()->finish()` blocks into every tick lambda.
-/// Generic on purpose: trace capture or per-system telemetry can plug in
-/// using the same hook without touching SystemManager again.
+/// Observer hook fired before and after each system tick from the main
+/// thread. Used by the render layer to bracket GPU-stage timing samples
+/// around per-system work without inlining `device()->finish()` blocks
+/// into every tick lambda. Generic on purpose: trace capture or
+/// per-system telemetry can plug in using the same hook without
+/// touching SystemManager again.
+///
+/// **Singleton-group only (T-224).** Observer fires bracket each
+/// `executeSystem` call ONLY for single-system pipeline groups. Systems
+/// scheduled inside a multi-system parallel group dispatch from worker
+/// threads (`IRJob::parallelFor`), where the observer surface is
+/// undefined: GPU APIs like `device()->finish()` and `writeTimestamp`
+/// require main-thread context, and per-system CPU-time samples are
+/// meaningless when sibling systems run concurrently. Any system that
+/// needs observer brackets must live in a singleton group.
 class TickObserver {
   public:
     virtual ~TickObserver() = default;
@@ -205,9 +215,11 @@ class SystemManager {
     void resetTimingStats();
 
     /// Take ownership of an observer; fires `onBeforeTick`/`onAfterTick`
-    /// around every `executeSystem` call. Returns an id usable with
-    /// `unregisterTickObserver`. If `m_observers` is empty the dispatch
-    /// is a single bool check, so unregistered systems pay nothing.
+    /// from the main thread around each singleton-group `executeSystem`
+    /// call (see `TickObserver` for the multi-system parallel-group
+    /// caveat). Returns an id usable with `unregisterTickObserver`. If
+    /// `m_observers` is empty the dispatch is a single bool check, so
+    /// unregistered systems pay nothing.
     TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer);
     void unregisterTickObserver(TickObserverId id);
     void clearTickObservers();

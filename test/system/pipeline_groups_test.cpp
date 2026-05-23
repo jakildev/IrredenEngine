@@ -98,6 +98,11 @@ TEST(PipelineGroupsValidator, MainThreadInGroupRejected) {
 }
 
 TEST(PipelineGroupsValidator, TwoSpawnersInGroupRejected) {
+    // Two mutators in the same group: the new MUTATOR_IN_PARALLEL_GROUP
+    // rule fires first (it scans across all systems before the pairwise
+    // pass that hosts TWO_SPAWNERS). The pair-only TWO_SPAWNERS kind
+    // remains reachable via fixtures that exercise the pairwise pass
+    // directly — see TwoSpawnersOnlyReachableViaPairwiseScan.
     SystemAccess accesses[2]{};
     accesses[0].writes_[0] = typeKey<C_VelA>;
     accesses[0].writeCount_ = 1;
@@ -106,9 +111,35 @@ TEST(PipelineGroupsValidator, TwoSpawnersInGroupRejected) {
     accesses[1].writeCount_ = 1;
     accesses[1].mutatesArchetypeGraph_ = true;
     auto c = findPipelineGroupConflict(accesses, 2);
-    EXPECT_EQ(c.kind_, GroupConflictKind::TWO_SPAWNERS);
+    EXPECT_EQ(c.kind_, GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP);
     EXPECT_EQ(c.indexA_, 0u);
-    EXPECT_EQ(c.indexB_, 1u);
+}
+
+TEST(PipelineGroupsValidator, SingleMutatorWithSiblingRejected) {
+    // T-224 follow-up (#1104 review): the deferred-mutation queue is
+    // not thread-safe in Phase 1, so a single mutator forbids ALL
+    // parallel siblings — not just other mutators. T-225 will lift
+    // this when per-worker deferred-mutation queues land.
+    SystemAccess accesses[2]{};
+    accesses[0].writes_[0] = typeKey<C_VelA>;
+    accesses[0].writeCount_ = 1;
+    accesses[0].mutatesArchetypeGraph_ = true;
+    accesses[1].writes_[0] = typeKey<C_VelB>;
+    accesses[1].writeCount_ = 1;
+    // accesses[1].mutatesArchetypeGraph_ stays false — pure non-mutator
+    auto c = findPipelineGroupConflict(accesses, 2);
+    EXPECT_EQ(c.kind_, GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP);
+    EXPECT_EQ(c.indexA_, 0u);
+}
+
+TEST(PipelineGroupsValidator, MutatorAloneInSingletonGroupAccepted) {
+    // A mutator in a singleton group is fine — only the main thread
+    // touches the deferred-mutation queue in that path.
+    SystemAccess one{};
+    one.writes_[0] = typeKey<C_VelA>;
+    one.writeCount_ = 1;
+    one.mutatesArchetypeGraph_ = true;
+    EXPECT_EQ(findPipelineGroupConflict(&one, 1).kind_, GroupConflictKind::NONE);
 }
 
 TEST(PipelineGroupsValidator, MainThreadPrioritizedOverOtherConflicts) {

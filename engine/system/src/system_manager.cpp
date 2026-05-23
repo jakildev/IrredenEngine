@@ -166,6 +166,18 @@ void SystemManager::validateAllPipelineGroups() const {
                     gi
                 );
                 break;
+            case GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP:
+                IR_ASSERT(
+                    false,
+                    "registerPipelineGroups: system '{}' (group {}) carries "
+                    "IRSystem::Spawns or IRSystem::Destroys and cannot share a "
+                    "parallel group with siblings — the deferred-mutation queue "
+                    "is not thread-safe in Phase 1. Move it to its own group "
+                    "(T-225 will lift this).",
+                    nameA,
+                    gi
+                );
+                break;
             case GroupConflictKind::WRITE_WRITE:
                 IR_ASSERT(
                     false,
@@ -210,19 +222,44 @@ void SystemManager::executePipeline(IRTime::Events event) {
     IREntity::flushStructuralChanges();
     auto it = m_systemPipelineGroups.find(event);
     if (it == m_systemPipelineGroups.end()) {
-        IREntity::flushStructuralChanges();
         return;
     }
     const auto &groups = it->second;
     for (const auto &group : groups) {
         if (group.size() == 1) {
-            executeSystem(group[0]);
+            // T-224: observer bracket fires on the main thread around
+            // each singleton system — the only group shape that
+            // preserves per-system timing semantics. The bracket lives
+            // here (not in executeSystem) because executeSystem is
+            // reached from worker threads on multi-system groups, and
+            // the engine's GpuStageTimingObserver writes shared state
+            // + drives main-thread-only GPU APIs (device()->finish(),
+            // writeTimestamp). See registerTickObserver doc + the
+            // multi-system note below.
+            const SystemId id = group[0];
+            for (auto &entry : m_observers) {
+                entry.second->onBeforeTick(id);
+            }
+            executeSystem(id);
+            for (auto &entry : m_observers) {
+                entry.second->onAfterTick(id);
+            }
         } else if (!group.empty()) {
             // T-224: parallel group — fan out across the worker pool.
             // grainSize=1 makes each task one system; the validator
             // already guarantees no two members conflict.
+            //
+            // Observer bracketing is intentionally skipped for
+            // multi-system parallel groups: per-system timing is
+            // meaningless when the systems run concurrently (their
+            // wall-time windows overlap), and the GpuStageTimingObserver
+            // writes shared per-stage state from main-thread-only GPU
+            // APIs. The validator already rejects MAIN_THREAD-tagged
+            // members, so any caller that needs per-system observer
+            // brackets must put the observed system in its own
+            // singleton group.
             if (g_jobManager != nullptr) {
-                IRJobs::parallelFor(
+                IRJob::parallelFor(
                     0,
                     static_cast<int>(group.size()),
                     1,
@@ -246,14 +283,15 @@ void SystemManager::executePipeline(IRTime::Events event) {
 }
 
 void SystemManager::executeSystem(SystemId system) {
+    // Reachable from a worker thread when called inside a multi-system
+    // parallel group dispatch (executePipeline's IRJob::parallelFor
+    // body). The CPU profile block and the per-system Clock::now()
+    // pair are thread-safe (easy_profiler partitions per-thread; the
+    // m_timingAccum write is per-SystemId and only one worker handles
+    // any given SystemId per group), so the only mutations that need
+    // a thread context are the observer fires (moved to executePipeline)
+    // and the nested IRJob::parallelFor below (guarded).
     IR_PROFILE_BLOCK(m_systemNames[system].name_.c_str(), IR_PROFILER_COLOR_SYSTEMS);
-
-    // Observer fires bracket the entire system execution. They sit outside
-    // the CPU timing window so a GPU observer's `device()->finish()` doesn't
-    // get billed against m_timingAccum (CPU vs GPU stay orthogonal).
-    for (auto &entry : m_observers) {
-        entry.second->onBeforeTick(system);
-    }
 
     using Clock = std::chrono::steady_clock;
     Clock::time_point t0;
@@ -294,10 +332,17 @@ void SystemManager::executeSystem(SystemId system) {
 
         if (concurrency == Concurrency::PARALLEL_FOR &&
             static_cast<bool>(tickEvent.rangedFunctionTick_) && node->length_ > grainSize &&
-            g_jobManager != nullptr) {
+            g_jobManager != nullptr && IRJob::isMainThread()) {
             // Worker fan-out: split [0, length) into grainSize chunks
             // and run each on the pool. enkiTS' WaitforTask pumps the
             // main thread, so this blocks until every chunk finishes.
+            //
+            // `isMainThread()` guards against nested dispatch: when
+            // executeSystem is reached from a worker (multi-system
+            // parallel group), IRJob::parallelFor would FATAL on its
+            // own main-thread assert. We fall back to serial dispatch
+            // inline on the worker — correctness preserved at the cost
+            // of the inner parallelism on this one tick.
             const auto &rangedFn = tickEvent.rangedFunctionTick_;
             IRJob::parallelFor(
                 0,
@@ -308,8 +353,9 @@ void SystemManager::executeSystem(SystemId system) {
                 }
             );
         } else {
-            // SERIAL / MAIN_THREAD path, and the small-node /
-            // no-pool fallback for PARALLEL_FOR.
+            // SERIAL / MAIN_THREAD path, the small-node / no-pool
+            // fallback for PARALLEL_FOR, and the nested-dispatch
+            // fallback when executeSystem is called from a worker.
             tickEvent.functionTick_(node);
         }
     }
@@ -330,13 +376,10 @@ void SystemManager::executeSystem(SystemId system) {
         acc.totalEntityCount_ += entityCount;
     }
 
-    for (auto &entry : m_observers) {
-        entry.second->onAfterTick(system);
-    }
-
-    // T-224: structural-changes flush moved up to `executePipeline`
-    // (per-group, not per-system) so multi-system parallel groups
-    // don't race on the entity manager's deferred-mutation buffer.
+    // T-224: observer fires moved to executePipeline (singleton groups
+    // only) — they need a main-thread context that executeSystem can
+    // no longer guarantee. structural-changes flush also runs there,
+    // per-group rather than per-system.
 }
 
 EntityId SystemManager::handleRelationTick(

@@ -272,13 +272,16 @@ offending component) on the first conflict:
 
 - `mainThreadOnly_` on any group member — `MainThread`-tagged systems
   cannot co-execute. Pick another group.
+- `mutatesArchetypeGraph_` (`Spawns` / `Destroys`) on **any** group
+  member — the EntityManager's deferred-mutation queue is not
+  thread-safe in Phase 1, so a mutator forbids ALL parallel siblings
+  (not just other mutators). Move the mutator to its own singleton
+  group; T-225 lifts this when per-worker deferred-mutation queues
+  land.
 - `writes_` of A intersects `writes_` of B — concurrent writes to the
   same component column race. Split across groups.
 - `writes_` of A intersects `reads_` of B (or vice-versa) — the
   reader would observe a torn snapshot. Split across groups.
-- Two `mutatesArchetypeGraph_` (`Spawns` / `Destroys`) systems in the
-  same group — concurrent archetype-graph mutations race on the
-  allocator. T-225 lifts this when per-worker deferred mutations land.
 
 The validator is implemented by `findPipelineGroupConflict` in
 `system_access.hpp` — a pure function over a `SystemAccess` array
@@ -287,12 +290,27 @@ SystemManager path wraps it with the per-group iteration + the
 IR_ASSERT diagnostic.
 
 **Dispatch.** `executePipeline` walks the group sequence. Single-system
-groups dispatch serially (identical to the pre-T-224 path). Multi-system
-groups fan out via `IRJobs::parallelFor(0, group.size(), 1, ...)` so each
-system runs on a worker; `flushStructuralChanges` runs once per group on
-the main thread before the next group starts. When `g_jobManager` is
-null (unit tests, pre-`World` init), groups fall back to serial
-in-declaration-order dispatch.
+groups dispatch serially (identical to the pre-T-224 path) and fire
+`TickObserver::onBeforeTick` / `onAfterTick` around the
+`executeSystem` call from the main thread — the observer surface
+relies on main-thread context (the engine's `GpuStageTimingObserver`
+calls `IRRender::device()->finish()` / `writeTimestamp`).
+Multi-system groups fan out via
+`IRJob::parallelFor(0, group.size(), 1, ...)` so each system runs
+on a worker; observer fires are **intentionally skipped** for those
+groups (per-system timing is undefined when systems run concurrently,
+and the GPU APIs the observer drives aren't worker-safe). Any system
+that needs per-tick observer brackets must live in a singleton group.
+`flushStructuralChanges` runs once per group on the main thread before
+the next group starts. When `g_jobManager` is null (unit tests,
+pre-`World` init), groups fall back to serial in-declaration-order
+dispatch.
+
+If a `Concurrency::PARALLEL_FOR` system lands inside a multi-system
+parallel group, the inner `IRJob::parallelFor` it would normally
+drive falls back to serial dispatch on the worker — the IRJob entry
+points assert main-thread context, so nested fan-out would FATAL.
+Correctness preserved; the inner parallelism is lost for that tick.
 
 ## SystemAccess derivation (T-221)
 
