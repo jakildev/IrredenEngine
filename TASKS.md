@@ -163,24 +163,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **Perf: worker_threads axis + entity-count override in perf_grid_matrix** — pre-phase-1 measurement surface for multithreading epic; adds worker_threads axis and entity_count_override to perf_grid_matrix.sh, WorldConfig, and report emitters; files threading baseline doc
-  - **ID:** T-220
-  - **Area:** build, engine/world, docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-220-worker-threads-perf-axis
-  - **Blocked by:** (none)
-  - **Stack:** T-220..T-225 ecs-multithreading
-  - **Acceptance:** perf-gate.yml runs threading-baseline matrix on master; docs/perf-reports/threading_baseline.md exists with {4K, 32K, 262K} × {0, 1, hw-2} cells (all serial today); existing perf-gate cells pass with no regression
-  - **Issue:** #1067
-  - **Notes:** Part of multithreading epic #226. Adds worker_threads axis (values 0, 1, hw_concurrency()-2) and entity_count_override field to WorldConfig; worker_thread_count itself lands in T-221. Per-worker utilization columns stay stubbed until enkiTS is in. Don't add worker_thread_count to WorldConfig here. Lands in parallel with T-221.
-  - **Links:**
-
-
 - [~] **Job: vendor enkiTS + access-derivation traits** — stand up engine/job/ static lib with enkiTS, public IRJobs API, worker lifecycle hooks, and SystemAccess derivation traits in engine/system/
   - **ID:** T-221
   - **Area:** engine/job, engine/system, engine/world
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-221-job-foundation
   - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** engine/job/ builds clean on linux-debug and macos-debug; IRJobs::parallelFor(0,1024,256,...) smoke-test runs reporting expected worker IDs; IRJobs::isMainThread() true from main thread / false from workers; deriveAccessFromSignature unit tests cover all three tick-signature forms; T-220's perf-gate baseline passes; Apple Silicon logs P-core cap decision at startup
@@ -257,7 +244,7 @@ Avoid:
   - **ID:** T-319
   - **Area:** engine/prefabs/irreden/render, engine/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-319-propagate-canvas-rotation
   - **Blocked by:** (none)
   - **Acceptance:** (1) IRCanvasStress --auto-rotate shows DETACHED cubes rotating with world (camera-space stationary when entity rotation is identity), not screen-fixed; (2) IRCanvasStress default renders identically to today; (3) DETACHED cube under combined camera+entity yaw matches GRID cube of same net world-Z rotation; (4) C_CanvasLocalRotation header comment updated to describe camera-composed semantics; (5) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1075
@@ -340,6 +327,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
 - [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
 - [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
 - [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
@@ -359,4 +347,3 @@ Avoid:
 - [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
 - [x] **T-294** — SYSTEM_REBUILD_GRID_VOXELS runs on entities with changed C_LocalTransform; rotates authored voxels to world-grid cells; last-writer-wins on cell collisions (deterministic by entity ID) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/957
-- [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
