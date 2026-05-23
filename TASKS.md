@@ -311,6 +311,18 @@ Avoid:
   - **Notes:** Mechanical adoption — no design decisions needed (those happen in T-325). Re-grep creations/demos and creations/editors for CAMERA_MOUSE_PAN and registerCameraCommands at PR time for authoritative demo list. Demos that intentionally skip certain controls (e.g. UI-only demos conflicting with widget interactions) stay on manual path with a comment in the PR description.
   - **Links:**
 
+
+- [ ] **fleet: broaden cross-host smoke criteria; add windows-* and verified-* labels** — extend smoke-label path filter to system/ and CMake files; wire Windows authoring; create fleet:needs-windows-smoke and fleet:verified-* labels
+  - **ID:** T-327
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) PR touching only engine/system/ triggers smoke procedure; (2) PR touching only CMakeLists.txt triggers smoke procedure; (3) PR authored from MSYS2 Windows gets fleet:authored-on-windows and reviewer adds the correct two smoke labels per updated table; (4) existing rendering PR smoke behavior unchanged; (5) five new labels (fleet:needs-windows-smoke, fleet:authored-on-windows, fleet:verified-linux, fleet:verified-macos, fleet:verified-windows) exist in engine repo with correct descriptions; (6) fleet:needs-linux-smoke and fleet:needs-macos-smoke descriptions updated to drop "Render PR"
+  - **Issue:** #1091
+  - **Notes:** Files: .claude/skills/review-pr/procedures/cross-host-smoke.md (path filter L15-21, game-skip note L54, smoke-label table L31-35); .claude/skills/commit-and-push/procedures/host-label.md (Windows case L23-27, scope note L40-42). Cross-repo: companion platform-catchup skill jakildev/irreden#65 consumes these labels; game-repo twin jakildev/irreden#66 mirrors new labels into game-repo namespace.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
