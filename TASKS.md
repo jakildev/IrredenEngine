@@ -303,11 +303,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **System: migrate UPDATE pipeline to multi-system groups + measure perf_grid_matrix speedup (T-224 follow-up)** — const-correctness audit of prefab systems to unlock real parallel groups; run perf matrix and file speedup report
+- [~] **System: migrate UPDATE pipeline to multi-system groups + measure perf_grid_matrix speedup (T-224 follow-up)** — const-correctness audit of prefab systems to unlock real parallel groups; run perf matrix and file speedup report
   - **ID:** T-332
   - **Area:** engine/system, creations/demos
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-224
   - **Acceptance:** at least one demo's UPDATE pipeline has a real parallel group accepted by the T-224 validator; perf_grid_matrix.sh shows additional speedup beyond T-222's baseline; speedup number filed to docs/perf-reports/threading_phase3.md; no regressions on existing demos
   - **Issue:** #1103
