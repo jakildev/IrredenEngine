@@ -186,22 +186,11 @@ Avoid:
   - **Notes:** Metal clearTexImage allocates a full-texture std::vector + memset + CPU replaceRegion each frame for the distance texture. Fix: GPU-side compute/blit clear or load-action clear. Also cross-check OpenGL clearTexImage path for same pattern. vs1_clear IR_PROFILE_SCOPE was added in PR #1049.
   - **Links:**
 
-
-- [~] **Perf: Metal Buffer::subData orphans + full-copies the whole buffer on every call** — eliminate per-frame full-buffer memcpy by tracking GPU-idle state and writing in place on first access per frame
-  - **ID:** T-316
-  - **Area:** engine/render
-  - **Model:** opus
-  - **Owner:** claude/T-316-metal-buffer-no-orphan
-  - **Blocked by:** (none)
-  - **Acceptance:** per-frame buffer-orphan memcpy volume drops to near zero in steady state; IRPerfGrid matrix shows measurable frame improvement and no regression; render-verify clean on Metal backend
-  - **Issue:** #1051
-  - **Notes:** Metal-only. MetalBufferImpl::subData allocates a new full-size MTLBuffer + whole-buffer memcpy on every write. Since present() calls waitUntilCompleted(), GPU is idle at frame start — first write can be in-place. Fix: per-buffer encoded-since-orphan flag reset at beginFrame(); only second+ write to an already-encoded buffer orphans. Correctness-sensitive: wrong call → GPU reads torn data → visual corruption. Needs render-verify.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
 - [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
@@ -221,4 +210,3 @@ Avoid:
 - [x] **T-291** — wire detached canvas rotation through composite TRS (C3) · Owner: claude/T-291-detached-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1003
 - [x] **T-292** — math: continuous-yaw + deformation math helpers (C5) · Owner: claude/T-292-yaw-deformation-math · PR: https://github.com/jakildev/IrredenEngine/pull/1002
 - [x] **T-301** — migrate C_VoxelPool and ~10 voxel-pipeline files off legacy position components; architect call required on pool SoA layout (Option A: C_WorldTransform array vs Option B: position-only projection arrays) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/986
-- [x] **T-290** — C_RotationMode enum + component (C2) · Owner: claude/T-290-rotation-mode-component · PR: https://github.com/jakildev/IrredenEngine/pull/1001
