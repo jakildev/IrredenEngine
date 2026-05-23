@@ -176,11 +176,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **System: Concurrency::PARALLEL_FOR + single-system access validation** — land actual per-tick parallel dispatch, registration-time safety checks, IR_ASSERT_MAIN_THREAD guards, and three POC system ports
+- [~] **System: Concurrency::PARALLEL_FOR + single-system access validation** — land actual per-tick parallel dispatch, registration-time safety checks, IR_ASSERT_MAIN_THREAD guards, and three POC system ports
   - **ID:** T-222
   - **Area:** engine/system, creations/demos
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-221
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** perf_grid_matrix.sh 262K cell shows ≥2× UPDATE throughput at worker_threads=hw-2 vs 0; VELOCITY_3D/VELOCITY_DRAG/ANIMATION_COLOR pass IrredenEngineTest; unsafe parallel systems (EntityId+no-ParallelSafe, batch-form) rejected at registration (unit-tested); IR_ASSERT_MAIN_THREAD fires from worker thread in debug (unit-tested); no regression on T-220's perf-gate
