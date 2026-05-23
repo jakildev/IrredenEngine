@@ -248,7 +248,7 @@ mid-frame is supported but uncommon.
 `registerPipelineGroups` lets a creation declare which systems are
 safe to **co-execute** within a single UPDATE/RENDER tick. Each inner
 brace is a *parallel group* — its members run concurrently on the
-IRJobs worker pool. Groups themselves run sequentially in declaration
+IRJob worker pool. Groups themselves run sequentially in declaration
 order; `IREntity::flushStructuralChanges` runs between groups (never
 between systems within a group — the validator ensures group members
 don't mutate the archetype graph at the same time).
@@ -306,11 +306,13 @@ the next group starts. When `g_jobManager` is null (unit tests,
 pre-`World` init), groups fall back to serial in-declaration-order
 dispatch.
 
-If a `Concurrency::PARALLEL_FOR` system lands inside a multi-system
-parallel group, the inner `IRJob::parallelFor` it would normally
-drive falls back to serial dispatch on the worker — the IRJob entry
-points assert main-thread context, so nested fan-out would FATAL.
-Correctness preserved; the inner parallelism is lost for that tick.
+A `Concurrency::PARALLEL_FOR` system must live in its own singleton
+group. `validateAllPipelineGroups` (called at `World::start()`) FATALs
+if a `PARALLEL_FOR` member is found in a multi-system group — the
+inner `IRJob::parallelFor` it drives cannot fan out from a worker
+thread (main-thread assert, deadlock risk under full-pool saturation).
+In release builds where the validator is a no-op, `executeSystem` falls
+back to serial dispatch as a safety net.
 
 ## SystemAccess derivation (T-221)
 

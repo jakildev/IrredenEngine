@@ -132,6 +132,25 @@ void SystemManager::validateAllPipelineGroups() const {
             if (group.size() <= 1) {
                 continue;
             }
+            // Reject PARALLEL_FOR members in multi-system groups: the inner
+            // IRJob::parallelFor they drive cannot fan out from a worker
+            // thread (main-thread assert, potential deadlock under full-pool
+            // saturation). Each PARALLEL_FOR system must run in its own
+            // singleton group.
+            for (std::size_t mi = 0; mi < group.size(); ++mi) {
+                const SystemId mid = group[mi];
+                if (mid < m_concurrency.size() && m_concurrency[mid] == Concurrency::PARALLEL_FOR) {
+                    IR_ASSERT(
+                        false,
+                        "registerPipelineGroups: system '{}' (group {}) has "
+                        "Concurrency::PARALLEL_FOR and cannot share a parallel group "
+                        "with siblings — its inner IRJob::parallelFor cannot fan out "
+                        "from a worker thread. Move it to its own singleton group.",
+                        getSystemName(mid),
+                        gi
+                    );
+                }
+            }
             std::vector<SystemAccess> accesses;
             accesses.reserve(group.size());
             for (SystemId id : group) {
@@ -340,9 +359,10 @@ void SystemManager::executeSystem(SystemId system) {
             // `isMainThread()` guards against nested dispatch: when
             // executeSystem is reached from a worker (multi-system
             // parallel group), IRJob::parallelFor would FATAL on its
-            // own main-thread assert. We fall back to serial dispatch
-            // inline on the worker — correctness preserved at the cost
-            // of the inner parallelism on this one tick.
+            // own main-thread assert. validateAllPipelineGroups now
+            // rejects PARALLEL_FOR members in multi-system groups at
+            // boot, so this path is unreachable in well-formed programs;
+            // the guard is kept as a release-build safety net.
             const auto &rangedFn = tickEvent.rangedFunctionTick_;
             IRJob::parallelFor(
                 0,

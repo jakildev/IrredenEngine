@@ -206,6 +206,38 @@ TEST_F(PipelineGroupsValidatorTest, DisjointWritesInGroupAccepted) {
     EXPECT_NO_THROW(m_system_manager.validateAllPipelineGroups());
 }
 
+TEST_F(PipelineGroupsValidatorTest, ParallelForInMultiGroupRejected) {
+    // A PARALLEL_FOR system cannot share a parallel group with any sibling:
+    // its inner IRJobs::parallelFor would be reached from a worker thread,
+    // violating the main-thread assert. It must run in its own singleton group.
+    auto sysA = IRSystem::createSystem<C_VelA>(
+        "ParForA",
+        [](C_VelA &) {},
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::PARALLEL_FOR
+    );
+    auto sysB = IRSystem::createSystem<C_VelB>("SerialB", [](C_VelB &) {});
+    m_system_manager.registerPipelineGroups(IRTime::Events::UPDATE, {{sysA, sysB}});
+    EXPECT_THROW(m_system_manager.validateAllPipelineGroups(), std::runtime_error);
+}
+
+TEST_F(PipelineGroupsValidatorTest, ParallelForAloneInSingletonGroupAccepted) {
+    auto sysA = IRSystem::createSystem<C_VelA>(
+        "ParForAlone",
+        [](C_VelA &) {},
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::PARALLEL_FOR
+    );
+    m_system_manager.registerPipelineGroups(IRTime::Events::UPDATE, {{sysA}});
+    EXPECT_NO_THROW(m_system_manager.validateAllPipelineGroups());
+}
+
 TEST_F(PipelineGroupsValidatorTest, RegisterPipelineProducesSingletonGroups) {
     // The legacy `registerPipeline(list<SystemId>)` API must translate
     // to single-system groups so existing call sites get the
