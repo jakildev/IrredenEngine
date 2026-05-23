@@ -21,7 +21,7 @@ template <> struct System<PARTICLE_SPAWNER> {
     static SystemId create() {
         return createSystem<C_ParticleSpawner, C_WorldTransform>(
             "ParticleSpawner",
-            [](C_ParticleSpawner &particleSpawner, C_WorldTransform &worldXform) {
+            [](C_ParticleSpawner &particleSpawner, const C_WorldTransform &worldXform) {
                 if (!particleSpawner.active_) {
                     return;
                 }
