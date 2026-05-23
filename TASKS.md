@@ -252,11 +252,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **docs: iso-depth-axis invariant design doc** — document why (1,1,1) world-camera Z-yaw-only is invariant for GRID entities and map every call site with cost-to-break annotations
+- [~] **docs: iso-depth-axis invariant design doc** — document why (1,1,1) world-camera Z-yaw-only is invariant for GRID entities and map every call site with cost-to-break annotations
   - **ID:** T-320
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) docs/design/iso-depth-axis-invariant.md exists; (2) all consumers cited with file:line (picking.hpp:65,173,219; system_hitbox_mouse_test.hpp:57; system_gizmo_drag.hpp:289,296; system_shapes_to_trixel.hpp:421; c_shapes_to_trixel.glsl:197,682,684; c_voxel_to_trixel_stage_1.glsl:30; ir_math.hpp:171,260 — re-grep fresh at write time); (3) engine/math/CLAUDE.md and engine/render/CLAUDE.md link to it; (4) companion issues #1075 and #1076 cross-referenced
   - **Issue:** #1077
