@@ -188,11 +188,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Perf: VOXEL_TO_TRIXEL_STAGE_1 per-frame canvas+distance clear** — eliminate ~4.4 ms/frame CPU→GPU texture clear by switching to GPU-side clear or a persistent scratch buffer
+- [~] **Perf: VOXEL_TO_TRIXEL_STAGE_1 per-frame canvas+distance clear** — eliminate ~4.4 ms/frame CPU→GPU texture clear by switching to GPU-side clear or a persistent scratch buffer
   - **ID:** T-315
   - **Area:** engine/render, shaders/metal
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** vs1_clear scope in perf_grid auto-profile drops well under 1 ms; render-verify passes with no visual regression
   - **Issue:** #1050
