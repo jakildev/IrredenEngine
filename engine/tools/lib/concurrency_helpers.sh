@@ -97,7 +97,7 @@ _ir_config() {
     local section="$1" key="$2" env_name="$3"
     local env_val
     if [[ -n "${env_name:-}" ]]; then
-        eval "env_val=\${$env_name:-}"
+        env_val="${!env_name:-}"
         if [[ -n "${env_val:-}" ]]; then
             echo "$env_val"
             return 0
@@ -153,7 +153,7 @@ ir_per_build_max() {
         local budget workers
         budget="$(ir_cpu_budget)"
         workers="$(ir_workers)"
-        # ceiling division; minimum 1 core per build
+        # floor (integer) division; minimum 1 core per build
         local cap=$(( budget / workers ))
         (( cap < 1 )) && cap=1
         echo "$cap"
@@ -337,6 +337,7 @@ _ir_record_held() {
     mkdir -p "$IR_LOCK_ROOT/.held/$$" 2>/dev/null || true
     # Use the basename plus the parent dir name so we can reconstruct the
     # full path on release (cpu/slot-3, gpu/lock, etc.).
+    # Path encoding: '/' → '__'; resource paths must not contain '__'.
     local rel="${lockdir#$IR_LOCK_ROOT/}"
     local safe
     safe="${rel//\//__}"

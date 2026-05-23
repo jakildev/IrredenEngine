@@ -2,9 +2,9 @@
 # ir-host-probe — emit a deterministic JSON fingerprint of this host.
 #
 # Output is cached at $XDG_CACHE_HOME/irreden/host-fingerprint.json (or
-# ~/.cache/irreden/) and invalidated when the probe-output checksum changes.
+# ~/.cache/irreden/). Valid until --refresh is passed or the file is absent.
 # Re-probe is cheap (~50ms) so the cache exists mostly to give baselines
-# a stable filename until the probe output materially changes.
+# a stable filename across repeated calls.
 #
 # Usage:
 #   ir-host-probe               # print the cached (or fresh) fingerprint
