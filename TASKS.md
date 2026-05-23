@@ -277,11 +277,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Tools: ir-perf-grid + hardware-fingerprinted baselines + synthetic-load normalization (sub-task 3 of #1074)** — ir-perf-grid binary wrapping ir-acquire benchmark; baselines keyed by host fingerprint; ir_ref_bench normalization for cross-host comparisons
+- [~] **Tools: ir-perf-grid + hardware-fingerprinted baselines + synthetic-load normalization (sub-task 3 of #1074)** — ir-perf-grid binary wrapping ir-acquire benchmark; baselines keyed by host fingerprint; ir_ref_bench normalization for cross-host comparisons
   - **ID:** T-330
   - **Area:** engine/tools/bin, engine/tools/bench, engine/tools/py, docs/perf, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-329
   - **Stack:** T-318..T-331 ir-tools-split
   - **Acceptance:** ir-perf-grid runs matrix end-to-end, writes baseline under fingerprinted layout; two consecutive runs on same host produce stable raw + normalized numbers (within 2%); different-host run emits informational host-mismatch path, not regression alert; perf-gate.yml passes against existing master baseline after migration
