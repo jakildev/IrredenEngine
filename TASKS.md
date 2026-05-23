@@ -256,7 +256,7 @@ Avoid:
   - **ID:** T-320
   - **Area:** docs
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-320-iso-depth-axis-invariant
   - **Blocked by:** (none)
   - **Acceptance:** (1) docs/design/iso-depth-axis-invariant.md exists; (2) all consumers cited with file:line (picking.hpp:65,173,219; system_hitbox_mouse_test.hpp:57; system_gizmo_drag.hpp:289,296; system_shapes_to_trixel.hpp:421; c_shapes_to_trixel.glsl:197,682,684; c_voxel_to_trixel_stage_1.glsl:30; ir_math.hpp:171,260 — re-grep fresh at write time); (3) engine/math/CLAUDE.md and engine/render/CLAUDE.md link to it; (4) companion issues #1075 and #1076 cross-referenced
   - **Issue:** #1077
@@ -264,23 +264,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system** — replace inline camera-yaw-rotation lambdas in canvas_stress and z_yaw_rotation with a shared member-on-System<N> prefab
-  - **ID:** T-321
-  - **Area:** engine/prefabs/irreden/render, engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-321-auto-yaw-rotate-prefab
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) system_auto_yaw_rotate.hpp exists following T-317 CAMERA_MOUSE_ROTATE member-on-System<N> shape; (2) AUTO_YAW_ROTATE added to SystemName enum near CAMERA_MOUSE_ROTATE; (3) canvas_stress/main.cpp and z_yaw_rotation/main_static.cpp use prefab system, inline lambdas deleted; (4) IRCanvasStress --auto-rotate and IRZYawRotationStatic rotate at same rate as before; (5) fleet-build clean linux-debug and macos-debug
-  - **Issue:** #1078
-  - **Notes:** Sources to replace: canvas_stress/main.cpp:189-195, z_yaw_rotation/main_static.cpp:80-82. voxel_editor EditorViewportRotate (main.cpp:1203-1227) is mouse-driven and stays creation-local — filed separately as T-324.
-  - **Links:**
-
-
-- [~] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
+- [ ] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
   - **ID:** T-323
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) grep -rn SCREEN_SPACE_RESIDUAL_ROTATE engine creations returns zero hits; (2) every demo that used the stage renders identically (render-verify or auto-screenshot diff); (3) voxel_to_trixel_stage_1/stage_2 shaders gain retirement note referencing T-293; (4) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1079
@@ -292,7 +280,7 @@ Avoid:
   - **ID:** T-324
   - **Area:** creations/editors/voxel_editor
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-324-editor-viewport-rotate
   - **Blocked by:** (none)
   - **Acceptance:** (1) EditorViewportRotate no longer uses setSystemParams(std::move(...)); (2) voxel editor right-drag camera rotation behaves identically (same sensitivity); (3) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1080
@@ -327,6 +315,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
 - [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
 - [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
 - [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
@@ -346,4 +335,3 @@ Avoid:
 - [x] **T-306** — asset: scene_io metadata index + voxel-record byte constant dedup · Owner: claude/T-306-scene-io-metadata-index · PR: https://github.com/jakildev/IrredenEngine/pull/1030
 - [x] **T-303** — math: IRMath grid-iteration and 3D-mask helpers · Owner: claude/T-303-irmath-grid-helpers · PR: https://github.com/jakildev/IrredenEngine/pull/1028
 - [x] **T-293** — render geometric trixel deformation (replaces T-322 bilinear residual) · Owner: claude/T-293-geometric-trixel-deformation · PR: https://github.com/jakildev/IrredenEngine/pull/1005
-- [x] **T-294** — SYSTEM_REBUILD_GRID_VOXELS runs on entities with changed C_LocalTransform; rotates authored voxels to world-grid cells; last-writer-wins on cell collisions (deterministic by entity ID) · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/957
