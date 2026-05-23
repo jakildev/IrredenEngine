@@ -212,11 +212,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **Render: camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate** — add auto-rotate mode to canvas_stress demo and Ctrl+middle-drag camera yaw rotation keybind
+- [~] **Render: camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate** — add auto-rotate mode to canvas_stress demo and Ctrl+middle-drag camera yaw rotation keybind
   - **ID:** T-317
   - **Area:** engine/prefabs/irreden/render, creations/demos/canvas_stress
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) canvas_stress with auto_rotate config flag/--auto-rotate CLI continuously rotates camera yaw; (2) Ctrl+middle-drag rotates camera yaw; middle-drag without Ctrl still pans unchanged; (3) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1053
