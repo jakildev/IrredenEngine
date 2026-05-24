@@ -224,18 +224,6 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: fleet-worktree-busy-branches live re-derive from git worktree list** — remove caching from fleet-worktree-busy-branches; re-derive from live `git worktree list --porcelain` on every call; add --repo loop for game repo
-  - **ID:** T-341
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** fleet-worktree-busy-branches uses live `git worktree list --porcelain` with no cache; `--repo <path>` covers both repos; `worktree-tracker-drift` cluster quiet
-  - **Issue:** #1134
-  - **Notes:** Surfaced by review-fleet-feedback (signature: worktree-tracker-drift, 7 occurrences since 2026-04-30). Stale data caused checkout race (workers blocked on branches already abandoned). Also add fallback verify-after-checkout in role-sonnet-author.md and role-opus-worker.md per issue.
-  - **Links:**
-
-
 - [~] **fleet: queue-manager queued/free divergence check** — add divergence check to role-queue-manager.md that flags mismatch between `fleet:queued` issue set and TASKS.md `free` rows; write warning to ~/.fleet/feedback/queue-manager.md
   - **ID:** T-342
   - **Area:** tooling
