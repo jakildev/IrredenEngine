@@ -203,7 +203,7 @@ TEST_F(PipelineGroupsValidatorTest, DisjointWritesInGroupAccepted) {
 
 TEST_F(PipelineGroupsValidatorTest, ParallelForInMultiGroupRejected) {
     // A PARALLEL_FOR system cannot share a parallel group with any sibling:
-    // its inner IRJobs::parallelFor would be reached from a worker thread,
+    // its inner IRJob::parallelFor would be reached from a worker thread,
     // violating the main-thread assert. It must run in its own singleton group.
     auto sysA = IRSystem::createSystem<C_VelA>(
         "ParForA",
