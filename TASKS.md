@@ -211,22 +211,11 @@ Avoid:
   - **Notes:** Surfaced by review-fleet-feedback (signature: queue-staleness, 6 occurrences since 2026-05-02). `fleet:queued` label diverges from TASKS.md silently. Related to #1131 maintenance-sync; same proposed fix (fix-001 + divergence check).
   - **Links:**
 
-
-- [~] **fleet: extend auto-mode classifier allow-list for fleet-role workflows** — whitelist role-*.md / .claude/commands/role-*.md writes from fleet roles; allow `rm -f .review-body.md` and prescribed `bash -c kill` exit patterns
-  - **ID:** T-344
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-344-auto-mode-allowlist
-  - **Blocked by:** (none)
-  - **Acceptance:** auto-mode classifier allows fleet roles to write role-*.md docs, delete .review-body.md, and issue prescribed kill-based exit; `permission-gate-friction` cluster quiet
-  - **Issue:** #1137
-  - **Notes:** Surfaced by review-fleet-feedback (signature: permission-gate-friction, 5 occurrences since 2026-04-30). `rm` blocked on .fleet/plans/; kill exit blocked; role-*.md Self-Modification gate fires on role docs. Proposed fix: extend .claude/settings.json allow-list.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-344** — fleet/auto-mode: fix rm -f .review-body.md via Read-then-Write protocol · Owner: claude/T-344-auto-mode-allowlist · PR: https://github.com/jakildev/IrredenEngine/pull/1151
 - [x] **T-343** — fleet: review-pr live label check after claim acquisition (pre-checkout) · Owner: claude/T-343-review-pr-live-label-check · PR: https://github.com/jakildev/IrredenEngine/pull/1150
 - [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
 - [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
@@ -246,4 +235,3 @@ Avoid:
 - [x] **T-326** — demos: adopt standardControlSystems() bundle across all demos · Owner: claude/T-326-adopt-standard-camera-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1095
 - [x] **T-318** — engine/tools: ir-host-probe + ir-acquire (sub-task 1 of #1074) · Owner: claude/T-318-engine-tools · PR: https://github.com/jakildev/IrredenEngine/pull/1102
 - [x] **T-327** — broaden cross-host smoke criteria; add windows-* + verified-* labels · Owner: claude/T-327-cross-host-smoke-windows · PR: https://github.com/jakildev/IrredenEngine/pull/1098
-- [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
