@@ -210,15 +210,9 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
         }
 
-        // Root archetypes (no CHILD_OF parent) have `parentWorld == identity`.
-        // In that case the SQT composition collapses to: world = local +
-        // modifiers, with quatMul/rotateVectorByQuat both no-ops. Hoist
-        // the root check out of the inner loop and take a quat-free fast
-        // path — saves one quatMul (~16 fp ops) and one rotateVectorByQuat
-        // (~30 fp ops) per entity per frame. At perf_grid / lua_perf_grid
-        // scale (262K root entities × 60 Hz) this is ~720M fp ops/sec
-        // off the CPU budget. Non-root archetypes (any with CHILD_OF) keep
-        // the full path — that's where the quat math is meaningful.
+        // parentWorld == identity for root archetypes, so quatMul and
+        // rotateVectorByQuat are both no-ops. Hoist the check out of the
+        // inner loop and skip the quat math — only meaningful with CHILD_OF.
         const bool isRootArchetype = (parent == IREntity::kNullEntity);
 
         for (int i = 0; i < node->length_; ++i) {
