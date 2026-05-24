@@ -180,7 +180,7 @@ Avoid:
   - **ID:** T-223
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-223-lua-concurrency
   - **Blocked by:** T-222
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** lua_perf_grid (CODEGEN) at 262K entities with worker_threads=hw-2 within ±10% of C++ perf_grid; EVAL mode with concurrency="parallel_for" warns clearly and runs serial; codegen tool errors on bogus concurrency value; Lua parallel_for + EntityId first param gets registration-time FATAL
@@ -215,11 +215,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
+- [ ] **render: retire SCREEN_SPACE_RESIDUAL_ROTATE passthrough stage** — delete the passthrough system, dedicated shader pair, and UBO struct; replace every consumer with FRAMEBUFFER_TO_SCREEN
   - **ID:** T-323
   - **Area:** engine/render, engine/prefabs/irreden/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) grep -rn SCREEN_SPACE_RESIDUAL_ROTATE engine creations returns zero hits; (2) every demo that used the stage renders identically (render-verify or auto-screenshot diff); (3) voxel_to_trixel_stage_1/stage_2 shaders gain retirement note referencing T-293; (4) fleet-build clean linux-debug and macos-debug
   - **Issue:** #1079
@@ -269,7 +269,7 @@ Avoid:
   - **ID:** T-332
   - **Area:** engine/system, creations/demos
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-332-update-pipeline-groups
   - **Blocked by:** T-224
   - **Acceptance:** at least one demo's UPDATE pipeline has a real parallel group accepted by the T-224 validator; perf_grid_matrix.sh shows additional speedup beyond T-222's baseline; speedup number filed to docs/perf-reports/threading_phase3.md; no regressions on existing demos
   - **Issue:** #1103
@@ -281,7 +281,7 @@ Avoid:
   - **ID:** T-333
   - **Area:** engine/system, engine/entity
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-333-pre-resolve-component-vectors
   - **Blocked by:** T-222
   - **Acceptance:** worker bodies under PARALLEL_FOR no longer call m_pureComponentTypes::operator[]; ThreadSanitizer-clean parallelFor dispatch over archetype with >=kDefaultGrainSize entities; VELOCITY_3D continues to tick correctly
   - **Issue:** #1105
@@ -293,7 +293,7 @@ Avoid:
   - **ID:** T-334
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-334-parallel-for-relation-form-validator
   - **Blocked by:** T-222
   - **Acceptance:** validateConcurrencyForAccess rejects PARALLEL_FOR + relation-form at registration time; unit test in system_concurrency_test.cpp confirms rejection (mirrors BatchFormRejected shape); existing relation-form systems (all currently SERIAL) tick unchanged
   - **Issue:** #1106
@@ -317,7 +317,7 @@ Avoid:
   - **ID:** T-336
   - **Area:** engine/render, creations/demos
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-336-macos-shutdown
   - **Blocked by:** (none)
   - **Acceptance:** IRPerfGrid and at least two other representative demos exit cleanly on macOS (exit code 0, no crash reporter dialog); fix verified on macos-debug preset; fleet-build / ir-run wrapper does not mask the non-zero exit code; no regression on linux-debug
   - **Issue:** #1116
