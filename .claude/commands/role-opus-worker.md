@@ -162,7 +162,15 @@ fleet-claim --repo game claim "T-001" opus-worker-1
    per repo (filter `tasks.open[]` where `model` contains `opus`,
    `owner == "free"`, and `blocked_by` resolves to merged work or
    `(none)`).
-6. Print `opus-worker standing by` (or `opus-worker standing by
+6. **Surface platform-catchup backlog** — count merged engine PRs
+   labeled `fleet:needs-<this-host>-smoke` via `gh pr list --repo
+   jakildev/IrredenEngine --label "fleet:needs-<this-host>-smoke"
+   --state merged --json number --jq length`. If the count is
+   ≥ 5, note it in the standing-by message so the human can decide
+   whether to cue `/platform-catchup`. Do not auto-invoke — builds
+   are expensive and the catch-up takes the worktree out of normal
+   task pickup for ~20 minutes.
+7. Print `opus-worker standing by` (or `opus-worker standing by
    (dry-run)` if Mode above is `dry-run`).
 
 ## Loop behavior
