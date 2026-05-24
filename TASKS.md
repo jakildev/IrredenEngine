@@ -155,7 +155,7 @@ Avoid:
   - **ID:** T-347
   - **Area:** engine/script, engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-347-lua-codegen-per-component
   - **Blocked by:** (none)
   - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against new emit shape; new CODEGEN PARALLEL_FOR test registers without FATAL and dispatches across workers
   - **Issue:** #1120
@@ -166,7 +166,7 @@ Avoid:
   - **ID:** T-351
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-351-compute-light-volume-opt
   - **Blocked by:** (none)
   - **Acceptance:** `IRPerfGrid` on linux-x86_64 (OpenGL/WSLg) achieves ≥30 FPS; `fleet-run --timeout 30 IRPerfGrid --auto-screenshot 30` captures at least one screenshot; COMPUTE_LIGHT_VOLUME propagate GPU cost measurably reduced (verify via PERF_STATS_OVERLAY GPU stage timings)
   - **Issue:** #1154
@@ -177,7 +177,7 @@ Avoid:
   - **ID:** T-350
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-350-merger-retarget-order-rationale
   - **Blocked by:** (none)
   - **Acceptance:** design decision documented; `role-merger.md` step a.5 ii updated; if Option B: `role-opus-worker.md` step 1c updated to handle `fleet:awaiting-base` + `fleet:semantic-conflict` on a master-targeted PR; no semantic-conflict stacked PR left stranded by the opus-worker filter
   - **Issue:** #1149
@@ -188,7 +188,7 @@ Avoid:
   - **ID:** T-349
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-349-validator-rule-ordering
   - **Blocked by:** (none)
   - **Acceptance:** a variadic catch-all tick `[](auto&&...) {}` with `PARALLEL_FOR` fires the relation-form FATAL (most-specific), not the entity-id FATAL; existing FATAL messages for real-world callers unchanged; `IrredenEngineTest` passes
   - **Issue:** #1125
@@ -199,7 +199,7 @@ Avoid:
   - **ID:** T-348
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-348-serial-fastpath-dual-slot
   - **Blocked by:** (none)
   - **Acceptance:** `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug; existing PARALLEL_FOR systems fan out correctly; `functionTick_` slot removed from row-iterating forms (only tag/relation-form `functionTick_` kept); no per-SERIAL-node binder allocation
   - **Issue:** #1124
@@ -233,7 +233,7 @@ Avoid:
   - **ID:** T-347
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-347-lua-codegen-per-component
   - **Blocked by:** (none)
   - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against the new emit shape; new CODEGEN test exercising `concurrency = PARALLEL_FOR` registers without FATAL and dispatches across worker threads
   - **Issue:** #1120
@@ -244,7 +244,7 @@ Avoid:
   - **ID:** T-348
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-348-serial-fastpath-dual-slot
   - **Blocked by:** (none)
   - **Acceptance:** `functionTick_` removed for row-iterating forms; `executeSystem` branches on `(prepareRangedTick_ != null && concurrency != PARALLEL_FOR)` → calls `prepareRangedTick_(node)(0, length)` directly; tag/relation-form `functionTick_` slot kept; `IrredenEngineTest` + `IRShapeDebug` build clean; existing PARALLEL_FOR systems fan out correctly
   - **Issue:** #1124
@@ -255,7 +255,7 @@ Avoid:
   - **ID:** T-349
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-349-validator-rule-ordering
   - **Blocked by:** (none)
   - **Acceptance:** with an artificial catch-all tick `[](auto&&...) {}` + `PARALLEL_FOR`, the FATAL message names the most-specific failing rule (relation-form > batch-form > entity-id); `IrredenEngineTest` passes; build clean
   - **Issue:** #1125
@@ -266,7 +266,7 @@ Avoid:
   - **ID:** T-350
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-350-merger-retarget-order-rationale
   - **Blocked by:** (none)
   - **Acceptance:** role-merger.md step a.5 ii updated with chosen option; if Option B, role-opus-worker.md step 1c updated to accept `fleet:semantic-conflict` PRs whose base was re-targeted to master; desk-check scenario (stacked PR with conflict after base merges) produces correct label + base state for opus-worker handoff
   - **Issue:** #1149
@@ -277,7 +277,7 @@ Avoid:
   - **ID:** T-351
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-351-compute-light-volume-opt
   - **Blocked by:** (none)
   - **Acceptance:** `IRPerfGrid` auto-screenshot completes within 30s timeout on linux-x86_64 (OpenGL/Mesa-d3d12); PERF_STATS_OVERLAY confirms `COMPUTE_LIGHT_VOLUME` GPU time drops ≥8×; existing demos unaffected on macOS/Metal
   - **Issue:** #1154
