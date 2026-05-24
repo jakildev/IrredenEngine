@@ -151,6 +151,17 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
+- [ ] **lua-codegen: per-component emit shape to unlock PARALLEL_FOR** — convert codegen tool's system emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
+  - **ID:** T-347
+  - **Area:** engine/script, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against new emit shape; new CODEGEN PARALLEL_FOR test registers without FATAL and dispatches across workers
+  - **Issue:** #1120
+  - **Notes:** DSL parser in `cmake/lua_codegen/system_dsl.cpp` already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` ops; lowering is structural — recognize `local s = arch.C_Foo:at(i)` as row binding, drop outer for-statement. Gotcha: `std::vector<EntityId>& _ir_codegen_ids` slot may have callers — search before deleting; per-component form has id-aware overload. Filed by opus-worker during T-223.
+  - **Links:**
+
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
