@@ -28,6 +28,9 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_local_transform_lua.hpp>
+#include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/modifier.hpp>
+#include <irreden/common/transform_modifier_fields.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -276,6 +279,7 @@ void createGridEntities() {
                 IREntity::createEntity(
                     C_LocalTransform{positionForCell(x, y, z)},
                     C_VoxelSetNew{ivec3(1, 1, 1), colorForCell(x, y, z, n), false},
+                    C_Modifiers{},
                     makeWaveState(x, y, z)
                 );
             }
@@ -381,10 +385,36 @@ void registerLuaBindings() {
 
         const IRSystem::SystemId waveSysId = resolveLuaWaveTickId(script);
 
+        // Bridge: read the wave-eased vec3 out of C_LuaWaveState (written by
+        // waveSysId above) and upsert it as the entity's TRANSFORM_TRANSLATION
+        // ADD modifier. PROPAGATE_TRANSFORM next folds the modifier into
+        // C_WorldTransform.translation_. Mirrors PERIODIC_IDLE_POSITION_OFFSET
+        // for the C++ perf_grid demo, but reads the Lua-codegen-produced
+        // C_LuaWaveState instead of C_PeriodicIdle. Without this bridge the
+        // wave runs but never reaches the rendered position (T-302 / T-300
+        // retired the legacy C_PositionOffset3D path, so a creation-side
+        // writer is the only way to drive per-frame additive translation).
+        const IRSystem::SystemId luaWaveOffsetId =
+            IRSystem::createSystem<C_LuaWaveState, C_Modifiers>(
+                "LuaWaveStateToOffset",
+                [](IREntity::EntityId entity,
+                   C_LuaWaveState &wave,
+                   C_Modifiers &mods) {
+                    IRPrefab::Modifier::upsertBySourceInPlace(
+                        mods,
+                        IRPrefab::TransformModifier::translationField(),
+                        IRComponents::TransformKind::ADD,
+                        vec3(wave.out_x_, wave.out_y_, wave.out_z_),
+                        entity
+                    );
+                }
+            );
+
         IRSystem::registerPipeline(
             IRTime::Events::UPDATE,
             {
                 waveSysId,
+                luaWaveOffsetId,
                 IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
                 IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
             }
