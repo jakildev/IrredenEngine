@@ -162,6 +162,17 @@ Avoid:
   - **Notes:** DSL parser in `cmake/lua_codegen/system_dsl.cpp` already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` ops; lowering is structural — recognize `local s = arch.C_Foo:at(i)` as row binding, drop outer for-statement. Gotcha: `std::vector<EntityId>& _ir_codegen_ids` slot may have callers — search before deleting; per-component form has id-aware overload. Filed by opus-worker during T-223.
   - **Links:**
 
+- [ ] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 (OpenGL) — COMPUTE_LIGHT_VOLUME hotspot** — reduce COMPUTE_LIGHT_VOLUME propagate cost on OpenGL so IRPerfGrid runs at ≥30 FPS on linux-x86_64
+  - **ID:** T-351
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `IRPerfGrid` on linux-x86_64 (OpenGL/WSLg) achieves ≥30 FPS; `fleet-run --timeout 30 IRPerfGrid --auto-screenshot 30` captures at least one screenshot; COMPUTE_LIGHT_VOLUME propagate GPU cost measurably reduced (verify via PERF_STATS_OVERLAY GPU stage timings)
+  - **Issue:** #1154
+  - **Notes:** Root cause identified: `c_propagate_light_volume.glsl` × 32 iterations × 128³ cells × ~13 image ops + 12 SSBO reads per cell ≈ 870M image ops per canvas per frame. WSLg Mesa-d3d12 (DX12 translation) serializes the 8K-group dispatches badly vs Metal. Recommended quick wins: (1) adaptive iteration count from per-light `stepFalloff` radius (cap < 32); (2) skip COMPUTE_LIGHT_VOLUME dispatch for canvases without lights. Larger wins: smaller default 64³ volume; sparse seeded-list propagate. Filed by platform-catchup skill (2026-05-24, linux-x86_64, master 3d031e44). See also PR #1155 for related lua_perf_grid motion issue.
+  - **Links:**
+
 - [ ] **fleet/merger: re-target / rebase order decision on stacked-base merged path** — decide Option A (doc only, keep current order) or Option B (invert + coordinated changes) and implement
   - **ID:** T-350
   - **Area:** tooling
