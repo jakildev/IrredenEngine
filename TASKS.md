@@ -200,18 +200,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet: review-pr verdict-label retry-and-verify guard** — split combined `gh pr edit --remove/--add` into two calls; wrap add in retry-and-verify; cross-ref role-sonnet-reviewer and role-opus-reviewer
-  - **ID:** T-339
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-339-review-pr-verdict-label-retry
-  - **Blocked by:** (none)
-  - **Acceptance:** verdict-label step in review-pr/SKILL.md splits remove/add into two `gh` calls; add wrapped in retry-and-verify (re-query labels, fail loud if verdict label still missing); fleet feedback `label-absent-after-verdict` cluster quiet
-  - **Issue:** #1132
-  - **Notes:** Surfaced by review-fleet-feedback (signature: label-absent-after-verdict, 37 occurrences since 2026-04-30). fleet:approved/fleet:needs-fix labels silently missing after verdict; downstream PRs stall. Split combined `gh pr edit`, add retry-and-verify.
-  - **Links:**
-
-
 - [~] **fleet: merger stacked-PR merged-base re-target with rebase path** — add detect-base-in-master → re-target to master → rebase branch path between steps 2.5 and 2.6 in role-merger.md; preserve verdict labels across swap
   - **ID:** T-340
   - **Area:** tooling
@@ -287,6 +275,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
 - [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
 - [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
 - [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
@@ -306,4 +295,3 @@ Avoid:
 - [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
 - [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
 - [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
-- [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
