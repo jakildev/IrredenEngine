@@ -151,17 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **lua-codegen: per-component emit shape to unlock PARALLEL_FOR** — convert codegen tool's system emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
-  - **ID:** T-347
-  - **Area:** engine/script, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-347-lua-codegen-per-component
-  - **Blocked by:** (none)
-  - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against new emit shape; new CODEGEN PARALLEL_FOR test registers without FATAL and dispatches across workers
-  - **Issue:** #1120
-  - **Notes:** DSL parser in `cmake/lua_codegen/system_dsl.cpp` already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` ops; lowering is structural — recognize `local s = arch.C_Foo:at(i)` as row binding, drop outer for-statement. Gotcha: `std::vector<EntityId>& _ir_codegen_ids` slot may have callers — search before deleting; per-component form has id-aware overload. Filed by opus-worker during T-223.
-  - **Links:**
-
 - [~] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 (OpenGL) — COMPUTE_LIGHT_VOLUME hotspot** — reduce COMPUTE_LIGHT_VOLUME propagate cost on OpenGL so IRPerfGrid runs at ≥30 FPS on linux-x86_64
   - **ID:** T-351
   - **Area:** engine/render, shaders/glsl
@@ -196,17 +185,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **lua-codegen: per-component emit shape for PARALLEL_FOR** — convert codegen system-emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
-  - **ID:** T-347
-  - **Area:** engine/script, build
-  - **Model:** opus
-  - **Owner:** claude/T-347-lua-codegen-per-component
-  - **Blocked by:** (none)
-  - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against the new emit shape; new CODEGEN test exercising `concurrency = PARALLEL_FOR` registers without FATAL and dispatches across worker threads
-  - **Issue:** #1120
-  - **Notes:** DSL parser (`cmake/lua_codegen/system_dsl.cpp`) already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` column ops — lowering is structural: recognize `local s = arch.C_Foo:at(i)` as a row binding, `:setAt` as a row write, drop outer for-statement. Watch for existing callers of `std::vector<EntityId>& _ir_codegen_ids` before deleting. T-223 left `/* concurrency */ IRSystem::Concurrency::SERIAL` annotations on every emitted createSystem call — switching the default is mechanical once lowering lands. Filed by opus-worker during T-223.
-  - **Links:**
-
 - [~] **fleet/merger: re-target / rebase order on stacked-base merged path** — resolve the option-A/B trade-off and update role-merger.md (and possibly role-opus-worker.md) for correctness on the conflict branch
   - **ID:** T-350
   - **Area:** tooling
@@ -233,6 +211,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
 - [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
 - [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
 - [x] **T-342** — fleet: queue-manager queued/free divergence check · Owner: claude/T-342-queue-manager-divergence-check · PR: https://github.com/jakildev/IrredenEngine/pull/1148
@@ -252,4 +231,3 @@ Avoid:
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
-- [x] **T-335** — test/system: PARALLEL_FOR dispatch integration tests · Owner: claude/T-335-parallel-dispatch-test · PR: https://github.com/jakildev/IrredenEngine/pull/1110
