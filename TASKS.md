@@ -239,19 +239,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Docs: acquire-late, release-early rule in worker-role docs (sub-task 4 of #1074)** — canonical lock-discipline rule in FLEET.md; one-line pointer from each of the three worker role docs
-  - **ID:** T-331
-  - **Area:** docs, .claude/commands
-  - **Model:** sonnet
-  - **Owner:** claude/T-331-acquire-late-release-early-docs
-  - **Blocked by:** (none)
-  - **Stack:** T-318..T-331 ir-tools-split
-  - **Acceptance:** rule lives in exactly one canonical place (FLEET.md § "Resource coordination" or engine/tools/README.md); each of role-opus-worker.md, role-sonnet-author.md, role-opus-architect.md references it; no duplicated prose; grep confirms single canonical location
-  - **Issue:** #1101
-  - **Notes:** Sub-task 4 of #1074. Doc-only. Rule text per issue: acquire immediately before the operation that needs it; release immediately after; never hold across decide/draft/read-feedback steps; perf measurement holds perf lock for perf-grid run only. Should land after T-329 so the rule references a wired tool.
-  - **Links:**
-
-
 - [~] **System: migrate UPDATE pipeline to multi-system groups + measure perf_grid_matrix speedup (T-224 follow-up)** — const-correctness audit of prefab systems to unlock real parallel groups; run perf matrix and file speedup report
   - **ID:** T-332
   - **Area:** engine/system, creations/demos
@@ -326,6 +313,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
 - [x] **T-222** — system: Concurrency::PARALLEL_FOR + single-system access validation · Owner: claude/T-222-parallel-for-validation · PR: https://github.com/jakildev/IrredenEngine/pull/1097
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
 - [x] **T-326** — demos: adopt standardControlSystems() bundle across all demos · Owner: claude/T-326-adopt-standard-camera-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1095
@@ -344,5 +332,4 @@ Avoid:
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
 - [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
-- [x] **T-311** — perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs · Owner: claude/T-311-ci-baseline-gate · PR: https://github.com/jakildev/IrredenEngine/pull/1039
 - [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
