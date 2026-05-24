@@ -431,6 +431,30 @@ exit cleanly:
          The detached HEAD at `origin/<headRefName>` from step a is
          already set up — `git rebase` operates on it directly.
 
+         **Order rationale (re-target + label cleanup BEFORE rebase).**
+         On the rebase-conflict branch below, the re-target and label
+         cleanup are intentionally NOT rolled back — and they intentionally
+         run FIRST, before the rebase attempt. Two coupled reasons:
+         (1) opus-worker's `fleet:semantic-conflict` filter at step 1c
+         excludes `fleet:awaiting-base` / `fleet:awaiting-upstream-review`
+         / `fleet:fork-of-other-pr` (PRs not yet rebaseable against
+         master), so those labels MUST be cleared for opus-worker to
+         pick the PR up.
+         (2) opus-worker's step 1c rebases against the PR's current
+         `baseRefName` (`git rebase origin/<baseRefName>`), so
+         `baseRefName` MUST point at master for opus-worker to rebase
+         against the master tip rather than the merged-but-still-extant
+         base branch — which would replay the stacked-merge conflict
+         against the pre-merge base tip without actually resolving it
+         (master may have moved further).
+         Inverting (rebase first, re-target + label cleanup only on
+         clean exit) would silently strand conflict-path PRs: either
+         the labels survive and opus-worker skips the PR indefinitely,
+         or the labels are cleared but `baseRefName` still points at
+         the stale base and opus-worker's rebase target is wrong. The
+         current order keeps the merger ↔ opus-worker contract
+         coherent. See issue #1149 for the full trade-off analysis.
+
          - `gh pr edit <N> --base master`
          - `gh pr edit <N> --remove-label "fleet:awaiting-base"`
          - `gh pr edit <N> --remove-label "fleet:stacked"`
