@@ -148,6 +148,30 @@ digest in the decisions JSON** so the `flip-to-recurring` and
 If anything errored before this step, **do not bump the marker** —
 leave it stale so the next run re-surfaces the entries.
 
+### 5b. (Optional) File the proposals into the fleet queue
+
+If the human wants the proposals worked on rather than just tracked,
+hand them to the existing `human:approved` → `fleet-queue-ingest` →
+queue-manager → worker pipeline:
+
+```bash
+scripts/fleet/review-fleet-feedback file-tasks --dry-run     # preview titles
+scripts/fleet/review-fleet-feedback file-tasks                # file all proposed rows
+scripts/fleet/review-fleet-feedback file-tasks --ids fix-001,fix-003   # subset
+```
+
+For each proposed-status row without a `tracking_issue`, `file-tasks`
+creates a GitHub issue with `human:approved`, a title derived from the
+signature, and a body that quotes the proposal + 3 representative
+feedback entries. The issue URL gets written back to the row's
+`tracking_issue` field. Fleet workers eat the issues via the normal
+queue; merged `Closes #N` PRs auto-flip the fix-log row to `applied`
+on the next `digest` run.
+
+Confirm with the human before filing — these are public issues, and
+filing all 9 at once visibly floods the queue. Default to `--dry-run`
+first.
+
 ### 6. End-of-run summary
 
 One paragraph:
