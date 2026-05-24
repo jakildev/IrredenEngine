@@ -289,7 +289,7 @@ Avoid:
   - **ID:** T-337
   - **Area:** tooling, engine/tools
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-337-shell-autocomplete
   - **Blocked by:** (none)
   - **Acceptance:** `ir-build --target <TAB>` and `ir-run <TAB>` complete available cmake targets in bash and zsh; completion script installed/registered via engine/tools setup (or documented in BUILD.md); when invoked from game-repo build root, game targets appear; no regression on existing ir-build / ir-run behaviour
   - **Issue:** #1127
