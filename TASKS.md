@@ -201,18 +201,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **System: complete T-222 POC ports + SystemAccess tag-shadow fix** — fix per-worker RNG, migrate ANIMATION_COLOR static caches, port VELOCITY_DRAG + ANIMATION_COLOR to PARALLEL_FOR, fix tag-shadow in SystemAccess deriveAccessFromSignature; address const C_Foo dispatch UB
-  - **ID:** T-328
-  - **Area:** engine/system, engine/math, engine/prefabs/irreden/update
-  - **Model:** opus
-  - **Owner:** claude/T-328-system-poc-ports-systemaccess-fix
-  - **Blocked by:** (none)
-  - **Acceptance:** randomFloat/randomBool/randomInt route through IRJobs::workerRng() (unit-tested); ANIMATION_COLOR static caches replaced with member fields on registerSystem form; VELOCITY_DRAG + ANIMATION_COLOR opt in to PARALLEL_FOR where safe; deriveAccessFromSignature correctly handles tag-bearing packs via TypeList filter; T-222 validator workaround in system_concurrency_test.cpp replaced with proper deriveAccessFromSignature call; const C_Foo dispatch path covered by unit test
-  - **Issue:** #1096
-  - **Notes:** Deferred from T-222 (PR #1097). Sub-tasks: A) route rand()-based IRMath::randomFloat/randomBool/randomInt through per-worker IRJobs::workerRng() mt19937; B) ANIMATION_COLOR: move colorTrackCache/clipCache to member fields, convert to registerSystem + tick() form; C) VELOCITY_DRAG + ANIMATION_COLOR PARALLEL_FOR opt-in after A+B (replace std::sin/std::abs with IRMath in VELOCITY_DRAG diff); D) ~30 LOC TypeList filter to partition tag types out of component pack before invocability probes; E) unit test exposing const C_Foo dispatch UB (see issue comment from jakildev). Lands before T-223.
-  - **Links:**
-
-
 - [~] **System: migrate UPDATE pipeline to multi-system groups + measure perf_grid_matrix speedup (T-224 follow-up)** — const-correctness audit of prefab systems to unlock real parallel groups; run perf matrix and file speedup report
   - **ID:** T-332
   - **Area:** engine/system, creations/demos
@@ -383,6 +371,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
 - [x] **T-335** — test/system: PARALLEL_FOR dispatch integration tests · Owner: claude/T-335-parallel-dispatch-test · PR: https://github.com/jakildev/IrredenEngine/pull/1110
 - [x] **T-224** — system: pipeline groups + cross-system access validation · Owner: claude/T-224-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1104
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
@@ -402,4 +391,3 @@ Avoid:
 - [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
 - [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
 - [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
-- [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
