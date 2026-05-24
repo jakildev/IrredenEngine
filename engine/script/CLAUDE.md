@@ -510,13 +510,22 @@ local sysId = IRSystem.registerSystem({
   a diagnostic pointing at the `IRSystem.Concurrency.*` spelling;
   out-of-range integers raise an explicit error.
 
-  CODEGEN v1 caveat: the codegen tick body emits the per-archetype
-  batch form (`for i = 0, arch.length - 1 do ... end` lowered to a
-  single batch lambda over `vector<C_Foo>&` columns). The T-222
-  validator rejects `PARALLEL_FOR` + batch-form, so a CODEGEN
-  system spec asking for `PARALLEL_FOR` will FATAL at registration.
-  Lifting that restriction needs the codegen tool to emit the
-  per-component form instead — tracked as a follow-up issue.
+  The codegen tick body emits the per-component form: the canonical
+  `for i = 0, arch.length - 1 do ... end` outer loop is dropped at
+  emission time and the inner `arch.Comp:at(i)` / `setAt(i, ...)` /
+  `getField(i, "f")` / `setField(i, "f", ...)` column ops lower to
+  per-row `_ir_row_<CompName>` references, producing a
+  `[](C_Foo& _ir_row_Foo, ...)` lambda. This is the engine's default
+  tick signature (engine/system/CLAUDE.md "Three valid TICK function
+  signatures") and the only one compatible with `PARALLEL_FOR` — the
+  `isBatchForm_` validator path that would otherwise FATAL is now
+  unreachable from CODEGEN. Bodies that don't fit the canonical
+  per-row shape (multiple top-level statements, a non-canonical loop
+  bound, `arch.length` outside the loop bound, a column-op index
+  that isn't the loop variable) are rejected at codegen time with a
+  message pointing at the requirement; the EVAL path remains
+  available via `mode = "eval"` for bodies that need a different
+  shape.
 
 ## Hot-reload of Lua system bodies (`IRSystem.replaceSystemBody`)
 

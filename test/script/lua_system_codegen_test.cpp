@@ -160,6 +160,32 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
     EXPECT_NE(ids.CodegenWobble, ids.CodegenClampPositive);
     EXPECT_NE(ids.CodegenClampPositive, ids.CodegenAddOne);
     EXPECT_NE(ids.CodegenAddOne, ids.CodegenDamage);
+    EXPECT_NE(ids.CodegenDamage, ids.CodegenParallelInc);
+}
+
+// ---- PARALLEL_FOR registers without FATAL and updates every row --------
+//
+TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {
+    using IRComponents::C_CodegenSysPos;
+
+    constexpr int kCount = 256;
+    std::vector<IREntity::EntityId> entities;
+    entities.reserve(kCount);
+    for (int i = 0; i < kCount; ++i) {
+        entities.push_back(IREntity::createEntity(C_CodegenSysPos(static_cast<float>(i), 0.0f)));
+    }
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenParallelInc();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    for (int i = 0; i < kCount; ++i) {
+        EXPECT_FLOAT_EQ(
+            IREntity::getComponent<C_CodegenSysPos>(entities[i]).x_,
+            static_cast<float>(i) + 1.0f
+        );
+        EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(entities[i]).y_, 2.0f);
+    }
 }
 
 } // namespace

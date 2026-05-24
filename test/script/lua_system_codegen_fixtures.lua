@@ -103,3 +103,17 @@ IRSystem.registerSystem({
         end
     end,
 })
+
+-- PARALLEL_FOR: verifies registration succeeds and the body runs on every row.
+IRSystem.registerSystem({
+    name = 'CodegenParallelInc',
+    components = { 'CodegenSysPos' },
+    concurrency = IRSystem.Concurrency.PARALLEL_FOR,
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local pos = arch.CodegenSysPos:at(i)
+            arch.CodegenSysPos:setAt(i,
+                CodegenSysPos.new(pos.x + 1.0, pos.y + 2.0))
+        end
+    end,
+})
