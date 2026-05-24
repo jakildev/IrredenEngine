@@ -62,13 +62,14 @@ TEST_F(PerCanvasLightScopeTest, WorldScopeLightAppearsInEveryCanvasGather) {
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 1u);
 
     const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countB, 1u);
 }
 
@@ -85,13 +86,14 @@ TEST_F(PerCanvasLightScopeTest, ChildOfCanvasLightOnlyAppearsForOwnCanvas) {
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 1u);
 
     const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countB, 1u);
 }
 
@@ -110,15 +112,16 @@ TEST_F(PerCanvasLightScopeTest, MixedScopesEachCanvasSeesOwnPlusWorldScope) {
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     // Canvas A: own light + world-scope light = 2.
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 2u);
 
     // Canvas B: own light + world-scope light = 2.
     const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countB, 2u);
 }
 
@@ -144,8 +147,11 @@ TEST_F(PerCanvasLightScopeTest, DirectionalLightStillSkippedRegardlessOfParent) 
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 0u);
+    // No gathered lights → max-radius stays at the gather's zero-init default.
+    EXPECT_EQ(maxRadius, 0);
 }

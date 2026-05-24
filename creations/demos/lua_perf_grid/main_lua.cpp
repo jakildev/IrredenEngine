@@ -299,7 +299,11 @@ void configureLightingAndCanvas() {
             LightType::EMISSIVE,
             Color{90, 200, 255, 255},
             2.0f,
-            static_cast<uint8_t>(180)
+            // Mirrors the perf_grid C++ baseline (was 180; silently
+            // capped at kLightVolumePropagateIterations=32). 24 reads
+            // as the same blue glow at default zoom and pairs with the
+            // adaptive propagate budget for a perf win on Linux/GL.
+            static_cast<uint8_t>(24)
         }
     );
     IRPrefab::Fog::revealRadius(0, 0, 128);
@@ -328,11 +332,9 @@ IRSystem::SystemId resolveLuaWaveTickId(IRScript::LuaScript &script) {
     } else {
         const sol::object obj = script.lua()["LuaWaveTickSysId"];
         if (!obj.valid() || !obj.is<lua_Integer>()) {
-            IR_LOG_ERROR(
-                "lua_perf_grid: LuaWaveTickSysId missing after main.lua "
-                "(EVAL build expects IRSystem.registerSystem to return a "
-                "non-zero SystemId and main.lua to assign it to the global)."
-            );
+            IR_LOG_ERROR("lua_perf_grid: LuaWaveTickSysId missing after main.lua "
+                         "(EVAL build expects IRSystem.registerSystem to return a "
+                         "non-zero SystemId and main.lua to assign it to the global).");
             return IRSystem::SystemId{0};
         }
         return static_cast<IRSystem::SystemId>(obj.as<lua_Integer>());
