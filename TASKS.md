@@ -296,6 +296,115 @@ Avoid:
   - **Notes:** Issue says "same as fleet-run used to have" — check if a completion snippet exists for fleet-run to reuse. Also requested: --target flag completion on ir-build (not just ir-run). Game-targets: parameterize by CWD build root (cmake --build . --target help or equivalent) so one script serves both repos.
   - **Links:**
 
+
+- [ ] **fleet: queue-manager maintenance-sync — re-derive TASKS.md from issue bodies on every wake** — add maintenance-sync step to role-queue-manager.md that re-derives stale rows from issue body and PR-merge state before any other step
+  - **ID:** T-338
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** maintenance-sync step added to role-queue-manager.md; fleet feedback `stale-task-row` cluster does not re-surface in subsequent digest runs
+  - **Issue:** #1131
+  - **Notes:** Surfaced by review-fleet-feedback (signature: stale-task-row, 50 occurrences since 2026-05-01). Workers claim rows for closed-completed tasks; queue-manager re-opened merged T-104 without flipping to [x]. Proposed fix: add maintenance-sync step at top of role-queue-manager.md startup.
+  - **Links:**
+
+
+- [ ] **fleet: review-pr verdict-label retry-and-verify guard** — split combined `gh pr edit --remove/--add` into two calls; wrap add in retry-and-verify; cross-ref role-sonnet-reviewer and role-opus-reviewer
+  - **ID:** T-339
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** verdict-label step in review-pr/SKILL.md splits remove/add into two `gh` calls; add wrapped in retry-and-verify (re-query labels, fail loud if verdict label still missing); fleet feedback `label-absent-after-verdict` cluster quiet
+  - **Issue:** #1132
+  - **Notes:** Surfaced by review-fleet-feedback (signature: label-absent-after-verdict, 37 occurrences since 2026-04-30). fleet:approved/fleet:needs-fix labels silently missing after verdict; downstream PRs stall. Split combined `gh pr edit`, add retry-and-verify.
+  - **Links:**
+
+
+- [ ] **fleet: merger stacked-PR merged-base re-target with rebase path** — add detect-base-in-master → re-target to master → rebase branch path between steps 2.5 and 2.6 in role-merger.md; preserve verdict labels across swap
+  - **ID:** T-340
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** merger detects stacked PR whose base was merged to master; re-targets to master; rebases branch; preserves any live fleet:needs-fix / fleet:approved label; `stacked-pr-merger-gap` cluster quiet
+  - **Issue:** #1133
+  - **Notes:** Surfaced by review-fleet-feedback (signature: stacked-pr-merger-gap, 8 occurrences since 2026-04-30). Merger left rebase state in worktree; MERGEABLE stacked PRs fell through every step; verdict labels silently dropped. Add path between steps 2.5–2.6 in role-merger.md.
+  - **Links:**
+
+
+- [ ] **fleet: fleet-worktree-busy-branches live re-derive from git worktree list** — remove caching from fleet-worktree-busy-branches; re-derive from live `git worktree list --porcelain` on every call; add --repo loop for game repo
+  - **ID:** T-341
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** fleet-worktree-busy-branches uses live `git worktree list --porcelain` with no cache; `--repo <path>` covers both repos; `worktree-tracker-drift` cluster quiet
+  - **Issue:** #1134
+  - **Notes:** Surfaced by review-fleet-feedback (signature: worktree-tracker-drift, 7 occurrences since 2026-04-30). Stale data caused checkout race (workers blocked on branches already abandoned). Also add fallback verify-after-checkout in role-sonnet-author.md and role-opus-worker.md per issue.
+  - **Links:**
+
+
+- [ ] **fleet: queue-manager queued/free divergence check** — add divergence check to role-queue-manager.md that flags mismatch between `fleet:queued` issue set and TASKS.md `free` rows; write warning to ~/.fleet/feedback/queue-manager.md
+  - **ID:** T-342
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** divergence check step added to role-queue-manager.md; any `fleet:queued` issue not matching a TASKS.md free row (or vice versa) written to feedback file; `queue-staleness` cluster quiet
+  - **Issue:** #1135
+  - **Notes:** Surfaced by review-fleet-feedback (signature: queue-staleness, 6 occurrences since 2026-05-02). `fleet:queued` label diverges from TASKS.md silently. Related to #1131 maintenance-sync; same proposed fix (fix-001 + divergence check).
+  - **Links:**
+
+
+- [ ] **fleet: review-pr live label check after claim acquisition (pre-checkout)** — add `gh pr view <N> --json labels` live-check immediately after acquiring fleet:reviewing-* claim, before checkout; bail if fleet:semantic-conflict/fleet:merger-cooldown/fleet:wip appeared since cache snapshot
+  - **ID:** T-343
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** live label check added to review-pr/SKILL.md after claim acquisition; bail on fleet:semantic-conflict, fleet:merger-cooldown, fleet:wip; `state-cache-lag` cluster quiet
+  - **Issue:** #1136
+  - **Notes:** Surfaced by review-fleet-feedback (signature: state-cache-lag, 5 occurrences since 2026-05-06). Reviewer picks PR via cache, conflict label appears between snapshot and checkout; reviewer wastes checkout + diff read then releases without review. Cost: one extra `gh` call per candidate.
+  - **Links:**
+
+
+- [ ] **fleet: extend auto-mode classifier allow-list for fleet-role workflows** — whitelist role-*.md / .claude/commands/role-*.md writes from fleet roles; allow `rm -f .review-body.md` and prescribed `bash -c kill` exit patterns
+  - **ID:** T-344
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** auto-mode classifier allows fleet roles to write role-*.md docs, delete .review-body.md, and issue prescribed kill-based exit; `permission-gate-friction` cluster quiet
+  - **Issue:** #1137
+  - **Notes:** Surfaced by review-fleet-feedback (signature: permission-gate-friction, 5 occurrences since 2026-04-30). `rm` blocked on .fleet/plans/; kill exit blocked; role-*.md Self-Modification gate fires on role docs. Proposed fix: extend .claude/settings.json allow-list.
+  - **Links:**
+
+
+- [ ] **fleet: fleet-build --target format restricted to touched files** — in scripts/fleet/fleet-build, restrict `--target format` to files from `git diff --name-only` against merge-base (*.cpp *.hpp) only
+  - **ID:** T-345
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `fleet-build --target format` runs clang-format only on files changed since merge-base; no full-tree reformat; `format-target-overreach` cluster quiet
+  - **Issue:** #1138
+  - **Notes:** Surfaced by review-fleet-feedback (signature: format-target-overreach, 3 occurrences since 2026-05-06). `fleet-build --target format` reformats entire engine (458 files), risking unrelated formatter drift in feature PRs. Restrict to `git diff --name-only $(git merge-base HEAD origin/master) -- *.cpp *.hpp`.
+  - **Links:**
+
+
+- [ ] **fleet: scout stackable_blocker_pr false-positive filter** — in fleet-state-scout, add filter: (a) verify downstream task files not already inside blocker PR diff; (b) drop candidates with fleet:design-blocked or fleet:design-escalated
+  - **ID:** T-346
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** stackable filter drops candidates whose downstream files are inside blocker PR diff or whose issue has fleet:design-blocked/fleet:design-escalated; `stackable-false-positive` cluster quiet
+  - **Issue:** #1139
+  - **Notes:** Surfaced by review-fleet-feedback (signature: stackable-false-positive, 3 occurrences since 2026-05-12). Variants: blocker PR already contains downstream task files (T-299 variant); prior filters miss fleet:design-blocked issues.
+  - **Links:**
+
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
