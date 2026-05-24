@@ -163,25 +163,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **System: Concurrency::PARALLEL_FOR + single-system access validation** — land actual per-tick parallel dispatch, registration-time safety checks, IR_ASSERT_MAIN_THREAD guards, and three POC system ports
-  - **ID:** T-222
-  - **Area:** engine/system, creations/demos
-  - **Model:** opus
-  - **Owner:** claude/T-222-parallel-for-validation
-  - **Blocked by:** (none)
-  - **Stack:** T-220..T-225 ecs-multithreading
-  - **Acceptance:** perf_grid_matrix.sh 262K cell shows ≥2× UPDATE throughput at worker_threads=hw-2 vs 0; VELOCITY_3D/VELOCITY_DRAG/ANIMATION_COLOR pass IrredenEngineTest; unsafe parallel systems (EntityId+no-ParallelSafe, batch-form) rejected at registration (unit-tested); IR_ASSERT_MAIN_THREAD fires from worker thread in debug (unit-tested); no regression on T-220's perf-gate
-  - **Issue:** #1069
-  - **Notes:** Phase 2 of #226. Extends createSystem with Concurrency enum (SERIAL, PARALLEL_FOR, MAIN_THREAD; default SERIAL). PARALLEL_FOR: IRJobs::parallelFor per archetype node, grainSize=512 (tunable, not auto-tuned). beginTick/endTick always serial on main thread. IR_ASSERT_MAIN_THREAD wired into RenderManager, IRRender::*, AudioManager, IRAudio::*, IRVideo::*, LuaScript::*, sol2 bindings. POC ports chosen for no EntityId param and no manager calls; don't port a fourth system in this PR.
-  - **Links:**
-
-
 - [~] **Script: Lua codegen + EVAL concurrency integration** — extend Lua DSL with concurrency field; CODEGEN maps to Concurrency enum; EVAL mode overrides to MAIN_THREAD with warning
   - **ID:** T-223
   - **Area:** engine/script, creations/demos/lua_perf_grid
   - **Model:** opus
   - **Owner:** claude/T-223-lua-concurrency
-  - **Blocked by:** T-222
+  - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** lua_perf_grid (CODEGEN) at 262K entities with worker_threads=hw-2 within ±10% of C++ perf_grid; EVAL mode with concurrency="parallel_for" warns clearly and runs serial; codegen tool errors on bogus concurrency value; Lua parallel_for + EntityId first param gets registration-time FATAL
   - **Issue:** #1070
@@ -194,7 +181,7 @@ Avoid:
   - **Area:** engine/system
   - **Model:** opus
   - **Owner:** claude/T-224-pipeline-groups
-  - **Blocked by:** T-222
+  - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** validator rejects: conflicting-write group (unit-tested), MAIN_THREAD system in group (unit-tested), two spawners in group (unit-tested); engine UPDATE pipeline reorganized; IRShapeDebug --auto-screenshot 60 unchanged; perf_grid_matrix shows additional speedup beyond T-222's number
   - **Issue:** #1071
@@ -232,7 +219,7 @@ Avoid:
   - **Area:** engine/system, engine/math, engine/prefabs/irreden/update
   - **Model:** opus
   - **Owner:** claude/T-328-system-poc-ports-systemaccess-fix
-  - **Blocked by:** T-222
+  - **Blocked by:** (none)
   - **Acceptance:** randomFloat/randomBool/randomInt route through IRJobs::workerRng() (unit-tested); ANIMATION_COLOR static caches replaced with member fields on registerSystem form; VELOCITY_DRAG + ANIMATION_COLOR opt in to PARALLEL_FOR where safe; deriveAccessFromSignature correctly handles tag-bearing packs via TypeList filter; T-222 validator workaround in system_concurrency_test.cpp replaced with proper deriveAccessFromSignature call; const C_Foo dispatch path covered by unit test
   - **Issue:** #1096
   - **Notes:** Deferred from T-222 (PR #1097). Sub-tasks: A) route rand()-based IRMath::randomFloat/randomBool/randomInt through per-worker IRJobs::workerRng() mt19937; B) ANIMATION_COLOR: move colorTrackCache/clipCache to member fields, convert to registerSystem + tick() form; C) VELOCITY_DRAG + ANIMATION_COLOR PARALLEL_FOR opt-in after A+B (replace std::sin/std::abs with IRMath in VELOCITY_DRAG diff); D) ~30 LOC TypeList filter to partition tag types out of component pack before invocability probes; E) unit test exposing const C_Foo dispatch UB (see issue comment from jakildev). Lands before T-223.
@@ -282,7 +269,7 @@ Avoid:
   - **Area:** engine/system, engine/entity
   - **Model:** opus
   - **Owner:** claude/T-333-pre-resolve-component-vectors
-  - **Blocked by:** T-222
+  - **Blocked by:** (none)
   - **Acceptance:** worker bodies under PARALLEL_FOR no longer call m_pureComponentTypes::operator[]; ThreadSanitizer-clean parallelFor dispatch over archetype with >=kDefaultGrainSize entities; VELOCITY_3D continues to tick correctly
   - **Issue:** #1105
   - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #1). Latent UB: getComponentData<C>(node) calls m_pureComponentTypes[typeName] (operator[], non-const) from each worker. Works today on libstdc++/libc++/MSVC by coincidence; real race as PARALLEL_FOR broadens (T-223, T-225). Cleanest fix: pre-resolve component vectors in SystemManager::executeSystem before IRJobs::parallelFor, pass as std::tuple into rangedFn. Smaller fix: switch to m_pureComponentTypes.at(typeName). Part of epic #226. Should land before T-223.
@@ -294,7 +281,7 @@ Avoid:
   - **Area:** engine/system
   - **Model:** opus
   - **Owner:** claude/T-334-parallel-for-relation-form-validator
-  - **Blocked by:** T-222
+  - **Blocked by:** (none)
   - **Acceptance:** validateConcurrencyForAccess rejects PARALLEL_FOR + relation-form at registration time; unit test in system_concurrency_test.cpp confirms rejection (mirrors BatchFormRejected shape); existing relation-form systems (all currently SERIAL) tick unchanged
   - **Issue:** #1106
   - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #2). rangedFn's relation branch calls getRelatedEntityFromArchetype + getComponentOptional<RelComps> — both EntityManager hash-map lookups that race under PARALLEL_FOR. Not a real bug today (no system combines relations + PARALLEL_FOR) but must land before T-223 broadens rollout. Preferred fix: add isRelationForm_ bit to SystemAccess (set from relation-form trait branch), add validator rule. Part of epic #226.
@@ -306,7 +293,7 @@ Avoid:
   - **Area:** engine/system, test/system
   - **Model:** sonnet
   - **Owner:** claude/T-335-parallel-dispatch-test
-  - **Blocked by:** T-222
+  - **Blocked by:** (none)
   - **Acceptance:** new test in test/system/ ticks PARALLEL_FOR system over >=kDefaultGrainSize entities and asserts every row processed exactly once; TSAN-friendly variant using vector<atomic<int>> catches worker overlap; existing 894 tests pass; optional: test confirms PARALLEL_FOR + relation-form rejected at registration (requires T-334)
   - **Issue:** #1107
   - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #3). Core test: spin up EntityManager + SystemManager + JobManager(2), register PARALLEL_FOR system with atomic counter tick body, populate 4096 entities (forces multiple kDefaultGrainSize=512 chunks), tick once, assert counter==4096. Optional relation-form rejection test depends on T-334 landing first. Part of epic #226.
@@ -339,6 +326,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-222** — system: Concurrency::PARALLEL_FOR + single-system access validation · Owner: claude/T-222-parallel-for-validation · PR: https://github.com/jakildev/IrredenEngine/pull/1097
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
 - [x] **T-326** — demos: adopt standardControlSystems() bundle across all demos · Owner: claude/T-326-adopt-standard-camera-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1095
 - [x] **T-221** — engine/job/ + SystemAccess traits (multithreading epic Phase 1) · Owner: claude/T-221-job-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/1086
@@ -358,4 +346,3 @@ Avoid:
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
 - [x] **T-311** — perf: CI baseline + automated regression gate for engine/render, engine/system, engine/math PRs · Owner: claude/T-311-ci-baseline-gate · PR: https://github.com/jakildev/IrredenEngine/pull/1039
 - [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
-- [x] **T-313** — perf: Lua-vs-C++ parity dashboard · Owner: claude/T-313-lua-cpp-parity-dashboard · PR: https://github.com/jakildev/IrredenEngine/pull/1037
