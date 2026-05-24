@@ -279,8 +279,7 @@ TEST_F(CreateSystemValidatorTest, CatchAllWithRelationParamsFatalsAtRegistration
     // T-349: a variadic catch-all tick simultaneously satisfies every
     // signature probe (entity-id, batch-form, relation-form). The
     // validator rules are ordered most-specific-first (relation →
-    // batch → entity-id) so the relation-form assertion fires first;
-    // the log output names the condition (!access.isRelationForm_).
+    // batch → entity-id) so the isRelationForm_ assertion fires first.
     // This test pins that PARALLEL_FOR + catch-all + RelationParams is
     // always rejected — a different shape than the explicit relation-
     // form case in RelationFormParallelForFatalsAtRegistration.
