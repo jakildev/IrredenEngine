@@ -20,13 +20,34 @@ while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 IR_BUILD="$SCRIPT_DIR/../../engine/tools/bin/ir-build"
 
+# Redirect "--target format" / "-t format" to "--target format-changed" so
+# fleet builds only reformat branch-touched files, not the entire tree.
+# The bare "format" target is whole-tree; reserve it for intentional
+# cleanup PRs invoked via ir-build or cmake directly.
+args=("$@")
+new_args=()
+i=0
+while (( i < ${#args[@]} )); do
+    arg="${args[i]}"
+    if [[ ("$arg" == "--target" || "$arg" == "-t") && "${args[i+1]:-}" == "format" ]]; then
+        new_args+=("$arg" "format-changed")
+        i=$(( i + 2 ))
+    elif [[ "$arg" == "--target=format" || "$arg" == "-t=format" ]]; then
+        new_args+=("${arg%=format}=format-changed")
+        i=$(( i + 1 ))
+    else
+        new_args+=("$arg")
+        i=$(( i + 1 ))
+    fi
+done
+
 if [[ -x "$IR_BUILD" ]]; then
-    exec "$IR_BUILD" "$@"
+    exec "$IR_BUILD" "${new_args[@]}"
 fi
 
 # Fall back to PATH-resolved ir-build (~/bin/ir-build after install.sh).
 if command -v ir-build >/dev/null 2>&1; then
-    exec ir-build "$@"
+    exec ir-build "${new_args[@]}"
 fi
 
 echo "fleet-build: cannot find ir-build (expected at $IR_BUILD or on PATH)" >&2
