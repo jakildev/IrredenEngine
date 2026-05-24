@@ -549,6 +549,14 @@ int main(int argc, char **argv) {
         IRRender::setVoxelRenderSubdivisions(g_settings.baseSubdivisions_);
     }
 
+    // Render the GUI canvas at the main canvas resolution (default is half).
+    // The text renderer's smallest fontSize is 1 trixel-per-bitmap-pixel, so
+    // doubling the GUI trixel grid effectively halves the on-screen glyph
+    // height — needed to make the perf overlay legible without dominating
+    // the viewport. perf_grid uses no widgets, so the higher-resolution
+    // GUI canvas has no cost to other consumers.
+    IRRender::setGuiScale(1);
+
     initSystems();
     initCommands();
     initEntities();
@@ -588,14 +596,11 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    // perf_grid is the canonical profiler-overlay demo: it ships with both
-    // CPU per-stage histogram and GPU timer-query reading enabled, so the
-    // PERF_STATS_OVERLAY rendered at the end of the pipeline always carries
-    // full timing data. A creation that wants a cheaper run can flip either
-    // of these back off through `ir.render.setCpuTimingEnabled(false)` /
-    // `setGpuTimingEnabled(false)` from a Lua config.
-    IRProfile::cpuFrameHistogram().enabled_ = true;
-    IRRender::gpuStageTiming().enabled_ = true;
+    // PERF_STATS_OVERLAY implicitly enables both timing histograms at
+    // beginTick (see system_perf_stats_overlay.hpp). The flip runs every
+    // frame, so disabling either flag has no effect while PERF_STATS_OVERLAY
+    // is in the pipeline; remove the system from the pipeline to disable
+    // timing collection.
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
     renderPipeline.insert(
