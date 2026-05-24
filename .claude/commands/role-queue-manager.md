@@ -86,6 +86,46 @@ Two invocation modes:
    `scout cache stale or missing — run fleet-up` and exit.
 7. Read tool → `~/.fleet/state/projections/queue-manager-ingest.json`
    to see the pending-ingestion set.
+
+7.5. **Maintenance-sync: re-derive open rows from issue bodies and
+   PR-merge state.** Run this step in all modes before step 8.
+
+   Re-Read `~/.fleet/state/state.json` (the full cache, not a
+   projection — the queue-manager projections in steps 6–7 lack the
+   fields needed here). Then:
+
+   - Build a **closed-issue set**: all `number` values from
+     `repos.engine.closed_fleet_queued[]` (and `repos.game.*` if
+     present).
+   - Build a **merged-PR set**: all `{headRefName, title}` pairs from
+     `repos.engine.recent_merged_prs[]` (and game).
+   - Build an **active-branch set**: all `headRefName` values from
+     `repos.engine.prs[]` (and game) — i.e., open PRs.
+
+   Walk every `[ ]` row in TASKS.md (and game TASKS.md if loaded).
+   For each row apply three re-derive rules:
+
+   a. **Issue-closed:** if `Issue: #N` and N is in the closed-issue
+      set → flip the checkbox to `[x]`.
+   b. **PR-merged:** if `ID: T-NNN` and any merged PR's `headRefName`
+      or `title` contains the string `T-NNN` → flip to `[x]`.
+   c. **Stale-owner:** if `Owner:` holds a branch path (matches
+      `claude/*`) and that branch is **not** in the active-branch set
+      → reset `Owner: free`.
+
+   Rules are independent; apply all three to each row in order (a row
+   can match (a) or (b) before (c) is even reached).
+
+   If any rows changed:
+   - Print `maintenance-sync: updated N rows (M issue-closed,
+     K pr-merged, J stale-owner)`.
+   - Stage and commit on the current branch (in auto-ingest mode this
+     is `fleet-queue-ingest`; in interactive mode the human pushes):
+     `queue: maintenance-sync — re-derive N stale rows`
+   - Do NOT push — parent script or human handles the push.
+
+   If nothing changed: print `maintenance-sync: nothing to re-derive.`
+
 8. Print: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done · P pending ingest`.
    - **If `$ARGUMENTS` is `ingest`:** if `pending_issues` is empty,
      print `[queue-manager] No pending issues; exiting.` and end the
