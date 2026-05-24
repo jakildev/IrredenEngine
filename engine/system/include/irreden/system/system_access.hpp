@@ -261,6 +261,110 @@ constexpr SystemAccess deriveAccessFromSignature() {
     return out;
 }
 
+// ----------------------------------------------------------------------
+// Cross-system pipeline-group conflict check (T-224)
+// ----------------------------------------------------------------------
+
+/// One conflict surfaced between two systems in the same pipeline
+/// group. Returned by `findPipelineGroupConflict` so the caller (the
+/// SystemManager validator, or a unit test) can render a precise
+/// diagnostic that names both systems and the offending component.
+///
+/// `kind_` selects which conflict fired; `componentKey_` is the
+/// `typeKey<T>` of the offending component for the write/write,
+/// write/read, and read/write cases (`nullptr` for the kind-only
+/// cases — `MAIN_THREAD` and double-spawner).
+enum class GroupConflictKind {
+    NONE,
+    MAIN_THREAD_IN_GROUP,
+    WRITE_WRITE,
+    WRITE_READ, // A writes, B reads
+    READ_WRITE, // A reads, B writes
+    TWO_SPAWNERS,
+    /// A single mutator (`Spawns` or `Destroys`) sharing a parallel
+    /// group with any non-mutator. The EntityManager's deferred
+    /// mutation queue is not thread-safe in Phase 1 of the
+    /// multithreading epic — T-225 lifts this when the per-worker
+    /// queue lands. Until then, any mutator must run in a singleton
+    /// group.
+    MUTATOR_IN_PARALLEL_GROUP,
+};
+
+struct GroupConflict {
+    GroupConflictKind kind_{GroupConflictKind::NONE};
+    std::size_t indexA_{0};
+    std::size_t indexB_{0};
+    const void *componentKey_{nullptr};
+};
+
+/// Returns the first conflict between distinct accesses in
+/// `accesses[0..n)`. Returns `kind_ == NONE` when the group is clean.
+///
+/// The validator is the canonical "Phase 3" cross-system check from
+/// the multithreading epic (#226 Layer 4). Scan order:
+///
+/// 1. `MAIN_THREAD_IN_GROUP` — checked first across all systems so
+///    the diagnostic surfaces the strongest claim ("MAIN_THREAD never
+///    co-executes") when multiple conflicts coexist.
+/// 2. `MUTATOR_IN_PARALLEL_GROUP` — checked next across all systems,
+///    for the same priority reason (the deferred-mutation queue
+///    isn't thread-safe in Phase 1, so a mutator forbids ANY parallel
+///    siblings, not just other mutators).
+/// 3. Pairwise (i<j) conflict checks. Within each pair, scanned in
+///    order: `TWO_SPAWNERS`, then component-set overlaps
+///    (`WRITE_WRITE`, `WRITE_READ`, `READ_WRITE`). The kind names
+///    which side is the writer so callers can render the directional
+///    message without re-querying the accesses.
+///
+/// Across the whole group the scan is not strictly "strongest claim
+/// wins" — e.g. a `WRITE_WRITE` between pair (0,1) is surfaced before
+/// a later pair-(0,2) `TWO_SPAWNERS`. The intra-pair priority IS
+/// strongest-first, which is what the diagnostic needs in practice.
+///
+/// Pure function over `SystemAccess` so unit tests can construct
+/// fixtures without an `IRSystem::createSystem` path. No allocation,
+/// constexpr-friendly. O(group² · components) in the worst case;
+/// groups are tiny (≤8 in practice) so the cost is irrelevant.
+inline GroupConflict findPipelineGroupConflict(const SystemAccess *accesses, std::size_t n) {
+    for (std::size_t i = 0; i < n; ++i) {
+        if (accesses[i].mainThreadOnly_) {
+            return GroupConflict{GroupConflictKind::MAIN_THREAD_IN_GROUP, i, i, nullptr};
+        }
+    }
+    if (n > 1) {
+        for (std::size_t i = 0; i < n; ++i) {
+            if (accesses[i].mutatesArchetypeGraph_) {
+                return GroupConflict{GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP, i, i, nullptr};
+            }
+        }
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = i + 1; j < n; ++j) {
+            const SystemAccess &a = accesses[i];
+            const SystemAccess &b = accesses[j];
+            if (a.mutatesArchetypeGraph_ && b.mutatesArchetypeGraph_) {
+                return GroupConflict{GroupConflictKind::TWO_SPAWNERS, i, j, nullptr};
+            }
+            for (std::size_t wi = 0; wi < a.writeCount_; ++wi) {
+                if (b.writesType(a.writes_[wi])) {
+                    return GroupConflict{GroupConflictKind::WRITE_WRITE, i, j, a.writes_[wi]};
+                }
+            }
+            for (std::size_t wi = 0; wi < a.writeCount_; ++wi) {
+                if (b.readsType(a.writes_[wi])) {
+                    return GroupConflict{GroupConflictKind::WRITE_READ, i, j, a.writes_[wi]};
+                }
+            }
+            for (std::size_t wi = 0; wi < b.writeCount_; ++wi) {
+                if (a.readsType(b.writes_[wi])) {
+                    return GroupConflict{GroupConflictKind::READ_WRITE, i, j, b.writes_[wi]};
+                }
+            }
+        }
+    }
+    return GroupConflict{};
+}
+
 } // namespace IRSystem
 
 #endif /* SYSTEM_ACCESS_H */

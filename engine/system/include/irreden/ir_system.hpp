@@ -376,6 +376,32 @@ template <typename Params> Params *getSystemParams(SystemId system) {
 }
 
 void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
+
+/// T-224: register a pipeline as a sequence of parallel groups. Each
+/// inner vector is one parallel group — its members run concurrently
+/// on the IRJobs worker pool. Groups themselves run in declaration
+/// order; `flushStructuralChanges` fires between groups. Call
+/// `IRSystem::validateAllPipelineGroups()` after every system + every
+/// pipeline is registered (engine does this automatically at
+/// `World::start()`). Replaces any prior pipeline registration for
+/// `event`.
+///
+///     IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, {
+///         { velocity, drag, gravity },   // group 0: parallel
+///         { globalPosition },            // group 1: serial
+///         { lifetime },                  // group 2: serial
+///     });
+void registerPipelineGroups(
+    IRTime::Events event, std::vector<std::vector<SystemId>> groups
+);
+
+/// T-224: run the cross-system access-conflict validator across every
+/// registered pipeline group. FATALs on the first conflict, naming
+/// both systems + the offending component. The engine calls this
+/// from `World::start()`; tests can call it directly to exercise a
+/// hand-built pipeline.
+void validateAllPipelineGroups();
+
 void executePipeline(IRTime::Events event);
 
 inline void setTimingEnabled(bool enabled) {

@@ -210,6 +210,54 @@ inline void bindRegisterPipelineAndSystemId(
         }
         IRSystem::registerPipeline(static_cast<IRTime::Events>(event), std::move(pipeline));
     };
+
+    // T-224: groups-aware variant. Outer table is the sequence of
+    // groups, each inner table a parallel group. The cross-system
+    // validator runs at `World::start()` (engine-side hook); a typo
+    // that lands a conflicting group raises a Lua-visible
+    // std::runtime_error at start time.
+    //
+    //     IRSystem.registerPipelineGroups(IRTime.UPDATE, {
+    //         { sysA, sysB },   -- parallel group
+    //         { sysC },         -- serial
+    //     })
+    lua["IRSystem"]["registerPipelineGroups"] = [](lua_Integer event, sol::table groups) {
+        if (event < static_cast<lua_Integer>(IRTime::UPDATE) ||
+            event > static_cast<lua_Integer>(IRTime::END)) {
+            throw sol::error{
+                "IRSystem.registerPipelineGroups: invalid event " + std::to_string(event) +
+                " — must be IRTime.UPDATE / RENDER / INPUT / START / END"
+            };
+        }
+        std::vector<std::vector<IRSystem::SystemId>> built;
+        built.reserve(groups.size());
+        for (auto &outerKv : groups) {
+            sol::optional<sol::table> innerOpt = outerKv.second.as<sol::optional<sol::table>>();
+            if (!innerOpt) {
+                throw sol::error{
+                    "IRSystem.registerPipelineGroups: each group must be a table of "
+                    "SystemId integers"
+                };
+            }
+            std::vector<IRSystem::SystemId> group;
+            for (auto &innerKv : *innerOpt) {
+                sol::optional<lua_Integer> id =
+                    innerKv.second.as<sol::optional<lua_Integer>>();
+                if (!id) {
+                    throw sol::error{
+                        "IRSystem.registerPipelineGroups: every entry in a group must be "
+                        "a SystemId integer (returned by IRSystem.systemId or "
+                        "IRSystem.registerSystem)"
+                    };
+                }
+                group.push_back(static_cast<IRSystem::SystemId>(*id));
+            }
+            built.push_back(std::move(group));
+        }
+        IRSystem::registerPipelineGroups(
+            static_cast<IRTime::Events>(event), std::move(built)
+        );
+    };
 }
 
 } // namespace IRScript::detail

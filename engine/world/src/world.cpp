@@ -248,6 +248,12 @@ void World::input() {
 }
 
 void World::start() {
+    // T-224: cross-system pipeline-group validation runs once after
+    // every system + pipeline is registered, before the first tick.
+    // FATALs on the first conflict, naming both systems + the
+    // offending component. Single-system groups (every legacy
+    // `registerPipeline` call) are trivially clean and short-circuit.
+    m_systemManager.validateAllPipelineGroups();
     m_timeManager.start();
     IRProfile::CPUProfiler::instance().mainThread();
 }
