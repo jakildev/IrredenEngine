@@ -393,11 +393,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: scout stackable_blocker_pr false-positive filter** — in fleet-state-scout, add filter: (a) verify downstream task files not already inside blocker PR diff; (b) drop candidates with fleet:design-blocked or fleet:design-escalated
+- [~] **fleet: scout stackable_blocker_pr false-positive filter** — in fleet-state-scout, add filter: (a) verify downstream task files not already inside blocker PR diff; (b) drop candidates with fleet:design-blocked or fleet:design-escalated
   - **ID:** T-346
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** stackable filter drops candidates whose downstream files are inside blocker PR diff or whose issue has fleet:design-blocked/fleet:design-escalated; `stackable-false-positive` cluster quiet
   - **Issue:** #1139
