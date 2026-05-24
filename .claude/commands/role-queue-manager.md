@@ -88,7 +88,9 @@ Two invocation modes:
    to see the pending-ingestion set.
 
 7.5. **Maintenance-sync: re-derive open rows from issue bodies and
-   PR-merge state.** Run this step in all modes before step 8.
+   PR-merge state.** Run this step in all modes before step 8. A row
+   can match more than one rule — apply all three in order, not just
+   the first hit.
 
    Re-Read `~/.fleet/state/state.json` (the full cache, not a
    projection — the queue-manager projections in steps 6–7 lack the
@@ -108,7 +110,9 @@ Two invocation modes:
    a. **Issue-closed:** if `Issue: #N` and N is in the closed-issue
       set → flip the checkbox to `[x]`.
    b. **PR-merged:** if `ID: T-NNN` and any merged PR's `headRefName`
-      or `title` contains the string `T-NNN` → flip to `[x]`.
+      or `title` contains the string `T-NNN` followed by a non-digit
+      or end-of-string (so `T-100` does not match inside `T-1001`) →
+      flip to `[x]`.
    c. **Stale-owner:** if `Owner:` holds a branch path (matches
       `claude/*`) and that branch is **not** in the active-branch set
       → reset `Owner: free`.
