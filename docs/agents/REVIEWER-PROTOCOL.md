@@ -231,8 +231,6 @@ fresh. Do **not** use `rm -f .review-body.md` — `rm -f` is not in
 the fleet's `settings.json` allow-list for worktree-local paths.
 
 ```
-# (Read tool: Read .review-body.md — error is fine if it doesn't exist)
-# (Write tool writes the body to .review-body.md)
 gh pr review <N> --comment --body-file .review-body.md
 ```
 
