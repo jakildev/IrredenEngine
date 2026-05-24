@@ -588,10 +588,10 @@ void initSystems() {
     );
 
     // PERF_STATS_OVERLAY implicitly enables both timing histograms at
-    // beginTick (see system_perf_stats_overlay.hpp). The flip is idempotent;
-    // a creation that wants a cheaper run can flip either back off through
-    // `ir.render.setCpuTimingEnabled(false)` / `setGpuTimingEnabled(false)`
-    // from a Lua config after the overlay's first tick.
+    // beginTick (see system_perf_stats_overlay.hpp). The flip runs every
+    // frame, so disabling either flag has no effect while PERF_STATS_OVERLAY
+    // is in the pipeline; remove the system from the pipeline to disable
+    // timing collection.
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
     renderPipeline.insert(

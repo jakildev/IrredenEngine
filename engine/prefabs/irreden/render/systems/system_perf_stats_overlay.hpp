@@ -96,9 +96,9 @@ template <> struct System<PERF_STATS_OVERLAY> {
 
     void beginTick() {
         // Implicit enable: PerfStatsOverlay's presence in the pipeline is the
-        // user opt-in. Idempotent — flipping a bool twice per frame is free.
-        // A creation that wants the overlay shapes but not the per-stage cost
-        // can still flip these off after registering the system.
+        // user opt-in. The flip runs every frame, so disabling either flag
+        // has no effect while PERF_STATS_OVERLAY is in the pipeline; remove
+        // the system from the pipeline to disable timing collection.
         IRProfile::cpuFrameHistogram().enabled_ = true;
         IRRender::gpuStageTiming().enabled_ = true;
 
