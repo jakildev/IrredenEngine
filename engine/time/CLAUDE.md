@@ -8,8 +8,9 @@ time to run another UPDATE tick, and reads `deltaTime(event)` for dt.
 
 - `shouldUpdate()` — true when the UPDATE accumulator has buffered at
   least one frame period (1/kFPS).
-- `deltaTime(Events event)` — actual wall-clock dt for this event's last
-  tick.
+- `deltaTime(Events event)` — dt for this event's last tick. For UPDATE,
+  returns the fixed step `1.0 / kFPS` (`const`-after-ctor); for RENDER,
+  returns the actual wall-clock duration of the last tick.
 - `renderFps()`, `updateFps()` — 1-second rolling averages.
 - `renderFrameTimeMs()`, `droppedFrames()`, `resetDroppedFrames()`.
 
@@ -61,10 +62,15 @@ of lag manually (used by the loading-screen / pause path).
 
 ## Gotchas
 
-- **`deltaTime(UPDATE)` is wall-clock, not fixed.** It's the actual time
-  the last UPDATE tick took, not `1.0 / kFPS`. Good for physics
-  damping and decay, but **do not** use it to advance simulation state
-  you expect to be deterministic — that's why the fixed-step loop exists.
+- **`deltaTime(UPDATE)` is the fixed step, not wall-clock.** Returns
+  `m_deltaTimeFixed` (`const double = 1.0 / kFPS`, set once in the
+  `EventProfiler<UPDATE>` ctor). The fixed-step loop is what keeps
+  simulation deterministic — `shouldUpdate()` runs extra ticks to catch
+  up when the loop falls behind, each ticking the same fixed dt. This
+  also makes the dt immutable after construction, so PARALLEL_FOR
+  bodies can read it from worker threads without synchronization.
+  `deltaTime(RENDER)` is wall-clock (variable per frame); use it for
+  presentation-frame interpolation, not simulation state.
 - **Lag can cascade.** If one frame takes 50 ms, the next loop iteration
   runs 3 UPDATE ticks back-to-back. Budget accordingly.
 - **Dropped-frame counter is RENDER-only.** If UPDATE falls behind, it

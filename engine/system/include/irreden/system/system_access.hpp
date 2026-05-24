@@ -233,6 +233,51 @@ template <typename T> constexpr void applyComponent(SystemAccess &out) {
 // `&` themselves).
 template <typename T> using StripForConcept = std::remove_cvref_t<T>;
 
+// Tag-filter scaffolding for the invocability probes below. The
+// Components pack must be filtered because tag types (`MainThread`,
+// `ParallelSafe`, `Spawns`, ...) and `Exclude<...>` are not real tick
+// parameters; leaving them in front of `InvocableWithEntityId` /
+// `InvocableWithNodeVectors` makes the probe fail on every system that
+// mixes a real signature with tags, so `usesEntityId_` /
+// `isBatchForm_` stay false. T-328 sub-task D.
+//
+// `IRSystem::detail::TypeList` is already defined in ir_system_types.hpp
+// (used by the Exclude<...> partitioner); we reuse it here.
+
+// Recursive head/tail filter: drop `Head` from the result iff
+// `kIsTag<Head>` is true. Mirrors the same predicate `applyComponent`
+// already uses to classify the pack.
+template <typename... Components> struct FilterTagsImpl {
+    using type = TypeList<>;
+};
+
+template <typename Head, typename... Tail> struct FilterTagsImpl<Head, Tail...> {
+  private:
+    using TailFiltered = typename FilterTagsImpl<Tail...>::type;
+
+    template <typename TL> struct Prepend;
+    template <typename... Existing> struct Prepend<TypeList<Existing...>> {
+        using type = TypeList<Head, Existing...>;
+    };
+
+  public:
+    using type =
+        std::conditional_t<kIsTag<Head>, TailFiltered, typename Prepend<TailFiltered>::type>;
+};
+
+template <typename... Components> using FilterTags_t = typename FilterTagsImpl<Components...>::type;
+
+// Apply the invocability probes against an already-filtered TypeList.
+// Specialization on `TypeList<NonTags...>` unpacks the filtered pack
+// so the existing concepts can be instantiated with bare `T` args.
+template <typename TickFn, typename TL> struct ProbeSignatureForms;
+
+template <typename TickFn, typename... NonTags>
+struct ProbeSignatureForms<TickFn, TypeList<NonTags...>> {
+    static constexpr bool usesEntityId = InvocableWithEntityId<TickFn, NonTags...>;
+    static constexpr bool isBatchForm = InvocableWithNodeVectors<TickFn, NonTags...>;
+};
+
 } // namespace detail
 
 /// Constexpr trait. Returns the access descriptor for a system whose
@@ -246,16 +291,22 @@ template <typename T> using StripForConcept = std::remove_cvref_t<T>;
 /// - `Exclude<...>` → contributes nothing (archetype-matcher concern).
 /// - Signature form (per-component vs entity-id vs batch) via the
 ///   existing `InvocableWithEntityId` / `InvocableWithNodeVectors`
-///   concepts that drive `createSystem`'s dispatch.
+///   concepts that drive `createSystem`'s dispatch. Tag types are
+///   filtered out of the pack before probing so a tick that combines
+///   a real signature (e.g. `void(EntityId, C_Foo&)`) with tags
+///   (e.g. `ParallelSafe`, `MainThread`) still derives
+///   `usesEntityId_` / `isBatchForm_` correctly.
 template <typename TickFn, typename... Components>
 constexpr SystemAccess deriveAccessFromSignature() {
     SystemAccess out{};
     (detail::applyComponent<Components>(out), ...);
 
-    if constexpr (InvocableWithEntityId<TickFn, detail::StripForConcept<Components>...>) {
+    using NonTags = detail::FilterTags_t<detail::StripForConcept<Components>...>;
+    using Probe = detail::ProbeSignatureForms<TickFn, NonTags>;
+    if constexpr (Probe::usesEntityId) {
         out.usesEntityId_ = true;
     }
-    if constexpr (InvocableWithNodeVectors<TickFn, detail::StripForConcept<Components>...>) {
+    if constexpr (Probe::isBatchForm) {
         out.isBatchForm_ = true;
     }
     return out;

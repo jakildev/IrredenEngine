@@ -18,7 +18,6 @@ namespace detail {
 void registerSelf(enki::TaskScheduler &scheduler);
 
 extern thread_local int t_workerId;
-extern thread_local std::mt19937 t_workerRng;
 extern thread_local bool t_registered;
 } // namespace detail
 
@@ -120,7 +119,10 @@ int workerCount() {
 }
 
 std::mt19937 &workerRng() {
-    return detail::t_workerRng;
+    // Forwarder so existing callers keep working; the per-thread RNG
+    // storage now lives in `engine/math/` (`IRMath::threadRng`) so
+    // `IRMath::random*` callers share the same mt19937 state.
+    return IRMath::threadRng();
 }
 
 } // namespace IRJob

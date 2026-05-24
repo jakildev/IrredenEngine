@@ -9,7 +9,6 @@
 
 #include <cstdio>
 #include <cstdint>
-#include <random>
 #include <thread>
 
 // sys/sysctl.h only exists on Apple platforms — this guard is
@@ -33,8 +32,13 @@ namespace detail {
 // renames — every API path through parallelFor/run/pinTo funnels
 // through the same task body, and that body calls `registerSelf()`
 // once.
+//
+// The per-thread RNG lives in `engine/math/` (`IRMath::threadRng`) so
+// that `IRMath::random*` callers and `IRJob::workerRng` consumers share
+// one mt19937 per OS thread. `registerSelf` reseeds via
+// `IRMath::seedThreadRng(enkiThreadNum)` to keep cross-run determinism
+// for a given worker count.
 thread_local int t_workerId = 0;
-thread_local std::mt19937 t_workerRng{0u};
 thread_local bool t_registered = false;
 thread_local char t_workerName[32] = "main";
 
@@ -44,7 +48,7 @@ void registerSelf(enki::TaskScheduler &scheduler) {
     }
     const uint32_t enkiThreadNum = scheduler.GetThreadNum();
     t_workerId = static_cast<int>(enkiThreadNum);
-    t_workerRng.seed(enkiThreadNum);
+    IRMath::seedThreadRng(enkiThreadNum);
     std::snprintf(t_workerName, sizeof(t_workerName), "ir-worker-%u", enkiThreadNum);
     // registerThread() is idempotent per OS thread (only the first
     // call wins, per easy_profiler header docs).
@@ -120,7 +124,7 @@ JobManager::JobManager(int requestedWorkerCount)
     // Seed the main thread's RNG explicitly — workers seed themselves
     // on first task entry via `detail::registerSelf`.
     detail::t_workerId = 0;
-    detail::t_workerRng.seed(0u);
+    IRMath::seedThreadRng(0u);
     detail::t_registered = true;
     std::snprintf(detail::t_workerName, sizeof(detail::t_workerName), "main");
 
