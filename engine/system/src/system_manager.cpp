@@ -70,7 +70,7 @@ SystemId SystemManager::createSystemDynamic(
     m_systemParams.emplace_back(nullptr);
     m_timingAccum.emplace_back();
     // T-222: dynamic systems are PARALLEL_FOR-ineligible (the body is
-    // opaque to row-level chunking — `m_ticks[…].rangedFunctionTick_` is
+    // opaque to row-level chunking — `m_ticks[…].prepareRangedTick_` is
     // never populated). T-223 still accepts SERIAL / MAIN_THREAD so the
     // Lua surface can tag EVAL systems as MAIN_THREAD to opt them out of
     // pipeline-group parallelism (the sol2 / LuaJIT GC singletons are
@@ -349,27 +349,32 @@ void SystemManager::executeSystem(SystemId system) {
         previousRelatedEntity = handleRelationTick(node, system, previousRelatedEntity);
 
         if (concurrency == Concurrency::PARALLEL_FOR &&
-            static_cast<bool>(tickEvent.rangedFunctionTick_) && node->length_ > grainSize &&
+            static_cast<bool>(tickEvent.prepareRangedTick_) && node->length_ > grainSize &&
             g_jobManager != nullptr && IRJob::isMainThread()) {
             // Worker fan-out: split [0, length) into grainSize chunks
             // and run each on the pool. enkiTS' WaitforTask pumps the
             // main thread, so this blocks until every chunk finishes.
             //
-            // `isMainThread()` guards against nested dispatch: when
-            // executeSystem is reached from a worker (multi-system
+            // T-333: the binder resolves all per-component vector refs
+            // here on the main thread before any worker is spawned, so
+            // `EntityManager::m_pureComponentTypes`-touching code (the
+            // `getComponentType<>` hash lookup hidden inside
+            // `getComponentData<>`) never runs concurrently from
+            // workers. Workers only iterate captured refs.
+            //
+            // `isMainThread()` (T-224) guards against nested dispatch:
+            // when executeSystem is reached from a worker (multi-system
             // parallel group), IRJob::parallelFor would FATAL on its
-            // own main-thread assert. validateAllPipelineGroups now
-            // rejects PARALLEL_FOR members in multi-system groups at
-            // boot, so this path is unreachable in well-formed programs;
-            // the guard is kept as a release-build safety net.
-            const auto &rangedFn = tickEvent.rangedFunctionTick_;
+            // own main-thread assert. validateAllPipelineGroups rejects
+            // PARALLEL_FOR members in multi-system groups at boot, so
+            // this path is unreachable in well-formed programs; the
+            // guard is kept as a release-build safety net.
+            auto rangedTick = tickEvent.prepareRangedTick_(node);
             IRJob::parallelFor(
                 0,
                 node->length_,
                 grainSize,
-                [&rangedFn, node](int rangeBegin, int rangeEnd) {
-                    rangedFn(node, rangeBegin, rangeEnd);
-                }
+                [&rangedTick](int rangeBegin, int rangeEnd) { rangedTick(rangeBegin, rangeEnd); }
             );
         } else {
             // SERIAL / MAIN_THREAD path, the small-node / no-pool

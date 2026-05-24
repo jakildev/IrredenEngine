@@ -351,10 +351,16 @@ A system opts into PARALLEL_FOR by either:
 
 `SystemManager::executeSystem` reads the per-system Concurrency at
 dispatch time and, for `PARALLEL_FOR` systems with a populated
-range-aware tick fn and a node larger than the grain size, drives
-`IRJob::parallelFor(0, node->length_, grainSize, ...)`. The
-`beginTick` / `endTick` hooks and the archetype-node iteration order
-always serialize on the main thread regardless of policy.
+main-thread binder (`prepareRangedTick_`, T-333) and a node larger
+than the grain size, calls the binder once on the main thread to
+resolve per-component vector refs, then passes the returned
+`void(begin, end)` worker closure to `IRJob::parallelFor(0,
+node->length_, grainSize, ...)`. Resolving the component vectors on
+the main thread is what keeps PARALLEL_FOR workers off
+`EntityManager::m_pureComponentTypes`'s hash lookup — that map is
+not safe under concurrent reads from workers. The `beginTick` /
+`endTick` hooks and the archetype-node iteration order always
+serialize on the main thread regardless of policy.
 
 **Registration-time validation** (in `IRSystem::createSystem`):
 
