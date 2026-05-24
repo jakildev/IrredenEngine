@@ -162,6 +162,17 @@ Avoid:
   - **Notes:** DSL parser in `cmake/lua_codegen/system_dsl.cpp` already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` ops; lowering is structural — recognize `local s = arch.C_Foo:at(i)` as row binding, drop outer for-statement. Gotcha: `std::vector<EntityId>& _ir_codegen_ids` slot may have callers — search before deleting; per-component form has id-aware overload. Filed by opus-worker during T-223.
   - **Links:**
 
+- [ ] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop redundant `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD calls binder directly without per-node heap allocation
+  - **ID:** T-348
+  - **Area:** engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug; existing PARALLEL_FOR systems fan out correctly; `functionTick_` slot removed from row-iterating forms (only tag/relation-form `functionTick_` kept); no per-SERIAL-node binder allocation
+  - **Issue:** #1124
+  - **Notes:** Surfaced as T-333 (PR #1123) nit. Opus recheck on #1123 identified that `m_ticks[i].functionTick_` and `m_ticks[i].prepareRangedTick_` are aliased copies of the same closure (~64 bytes/system × N systems × M worlds). Fix: drop `functionTick_` for row-iterating forms; branch in `executeSystem` on `(prepareRangedTick_ != null && concurrency != PARALLEL_FOR)` → call `prepareRangedTick_(node)(0, length)` directly. Affected file: `engine/system/include/irreden/system/system_manager.hpp`.
+  - **Links:**
+
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
