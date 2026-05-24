@@ -88,7 +88,7 @@ Two invocation modes:
    to see the pending-ingestion set.
 
 7.5. **Maintenance-sync: re-derive open rows from issue bodies and
-   PR-merge state.** Run this step in all modes before step 8. A row
+   PR-merge state.** Run this step in all modes before step 7.6. A row
    can match more than one rule — apply all three in order, not just
    the first hit.
 
@@ -129,6 +129,55 @@ Two invocation modes:
    - Do NOT push — parent script or human handles the push.
 
    If nothing changed: print `maintenance-sync: nothing to re-derive.`
+
+7.6. **Divergence check: `fleet:queued` issues vs TASKS.md `free` rows.**
+   Run in all modes after step 7.5 — maintenance-sync flips closed/
+   merged/stale rows first, so this check sees the cleaner picture
+   and reports only the residual drift. Re-Read
+   `~/.fleet/state/state.json` if its contents are no longer in
+   conversation context.
+
+   a. **Build the TASKS.md issue set.** From
+      `repos.engine.tasks.open[]`, collect `issue` values for rows
+      where `status == " "` (free, not claimed) and
+      `issue != "(none)"`. Strip the `#` prefix → numeric set
+      `free_issues`. Also collect issue values from all rows in
+      `repos.engine.tasks.open[]` and `repos.engine.tasks.done[]` →
+      numeric set `all_known_issues` (used in step c).
+
+   b. **Fetch the live `fleet:queued` open set.**
+      ```
+      gh issue list --repo <engine-repo> --label "fleet:queued" \
+        --state open --json number --limit 500
+      ```
+      Collect `number` fields → set `queued_live`.
+
+   c. **Compute divergences.**
+      - `stale_label` = `free_issues` NOT in `queued_live`. Indicates
+        a TASKS.md `free` row whose issue no longer carries
+        `fleet:queued` (label removed, or issue closed after the
+        maintenance-sync window).
+      - `missing_row` = `queued_live` NOT in `all_known_issues`.
+        Indicates a `fleet:queued` open issue with no row anywhere in
+        TASKS.md — possibly missed during ingestion.
+
+   d. **Write warning if non-empty.** If `stale_label` or
+      `missing_row` is non-empty, append to
+      `~/.fleet/feedback/queue-manager.md` using the standard
+      feedback format (see [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
+      "Fleet feedback channel"):
+      ```
+      ## YYYY-MM-DD HH:MM
+      queue-divergence: N stale_label, M missing_row
+
+      stale_label: [#N, ...]  (free rows whose issues lost fleet:queued)
+      missing_row: [#N, ...]  (fleet:queued open issues absent from TASKS.md)
+      Re-run ingest or maintenance-sync to resolve.
+      ```
+
+   e. **Print result.**
+      `divergence-check: OK` or
+      `divergence-check: WARNING — N stale_label, M missing_row (logged)`.
 
 8. Print: `Queue: X open (Y opus, Z sonnet) · N in-progress · M done · P pending ingest`.
    - **If `$ARGUMENTS` is `ingest`:** if `pending_issues` is empty,
