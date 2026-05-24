@@ -176,25 +176,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **System: pipeline groups + cross-system access validation** — add registerPipelineGroups API and registration-time cross-system conflict validator; migrate engine UPDATE pipeline
-  - **ID:** T-224
-  - **Area:** engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-224-pipeline-groups
-  - **Blocked by:** (none)
-  - **Stack:** T-220..T-225 ecs-multithreading
-  - **Acceptance:** validator rejects: conflicting-write group (unit-tested), MAIN_THREAD system in group (unit-tested), two spawners in group (unit-tested); engine UPDATE pipeline reorganized; IRShapeDebug --auto-screenshot 60 unchanged; perf_grid_matrix shows additional speedup beyond T-222's number
-  - **Issue:** #1071
-  - **Notes:** Phase 3 of #226. registerPipelineGroups(pipeline, {{a,b,c},{d},{e,f}}) API; inner braces are parallel groups (concurrent via IRJobs); groups run sequentially. std::list<SystemId> per pipeline becomes std::vector<std::vector<SystemId>>. Cross-system conflict check at World::start(): writes∩reads, writes∩writes, MAIN_THREAD in group, two mutates_archetype_graph in group (last restriction lifted by T-225). Error messages must name both systems + conflicting component. Two-spawners-in-same-group restriction lifted in T-225.
-  - **Links:**
-
-
 - [~] **Entity: thread-safe deferred mutations from worker threads** — per-worker staging buffers in EntityManager; lift T-224's two-spawners-in-same-group restriction
   - **ID:** T-225
   - **Area:** engine/entity, engine/system
   - **Model:** opus
   - **Owner:** claude/T-225-parallel-spawn
-  - **Blocked by:** T-224
+  - **Blocked by:** (none)
   - **Stack:** T-220..T-225 ecs-multithreading
   - **Acceptance:** stress test: PARALLEL_FOR system spawning 10K entities across all workers produces same archetype graph as serial; stress test: concurrent destruction of 10K entities across workers produces correct null state; T-224 validator accepts group containing two Spawns systems (unit-tested); no regression on T-222's ≥2× speedup
   - **Issue:** #1072
@@ -231,7 +218,7 @@ Avoid:
   - **Area:** engine/system, creations/demos
   - **Model:** opus
   - **Owner:** claude/T-332-update-pipeline-groups
-  - **Blocked by:** T-224
+  - **Blocked by:** (none)
   - **Acceptance:** at least one demo's UPDATE pipeline has a real parallel group accepted by the T-224 validator; perf_grid_matrix.sh shows additional speedup beyond T-222's baseline; speedup number filed to docs/perf-reports/threading_phase3.md; no regressions on existing demos
   - **Issue:** #1103
   - **Notes:** Deferred from T-224 (infrastructure landed; migration + measurement deferred). Gating work: most prefab systems haven't declared const opt-in on tick params; validator conservatively classifies all reads as writes and rejects every multi-system grouping. Per-prefab const-correctness audit is required first. Part of epic #226.
@@ -289,7 +276,7 @@ Avoid:
   - **ID:** T-337
   - **Area:** tooling, engine/tools
   - **Model:** sonnet
-  - **Owner:** claude/T-337-shell-autocomplete
+  - **Owner:** claude/T-337-ir-completions
   - **Blocked by:** (none)
   - **Acceptance:** `ir-build --target <TAB>` and `ir-run <TAB>` complete available cmake targets in bash and zsh; completion script installed/registered via engine/tools setup (or documented in BUILD.md); when invoked from game-repo build root, game targets appear; no regression on existing ir-build / ir-run behaviour
   - **Issue:** #1127
@@ -297,11 +284,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet: queue-manager maintenance-sync — re-derive TASKS.md from issue bodies on every wake** — add maintenance-sync step to role-queue-manager.md that re-derives stale rows from issue body and PR-merge state before any other step
+- [ ] **fleet: queue-manager maintenance-sync — re-derive TASKS.md from issue bodies on every wake** — add maintenance-sync step to role-queue-manager.md that re-derives stale rows from issue body and PR-merge state before any other step
   - **ID:** T-338
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** maintenance-sync step added to role-queue-manager.md; fleet feedback `stale-task-row` cluster does not re-surface in subsequent digest runs
   - **Issue:** #1131
@@ -313,7 +300,7 @@ Avoid:
   - **ID:** T-339
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-339-review-pr-verdict-label-retry
   - **Blocked by:** (none)
   - **Acceptance:** verdict-label step in review-pr/SKILL.md splits remove/add into two `gh` calls; add wrapped in retry-and-verify (re-query labels, fail loud if verdict label still missing); fleet feedback `label-absent-after-verdict` cluster quiet
   - **Issue:** #1132
@@ -325,7 +312,7 @@ Avoid:
   - **ID:** T-340
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-340-merger-merged-base-retarget
   - **Blocked by:** (none)
   - **Acceptance:** merger detects stacked PR whose base was merged to master; re-targets to master; rebases branch; preserves any live fleet:needs-fix / fleet:approved label; `stacked-pr-merger-gap` cluster quiet
   - **Issue:** #1133
@@ -333,11 +320,11 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet: fleet-worktree-busy-branches live re-derive from git worktree list** — remove caching from fleet-worktree-busy-branches; re-derive from live `git worktree list --porcelain` on every call; add --repo loop for game repo
+- [ ] **fleet: fleet-worktree-busy-branches live re-derive from git worktree list** — remove caching from fleet-worktree-busy-branches; re-derive from live `git worktree list --porcelain` on every call; add --repo loop for game repo
   - **ID:** T-341
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** fleet-worktree-busy-branches uses live `git worktree list --porcelain` with no cache; `--repo <path>` covers both repos; `worktree-tracker-drift` cluster quiet
   - **Issue:** #1134
@@ -349,7 +336,7 @@ Avoid:
   - **ID:** T-342
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-342-queue-manager-divergence-check
   - **Blocked by:** (none)
   - **Acceptance:** divergence check step added to role-queue-manager.md; any `fleet:queued` issue not matching a TASKS.md free row (or vice versa) written to feedback file; `queue-staleness` cluster quiet
   - **Issue:** #1135
@@ -361,7 +348,7 @@ Avoid:
   - **ID:** T-343
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-343-review-pr-live-label-check
   - **Blocked by:** (none)
   - **Acceptance:** live label check added to review-pr/SKILL.md after claim acquisition; bail on fleet:semantic-conflict, fleet:merger-cooldown, fleet:wip; `state-cache-lag` cluster quiet
   - **Issue:** #1136
@@ -373,7 +360,7 @@ Avoid:
   - **ID:** T-344
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-344-auto-mode-allowlist
   - **Blocked by:** (none)
   - **Acceptance:** auto-mode classifier allows fleet roles to write role-*.md docs, delete .review-body.md, and issue prescribed kill-based exit; `permission-gate-friction` cluster quiet
   - **Issue:** #1137
@@ -385,7 +372,7 @@ Avoid:
   - **ID:** T-345
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-345-fleet-build-format-touched-files
   - **Blocked by:** (none)
   - **Acceptance:** `fleet-build --target format` runs clang-format only on files changed since merge-base; no full-tree reformat; `format-target-overreach` cluster quiet
   - **Issue:** #1138
@@ -397,7 +384,7 @@ Avoid:
   - **ID:** T-346
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-346-scout-stackable-filter
   - **Blocked by:** (none)
   - **Acceptance:** stackable filter drops candidates whose downstream files are inside blocker PR diff or whose issue has fleet:design-blocked/fleet:design-escalated; `stackable-false-positive` cluster quiet
   - **Issue:** #1139
@@ -408,6 +395,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-224** — system: pipeline groups + cross-system access validation · Owner: claude/T-224-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1104
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
 - [x] **T-222** — system: Concurrency::PARALLEL_FOR + single-system access validation · Owner: claude/T-222-parallel-for-validation · PR: https://github.com/jakildev/IrredenEngine/pull/1097
@@ -427,4 +415,3 @@ Avoid:
 - [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
 - [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
-- [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
