@@ -226,8 +226,9 @@ ivec2 trixelCanvasPixelToIsoRel(
 // the camera-side split helper (engine/prefabs/irreden/render/camera.hpp); the
 // renderer uses one of four basis-vector permutations selected by an integer
 // index in [0, 3] so integer voxel positions still land on integer trixel
-// pixels post-rotation. residualYaw is consumed by a downstream screen-space
-// composite pass; these helpers ignore it.
+// pixels post-rotation. residualYaw is absorbed by faceDeform[] in the trixel
+// emit (T-293); the screen-space composite pass was retired by T-323. These
+// helpers ignore it.
 //
 // Sign convention: rotateCardinalZ is world->view = R_z(-rasterYaw) — same as
 // the continuous-yaw matrix in c_shapes_to_trixel.glsl (T-056). At
