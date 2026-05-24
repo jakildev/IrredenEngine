@@ -5,12 +5,19 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/job/job_manager.hpp>
+#include <irreden/profile/logger_spd.hpp>
 #include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/system/system_access.hpp>
 #include <irreden/system/system_manager.hpp>
 
+#include <spdlog/sinks/ostream_sink.h>
+
+#include <algorithm>
 #include <atomic>
+#include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <vector>
 
 // T-222 Phase 2 — multithreading epic (#226). Two surfaces under test:
@@ -60,17 +67,19 @@ using IRSystem::SystemAccess;
 // std::runtime_error via engAssert); we re-derive the predicate here
 // so the test can run in IR_RELEASE builds too, and so the diagnostics
 // stay stable across the validator's internal wording changes.
+// Rules are listed most-specific-first, mirroring the production validator
+// (T-349).
 constexpr bool isParallelForAcceptable(Concurrency c, SystemAccess access) {
     if (c != Concurrency::PARALLEL_FOR) {
         return true;
     }
-    if (access.usesEntityId_ && !access.parallelSafe_) {
+    if (access.isRelationForm_) {
         return false;
     }
     if (access.isBatchForm_) {
         return false;
     }
-    if (access.isRelationForm_) {
+    if (access.usesEntityId_ && !access.parallelSafe_) {
         return false;
     }
     if (access.mainThreadOnly_) {
@@ -101,8 +110,7 @@ class JobManagerFixture : public ::testing::Test {
 TEST(SystemConcurrencyValidator, PerComponentFormAcceptsParallelFor) {
     // void tick(C_VelA&, const C_VelB&) — the canonical clean case.
     // Writes C_VelA, reads C_VelB, no EntityId, not batch form.
-    auto access =
-        deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
+    auto access = deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
 
     EXPECT_FALSE(access.usesEntityId_);
     EXPECT_FALSE(access.isBatchForm_);
@@ -113,9 +121,7 @@ TEST(SystemConcurrencyValidator, PerEntityIdFormRejectedWithoutParallelSafe) {
     // void tick(EntityId, C_VelA&) — id-aware form. Without an
     // explicit ParallelSafe tag, the body is presumed to dereference
     // the id into a non-thread-safe singleton.
-    auto access = deriveAccessFromSignature<
-        void(IREntity::EntityId &, C_VelA &),
-        C_VelA>();
+    auto access = deriveAccessFromSignature<void(IREntity::EntityId &, C_VelA &), C_VelA>();
 
     EXPECT_TRUE(access.usesEntityId_);
     EXPECT_FALSE(access.parallelSafe_);
@@ -161,11 +167,7 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
     // so row-level chunking would re-enter it with overlapping
     // vectors. PARALLEL_FOR is structurally incompatible.
     auto access = deriveAccessFromSignature<
-        void(
-            const IREntity::Archetype &,
-            std::vector<IREntity::EntityId> &,
-            std::vector<C_VelA> &
-        ),
+        void(const IREntity::Archetype &, std::vector<IREntity::EntityId> &, std::vector<C_VelA> &),
         C_VelA>();
 
     EXPECT_TRUE(access.isBatchForm_);
@@ -201,9 +203,7 @@ TEST(SystemConcurrencyValidator, RelationFormRejected) {
 TEST(SystemConcurrencyValidator, MainThreadTagRejectsParallelFor) {
     // The MainThread tag is explicit "do not parallelize"; the
     // validator must FATAL rather than silently downgrade.
-    auto access = deriveAccessFromSignature<
-        void(C_VelA &),
-        C_VelA, MainThread>();
+    auto access = deriveAccessFromSignature<void(C_VelA &), C_VelA, MainThread>();
 
     EXPECT_TRUE(access.mainThreadOnly_);
     EXPECT_FALSE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));
@@ -280,6 +280,56 @@ TEST_F(CreateSystemValidatorTest, RelationFormSerialAcceptedAtRegistration) {
             Concurrency::SERIAL
         );
     });
+}
+
+TEST_F(CreateSystemValidatorTest, CatchAllWithRelationParamsFatalsAtRegistration) {
+    // T-349: a variadic catch-all tick simultaneously satisfies every
+    // signature probe (entity-id, batch-form, relation-form). The
+    // validator rules are ordered most-specific-first (relation →
+    // batch → entity-id) so the isRelationForm_ assertion fires first.
+    //
+    // This test pins both that PARALLEL_FOR + catch-all + RelationParams
+    // is rejected AND that the rejection is the relation-form
+    // diagnostic specifically — silently re-introducing the prior rule
+    // order (relation moved back to last) would still throw, but the
+    // batch-form or EntityId assertion would fire first instead, and
+    // the captured-log substring check below would fail.
+    //
+    // IR_ASSERT throws `std::runtime_error("Engine assertion failed")`
+    // — the formatted diagnostic goes to the GL API spdlog logger at
+    // critical severity, NOT into the exception's `what()`. We attach
+    // a temporary ostream sink to the logger, run the call, and verify
+    // the captured text contains the relation-form diagnostic.
+    std::ostringstream captured;
+    auto captureSink = std::make_shared<spdlog::sinks::ostream_sink_st>(captured);
+    auto *glLogger = LoggerSpd::instance()->getGLAPILogger();
+    glLogger->sinks().push_back(captureSink);
+    struct SinkGuard {
+        spdlog::logger *logger_;
+        std::shared_ptr<spdlog::sinks::sink> sink_;
+        ~SinkGuard() {
+            auto &sinks = logger_->sinks();
+            sinks.erase(std::remove(sinks.begin(), sinks.end(), sink_), sinks.end());
+        }
+    } guard{glLogger, captureSink};
+
+    auto catchAllTick = [](auto &&...) {};
+    EXPECT_THROW(
+        (IRSystem::createSystem<C_VelA>(
+            "TestCatchAllRelationParallelFor",
+            catchAllTick,
+            nullptr,
+            nullptr,
+            IRSystem::RelationParams<C_VelB>{},
+            nullptr,
+            Concurrency::PARALLEL_FOR
+        )),
+        std::runtime_error
+    );
+
+    const std::string logged = captured.str();
+    EXPECT_NE(logged.find("relation tick form"), std::string::npos)
+        << "expected relation-form assertion to fire first, got captured log: " << logged;
 }
 
 // ----------------------------------------------------------------------
