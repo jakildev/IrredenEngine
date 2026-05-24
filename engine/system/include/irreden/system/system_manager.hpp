@@ -169,7 +169,8 @@ class SystemManager {
         std::string name,
         Archetype includeArchetype,
         Archetype excludeArchetype,
-        std::function<void(ArchetypeNode *)> body
+        std::function<void(ArchetypeNode *)> body,
+        Concurrency concurrency = Concurrency::SERIAL
     );
 
     /// Replace the per-archetype tick body of an existing system in place.

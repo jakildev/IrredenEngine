@@ -482,6 +482,50 @@ void registerSystemCb(
 
     std::vector<std::string> excludes = readStringArray(ts, schema["excludes"], name, "excludes");
 
+    // T-223: optional `concurrency` field. Accepts integer-typed
+    // IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}; strings
+    // are rejected per the cpp-lua-enums rule. The value is threaded
+    // into the emitted `IRSystem::createSystem<...>(...)` call's
+    // trailing concurrency arg — the engine-side
+    // `detail::validateConcurrencyForAccess` runs at template
+    // instantiation time and fires (IR_ASSERT in debug builds) when the
+    // requested policy conflicts with the tick signature. CODEGEN tick
+    // bodies today emit the per-archetype batch form, so PARALLEL_FOR
+    // would fail that assert — surfaced as a registration-time FATAL
+    // pointing at the schema, exactly matching the hand-written C++
+    // path's behavior.
+    IRLuaCodegen::Concurrency concurrency = IRLuaCodegen::Concurrency::SERIAL;
+    sol::object concVal = schema["concurrency"];
+    if (!concVal.is<sol::nil_t>()) {
+        if (concVal.get_type() == sol::type::string) {
+            schemaError(
+                ts,
+                "lua_codegen: system '" + name +
+                    "' field 'concurrency' must be an IRSystem.Concurrency.* "
+                    "value (e.g. IRSystem.Concurrency.PARALLEL_FOR), not a string"
+            );
+        }
+        if (concVal.get_type() != sol::type::number) {
+            schemaError(
+                ts,
+                "lua_codegen: system '" + name +
+                    "' field 'concurrency' must be an integer-typed "
+                    "IRSystem.Concurrency.* value"
+            );
+        }
+        const lua_Integer raw = concVal.as<lua_Integer>();
+        if (raw < static_cast<lua_Integer>(IRLuaCodegen::Concurrency::SERIAL) ||
+            raw > static_cast<lua_Integer>(IRLuaCodegen::Concurrency::MAIN_THREAD)) {
+            schemaError(
+                ts,
+                "lua_codegen: system '" + name + "' field 'concurrency' = " +
+                    std::to_string(raw) + " is out of range; use "
+                    "IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}"
+            );
+        }
+        concurrency = static_cast<IRLuaCodegen::Concurrency>(raw);
+    }
+
     sol::object tickVal = schema["tick"];
     if (tickVal.get_type() != sol::type::function) {
         schemaError(
@@ -509,6 +553,7 @@ void registerSystemCb(
     IRLuaCodegen::SystemRecord rec;
     rec.name_ = name;
     rec.mode_ = resolvedMode;
+    rec.concurrency_ = concurrency;
     rec.components_ = std::move(components);
     rec.excludes_ = std::move(excludes);
     rec.sourceFile_ = std::move(file);
@@ -883,6 +928,19 @@ int main(int argc, char **argv) {
     irSystem.set_function("systemId", [](sol::variadic_args) { return 0; });
     irSystem.set_function("replaceSystemBody", [](sol::variadic_args) {});
     irSystem["SystemName"] = lua.create_table();
+
+    // T-223: expose IRSystem.Concurrency as an integer table so .lua
+    // schemas can reference `IRSystem.Concurrency.PARALLEL_FOR` etc. on
+    // the registerSystem spec. Values mirror IRLuaCodegen::Concurrency
+    // (which in turn mirrors IRSystem::Concurrency on the engine side).
+    sol::table concurrencyTbl = lua.create_table();
+    concurrencyTbl["SERIAL"] =
+        static_cast<lua_Integer>(IRLuaCodegen::Concurrency::SERIAL);
+    concurrencyTbl["PARALLEL_FOR"] =
+        static_cast<lua_Integer>(IRLuaCodegen::Concurrency::PARALLEL_FOR);
+    concurrencyTbl["MAIN_THREAD"] =
+        static_cast<lua_Integer>(IRLuaCodegen::Concurrency::MAIN_THREAD);
+    irSystem["Concurrency"] = concurrencyTbl;
 
     sol::table irTime = lua.create_named_table("IRTime");
     irTime["UPDATE"] = 0;
