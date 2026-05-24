@@ -404,7 +404,6 @@ Avoid:
   - **Notes:** Surfaced by review-fleet-feedback (signature: stackable-false-positive, 3 occurrences since 2026-05-12). Variants: blocker PR already contains downstream task files (T-299 variant); prior filters miss fleet:design-blocked issues.
   - **Links:**
 
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
