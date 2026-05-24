@@ -496,8 +496,10 @@ exit cleanly:
              — fleet merger
              ```
            - `gh pr comment <N> --body-file .merger-body.md`
-           - Remove stale verdict labels (rebase failed, prior verdict
-             no longer guaranteed valid — same rule as step d iii):
+           - Remove stale verdict labels (not `fleet:has-nits` — nits
+             remain valid regardless of merge conflicts and should be
+             addressed once the conflict is resolved; same rule as step
+             d iii):
              `gh pr edit <N> --remove-label "fleet:approved"`
              `gh pr edit <N> --remove-label "fleet:needs-fix"`
            - Add conflict and cooldown labels:
