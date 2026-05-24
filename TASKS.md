@@ -226,19 +226,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Tools: ir-perf-grid + hardware-fingerprinted baselines + synthetic-load normalization (sub-task 3 of #1074)** — ir-perf-grid binary wrapping ir-acquire benchmark; baselines keyed by host fingerprint; ir_ref_bench normalization for cross-host comparisons
-  - **ID:** T-330
-  - **Area:** engine/tools/bin, engine/tools/bench, engine/tools/py, docs/perf, build
-  - **Model:** opus
-  - **Owner:** claude/T-330-ir-perf-grid
-  - **Blocked by:** (none)
-  - **Stack:** T-318..T-331 ir-tools-split
-  - **Acceptance:** ir-perf-grid runs matrix end-to-end, writes baseline under fingerprinted layout; two consecutive runs on same host produce stable raw + normalized numbers (within 2%); different-host run emits informational host-mismatch path, not regression alert; perf-gate.yml passes against existing master baseline after migration
-  - **Issue:** #1100
-  - **Notes:** Sub-task 3 of #1074. Three deliverables: (1) ir-perf-grid binary wrapping matrix in ir-acquire benchmark + running ir_ref_bench for ref_ms; (2) baseline reorg to docs/perf/baseline_latest/<fingerprint>/ with host.json sidecars; (3) ir_ref_bench.cpp (~50ms IRMath isoToScreen + SDF + trixel bench). Comparator: same fingerprint → gate fires; different → informational; no match → seed baseline. Contended lock: weight normalized over raw. Calibration cache at ~/.cache/irreden/calibration/<fingerprint>.json; invalidated when engine/math/ SHA changes or max_age_days exceeded.
-  - **Links:**
-
-
 - [~] **System: migrate UPDATE pipeline to multi-system groups + measure perf_grid_matrix speedup (T-224 follow-up)** — const-correctness audit of prefab systems to unlock real parallel groups; run perf matrix and file speedup report
   - **ID:** T-332
   - **Area:** engine/system, creations/demos
@@ -313,6 +300,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
 - [x] **T-222** — system: Concurrency::PARALLEL_FOR + single-system access validation · Owner: claude/T-222-parallel-for-validation · PR: https://github.com/jakildev/IrredenEngine/pull/1097
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
@@ -332,4 +320,3 @@ Avoid:
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
 - [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
 - [x] **T-295** — DETACHED canvas SO(3) rotation · Owner: claude/t295-canvas-so3 · PR: https://github.com/jakildev/IrredenEngine/pull/1047
-- [x] **T-307** — skills: decompose /simplify into parallel reuse-detection subagents · Owner: claude/T-307-simplify-subagent-decomposition · PR: https://github.com/jakildev/IrredenEngine/pull/1040
