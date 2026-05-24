@@ -464,8 +464,12 @@ def cmd_apply(args: argparse.Namespace) -> int:
         print("error: --decisions <file.json> is required", file=sys.stderr)
         return 2
 
-    with open(args.decisions) as f:
-        d = json.load(f)
+    try:
+        with open(args.decisions) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        print(f"error: decisions file not found: {args.decisions}", file=sys.stderr)
+        return 2
     now = d.get("now") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
     rows = load_fix_log()
