@@ -49,6 +49,8 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
+            # Update the sed range here when adding/removing lines in the
+            # comment header above (lines 2-34 today).
             sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
