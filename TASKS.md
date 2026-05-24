@@ -321,11 +321,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: merger stacked-PR merged-base re-target with rebase path** — add detect-base-in-master → re-target to master → rebase branch path between steps 2.5 and 2.6 in role-merger.md; preserve verdict labels across swap
+- [~] **fleet: merger stacked-PR merged-base re-target with rebase path** — add detect-base-in-master → re-target to master → rebase branch path between steps 2.5 and 2.6 in role-merger.md; preserve verdict labels across swap
   - **ID:** T-340
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** merger detects stacked PR whose base was merged to master; re-targets to master; rebases branch; preserves any live fleet:needs-fix / fleet:approved label; `stacked-pr-merger-gap` cluster quiet
   - **Issue:** #1133
