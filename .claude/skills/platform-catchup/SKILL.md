@@ -69,6 +69,12 @@ permission prompts.
 4. **Build preset already configured.** `fleet-build` auto-configures
    on first run; the skill does not run `cmake --preset` itself (per
    the architect / worker hard rules).
+5. **`timeout` available.** Linux ships `timeout` in GNU coreutils.
+   macOS lacks it by default — `brew install coreutils` provides
+   `gtimeout`; ensure it is aliased or symlinked as `timeout` (or that
+   `/opt/homebrew/opt/coreutils/libexec/gnubin` is on PATH before
+   `/usr/bin`). macOS validation is deferred for v1; add this to the
+   macOS setup checklist when enabling it.
 
 ## Per-repo configuration
 
@@ -186,13 +192,17 @@ Abort per Preconditions if `git status` returns lines.
 
 ### 5. Aggregate build pass
 
+Log root for this run: `~/.fleet/platform-catchup/logs/<host-tag>/`
+(create with `mkdir -p` before writing). Steps 5, 6, and 8d all write
+to this directory — referenced as `<log-dir>` throughout.
+
 ```bash
-fleet-build --target <target-list> -- -k 0 > <log-dir>/build-all.log 2>&1
+fleet-build --target <target-list> -- -k > <log-dir>/build-all.log 2>&1
 ```
 
-The `-- -k 0` keeps gmake building past the first failure so multiple
-regressions surface in one run. Skipping it forces N-1 wasted re-runs
-when there are N independent regressions.
+The `-- -k` flag (`--keep-going`) tells GNU make to continue past the
+first failure so multiple regressions surface in one run. Skipping it
+forces N-1 wasted re-runs when there are N independent regressions.
 
 Scan the log for `error:`, `FAILED`, `gmake.*Error`. Map every failed
 target to its source file + error message. Failed-to-build targets are
@@ -345,7 +355,7 @@ linear newest-first walk:
 ```bash
 for pr in <merged-by-mergedAt-desc>:
     git checkout <pr.mergeCommit.oid>
-    fleet-build --target IRShapeDebug -- -k 0 > /tmp/walkback-<pr.number>.log 2>&1
+    fleet-build --target IRShapeDebug -- -k > <log-dir>/walkback-<pr.number>.log 2>&1
     if green:
         FIRST_GREEN = pr
         break

@@ -99,9 +99,11 @@ See [`docs/agents/CLAUDE-BASELINE.md § Engine API removal rule`](../../docs/age
    `engine/system`, `engine/world`, `engine/audio`, `engine/video`,
    `engine/math`).
 6. **Surface platform-catchup backlog** — count merged PRs labeled
-   `fleet:needs-<this-host>-smoke` from `repos.engine.prs[]` (filter
-   `state == "MERGED"` is unavailable here since the scout only
-   surfaces open PRs; instead run a one-off `gh pr list --label
+   `fleet:needs-<this-host>-smoke` (e.g. `fleet:needs-linux-smoke` on
+   `linux-x86_64`; substitute the host-tag detected from `uname`) from
+   `repos.engine.prs[]` (filter `state == "MERGED"` is unavailable here
+   since the scout only surfaces open PRs; instead run a one-off
+   `gh pr list --repo jakildev/IrredenEngine --label
    "fleet:needs-<this-host>-smoke" --state merged --json number
    --jq length`). If the count is ≥ 5, note it in the standing-by
    message so the human can decide whether to spend wall-time on

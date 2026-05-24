@@ -163,7 +163,9 @@ fleet-claim --repo game claim "T-001" opus-worker-1
    `owner == "free"`, and `blocked_by` resolves to merged work or
    `(none)`).
 6. **Surface platform-catchup backlog** — count merged engine PRs
-   labeled `fleet:needs-<this-host>-smoke` via `gh pr list --repo
+   labeled `fleet:needs-<this-host>-smoke` (e.g.
+   `fleet:needs-linux-smoke` on `linux-x86_64`; substitute the
+   host-tag detected from `uname`) via `gh pr list --repo
    jakildev/IrredenEngine --label "fleet:needs-<this-host>-smoke"
    --state merged --json number --jq length`. If the count is
    ≥ 5, note it in the standing-by message so the human can decide
