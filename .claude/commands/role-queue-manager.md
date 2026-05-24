@@ -137,6 +137,11 @@ Two invocation modes:
    `~/.fleet/state/state.json` if its contents are no longer in
    conversation context.
 
+   **Engine-only in v1.** The game repo's `fleet:queued` set is
+   small enough (typically <5 open) that drift is easy to spot by
+   eye; extend this step to cover the game repo when the game queue
+   grows or starts showing comparable drift symptoms.
+
    a. **Build the TASKS.md issue set.** From
       `repos.engine.tasks.open[]`, collect `issue` values for rows
       where `status == " "` (free, not claimed) and
@@ -147,6 +152,9 @@ Two invocation modes:
 
    b. **Fetch the live `fleet:queued` open set.**
       ```
+      # live call intentional — cache has no open fleet:queued list
+      # (state.json only exposes closed_fleet_queued); this is the
+      # only path to the live open set.
       gh issue list --repo <engine-repo> --label "fleet:queued" \
         --state open --json number --limit 500
       ```
