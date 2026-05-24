@@ -196,6 +196,11 @@ Meta / housekeeping
 ----------------------------------------------------------------------
   fleet-labels [--repo …] [--dry-run]    ensure GitHub fleet labels exist
   fleet-feedback [--since …] …           digest ~/.fleet/feedback/*.md
+  review-fleet-feedback {digest|apply|bump}
+                                         closed-loop reviewer over fleet-feedback;
+                                         clusters entries, tracks fix-log,
+                                         bumps marker on completion (backs
+                                         the review-fleet-feedback skill)
 
 ----------------------------------------------------------------------
 This index
