@@ -297,11 +297,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: queue-manager maintenance-sync — re-derive TASKS.md from issue bodies on every wake** — add maintenance-sync step to role-queue-manager.md that re-derives stale rows from issue body and PR-merge state before any other step
+- [~] **fleet: queue-manager maintenance-sync — re-derive TASKS.md from issue bodies on every wake** — add maintenance-sync step to role-queue-manager.md that re-derives stale rows from issue body and PR-merge state before any other step
   - **ID:** T-338
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** maintenance-sync step added to role-queue-manager.md; fleet feedback `stale-task-row` cluster does not re-surface in subsequent digest runs
   - **Issue:** #1131
