@@ -333,11 +333,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: fleet-worktree-busy-branches live re-derive from git worktree list** — remove caching from fleet-worktree-busy-branches; re-derive from live `git worktree list --porcelain` on every call; add --repo loop for game repo
+- [~] **fleet: fleet-worktree-busy-branches live re-derive from git worktree list** — remove caching from fleet-worktree-busy-branches; re-derive from live `git worktree list --porcelain` on every call; add --repo loop for game repo
   - **ID:** T-341
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** fleet-worktree-busy-branches uses live `git worktree list --porcelain` with no cache; `--repo <path>` covers both repos; `worktree-tracker-drift` cluster quiet
   - **Issue:** #1134
