@@ -381,11 +381,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: fleet-build --target format restricted to touched files** — in scripts/fleet/fleet-build, restrict `--target format` to files from `git diff --name-only` against merge-base (*.cpp *.hpp) only
+- [~] **fleet: fleet-build --target format restricted to touched files** — in scripts/fleet/fleet-build, restrict `--target format` to files from `git diff --name-only` against merge-base (*.cpp *.hpp) only
   - **ID:** T-345
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** `fleet-build --target format` runs clang-format only on files changed since merge-base; no full-tree reformat; `format-target-overreach` cluster quiet
   - **Issue:** #1138
