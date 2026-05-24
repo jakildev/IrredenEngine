@@ -391,6 +391,10 @@ def check_tracking_issues(rows: list[dict[str, Any]]) -> list[dict]:
 
     Best-effort: silently skips on gh errors so digest still produces output
     when offline / unauthenticated. The WARN goes to stderr.
+
+    Makes one `gh issue view` call per proposed row that has a tracking_issue
+    URL (worst case ~10 s × N rows if all time out). Performance is fine for
+    the current fix-log size but will degrade linearly as the log grows.
     """
     import subprocess
 
