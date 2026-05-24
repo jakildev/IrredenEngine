@@ -46,6 +46,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/window)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/command)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools/bench)
 
 if(IR_isLinux)
     message(STATUS "Linux-specific code will be compiled.")

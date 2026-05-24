@@ -53,12 +53,16 @@ jobs:
       - name: Configure
         run: cmake --preset linux-debug
 
-      - name: Build IRPerfGrid
-        run: cmake --build build --target IRPerfGrid --parallel 4
+      - name: Build IRPerfGrid + ir_ref_bench
+        run: cmake --build build --target IRPerfGrid ir_ref_bench --parallel 4
 
-      - name: Install fleet-run CI stub
+      - name: Install fleet-run CI stub + ir-perf-grid on PATH
         # perf_grid_matrix.sh requires fleet-run on PATH; provide a thin wrapper
         # that finds the built binary by name and runs it under Xvfb.
+        # ir-perf-grid (under engine/tools/bin) wraps perf_grid_matrix.sh +
+        # ir-acquire benchmark + ir_ref_bench calibration; the CI runner has
+        # plenty of headroom so the ir-acquire locks are a no-op against
+        # future concurrent workers.
         run: |
           mkdir -p "$HOME/.local/bin"
           cat > "$HOME/.local/bin/fleet-run" << 'STUB'
@@ -78,9 +82,10 @@ jobs:
           STUB
           chmod +x "$HOME/.local/bin/fleet-run"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/engine/tools/bin" >> "$GITHUB_PATH"
 
       - name: Run quick perf matrix (head)
-        run: scripts/perf/perf_grid_matrix.sh --quick --label ci
+        run: ir-perf-grid --quick --label ci
 
       - name: Locate head run directory
         id: head
@@ -154,13 +159,36 @@ jobs:
       - name: Update committed baseline (master push)
         if: github.event_name == 'push'
         run: |
-          mkdir -p docs/perf/baseline_latest
+          # Per-host-fingerprinted baseline layout — pulls the slug from the
+          # head manifest's calibration block written by ir-perf-grid.
+          HEAD_DIR="${{ steps.head.outputs.dir }}"
+          SLUG=$(python3 -c "
+          import json, sys
+          m = json.load(open(sys.argv[1]))
+          print((m.get('calibration') or {}).get('host_slug', ''))
+          " "$HEAD_DIR/manifest.json")
+
+          if [[ -z "$SLUG" ]]; then
+            echo "perf-gate: head manifest missing calibration.host_slug; skipping baseline update." >&2
+            exit 0
+          fi
+
+          BASELINE_DIR="docs/perf/baseline_latest/$SLUG"
+          mkdir -p "$BASELINE_DIR"
           # Copy manifest + cell txt files; skip temp files (.cell_marker, *.log)
-          find "${{ steps.head.outputs.dir }}" -maxdepth 1 \
+          find "$HEAD_DIR" -maxdepth 1 \
             -not -type d \
             -not -name '.cell_marker' \
             -not -name '*.log' \
-            -exec cp {} docs/perf/baseline_latest/ \;
+            -exec cp {} "$BASELINE_DIR/" \;
+
+          # host.json sidecar — the ir-host-probe output that produced the slug.
+          python3 -c "
+          import json, sys
+          m = json.load(open(sys.argv[1]))
+          host = (m.get('calibration') or {}).get('host_fingerprint', {})
+          json.dump(host, open(sys.argv[2], 'w'), indent=2, sort_keys=True)
+          " "$HEAD_DIR/manifest.json" "$BASELINE_DIR/host.json"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -171,6 +199,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "perf-gate: baseline unchanged, nothing to commit."
           else
-            git commit -m "perf: update CI baseline ${DATE}@${SHA} [skip ci]"
+            git commit -m "perf: update CI baseline ($SLUG) ${DATE}@${SHA} [skip ci]"
             git push
           fi

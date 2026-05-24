@@ -1,0 +1,284 @@
+#!/usr/bin/env bash
+# ir-perf-grid — perf matrix runner with synthetic-load normalization.
+#
+# Sub-task 3 of #1074 (T-330). Wraps scripts/perf/perf_grid_matrix.sh in
+# `ir-acquire benchmark` (cpu(budget-1) + gpu + perf), captures a `ref_ms`
+# reading from ir_ref_bench at the start of each matrix run, and writes
+# both into manifest.json so the comparator can normalize per-cell
+# measurements for background-load contention.
+#
+# Subcommands:
+#   ir-perf-grid                         # run the default matrix
+#   ir-perf-grid --quick --label ci      # forwards all flags to perf_grid_matrix.sh
+#   ir-perf-grid calibrate               # run ir_ref_bench 5×, cache the median
+#   ir-perf-grid calibrate --force       # ignore cache, re-probe
+#   ir-perf-grid ref                     # one-shot ir_ref_bench reading
+#
+# Calibration cache lives at
+#   $XDG_CACHE_HOME/irreden/calibration/<host-fingerprint>.json
+# Re-runs when missing, older than calibration_max_age_days (default 30),
+# or when the engine/math/ SHA changes (the cache file embeds the SHA).
+#
+# Output dir is the same as perf_grid_matrix.sh's:
+#   save_files/perf/<git-sha>[-<label>]/
+# with manifest.json extended to include a top-level "calibration" block:
+#   {
+#     "ref_ms": 49.78,
+#     "ref_target_ms": 50,
+#     "host_slug": "macos-arm64-apple-m2",
+#     "host_fingerprint": { ... full ir-host-probe json ... },
+#     "math_sha": "abc12345"
+#   }
+#
+# Source of truth: engine/tools/bin/ir-perf-grid in the engine repo.
+# Installed to ~/bin/ir-perf-grid (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+HELPERS="$SCRIPT_DIR/../lib/concurrency_helpers.sh"
+IR_ACQUIRE="$SCRIPT_DIR/ir-acquire"
+IR_HOST_PROBE="$SCRIPT_DIR/ir-host-probe"
+
+if [[ ! -f "$HELPERS" ]]; then
+    echo "ir-perf-grid: missing $HELPERS" >&2
+    exit 1
+fi
+if [[ ! -x "$IR_ACQUIRE" ]]; then
+    echo "ir-perf-grid: missing or non-executable $IR_ACQUIRE" >&2
+    exit 1
+fi
+# shellcheck source=../lib/concurrency_helpers.sh
+source "$HELPERS"
+
+WORKTREE_ROOT="$(ir_worktree_root)"
+BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
+PERF_MATRIX="$WORKTREE_ROOT/scripts/perf/perf_grid_matrix.sh"
+
+CALIBRATION_DIR="$IR_CACHE_ROOT/calibration"
+mkdir -p "$CALIBRATION_DIR"
+
+usage() {
+    sed -n '2,30p' "$0"
+}
+
+# ---------------------------------------------------------------------------
+# ir-perf-grid ref — one ref_ms reading on stdout (JSON line)
+# ---------------------------------------------------------------------------
+
+run_ref_bench() {
+    local exe="$BUILD_DIR/ir_ref_bench"
+    if [[ ! -x "$exe" ]]; then
+        echo "ir-perf-grid: ir_ref_bench not built at $exe" >&2
+        echo "             run 'ir-build --target ir_ref_bench' first." >&2
+        return 1
+    fi
+    "$exe"
+}
+
+# Parse {"ms": <N>, ...} → just N.
+extract_ref_ms() {
+    python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["ms"])'
+}
+
+# ---------------------------------------------------------------------------
+# Calibration
+# ---------------------------------------------------------------------------
+
+math_sha() {
+    # Tracks the SHA of engine/math/ so a wrapper-implementation change
+    # forces recalibration. `git ls-tree HEAD -- engine/math` resolves to a
+    # single tree hash that covers every file under the dir.
+    git -C "$WORKTREE_ROOT" ls-tree HEAD -- engine/math \
+        | awk '$2 == "tree" { print $3; exit }'
+}
+
+calibration_path() {
+    local slug
+    slug="$("$IR_HOST_PROBE" --slug)"
+    echo "$CALIBRATION_DIR/${slug}.json"
+}
+
+cache_is_stale() {
+    local path="$1"
+    [[ ! -f "$path" ]] && return 0
+
+    local max_age_days
+    max_age_days="$(_ir_config perf calibration_max_age_days IR_CALIBRATION_MAX_AGE_DAYS)"
+    [[ -z "$max_age_days" ]] && max_age_days=30
+
+    # Cache age — `stat` is non-portable, use python.
+    local age_days
+    age_days="$(python3 -c "
+import os, time, sys
+m = os.stat(sys.argv[1]).st_mtime
+print(int((time.time() - m) / 86400))
+" "$path")"
+    if (( age_days >= max_age_days )); then
+        return 0
+    fi
+
+    # SHA change — invalidate if engine/math/ moved.
+    local cached_sha current_sha
+    cached_sha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("math_sha",""))' "$path" 2>/dev/null || echo "")"
+    current_sha="$(math_sha)"
+    if [[ -n "$current_sha" && "$cached_sha" != "$current_sha" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+cmd_calibrate() {
+    local force=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --force) force=true; shift ;;
+            -h|--help) usage; exit 0 ;;
+            *) echo "ir-perf-grid calibrate: unknown arg '$1'" >&2; exit 2 ;;
+        esac
+    done
+
+    local path
+    path="$(calibration_path)"
+    if ! $force && ! cache_is_stale "$path"; then
+        echo "ir-perf-grid: calibration cache fresh at $path"
+        cat "$path"
+        return 0
+    fi
+
+    echo "ir-perf-grid: calibrating (5 runs)..."
+    local samples=()
+    local i
+    for i in 1 2 3 4 5; do
+        local ms
+        ms="$(run_ref_bench | extract_ref_ms)"
+        echo "  run $i: ${ms}ms"
+        samples+=("$ms")
+    done
+
+    # Median via python — pass samples as distinct positionals so a stray
+    # newline or non-numeric token from extract_ref_ms can't escape the
+    # single-quoted string literal that the previous "'${samples[*]}'.split()"
+    # form was vulnerable to.
+    local median
+    median="$(python3 -c '
+import sys
+xs = sorted(float(a) for a in sys.argv[1:])
+print(xs[len(xs)//2])
+' "${samples[@]}")"
+
+    local slug
+    slug="$("$IR_HOST_PROBE" --slug)"
+    local sha
+    sha="$(math_sha)"
+    local target_ms
+    target_ms="$(_ir_config perf ref_bench_target_ms IR_REF_BENCH_TARGET_MS)"
+    [[ -z "$target_ms" ]] && target_ms=50
+
+    python3 -c '
+import json, sys
+slug, median, target_ms, sha = sys.argv[1:5]
+samples = [float(s) for s in sys.argv[5:]]
+out = {
+    "slug": slug,
+    "median_ms": float(median),
+    "samples_ms": samples,
+    "target_ms": float(target_ms),
+    "math_sha": sha,
+}
+print(json.dumps(out, indent=2))
+' "$slug" "$median" "$target_ms" "$sha" "${samples[@]}" > "$path"
+
+    echo "ir-perf-grid: wrote $path (median ${median}ms, target ${target_ms}ms)"
+    cat "$path"
+}
+
+# ---------------------------------------------------------------------------
+# Default — run the matrix wrapped in ir-acquire benchmark
+# ---------------------------------------------------------------------------
+
+cmd_run_matrix() {
+    if [[ ! -x "$PERF_MATRIX" ]]; then
+        echo "ir-perf-grid: missing $PERF_MATRIX" >&2
+        exit 1
+    fi
+
+    # Refresh calibration on-demand. The cache check is idempotent — first
+    # caller takes the latency, the rest hit the cache for ~30 days.
+    cmd_calibrate >/dev/null
+
+    # Snapshot ref_ms at the start of the matrix to seed normalization.
+    local ref_json ref_ms
+    echo "ir-perf-grid: capturing ref_ms..."
+    ref_json="$(run_ref_bench)"
+    ref_ms="$(echo "$ref_json" | extract_ref_ms)"
+    echo "ir-perf-grid: ref_ms = ${ref_ms}ms"
+
+    local target_ms
+    target_ms="$(_ir_config perf ref_bench_target_ms IR_REF_BENCH_TARGET_MS)"
+    [[ -z "$target_ms" ]] && target_ms=50
+
+    local slug
+    slug="$("$IR_HOST_PROBE" --slug)"
+    local host_json
+    host_json="$("$IR_HOST_PROBE")"
+    local sha
+    sha="$(math_sha)"
+
+    # Stash for the manifest-patch step below — the matrix script writes the
+    # initial manifest.json and reports its OUT_DIR; we splice the calibration
+    # block in after.
+    local stash
+    stash="$(mktemp -d)"
+    trap "rm -rf '$stash'" EXIT
+    cat > "$stash/calibration.json" <<EOF
+{
+  "ref_ms": $ref_ms,
+  "ref_target_ms": $target_ms,
+  "host_slug": "$slug",
+  "host_fingerprint": $host_json,
+  "math_sha": "$sha"
+}
+EOF
+
+    # The matrix script prints "perf_grid_matrix: done, output in <dir>";
+    # capture stdout+stderr in real time so the user sees progress, then
+    # extract OUT_DIR from a tee'd buffer.
+    local log
+    log="$stash/matrix.log"
+    "$IR_ACQUIRE" benchmark -- "$PERF_MATRIX" "$@" 2>&1 | tee "$log"
+
+    local out_dir
+    out_dir="$(awk '/perf_grid_matrix: done, output in / { print $NF }' "$log" | tail -1)"
+    if [[ -z "$out_dir" || ! -d "$out_dir" ]]; then
+        echo "ir-perf-grid: could not find matrix output dir; calibration not spliced" >&2
+        exit 1
+    fi
+
+    # Splice calibration into manifest.json.
+    python3 -c "
+import json, sys
+manifest = json.load(open('$out_dir/manifest.json'))
+manifest['calibration'] = json.load(open('$stash/calibration.json'))
+json.dump(manifest, open('$out_dir/manifest.json', 'w'), indent=2)
+"
+
+    echo "ir-perf-grid: calibration spliced into $out_dir/manifest.json"
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        calibrate) shift; cmd_calibrate "$@"; exit 0 ;;
+        ref)       run_ref_bench; exit 0 ;;
+    esac
+fi
+
+cmd_run_matrix "$@"
