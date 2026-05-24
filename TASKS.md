@@ -200,18 +200,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Tools: shell autocomplete for ir-build and ir-run targets** — add bash/zsh tab-completion for `--target` on `ir-build` and positional target on `ir-run`; completion discovers available targets from the current repo's build tree so game-repo invocations show game targets
-  - **ID:** T-337
-  - **Area:** tooling, engine/tools
-  - **Model:** sonnet
-  - **Owner:** claude/T-337-ir-completions
-  - **Blocked by:** (none)
-  - **Acceptance:** `ir-build --target <TAB>` and `ir-run <TAB>` complete available cmake targets in bash and zsh; completion script installed/registered via engine/tools setup (or documented in BUILD.md); when invoked from game-repo build root, game targets appear; no regression on existing ir-build / ir-run behaviour
-  - **Issue:** #1127
-  - **Notes:** Issue says "same as fleet-run used to have" — check if a completion snippet exists for fleet-run to reuse. Also requested: --target flag completion on ir-build (not just ir-run). Game-targets: parameterize by CWD build root (cmake --build . --target help or equivalent) so one script serves both repos.
-  - **Links:**
-
-
 - [ ] **fleet: queue-manager maintenance-sync — re-derive TASKS.md from issue bodies on every wake** — add maintenance-sync step to role-queue-manager.md that re-derives stale rows from issue body and PR-merge state before any other step
   - **ID:** T-338
   - **Area:** tooling
@@ -323,6 +311,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
 - [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
 - [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
@@ -342,4 +331,3 @@ Avoid:
 - [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
 - [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
 - [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
-- [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
