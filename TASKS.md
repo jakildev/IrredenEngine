@@ -162,6 +162,17 @@ Avoid:
   - **Notes:** DSL parser in `cmake/lua_codegen/system_dsl.cpp` already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` ops; lowering is structural — recognize `local s = arch.C_Foo:at(i)` as row binding, drop outer for-statement. Gotcha: `std::vector<EntityId>& _ir_codegen_ids` slot may have callers — search before deleting; per-component form has id-aware overload. Filed by opus-worker during T-223.
   - **Links:**
 
+- [ ] **engine/system: validator FATAL picks wrong rule on catch-all tick + PARALLEL_FOR** — order validator rules most-specific-first (or collapse to Form enum) so catch-all + PARALLEL_FOR emits the most-precise FATAL message
+  - **ID:** T-349
+  - **Area:** engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** a variadic catch-all tick `[](auto&&...) {}` with `PARALLEL_FOR` fires the relation-form FATAL (most-specific), not the entity-id FATAL; existing FATAL messages for real-world callers unchanged; `IrredenEngineTest` passes
+  - **Issue:** #1125
+  - **Notes:** Surfaced during Opus recheck of PR #1122 (T-334). Not a correctness issue — FATAL is still FATAL, only diagnostic precision. Three possible fixes: (1) order validator rules most-specific to least; (2) collapse `usesEntityId_`/`isBatchForm_`/`isRelationForm_` bits into a `Form` enum; (3) add precondition that at most one form bit is set for non-catch-all sigs. Linked: PR #1122.
+  - **Links:**
+
 - [ ] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop redundant `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD calls binder directly without per-node heap allocation
   - **ID:** T-348
   - **Area:** engine/system
