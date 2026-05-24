@@ -630,9 +630,7 @@ _DESIGN_BLOCK_LABELS = frozenset({"fleet:design-blocked", "fleet:design-escalate
 
 
 def _area_prefixes(area_str):
-    # Parse 'engine/render, engine/prefabs/irreden/render' into normalized
-    # path prefixes for PR file-overlap checking. Entries without '/' (e.g.
-    # 'tooling') are meta-tags that don't map to a diff path and are dropped.
+    # Drops entries without '/' (meta-tags like 'tooling') that can't match diff paths.
     if not area_str:
         return []
     prefixes = []
@@ -644,8 +642,7 @@ def _area_prefixes(area_str):
 
 
 def _blocker_pr_files(repo_key, pr_number):
-    # Return changed file paths for a blocker PR from the per-PR cache.
-    # Returns [] if cache is missing (caller treats as no overlap detected).
+    # Returns [] on cache miss so the caller treats it as no overlap (safe degradation).
     pr_path = PRS_DIR / repo_key / f"{pr_number}.json"
     try:
         data = json.loads(pr_path.read_text())
