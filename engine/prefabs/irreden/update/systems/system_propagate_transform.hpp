@@ -210,6 +210,11 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
         }
 
+        // parentWorld == identity for root archetypes, so quatMul and
+        // rotateVectorByQuat are both no-ops. Hoist the check out of the
+        // inner loop and skip the quat math — only meaningful with CHILD_OF.
+        const bool isRootArchetype = (parent == IREntity::kNullEntity);
+
         for (int i = 0; i < node->length_; ++i) {
             const auto &local = locals[i];
 
@@ -227,6 +232,15 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 modScale = IRPrefab::Modifier::detail::composeForFieldVec3(
                     IRMath::vec3(1.0f), scaleField, modsVec3
                 );
+            }
+
+            if (isRootArchetype) {
+                worlds[i] = IRComponents::C_WorldTransform{
+                    local.translation_ + modTranslation,
+                    local.rotation_,
+                    local.scale_ * modScale,
+                };
+                continue;
             }
 
             const IRMath::vec3 worldScale =
