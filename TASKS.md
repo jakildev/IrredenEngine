@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **lua-codegen: per-component emit shape to unlock PARALLEL_FOR** — convert codegen tool's system emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
+- [~] **lua-codegen: per-component emit shape to unlock PARALLEL_FOR** — convert codegen tool's system emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
   - **ID:** T-347
   - **Area:** engine/script, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against new emit shape; new CODEGEN PARALLEL_FOR test registers without FATAL and dispatches across workers
   - **Issue:** #1120
@@ -229,11 +229,11 @@ Avoid:
   - **Notes:** Surfaced by review-fleet-feedback (signature: queue-staleness, 6 occurrences since 2026-05-02). `fleet:queued` label diverges from TASKS.md silently. Related to #1131 maintenance-sync; same proposed fix (fix-001 + divergence check).
   - **Links:**
 
-- [ ] **lua-codegen: per-component emit shape for PARALLEL_FOR** — convert codegen system-emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
+- [~] **lua-codegen: per-component emit shape for PARALLEL_FOR** — convert codegen system-emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
   - **ID:** T-347
   - **Area:** engine/script, build
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against the new emit shape; new CODEGEN test exercising `concurrency = PARALLEL_FOR` registers without FATAL and dispatches across worker threads
   - **Issue:** #1120
