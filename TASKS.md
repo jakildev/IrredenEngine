@@ -298,11 +298,11 @@ Avoid:
   - **Notes:** Reported on macOS; IRPerfGrid cited as one reproducer. Root cause unknown — may involve Metal resource teardown order, ECS world destructor sequencing, or missing signal handler. Also investigate whether run/verify skills should assert clean exit code after demo auto-screenshot runs.
   - **Links:**
 
-- [ ] **Tools: shell autocomplete for ir-build and ir-run targets** — add bash/zsh tab-completion for `--target` on `ir-build` and positional target on `ir-run`; completion discovers available targets from the current repo's build tree so game-repo invocations show game targets
+- [~] **Tools: shell autocomplete for ir-build and ir-run targets** — add bash/zsh tab-completion for `--target` on `ir-build` and positional target on `ir-run`; completion discovers available targets from the current repo's build tree so game-repo invocations show game targets
   - **ID:** T-337
   - **Area:** tooling, engine/tools
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** `ir-build --target <TAB>` and `ir-run <TAB>` complete available cmake targets in bash and zsh; completion script installed/registered via engine/tools setup (or documented in BUILD.md); when invoked from game-repo build root, game targets appear; no regression on existing ir-build / ir-run behaviour
   - **Issue:** #1127
