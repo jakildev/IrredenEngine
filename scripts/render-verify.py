@@ -211,15 +211,23 @@ def main(argv: list[str] | None = None) -> int:
     print("+ " + " ".join(run_cmd), flush=True)
     proc = subprocess.run(run_cmd, cwd=str(worktree),
                           capture_output=True, text=True)
+    # In `--auto-screenshot` mode the demo fires `closeWindow()` after the
+    # last shot and exits 0; any non-zero return is a crash (e.g. a Metal
+    # static-destruction segfault that lands AFTER the screenshots are
+    # saved, which the per-shot comparator would otherwise silently
+    # "pass" — T-336). With `--timeout`, ir-run returns 0 on timeout-kill
+    # too, so the only way we see non-zero here is a real early-exit
+    # crash. Surface the tail and let the run_crash flag block a PASS
+    # verdict below even when all shots compare clean.
+    run_crash: tuple[int, str] | None = None
     if proc.returncode != 0:
-        # Expected on timeout; also fires if the demo crashed. Surface the
-        # tail so a crash isn't hidden behind "expected N shots, got M".
         print(f"[render-verify] fleet-run exited {proc.returncode}; "
               f"tail of output follows (screenshot count will be checked "
               f"against manifest below):", file=sys.stderr)
         tail = (proc.stdout + proc.stderr).splitlines()[-40:]
         for line in tail:
             print(f"    {line}", file=sys.stderr)
+        run_crash = (proc.returncode, "\n".join(tail))
 
     captured = _collect_shots(shots_dir, len(shot_labels))
     ref_dir = demo_dir / "test" / "references" / backend
@@ -272,15 +280,22 @@ def main(argv: list[str] | None = None) -> int:
             failures.append((label, result))
 
     print()
-    if all_pass:
+    if all_pass and run_crash is None:
         print(f"[render-verify] all {len(shot_labels)} shots PASS")
         return 0
 
-    print(f"[render-verify] {len(failures)} of {len(shot_labels)} shots FAIL")
-    for label, result in failures:
-        reason = result.get("reason", "mismatch")
-        diff = result.get("diff_path", "(no diff)")
-        print(f"  - {label}: {reason}  diff={diff}")
+    if not all_pass:
+        print(f"[render-verify] {len(failures)} of {len(shot_labels)} shots FAIL")
+        for label, result in failures:
+            reason = result.get("reason", "mismatch")
+            diff = result.get("diff_path", "(no diff)")
+            print(f"  - {label}: {reason}  diff={diff}")
+
+    if run_crash is not None:
+        rc, _ = run_crash
+        print(f"[render-verify] demo crashed at shutdown (fleet-run exit={rc}); "
+              f"failing the verify run even when shots match — see tail above.",
+              file=sys.stderr)
     return 1
 
 

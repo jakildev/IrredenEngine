@@ -238,6 +238,8 @@ class MetalRenderDevice final : public RenderDevice {
             releaseTimestampPair(pair);
         }
         m_timestamps.clear();
+        // counterSets() returns a non-owning pointer (the MTL::Device owns
+        // the set), so we clear the reference without ->release().
         m_timestampCounterSet = nullptr;
         m_supportsTimestampPairs = false;
         for (auto &[texture, buf] : m_clearSourceBuffers) {
@@ -837,11 +839,24 @@ metalCurrentDepthPixelFormat(),
     std::unordered_map<MTL::Texture *, MTL::Buffer *> m_clearSourceBuffers;
 };
 
-MetalRenderDevice g_metalRenderDevice;
+// Intentionally leaked so the device state outlives all other statics.
+// Mirrors the same pattern in metal_runtime.cpp's `g_runtime()`. Prevents
+// use-after-destroy when `World`'s `RenderingResourceManager` destructs
+// its `Texture2D` resources at static-destruction time: each
+// `~MetalTexture2DImpl` calls `removeClearSourceBuffer(m_texture)`, which
+// dereferences `m_clearSourceBuffers` on this device. Static-destruction
+// order between this TU and the `inline` `g_world` in `ir_engine.hpp` is
+// implementation-defined; without the leak, the device can be destroyed
+// before the textures, and `find()` crashes on the corpse of its
+// unordered_map (T-336).
+MetalRenderDevice &metalRenderDevice() {
+    static auto *device = new MetalRenderDevice{};
+    return *device;
+}
 } // namespace
 
 void removeClearSourceBuffer(MTL::Texture *texture) {
-    g_metalRenderDevice.releaseClearSourceBuffer(texture);
+    metalRenderDevice().releaseClearSourceBuffer(texture);
 }
 
 std::unique_ptr<RenderImpl> createRenderer() {
@@ -855,7 +870,7 @@ MetalRenderImpl::MetalRenderImpl()
 }
 
 MetalRenderImpl::~MetalRenderImpl() {
-    g_metalRenderDevice.shutdown();
+    metalRenderDevice().shutdown();
     if (m_device != nullptr) {
         m_device->release();
         m_device = nullptr;
@@ -870,8 +885,8 @@ void MetalRenderImpl::init() {
     IR_ASSERT(layerPtr != nullptr, "Failed to create CAMetalLayer");
     m_layer = reinterpret_cast<CA::MetalLayer *>(layerPtr);
 
-    g_metalRenderDevice.init(m_device, m_layer);
-    setDevice(&g_metalRenderDevice);
+    metalRenderDevice().init(m_device, m_layer);
+    setDevice(&metalRenderDevice());
 
     IRWindow::getWindow().setCallbackFramebufferSize(metalCallback_framebuffer_size);
     IRE_LOG_INFO("Metal surface attached to window.");
