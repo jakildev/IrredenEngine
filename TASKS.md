@@ -195,11 +195,11 @@ Avoid:
   - **Notes:** Surfaced during Opus recheck of PR #1122 (T-334). Not a correctness issue — FATAL is still FATAL, only diagnostic precision. Three possible fixes: (1) order validator rules most-specific to least; (2) collapse `usesEntityId_`/`isBatchForm_`/`isRelationForm_` bits into a `Form` enum; (3) add precondition that at most one form bit is set for non-catch-all sigs. Linked: PR #1122.
   - **Links:**
 
-- [ ] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop redundant `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD calls binder directly without per-node heap allocation
+- [~] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop redundant `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD calls binder directly without per-node heap allocation
   - **ID:** T-348
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug; existing PARALLEL_FOR systems fan out correctly; `functionTick_` slot removed from row-iterating forms (only tag/relation-form `functionTick_` kept); no per-SERIAL-node binder allocation
   - **Issue:** #1124
@@ -240,11 +240,11 @@ Avoid:
   - **Notes:** DSL parser (`cmake/lua_codegen/system_dsl.cpp`) already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` column ops — lowering is structural: recognize `local s = arch.C_Foo:at(i)` as a row binding, `:setAt` as a row write, drop outer for-statement. Watch for existing callers of `std::vector<EntityId>& _ir_codegen_ids` before deleting. T-223 left `/* concurrency */ IRSystem::Concurrency::SERIAL` annotations on every emitted createSystem call — switching the default is mechanical once lowering lands. Filed by opus-worker during T-223.
   - **Links:**
 
-- [ ] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD branches call binder directly, eliminating per-node allocation and dual-slot static overhead
+- [~] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD branches call binder directly, eliminating per-node allocation and dual-slot static overhead
   - **ID:** T-348
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** `functionTick_` removed for row-iterating forms; `executeSystem` branches on `(prepareRangedTick_ != null && concurrency != PARALLEL_FOR)` → calls `prepareRangedTick_(node)(0, length)` directly; tag/relation-form `functionTick_` slot kept; `IrredenEngineTest` + `IRShapeDebug` build clean; existing PARALLEL_FOR systems fan out correctly
   - **Issue:** #1124
