@@ -53,10 +53,10 @@ fleet workflow.
   tmux fleet, claims, …) and how to install them; `fleet-help <cmd>`
   forwards to `--help` when the tool supports it (or a short summary).
 - **`completions/fleet-run.bash`** — bash tab completion for `fleet-run`
-  (built exe names when the word does not start with `-`) and
-  `fleet-build` (CMake demo names after `--target`) plus `fleet-debug`.
-  `install.sh`
-  symlinks it into `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/`
+  and `ir-run` (built exe names when the word does not start with `-`),
+  `fleet-build` and `ir-build` (CMake demo names after `--target`), plus
+  `fleet-debug`. `install.sh` symlinks it into
+  `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/`
   for bash-completion / Homebrew `bash-completion@2`.
 - **`completions/irreden-fleet.zsh`** — zsh entry: ensures `compinit` (if
   needed), runs `bashcompinit`, then sources `fleet-run.bash`. **macOS

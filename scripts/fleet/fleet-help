@@ -133,8 +133,8 @@ Irreden Engine — fleet tooling index
 One-time PATH setup (symlinks ~/bin/fleet-* and friends):
   scripts/fleet/install.sh
   (ensure ~/bin is on your PATH — install.sh prints a hint if not)
-  Same script installs tab completion for fleet-run / fleet-build (bash +
-  zsh); install.sh --help
+  Same script installs tab completion for fleet-run / fleet-build / ir-run / ir-build
+  (bash + zsh); install.sh --help
 
 More context:
   scripts/fleet/README.md

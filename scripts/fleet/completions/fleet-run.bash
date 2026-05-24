@@ -1,15 +1,15 @@
-# Bash programmable completion for fleet-run, fleet-build, and fleet-debug.
+# Bash programmable completion for fleet-run, fleet-build, fleet-debug, ir-run, ir-build.
 # Bash 3.2+ (macOS default). Uses compgen, not mapfile.
 #
-# fleet-run: words not starting with "-" complete built executable basenames
+# fleet-run / ir-run: words not starting with "-" complete built executable basenames
 # (same set as "fleet-run-targets --plain"). Leading "-" completes flags.
 # After "--targets", completes fleet-run-targets flags when appropriate.
 #
-# fleet-build: after "--target", completes curated CMake demo/test names
+# fleet-build / ir-build: after "--target", completes curated CMake demo/test names
 # (same as "fleet-run-targets --plan --plain").
 #
 # install.sh symlinks this file into:
-#   ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/{fleet-run,fleet-build,fleet-debug}
+#   ${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/{fleet-run,fleet-build,fleet-debug,ir-run,ir-build}
 # Requires bash-completion to load ~/.local/share/bash-completion/completions/*
 # (many distros and Homebrew bash-completion@2 do). Otherwise: source this file.
 #
@@ -194,3 +194,5 @@ _irreden_fleet_debug_complete() {
 complete -F _irreden_fleet_run_complete fleet-run
 complete -F _irreden_fleet_build_complete fleet-build
 complete -F _irreden_fleet_debug_complete fleet-debug
+complete -F _irreden_fleet_run_complete ir-run
+complete -F _irreden_fleet_build_complete ir-build

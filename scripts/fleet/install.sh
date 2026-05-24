@@ -353,7 +353,9 @@ if [[ -f "$FLEET_COMP_SRC" ]]; then
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-run"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-build"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-debug"
-    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build, fleet-debug)"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/ir-run"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/ir-build"
+    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build, fleet-debug, ir-run, ir-build)"
 fi
 
 # Zsh: bash-completion dirs are not read by zsh; irreden-fleet.zsh uses
@@ -485,8 +487,8 @@ esac
 
 if [[ -f "$FLEET_COMP_SRC" ]]; then
     echo
-    echo "Bash tab-completion for fleet-run / fleet-build / fleet-debug (built targets and"
-    echo "  fleet-build --target names) installs under:"
+    echo "Bash tab-completion for fleet-run / fleet-build / fleet-debug / ir-run / ir-build"
+    echo "  (built targets and --target names) installs under:"
     echo "    $BASH_COMP_DIR"
     echo "  Open a new bash login shell (or: source your bash-completion init)"
     echo "  so it loads. Ubuntu/Debian: install the \`bash-completion\` package;"
@@ -495,7 +497,7 @@ fi
 
 if [[ -f "$FLEET_ZSH_COMP_SRC" ]]; then
     echo
-    echo "zsh: tab completion for fleet-run / fleet-build uses ~/.zsh/completions/"
+    echo "zsh: tab completion for fleet-run / fleet-build / ir-run / ir-build uses ~/.zsh/completions/"
     echo "  (bash-completion paths are not loaded by zsh by default.)"
     if ((INSTALL_APPEND_ZSHRC)); then
         echo "  If ~/.zshrc was updated, open a new terminal or \`source ~/.zshrc\`."
