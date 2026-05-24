@@ -184,17 +184,6 @@ Avoid:
   - **Notes:** Follow-up from PR #1146 review nit. Option A = keep current order (re-target first, rebase second) + document why; Option B = invert (rebase first, then re-target + clean labels on clean exit; still remove awaiting-base/stacked labels on conflict branch so opus-worker filter accepts the PR). Issue body details the merger ↔ opus-worker contract constraint that makes Option B non-trivial. `[opus]` required to reason across the merger/worker boundary.
   - **Links:**
 
-- [~] **engine/system: validator FATAL picks wrong rule on catch-all tick + PARALLEL_FOR** — order validator rules most-specific-first (or collapse to Form enum) so catch-all + PARALLEL_FOR emits the most-precise FATAL message
-  - **ID:** T-349
-  - **Area:** engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-349-validator-rule-ordering
-  - **Blocked by:** (none)
-  - **Acceptance:** a variadic catch-all tick `[](auto&&...) {}` with `PARALLEL_FOR` fires the relation-form FATAL (most-specific), not the entity-id FATAL; existing FATAL messages for real-world callers unchanged; `IrredenEngineTest` passes
-  - **Issue:** #1125
-  - **Notes:** Surfaced during Opus recheck of PR #1122 (T-334). Not a correctness issue — FATAL is still FATAL, only diagnostic precision. Three possible fixes: (1) order validator rules most-specific to least; (2) collapse `usesEntityId_`/`isBatchForm_`/`isRelationForm_` bits into a `Form` enum; (3) add precondition that at most one form bit is set for non-catch-all sigs. Linked: PR #1122.
-  - **Links:**
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -216,17 +205,6 @@ Avoid:
   - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against the new emit shape; new CODEGEN test exercising `concurrency = PARALLEL_FOR` registers without FATAL and dispatches across worker threads
   - **Issue:** #1120
   - **Notes:** DSL parser (`cmake/lua_codegen/system_dsl.cpp`) already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` column ops — lowering is structural: recognize `local s = arch.C_Foo:at(i)` as a row binding, `:setAt` as a row write, drop outer for-statement. Watch for existing callers of `std::vector<EntityId>& _ir_codegen_ids` before deleting. T-223 left `/* concurrency */ IRSystem::Concurrency::SERIAL` annotations on every emitted createSystem call — switching the default is mechanical once lowering lands. Filed by opus-worker during T-223.
-  - **Links:**
-
-- [~] **engine/system: validator FATAL picks wrong rule on variadic catch-all + PARALLEL_FOR** — order validator rules most-specific-first so the most useful diagnostic fires on ambiguous signatures
-  - **ID:** T-349
-  - **Area:** engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-349-validator-rule-ordering
-  - **Blocked by:** (none)
-  - **Acceptance:** with an artificial catch-all tick `[](auto&&...) {}` + `PARALLEL_FOR`, the FATAL message names the most-specific failing rule (relation-form > batch-form > entity-id); `IrredenEngineTest` passes; build clean
-  - **Issue:** #1125
-  - **Notes:** Not a correctness issue — FATAL is still FATAL. `validateConcurrencyForAccess` fires on the first rule in source order (currently `usesEntityId_`); a catch-all tick passes all three form probes. Fix options: order rules most-to-least-specific, collapse three form bits into a single `Form` enum, or add a precondition that at most one form bit is set. Linked: PR #1122 (T-334).
   - **Links:**
 
 - [~] **fleet/merger: re-target / rebase order on stacked-base merged path** — resolve the option-A/B trade-off and update role-merger.md (and possibly role-opus-worker.md) for correctness on the conflict branch
@@ -255,6 +233,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
 - [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
 - [x] **T-342** — fleet: queue-manager queued/free divergence check · Owner: claude/T-342-queue-manager-divergence-check · PR: https://github.com/jakildev/IrredenEngine/pull/1148
 - [x] **T-333** — engine/system: pre-resolve component vectors on main thread for PARALLEL_FOR · Owner: claude/T-333-pre-resolve-component-vectors · PR: https://github.com/jakildev/IrredenEngine/pull/1123
@@ -270,8 +249,7 @@ Avoid:
 - [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
 - [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
-- [x] **T-335** — test/system: PARALLEL_FOR dispatch integration tests · Owner: claude/T-335-parallel-dispatch-test · PR: https://github.com/jakildev/IrredenEngine/pull/1110
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
-- [x] **T-225** — entity: thread-safe deferred mutations from workers · Owner: claude/T-225-parallel-spawn · PR: https://github.com/jakildev/IrredenEngine/pull/1109
+- [x] **T-335** — test/system: PARALLEL_FOR dispatch integration tests · Owner: claude/T-335-parallel-dispatch-test · PR: https://github.com/jakildev/IrredenEngine/pull/1110
