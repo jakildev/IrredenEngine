@@ -34,26 +34,35 @@ template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
     }
 };
 
-// T-222 / T-334: validate that a system's compile-time access
+// T-222 / T-334 / T-349: validate that a system's compile-time access
 // descriptor is compatible with its requested Concurrency policy. Four
 // rules, distilled from the multithreading epic (#226 §"Layer 4"):
 //
-//   - PARALLEL_FOR + usesEntityId_ + !parallelSafe_ → FATAL. The
-//     per-entity-id tick form passes the iterated EntityId to the
-//     body; without an explicit `ParallelSafe` opt-in, the body is
-//     assumed to use the id to mutate non-thread-safe singletons
-//     (`g_entityManager`, render managers, sol2).
-//   - PARALLEL_FOR + isBatchForm_ → FATAL. The per-archetype batch
-//     form consumes the whole column; row-level chunking would
-//     re-enter the body N times with overlapping handles.
 //   - PARALLEL_FOR + isRelationForm_ → FATAL. The relation branch in
 //     `rangedFn` calls `getRelatedEntityFromArchetype` +
 //     `getComponentOptional` on `EntityManager` from inside the per-
 //     row loop, which races on the manager's archetype map from
 //     worker threads.
+//   - PARALLEL_FOR + isBatchForm_ → FATAL. The per-archetype batch
+//     form consumes the whole column; row-level chunking would
+//     re-enter the body N times with overlapping handles.
+//   - PARALLEL_FOR + usesEntityId_ + !parallelSafe_ → FATAL. The
+//     per-entity-id tick form passes the iterated EntityId to the
+//     body; without an explicit `ParallelSafe` opt-in, the body is
+//     assumed to use the id to mutate non-thread-safe singletons
+//     (`g_entityManager`, render managers, sol2).
 //   - PARALLEL_FOR + mainThreadOnly_ → FATAL. The `MainThread` tag is
 //     explicit "do not parallelize", and silently downgrading would
 //     hide the conflict.
+//
+// Rules are ordered most-specific first so the most useful diagnostic
+// fires when a variadic catch-all tick signature passes multiple probes
+// simultaneously (T-349). `isRelationForm_` is checked before
+// `isBatchForm_` because an explicit `RelationParams<...>` argument is
+// the caller's stated intent, giving higher signal than the batch probe.
+// `isBatchForm_` precedes `usesEntityId_` to match the dispatch-chain
+// priority in `insertTickFunction` (`InvocableWithNodeVectors` is
+// checked before `InvocableWithEntityId` there).
 //
 // The static_assert flavor would be ideal but the Concurrency value
 // is a runtime parameter on the entry-point wrapper, so we IR_ASSERT
@@ -65,11 +74,13 @@ validateConcurrencyForAccess(const std::string &name, Concurrency c, SystemAcces
         return;
     }
     IR_ASSERT(
-        !access.usesEntityId_ || access.parallelSafe_,
-        "System '{}' requested Concurrency::PARALLEL_FOR with an "
-        "EntityId tick parameter but no IRSystem::ParallelSafe tag. The "
-        "id-aware tick form is presumed to look up other entities; tag "
-        "the component pack with `ParallelSafe` after auditing the body.",
+        !access.isRelationForm_,
+        "System '{}' requested Concurrency::PARALLEL_FOR with the "
+        "relation tick form (RelationParams<...> + std::optional<...*> "
+        "in the tick signature). The relation branch resolves the "
+        "related entity and its components via EntityManager lookups "
+        "inside the per-row loop; those manager accesses are not "
+        "thread-safe.",
         name
     );
     IR_ASSERT(
@@ -81,13 +92,11 @@ validateConcurrencyForAccess(const std::string &name, Concurrency c, SystemAcces
         name
     );
     IR_ASSERT(
-        !access.isRelationForm_,
-        "System '{}' requested Concurrency::PARALLEL_FOR with the "
-        "relation tick form (RelationParams<...> + std::optional<...*> "
-        "in the tick signature). The relation branch resolves the "
-        "related entity and its components via EntityManager lookups "
-        "inside the per-row loop; those manager accesses are not "
-        "thread-safe.",
+        !access.usesEntityId_ || access.parallelSafe_,
+        "System '{}' requested Concurrency::PARALLEL_FOR with an "
+        "EntityId tick parameter but no IRSystem::ParallelSafe tag. The "
+        "id-aware tick form is presumed to look up other entities; tag "
+        "the component pack with `ParallelSafe` after auditing the body.",
         name
     );
     IR_ASSERT(
@@ -155,12 +164,10 @@ constexpr SystemId createSystem(
     constexpr SystemAccess accessDescriptor = []() {
         SystemAccess a = deriveAccessFromSignature<FunctionTick, TickComponents...>();
         if constexpr (sizeof...(TickRelationComponents) > 0) {
-            if constexpr (
-                std::is_invocable_v<
-                    FunctionTick,
-                    std::remove_cvref_t<TickComponents> &...,
-                    std::optional<TickRelationComponents *>...>
-            ) {
+            if constexpr (std::is_invocable_v<
+                              FunctionTick,
+                              std::remove_cvref_t<TickComponents> &...,
+                              std::optional<TickRelationComponents *>...>) {
                 a.isRelationForm_ = true;
             }
         }
@@ -218,14 +225,12 @@ template <typename T, typename... Cs> struct MakeMemberTickFn<T, TypeList<Cs...>
             return [p](Cs &...cs) { p->tick(cs...); };
         } else if constexpr (requires(T &s, EntityId id, Cs &...cs) { s.tick(id, cs...); }) {
             return [p](EntityId id, Cs &...cs) { p->tick(id, cs...); };
-        } else if constexpr (
-            requires(
-                T &s,
-                const Archetype &a,
-                std::vector<EntityId> &ids,
-                std::vector<Cs> &...cols
-            ) { s.tick(a, ids, cols...); }
-        ) {
+        } else if constexpr (requires(
+                                 T &s,
+                                 const Archetype &a,
+                                 std::vector<EntityId> &ids,
+                                 std::vector<Cs> &...cols
+                             ) { s.tick(a, ids, cols...); }) {
             return [p](const Archetype &a, std::vector<EntityId> &ids, std::vector<Cs> &...cols) {
                 p->tick(a, ids, cols...);
             };
@@ -439,9 +444,7 @@ void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
 ///         { globalPosition },            // group 1: serial
 ///         { lifetime },                  // group 2: serial
 ///     });
-void registerPipelineGroups(
-    IRTime::Events event, std::vector<std::vector<SystemId>> groups
-);
+void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
 
 /// T-224: run the cross-system access-conflict validator across every
 /// registered pipeline group. FATALs on the first conflict, naming
