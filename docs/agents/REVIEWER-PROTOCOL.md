@@ -223,13 +223,15 @@ to paths outside the worktree even if `/tmp/` is in
 `additionalDirectories` (the gate is broader than path matching).
 `.review-body.md` is gitignored.
 
-First run `rm -f .review-body.md` so the Write tool doesn't refuse
-with "File has not been read yet" — that error fires when an
-existing file at the path wasn't Read in this session (typical when
-a previous iteration left the body file behind).
+Use the **Read** tool on `.review-body.md` before writing — if the
+file exists from a previous iteration, this marks it as "read in this
+session" so the Write tool can overwrite it; if the file doesn't
+exist, Read returns an error that can be ignored and Write creates it
+fresh. Do **not** use `rm -f .review-body.md` — `rm -f` is not in
+the fleet's `settings.json` allow-list for worktree-local paths.
 
 ```
-rm -f .review-body.md
+# (Read tool: Read .review-body.md — error is fine if it doesn't exist)
 # (Write tool writes the body to .review-body.md)
 gh pr review <N> --comment --body-file .review-body.md
 ```
