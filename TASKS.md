@@ -189,18 +189,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **System: migrate UPDATE pipeline to multi-system groups + measure perf_grid_matrix speedup (T-224 follow-up)** — const-correctness audit of prefab systems to unlock real parallel groups; run perf matrix and file speedup report
-  - **ID:** T-332
-  - **Area:** engine/system, creations/demos
-  - **Model:** opus
-  - **Owner:** claude/T-332-update-pipeline-groups
-  - **Blocked by:** (none)
-  - **Acceptance:** at least one demo's UPDATE pipeline has a real parallel group accepted by the T-224 validator; perf_grid_matrix.sh shows additional speedup beyond T-222's baseline; speedup number filed to docs/perf-reports/threading_phase3.md; no regressions on existing demos
-  - **Issue:** #1103
-  - **Notes:** Deferred from T-224 (infrastructure landed; migration + measurement deferred). Gating work: most prefab systems haven't declared const opt-in on tick params; validator conservatively classifies all reads as writes and rejects every multi-system grouping. Per-prefab const-correctness audit is required first. Part of epic #226.
-  - **Links:**
-
-
 - [~] **System: pre-resolve component-vector refs on main thread before PARALLEL_FOR dispatch** — eliminate operator[] race on EntityManager from worker threads; pre-bind component vectors before parallelFor call
   - **ID:** T-333
   - **Area:** engine/system, engine/entity
@@ -348,6 +336,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
 - [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
 - [x] **T-335** — test/system: PARALLEL_FOR dispatch integration tests · Owner: claude/T-335-parallel-dispatch-test · PR: https://github.com/jakildev/IrredenEngine/pull/1110
@@ -367,4 +356,3 @@ Avoid:
 - [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
 - [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
 - [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
-- [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
