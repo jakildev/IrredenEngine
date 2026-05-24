@@ -345,11 +345,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: queue-manager queued/free divergence check** — add divergence check to role-queue-manager.md that flags mismatch between `fleet:queued` issue set and TASKS.md `free` rows; write warning to ~/.fleet/feedback/queue-manager.md
+- [~] **fleet: queue-manager queued/free divergence check** — add divergence check to role-queue-manager.md that flags mismatch between `fleet:queued` issue set and TASKS.md `free` rows; write warning to ~/.fleet/feedback/queue-manager.md
   - **ID:** T-342
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** divergence check step added to role-queue-manager.md; any `fleet:queued` issue not matching a TASKS.md free row (or vice versa) written to feedback file; `queue-staleness` cluster quiet
   - **Issue:** #1135
