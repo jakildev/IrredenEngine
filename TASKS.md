@@ -195,17 +195,6 @@ Avoid:
   - **Notes:** Surfaced during Opus recheck of PR #1122 (T-334). Not a correctness issue — FATAL is still FATAL, only diagnostic precision. Three possible fixes: (1) order validator rules most-specific to least; (2) collapse `usesEntityId_`/`isBatchForm_`/`isRelationForm_` bits into a `Form` enum; (3) add precondition that at most one form bit is set for non-catch-all sigs. Linked: PR #1122.
   - **Links:**
 
-- [~] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop redundant `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD calls binder directly without per-node heap allocation
-  - **ID:** T-348
-  - **Area:** engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-348-serial-fastpath-dual-slot
-  - **Blocked by:** (none)
-  - **Acceptance:** `IrredenEngineTest` + `IRShapeDebug` build clean on linux-debug; existing PARALLEL_FOR systems fan out correctly; `functionTick_` slot removed from row-iterating forms (only tag/relation-form `functionTick_` kept); no per-SERIAL-node binder allocation
-  - **Issue:** #1124
-  - **Notes:** Surfaced as T-333 (PR #1123) nit. Opus recheck on #1123 identified that `m_ticks[i].functionTick_` and `m_ticks[i].prepareRangedTick_` are aliased copies of the same closure (~64 bytes/system × N systems × M worlds). Fix: drop `functionTick_` for row-iterating forms; branch in `executeSystem` on `(prepareRangedTick_ != null && concurrency != PARALLEL_FOR)` → call `prepareRangedTick_(node)(0, length)` directly. Affected file: `engine/system/include/irreden/system/system_manager.hpp`.
-  - **Links:**
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -227,17 +216,6 @@ Avoid:
   - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against the new emit shape; new CODEGEN test exercising `concurrency = PARALLEL_FOR` registers without FATAL and dispatches across worker threads
   - **Issue:** #1120
   - **Notes:** DSL parser (`cmake/lua_codegen/system_dsl.cpp`) already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` column ops — lowering is structural: recognize `local s = arch.C_Foo:at(i)` as a row binding, `:setAt` as a row write, drop outer for-statement. Watch for existing callers of `std::vector<EntityId>& _ir_codegen_ids` before deleting. T-223 left `/* concurrency */ IRSystem::Concurrency::SERIAL` annotations on every emitted createSystem call — switching the default is mechanical once lowering lands. Filed by opus-worker during T-223.
-  - **Links:**
-
-- [~] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD branches call binder directly, eliminating per-node allocation and dual-slot static overhead
-  - **ID:** T-348
-  - **Area:** engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-348-serial-fastpath-dual-slot
-  - **Blocked by:** (none)
-  - **Acceptance:** `functionTick_` removed for row-iterating forms; `executeSystem` branches on `(prepareRangedTick_ != null && concurrency != PARALLEL_FOR)` → calls `prepareRangedTick_(node)(0, length)` directly; tag/relation-form `functionTick_` slot kept; `IrredenEngineTest` + `IRShapeDebug` build clean; existing PARALLEL_FOR systems fan out correctly
-  - **Issue:** #1124
-  - **Notes:** Two-part scope: (1) SERIAL fast-path avoids per-node `std::function` heap allocation on non-PARALLEL_FOR path; (2) dual-slot consolidation drops ~64 bytes/system × N systems × M worlds of static `std::function` memory. Opus recheck on PR #1123 flagged that `m_ticks[i].functionTick_` and `m_ticks[i].prepareRangedTick_` are aliased copies. Affected file: `engine/system/include/irreden/system/system_manager.hpp`.
   - **Links:**
 
 - [~] **engine/system: validator FATAL picks wrong rule on variadic catch-all + PARALLEL_FOR** — order validator rules most-specific-first so the most useful diagnostic fires on ambiguous signatures
@@ -277,10 +255,10 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
 - [x] **T-342** — fleet: queue-manager queued/free divergence check · Owner: claude/T-342-queue-manager-divergence-check · PR: https://github.com/jakildev/IrredenEngine/pull/1148
 - [x] **T-333** — engine/system: pre-resolve component vectors on main thread for PARALLEL_FOR · Owner: claude/T-333-pre-resolve-component-vectors · PR: https://github.com/jakildev/IrredenEngine/pull/1123
 - [x] **T-334** — engine/system: validator rejects PARALLEL_FOR + relation-form · Owner: claude/T-334-parallel-for-relation-form-validator · PR: https://github.com/jakildev/IrredenEngine/pull/1122
-- [x] **T-225** — entity: thread-safe deferred mutations from workers · Owner: claude/T-225-parallel-spawn · PR: https://github.com/jakildev/IrredenEngine/pull/1109
 - [x] **T-344** — fleet/auto-mode: fix rm -f .review-body.md via Read-then-Write protocol · Owner: claude/T-344-auto-mode-allowlist · PR: https://github.com/jakildev/IrredenEngine/pull/1151
 - [x] **T-343** — fleet: review-pr live label check after claim acquisition (pre-checkout) · Owner: claude/T-343-review-pr-live-label-check · PR: https://github.com/jakildev/IrredenEngine/pull/1150
 - [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
@@ -296,4 +274,4 @@ Avoid:
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
-- [x] **T-224** — system: pipeline groups + cross-system access validation · Owner: claude/T-224-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1104
+- [x] **T-225** — entity: thread-safe deferred mutations from workers · Owner: claude/T-225-parallel-spawn · PR: https://github.com/jakildev/IrredenEngine/pull/1109
