@@ -5,12 +5,19 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/job/job_manager.hpp>
+#include <irreden/profile/logger_spd.hpp>
 #include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/system/system_access.hpp>
 #include <irreden/system/system_manager.hpp>
 
+#include <spdlog/sinks/ostream_sink.h>
+
+#include <algorithm>
 #include <atomic>
+#include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <vector>
 
 // T-222 Phase 2 — multithreading epic (#226). Two surfaces under test:
@@ -280,9 +287,32 @@ TEST_F(CreateSystemValidatorTest, CatchAllWithRelationParamsFatalsAtRegistration
     // signature probe (entity-id, batch-form, relation-form). The
     // validator rules are ordered most-specific-first (relation →
     // batch → entity-id) so the isRelationForm_ assertion fires first.
-    // This test pins that PARALLEL_FOR + catch-all + RelationParams is
-    // always rejected — a different shape than the explicit relation-
-    // form case in RelationFormParallelForFatalsAtRegistration.
+    //
+    // This test pins both that PARALLEL_FOR + catch-all + RelationParams
+    // is rejected AND that the rejection is the relation-form
+    // diagnostic specifically — silently re-introducing the prior rule
+    // order (relation moved back to last) would still throw, but the
+    // batch-form or EntityId assertion would fire first instead, and
+    // the captured-log substring check below would fail.
+    //
+    // IR_ASSERT throws `std::runtime_error("Engine assertion failed")`
+    // — the formatted diagnostic goes to the GL API spdlog logger at
+    // critical severity, NOT into the exception's `what()`. We attach
+    // a temporary ostream sink to the logger, run the call, and verify
+    // the captured text contains the relation-form diagnostic.
+    std::ostringstream captured;
+    auto captureSink = std::make_shared<spdlog::sinks::ostream_sink_st>(captured);
+    auto *glLogger = LoggerSpd::instance()->getGLAPILogger();
+    glLogger->sinks().push_back(captureSink);
+    struct SinkGuard {
+        spdlog::logger *logger_;
+        std::shared_ptr<spdlog::sinks::sink> sink_;
+        ~SinkGuard() {
+            auto &sinks = logger_->sinks();
+            sinks.erase(std::remove(sinks.begin(), sinks.end(), sink_), sinks.end());
+        }
+    } guard{glLogger, captureSink};
+
     auto catchAllTick = [](auto &&...) {};
     EXPECT_THROW(
         (IRSystem::createSystem<C_VelA>(
@@ -296,6 +326,10 @@ TEST_F(CreateSystemValidatorTest, CatchAllWithRelationParamsFatalsAtRegistration
         )),
         std::runtime_error
     );
+
+    const std::string logged = captured.str();
+    EXPECT_NE(logged.find("relation tick form"), std::string::npos)
+        << "expected relation-form assertion to fire first, got captured log: " << logged;
 }
 
 // ----------------------------------------------------------------------
