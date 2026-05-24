@@ -184,11 +184,11 @@ Avoid:
   - **Notes:** Follow-up from PR #1146 review nit. Option A = keep current order (re-target first, rebase second) + document why; Option B = invert (rebase first, then re-target + clean labels on clean exit; still remove awaiting-base/stacked labels on conflict branch so opus-worker filter accepts the PR). Issue body details the merger ↔ opus-worker contract constraint that makes Option B non-trivial. `[opus]` required to reason across the merger/worker boundary.
   - **Links:**
 
-- [ ] **engine/system: validator FATAL picks wrong rule on catch-all tick + PARALLEL_FOR** — order validator rules most-specific-first (or collapse to Form enum) so catch-all + PARALLEL_FOR emits the most-precise FATAL message
+- [~] **engine/system: validator FATAL picks wrong rule on catch-all tick + PARALLEL_FOR** — order validator rules most-specific-first (or collapse to Form enum) so catch-all + PARALLEL_FOR emits the most-precise FATAL message
   - **ID:** T-349
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** a variadic catch-all tick `[](auto&&...) {}` with `PARALLEL_FOR` fires the relation-form FATAL (most-specific), not the entity-id FATAL; existing FATAL messages for real-world callers unchanged; `IrredenEngineTest` passes
   - **Issue:** #1125
@@ -251,11 +251,11 @@ Avoid:
   - **Notes:** Two-part scope: (1) SERIAL fast-path avoids per-node `std::function` heap allocation on non-PARALLEL_FOR path; (2) dual-slot consolidation drops ~64 bytes/system × N systems × M worlds of static `std::function` memory. Opus recheck on PR #1123 flagged that `m_ticks[i].functionTick_` and `m_ticks[i].prepareRangedTick_` are aliased copies. Affected file: `engine/system/include/irreden/system/system_manager.hpp`.
   - **Links:**
 
-- [ ] **engine/system: validator FATAL picks wrong rule on variadic catch-all + PARALLEL_FOR** — order validator rules most-specific-first so the most useful diagnostic fires on ambiguous signatures
+- [~] **engine/system: validator FATAL picks wrong rule on variadic catch-all + PARALLEL_FOR** — order validator rules most-specific-first so the most useful diagnostic fires on ambiguous signatures
   - **ID:** T-349
   - **Area:** engine/system
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** with an artificial catch-all tick `[](auto&&...) {}` + `PARALLEL_FOR`, the FATAL message names the most-specific failing rule (relation-form > batch-form > entity-id); `IrredenEngineTest` passes; build clean
   - **Issue:** #1125
