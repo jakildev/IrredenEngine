@@ -159,13 +159,13 @@ iteration of polling, reviewing, and exiting cleanly:
       <reason>` per the same section.
    e. **Set the verdict label IMMEDIATELY after posting the review.**
       This is the single most-skipped step in the loop. Use the
-      canonical 4-command block in
+      split remove + add + retry-and-verify pattern in
       [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands)
       (add `--repo <game-repo>` for game PRs). Your VERY NEXT bash
-      call after `gh pr review` MUST be the `gh pr edit ... --add-label`
-      — a review without a verdict label is invisible to the human's
-      merge queue. Confirm with `gh pr view <N> --json labels --jq
-      '.labels[].name'` after the edit if unsure.
+      calls after `gh pr review` MUST be the removes (`|| true`),
+      the `--add-label`, and the verify re-query — in that order.
+      A review without a verdict label is invisible to the human's
+      merge queue.
 
       The `review-pr` skill (invoked for engine single-task PRs)
       writes its own label per the same rules, but if you find a PR

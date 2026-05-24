@@ -155,11 +155,13 @@ iteration of polling, reviewing, and exiting cleanly:
       [REVIEWER-PROTOCOL.md § Posting the review body](../../docs/agents/REVIEWER-PROTOCOL.md#posting-the-review-body)
       for the `Write` → `.review-body.md` → `gh pr review --body-file`
       mechanics.
-   g. **Set the verdict label.** Use the canonical 4-command block in
+   g. **Set the verdict label.** Use the split remove + add +
+      retry-and-verify pattern in
       [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands)
       (add `--repo <game-repo>` for game PRs). Your VERY NEXT bash
-      call after `gh pr review` MUST be the `gh pr edit ... --add-label`
-      — a review without a verdict label is invisible to the human's
+      calls after `gh pr review` MUST be the removes (`|| true`),
+      the `--add-label`, and the verify re-query — in that order.
+      A review without a verdict label is invisible to the human's
       merge queue.
    h. **Release the review claim** immediately after the verdict
       label-swap (and on no-verdict skip paths — broken stack, gated
