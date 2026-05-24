@@ -200,18 +200,6 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: queue-manager maintenance-sync — re-derive TASKS.md from issue bodies on every wake** — add maintenance-sync step to role-queue-manager.md that re-derives stale rows from issue body and PR-merge state before any other step
-  - **ID:** T-338
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** maintenance-sync step added to role-queue-manager.md; fleet feedback `stale-task-row` cluster does not re-surface in subsequent digest runs
-  - **Issue:** #1131
-  - **Notes:** Surfaced by review-fleet-feedback (signature: stale-task-row, 50 occurrences since 2026-05-01). Workers claim rows for closed-completed tasks; queue-manager re-opened merged T-104 without flipping to [x]. Proposed fix: add maintenance-sync step at top of role-queue-manager.md startup.
-  - **Links:**
-
-
 - [~] **fleet: review-pr verdict-label retry-and-verify guard** — split combined `gh pr edit --remove/--add` into two calls; wrap add in retry-and-verify; cross-ref role-sonnet-reviewer and role-opus-reviewer
   - **ID:** T-339
   - **Area:** tooling
