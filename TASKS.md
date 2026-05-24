@@ -200,18 +200,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet: merger stacked-PR merged-base re-target with rebase path** — add detect-base-in-master → re-target to master → rebase branch path between steps 2.5 and 2.6 in role-merger.md; preserve verdict labels across swap
-  - **ID:** T-340
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-340-merger-merged-base-retarget
-  - **Blocked by:** (none)
-  - **Acceptance:** merger detects stacked PR whose base was merged to master; re-targets to master; rebases branch; preserves any live fleet:needs-fix / fleet:approved label; `stacked-pr-merger-gap` cluster quiet
-  - **Issue:** #1133
-  - **Notes:** Surfaced by review-fleet-feedback (signature: stacked-pr-merger-gap, 8 occurrences since 2026-04-30). Merger left rebase state in worktree; MERGEABLE stacked PRs fell through every step; verdict labels silently dropped. Add path between steps 2.5–2.6 in role-merger.md.
-  - **Links:**
-
-
 - [~] **fleet: queue-manager queued/free divergence check** — add divergence check to role-queue-manager.md that flags mismatch between `fleet:queued` issue set and TASKS.md `free` rows; write warning to ~/.fleet/feedback/queue-manager.md
   - **ID:** T-342
   - **Area:** tooling
@@ -263,6 +251,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
 - [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
 - [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
 - [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
@@ -282,4 +271,3 @@ Avoid:
 - [x] **T-327** — broaden cross-host smoke criteria; add windows-* + verified-* labels · Owner: claude/T-327-cross-host-smoke-windows · PR: https://github.com/jakildev/IrredenEngine/pull/1098
 - [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
 - [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
-- [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
