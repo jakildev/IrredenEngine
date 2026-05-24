@@ -248,18 +248,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet: fleet-build --target format restricted to touched files** — in scripts/fleet/fleet-build, restrict `--target format` to files from `git diff --name-only` against merge-base (*.cpp *.hpp) only
-  - **ID:** T-345
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-345-fleet-build-format-touched-files
-  - **Blocked by:** (none)
-  - **Acceptance:** `fleet-build --target format` runs clang-format only on files changed since merge-base; no full-tree reformat; `format-target-overreach` cluster quiet
-  - **Issue:** #1138
-  - **Notes:** Surfaced by review-fleet-feedback (signature: format-target-overreach, 3 occurrences since 2026-05-06). `fleet-build --target format` reformats entire engine (458 files), risking unrelated formatter drift in feature PRs. Restrict to `git diff --name-only $(git merge-base HEAD origin/master) -- *.cpp *.hpp`.
-  - **Links:**
-
-
 - [~] **fleet: scout stackable_blocker_pr false-positive filter** — in fleet-state-scout, add filter: (a) verify downstream task files not already inside blocker PR diff; (b) drop candidates with fleet:design-blocked or fleet:design-escalated
   - **ID:** T-346
   - **Area:** tooling
@@ -275,6 +263,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
 - [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
 - [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
 - [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
@@ -294,4 +283,3 @@ Avoid:
 - [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
 - [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
 - [x] **T-324** — editors/voxel_editor: migrate EditorViewportRotate to shared-ptr state capture · Owner: claude/T-324-editor-viewport-rotate · PR: https://github.com/jakildev/IrredenEngine/pull/1089
-- [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
