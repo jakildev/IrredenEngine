@@ -324,7 +324,12 @@ constexpr SystemAccess deriveAccessFromSignature() {
 /// `kind_` selects which conflict fired; `componentKey_` is the
 /// `typeKey<T>` of the offending component for the write/write,
 /// write/read, and read/write cases (`nullptr` for the kind-only
-/// cases — `MAIN_THREAD` and double-spawner).
+/// `MAIN_THREAD_IN_GROUP` case).
+///
+/// `TWO_SPAWNERS` is retained for ABI/header stability — T-225 lifted
+/// the rule that produced it, so `findPipelineGroupConflict` never
+/// returns this kind anymore. Removing the enum value would break
+/// existing exhaustive switches in downstream code; leave it.
 enum class GroupConflictKind {
     NONE,
     MAIN_THREAD_IN_GROUP,
@@ -332,12 +337,10 @@ enum class GroupConflictKind {
     WRITE_READ, // A writes, B reads
     READ_WRITE, // A reads, B writes
     TWO_SPAWNERS,
-    /// A single mutator (`Spawns` or `Destroys`) sharing a parallel
-    /// group with any non-mutator. The EntityManager's deferred
-    /// mutation queue is not thread-safe in Phase 1 of the
-    /// multithreading epic — T-225 lifts this when the per-worker
-    /// queue lands. Until then, any mutator must run in a singleton
-    /// group.
+    /// T-225 lifted the single-mutator-with-sibling rule — per-worker
+    /// deferred-mutation buffers make any mutator safe in a parallel
+    /// group. Retained for exhaustive-switch ABI stability (like
+    /// `TWO_SPAWNERS`); `findPipelineGroupConflict` never returns it.
     MUTATOR_IN_PARALLEL_GROUP,
 };
 
@@ -357,20 +360,21 @@ struct GroupConflict {
 /// 1. `MAIN_THREAD_IN_GROUP` — checked first across all systems so
 ///    the diagnostic surfaces the strongest claim ("MAIN_THREAD never
 ///    co-executes") when multiple conflicts coexist.
-/// 2. `MUTATOR_IN_PARALLEL_GROUP` — checked next across all systems,
-///    for the same priority reason (the deferred-mutation queue
-///    isn't thread-safe in Phase 1, so a mutator forbids ANY parallel
-///    siblings, not just other mutators).
-/// 3. Pairwise (i<j) conflict checks. Within each pair, scanned in
-///    order: `TWO_SPAWNERS`, then component-set overlaps
-///    (`WRITE_WRITE`, `WRITE_READ`, `READ_WRITE`). The kind names
-///    which side is the writer so callers can render the directional
-///    message without re-querying the accesses.
+/// 2. Pairwise (i<j) conflict checks. Within each pair, scanned in
+///    order: component-set overlaps (`WRITE_WRITE`, `WRITE_READ`,
+///    `READ_WRITE`). The kind names which side is the writer so
+///    callers can render the directional message without re-querying
+///    the accesses.
 ///
-/// Across the whole group the scan is not strictly "strongest claim
-/// wins" — e.g. a `WRITE_WRITE` between pair (0,1) is surfaced before
-/// a later pair-(0,2) `TWO_SPAWNERS`. The intra-pair priority IS
-/// strongest-first, which is what the diagnostic needs in practice.
+/// T-225 lifted both the pairwise `TWO_SPAWNERS` rule and the
+/// broader `MUTATOR_IN_PARALLEL_GROUP` rule. Per-worker
+/// deferred-mutation buffers route every `setComponentDeferred` /
+/// `removeComponentDeferred` / `markEntityForDeletion` /
+/// `createEntity` call into a worker-private slot; the main thread
+/// drains every slot serially at the end of each group via
+/// `flushStructuralChanges`. Any number of `Spawns` / `Destroys`
+/// systems can therefore share a group safely as long as no
+/// component-column conflict applies (rule 2 above).
 ///
 /// Pure function over `SystemAccess` so unit tests can construct
 /// fixtures without an `IRSystem::createSystem` path. No allocation,
@@ -382,20 +386,14 @@ inline GroupConflict findPipelineGroupConflict(const SystemAccess *accesses, std
             return GroupConflict{GroupConflictKind::MAIN_THREAD_IN_GROUP, i, i, nullptr};
         }
     }
-    if (n > 1) {
-        for (std::size_t i = 0; i < n; ++i) {
-            if (accesses[i].mutatesArchetypeGraph_) {
-                return GroupConflict{GroupConflictKind::MUTATOR_IN_PARALLEL_GROUP, i, i, nullptr};
-            }
-        }
-    }
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = i + 1; j < n; ++j) {
             const SystemAccess &a = accesses[i];
             const SystemAccess &b = accesses[j];
-            if (a.mutatesArchetypeGraph_ && b.mutatesArchetypeGraph_) {
-                return GroupConflict{GroupConflictKind::TWO_SPAWNERS, i, j, nullptr};
-            }
+            // T-225: TWO_SPAWNERS and MUTATOR_IN_PARALLEL_GROUP are
+            // no longer conflict conditions — per-worker deferred-
+            // mutation buffers handle concurrent archetype-graph
+            // mutation. Pairwise read/write conflicts below still apply.
             for (std::size_t wi = 0; wi < a.writeCount_; ++wi) {
                 if (b.writesType(a.writes_[wi])) {
                     return GroupConflict{GroupConflictKind::WRITE_WRITE, i, j, a.writes_[wi]};

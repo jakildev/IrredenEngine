@@ -8,8 +8,8 @@
 #include <irreden/entity/archetype_graph.hpp>
 #include <irreden/entity/archetype.hpp>
 
-#include <queue>
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <initializer_list>
 #include <set>
@@ -42,10 +42,32 @@ struct PreDestroyHookEntry {
     PreDestroyHook hook_;
 };
 
+// T-225: per-worker staging buffer for deferred structural mutations
+// produced from a `PARALLEL_FOR` system body. One instance per worker
+// (index 0 == main thread, 1..N == IRJob worker threads). Workers
+// write only their own slot, so no lock is needed on the producer side;
+// `flushStructuralChanges` drains every buffer serially on the main
+// thread in `workerId` order so the visible effect is deterministic.
+struct WorkerStaging {
+    std::vector<PendingComponentRemoval> componentRemovals_;
+    std::vector<std::function<void()>> structuralChanges_;
+    std::vector<EntityId> markedForDeletion_;
+};
+
 class EntityManager {
   public:
     EntityManager();
     ~EntityManager();
+
+    /// Size the per-worker staging vector to `workerSlots` entries
+    /// (slot 0 == main thread, slots 1..N == IRJob workers, so the
+    /// caller passes `IRJob::workerCount() + 1`). Must be called
+    /// once, on the main thread, after `JobManager` is constructed
+    /// and before any worker dispatches into the staging path. Safe
+    /// to call before — the manager initialises with a single
+    /// main-thread slot so pre-`JobManager` deferred ops keep
+    /// working unmodified.
+    void resizeWorkerStaging(std::size_t workerSlots);
 
     inline Archetype &getEntityArchetype(EntityId e) {
         return getRecord(e).archetypeNode->type_;
@@ -85,6 +107,21 @@ class EntityManager {
 
     template <typename... Components> EntityId createEntity(const Components &...components) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        // T-225: a `createEntity` from a `PARALLEL_FOR` worker body
+        // routes through the per-worker staging buffer. We pre-allocate
+        // the EntityId atomically so the caller can return it
+        // immediately; the archetype-node insertion runs on the main
+        // thread at the next `flushStructuralChanges`.
+        if (!isMainThreadForDeferred()) {
+            EntityId entity = allocateEntityIdAtomic();
+            int slot = workerSlotForCurrentThread();
+            m_workerStaging[slot].structuralChanges_.push_back(
+                [this, entity, components...]() {
+                    insertReservedEntity(entity, components...);
+                }
+            );
+            return entity;
+        }
         EntityId entity = allocateEntity();
         Archetype archetype = getArchetype<Components...>();
         ArchetypeNode *archetypeNode = m_archetypeGraph.findCreateArchetypeNode(archetype);
@@ -96,6 +133,20 @@ class EntityManager {
             makeComponentStringInternal(archetype).c_str()
         );
         return entity;
+    }
+
+    // T-225: main-thread completion of a worker-deferred createEntity.
+    // The EntityId was already allocated atomically when the worker
+    // staged the request; we just complete the archetype-node insertion.
+    template <typename... Components>
+    void insertReservedEntity(EntityId entity, const Components &...components) {
+        IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        m_entityIndex.emplace(entity & IR_ENTITY_ID_BITS, EntityRecord{nullptr, -1});
+        ++m_liveEntityCount;
+        Archetype archetype = getArchetype<Components...>();
+        ArchetypeNode *archetypeNode = m_archetypeGraph.findCreateArchetypeNode(archetype);
+        int index = insertEntityToNode(archetypeNode, entity, components...);
+        updateRecord(entity, archetypeNode, index);
     }
 
     template <typename Component, typename... Args> ComponentId registerComponent(Args &&...args) {
@@ -250,7 +301,11 @@ class EntityManager {
 
     template <typename Component> void removeComponentDeferred(EntityId entity) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        m_pendingComponentRemovals.push_back({
+        // T-225: route through the per-worker staging buffer so a
+        // `PARALLEL_FOR` body in any worker can call this without
+        // racing on the shared pending vector.
+        int slot = workerSlotForCurrentThread();
+        m_workerStaging[slot].componentRemovals_.push_back({
             entity,
             getComponentType<Component>(),
         });
@@ -259,7 +314,10 @@ class EntityManager {
     template <typename Component>
     void setComponentDeferred(EntityId entity, const Component &component) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        m_pendingStructuralChanges.push_back([this, entity, component]() {
+        // T-225: route through the per-worker staging buffer (see
+        // `removeComponentDeferred`).
+        int slot = workerSlotForCurrentThread();
+        m_workerStaging[slot].structuralChanges_.push_back([this, entity, component]() {
             if (entityExists(entity)) {
                 setComponent<Component>(entity, component);
             }
@@ -407,7 +465,6 @@ class EntityManager {
     EntityId getSingletonByComponentIdOrNull(ComponentId componentType);
 
   private:
-    std::queue<EntityId> m_entityPool;
     std::unordered_map<EntityId, EntityRecord> m_entityIndex;
     ArchetypeGraph m_archetypeGraph;
     std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
@@ -417,9 +474,31 @@ class EntityManager {
     // TODO: Remove when entity is destroyed
     std::unordered_map<std::string, EntityId> m_namedEntities;
     EntityId m_liveEntityCount;
+    // Legacy main-thread deferred-mutation queues. After T-225 all
+    // public API writes go through m_workerStaging[0] (main thread)
+    // or m_workerStaging[slot] (workers), so these will always be
+    // empty in a correctly-running post-T-225 World. Retained as a
+    // safety net: flushStructuralChanges / destroyMarkedEntities drain
+    // them first, so any internal path that bypasses the public API
+    // (migration glue, future low-level ECS work) still gets picked up.
     std::vector<EntityId> m_entitiesMarkedForDeletion;
     std::vector<PendingComponentRemoval> m_pendingComponentRemovals;
     std::vector<std::function<void()>> m_pendingStructuralChanges;
+    // T-225: per-worker staging buffers for deferred mutations from
+    // worker threads. Sized to `IRJob::workerCount() + 1` by
+    // `resizeWorkerStaging` after `JobManager` is constructed. Until
+    // then the vector has a single slot for the main thread, so the
+    // pre-`JobManager` path (engine init, tests with no worker pool)
+    // works unchanged.
+    std::vector<WorkerStaging> m_workerStaging;
+    // T-225: monotonic atomic counter for cross-thread EntityId
+    // allocation. Replaces the legacy `std::queue<EntityId>` pool —
+    // worker threads can `fetch_add` without contending on a mutex.
+    // IDs are NOT recycled (the pool semantics are gone); the
+    // 25-bit `IR_ENTITY_ID_BITS` space gives ~33M entities per
+    // session, plenty for current workloads. If a long-running
+    // session ever approaches the cap, switch to a tiered allocator.
+    std::atomic<EntityId> m_nextEntityId{IR_RESERVED_ENTITIES};
     std::vector<PreDestroyHookEntry> m_preDestroyHooks;
     PreDestroyHookId m_nextPreDestroyHookId{1};
     bool m_preDestroyHookIterating{false};
@@ -430,6 +509,9 @@ class EntityManager {
     std::unordered_map<ComponentId, EntityId> m_singletonEntityByComponent;
 
     EntityId allocateEntity();
+    EntityId allocateEntityIdAtomic();
+    int workerSlotForCurrentThread() const;
+    bool isMainThreadForDeferred() const;
     void addNewEntityToBaseNode(EntityId entity);
     void returnEntityToPool(EntityId entity);
     ComponentId registerComponentImpl(const std::string &typeName, smart_ComponentData impl);

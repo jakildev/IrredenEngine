@@ -79,6 +79,13 @@ World::World(const char *configFileName)
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()
     );
+    // T-225: size the EntityManager's per-worker deferred-mutation
+    // staging vector now that JobManager exists. Slot 0 is main,
+    // slots 1..N are IRJob worker threads, so the total is
+    // `workerCount() + 1`.
+    m_entityManager.resizeWorkerStaging(
+        static_cast<std::size_t>(m_jobManager.workerCount() + 1)
+    );
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
 }
