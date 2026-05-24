@@ -160,6 +160,41 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
     EXPECT_NE(ids.CodegenWobble, ids.CodegenClampPositive);
     EXPECT_NE(ids.CodegenClampPositive, ids.CodegenAddOne);
     EXPECT_NE(ids.CodegenAddOne, ids.CodegenDamage);
+    EXPECT_NE(ids.CodegenDamage, ids.CodegenParallelInc);
+}
+
+// ---- PARALLEL_FOR registers without FATAL and updates every row --------
+//
+// T-347: codegen now emits the per-component lambda shape, which clears
+// the `isBatchForm_` FATAL in
+// `IRSystem::detail::validateConcurrencyForAccess`. Registration must
+// succeed, and a populated archetype must see every row processed by the
+// per-component body (whether the scheduler fans out across workers or
+// falls back to serial under the test harness, every row's body must
+// fire — the per-component lambda has no per-row branching that could
+// skip rows).
+
+TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {
+    using IRComponents::C_CodegenSysPos;
+
+    constexpr int kCount = 256;
+    std::vector<IREntity::EntityId> entities;
+    entities.reserve(kCount);
+    for (int i = 0; i < kCount; ++i) {
+        entities.push_back(IREntity::createEntity(C_CodegenSysPos(static_cast<float>(i), 0.0f)));
+    }
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenParallelInc();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    for (int i = 0; i < kCount; ++i) {
+        EXPECT_FLOAT_EQ(
+            IREntity::getComponent<C_CodegenSysPos>(entities[i]).x_,
+            static_cast<float>(i) + 1.0f
+        );
+        EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(entities[i]).y_, 2.0f);
+    }
 }
 
 } // namespace

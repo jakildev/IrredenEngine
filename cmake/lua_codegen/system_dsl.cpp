@@ -890,10 +890,27 @@ struct Emitter {
     const std::vector<ComponentSchema> &registry_;
     std::unordered_map<std::string, Symbol> symbols_;
 
+    // T-347: per-row emission mode. When non-empty, the emitted lambda is
+    // the per-component form `[](C_X& _ir_row_X, ...)` rather than the
+    // batch form `[](Archetype&, vector<EntityId>&, vector<C_X>&, ...)`,
+    // and column-op index expressions that match `loopVarName_` lower to
+    // the per-row reference `_ir_row_X` (or `_ir_row_X.field_`) instead
+    // of `_ir_col_X[i]`. Indexing with any other expression is a parse
+    // error — per-row form has no column vector to scatter-index into.
+    std::string loopVarName_;
+
     Emitter(const std::string &file, const std::vector<ComponentSchema> &registry)
         : file_(file), registry_(registry) {}
 
     void writeIndent() { for (int i = 0; i < indent_; ++i) out_ << "    "; }
+
+    // True when this expression is exactly the per-row loop variable
+    // reference (used to validate column-op index args in per-row mode).
+    bool isLoopVarRef(const Expr &e) const {
+        return !loopVarName_.empty() &&
+               e.kind_ == ExprKind::NAME_REF &&
+               e.name_ == loopVarName_;
+    }
 
     const ComponentSchema *findComponent(const std::string &name) const {
         for (const auto &c : registry_) if (c.name_ == name) return &c;
@@ -1016,6 +1033,15 @@ struct Emitter {
                 // arch.length is a special case
                 if (e.receiver_->kind_ == ExprKind::NAME_REF &&
                     e.receiver_->name_ == "arch" && e.field_ == "length") {
+                    if (!loopVarName_.empty()) {
+                        // T-347: per-row form has no archetype column to size — the
+                        // canonical `for i = 0, arch.length - 1` outer loop is dropped
+                        // and the row count is implicit in the engine's per-row dispatch.
+                        fail(file_, e.line_,
+                             "`arch.length` is only valid as the upper bound of the "
+                             "canonical `for i = 0, arch.length - 1 do` loop; CODEGEN "
+                             "bodies have no archetype-length read outside that loop");
+                    }
                     out_ << "static_cast<std::int32_t>(_ir_codegen_ids.size())";
                     return ExprType::INT32;
                 }
@@ -1087,6 +1113,17 @@ struct Emitter {
                              "` is not declared via `IRComponent.register(...)` "
                              "(CODEGEN system bodies only support Lua-defined components)");
                 }
+                if (!loopVarName_.empty()) {
+                    if (!isLoopVarRef(*e.args_[0])) {
+                        fail(file_, e.line_,
+                             "`arch." + e.componentName_ +
+                                 ":at(...)` index must be the canonical loop variable `" +
+                                 loopVarName_ + "` (CODEGEN bodies dispatch per-row; "
+                                 "computed indexes have no per-row meaning)");
+                    }
+                    out_ << "_ir_row_" << e.componentName_;
+                    return ExprType::COMPONENT;
+                }
                 out_ << "_ir_col_" << e.componentName_ << "[";
                 emitExpr(*e.args_[0]);
                 out_ << "]";
@@ -1103,6 +1140,16 @@ struct Emitter {
                 if (!field) {
                     fail(file_, e.line_,
                          "component `" + schema->name_ + "` has no field `" + e.fieldNameLiteral_ + "`");
+                }
+                if (!loopVarName_.empty()) {
+                    if (!isLoopVarRef(*e.args_[0])) {
+                        fail(file_, e.line_,
+                             "`arch." + e.componentName_ +
+                                 ":getField(...)` index must be the canonical loop variable `" +
+                                 loopVarName_ + "`");
+                    }
+                    out_ << "_ir_row_" << e.componentName_ << "." << e.fieldNameLiteral_ << "_";
+                    return fieldTypeToExprType(field->type_);
                 }
                 out_ << "_ir_col_" << e.componentName_ << "[";
                 emitExpr(*e.args_[0]);
@@ -1202,6 +1249,18 @@ struct Emitter {
                                  "component `" + s.assignTarget_.componentName_ +
                                      "` is not declared via `IRComponent.register(...)`");
                         }
+                        if (!loopVarName_.empty()) {
+                            if (!isLoopVarRef(*s.assignTarget_.indexExpr_)) {
+                                fail(file_, s.line_,
+                                     "`arch." + s.assignTarget_.componentName_ +
+                                         ":setAt(...)` index must be the canonical loop "
+                                         "variable `" + loopVarName_ + "`");
+                            }
+                            out_ << "_ir_row_" << s.assignTarget_.componentName_ << " = ";
+                            emitExpr(*s.assignRhs_);
+                            out_ << ";\n";
+                            return;
+                        }
                         out_ << "_ir_col_" << s.assignTarget_.componentName_ << "[";
                         emitExpr(*s.assignTarget_.indexExpr_);
                         out_ << "] = ";
@@ -1221,6 +1280,20 @@ struct Emitter {
                             fail(file_, s.line_,
                                  "component `" + schema->name_ + "` has no field `" +
                                      s.assignTarget_.fieldNameLiteral_ + "`");
+                        }
+                        if (!loopVarName_.empty()) {
+                            if (!isLoopVarRef(*s.assignTarget_.indexExpr_)) {
+                                fail(file_, s.line_,
+                                     "`arch." + s.assignTarget_.componentName_ +
+                                         ":setField(...)` index must be the canonical loop "
+                                         "variable `" + loopVarName_ + "`");
+                            }
+                            out_ << "_ir_row_" << s.assignTarget_.componentName_ << "."
+                                 << s.assignTarget_.fieldNameLiteral_ << "_ = static_cast<"
+                                 << cppTypeForFieldType(field->type_) << ">(";
+                            emitExpr(*s.assignRhs_);
+                            out_ << ");\n";
+                            return;
                         }
                         out_ << "_ir_col_" << s.assignTarget_.componentName_ << "[";
                         emitExpr(*s.assignTarget_.indexExpr_);
@@ -1320,6 +1393,43 @@ ParsedBody parseSystemBody(
     return body;
 }
 
+// T-347: identify the canonical per-row loop body. The shape:
+//   for <loopVar> = 0, arch.length - 1 do <stmts> end
+// at the top level of the tick body, as the ONLY top-level statement.
+// Returns the for-statement pointer when matched, else nullptr. The
+// pointer is borrowed from `body`; callers must not outlive it.
+const Stmt *matchPerRowCanonicalLoop(const ParsedBody &body) {
+    if (body.stmts_.size() != 1) return nullptr;
+    const Stmt *s = body.stmts_[0].get();
+    if (s->kind_ != StmtKind::FOR_NUMERIC) return nullptr;
+
+    // Lo: integer literal 0.
+    if (!s->forLo_ || s->forLo_->kind_ != ExprKind::NUMBER_LITERAL ||
+        !s->forLo_->isInt_ || s->forLo_->intValue_ != 0) {
+        return nullptr;
+    }
+
+    // Hi: `arch.length - 1` (BinOp SUB; lhs INDEX(arch, length); rhs int 1).
+    const Expr *hi = s->forHi_.get();
+    if (!hi || hi->kind_ != ExprKind::BINARY_OP || hi->binOp_ != BinOp::SUB) {
+        return nullptr;
+    }
+    const Expr *hiLhs = hi->lhs_.get();
+    const Expr *hiRhs = hi->rhs_.get();
+    if (!hiLhs || hiLhs->kind_ != ExprKind::INDEX ||
+        hiLhs->field_ != "length" ||
+        !hiLhs->receiver_ || hiLhs->receiver_->kind_ != ExprKind::NAME_REF ||
+        hiLhs->receiver_->name_ != "arch") {
+        return nullptr;
+    }
+    if (!hiRhs || hiRhs->kind_ != ExprKind::NUMBER_LITERAL ||
+        !hiRhs->isInt_ || hiRhs->intValue_ != 1) {
+        return nullptr;
+    }
+
+    return s;
+}
+
 void emitSystem(
     std::string &out,
     const SystemRecord &record,
@@ -1360,6 +1470,28 @@ void emitSystem(
         }
     }
 
+    // T-347: CODEGEN system bodies must follow the canonical per-row shape
+    // so the emitted lambda is the per-component form
+    // (`[](C_X& _ir_row_X, ...)`). Per-component is the engine's default
+    // tick signature (engine/system/CLAUDE.md "Three valid TICK function
+    // signatures") and the only one compatible with
+    // `Concurrency::PARALLEL_FOR` — the batch form FATALs in
+    // `detail::validateConcurrencyForAccess` (engine/system/include/irreden/
+    // ir_system.hpp).
+    const Stmt *perRowLoop = matchPerRowCanonicalLoop(body);
+    if (!perRowLoop) {
+        ParseError err;
+        err.message_ = "system `" + record.name_ +
+            "` body must consist of exactly one canonical per-row loop: "
+            "`for i = 0, arch.length - 1 do ... end`. CODEGEN dispatches "
+            "per-row so column ops outside the loop or computed loop bounds "
+            "have no meaning. (Switch to `mode = \"eval\"` for bodies that "
+            "need the batch form.)";
+        err.file_ = record.sourceFile_;
+        err.line_ = record.linedefined_;
+        throw err;
+    }
+
     Emitter emitter(record.sourceFile_, componentRegistry);
 
     std::ostringstream sig;
@@ -1383,18 +1515,18 @@ void emitSystem(
     }
     sig << "    >(\n";
     sig << "        \"" << record.name_ << "\",\n";
-    sig << "        []([[maybe_unused]] const IREntity::Archetype& _ir_arch,\n";
-    sig << "           std::vector<IREntity::EntityId>& _ir_codegen_ids";
-    for (const auto &compName : record.components_) {
-        sig << ",\n";
-        sig << "           std::vector<IRComponents::C_" << compName << ">& _ir_col_"
-            << compName;
+    sig << "        [](";
+    for (size_t i = 0; i < record.components_.size(); ++i) {
+        if (i) sig << ",\n           ";
+        sig << "IRComponents::C_" << record.components_[i] << "& _ir_row_"
+            << record.components_[i];
     }
     sig << ") {\n";
     out += sig.str();
 
+    emitter.loopVarName_ = perRowLoop->forVar_;
     emitter.indent_ = 3;
-    for (const auto &s : body.stmts_) emitter.emitStmt(*s);
+    for (const auto &s : perRowLoop->forBody_) emitter.emitStmt(*s);
 
     out += emitter.str();
     out += "        }\n";

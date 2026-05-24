@@ -76,6 +76,12 @@ IRComponent.register('LuaWaveState', {
 LuaWaveTickSysId = IRSystem.registerSystem({
     name = 'LuaWaveTick',
     components = { 'LuaWaveState' },
+    -- T-347: the per-component emit shape clears the `isBatchForm_`
+    -- FATAL in `validateConcurrencyForAccess`, unlocking PARALLEL_FOR
+    -- for codegen'd systems. The wave body only reads/writes its own
+    -- row and calls whitelisted intrinsics, so the worker dispatch is
+    -- race-free without further opt-in.
+    concurrency = IRSystem.Concurrency.PARALLEL_FOR,
     -- Tick body. Mirrors C_PeriodicIdle::tick() for the 2-stage
     -- SineEaseInOut case. The CODEGEN DSL forbids `while` loops, so
     -- the C++ stage-advance loop is unrolled into a single `if`

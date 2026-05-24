@@ -103,3 +103,24 @@ IRSystem.registerSystem({
         end
     end,
 })
+
+-- T-347: PARALLEL_FOR opt-in. After the codegen tool was switched from
+-- batch-form `[](Archetype&, vector<EntityId>&, vector<C_X>&, ...)` to
+-- per-component `[](C_X& _ir_row_X, ...)`, the trailing
+-- `IRSystem::Concurrency::PARALLEL_FOR` arg the emitter has been threading
+-- through since T-223 finally satisfies `validateConcurrencyForAccess`
+-- — the per-component form clears the `isBatchForm_` FATAL. This system
+-- exercises the unblocked path: registration must succeed without FATAL
+-- and the body must run across every row of the column.
+IRSystem.registerSystem({
+    name = 'CodegenParallelInc',
+    components = { 'CodegenSysPos' },
+    concurrency = IRSystem.Concurrency.PARALLEL_FOR,
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local pos = arch.CodegenSysPos:at(i)
+            arch.CodegenSysPos:setAt(i,
+                CodegenSysPos.new(pos.x + 1.0, pos.y + 2.0))
+        end
+    end,
+})
