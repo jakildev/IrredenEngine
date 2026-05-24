@@ -94,6 +94,10 @@ void SystemManager::replaceSystemBody(SystemId system, std::function<void(Archet
         m_nextSystemId
     );
     IR_ASSERT(static_cast<bool>(body), "replaceSystemBody: body must be a non-empty std::function");
+    IR_ASSERT(
+        !static_cast<bool>(m_ticks[system].prepareRangedTick_),
+        "replaceSystemBody: row-iterating systems use prepareRangedTick_, not functionTick_"
+    );
     m_ticks[system].functionTick_ = std::move(body);
 }
 

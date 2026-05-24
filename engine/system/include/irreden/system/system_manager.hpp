@@ -367,11 +367,11 @@ class SystemManager {
             // which goes through `EntityManager::m_pureComponentTypes`,
             // unsafe under concurrent reads — and returns a
             // `void(rangeBegin, rangeEnd)` worker closure that captures
-            // those refs. The SERIAL / MAIN_THREAD entry (`perNodeFn`)
-            // calls the binder once and invokes the returned closure
-            // with `[0, length)`; the PARALLEL_FOR dispatcher in
-            // `executeSystem` calls the binder once and fans the closure
-            // out to worker chunks via `IRJob::parallelFor`. Wrapped in
+            // those refs. The SERIAL / MAIN_THREAD path in `executeSystem`
+            // calls the binder once and invokes the returned closure with
+            // `[0, length)`; the PARALLEL_FOR dispatcher in `executeSystem`
+            // calls the binder once and fans the closure out to worker
+            // chunks via `IRJob::parallelFor`. Wrapped in
             // an `else` so the unsupported-signature static_assert below
             // only fires when the batch-form branch above has NOT
             // discarded this code.
