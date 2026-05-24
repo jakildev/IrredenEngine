@@ -37,20 +37,21 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
     /// entirely through `prepareRangedTick_` (T-348).
     TickFn functionTick_;
 
-    /// Main-thread binder for `Concurrency::PARALLEL_FOR` dispatch.
+    /// Main-thread binder for row-iterating tick forms; used by
+    /// SERIAL/MAIN_THREAD and PARALLEL_FOR alike (T-348).
     /// SystemManager calls this **once on the main thread** per matched
-    /// archetype node before fanning chunks out to `IRJob::parallelFor`.
-    /// The binder resolves the per-component vector references from the
-    /// node (going through `EntityManager::getComponentType<>` →
-    /// `m_pureComponentTypes` hash lookup, which is NOT safe under
-    /// concurrent reads from worker threads), captures them in a
-    /// `void(rangeBegin, rangeEnd)` closure, and returns it for workers
-    /// to invoke without ever touching EntityManager state. Populated
-    /// by the template `createSystem<...>` path for tick signatures the
-    /// runtime can chunk safely; empty for `createSystemDynamic`
-    /// (opaque body) and the per-archetype batch form (consumes the
-    /// whole column) — the registration validator rejects
-    /// `PARALLEL_FOR` in both cases.
+    /// archetype node. The binder resolves the per-component vector
+    /// references from the node (going through
+    /// `EntityManager::getComponentType<>` → `m_pureComponentTypes`
+    /// hash lookup, which is NOT safe under concurrent reads from worker
+    /// threads), captures them in a `void(rangeBegin, rangeEnd)` closure,
+    /// and returns it. For SERIAL/MAIN_THREAD, `executeSystem` invokes
+    /// the closure immediately with `[0, length)`. For PARALLEL_FOR,
+    /// it fans the closure out to `IRJob::parallelFor`. Populated by the
+    /// template `createSystem<...>` path for tick signatures the runtime
+    /// can chunk safely; empty for `createSystemDynamic` (opaque body)
+    /// and the per-archetype batch form (consumes the whole column) —
+    /// the registration validator rejects `PARALLEL_FOR` in both cases.
     PrepareRangedTickFn prepareRangedTick_;
 
     IREntity::Archetype archetype_;
