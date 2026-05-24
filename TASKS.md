@@ -212,18 +212,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet: review-pr live label check after claim acquisition (pre-checkout)** — add `gh pr view <N> --json labels` live-check immediately after acquiring fleet:reviewing-* claim, before checkout; bail if fleet:semantic-conflict/fleet:merger-cooldown/fleet:wip appeared since cache snapshot
-  - **ID:** T-343
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-343-review-pr-live-label-check
-  - **Blocked by:** (none)
-  - **Acceptance:** live label check added to review-pr/SKILL.md after claim acquisition; bail on fleet:semantic-conflict, fleet:merger-cooldown, fleet:wip; `state-cache-lag` cluster quiet
-  - **Issue:** #1136
-  - **Notes:** Surfaced by review-fleet-feedback (signature: state-cache-lag, 5 occurrences since 2026-05-06). Reviewer picks PR via cache, conflict label appears between snapshot and checkout; reviewer wastes checkout + diff read then releases without review. Cost: one extra `gh` call per candidate.
-  - **Links:**
-
-
 - [~] **fleet: extend auto-mode classifier allow-list for fleet-role workflows** — whitelist role-*.md / .claude/commands/role-*.md writes from fleet roles; allow `rm -f .review-body.md` and prescribed `bash -c kill` exit patterns
   - **ID:** T-344
   - **Area:** tooling
@@ -239,6 +227,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-343** — fleet: review-pr live label check after claim acquisition (pre-checkout) · Owner: claude/T-343-review-pr-live-label-check · PR: https://github.com/jakildev/IrredenEngine/pull/1150
 - [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
 - [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
 - [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
@@ -255,7 +244,6 @@ Avoid:
 - [x] **T-222** — system: Concurrency::PARALLEL_FOR + single-system access validation · Owner: claude/T-222-parallel-for-validation · PR: https://github.com/jakildev/IrredenEngine/pull/1097
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
 - [x] **T-326** — demos: adopt standardControlSystems() bundle across all demos · Owner: claude/T-326-adopt-standard-camera-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1095
-- [x] **T-221** — engine/job/ + SystemAccess traits (multithreading epic Phase 1) · Owner: claude/T-221-job-foundation · PR: https://github.com/jakildev/IrredenEngine/pull/1086
 - [x] **T-318** — engine/tools: ir-host-probe + ir-acquire (sub-task 1 of #1074) · Owner: claude/T-318-engine-tools · PR: https://github.com/jakildev/IrredenEngine/pull/1102
 - [x] **T-327** — broaden cross-host smoke criteria; add windows-* + verified-* labels · Owner: claude/T-327-cross-host-smoke-windows · PR: https://github.com/jakildev/IrredenEngine/pull/1098
 - [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
