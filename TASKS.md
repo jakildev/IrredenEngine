@@ -162,11 +162,11 @@ Avoid:
   - **Notes:** DSL parser in `cmake/lua_codegen/system_dsl.cpp` already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` ops; lowering is structural — recognize `local s = arch.C_Foo:at(i)` as row binding, drop outer for-statement. Gotcha: `std::vector<EntityId>& _ir_codegen_ids` slot may have callers — search before deleting; per-component form has id-aware overload. Filed by opus-worker during T-223.
   - **Links:**
 
-- [ ] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 (OpenGL) — COMPUTE_LIGHT_VOLUME hotspot** — reduce COMPUTE_LIGHT_VOLUME propagate cost on OpenGL so IRPerfGrid runs at ≥30 FPS on linux-x86_64
+- [~] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 (OpenGL) — COMPUTE_LIGHT_VOLUME hotspot** — reduce COMPUTE_LIGHT_VOLUME propagate cost on OpenGL so IRPerfGrid runs at ≥30 FPS on linux-x86_64
   - **ID:** T-351
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** `IRPerfGrid` on linux-x86_64 (OpenGL/WSLg) achieves ≥30 FPS; `fleet-run --timeout 30 IRPerfGrid --auto-screenshot 30` captures at least one screenshot; COMPUTE_LIGHT_VOLUME propagate GPU cost measurably reduced (verify via PERF_STATS_OVERLAY GPU stage timings)
   - **Issue:** #1154
@@ -273,11 +273,11 @@ Avoid:
   - **Notes:** Two options: **Option A** — keep current re-target-first order, add doc comment explaining why (opus-worker rebases against baseRefName, so merger must set master first). **Option B** — invert (rebase first, re-target + cleanup only on clean exit); on conflict branch still remove `fleet:awaiting-base` / `fleet:stacked` / `fleet:needs-base-update` AND re-target to master so opus-worker rebases against the right tip. Key invariant: `fleet:awaiting-base` on a conflicted PR causes opus-worker step 1c to skip it indefinitely. Filed from PR #1146 review (sonnet reviewer nit).
   - **Links:**
 
-- [ ] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 — COMPUTE_LIGHT_VOLUME** — identify and fix the dominant lighting stage causing ~1 FPS on OpenGL/Mesa-d3d12
+- [~] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 — COMPUTE_LIGHT_VOLUME** — identify and fix the dominant lighting stage causing ~1 FPS on OpenGL/Mesa-d3d12
   - **ID:** T-351
   - **Area:** engine/render, shaders/glsl
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** `IRPerfGrid` auto-screenshot completes within 30s timeout on linux-x86_64 (OpenGL/Mesa-d3d12); PERF_STATS_OVERLAY confirms `COMPUTE_LIGHT_VOLUME` GPU time drops ≥8×; existing demos unaffected on macOS/Metal
   - **Issue:** #1154
