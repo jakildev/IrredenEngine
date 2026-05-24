@@ -309,11 +309,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: review-pr verdict-label retry-and-verify guard** — split combined `gh pr edit --remove/--add` into two calls; wrap add in retry-and-verify; cross-ref role-sonnet-reviewer and role-opus-reviewer
+- [~] **fleet: review-pr verdict-label retry-and-verify guard** — split combined `gh pr edit --remove/--add` into two calls; wrap add in retry-and-verify; cross-ref role-sonnet-reviewer and role-opus-reviewer
   - **ID:** T-339
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** verdict-label step in review-pr/SKILL.md splits remove/add into two `gh` calls; add wrapped in retry-and-verify (re-query labels, fail loud if verdict label still missing); fleet feedback `label-absent-after-verdict` cluster quiet
   - **Issue:** #1132
