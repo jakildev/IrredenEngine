@@ -137,6 +137,33 @@ If neither check fires, note in the review body:
 
 If `mergeable` is anything other than `CONFLICTING`, skip this step.
 
+### 1d. Live label check (pre-checkout bail)
+
+The candidate was selected from a cache snapshot; labels can change between
+that snapshot and now. Read the live label set before touching the working
+tree:
+
+```bash
+gh pr view <N> --json labels --jq '.labels[].name'
+```
+
+Bail immediately if any of these labels are present:
+
+- `fleet:semantic-conflict` — merger has a conflict resolution in progress.
+- `fleet:merger-cooldown` — branch was just re-targeted or rebased and may be
+  in an unsettled state.
+- `fleet:wip` — author marked the PR not-ready after the cache snapshot.
+
+If any bail label is present, release the claim and skip this PR:
+
+```bash
+fleet-claim review-release <N> <your-worktree-name>
+```
+
+Then return to the calling role's candidate loop without posting any comment.
+
+If none of the bail labels are present, proceed to step 2.
+
 ### 2. Check out the PR branch locally (read-only)
 
 ```bash
