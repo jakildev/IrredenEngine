@@ -32,6 +32,9 @@ while (( i < ${#args[@]} )); do
     if [[ ("$arg" == "--target" || "$arg" == "-t") && "${args[i+1]:-}" == "format" ]]; then
         new_args+=("$arg" "format-changed")
         i=$(( i + 2 ))
+    elif [[ "$arg" == "--target=format" || "$arg" == "-t=format" ]]; then
+        new_args+=("${arg%=format}=format-changed")
+        i=$(( i + 1 ))
     else
         new_args+=("$arg")
         i=$(( i + 1 ))
