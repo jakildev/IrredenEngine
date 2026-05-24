@@ -163,19 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Script: Lua codegen + EVAL concurrency integration** — extend Lua DSL with concurrency field; CODEGEN maps to Concurrency enum; EVAL mode overrides to MAIN_THREAD with warning
-  - **ID:** T-223
-  - **Area:** engine/script, creations/demos/lua_perf_grid
-  - **Model:** opus
-  - **Owner:** claude/T-223-lua-concurrency
-  - **Blocked by:** (none)
-  - **Stack:** T-220..T-225 ecs-multithreading
-  - **Acceptance:** lua_perf_grid (CODEGEN) at 262K entities with worker_threads=hw-2 within ±10% of C++ perf_grid; EVAL mode with concurrency="parallel_for" warns clearly and runs serial; codegen tool errors on bogus concurrency value; Lua parallel_for + EntityId first param gets registration-time FATAL
-  - **Issue:** #1070
-  - **Notes:** Phase 2.5 of #226 — Lua-driven ECS parallelism. Adds concurrency field to codegen DSL (serial/parallel_for/main_thread; default serial keeps all existing specs working). EVAL path overrides to MAIN_THREAD with one-time warning per system (sol2 not thread-safe; LuaJIT GC/JIT state not thread-safe). Do NOT expose IRJobs::parallelFor to Lua directly. Access-derivation trait runs automatically on codegen-emitted C++ lambda. Blocked by both T-221 (traits) and T-222 (Concurrency enum).
-  - **Links:**
-
-
 - [~] **Entity: thread-safe deferred mutations from worker threads** — per-worker staging buffers in EntityManager; lift T-224's two-spawners-in-same-group restriction
   - **ID:** T-225
   - **Area:** engine/entity, engine/system
@@ -336,6 +323,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
 - [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
 - [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
@@ -355,4 +343,3 @@ Avoid:
 - [x] **T-319** — render: compose camera rotation into DETACHED canvas SO(3) bake · Owner: claude/T-319-propagate-canvas-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1087
 - [x] **T-321** — engine/prefabs: extract AUTO_YAW_ROTATE as a reusable prefab system · Owner: claude/T-321-auto-yaw-rotate-prefab · PR: https://github.com/jakildev/IrredenEngine/pull/1082
 - [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
-- [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
