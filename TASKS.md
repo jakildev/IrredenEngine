@@ -369,11 +369,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: extend auto-mode classifier allow-list for fleet-role workflows** — whitelist role-*.md / .claude/commands/role-*.md writes from fleet roles; allow `rm -f .review-body.md` and prescribed `bash -c kill` exit patterns
+- [~] **fleet: extend auto-mode classifier allow-list for fleet-role workflows** — whitelist role-*.md / .claude/commands/role-*.md writes from fleet roles; allow `rm -f .review-body.md` and prescribed `bash -c kill` exit patterns
   - **ID:** T-344
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** auto-mode classifier allows fleet roles to write role-*.md docs, delete .review-body.md, and issue prescribed kill-based exit; `permission-gate-friction` cluster quiet
   - **Issue:** #1137
