@@ -27,13 +27,14 @@ template <> struct C_SystemEvent<IRSystem::TICK> {
     /// to resolve component vectors and return a worker closure that
     /// covers `[rangeBegin, rangeEnd)` of the resolved rows. See the
     /// `prepareRangedTick_` field below for the full contract.
-    using PrepareRangedTickFn = std::function<
-        std::function<void(int rangeBegin, int rangeEnd)>(IREntity::ArchetypeNode *)>;
+    using PrepareRangedTickFn =
+        std::function<std::function<void(int rangeBegin, int rangeEnd)>(IREntity::ArchetypeNode *)>;
 
-    /// Whole-node dispatch — the body iterates `[0, node->length_)`
-    /// internally. The legacy form; every system has one. For
-    /// `Concurrency::SERIAL` and `Concurrency::MAIN_THREAD` this is the
-    /// path SystemManager invokes.
+    /// Whole-node dispatch — used ONLY by the per-archetype batch form
+    /// (`InvocableWithNodeVectors`) and dynamic systems created via
+    /// `createSystemDynamic` / Lua hot-reload. Row-iterating forms
+    /// (per-component, per-entity-id) leave this empty and dispatch
+    /// entirely through `prepareRangedTick_` (T-348).
     TickFn functionTick_;
 
     /// Main-thread binder for `Concurrency::PARALLEL_FOR` dispatch.

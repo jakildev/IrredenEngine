@@ -193,8 +193,7 @@ class SystemManager {
     /// between systems within a group (group members are required to
     /// be structurally clean by the validator). Replaces any prior
     /// registration for `event`.
-    void
-    registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
+    void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
 
     /// T-224: validate every registered pipeline group against the
     /// cross-system access rules in `system_access.hpp`. Call once
@@ -306,9 +305,8 @@ class SystemManager {
     }
 
     // Tick functions are operated on each entity in the system
-    // matching the archetype. The runtime stores **two** dispatch
-    // shapes per system (T-222 Phase 2 of the multithreading epic;
-    // worker-side reshaped by T-333):
+    // matching the archetype. The runtime stores one dispatch slot per
+    // system — the binder form established by T-222/T-333:
     //
     //   - `prepareRangedTick(node)` — main-thread binder. Resolves
     //     the per-component vector refs from `node` once via
@@ -317,15 +315,15 @@ class SystemManager {
     //     and returns a `void(rangeBegin, rangeEnd)` worker closure
     //     that captures those refs by value. Populated for every
     //     signature that iterates entities row-by-row (per-component,
-    //     per-entity-id, optional-relations). The per-archetype batch
-    //     form (`InvocableWithNodeVectors`) consumes the whole column
-    //     and is intentionally unchunkable — `prepareRangedTick` is
-    //     empty in that case; the per-node `functionTick_` does the
-    //     dispatch.
-    //   - `functionTick(node)` — back-compat per-node entry. For the
-    //     row-iterating forms it calls `prepareRangedTick(node)` and
-    //     invokes the returned closure with `[0, length)`; for the
-    //     batch form it carries the body directly.
+    //     per-entity-id, optional-relations). `executeSystem` calls
+    //     the binder once and invokes the returned closure with
+    //     `[0, length)` for SERIAL/MAIN_THREAD, or fans the closure
+    //     out to worker chunks via `IRJob::parallelFor` for
+    //     PARALLEL_FOR. No per-node heap allocation.
+    //   - `functionTick(node)` — used ONLY by the per-archetype batch
+    //     form (`InvocableWithNodeVectors`) and dynamic systems
+    //     (`createSystemDynamic` / Lua hot-reload). Row-iterating forms
+    //     leave this empty and dispatch entirely through the binder.
     //
     // `Concurrency::PARALLEL_FOR` requires `prepareRangedTick` to be
     // populated; the entry-point validator in `ir_system.hpp` rejects
@@ -354,14 +352,12 @@ class SystemManager {
                     paramTuple
                 );
             };
-            m_ticks.emplace_back(
-                C_SystemEvent<TICK>{
-                    std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
-                    std::function<std::function<void(int, int)>(ArchetypeNode *)>{},
-                    getArchetype<Components...>(),
-                    std::move(excludeArchetype)
-                }
-            );
+            m_ticks.emplace_back(C_SystemEvent<TICK>{
+                std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
+                std::function<std::function<void(int, int)>(ArchetypeNode *)>{},
+                getArchetype<Components...>(),
+                std::move(excludeArchetype)
+            });
             return;
         } else {
 
@@ -379,9 +375,8 @@ class SystemManager {
             // an `else` so the unsupported-signature static_assert below
             // only fires when the batch-form branch above has NOT
             // discarded this code.
-            auto prepareRangedTick =
-                [functionTick,
-                 extraParams](ArchetypeNode *node) -> std::function<void(int, int)> {
+            auto prepareRangedTick = [functionTick, extraParams](ArchetypeNode *node
+                                     ) -> std::function<void(int, int)> {
                 if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
                     auto componentsTuple = std::make_tuple(
                         std::ref(node->entities_),
@@ -410,12 +405,10 @@ class SystemManager {
                             );
                         }
                     };
-                } else if constexpr (
-                    std::is_invocable_v<
-                        FunctionTick,
-                        Components &...,
-                        std::optional<RelationComponents *>...>
-                ) {
+                } else if constexpr (std::is_invocable_v<
+                                         FunctionTick,
+                                         Components &...,
+                                         std::optional<RelationComponents *>...>) {
                     // Relation form: the validator (T-334 scope) rejects
                     // PARALLEL_FOR + relation, so this binder runs only
                     // on the main thread. Resolve component vectors AND
@@ -434,11 +427,9 @@ class SystemManager {
                             std::apply(
                                 [&functionTick](auto &&...args) { functionTick(args...); },
                                 std::tuple_cat(
-                                    std::make_tuple(
-                                        std::ref(
-                                            std::get<std::vector<Components> &>(componentsTuple)[i]
-                                        )...
-                                    ),
+                                    std::make_tuple(std::ref(
+                                        std::get<std::vector<Components> &>(componentsTuple)[i]
+                                    )...),
                                     relationComponentTuple
                                 )
                             );
@@ -448,23 +439,12 @@ class SystemManager {
                     static_assert(false, "Unsupported tick function signature.");
                 }
             };
-            C_SystemEvent<TICK>::PrepareRangedTickFn prepareRangedTickErased{
-                std::move(prepareRangedTick)
-            };
-            auto prepareRangedTickCopy = prepareRangedTickErased;
-            auto perNodeFn = [prepareRangedTickCopy =
-                                  std::move(prepareRangedTickCopy)](ArchetypeNode *node) {
-                auto rangedTick = prepareRangedTickCopy(node);
-                rangedTick(0, node->length_);
-            };
-            m_ticks.emplace_back(
-                C_SystemEvent<TICK>{
-                    std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
-                    std::move(prepareRangedTickErased),
-                    getArchetype<Components...>(),
-                    std::move(excludeArchetype)
-                }
-            );
+            m_ticks.emplace_back(C_SystemEvent<TICK>{
+                std::function<void(ArchetypeNode *)>{},
+                C_SystemEvent<TICK>::PrepareRangedTickFn{std::move(prepareRangedTick)},
+                getArchetype<Components...>(),
+                std::move(excludeArchetype)
+            });
         }
     }
 
@@ -488,11 +468,8 @@ class SystemManager {
             m_relationTicks.emplace_back(
                 C_SystemEvent<RELATION_TICK>{[functionRelationTick](EntityRecord entityRecord) {
                     auto componentsTuple = std::make_tuple(
-                        std::ref(
-                            getComponentData<RelationComponents>(
-                                entityRecord.archetypeNode
-                            )[entityRecord.row]
-                        )...
+                        std::ref(getComponentData<RelationComponents>(entityRecord.archetypeNode
+                        )[entityRecord.row])...
                     );
                     std::apply(
                         [functionRelationTick](auto &&...components) {

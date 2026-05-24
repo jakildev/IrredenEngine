@@ -22,9 +22,12 @@ matched archetype. Per-entity iteration is the body's responsibility,
 not SystemManager's — the Lua surface uses this to keep the C++/Lua
 boundary at one `sol::function` call per archetype.
 
-Both paths share the same scheduler: `executePipeline` walks
-`m_ticks[system].functionTick_`, which is a `std::function<void(
-ArchetypeNode*)>` regardless of which factory created the system.
+Both paths share the same scheduler: `executePipeline` dispatches via
+`m_ticks[system].prepareRangedTick_` for row-iterating forms (the binder
+resolves component vectors on the main thread and returns a
+`void(begin,end)` closure), or via `m_ticks[system].functionTick_` for
+the batch form and dynamic systems; row-iterating forms leave
+`functionTick_` empty.
 
 ## `replaceSystemBody` for hot-reload
 
