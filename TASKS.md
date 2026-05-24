@@ -173,11 +173,11 @@ Avoid:
   - **Notes:** Root cause identified: `c_propagate_light_volume.glsl` × 32 iterations × 128³ cells × ~13 image ops + 12 SSBO reads per cell ≈ 870M image ops per canvas per frame. WSLg Mesa-d3d12 (DX12 translation) serializes the 8K-group dispatches badly vs Metal. Recommended quick wins: (1) adaptive iteration count from per-light `stepFalloff` radius (cap < 32); (2) skip COMPUTE_LIGHT_VOLUME dispatch for canvases without lights. Larger wins: smaller default 64³ volume; sparse seeded-list propagate. Filed by platform-catchup skill (2026-05-24, linux-x86_64, master 3d031e44). See also PR #1155 for related lua_perf_grid motion issue.
   - **Links:**
 
-- [~] **fleet/merger: re-target / rebase order decision on stacked-base merged path** — decide Option A (doc only, keep current order) or Option B (invert + coordinated changes) and implement
+- [ ] **fleet/merger: re-target / rebase order decision on stacked-base merged path** — decide Option A (doc only, keep current order) or Option B (invert + coordinated changes) and implement
   - **ID:** T-350
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** design decision documented; `role-merger.md` step a.5 ii updated; if Option B: `role-opus-worker.md` step 1c updated to handle `fleet:awaiting-base` + `fleet:semantic-conflict` on a master-targeted PR; no semantic-conflict stacked PR left stranded by the opus-worker filter
   - **Issue:** #1149
@@ -262,11 +262,11 @@ Avoid:
   - **Notes:** Not a correctness issue — FATAL is still FATAL. `validateConcurrencyForAccess` fires on the first rule in source order (currently `usesEntityId_`); a catch-all tick passes all three form probes. Fix options: order rules most-to-least-specific, collapse three form bits into a single `Form` enum, or add a precondition that at most one form bit is set. Linked: PR #1122 (T-334).
   - **Links:**
 
-- [~] **fleet/merger: re-target / rebase order on stacked-base merged path** — resolve the option-A/B trade-off and update role-merger.md (and possibly role-opus-worker.md) for correctness on the conflict branch
+- [ ] **fleet/merger: re-target / rebase order on stacked-base merged path** — resolve the option-A/B trade-off and update role-merger.md (and possibly role-opus-worker.md) for correctness on the conflict branch
   - **ID:** T-350
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** role-merger.md step a.5 ii updated with chosen option; if Option B, role-opus-worker.md step 1c updated to accept `fleet:semantic-conflict` PRs whose base was re-targeted to master; desk-check scenario (stacked PR with conflict after base merges) produces correct label + base state for opus-worker handoff
   - **Issue:** #1149
