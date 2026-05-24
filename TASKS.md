@@ -225,17 +225,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Investigate + fix macOS demo segfault/non-clean shutdown** — reproduce the shutdown crash on macOS (e.g. IRPerfGrid); identify root cause; apply targeted fix; harden run/verify tooling to validate exit codes
-  - **ID:** T-336
-  - **Area:** engine/render, creations/demos
-  - **Model:** opus
-  - **Owner:** claude/T-336-macos-shutdown
-  - **Blocked by:** (none)
-  - **Acceptance:** IRPerfGrid and at least two other representative demos exit cleanly on macOS (exit code 0, no crash reporter dialog); fix verified on macos-debug preset; fleet-build / ir-run wrapper does not mask the non-zero exit code; no regression on linux-debug
-  - **Issue:** #1116
-  - **Notes:** Reported on macOS; IRPerfGrid cited as one reproducer. Root cause unknown — may involve Metal resource teardown order, ECS world destructor sequencing, or missing signal handler. Also investigate whether run/verify skills should assert clean exit code after demo auto-screenshot runs.
-  - **Links:**
-
 - [~] **Tools: shell autocomplete for ir-build and ir-run targets** — add bash/zsh tab-completion for `--target` on `ir-build` and positional target on `ir-run`; completion discovers available targets from the current repo's build tree so game-repo invocations show game targets
   - **ID:** T-337
   - **Area:** tooling, engine/tools
@@ -359,6 +348,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
 - [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
 - [x] **T-335** — test/system: PARALLEL_FOR dispatch integration tests · Owner: claude/T-335-parallel-dispatch-test · PR: https://github.com/jakildev/IrredenEngine/pull/1110
 - [x] **T-224** — system: pipeline groups + cross-system access validation · Owner: claude/T-224-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1104
@@ -378,4 +368,3 @@ Avoid:
 - [x] **T-220** — perf: worker_threads axis + entity-count override in perf_grid_matrix · Owner: claude/T-220-worker-threads-perf-axis · PR: https://github.com/jakildev/IrredenEngine/pull/1081
 - [x] **T-315** — perf: GPU-side clear for VOXEL_TO_TRIXEL_STAGE_1 canvas+distance textures · Owner: claude/T-315-gpu-side-canvas-clear · PR: https://github.com/jakildev/IrredenEngine/pull/1061
 - [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
-- [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
