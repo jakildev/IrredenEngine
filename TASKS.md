@@ -163,18 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **System: pre-resolve component-vector refs on main thread before PARALLEL_FOR dispatch** — eliminate operator[] race on EntityManager from worker threads; pre-bind component vectors before parallelFor call
-  - **ID:** T-333
-  - **Area:** engine/system, engine/entity
-  - **Model:** opus
-  - **Owner:** claude/T-333-pre-resolve-component-vectors
-  - **Blocked by:** (none)
-  - **Acceptance:** worker bodies under PARALLEL_FOR no longer call m_pureComponentTypes::operator[]; ThreadSanitizer-clean parallelFor dispatch over archetype with >=kDefaultGrainSize entities; VELOCITY_3D continues to tick correctly
-  - **Issue:** #1105
-  - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #1). Latent UB: getComponentData<C>(node) calls m_pureComponentTypes[typeName] (operator[], non-const) from each worker. Works today on libstdc++/libc++/MSVC by coincidence; real race as PARALLEL_FOR broadens (T-223, T-225). Cleanest fix: pre-resolve component vectors in SystemManager::executeSystem before IRJobs::parallelFor, pass as std::tuple into rangedFn. Smaller fix: switch to m_pureComponentTypes.at(typeName). Part of epic #226. Should land before T-223.
-  - **Links:**
-
-
 - [~] **fleet: queue-manager queued/free divergence check** — add divergence check to role-queue-manager.md that flags mismatch between `fleet:queued` issue set and TASKS.md `free` rows; write warning to ~/.fleet/feedback/queue-manager.md
   - **ID:** T-342
   - **Area:** tooling
@@ -190,6 +178,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-333** — engine/system: pre-resolve component vectors on main thread for PARALLEL_FOR · Owner: claude/T-333-pre-resolve-component-vectors · PR: https://github.com/jakildev/IrredenEngine/pull/1123
 - [x] **T-334** — engine/system: validator rejects PARALLEL_FOR + relation-form · Owner: claude/T-334-parallel-for-relation-form-validator · PR: https://github.com/jakildev/IrredenEngine/pull/1122
 - [x] **T-225** — entity: thread-safe deferred mutations from workers · Owner: claude/T-225-parallel-spawn · PR: https://github.com/jakildev/IrredenEngine/pull/1109
 - [x] **T-344** — fleet/auto-mode: fix rm -f .review-body.md via Read-then-Write protocol · Owner: claude/T-344-auto-mode-allowlist · PR: https://github.com/jakildev/IrredenEngine/pull/1151
@@ -209,4 +198,3 @@ Avoid:
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
 - [x] **T-222** — system: Concurrency::PARALLEL_FOR + single-system access validation · Owner: claude/T-222-parallel-for-validation · PR: https://github.com/jakildev/IrredenEngine/pull/1097
 - [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
-- [x] **T-326** — demos: adopt standardControlSystems() bundle across all demos · Owner: claude/T-326-adopt-standard-camera-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1095
