@@ -162,6 +162,17 @@ Avoid:
   - **Notes:** DSL parser in `cmake/lua_codegen/system_dsl.cpp` already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` ops; lowering is structural — recognize `local s = arch.C_Foo:at(i)` as row binding, drop outer for-statement. Gotcha: `std::vector<EntityId>& _ir_codegen_ids` slot may have callers — search before deleting; per-component form has id-aware overload. Filed by opus-worker during T-223.
   - **Links:**
 
+- [ ] **fleet/merger: re-target / rebase order decision on stacked-base merged path** — decide Option A (doc only, keep current order) or Option B (invert + coordinated changes) and implement
+  - **ID:** T-350
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** design decision documented; `role-merger.md` step a.5 ii updated; if Option B: `role-opus-worker.md` step 1c updated to handle `fleet:awaiting-base` + `fleet:semantic-conflict` on a master-targeted PR; no semantic-conflict stacked PR left stranded by the opus-worker filter
+  - **Issue:** #1149
+  - **Notes:** Follow-up from PR #1146 review nit. Option A = keep current order (re-target first, rebase second) + document why; Option B = invert (rebase first, then re-target + clean labels on clean exit; still remove awaiting-base/stacked labels on conflict branch so opus-worker filter accepts the PR). Issue body details the merger ↔ opus-worker contract constraint that makes Option B non-trivial. `[opus]` required to reason across the merger/worker boundary.
+  - **Links:**
+
 - [ ] **engine/system: validator FATAL picks wrong rule on catch-all tick + PARALLEL_FOR** — order validator rules most-specific-first (or collapse to Form enum) so catch-all + PARALLEL_FOR emits the most-precise FATAL message
   - **ID:** T-349
   - **Area:** engine/system
