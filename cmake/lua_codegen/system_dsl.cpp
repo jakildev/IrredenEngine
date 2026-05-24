@@ -890,7 +890,7 @@ struct Emitter {
     const std::vector<ComponentSchema> &registry_;
     std::unordered_map<std::string, Symbol> symbols_;
 
-    // T-347: per-row emission mode. When non-empty, the emitted lambda is
+    // Per-row emission mode. When non-empty, the emitted lambda is
     // the per-component form `[](C_X& _ir_row_X, ...)` rather than the
     // batch form `[](Archetype&, vector<EntityId>&, vector<C_X>&, ...)`,
     // and column-op index expressions that match `loopVarName_` lower to
@@ -1034,7 +1034,7 @@ struct Emitter {
                 if (e.receiver_->kind_ == ExprKind::NAME_REF &&
                     e.receiver_->name_ == "arch" && e.field_ == "length") {
                     if (!loopVarName_.empty()) {
-                        // T-347: per-row form has no archetype column to size — the
+                        // Per-row form has no archetype column to size — the
                         // canonical `for i = 0, arch.length - 1` outer loop is dropped
                         // and the row count is implicit in the engine's per-row dispatch.
                         fail(file_, e.line_,
@@ -1470,7 +1470,7 @@ void emitSystem(
         }
     }
 
-    // T-347: CODEGEN system bodies must follow the canonical per-row shape
+    // CODEGEN system bodies must follow the canonical per-row shape
     // so the emitted lambda is the per-component form
     // (`[](C_X& _ir_row_X, ...)`). Per-component is the engine's default
     // tick signature (engine/system/CLAUDE.md "Three valid TICK function

@@ -165,15 +165,6 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
 
 // ---- PARALLEL_FOR registers without FATAL and updates every row --------
 //
-// T-347: codegen now emits the per-component lambda shape, which clears
-// the `isBatchForm_` FATAL in
-// `IRSystem::detail::validateConcurrencyForAccess`. Registration must
-// succeed, and a populated archetype must see every row processed by the
-// per-component body (whether the scheduler fans out across workers or
-// falls back to serial under the test harness, every row's body must
-// fire — the per-component lambda has no per-row branching that could
-// skip rows).
-
 TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {
     using IRComponents::C_CodegenSysPos;
 
