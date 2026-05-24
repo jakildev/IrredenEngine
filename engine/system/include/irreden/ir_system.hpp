@@ -4,6 +4,7 @@
 #include <irreden/ir_time.hpp>
 
 #include <irreden/system/ir_system_types.hpp>
+#include <irreden/system/system_access.hpp>
 #include <irreden/system/system_manager.hpp>
 
 #include <functional>
@@ -31,6 +32,56 @@ template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
     }
 };
 
+// T-222: validate that a system's compile-time access descriptor is
+// compatible with its requested Concurrency policy. Three rules,
+// distilled from the multithreading epic (#226 §"Layer 4"):
+//
+//   - PARALLEL_FOR + usesEntityId_ + !parallelSafe_ → FATAL. The
+//     per-entity-id tick form passes the iterated EntityId to the
+//     body; without an explicit `ParallelSafe` opt-in, the body is
+//     assumed to use the id to mutate non-thread-safe singletons
+//     (`g_entityManager`, render managers, sol2).
+//   - PARALLEL_FOR + isBatchForm_ → FATAL. The per-archetype batch
+//     form consumes the whole column; row-level chunking would
+//     re-enter the body N times with overlapping handles.
+//   - PARALLEL_FOR + mainThreadOnly_ → FATAL. The `MainThread` tag is
+//     explicit "do not parallelize", and silently downgrading would
+//     hide the conflict.
+//
+// The static_assert flavor would be ideal but the Concurrency value
+// is a runtime parameter on the entry-point wrapper, so we IR_ASSERT
+// instead. Debug-only — release strips the check, but a PARALLEL_FOR
+// system that survives debug-mode CI is also safe in release.
+inline void
+validateConcurrencyForAccess(const std::string &name, Concurrency c, SystemAccess access) {
+    if (c != Concurrency::PARALLEL_FOR) {
+        return;
+    }
+    IR_ASSERT(
+        !access.usesEntityId_ || access.parallelSafe_,
+        "System '{}' requested Concurrency::PARALLEL_FOR with an "
+        "EntityId tick parameter but no IRSystem::ParallelSafe tag. The "
+        "id-aware tick form is presumed to look up other entities; tag "
+        "the component pack with `ParallelSafe` after auditing the body.",
+        name
+    );
+    IR_ASSERT(
+        !access.isBatchForm_,
+        "System '{}' requested Concurrency::PARALLEL_FOR with the "
+        "per-archetype batch tick form. The batch form consumes the "
+        "whole entity column; row-level chunking would re-enter the "
+        "body with overlapping data.",
+        name
+    );
+    IR_ASSERT(
+        !access.mainThreadOnly_,
+        "System '{}' requested Concurrency::PARALLEL_FOR while also "
+        "carrying the IRSystem::MainThread tag. Pick one — the tag is "
+        "explicit 'do not parallelize'.",
+        name
+    );
+}
+
 } // namespace detail
 
 // Create a new system. `TickComponents...` may include zero or more
@@ -38,6 +89,11 @@ template <typename... Cs> struct ArchetypeFromList<TypeList<Cs...>> {
 // and used to build an exclude archetype that the matcher rejects nodes
 // against (so tagged entities skip this system without per-entity
 // branching). See ir_system_types.hpp for the Exclude<> declaration.
+//
+// T-222: trailing `concurrency` and `grainSize` opt the system into
+// the worker-pool dispatch path. `Concurrency::SERIAL` (default)
+// matches the legacy behavior; `PARALLEL_FOR` requires the tick body
+// to satisfy the validator (`detail::validateConcurrencyForAccess`).
 template <
     typename... TickComponents,
     typename... TickRelationComponents,
@@ -51,10 +107,21 @@ constexpr SystemId createSystem(
     FunctionBeginTick functionBeginTick = nullptr,
     FunctionEndTick functionEndTick = nullptr,
     RelationParams<TickRelationComponents...> extraParams = {},
-    FunctionRelationTick functionRelationTick = nullptr
+    FunctionRelationTick functionRelationTick = nullptr,
+    Concurrency concurrency = Concurrency::SERIAL,
+    int grainSize = kDefaultGrainSize
 ) {
     using Partition = detail::PartitionExcludes<TickComponents...>;
     auto excludeArchetype = detail::ArchetypeFromList<typename Partition::Excluded>::value();
+
+    // Derive access descriptor from the tick signature + component
+    // pack. The wrapper passes it through so SystemManager records it
+    // alongside the Concurrency for the validator + future cross-system
+    // validation (T-224).
+    constexpr SystemAccess accessDescriptor =
+        deriveAccessFromSignature<FunctionTick, TickComponents...>();
+    detail::validateConcurrencyForAccess(name, concurrency, accessDescriptor);
+
     return detail::CallCreateSystem<typename Partition::Included>::run(
         getSystemManager(),
         std::move(name),
@@ -63,7 +130,10 @@ constexpr SystemId createSystem(
         std::move(functionEndTick),
         std::move(extraParams),
         std::move(functionRelationTick),
-        std::move(excludeArchetype)
+        std::move(excludeArchetype),
+        concurrency,
+        grainSize,
+        accessDescriptor
     );
 }
 
@@ -149,6 +219,36 @@ template <typename T, typename... RelComps> auto makeMemberRelationTickFn(T *p) 
     }
 }
 
+// T-222: detect `static constexpr Concurrency kConcurrency` /
+// `static constexpr int kGrainSize` members on a System<N>
+// specialization. Used by `registerSystem` to opt a system into
+// PARALLEL_FOR without forcing every legacy spec to grow boilerplate.
+template <typename T>
+concept HasConcurrencyMember = requires {
+    { T::kConcurrency } -> std::convertible_to<Concurrency>;
+};
+
+template <typename T>
+concept HasGrainSizeMember = requires {
+    { T::kGrainSize } -> std::convertible_to<int>;
+};
+
+template <typename T> constexpr Concurrency concurrencyOf() {
+    if constexpr (HasConcurrencyMember<T>) {
+        return T::kConcurrency;
+    } else {
+        return Concurrency::SERIAL;
+    }
+}
+
+template <typename T> constexpr int grainSizeOf() {
+    if constexpr (HasGrainSizeMember<T>) {
+        return T::kGrainSize;
+    } else {
+        return kDefaultGrainSize;
+    }
+}
+
 } // namespace detail
 
 // Register a system whose state lives as **member fields on the
@@ -196,13 +296,24 @@ registerSystem(std::string name, RelationParams<RelationComponents...> relationP
     auto endFn = detail::makeMemberEndTickFn<SystemT>(p);
     auto relationFn = detail::makeMemberRelationTickFn<SystemT, RelationComponents...>(p);
 
+    // T-222: a System<N> spec can opt the system into PARALLEL_FOR by
+    // declaring `static constexpr Concurrency kConcurrency = ...;`
+    // (and optionally `static constexpr int kGrainSize = ...;`). The
+    // detectors fall back to SERIAL / kDefaultGrainSize when the spec
+    // doesn't declare them — every legacy register-spec stays
+    // unchanged.
+    constexpr Concurrency concurrency = detail::concurrencyOf<SystemT>();
+    constexpr int grainSize = detail::grainSizeOf<SystemT>();
+
     SystemId id = createSystem<Components...>(
         std::move(name),
         std::move(tickFn),
         std::move(beginFn),
         std::move(endFn),
         std::move(relationParams),
-        std::move(relationFn)
+        std::move(relationFn),
+        concurrency,
+        grainSize
     );
     setSystemParams(id, std::move(instance));
     return id;
