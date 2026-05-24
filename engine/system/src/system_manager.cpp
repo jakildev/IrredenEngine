@@ -56,13 +56,11 @@ SystemId SystemManager::createSystemDynamic(
     SystemId newSystemId = m_nextSystemId++;
 
     m_beginTicks.emplace_back(C_SystemEvent<BEGIN_TICK>{[]() {}});
-    m_ticks.emplace_back(
-        C_SystemEvent<TICK>{
-            std::move(body),
-            std::move(includeArchetype),
-            std::move(excludeArchetype),
-        }
-    );
+    m_ticks.emplace_back(C_SystemEvent<TICK>{
+        std::move(body),
+        std::move(includeArchetype),
+        std::move(excludeArchetype),
+    });
     m_endTicks.emplace_back(C_SystemEvent<END_TICK>{[]() {}});
     m_relationTicks.emplace_back(C_SystemEvent<RELATION_TICK>{[](EntityRecord) {}});
 
@@ -96,6 +94,10 @@ void SystemManager::replaceSystemBody(SystemId system, std::function<void(Archet
         m_nextSystemId
     );
     IR_ASSERT(static_cast<bool>(body), "replaceSystemBody: body must be a non-empty std::function");
+    IR_ASSERT(
+        !static_cast<bool>(m_ticks[system].prepareRangedTick_),
+        "replaceSystemBody: row-iterating systems use prepareRangedTick_, not functionTick_"
+    );
     m_ticks[system].functionTick_ = std::move(body);
 }
 
@@ -380,7 +382,14 @@ void SystemManager::executeSystem(SystemId system) {
             // SERIAL / MAIN_THREAD path, the small-node / no-pool
             // fallback for PARALLEL_FOR, and the nested-dispatch
             // fallback when executeSystem is called from a worker.
-            tickEvent.functionTick_(node);
+            // Row-iterating forms have prepareRangedTick_ only; batch
+            // and dynamic forms have functionTick_ only (T-348).
+            if (static_cast<bool>(tickEvent.prepareRangedTick_)) {
+                auto rangedTick = tickEvent.prepareRangedTick_(node);
+                rangedTick(0, node->length_);
+            } else {
+                tickEvent.functionTick_(node);
+            }
         }
     }
     m_endTicks[system].functionEndTick_();
