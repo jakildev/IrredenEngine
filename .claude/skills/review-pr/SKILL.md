@@ -70,15 +70,18 @@ leads to reviews that re-raise points the author already addressed in
 conversation.
 
 ```bash
-gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable,comments,reviews
+gh pr view <N> --json number,title,body,headRefName,baseRefName,author,files,additions,deletions,commits,mergeable,comments,reviews,labels
 gh api repos/jakildev/IrredenEngine/pulls/<N>/comments
-gh pr diff <N>
 ```
 
 The first command returns issue-level comments (`comments`) and review
-summaries (`reviews`). The second returns inline code-review comments
+summaries (`reviews`), and also the live label set (`labels`) used for
+the bail check in step 1b. The second returns inline code-review comments
 (line-attached) — `gh pr view --json` does not include these. Together
 the two commands cover every kind of PR conversation.
+
+`gh pr diff <N>` is fetched **after** the label bail check in step 1b —
+not here — so bail-label PRs never pay the diff round-trip cost.
 
 If the user said "latest" / "most recent":
 
@@ -88,7 +91,32 @@ gh pr list --state open --limit 5
 
 Pick the top result, confirm the title with the user if there's ambiguity.
 
-### 1b. Check whether the PR is stacked
+### 1b. Label bail check + diff fetch
+
+**Before** fetching the diff or examining the branch, check the `labels` array
+from step 1's `gh pr view --json` result for any bail labels. This prevents a
+diff round-trip on PRs that are not reviewable:
+
+- `fleet:semantic-conflict` — merger has a conflict resolution in progress.
+- `fleet:merger-cooldown` — branch was just re-targeted or rebased and may be
+  in an unsettled state.
+- `fleet:wip` — author marked the PR not-ready after the cache snapshot.
+- `human:wip` — human marked the PR not-ready after the cache snapshot.
+
+If any bail label is present, release the claim and skip this PR without
+fetching the diff or posting any comment:
+
+```bash
+fleet-claim review-release <N> <your-worktree-name>
+```
+
+If none of the bail labels are present, fetch the diff now:
+
+```bash
+gh pr diff <N>
+```
+
+### 1c. Check whether the PR is stacked
 
 Every fleet PR today is single-task. Some are stacked: their `--base` is another open PR's branch rather than `master`. The review pass is still per-PR; you don't re-review the parent.
 
@@ -96,11 +124,11 @@ Every fleet PR today is single-task. Some are stacked: their `--base` is another
 - `baseRefName != "master"` → stacked on that branch.
 - Body contains `Stacked on:` line → confirms it; gives the parent PR URL.
 
-If stacked: see [`procedures/stacked-pr-review.md`](procedures/stacked-pr-review.md) for the per-PR scoping rules, the body callout format, and the upstream-fragility flag — then return here for step 1c.
+If stacked: see [`procedures/stacked-pr-review.md`](procedures/stacked-pr-review.md) for the per-PR scoping rules, the body callout format, and the upstream-fragility flag — then return here for step 1d.
 
-If standalone (base `master`, no `Stacked on:`): continue with step 1c.
+If standalone (base `master`, no `Stacked on:`): continue with step 1d.
 
-### 1c. Churn audit when `mergeable == CONFLICTING`
+### 1d. Churn audit when `mergeable == CONFLICTING`
 
 A PR in `CONFLICTING` state has a stale branch relative to `master`.
 A stale branch can silently carry reverted hunks — content that landed
@@ -136,33 +164,6 @@ If neither check fires, note in the review body:
 > files or oversized churn."
 
 If `mergeable` is anything other than `CONFLICTING`, skip this step.
-
-### 1d. Live label check (pre-checkout bail)
-
-The candidate was selected from a cache snapshot; labels can change between
-that snapshot and now. Read the live label set before touching the working
-tree:
-
-```bash
-gh pr view <N> --json labels --jq '.labels[].name'
-```
-
-Bail immediately if any of these labels are present:
-
-- `fleet:semantic-conflict` — merger has a conflict resolution in progress.
-- `fleet:merger-cooldown` — branch was just re-targeted or rebased and may be
-  in an unsettled state.
-- `fleet:wip` — author marked the PR not-ready after the cache snapshot.
-
-If any bail label is present, release the claim and skip this PR:
-
-```bash
-fleet-claim review-release <N> <your-worktree-name>
-```
-
-Then return to the calling role's candidate loop without posting any comment.
-
-If none of the bail labels are present, proceed to step 2.
 
 ### 2. Check out the PR branch locally (read-only)
 
