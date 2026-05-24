@@ -2,6 +2,7 @@
 #define COMMAND_CLOSE_WINDOW_H
 
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_window.hpp>
 
 #include <irreden/command/ir_command_types.hpp>
 
