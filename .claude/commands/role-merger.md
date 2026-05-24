@@ -152,18 +152,27 @@ exit cleanly:
      so step 3 keeps skipping.)
 
    - **Base PR is MERGED** — run the same actions as step 5a.5
-     sub-case ii (lines starting "Base PR is MERGED" below):
-     re-target this PR to master, remove `fleet:awaiting-base`,
-     remove `fleet:stacked`, remove `fleet:needs-base-update` (a
-     stale-tip mark from step 2.6 is moot once the base lands),
-     post the "base merged, re-targeted" comment, add
-     `fleet:stacked-rebase`, `fleet:changes-made`,
-     `fleet:merger-cooldown`. `gh pr edit --remove-label X` is a
-     no-op when the label isn't present, so the same command list
-     covers both the labeled-population and the unlabeled-stacked
-     cases. The PR's diff against master may differ from the
-     previous review; reviewer re-evaluates next pass. Log:
-     `... reconcile: base #<N> merged, re-targeted to master`.
+     sub-case ii (lines starting "Base PR is MERGED" below), which
+     re-targets to master, rebases the child onto master so the diff
+     is clean, and preserves any live verdict label across the swap
+     (no `fleet:changes-made`; existing `fleet:approved` /
+     `fleet:needs-fix` / `fleet:has-nits` stay put on the clean-rebase
+     path). `gh pr edit --remove-label X` is a no-op when the label
+     isn't present, so the same command list covers both the
+     labeled-population and the unlabeled-stacked cases.
+
+     **Prerequisite checkout.** Step 5a.5 ii assumes the detached HEAD
+     from step 5a is already set on `origin/<headRefName>`. Step 2.5
+     runs OUTSIDE step 5's candidate loop, so do the detached checkout
+     yourself before invoking the 5a.5 ii action list (each as a
+     separate Bash call per the single-command rule):
+     `git fetch origin <headRefName>`
+     `git checkout --detach origin/<headRefName>`
+
+     After running the 5a.5 ii actions, reset to scratch (step 5f):
+     `git checkout -B claude/merger-scratch origin/master`.
+
+     Log: `... reconcile: base #<N> merged, re-targeted + rebased onto master`.
 
    - **Base PR is CLOSED (not merged)** — run sub-case iii actions:
      post the "base closed without merging" comment, remove
@@ -177,15 +186,14 @@ exit cleanly:
    and we don't want to flood the API or the reviewer queue.
 
 2.6. **Cascade rebase stacked children whose upstream tip moved.**
-   Step 2.5 reconciles `fleet:awaiting-base` PRs when their base
-   PR merges or closes; this step handles the orthogonal case
-   where the base PR is still OPEN but its head ref was force-
-   pushed (typically because the upstream author addressed
+   Step 2.5 reconciles stacked PRs when their base merges or closes
+   (re-target + rebase in the MERGED case); this step handles the
+   orthogonal case where the base PR is still OPEN but its head ref
+   was force-pushed (typically because the upstream author addressed
    reviewer feedback). Without this pass, the child PR's branch
-   stays anchored to the upstream's old tip — even after the base
-   merges, the re-target to master in step 2.5 ii leaves the
-   inherited-but-now-orphan upstream commits in the child's
-   history, which the reviewer then sees as a giant unrelated diff.
+   stays anchored to the upstream's old tip until the base actually
+   merges — and any intervening reviews would see a stale diff that
+   doesn't reflect the upstream's latest fixes.
 
    From `repos.engine.prs[]`, collect every PR where:
    - `baseRefName != "master"` (stacked PR), AND
@@ -378,14 +386,19 @@ exit cleanly:
       CLOSED without merging:
       `gh pr list --search "head:<baseRefName>" --state all --json number,state --jq '.[] | "#\(.number) \(.state)"'`
 
-      Three sub-cases. In all three, skip this PR's rebase entirely
-      and jump to step f (reset to scratch), then move on to the next
-      candidate. The deterministic signal is `baseRefName` + the base
-      PR's `.state` from the gh API — never parse PR bodies or commit
-      messages. Each case keeps `--remove-label` separate from the
-      `--add-label`s (removing an absent label returns non-zero and
-      would abort a chained add) but collapses the adds into a single
-      `gh pr edit` call.
+      Three sub-cases. Sub-cases i and iii skip the normal rebase
+      (step b–d) and jump directly to step f (reset to scratch). Sub-
+      case ii performs its OWN re-target + rebase inline (the rebase
+      target changes from `origin/<baseRefName>` to `origin/master`
+      after the re-target, so step d's bare `git rebase origin/master`
+      would not be quite right here — sub-case ii owns the rebase
+      end-to-end). After ii's actions, jump to step f as well. The
+      deterministic signal is `baseRefName` + the base PR's `.state`
+      from the gh API — never parse PR bodies or commit messages. Each
+      case keeps `--remove-label` separate from the `--add-label`s
+      (removing an absent label returns non-zero and would abort a
+      chained add) but collapses the adds into a single `gh pr edit`
+      call where possible.
 
       **i. Base PR is OPEN.** The child can't safely rebase onto master
          until the base lands; skip this iteration.
@@ -400,28 +413,97 @@ exit cleanly:
          - `gh pr edit <N> --add-label "fleet:awaiting-base" --add-label "fleet:merger-cooldown"`
          - Log: `... stacked on open #<base-pr-number>, labeled fleet:awaiting-base`
 
-      **ii. Base PR is MERGED.** GitHub auto-re-targets the child to
-         master on most merges, but not unconditionally — re-target
-         explicitly so the merger sees a master-based PR next iteration
-         and the reviewer re-evaluates the new diff. `fleet:stacked` is
-         stale after the re-target (baseRefName is now master), so
-         drop it too:
+      **ii. Base PR is MERGED.** Re-target the child to master AND
+         rebase the child branch onto master in the same iteration so
+         the diff against master is clean. The v1 behavior was
+         re-target-only; without the rebase, the child still carries
+         the (now-merged) base's commits in its history, which polluted
+         the diff with already-landed content (especially when the base
+         was squash-merged — see PR #1047 / PR #1123 feedback). The
+         rebase replays the child's own commits onto master and git's
+         "patch already in upstream" detection drops the inherited
+         base commits. **Preserve any live verdict label across the
+         swap** — the merger's rebase is mechanical, not an author
+         response to feedback, so do NOT add `fleet:changes-made` and
+         do NOT remove `fleet:approved` / `fleet:needs-fix` /
+         `fleet:has-nits` on the clean-rebase path.
+
+         The detached HEAD at `origin/<headRefName>` from step a is
+         already set up — `git rebase` operates on it directly.
+
          - `gh pr edit <N> --base master`
          - `gh pr edit <N> --remove-label "fleet:awaiting-base"`
          - `gh pr edit <N> --remove-label "fleet:stacked"`
          - `gh pr edit <N> --remove-label "fleet:needs-base-update"`
-         - Write `.merger-body.md` with:
-           ```
-           Merger: base PR #<base-pr-number> merged. Re-targeted this PR from
-           `<previous-base-branch>` to `master`. The diff against
-           master may differ from the previous review — reviewer will
-           re-evaluate on next pass.
+         - `git rebase origin/master`
+         - Branch on the rebase result:
 
-           — fleet merger
-           ```
-         - `gh pr comment <N> --body-file .merger-body.md`
-         - `gh pr edit <N> --add-label "fleet:stacked-rebase" --add-label "fleet:changes-made" --add-label "fleet:merger-cooldown"`
-         - Log: `... base #<base-pr-number> merged, re-targeted to master, labeled fleet:stacked-rebase`
+         **Clean rebase (exit 0).** Child commits replayed onto master;
+         any base-only commits were detected as already-upstream and
+         dropped.
+           - `git push --force-with-lease origin HEAD:<headRefName>`
+           - Run `rm -f .merger-body.md`, then write `.merger-body.md`
+             with the **Write** tool:
+             ```
+             Merger: base PR #<base-pr-number> merged. Re-targeted this PR
+             from `<previous-base-branch>` to `master` and rebased the
+             child commits onto current master tip (`--force-with-lease`).
+             The diff against master is now clean; any verdict label
+             (`fleet:approved` / `fleet:needs-fix` / `fleet:has-nits`)
+             from the pre-merge review has been preserved. CI will re-run.
+
+             — fleet merger
+             ```
+           - `gh pr comment <N> --body-file .merger-body.md`
+           - `gh pr edit <N> --add-label "fleet:stacked-rebase" --add-label "fleet:merger-cooldown"`
+           - **Do NOT add `fleet:changes-made`** — the merger's rebase
+             is mechanical and not an author response to feedback;
+             adding it would over-signal to the reviewer.
+           - **Do NOT remove existing `fleet:approved` / `fleet:needs-fix`
+             / `fleet:has-nits`** — verdict labels survive a mechanical
+             rebase that doesn't change the PR's content intent.
+           - Log: `... base #<base-pr-number> merged, re-targeted + rebased onto master, verdict preserved`.
+
+         **Rebase conflict (non-zero exit).** Child commits cannot be
+         replayed onto current master — hand off to opus-worker via
+         the semantic-conflict path (same shape as case iii in step d).
+
+         Capture the conflict file list FIRST (the diff filter only
+         reports U-state files while the rebase is still in progress;
+         `git rebase --abort` clears the index):
+           - Conflicted files (cap at 5; append `… and N more` if longer):
+             `git diff --name-only --diff-filter=U`
+             For each listed file, capture both sides' last touch
+             from the remote refs (still valid post-abort):
+             `git log -1 --format="%h %s" origin/master -- <file>`
+             `git log -1 --format="%h %s" origin/<headRefName> -- <file>`
+           - `git rebase --abort`
+           - `git switch claude/merger-scratch` (worktree hygiene)
+           - Run `rm -f .merger-body.md`, then write `.merger-body.md`
+             with the **Write** tool:
+             ```
+             Merger: base PR #<base-pr-number> merged; re-targeted this PR
+             to `master` but the rebase onto current master conflicts.
+             The child commits cannot be replayed cleanly — opus-worker
+             will resolve semantically.
+
+             Conflicted files:
+             - `<file1>` — master: `<sha> <subj>`; PR: `<sha> <subj>`
+             - …
+
+             Labeled `fleet:semantic-conflict` — opus-worker handles next.
+
+             — fleet merger
+             ```
+           - `gh pr comment <N> --body-file .merger-body.md`
+           - Remove stale verdict labels (rebase failed, prior verdict
+             no longer guaranteed valid — same rule as step d iii):
+             `gh pr edit <N> --remove-label "fleet:approved"`
+             `gh pr edit <N> --remove-label "fleet:needs-fix"`
+           - Add conflict and cooldown labels:
+             `gh pr edit <N> --add-label "fleet:semantic-conflict"`
+             `gh pr edit <N> --add-label "fleet:merger-cooldown"`
+           - Log: `... base #<base-pr-number> merged, re-targeted to master, rebase conflicted — labeled fleet:semantic-conflict`.
 
       **iii. Base PR is CLOSED (not merged).** Orphaned stack — the
          base was abandoned. Hand off to the human. Leave `fleet:stacked`
@@ -785,14 +867,15 @@ The merger has TWO tiers of "don't touch this PR again":
 
 2. **`fleet:merger-cooldown`** — short-lived, self-managed.
    The merger adds it after a *non-durable* outcome (clean
-   rebase, TASKS.md sort-merge, whitespace-only — all of which
-   already pushed and don't need a handoff label). Step 1 of
-   the next iteration clears all such labels unconditionally,
-   so the 10-minute loop interval IS the cooldown — one
-   iteration of "skip this PR" is enough breathing room before
-   re-checking. (An earlier draft tried to gate on `updatedAt`,
-   but reviewer comments refresh that timestamp and prevented
-   cooldowns from clearing predictably.)
+   rebase, TASKS.md sort-merge, whitespace-only, or merged-base
+   re-target with clean rebase — all of which already pushed
+   and don't need a handoff label). Step 1 of the next
+   iteration clears all such labels unconditionally, so the
+   10-minute loop interval IS the cooldown — one iteration of
+   "skip this PR" is enough breathing room before re-checking.
+   (An earlier draft tried to gate on `updatedAt`, but reviewer
+   comments refresh that timestamp and prevented cooldowns from
+   clearing predictably.)
 
 The cooldown label is intentionally NOT used as the only stop
 sign for semantic conflicts — without a durable label, every
