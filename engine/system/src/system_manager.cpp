@@ -70,7 +70,7 @@ SystemId SystemManager::createSystemDynamic(
     m_systemParams.emplace_back(nullptr);
     m_timingAccum.emplace_back();
     // T-222: dynamic systems are PARALLEL_FOR-ineligible (the body is
-    // opaque to row-level chunking — `m_ticks[…].rangedFunctionTick_` is
+    // opaque to row-level chunking — `m_ticks[…].prepareRangedTick_` is
     // never populated). T-223 still accepts SERIAL / MAIN_THREAD so the
     // Lua surface can tag EVAL systems as MAIN_THREAD to opt them out of
     // pipeline-group parallelism (the sol2 / LuaJIT GC singletons are
