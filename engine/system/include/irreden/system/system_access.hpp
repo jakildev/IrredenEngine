@@ -89,6 +89,7 @@ struct SystemAccess {
 
     bool usesEntityId_{false};
     bool isBatchForm_{false};
+    bool isRelationForm_{false};
     bool mainThreadOnly_{false};
     bool parallelSafe_{false};
     bool spawns_{false};
@@ -296,6 +297,13 @@ struct ProbeSignatureForms<TickFn, TypeList<NonTags...>> {
 ///   a real signature (e.g. `void(EntityId, C_Foo&)`) with tags
 ///   (e.g. `ParallelSafe`, `MainThread`) still derives
 ///   `usesEntityId_` / `isBatchForm_` correctly.
+///
+/// `isRelationForm_` is NOT set here — the relation form depends on a
+/// second template pack (`RelationComponents...`) that cannot be
+/// disambiguated alongside `Components...` in a free-function template
+/// (see the TODO at `InvocableWithOptionalRelations` in
+/// ir_system_types.hpp). The createSystem wrapper has both packs in
+/// scope and folds the bit in after the call.
 template <typename TickFn, typename... Components>
 constexpr SystemAccess deriveAccessFromSignature() {
     SystemAccess out{};

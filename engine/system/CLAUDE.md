@@ -365,6 +365,14 @@ always serialize on the main thread regardless of policy.
 - `PARALLEL_FOR + isBatchForm_` → FATAL. The per-archetype batch
   form consumes the whole column; row-level chunking would re-enter
   the body with overlapping handles.
+- `PARALLEL_FOR + isRelationForm_` → FATAL (T-334). The relation
+  branch in `system_manager.hpp`'s `rangedFn` calls
+  `getRelatedEntityFromArchetype` + `getComponentOptional` on
+  `EntityManager` from inside the per-row loop; those manager lookups
+  are not thread-safe. The bit is set in `createSystem` (not the
+  trait) because the two parameter packs collide in a free-function
+  template — see the TODO at `InvocableWithOptionalRelations` in
+  `ir_system_types.hpp`.
 - `PARALLEL_FOR + mainThreadOnly_` → FATAL. Pick one — the
   `MainThread` tag is explicit "do not parallelize".
 

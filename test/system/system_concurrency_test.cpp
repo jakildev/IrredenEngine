@@ -3,11 +3,14 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_job.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/entity/entity_manager.hpp>
 #include <irreden/job/job_manager.hpp>
 #include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/system/system_access.hpp>
+#include <irreden/system/system_manager.hpp>
 
 #include <atomic>
+#include <optional>
 #include <vector>
 
 // T-222 Phase 2 — multithreading epic (#226). Two surfaces under test:
@@ -65,6 +68,9 @@ constexpr bool isParallelForAcceptable(Concurrency c, SystemAccess access) {
         return false;
     }
     if (access.isBatchForm_) {
+        return false;
+    }
+    if (access.isRelationForm_) {
         return false;
     }
     if (access.mainThreadOnly_) {
@@ -169,6 +175,29 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
     EXPECT_TRUE(isParallelForAcceptable(Concurrency::SERIAL, access));
 }
 
+TEST(SystemConcurrencyValidator, RelationFormRejected) {
+    // T-334: a tick with `(Components&..., std::optional<RelComps*>...)`
+    // is the relation form. `rangedFn`'s relation branch in
+    // system_manager.hpp calls `getRelatedEntityFromArchetype` +
+    // `getComponentOptional` on `EntityManager` inside the per-row
+    // loop, which would race on the manager from worker threads.
+    //
+    // The trait CANNOT see the second pack (`RelationComponents...`)
+    // because the two packs collide in a free-function template form
+    // (see the TODO at `InvocableWithOptionalRelations` in
+    // ir_system_types.hpp). createSystem folds the bit in via a
+    // constexpr lambda where both packs are in scope, so we exercise
+    // the validator's contract here by constructing the descriptor
+    // directly — same shape as PerEntityIdFormAcceptedWithParallelSafe.
+    SystemAccess access{};
+    access.isRelationForm_ = true;
+    EXPECT_FALSE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));
+    // SERIAL / MAIN_THREAD stay acceptable; the relation form is fine
+    // on the main thread.
+    EXPECT_TRUE(isParallelForAcceptable(Concurrency::SERIAL, access));
+    EXPECT_TRUE(isParallelForAcceptable(Concurrency::MAIN_THREAD, access));
+}
+
 TEST(SystemConcurrencyValidator, MainThreadTagRejectsParallelFor) {
     // The MainThread tag is explicit "do not parallelize"; the
     // validator must FATAL rather than silently downgrade.
@@ -179,6 +208,78 @@ TEST(SystemConcurrencyValidator, MainThreadTagRejectsParallelFor) {
     EXPECT_TRUE(access.mainThreadOnly_);
     EXPECT_FALSE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));
     EXPECT_TRUE(isParallelForAcceptable(Concurrency::MAIN_THREAD, access));
+}
+
+// ----------------------------------------------------------------------
+// createSystem integration — full path through the constexpr-lambda
+// relation-form detector + the registration-time validator.
+// ----------------------------------------------------------------------
+
+// The validator tests above mirror its predicate locally so they can
+// pin the contract without standing up an ECS. The detection logic that
+// SETS `isRelationForm_` lives in the `constexpr` lambda inside
+// `createSystem` (ir_system.hpp) and is exercised only by an actual
+// `createSystem<...>(...)` invocation — a silent regression in the
+// `std::is_invocable_v` probe (typo, wrong reference category, missing
+// pack expansion) would not be caught by any of the
+// `deriveAccessFromSignature`-based tests above. Standing up
+// EntityManager + SystemManager once in a fixture lets us drive the
+// full path: probe sets the bit, validator reads it, IR_ASSERT throws.
+class CreateSystemValidatorTest : public testing::Test {
+  protected:
+    IREntity::EntityManager m_entity_manager;
+    IRSystem::SystemManager m_system_manager;
+};
+
+TEST_F(CreateSystemValidatorTest, RelationFormParallelForFatalsAtRegistration) {
+    // T-334 nit: covers the `constexpr` lambda probe in `createSystem`
+    // that sets `isRelationForm_`. A tick taking
+    // `(Components&..., std::optional<RelComps*>...)` is the relation
+    // form. With Concurrency::PARALLEL_FOR the registration-time
+    // validator must FATAL — the relation branch resolves the related
+    // entity and its components via EntityManager lookups inside the
+    // per-row loop, which is not thread-safe.
+    auto relationTickBody = [](C_VelA &a, std::optional<C_VelB *> b) {
+        (void)a;
+        (void)b;
+    };
+    // IR_ASSERT throws std::runtime_error in debug builds (test binary
+    // is built debug — see test/ecs/modifier_quat_runtime_test.cpp:427).
+    EXPECT_THROW(
+        (IRSystem::createSystem<C_VelA>(
+            "TestRelationFormParallelForRejected",
+            relationTickBody,
+            nullptr,
+            nullptr,
+            IRSystem::RelationParams<C_VelB>{},
+            nullptr,
+            Concurrency::PARALLEL_FOR
+        )),
+        std::runtime_error
+    );
+}
+
+TEST_F(CreateSystemValidatorTest, RelationFormSerialAcceptedAtRegistration) {
+    // Companion to the FATAL case above: the same relation-form body
+    // must register cleanly under Concurrency::SERIAL — the relation
+    // form is fine on the main thread. This pins the probe's
+    // disposition: it sets `isRelationForm_`, but only the
+    // PARALLEL_FOR validator rule fires on it.
+    auto relationTickBody = [](C_VelA &a, std::optional<C_VelB *> b) {
+        (void)a;
+        (void)b;
+    };
+    EXPECT_NO_THROW({
+        IRSystem::createSystem<C_VelA>(
+            "TestRelationFormSerialAccepted",
+            relationTickBody,
+            nullptr,
+            nullptr,
+            IRSystem::RelationParams<C_VelB>{},
+            nullptr,
+            Concurrency::SERIAL
+        );
+    });
 }
 
 // ----------------------------------------------------------------------
