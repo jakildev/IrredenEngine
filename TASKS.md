@@ -235,22 +235,11 @@ Avoid:
   - **Notes:** Surfaced by review-fleet-feedback (signature: permission-gate-friction, 5 occurrences since 2026-04-30). `rm` blocked on .fleet/plans/; kill exit blocked; role-*.md Self-Modification gate fires on role docs. Proposed fix: extend .claude/settings.json allow-list.
   - **Links:**
 
-
-- [~] **fleet: scout stackable_blocker_pr false-positive filter** — in fleet-state-scout, add filter: (a) verify downstream task files not already inside blocker PR diff; (b) drop candidates with fleet:design-blocked or fleet:design-escalated
-  - **ID:** T-346
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-346-scout-stackable-filter
-  - **Blocked by:** (none)
-  - **Acceptance:** stackable filter drops candidates whose downstream files are inside blocker PR diff or whose issue has fleet:design-blocked/fleet:design-escalated; `stackable-false-positive` cluster quiet
-  - **Issue:** #1139
-  - **Notes:** Surfaced by review-fleet-feedback (signature: stackable-false-positive, 3 occurrences since 2026-05-12). Variants: blocker PR already contains downstream task files (T-299 variant); prior filters miss fleet:design-blocked issues.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
 - [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
 - [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
 - [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
@@ -270,4 +259,3 @@ Avoid:
 - [x] **T-318** — engine/tools: ir-host-probe + ir-acquire (sub-task 1 of #1074) · Owner: claude/T-318-engine-tools · PR: https://github.com/jakildev/IrredenEngine/pull/1102
 - [x] **T-327** — broaden cross-host smoke criteria; add windows-* + verified-* labels · Owner: claude/T-327-cross-host-smoke-windows · PR: https://github.com/jakildev/IrredenEngine/pull/1098
 - [x] **T-325** — engine/prefabs/render: unified camera-controls bundle + trackpad gesture support · Owner: claude/T-325-camera-controls-bundle · PR: https://github.com/jakildev/IrredenEngine/pull/1094
-- [x] **T-320** — docs: iso-depth-axis invariant design doc · Owner: claude/T-320-iso-depth-axis-invariant · PR: https://github.com/jakildev/IrredenEngine/pull/1090
