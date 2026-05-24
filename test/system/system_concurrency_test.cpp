@@ -1,11 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_job.hpp>
+#include <irreden/ir_system.hpp>
 #include <irreden/job/job_manager.hpp>
 #include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/system/system_access.hpp>
 
 #include <atomic>
+#include <vector>
 
 // T-222 Phase 2 — multithreading epic (#226). Two surfaces under test:
 //
@@ -33,6 +36,12 @@ struct C_VelA {
 };
 struct C_VelB {
     int m_ = 0;
+};
+struct C_Slot {
+    int idx_ = 0;
+};
+struct C_Counter {
+    int n_ = 0;
 };
 
 using IRSystem::AlsoReads;
@@ -86,7 +95,8 @@ class JobManagerFixture : public ::testing::Test {
 TEST(SystemConcurrencyValidator, PerComponentFormAcceptsParallelFor) {
     // void tick(C_VelA&, const C_VelB&) — the canonical clean case.
     // Writes C_VelA, reads C_VelB, no EntityId, not batch form.
-    auto access = deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
+    auto access =
+        deriveAccessFromSignature<void(C_VelA &, const C_VelB &), C_VelA, const C_VelB>();
 
     EXPECT_FALSE(access.usesEntityId_);
     EXPECT_FALSE(access.isBatchForm_);
@@ -97,7 +107,9 @@ TEST(SystemConcurrencyValidator, PerEntityIdFormRejectedWithoutParallelSafe) {
     // void tick(EntityId, C_VelA&) — id-aware form. Without an
     // explicit ParallelSafe tag, the body is presumed to dereference
     // the id into a non-thread-safe singleton.
-    auto access = deriveAccessFromSignature<void(IREntity::EntityId &, C_VelA &), C_VelA>();
+    auto access = deriveAccessFromSignature<
+        void(IREntity::EntityId &, C_VelA &),
+        C_VelA>();
 
     EXPECT_TRUE(access.usesEntityId_);
     EXPECT_FALSE(access.parallelSafe_);
@@ -128,7 +140,11 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
     // so row-level chunking would re-enter it with overlapping
     // vectors. PARALLEL_FOR is structurally incompatible.
     auto access = deriveAccessFromSignature<
-        void(const IREntity::Archetype &, std::vector<IREntity::EntityId> &, std::vector<C_VelA> &),
+        void(
+            const IREntity::Archetype &,
+            std::vector<IREntity::EntityId> &,
+            std::vector<C_VelA> &
+        ),
         C_VelA>();
 
     EXPECT_TRUE(access.isBatchForm_);
@@ -141,7 +157,9 @@ TEST(SystemConcurrencyValidator, BatchFormRejected) {
 TEST(SystemConcurrencyValidator, MainThreadTagRejectsParallelFor) {
     // The MainThread tag is explicit "do not parallelize"; the
     // validator must FATAL rather than silently downgrade.
-    auto access = deriveAccessFromSignature<void(C_VelA &), C_VelA, MainThread>();
+    auto access = deriveAccessFromSignature<
+        void(C_VelA &),
+        C_VelA, MainThread>();
 
     EXPECT_TRUE(access.mainThreadOnly_);
     EXPECT_FALSE(isParallelForAcceptable(Concurrency::PARALLEL_FOR, access));
@@ -174,4 +192,92 @@ TEST_F(JobManagerFixture, IsMainThreadReturnsFalseFromWorker) {
     std::atomic<bool> sawMainFromWorker{true};
     IRJob::pinTo(1, [&]() { sawMainFromWorker.store(IRJob::isMainThread()); });
     EXPECT_FALSE(sawMainFromWorker.load());
+}
+
+// ----------------------------------------------------------------------
+// PARALLEL_FOR dispatch integration — T-335
+// ----------------------------------------------------------------------
+//
+// Verifies that `Concurrency::PARALLEL_FOR` actually distributes work
+// across workers and visits every entity exactly once. The entity count
+// (4096) is ≥ 8 × kDefaultGrainSize (512), forcing multiple chunks and
+// real parallel execution with the 2-worker pool.
+//
+// Two complementary assertions:
+//   1. A shared atomic total == kEntityCount → no entity skipped.
+//   2. Per-entity atomics all == 1 → no entity double-visited.
+//      This shape is TSAN-friendly: each entity's slot is written by
+//      exactly one worker at a time, so TSAN cannot alias the accesses.
+
+class ParallelDispatchFixture : public ::testing::Test {
+  protected:
+    void SetUp() override {
+        m_jobs = std::make_unique<IRJob::JobManager>(2);
+    }
+    void TearDown() override {
+        m_jobs.reset();
+    }
+
+    IREntity::EntityManager m_entity_manager;
+    IRSystem::SystemManager m_system_manager;
+    std::unique_ptr<IRJob::JobManager> m_jobs;
+};
+
+TEST_F(ParallelDispatchFixture, AllEntitiesDispatchedParallelFor) {
+    constexpr int kEntityCount = 4096;
+    for (int i = 0; i < kEntityCount; ++i) {
+        IREntity::createEntity(C_Counter{});
+    }
+
+    std::atomic<int> total{0};
+    auto sysId = IRSystem::createSystem<C_Counter>(
+        "ParallelDispatchTotal",
+        [&total](C_Counter &) { total.fetch_add(1, std::memory_order_relaxed); },
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::PARALLEL_FOR
+    );
+
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysId});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_EQ(total.load(), kEntityCount);
+}
+
+TEST_F(ParallelDispatchFixture, EachEntityVisitedExactlyOnce) {
+    // TSAN-friendly: each entity owns one slot in `visits`; workers
+    // never write the same slot.
+    constexpr int kEntityCount = 4096;
+    for (int i = 0; i < kEntityCount; ++i) {
+        IREntity::createEntity(C_Slot{i});
+    }
+
+    std::vector<std::atomic<int>> visits(kEntityCount);
+    for (auto &v : visits) {
+        v.store(0, std::memory_order_relaxed);
+    }
+
+    auto *visitsPtr = visits.data();
+    auto sysId = IRSystem::createSystem<C_Slot>(
+        "ParallelDispatchPerSlot",
+        [visitsPtr](C_Slot &slot) { visitsPtr[slot.idx_].fetch_add(1, std::memory_order_relaxed); },
+        nullptr,
+        nullptr,
+        {},
+        nullptr,
+        IRSystem::Concurrency::PARALLEL_FOR
+    );
+
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysId});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    int misses = 0;
+    for (int i = 0; i < kEntityCount; ++i) {
+        if (visits[i].load(std::memory_order_relaxed) != 1) {
+            ++misses;
+        }
+    }
+    EXPECT_EQ(misses, 0) << misses << " slot(s) not visited exactly once";
 }
