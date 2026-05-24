@@ -194,3 +194,8 @@ _irreden_fleet_debug_complete() {
 complete -F _irreden_fleet_run_complete fleet-run
 complete -F _irreden_fleet_build_complete fleet-build
 complete -F _irreden_fleet_debug_complete fleet-debug
+
+# ir-run and ir-build share the same interface as their fleet-* counterparts —
+# same flags, same positional target, same fleet-run-targets discovery path.
+complete -F _irreden_fleet_run_complete ir-run
+complete -F _irreden_fleet_build_complete ir-build

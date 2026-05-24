@@ -52,12 +52,15 @@ fleet workflow.
 - **`fleet-help`** — prints an index of all `fleet-*` tools (build, run,
   tmux fleet, claims, …) and how to install them; `fleet-help <cmd>`
   forwards to `--help` when the tool supports it (or a short summary).
-- **`completions/fleet-run.bash`** — bash tab completion for `fleet-run`
-  (built exe names when the word does not start with `-`) and
-  `fleet-build` (CMake demo names after `--target`) plus `fleet-debug`.
-  `install.sh`
-  symlinks it into `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/`
-  for bash-completion / Homebrew `bash-completion@2`.
+- **`completions/fleet-run.bash`** — bash tab completion for `fleet-run`,
+  `fleet-build`, `fleet-debug`, `ir-run`, and `ir-build`. The `fleet-*`
+  and `ir-*` counterparts share the same completion logic: `ir-run`
+  completes built exe names on the first positional; `ir-build` completes
+  CMake demo names after `--target`. Target discovery uses
+  `fleet-run-targets`, which resolves the invoker's git worktree root, so
+  game-repo invocations show game targets. `install.sh` symlinks it into
+  `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/` for
+  bash-completion / Homebrew `bash-completion@2`.
 - **`completions/irreden-fleet.zsh`** — zsh entry: ensures `compinit` (if
   needed), runs `bashcompinit`, then sources `fleet-run.bash`. **macOS
   default shell is zsh**; the bash-completion directory is not used.

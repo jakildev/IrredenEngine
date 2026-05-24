@@ -353,7 +353,9 @@ if [[ -f "$FLEET_COMP_SRC" ]]; then
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-run"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-build"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-debug"
-    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build, fleet-debug)"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/ir-run"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/ir-build"
+    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build, fleet-debug, ir-run, ir-build)"
 fi
 
 # Zsh: bash-completion dirs are not read by zsh; irreden-fleet.zsh uses
