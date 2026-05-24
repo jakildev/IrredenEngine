@@ -199,6 +199,8 @@ inline std::uint32_t gatherLightSources(
                 continue;
             }
             if (out.size() >= kLightVolumeMaxSources) {
+                if (outMaxRadius > kLightVolumePropagateIterations)
+                    outMaxRadius = kLightVolumePropagateIterations;
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(transforms[i]);
