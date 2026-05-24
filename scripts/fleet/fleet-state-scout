@@ -626,6 +626,31 @@ def model_tags(task):
     return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
 
 
+_DESIGN_BLOCK_LABELS = frozenset({"fleet:design-blocked", "fleet:design-escalated"})
+
+
+def _area_prefixes(area_str):
+    # Drops entries without '/' (meta-tags like 'tooling') that can't match diff paths.
+    if not area_str:
+        return []
+    prefixes = []
+    for entry in area_str.split(","):
+        entry = entry.strip()
+        if "/" in entry:
+            prefixes.append(entry.rstrip("/") + "/")
+    return prefixes
+
+
+def _blocker_pr_files(repo_key, pr_number):
+    # Returns [] on cache miss so the caller treats it as no overlap (safe degradation).
+    pr_path = PRS_DIR / repo_key / f"{pr_number}.json"
+    try:
+        data = json.loads(pr_path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+    return [f.get("path", "") for f in data.get("files", [])]
+
+
 def enrich_stackable_blocker_prs(state):
     # Per T-110 PR 2: for each task whose blocked_by is exactly one T-NNN
     # ID with exactly one matching open PR (head ref `claude/T-NNN-…`)
@@ -640,11 +665,13 @@ def enrich_stackable_blocker_prs(state):
     #     yet started, or already merged and dropped from open list)
     #   - more than one open PR matches (rare but possible if a stale
     #     branch lingers — caller can't pick one safely)
+    #   - blocker PR has fleet:design-blocked or fleet:design-escalated (filter b)
+    #   - downstream task's area files appear in the blocker PR diff (filter a)
     #
     # Engine and game tasks are both enriched; worker pickup only honors
     # the field for engine in v1 (the merger's cascade-rebase doesn't
     # process game PRs yet) — that gating lives in the role doc.
-    for repo_state in state["repos"].values():
+    for repo_key, repo_state in state["repos"].items():
         prs = repo_state.get("prs", [])
         for task in repo_state.get("tasks", {}).get("open", []):
             blocked_by = (task.get("blocked_by") or "").strip()
@@ -656,6 +683,22 @@ def enrich_stackable_blocker_prs(state):
             if len(matches) != 1:
                 continue
             pr = matches[0]
+
+            # Filter (b): blocker PR is stalled on a design question — the
+            # downstream task can't make forward progress on it.
+            if set(pr.get("labels", [])) & _DESIGN_BLOCK_LABELS:
+                continue
+
+            # Filter (a): downstream task's area already overlaps with the
+            # blocker PR's diff — a stackable claim would conflict at review.
+            area_prefixes = _area_prefixes(task.get("area") or "")
+            if area_prefixes:
+                blocker_files = _blocker_pr_files(repo_key, pr["number"])
+                if any(
+                    f.startswith(p) for f in blocker_files for p in area_prefixes
+                ):
+                    continue
+
             task["stackable_blocker_pr"] = {
                 "number": pr["number"],
                 "headRefName": pr["headRefName"],
