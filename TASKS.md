@@ -357,11 +357,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **fleet: review-pr live label check after claim acquisition (pre-checkout)** — add `gh pr view <N> --json labels` live-check immediately after acquiring fleet:reviewing-* claim, before checkout; bail if fleet:semantic-conflict/fleet:merger-cooldown/fleet:wip appeared since cache snapshot
+- [~] **fleet: review-pr live label check after claim acquisition (pre-checkout)** — add `gh pr view <N> --json labels` live-check immediately after acquiring fleet:reviewing-* claim, before checkout; bail if fleet:semantic-conflict/fleet:merger-cooldown/fleet:wip appeared since cache snapshot
   - **ID:** T-343
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** live label check added to review-pr/SKILL.md after claim acquisition; bail on fleet:semantic-conflict, fleet:merger-cooldown, fleet:wip; `state-cache-lag` cluster quiet
   - **Issue:** #1136
