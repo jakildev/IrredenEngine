@@ -249,18 +249,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **Test/System: integration test that PARALLEL_FOR dispatch parallelizes and processes every row** — fixture ticks PARALLEL_FOR system over >=kDefaultGrainSize entities, asserts every entity processed exactly once
-  - **ID:** T-335
-  - **Area:** engine/system, test/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-335-parallel-dispatch-test
-  - **Blocked by:** (none)
-  - **Acceptance:** new test in test/system/ ticks PARALLEL_FOR system over >=kDefaultGrainSize entities and asserts every row processed exactly once; TSAN-friendly variant using vector<atomic<int>> catches worker overlap; existing 894 tests pass; optional: test confirms PARALLEL_FOR + relation-form rejected at registration (requires T-334)
-  - **Issue:** #1107
-  - **Notes:** Deferred from T-222 review (PR #1097, Opus recheck nit #3). Core test: spin up EntityManager + SystemManager + JobManager(2), register PARALLEL_FOR system with atomic counter tick body, populate 4096 entities (forces multiple kDefaultGrainSize=512 chunks), tick once, assert counter==4096. Optional relation-form rejection test depends on T-334 landing first. Part of epic #226.
-  - **Links:**
-
-
 - [~] **Investigate + fix macOS demo segfault/non-clean shutdown** — reproduce the shutdown crash on macOS (e.g. IRPerfGrid); identify root cause; apply targeted fix; harden run/verify tooling to validate exit codes
   - **ID:** T-336
   - **Area:** engine/render, creations/demos
@@ -395,6 +383,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-335** — test/system: PARALLEL_FOR dispatch integration tests · Owner: claude/T-335-parallel-dispatch-test · PR: https://github.com/jakildev/IrredenEngine/pull/1110
 - [x] **T-224** — system: pipeline groups + cross-system access validation · Owner: claude/T-224-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1104
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
@@ -414,4 +403,3 @@ Avoid:
 - [x] **T-314** — render: smooth sub-pixel camera at low game resolutions · Owner: claude/T-314-lowres-subpixel · PR: https://github.com/jakildev/IrredenEngine/pull/1066
 - [x] **T-316** — render: skip Metal buffer orphan when GPU is idle · Owner: claude/T-316-metal-buffer-no-orphan · PR: https://github.com/jakildev/IrredenEngine/pull/1065
 - [x] **T-317** — camera-rotation controls — canvas_stress auto-rotate + Ctrl+middle-drag rotate · Owner: claude/T-317-camera-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1063
-- [x] **T-302** — retire C_Position3D / C_PositionGlobal3D / C_Rotation legacy components · Owner: claude/T-302-retire-legacy-position-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1062
