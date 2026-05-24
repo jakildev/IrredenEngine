@@ -174,6 +174,61 @@ Avoid:
   - **Notes:** Surfaced by review-fleet-feedback (signature: queue-staleness, 6 occurrences since 2026-05-02). `fleet:queued` label diverges from TASKS.md silently. Related to #1131 maintenance-sync; same proposed fix (fix-001 + divergence check).
   - **Links:**
 
+- [ ] **lua-codegen: per-component emit shape for PARALLEL_FOR** — convert codegen system-emit from batch form to per-component so CODEGEN systems can opt into PARALLEL_FOR
+  - **ID:** T-347
+  - **Area:** engine/script, build
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `lua_perf_grid` (CODEGEN, `concurrency = PARALLEL_FOR`) at 262k entities matches `perf_grid` (C++) within ±10%; existing CODEGEN tests (`lua_system_codegen_test.cpp`, `lua_system_coexistence_test.cpp`) pass against the new emit shape; new CODEGEN test exercising `concurrency = PARALLEL_FOR` registers without FATAL and dispatches across worker threads
+  - **Issue:** #1120
+  - **Notes:** DSL parser (`cmake/lua_codegen/system_dsl.cpp`) already recognizes canonical for-loop and `:at(i)` / `:setAt(i, ...)` column ops — lowering is structural: recognize `local s = arch.C_Foo:at(i)` as a row binding, `:setAt` as a row write, drop outer for-statement. Watch for existing callers of `std::vector<EntityId>& _ir_codegen_ids` before deleting. T-223 left `/* concurrency */ IRSystem::Concurrency::SERIAL` annotations on every emitted createSystem call — switching the default is mechanical once lowering lands. Filed by opus-worker during T-223.
+  - **Links:**
+
+- [ ] **engine/system: SERIAL fast-path + dual-slot consolidation** — drop `functionTick_` for row-iterating forms; SERIAL/MAIN_THREAD branches call binder directly, eliminating per-node allocation and dual-slot static overhead
+  - **ID:** T-348
+  - **Area:** engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `functionTick_` removed for row-iterating forms; `executeSystem` branches on `(prepareRangedTick_ != null && concurrency != PARALLEL_FOR)` → calls `prepareRangedTick_(node)(0, length)` directly; tag/relation-form `functionTick_` slot kept; `IrredenEngineTest` + `IRShapeDebug` build clean; existing PARALLEL_FOR systems fan out correctly
+  - **Issue:** #1124
+  - **Notes:** Two-part scope: (1) SERIAL fast-path avoids per-node `std::function` heap allocation on non-PARALLEL_FOR path; (2) dual-slot consolidation drops ~64 bytes/system × N systems × M worlds of static `std::function` memory. Opus recheck on PR #1123 flagged that `m_ticks[i].functionTick_` and `m_ticks[i].prepareRangedTick_` are aliased copies. Affected file: `engine/system/include/irreden/system/system_manager.hpp`.
+  - **Links:**
+
+- [ ] **engine/system: validator FATAL picks wrong rule on variadic catch-all + PARALLEL_FOR** — order validator rules most-specific-first so the most useful diagnostic fires on ambiguous signatures
+  - **ID:** T-349
+  - **Area:** engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** with an artificial catch-all tick `[](auto&&...) {}` + `PARALLEL_FOR`, the FATAL message names the most-specific failing rule (relation-form > batch-form > entity-id); `IrredenEngineTest` passes; build clean
+  - **Issue:** #1125
+  - **Notes:** Not a correctness issue — FATAL is still FATAL. `validateConcurrencyForAccess` fires on the first rule in source order (currently `usesEntityId_`); a catch-all tick passes all three form probes. Fix options: order rules most-to-least-specific, collapse three form bits into a single `Form` enum, or add a precondition that at most one form bit is set. Linked: PR #1122 (T-334).
+  - **Links:**
+
+- [ ] **fleet/merger: re-target / rebase order on stacked-base merged path** — resolve the option-A/B trade-off and update role-merger.md (and possibly role-opus-worker.md) for correctness on the conflict branch
+  - **ID:** T-350
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** role-merger.md step a.5 ii updated with chosen option; if Option B, role-opus-worker.md step 1c updated to accept `fleet:semantic-conflict` PRs whose base was re-targeted to master; desk-check scenario (stacked PR with conflict after base merges) produces correct label + base state for opus-worker handoff
+  - **Issue:** #1149
+  - **Notes:** Two options: **Option A** — keep current re-target-first order, add doc comment explaining why (opus-worker rebases against baseRefName, so merger must set master first). **Option B** — invert (rebase first, re-target + cleanup only on clean exit); on conflict branch still remove `fleet:awaiting-base` / `fleet:stacked` / `fleet:needs-base-update` AND re-target to master so opus-worker rebases against the right tip. Key invariant: `fleet:awaiting-base` on a conflicted PR causes opus-worker step 1c to skip it indefinitely. Filed from PR #1146 review (sonnet reviewer nit).
+  - **Links:**
+
+- [ ] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 — COMPUTE_LIGHT_VOLUME** — identify and fix the dominant lighting stage causing ~1 FPS on OpenGL/Mesa-d3d12
+  - **ID:** T-351
+  - **Area:** engine/render, shaders/glsl
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `IRPerfGrid` auto-screenshot completes within 30s timeout on linux-x86_64 (OpenGL/Mesa-d3d12); PERF_STATS_OVERLAY confirms `COMPUTE_LIGHT_VOLUME` GPU time drops ≥8×; existing demos unaffected on macOS/Metal
+  - **Issue:** #1154
+  - **Notes:** Hot stage identified: `COMPUTE_LIGHT_VOLUME` — specifically `c_propagate_light_volume.glsl` × 32 iterations × 128³ cells ≈ 870M image ops + 800M SSBO reads per canvas per frame. Quick wins: (1) adaptive iteration count from per-light radius via `LightVolumeParams::stepFalloff` (placeholder was 32 flat); (2) skip COMPUTE_LIGHT_VOLUME dispatch for canvases with no active lights (GUI canvas). Larger: 64³ default volume (8× cheaper), sparse seeded-list propagate. Environment note: WSLg Mesa-d3d12 caps GL at 4.5 with below-native compute throughput — fix should work on native Linux too. Use `/optimize` flow + PERF_STATS_OVERLAY GPU timing to confirm dominant stage.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
