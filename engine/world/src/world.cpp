@@ -81,7 +81,7 @@ World::World(const char *configFileName)
     );
     // T-225: size the EntityManager's per-worker deferred-mutation
     // staging vector now that JobManager exists. Slot 0 is main,
-    // slots 1..N are IRJobs worker threads, so the total is
+    // slots 1..N are IRJob worker threads, so the total is
     // `workerCount() + 1`.
     m_entityManager.resizeWorkerStaging(
         static_cast<std::size_t>(m_jobManager.workerCount() + 1)

@@ -92,8 +92,8 @@ The deferred API is callable from worker threads inside a
 `PARALLEL_FOR` system body. The mechanism is per-worker staging:
 
 - The `EntityManager` holds `m_workerStaging`, a vector indexed by
-  `IRJobs::workerId()` (slot `0` = main thread, slots `1..N` =
-  IRJobs worker threads). Workers append to their own slot; no
+  `IRJob::workerId()` (slot `0` = main thread, slots `1..N` =
+  IRJob worker threads). Workers append to their own slot; no
   lock is needed on the producer side.
 - The vector is sized at `World` construction time, immediately
   after `JobManager` is constructed, via

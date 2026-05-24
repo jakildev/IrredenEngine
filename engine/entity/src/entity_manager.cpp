@@ -1,6 +1,6 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_entity.hpp>
-#include <irreden/ir_jobs.hpp>
+#include <irreden/ir_job.hpp>
 
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/job/job_manager.hpp>
@@ -20,7 +20,7 @@ EntityManager::EntityManager()
     , m_workerStaging(1) {
     // T-225: start with a single staging slot for the main thread.
     // `resizeWorkerStaging` grows the vector to
-    // `IRJobs::workerCount() + 1` once `JobManager` is constructed.
+    // `IRJob::workerCount() + 1` once `JobManager` is constructed.
     g_entityManager = this;
     IRE_LOG_INFO("Created EntityManager (IR_MAX_ENTITIES={})", static_cast<int>(IR_MAX_ENTITIES));
 }
@@ -72,7 +72,7 @@ bool EntityManager::isMainThreadForDeferred() const {
 }
 
 int EntityManager::workerSlotForCurrentThread() const {
-    // Slot 0 is main; 1..workerCount() are IRJobs workers. Out-of-range
+    // Slot 0 is main; 1..workerCount() are IRJob workers. Out-of-range
     // wid is unreachable in a correctly configured World — it guards
     // against misconfigured setups where resizeWorkerStaging was never
     // called. Falling back to slot 0 routes the write to the main-thread

@@ -44,7 +44,7 @@ struct PreDestroyHookEntry {
 
 // T-225: per-worker staging buffer for deferred structural mutations
 // produced from a `PARALLEL_FOR` system body. One instance per worker
-// (index 0 == main thread, 1..N == IRJobs worker threads). Workers
+// (index 0 == main thread, 1..N == IRJob worker threads). Workers
 // write only their own slot, so no lock is needed on the producer side;
 // `flushStructuralChanges` drains every buffer serially on the main
 // thread in `workerId` order so the visible effect is deterministic.
@@ -60,8 +60,8 @@ class EntityManager {
     ~EntityManager();
 
     /// Size the per-worker staging vector to `workerSlots` entries
-    /// (slot 0 == main thread, slots 1..N == IRJobs workers, so the
-    /// caller passes `IRJobs::workerCount() + 1`). Must be called
+    /// (slot 0 == main thread, slots 1..N == IRJob workers, so the
+    /// caller passes `IRJob::workerCount() + 1`). Must be called
     /// once, on the main thread, after `JobManager` is constructed
     /// and before any worker dispatches into the staging path. Safe
     /// to call before — the manager initialises with a single
@@ -485,7 +485,7 @@ class EntityManager {
     std::vector<PendingComponentRemoval> m_pendingComponentRemovals;
     std::vector<std::function<void()>> m_pendingStructuralChanges;
     // T-225: per-worker staging buffers for deferred mutations from
-    // worker threads. Sized to `IRJobs::workerCount() + 1` by
+    // worker threads. Sized to `IRJob::workerCount() + 1` by
     // `resizeWorkerStaging` after `JobManager` is constructed. Until
     // then the vector has a single slot for the main thread, so the
     // pre-`JobManager` path (engine init, tests with no worker pool)

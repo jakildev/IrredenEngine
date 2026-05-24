@@ -22,7 +22,7 @@ target_link_libraries(
     IrredenEngineEntity PUBLIC
     IrredenEngineProfile
     IrredenEngineMath
-    # T-225: per-worker deferred-mutation buffers query IRJobs::workerId
+    # T-225: per-worker deferred-mutation buffers query IRJob::workerId
     IrredenEngineJob
     # IrredenEngineInput
 )
