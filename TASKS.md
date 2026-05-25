@@ -288,17 +288,6 @@ Avoid:
   - **Notes:** 4 sub-items from T-298 review: (1)[opus] markDirty API — load-bearing, no creation should use Config::persistence_ until lands; (2)[sonnet] 2-level dir split before any real saves to avoid back-compat burden; (3)[sonnet] in-engine consumer verification; (4)[sonnet] optional rename. Should land before E2/E3 (T-356/T-357). Stacks on T-298 (merged).
   - **Links:**
 
-- [ ] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
-  - **ID:** T-362
-  - **Area:** engine/system
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Validator rejects conflicting group (shared write column), MAIN_THREAD system in group, two spawners in same group — all unit-tested with named-component error messages; (2) engine UPDATE pipeline reorganized into groups; (3) IRShapeDebug --auto-screenshot 60 smoke passes; (4) perf_grid_matrix.sh shows additional speedup beyond T-222; file docs/perf-reports/threading_phase3.md
-  - **Issue:** #1071
-  - **Notes:** Phase 3 of multithreading epic (#226). Blocked by #1069 (T-222 PARALLEL_FOR) — closed/done. registerPipelineGroups takes IRTime::UPDATE + vector of groups; systems within group run concurrently via IRJobs; groups sequential in declaration order. Validator fires at World::start(), not hot frame. Error must name specific conflicting component + both systems. Partition: use validator's accept list, don't pre-guess. Plan file: .fleet/plans/T-362.md
-  - **Links:**
-
 - [~] **tools: ir-host-probe + ir-acquire resource coordination (sub-task 1 of #1074)** — hardware fingerprinting and flock-based CPU/GPU/perf lock primitives for concurrent builds and perf measurements
   - **ID:** T-363
   - **Area:** tooling
@@ -332,11 +321,11 @@ Avoid:
   - **Notes:** User wants concurrent fleet on Ubuntu just for smoke testing open PRs, without review or feature work. Related to platform-catchup skill (#1093, closed/done) which processes the backlog manually. This is the persistent-mode variant (stays running, re-smokes on push).
   - **Links:**
 
-- [~] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
+- [ ] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
   - **ID:** T-366
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) Root cause documented for each duplicate-claim path (task claim, review claim, queue-manager spawn); (2) fleet-claim or scout/label protocol extended to prevent cross-host races; (3) FLEET.md updated with cross-fleet coordination protocol; (4) existing single-fleet operation unaffected
   - **Issue:** #1182
@@ -366,4 +355,4 @@ Avoid:
 - [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
-- [x] **T-361** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/1055
+- [x] **T-362** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/1071
