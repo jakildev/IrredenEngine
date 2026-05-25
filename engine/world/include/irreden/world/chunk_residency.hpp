@@ -187,11 +187,12 @@ class ChunkResidencyManager {
     /// rationale (without it a missed `dirty` flip silently drops
     /// the save on eviction and the chunk reverts on re-resident).
     ///
-    /// No-op when @p key is not resident — the manager logs nothing
+    /// No-op when @p key has no slot at all — the manager logs nothing
     /// because the eventual streaming path will sometimes target a
     /// chunk that already evicted between request and write; callers
     /// that need stronger guarantees should check `isResident(key)`
-    /// before mutating.
+    /// before mutating. Note: a slot in LOADING or UPLOADING state
+    /// (not yet resident) will still be marked dirty by this call.
     void markChunkDirty(IRPrefab::Chunk::ChunkKey key);
 
     // ── Entity ownership ─────────────────────────────────────────────
