@@ -321,11 +321,11 @@ Avoid:
   - **Notes:** Sub-task 1 of engine-level concurrency + perf primitives epic (#1074). Sub-tasks 2 (T-329 ir-build/ir-run), 3 (T-330 ir-perf-grid), 4 (T-331 acquire-late docs) all done. Layout: engine/tools/bin/ + engine/tools/lib/ + engine/tools/py/ + engine/tools/bench/ir_ref_bench.cpp + engine/tools/concurrency.toml. Host fingerprint cached at ~/.cache/irreden/host-fingerprint.json. Solo dev pays no concurrency tax (IR_FLEET_WORKERS unset → cap = full nproc).
   - **Links:**
 
-- [ ] **render: camera grows full SO(3) — retire C_CameraYaw, source rotation from C_LocalTransform** — retire C_CameraYaw; camera rotation lives in C_LocalTransform.rotation_; expose setRotationQuat()/getRotationQuat() API
+- [~] **render: camera grows full SO(3) — retire C_CameraYaw, source rotation from C_LocalTransform** — retire C_CameraYaw; camera rotation lives in C_LocalTransform.rotation_; expose setRotationQuat()/getRotationQuat() API
   - **ID:** T-364
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_CameraYaw deleted; camera rotation in C_LocalTransform.rotation_; (2) IRPrefab::Camera::setRotationQuat(q)/getRotationQuat() exposed; setYaw(y) backward-compat shim works; (3) picking/hitbox/gizmo_drag/shapes_to_trixel use only Z-component via existing helpers — GRID behavior identical to today; (4) IRCanvasStress --full-rotate: DETACHED cubes tilt with camera, GRID cubes stay axis-aligned in iso-depth; (5) no C_CameraYaw refs in engine/ or creations/; (6) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1076
