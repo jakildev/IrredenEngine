@@ -211,17 +211,6 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
-- [~] **tools: ir-host-probe + ir-acquire resource coordination (sub-task 1 of #1074)** — hardware fingerprinting and flock-based CPU/GPU/perf lock primitives for concurrent builds and perf measurements
-  - **ID:** T-363
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-363-ir-host-probe-harden
-  - **Blocked by:** (none)
-  - **Acceptance:** ir-host-probe outputs deterministic JSON fingerprint (CPU/GPU/OS/RAM → slug); ir-acquire flock-based CPU/GPU/perf lock with budget slots; ir-acquire benchmark canned mode acquires all three; fleet-build/fleet-run wire ir-acquire; ir-acquire --info shows live lock state; concurrency_test.sh passes
-  - **Issue:** #1074
-  - **Notes:** Sub-task 1 of engine-level concurrency + perf primitives epic (#1074). Sub-tasks 2 (T-329 ir-build/ir-run), 3 (T-330 ir-perf-grid), 4 (T-331 acquire-late docs) all done. Layout: engine/tools/bin/ + engine/tools/lib/ + engine/tools/py/ + engine/tools/bench/ir_ref_bench.cpp + engine/tools/concurrency.toml. Host fingerprint cached at ~/.cache/irreden/host-fingerprint.json. Solo dev pays no concurrency tax (IR_FLEET_WORKERS unset → cap = full nproc).
-  - **Links:**
-
 - [~] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
   - **ID:** T-366
   - **Area:** tooling
@@ -237,6 +226,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-363** — tools: ir-host-probe survives non-exec lspci stub in PATH · Owner: claude/T-363-ir-host-probe-harden · PR: https://github.com/jakildev/IrredenEngine/pull/1177
 - [x] **T-364** — render: retire C_CameraYaw — camera rotation sources from C_LocalTransform · Owner: claude/T-364-camera-so3-retire-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/1176
 - [x] **T-352** — render: fix zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL · Owner: claude/T-352-zoom16-bind-image-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1174
 - [x] **T-365** — fleet: smoke-only mode — persistent cross-host smoke worker · Owner: claude/T-365-smoke-only-mode · PR: https://github.com/jakildev/IrredenEngine/pull/1173
@@ -250,7 +240,6 @@ Avoid:
 - [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
 - [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
 - [x] **T-342** — fleet: queue-manager queued/free divergence check · Owner: claude/T-342-queue-manager-divergence-check · PR: https://github.com/jakildev/IrredenEngine/pull/1148
-- [x] **T-333** — engine/system: pre-resolve component vectors on main thread for PARALLEL_FOR · Owner: claude/T-333-pre-resolve-component-vectors · PR: https://github.com/jakildev/IrredenEngine/pull/1123
 - [x] **T-344** — fleet/auto-mode: fix rm -f .review-body.md via Read-then-Write protocol · Owner: claude/T-344-auto-mode-allowlist · PR: https://github.com/jakildev/IrredenEngine/pull/1151
 - [x] **T-343** — fleet: review-pr live label check after claim acquisition (pre-checkout) · Owner: claude/T-343-review-pr-live-label-check · PR: https://github.com/jakildev/IrredenEngine/pull/1150
 - [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
