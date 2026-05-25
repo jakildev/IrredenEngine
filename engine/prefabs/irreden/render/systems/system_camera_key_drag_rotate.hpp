@@ -6,7 +6,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/camera.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_camera.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -27,7 +27,7 @@ template <> struct System<CAMERA_KEY_DRAG_ROTATE> {
     vec2 dragStartMouse_ = vec2(0.0f);
     float dragStartYaw_ = 0.0f;
 
-    void tick(C_CameraYaw &) {}
+    void tick(C_Camera &) {}
 
     void endTick() {
         const bool leftPressed =
@@ -53,7 +53,7 @@ template <> struct System<CAMERA_KEY_DRAG_ROTATE> {
     }
 
     static SystemId create() {
-        return registerSystem<CAMERA_KEY_DRAG_ROTATE, C_CameraYaw>("CameraKeyDragRotate");
+        return registerSystem<CAMERA_KEY_DRAG_ROTATE, C_Camera>("CameraKeyDragRotate");
     }
 };
 

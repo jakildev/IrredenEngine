@@ -1,19 +1,20 @@
 #ifndef IR_PREFAB_CAMERA_H
 #define IR_PREFAB_CAMERA_H
 
-// Driver-side API for the camera entity's Z-yaw rotation. All operations
-// apply to the engine's named "camera" entity and silently no-op when it
-// has no `C_CameraYaw` component yet — this lets scripts and init code
-// run before the camera is fully wired without crashing.
+// Driver-side API for the camera entity's rotation. All operations apply
+// to the engine's named "camera" entity and silently no-op when it has no
+// C_LocalTransform yet — this lets scripts and init code run before the
+// camera is fully wired without crashing.
+//
+// Rotation lives in C_LocalTransform.rotation_ (the same SQT quaternion
+// every entity uses). The yaw helpers extract the Z-component for the
+// cardinal/residual split consumed by the integer trixel rasterizer.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
-#include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 
-#include <glm/gtc/constants.hpp>
-
-#include <cmath>
 #include <utility>
 
 namespace IRPrefab::Camera {
@@ -25,43 +26,76 @@ namespace IRPrefab::Camera {
 /// rasterizer; residualYaw is the leftover angle the screen-space
 /// residual composite pass rotates the canvas by.
 inline std::pair<float, float> computeYawSplit(float visualYaw) {
-    constexpr float halfPi = glm::half_pi<float>();
-    const float rasterYaw = std::round(visualYaw / halfPi) * halfPi;
+    const float rasterYaw = IRMath::round(visualYaw / IRMath::kHalfPi) * IRMath::kHalfPi;
     return {rasterYaw, visualYaw - rasterYaw};
 }
 
 namespace detail {
 
-inline IRComponents::C_CameraYaw *cameraYawComponent() {
+inline IRComponents::C_LocalTransform *cameraTransform() {
     const IREntity::EntityId camera = IREntity::getEntity("camera");
     if (camera == IREntity::kNullEntity)
         return nullptr;
-    auto opt = IREntity::getComponentOptional<IRComponents::C_CameraYaw>(camera);
+    auto opt = IREntity::getComponentOptional<IRComponents::C_LocalTransform>(camera);
     if (!opt.has_value())
         return nullptr;
     return *opt;
 }
 
-} // namespace detail
-
-/// Set the camera's continuous Z-yaw to @p yaw radians (normalized to [-π, π)).
-inline void setYaw(float yaw) {
-    if (auto *c = detail::cameraYawComponent())
-        c->setVisualYaw(yaw);
+// Extract Z-yaw from a unit quaternion and wrap to [-π, π).
+inline float yawFromQuat(const IRMath::vec4 &q) {
+    float yaw = 2.0f * IRMath::atan2(q.z, q.w);
+    // Wrap to [-π, π)
+    yaw = IRMath::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
+    if (yaw < 0.0f)
+        yaw += IRMath::kTwoPi;
+    return yaw - IRMath::kPi;
 }
 
-/// Read the camera's continuous Z-yaw (radians, in [-π, π)).
-/// Returns 0 if the camera entity has no yaw component yet.
+// Wrap a yaw value to [-π, π).
+inline float wrapYaw(float yaw) {
+    float wrapped = IRMath::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
+    if (wrapped < 0.0f)
+        wrapped += IRMath::kTwoPi;
+    return wrapped - IRMath::kPi;
+}
+
+} // namespace detail
+
+/// Set the camera's full rotation as a unit quaternion.
+inline void setRotationQuat(const IRMath::vec4 &q) {
+    if (auto *t = detail::cameraTransform())
+        t->rotation_ = q;
+}
+
+/// Camera world rotation as a unit quaternion read from C_LocalTransform.
+/// Returns identity (0,0,0,1) when the camera entity is not yet wired.
+inline IRMath::vec4 getRotationQuat() {
+    if (auto *t = detail::cameraTransform())
+        return t->rotation_;
+    return IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+}
+
+/// Set the camera's continuous Z-yaw to @p yaw radians (normalized to [-π, π)).
+/// Backward-compat shim: writes quatAxisAngle(z, yaw) into C_LocalTransform.
+inline void setYaw(float yaw) {
+    float wrapped = detail::wrapYaw(yaw);
+    setRotationQuat(IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), wrapped));
+}
+
+/// Read the camera's Z-yaw (radians, in [-π, π)) extracted from the rotation
+/// quaternion. Returns 0 if the camera entity is not yet wired.
 inline float getYaw() {
-    if (auto *c = detail::cameraYawComponent())
-        return c->visualYaw_;
+    if (auto *t = detail::cameraTransform())
+        return detail::yawFromQuat(t->rotation_);
     return 0.0f;
 }
 
 /// Add @p delta (radians) to the camera's yaw, normalized to [-π, π).
+/// NOTE: Rebuilds rotation as quatAxisAngle(z, yaw+delta), clobbering any
+/// non-Z components. Use setRotationQuat directly for full SO(3) compositions.
 inline void rotateYaw(float delta) {
-    if (auto *c = detail::cameraYawComponent())
-        c->rotate(delta);
+    setYaw(getYaw() + delta);
 }
 
 /// Both halves of the yaw split in one call. Prefer this over calling
@@ -85,18 +119,6 @@ inline float getRasterYaw() {
 /// are needed.
 inline float getResidualYaw() {
     return getYawSplit().second;
-}
-
-/// Camera world rotation as a unit quaternion. For T-319 this is just the
-/// Z-yaw embedded as `quatAxisAngle(z, yaw)`; the full SO(3) camera surface
-/// (issue #1076) will populate full pitch/roll, and the
-/// `PROPAGATE_CANVAS_ROTATION` camera-space composition picks it up
-/// transparently without further code change.
-///
-/// Returns identity (0,0,0,1) when the camera entity has no yaw component
-/// yet — preserves the no-op contract of `getYaw()`.
-inline IRMath::vec4 getRotationQuat() {
-    return IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), getYaw());
 }
 
 } // namespace IRPrefab::Camera

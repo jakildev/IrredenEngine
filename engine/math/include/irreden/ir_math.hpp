@@ -43,6 +43,8 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kHalfPi = 1.57079632679489661923f;
 /// Two pi (2π). Useful for full-revolution math and angle wrap.
 constexpr float kTwoPi = 6.28318530717958647692f;
+/// Quarter pi (π/4). Cardinal-yaw residual bound, diagonal transforms.
+constexpr float kQuarterPi = 0.78539816339744830961f;
 
 /// Face-index constants for the three visible iso faces. CPU mirror of the
 /// `kXFace`/`kYFace`/`kZFace` integer constants in `shaders/ir_iso_common.glsl`
@@ -235,6 +237,9 @@ template <typename T> constexpr auto ceil(const T &value) {
 template <typename T> constexpr auto fract(const T &value) {
     return glm::fract(value);
 }
+
+/// Floating-point remainder: x - y * trunc(x / y). std::fmod equivalent.
+inline float fmod(float x, float y) { return std::fmod(x, y); }
 
 /// Fractional part of the absolute value; always in [0, 1). Ignores sign.
 template <typename T> constexpr auto fractAbs(const T &value) {

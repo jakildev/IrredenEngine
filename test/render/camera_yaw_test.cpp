@@ -1,71 +1,104 @@
 #include <gtest/gtest.h>
 
 #include <irreden/render/camera.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
-
-#include <glm/gtc/constants.hpp>
+#include <irreden/ir_math.hpp>
 
 namespace {
 
 constexpr float kTolerance = 1e-5f;
 
-using IRComponents::C_CameraYaw;
 using IRPrefab::Camera::computeYawSplit;
 
 // ---------------------------------------------------------------------------
-// C_CameraYaw wrap behavior — exercised via the public mutation surface
-// (constructor, setVisualYaw, rotate). The private wrap() must normalize any
-// input yaw to the half-open range [-π, π).
+// IRPrefab::Camera::detail wrap/extract behavior — exercised via the public
+// yawFromQuat and wrapYaw helpers. The wrapping normalizes any input yaw to
+// the half-open range [-π, π).
 // ---------------------------------------------------------------------------
 
 TEST(CameraYawWrap, ZeroStaysZero) {
-    C_CameraYaw c{0.0f};
-    EXPECT_NEAR(c.visualYaw_, 0.0f, kTolerance);
+    float yaw = IRPrefab::Camera::detail::wrapYaw(0.0f);
+    EXPECT_NEAR(yaw, 0.0f, kTolerance);
 }
 
 TEST(CameraYawWrap, PositivePiMapsToNegativePi) {
-    // π is the exclusive upper bound of [-π, π) so it must wrap to -π.
-    C_CameraYaw c{glm::pi<float>()};
-    EXPECT_NEAR(c.visualYaw_, -glm::pi<float>(), kTolerance);
+    float yaw = IRPrefab::Camera::detail::wrapYaw(IRMath::kPi);
+    EXPECT_NEAR(yaw, -IRMath::kPi, kTolerance);
 }
 
 TEST(CameraYawWrap, NegativePiStaysNegativePi) {
-    // -π is the inclusive lower bound — must remain -π, not flip to +π.
-    C_CameraYaw c{-glm::pi<float>()};
-    EXPECT_NEAR(c.visualYaw_, -glm::pi<float>(), kTolerance);
+    float yaw = IRPrefab::Camera::detail::wrapYaw(-IRMath::kPi);
+    EXPECT_NEAR(yaw, -IRMath::kPi, kTolerance);
 }
 
 TEST(CameraYawWrap, FullRotationWrapsToZero) {
-    C_CameraYaw c{glm::two_pi<float>()};
-    EXPECT_NEAR(c.visualYaw_, 0.0f, kTolerance);
+    float yaw = IRPrefab::Camera::detail::wrapYaw(IRMath::kTwoPi);
+    EXPECT_NEAR(yaw, 0.0f, kTolerance);
 }
 
 TEST(CameraYawWrap, NegativeFullRotationWrapsToZero) {
-    C_CameraYaw c{-glm::two_pi<float>()};
-    EXPECT_NEAR(c.visualYaw_, 0.0f, kTolerance);
-}
-
-TEST(CameraYawWrap, SetVisualYawWraps) {
-    C_CameraYaw c{};
-    c.setVisualYaw(glm::pi<float>());
-    EXPECT_NEAR(c.visualYaw_, -glm::pi<float>(), kTolerance);
-}
-
-TEST(CameraYawWrap, RotatePastPositivePiWrapsToNegativeSide) {
-    // Step from just below +π through the boundary — the result must land
-    // on the symmetric negative side, not pop above +π.
-    C_CameraYaw c{glm::pi<float>() - 0.1f};
-    c.rotate(0.2f);
-    EXPECT_NEAR(c.visualYaw_, -glm::pi<float>() + 0.1f, kTolerance);
+    float yaw = IRPrefab::Camera::detail::wrapYaw(-IRMath::kTwoPi);
+    EXPECT_NEAR(yaw, 0.0f, kTolerance);
 }
 
 TEST(CameraYawWrap, ManyFullRotationsDoNotDriftMaterially) {
-    // Long-run sanity: the whole point of wrapping on every mutation is to
-    // prevent float drift. 1000 full rotations from 0.5 must come back near
-    // 0.5 within a coarse tolerance (1000×two_pi accumulates some noise).
-    C_CameraYaw c{0.5f};
-    for (int i = 0; i < 1000; ++i) c.rotate(glm::two_pi<float>());
-    EXPECT_NEAR(c.visualYaw_, 0.5f, 1e-3f);
+    float yaw = 0.5f;
+    for (int i = 0; i < 1000; ++i) {
+        yaw += IRMath::kTwoPi;
+        yaw = IRPrefab::Camera::detail::wrapYaw(yaw);
+    }
+    EXPECT_NEAR(yaw, 0.5f, 1e-3f);
+}
+
+// ---------------------------------------------------------------------------
+// Quaternion round-trip: setYaw → getYaw via quatAxisAngle(z, angle).
+// Verifies yawFromQuat extracts the Z-component correctly.
+// ---------------------------------------------------------------------------
+
+TEST(CameraYawQuat, ZeroRoundTrips) {
+    auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), 0.0f);
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), 0.0f, kTolerance);
+}
+
+TEST(CameraYawQuat, HalfPiRoundTrips) {
+    constexpr float halfPi = IRMath::kHalfPi;
+    auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), halfPi);
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), halfPi, kTolerance);
+}
+
+TEST(CameraYawQuat, NegativeHalfPiRoundTrips) {
+    constexpr float halfPi = IRMath::kHalfPi;
+    auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), -halfPi);
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), -halfPi, kTolerance);
+}
+
+TEST(CameraYawQuat, NearPiRoundTrips) {
+    constexpr float nearPi = IRMath::kPi - 0.01f;
+    auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), nearPi);
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), nearPi, kTolerance);
+}
+
+TEST(CameraYawQuat, NegativeNearPiRoundTrips) {
+    constexpr float nearPi = -(IRMath::kPi - 0.01f);
+    auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), nearPi);
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), nearPi, kTolerance);
+}
+
+TEST(CameraYawQuat, IdentityQuatGivesZeroYaw) {
+    auto q = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), 0.0f, kTolerance);
+}
+
+TEST(CameraYawQuat, IteratedRoundTripDoesNotDriftMaterially) {
+    // Exercises the full yawFromQuat → wrapYaw → quatAxisAngle round-trip 1000
+    // times — the AUTO_YAW_ROTATE use case that rotateYaw() drives each frame.
+    auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), 0.5f);
+    const float initial = IRPrefab::Camera::detail::yawFromQuat(q);
+    for (int i = 0; i < 1000; ++i) {
+        float yaw = IRPrefab::Camera::detail::yawFromQuat(q);
+        yaw = IRPrefab::Camera::detail::wrapYaw(yaw + IRMath::kTwoPi);
+        q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), yaw);
+    }
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), initial, 1e-3f);
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +114,7 @@ TEST(YawSplit, ZeroSplitsToZeroZero) {
 }
 
 TEST(YawSplit, ExactCardinalsHaveZeroResidual) {
-    constexpr float halfPi = glm::half_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
     for (float k : {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f}) {
         auto [raster, residual] = computeYawSplit(k * halfPi);
         EXPECT_NEAR(raster, k * halfPi, kTolerance) << "k=" << k;
@@ -90,31 +123,25 @@ TEST(YawSplit, ExactCardinalsHaveZeroResidual) {
 }
 
 TEST(YawSplit, PositiveQuarterPiSnapsAwayFromZero) {
-    // π/4 = 0.5 cardinals away from 0. C++ std::round rounds halves away
-    // from zero, so this snaps up to π/2 with residual -π/4 (boundary).
-    constexpr float halfPi = glm::half_pi<float>();
-    constexpr float quarterPi = glm::quarter_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
+    constexpr float quarterPi = IRMath::kQuarterPi;
     auto [raster, residual] = computeYawSplit(quarterPi);
     EXPECT_NEAR(raster, halfPi, kTolerance);
     EXPECT_NEAR(residual, -quarterPi, kTolerance);
 }
 
 TEST(YawSplit, NegativeQuarterPiSnapsAwayFromZero) {
-    // Symmetric: -π/4 snaps down to -π/2 with residual +π/4.
-    constexpr float halfPi = glm::half_pi<float>();
-    constexpr float quarterPi = glm::quarter_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
+    constexpr float quarterPi = IRMath::kQuarterPi;
     auto [raster, residual] = computeYawSplit(-quarterPi);
     EXPECT_NEAR(raster, -halfPi, kTolerance);
     EXPECT_NEAR(residual, quarterPi, kTolerance);
 }
 
 TEST(YawSplit, ResidualStaysInsideCardinalQuarter) {
-    // Sweep [-π, π] and confirm the residual is always within [-π/4, π/4]
-    // and that raster + residual reconstructs the input. The screen-space
-    // residual composite pass relies on this invariant for canvas bounds.
-    constexpr float quarterPi = glm::quarter_pi<float>();
+    constexpr float quarterPi = IRMath::kQuarterPi;
     for (int i = -100; i <= 100; ++i) {
-        const float visualYaw = (static_cast<float>(i) / 100.0f) * glm::pi<float>();
+        const float visualYaw = (static_cast<float>(i) / 100.0f) * IRMath::kPi;
         auto [raster, residual] = computeYawSplit(visualYaw);
         EXPECT_LE(residual, quarterPi + kTolerance) << "visualYaw=" << visualYaw;
         EXPECT_GE(residual, -quarterPi - kTolerance) << "visualYaw=" << visualYaw;

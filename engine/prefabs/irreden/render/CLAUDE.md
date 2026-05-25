@@ -13,8 +13,10 @@ the ECS surface.
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
   ctor-allocated, `onDestroy()`-freed.
-- `C_CameraYaw` — continuous Z-yaw (radians), normalized to `[-π, π)`. See
-  `camera.hpp` for the cardinal/residual split API.
+- Camera rotation lives in `C_LocalTransform.rotation_` (the same SQT
+  quaternion every entity uses). `camera.hpp` exposes `IRPrefab::Camera::`
+  helpers that extract Z-yaw for the cardinal/residual split consumed by
+  the trixel rasterizer. `C_CameraYaw` was retired in T-364.
 - `C_Sprite` / `C_SpriteSheet` / `C_SpriteAnimation` — 2D screen-composite
   sprite + atlas metadata + per-instance playback state. Sprites bypass the
   trixel pipeline and draw at the `FRAMEBUFFER_TO_SCREEN` stage;
