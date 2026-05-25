@@ -325,7 +325,7 @@ Avoid:
   - **ID:** T-364
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** claude/T-364-camera-so3-retire-yaw
+  - **Owner:** claude/T-364-camera-so3
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_CameraYaw deleted; camera rotation in C_LocalTransform.rotation_; (2) IRPrefab::Camera::setRotationQuat(q)/getRotationQuat() exposed; setYaw(y) backward-compat shim works; (3) picking/hitbox/gizmo_drag/shapes_to_trixel use only Z-component via existing helpers — GRID behavior identical to today; (4) IRCanvasStress --full-rotate: DETACHED cubes tilt with camera, GRID cubes stay axis-aligned in iso-depth; (5) no C_CameraYaw refs in engine/ or creations/; (6) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1076
