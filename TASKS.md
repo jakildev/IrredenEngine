@@ -310,11 +310,11 @@ Avoid:
   - **Notes:** Phase 3 of multithreading epic (#226). Blocked by #1069 (T-222 PARALLEL_FOR) — closed/done. registerPipelineGroups takes IRTime::UPDATE + vector of groups; systems within group run concurrently via IRJobs; groups sequential in declaration order. Validator fires at World::start(), not hot frame. Error must name specific conflicting component + both systems. Partition: use validator's accept list, don't pre-guess. Plan file: .fleet/plans/T-362.md
   - **Links:**
 
-- [ ] **tools: ir-host-probe + ir-acquire resource coordination (sub-task 1 of #1074)** — hardware fingerprinting and flock-based CPU/GPU/perf lock primitives for concurrent builds and perf measurements
+- [~] **tools: ir-host-probe + ir-acquire resource coordination (sub-task 1 of #1074)** — hardware fingerprinting and flock-based CPU/GPU/perf lock primitives for concurrent builds and perf measurements
   - **ID:** T-363
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** ir-host-probe outputs deterministic JSON fingerprint (CPU/GPU/OS/RAM → slug); ir-acquire flock-based CPU/GPU/perf lock with budget slots; ir-acquire benchmark canned mode acquires all three; fleet-build/fleet-run wire ir-acquire; ir-acquire --info shows live lock state; concurrency_test.sh passes
   - **Issue:** #1074
