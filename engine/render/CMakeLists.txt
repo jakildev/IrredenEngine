@@ -1,5 +1,6 @@
 set(RENDER_CORE_SRC
     src/active_canvas.cpp
+    src/async_texture.cpp
     src/ir_render.cpp
     src/buffer.cpp
     src/framebuffer.cpp

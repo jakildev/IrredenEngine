@@ -51,6 +51,7 @@ World::World(const char *configFileName)
     , m_maxUpdateTicksPerFrame{static_cast<uint32_t>(
           m_worldConfig["max_update_ticks_per_frame"].get_integer()
       )} {
+    auto iconHandle = IRRender::loadImageAsync("data/images/irreden_engine_logo_v6_alpha.png");
     IRRender::setSubdivisionMode(
         static_cast<IRRender::SubdivisionMode>(m_worldConfig["subdivision_mode"].get_enum())
     );
@@ -61,8 +62,8 @@ World::World(const char *configFileName)
     IRRender::gpuStageTiming().enabled_ = m_worldConfig["gpu_stage_timing"].get_boolean();
     IRRender::gpuStageTiming().legacyFinishTiming_ =
         m_worldConfig["gpu_stage_timing_legacy"].get_boolean();
-    IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
-    GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
+    auto iconData = iconHandle.take();
+    GLFWimage iconGlfw{iconData.width_, iconData.height_, iconData.pixels_.data()};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
     m_renderer.printRenderInfo();
     m_videoManager.configureCapture(
