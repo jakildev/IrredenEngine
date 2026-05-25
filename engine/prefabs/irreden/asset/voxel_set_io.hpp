@@ -32,6 +32,9 @@ namespace IRAsset {
 /// transform, `CsgOp::NONE`, `boneId = 0`). Non-empty spans should
 /// match `descriptors.size()` — mismatched lengths log a warning and
 /// degrade gracefully by stopping at the shorter span, not UB.
+///
+/// @deprecated SHAPES write path retired per Epic D D2 (#960). New `.vxs`
+/// assets must use `saveDenseVoxelSet`. See `docs/design/sdf-migration-plan.md`.
 inline BinaryStatus saveVoxelSet(
     const std::string &path,
     std::span<const IRComponents::C_ShapeDescriptor> descriptors,

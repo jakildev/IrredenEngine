@@ -250,6 +250,8 @@ High-level entry points:
 - `saveShapeGroup(path, span<ShapeRecord>)` — writes MODE=SHAPES, SREF,
   SHPG chunks under the `VXS1` header. Emits a `.vxs.json` sidecar at
   `path + ".json"` (Rule #6) on successful binary write.
+  **Deprecated (D2 / #960)** — do not call for new assets; use
+  `saveDenseVoxelSet`. Reader path (`loadShapeGroup`) is retained.
 - `loadShapeGroup(path)` — returns `VoxelSetFile { mode_, shapeRecords_,
   unknownShapesSkipped_ }` after resolving SREF and SHPG. Container
   errors (`BadMagic`, `VersionTooNew`, truncation, chunk-out-of-bounds)
@@ -265,6 +267,8 @@ High-level entry points:
   MODE=HYBRID with SREF + SHPG (shapes) and BNDS + VOXR (dense). Emits
   a `.vxs.json` sidecar at `path + ".json"` (Rule #6) on successful
   binary write.
+  **Deprecated (D2 / #960)** — do not call for new assets; use
+  `saveDenseVoxelSet`. Reader path (`loadVoxelSet`) is retained.
 - `loadVoxelSet(path)` — unified loader; returns `VoxelSetAllFile {
   mode_, shapeRecords_, dense_, ... }`. Works for all three modes —
   SHAPES-only leaves `dense_` empty; DENSE-only leaves `shapeRecords_`
@@ -277,6 +281,8 @@ For callers working with `C_ShapeDescriptor`, the prefab-side adapter at
 offset / rotation / csgOp / boneId arrays — the per-entity composition
 metadata `C_ShapeDescriptor` does not itself carry. The adapter lives in
 prefabs to keep `engine/asset/` from depending on the component layer.
+**Deprecated (D2 / #960)** — SHAPES write path; do not call for new assets.
+See `docs/design/sdf-migration-plan.md`.
 
 #### How to add a new SDF primitive
 
