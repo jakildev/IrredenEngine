@@ -449,6 +449,11 @@ Result<std::vector<MetaEntry>> readMetaChunk(std::span<const std::uint8_t> body)
 /// `path + ".json"` (Rule #6) when the binary write succeeds; a failed
 /// binary write skips the sidecar so a stale sidecar never outlives a
 /// missing binary.
+///
+/// @deprecated SHAPES write path retired per Epic D D2 (#960). New `.vxs`
+/// assets must use `saveDenseVoxelSet`. `VoxelSetMode::SHAPES` remains
+/// legacy-readable; existing assets load via `loadShapeGroup` /
+/// `loadVoxelSet` without migration. See `docs/design/sdf-migration-plan.md`.
 BinaryStatus saveShapeGroup(const std::string &path, std::span<const ShapeRecord> records);
 
 /// Loader-side view of a shape-group `.vxs` file.
@@ -526,6 +531,11 @@ struct VoxelSetAllFile {
 /// a `.vxs.json` sidecar at `path + ".json"` (Save Format Extensibility
 /// Rule #6 — sidecar regenerated from the binary on every save, never the
 /// source of truth). The sidecar is not emitted when the binary write fails.
+///
+/// @deprecated HYBRID write path retired per Epic D D2 (#960). New `.vxs`
+/// assets must use `saveDenseVoxelSet`. `VoxelSetMode::HYBRID` remains
+/// legacy-readable; existing assets load via `loadVoxelSet` without
+/// migration. See `docs/design/sdf-migration-plan.md`.
 BinaryStatus saveVoxelSet(
     const std::string &path, std::span<const ShapeRecord> shapes, const DenseVoxelSet &dense
 );

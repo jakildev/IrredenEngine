@@ -16,13 +16,16 @@ below the component layer.
   doesn't store. Loader path: callers use `IRAsset::loadShapeGroup`
   (in `<irreden/asset/voxel_set_format.hpp>`) and reconstruct
   entities from the returned `ShapeRecord`s.
+  **Deprecated (D2 / #960)** — SHAPES write path retired; new assets
+  use `saveDenseVoxelSet`. See `docs/design/sdf-migration-plan.md`.
 
 ## Typical usage
 
-Adapters bridge component types to asset-level save/load. To save the current
-shape group:
+Adapters bridge component types to asset-level save/load. For new DENSE
+assets use `saveDenseVoxelSet`; the SHAPES write path (`saveVoxelSet`) is
+deprecated per D2. To load legacy SHAPES assets:
 
 ```cpp
-#include <irreden/asset/voxel_set_io.hpp>
-IRAsset::saveVoxelSet(path, shapes);
+#include <irreden/asset/voxel_set_format.hpp>
+auto result = IRAsset::loadShapeGroup(path);
 ```
