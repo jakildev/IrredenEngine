@@ -114,6 +114,13 @@ class ChunkResidencyManager {
         /// eviction boundary. A chunk must exceed
         /// R_prefetch + hysteresisVoxels_ to be marked EVICTING.
         float hysteresisVoxels_ = 32.0f;
+
+        /// Chebyshev radius (in chunks) for the prefetch ring around
+        /// the camera. tickPrefetch requests residency for every chunk
+        /// within this radius. 0 disables prefetch. Eviction is driven
+        /// by the voxel-distance policy above (beginFrame / endFrame),
+        /// not by this radius.
+        int prefetchRadiusChunks_ = 2;
     };
 
     ChunkResidencyManager() = default;
@@ -127,8 +134,9 @@ class ChunkResidencyManager {
 
     // ── Frame hooks ────────────────────────────────────────────────────
 
-    /// Recompute per-slot distances from the camera, bump touch frames
-    /// for slots within R_view, and mark far slots EVICTING.
+    /// Recompute per-slot distances from the camera, derive the chunk
+    /// coordinate for the prefetch ring, bump touch frames for slots
+    /// within R_view, and mark far slots EVICTING.
     void beginFrame(IRMath::vec3 cameraWorldVoxel);
 
     void tickPrefetch();
@@ -240,6 +248,7 @@ class ChunkResidencyManager {
     std::unordered_map<IRPrefab::Chunk::ChunkKey, ChunkResidencySlot> m_slots{};
     std::uint64_t m_frameIndex = 0;
     IRMath::vec3 m_cameraWorldVoxel{0.0f};
+    IRMath::ivec3 m_cameraChunk{0};
     FrameStats m_frameStats{};
 };
 
