@@ -199,6 +199,127 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
+- [ ] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
+  - **ID:** T-367
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `/increase-complexity` skill exists in `.claude/skills/`; (2) when invoked on a demo, scans available systems/prefabs and appends entities or parameters to increase visual complexity; (3) user can optionally specify what kind of change is wanted; (4) fleet-build clean on linux-debug after applying changes to any touched demo
+  - **Issue:** #1064
+  - **Notes:** Skill should look for new engine or game systems and include them in the demo. Optional: dry-run mode prints proposed changes before applying.
+  - **Links:**
+
+- [ ] **asset: async texture loading via pinned worker (T-226 Phase 5)** — `IRAsset::loadTextureAsync` returns immediately with an AssetHandle; disk read + decode runs on a pinned I/O worker; GL texture upload schedules onto main thread
+  - **ID:** T-368
+  - **Area:** engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `IRAsset::loadTextureAsync` exists, returns `AssetHandle<C_Texture>`, produces a valid texture once resolved; (2) one existing blocking startup load migrated to async; (3) startup-time delta filed in `docs/perf-reports/`; (4) no regression on `perf_grid_matrix.sh`
+  - **Issue:** #1073
+  - **Notes:** Phase 5 of multithreading epic (#226). Blocker #1068 (IRJobs::pinTo) is now closed. GL/Metal texture creation must happen on the main thread — pinned worker does disk-read + decode only; upload schedules onto main. One entry point POC only; other loaders follow if the pattern is right.
+  - **Links:**
+
+- [ ] **math: add IRMath::cbrt cube-root primitive (extract from perf_grid demo)** — hoist `std::cbrt` call from `perf_grid/main.cpp:532` into `engine/math/` as `IRMath::cbrt<T>` following existing IRMath conventions
+  - **ID:** T-369
+  - **Area:** engine/math
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `engine/math/` exports `IRMath::cbrt` (float/double overloads, `constexpr`, `noexcept`); (2) `perf_grid/main.cpp:532` uses `IRMath::cbrt`; (3) `grep -rn "std::cbrt"` returns zero results outside allowlisted backend/glue; (4) IRMath substitution table updated
+  - **Issue:** #1088
+  - **Notes:** Triggered by reviewer nit on PR #1081 (T-220). Primary motivation is preventing a second `std::cbrt` consumer before the primitive is hoisted.
+  - **Links:**
+
+- [ ] **perf: IRPerfGrid UPDATE pipeline — reduce 8.6s/frame to ≤33ms on linux-x86_64** — profile + fix dominant UPDATE systems (PropagateTransform, PeriodicIdle, UpdateVoxelSetChildren) to reach ≥30 FPS on IRPerfGrid
+  - **ID:** T-370
+  - **Area:** engine/system, engine/world
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** IRPerfGrid frame time on linux-x86_64 ≤ 33 ms with visual parity to master
+  - **Issue:** #1161
+  - **Notes:** Diagnosed during T-351 by opus-worker. UPDATE ~8.6s/frame vs RENDER ~0.2s/frame at 262k entities. PropagateTransform (99893ms), PeriodicIdle (69567ms), UpdateVoxelSetChildren (45851ms) dominate. Approaches: (1) cap UPDATE catch-up ticks/frame, (2) parallelize disjoint UPDATE systems (PARALLEL_FOR prerequisites T-222/T-224 landed), (3) reduce per-entity work in dominant systems.
+  - **Links:**
+
+- [ ] **world: chunk persistence — two-level directory split (T-298 follow-up 2/4)** — update `ChunkDiskPersistence::chunkPath` / `filenameForKey` to use `chunks/<x_div_N>/<y_div_N>/` layout before any durable saves exist
+  - **ID:** T-371
+  - **Area:** engine/world
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Benchmark validates split dimensions on ext4/NTFS; (2) `chunkPath` and `filenameForKey` updated; (3) tests' expected filename fragments migrated; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1169
+  - **Notes:** Split from #1008 item 2. T-298 (#998) deferred directory layout pending profiling. No migration tooling needed (nothing real persists today). Two-level `<x_div_64>/<y_div_64>` is the working proposal; one-level `x_div_N` may suffice on ext4/NTFS — quick benchmark gates the decision.
+  - **Links:**
+
+- [ ] **world: chunk persistence — wire in-engine consumer end-to-end (T-298 follow-up 3/4)** — pick one consumer (voxel editor save path or new IRChunkStreamingSmoke demo) and wire a real `ChunkResidencyManager` + `VoxelPoolAllocation` round-trip
+  - **ID:** T-372
+  - **Area:** engine/world
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Consumer wired and running on linux-debug and macos-debug; (2) chunk file lands under `<save>/chunks/`; (3) round-trip preserves voxel data; (4) clean chunks skip the save
+  - **Issue:** #1170
+  - **Notes:** Split from #1008 item 3. T-298's code path has no in-engine consumer — only gtest fake-pool integration. Candidates: voxel editor "save chunks" path, or new `IRChunkStreamingSmoke` demo. Should land before E2/E3 (T-357/T-358) so persistence is proven on a real pool.
+  - **Links:**
+
+- [ ] **world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence (T-298 follow-up 4/4)** — rename to make explicit the class saves the voxel-pool slice only, not entity manifest or billboard metadata
+  - **ID:** T-373
+  - **Area:** engine/world
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** All `ChunkDiskPersistence` references in engine/ replaced with `ChunkVoxelDiskPersistence`; fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1171
+  - **Notes:** Split from #1008 item 4. Low-priority rename pass. May fold into T-371 or T-372 if convenient; standalone skip is fine. Prevents future PRs from assuming entity state is durable via this class.
+  - **Links:**
+
+- [ ] **tooling: queue-manager — detect stale TASKS.md rows whose scope shipped under a different T-NNN** — before ingesting a `human:approved` issue, search recent merged PRs for the issue number; skip ingest and post a comment if the scope already landed
+  - **ID:** T-374
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Ingest pass searches merged PR titles/bodies for the issue number; (2) if a merged PR references the issue, skip ingest and post a comment linking the landing PR; (3) normal ingest path unaffected; (4) T-361/T-362 pattern (sub-task shipped under different T-NNN prefix) is caught
+  - **Issue:** #1175
+  - **Notes:** Diagnosed by opus-worker-1 — T-361, T-362, T-363 rows appeared in TASKS.md because implementing PRs used different T-NNN prefixes. T-361 and T-362 have since been removed from TASKS.md. Do NOT auto-close source issues (#1055, #1071, #1074) — human decides. Adjacent to T-338 (maintenance-sync) and T-342 (divergence check).
+  - **Links:**
+
+- [ ] **fleet: fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels (Bug 1 from #1182)** — add cross-host claim label check to `derive_status()` so maintenance-sync on host B no longer reverts claims held on host A
+  - **ID:** T-375
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Claim on host A + fleet-tasks-render on host B → status stays `[~]`; (2) maintenance-sync no longer reverts cross-host claims; (3) pure-local single-host flow unchanged; (4) synthetic test injects `fleet:claim-*` label and asserts `[~]` preserved across render cycle lacking local FS claim
+  - **Issue:** #1190
+  - **Notes:** Root cause: `fleet-tasks-render:load_fs_claims()` host-local; `derive_status()` preserves `[~]` only when task_id in fs_claims. Fix: also treat live `fleet:claim-<host>-<agent>` label on task's linked issue as `[~]`-preservation signal (one `gh issue list -l "fleet:claim-*"` per render). Repro in T-366/#1182 timeline: claim reverted 54s after acquisition. Duplicate issue: #1186.
+  - **Links:**
+
+- [ ] **fleet: fleet-claim — TTL sweep stale fleet:claim-* labels off open issues (Bug 2 from #1182)** — extend `cmd_cleanup --gh` to drop `fleet:claim-*` from open issues where holder has gone silent (no PR, no recent commit, past TTL)
+  - **ID:** T-376
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `fleet-claim cleanup --gh` drops stale `fleet:claim-*` from open issues per TTL rules; (2) active claims (open WIP PR or recent commit) are never swept; (3) idempotent — sweep twice = no-op second time; (4) removal logged in same format as closed-issue sweep; (5) queue-tick calls the sweep so it self-heals
+  - **Issue:** #1191
+  - **Notes:** Root cause: `cmd_check_stale` sweeps FS claims and `fleet:claim-*` off closed issues only — no pass sweeps open issues. T-366/#1182 held `fleet:claim-mac-opus-worker-2` for 17+ hours after an abandoned empty commit. Drop criteria: no matching PR AND label age > TTL (default 7200s) OR linked task Owner → free. Duplicate issue: #1187.
+  - **Links:**
+
+- [ ] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
+  - **ID:** T-377
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `commit-and-push` with no staged changes fails with clear error message; (2) error instructs worker to either stage real work or release the claim; (3) existing non-empty-commit path unaffected; (4) skill docs state the empty-commit guard contract
+  - **Issue:** #1192
+  - **Notes:** Root cause: commit `85662e24` on `claude/T-366-fleet-duplicate-claiming` pushed empty tree-delta under a task title. Fix: `git diff --cached --quiet` check before `git commit`; exit non-zero if staged tree equals HEAD. Affects SKILL.md and any procedures/*.md with embedded commit paths. Duplicate issue: #1188.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
