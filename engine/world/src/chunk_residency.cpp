@@ -170,8 +170,7 @@ void ChunkResidencyManager::flushUploads(int maxBytes) {
                                         static_cast<std::uint64_t>(sizeof(IRComponents::C_Voxel));
 
     std::uint64_t cumulativeBytes = 0;
-    std::vector<PendingUpload> deferred;
-    deferred.reserve(m_pendingUploads.size());
+    m_deferScratch.clear();
 
     for (const auto &pending : m_pendingUploads) {
         // Slot may have been evicted between request and flush — the
@@ -206,7 +205,7 @@ void ChunkResidencyManager::flushUploads(int maxBytes) {
         // exceeds the budget. Otherwise streaming stalls forever the
         // moment a chunk grows past the cap.
         if (wouldExceed && cumulativeBytes > 0 && !isForced) {
-            deferred.push_back(pending);
+            m_deferScratch.push_back(pending);
             continue;
         }
 
@@ -214,7 +213,7 @@ void ChunkResidencyManager::flushUploads(int maxBytes) {
         cumulativeBytes += bytesPerChunk;
     }
 
-    m_pendingUploads = std::move(deferred);
+    std::swap(m_pendingUploads, m_deferScratch);
 }
 
 void ChunkResidencyManager::endFrame() {

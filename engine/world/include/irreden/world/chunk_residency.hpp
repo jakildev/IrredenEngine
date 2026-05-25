@@ -311,6 +311,9 @@ class ChunkResidencyManager {
 
     // ── Index iteration (acceptance criterion 1) ─────────────────────
 
+    /// Total number of tracked chunks in m_slots, including LOADING,
+    /// UPLOADING, and EVICTING slots in deferred mode. Not strictly
+    /// "resident" when deferredUpload_ is true.
     std::size_t residentChunkCount() const;
     std::size_t entityCount() const;
 
@@ -328,17 +331,18 @@ class ChunkResidencyManager {
     /// for budget-tuning telemetry.
     std::size_t pendingUploadCount() const;
 
-    /// Iterate every resident slot. Visit order is unordered_map's;
-    /// callers must not rely on it.
+    /// Iterate every tracked slot (all states). Visit order is
+    /// unordered_map's; callers must not rely on it.
+    /// TODO(T-358-follow-up): filter to state_ == RESIDENT once a
+    /// production consumer exists that must skip LOADING slots.
     template <typename Fn> void forEachChunk(Fn &&fn) const {
-        // TODO(E3): filter to state_ == RESIDENT once async transitions add LOADING/UPLOADING slots
         for (const auto &kv : m_slots) {
             fn(kv.first, kv.second);
         }
     }
 
-    /// Iterate every slot that has NOT yet reached RESIDENT — LOADING
-    /// and UPLOADING slots. The renderer's low-LOD pass calls this
+    /// Iterate every slot that has NOT yet reached RESIDENT (LOADING,
+    /// UPLOADING, or EVICTING). The renderer's low-LOD pass calls this
     /// each frame to spawn / refresh AABB billboards from each slot's
     /// `aabbColor_` / `aabbMinVoxel_` / `aabbMaxVoxel_` while the
     /// upload pipeline catches up. Visit order is unordered_map's.
@@ -379,6 +383,9 @@ class ChunkResidencyManager {
     IRMath::vec3 m_cameraWorldVoxel{0.0f};
     IRMath::ivec3 m_cameraChunk{0};
     FrameStats m_frameStats{};
+
+    // Reused across flushUploads() calls to avoid per-frame heap allocation.
+    std::vector<PendingUpload> m_deferScratch{};
 };
 
 } // namespace IRWorld
