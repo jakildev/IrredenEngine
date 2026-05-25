@@ -199,21 +199,11 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
-- [~] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
-  - **ID:** T-366
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-366-fleet-duplicate-claiming
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Root cause documented for each duplicate-claim path (task claim, review claim, queue-manager spawn); (2) fleet-claim or scout/label protocol extended to prevent cross-host races; (3) FLEET.md updated with cross-fleet coordination protocol; (4) existing single-fleet operation unaffected
-  - **Issue:** #1182
-  - **Notes:** Two fleets on separate hosts both picking up the same work. Existing fleet-claim is git-branch-based but cross-host git push latency creates a race window. Queue-manager: multiple scouts on separate hosts may simultaneously detect the same human:approved issue. Review claiming via labels (fleet:wip, fleet:reviewing) reported as not working for issues. TASKS.md write conflicts possible if both queue-managers commit simultaneously. Investigate: (a) fleet-claim claim-check vs scout tick race; (b) atomicity of fleet:queued label add from multiple hosts; (c) fleet:wip label race for review claims; (d) multi-queue-manager TASKS.md write contention.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-366** — fleet: harden cross-host duplicate-claim prevention · Owner: claude/T-366-fleet-duplicate-claiming · PR: https://github.com/jakildev/IrredenEngine/pull/1189
 - [x] **T-356** — world: GPU chunk residency manager (LRU + camera-radius eviction) (E2) · Owner: claude/T-356-gpu-chunk-residency · PR: https://github.com/jakildev/IrredenEngine/pull/1179
 - [x] **T-363** — tools: ir-host-probe survives non-exec lspci stub in PATH · Owner: claude/T-363-ir-host-probe-harden · PR: https://github.com/jakildev/IrredenEngine/pull/1177
 - [x] **T-364** — render: retire C_CameraYaw — camera rotation sources from C_LocalTransform · Owner: claude/T-364-camera-so3-retire-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/1176
@@ -233,4 +223,3 @@ Avoid:
 - [x] **T-343** — fleet: review-pr live label check after claim acquisition (pre-checkout) · Owner: claude/T-343-review-pr-live-label-check · PR: https://github.com/jakildev/IrredenEngine/pull/1150
 - [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
 - [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
-- [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
