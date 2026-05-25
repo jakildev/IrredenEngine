@@ -199,11 +199,11 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
-- [~] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
+- [ ] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
   - **ID:** T-367
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `/increase-complexity` skill exists in `.claude/skills/`; (2) when invoked on a demo, scans available systems/prefabs and appends entities or parameters to increase visual complexity; (3) user can optionally specify what kind of change is wanted; (4) fleet-build clean on linux-debug after applying changes to any touched demo
   - **Issue:** #1064
@@ -221,11 +221,11 @@ Avoid:
   - **Notes:** Phase 5 of multithreading epic (#226). Blocker #1068 (IRJobs::pinTo) is now closed. GL/Metal texture creation must happen on the main thread — pinned worker does disk-read + decode only; upload schedules onto main. One entry point POC only; other loaders follow if the pattern is right.
   - **Links:**
 
-- [~] **math: add IRMath::cbrt cube-root primitive (extract from perf_grid demo)** — hoist `std::cbrt` call from `perf_grid/main.cpp:532` into `engine/math/` as `IRMath::cbrt<T>` following existing IRMath conventions
+- [ ] **math: add IRMath::cbrt cube-root primitive (extract from perf_grid demo)** — hoist `std::cbrt` call from `perf_grid/main.cpp:532` into `engine/math/` as `IRMath::cbrt<T>` following existing IRMath conventions
   - **ID:** T-369
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/math/` exports `IRMath::cbrt` (float/double overloads, `constexpr`, `noexcept`); (2) `perf_grid/main.cpp:532` uses `IRMath::cbrt`; (3) `grep -rn "std::cbrt"` returns zero results outside allowlisted backend/glue; (4) IRMath substitution table updated
   - **Issue:** #1088
