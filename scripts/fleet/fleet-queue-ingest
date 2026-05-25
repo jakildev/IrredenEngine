@@ -75,6 +75,40 @@ except Exception:
     fi
 fi
 
+# Cross-host dedup: re-check each pending issue against live GitHub state.
+# The projection is a snapshot from the scout's last tick (~30s ago). If
+# another host already ingested and labeled fleet:queued in that window,
+# we'd duplicate the TASKS.md row. Query live labels for each pending
+# issue and filter out any that already have fleet:queued.
+if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
+    still_pending=$(python3 -c "
+import json, subprocess, sys
+try:
+    data = json.load(open('$PROJECTION_FILE'))
+    pending = data.get('pending_issues', [])
+except Exception:
+    pending = []
+count = 0
+for issue in pending:
+    n = issue.get('number', 0)
+    if not n:
+        continue
+    r = subprocess.run(
+        ['gh', 'issue', 'view', str(n), '--repo', 'jakildev/IrredenEngine',
+         '--json', 'labels', '--jq', '[.labels[].name] | map(select(startswith(\"fleet:queued\"))) | length'],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r.returncode == 0 and r.stdout.strip() == '0':
+        count += 1
+print(count)
+" 2>>"$LOG_FILE")
+    if [[ "$still_pending" == "0" ]]; then
+        log "cross-host dedup: all pending issues already fleet:queued — another host ingested first"
+        exit 0
+    fi
+    log "cross-host dedup: $still_pending issue(s) still pending after live label check"
+fi
+
 # Use the queue-manager worktree as an isolated working area (mirrors
 # fleet-queue-tick). Fall back to the main clone if the worktree
 # doesn't exist (e.g. fresh fleet install pre-fleet-up).
@@ -128,6 +162,29 @@ invalid_files=$(git -C "$QM_WT" diff --name-only origin/master..HEAD \
 if [[ -n "$invalid_files" ]]; then
     log "ABORT: $commits_ahead commit(s) touch non-bookkeeping files; refusing to push:"
     log "$invalid_files"
+    log "leaving commits on local fleet-queue-ingest branch for manual review"
+    exit 1
+fi
+
+# Pre-push safety: check for duplicate task IDs in TASKS.md. Two hosts
+# ingesting the same issue simultaneously could produce two rows with the
+# same T-NNN or two rows for the same issue number.
+dup_ids=$(python3 -c "
+import re, sys, collections
+try:
+    content = open('TASKS.md').read()
+except Exception:
+    sys.exit(0)
+ids = re.findall(r'^\s+- \*\*ID:\*\*\s*(T-\d+)', content, re.MULTILINE)
+issues = re.findall(r'^\s+- \*\*Issue:\*\*\s*#(\d+)', content, re.MULTILINE)
+dup_ids = [k for k, v in collections.Counter(ids).items() if v > 1]
+dup_issues = [f'#{k}' for k, v in collections.Counter(issues).items() if v > 1]
+if dup_ids or dup_issues:
+    print(f'duplicate IDs: {dup_ids}, duplicate issues: {dup_issues}')
+" 2>/dev/null)
+if [[ -n "$dup_ids" ]]; then
+    log "ABORT: duplicate entries detected in TASKS.md: $dup_ids"
+    log "likely cross-host ingest race — another host may have committed first"
     log "leaving commits on local fleet-queue-ingest branch for manual review"
     exit 1
 fi
