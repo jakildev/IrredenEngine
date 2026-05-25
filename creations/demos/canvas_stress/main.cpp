@@ -11,6 +11,7 @@
 // Components
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -58,10 +59,21 @@ struct CanvasStressSettings {
     float initialZoom_ = 1.0f;
     float cameraYaw_ = 0.0f;
     bool autoRotate_ = false;
+    bool fullRotate_ = false;
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
 constexpr float kYawDeltaPerFrame = IRMath::kPi / 360.0f;
+
+// SO(3) camera-rotate canary for issue #1076. Per-frame rates are
+// chosen so the three axes never re-align at the same rotation phase
+// inside a normal capture window — GRID-canvas cubes stay axis-aligned
+// in iso-depth (only the Z component reaches them via the yaw helpers)
+// while DETACHED canvases tilt continuously, exercising the per-canvas
+// SO(3) bake.
+constexpr float kFullRotateYawPerFrame = IRMath::kPi / 540.0f; // ~3 rev / 1080 fr
+constexpr float kFullRotatePitchPerFrame = IRMath::kPi / 720.0f;
+constexpr float kFullRotateRollPerFrame = IRMath::kPi / 900.0f;
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
@@ -144,6 +156,8 @@ void parseArgs(int argc, char **argv) {
             ++i;
         } else if (std::strcmp(argv[i], "--auto-rotate") == 0) {
             g_settings.autoRotate_ = true;
+        } else if (std::strcmp(argv[i], "--full-rotate") == 0) {
+            g_settings.fullRotate_ = true;
         }
     }
 }
@@ -189,9 +203,33 @@ void initSystems() {
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
 
     if (g_settings.autoRotate_) {
-        renderPipeline.push_back(
-            IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame)
-        );
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame
+        ));
+    }
+
+    if (g_settings.fullRotate_) {
+        // SO(3) camera driver — composes per-frame X/Y/Z spins into the
+        // camera's C_LocalTransform.rotation_ via setRotationQuat. C_Camera
+        // anchors the singleton tick; rotation lives on auto-attached
+        // C_LocalTransform. GRID-canvas consumers still see only the
+        // Z-component (extracted by IRPrefab::Camera::getYaw); DETACHED
+        // canvases pick up the full quat through PROPAGATE_CANVAS_ROTATION.
+        renderPipeline.push_back(IRSystem::createSystem<C_Camera>(
+            "AutoFullRotate",
+            [](C_Camera &) {},
+            []() {
+                const vec4 delta = IRMath::quatMul(
+                    IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), kFullRotateYawPerFrame),
+                    IRMath::quatMul(
+                        IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), kFullRotateRollPerFrame),
+                        IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), kFullRotatePitchPerFrame)
+                    )
+                );
+                IRPrefab::Camera::setRotationQuat(
+                    IRMath::quatMul(delta, IRPrefab::Camera::getRotationQuat())
+                );
+            }
+        ));
     }
 
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>());

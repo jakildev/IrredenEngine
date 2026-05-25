@@ -1103,8 +1103,7 @@ void initSystems() {
             if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -1792,8 +1791,7 @@ void initCommands() {
             if (IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -2159,14 +2157,12 @@ void initEntities() {
             kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
             kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
         );
-        g_editor.paletteSwatches_.push_back(
-            IRPrefab::Widget::makeColorSwatch(
-                pos,
-                ivec2(kSwatchSize, kSwatchSize),
-                IRVoxelEditor::kPaletteColors[i],
-                i == 0
-            )
-        );
+        g_editor.paletteSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
+            pos,
+            ivec2(kSwatchSize, kSwatchSize),
+            IRVoxelEditor::kPaletteColors[i],
+            i == 0
+        ));
     }
 
     // Animation controls panel (T-214, F-1.4) — sits below the palette

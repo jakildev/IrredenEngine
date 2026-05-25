@@ -436,12 +436,10 @@ void RenderManager::printRenderInfo() {
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
         return IRMath::max(
-            ivec2(
-                IRMath::min(
-                    IRMath::floor(m_viewport.x / m_gameResolution.x),
-                    IRMath::floor(m_viewport.y / m_gameResolution.y)
-                )
-            ),
+            ivec2(IRMath::min(
+                IRMath::floor(m_viewport.x / m_gameResolution.x),
+                IRMath::floor(m_viewport.y / m_gameResolution.y)
+            )),
             ivec2(1)
         );
     }

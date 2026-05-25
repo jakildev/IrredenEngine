@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include <irreden/render/camera.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/render/camera.hpp>
 
 namespace {
 
@@ -99,6 +99,66 @@ TEST(CameraYawQuat, IteratedRoundTripDoesNotDriftMaterially) {
         q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), yaw);
     }
     EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), initial, 1e-3f);
+}
+
+// ---------------------------------------------------------------------------
+// IRMath::quatExtractZAngle round-trip with quatAxisAngle(z, y)
+//
+// The backward-compat surface `IRPrefab::Camera::setYaw(y) → getYaw() == y`
+// rests on this round-trip identity, since `setYaw` writes
+// `quatAxisAngle(z, y)` and `getYaw` extracts via `quatExtractZAngle`.
+// The wrap range is (-π, π] — yaws outside that interval wrap on read.
+// ---------------------------------------------------------------------------
+
+float roundTripZ(float yaw) {
+    return IRMath::quatExtractZAngle(IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), yaw));
+}
+
+TEST(QuatExtractZAngle, ZeroRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(0.0f), 0.0f, kTolerance);
+}
+
+TEST(QuatExtractZAngle, HalfPiRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(IRMath::kHalfPi), IRMath::kHalfPi, kTolerance);
+}
+
+TEST(QuatExtractZAngle, NegativeHalfPiRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(-IRMath::kHalfPi), -IRMath::kHalfPi, kTolerance);
+}
+
+TEST(QuatExtractZAngle, QuarterPiRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(IRMath::kQuarterPi), IRMath::kQuarterPi, kTolerance);
+}
+
+TEST(QuatExtractZAngle, ArbitraryAnglesInsideRangeRoundTrip) {
+    // Sweep across the open interval (-π, π) — the ±π endpoints sit on
+    // the atan2 branch cut where round-trip flips sign at float precision.
+    for (int i = -99; i <= 99; ++i) {
+        const float yaw = (static_cast<float>(i) / 100.0f) * IRMath::kPi;
+        EXPECT_NEAR(roundTripZ(yaw), yaw, kTolerance) << "yaw=" << yaw;
+    }
+}
+
+TEST(QuatExtractZAngle, PiBoundaryWrapsToSymmetricNegative) {
+    // ±π represent the same rotation; atan2's branch cut means a yaw at
+    // the boundary may round-trip to either sign at fp precision. Either
+    // is fine for downstream consumers (both project to the same basis).
+    const float result = roundTripZ(IRMath::kPi);
+    EXPECT_TRUE(
+        IRMath::abs(result - IRMath::kPi) < 1e-4f || IRMath::abs(result + IRMath::kPi) < 1e-4f
+    ) << "result="
+      << result;
+}
+
+TEST(QuatExtractZAngle, IdentityQuatExtractsZero) {
+    EXPECT_NEAR(IRMath::quatExtractZAngle(IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)), 0.0f, kTolerance);
+}
+
+TEST(QuatExtractZAngle, PurePitchExtractsZeroYaw) {
+    // A pure-X rotation has no Z-component; extracted yaw is 0.
+    const IRMath::vec4 pitchQuat =
+        IRMath::quatAxisAngle(IRMath::vec3(1.0f, 0.0f, 0.0f), IRMath::kPi / 3.0f);
+    EXPECT_NEAR(IRMath::quatExtractZAngle(pitchQuat), 0.0f, kTolerance);
 }
 
 // ---------------------------------------------------------------------------
