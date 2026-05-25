@@ -199,11 +199,11 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
-- [ ] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
+- [~] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
   - **ID:** T-367
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `/increase-complexity` skill exists in `.claude/skills/`; (2) when invoked on a demo, scans available systems/prefabs and appends entities or parameters to increase visual complexity; (3) user can optionally specify what kind of change is wanted; (4) fleet-build clean on linux-debug after applying changes to any touched demo
   - **Issue:** #1064
