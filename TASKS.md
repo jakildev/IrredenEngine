@@ -174,17 +174,6 @@ Avoid:
   - **Notes:** Crash at `GLTracer_glBindImageTexture` with GL_INVALID_VALUE after initial zoom=16 applied on WSL2/Ubuntu/Mesa 25.2.8 d3d12. Suspected: texture resize/format mismatch when canvas grows — possible GL_MAX_3D_TEXTURE_SIZE (2048 on Mesa) or internalformat mismatch. Zoom=1..8 work; only zoom=16 (`zoom16_lod_all_visible` shot) crashes. Needs GL_KHR_debug callback to isolate failing bindImage() call site.
   - **Links:**
 
-- [~] **render: T-189 / T-190 disposition under SDF restriction (D4)** — re-scope or close T-189 (DENSE/HYBRID Prefab.spawn wiring) and T-190 (SDF silhouette investigation) per D2 outcome
-  - **ID:** T-355
-  - **Area:** engine/render, docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-355-t189-t190-disposition
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) T-189 (#721) PR closed or re-scoped to DENSE-only (drop HYBRID half); (2) T-190 (#690) re-scoped to document the delta rather than achieve pixel parity; (3) both tasks reach terminal state aligned with the SDF restriction
-  - **Issue:** #962
-  - **Notes:** D4 in Epic D (#937). D2 (#960) done. T-189 = scope DENSE-only, drop HYBRID half. T-190 = document SDF/voxel delta; effects-only doesn't need pixel parity. Blocked by D2 — now unblocked.
-  - **Links:**
-
 - [~] **world: GPU chunk residency manager (LRU + camera-radius eviction) (E2)** — implement finite GPU voxel-pool budget divided across resident chunks with LRU + camera-radius eviction and async upload/eviction jobs
   - **ID:** T-356
   - **Area:** engine/world, engine/system
@@ -277,11 +266,11 @@ Avoid:
   - **Notes:** User wants concurrent fleet on Ubuntu just for smoke testing open PRs, without review or feature work. Related to platform-catchup skill (#1093, closed/done) which processes the backlog manually. This is the persistent-mode variant (stays running, re-smokes on push).
   - **Links:**
 
-- [ ] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
+- [~] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
   - **ID:** T-366
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-366-fleet-duplicate-claiming
   - **Blocked by:** (none)
   - **Acceptance:** (1) Root cause documented for each duplicate-claim path (task claim, review claim, queue-manager spawn); (2) fleet-claim or scout/label protocol extended to prevent cross-host races; (3) FLEET.md updated with cross-fleet coordination protocol; (4) existing single-fleet operation unaffected
   - **Issue:** #1182
@@ -292,6 +281,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-355** — docs: T-189/T-190 disposition under SDF restriction (D4) · Owner: claude/T-355-t189-t190-disposition · PR: https://github.com/jakildev/IrredenEngine/pull/1168
 - [x] **T-354** — render: SHAPES authoring deprecation migration plan (D3) · Owner: claude/T-354-shapes-deprecation-migration-plan · PR: https://github.com/jakildev/IrredenEngine/pull/1167
 - [x] **T-353** — render: SDF entity rotation via C_WorldTransform quaternion (C8) · Owner: claude/T-353-sdf-entity-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1166
 - [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
@@ -310,5 +300,4 @@ Avoid:
 - [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
 - [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
 - [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
-- [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
