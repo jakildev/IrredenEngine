@@ -78,6 +78,19 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         if (cullBounds_.has_value()) {
             vec3 viewPos = xform.translation_;
             vec3 sizeForExtent = vec3(shape.params_);
+            const bool hasRotation = IRMath::abs(xform.rotation_.w) < 0.9999f;
+            if (hasRotation) {
+                vec3 ax = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(sizeForExtent.x, 0, 0), xform.rotation_)
+                );
+                vec3 ay = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, sizeForExtent.y, 0), xform.rotation_)
+                );
+                vec3 az = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, 0, sizeForExtent.z), xform.rotation_)
+                );
+                sizeForExtent = ax + ay + az;
+            }
             if (!yawZero_) {
                 viewPos = vec3(
                     yawCos_ * xform.translation_.x + yawSin_ * xform.translation_.y,
@@ -114,6 +127,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         GPUShapeDescriptor desc{};
         desc.worldPosition = vec4(xform.translation_, 1.0f);
         desc.params = shape.params_;
+        desc.rotation = xform.rotation_;
         desc.shapeType = static_cast<std::uint32_t>(shape.shapeType_);
         desc.color = shape.color_.toPackedRGBA();
         desc.entityId = entityId;
@@ -353,9 +367,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             kBufferIndex_ShapeTileDescriptors
         );
 
-        SystemId systemId = registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_WorldTransform>(
-            "ShapesToTrixel"
-        );
+        SystemId systemId =
+            registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_WorldTransform>("ShapesToTrixel");
         auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
         p->shapesProgram_ = IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelProgram");
         p->shapeDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
@@ -418,6 +431,19 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 static_cast<IRMath::SDF::ShapeType>(desc.shapeType),
                 desc.params
             );
+            const bool hasRotation = IRMath::abs(desc.rotation.w) < 0.9999f;
+            if (hasRotation) {
+                vec3 ax = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(boundingHalf.x, 0, 0), desc.rotation)
+                );
+                vec3 ay = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, boundingHalf.y, 0), desc.rotation)
+                );
+                vec3 az = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, 0, boundingHalf.z), desc.rotation)
+                );
+                boundingHalf = ax + ay + az;
+            }
             // Z-yaw expands the XY AABB by |c|·hX + |s|·hY (and symmetric).
             // Grow the iso footprint conservatively so every visible pixel
             // of the rotated shape is inside at least one dispatched tile.

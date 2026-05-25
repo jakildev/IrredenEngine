@@ -18,8 +18,6 @@ namespace IRComponents {
 //   SHAPE_FLAG_VISIBLE           - shape is rendered (default on)
 //   SHAPE_FLAG_HOLLOW            - only render the shell of the SDF
 //   SHAPE_FLAG_MIRROR_X/Y        - mirror the shape along an axis
-//   SHAPE_FLAG_DISCRETE_ROTATION - (future) snap joint rotation to 90-deg
-//                                  increments in iso-adjusted coordinates
 //
 // lodMin_ is the coarsest LOD tier at which this shape still renders —
 // equivalently, the smallest LodLevel index it's visible at, since the

@@ -41,6 +41,7 @@ struct ShapesFrameData {
 struct ShapeDescriptor {
     float4 worldPosition;
     float4 params;
+    float4 rotation;
     uint shapeType;
     uint color;
     uint entityId;
@@ -717,6 +718,35 @@ inline int generalDepthSearchYaw(
     return kInvalidDepth;
 }
 
+// Entity-rotation-aware general SDF depth search. Composes camera Z-yaw
+// (cardinal-snap rasterYaw) with an arbitrary per-entity quaternion rotation.
+inline int generalDepthSearchEntityRot(
+    int2 isoRel,
+    uint shapeType,
+    float4 params,
+    bool hollow,
+    float dExtent,
+    float yawC,
+    float yawS,
+    float4 entityRot
+) {
+    const int dMin = int(floor(-dExtent));
+    const int dMax = int(ceil(dExtent));
+    for (int d = dMin; d <= dMax; d += 1) {
+        const float3 pView = isoToLocal3D(isoRel, float(d));
+        const float3 pWorld = float3(yawC * pView.x - yawS * pView.y,
+                                     yawS * pView.x + yawC * pView.y,
+                                     pView.z);
+        const float3 p = rotateByInverseQuat(pWorld, entityRot);
+        const float sdf = evaluateSDF(p, shapeType, params);
+        if (sdf <= 0.5 + kSdfBiasEpsilon &&
+            (!hollow || sdf >= -0.5 - kSdfBiasEpsilon)) {
+            return d;
+        }
+    }
+    return kInvalidDepth;
+}
+
 // Snap-mode lattice walk. At sub=1 the analytical SDF entry point isn't on
 // the integer lattice, which can miss the true front-most voxel; so we walk
 // the (isoX + isoY) even sublattice in steps of 3 along the iso column and
@@ -895,6 +925,15 @@ kernel void c_shapes_to_trixel(
     } else {
         boundingHalf = paramsScaled.xyz * 0.5;
     }
+    // Per-entity rotation expands the shape-local AABB before the camera-yaw
+    // expansion below. Spheres are rotation-invariant and skip this.
+    const bool hasEntityRotation = abs(shape.rotation.w) < 0.9999;
+    if (hasEntityRotation && st != SHAPE_SPHERE) {
+        const float3 ax = abs(rotateByQuat(float3(boundingHalf.x, 0.0, 0.0), shape.rotation));
+        const float3 ay = abs(rotateByQuat(float3(0.0, boundingHalf.y, 0.0), shape.rotation));
+        const float3 az = abs(rotateByQuat(float3(0.0, 0.0, boundingHalf.z), shape.rotation));
+        boundingHalf = ax + ay + az;
+    }
     // After Z-yaw the shape's view-space AABB grows in XY by |c|·hX + |s|·hY
     // (and symmetrically for Y). Use this expanded half-extent for the iso
     // footprint check and the generalDepthSearch range so the full rotated
@@ -940,19 +979,23 @@ kernel void c_shapes_to_trixel(
         return;
     }
 
-    // Snap mode runs at every cardinal rasterYaw, not just yaw=0: rasterYaw
-    // is k*pi/2 by construction so R_z(+rasterYaw) is an integer
-    // permutation, and the iso lattice still aligns with world voxels
-    // post-rotation. Smooth mode goes through findSurfaceDepth where the
-    // analytical fast paths (sphere, cylinder, box, ellipsoid) and the
-    // general SDF search still operate at rasterYaw — residualYaw is
-    // applied geometrically via faceDeform[] downstream (T-293; the
-    // screen-space residual composite pass T-058 was retired by T-323).
-    const int surfaceD = !smoothMode
-        ? snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
-                          dExtent, cardinalIndex)
-        : findSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled,
-                           shape.flags, dExtent, yawC, yawS);
+    // Entity rotation bypasses the analytical fast paths and the snap lattice
+    // walk (the integer lattice no longer aligns with shape-local axes under
+    // arbitrary rotation). Spheres are rotation-invariant so they still take
+    // the analytical path.
+    int surfaceD;
+    const bool hollow = (shape.flags & FLAG_HOLLOW) != 0u;
+    if (hasEntityRotation && shape.shapeType != SHAPE_SPHERE) {
+        surfaceD = generalDepthSearchEntityRot(
+            isoPixelRel, shape.shapeType, paramsScaled, hollow, dExtent,
+            yawC, yawS, shape.rotation);
+    } else if (!smoothMode) {
+        surfaceD = snapLatticeWalk(isoPixelRel, shape.shapeType, paramsScaled,
+                                   dExtent, cardinalIndex);
+    } else {
+        surfaceD = findSurfaceDepth(isoPixelRel, shape.shapeType, paramsScaled,
+                                    shape.flags, dExtent, yawC, yawS);
+    }
     if (surfaceD == kInvalidDepth) {
         return;
     }
