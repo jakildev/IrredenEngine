@@ -884,17 +884,20 @@ land:
   to a bind point), pre-resolve the integer bone index at spawn
   time and cache the offset/rotation in a flat component instead.
 - **`C_VoxelSetNew` canvas-attach pass for staged dense data** —
-  DENSE / HYBRID records do attach as `C_VoxelSetNew` on the
-  spawned entity (see "DENSE / HYBRID voxel_ref attachment"
-  below), but when the prefab spawns before a render canvas
-  exists the per-voxel records live in `pendingVoxels_` and no
-  pool allocation happens. A follow-up pass needs to seed the
-  pool the frame after a canvas activates and promote the staged
-  records into the pool span — track in the issue queue.
+  DENSE records do attach as `C_VoxelSetNew` on the spawned entity
+  (see "DENSE voxel_ref attachment" below), but when the prefab
+  spawns before a render canvas exists the per-voxel records live in
+  `pendingVoxels_` and no pool allocation happens. A follow-up pass
+  needs to seed the pool the frame after a canvas activates and
+  promote the staged records into the pool span — track in the issue
+  queue.
 
-**SHAPES voxel_ref attachment.** When `voxel_ref` points at a
-SHAPES or HYBRID `.vxs`, `Prefab.spawn` attaches one child entity
-per `ShapeRecord` under the spawned root via `IREntity::setParent`.
+**SHAPES voxel_ref attachment (effects-only per D2, Epic D #937).**
+When `voxel_ref` points at a SHAPES or HYBRID `.vxs`, `Prefab.spawn`
+attaches one child entity per `ShapeRecord` under the spawned root
+via `IREntity::setParent`. SHAPES is reserved for effects-only SDF
+entities (occluders, auras, soft glows); HYBRID is deprecated for new
+authoring but loads backward-compatibly.
 Each child carries:
 
 - `C_LocalTransform{record.offset_}` — record-local position;
@@ -916,9 +919,10 @@ with `canvasEntity_ = kNullEntity` instead of asserting on the
 absent `RenderManager`. Iterating render systems already gate work
 on a non-null canvas binding.
 
-**DENSE / HYBRID voxel_ref attachment.** When `voxel_ref` points
-at a DENSE or HYBRID `.vxs`, `Prefab.spawn` attaches a
-`C_VoxelSetNew` on the spawned root entity via the bridge
+**DENSE voxel_ref attachment (primary entity path; D2, Epic D #937).**
+When `voxel_ref` points at a DENSE `.vxs` (or a HYBRID file loading
+for backward-compat), `Prefab.spawn` attaches a `C_VoxelSetNew` on
+the spawned root entity via the bridge
 `IRPrefab::DenseVoxel::toComponent` in
 `engine/prefabs/irreden/voxel/dense_bridge.hpp`. The bridge calls
 the dense-data ctor `C_VoxelSetNew(boundsMin, boundsMax,
@@ -935,9 +939,11 @@ span<const C_Voxel>)`, which is headless-safe:
 `C_VoxelSetNew::recordCount()` returns the data count regardless
 of mode, so the round-trip test asserts
 `recordCount() == dense.voxelCount()` without caring whether the
-pool was reachable. For HYBRID prefabs the SHAPES half attaches
-as child entities (per "SHAPES voxel_ref attachment") and the
-DENSE half attaches to the root in the same spawn call.
+pool was reachable. For HYBRID files loading in backward-compat
+mode, the SHAPES half attaches as child entities (per "SHAPES
+voxel_ref attachment") and the DENSE half attaches to the root in
+the same spawn call. New prefabs should not rely on this dual-half
+path — HYBRID authoring is deprecated per D2.
 
 If the loaded `.vxs` is malformed (e.g. BNDS present but VOXR
 truncated, so `dense.voxels_.size() != dense.voxelCount()`), the
