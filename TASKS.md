@@ -218,11 +218,11 @@ Avoid:
   - **Notes:** D3 in Epic D (SDF runtime restriction, #937). D1 (audit, #945) and D2 (decision, #960) both closed/done. Minimal authoring use per D1 means likely trivial removal. Blocked by D2 — now unblocked.
   - **Links:**
 
-- [ ] **render: T-189 / T-190 disposition under SDF restriction (D4)** — re-scope or close T-189 (DENSE/HYBRID Prefab.spawn wiring) and T-190 (SDF silhouette investigation) per D2 outcome
+- [~] **render: T-189 / T-190 disposition under SDF restriction (D4)** — re-scope or close T-189 (DENSE/HYBRID Prefab.spawn wiring) and T-190 (SDF silhouette investigation) per D2 outcome
   - **ID:** T-355
   - **Area:** engine/render, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) T-189 (#721) PR closed or re-scoped to DENSE-only (drop HYBRID half); (2) T-190 (#690) re-scoped to document the delta rather than achieve pixel parity; (3) both tasks reach terminal state aligned with the SDF restriction
   - **Issue:** #962
