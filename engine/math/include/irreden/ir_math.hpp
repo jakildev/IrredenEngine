@@ -238,6 +238,9 @@ template <typename T> constexpr auto fract(const T &value) {
     return glm::fract(value);
 }
 
+/// Floating-point remainder: x - y * trunc(x / y). std::fmod equivalent.
+inline float fmod(float x, float y) { return std::fmod(x, y); }
+
 /// Fractional part of the absolute value; always in [0, 1). Ignores sign.
 template <typename T> constexpr auto fractAbs(const T &value) {
     return glm::fract(glm::abs(value));

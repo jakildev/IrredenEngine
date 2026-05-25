@@ -88,6 +88,19 @@ TEST(CameraYawQuat, IdentityQuatGivesZeroYaw) {
     EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), 0.0f, kTolerance);
 }
 
+TEST(CameraYawQuat, IteratedRoundTripDoesNotDriftMaterially) {
+    // Exercises the full yawFromQuat → wrapYaw → quatAxisAngle round-trip 1000
+    // times — the AUTO_YAW_ROTATE use case that rotateYaw() drives each frame.
+    auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), 0.5f);
+    const float initial = IRPrefab::Camera::detail::yawFromQuat(q);
+    for (int i = 0; i < 1000; ++i) {
+        float yaw = IRPrefab::Camera::detail::yawFromQuat(q);
+        yaw = IRPrefab::Camera::detail::wrapYaw(yaw + IRMath::kTwoPi);
+        q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), yaw);
+    }
+    EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), initial, 1e-3f);
+}
+
 // ---------------------------------------------------------------------------
 // IRPrefab::Camera::computeYawSplit
 // rasterYaw   = round(visualYaw / (π/2)) * (π/2)

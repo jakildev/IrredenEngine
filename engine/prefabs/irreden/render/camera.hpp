@@ -15,7 +15,6 @@
 
 #include <irreden/common/components/component_local_transform.hpp>
 
-#include <cmath>
 #include <utility>
 
 namespace IRPrefab::Camera {
@@ -47,7 +46,7 @@ inline IRComponents::C_LocalTransform *cameraTransform() {
 inline float yawFromQuat(const IRMath::vec4 &q) {
     float yaw = 2.0f * IRMath::atan2(q.z, q.w);
     // Wrap to [-π, π)
-    yaw = std::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
+    yaw = IRMath::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
     if (yaw < 0.0f)
         yaw += IRMath::kTwoPi;
     return yaw - IRMath::kPi;
@@ -55,7 +54,7 @@ inline float yawFromQuat(const IRMath::vec4 &q) {
 
 // Wrap a yaw value to [-π, π).
 inline float wrapYaw(float yaw) {
-    float wrapped = std::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
+    float wrapped = IRMath::fmod(yaw + IRMath::kPi, IRMath::kTwoPi);
     if (wrapped < 0.0f)
         wrapped += IRMath::kTwoPi;
     return wrapped - IRMath::kPi;
@@ -93,6 +92,8 @@ inline float getYaw() {
 }
 
 /// Add @p delta (radians) to the camera's yaw, normalized to [-π, π).
+/// NOTE: Rebuilds rotation as quatAxisAngle(z, yaw+delta), clobbering any
+/// non-Z components. Use setRotationQuat directly for full SO(3) compositions.
 inline void rotateYaw(float delta) {
     setYaw(getYaw() + delta);
 }
