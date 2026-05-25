@@ -11,6 +11,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <random>
 #include <utility>
@@ -259,6 +260,16 @@ constexpr float cos(float value) {
 /// Square root of @p value. GLM wrapper.
 constexpr float sqrt(float value) {
     return glm::sqrt(value);
+}
+
+/// Cube root of @p value (float). Wraps std::cbrt.
+inline float cbrt(float value) noexcept {
+    return std::cbrt(value);
+}
+
+/// Cube root of @p value (double). Wraps std::cbrt.
+inline double cbrt(double value) noexcept {
+    return std::cbrt(value);
 }
 
 /// Two-argument arctangent (radians). Result is in (-π, π]; sign matches
