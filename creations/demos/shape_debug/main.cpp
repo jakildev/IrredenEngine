@@ -548,7 +548,6 @@ void initEntities() {
         float angleRad = rf.angleDeg_ * IRMath::kPi / 180.0f;
         vec4 rot = IRMath::quatAxisAngle(rf.axis_, angleRad);
 
-        IR_LOG_INFO("--- {} (unrotated + rotated) ---", rf.label_);
         createSDFShape(vec3(xBase, kRotFixtureY, 0.0f), rf.type_, rf.params_, rf.color_);
 
         C_ShapeDescriptor desc{rf.type_, rf.params_, rf.color_};
