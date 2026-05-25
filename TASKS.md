@@ -244,17 +244,6 @@ Avoid:
   - **Notes:** Option B selected by architect (2026-05-23 comment). Camera is game object → use generic C_LocalTransform for rotation. Cascade concentrated in IRPrefab::Camera:: helpers; callers in picking/hitbox/gizmo_drag/shaders stay unchanged. Blocked by #1075 (T-319 PROPAGATE_CANVAS_ROTATION) — closed/done. Grep creations/ (incl. gitignored game repo) for C_CameraYaw before deleting header; expectation is none (helpers are only public surface).
   - **Links:**
 
-- [~] **fleet: smoke-only mode — persistent cross-host smoke worker** — fleet mode that stays running, picks up fleet:needs-<host>-smoke PRs, smoke-tests, and re-smokes on PR updates
-  - **ID:** T-365
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-365-smoke-only-mode
-  - **Blocked by:** (none)
-  - **Acceptance:** Fleet can be launched in smoke-only mode on a Linux host; picks up open PRs labeled fleet:needs-linux-smoke, runs smoke test, applies verified-linux label; stays running and re-smokes when PR receives new commits; does not do code review or task work
-  - **Issue:** #1128
-  - **Notes:** User wants concurrent fleet on Ubuntu just for smoke testing open PRs, without review or feature work. Related to platform-catchup skill (#1093, closed/done) which processes the backlog manually. This is the persistent-mode variant (stays running, re-smokes on push).
-  - **Links:**
-
 - [~] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
   - **ID:** T-366
   - **Area:** tooling
@@ -270,6 +259,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-365** — fleet: smoke-only mode — persistent cross-host smoke worker · Owner: claude/T-365-smoke-only-mode · PR: https://github.com/jakildev/IrredenEngine/pull/1173
 - [x] **T-360** — world: markChunkDirty API + chunk-mutation routing contract · Owner: claude/T-360-chunk-mark-dirty-api · PR: https://github.com/jakildev/IrredenEngine/pull/1172
 - [x] **T-355** — docs: T-189/T-190 disposition under SDF restriction (D4) · Owner: claude/T-355-t189-t190-disposition · PR: https://github.com/jakildev/IrredenEngine/pull/1168
 - [x] **T-354** — render: SHAPES authoring deprecation migration plan (D3) · Owner: claude/T-354-shapes-deprecation-migration-plan · PR: https://github.com/jakildev/IrredenEngine/pull/1167
@@ -289,4 +279,3 @@ Avoid:
 - [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
 - [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
 - [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
-- [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
