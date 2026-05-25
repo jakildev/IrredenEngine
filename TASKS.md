@@ -277,11 +277,11 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
-- [ ] **world: chunk persistence follow-ups — markDirty API + 2-level dir + consumer verification** — land load-bearing T-298 follow-ups before any creation opts into streaming
+- [~] **world: chunk persistence follow-ups — markDirty API + 2-level dir + consumer verification** — land load-bearing T-298 follow-ups before any creation opts into streaming
   - **ID:** T-360
   - **Area:** engine/world
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) ChunkResidencyManager::markChunkDirty() API added as only supported mutation path, documented in engine/world/CLAUDE.md; (2) 2-level directory split in chunkPath() (e.g. chunks/<x_div_64>/<y_div_64>/...); (3) one end-to-end consumer wired (voxel editor or IRChunkStreamingSmoke demo), round-trip confirmed on linux-debug and macos-debug; (4) ChunkDiskPersistence optionally renamed ChunkVoxelDiskPersistence
   - **Issue:** #1008
