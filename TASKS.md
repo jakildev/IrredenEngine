@@ -210,11 +210,11 @@ Avoid:
   - **Notes:** Skill should look for new engine or game systems and include them in the demo. Optional: dry-run mode prints proposed changes before applying.
   - **Links:**
 
-- [ ] **asset: async texture loading via pinned worker (T-226 Phase 5)** — `IRAsset::loadTextureAsync` returns immediately with an AssetHandle; disk read + decode runs on a pinned I/O worker; GL texture upload schedules onto main thread
+- [~] **asset: async texture loading via pinned worker (T-226 Phase 5)** — `IRAsset::loadTextureAsync` returns immediately with an AssetHandle; disk read + decode runs on a pinned I/O worker; GL texture upload schedules onto main thread
   - **ID:** T-368
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRAsset::loadTextureAsync` exists, returns `AssetHandle<C_Texture>`, produces a valid texture once resolved; (2) one existing blocking startup load migrated to async; (3) startup-time delta filed in `docs/perf-reports/`; (4) no regression on `perf_grid_matrix.sh`
   - **Issue:** #1073
