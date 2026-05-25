@@ -94,11 +94,18 @@ for single voxels and particles.
 
 ## Prefab.spawn voxel_ref → ECS components
 
+**D2 restriction (Epic D #937):** SHAPES and HYBRID authoring are
+deprecated for primary entities. Going forward, primary entity shapes
+use DENSE `.vxs` assets; SHAPES (`C_ShapeDescriptor`) is reserved for
+effects-only SDF entities (sun shadow occluders, auras, soft glows).
+HYBRID authoring is fully deprecated — HYBRID `.vxs` files load for
+backward-compat but no new assets should be authored in HYBRID mode.
+
 `Prefab.spawn` (in `engine/script/`) routes a prefab's `voxel_ref`
 through to runtime components when the loaded `.vxs` carries shape
 records:
 
-- **SHAPES / HYBRID shape half** — one child entity per
+- **SHAPES shape half** (effects-only per D2) — one child entity per
   `IRAsset::ShapeRecord`, parented via `IREntity::setParent`. Each
   child gets `C_LocalTransform{record.offset_}` plus
   `C_ShapeDescriptor` populated from `record.shapeTypeId_` /
@@ -107,16 +114,16 @@ records:
   `C_LocalTransform` so the rendered translation equals
   `parent.world + record.offset`. Per-record `rotation_`, `csgOp_`,
   and `boneId_` are loaded but not attached in v1 (no renderer
-  consumes them; T-181 wires bone binding).
-- **DENSE / HYBRID dense half** — `C_VoxelSetNew` attached to the
-  spawned root entity via `IRPrefab::DenseVoxel::toComponent`
-  (`voxel/dense_bridge.hpp`). The bridge translates
-  `IRAsset::DenseVoxelSet` → `C_VoxelSetNew` via a per-record copy
-  (`VoxelRecord` and `C_Voxel` share the 12 B std430 layout but
-  remain distinct types so layout drift surfaces as a compile
-  error). For HYBRID, the SHAPES children and the DENSE
-  `C_VoxelSetNew` land on the same root entity in a single
-  `Prefab.spawn` call.
+  consumes them; T-181 wires bone binding). Also fires for HYBRID
+  assets during backward-compat load.
+- **DENSE dense half** (primary entity path) — `C_VoxelSetNew`
+  attached to the spawned root entity via
+  `IRPrefab::DenseVoxel::toComponent` (`voxel/dense_bridge.hpp`).
+  The bridge translates `IRAsset::DenseVoxelSet` → `C_VoxelSetNew`
+  via a per-record copy (`VoxelRecord` and `C_Voxel` share the 12 B
+  std430 layout but remain distinct types so layout drift surfaces as
+  a compile error). Also fires for HYBRID during backward-compat
+  load (both halves attach in a single spawn call).
 
 `C_ShapeDescriptor`'s constructors snapshot the active canvas via
 `IRRender::getActiveCanvasEntityOrNull()` rather than the

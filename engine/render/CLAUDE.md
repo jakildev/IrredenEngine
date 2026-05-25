@@ -482,6 +482,12 @@ based on intent: voxel pool for "cubes-of-cubes" stylization, SDF for
 smooth analytical silhouettes. The lighting demo's `kShots[]`
 zoom8/zoom16 captures showcase the difference for visual reference.
 
+Per D2 (Epic D #937, SDF runtime restriction), `C_ShapeDescriptor` is
+effects-only for primary entity authoring. The silhouette delta
+documented above is intentional and **not a bug to fix**: effects
+entities (auras, shadow occluders, soft glows) do not require trixel
+parity with voxel-pool primary shapes.
+
 ## Gotchas
 
 - **Hardcoded uniform-buffer bind points.** Indices like
