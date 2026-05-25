@@ -71,10 +71,11 @@ FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
 #   removes a stale FS claim, the next queue-tick re-derives without the
 #   FS-claim signal and reverts [~] → [ ]. No new metadata in TASKS.md.
 #
-# Opt-out:
+# Opt-out (single-host / test only):
 #   Set FLEET_CLAIM_NO_MASTER_LOCK=1 to skip the master push. Used by
 #   tests and any bootstrap scenario where origin is unreachable.
-#   `cmd_claim` falls back to FS-lock-only behavior with a stderr note.
+#   `cmd_claim` falls back to FS-lock-only behavior with a stderr warning.
+#   UNSAFE for multi-host fleets — silently allows duplicate claims.
 
 # --- claim sidecar layout --------------------------------------------------
 #
@@ -604,7 +605,9 @@ master_lock_task() {
     local owner="$3"
 
     if [[ "${FLEET_CLAIM_NO_MASTER_LOCK:-0}" == "1" ]]; then
-        echo "fleet-claim: master-lock skipped (FLEET_CLAIM_NO_MASTER_LOCK=1)" >&2
+        echo "fleet-claim: WARNING — master-lock DISABLED (FLEET_CLAIM_NO_MASTER_LOCK=1)." >&2
+        echo "  Cross-host duplicate-claim prevention is OFF. Safe for single-host" >&2
+        echo "  and test use only. Multi-host fleets MUST NOT set this variable." >&2
         return 0
     fi
 
@@ -637,17 +640,18 @@ def git(*args, check=False, **kw):
 
 
 def fetch_master():
-    # Soft-fail when origin isn't configured or unreachable: the local
-    # FS lock alone is still a real lock for same-host races, so we
-    # warn and skip the master push rather than blocking the claim.
-    # Cross-host race resolution degrades silently in that env.
+    # Hard-fail when origin is unreachable: FS-lock-only mode is invisible
+    # to other hosts and silently allows duplicate claims across hosts.
+    # The caller rolls back the FS claim on exit(2) and the task is
+    # re-attempted on the next iteration when origin is reachable again.
     r = git('fetch', 'origin', 'master', '--quiet')
     if r.returncode != 0:
         sys.stderr.write(
-            "fleet-claim: master-lock skipped — fetch origin master failed "
-            f"(repo: {repo}). FS-lock-only mode.\n"
+            "fleet-claim: master-lock FAILED — fetch origin master failed "
+            f"(repo: {repo}). Rolling back FS claim to prevent cross-host "
+            "duplicate. Retry on next iteration when origin is reachable.\n"
         )
-        sys.exit(0)
+        sys.exit(2)
 
 
 # Apply the [ ]/[~] flip + Owner update for $task_id. Returns
@@ -3313,8 +3317,8 @@ environment:
   FLEET_CLAIM_NO_MASTER_LOCK=1  skip the master-side TASKS.md push that
                                 claim/stack normally do (T-138). Used by
                                 tests and bootstrap scenarios where origin
-                                is unreachable. Cross-host race resolution
-                                degrades to FS-lock-only when set.
+                                is unreachable. UNSAFE for multi-host:
+                                disables cross-host duplicate prevention.
 
 commands:
   claim "<title>" [agent] [--stackable-on <pr-url>]

@@ -63,7 +63,65 @@ naturally.
 
 `FLEET_CLAIM_NO_MASTER_LOCK=1` skips the master push entirely
 (used by tests and bootstrap-without-network flows). Cross-host
-race resolution degrades to FS-lock-only when set.
+race resolution degrades to FS-lock-only when set. **Unsafe for
+multi-host** — silently allows duplicate claims.
+
+### Multi-host fleet coordination
+
+When running fleets on two or more hosts simultaneously, the following
+coordination mechanisms prevent duplicate work:
+
+**Task claiming (three layers):**
+1. **FS lock** (`~/.fleet/claims/<slug>/` via atomic `mkdir`) — prevents
+   same-host races. Per-host only.
+2. **Master-side TASKS.md push** — pure git plumbing push to
+   `origin/master` that flips `[ ] → [~]`. Cross-host: both hosts' FS
+   locks succeed independently; the master push races; the loser sees
+   non-FF rejection, re-fetches, detects `[~]`, and rolls back its FS
+   claim.
+3. **Issue-label tie-break** (`fleet:claim-<host>-<agent>` on the GitHub
+   issue) — for tasks with a linked `Issue: #N`. Atomic lex-min
+   tie-break: if another agent's `fleet:claim-*` label is already on the
+   issue AND has a lower name, the acquire fails and rolls back.
+
+**Requirements for cross-host safety:**
+- `origin/master` must be reachable at claim time. If `git fetch origin
+  master` fails, the claim is rolled back entirely (the agent retries on
+  the next iteration). No silent fallback to FS-lock-only.
+- `FLEET_CLAIM_NO_MASTER_LOCK=1` must NOT be set on any multi-host fleet.
+- Each host must have its own unique `derive_host()` value (mac, linux,
+  windows) — two hosts with the same host tag would generate identical
+  issue labels and skip the tie-break.
+
+**Queue-manager ingestion (cross-host race prevention):**
+- The scout fires `fleet-queue-ingest` when new `human:approved` issues
+  appear. Two hosts' scouts may fire simultaneously from the same
+  projection snapshot.
+- `fleet-queue-ingest` holds a per-host lockfile (prevents same-host
+  concurrency) and performs a live GitHub label re-check before the LLM
+  invocation (catches cross-host races where another host already labeled
+  `fleet:queued`).
+- Post-LLM, a duplicate-task-ID check scans `TASKS.md` before pushing.
+- The push itself uses fetch + rebase + retry (3 attempts); a rebase
+  conflict on the same TASKS.md row is the final cross-host dedup
+  safety net.
+
+**Review claiming:**
+- Review claims use `fleet:reviewing-<host>-<agent>` labels on PRs via
+  the same atomic lex-min tie-break as task claims. Two reviewers on
+  different hosts that try to claim the same PR simultaneously: one wins
+  the label race, the other self-removes and picks a different PR.
+
+**Known limitations:**
+- A network partition during claim causes the claim to fail (not silently
+  degrade). The task is retried on the next iteration when connectivity
+  returns.
+- The ~30s scout refresh window is the smallest cross-host visibility
+  window. Two agents can independently start work on the same task within
+  that window, but the master-push race resolves it before any PR is
+  opened.
+- Tasks without a linked GitHub issue (free-pasted entries) skip the
+  issue-label layer. They rely on the FS lock + master push alone.
 
 ### Cursor flow (human-in-the-loop)
 
