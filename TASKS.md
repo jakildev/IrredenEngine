@@ -288,11 +288,11 @@ Avoid:
   - **Notes:** 4 sub-items from T-298 review: (1)[opus] markDirty API — load-bearing, no creation should use Config::persistence_ until lands; (2)[sonnet] 2-level dir split before any real saves to avoid back-compat burden; (3)[sonnet] in-engine consumer verification; (4)[sonnet] optional rename. Should land before E2/E3 (T-356/T-357). Stacks on T-298 (merged).
   - **Links:**
 
-- [ ] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
+- [~] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
   - **ID:** T-362
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) Validator rejects conflicting group (shared write column), MAIN_THREAD system in group, two spawners in same group — all unit-tested with named-component error messages; (2) engine UPDATE pipeline reorganized into groups; (3) IRShapeDebug --auto-screenshot 60 smoke passes; (4) perf_grid_matrix.sh shows additional speedup beyond T-222; file docs/perf-reports/threading_phase3.md
   - **Issue:** #1071
