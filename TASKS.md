@@ -174,17 +174,6 @@ Avoid:
   - **Notes:** Crash at `GLTracer_glBindImageTexture` with GL_INVALID_VALUE after initial zoom=16 applied on WSL2/Ubuntu/Mesa 25.2.8 d3d12. Suspected: texture resize/format mismatch when canvas grows — possible GL_MAX_3D_TEXTURE_SIZE (2048 on Mesa) or internalformat mismatch. Zoom=1..8 work; only zoom=16 (`zoom16_lod_all_visible` shot) crashes. Needs GL_KHR_debug callback to isolate failing bindImage() call site.
   - **Links:**
 
-- [~] **render: SDF entity rotation via C_LocalTransform (C8)** — wire C_LocalTransform.rotation_ into C_ShapeDescriptor localRotation so SDF shapes rotate with their entity transform
-  - **ID:** T-353
-  - **Area:** engine/render, engine/prefabs/irreden/voxel
-  - **Model:** opus
-  - **Owner:** claude/T-353-sdf-entity-rotation
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) SDF capsule with same SQT as voxel capsule rasterizes within 1 trixel at any yaw; (2) SHAPE_FLAG_DISCRETE_ROTATION retired; (3) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #959
-  - **Notes:** C8 — final task in Epic C rotation series (C1–C7 all done). Extend C_ShapeDescriptor to carry mat3 localRotation sourced from C_LocalTransform; c_shapes_to_trixel.glsl rotates world-space SDF query point by inverse before evaluation. Parent epic #936. Blockers C4 (#956) and D2 (#960) both closed.
-  - **Links:**
-
 - [~] **render: SHAPES authoring deprecation migration plan (D3)** — document migration steps for each SHAPES-authored asset and update editor scaffold per D2 SDF restriction decision
   - **ID:** T-354
   - **Area:** engine/render, docs
@@ -314,6 +303,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-353** — render: SDF entity rotation via C_WorldTransform quaternion (C8) · Owner: claude/T-353-sdf-entity-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1166
 - [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
 - [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
 - [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
@@ -333,4 +323,3 @@ Avoid:
 - [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
-- [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
