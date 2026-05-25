@@ -151,17 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 (OpenGL) — COMPUTE_LIGHT_VOLUME hotspot** — reduce COMPUTE_LIGHT_VOLUME propagate cost on OpenGL so IRPerfGrid runs at ≥30 FPS on linux-x86_64
-  - **ID:** T-351
-  - **Area:** engine/render, shaders/glsl
-  - **Model:** opus
-  - **Owner:** claude/T-351-compute-light-volume-opt
-  - **Blocked by:** (none)
-  - **Acceptance:** `IRPerfGrid` on linux-x86_64 (OpenGL/WSLg) achieves ≥30 FPS; `fleet-run --timeout 30 IRPerfGrid --auto-screenshot 30` captures at least one screenshot; COMPUTE_LIGHT_VOLUME propagate GPU cost measurably reduced (verify via PERF_STATS_OVERLAY GPU stage timings)
-  - **Issue:** #1154
-  - **Notes:** Root cause identified: `c_propagate_light_volume.glsl` × 32 iterations × 128³ cells × ~13 image ops + 12 SSBO reads per cell ≈ 870M image ops per canvas per frame. WSLg Mesa-d3d12 (DX12 translation) serializes the 8K-group dispatches badly vs Metal. Recommended quick wins: (1) adaptive iteration count from per-light `stepFalloff` radius (cap < 32); (2) skip COMPUTE_LIGHT_VOLUME dispatch for canvases without lights. Larger wins: smaller default 64³ volume; sparse seeded-list propagate. Filed by platform-catchup skill (2026-05-24, linux-x86_64, master 3d031e44). See also PR #1155 for related lua_perf_grid motion issue.
-  - **Links:**
-
 - [~] **fleet/merger: re-target / rebase order decision on stacked-base merged path** — decide Option A (doc only, keep current order) or Option B (invert + coordinated changes) and implement
   - **ID:** T-350
   - **Area:** tooling
@@ -336,6 +325,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
 - [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
 - [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
 - [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
@@ -352,7 +342,6 @@ Avoid:
 - [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
 - [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
-- [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
-- [x] **T-362** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/1071
+- [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
