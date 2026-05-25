@@ -163,24 +163,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **world: GPU chunk residency manager (LRU + camera-radius eviction) (E2)** — implement finite GPU voxel-pool budget divided across resident chunks with LRU + camera-radius eviction and async upload/eviction jobs
-  - **ID:** T-356
-  - **Area:** engine/world, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-356-gpu-chunk-residency
-  - **Blocked by:** (none)
-  - **Stack:** T-356..T-359 S-E-stream
-  - **Acceptance:** (1) With 9× more chunks than budget, camera walk triggers stable evict/upload cycle; (2) no flicker; CPU+GPU profile via B0 infra; (3) resident-set count visible in perf_grid HUD; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #964
-  - **Notes:** E2 in Epic E (world streaming, #938). Stack position 3: E0→E1→**E2**→E3→E4. All blockers done: E0 (#944), E1 (#963), B4 (#941), B5 (#952) all closed. Uses B5 push-at-mutation for chunk-content upload on residency flip. Should land before T-360 (chunk persistence follow-ups).
-  - **Links:**
-
 - [~] **world: camera-aware chunk prefetch (priority by visibility) (E3)** — queue upload jobs for chunks entering camera reach radius before needed, prioritized by in-frustum visibility
   - **ID:** T-357
   - **Area:** engine/world, engine/system
   - **Model:** opus
   - **Owner:** claude/T-357-camera-chunk-prefetch
-  - **Blocked by:** T-356
+  - **Blocked by:** (none)
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Slow camera pan = no upload-on-render stalls; (2) warps to POI fully render within warp frame; (3) in-frustum chunks upload before peripheral; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #965
@@ -204,7 +192,7 @@ Avoid:
   - **Area:** engine/world, engine/entity
   - **Model:** opus
   - **Owner:** claude/T-359-entity-chunk-migration
-  - **Blocked by:** T-356
+  - **Blocked by:** (none)
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Track entity moving across 10 chunk boundaries; ID unchanged; (2) rendering correct throughout; (3) rotated entities (C6 #957) migrate without artifact; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #967
@@ -226,6 +214,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-356** — world: GPU chunk residency manager (LRU + camera-radius eviction) (E2) · Owner: claude/T-356-gpu-chunk-residency · PR: https://github.com/jakildev/IrredenEngine/pull/1179
 - [x] **T-363** — tools: ir-host-probe survives non-exec lspci stub in PATH · Owner: claude/T-363-ir-host-probe-harden · PR: https://github.com/jakildev/IrredenEngine/pull/1177
 - [x] **T-364** — render: retire C_CameraYaw — camera rotation sources from C_LocalTransform · Owner: claude/T-364-camera-so3-retire-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/1176
 - [x] **T-352** — render: fix zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL · Owner: claude/T-352-zoom16-bind-image-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1174
@@ -245,4 +234,3 @@ Avoid:
 - [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
 - [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
 - [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
-- [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
