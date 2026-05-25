@@ -68,9 +68,19 @@ struct ChunkResidencySlot {
     float distanceVoxels_ = 0.0f;
     std::uint64_t lastTouchedFrame_ = 0;
 
-    // Set by any voxel/entity mutation; consulted at EVICTING → EVICTED
-    // by E6's save path. E1 leaves the writer hooks for E4/E6.
-    bool dirty_ = false;
+    /// True iff the chunk has been mutated since the last successful
+    /// save (or since allocation, for fresh slots). Consulted at
+    /// EVICTING → EVICTED by E6's save path. Set only by
+    /// `ChunkResidencyManager::markChunkDirty` — direct field writes
+    /// are not supported; see engine/world/CLAUDE.md "Chunk mutation
+    /// must route through markChunkDirty" for the contract.
+    bool isDirty() const noexcept {
+        return m_dirty;
+    }
+
+  private:
+    friend class ChunkResidencyManager;
+    bool m_dirty = false;
 };
 
 /// Owns the sparse resident-set; the engine-side API for chunk identity
@@ -148,15 +158,15 @@ class ChunkResidencyManager {
     void requestResident(IRPrefab::Chunk::ChunkKey key, RequestPriority priority);
 
     /// Drop the chunk from the resident set. When `Config::persistence_`
-    /// is wired and the slot's `dirty_` bit is set, the chunk is saved
+    /// is wired and the slot's dirty bit is set, the chunk is saved
     /// to disk before erasure. Pool allocation is currently leaked back
     /// to the global pool's free-list when the allocator supports it
     /// (today's RenderManager pool is bump-style — see
     /// engine/render/CLAUDE.md). E2 introduces the dealloc path.
     void requestEvict(IRPrefab::Chunk::ChunkKey key);
 
-    /// Force-save every resident slot whose `dirty_` bit is set
-    /// (design's "save-all path"). On success the slot's `dirty_` bit
+    /// Force-save every resident slot whose dirty bit is set
+    /// (design's "save-all path"). On success the slot's dirty bit
     /// clears so subsequent eviction skips the redundant save. Slots
     /// stay resident; only the on-disk copy is refreshed.
     ///
@@ -166,6 +176,24 @@ class ChunkResidencyManager {
     /// surface stays the same (the method still blocks until the
     /// queue drains).
     void flushPendingSaves();
+
+    /// Mark @p key's slot dirty so eviction (or `flushPendingSaves`)
+    /// will write its voxel slice to disk. **This is the only
+    /// supported way to flip the dirty bit** — `ChunkResidencySlot`'s
+    /// underlying field is private. Any system that writes to a
+    /// chunk-owned `VoxelPoolAllocation` must call this immediately
+    /// after the write; see engine/world/CLAUDE.md "Chunk mutation
+    /// must route through markChunkDirty" for the contract and the
+    /// rationale (without it a missed `dirty` flip silently drops
+    /// the save on eviction and the chunk reverts on re-resident).
+    ///
+    /// No-op when @p key has no slot at all — the manager logs nothing
+    /// because the eventual streaming path will sometimes target a
+    /// chunk that already evicted between request and write; callers
+    /// that need stronger guarantees should check `isResident(key)`
+    /// before mutating. Note: a slot in LOADING or UPLOADING state
+    /// (not yet resident) will still be marked dirty by this call.
+    void markChunkDirty(IRPrefab::Chunk::ChunkKey key);
 
     // ── Entity ownership ─────────────────────────────────────────────
 

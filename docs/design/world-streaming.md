@@ -764,12 +764,20 @@ full content as the upload budget catches up.
 
 ### Dirty tracking + eviction-write
 
-Each `ChunkResidencySlot` carries a `dirty_` bit. The bit is set by:
+Each `ChunkResidencySlot` carries a private dirty bit, set only
+through `ChunkResidencyManager::markChunkDirty(key)` and read via
+`ChunkResidencySlot::isDirty()`. The bit must be set by:
 
 - Any voxel mutation to a voxel owned by the chunk's
   `VoxelPoolAllocation`.
 - Any entity creation, destruction, component change, or migration
   affecting an entity in the chunk's `ownedEntities_`.
+
+The manager's `attachEntity` / `migrateEntity` self-route through
+`markChunkDirty` already; new mutation paths (voxel writes from a
+push-at-mutation upload, future component-write hooks) must do the
+same — there is no other supported way to flip the bit, and a
+missed call drops the save silently.
 
 The bit is consulted at `EVICTING → EVICTED` transition: if dirty,
 schedule a save to disk before deallocating the pool slice. The

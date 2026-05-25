@@ -31,6 +31,34 @@ residency worker pool without changing the surface. Entity-level
 state (components beyond the chunk's voxel pool) belongs to the
 parallel world-snapshot path (#199), not this layer.
 
+### Chunk mutation must route through `markChunkDirty`
+
+> Any code that writes to a chunk-owned `VoxelPoolAllocation` (the
+> slice exposed via `ChunkResidencySlot::poolAllocation_`) MUST call
+> `ChunkResidencyManager::markChunkDirty(key)` immediately after the
+> write. The same rule covers entity attach / detach / migrate when
+> a creation opts into streaming.
+
+The dirty bit is consulted at eviction and by `flushPendingSaves()`;
+a missed `markChunkDirty` call after a real mutation means the save
+is silently skipped and the chunk reverts to its pre-edit state on
+re-resident. This is the ECS-footgun class of bug — invisible under
+single-chunk creations, fires only after
+streaming load surfaces an eviction-then-re-resident cycle.
+
+`ChunkResidencySlot::isDirty()` is the read side; the underlying
+field is private with `ChunkResidencyManager` as a `friend`, so
+`slot->dirty_ = true` no longer compiles. The manager's
+`attachEntity` / `migrateEntity` already self-route through
+`markChunkDirty`; the voxel-mutation routing lands when push-at-
+mutation uploads (Epic B / #944) wire in.
+
+When you add a new mutation path (voxel-pool write, entity move,
+component write within `ownedEntities_`), route it through
+`markChunkDirty`. The cross-link from
+[`engine/render/CLAUDE.md`](../render/CLAUDE.md) at the voxel-pool
+section is the reciprocal pointer for renderer-side authors.
+
 Most code never touches `World` directly. It accesses managers via the
 `IR<Module>::get*Manager()` free functions in each module's `ir_*.hpp`
 header, which reach through the global pointers `World` sets up at

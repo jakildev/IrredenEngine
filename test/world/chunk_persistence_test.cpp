@@ -39,8 +39,7 @@ class ChunkPersistenceFixture : public ::testing::Test {
         // tests don't share a directory (would race if a previous test
         // crashed without cleanup).
         static std::atomic<std::uint64_t> counter{0};
-        const auto stamp =
-            std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
         m_root = std::filesystem::temp_directory_path() /
                  ("ir-chunk-persistence-" + std::to_string(stamp) + "-" +
                   std::to_string(counter.fetch_add(1)));
@@ -197,15 +196,22 @@ TEST_F(ChunkPersistenceFixture, ManagerSavesDirtyChunkOnEvictAndLoadsOnReResiden
     ASSERT_NE(s, nullptr);
     ASSERT_EQ(s->state_, ChunkResidencyState::RESIDENT);
     ASSERT_EQ(s->poolAllocation_.voxels_.size(), kChunkVolume);
-    EXPECT_FALSE(s->dirty_) << "fresh-allocated chunk should not be dirty";
+    EXPECT_FALSE(s->isDirty()) << "fresh-allocated chunk should not be dirty";
 
-    // Mutate a few voxels through the pool slice and flag dirty.
-    s->poolAllocation_.voxels_[0] = C_Voxel{Color{10, 20, 30, 255}, /*mat=*/1, /*flags=*/2,
-                                            /*bone=*/3, /*layer=*/4};
+    // Mutate a few voxels through the pool slice and route the dirty
+    // flag through the manager's API (the load-bearing contract).
+    s->poolAllocation_.voxels_[0] = C_Voxel{
+        Color{10, 20, 30, 255},
+        /*mat=*/1,
+        /*flags=*/2,
+        /*bone=*/3,
+        /*layer=*/4
+    };
     s->poolAllocation_.voxels_[42] = C_Voxel{Color{99, 88, 77, 66}};
     s->poolAllocation_.voxels_[kChunkVolume - 1] =
         C_Voxel{Color{0, 0, 0, 0}}; // explicit empty slot to test alpha-0 round-trip
-    s->dirty_ = true;
+    mgr.markChunkDirty(key);
+    EXPECT_TRUE(s->isDirty()) << "markChunkDirty should flip the slot's bit";
 
     mgr.requestEvict(key);
     EXPECT_FALSE(mgr.isResident(key));
@@ -225,7 +231,7 @@ TEST_F(ChunkPersistenceFixture, ManagerSavesDirtyChunkOnEvictAndLoadsOnReResiden
     EXPECT_EQ(s2->poolAllocation_.voxels_[0].layer_id_, 4);
     EXPECT_EQ(s2->poolAllocation_.voxels_[42].color_.red_, 99);
     EXPECT_EQ(s2->poolAllocation_.voxels_[kChunkVolume - 1].color_.alpha_, 0u);
-    EXPECT_FALSE(s2->dirty_) << "post-load slice should not be dirty";
+    EXPECT_FALSE(s2->isDirty()) << "post-load slice should not be dirty";
 }
 
 TEST_F(ChunkPersistenceFixture, ManagerSkipsSaveForCleanChunkOnEvict) {
@@ -241,8 +247,7 @@ TEST_F(ChunkPersistenceFixture, ManagerSkipsSaveForCleanChunkOnEvict) {
     mgr.requestResident(key, RequestPriority::VISIBLE_RENDER);
     // No mutation, dirty stays false.
     mgr.requestEvict(key);
-    EXPECT_FALSE(persistence.chunkExists(key))
-        << "clean chunk should not write a file on evict";
+    EXPECT_FALSE(persistence.chunkExists(key)) << "clean chunk should not write a file on evict";
 }
 
 TEST_F(ChunkPersistenceFixture, FlushPendingSavesWritesDirtySlotsAndClearsDirty) {
@@ -262,13 +267,13 @@ TEST_F(ChunkPersistenceFixture, FlushPendingSavesWritesDirtySlotsAndClearsDirty)
     auto *s0 = mgr.slot(k0);
     ASSERT_NE(s0, nullptr);
     s0->poolAllocation_.voxels_[0] = C_Voxel{Color{1, 2, 3, 255}};
-    s0->dirty_ = true;
+    mgr.markChunkDirty(k0);
     // k1 stays clean.
 
     mgr.flushPendingSaves();
     EXPECT_TRUE(persistence.chunkExists(k0));
     EXPECT_FALSE(persistence.chunkExists(k1)) << "clean slot should not flush";
-    EXPECT_FALSE(mgr.slot(k0)->dirty_) << "dirty bit clears on successful save";
+    EXPECT_FALSE(mgr.slot(k0)->isDirty()) << "dirty bit clears on successful save";
 
     // Slots remain resident after flushPendingSaves.
     EXPECT_TRUE(mgr.isResident(k0));
@@ -291,7 +296,7 @@ TEST_F(ChunkPersistenceFixture, RequestResidentWithNoPriorSaveLeavesSliceFreshly
     ASSERT_NE(s, nullptr);
     // FakePool default-constructs C_Voxel which sets color to (0,0,0,255).
     EXPECT_EQ(s->poolAllocation_.voxels_[0].color_.alpha_, 255u);
-    EXPECT_FALSE(s->dirty_);
+    EXPECT_FALSE(s->isDirty());
 }
 
 TEST_F(ChunkPersistenceFixture, NoPersistenceWiredLeavesEvictBehaviorUnchanged) {
@@ -306,7 +311,7 @@ TEST_F(ChunkPersistenceFixture, NoPersistenceWiredLeavesEvictBehaviorUnchanged) 
 
     auto key = pack(IRMath::ivec3{0, 0, 0});
     mgr.requestResident(key, RequestPriority::VISIBLE_RENDER);
-    mgr.slot(key)->dirty_ = true;
+    mgr.markChunkDirty(key);
     mgr.requestEvict(key);
 
     // Nothing should have landed in the temp root because no
