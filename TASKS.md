@@ -196,11 +196,11 @@ Avoid:
   - **Notes:** Crash at `GLTracer_glBindImageTexture` with GL_INVALID_VALUE after initial zoom=16 applied on WSL2/Ubuntu/Mesa 25.2.8 d3d12. Suspected: texture resize/format mismatch when canvas grows — possible GL_MAX_3D_TEXTURE_SIZE (2048 on Mesa) or internalformat mismatch. Zoom=1..8 work; only zoom=16 (`zoom16_lod_all_visible` shot) crashes. Needs GL_KHR_debug callback to isolate failing bindImage() call site.
   - **Links:**
 
-- [ ] **render: SDF entity rotation via C_LocalTransform (C8)** — wire C_LocalTransform.rotation_ into C_ShapeDescriptor localRotation so SDF shapes rotate with their entity transform
+- [~] **render: SDF entity rotation via C_LocalTransform (C8)** — wire C_LocalTransform.rotation_ into C_ShapeDescriptor localRotation so SDF shapes rotate with their entity transform
   - **ID:** T-353
   - **Area:** engine/render, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) SDF capsule with same SQT as voxel capsule rasterizes within 1 trixel at any yaw; (2) SHAPE_FLAG_DISCRETE_ROTATION retired; (3) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #959
