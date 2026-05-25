@@ -985,8 +985,7 @@ TEST(ChunkUploadBudgetTest, TickPrefetchUnderBudgetEnqueuesAllStaysLoading) {
     cfg.evictionRadiusChunks_ = 2;
     ChunkResidencyManager mgr{std::move(cfg)};
 
-    mgr.setCameraWorldPosition(IRMath::vec3(16.0f, 16.0f, 16.0f));
-    mgr.beginFrame();
+    mgr.beginFrame(IRMath::vec3(16.0f, 16.0f, 16.0f));
     mgr.tickPrefetch();
 
     EXPECT_EQ(mgr.residentChunkCount(), 27u);
