@@ -209,6 +209,13 @@ ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewe
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager        fleet/queue-manager
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager-ingest fleet/queue-manager-ingest
 ensure_worktree "$ENGINE" .claude/worktrees/merger               fleet/merger
+# smoke-worker worktree is optional — only created when FLEET_SMOKE_WORKER=1.
+# Useful for running a dedicated smoke pane on a second host (e.g. Ubuntu
+# alongside the primary macOS fleet). Set FLEET_SMOKE_WORKER=1 in
+# ~/.fleet/fleet-up.conf or as an env var before calling fleet-up.
+if [[ "${FLEET_SMOKE_WORKER:-0}" == "1" ]]; then
+    ensure_worktree "$ENGINE" .claude/worktrees/smoke-worker fleet/smoke-worker
+fi
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
@@ -467,6 +474,7 @@ reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"        claude/queue-manager-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager-ingest" claude/queue-manager-ingest-scratch
 reset_worktree "$ENGINE/.claude/worktrees/merger"               claude/merger-scratch
+reset_worktree "$ENGINE/.claude/worktrees/smoke-worker"         claude/smoke-worker-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
@@ -636,6 +644,9 @@ PYEOF
 for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
+if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
+    write_worktree_settings "$ENGINE/.claude/worktrees/smoke-worker" "$ENGINE"
+fi
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
@@ -838,12 +849,16 @@ def sonnet_reviewer_actionable(p):
 def opus_reviewer_actionable(p):
     return bool(p.get("flagged_prs"))
 
+def smoke_worker_actionable(p):
+    return bool(p.get("smoke_pending_prs"))
+
 for role, predicate in [
     ("merger", merger_actionable),
     ("sonnet-author", author_worker_actionable),
     ("opus-worker", opus_worker_actionable),
     ("sonnet-reviewer", sonnet_reviewer_actionable),
     ("opus-reviewer", opus_reviewer_actionable),
+    ("smoke-worker", smoke_worker_actionable),
 ]:
     proj = proj_dir / f"{role}.json"
     if not proj.is_file():
@@ -1126,9 +1141,10 @@ label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
 set_fleet_role "$BOT_RIGHT" "opus-reviewer"
 pane_stagger
 
-# --- Window 2: "ops" — 2x2 grid ---------------------------------------
+# --- Window 2: "ops" — 2x2 grid (+ optional smoke-worker pane) --------
 #
-# queue-manager (top-left), merger (top-right),
+# queue-manager (top-left), merger (top-right, with optional smoke-worker
+# below it when FLEET_SMOKE_WORKER=1),
 # witness (bottom-left), terminal (bottom-right, $HOME, free-form shell).
 
 # Anchor explicitly after the fleet window with `-a -t fleet`. Without
@@ -1160,6 +1176,17 @@ OPS_BR=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
     -c "$HOME" \
     "exec $SHELL")
 label_pane_id "$OPS_BR" "terminal"
+
+# Optional smoke-worker pane — only launched when the worktree exists
+# (i.e. FLEET_SMOKE_WORKER=1 was set during ensure_worktree above).
+if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
+    OPS_SMOKE=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
+        -c "$ENGINE/.claude/worktrees/smoke-worker" \
+        "$TRANSIENT_PANE_CMD")
+    label_pane_id "$OPS_SMOKE" "smoke-worker [sonnet]"
+    set_fleet_role "$OPS_SMOKE" "smoke-worker"
+    pane_stagger
+fi
 
 # Enable pane border labels using @role (immune to program overrides).
 # Apply at session level so it covers both windows.

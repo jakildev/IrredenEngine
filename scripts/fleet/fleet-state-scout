@@ -613,6 +613,16 @@ REVIEW_SKIP_LABELS = frozenset({
 })
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
+# Smoke-worker label sets. Windows smoke is excluded — cleared by
+# platform-catchup (#1093), not by fleet agents.
+_SMOKE_PENDING_LABELS = frozenset({
+    "fleet:needs-linux-smoke", "fleet:needs-macos-smoke",
+})
+_SMOKE_SKIP_LABELS = frozenset({
+    "fleet:needs-fix", "fleet:blocker", "human:wip", "fleet:wip",
+    "fleet:merger-cooldown", "human:needs-fix",
+})
+
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
 # Single-T-NNN blocker. Reject multi-blocker (`T-101, T-102`), free-text
@@ -918,6 +928,33 @@ def project_queue_manager_ingest(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _smoke_pr_eligible(labels_set):
+    """Return True if the PR is eligible for smoke pickup."""
+    if "fleet:approved" not in labels_set:
+        return False
+    if not (labels_set & _SMOKE_PENDING_LABELS):
+        return False
+    if labels_set & _SMOKE_SKIP_LABELS:
+        return False
+    if any(l.startswith("fleet:reviewing-") for l in labels_set):
+        return False
+    return True
+
+
+def project_smoke_worker(state):
+    items = []
+    for repo_key, repo_state in state["repos"].items():
+        if repo_key != "engine":
+            continue
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if not _smoke_pr_eligible(labels):
+                continue
+            smoke_pending = sorted(labels & _SMOKE_PENDING_LABELS)
+            items.append({"pr": pr["number"], "smoke_labels": smoke_pending})
+    return sorted(items, key=lambda x: x["pr"])
+
+
 PROJECTORS = {
     "sonnet-author": project_sonnet_author,
     "opus-worker": project_opus_worker,
@@ -926,6 +963,7 @@ PROJECTORS = {
     "queue-manager": project_queue_manager,
     "queue-manager-ingest": project_queue_manager_ingest,
     "merger": project_merger,
+    "smoke-worker": project_smoke_worker,
 }
 
 
@@ -1075,6 +1113,23 @@ def slice_merger(state):
     return out
 
 
+def slice_smoke_worker(state):
+    out = {"smoke_pending_prs": []}
+    repo_state = state["repos"].get("engine", {})
+    for pr in repo_state.get("prs", []):
+        labels = set(pr["labels"])
+        if not _smoke_pr_eligible(labels):
+            continue
+        out["smoke_pending_prs"].append({
+            "number": pr["number"],
+            "title": pr.get("title", ""),
+            "labels": pr.get("labels", []),
+            "headRefName": pr.get("headRefName", ""),
+        })
+    out["smoke_pending_prs"].sort(key=lambda p: p["number"])
+    return out
+
+
 SLICERS = {
     "sonnet-author": slice_sonnet_author,
     "opus-worker": slice_opus_worker,
@@ -1082,6 +1137,7 @@ SLICERS = {
     "opus-reviewer": slice_opus_reviewer,
     "queue-manager": slice_queue_manager,
     "queue-manager-ingest": slice_queue_manager_ingest,
+    "smoke-worker": slice_smoke_worker,
     "merger": slice_merger,
 }
 

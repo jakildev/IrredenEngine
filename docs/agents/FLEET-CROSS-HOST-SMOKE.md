@@ -12,8 +12,19 @@ the **reviewer** tagging side and the **author** claiming side — live
 here. Role files ([`role-opus-reviewer.md`](../../.claude/commands/role-opus-reviewer.md),
 [`role-sonnet-reviewer.md`](../../.claude/commands/role-sonnet-reviewer.md),
 [`role-opus-worker.md`](../../.claude/commands/role-opus-worker.md),
-[`role-sonnet-author.md`](../../.claude/commands/role-sonnet-author.md))
+[`role-sonnet-author.md`](../../.claude/commands/role-sonnet-author.md),
+[`role-smoke-worker.md`](../../.claude/commands/role-smoke-worker.md))
 point here rather than restating the procedure.
+
+**Dedicated smoke-only mode.** When running a second host (e.g. Ubuntu
+alongside a macOS fleet) that should only handle smoke testing, set
+`FLEET_SMOKE_WORKER=1` in `~/.fleet/fleet-up.conf` and restart fleet-up.
+This creates a `smoke-worker` pane that picks smoke labels exclusively,
+leaving author panes free for task work. See
+[`role-smoke-worker.md`](../../.claude/commands/role-smoke-worker.md) for
+the role spec and
+[`scripts/fleet/fleet-up.conf.sample`](../../scripts/fleet/fleet-up.conf.sample)
+for the configuration option.
 
 Engine repo only. Game-repo PRs do not get cross-host smoke labels —
 backends live in the engine.
@@ -114,6 +125,11 @@ Both `role-opus-worker` and `role-sonnet-author` poll for the smoke
 label that matches their host and execute the protocol below. The
 fleet runs at most one smoke run per author iteration so task pickup
 isn't starved by back-to-back builds.
+
+`role-smoke-worker` is a dedicated alternative: it *only* claims and
+executes smoke runs, never picks tasks, and can run on a second host
+dedicated to cross-host validation. Enable it with `FLEET_SMOKE_WORKER=1`
+in `~/.fleet/fleet-up.conf`.
 
 ### Host detection
 
