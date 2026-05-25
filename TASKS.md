@@ -320,6 +320,28 @@ Avoid:
   - **Notes:** Root cause: commit `85662e24` on `claude/T-366-fleet-duplicate-claiming` pushed empty tree-delta under a task title. Fix: `git diff --cached --quiet` check before `git commit`; exit non-zero if staged tree equals HEAD. Affects SKILL.md and any procedures/*.md with embedded commit paths. Duplicate issue: #1188.
   - **Links:**
 
+- [ ] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
+  - **ID:** T-378
+  - **Area:** engine/system, engine/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) `PROPAGATE_TRANSFORM` dispatches via `PARALLEL_FOR` at per-depth-level granularity; (2) `perf_grid_matrix.sh` 262K shows ≥2× speedup for that system in isolation; (3) hierarchy-correctness test with ≥5 depth levels produces identical world-transforms as serial baseline; (4) cache-invalidation test: spawn/destroy/reparent triggers re-sort on next tick; (5) `IrredenEngineTest` 100% pass; (6) results filed in `docs/perf-reports/threading_propagate_transform.md`
+  - **Issue:** #1195
+  - **Notes:** Two-pass approach: serial `beginTick` builds a BFS level-indexed structure (entities at depth N can be composed in parallel once depth N-1 is finalized); then `parallelFor` per depth level with implicit barrier between levels. Cache the level structure; invalidate only on structural hierarchy changes (spawn/destroy/reparent). Flat hierarchies (depth 1) become a single wide `parallelFor`. Dominant UPDATE cost at 262K entities (~2.51ms/frame, ~40% of UPDATE time). Referenced in threading_phase3.md as T-332; unblocks 100fps target (#1052). Part of epic #226.
+  - **Links:**
+
+- [ ] **system: bulk PARALLEL_FOR migration of trivially-safe prefab systems** — inventory all prefab systems, classify by access-derivation safety rules, annotate ≥10 safe systems with PARALLEL_FOR, verify via validator, and file perf measurements
+  - **ID:** T-379
+  - **Area:** engine/prefabs, engine/system
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) ≥10 additional prefab systems annotated with `PARALLEL_FOR` beyond the 2 already done; (2) `IrredenEngineTest` 100% pass; (3) measurable speedup at 262K entities vs post-Phase-3 baseline; (4) results filed in `docs/perf-reports/threading_bulk_migration.md`; (5) `engine/system/CLAUDE.md` updated with full list of parallelized systems; (6) no regression in `IRShapeDebug --auto-screenshot 60`
+  - **Issue:** #1196
+  - **Notes:** Mechanical sweep: grep for `registerSystem<`/`createSystem<` across `engine/prefabs/`, build inventory table, classify each system. Safe criteria: per-component tick refs only, no `EntityId` first param, no manager/GL/Metal/sol2/LuaScript calls in body, no static or shared-state access. Likely candidates: ANIMATION_COLOR, ANIMATION_FRAMES, PERIODIC_IDLE, PERIODIC_IDLE_POSITION_OFFSET, LIFETIME, MODIFIER_DECAY, VELOCITY_ROTATION, SCALE_ANIMATION, FADE_IN, FADE_OUT. Check ANIMATION_COLOR — may already be annotated from T-222 POC. Do not reorganize pipeline groups in this PR. Part of epic #226.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
