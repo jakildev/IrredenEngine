@@ -288,11 +288,11 @@ Avoid:
   - **Notes:** 4 sub-items from T-298 review: (1)[opus] markDirty API — load-bearing, no creation should use Config::persistence_ until lands; (2)[sonnet] 2-level dir split before any real saves to avoid back-compat burden; (3)[sonnet] in-engine consumer verification; (4)[sonnet] optional rename. Should land before E2/E3 (T-356/T-357). Stacks on T-298 (merged).
   - **Links:**
 
-- [ ] **engine: retire GLOBAL_POSITION_3D system + C_PositionGlobal3D readers (T-301b)** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform
+- [~] **engine: retire GLOBAL_POSITION_3D system + C_PositionGlobal3D readers (T-301b)** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform
   - **ID:** T-361
   - **Area:** engine/prefabs/irreden/update, creations
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** GLOBAL_POSITION_3D system fully removed; engine + all 9 affected creations (default, shape_debug, perf_grid, z_yaw_rotation×2, lighting_demo_scene, lua_perf_grid, lua_pipeline_demo, voxel_editor, modifier_demo) build clean; voxel_editor gizmos move/pick/position correctly; IrredenEngineTest passes (incl. updated lua_pipeline_register_test); default-demo idle-bob verified (reconnect in T-301a, this task verifies); no visual regression in voxel_editor + affected demo
   - **Issue:** #1055
