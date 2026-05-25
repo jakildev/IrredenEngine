@@ -168,16 +168,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             return;
         }
 
-        // Pick a reference axis far from sunDir for numerical
-        // stability under near-vertical suns.
-        const vec3 ref =
-            (IRMath::abs(sunDir.z) < 0.9f) ? vec3(0.0f, 0.0f, 1.0f) : vec3(1.0f, 0.0f, 0.0f);
-        vec3 uHat = IRMath::cross(ref, sunDir);
-        const float uLen = IRMath::length(uHat);
-        if (uLen > 0.0f) {
-            uHat /= uLen;
-        }
-        vec3 vHat = IRMath::cross(sunDir, uHat);
+        vec3 uHat, vHat;
+        IRMath::buildOrthonormalBasis(sunDir, uHat, vHat);
         frameData_.sunBasisU_ = vec4(uHat, 0.0f);
         frameData_.sunBasisV_ = vec4(vHat, 0.0f);
 
@@ -214,16 +206,20 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             }
         }
 
-        // Pad so corners don't quantize off-buffer; the larger AABB
-        // dim sets texelSize, the other gets unused margin.
         constexpr float kAABBPad = 1.0f;
         sunUVMin -= vec2(kAABBPad);
         sunUVMax += vec2(kAABBPad);
-        const vec2 extent = sunUVMax - sunUVMin;
-        const float maxExtent = IRMath::max(extent.x, extent.y);
-        const float texelSize = maxExtent / static_cast<float>(kSunShadowMapDim);
+        vec2 extent = sunUVMax - sunUVMin;
+        const float dimF = static_cast<float>(kSunShadowMapDim);
+        vec2 texelSize = vec2(extent.x / dimF, extent.y / dimF);
+
+        // Snap AABB origin to texel boundaries so the quantization
+        // grid stays phase-locked across frames (stable shadow maps).
+        sunUVMin.x = IRMath::floor(sunUVMin.x / texelSize.x) * texelSize.x;
+        sunUVMin.y = IRMath::floor(sunUVMin.y / texelSize.y) * texelSize.y;
+
         frameData_.sunBufferOriginUV_ = sunUVMin;
-        frameData_.sunBufferTexelSize_ = vec2(texelSize, texelSize);
+        frameData_.sunBufferTexelSize_ = texelSize;
     }
 
     static SystemId create() {

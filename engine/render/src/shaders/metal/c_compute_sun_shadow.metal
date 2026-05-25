@@ -25,6 +25,8 @@ constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
 constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
 
+constant float kMaxShadowDepthRange = 24.0 * kSunDepthScale;
+
 inline float unpackSunDepth(uint packedDepth) {
     return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
 }
@@ -109,9 +111,7 @@ kernel void c_compute_sun_shadow(
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
 
     // 2×2 PCF: bilinearly weighted sample of four neighboring sun-space texels.
-    // Fades shadow boundaries across one sun-texel instead of cliff-edging.
-    // floor() pairs with the bake's round() convention (texel centers on
-    // integers) so the four taps surround the fragment's continuous sunPxF.
+    // Both bake and lookup use floor() so the texel grid is consistent.
     float2 sunPxF = (sunUV - sunFrameData.sunBufferOriginUV) /
                     sunFrameData.sunBufferTexelSize;
     int2 base = int2(floor(sunPxF));
@@ -127,9 +127,18 @@ kernel void c_compute_sun_shadow(
             float nearestZ = unpackSunDepth(stored);
             float weight = mix(1.0f - frac.x, frac.x, float(dx))
                          * mix(1.0f - frac.y, frac.y, float(dy));
-            if ((sunZ - nearestZ) > bias) shadowAccum += weight;
+            float depthDiff = sunZ - nearestZ;
+            if (depthDiff > bias && depthDiff < kMaxShadowDepthRange)
+                shadowAccum += weight;
         }
     }
+
+    float faceSunDot = dot(normal, sunDir);
+    if (faceSunDot > 0.3) {
+        float atten = smoothstep(0.3f, 0.7f, faceSunDot);
+        shadowAccum *= (1.0 - atten);
+    }
+
     float factor = mix(1.0f, kShadowDarken, shadowAccum);
     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
 }

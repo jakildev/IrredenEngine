@@ -87,7 +87,8 @@ class ScopedCpuPhaseTimer {
     std::chrono::steady_clock::time_point m_start;
 };
 
-inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &originVoxel) {
+inline GPULightSource
+toGpuLight(const C_LightSource &light, const ivec3 &originVoxel, float intensityScale = 1.0f) {
     GPULightSource gpu{};
     gpu.originAndType_ = vec4(
         static_cast<float>(originVoxel.x),
@@ -99,7 +100,7 @@ inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &origin
         static_cast<float>(light.emitColor_.red_) / 255.0f,
         static_cast<float>(light.emitColor_.green_) / 255.0f,
         static_cast<float>(light.emitColor_.blue_) / 255.0f,
-        IRMath::max(0.0f, light.intensity_)
+        IRMath::max(0.0f, light.intensity_ * intensityScale)
     );
     const float radius = static_cast<float>(light.radius_);
     gpu.directionAndRadius_ =
@@ -115,12 +116,13 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
     return IRMath::roundVec3HalfUp(transform.translation_);
 }
 
-inline bool isOriginInLightVolume(const ivec3 &lightOrigin, const ivec3 &volumeOrigin) {
-    constexpr int he = kLightVolumeHalfExtent;
+inline bool isOriginInVolume(const ivec3 &lightOrigin, const ivec3 &volumeOrigin, int halfExtent) {
     const ivec3 local = lightOrigin - volumeOrigin;
-    return local.x >= -he && local.x < he && local.y >= -he && local.y < he && local.z >= -he &&
-           local.z < he;
+    return local.x >= -halfExtent && local.x < halfExtent && local.y >= -halfExtent &&
+           local.y < halfExtent && local.z >= -halfExtent && local.z < halfExtent;
 }
+
+constexpr int kLightVolumeOverflowMargin = 8;
 
 // Pack a signed-int voxel position into a single uint64 so the
 // "already-warned" set can dedupe by exact origin without paying for a
@@ -204,7 +206,8 @@ inline std::uint32_t gatherLightSources(
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(transforms[i]);
-            if (!isOriginInLightVolume(origin, volumeOriginVoxel)) {
+            constexpr int kExtendedHalfExtent = kLightVolumeHalfExtent + kLightVolumeOverflowMargin;
+            if (!isOriginInVolume(origin, volumeOriginVoxel, kExtendedHalfExtent)) {
                 if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
                     IR_LOG_WARN(
                         "C_LightSource at world voxel ({}, {}, {}) is "
@@ -223,7 +226,25 @@ inline std::uint32_t gatherLightSources(
                 }
                 continue;
             }
-            out.push_back(toGpuLight(lights[i], origin));
+            ivec3 seedOrigin = origin;
+            float intensityScale = 1.0f;
+            if (!isOriginInVolume(origin, volumeOriginVoxel, kLightVolumeHalfExtent)) {
+                ivec3 rel = origin - volumeOriginVoxel;
+                for (int axis = 0; axis < 3; ++axis) {
+                    const int overflow = IRMath::abs(rel[axis]) - (kLightVolumeHalfExtent - 1);
+                    if (overflow > 0) {
+                        rel[axis] = (rel[axis] > 0) ? (kLightVolumeHalfExtent - 1)
+                                                    : -(kLightVolumeHalfExtent - 1);
+                        intensityScale = IRMath::min(
+                            intensityScale,
+                            1.0f - static_cast<float>(overflow) /
+                                       static_cast<float>(kLightVolumeOverflowMargin)
+                        );
+                    }
+                }
+                seedOrigin = volumeOriginVoxel + rel;
+            }
+            out.push_back(toGpuLight(lights[i], seedOrigin, intensityScale));
             const int r = static_cast<int>(lights[i].radius_);
             if (r > outMaxRadius) {
                 outMaxRadius = r;
