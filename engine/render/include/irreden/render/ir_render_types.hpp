@@ -439,14 +439,14 @@ constexpr std::uint32_t kBufferIndex_StatelessParticleEmitters = kBufferIndex_Li
 /// generous for the engine's current "few dozen lights" workloads.
 constexpr std::uint32_t kLightVolumeMaxSources = 256;
 
-/// Number of GPU dilation iterations the propagate pass runs each
-/// frame. The propagate shader uses distance-tracked linear falloff —
-/// alpha encodes residual strength, decremented by `stepFalloff` per
-/// step. After this many iterations the wavefront has covered a Manhattan
-/// radius of `1 / stepFalloff` cells (= 32 with the default falloff),
-/// matching the typical EMISSIVE/POINT light radius the CPU BFS path
-/// previously used. Phase 1c will replace the global radius cap with
-/// per-light step counts.
+/// Upper bound on GPU dilation iterations the propagate pass dispatches
+/// each frame. `system_compute_light_volume` picks an adaptive iteration
+/// count per frame from the gathered lights' max `C_LightSource::radius_`
+/// and clamps it to this constant — small-radius scenes pay only for the
+/// iterations they need, while pathological per-cell costs on weaker GPU
+/// drivers (WSLg Mesa-d3d12, integrated Intel GL) stay bounded. Phase 1c
+/// will replace the global cap with per-light step counts so multi-light
+/// scenes with very different radii stop sharing a single falloff curve.
 constexpr int kLightVolumePropagateIterations = 32;
 
 /// CPU mirror of the `LightSource` GPU struct uploaded to the
@@ -483,8 +483,13 @@ struct LightVolumeParams {
     /// the alpha channel; each Manhattan step subtracts this value, so
     /// a light reaches `1 / stepFalloff_` cells before going dark
     /// (linear falloff, matching the CPU BFS's `1 - d/radius` curve).
-    /// A single global falloff approximates per-light radius variation;
-    /// per-light step counts remain a follow-up beyond Phase 1c.
+    /// Written per frame by `system_compute_light_volume`: paired with
+    /// the adaptive iteration count, falloff is `1 / iterations` so
+    /// alpha lands cleanly at 0 on the final propagate step. Multi-light
+    /// scenes with very different radii share the gather's max-radius
+    /// falloff curve until Phase 1c per-light step counts land.
+    /// The struct default mirrors the global cap so a fresh `LightVolumeParams{}`
+    /// behaves like today's 32-cell radius before the first per-frame write.
     float stepFalloff_ = 1.0f / 32.0f;
     /// Phase 1c (#360): camera-anchored origin. The 128³ light volume
     /// is centered on this world voxel each frame so a panned camera

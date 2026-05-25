@@ -502,7 +502,13 @@ void configureLightingAndCanvas() {
             LightType::EMISSIVE,
             Color{90, 200, 255, 255},
             2.0f,
-            static_cast<uint8_t>(180)
+            // Was 180; silently capped at kLightVolumePropagateIterations
+            // (32) before the propagate adapted to per-frame max radius.
+            // 24 is the smallest value that still reads as the same
+            // decorative glow at the demo's default camera zoom, and
+            // saves ~25% on per-frame propagate dispatches on Linux/GL
+            // where this stage dominates IRPerfGrid's frame budget.
+            static_cast<uint8_t>(24)
         }
     );
     IRPrefab::Fog::revealRadius(0, 0, 128);
