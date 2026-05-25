@@ -125,14 +125,14 @@ introduces the dependency.
 | `engine/prefabs/irreden/render/picking.hpp:169–180` (voxel iso-depth bounds) | per-set AABB pre-filter | Bound formula projects AABB half-extents onto (1,1,1) as a scalar sum. Cited explicitly as "rotation-invariant" under cardinal Z. |
 | `engine/prefabs/irreden/render/picking.hpp:211–234` (`castVoxelRay`) | ray walk | "Walk along the canvas-frame iso depth axis in `kPickingDepthStep` increments over the union of all visible shape and voxel-set iso-depth ranges." |
 | `engine/prefabs/irreden/render/camera.hpp:18–76` (`IRPrefab::Camera::computeYawSplit`) | Z-yaw split | Splits a scalar `visualYaw` into `(rasterYaw, residualYaw)`; both halves are scalars, not quats. No room for X/Y components. |
-| `engine/prefabs/irreden/render/components/component_camera_yaw.hpp:16–37` (`C_CameraYaw`) | camera-side surface | Single float field; cannot represent pitch/roll. Issue #1076 evaluates retiring this component for `C_LocalTransform.rotation_`. |
+| `engine/prefabs/irreden/render/camera.hpp` (`IRPrefab::Camera::`) | camera-side surface | Rotation lives in `C_LocalTransform.rotation_` (T-364); yaw helpers extract Z-component. Full SO(3) API available via `setRotationQuat`/`getRotationQuat`. |
 | `engine/prefabs/irreden/input/systems/system_hitbox_mouse_test.hpp:40–58` (cardinal-index hitbox test) | hitbox rotation | Calls `IRPrefab::Camera::getRasterYaw()`; rotates world position via `rotateCardinalZ` to map to iso space. |
 | `engine/prefabs/irreden/render/systems/system_gizmo_drag.hpp:287–299` (`canvasIsoDepthOfAnchor`, `anchorIsoPosition`) | gizmo anchor projection | Same `rasterYawCardinalIndex + rotateCardinalZ + pos3DtoPos2DIso` sequence. |
 | `engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp:405–432` (SDF cull bounds) | per-shape iso AABB | XY AABB expansion under Z-yaw only; Z half-extent passes through unchanged. |
-| `engine/render/src/render_manager.cpp` (`C_CameraYaw` upload) | UBO upload | Uploads `visualYaw / rasterYaw / residualYaw` as three floats. Adding pitch/roll requires either a quaternion upload or two more split floats. |
-| `creations/editors/voxel_editor/main.cpp` (camera-yaw consumer) | creation-side | Reads `C_CameraYaw` directly for editor camera control. Issue #1076 path B requires migrating this. |
-| `creations/demos/z_yaw_rotation/main_mouse.cpp`, `main_static.cpp` | creation-side | Same; demo-level camera control. |
-| `test/render/camera_yaw_test.cpp` | tests | Will need pitch/roll equivalents under #1076. |
+| `engine/render/src/render_manager.cpp` (yaw upload) | UBO upload | Uploads `visualYaw / rasterYaw / residualYaw` as three floats extracted via `IRPrefab::Camera::getYaw()`/`getYawSplit()`. Adding pitch/roll requires either a quaternion upload or two more split floats. |
+| `creations/editors/voxel_editor/main.cpp` (camera consumer) | creation-side | Reads camera rotation through `IRPrefab::Camera::` helpers (migrated from `C_CameraYaw` in T-364). |
+| `creations/demos/z_yaw_rotation/main_mouse.cpp`, `main_static.cpp` | creation-side | Same; demo-level camera control via helpers. |
+| `test/render/camera_yaw_test.cpp` | tests | Tests wrap and split math; pitch/roll equivalents land alongside full SO(3) camera tests. |
 
 ### GPU (shader) consumers
 
@@ -159,8 +159,8 @@ introduces the dependency.
 | `c_shapes_to_trixel.glsl` general SDF march | **Easy.** The general SDF path already rotates the query point by `R_z(+rasterYaw)`; replacing with a quat rotation is mechanical. Performance is unchanged. |
 | `c_voxel_to_trixel_stage_1.glsl` UBO struct + raster | **Hard.** The shader picks one of four cardinal basis permutations from `cardinalIndex`. Generalizing to SO(3) requires either a per-canvas basis upload or a runtime basis derivation per dispatch; the integer raster invariant has to be re-justified. |
 | `c_compute_sun_shadow.glsl`, `c_compute_voxel_ao.glsl`, lighting/fog reconstruction | **Hard.** All rely on `isoPixelToWorld3D` which assumes the cardinal-Z inverse. The inverse rewrite cascades here. |
-| `IRPrefab::Camera::*` accessors + `C_CameraYaw` component | **Easy.** Issue #1076 covers the path: migrate camera rotation to `C_LocalTransform.rotation_` and update the accessors to extract the Z-component for GRID consumers while exposing the full quat for DETACHED. The Z-extraction path keeps GRID behavior bit-identical. |
-| `creations/editors/voxel_editor` + `z_yaw_rotation` demo + `test/render/camera_yaw_test.cpp` | **Mechanical.** Direct readers of `C_CameraYaw`; switch to the new accessor surface alongside #1076's migration. |
+| `IRPrefab::Camera::*` accessors | **Done (T-364).** Camera rotation lives in `C_LocalTransform.rotation_`; Z-yaw extraction for GRID consumers is bit-identical to the former `C_CameraYaw` surface. Full SO(3) is accessible via `setRotationQuat`/`getRotationQuat`. |
+| `creations/editors/voxel_editor` + `z_yaw_rotation` demo + `test/render/camera_yaw_test.cpp` | **Done (T-364).** Migrated to `IRPrefab::Camera::` helpers; no direct component access. |
 | DETACHED entity rasterization (every shader path that uses `faceDeformationMatrixSO3`) | **Free.** Already axis-agnostic. Picks up pitch/roll for free once #1076 composes the camera quat into the per-canvas bake (via #1075's composition step). |
 
 The total cost of breaking the invariant for GRID is dominated by the

@@ -6,7 +6,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/camera.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_camera.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -23,17 +23,14 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
     vec2 dragStartMouse_ = vec2(0.0f);
     float dragStartYaw_ = 0.0f;
 
-    void tick(C_CameraYaw &) {}
+    void tick(C_Camera &) {}
 
     void endTick() {
-        const bool middlePressed = IRInput::checkKeyMouseButton(
-            IRInput::kMouseButtonMiddle, IRInput::PRESSED
-        );
-        const bool middleDown = IRInput::checkKeyMouseButton(
-            IRInput::kMouseButtonMiddle, IRInput::HELD
-        );
-        const bool ctrlHeld =
-            IRInput::checkKeyMouseModifiers(IRInput::kModifierControl);
+        const bool middlePressed =
+            IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::PRESSED);
+        const bool middleDown =
+            IRInput::checkKeyMouseButton(IRInput::kMouseButtonMiddle, IRInput::HELD);
+        const bool ctrlHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl);
 
         if (middlePressed && ctrlHeld && !dragging_) {
             dragging_ = true;
@@ -44,8 +41,7 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
         if (dragging_ && middleDown) {
             const vec2 currentMouse = IRInput::getMousePositionScreen();
             const float deltaPx = currentMouse.x - dragStartMouse_.x;
-            const float yawDelta =
-                (deltaPx / kPixelsPerRevolution) * IRMath::kTwoPi;
+            const float yawDelta = (deltaPx / kPixelsPerRevolution) * IRMath::kTwoPi;
             IRPrefab::Camera::setYaw(dragStartYaw_ + yawDelta);
         } else {
             dragging_ = false;
@@ -53,9 +49,7 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
     }
 
     static SystemId create() {
-        return registerSystem<CAMERA_MOUSE_ROTATE, C_CameraYaw>(
-            "CameraMouseRotate"
-        );
+        return registerSystem<CAMERA_MOUSE_ROTATE, C_Camera>("CameraMouseRotate");
     }
 };
 
