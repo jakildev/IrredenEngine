@@ -343,6 +343,17 @@ Avoid:
   - **Notes:** User wants concurrent fleet on Ubuntu just for smoke testing open PRs, without review or feature work. Related to platform-catchup skill (#1093, closed/done) which processes the backlog manually. This is the persistent-mode variant (stays running, re-smokes on push).
   - **Links:**
 
+- [ ] **fleet: investigate + remediate concurrent-fleet duplicate work claiming** — find and fix the gaps that allow two concurrent fleet instances (cross-host or same-host) to pick up the same task, review, or queue-manager slot simultaneously
+  - **ID:** T-366
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Root cause documented for each duplicate-claim path (task claim, review claim, queue-manager spawn); (2) fleet-claim or scout/label protocol extended to prevent cross-host races; (3) FLEET.md updated with cross-fleet coordination protocol; (4) existing single-fleet operation unaffected
+  - **Issue:** #1182
+  - **Notes:** Two fleets on separate hosts both picking up the same work. Existing fleet-claim is git-branch-based but cross-host git push latency creates a race window. Queue-manager: multiple scouts on separate hosts may simultaneously detect the same human:approved issue. Review claiming via labels (fleet:wip, fleet:reviewing) reported as not working for issues. TASKS.md write conflicts possible if both queue-managers commit simultaneously. Investigate: (a) fleet-claim claim-check vs scout tick race; (b) atomicity of fleet:queued label add from multiple hosts; (c) fleet:wip label race for review claims; (d) multi-queue-manager TASKS.md write contention.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
