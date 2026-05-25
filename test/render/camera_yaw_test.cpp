@@ -1,8 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/render/camera.hpp>
-
-#include <glm/gtc/constants.hpp>
+#include <irreden/ir_math.hpp>
 
 namespace {
 
@@ -22,29 +21,29 @@ TEST(CameraYawWrap, ZeroStaysZero) {
 }
 
 TEST(CameraYawWrap, PositivePiMapsToNegativePi) {
-    float yaw = IRPrefab::Camera::detail::wrapYaw(glm::pi<float>());
-    EXPECT_NEAR(yaw, -glm::pi<float>(), kTolerance);
+    float yaw = IRPrefab::Camera::detail::wrapYaw(IRMath::kPi);
+    EXPECT_NEAR(yaw, -IRMath::kPi, kTolerance);
 }
 
 TEST(CameraYawWrap, NegativePiStaysNegativePi) {
-    float yaw = IRPrefab::Camera::detail::wrapYaw(-glm::pi<float>());
-    EXPECT_NEAR(yaw, -glm::pi<float>(), kTolerance);
+    float yaw = IRPrefab::Camera::detail::wrapYaw(-IRMath::kPi);
+    EXPECT_NEAR(yaw, -IRMath::kPi, kTolerance);
 }
 
 TEST(CameraYawWrap, FullRotationWrapsToZero) {
-    float yaw = IRPrefab::Camera::detail::wrapYaw(glm::two_pi<float>());
+    float yaw = IRPrefab::Camera::detail::wrapYaw(IRMath::kTwoPi);
     EXPECT_NEAR(yaw, 0.0f, kTolerance);
 }
 
 TEST(CameraYawWrap, NegativeFullRotationWrapsToZero) {
-    float yaw = IRPrefab::Camera::detail::wrapYaw(-glm::two_pi<float>());
+    float yaw = IRPrefab::Camera::detail::wrapYaw(-IRMath::kTwoPi);
     EXPECT_NEAR(yaw, 0.0f, kTolerance);
 }
 
 TEST(CameraYawWrap, ManyFullRotationsDoNotDriftMaterially) {
     float yaw = 0.5f;
     for (int i = 0; i < 1000; ++i) {
-        yaw += glm::two_pi<float>();
+        yaw += IRMath::kTwoPi;
         yaw = IRPrefab::Camera::detail::wrapYaw(yaw);
     }
     EXPECT_NEAR(yaw, 0.5f, 1e-3f);
@@ -61,25 +60,25 @@ TEST(CameraYawQuat, ZeroRoundTrips) {
 }
 
 TEST(CameraYawQuat, HalfPiRoundTrips) {
-    constexpr float halfPi = glm::half_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
     auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), halfPi);
     EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), halfPi, kTolerance);
 }
 
 TEST(CameraYawQuat, NegativeHalfPiRoundTrips) {
-    constexpr float halfPi = glm::half_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
     auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), -halfPi);
     EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), -halfPi, kTolerance);
 }
 
 TEST(CameraYawQuat, NearPiRoundTrips) {
-    constexpr float nearPi = glm::pi<float>() - 0.01f;
+    constexpr float nearPi = IRMath::kPi - 0.01f;
     auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), nearPi);
     EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), nearPi, kTolerance);
 }
 
 TEST(CameraYawQuat, NegativeNearPiRoundTrips) {
-    constexpr float nearPi = -(glm::pi<float>() - 0.01f);
+    constexpr float nearPi = -(IRMath::kPi - 0.01f);
     auto q = IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), nearPi);
     EXPECT_NEAR(IRPrefab::Camera::detail::yawFromQuat(q), nearPi, kTolerance);
 }
@@ -102,7 +101,7 @@ TEST(YawSplit, ZeroSplitsToZeroZero) {
 }
 
 TEST(YawSplit, ExactCardinalsHaveZeroResidual) {
-    constexpr float halfPi = glm::half_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
     for (float k : {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f}) {
         auto [raster, residual] = computeYawSplit(k * halfPi);
         EXPECT_NEAR(raster, k * halfPi, kTolerance) << "k=" << k;
@@ -111,25 +110,25 @@ TEST(YawSplit, ExactCardinalsHaveZeroResidual) {
 }
 
 TEST(YawSplit, PositiveQuarterPiSnapsAwayFromZero) {
-    constexpr float halfPi = glm::half_pi<float>();
-    constexpr float quarterPi = glm::quarter_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
+    constexpr float quarterPi = IRMath::kQuarterPi;
     auto [raster, residual] = computeYawSplit(quarterPi);
     EXPECT_NEAR(raster, halfPi, kTolerance);
     EXPECT_NEAR(residual, -quarterPi, kTolerance);
 }
 
 TEST(YawSplit, NegativeQuarterPiSnapsAwayFromZero) {
-    constexpr float halfPi = glm::half_pi<float>();
-    constexpr float quarterPi = glm::quarter_pi<float>();
+    constexpr float halfPi = IRMath::kHalfPi;
+    constexpr float quarterPi = IRMath::kQuarterPi;
     auto [raster, residual] = computeYawSplit(-quarterPi);
     EXPECT_NEAR(raster, -halfPi, kTolerance);
     EXPECT_NEAR(residual, quarterPi, kTolerance);
 }
 
 TEST(YawSplit, ResidualStaysInsideCardinalQuarter) {
-    constexpr float quarterPi = glm::quarter_pi<float>();
+    constexpr float quarterPi = IRMath::kQuarterPi;
     for (int i = -100; i <= 100; ++i) {
-        const float visualYaw = (static_cast<float>(i) / 100.0f) * glm::pi<float>();
+        const float visualYaw = (static_cast<float>(i) / 100.0f) * IRMath::kPi;
         auto [raster, residual] = computeYawSplit(visualYaw);
         EXPECT_LE(residual, quarterPi + kTolerance) << "visualYaw=" << visualYaw;
         EXPECT_GE(residual, -quarterPi - kTolerance) << "visualYaw=" << visualYaw;

@@ -43,6 +43,8 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kHalfPi = 1.57079632679489661923f;
 /// Two pi (2π). Useful for full-revolution math and angle wrap.
 constexpr float kTwoPi = 6.28318530717958647692f;
+/// Quarter pi (π/4). Cardinal-yaw residual bound, diagonal transforms.
+constexpr float kQuarterPi = 0.78539816339744830961f;
 
 /// Face-index constants for the three visible iso faces. CPU mirror of the
 /// `kXFace`/`kYFace`/`kZFace` integer constants in `shaders/ir_iso_common.glsl`

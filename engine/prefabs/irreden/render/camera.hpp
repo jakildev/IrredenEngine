@@ -27,7 +27,7 @@ namespace IRPrefab::Camera {
 /// rasterizer; residualYaw is the leftover angle the screen-space
 /// residual composite pass rotates the canvas by.
 inline std::pair<float, float> computeYawSplit(float visualYaw) {
-    const float rasterYaw = std::round(visualYaw / IRMath::kHalfPi) * IRMath::kHalfPi;
+    const float rasterYaw = IRMath::round(visualYaw / IRMath::kHalfPi) * IRMath::kHalfPi;
     return {rasterYaw, visualYaw - rasterYaw};
 }
 
