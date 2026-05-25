@@ -199,11 +199,11 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
-- [ ] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
+- [~] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
   - **ID:** T-367
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-367-increase-complexity-skill
   - **Blocked by:** (none)
   - **Acceptance:** (1) `/increase-complexity` skill exists in `.claude/skills/`; (2) when invoked on a demo, scans available systems/prefabs and appends entities or parameters to increase visual complexity; (3) user can optionally specify what kind of change is wanted; (4) fleet-build clean on linux-debug after applying changes to any touched demo
   - **Issue:** #1064
@@ -225,18 +225,18 @@ Avoid:
   - **ID:** T-369
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-369-irmath-cbrt
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/math/` exports `IRMath::cbrt` (float/double overloads, `constexpr`, `noexcept`); (2) `perf_grid/main.cpp:532` uses `IRMath::cbrt`; (3) `grep -rn "std::cbrt"` returns zero results outside allowlisted backend/glue; (4) IRMath substitution table updated
   - **Issue:** #1088
   - **Notes:** Triggered by reviewer nit on PR #1081 (T-220). Primary motivation is preventing a second `std::cbrt` consumer before the primitive is hoisted.
   - **Links:**
 
-- [ ] **perf: IRPerfGrid UPDATE pipeline — reduce 8.6s/frame to ≤33ms on linux-x86_64** — profile + fix dominant UPDATE systems (PropagateTransform, PeriodicIdle, UpdateVoxelSetChildren) to reach ≥30 FPS on IRPerfGrid
+- [~] **perf: IRPerfGrid UPDATE pipeline — reduce 8.6s/frame to ≤33ms on linux-x86_64** — profile + fix dominant UPDATE systems (PropagateTransform, PeriodicIdle, UpdateVoxelSetChildren) to reach ≥30 FPS on IRPerfGrid
   - **ID:** T-370
   - **Area:** engine/system, engine/world
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-370-perfgrid-update-pipeline
   - **Blocked by:** (none)
   - **Acceptance:** IRPerfGrid frame time on linux-x86_64 ≤ 33 ms with visual parity to master
   - **Issue:** #1161
@@ -247,7 +247,7 @@ Avoid:
   - **ID:** T-371
   - **Area:** engine/world
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-371-chunk-persistence-two-level-dir-split
   - **Blocked by:** (none)
   - **Acceptance:** (1) Benchmark validates split dimensions on ext4/NTFS; (2) `chunkPath` and `filenameForKey` updated; (3) tests' expected filename fragments migrated; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1169
@@ -287,44 +287,44 @@ Avoid:
   - **Notes:** Diagnosed by opus-worker-1 — T-361, T-362, T-363 rows appeared in TASKS.md because implementing PRs used different T-NNN prefixes. T-361 and T-362 have since been removed from TASKS.md. Do NOT auto-close source issues (#1055, #1071, #1074) — human decides. Adjacent to T-338 (maintenance-sync) and T-342 (divergence check).
   - **Links:**
 
-- [~] **fleet: fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels (Bug 1 from #1182)** — add cross-host claim label check to `derive_status()` so maintenance-sync on host B no longer reverts claims held on host A
+- [ ] **fleet: fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels (Bug 1 from #1182)** — add cross-host claim label check to `derive_status()` so maintenance-sync on host B no longer reverts claims held on host A
   - **ID:** T-375
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) Claim on host A + fleet-tasks-render on host B → status stays `[~]`; (2) maintenance-sync no longer reverts cross-host claims; (3) pure-local single-host flow unchanged; (4) synthetic test injects `fleet:claim-*` label and asserts `[~]` preserved across render cycle lacking local FS claim
   - **Issue:** #1190
   - **Notes:** Root cause: `fleet-tasks-render:load_fs_claims()` host-local; `derive_status()` preserves `[~]` only when task_id in fs_claims. Fix: also treat live `fleet:claim-<host>-<agent>` label on task's linked issue as `[~]`-preservation signal (one `gh issue list -l "fleet:claim-*"` per render). Repro in T-366/#1182 timeline: claim reverted 54s after acquisition. Duplicate issue: #1186.
   - **Links:**
 
-- [~] **fleet: fleet-claim — TTL sweep stale fleet:claim-* labels off open issues (Bug 2 from #1182)** — extend `cmd_cleanup --gh` to drop `fleet:claim-*` from open issues where holder has gone silent (no PR, no recent commit, past TTL)
+- [ ] **fleet: fleet-claim — TTL sweep stale fleet:claim-* labels off open issues (Bug 2 from #1182)** — extend `cmd_cleanup --gh` to drop `fleet:claim-*` from open issues where holder has gone silent (no PR, no recent commit, past TTL)
   - **ID:** T-376
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet-claim cleanup --gh` drops stale `fleet:claim-*` from open issues per TTL rules; (2) active claims (open WIP PR or recent commit) are never swept; (3) idempotent — sweep twice = no-op second time; (4) removal logged in same format as closed-issue sweep; (5) queue-tick calls the sweep so it self-heals
   - **Issue:** #1191
   - **Notes:** Root cause: `cmd_check_stale` sweeps FS claims and `fleet:claim-*` off closed issues only — no pass sweeps open issues. T-366/#1182 held `fleet:claim-mac-opus-worker-2` for 17+ hours after an abandoned empty commit. Drop criteria: no matching PR AND label age > TTL (default 7200s) OR linked task Owner → free. Duplicate issue: #1187.
   - **Links:**
 
-- [~] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
+- [ ] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
   - **ID:** T-377
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `commit-and-push` with no staged changes fails with clear error message; (2) error instructs worker to either stage real work or release the claim; (3) existing non-empty-commit path unaffected; (4) skill docs state the empty-commit guard contract
   - **Issue:** #1192
   - **Notes:** Root cause: commit `85662e24` on `claude/T-366-fleet-duplicate-claiming` pushed empty tree-delta under a task title. Fix: `git diff --cached --quiet` check before `git commit`; exit non-zero if staged tree equals HEAD. Affects SKILL.md and any procedures/*.md with embedded commit paths. Duplicate issue: #1188.
   - **Links:**
 
-- [~] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
+- [ ] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
   - **ID:** T-378
   - **Area:** engine/system, engine/entity
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `PROPAGATE_TRANSFORM` dispatches via `PARALLEL_FOR` at per-depth-level granularity; (2) `perf_grid_matrix.sh` 262K shows ≥2× speedup for that system in isolation; (3) hierarchy-correctness test with ≥5 depth levels produces identical world-transforms as serial baseline; (4) cache-invalidation test: spawn/destroy/reparent triggers re-sort on next tick; (5) `IrredenEngineTest` 100% pass; (6) results filed in `docs/perf-reports/threading_propagate_transform.md`
   - **Issue:** #1195
