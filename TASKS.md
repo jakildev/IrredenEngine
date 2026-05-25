@@ -189,7 +189,7 @@ Avoid:
   - **ID:** T-352
   - **Area:** engine/render
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-352-zoom16-bind-image-fix
   - **Blocked by:** (none)
   - **Acceptance:** `fleet-run IRShapeDebug --zoom 16 --auto-screenshot 10` completes without GL_INVALID_VALUE crash on linux-debug; zoom=1/2/4/8/16 all produce valid screenshots
   - **Issue:** #773
@@ -200,7 +200,7 @@ Avoid:
   - **ID:** T-353
   - **Area:** engine/render, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-353-sdf-entity-rotation
   - **Blocked by:** (none)
   - **Acceptance:** (1) SDF capsule with same SQT as voxel capsule rasterizes within 1 trixel at any yaw; (2) SHAPE_FLAG_DISCRETE_ROTATION retired; (3) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #959
@@ -211,7 +211,7 @@ Avoid:
   - **ID:** T-354
   - **Area:** engine/render, docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-354-shapes-deprecation-migration-plan
   - **Blocked by:** (none)
   - **Acceptance:** (1) Each SHAPES-authored asset identified in D1 either migrated to DENSE or explicitly retained as effects-only; (2) editor scaffold updated to remove SDF-primitive authoring UI; (3) documentation reflects the restricted state
   - **Issue:** #961
@@ -222,7 +222,7 @@ Avoid:
   - **ID:** T-355
   - **Area:** engine/render, docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-355-t189-t190-disposition
   - **Blocked by:** (none)
   - **Acceptance:** (1) T-189 (#721) PR closed or re-scoped to DENSE-only (drop HYBRID half); (2) T-190 (#690) re-scoped to document the delta rather than achieve pixel parity; (3) both tasks reach terminal state aligned with the SDF restriction
   - **Issue:** #962
@@ -233,7 +233,7 @@ Avoid:
   - **ID:** T-356
   - **Area:** engine/world, engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-356-gpu-chunk-residency
   - **Blocked by:** (none)
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) With 9× more chunks than budget, camera walk triggers stable evict/upload cycle; (2) no flicker; CPU+GPU profile via B0 infra; (3) resident-set count visible in perf_grid HUD; (4) fleet-build clean on linux-debug and macos-debug
@@ -245,7 +245,7 @@ Avoid:
   - **ID:** T-357
   - **Area:** engine/world, engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-357-camera-chunk-prefetch
   - **Blocked by:** T-356
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Slow camera pan = no upload-on-render stalls; (2) warps to POI fully render within warp frame; (3) in-frustum chunks upload before peripheral; (4) fleet-build clean on linux-debug and macos-debug
@@ -269,7 +269,7 @@ Avoid:
   - **ID:** T-359
   - **Area:** engine/world, engine/entity
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-359-entity-chunk-migration
   - **Blocked by:** T-356
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Track entity moving across 10 chunk boundaries; ID unchanged; (2) rendering correct throughout; (3) rotated entities (C6 #957) migrate without artifact; (4) fleet-build clean on linux-debug and macos-debug
@@ -281,29 +281,29 @@ Avoid:
   - **ID:** T-360
   - **Area:** engine/world
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-360-chunk-mark-dirty-api
   - **Blocked by:** (none)
   - **Acceptance:** (1) ChunkResidencyManager::markChunkDirty() API added as only supported mutation path, documented in engine/world/CLAUDE.md; (2) 2-level directory split in chunkPath() (e.g. chunks/<x_div_64>/<y_div_64>/...); (3) one end-to-end consumer wired (voxel editor or IRChunkStreamingSmoke demo), round-trip confirmed on linux-debug and macos-debug; (4) ChunkDiskPersistence optionally renamed ChunkVoxelDiskPersistence
   - **Issue:** #1008
   - **Notes:** 4 sub-items from T-298 review: (1)[opus] markDirty API — load-bearing, no creation should use Config::persistence_ until lands; (2)[sonnet] 2-level dir split before any real saves to avoid back-compat burden; (3)[sonnet] in-engine consumer verification; (4)[sonnet] optional rename. Should land before E2/E3 (T-356/T-357). Stacks on T-298 (merged).
   - **Links:**
 
-- [~] **engine: retire GLOBAL_POSITION_3D system + C_PositionGlobal3D readers (T-301b)** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform
+- [ ] **engine: retire GLOBAL_POSITION_3D system + C_PositionGlobal3D readers (T-301b)** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform
   - **ID:** T-361
   - **Area:** engine/prefabs/irreden/update, creations
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** GLOBAL_POSITION_3D system fully removed; engine + all 9 affected creations (default, shape_debug, perf_grid, z_yaw_rotation×2, lighting_demo_scene, lua_perf_grid, lua_pipeline_demo, voxel_editor, modifier_demo) build clean; voxel_editor gizmos move/pick/position correctly; IrredenEngineTest passes (incl. updated lua_pipeline_register_test); default-demo idle-bob verified (reconnect in T-301a, this task verifies); no visual regression in voxel_editor + affected demo
   - **Issue:** #1055
   - **Notes:** T-301b. Stacks on T-301a (#1054, closed/done). Scope: delete system file, remove SystemName enum slot (ir_system_types.hpp ~L55), remove Lua binding (lua_pipeline_bindings.hpp ~L107), strip 11 GLOBAL_POSITION_3D pipeline registrations, migrate HITBOX_MOUSE_TEST + VOXEL_SCENE off C_PositionGlobal3D, migrate voxel_editor gizmos (~lines 2094-2109 + fill-tool ghost). idle-bob wiring is in T-301a; this task verifies it still works after GLOBAL_POSITION_3D removal. Grep whole tree for GLOBAL_POSITION_3D before declaring done. Per #1041: architect chose option 2 (dormant reg documented for T-300→T-301 window).
   - **Links:**
 
-- [~] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
+- [ ] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
   - **ID:** T-362
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) Validator rejects conflicting group (shared write column), MAIN_THREAD system in group, two spawners in same group — all unit-tested with named-component error messages; (2) engine UPDATE pipeline reorganized into groups; (3) IRShapeDebug --auto-screenshot 60 smoke passes; (4) perf_grid_matrix.sh shows additional speedup beyond T-222; file docs/perf-reports/threading_phase3.md
   - **Issue:** #1071
@@ -314,7 +314,7 @@ Avoid:
   - **ID:** T-363
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-363-ir-host-probe-harden
   - **Blocked by:** (none)
   - **Acceptance:** ir-host-probe outputs deterministic JSON fingerprint (CPU/GPU/OS/RAM → slug); ir-acquire flock-based CPU/GPU/perf lock with budget slots; ir-acquire benchmark canned mode acquires all three; fleet-build/fleet-run wire ir-acquire; ir-acquire --info shows live lock state; concurrency_test.sh passes
   - **Issue:** #1074
@@ -325,7 +325,7 @@ Avoid:
   - **ID:** T-364
   - **Area:** engine/render, engine/prefabs/irreden/render
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-364-camera-so3-retire-yaw
   - **Blocked by:** (none)
   - **Acceptance:** (1) C_CameraYaw deleted; camera rotation in C_LocalTransform.rotation_; (2) IRPrefab::Camera::setRotationQuat(q)/getRotationQuat() exposed; setYaw(y) backward-compat shim works; (3) picking/hitbox/gizmo_drag/shapes_to_trixel use only Z-component via existing helpers — GRID behavior identical to today; (4) IRCanvasStress --full-rotate: DETACHED cubes tilt with camera, GRID cubes stay axis-aligned in iso-depth; (5) no C_CameraYaw refs in engine/ or creations/; (6) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1076
@@ -336,7 +336,7 @@ Avoid:
   - **ID:** T-365
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-365-smoke-only-mode
   - **Blocked by:** (none)
   - **Acceptance:** Fleet can be launched in smoke-only mode on a Linux host; picks up open PRs labeled fleet:needs-linux-smoke, runs smoke test, applies verified-linux label; stays running and re-smokes when PR receives new commits; does not do code review or task work
   - **Issue:** #1128
