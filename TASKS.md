@@ -320,11 +320,11 @@ Avoid:
   - **Notes:** Root cause: commit `85662e24` on `claude/T-366-fleet-duplicate-claiming` pushed empty tree-delta under a task title. Fix: `git diff --cached --quiet` check before `git commit`; exit non-zero if staged tree equals HEAD. Affects SKILL.md and any procedures/*.md with embedded commit paths. Duplicate issue: #1188.
   - **Links:**
 
-- [ ] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
+- [~] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
   - **ID:** T-378
   - **Area:** engine/system, engine/entity
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `PROPAGATE_TRANSFORM` dispatches via `PARALLEL_FOR` at per-depth-level granularity; (2) `perf_grid_matrix.sh` 262K shows ≥2× speedup for that system in isolation; (3) hierarchy-correctness test with ≥5 depth levels produces identical world-transforms as serial baseline; (4) cache-invalidation test: spawn/destroy/reparent triggers re-sort on next tick; (5) `IrredenEngineTest` 100% pass; (6) results filed in `docs/perf-reports/threading_propagate_transform.md`
   - **Issue:** #1195
