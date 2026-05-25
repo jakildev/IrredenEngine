@@ -53,15 +53,87 @@ void seedPoolSliceFromRecords(
 ChunkResidencyManager::ChunkResidencyManager(Config config)
     : m_config{std::move(config)} {}
 
-void ChunkResidencyManager::beginFrame() {
+void ChunkResidencyManager::beginFrame(IRMath::vec3 cameraWorldVoxel) {
     ++m_frameIndex;
+    m_cameraWorldVoxel = cameraWorldVoxel;
+    m_frameStats = {};
+
+    const float evictThreshold = m_config.prefetchRadiusVoxels_ + m_config.hysteresisVoxels_;
+
+    for (auto &kv : m_slots) {
+        ChunkResidencySlot &s = kv.second;
+        if (s.state_ == ChunkResidencyState::EVICTING) {
+            continue;
+        }
+
+        auto center = IRPrefab::Chunk::chunkCenterWorld(IRPrefab::Chunk::unpack(kv.first));
+        s.distanceVoxels_ = IRMath::length(cameraWorldVoxel - center);
+
+        if (s.distanceVoxels_ <= m_config.viewRadiusVoxels_) {
+            s.lastTouchedFrame_ = m_frameIndex;
+        }
+
+        if (s.distanceVoxels_ > evictThreshold && s.state_ == ChunkResidencyState::RESIDENT) {
+            s.state_ = ChunkResidencyState::EVICTING;
+        }
+    }
 }
 
 void ChunkResidencyManager::tickPrefetch() {}
 
 void ChunkResidencyManager::flushUploads(int) {}
 
-void ChunkResidencyManager::endFrame() {}
+void ChunkResidencyManager::endFrame() {
+    IR_PROFILE_FUNCTION(profiler::colors::Blue500);
+
+    // 1. Process EVICTING slots: save dirty, deallocate pool, erase.
+    {
+        auto it = m_slots.begin();
+        while (it != m_slots.end()) {
+            if (it->second.state_ == ChunkResidencyState::EVICTING) {
+                evictSlot(it);
+                it = m_slots.erase(it);
+                ++m_frameStats.evictedThisFrame_;
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    // 2. Enforce budget: if still over maxResidentChunks_, evict
+    //    furthest-from-camera slots with LRU tie-breaking.
+    if (m_slots.size() > m_config.maxResidentChunks_) {
+        struct EvictCandidate {
+            IRPrefab::Chunk::ChunkKey key_;
+            float distance_;
+            std::uint64_t lastTouched_;
+        };
+        std::vector<EvictCandidate> candidates;
+        candidates.reserve(m_slots.size());
+        for (const auto &kv : m_slots) {
+            candidates.push_back(
+                {kv.first, kv.second.distanceVoxels_, kv.second.lastTouchedFrame_}
+            );
+        }
+        std::sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+            if (a.distance_ != b.distance_)
+                return a.distance_ > b.distance_;
+            return a.lastTouched_ < b.lastTouched_;
+        });
+
+        auto toEvict = static_cast<std::size_t>(m_slots.size() - m_config.maxResidentChunks_);
+        for (std::size_t i = 0; i < toEvict && i < candidates.size(); ++i) {
+            auto it = m_slots.find(candidates[i].key_);
+            if (it != m_slots.end()) {
+                evictSlot(it);
+                m_slots.erase(it);
+                ++m_frameStats.evictedThisFrame_;
+            }
+        }
+    }
+
+    m_frameStats.residentCount_ = static_cast<unsigned int>(m_slots.size());
+}
 
 bool ChunkResidencyManager::isResident(IRPrefab::Chunk::ChunkKey key) const {
     auto it = m_slots.find(key);
@@ -126,6 +198,29 @@ void ChunkResidencyManager::requestResident(
     s.state_ = ChunkResidencyState::RESIDENT;
     // m_dirty stays false — disk and memory agree after a fresh load /
     // alloc. Mutators are responsible for routing through markChunkDirty.
+    ++m_frameStats.loadedThisFrame_;
+}
+
+void ChunkResidencyManager::evictSlot(
+    std::unordered_map<IRPrefab::Chunk::ChunkKey, ChunkResidencySlot>::iterator it
+) {
+    ChunkResidencySlot &s = it->second;
+
+    if (s.m_dirty && m_config.persistence_ && !s.poolAllocation_.voxels_.empty()) {
+        auto records = poolSliceToRecords(s.poolAllocation_);
+        auto status = m_config.persistence_->saveChunk(it->first, records);
+        if (!status.ok()) {
+            IRE_LOG_ERROR(
+                "ChunkResidencyManager::evictSlot: save failed for chunk (code={}): {}",
+                static_cast<int>(status.code_),
+                status.message_
+            );
+        }
+    }
+
+    if (m_config.poolDeallocator_ && !s.poolAllocation_.voxels_.empty()) {
+        m_config.poolDeallocator_(s.poolAllocation_);
+    }
 }
 
 void ChunkResidencyManager::requestEvict(IRPrefab::Chunk::ChunkKey key) {
@@ -133,28 +228,7 @@ void ChunkResidencyManager::requestEvict(IRPrefab::Chunk::ChunkKey key) {
     if (it == m_slots.end()) {
         return;
     }
-
-    ChunkResidencySlot &s = it->second;
-    if (s.m_dirty && m_config.persistence_ && !s.poolAllocation_.voxels_.empty()) {
-        // Synchronous save before erase — the "snapshot-at-schedule-time"
-        // safety the design calls for is implicit here because we save
-        // and erase in the same blocking call; nothing can mutate the
-        // slice between the two. E2/E3 lift this into the worker pool.
-        auto records = poolSliceToRecords(s.poolAllocation_);
-        auto status = m_config.persistence_->saveChunk(key, records);
-        if (!status.ok()) {
-            IRE_LOG_ERROR(
-                "ChunkResidencyManager::requestEvict: save failed for chunk (code={}): {}",
-                static_cast<int>(status.code_),
-                status.message_
-            );
-        }
-    }
-
-    // E2 introduces a real EVICTING phase + async save; today eviction
-    // is synchronous and drops the slot. The pool slice is leaked back
-    // to the global pool — today's allocator is bump-style (see
-    // engine/render/CLAUDE.md "Voxel pool allocation").
+    evictSlot(it);
     m_slots.erase(it);
 }
 
