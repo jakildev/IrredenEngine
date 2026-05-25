@@ -29,6 +29,14 @@ struct FrameDataSun {
     float4 sunBasisV;
     float2 sunBufferOriginUV;
     float2 sunBufferTexelSize;
+    float2 cascadeOriginUV_0;
+    float2 cascadeTexelSize_0;
+    float2 cascadeOriginUV_1;
+    float2 cascadeTexelSize_1;
+    float cascadeSplitDepth;
+    int cascadeCount;
+    float _cascadePad0;
+    float _cascadePad1;
 };
 
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.

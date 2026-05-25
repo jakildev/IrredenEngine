@@ -66,6 +66,14 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform vec4 sunBasisV;
     uniform vec2 sunBufferOriginUV;
     uniform vec2 sunBufferTexelSize;
+    uniform vec2 cascadeOriginUV_0;
+    uniform vec2 cascadeTexelSize_0;
+    uniform vec2 cascadeOriginUV_1;
+    uniform vec2 cascadeTexelSize_1;
+    uniform float cascadeSplitDepth;
+    uniform int cascadeCount;
+    uniform float _cascadePad0;
+    uniform float _cascadePad1;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;

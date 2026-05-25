@@ -310,16 +310,33 @@ struct FrameDataSun {
     // each frame in system_bake_sun_shadow_map. .w is std140 padding.
     vec4 sunBasisU_ = vec4(0.0f);
     vec4 sunBasisV_ = vec4(0.0f);
-    // sunPx = floor((dot(p, uHat/vHat) - sunBufferOriginUV_) / sunBufferTexelSize_).
-    // Sized to the visible iso AABB swept along -sunDir by kSunShadowMaxDistance.
+    // sunPx = floor((dot(p, uHat/vHat) - origin) / texelSize).
+    // Legacy single-map fields — kept for backward compat; equal to
+    // cascade 0 when CSM is active (cascadeCount_ == 2).
     vec2 sunBufferOriginUV_ = vec2(0.0f);
     vec2 sunBufferTexelSize_ = vec2(1.0f);
+    // CSM: per-cascade AABB parameters. [0] = near, [1] = far.
+    vec2 cascadeOriginUV_0_ = vec2(0.0f);
+    vec2 cascadeTexelSize_0_ = vec2(1.0f);
+    vec2 cascadeOriginUV_1_ = vec2(0.0f);
+    vec2 cascadeTexelSize_1_ = vec2(1.0f);
+    float cascadeSplitDepth_ = 0.0f;
+    int cascadeCount_ = 1;
+    float _cascadePad0_ = 0.0f;
+    float _cascadePad1_ = 0.0f;
 };
-static_assert(sizeof(FrameDataSun) == 80, "FrameDataSun must match std140 layout");
+static_assert(sizeof(FrameDataSun) == 128, "FrameDataSun must match std140 layout");
 static_assert(offsetof(FrameDataSun, sunBasisU_) == 32, "sunBasisU_ must align after aoEnabled_");
 static_assert(
     offsetof(FrameDataSun, sunBufferOriginUV_) == 64,
     "sunBufferOriginUV_ must align after sunBasisV_"
+);
+static_assert(
+    offsetof(FrameDataSun, cascadeOriginUV_0_) == 80,
+    "cascadeOriginUV_0_ must start after legacy fields"
+);
+static_assert(
+    offsetof(FrameDataSun, cascadeSplitDepth_) == 112, "cascadeSplitDepth_ must align at offset 112"
 );
 
 /// @{
