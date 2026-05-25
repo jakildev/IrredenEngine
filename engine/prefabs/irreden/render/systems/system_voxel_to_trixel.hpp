@@ -124,9 +124,6 @@ clearCanvasAndDistances(IREntity::EntityId canvasEntity, C_TriangleCanvasTexture
     } else {
         canvas.clear();
     }
-    static const std::int32_t clearValue =
-        static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
-    IRRender::device()->clearTexImage(canvas.getTextureDistances(), 0, &clearValue);
 }
 
 inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf) {
