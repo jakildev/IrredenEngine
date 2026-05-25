@@ -163,17 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **render: zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL** — investigate and fix canvas resize/image-binding mismatch that crashes IRShapeDebug at zoom=16 on Linux/Mesa
-  - **ID:** T-352
-  - **Area:** engine/render
-  - **Model:** opus
-  - **Owner:** claude/T-352-zoom16-bind-image-fix
-  - **Blocked by:** (none)
-  - **Acceptance:** `fleet-run IRShapeDebug --zoom 16 --auto-screenshot 10` completes without GL_INVALID_VALUE crash on linux-debug; zoom=1/2/4/8/16 all produce valid screenshots
-  - **Issue:** #773
-  - **Notes:** Crash at `GLTracer_glBindImageTexture` with GL_INVALID_VALUE after initial zoom=16 applied on WSL2/Ubuntu/Mesa 25.2.8 d3d12. Suspected: texture resize/format mismatch when canvas grows — possible GL_MAX_3D_TEXTURE_SIZE (2048 on Mesa) or internalformat mismatch. Zoom=1..8 work; only zoom=16 (`zoom16_lod_all_visible` shot) crashes. Needs GL_KHR_debug callback to isolate failing bindImage() call site.
-  - **Links:**
-
 - [~] **world: GPU chunk residency manager (LRU + camera-radius eviction) (E2)** — implement finite GPU voxel-pool budget divided across resident chunks with LRU + camera-radius eviction and async upload/eviction jobs
   - **ID:** T-356
   - **Area:** engine/world, engine/system
@@ -259,6 +248,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-352** — render: fix zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL · Owner: claude/T-352-zoom16-bind-image-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1174
 - [x] **T-365** — fleet: smoke-only mode — persistent cross-host smoke worker · Owner: claude/T-365-smoke-only-mode · PR: https://github.com/jakildev/IrredenEngine/pull/1173
 - [x] **T-360** — world: markChunkDirty API + chunk-mutation routing contract · Owner: claude/T-360-chunk-mark-dirty-api · PR: https://github.com/jakildev/IrredenEngine/pull/1172
 - [x] **T-355** — docs: T-189/T-190 disposition under SDF restriction (D4) · Owner: claude/T-355-t189-t190-disposition · PR: https://github.com/jakildev/IrredenEngine/pull/1168
@@ -278,4 +268,3 @@ Avoid:
 - [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
 - [x] **T-345** — fleet: fleet-build --target format restricted to touched files · Owner: claude/T-345-fleet-build-format-touched-files · PR: https://github.com/jakildev/IrredenEngine/pull/1145
 - [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
-- [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
