@@ -104,8 +104,9 @@
 # FLEET_SMOKE_WORKER=1 tells fleet-up to create and launch a dedicated
 # smoke-worker pane. Useful when running a second host (e.g. Ubuntu
 # alongside a macOS fleet) that should only smoke-test render PRs and not
-# pick up tasks. The pane appears in the ops window; the dispatcher claims
-# fleet:needs-<host>-smoke PRs for it automatically.
+# pick up tasks. The pane appears in the ops window and is dispatched by
+# fleet-dispatcher (session-scoped — the dispatcher for THIS session picks
+# it up; a second host needs its own fleet-dispatcher pointed at its session).
 #
 # When unset or 0, no smoke-worker worktree or pane is created. The
 # sonnet-author and opus-worker panes continue to run step-1b smoke as a

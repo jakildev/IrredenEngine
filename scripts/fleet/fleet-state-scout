@@ -1114,6 +1114,10 @@ def slice_merger(state):
 
 
 def slice_smoke_worker(state):
+    # No explicit human:wip / fleet:wip ownership check here — _smoke_pr_eligible
+    # already rejects both via _SMOKE_SKIP_LABELS. Smoke workers never hold WIP PRs,
+    # so the open-WIP-PR ownership filter the other per-role slicers apply is
+    # intentionally absent.
     out = {"smoke_pending_prs": []}
     repo_state = state["repos"].get("engine", {})
     for pr in repo_state.get("prs", []):
