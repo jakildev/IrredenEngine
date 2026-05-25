@@ -42,8 +42,8 @@ parallel world-snapshot path (#199), not this layer.
 The dirty bit is consulted at eviction and by `flushPendingSaves()`;
 a missed `markChunkDirty` call after a real mutation means the save
 is silently skipped and the chunk reverts to its pre-edit state on
-re-resident. This is the [ECS-footgun class](../../.claude/rules/cpp-ecs.md)
-of bug — invisible under single-chunk creations, fires only after
+re-resident. This is the ECS-footgun class of bug — invisible under
+single-chunk creations, fires only after
 streaming load surfaces an eviction-then-re-resident cycle.
 
 `ChunkResidencySlot::isDirty()` is the read side; the underlying
