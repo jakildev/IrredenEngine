@@ -265,11 +265,11 @@ Avoid:
   - **Notes:** Split from #1008 item 3. T-298's code path has no in-engine consumer — only gtest fake-pool integration. Candidates: voxel editor "save chunks" path, or new `IRChunkStreamingSmoke` demo. Should land before E2/E3 (T-357/T-358) so persistence is proven on a real pool.
   - **Links:**
 
-- [ ] **world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence (T-298 follow-up 4/4)** — rename to make explicit the class saves the voxel-pool slice only, not entity manifest or billboard metadata
+- [~] **world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence (T-298 follow-up 4/4)** — rename to make explicit the class saves the voxel-pool slice only, not entity manifest or billboard metadata
   - **ID:** T-373
   - **Area:** engine/world
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** All `ChunkDiskPersistence` references in engine/ replaced with `ChunkVoxelDiskPersistence`; fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1171
