@@ -74,15 +74,16 @@ Documented for the next phase:
 
 1. **`PROPAGATE_TRANSFORM` does work in `beginTick`.** The batch tick
    body is intentionally empty; the topological walk + per-node
-   compose run in `beginTick`. Two consequences: the `SystemAccess`
-   trait can't see the actual reads (`C_LocalTransform`,
-   `C_Modifiers`, `C_ResolvedFields`) since it derives access from
-   the tick signature, and the work itself can't fan out to
-   `IRJobs::parallelFor` because the framework only ranges over
-   per-row tick bodies. A refactor that moves the per-node compose
-   into a row-iterating tick body (with the topological walk pre-
-   computed in `beginTick` as a node-order vector) would unlock
-   PARALLEL_FOR for the dominant UPDATE cost.
+   compose run in `beginTick`. The `SystemAccess` trait still can't
+   see the actual reads (`C_LocalTransform`, `C_Modifiers`,
+   `C_ResolvedFields`) since it derives access from the tick
+   signature — `AlsoReads<...>` on `registerSystem` would close that
+   gap. **Update (T-378):** the second consequence — "the work can't
+   fan out to `IRJobs::parallelFor`" — no longer applies. T-378
+   partitions the archetype set by parent-chain depth and calls
+   `IRJob::parallelFor` directly from `beginTick` per level. See
+   `threading_propagate_transform.md` for the architecture and the
+   IRPerfGrid measurement.
 
 2. **`const`-in-pack dispatch path is unverified.** `T-222`'s POC
    `VELOCITY_3D` documents that `registerSystem<NAME, const C_Foo,

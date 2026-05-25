@@ -25,24 +25,31 @@
 // perturbation. The matching ROTATION quat field arrives with T-198;
 // until then, modifier_rotation is identity.
 //
-// The actual propagation work happens in beginTick(). The framework
-// drives a per-archetype-batch tick afterwards, but because parent and
-// child archetypes can be visited in arbitrary order, the per-archetype
-// tick body is a no-op. The beginTick path queries all candidate
-// archetype nodes, topologically sorts them by parent-chain depth, and
-// writes C_WorldTransform on each entity in order. The combined cost is
-// O(N * passes) where passes ≤ tree depth + 1; for typical hierarchies
-// (depth < 16) this is effectively linear in the number of transform
-// entities.
+// Two-pass architecture (T-378):
 //
-// Pipeline placement: after the modifier resolver pipeline so the
-// resolved fields are current, and before any consumer (render, gizmo,
-// physics) that reads C_WorldTransform. Creations that do not register
-// the resolver pipeline still see modifier-driven translation/scale —
-// the fallback path below composes from C_Modifiers directly when
-// C_ResolvedFields is absent (or has no entry for the field).
+//   Pass 1 (serial, beginTick prelude) — topological partition: group
+//   the candidate archetype nodes by parent-chain depth into per-level
+//   buckets. Archetypes at the same depth are pairwise independent
+//   (no shared writes; their parents have strictly smaller depth and
+//   are finalized by the prior level's pass).
+//
+//   Pass 2 (parallel per level) — for each depth in order, resolve
+//   each archetype's parent C_WorldTransform on the main thread (the
+//   prior level finished its writes, so the lookup is safe), then
+//   dispatch the per-archetype composition to IRJob workers via
+//   parallelFor. The implicit barrier between levels guarantees the
+//   prior level's writes are visible.
+//
+// The level partition only depends on the archetype graph (entity
+// spawn/destroy/reparent that introduces or removes archetype nodes,
+// or that moves a parent entity to a different archetype). Cached
+// across frames by signature comparison of (nodeId, parentNodeId)
+// pairs; stable scenes skip the partition pass entirely. The
+// per-tick parent-world resolve and the parallel composition itself
+// always run — that's the hot work.
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 
@@ -52,60 +59,184 @@
 #include <irreden/common/modifier_compose.hpp>
 #include <irreden/common/transform_modifier_fields.hpp>
 
+#include <algorithm>
+#include <cstddef>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace IRSystem {
 
 template <> struct System<PROPAGATE_TRANSFORM> {
-    // Scratch containers live as members so the per-frame work allocates
-    // once at create time and reuses capacity each tick.
-    std::vector<IREntity::ArchetypeNode *> ordered_;
+    // One archetype per parallelFor task. Each archetype is already a
+    // batch of entities the composeNode inner loop iterates serially,
+    // so per-task work is already substantial and finer-grained
+    // chunking would only add dispatch overhead.
+    static constexpr int kGrainSize = 1;
+
+    // Cached level partition: levels_[d] holds archetype nodes whose
+    // parent-chain depth is exactly d. parentWorlds_[d][i] is the
+    // per-tick resolved parent transform for levels_[d][i], filled on
+    // the main thread immediately before dispatching that level's
+    // parallel composition.
+    std::vector<std::vector<IREntity::ArchetypeNode *>> levels_;
+    std::vector<std::vector<IRComponents::C_WorldTransform>> parentWorlds_;
+
+    // Topology cache key: (nodeId, parentNodeId) pairs sorted by
+    // nodeId. parentNodeId == 0 means "root archetype" (no CHILD_OF,
+    // or parent's archetype is not in the candidate set so we treat
+    // it as identity). Mismatch ↔ topology changed ↔ re-partition.
+    struct CacheEntry {
+        IREntity::NodeId nodeId;
+        IREntity::NodeId parentNodeId;
+        bool operator==(const CacheEntry &o) const noexcept {
+            return nodeId == o.nodeId && parentNodeId == o.parentNodeId;
+        }
+    };
+    std::vector<CacheEntry> cachedSignature_;
+    std::vector<CacheEntry> scratchSignature_;
+
+    // Topo-sort scratch — reused across re-partition invocations.
     std::vector<IREntity::ArchetypeNode *> pending_;
     std::unordered_set<IREntity::NodeId> candidateSet_;
-    std::unordered_set<IREntity::NodeId> doneSet_;
+    std::unordered_map<IREntity::NodeId, int> nodeDepth_;
 
     void beginTick() {
         const auto translationField = IRPrefab::TransformModifier::translationField();
         const auto scaleField = IRPrefab::TransformModifier::scaleField();
         const auto resolvedFieldsComponentId =
             IREntity::getComponentType<IRComponents::C_ResolvedFields>();
-        const auto modifiersComponentId =
-            IREntity::getComponentType<IRComponents::C_Modifiers>();
+        const auto modifiersComponentId = IREntity::getComponentType<IRComponents::C_Modifiers>();
 
-        const auto archetype = IREntity::getArchetype<
-            IRComponents::C_LocalTransform,
-            IRComponents::C_WorldTransform>();
+        const auto archetype =
+            IREntity::getArchetype<IRComponents::C_LocalTransform, IRComponents::C_WorldTransform>(
+            );
         auto nodes = IREntity::queryArchetypeNodesSimple(archetype);
 
-        ordered_.clear();
-        ordered_.reserve(nodes.size());
-        pending_.clear();
-        pending_.reserve(nodes.size());
-        pending_.insert(pending_.end(), nodes.begin(), nodes.end());
+        buildSignature(nodes, scratchSignature_);
+        if (scratchSignature_ != cachedSignature_) {
+            rebuildLevels(nodes);
+            cachedSignature_.swap(scratchSignature_);
+        }
 
-        // Build a set of node ids in the candidate set so we can decide
-        // whether a parent archetype is "our problem" or a root from our
-        // POV (i.e., parent lacks C_LocalTransform and we treat its
-        // world as identity).
+        // Per-level: resolve parent worlds (main thread, prior-level
+        // writes are visible), then fan out composition to workers.
+        for (std::size_t depth = 0; depth < levels_.size(); ++depth) {
+            auto &levelNodes = levels_[depth];
+            auto &levelParentWorlds = parentWorlds_[depth];
+            levelParentWorlds.resize(levelNodes.size());
+
+            for (std::size_t i = 0; i < levelNodes.size(); ++i) {
+                IREntity::EntityId parent =
+                    IREntity::getParentEntityFromArchetype(levelNodes[i]->type_);
+                IRComponents::C_WorldTransform parentWorld{};
+                if (parent != IREntity::kNullEntity) {
+                    auto parentWorldOpt =
+                        IREntity::getComponentOptional<IRComponents::C_WorldTransform>(parent);
+                    if (auto *p = parentWorldOpt.value_or(nullptr)) {
+                        parentWorld = *p;
+                    }
+                }
+                levelParentWorlds[i] = parentWorld;
+            }
+
+            const int n = static_cast<int>(levelNodes.size());
+            auto composeRange = [&](int rangeBegin, int rangeEnd) {
+                for (int i = rangeBegin; i < rangeEnd; ++i) {
+                    composeNode(
+                        levelNodes[i],
+                        levelParentWorlds[i],
+                        translationField,
+                        scaleField,
+                        resolvedFieldsComponentId,
+                        modifiersComponentId
+                    );
+                }
+            };
+
+            // For trivially small levels the parallelFor dispatch +
+            // wait overhead dominates the savings — fall back to a
+            // serial walk. Threshold derived empirically from
+            // IRPerfGrid grid-size 32 (shallow hierarchy, ~30
+            // archetypes per level): kMinForParallel = 8 archetypes is
+            // the break-even where ~6 worker threads still amortize
+            // dispatch.
+            constexpr int kMinForParallel = 8;
+            if (g_jobManager == nullptr || n < kMinForParallel) {
+                composeRange(0, n);
+            } else {
+                // Aim for ~2 tasks per worker to give enkiTS room to
+                // load-balance without flooding the queue with tiny
+                // tasks. Each archetype carries enough work
+                // (hundreds-to-thousands of entities) that a small
+                // task count is fine.
+                const int workers = IRJob::workerCount();
+                const int targetTasks = IRMath::max(1, workers * 2);
+                const int grain = IRMath::max(kGrainSize, (n + targetTasks - 1) / targetTasks);
+                IRJob::parallelFor(0, n, grain, composeRange);
+            }
+        }
+    }
+
+    void
+    tick(const IREntity::Archetype &, std::vector<IREntity::EntityId> &, std::vector<IRComponents::C_LocalTransform> &, std::vector<IRComponents::C_WorldTransform> &) {
+    }
+
+    static SystemId create() {
+        return registerSystem<
+            PROPAGATE_TRANSFORM,
+            IRComponents::C_LocalTransform,
+            IRComponents::C_WorldTransform>("PropagateTransform");
+    }
+
+  private:
+    void buildSignature(
+        const std::vector<IREntity::ArchetypeNode *> &nodes, std::vector<CacheEntry> &out
+    ) const {
+        out.clear();
+        out.reserve(nodes.size());
+        for (auto *node : nodes) {
+            IREntity::NodeId parentNodeId = 0;
+            IREntity::EntityId parent = IREntity::getParentEntityFromArchetype(node->type_);
+            if (parent != IREntity::kNullEntity) {
+                auto parentRecord = IREntity::getEntityRecord(parent);
+                if (parentRecord.archetypeNode != nullptr) {
+                    parentNodeId = parentRecord.archetypeNode->id_;
+                }
+            }
+            out.push_back({node->id_, parentNodeId});
+        }
+        std::sort(out.begin(), out.end(), [](const CacheEntry &a, const CacheEntry &b) {
+            return a.nodeId < b.nodeId;
+        });
+    }
+
+    void rebuildLevels(const std::vector<IREntity::ArchetypeNode *> &nodes) {
         candidateSet_.clear();
         candidateSet_.reserve(nodes.size());
         for (auto *node : nodes) {
             candidateSet_.insert(node->id_);
         }
+        nodeDepth_.clear();
+        nodeDepth_.reserve(nodes.size());
 
-        doneSet_.clear();
-        doneSet_.reserve(nodes.size());
+        pending_.clear();
+        pending_.reserve(nodes.size());
+        pending_.insert(pending_.end(), nodes.begin(), nodes.end());
 
-        // Topological sweep — each pass admits any node whose parent's
-        // archetype is either outside our candidate set (treated as root)
-        // or already processed. Worst case is one pass per chain level.
+        levels_.clear();
+
+        // Pass admits nodes whose parent is either outside the candidate
+        // set (root from our POV) or has had its depth FINALIZED by a
+        // strictly earlier pass. Critical: nodeDepth_ is updated only
+        // AFTER the pass completes, so two siblings whose parent
+        // dependency points within the current pass cannot accidentally
+        // co-admit at the same depth.
         while (!pending_.empty()) {
-            const auto sizeBefore = ordered_.size();
+            std::vector<IREntity::ArchetypeNode *> levelNodes;
             for (auto it = pending_.begin(); it != pending_.end();) {
                 auto *node = *it;
-                IREntity::EntityId parent =
-                    IREntity::getParentEntityFromArchetype(node->type_);
+                IREntity::EntityId parent = IREntity::getParentEntityFromArchetype(node->type_);
                 bool ready = false;
                 if (parent == IREntity::kNullEntity) {
                     ready = true;
@@ -116,80 +247,51 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                     } else {
                         const auto parentNodeId = parentRecord.archetypeNode->id_;
                         if (!candidateSet_.contains(parentNodeId) ||
-                            doneSet_.contains(parentNodeId)) {
+                            nodeDepth_.contains(parentNodeId)) {
                             ready = true;
                         }
                     }
                 }
                 if (ready) {
-                    ordered_.push_back(node);
-                    doneSet_.insert(node->id_);
+                    levelNodes.push_back(node);
                     it = pending_.erase(it);
                 } else {
                     ++it;
                 }
             }
-            if (ordered_.size() == sizeBefore) {
-                // No progress this pass — a parent-chain cycle would be
-                // an engine bug, but rather than spin forever we admit
-                // the remainder in arbitrary order so downstream
-                // consumers see SOMETHING.
+            if (levelNodes.empty()) {
                 IR_ASSERT(
                     false,
                     "PROPAGATE_TRANSFORM: parent-chain cycle detected; admitting remaining "
                     "{} archetype nodes in arbitrary order to avoid infinite loop",
                     pending_.size()
                 );
-                ordered_.insert(ordered_.end(), pending_.begin(), pending_.end());
+                levelNodes.insert(levelNodes.end(), pending_.begin(), pending_.end());
                 pending_.clear();
-                break;
             }
+            const int currentDepth = static_cast<int>(levels_.size());
+            for (auto *node : levelNodes) {
+                nodeDepth_.emplace(node->id_, currentDepth);
+            }
+            levels_.push_back(std::move(levelNodes));
         }
 
-        for (auto *node : ordered_) {
-            composeNode(
-                node, translationField, scaleField, resolvedFieldsComponentId, modifiersComponentId
-            );
+        parentWorlds_.assign(levels_.size(), {});
+        for (std::size_t d = 0; d < levels_.size(); ++d) {
+            parentWorlds_[d].reserve(levels_[d].size());
         }
     }
 
-    void tick(
-        const IREntity::Archetype &,
-        std::vector<IREntity::EntityId> &,
-        std::vector<IRComponents::C_LocalTransform> &,
-        std::vector<IRComponents::C_WorldTransform> &
-    ) {}
-
-    static SystemId create() {
-        return registerSystem<
-            PROPAGATE_TRANSFORM,
-            IRComponents::C_LocalTransform,
-            IRComponents::C_WorldTransform>("PropagateTransform");
-    }
-
-  private:
     static void composeNode(
         IREntity::ArchetypeNode *node,
+        const IRComponents::C_WorldTransform &parentWorld,
         IRComponents::FieldBindingId translationField,
         IRComponents::FieldBindingId scaleField,
         IREntity::ComponentId resolvedFieldsComponentId,
         IREntity::ComponentId modifiersComponentId
     ) {
-        IRComponents::C_WorldTransform parentWorld{};
-        IREntity::EntityId parent =
-            IREntity::getParentEntityFromArchetype(node->type_);
-        if (parent != IREntity::kNullEntity) {
-            auto parentWorldOpt =
-                IREntity::getComponentOptional<IRComponents::C_WorldTransform>(parent);
-            if (auto *p = parentWorldOpt.value_or(nullptr)) {
-                parentWorld = *p;
-            }
-        }
-
-        auto &locals =
-            IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
-        auto &worlds =
-            IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
+        auto &locals = IREntity::getComponentData<IRComponents::C_LocalTransform>(node);
+        auto &worlds = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
 
         // Resolved-field and modifier columns are both optional. Resolved
         // wins when the creation registered the resolver pipeline +
@@ -201,19 +303,18 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         // batched cache-friendly path.
         std::vector<IRComponents::C_ResolvedFields> *resolvedCol = nullptr;
         if (node->type_.contains(resolvedFieldsComponentId)) {
-            resolvedCol =
-                &IREntity::getComponentData<IRComponents::C_ResolvedFields>(node);
+            resolvedCol = &IREntity::getComponentData<IRComponents::C_ResolvedFields>(node);
         }
         std::vector<IRComponents::C_Modifiers> *modifiersCol = nullptr;
         if (resolvedCol == nullptr && node->type_.contains(modifiersComponentId)) {
-            modifiersCol =
-                &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
+            modifiersCol = &IREntity::getComponentData<IRComponents::C_Modifiers>(node);
         }
 
         // parentWorld == identity for root archetypes, so quatMul and
         // rotateVectorByQuat are both no-ops. Hoist the check out of the
         // inner loop and skip the quat math — only meaningful with CHILD_OF.
-        const bool isRootArchetype = (parent == IREntity::kNullEntity);
+        const bool isRootArchetype =
+            (IREntity::getParentEntityFromArchetype(node->type_) == IREntity::kNullEntity);
 
         for (int i = 0; i < node->length_; ++i) {
             const auto &local = locals[i];
@@ -221,16 +322,19 @@ template <> struct System<PROPAGATE_TRANSFORM> {
             IRMath::vec3 modTranslation(0.0f);
             IRMath::vec3 modScale(1.0f);
             if (resolvedCol != nullptr) {
-                modTranslation =
-                    (*resolvedCol)[i].getVec3(translationField, IRMath::vec3(0.0f));
+                modTranslation = (*resolvedCol)[i].getVec3(translationField, IRMath::vec3(0.0f));
                 modScale = (*resolvedCol)[i].getVec3(scaleField, IRMath::vec3(1.0f));
             } else if (modifiersCol != nullptr) {
                 const auto &modsVec3 = (*modifiersCol)[i].modifiersVec3_;
                 modTranslation = IRPrefab::Modifier::detail::composeForFieldVec3(
-                    IRMath::vec3(0.0f), translationField, modsVec3
+                    IRMath::vec3(0.0f),
+                    translationField,
+                    modsVec3
                 );
                 modScale = IRPrefab::Modifier::detail::composeForFieldVec3(
-                    IRMath::vec3(1.0f), scaleField, modsVec3
+                    IRMath::vec3(1.0f),
+                    scaleField,
+                    modsVec3
                 );
             }
 
@@ -243,20 +347,17 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 continue;
             }
 
-            const IRMath::vec3 worldScale =
-                parentWorld.scale_ * local.scale_ * modScale;
+            const IRMath::vec3 worldScale = parentWorld.scale_ * local.scale_ * modScale;
             const IRMath::vec4 worldRotation =
                 IRMath::quatMul(parentWorld.rotation_, local.rotation_);
-            const IRMath::vec3 worldTranslation =
-                parentWorld.translation_ +
-                IRMath::rotateVectorByQuat(
-                    parentWorld.scale_ * local.translation_,
-                    parentWorld.rotation_
-                ) +
-                modTranslation;
+            const IRMath::vec3 worldTranslation = parentWorld.translation_ +
+                                                  IRMath::rotateVectorByQuat(
+                                                      parentWorld.scale_ * local.translation_,
+                                                      parentWorld.rotation_
+                                                  ) +
+                                                  modTranslation;
 
-            worlds[i] =
-                IRComponents::C_WorldTransform{worldTranslation, worldRotation, worldScale};
+            worlds[i] = IRComponents::C_WorldTransform{worldTranslation, worldRotation, worldScale};
         }
     }
 };
