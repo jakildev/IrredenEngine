@@ -265,11 +265,11 @@ Avoid:
   - **Notes:** E4 in Epic E (#938). Stack position 5: E3→**E4**. Blocked by E3 (T-357) and E0 (#944, closed). Load-bearing invariant: no frame ever blocks on upload.
   - **Links:**
 
-- [ ] **world: entity chunk migration (atomic ownership transfer) (E5)** — entities crossing chunk boundaries change ownership atomically; identity, component data, and voxel allocations preserved
+- [~] **world: entity chunk migration (atomic ownership transfer) (E5)** — entities crossing chunk boundaries change ownership atomically; identity, component data, and voxel allocations preserved
   - **ID:** T-359
   - **Area:** engine/world, engine/entity
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-356
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Track entity moving across 10 chunk boundaries; ID unchanged; (2) rendering correct throughout; (3) rotated entities (C6 #957) migrate without artifact; (4) fleet-build clean on linux-debug and macos-debug
