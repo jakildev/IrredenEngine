@@ -185,26 +185,162 @@ Avoid:
   - **Links:**
 
 
-- [~] **fleet/merger: re-target / rebase order on stacked-base merged path** — resolve the option-A/B trade-off and update role-merger.md (and possibly role-opus-worker.md) for correctness on the conflict branch
-  - **ID:** T-350
-  - **Area:** tooling
+- [ ] **render: zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL** — investigate and fix canvas resize/image-binding mismatch that crashes IRShapeDebug at zoom=16 on Linux/Mesa
+  - **ID:** T-352
+  - **Area:** engine/render
   - **Model:** opus
-  - **Owner:** claude/T-350-merger-retarget-order-rationale
+  - **Owner:** free
   - **Blocked by:** (none)
-  - **Acceptance:** role-merger.md step a.5 ii updated with chosen option; if Option B, role-opus-worker.md step 1c updated to accept `fleet:semantic-conflict` PRs whose base was re-targeted to master; desk-check scenario (stacked PR with conflict after base merges) produces correct label + base state for opus-worker handoff
-  - **Issue:** #1149
-  - **Notes:** Two options: **Option A** — keep current re-target-first order, add doc comment explaining why (opus-worker rebases against baseRefName, so merger must set master first). **Option B** — invert (rebase first, re-target + cleanup only on clean exit); on conflict branch still remove `fleet:awaiting-base` / `fleet:stacked` / `fleet:needs-base-update` AND re-target to master so opus-worker rebases against the right tip. Key invariant: `fleet:awaiting-base` on a conflicted PR causes opus-worker step 1c to skip it indefinitely. Filed from PR #1146 review (sonnet reviewer nit).
+  - **Acceptance:** `fleet-run IRShapeDebug --zoom 16 --auto-screenshot 10` completes without GL_INVALID_VALUE crash on linux-debug; zoom=1/2/4/8/16 all produce valid screenshots
+  - **Issue:** #773
+  - **Notes:** Crash at `GLTracer_glBindImageTexture` with GL_INVALID_VALUE after initial zoom=16 applied on WSL2/Ubuntu/Mesa 25.2.8 d3d12. Suspected: texture resize/format mismatch when canvas grows — possible GL_MAX_3D_TEXTURE_SIZE (2048 on Mesa) or internalformat mismatch. Zoom=1..8 work; only zoom=16 (`zoom16_lod_all_visible` shot) crashes. Needs GL_KHR_debug callback to isolate failing bindImage() call site.
   - **Links:**
 
-- [~] **platform-parity: IRPerfGrid ~1 FPS on linux-x86_64 — COMPUTE_LIGHT_VOLUME** — identify and fix the dominant lighting stage causing ~1 FPS on OpenGL/Mesa-d3d12
-  - **ID:** T-351
-  - **Area:** engine/render, shaders/glsl
+- [ ] **render: SDF entity rotation via C_LocalTransform (C8)** — wire C_LocalTransform.rotation_ into C_ShapeDescriptor localRotation so SDF shapes rotate with their entity transform
+  - **ID:** T-353
+  - **Area:** engine/render, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** claude/T-351-compute-light-volume-opt
+  - **Owner:** free
   - **Blocked by:** (none)
-  - **Acceptance:** `IRPerfGrid` auto-screenshot completes within 30s timeout on linux-x86_64 (OpenGL/Mesa-d3d12); PERF_STATS_OVERLAY confirms `COMPUTE_LIGHT_VOLUME` GPU time drops ≥8×; existing demos unaffected on macOS/Metal
-  - **Issue:** #1154
-  - **Notes:** Hot stage identified: `COMPUTE_LIGHT_VOLUME` — specifically `c_propagate_light_volume.glsl` × 32 iterations × 128³ cells ≈ 870M image ops + 800M SSBO reads per canvas per frame. Quick wins: (1) adaptive iteration count from per-light radius via `LightVolumeParams::stepFalloff` (placeholder was 32 flat); (2) skip COMPUTE_LIGHT_VOLUME dispatch for canvases with no active lights (GUI canvas). Larger: 64³ default volume (8× cheaper), sparse seeded-list propagate. Environment note: WSLg Mesa-d3d12 caps GL at 4.5 with below-native compute throughput — fix should work on native Linux too. Use `/optimize` flow + PERF_STATS_OVERLAY GPU timing to confirm dominant stage.
+  - **Acceptance:** (1) SDF capsule with same SQT as voxel capsule rasterizes within 1 trixel at any yaw; (2) SHAPE_FLAG_DISCRETE_ROTATION retired; (3) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #959
+  - **Notes:** C8 — final task in Epic C rotation series (C1–C7 all done). Extend C_ShapeDescriptor to carry mat3 localRotation sourced from C_LocalTransform; c_shapes_to_trixel.glsl rotates world-space SDF query point by inverse before evaluation. Parent epic #936. Blockers C4 (#956) and D2 (#960) both closed.
+  - **Links:**
+
+- [ ] **render: SHAPES authoring deprecation migration plan (D3)** — document migration steps for each SHAPES-authored asset and update editor scaffold per D2 SDF restriction decision
+  - **ID:** T-354
+  - **Area:** engine/render, docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Each SHAPES-authored asset identified in D1 either migrated to DENSE or explicitly retained as effects-only; (2) editor scaffold updated to remove SDF-primitive authoring UI; (3) documentation reflects the restricted state
+  - **Issue:** #961
+  - **Notes:** D3 in Epic D (SDF runtime restriction, #937). D1 (audit, #945) and D2 (decision, #960) both closed/done. Minimal authoring use per D1 means likely trivial removal. Blocked by D2 — now unblocked.
+  - **Links:**
+
+- [ ] **render: T-189 / T-190 disposition under SDF restriction (D4)** — re-scope or close T-189 (DENSE/HYBRID Prefab.spawn wiring) and T-190 (SDF silhouette investigation) per D2 outcome
+  - **ID:** T-355
+  - **Area:** engine/render, docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) T-189 (#721) PR closed or re-scoped to DENSE-only (drop HYBRID half); (2) T-190 (#690) re-scoped to document the delta rather than achieve pixel parity; (3) both tasks reach terminal state aligned with the SDF restriction
+  - **Issue:** #962
+  - **Notes:** D4 in Epic D (#937). D2 (#960) done. T-189 = scope DENSE-only, drop HYBRID half. T-190 = document SDF/voxel delta; effects-only doesn't need pixel parity. Blocked by D2 — now unblocked.
+  - **Links:**
+
+- [ ] **world: GPU chunk residency manager (LRU + camera-radius eviction) (E2)** — implement finite GPU voxel-pool budget divided across resident chunks with LRU + camera-radius eviction and async upload/eviction jobs
+  - **ID:** T-356
+  - **Area:** engine/world, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-356..T-359 S-E-stream
+  - **Acceptance:** (1) With 9× more chunks than budget, camera walk triggers stable evict/upload cycle; (2) no flicker; CPU+GPU profile via B0 infra; (3) resident-set count visible in perf_grid HUD; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #964
+  - **Notes:** E2 in Epic E (world streaming, #938). Stack position 3: E0→E1→**E2**→E3→E4. All blockers done: E0 (#944), E1 (#963), B4 (#941), B5 (#952) all closed. Uses B5 push-at-mutation for chunk-content upload on residency flip. Should land before T-360 (chunk persistence follow-ups).
+  - **Links:**
+
+- [ ] **world: camera-aware chunk prefetch (priority by visibility) (E3)** — queue upload jobs for chunks entering camera reach radius before needed, prioritized by in-frustum visibility
+  - **ID:** T-357
+  - **Area:** engine/world, engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-356
+  - **Stack:** T-356..T-359 S-E-stream
+  - **Acceptance:** (1) Slow camera pan = no upload-on-render stalls; (2) warps to POI fully render within warp frame; (3) in-frustum chunks upload before peripheral; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #965
+  - **Notes:** E3 in Epic E (#938). Stack position 4: E2→**E3**→E4. Blocked by E2 (T-356).
+  - **Links:**
+
+- [ ] **world: one-frame upload budget + low-LOD fallback (E4)** — cap per-frame upload bandwidth; render off-budget chunks at low-LOD for one frame with fade-in detail
+  - **ID:** T-358
+  - **Area:** engine/world, engine/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-357
+  - **Stack:** T-356..T-359 S-E-stream
+  - **Acceptance:** (1) Camera warp to 50-chunk region: first frame renders complete (some at low-LOD); (2) 2-3 frames upgrade to full detail; (3) no stutter > 1 frame; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #966
+  - **Notes:** E4 in Epic E (#938). Stack position 5: E3→**E4**. Blocked by E3 (T-357) and E0 (#944, closed). Load-bearing invariant: no frame ever blocks on upload.
+  - **Links:**
+
+- [ ] **world: entity chunk migration (atomic ownership transfer) (E5)** — entities crossing chunk boundaries change ownership atomically; identity, component data, and voxel allocations preserved
+  - **ID:** T-359
+  - **Area:** engine/world, engine/entity
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-356
+  - **Stack:** T-356..T-359 S-E-stream
+  - **Acceptance:** (1) Track entity moving across 10 chunk boundaries; ID unchanged; (2) rendering correct throughout; (3) rotated entities (C6 #957) migrate without artifact; (4) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #967
+  - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
+  - **Links:**
+
+- [ ] **world: chunk persistence follow-ups — markDirty API + 2-level dir + consumer verification** — land load-bearing T-298 follow-ups before any creation opts into streaming
+  - **ID:** T-360
+  - **Area:** engine/world
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) ChunkResidencyManager::markChunkDirty() API added as only supported mutation path, documented in engine/world/CLAUDE.md; (2) 2-level directory split in chunkPath() (e.g. chunks/<x_div_64>/<y_div_64>/...); (3) one end-to-end consumer wired (voxel editor or IRChunkStreamingSmoke demo), round-trip confirmed on linux-debug and macos-debug; (4) ChunkDiskPersistence optionally renamed ChunkVoxelDiskPersistence
+  - **Issue:** #1008
+  - **Notes:** 4 sub-items from T-298 review: (1)[opus] markDirty API — load-bearing, no creation should use Config::persistence_ until lands; (2)[sonnet] 2-level dir split before any real saves to avoid back-compat burden; (3)[sonnet] in-engine consumer verification; (4)[sonnet] optional rename. Should land before E2/E3 (T-356/T-357). Stacks on T-298 (merged).
+  - **Links:**
+
+- [ ] **engine: retire GLOBAL_POSITION_3D system + C_PositionGlobal3D readers (T-301b)** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform
+  - **ID:** T-361
+  - **Area:** engine/prefabs/irreden/update, creations
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** GLOBAL_POSITION_3D system fully removed; engine + all 9 affected creations (default, shape_debug, perf_grid, z_yaw_rotation×2, lighting_demo_scene, lua_perf_grid, lua_pipeline_demo, voxel_editor, modifier_demo) build clean; voxel_editor gizmos move/pick/position correctly; IrredenEngineTest passes (incl. updated lua_pipeline_register_test); default-demo idle-bob verified (reconnect in T-301a, this task verifies); no visual regression in voxel_editor + affected demo
+  - **Issue:** #1055
+  - **Notes:** T-301b. Stacks on T-301a (#1054, closed/done). Scope: delete system file, remove SystemName enum slot (ir_system_types.hpp ~L55), remove Lua binding (lua_pipeline_bindings.hpp ~L107), strip 11 GLOBAL_POSITION_3D pipeline registrations, migrate HITBOX_MOUSE_TEST + VOXEL_SCENE off C_PositionGlobal3D, migrate voxel_editor gizmos (~lines 2094-2109 + fill-tool ghost). idle-bob wiring is in T-301a; this task verifies it still works after GLOBAL_POSITION_3D removal. Grep whole tree for GLOBAL_POSITION_3D before declaring done. Per #1041: architect chose option 2 (dormant reg documented for T-300→T-301 window).
+  - **Links:**
+
+- [ ] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
+  - **ID:** T-362
+  - **Area:** engine/system
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) Validator rejects conflicting group (shared write column), MAIN_THREAD system in group, two spawners in same group — all unit-tested with named-component error messages; (2) engine UPDATE pipeline reorganized into groups; (3) IRShapeDebug --auto-screenshot 60 smoke passes; (4) perf_grid_matrix.sh shows additional speedup beyond T-222; file docs/perf-reports/threading_phase3.md
+  - **Issue:** #1071
+  - **Notes:** Phase 3 of multithreading epic (#226). Blocked by #1069 (T-222 PARALLEL_FOR) — closed/done. registerPipelineGroups takes IRTime::UPDATE + vector of groups; systems within group run concurrently via IRJobs; groups sequential in declaration order. Validator fires at World::start(), not hot frame. Error must name specific conflicting component + both systems. Partition: use validator's accept list, don't pre-guess. Plan file: .fleet/plans/T-362.md
+  - **Links:**
+
+- [ ] **tools: ir-host-probe + ir-acquire resource coordination (sub-task 1 of #1074)** — hardware fingerprinting and flock-based CPU/GPU/perf lock primitives for concurrent builds and perf measurements
+  - **ID:** T-363
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** ir-host-probe outputs deterministic JSON fingerprint (CPU/GPU/OS/RAM → slug); ir-acquire flock-based CPU/GPU/perf lock with budget slots; ir-acquire benchmark canned mode acquires all three; fleet-build/fleet-run wire ir-acquire; ir-acquire --info shows live lock state; concurrency_test.sh passes
+  - **Issue:** #1074
+  - **Notes:** Sub-task 1 of engine-level concurrency + perf primitives epic (#1074). Sub-tasks 2 (T-329 ir-build/ir-run), 3 (T-330 ir-perf-grid), 4 (T-331 acquire-late docs) all done. Layout: engine/tools/bin/ + engine/tools/lib/ + engine/tools/py/ + engine/tools/bench/ir_ref_bench.cpp + engine/tools/concurrency.toml. Host fingerprint cached at ~/.cache/irreden/host-fingerprint.json. Solo dev pays no concurrency tax (IR_FLEET_WORKERS unset → cap = full nproc).
+  - **Links:**
+
+- [ ] **render: camera grows full SO(3) — retire C_CameraYaw, source rotation from C_LocalTransform** — retire C_CameraYaw; camera rotation lives in C_LocalTransform.rotation_; expose setRotationQuat()/getRotationQuat() API
+  - **ID:** T-364
+  - **Area:** engine/render, engine/prefabs/irreden/render
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** (1) C_CameraYaw deleted; camera rotation in C_LocalTransform.rotation_; (2) IRPrefab::Camera::setRotationQuat(q)/getRotationQuat() exposed; setYaw(y) backward-compat shim works; (3) picking/hitbox/gizmo_drag/shapes_to_trixel use only Z-component via existing helpers — GRID behavior identical to today; (4) IRCanvasStress --full-rotate: DETACHED cubes tilt with camera, GRID cubes stay axis-aligned in iso-depth; (5) no C_CameraYaw refs in engine/ or creations/; (6) fleet-build clean on linux-debug and macos-debug
+  - **Issue:** #1076
+  - **Notes:** Option B selected by architect (2026-05-23 comment). Camera is game object → use generic C_LocalTransform for rotation. Cascade concentrated in IRPrefab::Camera:: helpers; callers in picking/hitbox/gizmo_drag/shaders stay unchanged. Blocked by #1075 (T-319 PROPAGATE_CANVAS_ROTATION) — closed/done. Grep creations/ (incl. gitignored game repo) for C_CameraYaw before deleting header; expectation is none (helpers are only public surface).
+  - **Links:**
+
+- [ ] **fleet: smoke-only mode — persistent cross-host smoke worker** — fleet mode that stays running, picks up fleet:needs-<host>-smoke PRs, smoke-tests, and re-smokes on PR updates
+  - **ID:** T-365
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** Fleet can be launched in smoke-only mode on a Linux host; picks up open PRs labeled fleet:needs-linux-smoke, runs smoke test, applies verified-linux label; stays running and re-smokes when PR receives new commits; does not do code review or task work
+  - **Issue:** #1128
+  - **Notes:** User wants concurrent fleet on Ubuntu just for smoke testing open PRs, without review or feature work. Related to platform-catchup skill (#1093, closed/done) which processes the backlog manually. This is the persistent-mode variant (stays running, re-smokes on push).
   - **Links:**
 
 ## Done — last 20
