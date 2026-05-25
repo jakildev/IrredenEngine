@@ -151,17 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **fleet/merger: re-target / rebase order decision on stacked-base merged path** — decide Option A (doc only, keep current order) or Option B (invert + coordinated changes) and implement
-  - **ID:** T-350
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-350-merger-retarget-order-rationale
-  - **Blocked by:** (none)
-  - **Acceptance:** design decision documented; `role-merger.md` step a.5 ii updated; if Option B: `role-opus-worker.md` step 1c updated to handle `fleet:awaiting-base` + `fleet:semantic-conflict` on a master-targeted PR; no semantic-conflict stacked PR left stranded by the opus-worker filter
-  - **Issue:** #1149
-  - **Notes:** Follow-up from PR #1146 review nit. Option A = keep current order (re-target first, rebase second) + document why; Option B = invert (rebase first, then re-target + clean labels on clean exit; still remove awaiting-base/stacked labels on conflict branch so opus-worker filter accepts the PR). Issue body details the merger ↔ opus-worker contract constraint that makes Option B non-trivial. `[opus]` required to reason across the merger/worker boundary.
-  - **Links:**
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -325,6 +314,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
 - [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
 - [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
 - [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
@@ -344,4 +334,3 @@ Avoid:
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
-- [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
