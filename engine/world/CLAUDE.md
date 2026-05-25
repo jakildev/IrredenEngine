@@ -30,6 +30,36 @@ derivation. `tickPrefetch()` then scans a Chebyshev ring of
 distance from camera to each slot's chunk center is written to
 `ChunkResidencySlot::distanceVoxels_` for the budget-gate and future sorting.
 
+### Upload-bandwidth cap + low-LOD billboard (T-358)
+
+Opt in via `Config::deferredUpload_ = true`. With the toggle on,
+`requestResident` enqueues the chunk in `LOADING` instead of
+synchronously transitioning to `RESIDENT`, and `flushUploads(maxBytes)`
+drains the queue each frame in (priority, distance) order capped at
+the byte budget. `FORCED` requests bypass the budget. A
+single-chunk-exceeds-budget guard always drains at least one
+non-forced entry per call so streaming can never stall on a chunk
+larger than the cap. The default budget lives in
+`Config::defaultUploadBudgetBytes_` (4 MiB, matching the design doc's
+≈240 MiB/s @ 60 fps target); pass `0` to `flushUploads` to use it.
+
+Each `ChunkResidencySlot` carries low-LOD AABB billboard metadata —
+`aabbColor_` (default grey), `aabbMinVoxel_` / `aabbMaxVoxel_` (full
+chunk by default), `lowLodFlags_`. The renderer's low-LOD pass
+iterates `forEachLowLodSlot` to spawn a `BOX` `C_ShapeDescriptor` per
+non-`RESIDENT` chunk; once the chunk reaches `RESIDENT` the voxel pool
+takes over and the billboard is dropped. Full design and the on-disk
+`BBOX` chunk record that will eventually replace the defaults are in
+[`docs/design/world-streaming.md`](../../docs/design/world-streaming.md)
+§"Topic 4 — Upload-bandwidth cap + low-LOD fallback".
+
+When `deferredUpload_` is false (the default), the legacy E1
+synchronous behavior is preserved: `requestResident` reaches
+`RESIDENT` inline, `flushUploads` is a no-op, and the low-LOD fields
+remain at their defaults but no chunk is ever in the non-`RESIDENT`
+state long enough for them to matter. Existing E1+E2+E6 consumers
+keep working unchanged.
+
 `engine/world/include/irreden/world/chunk_persistence.hpp` declares
 `IRWorld::ChunkDiskPersistence` — per-chunk `.vxs` save/load under a
 `<saveRoot>/chunks/` directory. One file per chunk; filename embeds

@@ -687,4 +687,363 @@ TEST(ChunkPrefetchTest, PrefetchIdempotentAcrossFrames) {
     EXPECT_EQ(mgr.residentChunkCount(), 27u);
 }
 
+// ---------------------------------------------------------------------------
+// Upload budget + low-LOD (T-358)
+// ---------------------------------------------------------------------------
+
+TEST(ChunkUploadBudgetTest, SlotLowLodDefaultsCoverFullChunk) {
+    // Defaults: grey color, AABB covers [0, kChunkSize-1]. The renderer
+    // paints these for any slot not yet RESIDENT.
+    ChunkResidencyManager mgr;
+    auto key = pack(IRMath::ivec3{2, 0, 0});
+    mgr.requestResident(key, RequestPriority::VISIBLE_RENDER);
+    const auto *s = mgr.slot(key);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->aabbColor_.red_, 0xAAu);
+    EXPECT_EQ(s->aabbColor_.alpha_, 0xFFu);
+    EXPECT_EQ(s->aabbMinVoxel_, IRMath::ivec3(0, 0, 0));
+    EXPECT_EQ(s->aabbMaxVoxel_.x, static_cast<int>(IRConstants::kChunkSize.x) - 1);
+    EXPECT_EQ(s->lowLodFlags_, 0u);
+}
+
+TEST(ChunkUploadBudgetTest, SyncModeFlushUploadsIsNoop) {
+    // Default config has deferredUpload_ == false — flushUploads must
+    // not surprise existing callers.
+    ChunkResidencyManager mgr;
+    auto key = pack(IRMath::ivec3{0, 0, 0});
+    mgr.requestResident(key, RequestPriority::VISIBLE_RENDER);
+    EXPECT_TRUE(mgr.isResident(key));
+    EXPECT_EQ(mgr.pendingUploadCount(), 0u);
+
+    mgr.flushUploads(0);
+    EXPECT_TRUE(mgr.isResident(key));
+    EXPECT_EQ(mgr.pendingUploadCount(), 0u);
+}
+
+TEST(ChunkUploadBudgetTest, DeferredRequestStaysLoadingUntilFlush) {
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto key = pack(IRMath::ivec3{0, 0, 0});
+    mgr.requestResident(key, RequestPriority::VISIBLE_RENDER);
+
+    // Slot exists, in LOADING, not yet RESIDENT.
+    EXPECT_FALSE(mgr.isResident(key));
+    const auto *s = mgr.slot(key);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->state_, ChunkResidencyState::LOADING);
+    EXPECT_EQ(mgr.pendingUploadCount(), 1u);
+
+    // After flush — RESIDENT, queue drained.
+    mgr.flushUploads(0);
+    EXPECT_TRUE(mgr.isResident(key));
+    EXPECT_EQ(mgr.pendingUploadCount(), 0u);
+}
+
+TEST(ChunkUploadBudgetTest, BudgetGateLimitsChunksPerFlush) {
+    // 10 chunks, each costing 4096 voxels × 12 B/voxel = 48 KB. Budget
+    // of 100 KB lets 2 through (96 KB cumulative); the rest stay queued.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [&](unsigned int size) {
+        ++callCount;
+        IRRender::VoxelPoolAllocation alloc{};
+        alloc.startIndex_ = static_cast<std::size_t>(callCount) * size;
+        return alloc;
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    for (int i = 0; i < 10; ++i) {
+        mgr.requestResident(pack(IRMath::ivec3{i, 0, 0}), RequestPriority::PREFETCH_RING);
+    }
+    EXPECT_EQ(mgr.pendingUploadCount(), 10u);
+    EXPECT_EQ(callCount, 0); // Nothing allocated yet — deferred mode.
+
+    mgr.flushUploads(100 * 1024);
+    EXPECT_EQ(callCount, 2); // 2 × 48 KB ≤ 100 KB; 3rd would push to 144 KB.
+    EXPECT_EQ(mgr.pendingUploadCount(), 8u);
+
+    // Next flush drains 2 more.
+    mgr.flushUploads(100 * 1024);
+    EXPECT_EQ(callCount, 4);
+    EXPECT_EQ(mgr.pendingUploadCount(), 6u);
+}
+
+TEST(ChunkUploadBudgetTest, VisibleRenderDrainedBeforePrefetchRing) {
+    int callCount = 0;
+    std::vector<IRPrefab::Chunk::ChunkKey> processOrder;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [&](unsigned int size) {
+        ++callCount;
+        IRRender::VoxelPoolAllocation alloc{};
+        alloc.startIndex_ = static_cast<std::size_t>(callCount) * size;
+        return alloc;
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto prefetchKey = pack(IRMath::ivec3{5, 0, 0});
+    auto visibleKey = pack(IRMath::ivec3{0, 0, 0});
+    // Enqueue prefetch first; visible second. Ordering by priority
+    // (not enqueue order) means visible drains first.
+    mgr.requestResident(prefetchKey, RequestPriority::PREFETCH_RING);
+    mgr.requestResident(visibleKey, RequestPriority::VISIBLE_RENDER);
+
+    // Single-chunk budget: only the highest-priority chunk drains.
+    mgr.flushUploads(48 * 1024);
+    EXPECT_TRUE(mgr.isResident(visibleKey));
+    EXPECT_FALSE(mgr.isResident(prefetchKey));
+    EXPECT_EQ(mgr.pendingUploadCount(), 1u);
+}
+
+TEST(ChunkUploadBudgetTest, DistanceTieBreakForSamePriority) {
+    // Same priority, different distances → closer chunk first.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [&](unsigned int size) {
+        ++callCount;
+        IRRender::VoxelPoolAllocation alloc{};
+        alloc.startIndex_ = static_cast<std::size_t>(callCount) * size;
+        return alloc;
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto nearKey = pack(IRMath::ivec3{1, 0, 0});
+    auto farKey = pack(IRMath::ivec3{5, 0, 0});
+    mgr.requestResident(nearKey, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(farKey, RequestPriority::VISIBLE_RENDER);
+
+    // Set distance fields manually (production wires this from
+    // tickPrefetch's distance recompute).
+    mgr.slot(nearKey)->distanceVoxels_ = 32.0f;
+    mgr.slot(farKey)->distanceVoxels_ = 160.0f;
+
+    // Budget for one chunk only.
+    mgr.flushUploads(48 * 1024);
+    EXPECT_TRUE(mgr.isResident(nearKey));
+    EXPECT_FALSE(mgr.isResident(farKey));
+}
+
+TEST(ChunkUploadBudgetTest, ForcedBypassesBudget) {
+    // Editor "load this chunk now" requests get FORCED priority and
+    // must complete even when the per-call byte budget is zero.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [&](unsigned int size) {
+        ++callCount;
+        IRRender::VoxelPoolAllocation alloc{};
+        alloc.startIndex_ = static_cast<std::size_t>(callCount) * size;
+        return alloc;
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto regularKey = pack(IRMath::ivec3{0, 0, 0});
+    auto forcedKey = pack(IRMath::ivec3{10, 0, 0});
+    mgr.requestResident(regularKey, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(forcedKey, RequestPriority::FORCED);
+
+    // Tiny budget: a non-forced chunk on its own already busts the cap,
+    // but the single-chunk-exceeds-budget guard makes one through. FORCED
+    // would also drain regardless of budget. Sort order is FORCED first,
+    // VISIBLE_RENDER second; the FORCED chunk drains, then the regular
+    // gets deferred because cumulativeBytes > 0 and !isForced.
+    mgr.flushUploads(1024);
+    EXPECT_TRUE(mgr.isResident(forcedKey));
+    EXPECT_FALSE(mgr.isResident(regularKey));
+    EXPECT_EQ(mgr.pendingUploadCount(), 1u);
+
+    // Next flush completes the regular one (single-chunk-exceeds-budget
+    // guard makes it drain even at the 1 KB cap).
+    mgr.flushUploads(1024);
+    EXPECT_TRUE(mgr.isResident(regularKey));
+    EXPECT_EQ(mgr.pendingUploadCount(), 0u);
+}
+
+TEST(ChunkUploadBudgetTest, SingleChunkExceedingBudgetStillCompletes) {
+    // Streaming-stalls-forever guard: when one chunk's byte size > the
+    // entire budget, the first chunk in the queue still completes in
+    // each flush. Otherwise the queue never drains.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096; // 48 KB per chunk.
+    cfg.poolAllocator_ = [&](unsigned int size) {
+        ++callCount;
+        IRRender::VoxelPoolAllocation alloc{};
+        alloc.startIndex_ = static_cast<std::size_t>(callCount) * size;
+        return alloc;
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    mgr.requestResident(pack(IRMath::ivec3{0, 0, 0}), RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(pack(IRMath::ivec3{1, 0, 0}), RequestPriority::VISIBLE_RENDER);
+
+    // Budget of 1 KB — much less than one chunk. First chunk still
+    // drains; second waits.
+    mgr.flushUploads(1024);
+    EXPECT_EQ(callCount, 1);
+    EXPECT_EQ(mgr.pendingUploadCount(), 1u);
+}
+
+TEST(ChunkUploadBudgetTest, EvictionTrimsPendingEntry) {
+    // A chunk evicted between request and flush should not surface as
+    // zombie work — flushUploads must skip stale entries.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [&](unsigned int size) {
+        ++callCount;
+        return IRRender::VoxelPoolAllocation{static_cast<std::size_t>(callCount) * size, {}};
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto a = pack(IRMath::ivec3{0, 0, 0});
+    auto b = pack(IRMath::ivec3{1, 0, 0});
+    mgr.requestResident(a, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(b, RequestPriority::VISIBLE_RENDER);
+    EXPECT_EQ(mgr.pendingUploadCount(), 2u);
+
+    // Evict A before flushing — requestEvict trims A's pending entry.
+    mgr.requestEvict(a);
+    EXPECT_EQ(mgr.pendingUploadCount(), 1u);
+
+    mgr.flushUploads(1024 * 1024); // Plenty of budget.
+    EXPECT_FALSE(mgr.isResident(a));
+    EXPECT_TRUE(mgr.isResident(b));
+    EXPECT_EQ(callCount, 1); // Only B was allocated.
+}
+
+TEST(ChunkUploadBudgetTest, RequestResidentBumpsPendingPriority) {
+    // A chunk first enqueued as PREFETCH_RING then re-requested as
+    // VISIBLE_RENDER should drain ahead of other PREFETCH_RING entries.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [&](unsigned int size) {
+        ++callCount;
+        return IRRender::VoxelPoolAllocation{static_cast<std::size_t>(callCount) * size, {}};
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto bumpedKey = pack(IRMath::ivec3{0, 0, 0});
+    auto otherKey = pack(IRMath::ivec3{1, 0, 0});
+    mgr.requestResident(bumpedKey, RequestPriority::PREFETCH_RING);
+    mgr.requestResident(otherKey, RequestPriority::PREFETCH_RING);
+    // Bump priority on the first key.
+    mgr.requestResident(bumpedKey, RequestPriority::VISIBLE_RENDER);
+
+    EXPECT_EQ(mgr.pendingUploadCount(), 2u);
+
+    // Single-chunk budget — bumped key drains, other waits.
+    mgr.flushUploads(48 * 1024);
+    EXPECT_TRUE(mgr.isResident(bumpedKey));
+    EXPECT_FALSE(mgr.isResident(otherKey));
+}
+
+TEST(ChunkUploadBudgetTest, LowLodIterationCoversOnlyNonResidentSlots) {
+    // forEachLowLodSlot is the renderer's hook — must skip RESIDENT
+    // chunks (which the voxel pool already paints).
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [](unsigned int) { return IRRender::VoxelPoolAllocation{}; };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto pendingKey = pack(IRMath::ivec3{0, 0, 0});
+    auto residentKey = pack(IRMath::ivec3{1, 0, 0});
+    mgr.requestResident(pendingKey, RequestPriority::PREFETCH_RING);
+    mgr.requestResident(residentKey, RequestPriority::VISIBLE_RENDER);
+
+    mgr.flushUploads(48 * 1024); // Drains the higher-priority one.
+    EXPECT_TRUE(mgr.isResident(residentKey));
+    EXPECT_FALSE(mgr.isResident(pendingKey));
+
+    std::vector<IRPrefab::Chunk::ChunkKey> visited;
+    mgr.forEachLowLodSlot([&](IRPrefab::Chunk::ChunkKey k, const ChunkResidencySlot &) {
+        visited.push_back(k);
+    });
+    ASSERT_EQ(visited.size(), 1u);
+    EXPECT_EQ(visited[0], pendingKey);
+}
+
+TEST(ChunkUploadBudgetTest, TickPrefetchUnderBudgetEnqueuesAllStaysLoading) {
+    // tickPrefetch + deferredUpload combo: a 3×3×3 ring requests 27
+    // chunks; they all enqueue but none reach RESIDENT until flushUploads.
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.prefetchRadiusChunks_ = 1;
+    cfg.evictionRadiusChunks_ = 2;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    mgr.setCameraWorldPosition(IRMath::vec3(16.0f, 16.0f, 16.0f));
+    mgr.beginFrame();
+    mgr.tickPrefetch();
+
+    EXPECT_EQ(mgr.residentChunkCount(), 27u);
+    EXPECT_EQ(mgr.pendingUploadCount(), 27u);
+    // None are RESIDENT yet — all are LOADING (low-LOD billboards).
+    std::size_t lowLodCount = 0;
+    mgr.forEachLowLodSlot([&](IRPrefab::Chunk::ChunkKey, const ChunkResidencySlot &) {
+        ++lowLodCount;
+    });
+    EXPECT_EQ(lowLodCount, 27u);
+}
+
+TEST(ChunkUploadBudgetTest, FlushUploadsDefaultBudgetWhenZero) {
+    // maxBytes == 0 → use Config::defaultUploadBudgetBytes_.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.defaultUploadBudgetBytes_ = 48 * 1024; // One chunk per flush.
+    cfg.poolAllocator_ = [&](unsigned int) {
+        ++callCount;
+        return IRRender::VoxelPoolAllocation{};
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    mgr.requestResident(pack(IRMath::ivec3{0, 0, 0}), RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(pack(IRMath::ivec3{1, 0, 0}), RequestPriority::VISIBLE_RENDER);
+
+    mgr.flushUploads(0); // Uses default budget.
+    EXPECT_EQ(callCount, 1);
+    EXPECT_EQ(mgr.pendingUploadCount(), 1u);
+}
+
+TEST(ChunkUploadBudgetTest, ReRequestResidentChunkIsHarmlessInDeferredMode) {
+    // Re-requesting an already-RESIDENT chunk in deferred mode must
+    // not surface a pending entry — the slot is already done.
+    int callCount = 0;
+    ChunkResidencyManager::Config cfg;
+    cfg.deferredUpload_ = true;
+    cfg.voxelsPerChunk_ = 4096;
+    cfg.poolAllocator_ = [&](unsigned int) {
+        ++callCount;
+        return IRRender::VoxelPoolAllocation{};
+    };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{0, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+    mgr.flushUploads(1024 * 1024);
+    ASSERT_TRUE(mgr.isResident(k));
+    EXPECT_EQ(mgr.pendingUploadCount(), 0u);
+    EXPECT_EQ(callCount, 1);
+
+    // Re-request — no pending entry, no re-alloc.
+    mgr.requestResident(k, RequestPriority::FORCED);
+    EXPECT_EQ(mgr.pendingUploadCount(), 0u);
+    EXPECT_EQ(callCount, 1);
+}
+
 } // namespace

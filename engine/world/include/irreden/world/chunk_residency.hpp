@@ -4,24 +4,39 @@
 // Chunk-residency manager (Epic E). Owns the sparse map from chunk-coord
 // to per-chunk residency slot, the per-chunk voxel sub-pool, and the
 // per-chunk entity manifest. Designed in
-// docs/design/world-streaming.md §"Topic 2 — Residency manager API".
+// docs/design/world-streaming.md §"Topic 2 — Residency manager API"
+// and §"Topic 4 — Upload-bandwidth cap + low-LOD fallback".
 //
 // E1 added the data model + synchronous request/evict + entity ownership +
 // per-chunk voxel sub-pool from an injected allocator. E6 added optional
-// disk persistence. E2 (this slice) adds the camera-driven eviction
-// policy: distance-based bucketing with LRU tie-breaking, a budget cap
-// on max resident chunks, pool deallocation on eviction, and the
-// per-frame beginFrame/endFrame lifecycle that drives the eviction cycle.
-// The async upload pipeline and worker threads are deferred to E3.
+// disk persistence — when a `ChunkDiskPersistence` pointer is wired in
+// Config, `requestResident` first attempts to load the chunk from disk
+// and seed the pool slice, and `requestEvict` saves dirty chunks before
+// dropping the slot. E3 (Chebyshev prefetch + camera-radius eviction) is
+// wired into `tickPrefetch()`.
+//
+// T-358 (Topic 4 / "E4" in issue numbering) adds the per-frame upload-
+// bandwidth cap and low-LOD billboard metadata. Opt in via
+// `Config::deferredUpload_ = true`: `requestResident` enqueues the chunk
+// in LOADING and `flushUploads(maxBytes)` drains the queue each frame in
+// (priority, distance) order capped at `maxBytes`. Chunks not yet drained
+// stay in LOADING/UPLOADING; the renderer reads `forEachLowLodSlot` to
+// spawn AABB billboards from `aabbColor_` / `aabbMinVoxel_` /
+// `aabbMaxVoxel_` until the upload completes. The async upload-worker
+// pool described in the design's Topic 2 is deferred to a follow-up —
+// today's "upload" is the synchronous E1 allocate + disk-load + transition
+// to RESIDENT, just gated by the per-frame byte budget.
 //
 // Single-chunk creations stay zero-overhead — the manager is only
 // constructed when a creation opts into streaming.
 
 #include <irreden/entity/ir_entity_types.hpp>
+#include <irreden/ir_constants.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/render/voxel_pool_allocation.hpp>
 #include <irreden/world/chunk_coord.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
@@ -74,6 +89,34 @@ struct ChunkResidencySlot {
         return m_dirty;
     }
 
+    // ── Low-LOD billboard metadata (T-358) ──────────────────────────
+    // Read by the renderer's low-LOD pass when the slot has not yet
+    // reached RESIDENT. Defaults represent the slot as a full-chunk
+    // grey AABB — the design doc's "this content is not yet uploaded"
+    // visual signal (Topic 4: "a flat cube where a complex structure
+    // should be is an unambiguous visual signal that streaming is
+    // mid-flight"). On-disk BBOX chunk records (design Topic 6) will
+    // override these defaults once the .vxs format extension lands.
+    /// Mean RGBA color of the chunk's voxel content. Default grey
+    /// `(0xAA, 0xAA, 0xAA, 0xFF)`. After the chunk reaches RESIDENT
+    /// the renderer drops the low-LOD billboard; this field is then
+    /// only relevant for re-eviction → low-LOD cycles.
+    IRMath::Color aabbColor_{0xAA, 0xAA, 0xAA, 0xFF};
+    /// AABB minimum corner in chunk-local voxel coords. Default
+    /// `{0,0,0}` — covers the full chunk.
+    IRMath::ivec3 aabbMinVoxel_{0, 0, 0};
+    /// AABB maximum corner in chunk-local voxel coords. Default
+    /// covers the full chunk: `kChunkSize - 1`.
+    IRMath::ivec3 aabbMaxVoxel_{
+        static_cast<int>(IRConstants::kChunkSize.x) - 1,
+        static_cast<int>(IRConstants::kChunkSize.y) - 1,
+        static_cast<int>(IRConstants::kChunkSize.z) - 1,
+    };
+    /// Bit 0: blocks light. Bit 1: emissive proxy. Future bits per
+    /// design Topic 6. Default 0 (passive AABB billboard, no special
+    /// lighting interaction).
+    std::uint8_t lowLodFlags_ = 0;
+
   private:
     friend class ChunkResidencyManager;
     bool m_dirty = false;
@@ -121,6 +164,29 @@ class ChunkResidencyManager {
         /// by the voxel-distance policy above (beginFrame / endFrame),
         /// not by this radius.
         int prefetchRadiusChunks_ = 2;
+
+        /// Chebyshev radius (in chunks) beyond which resident chunks
+        /// are evicted. Must be > prefetchRadiusChunks_ to provide
+        /// hysteresis (avoids thrashing at the ring boundary).
+        int evictionRadiusChunks_ = 3;
+
+        // ── Per-frame upload-bandwidth cap (T-358) ──────────────────
+        // Opt-in to async/budget upload semantics. When false
+        // (default), requestResident keeps E1's synchronous behavior:
+        // the chunk reaches RESIDENT inside the call. When true,
+        // requestResident enqueues the chunk in LOADING; the slot
+        // does NOT reach RESIDENT until flushUploads(maxBytes)
+        // processes it. The design's "load-bearing invariant: no
+        // frame ever blocks on upload" hinges on this gate.
+        bool deferredUpload_ = false;
+
+        // Default per-frame upload byte budget. Passed implicitly to
+        // flushUploads(0) — callers wire World::gameLoop() to either
+        // pass 0 (use this default) or an explicit override. Design
+        // doc Topic 4 picks 4 MiB / frame ≈ 240 MiB/s @ 60 fps so the
+        // GPU upload queue never blocks render dispatches. Tunable per
+        // creation; only consulted when `deferredUpload_ == true`.
+        int defaultUploadBudgetBytes_ = 4 * 1024 * 1024;
     };
 
     ChunkResidencyManager() = default;
@@ -140,6 +206,31 @@ class ChunkResidencyManager {
     void beginFrame(IRMath::vec3 cameraWorldVoxel);
 
     void tickPrefetch();
+
+    /// Drain the pending-uploads queue up to @p maxBytes, in
+    /// (priority, distance) order. Chunks reach RESIDENT inside this
+    /// call; chunks deferred to the next frame stay in LOADING and
+    /// the renderer paints them as low-LOD AABB billboards via
+    /// `forEachLowLodSlot`.
+    ///
+    /// Special values:
+    /// - `maxBytes == 0`: use `Config::defaultUploadBudgetBytes_`.
+    /// - `maxBytes < 0`: treated as 0 (defaults; never as "unlimited"
+    ///   to avoid silent budget-bypass).
+    ///
+    /// FORCED-priority pending entries bypass the budget — the
+    /// editor's "load this chunk now" requires synchronous completion
+    /// even when budget is exhausted.
+    ///
+    /// Single-chunk-exceeds-budget guard: at least one non-forced
+    /// chunk completes per call even if its byte size > the budget,
+    /// otherwise streaming stalls forever when one chunk is bigger
+    /// than the cap. Bias is intentional: bumping over budget once is
+    /// better than never making progress.
+    ///
+    /// No-op when `Config::deferredUpload_` is false (no queue exists
+    /// in synchronous mode; chunks reach RESIDENT inside
+    /// requestResident).
     void flushUploads(int maxBytes);
 
     /// Process evictions: save dirty EVICTING slots, deallocate pool
@@ -232,6 +323,11 @@ class ChunkResidencyManager {
         return m_frameStats;
     }
 
+    /// Count of chunks waiting in the deferred-upload queue. Always 0
+    /// when `Config::deferredUpload_` is false. Exposed for tests and
+    /// for budget-tuning telemetry.
+    std::size_t pendingUploadCount() const;
+
     /// Iterate every resident slot. Visit order is unordered_map's;
     /// callers must not rely on it.
     template <typename Fn> void forEachChunk(Fn &&fn) const {
@@ -241,11 +337,44 @@ class ChunkResidencyManager {
         }
     }
 
+    /// Iterate every slot that has NOT yet reached RESIDENT — LOADING
+    /// and UPLOADING slots. The renderer's low-LOD pass calls this
+    /// each frame to spawn / refresh AABB billboards from each slot's
+    /// `aabbColor_` / `aabbMinVoxel_` / `aabbMaxVoxel_` while the
+    /// upload pipeline catches up. Visit order is unordered_map's.
+    template <typename Fn> void forEachLowLodSlot(Fn &&fn) const {
+        for (const auto &kv : m_slots) {
+            if (kv.second.state_ != ChunkResidencyState::RESIDENT) {
+                fn(kv.first, kv.second);
+            }
+        }
+    }
+
   private:
     void evictSlot(std::unordered_map<IRPrefab::Chunk::ChunkKey, ChunkResidencySlot>::iterator it);
 
+    // Pending-upload queue entry. Populated by requestResident when
+    // Config::deferredUpload_ is true; drained by flushUploads in
+    // (priority, distance) order. The slot itself lives in m_slots
+    // throughout — the queue just orders the work, not the data.
+    struct PendingUpload {
+        IRPrefab::Chunk::ChunkKey key_ = 0;
+        RequestPriority priority_ = RequestPriority::PREFETCH_RING;
+        std::uint64_t enqueueFrame_ = 0;
+    };
+
+    // Shared by both the synchronous-mode requestResident path and the
+    // async-mode flushUploads drain — does the actual allocate + disk
+    // load + transition-to-RESIDENT work for a single slot.
+    void completeUploadForSlot(ChunkResidencySlot &s);
+
+    // Update the pending-upload entry's priority to the more urgent of
+    // (existing, requested). No-op if the key isn't queued.
+    void bumpPendingUploadPriority(IRPrefab::Chunk::ChunkKey key, RequestPriority p);
+
     Config m_config{};
     std::unordered_map<IRPrefab::Chunk::ChunkKey, ChunkResidencySlot> m_slots{};
+    std::vector<PendingUpload> m_pendingUploads{};
     std::uint64_t m_frameIndex = 0;
     IRMath::vec3 m_cameraWorldVoxel{0.0f};
     IRMath::ivec3 m_cameraChunk{0};
