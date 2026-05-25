@@ -447,6 +447,85 @@ TEST(ChunkResidencyEviction, ViewRadiusSlotsTouched) {
     EXPECT_GT(touchedFrame, 0u) << "Chunk within view radius should have its touch frame updated";
 }
 
+TEST(ChunkResidencyEviction, RequestResidentOnEvictingSlotRescuesToResident) {
+    // Verifies Site-1 fix: requestResident called on an EVICTING slot must
+    // clear the EVICTING state so endFrame does NOT erase it.
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{0.0f, 0.0f, 0.0f});
+    ASSERT_EQ(mgr.slot(k)->state_, ChunkResidencyState::EVICTING)
+        << "precondition: chunk must be marked EVICTING before the rescue call";
+
+    mgr.requestResident(k, RequestPriority::FORCED);
+    EXPECT_EQ(mgr.slot(k)->state_, ChunkResidencyState::RESIDENT)
+        << "requestResident on EVICTING slot must rescue it to RESIDENT";
+
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(k)) << "rescued slot must survive the next endFrame";
+    EXPECT_EQ(mgr.frameStats().evictedThisFrame_, 0u);
+}
+
+TEST(ChunkResidencyEviction, MigrateEntityToEvictingDestinationRescuesSlot) {
+    // Verifies Site-1 + Site-2 fix together: migrateEntity to an EVICTING
+    // destination must rescue that slot so the entity appears after endFrame.
+    // This test is the one Opus identified as proving the incomplete-fix gap
+    // is closed — it fails if only the requestResident rescue is patched but
+    // the migrateEntity guard is not changed to !isResident().
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto src = pack(IRMath::ivec3{0, 0, 0});
+    auto dst = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(src, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(dst, RequestPriority::VISIBLE_RENDER);
+    mgr.attachEntity(77, src);
+
+    // Move camera near src, leaving dst far → dst becomes EVICTING.
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+    ASSERT_EQ(mgr.slot(dst)->state_, ChunkResidencyState::EVICTING)
+        << "precondition: dst must be EVICTING before the migration";
+
+    // Migrate entity to the EVICTING destination — must rescue dst.
+    mgr.migrateEntity(77, src, dst);
+
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(dst)) << "migrateEntity must have rescued the EVICTING dst slot";
+    const auto *dstSlot = mgr.slot(dst);
+    ASSERT_NE(dstSlot, nullptr);
+    ASSERT_EQ(dstSlot->ownedEntities_.size(), 1u)
+        << "entity must appear in dst slot after endFrame";
+    EXPECT_EQ(dstSlot->ownedEntities_[0], IREntity::EntityId{77});
+}
+
+TEST(ChunkResidencyEviction, AttachEntityToEvictingSlotRescuesSlot) {
+    // Verifies Site-3 fix: attachEntity on an EVICTING slot rescues it so
+    // the entity is not silently lost when endFrame processes evictions.
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{0.0f, 0.0f, 0.0f});
+    ASSERT_EQ(mgr.slot(k)->state_, ChunkResidencyState::EVICTING)
+        << "precondition: slot must be EVICTING before the attach call";
+
+    mgr.attachEntity(88, k);
+    EXPECT_EQ(mgr.slot(k)->state_, ChunkResidencyState::RESIDENT)
+        << "attachEntity on EVICTING slot must rescue it to RESIDENT";
+
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(k)) << "rescued slot must survive endFrame";
+    const auto *s = mgr.slot(k);
+    ASSERT_NE(s, nullptr);
+    ASSERT_EQ(s->ownedEntities_.size(), 1u);
+    EXPECT_EQ(s->ownedEntities_[0], IREntity::EntityId{88});
+}
+
 TEST(ChunkResidencyEviction, RequestEvictCallsDeallocator) {
     int deallocCount = 0;
     auto cfg = makeBudgetConfig(256);

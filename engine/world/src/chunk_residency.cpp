@@ -111,8 +111,7 @@ void ChunkResidencyManager::endFrame() {
         std::vector<EvictCandidate> candidates;
         candidates.reserve(m_slots.size());
         for (const auto &kv : m_slots) {
-            candidates.push_back(
-                {kv.first, kv.second.distanceVoxels_, kv.second.lastTouchedFrame_}
+            candidates.push_back({kv.first, kv.second.distanceVoxels_, kv.second.lastTouchedFrame_}
             );
         }
         std::sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
@@ -166,7 +165,13 @@ void ChunkResidencyManager::requestResident(
     ChunkResidencySlot &s = it->second;
     s.lastTouchedFrame_ = m_frameIndex;
     if (!inserted) {
-        // Already in the resident set — just refresh the touch frame.
+        // Rescue a slot that was scheduled for eviction — it was touched again
+        // before endFrame could erase it. Clearing EVICTING here is the only
+        // safe place: callers of migrateEntity and attachEntity rely on
+        // requestResident having done this before they write to the slot.
+        if (s.state_ == ChunkResidencyState::EVICTING) {
+            s.state_ = ChunkResidencyState::RESIDENT;
+        }
         return;
     }
 
@@ -268,6 +273,9 @@ void ChunkResidencyManager::attachEntity(IREntity::EntityId id, IRPrefab::Chunk:
     if (it == m_slots.end()) {
         return;
     }
+    if (it->second.state_ == ChunkResidencyState::EVICTING) {
+        it->second.state_ = ChunkResidencyState::RESIDENT;
+    }
     auto &owned = it->second.ownedEntities_;
     if (std::find(owned.begin(), owned.end(), id) == owned.end()) {
         owned.push_back(id);
@@ -291,9 +299,9 @@ void ChunkResidencyManager::migrateEntity(
         }
     }
 
-    if (m_slots.find(newKey) == m_slots.end()) {
-        // Destination not yet resident — force it in. The design's
-        // pending-migration queue (deferred until destination upload
+    if (!isResident(newKey)) {
+        // Destination not yet resident (or is EVICTING) — force it in. The
+        // design's pending-migration queue (deferred until destination upload
         // settles) is an E4 concern.
         requestResident(newKey, RequestPriority::FORCED);
     }
