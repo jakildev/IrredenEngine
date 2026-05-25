@@ -19,6 +19,17 @@ live in [`engine/prefabs/irreden/world/`](../prefabs/irreden/world/);
 full design contract in
 [`docs/design/world-streaming.md`](../../docs/design/world-streaming.md).
 
+### Camera-aware prefetch (E3)
+
+`beginFrame(vec3 cameraWorldVoxel)` drives both the E2 eviction policy
+(Euclidean distance + hysteresis → EVICTING) and the E3 chunk-coordinate
+derivation. `tickPrefetch()` then scans a Chebyshev ring of
+`Config::prefetchRadiusChunks_` around the derived chunk coordinate and
+`requestResident`s every chunk in the ring; eviction is left entirely to
+`beginFrame` + `endFrame` (no per-ring eviction in `tickPrefetch`). The
+distance from camera to each slot's chunk center is written to
+`ChunkResidencySlot::distanceVoxels_` for the budget-gate and future sorting.
+
 `engine/world/include/irreden/world/chunk_persistence.hpp` declares
 `IRWorld::ChunkDiskPersistence` — per-chunk `.vxs` save/load under a
 `<saveRoot>/chunks/` directory. One file per chunk; filename embeds

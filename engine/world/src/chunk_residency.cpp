@@ -56,6 +56,10 @@ ChunkResidencyManager::ChunkResidencyManager(Config config)
 void ChunkResidencyManager::beginFrame(IRMath::vec3 cameraWorldVoxel) {
     ++m_frameIndex;
     m_cameraWorldVoxel = cameraWorldVoxel;
+    // Floor before cast — truncation toward zero misclassifies negative fractional
+    // positions (e.g. -0.5 → 0 instead of -1). worldToChunk's floor-divide handles
+    // integer voxels correctly; this seam owns the float→int step.
+    m_cameraChunk = IRPrefab::Chunk::worldToChunk(IRMath::ivec3(IRMath::floor(cameraWorldVoxel)));
     m_frameStats = {};
 
     const float evictThreshold = m_config.prefetchRadiusVoxels_ + m_config.hysteresisVoxels_;
@@ -79,7 +83,37 @@ void ChunkResidencyManager::beginFrame(IRMath::vec3 cameraWorldVoxel) {
     }
 }
 
-void ChunkResidencyManager::tickPrefetch() {}
+void ChunkResidencyManager::tickPrefetch() {
+    IR_PROFILE_SCOPE("ChunkResidencyManager::tickPrefetch");
+    const int r = m_config.prefetchRadiusChunks_;
+    if (r <= 0) {
+        return;
+    }
+
+    for (int dx = -r; dx <= r; ++dx) {
+        for (int dy = -r; dy <= r; ++dy) {
+            for (int dz = -r; dz <= r; ++dz) {
+                const IRMath::ivec3 coord{
+                    m_cameraChunk.x + dx,
+                    m_cameraChunk.y + dy,
+                    m_cameraChunk.z + dz
+                };
+                const auto key = IRPrefab::Chunk::pack(coord);
+                const RequestPriority prio = (dx == 0 && dy == 0 && dz == 0)
+                                                 ? RequestPriority::VISIBLE_RENDER
+                                                 : RequestPriority::PREFETCH_RING;
+                requestResident(key, prio);
+
+                if (auto *s = slot(key)) {
+                    s->distanceVoxels_ =
+                        IRMath::length(IRPrefab::Chunk::chunkCenterWorld(coord) - m_cameraWorldVoxel);
+                }
+            }
+        }
+    }
+    // Eviction is driven by beginFrame() (Euclidean distance + hysteresis) and
+    // processed by endFrame() — tickPrefetch only grows the resident set.
+}
 
 void ChunkResidencyManager::flushUploads(int) {}
 

@@ -547,4 +547,144 @@ TEST(ChunkResidencyEviction, RequestEvictCallsDeallocator) {
     EXPECT_EQ(deallocCount, 1);
 }
 
+// ---------------------------------------------------------------------------
+// Prefetch ring (E3)
+// ---------------------------------------------------------------------------
+
+TEST(ChunkPrefetchTest, TickPrefetchRequestsRingAroundCamera) {
+    ChunkResidencyManager::Config cfg;
+    cfg.prefetchRadiusChunks_ = 1;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    mgr.beginFrame(IRMath::vec3(16.0f, 16.0f, 16.0f));
+    mgr.tickPrefetch();
+
+    // Radius 1 → 3×3×3 = 27 chunks
+    EXPECT_EQ(mgr.residentChunkCount(), 27u);
+    EXPECT_TRUE(mgr.isResident(pack(IRMath::ivec3{0, 0, 0})));
+    EXPECT_TRUE(mgr.isResident(pack(IRMath::ivec3{1, 1, 1})));
+    EXPECT_TRUE(mgr.isResident(pack(IRMath::ivec3{-1, -1, -1})));
+}
+
+TEST(ChunkPrefetchTest, TickPrefetchSetsDistanceOnSlots) {
+    ChunkResidencyManager::Config cfg;
+    cfg.prefetchRadiusChunks_ = 1;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    mgr.beginFrame(IRMath::vec3(16.0f, 16.0f, 16.0f));
+    mgr.tickPrefetch();
+
+    const auto *center = mgr.slot(pack(IRMath::ivec3{0, 0, 0}));
+    const auto *neighbor = mgr.slot(pack(IRMath::ivec3{1, 0, 0}));
+    ASSERT_NE(center, nullptr);
+    ASSERT_NE(neighbor, nullptr);
+    EXPECT_LT(center->distanceVoxels_, neighbor->distanceVoxels_);
+}
+
+TEST(ChunkPrefetchTest, EvictsChunksOutsideEvictionRadius) {
+    // Eviction is driven by beginFrame (Euclidean + hysteresis) + endFrame.
+    // Default threshold: prefetchRadiusVoxels_(256) + hysteresisVoxels_(32) = 288.
+    // Chunk (10,10,10) center is at ~554 voxels from camera at (16,16,16),
+    // safely beyond 288 → marked EVICTING by beginFrame, removed by endFrame.
+    // Ring chunks (radius 1, max ~55 voxels) are well inside the threshold.
+    ChunkResidencyManager::Config cfg;
+    cfg.prefetchRadiusChunks_ = 1;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    IRMath::vec3 cam(16.0f, 16.0f, 16.0f);
+
+    // Tick 1: populate ring
+    mgr.beginFrame(cam);
+    mgr.tickPrefetch();
+    mgr.endFrame();
+    EXPECT_EQ(mgr.residentChunkCount(), 27u);
+
+    // Force a chunk far beyond the eviction threshold into the resident set
+    auto farKey = pack(IRMath::ivec3{10, 10, 10});
+    mgr.requestResident(farKey, RequestPriority::FORCED);
+    EXPECT_TRUE(mgr.isResident(farKey));
+    EXPECT_EQ(mgr.residentChunkCount(), 28u);
+
+    // Tick 2: beginFrame marks farKey EVICTING, endFrame removes it
+    mgr.beginFrame(cam);
+    mgr.tickPrefetch();
+    mgr.endFrame();
+    EXPECT_FALSE(mgr.isResident(farKey));
+    EXPECT_EQ(mgr.residentChunkCount(), 27u);
+}
+
+TEST(ChunkPrefetchTest, CameraWarpRelocatesResidentSet) {
+    ChunkResidencyManager::Config cfg;
+    cfg.prefetchRadiusChunks_ = 1;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    // Tick 1: populate ring around chunk (0,0,0)
+    mgr.beginFrame(IRMath::vec3(16.0f, 16.0f, 16.0f));
+    mgr.tickPrefetch();
+    mgr.endFrame();
+    auto originKey = pack(IRMath::ivec3{0, 0, 0});
+    EXPECT_TRUE(mgr.isResident(originKey));
+
+    // Tick 2: warp far away — beginFrame marks origin ring as EVICTING,
+    // tickPrefetch loads ring around chunk(100,100,100), endFrame removes old ring
+    mgr.beginFrame(IRMath::vec3(3216.0f, 3216.0f, 3216.0f));
+    mgr.tickPrefetch();
+    mgr.endFrame();
+
+    auto newCenter = pack(IRMath::ivec3{100, 100, 100});
+    EXPECT_TRUE(mgr.isResident(newCenter));
+    EXPECT_FALSE(mgr.isResident(originKey));
+}
+
+TEST(ChunkPrefetchTest, ZeroRadiusDisablesPrefetch) {
+    ChunkResidencyManager::Config cfg;
+    cfg.prefetchRadiusChunks_ = 0;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    mgr.beginFrame(IRMath::vec3(16.0f, 16.0f, 16.0f));
+    mgr.tickPrefetch();
+
+    EXPECT_EQ(mgr.residentChunkCount(), 0u);
+}
+
+TEST(ChunkPrefetchTest, NegativeFractionalCameraPositionFloorsToCorrectChunk) {
+    // Regression: IRMath::ivec3(vec3) truncates toward zero; a fractional
+    // negative position like (-0.5,-0.5,-0.5) must floor to (-1,-1,-1),
+    // not truncate to (0,0,0). beginFrame's cast uses IRMath::floor() to
+    // ensure correct chunk classification.
+    ChunkResidencyManager::Config cfg;
+    cfg.prefetchRadiusChunks_ = 1;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    // Camera at world voxel (-0.5, -0.5, -0.5) — floor maps to voxel (-1,-1,-1)
+    // which is in chunk (-1,-1,-1) (covers voxels [-32, 0) along each axis).
+    mgr.beginFrame(IRMath::vec3(-0.5f, -0.5f, -0.5f));
+    mgr.tickPrefetch();
+
+    EXPECT_EQ(mgr.residentChunkCount(), 27u);
+    // Ring around chunk (-1,-1,-1): -2..0 on each axis.
+    EXPECT_TRUE(mgr.isResident(pack(IRMath::ivec3{-1, -1, -1})));
+    EXPECT_TRUE(mgr.isResident(pack(IRMath::ivec3{-2, -2, -2})));
+    EXPECT_TRUE(mgr.isResident(pack(IRMath::ivec3{0, 0, 0})));
+    // Chunk (1,1,1) sits outside the radius-1 ring around (-1,-1,-1) —
+    // would be incorrectly resident if the truncating cast were still in play.
+    EXPECT_FALSE(mgr.isResident(pack(IRMath::ivec3{1, 1, 1})));
+}
+
+TEST(ChunkPrefetchTest, PrefetchIdempotentAcrossFrames) {
+    ChunkResidencyManager::Config cfg;
+    cfg.prefetchRadiusChunks_ = 1;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    IRMath::vec3 cam(16.0f, 16.0f, 16.0f);
+    mgr.beginFrame(cam);
+    mgr.tickPrefetch();
+    EXPECT_EQ(mgr.residentChunkCount(), 27u);
+
+    // Second tick at same position: count stays the same
+    mgr.beginFrame(cam);
+    mgr.tickPrefetch();
+    EXPECT_EQ(mgr.residentChunkCount(), 27u);
+}
+
 } // namespace
