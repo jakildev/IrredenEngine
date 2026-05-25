@@ -35,7 +35,11 @@ def _run(*args, default=""):
             timeout=5,
         )
         return out.stdout.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
+        # OSError catches FileNotFoundError (binary missing from PATH) and
+        # PermissionError (binary exists but is not exec'able — happens on
+        # WSL2 hosts when PATH contains Windows-side stubs that match a
+        # Linux tool name but cannot be invoked from a Linux subprocess).
         return default
 
 
