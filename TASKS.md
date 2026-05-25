@@ -229,11 +229,11 @@ Avoid:
   - **Notes:** D4 in Epic D (#937). D2 (#960) done. T-189 = scope DENSE-only, drop HYBRID half. T-190 = document SDF/voxel delta; effects-only doesn't need pixel parity. Blocked by D2 — now unblocked.
   - **Links:**
 
-- [ ] **world: GPU chunk residency manager (LRU + camera-radius eviction) (E2)** — implement finite GPU voxel-pool budget divided across resident chunks with LRU + camera-radius eviction and async upload/eviction jobs
+- [~] **world: GPU chunk residency manager (LRU + camera-radius eviction) (E2)** — implement finite GPU voxel-pool budget divided across resident chunks with LRU + camera-radius eviction and async upload/eviction jobs
   - **ID:** T-356
   - **Area:** engine/world, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) With 9× more chunks than budget, camera walk triggers stable evict/upload cycle; (2) no flicker; CPU+GPU profile via B0 infra; (3) resident-set count visible in perf_grid HUD; (4) fleet-build clean on linux-debug and macos-debug
