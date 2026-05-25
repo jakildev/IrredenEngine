@@ -23,9 +23,9 @@ glColorMask
 glCompileShader
 glCompressedTexImage2D
 glCompressedTexImage3D
+glCopyImageSubData
 glCreateProgram
 glCreateShader
-glCopyImageSubData
 glCullFace
 glDeleteBuffers
 glDetachShader
