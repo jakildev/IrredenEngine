@@ -221,11 +221,11 @@ Avoid:
   - **Notes:** Phase 5 of multithreading epic (#226). Blocker #1068 (IRJobs::pinTo) is now closed. GL/Metal texture creation must happen on the main thread — pinned worker does disk-read + decode only; upload schedules onto main. One entry point POC only; other loaders follow if the pattern is right.
   - **Links:**
 
-- [ ] **math: add IRMath::cbrt cube-root primitive (extract from perf_grid demo)** — hoist `std::cbrt` call from `perf_grid/main.cpp:532` into `engine/math/` as `IRMath::cbrt<T>` following existing IRMath conventions
+- [~] **math: add IRMath::cbrt cube-root primitive (extract from perf_grid demo)** — hoist `std::cbrt` call from `perf_grid/main.cpp:532` into `engine/math/` as `IRMath::cbrt<T>` following existing IRMath conventions
   - **ID:** T-369
   - **Area:** engine/math
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) `engine/math/` exports `IRMath::cbrt` (float/double overloads, `constexpr`, `noexcept`); (2) `perf_grid/main.cpp:532` uses `IRMath::cbrt`; (3) `grep -rn "std::cbrt"` returns zero results outside allowlisted backend/glue; (4) IRMath substitution table updated
   - **Issue:** #1088
