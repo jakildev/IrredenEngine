@@ -332,11 +332,11 @@ Avoid:
   - **Notes:** Option B selected by architect (2026-05-23 comment). Camera is game object → use generic C_LocalTransform for rotation. Cascade concentrated in IRPrefab::Camera:: helpers; callers in picking/hitbox/gizmo_drag/shaders stay unchanged. Blocked by #1075 (T-319 PROPAGATE_CANVAS_ROTATION) — closed/done. Grep creations/ (incl. gitignored game repo) for C_CameraYaw before deleting header; expectation is none (helpers are only public surface).
   - **Links:**
 
-- [ ] **fleet: smoke-only mode — persistent cross-host smoke worker** — fleet mode that stays running, picks up fleet:needs-<host>-smoke PRs, smoke-tests, and re-smokes on PR updates
+- [~] **fleet: smoke-only mode — persistent cross-host smoke worker** — fleet mode that stays running, picks up fleet:needs-<host>-smoke PRs, smoke-tests, and re-smokes on PR updates
   - **ID:** T-365
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** Fleet can be launched in smoke-only mode on a Linux host; picks up open PRs labeled fleet:needs-linux-smoke, runs smoke test, applies verified-linux label; stays running and re-smokes when PR receives new commits; does not do code review or task work
   - **Issue:** #1128
