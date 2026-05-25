@@ -299,11 +299,11 @@ Avoid:
   - **Notes:** T-301b. Stacks on T-301a (#1054, closed/done). Scope: delete system file, remove SystemName enum slot (ir_system_types.hpp ~L55), remove Lua binding (lua_pipeline_bindings.hpp ~L107), strip 11 GLOBAL_POSITION_3D pipeline registrations, migrate HITBOX_MOUSE_TEST + VOXEL_SCENE off C_PositionGlobal3D, migrate voxel_editor gizmos (~lines 2094-2109 + fill-tool ghost). idle-bob wiring is in T-301a; this task verifies it still works after GLOBAL_POSITION_3D removal. Grep whole tree for GLOBAL_POSITION_3D before declaring done. Per #1041: architect chose option 2 (dormant reg documented for T-300→T-301 window).
   - **Links:**
 
-- [ ] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
+- [~] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
   - **ID:** T-362
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) Validator rejects conflicting group (shared write column), MAIN_THREAD system in group, two spawners in same group — all unit-tested with named-component error messages; (2) engine UPDATE pipeline reorganized into groups; (3) IRShapeDebug --auto-screenshot 60 smoke passes; (4) perf_grid_matrix.sh shows additional speedup beyond T-222; file docs/perf-reports/threading_phase3.md
   - **Issue:** #1071
