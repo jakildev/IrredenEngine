@@ -60,6 +60,7 @@ class World {
     bool m_waitForFirstUpdateInput = false;
     bool m_startRecordingOnFirstInput = false;
     bool m_hasHandledFirstInput = false;
+    uint32_t m_maxUpdateTicksPerFrame = 8;
 
     // Agent-readable profiling: frame timing accumulation
     bool m_frameTimingEnabled = false;

@@ -71,8 +71,10 @@ of lag manually (used by the loading-screen / pause path).
   bodies can read it from worker threads without synchronization.
   `deltaTime(RENDER)` is wall-clock (variable per frame); use it for
   presentation-frame interpolation, not simulation state.
-- **Lag can cascade.** If one frame takes 50 ms, the next loop iteration
-  runs 3 UPDATE ticks back-to-back. Budget accordingly.
+- **Lag is capped.** `clampUpdateLag(maxTicks)` limits the accumulator
+  to at most `maxTicks` frames of debt (default 8, configurable via
+  `max_update_ticks_per_frame` in `config.lua`). Without the cap, a
+  single slow frame would spiral into hundreds of catch-up ticks.
 - **Dropped-frame counter is RENDER-only.** If UPDATE falls behind, it
   catches up via extra ticks; it doesn't "drop" anything.
 - **`skipUpdate()` is a footgun.** Skipping ticks silently desyncs any

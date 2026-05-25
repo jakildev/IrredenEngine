@@ -39,6 +39,10 @@ class TimeManager {
         m_profilerUpdate.skipEvent();
     }
 
+    void clampUpdateLag(uint32_t maxTicks) {
+        m_profilerUpdate.clampLag(maxTicks);
+    }
+
     template <Events event> double deltaTime();
     template <Events event> double fps();
     template <Events event> double frameTimeMs();
