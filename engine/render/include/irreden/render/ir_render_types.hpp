@@ -336,7 +336,14 @@ static_assert(
     "cascadeOriginUV_0_ must start after legacy fields"
 );
 static_assert(
+    offsetof(FrameDataSun, cascadeOriginUV_1_) == 96,
+    "cascadeOriginUV_1_ must align at offset 96"
+);
+static_assert(
     offsetof(FrameDataSun, cascadeSplitDepth_) == 112, "cascadeSplitDepth_ must align at offset 112"
+);
+static_assert(
+    offsetof(FrameDataSun, cascadeCount_) == 116, "cascadeCount_ must align at offset 116"
 );
 
 /// @{

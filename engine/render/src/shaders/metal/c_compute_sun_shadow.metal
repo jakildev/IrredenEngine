@@ -14,7 +14,10 @@ constant float kNormalBiasVoxels = 0.5;
 constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
 constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
-constant float kMaxShadowDepthRange = 24.0 * kSunDepthScale;
+// Reject shadows from occluders farther than 24 voxels in sun-Z.
+// Prevents adjacent volumes from incorrectly casting onto faces they
+// are beside rather than in front of.
+constant float kMaxShadowDepthRange = 24.0;
 constant float kCascadeBlendRange = 8.0;
 
 inline float unpackSunDepth(uint packedDepth) {

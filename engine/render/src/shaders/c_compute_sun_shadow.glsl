@@ -69,7 +69,10 @@ const float kNormalBiasVoxels = 0.5;
 const float kShadowBiasTexelScale = 2.0;
 const float kShadowBiasSlopeMin = 0.05;
 const float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
-const float kMaxShadowDepthRange = 24.0 * kSunDepthScale;
+// Reject shadows from occluders farther than 24 voxels in sun-Z.
+// Prevents adjacent volumes from incorrectly casting onto faces they
+// are beside rather than in front of.
+const float kMaxShadowDepthRange = 24.0;
 const float kCascadeBlendRange = 8.0;
 
 float sampleCascadeShadow(
@@ -165,12 +168,6 @@ void main() {
             float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
             shadowAccum = mix(nearShadow, farShadow, t);
         }
-    }
-
-    float faceSunDot = dot(normal, sunDir);
-    if (faceSunDot > 0.3) {
-        float atten = smoothstep(0.3, 0.7, faceSunDot);
-        shadowAccum *= (1.0 - atten);
     }
 
     float factor = mix(1.0, kShadowDarken, shadowAccum);
