@@ -162,9 +162,9 @@ template <typename VecType> constexpr VecType cross(const VecType &value1, const
 }
 
 // Duff et al. 2017 — builds an orthonormal basis (outU, outV) perpendicular
-// to unit vector n without branch discontinuities. For the engine constraint
-// n.z <= 0 (sunDir points toward the sun, +Z is down), the denominator
-// ranges from [-2, -1] and is always numerically stable.
+// to unit vector n without branch discontinuities. The denominator (s + n.z)
+// is always non-zero and numerically safe across the full n.z ∈ [-1, 1]
+// range: copysign ensures it avoids the 0 singularity at n.z = 0.
 inline void buildOrthonormalBasis(vec3 n, vec3 &outU, vec3 &outV) {
     const float s = std::copysign(1.0f, n.z);
     const float a = -1.0f / (s + n.z);

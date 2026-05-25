@@ -133,6 +133,10 @@ kernel void c_compute_sun_shadow(
         }
     }
 
+    // Sun-facing faces receive attenuated shadow: a face pointing
+    // directly at the sun can only be shadowed by geometry between it
+    // and the sun, which the depth-range clamp above already handles.
+    // This catches borderline cases where the depth range is marginal.
     float faceSunDot = dot(normal, sunDir);
     if (faceSunDot > 0.3) {
         float atten = smoothstep(0.3f, 0.7f, faceSunDot);

@@ -215,6 +215,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
         // Snap AABB origin to texel boundaries so the quantization
         // grid stays phase-locked across frames (stable shadow maps).
+        // sunUVMax is intentionally not snapped upward: coverage is
+        // [sunUVMin_snapped, sunUVMin_snapped + kSunShadowMapDim × texelSize],
+        // which may undershoot sunUVMax_original by at most one texel.
+        // Any geometry in that gap falls outside kSunShadowMapDim and
+        // is silently clamped to lit by the pixel-bounds check below.
         sunUVMin.x = IRMath::floor(sunUVMin.x / texelSize.x) * texelSize.x;
         sunUVMin.y = IRMath::floor(sunUVMin.y / texelSize.y) * texelSize.y;
 
