@@ -253,11 +253,11 @@ Avoid:
   - **Notes:** E3 in Epic E (#938). Stack position 4: E2→**E3**→E4. Blocked by E2 (T-356).
   - **Links:**
 
-- [~] **world: one-frame upload budget + low-LOD fallback (E4)** — cap per-frame upload bandwidth; render off-budget chunks at low-LOD for one frame with fade-in detail
+- [ ] **world: one-frame upload budget + low-LOD fallback (E4)** — cap per-frame upload bandwidth; render off-budget chunks at low-LOD for one frame with fade-in detail
   - **ID:** T-358
   - **Area:** engine/world, engine/render
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** T-357
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Camera warp to 50-chunk region: first frame renders complete (some at low-LOD); (2) 2-3 frames upgrade to full detail; (3) no stutter > 1 frame; (4) fleet-build clean on linux-debug and macos-debug
