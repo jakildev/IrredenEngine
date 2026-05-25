@@ -19,7 +19,7 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_camera.hpp>
 
 // Gizmo primitives (T-152, F-0.5 Phase 1)
 #include <irreden/render/gizmo.hpp>
@@ -1103,8 +1103,7 @@ void initSystems() {
             if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -1163,9 +1162,9 @@ void initSystems() {
     // widget chain so an over-gizmo click doesn't trip the scene-
     // edit path either.
     auto rotState = std::make_shared<RotateParams>();
-    auto rotateSystem = IRSystem::createSystem<C_CameraYaw>(
+    auto rotateSystem = IRSystem::createSystem<C_Camera>(
         "EditorViewportRotate",
-        [](C_CameraYaw &) {},
+        [](C_Camera &) {},
         [rotState]() {
             bool rightPressed =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
@@ -1220,7 +1219,7 @@ void initSystems() {
     );
 
     // Frame-based animation playback (T-214). Runs once per RENDER tick
-    // in beginTick over C_CameraYaw (the singleton camera entity), so
+    // in beginTick over C_Camera (the singleton camera entity), so
     // the swap lands BEFORE this frame's voxel-to-trixel stages read
     // C_VoxelSetNew::voxels_. Use the camera archetype filter because
     // we need a one-shot per-frame fire regardless of voxel-set state;
@@ -1228,9 +1227,9 @@ void initSystems() {
     // tickPlayback returns the next frame index via out-param without
     // touching g_anim.activeFrame_ — that lets switchToFrame snapshot
     // the old active frame's voxels before swapping in the new one.
-    auto animPlaybackSystem = IRSystem::createSystem<C_CameraYaw>(
+    auto animPlaybackSystem = IRSystem::createSystem<C_Camera>(
         "EditorAnimPlayback",
-        [](C_CameraYaw &) {},
+        [](C_Camera &) {},
         []() {
             const float dt = static_cast<float>(IRTime::deltaTime(IRTime::Events::RENDER));
             int next = 0;
@@ -1792,8 +1791,7 @@ void initCommands() {
             if (IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -2159,14 +2157,12 @@ void initEntities() {
             kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
             kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
         );
-        g_editor.paletteSwatches_.push_back(
-            IRPrefab::Widget::makeColorSwatch(
-                pos,
-                ivec2(kSwatchSize, kSwatchSize),
-                IRVoxelEditor::kPaletteColors[i],
-                i == 0
-            )
-        );
+        g_editor.paletteSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
+            pos,
+            ivec2(kSwatchSize, kSwatchSize),
+            IRVoxelEditor::kPaletteColors[i],
+            i == 0
+        ));
     }
 
     // Animation controls panel (T-214, F-1.4) — sits below the palette

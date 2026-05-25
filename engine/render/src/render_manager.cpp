@@ -19,7 +19,6 @@
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -92,8 +91,7 @@ RenderManager::RenderManager(
                 C_Velocity2DIso{
                     vec2(0.0f, 0.0f)
                 },
-                C_ZoomLevel{1.0f},
-                C_CameraYaw{0.0f}
+                C_ZoomLevel{1.0f}
             )
         }
     ,   m_viewport{0}
@@ -438,12 +436,10 @@ void RenderManager::printRenderInfo() {
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
         return IRMath::max(
-            ivec2(
-                IRMath::min(
-                    IRMath::floor(m_viewport.x / m_gameResolution.x),
-                    IRMath::floor(m_viewport.y / m_gameResolution.y)
-                )
-            ),
+            ivec2(IRMath::min(
+                IRMath::floor(m_viewport.x / m_gameResolution.x),
+                IRMath::floor(m_viewport.y / m_gameResolution.y)
+            )),
             ivec2(1)
         );
     }

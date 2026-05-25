@@ -14,7 +14,7 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -91,11 +91,11 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    // Mouse-driven yaw + click detection.  Anchored on C_CameraYaw so
+    // Mouse-driven yaw + click detection.  Anchored on C_Camera so
     // endTick fires exactly once per frame regardless of entity count.
-    auto mouseYawSystem = IRSystem::createSystem<C_CameraYaw>(
+    auto mouseYawSystem = IRSystem::createSystem<C_Camera>(
         "MouseYawRotate",
-        [](C_CameraYaw &) {},
+        [](C_Camera &) {},
         []() {
             // R toggles rotation
             if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonR, IRInput::PRESSED)) {

@@ -193,6 +193,18 @@ inline vec4 quatInverse(const vec4 &q) {
     return vec4(-q.x, -q.y, -q.z, q.w);
 }
 
+// Z-axis Tait-Bryan yaw extracted from a unit quaternion. For a pure-Z
+// rotation `q = quatAxisAngle(vec3(0,0,1), y)` this returns `y` exactly
+// (round-trip identity). For a general SO(3) quaternion this returns
+// the Z-component of the rotation as defined by the standard
+// ZYX (yaw-pitch-roll) decomposition — the angle a pure-Z observer
+// would attribute to the orientation. Result lies in (-π, π].
+inline float quatExtractZAngle(const vec4 &q) {
+    const float numer = 2.0f * (q.w * q.z + q.x * q.y);
+    const float denom = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    return glm::atan(numer, denom);
+}
+
 /// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
 /// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
 /// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.

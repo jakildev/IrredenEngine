@@ -13,8 +13,13 @@ the ECS surface.
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
   ctor-allocated, `onDestroy()`-freed.
-- `C_CameraYaw` — continuous Z-yaw (radians), normalized to `[-π, π)`. See
-  `camera.hpp` for the cardinal/residual split API.
+- (camera rotation) — lives on the camera entity's auto-attached
+  `C_LocalTransform.rotation_` (full SO(3) quaternion; the camera entity
+  carries no special-case rotation component). See `camera.hpp` for the
+  driver API: `setRotationQuat`/`getRotationQuat` for full SO(3),
+  `setYaw`/`getYaw` for the backward-compat Z-yaw surface, and
+  `computeYawSplit`/`getRasterYaw`/`getResidualYaw` for the cardinal +
+  residual split used by GRID consumers.
 - `C_Sprite` / `C_SpriteSheet` / `C_SpriteAnimation` — 2D screen-composite
   sprite + atlas metadata + per-instance playback state. Sprites bypass the
   trixel pipeline and draw at the `FRAMEBUFFER_TO_SCREEN` stage;
