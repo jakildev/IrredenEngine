@@ -1504,6 +1504,47 @@ void GLTracer_glCopyTextureSubImage3D(GLuint texture, GLint level, GLint xoffset
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
+void GLTracer_glCopyImageSubData(GLuint srcName, GLenum srcTarget, GLint srcLevel, GLint srcX,
+                                  GLint srcY, GLint srcZ, GLuint dstName, GLenum dstTarget,
+                                  GLint dstLevel, GLint dstX, GLint dstY, GLint dstZ,
+                                  GLsizei srcWidth, GLsizei srcHeight, GLsizei srcDepth) {
+    IRE_GL_LOG_DEBUG("glCopyImageSubData({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                     srcName, E2S(srcTarget), srcLevel, srcX, srcY, srcZ, dstName, E2S(dstTarget),
+                     dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
+    apiHook.glCopyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ, dstName, dstTarget,
+                                dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDispatchCompute(GLuint num_groups_x, GLuint num_groups_y, GLuint num_groups_z) {
+    IRE_GL_LOG_DEBUG("glDispatchCompute({}, {}, {})", num_groups_x, num_groups_y, num_groups_z);
+    apiHook.glDispatchCompute(num_groups_x, num_groups_y, num_groups_z);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glDispatchComputeIndirect(GLintptr indirect) {
+    IRE_GL_LOG_DEBUG("glDispatchComputeIndirect({})", indirect);
+    apiHook.glDispatchComputeIndirect(indirect);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glMemoryBarrier(GLbitfield barriers) {
+    IRE_GL_LOG_DEBUG("glMemoryBarrier({})", (unsigned int)(barriers));
+    apiHook.glMemoryBarrier(barriers);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
+void GLTracer_glQueryCounter(GLuint id, GLenum target) {
+    IRE_GL_LOG_DEBUG("glQueryCounter({}, {})", id, E2S(target));
+    apiHook.glQueryCounter(id, target);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
 void GLTracer_glTextureParameterf(GLuint texture, GLenum pname, GLfloat param) {
     IRE_GL_LOG_DEBUG("glTextureParameterf({}, {}, {})", texture, E2S(pname), param);
     apiHook.glTextureParameterf(texture, pname, param);
@@ -1819,6 +1860,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glClearTexImage);
     INJECT(glColorMask);
     INJECT(glCompileShader);
+    INJECT(glCopyImageSubData);
     INJECT(glCompressedTexImage2D);
     INJECT(glCompressedTexImage3D);
     INJECT(glCompressedTextureSubImage1D);
@@ -1854,6 +1896,8 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glDisableVertexArrayAttrib);
     INJECT(glDisableVertexAttribArray);
     INJECT(glDisablei);
+    INJECT(glDispatchCompute);
+    INJECT(glDispatchComputeIndirect);
     INJECT(glDrawArrays);
     INJECT(glDrawArraysInstanced);
     INJECT(glDrawBuffers);
@@ -1924,6 +1968,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glIsProgram);
     INJECT(glIsShader);
     INJECT(glLinkProgram);
+    INJECT(glMemoryBarrier);
     INJECT(glMapNamedBuffer);
     INJECT(glMapNamedBufferRange);
     INJECT(glNamedBufferData);
@@ -1943,6 +1988,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glPolygonMode);
     INJECT(glProgramBinary);
     INJECT(glProgramParameteri);
+    INJECT(glQueryCounter);
     INJECT(glProgramUniform1f);
     INJECT(glProgramUniform1i);
     INJECT(glProgramUniform2fv);
@@ -2039,6 +2085,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glClearStencil);
     LOAD_GL_FUNC(glClearTexImage);
     LOAD_GL_FUNC(glColorMask);
+    LOAD_GL_FUNC(glCopyImageSubData);
     LOAD_GL_FUNC(glCompileShader);
     LOAD_GL_FUNC(glCompressedTexImage2D);
     LOAD_GL_FUNC(glCompressedTexImage3D);
@@ -2075,6 +2122,8 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glDisableVertexArrayAttrib);
     LOAD_GL_FUNC(glDisableVertexAttribArray);
     LOAD_GL_FUNC(glDisablei);
+    LOAD_GL_FUNC(glDispatchCompute);
+    LOAD_GL_FUNC(glDispatchComputeIndirect);
     LOAD_GL_FUNC(glDrawArrays);
     LOAD_GL_FUNC(glDrawArraysInstanced);
     LOAD_GL_FUNC(glDrawBuffers);
@@ -2146,6 +2195,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glIsProgram);
     LOAD_GL_FUNC(glIsShader);
     LOAD_GL_FUNC(glLinkProgram);
+    LOAD_GL_FUNC(glMemoryBarrier);
     LOAD_GL_FUNC(glMapNamedBuffer);
     LOAD_GL_FUNC(glMapNamedBufferRange);
     LOAD_GL_FUNC(glNamedBufferData);
@@ -2165,6 +2215,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glPolygonMode);
     LOAD_GL_FUNC(glProgramBinary);
     LOAD_GL_FUNC(glProgramParameteri);
+    LOAD_GL_FUNC(glQueryCounter);
     LOAD_GL_FUNC(glProgramUniform1f);
     LOAD_GL_FUNC(glProgramUniform1i);
     LOAD_GL_FUNC(glProgramUniform2fv);

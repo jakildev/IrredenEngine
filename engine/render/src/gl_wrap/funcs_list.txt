@@ -25,6 +25,7 @@ glCompressedTexImage2D
 glCompressedTexImage3D
 glCreateProgram
 glCreateShader
+glCopyImageSubData
 glCullFace
 glDeleteBuffers
 glDetachShader
@@ -38,6 +39,8 @@ glDepthFunc
 glDepthMask
 glDisable
 glDisablei
+glDispatchCompute
+glDispatchComputeIndirect
 glDisableVertexAttribArray
 glDrawArrays
 glDrawArraysInstanced
@@ -80,12 +83,14 @@ glGetUniformLocation
 glIsProgram
 glIsShader
 glLinkProgram
+glMemoryBarrier
 glPatchParameteri
 glPixelStorei
 glPolygonMode
 glScissor
 glProgramBinary
 glProgramParameteri
+glQueryCounter
 glReadBuffer
 glReadPixels
 glShaderSource
