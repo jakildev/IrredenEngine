@@ -125,7 +125,16 @@ itself needs regardless of which features a creation enables:
 - GPU resource CRUD (`RenderingResourceManager`).
 - Pipeline execution (frame loop, canvas dispatch, framebuffer flip).
 - Camera, viewport, subdivision mode — the pipeline reads these every frame.
-- Voxel pool allocation (the pool is a device-level concept).
+- Voxel pool allocation (the pool is a device-level concept). When the
+  allocation is a slice owned by a streaming chunk
+  (`IRWorld::ChunkResidencySlot::poolAllocation_`), any system that writes
+  voxels through the slice MUST call
+  `IRWorld::ChunkResidencyManager::markChunkDirty(key)` immediately after
+  the write — without it, eviction silently drops the save and the chunk
+  reverts on re-resident. See
+  [`engine/world/CLAUDE.md`](../world/CLAUDE.md#chunk-mutation-must-route-through-markchunkdirty).
+  Single-chunk creations never see a residency manager and the rule does
+  not apply.
 
 Feature state — anything a creation opts into — belongs in
 `engine/prefabs/irreden/render/`. If the renderer can ship without the feature

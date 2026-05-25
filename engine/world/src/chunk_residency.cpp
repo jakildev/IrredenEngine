@@ -124,8 +124,8 @@ void ChunkResidencyManager::requestResident(
         }
     }
     s.state_ = ChunkResidencyState::RESIDENT;
-    // dirty_ stays false — disk and memory agree after a fresh load /
-    // alloc. Mutators are responsible for flipping it.
+    // m_dirty stays false — disk and memory agree after a fresh load /
+    // alloc. Mutators are responsible for routing through markChunkDirty.
 }
 
 void ChunkResidencyManager::requestEvict(IRPrefab::Chunk::ChunkKey key) {
@@ -135,7 +135,7 @@ void ChunkResidencyManager::requestEvict(IRPrefab::Chunk::ChunkKey key) {
     }
 
     ChunkResidencySlot &s = it->second;
-    if (s.dirty_ && m_config.persistence_ && !s.poolAllocation_.voxels_.empty()) {
+    if (s.m_dirty && m_config.persistence_ && !s.poolAllocation_.voxels_.empty()) {
         // Synchronous save before erase — the "snapshot-at-schedule-time"
         // safety the design calls for is implicit here because we save
         // and erase in the same blocking call; nothing can mutate the
@@ -164,13 +164,13 @@ void ChunkResidencyManager::flushPendingSaves() {
     }
     for (auto &kv : m_slots) {
         ChunkResidencySlot &s = kv.second;
-        if (!s.dirty_ || s.poolAllocation_.voxels_.empty()) {
+        if (!s.m_dirty || s.poolAllocation_.voxels_.empty()) {
             continue;
         }
         auto records = poolSliceToRecords(s.poolAllocation_);
         auto status = m_config.persistence_->saveChunk(kv.first, records);
         if (status.ok()) {
-            s.dirty_ = false;
+            s.m_dirty = false;
         } else {
             IRE_LOG_ERROR(
                 "ChunkResidencyManager::flushPendingSaves: save failed for chunk (code={}): {}",
@@ -181,6 +181,14 @@ void ChunkResidencyManager::flushPendingSaves() {
     }
 }
 
+void ChunkResidencyManager::markChunkDirty(IRPrefab::Chunk::ChunkKey key) {
+    auto it = m_slots.find(key);
+    if (it == m_slots.end()) {
+        return;
+    }
+    it->second.m_dirty = true;
+}
+
 void ChunkResidencyManager::attachEntity(IREntity::EntityId id, IRPrefab::Chunk::ChunkKey key) {
     auto it = m_slots.find(key);
     if (it == m_slots.end()) {
@@ -189,7 +197,7 @@ void ChunkResidencyManager::attachEntity(IREntity::EntityId id, IRPrefab::Chunk:
     auto &owned = it->second.ownedEntities_;
     if (std::find(owned.begin(), owned.end(), id) == owned.end()) {
         owned.push_back(id);
-        it->second.dirty_ = true;
+        markChunkDirty(key);
     }
 }
 
@@ -205,7 +213,7 @@ void ChunkResidencyManager::migrateEntity(
         auto newEnd = std::remove(owned.begin(), owned.end(), id);
         if (newEnd != owned.end()) {
             owned.erase(newEnd, owned.end());
-            src->second.dirty_ = true;
+            markChunkDirty(oldKey);
         }
     }
 
