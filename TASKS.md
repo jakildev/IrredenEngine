@@ -207,11 +207,11 @@ Avoid:
   - **Notes:** C8 — final task in Epic C rotation series (C1–C7 all done). Extend C_ShapeDescriptor to carry mat3 localRotation sourced from C_LocalTransform; c_shapes_to_trixel.glsl rotates world-space SDF query point by inverse before evaluation. Parent epic #936. Blockers C4 (#956) and D2 (#960) both closed.
   - **Links:**
 
-- [ ] **render: SHAPES authoring deprecation migration plan (D3)** — document migration steps for each SHAPES-authored asset and update editor scaffold per D2 SDF restriction decision
+- [~] **render: SHAPES authoring deprecation migration plan (D3)** — document migration steps for each SHAPES-authored asset and update editor scaffold per D2 SDF restriction decision
   - **ID:** T-354
   - **Area:** engine/render, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) Each SHAPES-authored asset identified in D1 either migrated to DENSE or explicitly retained as effects-only; (2) editor scaffold updated to remove SDF-primitive authoring UI; (3) documentation reflects the restricted state
   - **Issue:** #961
