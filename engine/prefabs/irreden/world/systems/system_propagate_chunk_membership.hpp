@@ -38,6 +38,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/components/component_chunk_membership.hpp>
@@ -68,14 +69,20 @@ template <> struct System<PROPAGATE_CHUNK_MEMBERSHIP> {
     /// even without a residency map.
     IRWorld::ChunkResidencyManager *manager_ = nullptr;
 
-    /// Reserved once; cleared (not deallocated) per `endTick` per the
-    /// "Allocations in hot tick paths" rule. Initial capacity is a soft
-    /// guess at the steady-state per-frame migration count; the vector
-    /// grows organically in mass-projectile scenes (Topic 5 of
-    /// docs/design/world-streaming.md).
+    /// Grows to capacity on first use and stays at the high-water mark
+    /// thereafter; cleared (not deallocated) in `beginTick` per the
+    /// "Allocations in hot tick paths" rule. Steady-state per-frame
+    /// migration count is small (Topic 5 of
+    /// docs/design/world-streaming.md), so the initial 64-record reserve
+    /// covers typical scenes without a first-frame realloc; mass-
+    /// projectile scenes grow the vector organically beyond that.
     std::vector<MigrationRecord> migrations_{};
+    static constexpr std::size_t kInitialMigrationsCapacity = 64;
 
     void beginTick() {
+        if (migrations_.capacity() == 0) {
+            migrations_.reserve(kInitialMigrationsCapacity);
+        }
         migrations_.clear();
     }
 
@@ -136,9 +143,15 @@ inline void setMembershipMigrationManager(
 ) {
     auto *params = IRSystem::getSystemParams<
         IRSystem::System<IRSystem::PROPAGATE_CHUNK_MEMBERSHIP>>(systemId);
-    if (params) {
-        params->manager_ = manager;
+    if (!params) {
+        IR_LOG_WARN(
+            "setMembershipMigrationManager: PROPAGATE_CHUNK_MEMBERSHIP "
+            "system not registered (call System<PROPAGATE_CHUNK_MEMBERSHIP>"
+            "::create() first); manager pointer not wired."
+        );
+        return;
     }
+    params->manager_ = manager;
 }
 
 } // namespace IRPrefab::Chunk
