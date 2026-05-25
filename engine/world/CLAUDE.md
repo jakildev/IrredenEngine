@@ -26,10 +26,34 @@ the signed chunk coord (e.g. `+00003_-00007_+00011.vxs`). When wired
 on `ChunkResidencyManager::Config::persistence_`, the manager loads
 the chunk slice from disk on first `requestResident` and saves dirty
 chunks on `requestEvict`. `flushPendingSaves()` is the editor's
-save-all hook. Synchronous in v1; E2/E3 lift the same calls into the
-residency worker pool without changing the surface. Entity-level
-state (components beyond the chunk's voxel pool) belongs to the
-parallel world-snapshot path (#199), not this layer.
+save-all hook. Synchronous in v1; E3 lifts the same calls into an
+async worker pool without changing the surface. Entity-level state
+(components beyond the chunk's voxel pool) belongs to the parallel
+world-snapshot path (#199), not this layer.
+
+### Eviction policy (E2)
+
+`ChunkResidencyManager::beginFrame(vec3 cameraWorldVoxel)` recomputes
+`distanceVoxels_` for every slot and marks slots beyond
+`R_prefetch + R_hysteresis` as `EVICTING`. `endFrame()` processes
+`EVICTING` slots (saves dirty ones via persistence, deallocates pool
+slices via the `PoolDeallocator` callback, erases the slot) then
+enforces the budget cap — evicting furthest-from-camera slots with
+LRU tie-breaking until `residentChunkCount() <= maxResidentChunks_`.
+
+Config knobs on `ChunkResidencyManager::Config`:
+- `maxResidentChunks_` (default 256)
+- `viewRadiusVoxels_` (default 128.0f — matches the light-volume window)
+- `prefetchRadiusVoxels_` (default 256.0f)
+- `hysteresisVoxels_` (default 32.0f = one chunk edge — prevents thrashing)
+
+`PoolDeallocator` is the deallocation counterpart to `PoolAllocator`:
+production wires it to return the pool slice to `C_VoxelPool`'s
+free-list via `deallocateVoxels(startIndex, size)`. The E1 skeleton
+leaked allocations on evict; E2 closes that path.
+
+`FrameStats` (via `frameStats()`) reports `evictedThisFrame_`,
+`loadedThisFrame_`, and `residentCount_` for HUD display and profiling.
 
 ### Chunk mutation must route through `markChunkDirty`
 

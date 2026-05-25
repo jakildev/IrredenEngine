@@ -167,12 +167,13 @@ TEST(ChunkResidencyManagerTest, MigrateEntitySameKeyIsNoop) {
 TEST(ChunkResidencyManagerTest, BeginFrameAdvancesTouchFrame) {
     ChunkResidencyManager mgr;
     auto k = pack(IRMath::ivec3{0, 0, 0});
+    IRMath::vec3 cam{16.0f, 16.0f, 16.0f};
 
-    mgr.beginFrame();
+    mgr.beginFrame(cam);
     mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
     auto firstTouched = mgr.slot(k)->lastTouchedFrame_;
 
-    mgr.beginFrame();
+    mgr.beginFrame(cam);
     mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
     auto secondTouched = mgr.slot(k)->lastTouchedFrame_;
 
@@ -222,6 +223,328 @@ TEST(ChunkResidencyManagerTest, NoAllocatorMeansEmptyAllocationButStillResident)
     EXPECT_EQ(s->state_, ChunkResidencyState::RESIDENT);
     EXPECT_EQ(s->poolAllocation_.startIndex_, 0u);
     EXPECT_TRUE(s->poolAllocation_.voxels_.empty());
+}
+
+// ── E2: eviction policy tests ───────────────────────────────────────
+
+ChunkResidencyManager::Config makeBudgetConfig(unsigned int maxChunks) {
+    ChunkResidencyManager::Config cfg;
+    cfg.maxResidentChunks_ = maxChunks;
+    cfg.viewRadiusVoxels_ = 128.0f;
+    cfg.prefetchRadiusVoxels_ = 256.0f;
+    cfg.hysteresisVoxels_ = 32.0f;
+    return cfg;
+}
+
+TEST(ChunkResidencyEviction, DistanceBasedEvictionMarksEvictingBeyondThreshold) {
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto near = pack(IRMath::ivec3{0, 0, 0});
+    auto far = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(near, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(far, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+
+    const auto *nearSlot = mgr.slot(near);
+    const auto *farSlot = mgr.slot(far);
+    ASSERT_NE(nearSlot, nullptr);
+    ASSERT_NE(farSlot, nullptr);
+    EXPECT_EQ(nearSlot->state_, ChunkResidencyState::RESIDENT);
+    EXPECT_EQ(farSlot->state_, ChunkResidencyState::EVICTING);
+}
+
+TEST(ChunkResidencyEviction, EndFrameProcessesEvictingSlots) {
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto near = pack(IRMath::ivec3{0, 0, 0});
+    auto far = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(near, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(far, RequestPriority::VISIBLE_RENDER);
+    EXPECT_EQ(mgr.residentChunkCount(), 2u);
+
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+    mgr.endFrame();
+
+    EXPECT_TRUE(mgr.isResident(near));
+    EXPECT_FALSE(mgr.isResident(far));
+    EXPECT_EQ(mgr.residentChunkCount(), 1u);
+    EXPECT_EQ(mgr.frameStats().evictedThisFrame_, 1u);
+}
+
+TEST(ChunkResidencyEviction, BudgetCapEvictsFurthestFirst) {
+    auto cfg = makeBudgetConfig(2);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto c0 = pack(IRMath::ivec3{0, 0, 0});
+    auto c1 = pack(IRMath::ivec3{1, 0, 0});
+    auto c2 = pack(IRMath::ivec3{2, 0, 0});
+    auto c3 = pack(IRMath::ivec3{3, 0, 0});
+    mgr.requestResident(c0, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(c1, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(c2, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(c3, RequestPriority::VISIBLE_RENDER);
+    EXPECT_EQ(mgr.residentChunkCount(), 4u);
+
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+    mgr.endFrame();
+
+    EXPECT_EQ(mgr.residentChunkCount(), 2u);
+    EXPECT_TRUE(mgr.isResident(c0));
+    EXPECT_TRUE(mgr.isResident(c1));
+    EXPECT_FALSE(mgr.isResident(c2));
+    EXPECT_FALSE(mgr.isResident(c3));
+}
+
+TEST(ChunkResidencyEviction, LRUTieBreakingEvictsOldestTouchedFirst) {
+    auto cfg = makeBudgetConfig(2);
+    // Small view radius so beginFrame doesn't bump lastTouchedFrame_
+    // on any of the test chunks (all at ~177 voxels from camera).
+    cfg.viewRadiusVoxels_ = 10.0f;
+    cfg.prefetchRadiusVoxels_ = 20000.0f;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    // Three chunks equidistant from the origin: symmetric along x/y/z
+    // axes. Each center is at (176,16,16) / (16,176,16) / (16,16,176),
+    // all at sqrt(176²+16²+16²) ≈ 177.4 from (0,0,0).
+    auto c0 = pack(IRMath::ivec3{5, 0, 0});
+    auto c1 = pack(IRMath::ivec3{0, 5, 0});
+    auto c2 = pack(IRMath::ivec3{0, 0, 5});
+
+    IRMath::vec3 cam{0.0f, 0.0f, 0.0f};
+    mgr.beginFrame(cam);
+    mgr.requestResident(c0, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(cam);
+    mgr.requestResident(c1, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(cam);
+    mgr.requestResident(c2, RequestPriority::VISIBLE_RENDER);
+
+    mgr.endFrame();
+
+    EXPECT_EQ(mgr.residentChunkCount(), 2u);
+    EXPECT_FALSE(mgr.isResident(c0)) << "c0 should be evicted (oldest lastTouchedFrame_)";
+    EXPECT_TRUE(mgr.isResident(c1));
+    EXPECT_TRUE(mgr.isResident(c2));
+}
+
+TEST(ChunkResidencyEviction, HysteresisPreventsThrashing) {
+    auto cfg = makeBudgetConfig(256);
+    cfg.viewRadiusVoxels_ = 128.0f;
+    cfg.prefetchRadiusVoxels_ = 256.0f;
+    cfg.hysteresisVoxels_ = 32.0f;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{8, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+
+    float chunkCenterX = 8.0f * 32.0f + 16.0f;
+    float justInsideEvictBoundary = chunkCenterX - 256.0f - 31.0f;
+    mgr.beginFrame(IRMath::vec3{justInsideEvictBoundary, 16.0f, 16.0f});
+
+    const auto *s = mgr.slot(k);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->state_, ChunkResidencyState::RESIDENT)
+        << "Chunk inside R_prefetch + R_hysteresis should NOT be marked EVICTING";
+}
+
+TEST(ChunkResidencyEviction, DeallocatorCalledOnEviction) {
+    int deallocCount = 0;
+    auto cfg = makeBudgetConfig(256);
+    cfg.poolAllocator_ = [](unsigned int) {
+        IRRender::VoxelPoolAllocation alloc{};
+        static std::vector<IRComponents::C_Voxel> storage(32);
+        alloc.voxels_ = std::span<IRComponents::C_Voxel>{storage};
+        alloc.startIndex_ = 1;
+        return alloc;
+    };
+    cfg.poolDeallocator_ = [&](const IRRender::VoxelPoolAllocation &alloc) {
+        ++deallocCount;
+        EXPECT_FALSE(alloc.voxels_.empty());
+    };
+    cfg.voxelsPerChunk_ = 32;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+    EXPECT_TRUE(mgr.isResident(k));
+
+    mgr.beginFrame(IRMath::vec3{0.0f, 0.0f, 0.0f});
+    mgr.endFrame();
+
+    EXPECT_EQ(deallocCount, 1)
+        << "Pool deallocator should be called once when evicting a chunk with a pool allocation";
+}
+
+TEST(ChunkResidencyEviction, DeallocatorNotCalledForEmptyAllocation) {
+    int deallocCount = 0;
+    auto cfg = makeBudgetConfig(256);
+    cfg.poolDeallocator_ = [&](const IRRender::VoxelPoolAllocation &) { ++deallocCount; };
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{0.0f, 0.0f, 0.0f});
+    mgr.endFrame();
+
+    EXPECT_EQ(deallocCount, 0)
+        << "Pool deallocator should not be called when the allocation is empty";
+}
+
+TEST(ChunkResidencyEviction, FrameStatsReportCorrectCounts) {
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto near = pack(IRMath::ivec3{0, 0, 0});
+    auto far = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(near, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(far, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+    mgr.endFrame();
+
+    EXPECT_EQ(mgr.frameStats().loadedThisFrame_, 0u);
+    EXPECT_EQ(mgr.frameStats().evictedThisFrame_, 1u);
+    EXPECT_EQ(mgr.frameStats().residentCount_, 1u);
+}
+
+TEST(ChunkResidencyEviction, CameraMovementTriggersEvictionCycle) {
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto c0 = pack(IRMath::ivec3{0, 0, 0});
+    auto c1 = pack(IRMath::ivec3{20, 0, 0});
+    mgr.requestResident(c0, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(c1, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(c0));
+    EXPECT_FALSE(mgr.isResident(c1)) << "c1 is far from camera at origin, should be evicted";
+
+    mgr.requestResident(c1, RequestPriority::VISIBLE_RENDER);
+    float c1CenterX = 20.0f * 32.0f + 16.0f;
+    mgr.beginFrame(IRMath::vec3{c1CenterX, 16.0f, 16.0f});
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(c1)) << "c1 should remain resident when camera moves near it";
+    EXPECT_FALSE(mgr.isResident(c0)) << "c0 is now far from camera, should be evicted";
+}
+
+TEST(ChunkResidencyEviction, ViewRadiusSlotsTouched) {
+    auto cfg = makeBudgetConfig(256);
+    cfg.viewRadiusVoxels_ = 128.0f;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{0, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+    auto touchedFrame = mgr.slot(k)->lastTouchedFrame_;
+    EXPECT_GT(touchedFrame, 0u) << "Chunk within view radius should have its touch frame updated";
+}
+
+TEST(ChunkResidencyEviction, RequestResidentOnEvictingSlotRescuesToResident) {
+    // Verifies Site-1 fix: requestResident called on an EVICTING slot must
+    // clear the EVICTING state so endFrame does NOT erase it.
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{0.0f, 0.0f, 0.0f});
+    ASSERT_EQ(mgr.slot(k)->state_, ChunkResidencyState::EVICTING)
+        << "precondition: chunk must be marked EVICTING before the rescue call";
+
+    mgr.requestResident(k, RequestPriority::FORCED);
+    EXPECT_EQ(mgr.slot(k)->state_, ChunkResidencyState::RESIDENT)
+        << "requestResident on EVICTING slot must rescue it to RESIDENT";
+
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(k)) << "rescued slot must survive the next endFrame";
+    EXPECT_EQ(mgr.frameStats().evictedThisFrame_, 0u);
+}
+
+TEST(ChunkResidencyEviction, MigrateEntityToEvictingDestinationRescuesSlot) {
+    // Verifies Site-1 + Site-2 fix together: migrateEntity to an EVICTING
+    // destination must rescue that slot so the entity appears after endFrame.
+    // This test is the one Opus identified as proving the incomplete-fix gap
+    // is closed — it fails if only the requestResident rescue is patched but
+    // the migrateEntity guard is not changed to !isResident().
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto src = pack(IRMath::ivec3{0, 0, 0});
+    auto dst = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(src, RequestPriority::VISIBLE_RENDER);
+    mgr.requestResident(dst, RequestPriority::VISIBLE_RENDER);
+    mgr.attachEntity(77, src);
+
+    // Move camera near src, leaving dst far → dst becomes EVICTING.
+    mgr.beginFrame(IRMath::vec3{16.0f, 16.0f, 16.0f});
+    ASSERT_EQ(mgr.slot(dst)->state_, ChunkResidencyState::EVICTING)
+        << "precondition: dst must be EVICTING before the migration";
+
+    // Migrate entity to the EVICTING destination — must rescue dst.
+    mgr.migrateEntity(77, src, dst);
+
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(dst)) << "migrateEntity must have rescued the EVICTING dst slot";
+    const auto *dstSlot = mgr.slot(dst);
+    ASSERT_NE(dstSlot, nullptr);
+    ASSERT_EQ(dstSlot->ownedEntities_.size(), 1u)
+        << "entity must appear in dst slot after endFrame";
+    EXPECT_EQ(dstSlot->ownedEntities_[0], IREntity::EntityId{77});
+}
+
+TEST(ChunkResidencyEviction, AttachEntityToEvictingSlotRescuesSlot) {
+    // Verifies Site-3 fix: attachEntity on an EVICTING slot rescues it so
+    // the entity is not silently lost when endFrame processes evictions.
+    auto cfg = makeBudgetConfig(256);
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{100, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+
+    mgr.beginFrame(IRMath::vec3{0.0f, 0.0f, 0.0f});
+    ASSERT_EQ(mgr.slot(k)->state_, ChunkResidencyState::EVICTING)
+        << "precondition: slot must be EVICTING before the attach call";
+
+    mgr.attachEntity(88, k);
+    EXPECT_EQ(mgr.slot(k)->state_, ChunkResidencyState::RESIDENT)
+        << "attachEntity on EVICTING slot must rescue it to RESIDENT";
+
+    mgr.endFrame();
+    EXPECT_TRUE(mgr.isResident(k)) << "rescued slot must survive endFrame";
+    const auto *s = mgr.slot(k);
+    ASSERT_NE(s, nullptr);
+    ASSERT_EQ(s->ownedEntities_.size(), 1u);
+    EXPECT_EQ(s->ownedEntities_[0], IREntity::EntityId{88});
+}
+
+TEST(ChunkResidencyEviction, RequestEvictCallsDeallocator) {
+    int deallocCount = 0;
+    auto cfg = makeBudgetConfig(256);
+    cfg.poolAllocator_ = [](unsigned int) {
+        IRRender::VoxelPoolAllocation alloc{};
+        static std::vector<IRComponents::C_Voxel> storage(32);
+        alloc.voxels_ = std::span<IRComponents::C_Voxel>{storage};
+        alloc.startIndex_ = 1;
+        return alloc;
+    };
+    cfg.poolDeallocator_ = [&](const IRRender::VoxelPoolAllocation &) { ++deallocCount; };
+    cfg.voxelsPerChunk_ = 32;
+    ChunkResidencyManager mgr{std::move(cfg)};
+
+    auto k = pack(IRMath::ivec3{0, 0, 0});
+    mgr.requestResident(k, RequestPriority::VISIBLE_RENDER);
+    mgr.requestEvict(k);
+
+    EXPECT_EQ(deallocCount, 1);
 }
 
 } // namespace

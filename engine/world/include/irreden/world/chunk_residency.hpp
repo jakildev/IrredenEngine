@@ -7,17 +7,18 @@
 // docs/design/world-streaming.md §"Topic 2 — Residency manager API".
 //
 // E1 added the data model + synchronous request/evict + entity ownership +
-// per-chunk voxel sub-pool from an injected allocator. E6 (this slice)
-// adds optional disk persistence — when a `ChunkDiskPersistence` pointer
-// is wired in Config, `requestResident` first attempts to load the chunk
-// from disk and seed the pool slice, and `requestEvict` saves dirty
-// chunks before dropping the slot. Async upload pipeline, eviction
-// policy, and the residency worker pool are still deferred to E2/E3.
+// per-chunk voxel sub-pool from an injected allocator. E6 added optional
+// disk persistence. E2 (this slice) adds the camera-driven eviction
+// policy: distance-based bucketing with LRU tie-breaking, a budget cap
+// on max resident chunks, pool deallocation on eviction, and the
+// per-frame beginFrame/endFrame lifecycle that drives the eviction cycle.
+// The async upload pipeline and worker threads are deferred to E3.
 //
 // Single-chunk creations stay zero-overhead — the manager is only
 // constructed when a creation opts into streaming.
 
 #include <irreden/entity/ir_entity_types.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/render/voxel_pool_allocation.hpp>
 #include <irreden/world/chunk_coord.hpp>
 
@@ -51,20 +52,15 @@ enum class ChunkResidencyState : std::uint8_t {
 
 /// Per-chunk residency record. Tracks the chunk's voxel sub-pool, the
 /// entities owned by the chunk, and the bookkeeping the eviction policy
-/// will read in E2+.
+/// reads each frame.
 struct ChunkResidencySlot {
     IRPrefab::Chunk::ChunkKey key_ = 0;
     ChunkResidencyState state_ = ChunkResidencyState::LOADING;
 
-    // Voxel sub-pool slice for this chunk. Empty span when the manager
-    // has no pool allocator wired (tests, headless smoke).
     IRRender::VoxelPoolAllocation poolAllocation_{};
 
-    // Entities the chunk owns. Append on attach/migrate-in; erase on
-    // detach/migrate-out. Ordering is not load-bearing.
     std::vector<IREntity::EntityId> ownedEntities_{};
 
-    // For E2 eviction policy.
     float distanceVoxels_ = 0.0f;
     std::uint64_t lastTouchedFrame_ = 0;
 
@@ -89,34 +85,35 @@ struct ChunkResidencySlot {
 /// never see this class.
 class ChunkResidencyManager {
   public:
-    /// Allocator callback that draws a voxel sub-pool slice from the
-    /// global pool. Production wires this to IRRender::allocateVoxels;
-    /// tests can stub it to keep the manager testable without a real
-    /// RenderManager / GPU context.
     using PoolAllocator = std::function<IRRender::VoxelPoolAllocation(unsigned int)>;
+    using PoolDeallocator = std::function<void(const IRRender::VoxelPoolAllocation &)>;
 
     struct Config {
-        /// Optional allocator. When unset, slots receive an empty
-        /// allocation (skeleton/test mode).
         PoolAllocator poolAllocator_{};
+        PoolDeallocator poolDeallocator_{};
 
-        /// Voxel count requested from the allocator per resident chunk.
-        /// 0 → skip allocation even when an allocator is wired. Sized
-        /// from the disk record in the eventual streaming path; the
-        /// E1 skeleton uses one number for every chunk.
         unsigned int voxelsPerChunk_ = 0;
 
-        /// Optional disk-persistence sink. When set:
-        /// - `requestResident` first tries `persistence_->loadChunk(key)`
-        ///   and, if the file exists and the record count matches the
-        ///   pool slice, seeds the slice from disk. Missing files leave
-        ///   the slice in its default-allocated state (fresh chunk).
-        /// - `requestEvict` saves dirty chunks before dropping the slot,
-        ///   matching the design's "snapshot-at-schedule-time" rule
-        ///   (today's synchronous path makes the snapshot implicit —
-        ///   we save then erase in the same call).
-        /// Caller owns the persistence object; the manager only borrows.
         ChunkDiskPersistence *persistence_ = nullptr;
+
+        /// Budget: max chunks that may be RESIDENT simultaneously.
+        /// When the set exceeds this cap, endFrame evicts the
+        /// furthest + oldest-LRU slots until back in budget.
+        unsigned int maxResidentChunks_ = 256;
+
+        /// R_view: chunks within this radius (in voxels from camera)
+        /// must be RESIDENT or UPLOADING. Default matches the
+        /// light-volume window (128 voxels = 4 chunks at kChunkEdge=32).
+        float viewRadiusVoxels_ = 128.0f;
+
+        /// R_prefetch: chunks within this radius are eligible for
+        /// loading if budget permits.
+        float prefetchRadiusVoxels_ = 256.0f;
+
+        /// Hysteresis margin (in voxels) to prevent thrashing at the
+        /// eviction boundary. A chunk must exceed
+        /// R_prefetch + hysteresisVoxels_ to be marked EVICTING.
+        float hysteresisVoxels_ = 32.0f;
     };
 
     ChunkResidencyManager() = default;
@@ -128,11 +125,17 @@ class ChunkResidencyManager {
     ChunkResidencyManager(ChunkResidencyManager &&) = default;
     ChunkResidencyManager &operator=(ChunkResidencyManager &&) = default;
 
-    // ── Frame hooks (stubs in E1; populated by E2/E3) ────────────────
+    // ── Frame hooks ────────────────────────────────────────────────────
 
-    void beginFrame();
+    /// Recompute per-slot distances from the camera, bump touch frames
+    /// for slots within R_view, and mark far slots EVICTING.
+    void beginFrame(IRMath::vec3 cameraWorldVoxel);
+
     void tickPrefetch();
     void flushUploads(int maxBytes);
+
+    /// Process evictions: save dirty EVICTING slots, deallocate pool
+    /// slices, and enforce the budget cap.
     void endFrame();
 
     // ── Synchronous slot API ─────────────────────────────────────────
@@ -157,12 +160,9 @@ class ChunkResidencyManager {
     /// slot just bumps lastTouchedFrame_.
     void requestResident(IRPrefab::Chunk::ChunkKey key, RequestPriority priority);
 
-    /// Drop the chunk from the resident set. When `Config::persistence_`
-    /// is wired and the slot's dirty bit is set, the chunk is saved
-    /// to disk before erasure. Pool allocation is currently leaked back
-    /// to the global pool's free-list when the allocator supports it
-    /// (today's RenderManager pool is bump-style — see
-    /// engine/render/CLAUDE.md). E2 introduces the dealloc path.
+    /// Drop the chunk from the resident set. Saves dirty chunks via
+    /// persistence (if wired), calls PoolDeallocator to return the
+    /// pool slice, and erases the slot.
     void requestEvict(IRPrefab::Chunk::ChunkKey key);
 
     /// Force-save every resident slot whose dirty bit is set
@@ -215,6 +215,15 @@ class ChunkResidencyManager {
     std::size_t residentChunkCount() const;
     std::size_t entityCount() const;
 
+    struct FrameStats {
+        unsigned int evictedThisFrame_ = 0;
+        unsigned int loadedThisFrame_ = 0;
+        unsigned int residentCount_ = 0;
+    };
+    const FrameStats &frameStats() const {
+        return m_frameStats;
+    }
+
     /// Iterate every resident slot. Visit order is unordered_map's;
     /// callers must not rely on it.
     template <typename Fn> void forEachChunk(Fn &&fn) const {
@@ -225,9 +234,13 @@ class ChunkResidencyManager {
     }
 
   private:
+    void evictSlot(std::unordered_map<IRPrefab::Chunk::ChunkKey, ChunkResidencySlot>::iterator it);
+
     Config m_config{};
     std::unordered_map<IRPrefab::Chunk::ChunkKey, ChunkResidencySlot> m_slots{};
     std::uint64_t m_frameIndex = 0;
+    IRMath::vec3 m_cameraWorldVoxel{0.0f};
+    FrameStats m_frameStats{};
 };
 
 } // namespace IRWorld
