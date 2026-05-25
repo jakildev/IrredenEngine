@@ -253,11 +253,11 @@ Avoid:
   - **Notes:** E3 in Epic E (#938). Stack position 4: E2→**E3**→E4. Blocked by E2 (T-356).
   - **Links:**
 
-- [ ] **world: one-frame upload budget + low-LOD fallback (E4)** — cap per-frame upload bandwidth; render off-budget chunks at low-LOD for one frame with fade-in detail
+- [~] **world: one-frame upload budget + low-LOD fallback (E4)** — cap per-frame upload bandwidth; render off-budget chunks at low-LOD for one frame with fade-in detail
   - **ID:** T-358
   - **Area:** engine/world, engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-358-one-frame-upload-budget
   - **Blocked by:** T-357
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Camera warp to 50-chunk region: first frame renders complete (some at low-LOD); (2) 2-3 frames upgrade to full detail; (3) no stutter > 1 frame; (4) fleet-build clean on linux-debug and macos-debug
@@ -286,17 +286,6 @@ Avoid:
   - **Acceptance:** (1) ChunkResidencyManager::markChunkDirty() API added as only supported mutation path, documented in engine/world/CLAUDE.md; (2) 2-level directory split in chunkPath() (e.g. chunks/<x_div_64>/<y_div_64>/...); (3) one end-to-end consumer wired (voxel editor or IRChunkStreamingSmoke demo), round-trip confirmed on linux-debug and macos-debug; (4) ChunkDiskPersistence optionally renamed ChunkVoxelDiskPersistence
   - **Issue:** #1008
   - **Notes:** 4 sub-items from T-298 review: (1)[opus] markDirty API — load-bearing, no creation should use Config::persistence_ until lands; (2)[sonnet] 2-level dir split before any real saves to avoid back-compat burden; (3)[sonnet] in-engine consumer verification; (4)[sonnet] optional rename. Should land before E2/E3 (T-356/T-357). Stacks on T-298 (merged).
-  - **Links:**
-
-- [~] **engine: retire GLOBAL_POSITION_3D system + C_PositionGlobal3D readers (T-301b)** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform
-  - **ID:** T-361
-  - **Area:** engine/prefabs/irreden/update, creations
-  - **Model:** opus
-  - **Owner:** opus-worker-2
-  - **Blocked by:** (none)
-  - **Acceptance:** GLOBAL_POSITION_3D system fully removed; engine + all 9 affected creations (default, shape_debug, perf_grid, z_yaw_rotation×2, lighting_demo_scene, lua_perf_grid, lua_pipeline_demo, voxel_editor, modifier_demo) build clean; voxel_editor gizmos move/pick/position correctly; IrredenEngineTest passes (incl. updated lua_pipeline_register_test); default-demo idle-bob verified (reconnect in T-301a, this task verifies); no visual regression in voxel_editor + affected demo
-  - **Issue:** #1055
-  - **Notes:** T-301b. Stacks on T-301a (#1054, closed/done). Scope: delete system file, remove SystemName enum slot (ir_system_types.hpp ~L55), remove Lua binding (lua_pipeline_bindings.hpp ~L107), strip 11 GLOBAL_POSITION_3D pipeline registrations, migrate HITBOX_MOUSE_TEST + VOXEL_SCENE off C_PositionGlobal3D, migrate voxel_editor gizmos (~lines 2094-2109 + fill-tool ghost). idle-bob wiring is in T-301a; this task verifies it still works after GLOBAL_POSITION_3D removal. Grep whole tree for GLOBAL_POSITION_3D before declaring done. Per #1041: architect chose option 2 (dormant reg documented for T-300→T-301 window).
   - **Links:**
 
 - [ ] **system: pipeline groups + cross-system access validation (T-224, Phase 3)** — add IRSystem::registerPipelineGroups() API and cross-system conflict validator; migrate engine UPDATE pipeline to groups
@@ -377,4 +366,4 @@ Avoid:
 - [x] **T-328** — system: complete T-222 POC ports + SystemAccess tag-shadow fix · Owner: claude/T-328-system-poc-ports-systemaccess-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1112
 - [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
 - [x] **T-331** — docs: acquire-late, release-early lock rule in worker-role docs · Owner: claude/T-331-acquire-late-release-early-docs · PR: https://github.com/jakildev/IrredenEngine/pull/1113
-- [x] **T-329** — tools: ir-build / ir-run wrappers with ir-acquire wiring · Owner: claude/T-329-ir-build-run · PR: https://github.com/jakildev/IrredenEngine/pull/1111
+- [x] **T-361** — delete system_update_positions_global.hpp and strip 11 pipeline registrations across 9 creations; migrate voxel_editor gizmos to C_WorldTransform · Owner: (auto-reaped) · PR: https://github.com/jakildev/IrredenEngine/issues/1055
