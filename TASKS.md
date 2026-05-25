@@ -174,17 +174,6 @@ Avoid:
   - **Notes:** Crash at `GLTracer_glBindImageTexture` with GL_INVALID_VALUE after initial zoom=16 applied on WSL2/Ubuntu/Mesa 25.2.8 d3d12. Suspected: texture resize/format mismatch when canvas grows — possible GL_MAX_3D_TEXTURE_SIZE (2048 on Mesa) or internalformat mismatch. Zoom=1..8 work; only zoom=16 (`zoom16_lod_all_visible` shot) crashes. Needs GL_KHR_debug callback to isolate failing bindImage() call site.
   - **Links:**
 
-- [~] **render: SHAPES authoring deprecation migration plan (D3)** — document migration steps for each SHAPES-authored asset and update editor scaffold per D2 SDF restriction decision
-  - **ID:** T-354
-  - **Area:** engine/render, docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-354-shapes-deprecation-migration-plan
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Each SHAPES-authored asset identified in D1 either migrated to DENSE or explicitly retained as effects-only; (2) editor scaffold updated to remove SDF-primitive authoring UI; (3) documentation reflects the restricted state
-  - **Issue:** #961
-  - **Notes:** D3 in Epic D (SDF runtime restriction, #937). D1 (audit, #945) and D2 (decision, #960) both closed/done. Minimal authoring use per D1 means likely trivial removal. Blocked by D2 — now unblocked.
-  - **Links:**
-
 - [~] **render: T-189 / T-190 disposition under SDF restriction (D4)** — re-scope or close T-189 (DENSE/HYBRID Prefab.spawn wiring) and T-190 (SDF silhouette investigation) per D2 outcome
   - **ID:** T-355
   - **Area:** engine/render, docs
@@ -303,6 +292,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-354** — render: SHAPES authoring deprecation migration plan (D3) · Owner: claude/T-354-shapes-deprecation-migration-plan · PR: https://github.com/jakildev/IrredenEngine/pull/1167
 - [x] **T-353** — render: SDF entity rotation via C_WorldTransform quaternion (C8) · Owner: claude/T-353-sdf-entity-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1166
 - [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
 - [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
@@ -322,4 +312,3 @@ Avoid:
 - [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
 - [x] **T-332** — demos: perf_grid UPDATE pipeline parallel group · Owner: claude/T-332-update-pipeline-groups · PR: https://github.com/jakildev/IrredenEngine/pull/1117
 - [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
-- [x] **T-330** — tools: ir-perf-grid + fingerprinted baselines (sub-task 3 of #1074) · Owner: claude/T-330-ir-perf-grid · PR: https://github.com/jakildev/IrredenEngine/pull/1115
