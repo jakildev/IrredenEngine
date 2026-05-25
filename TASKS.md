@@ -185,11 +185,11 @@ Avoid:
   - **Links:**
 
 
-- [ ] **render: zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL** — investigate and fix canvas resize/image-binding mismatch that crashes IRShapeDebug at zoom=16 on Linux/Mesa
+- [~] **render: zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL** — investigate and fix canvas resize/image-binding mismatch that crashes IRShapeDebug at zoom=16 on Linux/Mesa
   - **ID:** T-352
   - **Area:** engine/render
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** `fleet-run IRShapeDebug --zoom 16 --auto-screenshot 10` completes without GL_INVALID_VALUE crash on linux-debug; zoom=1/2/4/8/16 all produce valid screenshots
   - **Issue:** #773
