@@ -89,6 +89,7 @@ _env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
 _env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
 _env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
 _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
+_env_smoke_worker="${FLEET_CONCURRENCY_SMOKE_WORKER:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
@@ -100,9 +101,10 @@ declare -A ROLE_CONCURRENCY=(
     ["opus-reviewer"]="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
     ["queue-manager"]="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
     ["merger"]="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
+    ["smoke-worker"]="${_env_smoke_worker:-${FLEET_CONCURRENCY_SMOKE_WORKER:-1}}"
 )
 unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
-      _env_opus_reviewer _env_queue_manager _env_merger
+      _env_opus_reviewer _env_queue_manager _env_merger _env_smoke_worker
 
 # Tracks per-role "deferred-by-cap" log throttling so the at-cap message
 # doesn't spam every 10s tick while the cap is held. Cleared whenever a
@@ -253,6 +255,7 @@ DISPATCHED_ROLES=(
     "sonnet-reviewer"
     "opus-reviewer"
     "merger"
+    "smoke-worker"
 )
 # queue-manager is no longer LLM-dispatched. Maintenance (derived-field
 # rendering) is handled by fleet-queue-tick, spawned directly by
@@ -267,6 +270,7 @@ declare -A ROLE_MODEL=(
     ["sonnet-reviewer"]="sonnet"
     ["opus-reviewer"]="claude-opus-4-7"
     ["merger"]="claude-opus-4-7"
+    ["smoke-worker"]="sonnet"
 )
 
 # Per-role default effort level. Mirrors fleet-babysit's case stmt.
@@ -276,6 +280,7 @@ declare -A ROLE_EFFORT=(
     ["sonnet-reviewer"]="high"
     ["opus-reviewer"]="xhigh"
     ["merger"]="xhigh"
+    ["smoke-worker"]="high"
 )
 
 # Tracks which panes have already had their cooldown logged this cycle so
