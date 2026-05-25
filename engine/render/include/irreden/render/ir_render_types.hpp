@@ -196,7 +196,6 @@ using ShapeType = IRMath::SDF::ShapeType;
 using ShapeFlags = IRMath::SDF::ShapeFlags;
 using IRMath::SDF::SHAPE_FLAG_CHECKERBOARD;
 using IRMath::SDF::SHAPE_FLAG_DEPTH_COLOR;
-using IRMath::SDF::SHAPE_FLAG_DISCRETE_ROTATION;
 using IRMath::SDF::SHAPE_FLAG_HOLLOW;
 using IRMath::SDF::SHAPE_FLAG_MIRROR_X;
 using IRMath::SDF::SHAPE_FLAG_MIRROR_Y;
@@ -207,6 +206,7 @@ using IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
 struct GPUShapeDescriptor {
     vec4 worldPosition;
     vec4 params;
+    vec4 rotation;
     std::uint32_t shapeType;
     std::uint32_t color;
     std::uint32_t entityId;

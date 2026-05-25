@@ -356,6 +356,20 @@ inline int2 deformedTrixelIsoPixel(int face, int subPixel, float residualYaw) {
     return int2(roundHalfUp(deformed.x), roundHalfUp(deformed.y));
 }
 
+// Rotates vector v by unit quaternion q = (qx, qy, qz, qw).
+// CPU mirror: IRMath::rotateVectorByQuat.
+inline float3 rotateByQuat(float3 v, float4 q) {
+    float3 u = q.xyz;
+    float w = q.w;
+    float3 t = 2.0f * cross(u, v);
+    return v + w * t + cross(u, t);
+}
+
+// Rotates vector v by the inverse (conjugate) of unit quaternion q.
+inline float3 rotateByInverseQuat(float3 v, float4 q) {
+    return rotateByQuat(v, float4(-q.xyz, q.w));
+}
+
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S; quaternion layout matches
 // the engine canon: float4(qx, qy, qz, qw) with .w the scalar; identity is

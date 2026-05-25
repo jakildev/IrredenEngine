@@ -37,9 +37,6 @@ enum ShapeFlags : std::uint32_t {
     SHAPE_FLAG_MIRROR_X = 1u << 1,
     SHAPE_FLAG_MIRROR_Y = 1u << 2,
     SHAPE_FLAG_VISIBLE = 1u << 3,
-    /// Forward-looking: snap joint rotation to nearest 90° in iso-adjusted space.
-    /// Not yet implemented.
-    SHAPE_FLAG_DISCRETE_ROTATION = 1u << 4,
     SHAPE_FLAG_CHECKERBOARD = 1u << 5,
     /// Color each voxel by its LOCAL iso-depth along the camera's forward axis,
     /// normalized to [0, 1] over the shape's own depth extent. Useful for

@@ -503,6 +503,64 @@ void initEntities() {
         IREntity::createEntity(C_LocalTransform{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
     }
 
+    // Rotation test: SDF shapes with non-identity entity rotation,
+    // paired with unrotated copies for visual comparison.
+    constexpr float kRotFixtureY = -32.0f;
+    constexpr float kRotPairSpacing = 14.0f;
+    struct RotFixture {
+        const char *label_;
+        IRRender::ShapeType type_;
+        vec4 params_;
+        vec3 axis_;
+        float angleDeg_;
+        Color color_;
+    };
+    const RotFixture rotFixtures[] = {
+        {"Box 45° Z",
+         IRRender::ShapeType::BOX,
+         vec4(7, 7, 7, 0),
+         vec3(0, 0, 1),
+         45.0f,
+         Color{100, 200, 220, 255}},
+        {"Cylinder 30° Z",
+         IRRender::ShapeType::CYLINDER,
+         vec4(3, 3, 7, 0),
+         vec3(0, 0, 1),
+         30.0f,
+         Color{100, 220, 140, 255}},
+        {"Ellipsoid 45° Y",
+         IRRender::ShapeType::ELLIPSOID,
+         vec4(8, 6, 4, 0),
+         vec3(0, 1, 0),
+         45.0f,
+         Color{200, 130, 220, 255}},
+        {"Cone 60° X",
+         IRRender::ShapeType::CONE,
+         vec4(4, 4, 8, 0),
+         vec3(1, 0, 0),
+         60.0f,
+         Color{220, 140, 100, 255}},
+    };
+    constexpr int kNumRotFixtures = sizeof(rotFixtures) / sizeof(rotFixtures[0]);
+    for (int i = 0; i < kNumRotFixtures; ++i) {
+        const auto &rf = rotFixtures[i];
+        float xBase = i * (kRotPairSpacing * 2.0f);
+        float angleRad = rf.angleDeg_ * IRMath::kPi / 180.0f;
+        vec4 rot = IRMath::quatAxisAngle(rf.axis_, angleRad);
+
+        createSDFShape(vec3(xBase, kRotFixtureY, 0.0f), rf.type_, rf.params_, rf.color_);
+
+        C_ShapeDescriptor desc{rf.type_, rf.params_, rf.color_};
+        if (g_depthColor)
+            desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
+        else if (g_checkerboard)
+            desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
+        IREntity::createEntity(
+            C_LocalTransform{vec3(xBase + kRotPairSpacing, kRotFixtureY, 0.0f), rot},
+            desc
+        );
+    }
+
     // Floor so AO / sun-shadow lighting has a surface to fall on. +Z is
     // downward in this iso convention, so shape bottoms sit at max +z ≈ 4
     // (sphere r4, cone h8); floor sits just below at z ≈ 5.
