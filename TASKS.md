@@ -241,11 +241,11 @@ Avoid:
   - **Notes:** E2 in Epic E (world streaming, #938). Stack position 3: E0→E1→**E2**→E3→E4. All blockers done: E0 (#944), E1 (#963), B4 (#941), B5 (#952) all closed. Uses B5 push-at-mutation for chunk-content upload on residency flip. Should land before T-360 (chunk persistence follow-ups).
   - **Links:**
 
-- [ ] **world: camera-aware chunk prefetch (priority by visibility) (E3)** — queue upload jobs for chunks entering camera reach radius before needed, prioritized by in-frustum visibility
+- [~] **world: camera-aware chunk prefetch (priority by visibility) (E3)** — queue upload jobs for chunks entering camera reach radius before needed, prioritized by in-frustum visibility
   - **ID:** T-357
   - **Area:** engine/world, engine/system
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-356
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Slow camera pan = no upload-on-render stalls; (2) warps to POI fully render within warp frame; (3) in-frustum chunks upload before peripheral; (4) fleet-build clean on linux-debug and macos-debug
