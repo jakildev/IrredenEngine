@@ -310,7 +310,7 @@ struct FrameDataSun {
     // each frame in system_bake_sun_shadow_map. .w is std140 padding.
     vec4 sunBasisU_ = vec4(0.0f);
     vec4 sunBasisV_ = vec4(0.0f);
-    // sunPx = round((dot(p, uHat/vHat) - sunBufferOriginUV_) / sunBufferTexelSize_).
+    // sunPx = floor((dot(p, uHat/vHat) - sunBufferOriginUV_) / sunBufferTexelSize_).
     // Sized to the visible iso AABB swept along -sunDir by kSunShadowMaxDistance.
     vec2 sunBufferOriginUV_ = vec2(0.0f);
     vec2 sunBufferTexelSize_ = vec2(1.0f);

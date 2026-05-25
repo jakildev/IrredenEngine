@@ -25,7 +25,11 @@ constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
 constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
 
-constant float kMaxShadowDepthRange = 24.0 * kSunDepthScale;
+// Reject shadows from occluders farther than this in sun-Z (unpacked
+// voxel units, matching `unpackSunDepth` output and `sunZ`). Prevents
+// adjacent volumes from incorrectly casting onto faces they are
+// beside rather than in front of. Mirrors GLSL `kMaxShadowDepthRange`.
+constant float kMaxShadowDepthRange = 24.0;
 
 inline float unpackSunDepth(uint packedDepth) {
     return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
@@ -131,16 +135,6 @@ kernel void c_compute_sun_shadow(
             if (depthDiff > bias && depthDiff < kMaxShadowDepthRange)
                 shadowAccum += weight;
         }
-    }
-
-    // Sun-facing faces receive attenuated shadow: a face pointing
-    // directly at the sun can only be shadowed by geometry between it
-    // and the sun, which the depth-range clamp above already handles.
-    // This catches borderline cases where the depth range is marginal.
-    float faceSunDot = dot(normal, sunDir);
-    if (faceSunDot > 0.3) {
-        float atten = smoothstep(0.3f, 0.7f, faceSunDot);
-        shadowAccum *= (1.0 - atten);
     }
 
     float factor = mix(1.0f, kShadowDarken, shadowAccum);
