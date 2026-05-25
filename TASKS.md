@@ -222,17 +222,6 @@ Avoid:
   - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
   - **Links:**
 
-- [~] **world: chunk persistence follow-ups — markDirty API + 2-level dir + consumer verification** — land load-bearing T-298 follow-ups before any creation opts into streaming
-  - **ID:** T-360
-  - **Area:** engine/world
-  - **Model:** opus
-  - **Owner:** claude/T-360-chunk-mark-dirty-api
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) ChunkResidencyManager::markChunkDirty() API added as only supported mutation path, documented in engine/world/CLAUDE.md; (2) 2-level directory split in chunkPath() (e.g. chunks/<x_div_64>/<y_div_64>/...); (3) one end-to-end consumer wired (voxel editor or IRChunkStreamingSmoke demo), round-trip confirmed on linux-debug and macos-debug; (4) ChunkDiskPersistence optionally renamed ChunkVoxelDiskPersistence
-  - **Issue:** #1008
-  - **Notes:** 4 sub-items from T-298 review: (1)[opus] markDirty API — load-bearing, no creation should use Config::persistence_ until lands; (2)[sonnet] 2-level dir split before any real saves to avoid back-compat burden; (3)[sonnet] in-engine consumer verification; (4)[sonnet] optional rename. Should land before E2/E3 (T-356/T-357). Stacks on T-298 (merged).
-  - **Links:**
-
 - [~] **tools: ir-host-probe + ir-acquire resource coordination (sub-task 1 of #1074)** — hardware fingerprinting and flock-based CPU/GPU/perf lock primitives for concurrent builds and perf measurements
   - **ID:** T-363
   - **Area:** tooling
@@ -281,6 +270,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-360** — world: markChunkDirty API + chunk-mutation routing contract · Owner: claude/T-360-chunk-mark-dirty-api · PR: https://github.com/jakildev/IrredenEngine/pull/1172
 - [x] **T-355** — docs: T-189/T-190 disposition under SDF restriction (D4) · Owner: claude/T-355-t189-t190-disposition · PR: https://github.com/jakildev/IrredenEngine/pull/1168
 - [x] **T-354** — render: SHAPES authoring deprecation migration plan (D3) · Owner: claude/T-354-shapes-deprecation-migration-plan · PR: https://github.com/jakildev/IrredenEngine/pull/1167
 - [x] **T-353** — render: SDF entity rotation via C_WorldTransform quaternion (C8) · Owner: claude/T-353-sdf-entity-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1166
@@ -300,4 +290,3 @@ Avoid:
 - [x] **T-339** — fleet: review-pr verdict-label retry-and-verify guard · Owner: claude/T-339-review-pr-verdict-label-retry · PR: https://github.com/jakildev/IrredenEngine/pull/1144
 - [x] **T-337** — Tools: shell autocomplete for ir-build and ir-run targets · Owner: claude/T-337-shell-autocomplete · PR: https://github.com/jakildev/IrredenEngine/pull/1129
 - [x] **T-223** — lua: concurrency field on IRSystem.registerSystem (EVAL + CODEGEN paths) · Owner: claude/T-223-lua-concurrency · PR: https://github.com/jakildev/IrredenEngine/pull/1121
-- [x] **T-336** — investigate + fix macOS demo segfault on shutdown · Owner: claude/T-336-macos-shutdown · PR: https://github.com/jakildev/IrredenEngine/pull/1118
