@@ -243,11 +243,11 @@ Avoid:
   - **Notes:** Diagnosed during T-351 by opus-worker. UPDATE ~8.6s/frame vs RENDER ~0.2s/frame at 262k entities. PropagateTransform (99893ms), PeriodicIdle (69567ms), UpdateVoxelSetChildren (45851ms) dominate. Approaches: (1) cap UPDATE catch-up ticks/frame, (2) parallelize disjoint UPDATE systems (PARALLEL_FOR prerequisites T-222/T-224 landed), (3) reduce per-entity work in dominant systems.
   - **Links:**
 
-- [ ] **world: chunk persistence — two-level directory split (T-298 follow-up 2/4)** — update `ChunkDiskPersistence::chunkPath` / `filenameForKey` to use `chunks/<x_div_N>/<y_div_N>/` layout before any durable saves exist
+- [~] **world: chunk persistence — two-level directory split (T-298 follow-up 2/4)** — update `ChunkDiskPersistence::chunkPath` / `filenameForKey` to use `chunks/<x_div_N>/<y_div_N>/` layout before any durable saves exist
   - **ID:** T-371
   - **Area:** engine/world
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) Benchmark validates split dimensions on ext4/NTFS; (2) `chunkPath` and `filenameForKey` updated; (3) tests' expected filename fragments migrated; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1169
