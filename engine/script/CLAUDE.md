@@ -898,6 +898,7 @@ attaches one child entity per `ShapeRecord` under the spawned root
 via `IREntity::setParent`. SHAPES is reserved for effects-only SDF
 entities (occluders, auras, soft glows); HYBRID is deprecated for new
 authoring but loads backward-compatibly.
+
 Each child carries:
 
 - `C_LocalTransform{record.offset_}` — record-local position;
