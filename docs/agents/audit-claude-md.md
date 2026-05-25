@@ -1025,7 +1025,7 @@ Cleanest large-ish file in the engine layer.
 - L8–68 ("Key components") — 60-line catalog mixing genuine
   semantic content with pure one-liners (`C_Camera — tag`,
   `C_CameraPosition2DIso — iso-space position`, `C_ZoomLevel — float
-  zoom`, `C_CameraYaw — continuous Z-yaw`).
+  zoom`, `C_Camera — singleton camera entity marker`).
 - L41–56 (`C_GizmoHandle` per-field documentation) — fields belong
   in the header, not the CLAUDE.md.
 

@@ -73,7 +73,7 @@ constexpr float kYawDeltaPerFrame = IRMath::kPi / 360.0f;
 // SO(3) bake.
 constexpr float kFullRotateYawPerFrame = IRMath::kPi / 540.0f; // ~3 rev / 1080 fr
 constexpr float kFullRotatePitchPerFrame = IRMath::kPi / 720.0f;
-constexpr float kFullRotateRollPerFrame = IRMath::kPi / 900.0f;
+constexpr float kFullRotatePitchYPerFrame = IRMath::kPi / 900.0f; // Y-axis; Z=yaw, X=pitch in ISO frame
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
@@ -221,7 +221,7 @@ void initSystems() {
                 const vec4 delta = IRMath::quatMul(
                     IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), kFullRotateYawPerFrame),
                     IRMath::quatMul(
-                        IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), kFullRotateRollPerFrame),
+                        IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), kFullRotatePitchYPerFrame),
                         IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), kFullRotatePitchPerFrame)
                     )
                 );

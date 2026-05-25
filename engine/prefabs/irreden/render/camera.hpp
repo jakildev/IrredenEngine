@@ -87,6 +87,9 @@ inline void setYaw(float yaw) {
 /// Add @p delta (radians) to the camera's Z-yaw. Round-trips through
 /// `getYaw` / `setYaw` so pure-Z behavior matches the pre-SO(3) API
 /// exactly; any prior pitch/roll on the camera is discarded.
+/// If another driver calls `setRotationQuat` in the same frame, the
+/// last ECS writer wins — safe while a single rotation driver is active
+/// per frame; document any future GRID + SO(3) driver coexistence.
 inline void rotateYaw(float delta) {
     setYaw(getYaw() + delta);
 }
