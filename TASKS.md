@@ -232,11 +232,11 @@ Avoid:
   - **Notes:** Triggered by reviewer nit on PR #1081 (T-220). Primary motivation is preventing a second `std::cbrt` consumer before the primitive is hoisted.
   - **Links:**
 
-- [ ] **perf: IRPerfGrid UPDATE pipeline — reduce 8.6s/frame to ≤33ms on linux-x86_64** — profile + fix dominant UPDATE systems (PropagateTransform, PeriodicIdle, UpdateVoxelSetChildren) to reach ≥30 FPS on IRPerfGrid
+- [~] **perf: IRPerfGrid UPDATE pipeline — reduce 8.6s/frame to ≤33ms on linux-x86_64** — profile + fix dominant UPDATE systems (PropagateTransform, PeriodicIdle, UpdateVoxelSetChildren) to reach ≥30 FPS on IRPerfGrid
   - **ID:** T-370
   - **Area:** engine/system, engine/world
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** IRPerfGrid frame time on linux-x86_64 ≤ 33 ms with visual parity to master
   - **Issue:** #1161
