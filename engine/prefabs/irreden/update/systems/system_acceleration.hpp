@@ -11,14 +11,14 @@ using namespace IRComponents;
 namespace IRSystem {
 
 template <> struct System<ACCELERATION_3D> {
+    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+
+    void tick(C_Velocity3D &velocity, const C_Acceleration3D &acceleration) {
+        velocity.velocity_ += acceleration.acceleration_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
+    }
+
     static SystemId create() {
-        return createSystem<C_Velocity3D, C_Acceleration3D>(
-            "Acceleration3D",
-            [](C_Velocity3D &velocity, const C_Acceleration3D &acceleration) {
-                velocity.velocity_ +=
-                    acceleration.acceleration_ * vec3(IRTime::deltaTime(IRTime::UPDATE));
-            }
-        );
+        return registerSystem<ACCELERATION_3D, C_Velocity3D, C_Acceleration3D>("Acceleration3D");
     }
 };
 

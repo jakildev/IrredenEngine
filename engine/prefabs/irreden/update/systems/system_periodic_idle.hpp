@@ -10,10 +10,14 @@ using namespace IRComponents;
 namespace IRSystem {
 
 template <> struct System<PERIODIC_IDLE> {
+    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+
+    void tick(C_PeriodicIdle &periodicIdle) {
+        periodicIdle.tick();
+    }
+
     static SystemId create() {
-        return createSystem<C_PeriodicIdle>("PeriodicIdle", [](C_PeriodicIdle &periodicIdle) {
-            periodicIdle.tick();
-        });
+        return registerSystem<PERIODIC_IDLE, C_PeriodicIdle>("PeriodicIdle");
     }
 };
 

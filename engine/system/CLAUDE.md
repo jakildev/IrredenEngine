@@ -388,12 +388,40 @@ serialize on the main thread regardless of policy.
 The first system to opt in is `VELOCITY_3D` (T-222 POC). T-328
 completed the other two POC ports from #1069: `VELOCITY_DRAG` is now
 `PARALLEL_FOR` (per-thread `IRMath::randomFloat` makes its
-`postHoverVelocity` reset path thread-safe); `ANIMATION_COLOR` stays
-`SERIAL` with `IR_ASSERT_MAIN_THREAD` because the tick reads the
-active clip's components through `IREntity::getComponentOptional` on
-a foreign entity id, and the entity manager is not yet thread-safe
-(T-225 owns the deferred-mutation surface). Re-evaluate the
-`ANIMATION_COLOR` opt-in after T-225 lands.
+`postHoverVelocity` reset path thread-safe). T-379 bulk-migrated 10
+trivially-safe prefab systems:
+
+**`PARALLEL_FOR` (active as of T-379):**
+
+| System | Domain |
+|---|---|
+| `VELOCITY_3D` | update |
+| `VELOCITY_DRAG` | update |
+| `ACCELERATION_3D` | update |
+| `PERIODIC_IDLE` | update |
+| `GOTO_3D` | update |
+| `REACTIVE_RETURN_3D` | update |
+| `MODIFIER_DECAY` | common |
+| `GLOBAL_MODIFIER_DECAY` | common |
+| `MODIFIER_RESOLVE_EXEMPT` | common |
+| `RENDERING_VELOCITY_2D_ISO` | render |
+| `TEXTURE_SCROLL` | render |
+| `WIDGET_APPLY_SLIDER` | render |
+
+**Kept `SERIAL` (with rationale):**
+
+- `ANIMATION_COLOR` — tick reads the active clip via
+  `IREntity::getComponentOptional` on a foreign entity id; the entity
+  manager is not thread-safe from workers. Re-evaluate after T-225.
+- `MODIFIER_LAMBDA_DECAY` — erasing `C_LambdaModifiers` entries calls
+  `sol::function`'s destructor which calls `lua_unref` into `LuaScript`
+  state; sol2 is not thread-safe.
+- `MODIFIER_RESOLVE_GLOBAL` — reads global modifier state via a
+  function-local static singleton (known `cpp-systems.md` violation);
+  the global pointer access is not worker-safe until the static is
+  migrated to `SystemParams`.
+- `GRAVITY_3D` — function-local static singleton instance (same
+  violation; migrate together with `MODIFIER_RESOLVE_GLOBAL`).
 
 ### IR_ASSERT_MAIN_THREAD
 
