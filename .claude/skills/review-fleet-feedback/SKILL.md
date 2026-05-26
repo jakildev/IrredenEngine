@@ -139,9 +139,13 @@ report what happened in the summary.
 - **> 4 new proposals**: ask one bulk question — "log all / log top N /
   log none / let me pick" — then drill in only if they pick the last.
 - **Manual drops** (human wants to stop tracking a proposed fix): ask
-  only when the human explicitly requests it, or when presenting
-  `still_proposed` rows that have been open for an extended period
-  (≥30d). Batch with options `still-proposed / drop` when count > 3.
+  only when the human explicitly requests it, or when `still_proposed`
+  rows have been open for an extended period
+  (≥30d). Batch with options
+  `still-proposed / drop` when count > 3.
+- **Manual applied-confirm** (fix merged outside a tracking issue —
+  `still_proposed` row, no `pending_mutation`): ask when the human
+  surfaces it or when presenting ≥30d rows.
 
 Don't ask about `recurring` fixes here — they need a fresh proposal, not
 a status flip. Tell the human: "the recurring fixes need new design;
