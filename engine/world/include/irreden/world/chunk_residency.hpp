@@ -165,11 +165,6 @@ class ChunkResidencyManager {
         /// not by this radius.
         int prefetchRadiusChunks_ = 2;
 
-        /// Chebyshev radius (in chunks) beyond which resident chunks
-        /// are evicted. Must be > prefetchRadiusChunks_ to provide
-        /// hysteresis (avoids thrashing at the ring boundary).
-        int evictionRadiusChunks_ = 3;
-
         // ── Per-frame upload-bandwidth cap (T-358) ──────────────────
         // Opt-in to async/budget upload semantics. When false
         // (default), requestResident keeps E1's synchronous behavior:

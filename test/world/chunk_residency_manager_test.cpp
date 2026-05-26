@@ -982,7 +982,6 @@ TEST(ChunkUploadBudgetTest, TickPrefetchUnderBudgetEnqueuesAllStaysLoading) {
     ChunkResidencyManager::Config cfg;
     cfg.deferredUpload_ = true;
     cfg.prefetchRadiusChunks_ = 1;
-    cfg.evictionRadiusChunks_ = 2;
     ChunkResidencyManager mgr{std::move(cfg)};
 
     mgr.beginFrame(IRMath::vec3(16.0f, 16.0f, 16.0f));
