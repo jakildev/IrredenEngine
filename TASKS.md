@@ -297,11 +297,11 @@ Avoid:
   - **Notes:** Root cause: `cmd_check_stale` sweeps FS claims and `fleet:claim-*` off closed issues only — no pass sweeps open issues. T-366/#1182 held `fleet:claim-mac-opus-worker-2` for 17+ hours after an abandoned empty commit. Drop criteria: no matching PR AND label age > TTL (default 7200s) OR linked task Owner → free. Duplicate issue: #1187.
   - **Links:**
 
-- [ ] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
+- [~] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
   - **ID:** T-377
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) `commit-and-push` with no staged changes fails with clear error message; (2) error instructs worker to either stage real work or release the claim; (3) existing non-empty-commit path unaffected; (4) skill docs state the empty-commit guard contract
   - **Issue:** #1192
