@@ -275,11 +275,11 @@ Avoid:
   - **Notes:** Diagnosed by opus-worker-1 — T-361, T-362, T-363 rows appeared in TASKS.md because implementing PRs used different T-NNN prefixes. T-361 and T-362 have since been removed from TASKS.md. Do NOT auto-close source issues (#1055, #1071, #1074) — human decides. Adjacent to T-338 (maintenance-sync) and T-342 (divergence check).
   - **Links:**
 
-- [ ] **fleet: fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels (Bug 1 from #1182)** — add cross-host claim label check to `derive_status()` so maintenance-sync on host B no longer reverts claims held on host A
+- [~] **fleet: fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels (Bug 1 from #1182)** — add cross-host claim label check to `derive_status()` so maintenance-sync on host B no longer reverts claims held on host A
   - **ID:** T-375
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) Claim on host A + fleet-tasks-render on host B → status stays `[~]`; (2) maintenance-sync no longer reverts cross-host claims; (3) pure-local single-host flow unchanged; (4) synthetic test injects `fleet:claim-*` label and asserts `[~]` preserved across render cycle lacking local FS claim
   - **Issue:** #1190
