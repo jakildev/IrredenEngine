@@ -163,24 +163,12 @@ Avoid:
   - **Links:**
 
 
-- [~] **world: camera-aware chunk prefetch (priority by visibility) (E3)** — queue upload jobs for chunks entering camera reach radius before needed, prioritized by in-frustum visibility
-  - **ID:** T-357
-  - **Area:** engine/world, engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-357-camera-chunk-prefetch
-  - **Blocked by:** (none)
-  - **Stack:** T-356..T-359 S-E-stream
-  - **Acceptance:** (1) Slow camera pan = no upload-on-render stalls; (2) warps to POI fully render within warp frame; (3) in-frustum chunks upload before peripheral; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #965
-  - **Notes:** E3 in Epic E (#938). Stack position 4: E2→**E3**→E4. Blocked by E2 (T-356).
-  - **Links:**
-
 - [~] **world: one-frame upload budget + low-LOD fallback (E4)** — cap per-frame upload bandwidth; render off-budget chunks at low-LOD for one frame with fade-in detail
   - **ID:** T-358
   - **Area:** engine/world, engine/render
   - **Model:** opus
   - **Owner:** claude/T-358-one-frame-upload-budget
-  - **Blocked by:** T-357
+  - **Blocked by:** (none)
   - **Stack:** T-356..T-359 S-E-stream
   - **Acceptance:** (1) Camera warp to 50-chunk region: first frame renders complete (some at low-LOD); (2) 2-3 frames upgrade to full detail; (3) no stutter > 1 frame; (4) fleet-build clean on linux-debug and macos-debug
   - **Issue:** #966
@@ -210,11 +198,11 @@ Avoid:
   - **Notes:** Skill should look for new engine or game systems and include them in the demo. Optional: dry-run mode prints proposed changes before applying.
   - **Links:**
 
-- [~] **asset: async texture loading via pinned worker (T-226 Phase 5)** — `IRAsset::loadTextureAsync` returns immediately with an AssetHandle; disk read + decode runs on a pinned I/O worker; GL texture upload schedules onto main thread
+- [ ] **asset: async texture loading via pinned worker (T-226 Phase 5)** — `IRAsset::loadTextureAsync` returns immediately with an AssetHandle; disk read + decode runs on a pinned I/O worker; GL texture upload schedules onto main thread
   - **ID:** T-368
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRAsset::loadTextureAsync` exists, returns `AssetHandle<C_Texture>`, produces a valid texture once resolved; (2) one existing blocking startup load migrated to async; (3) startup-time delta filed in `docs/perf-reports/`; (4) no regression on `perf_grid_matrix.sh`
   - **Issue:** #1073
@@ -265,11 +253,11 @@ Avoid:
   - **Notes:** Split from #1008 item 3. T-298's code path has no in-engine consumer — only gtest fake-pool integration. Candidates: voxel editor "save chunks" path, or new `IRChunkStreamingSmoke` demo. Should land before E2/E3 (T-357/T-358) so persistence is proven on a real pool.
   - **Links:**
 
-- [~] **world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence (T-298 follow-up 4/4)** — rename to make explicit the class saves the voxel-pool slice only, not entity manifest or billboard metadata
+- [ ] **world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence (T-298 follow-up 4/4)** — rename to make explicit the class saves the voxel-pool slice only, not entity manifest or billboard metadata
   - **ID:** T-373
   - **Area:** engine/world
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** free
   - **Blocked by:** (none)
   - **Acceptance:** All `ChunkDiskPersistence` references in engine/ replaced with `ChunkVoxelDiskPersistence`; fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1171
@@ -298,11 +286,11 @@ Avoid:
   - **Notes:** Root cause: `fleet-tasks-render:load_fs_claims()` host-local; `derive_status()` preserves `[~]` only when task_id in fs_claims. Fix: also treat live `fleet:claim-<host>-<agent>` label on task's linked issue as `[~]`-preservation signal (one `gh issue list -l "fleet:claim-*"` per render). Repro in T-366/#1182 timeline: claim reverted 54s after acquisition. Duplicate issue: #1186.
   - **Links:**
 
-- [ ] **fleet: fleet-claim — TTL sweep stale fleet:claim-* labels off open issues (Bug 2 from #1182)** — extend `cmd_cleanup --gh` to drop `fleet:claim-*` from open issues where holder has gone silent (no PR, no recent commit, past TTL)
+- [~] **fleet: fleet-claim — TTL sweep stale fleet:claim-* labels off open issues (Bug 2 from #1182)** — extend `cmd_cleanup --gh` to drop `fleet:claim-*` from open issues where holder has gone silent (no PR, no recent commit, past TTL)
   - **ID:** T-376
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-376-fleet-claim-ttl-sweep
   - **Blocked by:** (none)
   - **Acceptance:** (1) `fleet-claim cleanup --gh` drops stale `fleet:claim-*` from open issues per TTL rules; (2) active claims (open WIP PR or recent commit) are never swept; (3) idempotent — sweep twice = no-op second time; (4) removal logged in same format as closed-issue sweep; (5) queue-tick calls the sweep so it self-heals
   - **Issue:** #1191
@@ -320,11 +308,11 @@ Avoid:
   - **Notes:** Root cause: commit `85662e24` on `claude/T-366-fleet-duplicate-claiming` pushed empty tree-delta under a task title. Fix: `git diff --cached --quiet` check before `git commit`; exit non-zero if staged tree equals HEAD. Affects SKILL.md and any procedures/*.md with embedded commit paths. Duplicate issue: #1188.
   - **Links:**
 
-- [ ] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
+- [~] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
   - **ID:** T-378
   - **Area:** engine/system, engine/entity
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-378-propagate-transform-bfs-parallel
   - **Blocked by:** (none)
   - **Acceptance:** (1) `PROPAGATE_TRANSFORM` dispatches via `PARALLEL_FOR` at per-depth-level granularity; (2) `perf_grid_matrix.sh` 262K shows ≥2× speedup for that system in isolation; (3) hierarchy-correctness test with ≥5 depth levels produces identical world-transforms as serial baseline; (4) cache-invalidation test: spawn/destroy/reparent triggers re-sort on next tick; (5) `IrredenEngineTest` 100% pass; (6) results filed in `docs/perf-reports/threading_propagate_transform.md`
   - **Issue:** #1195
@@ -346,6 +334,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-357** — world: camera-aware chunk prefetch (priority by visibility) (E3) · Owner: claude/T-357-camera-chunk-prefetch · PR: https://github.com/jakildev/IrredenEngine/pull/1180
 - [x] **T-366** — fleet: harden cross-host duplicate-claim prevention · Owner: claude/T-366-fleet-duplicate-claiming · PR: https://github.com/jakildev/IrredenEngine/pull/1189
 - [x] **T-356** — world: GPU chunk residency manager (LRU + camera-radius eviction) (E2) · Owner: claude/T-356-gpu-chunk-residency · PR: https://github.com/jakildev/IrredenEngine/pull/1179
 - [x] **T-363** — tools: ir-host-probe survives non-exec lspci stub in PATH · Owner: claude/T-363-ir-host-probe-harden · PR: https://github.com/jakildev/IrredenEngine/pull/1177
@@ -365,4 +354,3 @@ Avoid:
 - [x] **T-344** — fleet/auto-mode: fix rm -f .review-body.md via Read-then-Write protocol · Owner: claude/T-344-auto-mode-allowlist · PR: https://github.com/jakildev/IrredenEngine/pull/1151
 - [x] **T-343** — fleet: review-pr live label check after claim acquisition (pre-checkout) · Owner: claude/T-343-review-pr-live-label-check · PR: https://github.com/jakildev/IrredenEngine/pull/1150
 - [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
-- [x] **T-340** — fleet/merger: rebase + verdict preservation on merged-base re-target · Owner: claude/T-340-merger-merged-base-retarget · PR: https://github.com/jakildev/IrredenEngine/pull/1146
