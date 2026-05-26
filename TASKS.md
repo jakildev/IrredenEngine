@@ -242,11 +242,11 @@ Avoid:
   - **Notes:** Split from #1008 item 2. T-298 (#998) deferred directory layout pending profiling. No migration tooling needed (nothing real persists today). Two-level `<x_div_64>/<y_div_64>` is the working proposal; one-level `x_div_N` may suffice on ext4/NTFS — quick benchmark gates the decision.
   - **Links:**
 
-- [ ] **world: chunk persistence — wire in-engine consumer end-to-end (T-298 follow-up 3/4)** — pick one consumer (voxel editor save path or new IRChunkStreamingSmoke demo) and wire a real `ChunkResidencyManager` + `VoxelPoolAllocation` round-trip
+- [~] **world: chunk persistence — wire in-engine consumer end-to-end (T-298 follow-up 3/4)** — pick one consumer (voxel editor save path or new IRChunkStreamingSmoke demo) and wire a real `ChunkResidencyManager` + `VoxelPoolAllocation` round-trip
   - **ID:** T-372
   - **Area:** engine/world
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) Consumer wired and running on linux-debug and macos-debug; (2) chunk file lands under `<save>/chunks/`; (3) round-trip preserves voxel data; (4) clean chunks skip the save
   - **Issue:** #1170
