@@ -98,14 +98,17 @@ class Idempotence(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             state = _state_file(td)
             text = _basic_tasks_md()
-            once = render(text, state_file=state, repo_key="engine")
-            twice = render(once, state_file=state, repo_key="engine")
+            once = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
+            twice = render(once, state_file=state, repo_key="engine",
+                           gh_claimed_issues=set())
             self.assertEqual(once, twice)
 
     def test_render_with_no_state_file_passes_through(self):
         text = _basic_tasks_md()
         out = render(text, state_file=pathlib.Path("/nonexistent.json"),
-                     repo_key="engine", repo_slug="jakildev/IrredenEngine")
+                     repo_key="engine", repo_slug="jakildev/IrredenEngine",
+                     gh_claimed_issues=set())
         # Without any cache, gh-fallback runs but may pull live PRs;
         # either way the open task metadata should pass through.
         self.assertIn("**ID:** T-200", out)
@@ -119,7 +122,8 @@ class StatusDerivation(unittest.TestCase):
                 _pr(200, "T-200: Some Engine Feature", head="claude/T-200-feature"),
             ])
             text = _basic_tasks_md()
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertIn("- [~] **Some Engine Feature**", out)
             self.assertIn("**Owner:** claude/T-200-feature", out)
 
@@ -140,7 +144,8 @@ class StatusDerivation(unittest.TestCase):
                     merged_at="2026-05-08T20:00:00Z"),
             ])
             text = _basic_tasks_md(open_status="~", owner="claude/T-200-feature")
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             # Task removed from Open
             self.assertNotIn("- [~] **Some Engine Feature**", out)
             self.assertNotIn("- [ ] **Some Engine Feature**", out)
@@ -279,7 +284,8 @@ class StatusDerivation(unittest.TestCase):
                  "labels": ["fleet:queued", "human:approved"]},
             ])
             text = _basic_tasks_md(open_status=" ")
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertNotIn("- [ ] **Some Engine Feature**", out)
             self.assertNotIn("- [~] **Some Engine Feature**", out)
             self.assertIn("- [x] **T-200**", out)
@@ -305,7 +311,8 @@ class StatusDerivation(unittest.TestCase):
                 ])
             text = _basic_tasks_md(open_status="~",
                                    owner="claude/T-200-feature")
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertIn("- [x] **T-200**", out)
             self.assertIn("PR: https://github.com/jakildev/IrredenEngine/pull/200",
                           out)
@@ -317,7 +324,8 @@ class StatusDerivation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             state = _state_file(td)  # empty closed_fleet_queued
             text = _basic_tasks_md(open_status=" ")
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertIn("- [ ] **Some Engine Feature**", out)
             self.assertNotIn("- [x] **T-200**", out)
 
@@ -334,7 +342,8 @@ class StatusDerivation(unittest.TestCase):
             ])
             text = _basic_tasks_md(open_status="~",
                                    owner="claude/T-200-feature")
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             # Still in Open as [~]
             self.assertIn("- [~] **Some Engine Feature**", out)
             # Not in Done
@@ -359,7 +368,8 @@ class DoneSectionOrdering(unittest.TestCase):
 ## Done — last 20
 
 """
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             t160_idx = out.find("**T-160**")
             t150_idx = out.find("**T-150**")
             self.assertGreater(t160_idx, 0)
@@ -375,7 +385,8 @@ class DoneSectionOrdering(unittest.TestCase):
                 for i in range(25)
             ])
             text = "# TASKS\n\n## Open\n\n## Done — last 20\n"
-            out = render(text, state_file=state, repo_key="engine", done_limit=20)
+            out = render(text, state_file=state, repo_key="engine",
+                         done_limit=20, gh_claimed_issues=set())
             count = out.count("- [x] **T-")
             self.assertEqual(count, 20)
 
@@ -389,7 +400,8 @@ class DoneSectionOrdering(unittest.TestCase):
                     merged_at="2026-05-08T20:00:00Z"),
             ])
             text = _basic_tasks_md()
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             # Original hand-tuned title preserved.
             self.assertIn("**T-100** — Pre-existing done entry ·", out)
 
@@ -423,7 +435,8 @@ class BlockedByResolution(unittest.TestCase):
 
 ## Done — last 20
 """
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertIn("**Blocked Task**", out)
             t200_start = out.find("**Blocked Task**")
             done_start = out.find("## Done", t200_start)
@@ -445,7 +458,8 @@ class BlockedByResolution(unittest.TestCase):
             text = _basic_tasks_md(
                 blocked_by="https://github.com/jakildev/irreden/pull/100",
             )
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertIn(
                 "**Blocked by:** https://github.com/jakildev/irreden/pull/100",
                 out,
@@ -458,7 +472,8 @@ class FrontMatterAndFooter(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             state = _state_file(td)
             text = _basic_tasks_md()
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             front = text[:text.find("## Open")]
             self.assertTrue(out.startswith(front),
                             "front matter must pass through verbatim")
@@ -468,7 +483,8 @@ class FrontMatterAndFooter(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             state = _state_file(td)
             text = _basic_tasks_md()
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertIn(
                 "**Notes:** Hand-written notes that should pass through verbatim.",
                 out,

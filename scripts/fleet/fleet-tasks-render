@@ -64,6 +64,7 @@ OPEN_HEADER_RE = re.compile(r"^##\s+Open\s*$", re.IGNORECASE)
 DONE_HEADER_RE = re.compile(r"^##\s+Done\b", re.IGNORECASE)
 
 DEFAULT_DONE_LIMIT = 20
+_GH_QUEUED_ISSUE_LIMIT = 200
 
 DEFAULT_STATE_FILE = pathlib.Path(
     os.environ.get("FLEET_STATE_DIR", str(pathlib.Path.home() / ".fleet" / "state"))
@@ -434,7 +435,7 @@ def load_gh_claims(repo_slug: str) -> set[int]:
                 "--label", "fleet:queued",
                 "--state", "open",
                 "--json", "number,labels",
-                "--limit", "200",
+                "--limit", str(_GH_QUEUED_ISSUE_LIMIT),
             ],
             capture_output=True,
             text=True,
