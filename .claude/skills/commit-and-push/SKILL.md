@@ -23,7 +23,10 @@ Do **not** invoke proactively — only when the user explicitly asks.
 2. **`gh` must be authenticated.** If `gh auth status` fails, stop and ask the
    user to run `gh auth login`.
 3. **The working tree must have something to commit.** If `git status` is
-   clean, tell the user and stop.
+   clean, tell the user and stop. Also check that the *staged* tree is
+   non-empty before calling `git commit` (step 6) — `git diff --cached
+   --quiet` exits 0 when nothing is staged; that is an empty-commit
+   situation that must be rejected with the error message in step 6.
 
 ## Mode detection
 
@@ -187,6 +190,24 @@ git add <path1> <path2> ...
 If the diff includes any of the above, warn the user before committing.
 
 ### 6. Create the commit
+
+**Empty-commit guard (run before every `git commit` call):** An empty
+staged tree produces a misleading commit — it leaves provenance evidence
+(a task-titled commit) with no real diff. Reject it explicitly:
+
+```bash
+if git diff --cached --quiet; then
+    echo "commit-and-push: refusing to commit — no staged changes." >&2
+    echo "Either stage real work (git add <files>) or release the claim" >&2
+    echo "(fleet-claim release <task-id>) and exit." >&2
+    exit 1
+fi
+```
+
+On fleet branches (`claude/T-NNN-*`), the error is especially important —
+an empty commit there leaves misleading task provenance in the repo. If
+`simplify` or `optimize` stripped every changed line, stop and investigate
+before proceeding.
 
 Pass the message via HEREDOC:
 
