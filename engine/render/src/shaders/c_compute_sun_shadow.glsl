@@ -98,7 +98,7 @@ float sampleCascadeShadow(
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
             float depthDiff = sunZ - nearestZ;
-            if (depthDiff > bias && depthDiff < kMaxShadowDepthRange)
+            if (depthDiff > bias && depthDiff - bias < kMaxShadowDepthRange)
                 shadowAccum += weight;
         }
     }

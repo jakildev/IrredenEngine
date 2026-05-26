@@ -127,6 +127,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         const int totalClearDim = kSunShadowMapDim;
         const int clearGroupsX = IRMath::divCeil(totalClearDim, kBakeSunShadowGroupSize);
+        // Y covers kSunShadowMapDim * kSunShadowCascadeCount rows — cascades
+        // are stacked vertically in the 1024×2048 linearised buffer.
         const int clearGroupsY =
             IRMath::divCeil(totalClearDim * kSunShadowCascadeCount, kBakeSunShadowGroupSize);
         IRRender::device()->dispatchCompute(clearGroupsX, clearGroupsY, 1);
@@ -219,8 +221,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             vec2 extent = sunUVMax - sunUVMin;
             vec2 texelSize = vec2(extent.x / dimF, extent.y / dimF);
 
+            // Snap both edges to the texel grid so bake and lookup share the
+            // same phase; recompute texelSize so the buffer covers the full
+            // snapped extent symmetrically (asymmetric snap eats high-side pad
+            // at texelSize > kAABBPad on wide viewports).
             sunUVMin.x = IRMath::floor(sunUVMin.x / texelSize.x) * texelSize.x;
             sunUVMin.y = IRMath::floor(sunUVMin.y / texelSize.y) * texelSize.y;
+            sunUVMax.x = IRMath::ceil(sunUVMax.x / texelSize.x) * texelSize.x;
+            sunUVMax.y = IRMath::ceil(sunUVMax.y / texelSize.y) * texelSize.y;
+            texelSize = vec2((sunUVMax.x - sunUVMin.x) / dimF, (sunUVMax.y - sunUVMin.y) / dimF);
 
             if (ci == 0) {
                 frameData_.cascadeOriginUV_0_ = sunUVMin;
