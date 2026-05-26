@@ -127,7 +127,8 @@ class StatusDerivation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             state = _state_file(td)
             text = _basic_tasks_md(open_status="~", owner="claude/stale")
-            out = render(text, state_file=state, repo_key="engine")
+            out = render(text, state_file=state, repo_key="engine",
+                         gh_claimed_issues=set())
             self.assertIn("- [ ] **Some Engine Feature**", out)
             self.assertIn("**Owner:** free", out)
 
@@ -163,7 +164,8 @@ class StatusDerivation(unittest.TestCase):
             os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
             try:
                 text = _basic_tasks_md(open_status="~", owner="opus-worker-1")
-                out = render(text, state_file=state, repo_key="engine")
+                out = render(text, state_file=state, repo_key="engine",
+                             gh_claimed_issues=set())
             finally:
                 if old is None:
                     os.environ.pop("FLEET_CLAIMS_DIR", None)
@@ -184,7 +186,54 @@ class StatusDerivation(unittest.TestCase):
             os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
             try:
                 text = _basic_tasks_md(open_status="~", owner="opus-worker-1")
-                out = render(text, state_file=state, repo_key="engine")
+                out = render(text, state_file=state, repo_key="engine",
+                             gh_claimed_issues=set())
+            finally:
+                if old is None:
+                    os.environ.pop("FLEET_CLAIMS_DIR", None)
+                else:
+                    os.environ["FLEET_CLAIMS_DIR"] = old
+            self.assertIn("- [ ] **Some Engine Feature**", out)
+            self.assertIn("**Owner:** free", out)
+
+    def test_gh_claim_preserves_in_progress_marker_cross_host(self):
+        # T-375: a fleet:claim-* label on the task's linked issue must
+        # preserve [~] even when the local FS claims dir is empty —
+        # simulates host B rendering TASKS.md while host A holds the claim.
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td)
+            claims_dir = pathlib.Path(td) / "empty-claims"
+            claims_dir.mkdir(parents=True)
+            old = os.environ.pop("FLEET_CLAIMS_DIR", None)
+            os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
+            try:
+                text = _basic_tasks_md(open_status="~", owner="mac-sonnet-fleet-1")
+                # Issue #999 carries fleet:claim-mac-sonnet-fleet-1 — inject
+                # the resolved set directly so the test doesn't shell out.
+                out = render(text, state_file=state, repo_key="engine",
+                             gh_claimed_issues={999})
+            finally:
+                if old is None:
+                    os.environ.pop("FLEET_CLAIMS_DIR", None)
+                else:
+                    os.environ["FLEET_CLAIMS_DIR"] = old
+            self.assertIn("- [~] **Some Engine Feature**", out)
+            self.assertIn("**Owner:** mac-sonnet-fleet-1", out)
+
+    def test_gh_claim_wrong_issue_does_not_preserve(self):
+        # A fleet:claim-* label on a *different* issue must not preserve
+        # [~] for this task — the match is by issue number, not globally.
+        with tempfile.TemporaryDirectory() as td:
+            state = _state_file(td)
+            claims_dir = pathlib.Path(td) / "empty-claims"
+            claims_dir.mkdir(parents=True)
+            old = os.environ.pop("FLEET_CLAIMS_DIR", None)
+            os.environ["FLEET_CLAIMS_DIR"] = str(claims_dir)
+            try:
+                text = _basic_tasks_md(open_status="~", owner="mac-sonnet-fleet-1")
+                # Issue #888 (not #999) has the claim label — wrong issue.
+                out = render(text, state_file=state, repo_key="engine",
+                             gh_claimed_issues={888})
             finally:
                 if old is None:
                     os.environ.pop("FLEET_CLAIMS_DIR", None)
@@ -208,7 +257,8 @@ class StatusDerivation(unittest.TestCase):
                 text = _basic_tasks_md(open_status="~", owner="opus-worker-1")
                 # Engine render: game-T-200 claim must not preserve [~]
                 # for this engine task with the same task ID.
-                out = render(text, state_file=state, repo_key="engine")
+                out = render(text, state_file=state, repo_key="engine",
+                             gh_claimed_issues=set())
             finally:
                 if old is None:
                     os.environ.pop("FLEET_CLAIMS_DIR", None)

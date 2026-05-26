@@ -413,10 +413,57 @@ def load_fs_claims(repo_key: str) -> set[str]:
     return out
 
 
+def load_gh_claims(repo_slug: str) -> set[int]:
+    """Return issue numbers that have at least one active fleet:claim-* label.
+
+    Fetches all open fleet:queued issues once per render and filters
+    client-side for any label starting with 'fleet:claim-'. That label
+    is the cross-host visibility signal: a claim acquired on host A
+    writes 'fleet:claim-<host>-<agent>' to the GitHub issue, making it
+    readable from host B even though host B's ~/.fleet/claims/ is empty
+    for that task.
+
+    Returns an empty set on any gh error or timeout so the renderer
+    degrades gracefully to the local FS-claims path.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "list",
+                "--repo", repo_slug,
+                "--label", "fleet:queued",
+                "--state", "open",
+                "--json", "number,labels",
+                "--limit", "200",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return set()
+    if result.returncode != 0:
+        return set()
+    try:
+        issues = json.loads(result.stdout)
+    except (json.JSONDecodeError, ValueError):
+        return set()
+    claimed: set[int] = set()
+    for issue in issues:
+        labels = issue.get("labels") or []
+        for label in labels:
+            name = label.get("name", "") if isinstance(label, dict) else str(label)
+            if name.startswith("fleet:claim-"):
+                claimed.add(issue["number"])
+                break
+    return claimed
+
+
 def derive_status(
     task_id: str,
     by_id: dict[str, list[dict]],
     fs_claims: Optional[set[str]] = None,
+    gh_claimed_issues: Optional[set[int]] = None,
     existing_status: Optional[str] = None,
     existing_owner: Optional[str] = None,
     issue_number: Optional[int] = None,
@@ -444,17 +491,17 @@ def derive_status(
             and issue_number in closed_issues
         ):
             return "x", "free", None  # synthetic [x]; no PR record to point at
-        # T-138 exception: if fleet-claim has just written [~] to master
-        # but the worker hasn't opened the PR yet, the FS claim is the
-        # only signal that the task is in-flight. Preserve [~] in that
-        # narrow window so this render doesn't overwrite the master-push
-        # we just made. `cmd_check_stale` later prunes abandoned FS
-        # claims; the next render after that reverts naturally to [ ].
-        if (
-            fs_claims
-            and task_id in fs_claims
-            and existing_status == "~"
-        ):
+        # T-138/T-375: preserve [~] when there is an active claim — either
+        # a local FS claim (same-host, covers the no-PR window on the
+        # claiming machine) or a fleet:claim-* GitHub label on the linked
+        # issue (cross-host, covers a claim held on a different machine).
+        fs_claimed = bool(fs_claims and task_id in fs_claims)
+        gh_claimed = bool(
+            gh_claimed_issues is not None
+            and issue_number is not None
+            and issue_number in gh_claimed_issues
+        )
+        if (fs_claimed or gh_claimed) and existing_status == "~":
             return "~", existing_owner or "free", None
         return " ", "free", None
     if pr.get("mergedAt") and pr.get("baseRefName") == "master":
@@ -589,6 +636,7 @@ def render(
     repo_key: str = "engine",
     repo_slug: Optional[str] = None,
     done_limit: int = DEFAULT_DONE_LIMIT,
+    gh_claimed_issues: Optional[set[int]] = None,
 ) -> str:
     if repo_slug is None:
         repo_slug = "jakildev/IrredenEngine" if repo_key == "engine" else "jakildev/irreden"
@@ -619,6 +667,11 @@ def render(
     # fleet-claim's master-push and before the worker's PR is opened.
     fs_claims = load_fs_claims(repo_key)
 
+    # GH claims (T-375): cross-host visibility for claims held on another
+    # machine. When None, fetch live from GitHub; tests inject a set directly.
+    if gh_claimed_issues is None:
+        gh_claimed_issues = load_gh_claims(repo_slug)
+
     closed_issues = pr_state.get("closed_issues") or {}
 
     # First pass: derive status for each task. Detect newly-merged
@@ -635,6 +688,7 @@ def render(
         issue_number = int(m.group(1)) if m else None
         marker, owner, pr = derive_status(
             tid, by_id, fs_claims=fs_claims,
+            gh_claimed_issues=gh_claimed_issues,
             existing_status=block.status,
             existing_owner=existing_owner,
             issue_number=issue_number,
