@@ -80,12 +80,17 @@ std::vector<IRAsset::VoxelRecord> makeRecordsWithSentinel(std::uint32_t sentinel
 }
 
 TEST_F(ChunkPersistenceFixture, ChunkPathEmbedsSignedAxisFragments) {
+    // Two-level layout: chunks/<x_div_64>/<y_div_64>/<sx>NNNNN_<sy>NNNNN_<sz>NNNNN.vxs
+    // chunk(0,0,0) → floorDiv(0,64)=0, floorDiv(0,64)=0 → chunks/0/0/+00000_+00000_+00000.vxs
     ChunkDiskPersistence persistence{rootStr()};
     auto path = persistence.chunkPath(pack(IRMath::ivec3{0, 0, 0}));
     EXPECT_NE(path.find("/chunks/"), std::string::npos);
+    EXPECT_NE(path.find("/0/0/"), std::string::npos);
     EXPECT_NE(path.find("+00000_+00000_+00000.vxs"), std::string::npos);
 
+    // chunk(-1,2,-32767) → floorDiv(-1,64)=-1, floorDiv(2,64)=0 → chunks/-1/0/...
     auto negPath = persistence.chunkPath(pack(IRMath::ivec3{-1, 2, -32767}));
+    EXPECT_NE(negPath.find("/-1/0/"), std::string::npos);
     EXPECT_NE(negPath.find("-00001_+00002_-32767.vxs"), std::string::npos);
 }
 
@@ -147,13 +152,32 @@ TEST_F(ChunkPersistenceFixture, SaveWithMismatchedSizeReportsErrorAndDoesNotWrit
     EXPECT_FALSE(persistence.chunkExists(key));
 }
 
-TEST_F(ChunkPersistenceFixture, ChunkFilesLandUnderChunksSubdirectory) {
+TEST_F(ChunkPersistenceFixture, ChunkFilesLandUnderTwoLevelSubdirectory) {
+    // chunk(1,2,3) → floorDiv(1,64)=0, floorDiv(2,64)=0 → chunks/0/0/+00001_+00002_+00003.vxs
     ChunkDiskPersistence persistence{rootStr()};
     auto key = pack(IRMath::ivec3{1, 2, 3});
     auto status = persistence.saveChunk(key, makeRecordsWithSentinel(0x1u));
     ASSERT_TRUE(status.ok()) << status.message_;
     EXPECT_TRUE(std::filesystem::exists(m_root / "chunks"));
     EXPECT_TRUE(std::filesystem::is_directory(m_root / "chunks"));
+    EXPECT_TRUE(std::filesystem::is_directory(m_root / "chunks" / "0" / "0"));
+    EXPECT_TRUE(
+        std::filesystem::exists(m_root / "chunks" / "0" / "0" / "+00001_+00002_+00003.vxs")
+    );
+}
+
+TEST_F(ChunkPersistenceFixture, NegativeChunkCoordsFloorDivideIntoBucket) {
+    // chunk(-1,-65,0) → floorDiv(-1,64)=-1, floorDiv(-65,64)=-2 → chunks/-1/-2/...
+    // Floor division (not truncation) keeps negative coords in correct buckets:
+    // floorDiv(-1,64)=-1 (not 0), floorDiv(-65,64)=-2 (not -1).
+    ChunkDiskPersistence persistence{rootStr()};
+    auto key = pack(IRMath::ivec3{-1, -65, 0});
+    auto status = persistence.saveChunk(key, makeRecordsWithSentinel(0x2u));
+    ASSERT_TRUE(status.ok()) << status.message_;
+    EXPECT_TRUE(std::filesystem::is_directory(m_root / "chunks" / "-1" / "-2"));
+    EXPECT_TRUE(
+        std::filesystem::exists(m_root / "chunks" / "-1" / "-2" / "-00001_-00065_+00000.vxs")
+    );
 }
 
 // ── ChunkResidencyManager integration with persistence ──────────────────

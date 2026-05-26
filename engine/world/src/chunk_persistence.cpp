@@ -19,6 +19,14 @@ constexpr int kChunkVolume = static_cast<int>(IRConstants::kChunkSize.x) *
                              static_cast<int>(IRConstants::kChunkSize.y) *
                              static_cast<int>(IRConstants::kChunkSize.z);
 
+// Bucket size for the two-level x/y directory split (see header comment).
+constexpr int kDirSplitN = 64;
+
+// Floor division toward −∞ (C++ `/` truncates toward zero for negatives).
+constexpr int floorDiv(int a, int b) noexcept {
+    return a / b - (a % b < 0 ? 1 : 0);
+}
+
 std::string axisFragment(int v) {
     const int magnitude = (v >= 0) ? v : -v;
     std::ostringstream oss;
@@ -39,7 +47,12 @@ ChunkDiskPersistence::ChunkDiskPersistence(std::string saveRoot)
     , m_chunksDir{(std::filesystem::path{m_saveRoot} / "chunks").string()} {}
 
 std::string ChunkDiskPersistence::chunkPath(IRPrefab::Chunk::ChunkKey key) const {
-    return (std::filesystem::path{m_chunksDir} / filenameForKey(key)).string();
+    auto coord = IRPrefab::Chunk::unpack(key);
+    return (std::filesystem::path{m_chunksDir} /
+            std::to_string(floorDiv(coord.x, kDirSplitN)) /
+            std::to_string(floorDiv(coord.y, kDirSplitN)) /
+            filenameForKey(key))
+        .string();
 }
 
 IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
@@ -53,12 +66,14 @@ IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
         return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::WriteFailed, oss.str());
     }
 
+    const auto chunkFilePath = chunkPath(key);
+    const auto leafDir = std::filesystem::path{chunkFilePath}.parent_path().string();
     std::error_code ec;
-    std::filesystem::create_directories(m_chunksDir, ec);
+    std::filesystem::create_directories(leafDir, ec);
     if (ec) {
         const std::string msg =
             "ChunkDiskPersistence::saveChunk: create_directories failed: " + ec.message() + " (" +
-            m_chunksDir + ")";
+            leafDir + ")";
         IRE_LOG_ERROR("{}", msg);
         return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::OpenFailed, msg);
     }
@@ -71,7 +86,7 @@ IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
     dense.boundsMax_ = origin + IRMath::ivec3{IRConstants::kChunkSize};
     dense.voxels_.assign(voxels.begin(), voxels.end());
 
-    return IRAsset::saveDenseVoxelSet(chunkPath(key), dense);
+    return IRAsset::saveDenseVoxelSet(chunkFilePath, dense);
 }
 
 std::optional<std::vector<IRAsset::VoxelRecord>>

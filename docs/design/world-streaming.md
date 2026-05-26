@@ -848,10 +848,12 @@ A 4096³-world worst-case would be `~2 M chunk files`. Filesystem
 considerations:
 
 - Two-level directory split: `chunks/<x_div_64>/<y_div_64>/...`.
-  Caps any one directory at `4096` files. Sketched here, decision
-  deferred to the implementation pass (filesystem behavior varies
-  enough that the right answer needs measurement on the target
-  platforms).
+  Landed in T-371. `kDirSplitN=64` gives up to 1024 x-buckets × 1024
+  y-buckets across the int16 chunk-coord range; a typical 4096³-voxel
+  world (128 chunks wide) uses 2×2=4 leaf dirs. On ext4 (dir_index /
+  htree) and NTFS, per-name `open()`/`stat()` are O(log N) and scale
+  well past 500 K entries per directory; the split primarily limits
+  readdir/tool-traversal cost rather than lookup cost.
 
 ---
 

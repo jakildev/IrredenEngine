@@ -4,12 +4,16 @@
 // Chunk disk persistence (Epic E / E6, design at
 // docs/design/world-streaming.md §"Topic 6 — File layout"). One `.vxs`
 // file per chunk under `<saveRoot>/chunks/`. Filename is derived from
-// the chunk's signed-integer coord:
+// the chunk's signed-integer coord using a two-level directory split:
 //
-//     chunks/<sx>NNNNN_<sy>NNNNN_<sz>NNNNN.vxs
+//     chunks/<x_div_64>/<y_div_64>/<sx>NNNNN_<sy>NNNNN_<sz>NNNNN.vxs
 //
 // where `<sx>`/`<sy>`/`<sz>` is `+` or `-` and `NNNNN` is zero-padded
-// |axis| (axes are int16, so 5 digits cover ±32767).
+// |axis| (axes are int16, so 5 digits cover ±32767). `<x_div_64>` and
+// `<y_div_64>` are the floor-divided chunk-coord bucket indices (e.g.
+// chunk (3,-7,11) → `chunks/0/-1/+00003_-00007_+00011.vxs`). The
+// two-level split limits per-directory file pressure for large worlds;
+// see docs/design/world-streaming.md §"File layout" for the analysis.
 //
 // Save/load route through `IRAsset::saveDenseVoxelSet` /
 // `loadDenseVoxelSet` so the on-disk format is the same DENSE-mode
@@ -20,10 +24,6 @@
 // E1 / this slice is synchronous — the residency manager calls save
 // on dirty evict and load on first request. E2/E3 will lift the same
 // calls into the residency worker pool; the surface stays the same.
-//
-// File layout is flat under `chunks/` in v1; the two-level directory
-// split sketched in the design doc is a follow-up gated on profiling
-// the per-directory file count.
 
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/asset/voxel_set_format.hpp>
