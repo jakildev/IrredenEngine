@@ -722,6 +722,15 @@ Specifically, **never pass these via `--label` when filing**:
       #M also closes ("done done").
   The CHILDREN go through the normal `human:approved` ingestion
   flow individually; the epic itself is just visible bookkeeping.
+- `fleet:scope-shipped` — owned by the **queue-manager** (`fleet-queue-ingest`
+  pre-flight). Set when a merged PR is found that references the issue number
+  (#N), indicating the scope landed under a different T-NNN prefix (sub-task-
+  of-epic shipping pattern). The scout's `_INGEST_SKIP_LABELS` excludes these
+  from the ingest projection so future triage passes skip them silently. The
+  human should close the issue once they verify coverage. Added with a comment
+  citing the landing PR; not added if the comment call fails (safe retry on
+  next tick). Don't add manually unless you've verified a merged PR covers the
+  scope.
 - `fleet:queued` / `fleet:task` — owned by the **queue-manager**, set
   AFTER it ingests an issue into `TASKS.md`. Adding it at filing time
   excludes the issue from queue-manager's triage search and strands

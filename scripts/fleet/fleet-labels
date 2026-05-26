@@ -91,6 +91,7 @@ fi
 #      - human:* (purple 5319e7 / d4c5f9) — handoff to the human
 
 LABELS=(
+    "fleet:scope-shipped|fbca04|Issue scope already landed under a different T-NNN; queue-manager skipped ingest; human should close"
     "fleet:task|0366d6|Task tracked in TASKS.md"
     "fleet:epic|cc317c|Parent issue tracking a set of child issues; queue-manager auto-closes when all children close"
     "fleet:queued|c5def5|Queued for ingestion into TASKS.md"
