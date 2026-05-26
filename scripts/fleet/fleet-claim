@@ -1825,6 +1825,8 @@ for line in content.splitlines():
         break
 " 2>/dev/null || echo "")
 
+            [[ -z "$task_id" ]] && continue
+
             # Check for a matching open WIP PR branch (claude/T-NNN-*).
             local has_wip_pr=0
             if [[ -n "$task_id" ]]; then
