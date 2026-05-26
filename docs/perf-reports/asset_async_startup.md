@@ -53,11 +53,15 @@ auto handle = IRRender::loadImageAsync("path/to/texture.png");
 
 // ... do other work ...
 
-// Wait for result + upload to GPU (must be on main thread)
+// Non-blocking: poll with isReady(), take() when done
 if (handle.isReady()) {
     auto img = handle.take();
     auto [id, tex] = IRRender::uploadDecodedImage(img);
 }
+
+// Blocking: take() waits if the decode hasn't finished yet
+auto img = handle.take();
+auto [id, tex] = IRRender::uploadDecodedImage(img);
 ```
 
 `DecodedImage` holds the decoded RGBA pixels in a `std::vector`.

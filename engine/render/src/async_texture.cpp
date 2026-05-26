@@ -20,6 +20,7 @@ bool AsyncTextureHandle::isReady() const {
 }
 
 DecodedImage AsyncTextureHandle::take() {
+    IR_ASSERT(m_future.valid(), "AsyncTextureHandle::take() called on invalid handle");
     return m_future.get();
 }
 
@@ -28,8 +29,9 @@ static DecodedImage decodeImageFile(const std::string &path) {
     DecodedImage result;
     result.width_ = img.width_;
     result.height_ = img.height_;
+    constexpr int kBytesPerRGBAPixel = 4; // stbi_load force-channel = 4
     const std::size_t byteCount =
-        static_cast<std::size_t>(img.width_) * img.height_ * 4;
+        static_cast<std::size_t>(img.width_) * img.height_ * kBytesPerRGBAPixel;
     result.pixels_.assign(img.data_, img.data_ + byteCount);
     return result;
 }
