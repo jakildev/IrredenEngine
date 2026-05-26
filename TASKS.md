@@ -319,11 +319,11 @@ Avoid:
   - **Notes:** Two-pass approach: serial `beginTick` builds a BFS level-indexed structure (entities at depth N can be composed in parallel once depth N-1 is finalized); then `parallelFor` per depth level with implicit barrier between levels. Cache the level structure; invalidate only on structural hierarchy changes (spawn/destroy/reparent). Flat hierarchies (depth 1) become a single wide `parallelFor`. Dominant UPDATE cost at 262K entities (~2.51ms/frame, ~40% of UPDATE time). Referenced in threading_phase3.md as T-332; unblocks 100fps target (#1052). Part of epic #226.
   - **Links:**
 
-- [ ] **system: bulk PARALLEL_FOR migration of trivially-safe prefab systems** — inventory all prefab systems, classify by access-derivation safety rules, annotate ≥10 safe systems with PARALLEL_FOR, verify via validator, and file perf measurements
+- [~] **system: bulk PARALLEL_FOR migration of trivially-safe prefab systems** — inventory all prefab systems, classify by access-derivation safety rules, annotate ≥10 safe systems with PARALLEL_FOR, verify via validator, and file perf measurements
   - **ID:** T-379
   - **Area:** engine/prefabs, engine/system
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** (1) ≥10 additional prefab systems annotated with `PARALLEL_FOR` beyond the 2 already done; (2) `IrredenEngineTest` 100% pass; (3) measurable speedup at 262K entities vs post-Phase-3 baseline; (4) results filed in `docs/perf-reports/threading_bulk_migration.md`; (5) `engine/system/CLAUDE.md` updated with full list of parallelized systems; (6) no regression in `IRShapeDebug --auto-screenshot 60`
   - **Issue:** #1196
