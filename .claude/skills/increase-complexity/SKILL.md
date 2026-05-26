@@ -141,14 +141,17 @@ the file.
 Example (idle-bob — two systems needed, both in UPDATE):
 ```cpp
 // after existing UPDATE pipeline registrations:
-IRSystem::registerPipeline(IRSystem::System<PERIODIC_IDLE>::create(), IRTime::UPDATE);
 IRSystem::registerPipeline(
-    IRSystem::System<PERIODIC_IDLE_POSITION_OFFSET>::create(), IRTime::UPDATE);
+    IRTime::Events::UPDATE,
+    {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
+     IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()}
+);
 ```
 
 Read the system header for the exact `create()` signature before calling —
 argument lists differ across systems (some take amplitude/period, some
-take no arguments).
+take no arguments). Note: `IRSystem::System<N>::create()` does not exist at
+the call-site; use `IRSystem::createSystem<IRSystem::NAME>()` instead.
 
 ### 4b — Entity component additions
 
