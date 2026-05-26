@@ -133,6 +133,7 @@ for issue in pending:
     if not n:
         kept.append(issue)
         continue
+    # Full-text search; may match incidental references — human verifies via comment before closing.
     r = subprocess.run(
         ['gh', 'pr', 'list', '--repo', 'jakildev/IrredenEngine', '--state', 'merged',
          '--search', f'#{n}', '--json', 'number,title,url,mergedAt', '--limit', '5'],
