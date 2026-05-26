@@ -249,7 +249,7 @@ in the system header before use — the table is a starting-point cache only.
 | Goal | System(s) to register | Component(s) to add to entity |
 |---|---|---|
 | Idle bounce (vertical bob) | `PERIODIC_IDLE`, `PERIODIC_IDLE_POSITION_OFFSET` | `C_PeriodicIdle`, `C_Modifiers` |
-| Camera auto-rotation | `AUTO_YAW_ROTATE` | *(no entity; camera-global)* |
+| Camera auto-rotation | `AUTO_YAW_ROTATE` | *(none — iterates existing `C_Camera` entity; `System<AUTO_YAW_ROTATE>::create(rad)`)* |
 | Velocity-driven motion | `VELOCITY_3D`, `PROPAGATE_TRANSFORM` | `C_Velocity3D` |
 | Gravity | `GRAVITY_3D` | `C_Gravity3D`, `C_Velocity3D` |
 | Color animation | `ANIMATION_COLOR` | *(see system header — requires C_ActionAnimation + C_AnimColorState + C_VoxelSetNew)* |
