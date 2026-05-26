@@ -81,6 +81,7 @@ template <> class EventProfiler<UPDATE> {
     }
 
     void clampLag(uint32_t maxTicks) {
+        IR_ASSERT(maxTicks > 0, "max_update_ticks_per_frame must be > 0");
         NanoDuration maxLag = kFPSNanoDuration * static_cast<int64_t>(maxTicks);
         if (m_lag > maxLag) {
             m_lag = maxLag;
