@@ -73,6 +73,7 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     // so per-task work is already substantial and finer-grained
     // chunking would only add dispatch overhead.
     static constexpr int kGrainSize = 1;
+    static constexpr int kMinForParallel = 8;
 
     // Cached level partition: levels_[d] holds archetype nodes whose
     // parent-chain depth is exactly d. parentWorlds_[d][i] is the
@@ -154,14 +155,6 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 }
             };
 
-            // For trivially small levels the parallelFor dispatch +
-            // wait overhead dominates the savings — fall back to a
-            // serial walk. Threshold derived empirically from
-            // IRPerfGrid grid-size 32 (shallow hierarchy, ~30
-            // archetypes per level): kMinForParallel = 8 archetypes is
-            // the break-even where ~6 worker threads still amortize
-            // dispatch.
-            constexpr int kMinForParallel = 8;
             if (g_jobManager == nullptr || n < kMinForParallel) {
                 composeRange(0, n);
             } else {
