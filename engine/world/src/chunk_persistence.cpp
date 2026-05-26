@@ -34,10 +34,17 @@ std::string axisFragment(int v) {
     return oss.str();
 }
 
-std::string filenameForKey(IRPrefab::Chunk::ChunkKey key) {
-    auto coord = IRPrefab::Chunk::unpack(key);
+std::string filenameForCoord(const IRMath::ivec3 &coord) {
     return axisFragment(coord.x) + "_" + axisFragment(coord.y) + "_" + axisFragment(coord.z) +
            ".vxs";
+}
+
+std::string buildChunkPath(
+    const std::string &chunksDir, const IRMath::ivec3 &coord
+) {
+    return (std::filesystem::path{chunksDir} / std::to_string(floorDiv(coord.x, kDirSplitN)) /
+            std::to_string(floorDiv(coord.y, kDirSplitN)) / filenameForCoord(coord))
+        .string();
 }
 
 } // namespace
@@ -47,12 +54,7 @@ ChunkDiskPersistence::ChunkDiskPersistence(std::string saveRoot)
     , m_chunksDir{(std::filesystem::path{m_saveRoot} / "chunks").string()} {}
 
 std::string ChunkDiskPersistence::chunkPath(IRPrefab::Chunk::ChunkKey key) const {
-    auto coord = IRPrefab::Chunk::unpack(key);
-    return (std::filesystem::path{m_chunksDir} /
-            std::to_string(floorDiv(coord.x, kDirSplitN)) /
-            std::to_string(floorDiv(coord.y, kDirSplitN)) /
-            filenameForKey(key))
-        .string();
+    return buildChunkPath(m_chunksDir, IRPrefab::Chunk::unpack(key));
 }
 
 IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
@@ -66,7 +68,8 @@ IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
         return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::WriteFailed, oss.str());
     }
 
-    const auto chunkFilePath = chunkPath(key);
+    auto chunkCoord = IRPrefab::Chunk::unpack(key);
+    const auto chunkFilePath = buildChunkPath(m_chunksDir, chunkCoord);
     const auto leafDir = std::filesystem::path{chunkFilePath}.parent_path().string();
     std::error_code ec;
     std::filesystem::create_directories(leafDir, ec);
@@ -78,7 +81,6 @@ IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
         return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::OpenFailed, msg);
     }
 
-    auto chunkCoord = IRPrefab::Chunk::unpack(key);
     auto origin = IRPrefab::Chunk::chunkOriginVoxel(chunkCoord);
 
     IRAsset::DenseVoxelSet dense;
