@@ -148,10 +148,9 @@ IRSystem::registerPipeline(
 );
 ```
 
-Read the system header for the exact `create()` signature before calling —
-argument lists differ across systems (some take amplitude/period, some
-take no arguments). Note: `IRSystem::System<N>::create()` does not exist at
-the call-site; use `IRSystem::createSystem<IRSystem::NAME>()` instead.
+Most systems use `IRSystem::createSystem<IRSystem::NAME>()`; systems with
+parameterized setup (e.g. `AUTO_YAW_ROTATE`) define their own
+`System<N>::create(arg)` — check the system header for the exact signature.
 
 ### 4b — Entity component additions
 
