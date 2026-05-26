@@ -27,7 +27,6 @@
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/camera.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_propagate_transform.hpp>
@@ -85,7 +84,7 @@ int main(int argc, char **argv) {
     runChunkSmokeTest();
     initEntities();
     IREngine::gameLoop();
-    return 0;
+    return g_smokeFailCount > 0 ? 1 : 0;
 }
 
 void initSystems() {
