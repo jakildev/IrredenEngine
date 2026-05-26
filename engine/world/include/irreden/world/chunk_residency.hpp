@@ -9,7 +9,7 @@
 //
 // E1 added the data model + synchronous request/evict + entity ownership +
 // per-chunk voxel sub-pool from an injected allocator. E6 added optional
-// disk persistence — when a `ChunkDiskPersistence` pointer is wired in
+// disk persistence — when a `ChunkVoxelDiskPersistence` pointer is wired in
 // Config, `requestResident` first attempts to load the chunk from disk
 // and seed the pool slice, and `requestEvict` saves dirty chunks before
 // dropping the slot. E3 (Chebyshev prefetch + camera-radius eviction) is
@@ -44,7 +44,7 @@
 
 namespace IRWorld {
 
-class ChunkDiskPersistence;
+class ChunkVoxelDiskPersistence;
 
 /// What does the caller want this request urgency-classed as?
 /// VISIBLE_RENDER and PREFETCH_RING are camera-derived; FORCED is the
@@ -137,7 +137,7 @@ class ChunkResidencyManager {
 
         unsigned int voxelsPerChunk_ = 0;
 
-        ChunkDiskPersistence *persistence_ = nullptr;
+        ChunkVoxelDiskPersistence *persistence_ = nullptr;
 
         /// Budget: max chunks that may be RESIDENT simultaneously.
         /// When the set exceeds this cap, endFrame evicts the

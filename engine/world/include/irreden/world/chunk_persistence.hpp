@@ -38,9 +38,9 @@ namespace IRWorld {
 
 /// Stateless helper that knows where chunk files live for a given save.
 /// Construct one per save root; reusable across every chunk under it.
-class ChunkDiskPersistence {
+class ChunkVoxelDiskPersistence {
   public:
-    explicit ChunkDiskPersistence(std::string saveRoot);
+    explicit ChunkVoxelDiskPersistence(std::string saveRoot);
 
     /// Absolute path to the `.vxs` file for @p key. Exposed for tests
     /// and for editor tooling that wants to surface "where on disk
@@ -53,9 +53,8 @@ class ChunkDiskPersistence {
     /// 32³); @p voxels must hold exactly that many records (mismatch
     /// returns `WriteFailed` with a diagnostic, leaves disk untouched).
     /// Creates any missing parent directories before writing.
-    IRAsset::BinaryStatus saveChunk(
-        IRPrefab::Chunk::ChunkKey key, std::span<const IRAsset::VoxelRecord> voxels
-    );
+    IRAsset::BinaryStatus
+    saveChunk(IRPrefab::Chunk::ChunkKey key, std::span<const IRAsset::VoxelRecord> voxels);
 
     /// Load the chunk file under @p key. Returns `std::nullopt` when:
     /// - the file does not exist (chunk has never been saved — caller
@@ -67,8 +66,7 @@ class ChunkDiskPersistence {
     ///
     /// Save Format Extensibility Rule #5: unknown is recoverable,
     /// never fatal. The caller proceeds with an empty chunk either way.
-    std::optional<std::vector<IRAsset::VoxelRecord>>
-    loadChunk(IRPrefab::Chunk::ChunkKey key) const;
+    std::optional<std::vector<IRAsset::VoxelRecord>> loadChunk(IRPrefab::Chunk::ChunkKey key) const;
 
     /// True when the chunk file under @p key exists on disk. Cheap —
     /// a single `stat`-equivalent call; safe to use as a "should I
