@@ -264,11 +264,11 @@ Avoid:
   - **Notes:** Split from #1008 item 4. Low-priority rename pass. May fold into T-371 or T-372 if convenient; standalone skip is fine. Prevents future PRs from assuming entity state is durable via this class.
   - **Links:**
 
-- [ ] **tooling: queue-manager — detect stale TASKS.md rows whose scope shipped under a different T-NNN** — before ingesting a `human:approved` issue, search recent merged PRs for the issue number; skip ingest and post a comment if the scope already landed
+- [~] **tooling: queue-manager — detect stale TASKS.md rows whose scope shipped under a different T-NNN** — before ingesting a `human:approved` issue, search recent merged PRs for the issue number; skip ingest and post a comment if the scope already landed
   - **ID:** T-374
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** (1) Ingest pass searches merged PR titles/bodies for the issue number; (2) if a merged PR references the issue, skip ingest and post a comment linking the landing PR; (3) normal ingest path unaffected; (4) T-361/T-362 pattern (sub-task shipped under different T-NNN prefix) is caught
   - **Issue:** #1175
