@@ -1606,14 +1606,20 @@ cmd_cleanup() {
 }
 
 # cmd_cleanup_gh <repo> [<repo> ...]
-#   Sweeps stale fleet:reviewing-* labels off open PRs. A label is "stale"
-#   when it has been present > FLEET_CLAIM_STALE_SECS (default 1800 = 30
-#   min). No "live PR present" gate is needed — the PR IS the unit; > 30
-#   min means the reviewer crashed.
+#   Three-pass GitHub label sweep:
 #
-#   Idempotent: --remove-label on an absent label is a no-op, so two
-#   queue-tick invocations running this concurrently both succeed without
-#   error. No shared state is written; each pass reads GitHub fresh.
+#   Pass 1: fleet:reviewing-* off open PRs. Stale after FLEET_CLAIM_STALE_SECS
+#           (default 1800s). No "live PR" gate needed — the PR IS the unit.
+#
+#   Pass 2: fleet:claim-* off CLOSED issues. Age-independent; closed means done.
+#
+#   Pass 3: fleet:claim-* off OPEN issues where the claim is abandoned —
+#           no matching WIP PR branch (claude/T-NNN-*) exists and age >
+#           FLEET_CLAIM_STALE_SECS_ISSUES (default 7200s). Catches agents
+#           that crashed between claim acquisition and PR creation.
+#
+#   Idempotent: --remove-label on an absent label is a no-op. No shared
+#   state is written; each pass reads GitHub fresh.
 cmd_cleanup_gh() {
     if ! command -v gh >/dev/null 2>&1; then
         echo "fleet-claim cleanup --gh: 'gh' not on PATH; skipping" >&2
@@ -1730,6 +1736,128 @@ for issue in issues:
                     "cleanup --gh: closed-issue remove-label failed"
             fi
         done <<< "$claim_plan"
+    done
+
+    # Third pass: sweep `fleet:claim-*` labels off OPEN issues when the
+    # claim is stale — no matching WIP PR exists and age > TTL. This
+    # catches agents that crashed or abandoned between claim acquisition
+    # and PR creation, leaving the cross-host lock held indefinitely.
+    #
+    # TTL is longer than the reviewing sweep (7200s vs 1800s) because
+    # real implementation work takes longer than a review scan. Set
+    # FLEET_CLAIM_STALE_SECS_ISSUES to override.
+    local claim_issue_stale_secs="${FLEET_CLAIM_STALE_SECS_ISSUES:-7200}"
+    for repo in "${repos[@]}"; do
+        local open_claim_plan open_pr_branches_json tasks_md
+        open_claim_plan=$(gh issue list --repo "$repo" --state open \
+            --search "label:\"fleet:queued\"" \
+            --json number,labels --limit 200 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:claim-"):
+            print(f"{n}\t{name}")
+' 2>/dev/null || echo "")
+
+        [[ -z "$open_claim_plan" ]] && continue
+
+        # Collect open WIP PR branch names once per repo.
+        open_pr_branches_json=$(gh pr list --repo "$repo" --state open \
+            --json headRefName --limit 300 2>/dev/null || echo "[]")
+
+        # Load TASKS.md once per repo for issue → task-id lookup.
+        local repo_root
+        repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+        tasks_md=""
+        if [[ -n "$repo_root" ]]; then
+            tasks_md=$(git -C "$repo_root" show "origin/master:TASKS.md" 2>/dev/null || echo "")
+        fi
+
+        while IFS=$'\t' read -r issue_num label_name; do
+            [[ -z "$issue_num" || -z "$label_name" ]] && continue
+
+            # Fetch label-add timestamp (same logic as pass 1).
+            local added_at
+            added_at=$(gh api "repos/${repo}/issues/${issue_num}/events" \
+                --paginate \
+                --jq '.[] | select(.event=="labeled" and .label.name=="'"$label_name"'") | .created_at' \
+                2>/dev/null | tail -n1 || true)
+            [[ -z "$added_at" ]] && continue
+
+            local added_epoch
+            added_epoch=$(python3 -c "
+import datetime
+try:
+    dt = datetime.datetime.strptime('$added_at', '%Y-%m-%dT%H:%M:%SZ')
+    print(int(dt.replace(tzinfo=datetime.timezone.utc).timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)
+            [[ "$added_epoch" -eq 0 ]] && continue
+
+            local age=$(( now - added_epoch ))
+            [[ $age -lt $claim_issue_stale_secs ]] && continue
+
+            # Resolve issue number → task ID via TASKS.md so we can
+            # construct the expected branch prefix.
+            local task_id
+            task_id=$(FLEET_TASKS_MD="$tasks_md" FLEET_ISSUE_NUM="$issue_num" \
+                python3 -c "
+import os, re
+issue_num = os.environ.get('FLEET_ISSUE_NUM', '')
+content = os.environ.get('FLEET_TASKS_MD', '')
+current_id = None
+for line in content.splitlines():
+    m = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
+    if m:
+        current_id = m.group(1).strip()
+        continue
+    m = re.match(r'^\s+- \*\*Issue:\*\*\s*#(\d+)', line)
+    if m and m.group(1) == issue_num and current_id:
+        print(current_id)
+        break
+" 2>/dev/null || echo "")
+
+            [[ -z "$task_id" ]] && continue
+
+            # Check for a matching open WIP PR branch (claude/T-NNN-*).
+            local has_wip_pr=0
+            if [[ -n "$task_id" ]]; then
+                local branch_prefix="claude/${task_id}-"
+                has_wip_pr=$(echo "$open_pr_branches_json" | python3 -c "
+import json, sys
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
+prefix = '$branch_prefix'
+for pr in prs:
+    if (pr.get('headRefName') or '').startswith(prefix):
+        print(1)
+        sys.exit(0)
+print(0)
+" 2>/dev/null || echo 0)
+            fi
+
+            [[ "$has_wip_pr" -eq 1 ]] && continue
+
+            # Stale abandoned claim — no open PR for this task.
+            if gh issue edit "$issue_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m, no open PR)"
+                total_removed=$((total_removed + 1))
+            else
+                write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
+                    "cleanup --gh: open-issue claim remove-label failed"
+            fi
+        done <<< "$open_claim_plan"
     done
 
     if [[ $total_removed -eq 0 ]]; then
@@ -3367,12 +3495,19 @@ commands:
   check-stale [max-secs]        release claims older than max-secs (default: 7200)
   cleanup [--repo o/r] [--gh] ...
                                 Remove claims for merged/closed PRs. With
-                                --gh also sweeps stale fleet:reviewing-*
-                                labels off open GitHub PRs (>30 min age)
-                                and replays any ~/.fleet/orphans/
-                                sentinels. The --gh pass is idempotent
-                                and safe under concurrent invocations;
-                                fleet-queue-tick runs it once per tick.
+                                --gh also runs three GitHub sweeps:
+                                (1) stale fleet:reviewing-* labels off open
+                                    PRs (>30 min age),
+                                (2) fleet:claim-* labels off closed/merged
+                                    issues,
+                                (3) fleet:claim-* labels off open issues
+                                    where the claim is abandoned — no matching
+                                    WIP PR exists and age > TTL (default 7200s;
+                                    override via FLEET_CLAIM_STALE_SECS_ISSUES).
+                                Also replays any ~/.fleet/orphans/ sentinels.
+                                The --gh pass is idempotent and safe under
+                                concurrent invocations; fleet-queue-tick runs
+                                it once per tick.
                                 NOTE: cleanup's --repo takes a full owner/repo
                                 path (e.g. "jakildev/IrredenEngine"); it lives
                                 AFTER the subcommand and is unrelated to the
