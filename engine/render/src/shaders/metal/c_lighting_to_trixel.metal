@@ -119,7 +119,12 @@ kernel void c_lighting_to_trixel(
 
     const int rawDepth = encoded >> 2;
     const int face = encoded & 3;
-    const float lambert = max(0.0f, dot(faceOutwardNormal(face), sunFrameData.sunDirection.xyz));
+    // Rotate raster-frame face normal to world frame so Lambert shading is
+    // correct at non-zero camera yaw. No-op at yaw=0 (cardinalIndex=0).
+    // Matches the AO shader pattern (c_compute_voxel_ao.metal:91,113).
+    int cardinalIndex = rasterYawCardinalIndex(voxelFrameData.rasterYaw);
+    float3 worldNormal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
+    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =
         mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;
 
