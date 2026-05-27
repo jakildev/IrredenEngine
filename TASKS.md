@@ -162,6 +162,102 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
+- [ ] **Fleet: delete orphaned queue scripts** — delete fleet-queue-tick, fleet-tasks-render, fleet-stale-sweep and their tests after T-381 made them unreachable
+  - **ID:** T-389
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** three scripts no longer exist; `grep -r "fleet-queue-tick\|fleet-tasks-render\|fleet-stale-sweep" scripts/ .claude/` returns zero non-comment hits; install.sh dry-run clean; PR opens green CI
+  - **Issue:** #1233
+  - **Notes:** Part of TASKS.md elimination epic (#1216). PR #1229 (T-381) made these scripts orphans with no callers. Deletes scripts/fleet/fleet-queue-tick, fleet-tasks-render, fleet-stale-sweep; tests/test_tasks_render.py, test_fleet_claim_master_lock.sh; install.sh install lines ~143–146; settings.json Bash whitelist entries for these scripts; converts stale fleet-queue-tick comments in fleet-dispatcher and fleet-state-scout to historical notes.
+  - **Links:**
+
+- [ ] **Fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task** — rebuild fleet-claim around GitHub issue numbers + labels; drop TASKS.md lookup, master-push, and T-NNN interface
+  - **ID:** T-390
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** `fleet-claim claim 1216 opus-worker-1` works; `fleet-claim claim "T-001" opus-worker-1` fails with migration hint; no TASKS.md reads in fleet-claim; all existing tests pass after fixture migration; master_lock_task / check_model_tag TASKS.md path / cmd_reclaim / cmd_find_stackable_blockers TASKS.md path all deleted
+  - **Issue:** #1234
+  - **Notes:** Part of TASKS.md elimination epic (#1216). Interface break: `fleet-claim claim <issue#>` replaces `fleet-claim claim "T-NNN"`. Deletes master_lock_task() and master-push path (~lines 710–900), check_blockers() TASKS.md body, check_model_tag() (reads labels instead), cmd_reclaim(), cmd_find_stackable_blockers() TASKS.md scan. High risk — fleet-claim is on the critical path; fleet is paused for migration.
+  - **Links:**
+
+- [ ] **Fleet-queue-ingest: stop writing TASKS.md; label-driven ingestion only** — remove the LLM/TASKS.md-write step from fleet-queue-ingest; retain label-stamping only
+  - **ID:** T-391
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** fleet-queue-ingest no longer invokes `claude --print /role-queue-manager`; no TASKS.md reads in fleet-queue-ingest; issue moves from human:approved to fleet:queued within one scout tick; two simultaneous ingest runs converge to single label transition; label descriptions updated
+  - **Issue:** #1235
+  - **Notes:** Part of TASKS.md elimination epic (#1216). Deletes LLM invocation of role-queue-manager (~line 216), TASKS.md dedup check (~lines 248, 262–273), worktree dedup logic/queue-manager-ingest worktree spawn (~line 200). Keeps per-host lockfile and live GitHub label re-check. Updates fleet:queued, fleet:task, fleet:epic label descriptions.
+  - **Links:**
+
+- [ ] **Fleet-state-scout: drop TASKS.md reads and queue-tick spawn after T-381 cleanup** — remove residual TASKS.md reads and fleet-queue-tick spawn left over from PR #1229
+  - **ID:** T-392
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-389
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** `grep -n "TASKS\|queue-tick\|T-NNN" scripts/fleet/fleet-state-scout` returns 0 non-historical hits; no queue: maintenance sync commits appear during a fleet cycle; projection state cache shape unchanged
+  - **Issue:** #1236
+  - **Notes:** Part of TASKS.md elimination epic (#1216). Blocked on orphan-script deletion so the queue-tick spawn target is gone first. Deletes: lines ~1237–1261 (fleet-queue-tick spawn on projection-change), line ~311 (git show origin/master:TASKS.md read), lines ~629–669 (SINGLE_TASK_BLOCKER_RE + T-NNN blocker parser), lines ~194–198 (ghost-row cross-check), line ~804 and ~159 comments. Medium risk — scout drives every worker's view of the queue.
+  - **Links:**
+
+- [ ] **Fleet: delete TASKS.md, role-queue-manager.md, and creations/game/TASKS.md** — final cutover: delete the TASKS.md artifact and the role doc whose sole purpose was maintaining it
+  - **ID:** T-393
+  - **Area:** tooling, docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-389, T-390, T-391, T-392
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** TASKS.md, creations/game/TASKS.md, role-queue-manager.md all deleted; root CLAUDE.md table updated with gh issue list / fleet-queue-list pointer; `grep -rln "TASKS.md" .` returns 0 hits; fleet smoke cycle passes on post-deletion branch
+  - **Issue:** #1237
+  - **Notes:** Part of TASKS.md elimination epic (#1216). All of T-389–T-392 must be merged before this PR opens. High risk if any blocker is incomplete. Also updates root CLAUDE.md "Where to find things" table. Verify creations/game/TASKS.md exists on master before deleting.
+  - **Links:**
+
+- [ ] **Fleet: update role docs for issue-based queue** — rewrite role docs (merger, opus-worker, sonnet-author, opus-architect, opus-reviewer, sonnet-reviewer, smoke-worker) to describe issue-based queue instead of TASKS.md
+  - **ID:** T-394
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** `grep -rln "TASKS.md\|T-NNN\|queue-manager" .claude/commands/` returns 0 hits; all fleet-claim examples use `fleet-claim claim <issue#>`; role-merger TASKS.md sort-merge section removed; roles still read coherently end-to-end
+  - **Issue:** #1238
+  - **Notes:** Part of TASKS.md elimination epic (#1216). Can run in parallel with scripts cleanup. Largest change in role-merger.md (delete ~60 lines of TASKS.md sort-merge conflict class). Medium changes in role-opus-worker.md and role-sonnet-author.md. Small touches to role-opus-architect.md, role-opus-reviewer.md, role-smoke-worker.md. Low risk — pure doc work.
+  - **Links:**
+
+- [ ] **Fleet: update skills for issue-based queue** — update commit-and-push, start-next-task, review-pr, simplify, backend-parity, platform-catchup, review-fleet-feedback skill docs for issue-based queue
+  - **ID:** T-395
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** `grep -rln "TASKS.md\|T-NNN" .claude/skills/` returns 0 non-historical hits; all branch-name and PR-title examples use `<issue#>` convention; skill workflows read coherently end-to-end
+  - **Issue:** #1239
+  - **Notes:** Part of TASKS.md elimination epic (#1216). Can run in parallel with scripts cleanup. Scope per-file in issue body. Largest changes: commit-and-push/SKILL.md (branch naming, fleet-tasks-render references), start-next-task/SKILL.md (fleet-claim output format, branch pattern). Historical T-NNN refs in reference docs (lighting.md, optimize/reference/) are optional polish. Low risk — doc work.
+  - **Links:**
+
+- [ ] **Fleet: rewrite docs/agents/FLEET.md for issue-based queue** — rewrite FLEET.md workflow, claim-mechanics, and label-state-machine sections to describe the post-TASKS.md fleet
+  - **ID:** T-396
+  - **Area:** docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-389..T-396 tasks-md-elimination
+  - **Acceptance:** `grep -n "TASKS.md\|T-NNN\|queue-manager\|fleet-queue-tick\|fleet-tasks-render" docs/agents/FLEET.md` returns 0 hits (or only historical-note hits in clearly-marked archive sections); FLEET.md reads coherently end-to-end; examples match new conventions
+  - **Issue:** #1240
+  - **Notes:** Part of TASKS.md elimination epic (#1216). No hard block but should land near the end so it describes actual post-cleanup behavior. ~50 KB file, ~950 lines, ~28 TASKS.md mentions. Treat as a rewrite, not a sweep. Sections to rewrite: §Workflow (rule 6), §How fleet-claim enforces atomicity, §Multi-host coordination, §Cursor flow, §Stack examples, §Label state machine, §Design escalation, §Feedback channel. Medium risk — FLEET.md is the canonical doc.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
