@@ -1117,6 +1117,10 @@ except Exception:
     done
 
     # Second pass: sweep `fleet:claim-*` labels off CLOSED issues.
+    # Note: the fleet:queued search filter below only catches issues that
+    # were closed while still carrying fleet:queued. Issues whose
+    # fleet:queued label was manually removed before close will retain a
+    # stale fleet:claim-* indefinitely — low probability but worth knowing.
     for repo in "${repos[@]}"; do
         local claim_plan
         claim_plan=$(gh issue list --repo "$repo" --state closed \
@@ -1398,6 +1402,9 @@ cmd_check_stale() {
 
 cmd_stack() {
     # Atomically claim a chain of dependent tasks. All-or-nothing.
+    # Cross-host locking: FS lock only (atomic mkdir). Unlike cmd_claim,
+    # cmd_stack does NOT stamp fleet:claim-<host>-<agent> on each issue's
+    # GH labels — only the local FS mkdir is the concurrency barrier.
     # Usage: fleet-claim stack "<n1> <n2> <n3>" <agent>
     local task_list="$1"
     local agent="${2:-unknown}"
