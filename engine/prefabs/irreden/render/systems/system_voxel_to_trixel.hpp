@@ -131,7 +131,7 @@ clearCanvasAndDistances(IREntity::EntityId canvasEntity, C_TriangleCanvasTexture
     // Use device-level clearTexImage rather than Texture2D::clear —
     // on Metal the Texture2D::clear path fails to clear R32I textures
     // reliably, leaving stale distances that cull visible voxels.
-    static const std::int32_t kDistanceClear =
+    static constexpr std::int32_t kDistanceClear =
         static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
     IRRender::device()->clearTexImage(canvas.getTextureDistances(), 0, &kDistanceClear);
 }
