@@ -162,18 +162,6 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-- [~] **Fleet: delete orphaned queue scripts** — delete fleet-queue-tick, fleet-tasks-render, fleet-stale-sweep and their tests after T-381 made them unreachable
-  - **ID:** T-389
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-389-delete-orphaned-queue-scripts
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-396 tasks-md-elimination
-  - **Acceptance:** three scripts no longer exist; `grep -r "fleet-queue-tick\|fleet-tasks-render\|fleet-stale-sweep" scripts/ .claude/` returns zero non-comment hits; install.sh dry-run clean; PR opens green CI
-  - **Issue:** #1233
-  - **Notes:** Part of TASKS.md elimination epic (#1216). PR #1229 (T-381) made these scripts orphans with no callers. Deletes scripts/fleet/fleet-queue-tick, fleet-tasks-render, fleet-stale-sweep; tests/test_tasks_render.py, test_fleet_claim_master_lock.sh; install.sh install lines ~143–146; settings.json Bash whitelist entries for these scripts; converts stale fleet-queue-tick comments in fleet-dispatcher and fleet-state-scout to historical notes.
-  - **Links:**
-
 - [~] **Fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task** — rebuild fleet-claim around GitHub issue numbers + labels; drop TASKS.md lookup, master-push, and T-NNN interface
   - **ID:** T-390
   - **Area:** tooling
@@ -203,7 +191,7 @@ Avoid:
   - **Area:** tooling
   - **Model:** opus
   - **Owner:** claude/1236-scout-drop-tasks-md
-  - **Blocked by:** T-389
+  - **Blocked by:** (none)
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** `grep -n "TASKS\|queue-tick\|T-NNN" scripts/fleet/fleet-state-scout` returns 0 non-historical hits; no queue: maintenance sync commits appear during a fleet cycle; projection state cache shape unchanged
   - **Issue:** #1236
@@ -215,7 +203,7 @@ Avoid:
   - **Area:** tooling, docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-389, T-390, T-391, T-392
+  - **Blocked by:** T-390, T-391, T-392
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** TASKS.md, creations/game/TASKS.md, role-queue-manager.md all deleted; root CLAUDE.md table updated with gh issue list / fleet-queue-list pointer; `grep -rln "TASKS.md" .` returns 0 hits; fleet smoke cycle passes on post-deletion branch
   - **Issue:** #1237
@@ -262,6 +250,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-389** — fleet: delete orphaned queue scripts · Owner: claude/T-389-delete-orphaned-queue-scripts · PR: https://github.com/jakildev/IrredenEngine/pull/1243
 - [x] **T-395** — fleet: update skills for issue-based queue · Owner: claude/1239-update-skills-issue-queue · PR: https://github.com/jakildev/IrredenEngine/pull/1242
 - [x] **T-387** — render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw · Owner: claude/T-387-shadow-aabb-coordinate-frame · PR: https://github.com/jakildev/IrredenEngine/pull/1230
 - [x] **T-381** — fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync · Owner: claude/T-381-scout-reads-issues · PR: https://github.com/jakildev/IrredenEngine/pull/1229
@@ -281,4 +270,3 @@ Avoid:
 - [x] **T-375** — fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels · Owner: claude/T-375-cross-host-gh-claim-preserve · PR: https://github.com/jakildev/IrredenEngine/pull/1206
 - [x] **T-376** — fleet-claim cleanup --gh — TTL sweep stale fleet:claim-* labels off open issues · Owner: claude/T-376-fleet-claim-ttl-sweep · PR: https://github.com/jakildev/IrredenEngine/pull/1204
 - [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
-- [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
