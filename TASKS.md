@@ -163,11 +163,11 @@ Avoid:
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 1–2, file not yet in repo). PR 1 of 3 in TASKS.md elimination series. Eliminates ~318 `queue: claim` commits per fleet cycle.
   - **Links:**
 
-- [ ] **fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync** — replace `fetch_tasks` in fleet-state-scout with `fetch_task_queue` querying `gh issue list --label fleet:queued`; parse model/blocked-by/epic from issue bodies; eliminate `fleet-queue-tick` and the maintenance-sync commit loop
+- [~] **fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync** — replace `fetch_tasks` in fleet-state-scout with `fetch_task_queue` querying `gh issue list --label fleet:queued`; parse model/blocked-by/epic from issue bodies; eliminate `fleet-queue-tick` and the maintenance-sync commit loop
   - **ID:** T-381
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** T-380
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) scout projections correctly reflect task queue from issues + labels; (2) no `queue: maintenance sync` commits appear on master; (3) `fleet-claim` model gate works from issue labels; (4) agents see correct available/claimed/blocked task lists
