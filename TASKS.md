@@ -209,11 +209,11 @@ Avoid:
   - **Notes:** Suspects in order: T-356/T-357 chunk residency/prefetch (may fail to mark chunks resident), T-358 upload bandwidth cap throttling initial uploads, T-352/PR#1213 distance-texture clear path. Key files: `engine/prefabs/irreden/render/cull_viewport_state.hpp`, `system_voxel_to_trixel.hpp:265-311`, `engine/world/` chunk residency. Blocks verification of rotation/lighting bugs T-385..T-387.
   - **Links:**
 
-- [ ] **render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw** — add `rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex)` pattern to 4 shader files (GLSL + Metal lighting and shadow) to match the AO shader
+- [~] **render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw** — add `rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex)` pattern to 4 shader files (GLSL + Metal lighting and shadow) to match the AO shader
   - **ID:** T-385
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** At non-zero yaw, Lambert shading correct per face; shadow bias uses world-space normal; no self-shadow acne; fix is no-op at yaw=0; linux-debug + macos-debug build clean
   - **Issue:** #1218
