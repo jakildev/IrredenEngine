@@ -220,11 +220,11 @@ Avoid:
   - **Notes:** Affects `c_lighting_to_trixel.glsl:144`, `c_compute_sun_shadow.glsl:109`, and Metal mirrors. Model: AO shader `c_compute_voxel_ao.glsl:91-113`. PR #549 (HDR pipeline, open) also modifies `c_lighting_to_trixel.glsl` — coordinate before that PR merges. PR #1198 (cascaded shadows, merged) amplifies this bug visually.
   - **Links:**
 
-- [ ] **render: chunk visibility mask not rotation-aware — geometry culled at non-zero camera yaw** — make `rebuildChunkBounds()` in `C_VoxelPool` apply `rotateCardinalZ` before iso projection, matching the GPU compact shader
+- [~] **render: chunk visibility mask not rotation-aware — geometry culled at non-zero camera yaw** — make `rebuildChunkBounds()` in `C_VoxelPool` apply `rotateCardinalZ` before iso projection, matching the GPU compact shader
   - **ID:** T-386
   - **Area:** engine/render, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Acceptance:** No chunks incorrectly culled at any camera yaw; spinning yaw 0→360° shows no geometry pops or missing sectors; fix is no-op at yaw=0 (cardinalIndex=0 passes identity)
   - **Issue:** #1219
