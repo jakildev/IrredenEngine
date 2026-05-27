@@ -258,6 +258,18 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). No hard block but should land near the end so it describes actual post-cleanup behavior. ~50 KB file, ~950 lines, ~28 TASKS.md mentions. Treat as a rewrite, not a sweep. Sections to rewrite: §Workflow (rule 6), §How fleet-claim enforces atomicity, §Multi-host coordination, §Cursor flow, §Stack examples, §Label state machine, §Design escalation, §Feedback channel. Medium risk — FLEET.md is the canonical doc.
   - **Links:**
 
+- [ ] **Fleet: doc cross-reference cleanup post-TASKS.md** — update CLAUDE.md, CLAUDE-BASELINE.md, FLEET-FEEDBACK-HANDLING.md, FLEET-CACHE.md to remove stale TASKS.md/queue-manager cross-refs; triage and archive stale audit-*.md
+  - **ID:** T-397
+  - **Area:** docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** T-396
+  - **Stack:** T-389..T-397 tasks-md-elimination
+  - **Acceptance:** root CLAUDE.md "Where to find things" table current; `grep -rln "TASKS.md\|T-NNN\|queue-manager" docs/ CLAUDE.md creations/*/CLAUDE.md` returns 0 non-archived hits; audit docs archived or refreshed; all doc cross-refs resolve
+  - **Issue:** #1241
+  - **Notes:** Part of TASKS.md elimination epic (#1216). Blocked on T-396 (FLEET.md rewrite) so pointers resolve correctly. Scope: root CLAUDE.md table row, CLAUDE-BASELINE.md line ~353 and ~484, FLEET-FEEDBACK-HANDLING.md lines ~39 and ~419, FLEET-CACHE.md lines ~78 and ~95, three audit-*.md files (check shipped status, then mv to docs/agents/.archive/ or delete). Optional sweep of creations/*/CLAUDE.md. Low risk — pure doc work.
+  - **Links:**
+
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
