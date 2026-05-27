@@ -453,8 +453,9 @@ the matching **role slash command**.
 
 **Key terminology:** in tmux a *window* fills the whole terminal (only
 one shows at a time); a *pane* is a split inside a window. The fleet
-uses one window with multiple panes so you can see all agents
-simultaneously. The default tmux prefix is `C-b` (Ctrl+B); the config
+uses a `fleet` window (3×3 agent grid) and an `ops` window for meta
+panes; each window contains multiple panes so you can see related
+agents simultaneously. The default tmux prefix is `C-b` (Ctrl+B); the config
 below remaps it to `C-a` (Ctrl+A) which is easier to reach. **`C-a`
 means hold Control, press A.**
 
@@ -1198,11 +1199,26 @@ instead, that's the first thing to fix.
 
 ### Step 2 — drive one author task through the full cycle
 
-Switch to **sonnet-fleet-1** and type:
+First, create a bounded test task in the issue queue so the agent has
+something concrete to pick up:
 
-> exit dry-run mode and do exactly ONE task end-to-end. Pick the
-> "Example: unit tests for engine/math/physics.hpp" task — it's
-> bounded, sonnet-tagged, and has a concrete acceptance check.
+```bash
+gh issue create --repo jakildev/IrredenEngine \
+    --title "test: unit tests for engine/math/physics.hpp" \
+    --body "Write exhaustive tests for physics.hpp. Acceptance: test binary builds and all assertions pass." \
+    --label "fleet:sonnet" \
+    --label "human:approved"
+```
+
+Note the issue number printed. Wait ~30 seconds for `fleet-state-scout`
+to ingest it, then confirm it appears in `fleet-queue-list`.
+
+Switch to **sonnet-fleet-1** and type (substituting the actual issue
+number):
+
+> exit dry-run mode and do exactly ONE task end-to-end. Pick issue #NNN
+> (test: unit tests for engine/math/physics.hpp) — it's bounded,
+> sonnet-tagged, and has a concrete acceptance check.
 > Build with `-j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`. After
 > `commit-and-push`, stop and wait — do not pick another task or loop.
 
