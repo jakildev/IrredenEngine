@@ -13,7 +13,7 @@ fleet-claim stack-pr-state <your-worktree-name>
 ```
 
 - Output `no stack claim for agent: <name>` → not stacked, proceed with the normal single-PR flow in [`SKILL.md`](../SKILL.md).
-- Output with `task`/`branch`/`pr` columns → stacked. The row whose PR column is `(pending)` and whose earlier rows (if any) are all filled is the current task. Note its `<task-id>`; you will need it in steps 2 and 8 of the main flow.
+- Output with `task`/`branch`/`pr` columns → stacked. The row whose PR column is `(pending)` and whose earlier rows (if any) are all filled is the current task. Note its `<task-id>` (for `fleet-claim` commands in step 8) and its `<issue#>` (for the branch name in step 2 — look it up from the task entry if the column only shows a T-NNN ID).
 
 ## Deltas vs. the single-PR flow
 
