@@ -284,7 +284,7 @@ file_stuck_task_issue() {
     local task_id="$1"
     local branch="$2"
     local body
-    body=$(printf '## Task %s has been retried %s+ times without merge\n\nBoot-time reconciliation observed at least 2 PRs for `%s` close without merging. The current reservation has been released and the closed-counter at `~/.fleet/closed-counts/%s` has been incremented.\n\nLast observed branch: `%s`\n\nLikely structural blocker (design issue, missing engine support, or out-of-date plan). Please triage:\n- abandon and remove from TASKS.md, OR\n- replan with updated context.\n\nPosting one-shot via `~/.fleet/closed-counts/%s.filed`. Re-merging the task or removing the flag file resets the gate.' \
+    body=$(printf '## Task %s has been retried %s+ times without merge\n\nBoot-time reconciliation observed at least 2 PRs for `%s` close without merging. The current reservation has been released and the closed-counter at `~/.fleet/closed-counts/%s` has been incremented.\n\nLast observed branch: `%s`\n\nLikely structural blocker (design issue, missing engine support, or out-of-date plan). Please triage:\n- close the issue as won'"'"'t-fix, OR\n- replan with updated context.\n\nPosting one-shot via `~/.fleet/closed-counts/%s.filed`. Re-merging the task or removing the flag file resets the gate.' \
         "$task_id" "2" "$task_id" "$task_id" "$branch" "$task_id")
     gh issue create --repo jakildev/IrredenEngine \
         --title "fleet: stuck-task — $task_id retried 2+ times without merge" \

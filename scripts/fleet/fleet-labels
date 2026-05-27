@@ -92,9 +92,9 @@ fi
 
 LABELS=(
     "fleet:scope-shipped|fbca04|Issue scope already landed under a different T-NNN; queue-manager skipped ingest; human should close"
-    "fleet:task|0366d6|Task tracked in TASKS.md"
+    "fleet:task|0366d6|Task from the fleet issue queue"
     "fleet:epic|cc317c|Parent issue tracking a set of child issues; queue-manager auto-closes when all children close"
-    "fleet:queued|c5def5|Queued for ingestion into TASKS.md"
+    "fleet:queued|c5def5|Queued for fleet pickup (requires human:approved)"
     "fleet:needs-info|fbca04|Needs more info from the author before triage"
     "fleet:needs-plan|fbca04|Needs an architect plan before a worker can pick it up"
     "fleet:in-progress|c5def5|A fleet worker has claimed this task"

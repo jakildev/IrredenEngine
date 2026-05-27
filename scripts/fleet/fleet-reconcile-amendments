@@ -65,10 +65,10 @@ import sys
 #   claude/<N>-…       → new convention (post-#1216). Captures the issue
 #                        number; the reconciler passes it straight to
 #                        `fleet-claim reserve`.
-#   claude/T-NNN-…     → legacy. Captures the T-NNN; without TASKS.md
-#                        there's no way to resolve back to the issue
-#                        number, so reconstruction skips it and the
-#                        worker manually re-reserves on next iteration.
+#   claude/T-NNN-…     → legacy. Captures the T-NNN; no way to resolve
+#                        back to the issue number, so reconstruction
+#                        skips it and the worker manually re-reserves
+#                        on next iteration.
 ISSUE_BRANCH_RE = re.compile(r"^claude/(\d+)-")
 LEGACY_TASK_BRANCH_RE = re.compile(r"^claude/T-\d+-")
 

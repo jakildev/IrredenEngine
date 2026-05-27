@@ -2,8 +2,7 @@
 # fleet-queue-list — human-readable task queue from GitHub Issues.
 #
 # Queries `fleet:queued` open issues and renders a table grouped into
-# Available / In-progress / Blocked sections. Replaces the human-readable
-# function of TASKS.md.
+# Available / In-progress / Blocked sections.
 #
 # Usage:
 #   fleet-queue-list              # all queued issues

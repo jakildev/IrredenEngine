@@ -358,7 +358,7 @@ list_pane_state() {
 # (default 5 min) fires C-c+new-dispatch into the live pipeline, killing
 # the iteration mid-edit. Observed for queue-manager: ~5 min of analysis
 # + edits would consistently get C-c'd before reaching the commit step,
-# leaving TASKS.md dirty and the master state stale across iterations.
+# leaving the master state stale across iterations.
 pane_has_running_wrapper() {
     local pane_id="$1"
     local pane_pid
