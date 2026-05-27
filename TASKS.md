@@ -234,11 +234,11 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). Can run in parallel with scripts cleanup. Largest change in role-merger.md (delete ~60 lines of TASKS.md sort-merge conflict class). Medium changes in role-opus-worker.md and role-sonnet-author.md. Small touches to role-opus-architect.md, role-opus-reviewer.md, role-smoke-worker.md. Low risk — pure doc work.
   - **Links:**
 
-- [ ] **Fleet: update skills for issue-based queue** — update commit-and-push, start-next-task, review-pr, simplify, backend-parity, platform-catchup, review-fleet-feedback skill docs for issue-based queue
+- [~] **Fleet: update skills for issue-based queue** — update commit-and-push, start-next-task, review-pr, simplify, backend-parity, platform-catchup, review-fleet-feedback skill docs for issue-based queue
   - **ID:** T-395
   - **Area:** docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/1239-update-skills-issue-queue
   - **Blocked by:** (none)
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** `grep -rln "TASKS.md\|T-NNN" .claude/skills/` returns 0 non-historical hits; all branch-name and PR-title examples use `<issue#>` convention; skill workflows read coherently end-to-end
