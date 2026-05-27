@@ -50,8 +50,9 @@ assert_eq() {
     fi
 }
 
-# Build a sandbox: temp dirs for state + reservations, a fake TASKS.md
-# in a fake git repo so reservation-role can resolve task → Model.
+# Build a sandbox: temp dirs for state + reservations. Tasks are keyed
+# on issue numbers; `reservation-role` resolves the model by calling
+# `gh issue view <N>`, which we stub to canned-respond per issue.
 TMPROOT=$(mktemp -d)
 export FLEET_STATE_DIR="$TMPROOT/state"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
@@ -65,41 +66,26 @@ export FLEET_SESSION="fleet-test-$$"
 
 mkdir -p "$FLEET_STATE_DIR/dispatch" "$FLEET_RESERVATIONS_DIR" "$FLEET_CLAIMS_DIR"
 
-FAKE_REPO="$TMPROOT/repo"
-mkdir -p "$FAKE_REPO"
-(
-    cd "$FAKE_REPO"
-    git init --quiet -b master
-    git config user.email "test@test"
-    git config user.name "test"
-    cat >TASKS.md <<'TASKSEOF'
-# TASKS
-
-## Open
-
-- [ ] **Task A — opus** — first opus task
-  - **ID:** T-901
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-
-- [ ] **Task B — sonnet** — first sonnet task
-  - **ID:** T-902
-  - **Model:** sonnet
-  - **Owner:** free
-  - **Blocked by:** (none)
-TASKSEOF
-    git add TASKS.md
-    git commit --quiet -m "init" --no-gpg-sign
-    # Set origin/master (reservation-role reads via `git show origin/master:TASKS.md`)
-    git update-ref refs/remotes/origin/master HEAD
-)
-export FLEET_ENGINE_ROOT="$FAKE_REPO"
-export FLEET_GAME_ROOT="$FAKE_REPO/no-game-here"
+# `gh` stub: reservation-role calls `gh issue view <N> --repo R --json
+# labels,body`. Issue 901 → fleet:opus, 902 → fleet:sonnet. Everything
+# else is empty.
+mkdir -p "$TMPROOT/bin"
+cat >"$TMPROOT/bin/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+if [[ "$1" == "issue" && "$2" == "view" ]]; then
+    case "$3" in
+        901) echo '{"labels":[{"name":"fleet:opus"}],"body":""}' ;;
+        902) echo '{"labels":[{"name":"fleet:sonnet"}],"body":""}' ;;
+        *)   echo '{"labels":[],"body":""}' ;;
+    esac
+    exit 0
+fi
+exit 0
+GHSTUB
+chmod +x "$TMPROOT/bin/gh"
 
 # Make our fake fleet-claim discoverable on PATH so the dispatcher's
 # subshell call resolves to it (with the test env vars).
-mkdir -p "$TMPROOT/bin"
 ln -s "$FLEET_CLAIM" "$TMPROOT/bin/fleet-claim"
 export PATH="$TMPROOT/bin:$PATH"
 
@@ -120,7 +106,7 @@ assert_eq "$n" "0" "sonnet-author count is 0 (in-flight is opus-worker)"
 
 # --- Test 3: reservation only ----------------------------------------------
 echo "T3: a reservation for an opus task on a different worktree"
-"$FLEET_CLAIM" reserve T-901 opus-worker-2 claude/T-901-something >/dev/null
+"$FLEET_CLAIM" reserve 901 opus-worker-2 claude/901-something >/dev/null
 n=$("$DISPATCHER" --count-active opus-worker)
 assert_eq "$n" "2" "opus-worker count is 2 (1 in-flight + 1 reserved on different worktree)"
 
@@ -186,10 +172,10 @@ assert_eq "$n" "2" "opus-worker count dedups same-worktree dispatch+reservation"
 # --- Test 4b: reservation on IDLE pane (resume case) does NOT count --------
 echo "T4b: reservation on idle pane does NOT count (resume case)"
 # Clean slate: drop dispatch records and the prior reservation; reserve
-# T-901 for opus-worker-2 again.
+# #901 for opus-worker-2 again.
 rm -f "$FLEET_STATE_DIR"/dispatch/*.json
 "$FLEET_CLAIM" release-worktree opus-worker-2 >/dev/null 2>&1 || true
-"$FLEET_CLAIM" reserve T-901 opus-worker-2 claude/T-901-something >/dev/null
+"$FLEET_CLAIM" reserve 901 opus-worker-2 claude/901-something >/dev/null
 
 mkdir -p "$TMPROOT/bin-tmux-idle"
 cat >"$TMPROOT/bin-tmux-idle/tmux" <<'TMUXEOF'

@@ -61,7 +61,16 @@ import shutil
 import subprocess
 import sys
 
-TASK_ID_RE = re.compile(r"^claude/(T-\d+)-")
+# Branch shapes the reconciler can resolve to a task identifier:
+#   claude/<N>-…       → new convention (post-#1216). Captures the issue
+#                        number; the reconciler passes it straight to
+#                        `fleet-claim reserve`.
+#   claude/T-NNN-…     → legacy. Captures the T-NNN; without TASKS.md
+#                        there's no way to resolve back to the issue
+#                        number, so reconstruction skips it and the
+#                        worker manually re-reserves on next iteration.
+ISSUE_BRANCH_RE = re.compile(r"^claude/(\d+)-")
+LEGACY_TASK_BRANCH_RE = re.compile(r"^claude/T-\d+-")
 
 # Resolve home-relative paths consistently with the fleet-up shell parent.
 HOME = pathlib.Path.home()
@@ -218,18 +227,25 @@ def reconcile_repo(repo: str, wt_root: pathlib.Path) -> None:
         if reservation_exists(basename):
             log(f"{repo}#{number} ({branch}): worktree {basename} has reservation → leave alone")
             continue
-        match = TASK_ID_RE.match(branch)
+        match = ISSUE_BRANCH_RE.match(branch)
         if not match:
-            warn(
-                f"{repo}#{number} ({branch}): worktree {basename} has no reservation "
-                f"but branch isn't claude/T-NNN-* — can't reconstruct, leaving alone"
-            )
+            if LEGACY_TASK_BRANCH_RE.match(branch):
+                warn(
+                    f"{repo}#{number} ({branch}): legacy claude/T-NNN-* branch "
+                    f"(post-#1216 retirement). Skipping reconstruction — re-reserve "
+                    f"manually if needed."
+                )
+            else:
+                warn(
+                    f"{repo}#{number} ({branch}): worktree {basename} has no reservation "
+                    f"but branch isn't claude/<issue>-* — can't reconstruct, leaving alone"
+                )
             continue
         task_id = match.group(1)
         if reconstruct_reservation(basename, task_id, branch):
             log(
                 f"{repo}#{number} ({branch}): reconstructed reservation for {basename} "
-                f"({task_id}) so step 0.5 resumes on next iteration"
+                f"(#{task_id}) so step 0.5 resumes on next iteration"
             )
 
 
