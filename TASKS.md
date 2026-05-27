@@ -163,27 +163,16 @@ Avoid:
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 3–4). PR 2 of 3. Previously closed without delivering scope — reopened by human 2026-05-27. Eliminates ~530 `queue: maintenance sync` commits per fleet cycle.
   - **Links:**
 
-- [~] **fleet: delete TASKS.md, switch T-NNN convention to issue numbers, update all docs** — delete TASKS.md and game TASKS.md; update fleet-claim to accept issue numbers (reject T-NNN with hint); update commit/branch/plan-file naming conventions; update ~7 role docs, ~10 skills, CLAUDE.md, FLEET.md, and test fixtures
+- [ ] **fleet: delete TASKS.md, switch T-NNN convention to issue numbers, update all docs** — delete TASKS.md and game TASKS.md; update fleet-claim to accept issue numbers (reject T-NNN with hint); update commit/branch/plan-file naming conventions; update ~7 role docs, ~10 skills, CLAUDE.md, FLEET.md, and test fixtures
   - **ID:** T-382
   - **Area:** tooling, docs
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** free
   - **Blocked by:** T-381
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) TASKS.md no longer exists; (2) all role docs and skills reference issue numbers and `fleet-queue-list`; (3) `fleet-claim` accepts issue numbers, rejects T-NNN with helpful message; (4) commit messages and branches use issue numbers; (5) test suite passes with updated fixtures
   - **Issue:** #1216
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
-  - **Links:**
-
-- [~] **render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw** — add `rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex)` pattern to 4 shader files (GLSL + Metal lighting and shadow) to match the AO shader
-  - **ID:** T-385
-  - **Area:** engine/render, shaders/glsl, shaders/metal
-  - **Model:** sonnet
-  - **Owner:** claude/T-385-face-normal-rotation-lighting-shadow
-  - **Blocked by:** (none)
-  - **Acceptance:** At non-zero yaw, Lambert shading correct per face; shadow bias uses world-space normal; no self-shadow acne; fix is no-op at yaw=0; linux-debug + macos-debug build clean
-  - **Issue:** #1218
-  - **Notes:** Affects `c_lighting_to_trixel.glsl:144`, `c_compute_sun_shadow.glsl:109`, and Metal mirrors. Model: AO shader `c_compute_voxel_ao.glsl:91-113`. PR #549 (HDR pipeline, open) also modifies `c_lighting_to_trixel.glsl` — coordinate before that PR merges. PR #1198 (cascaded shadows, merged) amplifies this bug visually.
   - **Links:**
 
 - [~] **render: chunk visibility mask not rotation-aware — geometry culled at non-zero camera yaw** — make `rebuildChunkBounds()` in `C_VoxelPool` apply `rotateCardinalZ` before iso projection, matching the GPU compact shader
@@ -223,6 +212,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-385** — render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw · Owner: claude/T-385-face-normal-rotation-lighting-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/1225
 - [x] **T-384** — render: restore device-level distance texture clear (viewport clipping regression) · Owner: claude/T-384-viewport-clipping-regression · PR: https://github.com/jakildev/IrredenEngine/pull/1231
 - [x] **T-388** — fleet: semantic-conflict resolution races — add atomic claim label before checkout · Owner: claude/T-388-resolving-label-conflict-claim · PR: https://github.com/jakildev/IrredenEngine/pull/1227
 - [x] **T-383** — fleet: commit-and-push — add pre-PR Closes# cross-check · Owner: claude/T-383-commit-push-closes-crosscheck · PR: https://github.com/jakildev/IrredenEngine/pull/1224
@@ -242,4 +232,3 @@ Avoid:
 - [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
 - [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
 - [x] **T-359** — world: entity chunk migration system (Epic E E5) · Owner: claude/T-359-entity-chunk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1183
-- [x] **T-357** — world: camera-aware chunk prefetch (priority by visibility) (E3) · Owner: claude/T-357-camera-chunk-prefetch · PR: https://github.com/jakildev/IrredenEngine/pull/1180
