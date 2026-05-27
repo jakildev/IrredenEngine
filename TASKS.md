@@ -162,18 +162,6 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-- [~] **Fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task** — rebuild fleet-claim around GitHub issue numbers + labels; drop TASKS.md lookup, master-push, and T-NNN interface
-  - **ID:** T-390
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/1234-fleet-claim-issue-numbers
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-396 tasks-md-elimination
-  - **Acceptance:** `fleet-claim claim 1216 opus-worker-1` works; `fleet-claim claim "T-001" opus-worker-1` fails with migration hint; no TASKS.md reads in fleet-claim; all existing tests pass after fixture migration; master_lock_task / check_model_tag TASKS.md path / cmd_reclaim / cmd_find_stackable_blockers TASKS.md path all deleted
-  - **Issue:** #1234
-  - **Notes:** Part of TASKS.md elimination epic (#1216). Interface break: `fleet-claim claim <issue#>` replaces `fleet-claim claim "T-NNN"`. Deletes master_lock_task() and master-push path (~lines 710–900), check_blockers() TASKS.md body, check_model_tag() (reads labels instead), cmd_reclaim(), cmd_find_stackable_blockers() TASKS.md scan. High risk — fleet-claim is on the critical path; fleet is paused for migration.
-  - **Links:**
-
 - [~] **Fleet-state-scout: drop TASKS.md reads and queue-tick spawn after T-381 cleanup** — remove residual TASKS.md reads and fleet-queue-tick spawn left over from PR #1229
   - **ID:** T-392
   - **Area:** tooling
@@ -191,7 +179,7 @@ Avoid:
   - **Area:** tooling, docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-390, T-392
+  - **Blocked by:** T-392
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** TASKS.md, creations/game/TASKS.md, role-queue-manager.md all deleted; root CLAUDE.md table updated with gh issue list / fleet-queue-list pointer; `grep -rln "TASKS.md" .` returns 0 hits; fleet smoke cycle passes on post-deletion branch
   - **Issue:** #1237
@@ -214,6 +202,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-390** — fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task · Owner: claude/1234-fleet-claim-issue-numbers · PR: https://github.com/jakildev/IrredenEngine/pull/1246
 - [x] **T-391** — fleet: fleet-queue-ingest drops LLM step (label-only ingest) · Owner: claude/T-391-fleet-queue-ingest-drop-llm · PR: https://github.com/jakildev/IrredenEngine/pull/1244
 - [x] **T-389** — fleet: delete orphaned queue scripts · Owner: claude/T-389-delete-orphaned-queue-scripts · PR: https://github.com/jakildev/IrredenEngine/pull/1243
 - [x] **T-395** — fleet: update skills for issue-based queue · Owner: claude/1239-update-skills-issue-queue · PR: https://github.com/jakildev/IrredenEngine/pull/1242
@@ -233,4 +222,3 @@ Avoid:
 - [x] **T-374** — fleet: scope-shipped detection pass in queue-manager ingest · Owner: claude/T-374-queue-manager-scope-shipped-check · PR: https://github.com/jakildev/IrredenEngine/pull/1210
 - [x] **T-377** — fleet: commit-and-push — refuse to commit when staged tree is empty · Owner: claude/T-377-commit-and-push-empty-commit-guard · PR: https://github.com/jakildev/IrredenEngine/pull/1209
 - [x] **T-375** — fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels · Owner: claude/T-375-cross-host-gh-claim-preserve · PR: https://github.com/jakildev/IrredenEngine/pull/1206
-- [x] **T-376** — fleet-claim cleanup --gh — TTL sweep stale fleet:claim-* labels off open issues · Owner: claude/T-376-fleet-claim-ttl-sweep · PR: https://github.com/jakildev/IrredenEngine/pull/1204
