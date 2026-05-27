@@ -62,8 +62,9 @@ keep working unchanged.
 
 `engine/world/include/irreden/world/chunk_persistence.hpp` declares
 `IRWorld::ChunkDiskPersistence` — per-chunk `.vxs` save/load under a
-`<saveRoot>/chunks/` directory. One file per chunk; filename embeds
-the signed chunk coord (e.g. `+00003_-00007_+00011.vxs`). When wired
+`<saveRoot>/chunks/<x_div_64>/<y_div_64>/` two-level directory tree. One
+file per chunk; filename embeds the signed chunk coord (e.g.
+`chunks/0/-1/+00003_-00007_+00011.vxs`). When wired
 on `ChunkResidencyManager::Config::persistence_`, the manager loads
 the chunk slice from disk on first `requestResident` and saves dirty
 chunks on `requestEvict`. `flushPendingSaves()` is the editor's
