@@ -151,6 +151,42 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
+- [ ] **fleet: add model-affinity labels + fleet-queue-list + remove master_lock_task** — add fleet:opus/sonnet labels at ingest; add fleet-queue-list command replacing human-readable TASKS.md; remove master_lock_task from fleet-claim claim/release/stack (gate behind FLEET_CLAIM_MASTER_LOCK=1 for rollback safety)
+  - **ID:** T-380
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Stack:** T-380..T-382 tasks-to-issues
+  - **Acceptance:** (1) `fleet-queue-list` renders issue#, title, model, owner, blocked-by in Available/In-progress/Blocked sections; (2) claims produce zero commits on master; (3) cross-host claim races still resolve via label lex-min tie-break; (4) test suite passes with master-lock tests gated
+  - **Issue:** #1214
+  - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 1–2, file not yet in repo). PR 1 of 3 in TASKS.md elimination series. Eliminates ~318 `queue: claim` commits per fleet cycle.
+  - **Links:**
+
+- [ ] **fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync** — replace `fetch_tasks` in fleet-state-scout with `fetch_task_queue` querying `gh issue list --label fleet:queued`; parse model/blocked-by/epic from issue bodies; eliminate `fleet-queue-tick` and the maintenance-sync commit loop
+  - **ID:** T-381
+  - **Area:** tooling
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-380
+  - **Stack:** T-380..T-382 tasks-to-issues
+  - **Acceptance:** (1) scout projections correctly reflect task queue from issues + labels; (2) no `queue: maintenance sync` commits appear on master; (3) `fleet-claim` model gate works from issue labels; (4) agents see correct available/claimed/blocked task lists
+  - **Issue:** #1215
+  - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 3–4). PR 2 of 3. Previously closed without delivering scope — reopened by human 2026-05-27. Eliminates ~530 `queue: maintenance sync` commits per fleet cycle.
+  - **Links:**
+
+- [ ] **fleet: delete TASKS.md, switch T-NNN convention to issue numbers, update all docs** — delete TASKS.md and game TASKS.md; update fleet-claim to accept issue numbers (reject T-NNN with hint); update commit/branch/plan-file naming conventions; update ~7 role docs, ~10 skills, CLAUDE.md, FLEET.md, and test fixtures
+  - **ID:** T-382
+  - **Area:** tooling, docs
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** T-381
+  - **Stack:** T-380..T-382 tasks-to-issues
+  - **Acceptance:** (1) TASKS.md no longer exists; (2) all role docs and skills reference issue numbers and `fleet-queue-list`; (3) `fleet-claim` accepts issue numbers, rejects T-NNN with helpful message; (4) commit messages and branches use issue numbers; (5) test suite passes with updated fixtures
+  - **Issue:** #1216
+  - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
+  - **Links:**
+
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
