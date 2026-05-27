@@ -155,7 +155,7 @@ Avoid:
   - **ID:** T-380
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-380-fleet-queue-list-model-labels
   - **Blocked by:** (none)
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) `fleet-queue-list` renders issue#, title, model, owner, blocked-by in Available/In-progress/Blocked sections; (2) claims produce zero commits on master; (3) cross-host claim races still resolve via label lex-min tie-break; (4) test suite passes with master-lock tests gated
