@@ -207,17 +207,6 @@ Avoid:
   - **Notes:** Diagnosed by opus-worker-1 — T-361, T-362, T-363 rows appeared in TASKS.md because implementing PRs used different T-NNN prefixes. T-361 and T-362 have since been removed from TASKS.md. Do NOT auto-close source issues (#1055, #1071, #1074) — human decides. Adjacent to T-338 (maintenance-sync) and T-342 (divergence check).
   - **Links:**
 
-- [~] **fleet: fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels (Bug 1 from #1182)** — add cross-host claim label check to `derive_status()` so maintenance-sync on host B no longer reverts claims held on host A
-  - **ID:** T-375
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-375-cross-host-gh-claim-preserve
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Claim on host A + fleet-tasks-render on host B → status stays `[~]`; (2) maintenance-sync no longer reverts cross-host claims; (3) pure-local single-host flow unchanged; (4) synthetic test injects `fleet:claim-*` label and asserts `[~]` preserved across render cycle lacking local FS claim
-  - **Issue:** #1190
-  - **Notes:** Root cause: `fleet-tasks-render:load_fs_claims()` host-local; `derive_status()` preserves `[~]` only when task_id in fs_claims. Fix: also treat live `fleet:claim-<host>-<agent>` label on task's linked issue as `[~]`-preservation signal (one `gh issue list -l "fleet:claim-*"` per render). Repro in T-366/#1182 timeline: claim reverted 54s after acquisition. Duplicate issue: #1186.
-  - **Links:**
-
 - [~] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
   - **ID:** T-377
   - **Area:** tooling
@@ -255,6 +244,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-375** — fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels · Owner: claude/T-375-cross-host-gh-claim-preserve · PR: https://github.com/jakildev/IrredenEngine/pull/1206
 - [x] **T-376** — fleet-claim cleanup --gh — TTL sweep stale fleet:claim-* labels off open issues · Owner: claude/T-376-fleet-claim-ttl-sweep · PR: https://github.com/jakildev/IrredenEngine/pull/1204
 - [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
 - [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
@@ -274,4 +264,3 @@ Avoid:
 - [x] **T-354** — render: SHAPES authoring deprecation migration plan (D3) · Owner: claude/T-354-shapes-deprecation-migration-plan · PR: https://github.com/jakildev/IrredenEngine/pull/1167
 - [x] **T-353** — render: SDF entity rotation via C_WorldTransform quaternion (C8) · Owner: claude/T-353-sdf-entity-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1166
 - [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
-- [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
