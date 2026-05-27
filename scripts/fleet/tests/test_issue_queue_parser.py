@@ -1,8 +1,9 @@
-"""Tests for the issue-based task queue parser in fleet-state-scout (T-381).
+"""Tests for the issue-based task queue parser in fleet-state-scout
+(T-381, T-392).
 
-Covers the pure-function helpers — _parse_issue_field, _build_task_id_map,
-_convert_blocked_by — and the label/body precedence rules inside
-fetch_task_queue's per-issue loop (model, owner, in_progress, area).
+Covers the pure-function helper `_parse_issue_field` and the label/body
+precedence rules inside `fetch_task_queue`'s per-issue loop (model, owner,
+in_progress, area, blocked_by, task identity).
 """
 import importlib.machinery
 import importlib.util
@@ -34,85 +35,23 @@ class ParseIssueField(unittest.TestCase):
         self.assertEqual(_mod._parse_issue_field(body, "Model"), "opus")
 
 
-class BuildTaskIdMap(unittest.TestCase):
-    def test_maps_issue_to_task_id_and_fields(self):
-        md = (
-            "- [~] **fleet: scout reads issues** — summary\n"
-            "  - **ID:** T-381\n"
-            "  - **Model:** opus\n"
-            "  - **Issue:** #1215\n"
-            "  - **Blocked by:** #1214\n"
-            "- [ ] **next task**\n"
-            "  - **ID:** T-382\n"
-            "  - **Issue:** #1216\n"
-            "  - **Model:** sonnet\n"
-        )
-        m = _mod._build_task_id_map(md)
-        self.assertEqual(m[1215]["id"], "T-381")
-        self.assertEqual(m[1215]["model"], "opus")
-        self.assertEqual(m[1215]["blocked_by"], "#1214")
-        self.assertEqual(m[1216]["id"], "T-382")
-        self.assertEqual(m[1216]["model"], "sonnet")
-
-    def test_skips_entries_missing_id_or_issue(self):
-        md = (
-            "- [ ] **no id**\n"
-            "  - **Issue:** #999\n"
-            "- [ ] **no issue**\n"
-            "  - **ID:** T-099\n"
-        )
-        self.assertEqual(_mod._build_task_id_map(md), {})
-
-    def test_empty_input(self):
-        self.assertEqual(_mod._build_task_id_map(""), {})
-        self.assertEqual(_mod._build_task_id_map(None), {})
-
-
-class ConvertBlockedBy(unittest.TestCase):
-    def test_translates_issue_refs_to_task_ids(self):
-        issue_to_id = {1214: "T-380", 1215: "T-381"}
-        self.assertEqual(
-            _mod._convert_blocked_by("#1214", issue_to_id), "T-380"
-        )
-        self.assertEqual(
-            _mod._convert_blocked_by("#1214, #1215", issue_to_id),
-            "T-380, T-381",
-        )
-
-    def test_unknown_issue_passes_through(self):
-        self.assertEqual(_mod._convert_blocked_by("#9999", {}), "#9999")
-
-    def test_handles_none_and_sentinels(self):
-        self.assertEqual(_mod._convert_blocked_by("(none)", {}), "(none)")
-        self.assertEqual(_mod._convert_blocked_by("", {}), "(none)")
-        self.assertEqual(_mod._convert_blocked_by("—", {}), "(none)")
-
-    def test_preserves_non_issue_text(self):
-        self.assertEqual(
-            _mod._convert_blocked_by("free-text reason", {}),
-            "free-text reason",
-        )
-
-
 class FetchTaskQueueDispatch(unittest.TestCase):
     """Exercise the per-issue loop with synthetic gh output.
 
-    Stubs run_capture so the test doesn't shell out to gh / git.
+    Stubs run_capture so the test doesn't shell out to gh.
     """
-    def _run(self, issues, tasks_md=""):
+    def _run(self, issues):
         captured = []
         def fake_run_capture(cmd, **kwargs):
             captured.append(cmd)
             if cmd[0] == "gh":
                 import json
                 return json.dumps(issues)
-            if cmd[0] == "git":
-                return tasks_md
             return ""
         original = _mod.run_capture
         _mod.run_capture = fake_run_capture
         try:
-            return _mod.fetch_task_queue("jakildev/IrredenEngine", _mod.ENGINE)
+            return _mod.fetch_task_queue("jakildev/IrredenEngine")
         finally:
             _mod.run_capture = original
 
@@ -175,31 +114,32 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         }])
         self.assertEqual(out["open"][0]["area"], "docs")
 
-    def test_task_id_pulled_from_tasks_md_during_transition(self):
-        md = (
-            "- [ ] **render: task**\n"
-            "  - **ID:** T-385\n"
-            "  - **Issue:** #100\n"
-        )
+    def test_task_id_is_issue_number(self):
         out = self._run([{
             "number": 100, "title": "render: task",
             "labels": [{"name": "fleet:queued"}],
             "body": "",
-        }], tasks_md=md)
-        self.assertEqual(out["open"][0]["id"], "T-385")
-        self.assertEqual(out["open"][0]["title"], "T-385")
+        }])
+        self.assertEqual(out["open"][0]["id"], "#100")
+        self.assertEqual(out["open"][0]["issue"], "#100")
+        self.assertEqual(out["open"][0]["title"], "#100")
+        self.assertEqual(out["open"][0]["summary"], "render: task")
 
-    def test_blocked_by_translated_via_id_map(self):
-        md = (
-            "- [ ] **a**\n  - **ID:** T-100\n  - **Issue:** #50\n"
-            "- [ ] **b**\n  - **ID:** T-200\n  - **Issue:** #100\n"
-        )
+    def test_blocked_by_taken_verbatim_from_body(self):
         out = self._run([{
             "number": 100, "title": "b",
             "labels": [{"name": "fleet:queued"}],
             "body": "**Blocked by:** #50",
-        }], tasks_md=md)
-        self.assertEqual(out["open"][0]["blocked_by"], "T-100")
+        }])
+        self.assertEqual(out["open"][0]["blocked_by"], "#50")
+
+    def test_blocked_by_defaults_to_none(self):
+        out = self._run([{
+            "number": 100, "title": "b",
+            "labels": [{"name": "fleet:queued"}],
+            "body": "",
+        }])
+        self.assertEqual(out["open"][0]["blocked_by"], "(none)")
 
     def test_empty_gh_output_returns_empty_sections(self):
         out = self._run([])

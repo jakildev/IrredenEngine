@@ -156,7 +156,7 @@ _INGEST_SKIP_LABELS = frozenset({
     "fleet:epic",
     "fleet:needs-plan",
     "fleet:needs-info",
-    "fleet:scope-shipped", # scope landed under a different T-NNN; human should close
+    "fleet:scope-shipped", # scope landed under a different issue; human should close
 })
 
 
@@ -191,14 +191,12 @@ def fetch_human_approved(repo):
 
 
 def fetch_closed_fleet_queued(repo, limit=100):
-    # Closed fleet:queued issues whose TASKS.md row hasn't been flipped to [x]
-    # yet. --limit caps API cost; recently-closed issues are returned first.
-    # 100 covers the realistic backlog window — observed 2026-05-19 that the
-    # original 20-item cap missed strands like T-166 (#663) which closed
-    # 2026-05-12 and stayed in TASKS.md `## Open` while ~40 fleet:queued
-    # issues closed after it. The renderer's closed-issue reaper consumes
-    # this slice; missing entries strand rows in Open until they're swept
-    # manually.
+    # Closed fleet:queued issues; the queue-manager projection consumes this
+    # to reap stale fleet:claim-* labels on resolved work. --limit caps API
+    # cost; recently-closed issues are returned first. 100 covers the
+    # realistic backlog window (observed 2026-05-19 that the original 20-item
+    # cap missed older strands when ~40 fleet:queued issues closed after one
+    # another in a tight window).
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
         "--label", "fleet:queued", "--state", "closed",
@@ -256,12 +254,11 @@ def fetch_recent_merged_prs(repo, limit=30):
     return prs
 
 
-# --- Issue-based task queue (T-381) ----------------------------------------
+# --- Issue-based task queue (T-381, T-392) ---------------------------------
 #
 # The task queue is sourced from GitHub Issues with the fleet:queued label.
 # Model, blocked-by, and area are parsed from issue bodies and labels.
-# T-NNN IDs are mapped from TASKS.md during the transition period; T-382
-# will eliminate this mapping entirely.
+# Task identity is the issue number itself (rendered as `#NNN`).
 
 _AREA_LABEL_MAP = {
     "IRRender": "engine/render",
@@ -279,65 +276,8 @@ def _parse_issue_field(body, field):
     return m.group(1).strip() if m else ""
 
 
-def _build_task_id_map(tasks_md_text):
-    """Build issue# → {id, model, blocked_by} mapping from TASKS.md (transitional).
-
-    Returns dict keyed by issue number: {1214: {"id": "T-380", "model": "opus", "blocked_by": "T-379"}, ...}
-    """
-    issue_map = {}
-    current_id = None
-    current_issue = None
-    current_model = None
-    current_blocked = None
-    def flush():
-        nonlocal current_id, current_issue, current_model, current_blocked
-        if current_id and current_issue:
-            issue_map[current_issue] = {
-                "id": current_id,
-                "model": current_model,
-                "blocked_by": current_blocked,
-            }
-        current_id = current_issue = current_model = current_blocked = None
-    for line in (tasks_md_text or "").splitlines():
-        if re.match(r"^- \[.\] \*\*.+\*\*", line):
-            flush()
-            continue
-        m = re.match(r"^\s+- \*\*ID:\*\*\s*(.+)", line)
-        if m:
-            current_id = m.group(1).strip()
-            continue
-        m = re.match(r"^\s+- \*\*Issue:\*\*\s*#(\d+)", line)
-        if m:
-            current_issue = int(m.group(1))
-            continue
-        m = re.match(r"^\s+- \*\*Model:\*\*\s*(.+)", line)
-        if m:
-            current_model = m.group(1).strip().lower()
-            continue
-        m = re.match(r"^\s+- \*\*Blocked by:\*\*\s*(.+)", line)
-        if m:
-            current_blocked = m.group(1).strip()
-    flush()
-    return issue_map
-
-
-def _convert_blocked_by(raw_blocked, issue_to_id):
-    """Convert #NNN blocked-by references to T-NNN using the mapping."""
-    if not raw_blocked or raw_blocked in ("(none)", "—"):
-        return "(none)"
-    parts = []
-    for part in raw_blocked.split(","):
-        part = part.strip()
-        m = re.match(r"#(\d+)", part)
-        if m:
-            parts.append(issue_to_id.get(int(m.group(1))) or part)
-        else:
-            parts.append(part)
-    return ", ".join(parts)
-
-
-def fetch_task_queue(repo_slug, repo_root):
-    """Fetch open task queue from GitHub Issues + TASKS.md ID mapping."""
+def fetch_task_queue(repo_slug):
+    """Fetch open task queue from GitHub Issues with the fleet:queued label."""
     issues_out = run_capture([
         "gh", "issue", "list",
         "--repo", repo_slug,
@@ -346,11 +286,6 @@ def fetch_task_queue(repo_slug, repo_root):
         "--json", "number,title,labels,body",
         "--limit", "200",
     ])
-
-    tasks_md = run_capture(
-        ["git", "-C", str(repo_root), "show", "origin/master:TASKS.md"]
-    )
-    issue_map = _build_task_id_map(tasks_md)
 
     if not issues_out:
         return {"open": [], "in_progress": [], "done": []}
@@ -372,20 +307,14 @@ def fetch_task_queue(repo_slug, repo_root):
         body = issue.get("body", "") or ""
         title = issue.get("title", "")
         number = issue.get("number", 0)
-
-        md_entry = issue_map.get(number, {})
-        task_id = md_entry.get("id")
+        task_id = f"#{number}"
 
         if "fleet:opus" in labels:
             model = "opus"
         elif "fleet:sonnet" in labels:
             model = "sonnet"
         else:
-            model = (
-                _parse_issue_field(body, "Model")
-                or md_entry.get("model")
-                or None
-            )
+            model = _parse_issue_field(body, "Model") or None
 
         # Claim labels are `fleet:claim-<host>-<agent>`; agent half is what
         # roles see in `fleet-claim list`.
@@ -400,15 +329,7 @@ def fetch_task_queue(repo_slug, repo_root):
         in_progress = "fleet:in-progress" in labels or owner != "free"
         status = "~" if in_progress else " "
 
-        raw_blocked = _parse_issue_field(body, "Blocked by")
-        if raw_blocked:
-            issue_to_id_simple = {
-                num: entry.get("id") for num, entry in issue_map.items()
-                if entry.get("id")
-            }
-            blocked_by = _convert_blocked_by(raw_blocked, issue_to_id_simple)
-        else:
-            blocked_by = md_entry.get("blocked_by") or "(none)"
+        blocked_by = _parse_issue_field(body, "Blocked by") or "(none)"
 
         area_parts = [_AREA_LABEL_MAP[l] for l in labels if l in _AREA_LABEL_MAP]
         area = (
@@ -419,14 +340,14 @@ def fetch_task_queue(repo_slug, repo_root):
 
         task = {
             "status": status,
-            "title": task_id or title,
+            "title": task_id,
             "summary": title,
             "id": task_id,
             "model": model,
             "owner": owner,
             "area": area,
             "blocked_by": blocked_by,
-            "issue": f"#{number}",
+            "issue": task_id,
         }
 
         if status == "~":
@@ -439,28 +360,26 @@ def fetch_task_queue(repo_slug, repo_root):
             key=lambda t: int((t.get("issue") or "#0").lstrip("#"))
         )
 
-    sections["_issue_map"] = issue_map
     return sections
 
 
-def _populate_tasks_done(repo_state, issue_map):
+def _populate_tasks_done(repo_state):
     """Convert closed_fleet_queued entries to tasks.done format."""
     done = []
     for issue in repo_state.get("closed_fleet_queued", []):
         number = issue.get("number", 0)
         title = issue.get("title", "")
-        md_entry = issue_map.get(number, {})
-        task_id = md_entry.get("id")
+        task_id = f"#{number}"
         done.append({
             "status": "x",
-            "title": task_id or title,
+            "title": task_id,
             "summary": title,
             "id": task_id,
             "model": None,
             "owner": None,
             "area": None,
             "blocked_by": None,
-            "issue": f"#{number}",
+            "issue": task_id,
         })
     done.sort(key=lambda t: int((t.get("issue") or "#0").lstrip("#")))
     return done
@@ -781,11 +700,11 @@ _SMOKE_SKIP_LABELS = frozenset({
 
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
-# Single-T-NNN blocker. Reject multi-blocker (`T-101, T-102`), free-text
-# (`refactor lands`), and PR-URL (`https://...`) forms — all of which
-# the cross-author stacking flow can't resolve to one upstream branch
+# Single-issue blocker (`#1234`). Reject multi-blocker (`#101, #102`),
+# free-text (`refactor lands`), and PR-URL (`https://...`) forms — all of
+# which the cross-author stacking flow can't resolve to one upstream branch
 # (multi-blocker decision deferred to v2 per T-110 plan Q3).
-SINGLE_TASK_BLOCKER_RE = re.compile(r"^T-\d{3}$")
+SINGLE_TASK_BLOCKER_RE = re.compile(r"^#\d+$")
 
 
 def model_tags(task):
@@ -818,15 +737,15 @@ def _blocker_pr_files(repo_key, pr_number):
 
 
 def enrich_stackable_blocker_prs(state):
-    # Per T-110 PR 2: for each task whose blocked_by is exactly one T-NNN
-    # ID with exactly one matching open PR (head ref `claude/T-NNN-…`)
-    # in the same repo, attach a `stackable_blocker_pr` field carrying
-    # {number, headRefName, author}. Workers (T-114) read this to decide
-    # whether to fall through to a stackable claim when no unblocked
-    # tasks are free.
+    # Per T-110 PR 2: for each task whose blocked_by is exactly one issue
+    # number (`#NNN`) with exactly one matching open PR (head ref
+    # `claude/<NNN>-…`) in the same repo, attach a `stackable_blocker_pr`
+    # field carrying {number, headRefName, author}. Workers (T-114) read
+    # this to decide whether to fall through to a stackable claim when no
+    # unblocked tasks are free.
     #
     # The field is always omitted when:
-    #   - blocked_by isn't a single T-NNN (multi-blocker, free-text, URL)
+    #   - blocked_by isn't a single #NNN (multi-blocker, free-text, URL)
     #   - zero open PRs match the expected branch prefix (blocker not
     #     yet started, or already merged and dropped from open list)
     #   - more than one open PR matches (rare but possible if a stale
@@ -843,7 +762,8 @@ def enrich_stackable_blocker_prs(state):
             blocked_by = (task.get("blocked_by") or "").strip()
             if not SINGLE_TASK_BLOCKER_RE.match(blocked_by):
                 continue
-            prefix = f"claude/{blocked_by}-"
+            issue_num = blocked_by.lstrip("#")
+            prefix = f"claude/{issue_num}-"
             matches = [pr for pr in prs
                        if pr.get("headRefName", "").startswith(prefix)]
             if len(matches) != 1:
@@ -1036,13 +956,13 @@ def project_queue_manager_ingest(state):
     """Hash-input projection for the queue-manager-ingest auto-fire.
 
     Tracks the SET of actionable `human:approved` issues — i.e., issues the
-    human has approved but queue-manager hasn't yet filed into TASKS.md, and
-    that are not in a skip category (epic, needs-plan, needs-info, queued).
-    The hash flips when this set CHANGES:
+    human has approved but the queue hasn't yet stamped `fleet:queued` onto,
+    and that are not in a skip category (epic, needs-plan, needs-info,
+    queued). The hash flips when this set CHANGES:
 
     - Operator adds `human:approved` to issue #N: #N enters the set,
-      hash flips, scout spawns fleet-queue-ingest, the LLM iteration
-      categorizes #N and writes a task entry with `fleet:queued`.
+      hash flips, scout spawns fleet-queue-ingest, which stamps
+      `fleet:queued` (plus a model-affinity label) onto #N.
     - After ingestion, #N has `fleet:queued` so it drops from the
       set; hash flips again. fleet-queue-ingest re-fires, finds the
       set is empty, exits in <1s. One wasted iteration per ingestion
@@ -1307,7 +1227,7 @@ def collect_state():
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
             ("engine", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
             ("engine", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
-            ("engine", "tasks", lambda: fetch_task_queue("jakildev/IrredenEngine", ENGINE)),
+            ("engine", "tasks", lambda: fetch_task_queue("jakildev/IrredenEngine")),
         ]
     if "game" in repos:
         fetch_specs += [
@@ -1316,7 +1236,7 @@ def collect_state():
             ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
             ("game", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/irreden")),
             ("game", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/irreden")),
-            ("game", "tasks", lambda: fetch_task_queue("jakildev/irreden", GAME)),
+            ("game", "tasks", lambda: fetch_task_queue("jakildev/irreden")),
         ]
 
     with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
@@ -1343,11 +1263,10 @@ def collect_state():
 
 
 def _populate_done_tasks(state):
-    """Populate tasks.done from closed_fleet_queued, reusing the cached ID map."""
+    """Populate tasks.done from closed_fleet_queued."""
     for repo_key, repo_state in state["repos"].items():
         tasks = repo_state.get("tasks", {})
-        issue_map = tasks.pop("_issue_map", {})
-        tasks["done"] = _populate_tasks_done(repo_state, issue_map)
+        tasks["done"] = _populate_tasks_done(repo_state)
 
 
 def tick_once():
@@ -1403,9 +1322,9 @@ def tick_once():
                 triggers_fired.append("queue-manager(claim-cleanup)")
         elif role == "queue-manager-ingest":
             # Auto-fire ingestion when the human:approved-and-not-yet-queued
-            # set changes. Same spawn pattern as queue-tick but invokes an
-            # LLM iteration via fleet-queue-ingest. Lockfile inside the
-            # script prevents concurrent runs.
+            # set changes. Same backgrounded-subprocess pattern as the
+            # queue-manager claim-cleanup spawn above. Lockfile inside
+            # fleet-queue-ingest prevents concurrent runs.
             new_hash = stable_hash(projection)
             seen_file = SEEN_DIR / role
             try:
