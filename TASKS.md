@@ -162,11 +162,11 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-- [ ] **Fleet: delete orphaned queue scripts** — delete fleet-queue-tick, fleet-tasks-render, fleet-stale-sweep and their tests after T-381 made them unreachable
+- [~] **Fleet: delete orphaned queue scripts** — delete fleet-queue-tick, fleet-tasks-render, fleet-stale-sweep and their tests after T-381 made them unreachable
   - **ID:** T-389
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** claude/T-389-delete-orphaned-queue-scripts
   - **Blocked by:** (none)
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** three scripts no longer exist; `grep -r "fleet-queue-tick\|fleet-tasks-render\|fleet-stale-sweep" scripts/ .claude/` returns zero non-comment hits; install.sh dry-run clean; PR opens green CI
@@ -174,11 +174,11 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). PR #1229 (T-381) made these scripts orphans with no callers. Deletes scripts/fleet/fleet-queue-tick, fleet-tasks-render, fleet-stale-sweep; tests/test_tasks_render.py, test_fleet_claim_master_lock.sh; install.sh install lines ~143–146; settings.json Bash whitelist entries for these scripts; converts stale fleet-queue-tick comments in fleet-dispatcher and fleet-state-scout to historical notes.
   - **Links:**
 
-- [ ] **Fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task** — rebuild fleet-claim around GitHub issue numbers + labels; drop TASKS.md lookup, master-push, and T-NNN interface
+- [~] **Fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task** — rebuild fleet-claim around GitHub issue numbers + labels; drop TASKS.md lookup, master-push, and T-NNN interface
   - **ID:** T-390
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/1234-fleet-claim-issue-numbers
   - **Blocked by:** (none)
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** `fleet-claim claim 1216 opus-worker-1` works; `fleet-claim claim "T-001" opus-worker-1` fails with migration hint; no TASKS.md reads in fleet-claim; all existing tests pass after fixture migration; master_lock_task / check_model_tag TASKS.md path / cmd_reclaim / cmd_find_stackable_blockers TASKS.md path all deleted
@@ -186,11 +186,11 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). Interface break: `fleet-claim claim <issue#>` replaces `fleet-claim claim "T-NNN"`. Deletes master_lock_task() and master-push path (~lines 710–900), check_blockers() TASKS.md body, check_model_tag() (reads labels instead), cmd_reclaim(), cmd_find_stackable_blockers() TASKS.md scan. High risk — fleet-claim is on the critical path; fleet is paused for migration.
   - **Links:**
 
-- [ ] **Fleet-queue-ingest: stop writing TASKS.md; label-driven ingestion only** — remove the LLM/TASKS.md-write step from fleet-queue-ingest; retain label-stamping only
+- [~] **Fleet-queue-ingest: stop writing TASKS.md; label-driven ingestion only** — remove the LLM/TASKS.md-write step from fleet-queue-ingest; retain label-stamping only
   - **ID:** T-391
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/T-391-fleet-queue-ingest-drop-llm
   - **Blocked by:** (none)
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** fleet-queue-ingest no longer invokes `claude --print /role-queue-manager`; no TASKS.md reads in fleet-queue-ingest; issue moves from human:approved to fleet:queued within one scout tick; two simultaneous ingest runs converge to single label transition; label descriptions updated
