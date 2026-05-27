@@ -47,12 +47,16 @@ replace_all="${4:-}"
 exec python3 - "$target" "$old_file" "$new_file" "$replace_all" <<'PYEOF'
 import sys, pathlib
 
+if sys.argv[4] and sys.argv[4] != "--replace-all":
+    print(f"fleet-edit: unknown flag: {sys.argv[4]}", file=sys.stderr)
+    sys.exit(1)
+
 target_path = pathlib.Path(sys.argv[1])
-old_text = pathlib.Path(sys.argv[2]).read_text()
-new_text = pathlib.Path(sys.argv[3]).read_text()
+old_text = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+new_text = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
 replace_all = sys.argv[4] == "--replace-all"
 
-content = target_path.read_text()
+content = target_path.read_text(encoding="utf-8")
 count = content.count(old_text)
 
 if count == 0:
@@ -76,7 +80,7 @@ if new_content == content:
     print(f"fleet-edit: no change (old == new) in {target_path}", file=sys.stderr)
     sys.exit(1)
 
-target_path.write_text(new_content)
+target_path.write_text(new_content, encoding="utf-8")
 replaced = count if replace_all else 1
 print(f"fleet-edit: replaced {replaced} occurrence(s) in {target_path}")
 PYEOF
