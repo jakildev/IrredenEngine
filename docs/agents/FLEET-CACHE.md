@@ -10,12 +10,12 @@ section below for which files apply.
 
 | Path | Producer | Reader | Purpose |
 |---|---|---|---|
-| `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), parsed `TASKS.md` rows. ~32 KB. |
+| `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), open `fleet:queued` issue rows. ~32 KB. |
 | `projections/<role>.json` | scout (slicers) | the named role | Pre-filtered per-role slice with full records (e.g. sonnet-author's `tasks_open` + `feedback_prs`). ~5 KB. **Prefer this over `state.json`** when you only need your own role's items. |
 | `prs/<repo>/<N>.json` | scout | `fleet-pr view`/`comments` | Full PR detail: body, conversation comments, review summaries, inline review threads, files-changed list. Refreshed only when the list query's `updatedAt` advances. |
 | `diffs/<repo>/<N>-<sha>.diff` | scout | `fleet-pr diff` | Raw `gh pr diff` output, keyed by head SHA. Refreshed on rebase only; old SHAs garbage-collected. |
 | `issues/<repo>/<N>.json` | scout | `fleet-issue view` | Full issue detail (body + comments + labels + state). Cached for issues in `needs_plan` / `human_approved`. |
-| `repos.json` | `fleet-up` | reviewer / queue-mgr / merger roles | One-shot owner/repo slug map: `{"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}`. |
+| `repos.json` | `fleet-up` | reviewer / merger roles | One-shot owner/repo slug map: `{"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}`. |
 | `triggers/<role>` | scout | `fleet-babysit` | Empty file touched whenever this role's projection changed. Drives `fleet-babysit`'s long-back-off wake-up. |
 | `seen-hashes/<role>` | scout | scout | Hash of the last projection — internal trigger-detection state. |
 
@@ -24,8 +24,8 @@ section below for which files apply.
 
 ## Source of truth for list-y queries
 
-When the cache is fresh, do **NOT** bypass it for `gh pr list`,
-`gh issue list --label …`, or `git show origin/master:TASKS.md`.
+When the cache is fresh, do **NOT** bypass it for `gh pr list` or
+`gh issue list --label …`.
 One Read replaces what used to be 3-6 fan-out gh/git calls per role
 per startup.
 
@@ -75,7 +75,6 @@ just the items that role works on:
 | opus-worker | `tasks_open` (filtered to `[opus]` tasks, both repos), `needs_plan`, `feedback_prs` |
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
 | opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix`) |
-| queue-manager | `needs_plan`, `human_approved`, `tasks_done`, `needs_flip` (in-progress tasks whose linked issue closed) |
 | merger | `prs` (engine, approved or non-MERGEABLE only) |
 
 **opus-reviewer:** review bodies longer than 2 KB are stored as
@@ -92,7 +91,7 @@ looking up an upstream PR by `headRefName`).
 
 `fleet-up` writes `~/.fleet/state/repos.json` once at startup with
 the engine and game owner/repo slugs derived from each repo's
-`origin` remote. Reviewer / queue-manager / merger roles that need
+`origin` remote. Reviewer / merger roles that need
 the `--repo <slug>` flag should read this file rather than running
 `gh repo view --json nameWithOwner --jq .nameWithOwner` per pane.
 If `repos.json` is missing (rare — only happens if `fleet-up`

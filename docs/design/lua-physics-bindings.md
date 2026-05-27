@@ -421,7 +421,7 @@ until a creation needs it and we know what shape it should take.
 
 ### General-purpose physics solver (rigid body, soft body, constraints)
 
-Not in the engine. Not on the roadmap visible from `TASKS.md` or the
+Not in the engine. Not on the roadmap visible from the GitHub issue queue or the
 `docs/design/` directory. The spring-platform behavior is the closest
 thing we have to constrained dynamics and it lives in one `System<>`
 specialization keyed off contact events. A general solver is many PRs

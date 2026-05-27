@@ -37,8 +37,8 @@ working inside such a subdirectory, always read that subdirectory's own
 | Build commands and environment setup (Linux/WSL, Windows, macOS) | [`docs/agents/BUILD.md`](docs/agents/BUILD.md) |
 | Fleet workflow (parallel agents, PRs, cursor cues, design escalation, model split, labels, feedback) | [`docs/agents/FLEET.md`](docs/agents/FLEET.md) |
 | Skills (named workflows like `simplify`, `commit-and-push`, `review-pr`) | [`.claude/skills/`](.claude/skills/) — each has its own `SKILL.md` |
-| Roles (autonomous personas — worker, reviewer, merger, queue-manager, architect) | [`.claude/commands/role-*.md`](.claude/commands/) |
-| Task queue (when running fleet roles) | [`TASKS.md`](TASKS.md) |
+| Roles (autonomous personas — worker, reviewer, merger, architect) | [`.claude/commands/role-*.md`](.claude/commands/) |
+| Task queue (when running fleet roles) | `fleet-queue-list` or `gh issue list --label fleet:queued --repo jakildev/IrredenEngine` |
 | Cross-repo info isolation rule (engine repo public, game repo private) | [`docs/agents/CLAUDE-BASELINE.md`](docs/agents/CLAUDE-BASELINE.md) §"Cross-repo information isolation" |
 
 ---
@@ -68,7 +68,7 @@ For Windows-native PATH gotchas, the cc1plus silent-crash root cause, macOS Meta
 
 ## Workflow at a glance
 
-This repo runs a parallel-agent workflow with PRs (never commit to `master` directly). When a human is in the loop (Cursor IDE), you iterate freely and the human cues `commit-and-push` when ready. When fleet roles run autonomously, they pick from `TASKS.md`, open PRs via `commit-and-push`, and start fresh with `start-next-task`.
+This repo runs a parallel-agent workflow with PRs (never commit to `master` directly). When a human is in the loop (Cursor IDE), you iterate freely and the human cues `commit-and-push` when ready. When fleet roles run autonomously, they pick from the GitHub issue queue (`fleet:queued` label), open PRs via `commit-and-push`, and start fresh with `start-next-task`.
 
 The two safety rules that apply everywhere:
 
