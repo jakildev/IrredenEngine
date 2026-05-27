@@ -259,7 +259,7 @@ the question to the architect and resume cleanly:
    in-progress work is on the branch + `start-next-task`s away to
    pick a different unblocked issue next iteration.
 2. Architect reads the comment, updates the canonical plan at
-   `~/.fleet/plans/issue-<N>.md`, posts a PR comment with concrete
+   `~/.fleet/plans/<N>.md`, posts a PR comment with concrete
    decisions, swaps `fleet:design-blocked` → `fleet:design-unblocked`.
 3. Worker (any worker — not necessarily the original one) sees the
    `fleet:design-unblocked` PR via its feedback-PR loop on the next
