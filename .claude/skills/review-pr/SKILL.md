@@ -155,7 +155,7 @@ Apply two checks to the stat output:
 2. **Out-of-scope file** — any file that appears in the stat output but
    is neither described in the PR body nor a known mechanical side-effect
    of the PR's claimed scope (e.g. a `CMakeLists.txt` accompanying a new
-   source file — not `TASKS.md`, `.fleet/plans/` drift, or unrelated docs).
+   source file — not `.fleet/plans/` drift or unrelated docs).
    Flag as **Needs-fix**: author must acknowledge the file in the PR
    body or rebase to drop the accidental hunk.
 

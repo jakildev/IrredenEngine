@@ -100,19 +100,19 @@ fleet-claim molecule resume <your-worktree-name>
 
 Interpret the output (the helper always exits 0; discriminate via stdout):
 
-- **stdout names a `T-NNN`** — there is an active stack with remaining
-  tasks. The returned ID is the **next** task in the chain (resume marks
+- **stdout names an issue number** — there is an active stack with remaining
+  tasks. The returned number is the **next** task in the chain (resume marks
   the first pending task as `in-progress` as a side effect).
-  - **Sanity-check:** if the returned ID matches the old branch's task
-    prefix (e.g. old branch `claude/T-005-foo` and resume returned
-    `T-005`), the worker forgot to run `fleet-claim molecule advance
-    <agent> T-005 done pr=<URL> commit=<SHA>` after `commit-and-push`.
+  - **Sanity-check:** if the returned number matches the old branch's issue
+    prefix (e.g. old branch `claude/1234-foo` and resume returned
+    `1234`), the worker forgot to run `fleet-claim molecule advance
+    <agent> 1234 done pr=<URL> commit=<SHA>` after `commit-and-push`.
     Stop and tell the user to advance the molecule before retrying — do
     not proceed, or you will branch back onto the same task.
-  - Otherwise the new branch is `claude/<returned-T-NNN>-<short-topic>`
+  - Otherwise the new branch is `claude/<returned-issue#>-<short-topic>`
     based on the **old branch** (the just-opened PR's head ref). Set
     `MODE=fleet-stack`, `BASE=<old-branch-name>`, and remember
-    `<returned-T-NNN>` for step 5.
+    `<returned-issue#>` for step 5.
 - **stdout is empty** — no fleet molecule. Continue to 4b.
 
 If `molecule resume` exits non-zero (malformed YAML, etc.), stop and
@@ -143,17 +143,14 @@ Default. `MODE=standard`, `BASE=origin/master`. Proceed.
 
 ### 5. Derive a new branch name
 
-In **fleet stack mode** (4a returned a `T-NNN`): the new branch is
-`claude/<T-NNN>-<short-topic>`. Pull the topic from the task title in
-`TASKS.md` if obvious (read it via `git show origin/master:TASKS.md` —
-do NOT `git checkout origin/master -- TASKS.md`, which would stage it
-and break the next `git checkout -b`). If the user already named the
-next slice in conversation, prefer that; otherwise `<short-topic>` can
-be a brief paraphrase of the title.
+In **fleet stack mode** (4a returned an issue number): the new branch is
+`claude/<issue#>-<short-topic>`. Pull the topic from the issue title via
+`fleet-issue view <issue#>` (falls back to `gh issue view <issue#>`). If
+the user already named the next slice in conversation, prefer that;
+otherwise `<short-topic>` can be a brief paraphrase of the title.
 
 In **cursor stack mode** (4b): the new branch is
-`claude/<area>-<topic>`, no `T-NNN` prefix (cursor flow doesn't use
-the queue). Derive from the conversation: the user usually names the
+`claude/<area>-<topic>`, no issue-number prefix. Derive from the conversation: the user usually names the
 next slice when they cue stacking. If they didn't, ask. Examples:
 
 - `claude/render-glow-pulse-tuning` (stacked on
@@ -174,9 +171,7 @@ work best with human-readable, topic-named branches.
 ### 6. Discard any staged or working-tree changes from the old branch
 
 Before switching, ensure the working tree is fully clean — even of files
-that look like a no-op (e.g. `TASKS.md` that was checked out from
-`origin/master` to read the latest queue while you were on the feature
-branch — that staging blocks the next branch checkout):
+that look like a no-op (a stale staged file blocks the next branch checkout):
 
 ```bash
 git restore --staged .

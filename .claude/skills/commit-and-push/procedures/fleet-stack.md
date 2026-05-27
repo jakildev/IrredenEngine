@@ -17,7 +17,7 @@ fleet-claim stack-pr-state <your-worktree-name>
 
 ## Deltas vs. the single-PR flow
 
-- **Step 2 branch name** is `claude/<task-id>-<short-topic>` (e.g. `claude/T-005-occupancy-grid`). The task ID prefix lets the queue-manager, reviewers, and `stack-base` resolve the chain.
+- **Step 2 branch name** is `claude/<issue#>-<short-topic>` (e.g. `claude/1234-occupancy-grid`). The issue-number prefix lets reviewers and `stack-base` resolve the chain.
 - **Step 8 PR base** is `fleet-claim stack-base <agent> <task-id>` instead of `master`. For the first task this still returns `master`; for subsequent tasks it returns the previous task's branch.
 - **After `gh pr create`** record the PR in the stack so the next task can chain off it:
   ```bash
@@ -25,7 +25,7 @@ fleet-claim stack-pr-state <your-worktree-name>
   ```
 - **PR body** includes a `## Stack context` block with a `Stacked on:` line (the previous PR URL, or `master` for the first task in the chain) and a `Full chain:` line listing the task IDs the molecule covers. Reviewers use this to navigate sibling PRs without leaving the diff.
 - **Labels** include `fleet:stacked` whenever `--base != master` (i.e. every PR in the chain except the first). The merger reads `baseRefName` directly for routing decisions; the label is a derived convenience for human visibility and cheap GitHub-side filtering.
-- **Title** starts with `T-NNN: ` so the queue-manager's per-task matching works and reviewers can tell which task in the chain this PR belongs to.
+- **Title** starts with a scope prefix per the commit-message style guide; the issue number goes in the `Closes #N` line so reviewers can trace the chain.
 
 ## After the PR opens
 
