@@ -151,24 +151,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **fleet: add model-affinity labels + fleet-queue-list + remove master_lock_task** — add fleet:opus/sonnet labels at ingest; add fleet-queue-list command replacing human-readable TASKS.md; remove master_lock_task from fleet-claim claim/release/stack (gate behind FLEET_CLAIM_MASTER_LOCK=1 for rollback safety)
-  - **ID:** T-380
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-380-fleet-queue-list-model-labels
-  - **Blocked by:** (none)
-  - **Stack:** T-380..T-382 tasks-to-issues
-  - **Acceptance:** (1) `fleet-queue-list` renders issue#, title, model, owner, blocked-by in Available/In-progress/Blocked sections; (2) claims produce zero commits on master; (3) cross-host claim races still resolve via label lex-min tie-break; (4) test suite passes with master-lock tests gated
-  - **Issue:** #1214
-  - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 1–2, file not yet in repo). PR 1 of 3 in TASKS.md elimination series. Eliminates ~318 `queue: claim` commits per fleet cycle.
-  - **Links:**
-
 - [~] **fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync** — replace `fetch_tasks` in fleet-state-scout with `fetch_task_queue` querying `gh issue list --label fleet:queued`; parse model/blocked-by/epic from issue bodies; eliminate `fleet-queue-tick` and the maintenance-sync commit loop
   - **ID:** T-381
   - **Area:** tooling
   - **Model:** opus
   - **Owner:** claude/T-381-scout-reads-issues
-  - **Blocked by:** T-380
+  - **Blocked by:** (none)
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) scout projections correctly reflect task queue from issues + labels; (2) no `queue: maintenance sync` commits appear on master; (3) `fleet-claim` model gate works from issue labels; (4) agents see correct available/claimed/blocked task lists
   - **Issue:** #1215
@@ -185,28 +173,6 @@ Avoid:
   - **Acceptance:** (1) TASKS.md no longer exists; (2) all role docs and skills reference issue numbers and `fleet-queue-list`; (3) `fleet-claim` accepts issue numbers, rejects T-NNN with helpful message; (4) commit messages and branches use issue numbers; (5) test suite passes with updated fixtures
   - **Issue:** #1216
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
-  - **Links:**
-
-- [~] **fleet: commit-and-push — add pre-PR Closes# cross-check** — after drafting `Closes #N`, fetch the issue title and warn if it has zero keyword overlap with the PR title, preventing wrong-issue auto-close on merge
-  - **ID:** T-383
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-383-commit-push-closes-crosscheck
-  - **Blocked by:** (none)
-  - **Acceptance:** `commit-and-push` warns (non-blocking) when `Closes #N` title has zero keyword overlap with the PR title; skill doc includes a regression note for the PR #1212 / #1215 incident
-  - **Issue:** #1221
-  - **Notes:** Root cause: PR #1212 (T-379 PARALLEL_FOR migration) used `Closes #1215` instead of `Closes #1196`, auto-closing an unrelated issue (#1215 = fleet scout-reads-issues plan). Fix: add `gh issue view N --json title --jq '.title'` cross-check after the Closes line is drafted, before `gh pr create`; surface a warning if no keyword overlap. Optional: add reviewer-side catch to review-pr. Incident description in issue body.
-  - **Links:**
-
-- [~] **render: viewport clipping regression — left half of scene missing at yaw=0** — P0 regression from May 25–26 commit wave; bisect between last-known-good `61f6424c` and current master; fix offending commit
-  - **ID:** T-384
-  - **Area:** engine/render, engine/world
-  - **Model:** opus
-  - **Owner:** claude/T-384-viewport-clipping-regression
-  - **Blocked by:** (none)
-  - **Acceptance:** IRShapeDebug renders full platform at yaw=0 with no left-half truncation; shapes on left side visible; regression confirmed fixed on current master
-  - **Issue:** #1217
-  - **Notes:** Suspects in order: T-356/T-357 chunk residency/prefetch (may fail to mark chunks resident), T-358 upload bandwidth cap throttling initial uploads, T-352/PR#1213 distance-texture clear path. Key files: `engine/prefabs/irreden/render/cull_viewport_state.hpp`, `system_voxel_to_trixel.hpp:265-311`, `engine/world/` chunk residency. Blocks verification of rotation/lighting bugs T-385..T-387.
   - **Links:**
 
 - [~] **render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw** — add `rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex)` pattern to 4 shader files (GLSL + Metal lighting and shadow) to match the AO shader
@@ -242,17 +208,6 @@ Avoid:
   - **Notes:** Affected file: `system_bake_sun_shadow_map.hpp:199-205`. Fix is 3-4 lines (see issue body). **May be superseded**: PR #1198 (cascaded shadow maps) merged 2026-05-27 computes per-cascade AABBs in world frame. Worker should first verify on current master — if the cascaded system resolves the mismatch, close #1220 instead of applying the fix.
   - **Links:**
 
-- [~] **fleet: semantic-conflict resolution races — add atomic claim label before checkout** — add `fleet:resolving-<host>-<agent>` label claim pattern to role-opus-worker step 1c, preventing two workers from concurrently resolving the same semantic-conflict PR
-  - **ID:** T-388
-  - **Area:** tooling, docs
-  - **Model:** sonnet
-  - **Owner:** claude/T-388-resolving-label-conflict-claim
-  - **Blocked by:** (none)
-  - **Acceptance:** Two workers seeing the same `fleet:semantic-conflict` PR: only one proceeds past label claim (lex-min tie-break), other skips within seconds; winner removes label on success and failure; stale `fleet:resolving-*` labels swept by `fleet-claim cleanup --gh` after TTL
-  - **Issue:** #1223
-  - **Notes:** Incident: PR #1198 (cascaded shadow maps) wasted one full opus iteration due to duplicate concurrent resolution. Fix mirrors `fleet:reviewing-<host>-<agent>` pattern from reviewer roles. Changes: `role-opus-worker.md` step 1c + `fleet-claim cleanup --gh` TTL sweep extension. Issue explicitly tags `[sonnet]`.
-  - **Links:**
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -268,6 +223,10 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-384** — render: restore device-level distance texture clear (viewport clipping regression) · Owner: claude/T-384-viewport-clipping-regression · PR: https://github.com/jakildev/IrredenEngine/pull/1231
+- [x] **T-388** — fleet: semantic-conflict resolution races — add atomic claim label before checkout · Owner: claude/T-388-resolving-label-conflict-claim · PR: https://github.com/jakildev/IrredenEngine/pull/1227
+- [x] **T-383** — fleet: commit-and-push — add pre-PR Closes# cross-check · Owner: claude/T-383-commit-push-closes-crosscheck · PR: https://github.com/jakildev/IrredenEngine/pull/1224
+- [x] **T-380** — fleet: add model-affinity labels + fleet-queue-list + gate master_lock_task · Owner: claude/T-380-fleet-queue-list-model-labels · PR: https://github.com/jakildev/IrredenEngine/pull/1222
 - [x] **T-368** — render: async texture loading API + World icon load POC · Owner: claude/T-368-async-texture-loading · PR: https://github.com/jakildev/IrredenEngine/pull/1205
 - [x] **T-372** — world: chunk persistence smoke demo (end-to-end consumer wire-in) · Owner: claude/T-372-chunk-streaming-smoke-demo · PR: https://github.com/jakildev/IrredenEngine/pull/1208
 - [x] **T-373** — world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence · Owner: claude/T-373-rename-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/1207
@@ -284,7 +243,3 @@ Avoid:
 - [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
 - [x] **T-359** — world: entity chunk migration system (Epic E E5) · Owner: claude/T-359-entity-chunk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1183
 - [x] **T-357** — world: camera-aware chunk prefetch (priority by visibility) (E3) · Owner: claude/T-357-camera-chunk-prefetch · PR: https://github.com/jakildev/IrredenEngine/pull/1180
-- [x] **T-366** — fleet: harden cross-host duplicate-claim prevention · Owner: claude/T-366-fleet-duplicate-claiming · PR: https://github.com/jakildev/IrredenEngine/pull/1189
-- [x] **T-356** — world: GPU chunk residency manager (LRU + camera-radius eviction) (E2) · Owner: claude/T-356-gpu-chunk-residency · PR: https://github.com/jakildev/IrredenEngine/pull/1179
-- [x] **T-363** — tools: ir-host-probe survives non-exec lspci stub in PATH · Owner: claude/T-363-ir-host-probe-harden · PR: https://github.com/jakildev/IrredenEngine/pull/1177
-- [x] **T-364** — render: retire C_CameraYaw — camera rotation sources from C_LocalTransform · Owner: claude/T-364-camera-so3-retire-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/1176
