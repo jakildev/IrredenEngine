@@ -13,6 +13,21 @@ namespace IRWorld {
 
 namespace {
 
+// Smaller = more urgent. FORCED is the editor "load this chunk now"
+// path that bypasses the byte budget; the camera-derived priorities
+// drain after it in (VISIBLE_RENDER, PREFETCH_RING) order.
+int requestPriorityUrgency(RequestPriority p) {
+    switch (p) {
+    case RequestPriority::FORCED:
+        return 0;
+    case RequestPriority::VISIBLE_RENDER:
+        return 1;
+    case RequestPriority::PREFETCH_RING:
+        return 2;
+    }
+    return 3;
+}
+
 IRComponents::C_Voxel recordToVoxel(const IRAsset::VoxelRecord &r) {
     // C_Voxel and VoxelRecord share an identical 12-byte std430 layout
     // but stay distinct types so layout drift surfaces as a compile
@@ -115,7 +130,91 @@ void ChunkResidencyManager::tickPrefetch() {
     // processed by endFrame() — tickPrefetch only grows the resident set.
 }
 
-void ChunkResidencyManager::flushUploads(int) {}
+void ChunkResidencyManager::flushUploads(int maxBytes) {
+    if (!m_config.deferredUpload_ || m_pendingUploads.empty()) {
+        return;
+    }
+
+    IR_PROFILE_SCOPE("ChunkResidencyManager::flushUploads");
+
+    // Resolve the per-call budget. maxBytes == 0 → use Config default.
+    // Negative budgets are clamped to 0 (defaults) to avoid silent
+    // budget-bypass — a caller passing -1 expecting "unlimited" would
+    // silently disable the cap on every frame they did so.
+    int effectiveBudget = maxBytes > 0 ? maxBytes : m_config.defaultUploadBudgetBytes_;
+    if (effectiveBudget < 0) {
+        effectiveBudget = 0;
+    }
+
+    // Sort by (urgency, distance). Stable sort keeps enqueue order as the
+    // tiebreaker for chunks at the same urgency + distance — preserves the
+    // intuitive "first requested wins" for same-class peers.
+    std::stable_sort(
+        m_pendingUploads.begin(),
+        m_pendingUploads.end(),
+        [this](const PendingUpload &a, const PendingUpload &b) {
+            const int ua = requestPriorityUrgency(a.priority_);
+            const int ub = requestPriorityUrgency(b.priority_);
+            if (ua != ub) {
+                return ua < ub;
+            }
+            auto ia = m_slots.find(a.key_);
+            auto ib = m_slots.find(b.key_);
+            const float da = ia != m_slots.end() ? ia->second.distanceVoxels_ : 0.0f;
+            const float db = ib != m_slots.end() ? ib->second.distanceVoxels_ : 0.0f;
+            return da < db;
+        }
+    );
+
+    const std::uint64_t bytesPerChunk = static_cast<std::uint64_t>(m_config.voxelsPerChunk_) *
+                                        static_cast<std::uint64_t>(sizeof(IRComponents::C_Voxel));
+
+    std::uint64_t cumulativeBytes = 0;
+    m_deferScratch.clear();
+
+    for (const auto &pending : m_pendingUploads) {
+        // Slot may have been evicted between request and flush — the
+        // pending entry then references a chunk that no longer has a
+        // slot. Drop it silently.
+        auto it = m_slots.find(pending.key_);
+        if (it == m_slots.end()) {
+            continue;
+        }
+        ChunkResidencySlot &s = it->second;
+        // A re-request can land while a chunk is already RESIDENT (sync
+        // mode never reaches this point, but a slot can become RESIDENT
+        // from a forced bypass earlier in this same call). Drop the
+        // entry — work already done.
+        if (s.state_ == ChunkResidencyState::RESIDENT) {
+            continue;
+        }
+        if (s.state_ == ChunkResidencyState::EVICTING) {
+            // Eviction is queued; don't fight the eviction by re-loading
+            // mid-flight. Drop the upload request.
+            continue;
+        }
+
+        const bool isForced = pending.priority_ == RequestPriority::FORCED;
+        const bool wouldExceed =
+            bytesPerChunk > 0 &&
+            cumulativeBytes + bytesPerChunk > static_cast<std::uint64_t>(effectiveBudget);
+
+        // FORCED bypasses the budget (editor "load this chunk now").
+        // For non-forced: budget cuts off the drain, BUT we always
+        // process at least one chunk per call even when a single chunk
+        // exceeds the budget. Otherwise streaming stalls forever the
+        // moment a chunk grows past the cap.
+        if (wouldExceed && cumulativeBytes > 0 && !isForced) {
+            m_deferScratch.push_back(pending);
+            continue;
+        }
+
+        completeUploadForSlot(s);
+        cumulativeBytes += bytesPerChunk;
+    }
+
+    std::swap(m_pendingUploads, m_deferScratch);
+}
 
 void ChunkResidencyManager::endFrame() {
     IR_PROFILE_FUNCTION(profiler::colors::Blue500);
@@ -193,18 +292,25 @@ ChunkResidencySlot *ChunkResidencyManager::slot(IRPrefab::Chunk::ChunkKey key) {
 }
 
 void ChunkResidencyManager::requestResident(
-    IRPrefab::Chunk::ChunkKey key, RequestPriority /*priority*/
+    IRPrefab::Chunk::ChunkKey key, RequestPriority priority
 ) {
     auto [it, inserted] = m_slots.try_emplace(key);
     ChunkResidencySlot &s = it->second;
     s.lastTouchedFrame_ = m_frameIndex;
     if (!inserted) {
-        // Rescue a slot that was scheduled for eviction — it was touched again
-        // before endFrame could erase it. Clearing EVICTING here is the only
-        // safe place: callers of migrateEntity and attachEntity rely on
+        // Rescue a slot scheduled for eviction — it was touched again before
+        // endFrame could erase it. Clearing EVICTING here is the only safe
+        // place: callers of migrateEntity and attachEntity rely on
         // requestResident having done this before they write to the slot.
         if (s.state_ == ChunkResidencyState::EVICTING) {
             s.state_ = ChunkResidencyState::RESIDENT;
+        }
+        // In deferred mode, a re-request can bump the queued entry's priority
+        // (e.g. PREFETCH_RING → VISIBLE_RENDER when the camera reaches the
+        // chunk) so flushUploads drains it sooner. RESIDENT slots (including
+        // freshly-rescued EVICTING slots above) ignore the bump.
+        if (m_config.deferredUpload_ && s.state_ != ChunkResidencyState::RESIDENT) {
+            bumpPendingUploadPriority(key, priority);
         }
         return;
     }
@@ -212,12 +318,27 @@ void ChunkResidencyManager::requestResident(
     s.key_ = key;
     s.state_ = ChunkResidencyState::LOADING;
 
-    // E1 skeleton: synchronous allocate + transition to RESIDENT. The
-    // async load/upload pipeline lands in E3.
+    if (m_config.deferredUpload_) {
+        // Async / budget mode: enqueue and let flushUploads complete it.
+        // Slot stays in LOADING; renderer paints it as a low-LOD AABB
+        // billboard from the slot's `aabbColor_` / `aabbMinVoxel_` /
+        // `aabbMaxVoxel_` defaults until the upload lands.
+        m_pendingUploads.push_back(PendingUpload{key, priority, m_frameIndex});
+        return;
+    }
+
+    // E1 synchronous path: complete the upload inline.
+    completeUploadForSlot(s);
+}
+
+void ChunkResidencyManager::completeUploadForSlot(ChunkResidencySlot &s) {
+    // Caller has just inserted the slot (sync path) or is draining the
+    // pending-uploads queue (async path). In both cases the slot is in
+    // LOADING and we drive it through UPLOADING → RESIDENT.
     if (m_config.poolAllocator_ && m_config.voxelsPerChunk_ > 0) {
         std::optional<std::vector<IRAsset::VoxelRecord>> loaded;
         if (m_config.persistence_) {
-            loaded = m_config.persistence_->loadChunk(key);
+            loaded = m_config.persistence_->loadChunk(s.key_);
         }
 
         s.state_ = ChunkResidencyState::UPLOADING;
@@ -227,8 +348,8 @@ void ChunkResidencyManager::requestResident(
             seedPoolSliceFromRecords(s.poolAllocation_, *loaded);
         } else if (loaded) {
             IRE_LOG_WARN(
-                "ChunkResidencyManager::requestResident: loaded record count {} != pool slice "
-                "size {}; ignoring disk data",
+                "ChunkResidencyManager::completeUploadForSlot: loaded record count {} != pool "
+                "slice size {}; ignoring disk data",
                 loaded->size(),
                 s.poolAllocation_.voxels_.size()
             );
@@ -262,6 +383,20 @@ void ChunkResidencyManager::evictSlot(
     }
 }
 
+void ChunkResidencyManager::bumpPendingUploadPriority(
+    IRPrefab::Chunk::ChunkKey key, RequestPriority p
+) {
+    for (auto &pending : m_pendingUploads) {
+        if (pending.key_ != key) {
+            continue;
+        }
+        if (requestPriorityUrgency(p) < requestPriorityUrgency(pending.priority_)) {
+            pending.priority_ = p;
+        }
+        return;
+    }
+}
+
 void ChunkResidencyManager::requestEvict(IRPrefab::Chunk::ChunkKey key) {
     auto it = m_slots.find(key);
     if (it == m_slots.end()) {
@@ -269,6 +404,21 @@ void ChunkResidencyManager::requestEvict(IRPrefab::Chunk::ChunkKey key) {
     }
     evictSlot(it);
     m_slots.erase(it);
+
+    // Drop any pending-upload entries that referenced this key — they
+    // would otherwise resurface as zombie work on the next flushUploads.
+    // flushUploads also guards (slot-missing → skip) so this is
+    // defense in depth, but eagerly trimming keeps the queue short.
+    if (!m_pendingUploads.empty()) {
+        m_pendingUploads.erase(
+            std::remove_if(
+                m_pendingUploads.begin(),
+                m_pendingUploads.end(),
+                [key](const PendingUpload &p) { return p.key_ == key; }
+            ),
+            m_pendingUploads.end()
+        );
+    }
 }
 
 void ChunkResidencyManager::flushPendingSaves() {
@@ -344,6 +494,10 @@ void ChunkResidencyManager::migrateEntity(
 
 std::size_t ChunkResidencyManager::residentChunkCount() const {
     return m_slots.size();
+}
+
+std::size_t ChunkResidencyManager::pendingUploadCount() const {
+    return m_pendingUploads.size();
 }
 
 std::size_t ChunkResidencyManager::entityCount() const {
