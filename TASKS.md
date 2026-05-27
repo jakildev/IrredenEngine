@@ -175,17 +175,6 @@ Avoid:
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
   - **Links:**
 
-- [~] **render: chunk visibility mask not rotation-aware — geometry culled at non-zero camera yaw** — make `rebuildChunkBounds()` in `C_VoxelPool` apply `rotateCardinalZ` before iso projection, matching the GPU compact shader
-  - **ID:** T-386
-  - **Area:** engine/render, engine/prefabs/irreden/voxel
-  - **Model:** opus
-  - **Owner:** claude/T-386-chunk-visibility-rotation
-  - **Blocked by:** (none)
-  - **Acceptance:** No chunks incorrectly culled at any camera yaw; spinning yaw 0→360° shows no geometry pops or missing sectors; fix is no-op at yaw=0 (cardinalIndex=0 passes identity)
-  - **Issue:** #1219
-  - **Notes:** Root: `component_voxel_pool.hpp:244-261` uses unrotated `pos3DtoPos2DIso`; GPU correct reference `c_voxel_visibility_compact.glsl:66-71`. Fix: add `m_lastBoundsCardinalIndex` field to C_VoxelPool, pass cardinal index to `rebuildChunkBounds()`, apply `IRMath::rotateCardinalZ` per voxel, cache and dirty-check. Performance: O(pool size), 3 int ops per voxel, triggers at most 4× per full revolution.
-  - **Links:**
-
 - [~] **render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw** — rotate iso frustum corners from raster→world frame via `rotateCardinalZInv` before sun-space sweep in `system_bake_sun_shadow_map.hpp`
   - **ID:** T-387
   - **Area:** engine/render
@@ -212,6 +201,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-386** — render: chunk visibility bounds rotation-aware · Owner: claude/T-386-chunk-visibility-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1228
 - [x] **T-385** — render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw · Owner: claude/T-385-face-normal-rotation-lighting-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/1225
 - [x] **T-384** — render: restore device-level distance texture clear (viewport clipping regression) · Owner: claude/T-384-viewport-clipping-regression · PR: https://github.com/jakildev/IrredenEngine/pull/1231
 - [x] **T-388** — fleet: semantic-conflict resolution races — add atomic claim label before checkout · Owner: claude/T-388-resolving-label-conflict-claim · PR: https://github.com/jakildev/IrredenEngine/pull/1227
@@ -231,4 +221,3 @@ Avoid:
 - [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
 - [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
 - [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
-- [x] **T-359** — world: entity chunk migration system (Epic E E5) · Owner: claude/T-359-entity-chunk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1183
