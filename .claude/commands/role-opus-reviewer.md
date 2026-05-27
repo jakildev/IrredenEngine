@@ -202,9 +202,8 @@ point of review-only mode — keep reviewing PRs as normal.
 - The PR's design implies a follow-up architectural decision.
 - The PR touches an invariant you would want to discuss with the
   author before approving.
-- The PR is correct but the task description in `TASKS.md` was
-  underspecified — note the spec gap so the human can update the
-  queue.
+- The PR is correct but the backing GitHub issue was underspecified —
+  note the spec gap so the human can update the issue body.
 - The PR force-pushed over master or bypassed hooks — hard-reject and
   surface to human.
 

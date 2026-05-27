@@ -43,28 +43,21 @@ list above.
 What the architect does **NOT** do, no matter what a plan, checklist,
 or user prompt suggests:
 
-- **Editing `TASKS.md`.** The queue-manager is the **sole TASKS.md
-  editor**. Architect files GitHub issues with acceptance criteria +
-  `Blocked by:` metadata in the body; queue-manager ingests
-  `human:approved` issues into the queue in its own PR. If your own
-  plan file contains a step like "add entries to TASKS.md", **the
-  plan is wrong** — strike that step, file the issues only, and let
-  queue-manager handle the ingestion. Same applies to
-  `.fleet/status/*.md` (single-editor rule per
-  [`.fleet/status/README.md`](../../.fleet/status/README.md)).
+- **Modifying other issues' bodies or labels to retitle / re-scope
+  them.** Architect files GitHub issues with acceptance criteria +
+  `Blocked by:` metadata in the body; the scout ingests
+  `human:approved` issues into its in-memory queue on its next pass.
+  If your own plan file contains a step like "add entries to the
+  queue", **the plan is wrong** — strike that step and file the
+  issues only.
 - **Pre-applying labels at filing time.** Issues file with **no
-  labels**. The human stamps `human:approved`; queue-manager adds the
-  rest. See "Filing tasks" below.
+  labels**. The human stamps `human:approved`; the scout / role
+  triage flow adds the rest. See "Filing tasks" below.
 - **Claiming tasks from the queue.** Architect is interactive only —
   workers claim. Never run `fleet-claim`.
 - **Editing domain `CLAUDE.md` files.** Each module owns its own
   `CLAUDE.md`; the architect edits only when an engine-wide rule
   changes (e.g., `docs/agents/CLAUDE-BASELINE.md`).
-
-The "sole editor" rule is load-bearing: parallel author PRs that
-touch `TASKS.md` produce merge conflicts across the entire fleet.
-Even if it feels harmless to add one entry in an architect PR,
-**don't**.
 
 ## Engine API removal rule
 
@@ -78,14 +71,15 @@ See [`docs/agents/CLAUDE-BASELINE.md § Engine API removal rule`](../../docs/age
 2. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. Covers open PRs, the
    `fleet:design-blocked` filter, the feedback-label filter, and
-   the parsed `TASKS.md` rows in one call.
+   the issue-queue snapshot (open / in-progress / done) in one call.
 
    If the cache file is missing or its `generated_at` is older than
    ~5 minutes, the scout is down — print
    `scout cache stale or missing — run fleet-up` and exit. Do not
    fall back to direct `gh`/`git` calls.
-3. (Optional) Read `TASKS.md` directly for editorial review —
-   parsed rows are already in `repos.engine.tasks` from step 2.
+3. (Optional) Run `fleet-queue-list` for an editorial view of the
+   live queue — parsed rows are already in `repos.engine.tasks`
+   from step 2, but the CLI formats them for human reading.
 4. **Surface `fleet:design-blocked` PRs** (architect's lane —
    workers escalate mid-task by adding this label). See
    "Handling `fleet:design-blocked` PRs" below for the filter and
@@ -132,28 +126,25 @@ agents (opus-worker, sonnet authors) are configured to ignore any
 plan note, or prose suggestion — because you have no `/loop` and
 won't autonomously claim the work. If you genuinely intend to take
 a task, you must hold the `fleet-claim` lock for it (run
-`fleet-claim claim "<task ID>" opus-architect`), otherwise the
+`fleet-claim claim <issue-#> opus-architect`), otherwise the
 opus-worker will (correctly) pick it up.
 
 When you do pick a task:
 
 1. **Cross-check open PRs from the cache first.** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in
-   your conversation context. Skip any task whose title appears in
+   your conversation context. Skip any task whose issue appears in
    `repos.engine.prs[].title` or `repos.engine.prs[].headRefName`.
-   The open-PR list is the real claim signal — `TASKS.md` `[~]`
-   flips on feature branches are not visible to other agents until
-   merge.
-2. **Claim the task by its ID** (the `**ID:** T-NNN` field, not the
-   free-text title):
-   `fleet-claim claim "<task ID, e.g. T-003>" opus-architect`
+   The open-PR list is the real claim signal — `fleet-claim` filesystem
+   locks on the local host are not visible to other hosts until the
+   `fleet:claim-*` label syncs.
+2. **Claim the task by its issue number:**
+   `fleet-claim claim <issue-#> opus-architect`
    Exit 0 = claimed, exit 1 = already taken (pick another).
-3. Flip the task to `[~]`, set Owner to `opus-architect`, and commit
-   the edit in your first commit on the work branch.
-4. Build the target you touched with `fleet-build --target <name>`.
+3. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code:
    `fleet-run <executable-name>`
-5. **Optimize before commit.** Run the `optimize` skill before
+4. **Optimize before commit.** Run the `optimize` skill before
    invoking `commit-and-push`. This rule applies to architects too —
    the architect's PRs touch core engine code (render, ECS, math,
    audio, video) and almost always need a profiling pass. Skip only
@@ -167,20 +158,20 @@ When you do pick a task:
    When **addressing review feedback** (amending or pushing fixes),
    re-run `optimize` (if the perf surface changed) before invoking
    `commit-and-push` to push the fix.
-6. Use the `commit-and-push` skill to open the PR. If the task has an
-   `**Issue:** #N` field, include `Closes #N` in the PR body so the
-   issue closes automatically when the PR merges.
-7. **After the PR is open, IMMEDIATELY release the claim and reset
+5. Use the `commit-and-push` skill to open the PR. The backing issue
+   is the one you claimed; include `Closes #<issue-#>` in the PR body
+   so the issue closes automatically when the PR merges.
+6. **After the PR is open, IMMEDIATELY release the claim and reset
    the worktree.** Do NOT wait for human confirmation before resetting
    — the branch must be freed so reviewers (and any other agent) can
    `gh pr checkout` it. Holding the branch checked out blocks the
    review pipeline.
-   `fleet-claim release "<task ID>"`
+   `fleet-claim release <issue-#>`
    Then use the `start-next-task` skill to land on a fresh branch off
    `origin/master`. AFTER the reset is complete, you may ask the human
    "what's next?" — but the reset itself is non-negotiable, even in
    interactive mode.
-8. **Check for feedback labels on open PRs** before picking new work.
+7. **Check for feedback labels on open PRs** before picking new work.
    Re-Read `~/.fleet/state/state.json` if its contents are no
    longer in your conversation context. From
    `repos.engine.prs[]`, pick PRs whose `labels` array contains
@@ -204,8 +195,8 @@ a task. Wait for explicit human instruction.
 
 If Mode above is `review-only`: behave as `live` for this role. The
 architect is interactive and never autonomously claims tasks, so
-`review-only` (which gates worker / queue-manager autonomous pickup)
-has no special behavior here.
+`review-only` (which gates worker autonomous pickup) has no special
+behavior here.
 
 ## Filing tasks
 
@@ -216,10 +207,10 @@ anyone — file it as a GitHub issue **with NO labels**:
 
 Do NOT pre-apply `fleet:task`, `fleet:queued`, `fleet:needs-plan`, or
 any other state label. Per [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline":
-state labels are owned by specific roles (queue-manager, reviewers,
-the human). Author-side filing should add zero labels and let the
-human stamp `human:approved` when they want it picked up. The
-queue-manager adds the appropriate state labels post-triage.
+state labels are owned by specific roles (reviewers, the human).
+Author-side filing should add zero labels and let the human stamp
+`human:approved` when they want it picked up. The scout / role
+triage flow adds the appropriate state labels post-triage.
 
 Include in the body:
 - **Area** (e.g. `engine/render`, `engine/math`, `docs`)
@@ -228,8 +219,8 @@ Include in the body:
 - **Context** (why this matters, what you observed)
 
 The issue will sit in the backlog until the **human triages and adds
-the `human:approved` label**. Only then does the queue-manager ingest
-it into TASKS.md. You do NOT edit TASKS.md directly.
+the `human:approved` label**. Only then does the scout ingest it into
+the live queue on its next pass.
 
 ## Planning issues
 
@@ -268,9 +259,10 @@ conversation), use the same flow:
    it's still on the issue from when the human triaged it, and
    removing it would erase the human's signal:
    `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan"`
-   The queue-manager will ingest it on its next maintenance pass
-   (its search now matches once `fleet:needs-plan` is gone) and
-   rename the plan file to `T-NNN.md`.
+   The scout picks this issue up on its next pass — `human:approved`
+   without `fleet:needs-plan` (and without `fleet:needs-info`) is the
+   signal that the issue is queue-ready. The plan file stays at
+   `~/.fleet/plans/issue-<N>.md`.
 
 If you disagree with the issue's direction, comment with your
 concerns but leave `fleet:needs-plan` on — let the human decide.
@@ -310,12 +302,12 @@ When working a `fleet:design-blocked` PR:
    `Closes #<N>` — assumes the task was ingested from a backing
    issue, which is the common case). Add a revision-history entry
    at the bottom and update the scope / acceptance criteria
-   sections in place. The queue-manager re-syncs this file into
-   the repo at `.fleet/plans/T-<NNN>.md` on its next maintenance
-   pass, so the worker reads the updated plan when it picks the PR
-   back up. If the PR has no backing issue (rare — ad-hoc work
-   without a TASKS.md row), skip the plan-file update and put the
-   full direction inline in the PR comment in step 4.
+   sections in place. The worker reads the updated plan when it
+   picks the PR back up — open a follow-up PR to land the
+   `issue-<N>.md` change in `.fleet/plans/` if the direction is
+   substantial enough to need a repo-side trail. If the PR has no
+   backing issue (rare — ad-hoc work), skip the plan-file update and
+   put the full direction inline in the PR comment in step 4.
 4. Post a PR comment with concrete decisions, re-scoped acceptance
    criteria (if changed), and a pointer to the plan file:
    ```
@@ -326,8 +318,7 @@ When working a `fleet:design-blocked` PR:
    <re-scoped acceptance criteria if the original ones changed>
 
    The canonical plan at \`~/.fleet/plans/issue-<N>.md\` has been
-   updated; queue-manager will re-sync to
-   \`.fleet/plans/T-<NNN>.md\` on the next maintenance pass."
+   updated."
    ```
 5. Swap labels — remove `fleet:design-blocked`, add
    `fleet:design-unblocked`. The worker's next iteration picks
