@@ -526,9 +526,12 @@ PYEOF
 
 check_model_tag() {
     # Refuse the claim if the calling role's model doesn't match the task's
-    # Model: field in TASKS.md. Gate is opt-in — no-op when:
+    # model affinity. Checks fleet:opus / fleet:sonnet labels on the linked
+    # issue (T-381), falling back to **Model:** in the issue body, then to
+    # TASKS.md as a last resort.
+    # Gate is opt-in — no-op when:
     #   • FLEET_ROLE_MODEL is unset or empty (manual / ad-hoc claim)
-    #   • task has no Model: field in TASKS.md
+    #   • task has no model tag anywhere
     # Exits non-zero on mismatch; caller should return 1.
     local task_id="$1"
     local role_model="${FLEET_ROLE_MODEL:-}"
@@ -537,6 +540,44 @@ check_model_tag() {
         return 0
     fi
 
+    # Try issue-based model check first (T-381). fleet:opus / fleet:sonnet
+    # label wins; body's **Model:** field is the fallback. One gh call fetches
+    # both so the gate stays at one round-trip per claim.
+    local issue_num repo
+    issue_num=$(get_task_issue "$task_id" 2>/dev/null || echo "")
+    repo=$(repo_from_ns)
+    if [[ -n "$issue_num" && -n "$repo" ]] && command -v gh >/dev/null 2>&1; then
+        local issue_json task_model=""
+        issue_json=$(gh issue view "$issue_num" --repo "$repo" \
+            --json labels,body 2>/dev/null || echo "")
+        if [[ -n "$issue_json" ]]; then
+            if echo "$issue_json" | grep -q '"name":"fleet:opus"'; then
+                task_model="opus"
+            elif echo "$issue_json" | grep -q '"name":"fleet:sonnet"'; then
+                task_model="sonnet"
+            else
+                task_model=$(echo "$issue_json" \
+                    | python3 -c '
+import json, re, sys
+try:
+    body = json.load(sys.stdin).get("body", "") or ""
+except Exception:
+    body = ""
+m = re.search(r"\*\*Model:\*\*\s*(\S+)", body)
+print((m.group(1) if m else "").lower())
+' 2>/dev/null || echo "")
+            fi
+            if [[ -n "$task_model" ]]; then
+                if [[ "$task_model" != "$role_model" ]]; then
+                    echo "fleet-claim: refuse $task_id — tagged [$task_model], this role is [$role_model]; use a [$task_model] agent" >&2
+                    return 1
+                fi
+                return 0
+            fi
+        fi
+    fi
+
+    # Last resort: fall back to TASKS.md (transitional — T-382 removes).
     local tasks_file=""
     local repo_root
     repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
