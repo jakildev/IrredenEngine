@@ -162,24 +162,12 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-- [~] **Fleet-state-scout: drop TASKS.md reads and queue-tick spawn after T-381 cleanup** — remove residual TASKS.md reads and fleet-queue-tick spawn left over from PR #1229
-  - **ID:** T-392
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/1236-scout-drop-tasks-md
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-396 tasks-md-elimination
-  - **Acceptance:** `grep -n "TASKS\|queue-tick\|T-NNN" scripts/fleet/fleet-state-scout` returns 0 non-historical hits; no queue: maintenance sync commits appear during a fleet cycle; projection state cache shape unchanged
-  - **Issue:** #1236
-  - **Notes:** Part of TASKS.md elimination epic (#1216). Blocked on orphan-script deletion so the queue-tick spawn target is gone first. Deletes: lines ~1237–1261 (fleet-queue-tick spawn on projection-change), line ~311 (git show origin/master:TASKS.md read), lines ~629–669 (SINGLE_TASK_BLOCKER_RE + T-NNN blocker parser), lines ~194–198 (ghost-row cross-check), line ~804 and ~159 comments. Medium risk — scout drives every worker's view of the queue.
-  - **Links:**
-
 - [ ] **Fleet: delete TASKS.md, role-queue-manager.md, and creations/game/TASKS.md** — final cutover: delete the TASKS.md artifact and the role doc whose sole purpose was maintaining it
   - **ID:** T-393
   - **Area:** tooling, docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-392
+  - **Blocked by:** (none)
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** TASKS.md, creations/game/TASKS.md, role-queue-manager.md all deleted; root CLAUDE.md table updated with gh issue list / fleet-queue-list pointer; `grep -rln "TASKS.md" .` returns 0 hits; fleet smoke cycle passes on post-deletion branch
   - **Issue:** #1237
@@ -190,6 +178,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-392** — scout drops TASKS.md reads and T-NNN blocker parser · Owner: claude/1236-scout-drop-tasks-md · PR: https://github.com/jakildev/IrredenEngine/pull/1249
 - [x] **T-397** — Fleet: doc cross-reference cleanup post-TASKS.md · Owner: claude/1241-doc-xref-cleanup · PR: https://github.com/jakildev/IrredenEngine/pull/1248
 - [x] **T-390** — fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task · Owner: claude/1234-fleet-claim-issue-numbers · PR: https://github.com/jakildev/IrredenEngine/pull/1246
 - [x] **T-391** — fleet: fleet-queue-ingest drops LLM step (label-only ingest) · Owner: claude/T-391-fleet-queue-ingest-drop-llm · PR: https://github.com/jakildev/IrredenEngine/pull/1244
@@ -209,4 +198,3 @@ Avoid:
 - [x] **T-379** — system: bulk PARALLEL_FOR migration of trivially-safe prefab systems · Owner: claude/T-379-parallel-for-bulk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1212
 - [x] **T-378** — system: PROPAGATE_TRANSFORM BFS-parallel refactor · Owner: claude/T-378-propagate-transform-bfs-parallel · PR: https://github.com/jakildev/IrredenEngine/pull/1203
 - [x] **T-374** — fleet: scope-shipped detection pass in queue-manager ingest · Owner: claude/T-374-queue-manager-scope-shipped-check · PR: https://github.com/jakildev/IrredenEngine/pull/1210
-- [x] **T-377** — fleet: commit-and-push — refuse to commit when staged tree is empty · Owner: claude/T-377-commit-and-push-empty-commit-guard · PR: https://github.com/jakildev/IrredenEngine/pull/1209
