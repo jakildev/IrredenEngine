@@ -171,8 +171,9 @@ struct C_TriangleCanvasTextures {
     //
     // When invoked via clearCanvasWithBackground() → clearCanvasAndDistances(),
     // the 65534 value is immediately overwritten by the unconditional
-    // canvas.clearDistances() call at the end of clearCanvasAndDistances(),
-    // which restores kTrixelDistanceMaxDistance (65535) on every frame. The
+    // IRRender::device()->clearTexImage(...) call at the end of
+    // clearCanvasAndDistances(), which restores kTrixelDistanceMaxDistance
+    // (65535) on every frame. The
     // redundant GPU clear here is negligible in cost but retained for correctness
     // on call-sites (e.g. entity_trixel_canvas.hpp) that invoke clearWithColor()
     // or clearWithColorData() without a subsequent clearDistances().
