@@ -1868,6 +1868,8 @@ print(0)
                     --remove-label "$label_name" >/dev/null 2>&1; then
                 echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m, no open PR)"
                 total_removed=$((total_removed + 1))
+                gh issue edit "$issue_num" --repo "$repo" \
+                    --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
             else
                 write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
                     "cleanup --gh: open-issue claim remove-label failed"

@@ -78,7 +78,7 @@ for issue in raw:
         if l.startswith("fleet:claim-"):
             parts = l.split("-", 2)
             if len(parts) >= 3:
-                owner = parts[2]
+                owner = f"{parts[1]}/{parts[2]}"
             break
 
     is_blocked = blocked_by not in ("(none)", "", "—")
@@ -97,7 +97,7 @@ entries.sort(key=lambda e: e["number"])
 
 available = [e for e in entries if not e["in_progress"] and e["owner"] == "free" and not e["is_blocked"]]
 in_prog = [e for e in entries if e["in_progress"] or e["owner"] != "free"]
-blocked = [e for e in entries if e["is_blocked"] and e["owner"] == "free" and not e["in_progress"]]
+blocked = [e for e in entries if e["is_blocked"] and e not in in_prog]
 
 def print_section(title, items):
     if not items:
