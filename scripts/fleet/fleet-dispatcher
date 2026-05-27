@@ -213,8 +213,8 @@ fi
 # responsive to PR state changes, so we only re-arm when the natural
 # trigger chain might be lagging (e.g. a scout tick was skipped).
 #
-# queue-manager is no longer in this list: maintenance is now script-driven
-# (fleet-queue-tick, spawned by fleet-state-scout on projection change).
+# queue-manager is no longer in this list: maintenance was previously handled
+# by fleet-queue-tick (removed in #1229); the queue is now issue-based (T-381).
 PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
 
 # Boot fan-out window. During the first N seconds after dispatcher start,
@@ -258,9 +258,9 @@ DISPATCHED_ROLES=(
     "smoke-worker"
 )
 # queue-manager is no longer LLM-dispatched. Maintenance (derived-field
-# rendering) is handled by fleet-queue-tick, spawned directly by
-# fleet-state-scout when the queue-manager projection changes.
-# Ingestion (new issues → TASKS.md) is a Cursor-flow / human operation.
+# rendering via fleet-queue-tick) was eliminated in #1229 — the queue is
+# now issue-based. Ingestion (new issues → queue) fires on its own
+# scout-driven trigger when human:approved-not-yet-queued issues appear.
 
 # Per-role default claude model. Sourced from fleet-up's
 # OPUS_MODEL / SONNET_MODEL convention.
@@ -999,8 +999,8 @@ rearm_periodic_meta_triggers() {
     # ~$0.30 per iteration × 12/hour was the dominant idle-fleet
     # token cost. Dropped.
     #
-    # queue-manager (bookkeeping) is handled by fleet-queue-tick,
-    # spawned directly by fleet-state-scout on projection change.
+    # queue-manager (bookkeeping via fleet-queue-tick) was eliminated
+    # in #1229 — the queue is now issue-based (T-381).
     # Queue-manager (ingestion) fires on its own scout-driven
     # trigger when human:approved-not-yet-queued issues appear.
     #
