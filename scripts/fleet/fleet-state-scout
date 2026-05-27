@@ -1370,8 +1370,8 @@ def tick_once():
             continue
         if role == "queue-manager":
             # T-381: TASKS.md maintenance eliminated — scout reads issues
-            # directly. Stale-label sweep and stale-PR/epic close still run
-            # on projection change (same trigger, lighter payload).
+            # directly. Run fleet-claim cleanup on projection change to reap
+            # stale lock entries. (fleet-stale-sweep removed in #1233.)
             new_hash = stable_hash(projection)
             seen_file = SEEN_DIR / role
             try:
@@ -1383,7 +1383,6 @@ def tick_once():
                 sweep_cmds = [
                     ["fleet-claim", "cleanup", "--gh",
                      "--repo", "jakildev/IrredenEngine"],
-                    ["fleet-stale-sweep"],
                 ]
                 if (GAME / ".git").exists():
                     sweep_cmds.append(
@@ -1400,8 +1399,8 @@ def tick_once():
                         )
                     except Exception as e:
                         log(f"queue-manager: sweep failed to spawn {sweep_cmd[0]}: {e}")
-                log("queue-manager: spawned stale sweeps (projection changed)")
-                triggers_fired.append("queue-manager(stale-sweep)")
+                log("queue-manager: spawned claim cleanup (projection changed)")
+                triggers_fired.append("queue-manager(claim-cleanup)")
         elif role == "queue-manager-ingest":
             # Auto-fire ingestion when the human:approved-and-not-yet-queued
             # set changes. Same spawn pattern as queue-tick but invokes an
