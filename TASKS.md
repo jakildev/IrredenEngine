@@ -163,30 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **world: one-frame upload budget + low-LOD fallback (E4)** — cap per-frame upload bandwidth; render off-budget chunks at low-LOD for one frame with fade-in detail
-  - **ID:** T-358
-  - **Area:** engine/world, engine/render
-  - **Model:** opus
-  - **Owner:** claude/T-358-one-frame-upload-budget
-  - **Blocked by:** (none)
-  - **Stack:** T-356..T-359 S-E-stream
-  - **Acceptance:** (1) Camera warp to 50-chunk region: first frame renders complete (some at low-LOD); (2) 2-3 frames upgrade to full detail; (3) no stutter > 1 frame; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #966
-  - **Notes:** E4 in Epic E (#938). Stack position 5: E3→**E4**. Blocked by E3 (T-357) and E0 (#944, closed). Load-bearing invariant: no frame ever blocks on upload.
-  - **Links:**
-
-- [~] **world: entity chunk migration (atomic ownership transfer) (E5)** — entities crossing chunk boundaries change ownership atomically; identity, component data, and voxel allocations preserved
-  - **ID:** T-359
-  - **Area:** engine/world, engine/entity
-  - **Model:** opus
-  - **Owner:** claude/T-359-entity-chunk-migration
-  - **Blocked by:** (none)
-  - **Stack:** T-356..T-359 S-E-stream
-  - **Acceptance:** (1) Track entity moving across 10 chunk boundaries; ID unchanged; (2) rendering correct throughout; (3) rotated entities (C6 #957) migrate without artifact; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #967
-  - **Notes:** E5 in Epic E (#938). Off-stack fork from E2 (does not block E3→E4 chain). Blocked by E2 (T-356). Interacts with C6 GRID-mode rotation (#957, closed) for boundary-straddling rotated entities.
-  - **Links:**
-
 - [~] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
   - **ID:** T-367
   - **Area:** tooling
@@ -202,7 +178,7 @@ Avoid:
   - **ID:** T-368
   - **Area:** engine/system
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-368-async-texture-loading
   - **Blocked by:** (none)
   - **Acceptance:** (1) `IRAsset::loadTextureAsync` exists, returns `AssetHandle<C_Texture>`, produces a valid texture once resolved; (2) one existing blocking startup load migrated to async; (3) startup-time delta filed in `docs/perf-reports/`; (4) no regression on `perf_grid_matrix.sh`
   - **Issue:** #1073
@@ -246,7 +222,7 @@ Avoid:
   - **ID:** T-372
   - **Area:** engine/world
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-372-chunk-streaming-smoke-demo
   - **Blocked by:** (none)
   - **Acceptance:** (1) Consumer wired and running on linux-debug and macos-debug; (2) chunk file lands under `<save>/chunks/`; (3) round-trip preserves voxel data; (4) clean chunks skip the save
   - **Issue:** #1170
@@ -257,7 +233,7 @@ Avoid:
   - **ID:** T-373
   - **Area:** engine/world
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-373-rename-chunk-disk-persistence
   - **Blocked by:** (none)
   - **Acceptance:** All `ChunkDiskPersistence` references in engine/ replaced with `ChunkVoxelDiskPersistence`; fleet-build clean on linux-debug and macos-debug
   - **Issue:** #1171
@@ -268,7 +244,7 @@ Avoid:
   - **ID:** T-374
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-374-queue-manager-scope-shipped-check
   - **Blocked by:** (none)
   - **Acceptance:** (1) Ingest pass searches merged PR titles/bodies for the issue number; (2) if a merged PR references the issue, skip ingest and post a comment linking the landing PR; (3) normal ingest path unaffected; (4) T-361/T-362 pattern (sub-task shipped under different T-NNN prefix) is caught
   - **Issue:** #1175
@@ -279,7 +255,7 @@ Avoid:
   - **ID:** T-375
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-375-cross-host-gh-claim-preserve
   - **Blocked by:** (none)
   - **Acceptance:** (1) Claim on host A + fleet-tasks-render on host B → status stays `[~]`; (2) maintenance-sync no longer reverts cross-host claims; (3) pure-local single-host flow unchanged; (4) synthetic test injects `fleet:claim-*` label and asserts `[~]` preserved across render cycle lacking local FS claim
   - **Issue:** #1190
@@ -301,7 +277,7 @@ Avoid:
   - **ID:** T-377
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-377-commit-and-push-empty-commit-guard
   - **Blocked by:** (none)
   - **Acceptance:** (1) `commit-and-push` with no staged changes fails with clear error message; (2) error instructs worker to either stage real work or release the claim; (3) existing non-empty-commit path unaffected; (4) skill docs state the empty-commit guard contract
   - **Issue:** #1192
@@ -323,7 +299,7 @@ Avoid:
   - **ID:** T-379
   - **Area:** engine/prefabs, engine/system
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-379-parallel-for-bulk-migration
   - **Blocked by:** (none)
   - **Acceptance:** (1) ≥10 additional prefab systems annotated with `PARALLEL_FOR` beyond the 2 already done; (2) `IrredenEngineTest` 100% pass; (3) measurable speedup at 262K entities vs post-Phase-3 baseline; (4) results filed in `docs/perf-reports/threading_bulk_migration.md`; (5) `engine/system/CLAUDE.md` updated with full list of parallelized systems; (6) no regression in `IRShapeDebug --auto-screenshot 60`
   - **Issue:** #1196
@@ -334,6 +310,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
+- [x] **T-359** — world: entity chunk migration system (Epic E E5) · Owner: claude/T-359-entity-chunk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1183
 - [x] **T-357** — world: camera-aware chunk prefetch (priority by visibility) (E3) · Owner: claude/T-357-camera-chunk-prefetch · PR: https://github.com/jakildev/IrredenEngine/pull/1180
 - [x] **T-366** — fleet: harden cross-host duplicate-claim prevention · Owner: claude/T-366-fleet-duplicate-claiming · PR: https://github.com/jakildev/IrredenEngine/pull/1189
 - [x] **T-356** — world: GPU chunk residency manager (LRU + camera-radius eviction) (E2) · Owner: claude/T-356-gpu-chunk-residency · PR: https://github.com/jakildev/IrredenEngine/pull/1179
@@ -352,5 +330,3 @@ Avoid:
 - [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
 - [x] **T-342** — fleet: queue-manager queued/free divergence check · Owner: claude/T-342-queue-manager-divergence-check · PR: https://github.com/jakildev/IrredenEngine/pull/1148
 - [x] **T-344** — fleet/auto-mode: fix rm -f .review-body.md via Read-then-Write protocol · Owner: claude/T-344-auto-mode-allowlist · PR: https://github.com/jakildev/IrredenEngine/pull/1151
-- [x] **T-343** — fleet: review-pr live label check after claim acquisition (pre-checkout) · Owner: claude/T-343-review-pr-live-label-check · PR: https://github.com/jakildev/IrredenEngine/pull/1150
-- [x] **T-346** — fleet: scout stackable_blocker_pr false-positive filter · Owner: claude/T-346-scout-stackable-filter · PR: https://github.com/jakildev/IrredenEngine/pull/1147
