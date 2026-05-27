@@ -470,7 +470,7 @@ check_model_tag() {
         task_model=$(BODY_B64="$body_b64" python3 <<'PYEOF'
 import base64, os, re, sys
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
-field_re = re.compile(r"^\s*-?\s*\*\*Model:\*\*\s*(.+?)\s*$", re.IGNORECASE)
+field_re = re.compile(r"^\s*-?\s*\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)\s*$", re.IGNORECASE)
 for line in body.splitlines():
     m = field_re.match(line)
     if m:
@@ -2274,7 +2274,7 @@ if "fleet:opus" in labels:
 if "fleet:sonnet" in labels:
     print("sonnet"); sys.exit(0)
 body = d.get("body", "") or ""
-field_re = re.compile(r"^\s*-?\s*\*\*Model:\*\*\s*(.+?)\s*$", re.IGNORECASE)
+field_re = re.compile(r"^\s*-?\s*\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)\s*$", re.IGNORECASE)
 for line in body.splitlines():
     m = field_re.match(line)
     if m:

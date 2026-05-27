@@ -272,7 +272,7 @@ _AREA_LABEL_MAP = {
 def _parse_issue_field(body, field):
     if not body:
         return ""
-    m = re.search(rf'\*\*{re.escape(field)}:\*\*\s*(.+?)(?:\n|$)', body)
+    m = re.search(rf'\*\*(?:Suggested\s+)?{re.escape(field)}:\*\*\s*(.+?)(?:\n|$)', body)
     return m.group(1).strip() if m else ""
 
 

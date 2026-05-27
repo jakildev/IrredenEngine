@@ -34,6 +34,17 @@ class ParseIssueField(unittest.TestCase):
         body = "**Model:** opus\nmore text\n"
         self.assertEqual(_mod._parse_issue_field(body, "Model"), "opus")
 
+    def test_suggested_prefix_accepted(self):
+        body = "**Suggested Model:** sonnet\n**Suggested Blocked by:** (none)\n"
+        self.assertEqual(_mod._parse_issue_field(body, "Model"), "sonnet")
+        self.assertEqual(
+            _mod._parse_issue_field(body, "Blocked by"), "(none)"
+        )
+
+    def test_suggested_area_accepted(self):
+        body = "**Suggested Area:** scripts/fleet\n"
+        self.assertEqual(_mod._parse_issue_field(body, "Area"), "scripts/fleet")
+
 
 class FetchTaskQueueDispatch(unittest.TestCase):
     """Exercise the per-issue loop with synthetic gh output.
@@ -124,6 +135,14 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         self.assertEqual(out["open"][0]["issue"], "#100")
         self.assertEqual(out["open"][0]["title"], "#100")
         self.assertEqual(out["open"][0]["summary"], "render: task")
+
+    def test_suggested_model_body_fallback(self):
+        out = self._run([{
+            "number": 100, "title": "x",
+            "labels": [{"name": "fleet:queued"}],
+            "body": "**Suggested Model:** sonnet\n",
+        }])
+        self.assertEqual(out["open"][0]["model"], "sonnet")
 
     def test_blocked_by_taken_verbatim_from_body(self):
         out = self._run([{

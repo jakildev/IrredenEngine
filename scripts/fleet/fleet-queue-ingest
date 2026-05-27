@@ -176,8 +176,8 @@ except Exception:
 
 # Body-field parsers mirror fleet-state-scout._parse_issue_field so we
 # label issues by the same fields the scout reads back out.
-MODEL_RE = re.compile(r'\*\*Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
-BLOCKED_RE = re.compile(r'\*\*Blocked by:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
+MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
+BLOCKED_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
 
 stamped = 0
 skipped_already = 0
