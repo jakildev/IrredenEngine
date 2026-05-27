@@ -163,17 +163,6 @@ Avoid:
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
   - **Links:**
 
-- [~] **render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw** — rotate iso frustum corners from raster→world frame via `rotateCardinalZInv` before sun-space sweep in `system_bake_sun_shadow_map.hpp`
-  - **ID:** T-387
-  - **Area:** engine/render
-  - **Model:** sonnet
-  - **Owner:** claude/T-387-shadow-aabb-coordinate-frame
-  - **Blocked by:** (none)
-  - **Acceptance:** At non-zero yaw, shadow AABB covers correct world-space region; no shadow clip at viewport edges; OR confirm #1198 (cascaded shadow maps, merged 2026-05-27) already resolves this and close the issue
-  - **Issue:** #1220
-  - **Notes:** Affected file: `system_bake_sun_shadow_map.hpp:199-205`. Fix is 3-4 lines (see issue body). **May be superseded**: PR #1198 (cascaded shadow maps) merged 2026-05-27 computes per-cascade AABBs in world frame. Worker should first verify on current master — if the cascaded system resolves the mismatch, close #1220 instead of applying the fix.
-  - **Links:**
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
@@ -189,6 +178,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-387** — render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw · Owner: claude/T-387-shadow-aabb-coordinate-frame · PR: https://github.com/jakildev/IrredenEngine/pull/1230
 - [x] **T-381** — fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync · Owner: claude/T-381-scout-reads-issues · PR: https://github.com/jakildev/IrredenEngine/pull/1229
 - [x] **T-386** — render: chunk visibility bounds rotation-aware · Owner: claude/T-386-chunk-visibility-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1228
 - [x] **T-385** — render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw · Owner: claude/T-385-face-normal-rotation-lighting-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/1225
@@ -208,4 +198,3 @@ Avoid:
 - [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
 - [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
 - [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
-- [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
