@@ -198,11 +198,11 @@ Avoid:
   - **Notes:** Root cause: PR #1212 (T-379 PARALLEL_FOR migration) used `Closes #1215` instead of `Closes #1196`, auto-closing an unrelated issue (#1215 = fleet scout-reads-issues plan). Fix: add `gh issue view N --json title --jq '.title'` cross-check after the Closes line is drafted, before `gh pr create`; surface a warning if no keyword overlap. Optional: add reviewer-side catch to review-pr. Incident description in issue body.
   - **Links:**
 
-- [ ] **render: viewport clipping regression — left half of scene missing at yaw=0** — P0 regression from May 25–26 commit wave; bisect between last-known-good `61f6424c` and current master; fix offending commit
+- [~] **render: viewport clipping regression — left half of scene missing at yaw=0** — P0 regression from May 25–26 commit wave; bisect between last-known-good `61f6424c` and current master; fix offending commit
   - **ID:** T-384
   - **Area:** engine/render, engine/world
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** (none)
   - **Acceptance:** IRShapeDebug renders full platform at yaw=0 with no left-half truncation; shapes on left side visible; regression confirmed fixed on current master
   - **Issue:** #1217
