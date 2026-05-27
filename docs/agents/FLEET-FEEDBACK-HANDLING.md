@@ -35,7 +35,7 @@ Address one PR per iteration, oldest within each tier:
    Address every nit unless it's purely subjective preference.
 4. `fleet:design-unblocked` — architect responded to a prior
    mid-task escalation (`fleet:design-blocked` → resolved). The
-   canonical plan at `.fleet/plans/<issue-N>.md` has been updated;
+   canonical plan at `.fleet/plans/T-<NNN>.md` has been updated;
    address per the architect's PR comment +
    updated plan, just like a normal feedback fix. **Worker-only**;
    sonnet-author does not encounter this label (only opus-worker
