@@ -196,17 +196,6 @@ Avoid:
   - **Notes:** Diagnosed during T-351 by opus-worker. UPDATE ~8.6s/frame vs RENDER ~0.2s/frame at 262k entities. PropagateTransform (99893ms), PeriodicIdle (69567ms), UpdateVoxelSetChildren (45851ms) dominate. Approaches: (1) cap UPDATE catch-up ticks/frame, (2) parallelize disjoint UPDATE systems (PARALLEL_FOR prerequisites T-222/T-224 landed), (3) reduce per-entity work in dominant systems.
   - **Links:**
 
-- [~] **world: chunk persistence — two-level directory split (T-298 follow-up 2/4)** — update `ChunkDiskPersistence::chunkPath` / `filenameForKey` to use `chunks/<x_div_N>/<y_div_N>/` layout before any durable saves exist
-  - **ID:** T-371
-  - **Area:** engine/world
-  - **Model:** sonnet
-  - **Owner:** claude/T-371-chunk-persistence-two-level-dir-split
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Benchmark validates split dimensions on ext4/NTFS; (2) `chunkPath` and `filenameForKey` updated; (3) tests' expected filename fragments migrated; (4) fleet-build clean on linux-debug and macos-debug
-  - **Issue:** #1169
-  - **Notes:** Split from #1008 item 2. T-298 (#998) deferred directory layout pending profiling. No migration tooling needed (nothing real persists today). Two-level `<x_div_64>/<y_div_64>` is the working proposal; one-level `x_div_N` may suffice on ext4/NTFS — quick benchmark gates the decision.
-  - **Links:**
-
 - [~] **world: chunk persistence — wire in-engine consumer end-to-end (T-298 follow-up 3/4)** — pick one consumer (voxel editor save path or new IRChunkStreamingSmoke demo) and wire a real `ChunkResidencyManager` + `VoxelPoolAllocation` round-trip
   - **ID:** T-372
   - **Area:** engine/world
@@ -299,6 +288,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
 - [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
 - [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
 - [x] **T-359** — world: entity chunk migration system (Epic E E5) · Owner: claude/T-359-entity-chunk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1183
@@ -318,4 +308,3 @@ Avoid:
 - [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
 - [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
 - [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
-- [x] **T-342** — fleet: queue-manager queued/free divergence check · Owner: claude/T-342-queue-manager-divergence-check · PR: https://github.com/jakildev/IrredenEngine/pull/1148
