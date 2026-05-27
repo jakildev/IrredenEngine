@@ -162,22 +162,11 @@ Avoid:
   - **Notes:** Follow-up from lighting-fidelity-polish PR (audit findings #35-#38). Not in the lighting-fidelity-polish PR because HDR is a separate correctness dimension requiring its own tonemap tuning, demo screenshots, and perf measurement. Pick one tonemap operator and ship it (Reinhard, ACES, or Uncharted-2). Sky term: emissive top hemisphere driving additive contribution that cuts off at occlusion — cheap and visually impactful.
   - **Links:**
 
-
-- [~] **asset: async texture loading via pinned worker (T-226 Phase 5)** — `IRAsset::loadTextureAsync` returns immediately with an AssetHandle; disk read + decode runs on a pinned I/O worker; GL texture upload schedules onto main thread
-  - **ID:** T-368
-  - **Area:** engine/system
-  - **Model:** opus
-  - **Owner:** claude/T-368-async-texture-loading
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `IRAsset::loadTextureAsync` exists, returns `AssetHandle<C_Texture>`, produces a valid texture once resolved; (2) one existing blocking startup load migrated to async; (3) startup-time delta filed in `docs/perf-reports/`; (4) no regression on `perf_grid_matrix.sh`
-  - **Issue:** #1073
-  - **Notes:** Phase 5 of multithreading epic (#226). Blocker #1068 (IRJobs::pinTo) is now closed. GL/Metal texture creation must happen on the main thread — pinned worker does disk-read + decode only; upload schedules onto main. One entry point POC only; other loaders follow if the pattern is right.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-368** — render: async texture loading API + World icon load POC · Owner: claude/T-368-async-texture-loading · PR: https://github.com/jakildev/IrredenEngine/pull/1205
 - [x] **T-372** — world: chunk persistence smoke demo (end-to-end consumer wire-in) · Owner: claude/T-372-chunk-streaming-smoke-demo · PR: https://github.com/jakildev/IrredenEngine/pull/1208
 - [x] **T-373** — world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence · Owner: claude/T-373-rename-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/1207
 - [x] **T-379** — system: bulk PARALLEL_FOR migration of trivially-safe prefab systems · Owner: claude/T-379-parallel-for-bulk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1212
@@ -197,4 +186,3 @@ Avoid:
 - [x] **T-356** — world: GPU chunk residency manager (LRU + camera-radius eviction) (E2) · Owner: claude/T-356-gpu-chunk-residency · PR: https://github.com/jakildev/IrredenEngine/pull/1179
 - [x] **T-363** — tools: ir-host-probe survives non-exec lspci stub in PATH · Owner: claude/T-363-ir-host-probe-harden · PR: https://github.com/jakildev/IrredenEngine/pull/1177
 - [x] **T-364** — render: retire C_CameraYaw — camera rotation sources from C_LocalTransform · Owner: claude/T-364-camera-so3-retire-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/1176
-- [x] **T-352** — render: fix zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL · Owner: claude/T-352-zoom16-bind-image-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1174
