@@ -434,7 +434,7 @@ def fetch_task_queue(repo_slug, repo_root):
         else:
             sections["open"].append(task)
 
-    for key in sections:
+    for key in ("open", "in_progress"):
         sections[key].sort(
             key=lambda t: int((t.get("issue") or "#0").lstrip("#"))
         )
