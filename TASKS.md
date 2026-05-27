@@ -151,24 +151,12 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [~] **fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync** — replace `fetch_tasks` in fleet-state-scout with `fetch_task_queue` querying `gh issue list --label fleet:queued`; parse model/blocked-by/epic from issue bodies; eliminate `fleet-queue-tick` and the maintenance-sync commit loop
-  - **ID:** T-381
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-381-scout-reads-issues
-  - **Blocked by:** (none)
-  - **Stack:** T-380..T-382 tasks-to-issues
-  - **Acceptance:** (1) scout projections correctly reflect task queue from issues + labels; (2) no `queue: maintenance sync` commits appear on master; (3) `fleet-claim` model gate works from issue labels; (4) agents see correct available/claimed/blocked task lists
-  - **Issue:** #1215
-  - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 3–4). PR 2 of 3. Previously closed without delivering scope — reopened by human 2026-05-27. Eliminates ~530 `queue: maintenance sync` commits per fleet cycle.
-  - **Links:**
-
 - [ ] **fleet: delete TASKS.md, switch T-NNN convention to issue numbers, update all docs** — delete TASKS.md and game TASKS.md; update fleet-claim to accept issue numbers (reject T-NNN with hint); update commit/branch/plan-file naming conventions; update ~7 role docs, ~10 skills, CLAUDE.md, FLEET.md, and test fixtures
   - **ID:** T-382
   - **Area:** tooling, docs
   - **Model:** opus
   - **Owner:** free
-  - **Blocked by:** T-381
+  - **Blocked by:** (none)
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) TASKS.md no longer exists; (2) all role docs and skills reference issue numbers and `fleet-queue-list`; (3) `fleet-claim` accepts issue numbers, rejects T-NNN with helpful message; (4) commit messages and branches use issue numbers; (5) test suite passes with updated fixtures
   - **Issue:** #1216
@@ -201,6 +189,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-381** — fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync · Owner: claude/T-381-scout-reads-issues · PR: https://github.com/jakildev/IrredenEngine/pull/1229
 - [x] **T-386** — render: chunk visibility bounds rotation-aware · Owner: claude/T-386-chunk-visibility-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1228
 - [x] **T-385** — render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw · Owner: claude/T-385-face-normal-rotation-lighting-shadow · PR: https://github.com/jakildev/IrredenEngine/pull/1225
 - [x] **T-384** — render: restore device-level distance texture clear (viewport clipping regression) · Owner: claude/T-384-viewport-clipping-regression · PR: https://github.com/jakildev/IrredenEngine/pull/1231
@@ -220,4 +209,3 @@ Avoid:
 - [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
 - [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
 - [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
-- [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
