@@ -13,6 +13,8 @@ MTL::PixelFormat toMetalTextureFormat(TextureFormat format) {
     switch (format) {
         case TextureFormat::RGBA8:
             return MTL::PixelFormatRGBA8Unorm;
+        case TextureFormat::RGBA16F:
+            return MTL::PixelFormatRGBA16Float;
         case TextureFormat::RGBA32F:
             return MTL::PixelFormatRGBA32Float;
         case TextureFormat::R32I:

@@ -16,6 +16,7 @@ set(IR_LIGHTING_DEMO_TARGETS
     IRLightingSunOrbit
     IRLightingSunElevationOrbit
     IRLightingPerCanvasScope
+    IRLightingHDR
 )
 
 set(IR_LIGHTING_DEMO_SOURCES
@@ -33,6 +34,7 @@ set(IR_LIGHTING_DEMO_SOURCES
     main_sun_orbit.cpp
     main_sun_elevation_orbit.cpp
     main_per_canvas_scope.cpp
+    main_hdr.cpp
 )
 
 list(LENGTH IR_LIGHTING_DEMO_TARGETS IR_LIGHTING_DEMO_COUNT)
