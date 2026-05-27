@@ -48,6 +48,8 @@ constexpr int kSunShadowMapDim = 1024;
 using IRPrefab::SunShadow::kSunShadowMaxDistance;
 constexpr int kBakeSunShadowGroupSize = 16;
 constexpr int kIsoFrustumCornerCount = 8;
+constexpr int kSunShadowCascadeCount = 2;
+constexpr float kCascadeSplitRatio = 0.4f;
 
 namespace detail {
 
@@ -100,10 +102,6 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ShaderProgram *clearProgram_ = nullptr;
     ShaderProgram *bakeProgram_ = nullptr;
     Buffer *sunShadowDepthMap_ = nullptr;
-    // ComputeSunShadowFrameData is created by COMPUTE_SUN_SHADOW,
-    // which is constructed AFTER BAKE in pipeline registration
-    // order. Resolved lazily on the first beginTick (which fires
-    // before the per-entity tick).
     Buffer *sunShadowFrameDataBuf_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
     FrameDataSun frameData_{};
@@ -117,8 +115,6 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             return;
         }
 
-        // BAKE owns the FrameDataSun UBO: upload the full struct
-        // each frame so all downstream consumers see fresh state.
         sunShadowFrameDataBuf_->subData(0, sizeof(FrameDataSun), &frameData_);
         if (frameData_.shadowsEnabled_ == 0) {
             return;
@@ -126,15 +122,19 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
 
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-        // Pass 1: clear the sun depth map to 0xFFFFFFFF.
+        // Clear the full depth map (both cascades) to 0xFFFFFFFF.
         clearProgram_->use();
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
-        const int clearGroups = IRMath::divCeil(kSunShadowMapDim, kBakeSunShadowGroupSize);
-        IRRender::device()->dispatchCompute(clearGroups, clearGroups, 1);
+        const int totalClearDim = kSunShadowMapDim;
+        const int clearGroupsX = IRMath::divCeil(totalClearDim, kBakeSunShadowGroupSize);
+        // Y covers kSunShadowMapDim * kSunShadowCascadeCount rows — cascades
+        // are stacked vertically in the 1024×2048 linearised buffer.
+        const int clearGroupsY =
+            IRMath::divCeil(totalClearDim * kSunShadowCascadeCount, kBakeSunShadowGroupSize);
+        IRRender::device()->dispatchCompute(clearGroupsX, clearGroupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 
-        // Pass 2: project each iso-canvas surface pixel into the
-        // sun depth map via atomicMin.
+        // Bake: each pixel projects into both cascades in one pass.
         bakeProgram_->use();
         canvasTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
@@ -177,54 +177,72 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         const ivec2 canvasSize = cull.canvasSize_;
         const IsoBounds2D isoBounds = cull.isoViewportForCanvas(canvasSize, 0);
 
-        // Iso depth axis is (1,1,1). Range chosen to cover the
-        // common demo extent; oversize is wasted texels but never
-        // truncates a shadow.
         constexpr float kIsoDepthMin = -256.0f;
         constexpr float kIsoDepthMax = 256.0f;
+        const float splitDepth = kIsoDepthMin + (kIsoDepthMax - kIsoDepthMin) * kCascadeSplitRatio;
 
-        std::array<vec3, kIsoFrustumCornerCount> corners{};
-        int idx = 0;
-        for (float depth : {kIsoDepthMin, kIsoDepthMax}) {
-            for (int y : {isoBounds.min_.y, isoBounds.max_.y}) {
-                for (int x : {isoBounds.min_.x, isoBounds.max_.x}) {
-                    corners[idx++] = IRMath::isoPixelToPos3D(x, y, depth);
+        struct CascadeDepthRange {
+            float min_;
+            float max_;
+        };
+        const CascadeDepthRange cascadeRanges[kSunShadowCascadeCount] = {
+            {kIsoDepthMin, splitDepth},
+            {kIsoDepthMin, kIsoDepthMax},
+        };
+
+        const vec3 sweep = -sunDir * kSunShadowMaxDistance;
+        constexpr float kAABBPad = 1.0f;
+        const float dimF = static_cast<float>(kSunShadowMapDim);
+
+        for (int ci = 0; ci < kSunShadowCascadeCount; ++ci) {
+            std::array<vec3, kIsoFrustumCornerCount> corners{};
+            int idx = 0;
+            for (float depth : {cascadeRanges[ci].min_, cascadeRanges[ci].max_}) {
+                for (int y : {isoBounds.min_.y, isoBounds.max_.y}) {
+                    for (int x : {isoBounds.min_.x, isoBounds.max_.x}) {
+                        corners[idx++] = IRMath::isoPixelToPos3D(x, y, depth);
+                    }
                 }
             }
-        }
 
-        // Sweep along -sunDir for shadow-feeder coverage.
-        const vec3 sweep = -sunDir * kSunShadowMaxDistance;
-        vec2 sunUVMin = vec2(std::numeric_limits<float>::max());
-        vec2 sunUVMax = vec2(std::numeric_limits<float>::lowest());
-        for (const vec3 &c : corners) {
-            for (const vec3 &offset : {vec3(0.0f), sweep}) {
-                const vec3 p3 = c + offset;
-                const vec2 sunUV = vec2(IRMath::dot(p3, uHat), IRMath::dot(p3, vHat));
-                sunUVMin = IRMath::min(sunUVMin, sunUV);
-                sunUVMax = IRMath::max(sunUVMax, sunUV);
+            vec2 sunUVMin = vec2(std::numeric_limits<float>::max());
+            vec2 sunUVMax = vec2(std::numeric_limits<float>::lowest());
+            for (const vec3 &c : corners) {
+                for (const vec3 &offset : {vec3(0.0f), sweep}) {
+                    const vec3 p3 = c + offset;
+                    const vec2 sunUV = vec2(IRMath::dot(p3, uHat), IRMath::dot(p3, vHat));
+                    sunUVMin = IRMath::min(sunUVMin, sunUV);
+                    sunUVMax = IRMath::max(sunUVMax, sunUV);
+                }
+            }
+
+            sunUVMin -= vec2(kAABBPad);
+            sunUVMax += vec2(kAABBPad);
+            vec2 extent = sunUVMax - sunUVMin;
+            vec2 texelSize = vec2(extent.x / dimF, extent.y / dimF);
+
+            // Snap both edges to the texel grid so bake and lookup share the
+            // same phase; recompute texelSize so the buffer covers the full
+            // snapped extent symmetrically (asymmetric snap eats high-side pad
+            // at texelSize > kAABBPad on wide viewports).
+            sunUVMin.x = IRMath::floor(sunUVMin.x / texelSize.x) * texelSize.x;
+            sunUVMin.y = IRMath::floor(sunUVMin.y / texelSize.y) * texelSize.y;
+            sunUVMax.x = IRMath::ceil(sunUVMax.x / texelSize.x) * texelSize.x;
+            sunUVMax.y = IRMath::ceil(sunUVMax.y / texelSize.y) * texelSize.y;
+            texelSize = vec2((sunUVMax.x - sunUVMin.x) / dimF, (sunUVMax.y - sunUVMin.y) / dimF);
+
+            if (ci == 0) {
+                frameData_.cascadeOriginUV_0_ = sunUVMin;
+                frameData_.cascadeTexelSize_0_ = texelSize;
+                frameData_.sunBufferOriginUV_ = sunUVMin;
+                frameData_.sunBufferTexelSize_ = texelSize;
+            } else {
+                frameData_.cascadeOriginUV_1_ = sunUVMin;
+                frameData_.cascadeTexelSize_1_ = texelSize;
             }
         }
-
-        constexpr float kAABBPad = 1.0f;
-        sunUVMin -= vec2(kAABBPad);
-        sunUVMax += vec2(kAABBPad);
-        vec2 extent = sunUVMax - sunUVMin;
-        const float dimF = static_cast<float>(kSunShadowMapDim);
-        vec2 texelSize = vec2(extent.x / dimF, extent.y / dimF);
-
-        // Snap AABB origin to texel boundaries so the quantization
-        // grid stays phase-locked across frames (stable shadow maps).
-        // sunUVMax is intentionally not snapped upward: coverage is
-        // [sunUVMin_snapped, sunUVMin_snapped + kSunShadowMapDim × texelSize],
-        // which may undershoot sunUVMax_original by at most one texel.
-        // Any geometry in that gap falls outside kSunShadowMapDim and
-        // is silently clamped to lit by the pixel-bounds check below.
-        sunUVMin.x = IRMath::floor(sunUVMin.x / texelSize.x) * texelSize.x;
-        sunUVMin.y = IRMath::floor(sunUVMin.y / texelSize.y) * texelSize.y;
-
-        frameData_.sunBufferOriginUV_ = sunUVMin;
-        frameData_.sunBufferTexelSize_ = texelSize;
+        frameData_.cascadeSplitDepth_ = splitDepth;
+        frameData_.cascadeCount_ = kSunShadowCascadeCount;
     }
 
     static SystemId create() {
@@ -236,13 +254,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             "BakeSunShadowMapProgram",
             std::vector{ShaderStage{IRRender::kFileCompBakeSunShadowMap, ShaderType::COMPUTE}}
         );
-        // Sun-space depth buffer. uint per texel; clear pass resets to
-        // 0xFFFFFFFF (lit-sentinel) before each bake.
         IRRender::createNamedResource<Buffer>(
             "SunShadowDepthMap",
             nullptr,
             static_cast<std::size_t>(kSunShadowMapDim) *
-                static_cast<std::size_t>(kSunShadowMapDim) * sizeof(std::uint32_t),
+                static_cast<std::size_t>(kSunShadowMapDim) * kSunShadowCascadeCount *
+                sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_SunShadowDepthMap

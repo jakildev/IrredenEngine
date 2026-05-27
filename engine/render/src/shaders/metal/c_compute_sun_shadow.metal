@@ -1,35 +1,24 @@
 #include "ir_iso_common.metal"
 
 // Mirrors shaders/c_compute_sun_shadow.glsl. Per-pixel directional sun
-// shadow compute — reconstructs the voxel-space surface position for
-// each rasterized pixel, projects into the sun-aligned depth map baked
-// by BAKE_SUN_SHADOW_MAP, and writes a 0..1 brightness factor into
-// canvasSunShadow.r.
+// shadow compute with cascaded shadow maps.
 
 constant int kEmptyDistanceEncoded = 65535;
 constant float kShadowDarken = 0.45;
 
-// Must match c_bake_sun_shadow_map.metal.
 constant int kSunShadowMapDim = 1024;
+constant int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
 constant float kSunDepthScale = 1024.0;
 constant float kSunDepthOffset = 512.0;
-// Normal-bias offset pushes the lookup point along the face's outward
-// normal before projecting into sun-space, preventing self-shadow acne on
-// cube tops and SDF spheres caused by adjacent-face pixels rounding to the
-// same sun-texel. Tune via render-debug-loop on shape_debug.
 constant float kNormalBiasVoxels = 0.5;
-// Slope-scale bias covers the worst-case sunZ variation between iso pixels
-// that share a sun-space texel — roughly texelSize/slope voxels. Below
-// that threshold a flat surface self-shadows. Tune via render-debug-loop on shape_debug.
 constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
 constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
-
-// Reject shadows from occluders farther than this in sun-Z (unpacked
-// voxel units, matching `unpackSunDepth` output and `sunZ`). Prevents
-// adjacent volumes from incorrectly casting onto faces they are
-// beside rather than in front of. Mirrors GLSL `kMaxShadowDepthRange`.
+// Reject shadows from occluders farther than 24 voxels in sun-Z.
+// Prevents adjacent volumes from incorrectly casting onto faces they
+// are beside rather than in front of.
 constant float kMaxShadowDepthRange = 24.0;
+constant float kCascadeBlendRange = 8.0;
 
 inline float unpackSunDepth(uint packedDepth) {
     return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
@@ -45,7 +34,46 @@ struct FrameDataSun {
     float4 sunBasisV;
     float2 sunBufferOriginUV;
     float2 sunBufferTexelSize;
+    float2 cascadeOriginUV_0;
+    float2 cascadeTexelSize_0;
+    float2 cascadeOriginUV_1;
+    float2 cascadeTexelSize_1;
+    float cascadeSplitDepth;
+    int cascadeCount;
+    float _cascadePad0;
+    float _cascadePad1;
 };
+
+inline float sampleCascadeShadow(
+    float2 sunUV, float sunZ, float3 normal, float3 sunDir,
+    float2 origin, float2 texelSz, int bufferOffset,
+    device const uint *sunDepthBuf
+) {
+    float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
+    float texelSize = max(texelSz.x, texelSz.y);
+    float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+
+    float2 sunPxF = (sunUV - origin) / texelSz;
+    int2 base = int2(floor(sunPxF));
+    float2 frac = sunPxF - float2(base);
+    float shadowAccum = 0.0;
+    for (int dy = 0; dy < 2; ++dy) {
+        for (int dx = 0; dx < 2; ++dx) {
+            int2 px = base + int2(dx, dy);
+            if (px.x < 0 || px.x >= kSunShadowMapDim ||
+                px.y < 0 || px.y >= kSunShadowMapDim) continue;
+            uint stored = sunDepthBuf[bufferOffset + px.y * kSunShadowMapDim + px.x];
+            if (stored == 0xFFFFFFFFu) continue;
+            float nearestZ = unpackSunDepth(stored);
+            float weight = mix(1.0f - frac.x, frac.x, float(dx))
+                         * mix(1.0f - frac.y, frac.y, float(dy));
+            float depthDiff = sunZ - nearestZ;
+            if (depthDiff > bias && depthDiff - bias < kMaxShadowDepthRange)
+                shadowAccum += weight;
+        }
+    }
+    return shadowAccum;
+}
 
 kernel void c_compute_sun_shadow(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
@@ -74,10 +102,6 @@ kernel void c_compute_sun_shadow(
 
     int rawDepth = encoded >> 2;
 
-    // sunDirection stays in world coordinates (camera-independent), so only
-    // the surface position needs the R(-rasterYaw) compose. At
-    // cardinalIndex==0 the path collapses to master so yaw=0 stays
-    // byte-identical.
     float3 pos3D = trixelCanvasPixelToWorld3D(
         pixel,
         rawDepth,
@@ -90,12 +114,6 @@ kernel void c_compute_sun_shadow(
     int face = encoded & 3;
     float3 normal = faceOutwardNormal(face);
 
-    // Screen-space lookup against the bake output. sunZ is negated
-    // (smaller = closer to sun) so the bake's atomicMin stores the
-    // nearest blocker per texel. The lookup position is offset along the
-    // outward normal first so the projected sun-texel shifts away from the
-    // true-surface writer, eliminating self-shadow acne without biasing the
-    // baked depth map itself.
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;
     float3 vHat = sunFrameData.sunBasisV.xyz;
@@ -103,37 +121,42 @@ kernel void c_compute_sun_shadow(
     float2 sunUV = float2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
     float sunZ = -dot(biasedPos3D, sunDir);
 
-    // Bias depends only on per-fragment constants (face/normal/sunDir,
-    // texelSize) — hoisted outside the PCF loop. T-132's slope-scale +
-    // quantisation-noise formula stays unchanged; the PCF kernel just
-    // applies it to each of the four taps.
-    float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
-    float texelSize = max(
-        sunFrameData.sunBufferTexelSize.x,
-        sunFrameData.sunBufferTexelSize.y
-    );
-    float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+    float isoDepth = float(rawDepth);
+    float shadowAccum;
 
-    // 2×2 PCF: bilinearly weighted sample of four neighboring sun-space texels.
-    // Both bake and lookup use floor() so the texel grid is consistent.
-    float2 sunPxF = (sunUV - sunFrameData.sunBufferOriginUV) /
-                    sunFrameData.sunBufferTexelSize;
-    int2 base = int2(floor(sunPxF));
-    float2 frac = sunPxF - float2(base);
-    float shadowAccum = 0.0;
-    for (int dy = 0; dy < 2; ++dy) {
-        for (int dx = 0; dx < 2; ++dx) {
-            int2 px = base + int2(dx, dy);
-            if (px.x < 0 || px.x >= kSunShadowMapDim ||
-                px.y < 0 || px.y >= kSunShadowMapDim) continue;
-            uint stored = sunDepthBuf[px.y * kSunShadowMapDim + px.x];
-            if (stored == 0xFFFFFFFFu) continue;  // no caster → lit
-            float nearestZ = unpackSunDepth(stored);
-            float weight = mix(1.0f - frac.x, frac.x, float(dx))
-                         * mix(1.0f - frac.y, frac.y, float(dy));
-            float depthDiff = sunZ - nearestZ;
-            if (depthDiff > bias && depthDiff < kMaxShadowDepthRange)
-                shadowAccum += weight;
+    if (sunFrameData.cascadeCount <= 1) {
+        shadowAccum = sampleCascadeShadow(
+            sunUV, sunZ, normal, sunDir,
+            sunFrameData.sunBufferOriginUV, sunFrameData.sunBufferTexelSize,
+            0, sunDepthBuf
+        );
+    } else {
+        float distToSplit = isoDepth - sunFrameData.cascadeSplitDepth;
+        if (distToSplit < -kCascadeBlendRange) {
+            shadowAccum = sampleCascadeShadow(
+                sunUV, sunZ, normal, sunDir,
+                sunFrameData.cascadeOriginUV_0, sunFrameData.cascadeTexelSize_0,
+                0, sunDepthBuf
+            );
+        } else if (distToSplit > kCascadeBlendRange) {
+            shadowAccum = sampleCascadeShadow(
+                sunUV, sunZ, normal, sunDir,
+                sunFrameData.cascadeOriginUV_1, sunFrameData.cascadeTexelSize_1,
+                kCascadeTexelCount, sunDepthBuf
+            );
+        } else {
+            float nearShadow = sampleCascadeShadow(
+                sunUV, sunZ, normal, sunDir,
+                sunFrameData.cascadeOriginUV_0, sunFrameData.cascadeTexelSize_0,
+                0, sunDepthBuf
+            );
+            float farShadow = sampleCascadeShadow(
+                sunUV, sunZ, normal, sunDir,
+                sunFrameData.cascadeOriginUV_1, sunFrameData.cascadeTexelSize_1,
+                kCascadeTexelCount, sunDepthBuf
+            );
+            float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
+            shadowAccum = mix(nearShadow, farShadow, t);
         }
     }
 
