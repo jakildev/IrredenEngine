@@ -187,11 +187,11 @@ Avoid:
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
   - **Links:**
 
-- [ ] **fleet: commit-and-push — add pre-PR Closes# cross-check** — after drafting `Closes #N`, fetch the issue title and warn if it has zero keyword overlap with the PR title, preventing wrong-issue auto-close on merge
+- [~] **fleet: commit-and-push — add pre-PR Closes# cross-check** — after drafting `Closes #N`, fetch the issue title and warn if it has zero keyword overlap with the PR title, preventing wrong-issue auto-close on merge
   - **ID:** T-383
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** `commit-and-push` warns (non-blocking) when `Closes #N` title has zero keyword overlap with the PR title; skill doc includes a regression note for the PR #1212 / #1215 incident
   - **Issue:** #1221
