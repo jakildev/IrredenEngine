@@ -112,7 +112,11 @@ kernel void c_compute_sun_shadow(
     );
 
     int face = encoded & 3;
-    float3 normal = faceOutwardNormal(face);
+    // Rotate raster-frame face normal to world frame so normal bias and slope
+    // bias are applied in the correct world-space direction at non-zero camera
+    // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
+    int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
+    float3 normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
 
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;
