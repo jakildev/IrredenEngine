@@ -68,10 +68,10 @@ FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
 #     rolled back.
 #
 # Stranded [~] recovery:
-#   fleet-tasks-render preserves [~] when an active FS claim exists, so
-#   queue-tick won't immediately revert. When `fleet-claim check-stale`
-#   removes a stale FS claim, the next queue-tick re-derives without the
-#   FS-claim signal and reverts [~] → [ ]. No new metadata in TASKS.md.
+#   Previously, fleet-tasks-render preserved [~] while an active FS claim
+#   existed; fleet-queue-tick then re-derived and reverted [~] → [ ] once
+#   check-stale removed the stale FS claim. Both tools were removed in
+#   #1243 (T-389); recovery now relies solely on fleet-claim check-stale.
 #
 # Opt-out (single-host / test only):
 #   Set FLEET_CLAIM_NO_MASTER_LOCK=1 to skip the master push. Used by
@@ -173,10 +173,10 @@ slugify() {
 # correctness — both hosts can have an `opus-reviewer` agent. Same applies
 # to `fleet:resolving-<host>-<agent>`.
 #
-# Stale label sweep runs from `fleet-queue-tick` via
-# `fleet-claim cleanup --gh`; orphan sentinels under ~/.fleet/orphans/
-# retry failed removals on the next cleanup pass. Both ops are idempotent
-# and safe under multiple concurrent queue-managers / queue-tick instances.
+# Stale label sweep was previously triggered by fleet-queue-tick
+# (removed in #1243) via `fleet-claim cleanup --gh`; orphan sentinels
+# under ~/.fleet/orphans/ retry failed removals on the next cleanup pass.
+# Both ops are idempotent and safe under multiple concurrent invocations.
 
 derive_host() {
     # Normalize uname output to one of: mac | windows | linux.
@@ -1296,8 +1296,8 @@ cmd_reclaim() {
     # longer exists on the remote (the worker died between the master
     # push and the feature-branch push). Resets master to `[ ]`+free
     # and drops any matching local FS claim. Called by humans /
-    # cleanup tools; auto-recovery via check-stale + the FS-claim
-    # signal in fleet-tasks-render handles the typical case.
+    # cleanup tools; auto-recovery via check-stale handles the typical
+    # case (fleet-tasks-render was removed in #1243).
     #
     # Usage: fleet-claim reclaim <task-id>
     # Exit 0 — reclaimed (or row was already [ ]/[x]; nothing to do)
@@ -3616,8 +3616,9 @@ commands:
                                     override via FLEET_CLAIM_STALE_SECS_ISSUES).
                                 Also replays any ~/.fleet/orphans/ sentinels.
                                 The --gh pass is idempotent and safe under
-                                concurrent invocations; fleet-queue-tick runs
-                                it once per tick.
+                                concurrent invocations (fleet-queue-tick,
+                                removed in #1243, previously ran it once
+                                per tick).
                                 NOTE: cleanup's --repo takes a full owner/repo
                                 path (e.g. "jakildev/IrredenEngine"); it lives
                                 AFTER the subcommand and is unrelated to the
@@ -3706,9 +3707,10 @@ Master-side TASKS.md lock (T-138):
   Race semantics: a non-fast-forward push (someone else's claim landed
   first) triggers a fetch + retry; if the row is now [~] from another
   agent the FS lock is rolled back and the claim returns 1 ("race
-  lost on master push"). fleet-tasks-render preserves [~] in the
-  no-PR window via the same FS claim signal — when check-stale
-  prunes an abandoned claim the next render naturally reverts [~].
+  lost on master push"). fleet-tasks-render (removed in #1243)
+  previously preserved [~] in the no-PR window via the same FS
+  claim signal — when check-stale pruned an abandoned claim the
+  next render naturally reverted [~].
 
 Stack claiming:
   stack claims a chain of tasks atomically. If any task is already claimed
