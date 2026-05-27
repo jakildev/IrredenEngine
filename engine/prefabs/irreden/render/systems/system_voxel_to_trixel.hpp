@@ -124,6 +124,11 @@ clearCanvasAndDistances(IREntity::EntityId canvasEntity, C_TriangleCanvasTexture
     } else {
         canvas.clear();
     }
+    // Distance buffer must be reset every frame regardless of whether the
+    // background updated the color canvas. clearCanvasWithBackground may
+    // skip on throttled frames (kPulsePattern) or no-op (kGradient), but
+    // the voxel-to-trixel pass writes per-pixel distances each frame.
+    canvas.clearDistances();
 }
 
 inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf) {

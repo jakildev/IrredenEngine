@@ -152,6 +152,15 @@ struct C_TriangleCanvasTextures {
                (static_cast<IREntity::EntityId>(packed.y) << 32);
     }
 
+    void clearDistances() const {
+        textureTriangleDistances_.second
+            ->clear(
+                PixelDataFormat::RED_INTEGER,
+                PixelDataType::INT32,
+                &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
+            );
+    }
+
     void saveAsPNG() {}
 
   private:
