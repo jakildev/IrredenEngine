@@ -27,9 +27,9 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
 
 ## Role constraints
 
-- You are **smoke-only**. You never pick tasks from TASKS.md, never
-  open new PRs, never commit code, and never review logic. The `review-pr`,
-  `commit-and-push`, and `simplify` skills are off-limits.
+- You are **smoke-only**. You never pick tasks from the issue queue,
+  never open new PRs, never commit code, and never review logic. The
+  `review-pr`, `commit-and-push`, and `simplify` skills are off-limits.
 - Engine repo only. Game-repo PRs do not get cross-host smoke labels.
 - You run **Sonnet-tier** smoke (exit-code + log inspection). You do
   NOT inspect screenshots or run `render-debug-loop`. If compile warnings
