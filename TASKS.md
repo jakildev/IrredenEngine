@@ -242,11 +242,11 @@ Avoid:
   - **Notes:** Affected file: `system_bake_sun_shadow_map.hpp:199-205`. Fix is 3-4 lines (see issue body). **May be superseded**: PR #1198 (cascaded shadow maps) merged 2026-05-27 computes per-cascade AABBs in world frame. Worker should first verify on current master — if the cascaded system resolves the mismatch, close #1220 instead of applying the fix.
   - **Links:**
 
-- [ ] **fleet: semantic-conflict resolution races — add atomic claim label before checkout** — add `fleet:resolving-<host>-<agent>` label claim pattern to role-opus-worker step 1c, preventing two workers from concurrently resolving the same semantic-conflict PR
+- [~] **fleet: semantic-conflict resolution races — add atomic claim label before checkout** — add `fleet:resolving-<host>-<agent>` label claim pattern to role-opus-worker step 1c, preventing two workers from concurrently resolving the same semantic-conflict PR
   - **ID:** T-388
   - **Area:** tooling, docs
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-2
   - **Blocked by:** (none)
   - **Acceptance:** Two workers seeing the same `fleet:semantic-conflict` PR: only one proceeds past label claim (lex-min tie-break), other skips within seconds; winner removes label on success and failure; stale `fleet:resolving-*` labels swept by `fleet-claim cleanup --gh` after TTL
   - **Issue:** #1223
