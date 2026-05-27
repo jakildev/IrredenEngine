@@ -357,12 +357,13 @@ A reasonable starting setup with the model split in mind:
 | `opus-worker-1`     | engine | Opus   | Plans `fleet:needs-plan` issues, executes `fleet:opus` tasks |
 | `opus-worker-2`     | engine | Opus   | Second opus-worker pane — parallel planning/execution    |
 | `sonnet-fleet-1`    | engine | Sonnet | `fleet:sonnet` tasks, tests, docs                   |
+| `sonnet-fleet-2`    | engine | Sonnet | Second `fleet:sonnet` pane — parallel task execution |
 | `sonnet-reviewer`   | engine | Sonnet | First-pass PR review (polling loop)                 |
 | `opus-reviewer`     | engine | Opus   | Final review on flagged PRs (polling loop)          |
 | `merger`            | engine | Opus   | Auto-rebases stale PRs, resolves semantic conflicts (polling loop) |
 | `game-architect`    | game   | Opus   | Game-side architect / stand-by, cross-repo aware    |
 
-The first seven live in `~/src/IrredenEngine/.claude/worktrees/`. The
+The first eight live in `~/src/IrredenEngine/.claude/worktrees/`. The
 last (`game-architect`) lives inside the game repo at
 `~/src/IrredenEngine/creations/game/.claude/worktrees/game-architect`,
 because the game is its own git repo with its own PR namespace.
@@ -395,6 +396,7 @@ git worktree add -b fleet/opus-architect  .claude/worktrees/opus-architect  orig
 git worktree add -b fleet/opus-worker-1   .claude/worktrees/opus-worker-1   origin/master
 git worktree add -b fleet/opus-worker-2   .claude/worktrees/opus-worker-2   origin/master
 git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  origin/master
+git worktree add -b fleet/sonnet-fleet-2  .claude/worktrees/sonnet-fleet-2  origin/master
 git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
 git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
 git worktree add -b fleet/merger               .claude/worktrees/merger               origin/master
@@ -410,10 +412,10 @@ Verify:
 git worktree list
 ```
 
-You should see the main clone on `master` plus seven engine worktrees
+You should see the main clone on `master` plus eight engine worktrees
 (`opus-architect`, `opus-worker-1`, `opus-worker-2`, `sonnet-fleet-1`,
-`sonnet-reviewer`, `opus-reviewer`, `merger`) each on their own
-`fleet/*` seed branch, plus an eighth `game-architect` worktree under
+`sonnet-fleet-2`, `sonnet-reviewer`, `opus-reviewer`, `merger`) each on
+their own `fleet/*` seed branch, plus a ninth `game-architect` worktree under
 `creations/game/` if the game repo is present. The
 `fleet/` prefix keeps these distinct from `claude/<area>-<topic>`
 agent branches so `gh pr list` and branch-completion never confuse
