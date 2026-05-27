@@ -90,6 +90,27 @@ witness — polls ~/.fleet/heartbeats for stale mtimes.
 See scripts/fleet/witness header.
 EOF
             ;;
+        fleet-edit)
+            cat <<'EOF'
+fleet-edit — exact string replacement via Python3.
+
+  fleet-edit <file> <old-file> <new-file> [--replace-all]
+
+<old-file> and <new-file> contain the exact text to find and the replacement.
+Old text must appear exactly once unless --replace-all is passed.
+
+Example:
+  cat > /tmp/old.txt <<'OLD'
+  text to find
+  OLD
+  cat > /tmp/new.txt <<'NEW'
+  replacement text
+  NEW
+  fleet-edit path/to/file.md /tmp/old.txt /tmp/new.txt
+
+See scripts/fleet/fleet-edit header.
+EOF
+            ;;
         fleet-run | fleet-run-targets | fleet-down | fleet-claim | fleet-labels | fleet-gate-status)
             bash "$path" --help
             ;;
@@ -192,6 +213,14 @@ Parallel-agent fleet (tmux + Claude)
                                  read scout's per-issue cache + gh fallback
 
   fleet-help fleet-up            short summary (fleet-up has no --help)
+
+----------------------------------------------------------------------
+File editing
+----------------------------------------------------------------------
+  fleet-edit <file> <old-file> <new-file> [--replace-all]
+      Exact string replacement via Python3. Same semantics as the
+      Edit tool: old text must be unique unless --replace-all.
+      Write old/new text to temp files, then call fleet-edit.
 
 ----------------------------------------------------------------------
 Meta / housekeeping

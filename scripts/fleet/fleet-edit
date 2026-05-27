@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# fleet-edit — exact string replacement CLI for fleet agents.
+#
+# Performs the same find-and-replace as the Edit tool but as a
+# standalone command, so it can be used in shell pipelines and
+# fleet scripts.
+#
+# Usage:
+#   fleet-edit <file> <old-file> <new-file> [--replace-all]
+#
+#   <old-file>  Path to a file containing the exact text to find.
+#   <new-file>  Path to a file containing the replacement text.
+#
+# The old text must appear exactly once in <file> unless --replace-all
+# is passed. Exits non-zero if old text is not found or is ambiguous.
+#
+# Example:
+#   cat > /tmp/old.txt <<'OLD'
+#   text to find
+#   OLD
+#   cat > /tmp/new.txt <<'NEW'
+#   replacement text
+#   NEW
+#   fleet-edit docs/skills/foo.md /tmp/old.txt /tmp/new.txt
+#
+# Source of truth: scripts/fleet/fleet-edit in the engine repo.
+# Installed to ~/bin/fleet-edit (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+usage() {
+    echo "Usage: fleet-edit <file> <old-file> <new-file> [--replace-all]" >&2
+    exit 1
+}
+
+[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && usage
+[[ $# -lt 3 ]] && usage
+
+target="$1"
+old_file="$2"
+new_file="$3"
+replace_all="${4:-}"
+
+[[ -f "$target" ]]   || { echo "fleet-edit: target file not found: $target" >&2; exit 1; }
+[[ -f "$old_file" ]] || { echo "fleet-edit: old-file not found: $old_file" >&2; exit 1; }
+[[ -f "$new_file" ]] || { echo "fleet-edit: new-file not found: $new_file" >&2; exit 1; }
+
+exec python3 - "$target" "$old_file" "$new_file" "$replace_all" <<'PYEOF'
+import sys, pathlib
+
+if sys.argv[4] and sys.argv[4] != "--replace-all":
+    print(f"fleet-edit: unknown flag: {sys.argv[4]}", file=sys.stderr)
+    sys.exit(1)
+
+target_path = pathlib.Path(sys.argv[1])
+old_text = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+new_text = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
+replace_all = sys.argv[4] == "--replace-all"
+
+content = target_path.read_text(encoding="utf-8")
+count = content.count(old_text)
+
+if count == 0:
+    print(f"fleet-edit: old text not found in {target_path}", file=sys.stderr)
+    sys.exit(1)
+
+if count > 1 and not replace_all:
+    print(
+        f"fleet-edit: old text appears {count} times in {target_path} "
+        f"(pass --replace-all to replace all)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+if replace_all:
+    new_content = content.replace(old_text, new_text)
+else:
+    new_content = content.replace(old_text, new_text, 1)
+
+if new_content == content:
+    print(f"fleet-edit: no change (old == new) in {target_path}", file=sys.stderr)
+    sys.exit(1)
+
+target_path.write_text(new_content, encoding="utf-8")
+replaced = count if replace_all else 1
+print(f"fleet-edit: replaced {replaced} occurrence(s) in {target_path}")
+PYEOF
