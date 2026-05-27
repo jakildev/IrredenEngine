@@ -27,6 +27,7 @@ The wrapper layer in [`engine/math/include/irreden/`](../../engine/math/include/
 | `glm::pi<float>()` / `glm::half_pi<float>()` / `glm::two_pi<float>()` | `IRMath::kPi` / `IRMath::kHalfPi` / `IRMath::kTwoPi` |
 | `std::min(a, b)` / `std::max(a, b)` / `std::clamp(...)` | `IRMath::min` / `IRMath::max` / `IRMath::clamp` |
 | `std::sin(x)` / `std::cos(x)` / `std::abs(x)` | `IRMath::sin(x)` / `IRMath::cos(x)` / `IRMath::abs(x)` |
+| `std::cbrt(x)` | `IRMath::cbrt(x)` |
 
 ## Iso projection: never inline the equations
 

@@ -54,7 +54,6 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <numbers>
@@ -534,7 +533,7 @@ int main(int argc, char **argv) {
     if (!g_cliOverrides.gridSizeSet_) {
         const int eco = IREngine::entityCountOverride();
         if (eco > 0) {
-            const int cbrtCount = static_cast<int>(std::cbrt(static_cast<double>(eco)) + 0.5);
+            const int cbrtCount = static_cast<int>(IRMath::cbrt(static_cast<double>(eco)) + 0.5);
             if (cbrtCount > 0) {
                 g_settings.gridSize_ = cbrtCount;
                 IR_LOG_INFO("entity_count_override={} → grid_size={}", eco, cbrtCount);
