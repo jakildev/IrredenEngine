@@ -198,6 +198,61 @@ Avoid:
   - **Notes:** Root cause: PR #1212 (T-379 PARALLEL_FOR migration) used `Closes #1215` instead of `Closes #1196`, auto-closing an unrelated issue (#1215 = fleet scout-reads-issues plan). Fix: add `gh issue view N --json title --jq '.title'` cross-check after the Closes line is drafted, before `gh pr create`; surface a warning if no keyword overlap. Optional: add reviewer-side catch to review-pr. Incident description in issue body.
   - **Links:**
 
+- [ ] **render: viewport clipping regression — left half of scene missing at yaw=0** — P0 regression from May 25–26 commit wave; bisect between last-known-good `61f6424c` and current master; fix offending commit
+  - **ID:** T-384
+  - **Area:** engine/render, engine/world
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** IRShapeDebug renders full platform at yaw=0 with no left-half truncation; shapes on left side visible; regression confirmed fixed on current master
+  - **Issue:** #1217
+  - **Notes:** Suspects in order: T-356/T-357 chunk residency/prefetch (may fail to mark chunks resident), T-358 upload bandwidth cap throttling initial uploads, T-352/PR#1213 distance-texture clear path. Key files: `engine/prefabs/irreden/render/cull_viewport_state.hpp`, `system_voxel_to_trixel.hpp:265-311`, `engine/world/` chunk residency. Blocks verification of rotation/lighting bugs T-385..T-387.
+  - **Links:**
+
+- [ ] **render: face normal not rotated in lighting/shadow shaders at non-zero camera yaw** — add `rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex)` pattern to 4 shader files (GLSL + Metal lighting and shadow) to match the AO shader
+  - **ID:** T-385
+  - **Area:** engine/render, shaders/glsl, shaders/metal
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** At non-zero yaw, Lambert shading correct per face; shadow bias uses world-space normal; no self-shadow acne; fix is no-op at yaw=0; linux-debug + macos-debug build clean
+  - **Issue:** #1218
+  - **Notes:** Affects `c_lighting_to_trixel.glsl:144`, `c_compute_sun_shadow.glsl:109`, and Metal mirrors. Model: AO shader `c_compute_voxel_ao.glsl:91-113`. PR #549 (HDR pipeline, open) also modifies `c_lighting_to_trixel.glsl` — coordinate before that PR merges. PR #1198 (cascaded shadows, merged) amplifies this bug visually.
+  - **Links:**
+
+- [ ] **render: chunk visibility mask not rotation-aware — geometry culled at non-zero camera yaw** — make `rebuildChunkBounds()` in `C_VoxelPool` apply `rotateCardinalZ` before iso projection, matching the GPU compact shader
+  - **ID:** T-386
+  - **Area:** engine/render, engine/prefabs/irreden/voxel
+  - **Model:** opus
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** No chunks incorrectly culled at any camera yaw; spinning yaw 0→360° shows no geometry pops or missing sectors; fix is no-op at yaw=0 (cardinalIndex=0 passes identity)
+  - **Issue:** #1219
+  - **Notes:** Root: `component_voxel_pool.hpp:244-261` uses unrotated `pos3DtoPos2DIso`; GPU correct reference `c_voxel_visibility_compact.glsl:66-71`. Fix: add `m_lastBoundsCardinalIndex` field to C_VoxelPool, pass cardinal index to `rebuildChunkBounds()`, apply `IRMath::rotateCardinalZ` per voxel, cache and dirty-check. Performance: O(pool size), 3 int ops per voxel, triggers at most 4× per full revolution.
+  - **Links:**
+
+- [ ] **render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw** — rotate iso frustum corners from raster→world frame via `rotateCardinalZInv` before sun-space sweep in `system_bake_sun_shadow_map.hpp`
+  - **ID:** T-387
+  - **Area:** engine/render
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** At non-zero yaw, shadow AABB covers correct world-space region; no shadow clip at viewport edges; OR confirm #1198 (cascaded shadow maps, merged 2026-05-27) already resolves this and close the issue
+  - **Issue:** #1220
+  - **Notes:** Affected file: `system_bake_sun_shadow_map.hpp:199-205`. Fix is 3-4 lines (see issue body). **May be superseded**: PR #1198 (cascaded shadow maps) merged 2026-05-27 computes per-cascade AABBs in world frame. Worker should first verify on current master — if the cascaded system resolves the mismatch, close #1220 instead of applying the fix.
+  - **Links:**
+
+- [ ] **fleet: semantic-conflict resolution races — add atomic claim label before checkout** — add `fleet:resolving-<host>-<agent>` label claim pattern to role-opus-worker step 1c, preventing two workers from concurrently resolving the same semantic-conflict PR
+  - **ID:** T-388
+  - **Area:** tooling, docs
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** Two workers seeing the same `fleet:semantic-conflict` PR: only one proceeds past label claim (lex-min tie-break), other skips within seconds; winner removes label on success and failure; stale `fleet:resolving-*` labels swept by `fleet-claim cleanup --gh` after TTL
+  - **Issue:** #1223
+  - **Notes:** Incident: PR #1198 (cascaded shadow maps) wasted one full opus iteration due to duplicate concurrent resolution. Fix mirrors `fleet:reviewing-<host>-<agent>` pattern from reviewer roles. Changes: `role-opus-worker.md` step 1c + `fleet-claim cleanup --gh` TTL sweep extension. Issue explicitly tags `[sonnet]`.
+  - **Links:**
+
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
