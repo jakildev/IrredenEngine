@@ -8,6 +8,7 @@
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/image_data.hpp>
+#include <irreden/render/async_texture.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/shader_names.hpp>
 #include <irreden/render/vao.hpp>
