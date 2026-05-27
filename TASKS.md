@@ -196,21 +196,11 @@ Avoid:
   - **Notes:** Split from #1008 item 4. Low-priority rename pass. May fold into T-371 or T-372 if convenient; standalone skip is fine. Prevents future PRs from assuming entity state is durable via this class.
   - **Links:**
 
-- [~] **system: bulk PARALLEL_FOR migration of trivially-safe prefab systems** — inventory all prefab systems, classify by access-derivation safety rules, annotate ≥10 safe systems with PARALLEL_FOR, verify via validator, and file perf measurements
-  - **ID:** T-379
-  - **Area:** engine/prefabs, engine/system
-  - **Model:** sonnet
-  - **Owner:** claude/T-379-parallel-for-bulk-migration
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) ≥10 additional prefab systems annotated with `PARALLEL_FOR` beyond the 2 already done; (2) `IrredenEngineTest` 100% pass; (3) measurable speedup at 262K entities vs post-Phase-3 baseline; (4) results filed in `docs/perf-reports/threading_bulk_migration.md`; (5) `engine/system/CLAUDE.md` updated with full list of parallelized systems; (6) no regression in `IRShapeDebug --auto-screenshot 60`
-  - **Issue:** #1196
-  - **Notes:** Mechanical sweep: grep for `registerSystem<`/`createSystem<` across `engine/prefabs/`, build inventory table, classify each system. Safe criteria: per-component tick refs only, no `EntityId` first param, no manager/GL/Metal/sol2/LuaScript calls in body, no static or shared-state access. Likely candidates: ANIMATION_COLOR, ANIMATION_FRAMES, PERIODIC_IDLE, PERIODIC_IDLE_POSITION_OFFSET, LIFETIME, MODIFIER_DECAY, VELOCITY_ROTATION, SCALE_ANIMATION, FADE_IN, FADE_OUT. Check ANIMATION_COLOR — may already be annotated from T-222 POC. Do not reorganize pipeline groups in this PR. Part of epic #226.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-379** — system: bulk PARALLEL_FOR migration of trivially-safe prefab systems · Owner: claude/T-379-parallel-for-bulk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1212
 - [x] **T-378** — system: PROPAGATE_TRANSFORM BFS-parallel refactor · Owner: claude/T-378-propagate-transform-bfs-parallel · PR: https://github.com/jakildev/IrredenEngine/pull/1203
 - [x] **T-374** — fleet: scope-shipped detection pass in queue-manager ingest · Owner: claude/T-374-queue-manager-scope-shipped-check · PR: https://github.com/jakildev/IrredenEngine/pull/1210
 - [x] **T-377** — fleet: commit-and-push — refuse to commit when staged tree is empty · Owner: claude/T-377-commit-and-push-empty-commit-guard · PR: https://github.com/jakildev/IrredenEngine/pull/1209
@@ -230,4 +220,3 @@ Avoid:
 - [x] **T-352** — render: fix zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL · Owner: claude/T-352-zoom16-bind-image-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1174
 - [x] **T-365** — fleet: smoke-only mode — persistent cross-host smoke worker · Owner: claude/T-365-smoke-only-mode · PR: https://github.com/jakildev/IrredenEngine/pull/1173
 - [x] **T-360** — world: markChunkDirty API + chunk-mutation routing contract · Owner: claude/T-360-chunk-mark-dirty-api · PR: https://github.com/jakildev/IrredenEngine/pull/1172
-- [x] **T-355** — docs: T-189/T-190 disposition under SDF restriction (D4) · Owner: claude/T-355-t189-t190-disposition · PR: https://github.com/jakildev/IrredenEngine/pull/1168
