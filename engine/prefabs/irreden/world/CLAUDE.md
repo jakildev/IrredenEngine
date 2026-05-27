@@ -15,6 +15,7 @@ surround it.
 | File | Role |
 |---|---|
 | [`chunk_coord.hpp`](chunk_coord.hpp) | `IRPrefab::Chunk::worldToChunk`, `chunkOriginVoxel`, `chunkCenterWorld`, `pack`, `unpack`, and the `ChunkKey` typedef. Pure header, constexpr. |
+| [`systems/system_propagate_chunk_membership.hpp`](systems/system_propagate_chunk_membership.hpp) | `PROPAGATE_CHUNK_MEMBERSHIP` (Epic E E5). Detects when an entity's `C_WorldTransform.translation_` crosses a chunk boundary, updates `C_ChunkMembership.chunkCoord_`, and migrates ownership through the creation-supplied `IRWorld::ChunkResidencyManager`. EntityId is preserved across migration. Wire the manager pointer at init via `IRPrefab::Chunk::setMembershipMigrationManager(systemId, &manager)`. Register in UPDATE after `PROPAGATE_TRANSFORM` and before any chunk-aware downstream consumer. Null-manager mode (single-chunk creations, unit tests) still updates `C_ChunkMembership` so consumers stay consistent. |
 
 `C_ChunkMembership` lives under `common/components/` next to the other
 position-family components — see
