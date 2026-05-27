@@ -24,6 +24,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -194,6 +195,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         constexpr float kAABBPad = 1.0f;
         const float dimF = static_cast<float>(kSunShadowMapDim);
 
+        // isoPixelToPos3D returns corners in the rasterYaw-rotated canvas
+        // frame. The sun-direction sweep below is in world frame. Lift corners
+        // into world frame once, before the per-cascade AABB sweep, so both
+        // sides share the same coordinate frame. No-op at rasterYaw == 0.
+        const auto cardinalIndex = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
+
         for (int ci = 0; ci < kSunShadowCascadeCount; ++ci) {
             std::array<vec3, kIsoFrustumCornerCount> corners{};
             int idx = 0;
@@ -203,6 +210,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                         corners[idx++] = IRMath::isoPixelToPos3D(x, y, depth);
                     }
                 }
+            }
+            for (auto &c : corners) {
+                c = IRMath::rotateCardinalZInv(c, cardinalIndex);
             }
 
             vec2 sunUVMin = vec2(std::numeric_limits<float>::max());
