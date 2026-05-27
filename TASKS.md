@@ -151,11 +151,11 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **fleet: add model-affinity labels + fleet-queue-list + remove master_lock_task** — add fleet:opus/sonnet labels at ingest; add fleet-queue-list command replacing human-readable TASKS.md; remove master_lock_task from fleet-claim claim/release/stack (gate behind FLEET_CLAIM_MASTER_LOCK=1 for rollback safety)
+- [~] **fleet: add model-affinity labels + fleet-queue-list + remove master_lock_task** — add fleet:opus/sonnet labels at ingest; add fleet-queue-list command replacing human-readable TASKS.md; remove master_lock_task from fleet-claim claim/release/stack (gate behind FLEET_CLAIM_MASTER_LOCK=1 for rollback safety)
   - **ID:** T-380
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-1
   - **Blocked by:** (none)
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) `fleet-queue-list` renders issue#, title, model, owner, blocked-by in Available/In-progress/Blocked sections; (2) claims produce zero commits on master; (3) cross-host claim races still resolve via label lex-min tie-break; (4) test suite passes with master-lock tests gated
