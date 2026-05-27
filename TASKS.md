@@ -231,11 +231,11 @@ Avoid:
   - **Notes:** Root: `component_voxel_pool.hpp:244-261` uses unrotated `pos3DtoPos2DIso`; GPU correct reference `c_voxel_visibility_compact.glsl:66-71`. Fix: add `m_lastBoundsCardinalIndex` field to C_VoxelPool, pass cardinal index to `rebuildChunkBounds()`, apply `IRMath::rotateCardinalZ` per voxel, cache and dirty-check. Performance: O(pool size), 3 int ops per voxel, triggers at most 4× per full revolution.
   - **Links:**
 
-- [ ] **render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw** — rotate iso frustum corners from raster→world frame via `rotateCardinalZInv` before sun-space sweep in `system_bake_sun_shadow_map.hpp`
+- [~] **render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw** — rotate iso frustum corners from raster→world frame via `rotateCardinalZInv` before sun-space sweep in `system_bake_sun_shadow_map.hpp`
   - **ID:** T-387
   - **Area:** engine/render
   - **Model:** sonnet
-  - **Owner:** free
+  - **Owner:** sonnet-fleet-1
   - **Blocked by:** (none)
   - **Acceptance:** At non-zero yaw, shadow AABB covers correct world-space region; no shadow clip at viewport edges; OR confirm #1198 (cascaded shadow maps, merged 2026-05-27) already resolves this and close the issue
   - **Issue:** #1220
