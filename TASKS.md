@@ -187,6 +187,17 @@ Avoid:
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
   - **Links:**
 
+- [ ] **fleet: commit-and-push — add pre-PR Closes# cross-check** — after drafting `Closes #N`, fetch the issue title and warn if it has zero keyword overlap with the PR title, preventing wrong-issue auto-close on merge
+  - **ID:** T-383
+  - **Area:** tooling
+  - **Model:** sonnet
+  - **Owner:** free
+  - **Blocked by:** (none)
+  - **Acceptance:** `commit-and-push` warns (non-blocking) when `Closes #N` title has zero keyword overlap with the PR title; skill doc includes a regression note for the PR #1212 / #1215 incident
+  - **Issue:** #1221
+  - **Notes:** Root cause: PR #1212 (T-379 PARALLEL_FOR migration) used `Closes #1215` instead of `Closes #1196`, auto-closing an unrelated issue (#1215 = fleet scout-reads-issues plan). Fix: add `gh issue view N --json title --jq '.title'` cross-check after the Closes line is drafted, before `gh pr create`; surface a warning if no keyword overlap. Optional: add reviewer-side catch to review-pr. Incident description in issue body.
+  - **Links:**
+
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
