@@ -149,4 +149,63 @@ TEST(YawSplit, ResidualStaysInsideCardinalQuarter) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// IRMath::quatExtractZAngle — ZYX Tait-Bryan yaw extraction
+//
+// For pure-Z quaternions (the only case the camera currently exercises)
+// this must round-trip exactly. The decomposition formula is also correct
+// for general SO(3) — verified for pure-pitch (extracts zero yaw) and for
+// the ±π branch-cut boundary.
+// ---------------------------------------------------------------------------
+
+float roundTripZ(float yaw) {
+    return IRMath::quatExtractZAngle(IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), yaw));
+}
+
+TEST(QuatExtractZAngle, ZeroRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(0.0f), 0.0f, kTolerance);
+}
+
+TEST(QuatExtractZAngle, HalfPiRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(IRMath::kHalfPi), IRMath::kHalfPi, kTolerance);
+}
+
+TEST(QuatExtractZAngle, NegativeHalfPiRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(-IRMath::kHalfPi), -IRMath::kHalfPi, kTolerance);
+}
+
+TEST(QuatExtractZAngle, QuarterPiRoundTripsExactly) {
+    EXPECT_NEAR(roundTripZ(IRMath::kPi / 4.0f), IRMath::kPi / 4.0f, kTolerance);
+}
+
+TEST(QuatExtractZAngle, ArbitraryAnglesInsideRangeRoundTrip) {
+    // Sweep across (-π, π) — ±π sit on the atan2 branch cut where fp
+    // rounding may flip sign. All other values must round-trip exactly.
+    for (int i = -99; i <= 99; ++i) {
+        const float yaw = (static_cast<float>(i) / 100.0f) * IRMath::kPi;
+        EXPECT_NEAR(roundTripZ(yaw), yaw, kTolerance) << "yaw=" << yaw;
+    }
+}
+
+TEST(QuatExtractZAngle, PiBoundaryWrapsToSymmetricNegative) {
+    // ±π represent the same rotation; atan2's branch cut means the result
+    // at exactly π may be either ±π at fp precision — both are correct.
+    const float result = roundTripZ(IRMath::kPi);
+    EXPECT_TRUE(
+        IRMath::abs(result - IRMath::kPi) < 1e-4f || IRMath::abs(result + IRMath::kPi) < 1e-4f
+    ) << "result="
+      << result;
+}
+
+TEST(QuatExtractZAngle, IdentityQuatExtractsZero) {
+    EXPECT_NEAR(IRMath::quatExtractZAngle(IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f)), 0.0f, kTolerance);
+}
+
+TEST(QuatExtractZAngle, PurePitchExtractsZeroYaw) {
+    // A pure-X rotation has no Z-component; extracted yaw must be 0.
+    const IRMath::vec4 pitchQuat =
+        IRMath::quatAxisAngle(IRMath::vec3(1.0f, 0.0f, 0.0f), IRMath::kPi / 3.0f);
+    EXPECT_NEAR(IRMath::quatExtractZAngle(pitchQuat), 0.0f, kTolerance);
+}
+
 } // namespace
