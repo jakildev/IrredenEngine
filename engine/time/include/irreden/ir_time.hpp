@@ -15,6 +15,9 @@ TimeManager &getTimeManager();
 /// UPDATE: fixed step `1.0 / IRConstants::kFPS` (`const`-after-ctor; safe to read
 /// from PARALLEL_FOR worker bodies). RENDER: actual wall-clock dt of the last tick —
 /// use only for presentation-frame interpolation, not deterministic sim state.
+/// RENDER dt is set before the RENDER pipeline executes and is immutable during the
+/// pipeline run — also safe to read from PARALLEL_FOR worker bodies within the
+/// RENDER pipeline.
 double deltaTime(Events eventType);
 /// Returns `true` when the UPDATE accumulator has buffered at least one frame period
 /// (1 / @ref IRConstants::kFPS).  Call in a `while` loop to drain catch-up ticks.
