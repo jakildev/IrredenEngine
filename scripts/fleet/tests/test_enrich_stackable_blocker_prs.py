@@ -57,21 +57,21 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_happy_path_single_match(self):
         """Exactly one PR matches the blocked_by prefix → field is written."""
-        tasks = [_task("T-112", "T-111")]
-        prs = [_pr(536, "claude/T-111-scout-stackable-blocker-pr", author="jakildev")]
+        tasks = [_task("#1112", "#1111")]
+        prs = [_pr(536, "claude/1111-scout-stackable-blocker-pr", author="jakildev")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         task = state["repos"]["engine"]["tasks"]["open"][0]
         self.assertIn("stackable_blocker_pr", task)
         self.assertEqual(task["stackable_blocker_pr"]["number"], 536)
         self.assertEqual(task["stackable_blocker_pr"]["headRefName"],
-                         "claude/T-111-scout-stackable-blocker-pr")
+                         "claude/1111-scout-stackable-blocker-pr")
         self.assertEqual(task["stackable_blocker_pr"]["author"], "jakildev")
 
     def test_zero_matches_no_field(self):
         """No open PR matches prefix → field absent."""
-        tasks = [_task("T-112", "T-111")]
-        prs = [_pr(999, "claude/T-200-unrelated")]
+        tasks = [_task("#1112", "#1111")]
+        prs = [_pr(999, "claude/2000-unrelated")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
@@ -79,18 +79,18 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_empty_prs_no_field(self):
         """No open PRs at all → field absent."""
-        tasks = [_task("T-112", "T-111")]
+        tasks = [_task("#1112", "#1111")]
         state = _state(engine_tasks=tasks, engine_prs=[])
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
                          state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_multi_match_no_field(self):
-        """Two PRs share the same T-NNN prefix (stale branch) → field absent."""
-        tasks = [_task("T-112", "T-111")]
+        """Two PRs share the same issue-number prefix (stale branch) → field absent."""
+        tasks = [_task("#1112", "#1111")]
         prs = [
-            _pr(536, "claude/T-111-scout-stackable-blocker-pr"),
-            _pr(537, "claude/T-111-stale-bounced-branch"),
+            _pr(536, "claude/1111-scout-stackable-blocker-pr"),
+            _pr(537, "claude/1111-stale-bounced-branch"),
         ]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
@@ -98,9 +98,9 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
                          state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_multi_blocker_no_field(self):
-        """blocked_by with two IDs doesn't match ^T-\\d{3}$ → field absent."""
-        tasks = [_task("T-115", "T-112, T-113")]
-        prs = [_pr(540, "claude/T-112-some-branch"), _pr(541, "claude/T-113-other")]
+        """blocked_by with two IDs doesn't match ^#\\d+$ → field absent."""
+        tasks = [_task("#1115", "#1112, #1113")]
+        prs = [_pr(540, "claude/1112-some-branch"), _pr(541, "claude/1113-other")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
@@ -108,8 +108,8 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_none_blocked_by_no_field(self):
         """blocked_by is None → field absent."""
-        tasks = [_task("T-112", None)]
-        prs = [_pr(536, "claude/T-111-x")]
+        tasks = [_task("#1112", None)]
+        prs = [_pr(536, "claude/1111-x")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
@@ -117,28 +117,28 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_explicit_none_string_no_field(self):
         """blocked_by is '(none)' → field absent."""
-        tasks = [_task("T-112", "(none)")]
-        prs = [_pr(536, "claude/T-111-x")]
+        tasks = [_task("#1112", "(none)")]
+        prs = [_pr(536, "claude/1111-x")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
                          state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_prefix_discrimination_no_match(self):
-        """T-101 prefix must not match a T-1011 branch (trailing dash prevents it)."""
-        tasks = [_task("T-102", "T-101")]
-        prs = [_pr(100, "claude/T-1011-longer-id")]
+        """#101 prefix must not match a 1011 branch (trailing dash prevents it)."""
+        tasks = [_task("#102", "#101")]
+        prs = [_pr(100, "claude/1011-longer-id")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
                          state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_prefix_discrimination_correct_match(self):
-        """T-101 with trailing dash matches T-101-something but not T-1011-something."""
-        tasks = [_task("T-102", "T-101")]
+        """#101 with trailing dash matches 101-something but not 1011-something."""
+        tasks = [_task("#102", "#101")]
         prs = [
-            _pr(100, "claude/T-1011-longer-id"),
-            _pr(101, "claude/T-101-real-branch"),
+            _pr(100, "claude/1011-longer-id"),
+            _pr(101, "claude/101-real-branch"),
         ]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
@@ -148,8 +148,8 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
 
     def test_cross_repo_isolation(self):
         """Engine task cannot match a game PR."""
-        engine_tasks = [_task("T-112", "T-111")]
-        game_prs = [_pr(536, "claude/T-111-in-game-repo")]
+        engine_tasks = [_task("#1112", "#1111")]
+        game_prs = [_pr(536, "claude/1111-in-game-repo")]
         state = _state(engine_tasks=engine_tasks, engine_prs=[], game_prs=game_prs)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
@@ -158,12 +158,12 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
     def test_multiple_tasks_independent(self):
         """Two tasks in the same repo with different blockers are enriched independently."""
         tasks = [
-            _task("T-113", "T-111"),
-            _task("T-114", "T-112"),
+            _task("#1113", "#1111"),
+            _task("#1114", "#1112"),
         ]
         prs = [
-            _pr(536, "claude/T-111-branch-a"),
-            _pr(537, "claude/T-112-branch-b", author="other"),
+            _pr(536, "claude/1111-branch-a"),
+            _pr(537, "claude/1112-branch-b", author="other"),
         ]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
@@ -173,16 +173,17 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(open_tasks[1]["stackable_blocker_pr"]["author"], "other")
 
     def test_free_text_blocked_by_no_field(self):
-        """Free-text or URL blocked_by values don't match regex → field absent."""
+        """Free-text, URL, or legacy-T-NNN blocked_by values don't match regex → field absent."""
         values = [
             "pending design",
             "https://github.com/x/y/issues/1",
-            "T-101 (waiting)",
+            "#101 (waiting)",
+            "T-101",
         ]
         for value in values:
             with self.subTest(blocked_by=value):
-                tasks = [_task("T-999", value)]
-                prs = [_pr(1, "claude/T-101-x")]
+                tasks = [_task("#999", value)]
+                prs = [_pr(1, "claude/101-x")]
                 state = _state(engine_tasks=tasks, engine_prs=prs)
                 enrich_stackable_blocker_prs(state)
                 self.assertNotIn(
