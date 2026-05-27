@@ -49,20 +49,20 @@ std::string buildChunkPath(
 
 } // namespace
 
-ChunkDiskPersistence::ChunkDiskPersistence(std::string saveRoot)
+ChunkVoxelDiskPersistence::ChunkVoxelDiskPersistence(std::string saveRoot)
     : m_saveRoot{std::move(saveRoot)}
     , m_chunksDir{(std::filesystem::path{m_saveRoot} / "chunks").string()} {}
 
-std::string ChunkDiskPersistence::chunkPath(IRPrefab::Chunk::ChunkKey key) const {
+std::string ChunkVoxelDiskPersistence::chunkPath(IRPrefab::Chunk::ChunkKey key) const {
     return buildChunkPath(m_chunksDir, IRPrefab::Chunk::unpack(key));
 }
 
-IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
+IRAsset::BinaryStatus ChunkVoxelDiskPersistence::saveChunk(
     IRPrefab::Chunk::ChunkKey key, std::span<const IRAsset::VoxelRecord> voxels
 ) {
     if (static_cast<int>(voxels.size()) != kChunkVolume) {
         std::ostringstream oss;
-        oss << "ChunkDiskPersistence::saveChunk: voxel span size " << voxels.size()
+        oss << "ChunkVoxelDiskPersistence::saveChunk: voxel span size " << voxels.size()
             << " does not match chunk volume " << kChunkVolume;
         IRE_LOG_ERROR("{}", oss.str());
         return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::WriteFailed, oss.str());
@@ -75,8 +75,8 @@ IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
     std::filesystem::create_directories(leafDir, ec);
     if (ec) {
         const std::string msg =
-            "ChunkDiskPersistence::saveChunk: create_directories failed: " + ec.message() + " (" +
-            leafDir + ")";
+            "ChunkVoxelDiskPersistence::saveChunk: create_directories failed: " + ec.message() +
+            " (" + leafDir + ")";
         IRE_LOG_ERROR("{}", msg);
         return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::OpenFailed, msg);
     }
@@ -92,7 +92,7 @@ IRAsset::BinaryStatus ChunkDiskPersistence::saveChunk(
 }
 
 std::optional<std::vector<IRAsset::VoxelRecord>>
-ChunkDiskPersistence::loadChunk(IRPrefab::Chunk::ChunkKey key) const {
+ChunkVoxelDiskPersistence::loadChunk(IRPrefab::Chunk::ChunkKey key) const {
     const std::string path = chunkPath(key);
 
     std::error_code ec;
@@ -103,7 +103,7 @@ ChunkDiskPersistence::loadChunk(IRPrefab::Chunk::ChunkKey key) const {
     auto result = IRAsset::loadDenseVoxelSet(path);
     if (!result.ok()) {
         IRE_LOG_WARN(
-            "ChunkDiskPersistence::loadChunk: {} read failed (code={}): {}",
+            "ChunkVoxelDiskPersistence::loadChunk: {} read failed (code={}): {}",
             path,
             static_cast<int>(result.status_.code_),
             result.status_.message_
@@ -114,7 +114,7 @@ ChunkDiskPersistence::loadChunk(IRPrefab::Chunk::ChunkKey key) const {
     auto &dense = result.value_.dense_;
     if (dense.voxels_.size() != static_cast<std::size_t>(kChunkVolume)) {
         IRE_LOG_WARN(
-            "ChunkDiskPersistence::loadChunk: {} record count {} != chunk volume {}; treating "
+            "ChunkVoxelDiskPersistence::loadChunk: {} record count {} != chunk volume {}; treating "
             "as empty",
             path,
             dense.voxels_.size(),
@@ -125,7 +125,7 @@ ChunkDiskPersistence::loadChunk(IRPrefab::Chunk::ChunkKey key) const {
     return std::move(dense.voxels_);
 }
 
-bool ChunkDiskPersistence::chunkExists(IRPrefab::Chunk::ChunkKey key) const {
+bool ChunkVoxelDiskPersistence::chunkExists(IRPrefab::Chunk::ChunkKey key) const {
     std::error_code ec;
     return std::filesystem::exists(chunkPath(key), ec) && !ec;
 }

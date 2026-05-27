@@ -22,9 +22,9 @@ using IRComponents::C_Voxel;
 using IRMath::Color;
 using IRPrefab::Chunk::ChunkKey;
 using IRPrefab::Chunk::pack;
-using IRWorld::ChunkDiskPersistence;
 using IRWorld::ChunkResidencyManager;
 using IRWorld::ChunkResidencyState;
+using IRWorld::ChunkVoxelDiskPersistence;
 using IRWorld::RequestPriority;
 
 constexpr std::size_t kChunkVolume = static_cast<std::size_t>(IRConstants::kChunkSize.x) *
@@ -82,7 +82,7 @@ std::vector<IRAsset::VoxelRecord> makeRecordsWithSentinel(std::uint32_t sentinel
 TEST_F(ChunkPersistenceFixture, ChunkPathEmbedsSignedAxisFragments) {
     // Two-level layout: chunks/<x_div_64>/<y_div_64>/<sx>NNNNN_<sy>NNNNN_<sz>NNNNN.vxs
     // chunk(0,0,0) → floorDiv(0,64)=0, floorDiv(0,64)=0 → chunks/0/0/+00000_+00000_+00000.vxs
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     auto path = persistence.chunkPath(pack(IRMath::ivec3{0, 0, 0}));
     EXPECT_NE(path.find("/chunks/"), std::string::npos);
     EXPECT_NE(path.find("/0/0/"), std::string::npos);
@@ -103,7 +103,7 @@ TEST_F(ChunkPersistenceFixture, RoundTripPreservesNonEmptyRecords) {
     // ("Trailing empty slots ... are implicit ... Slots not covered by
     // any triple are decoded as VoxelRecord{}"). This test enforces
     // both halves of the contract.
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     auto key = pack(IRMath::ivec3{3, -7, 11});
     auto records = makeRecordsWithSentinel(0xABCDu);
 
@@ -137,14 +137,14 @@ TEST_F(ChunkPersistenceFixture, RoundTripPreservesNonEmptyRecords) {
 }
 
 TEST_F(ChunkPersistenceFixture, LoadOnMissingFileReturnsNullopt) {
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     auto key = pack(IRMath::ivec3{42, 42, 42});
     EXPECT_FALSE(persistence.chunkExists(key));
     EXPECT_FALSE(persistence.loadChunk(key).has_value());
 }
 
 TEST_F(ChunkPersistenceFixture, SaveWithMismatchedSizeReportsErrorAndDoesNotWrite) {
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     auto key = pack(IRMath::ivec3{0, 0, 0});
     std::vector<IRAsset::VoxelRecord> short_records(kChunkVolume - 1);
     auto status = persistence.saveChunk(key, short_records);
@@ -154,7 +154,7 @@ TEST_F(ChunkPersistenceFixture, SaveWithMismatchedSizeReportsErrorAndDoesNotWrit
 
 TEST_F(ChunkPersistenceFixture, ChunkFilesLandUnderTwoLevelSubdirectory) {
     // chunk(1,2,3) → floorDiv(1,64)=0, floorDiv(2,64)=0 → chunks/0/0/+00001_+00002_+00003.vxs
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     auto key = pack(IRMath::ivec3{1, 2, 3});
     auto status = persistence.saveChunk(key, makeRecordsWithSentinel(0x1u));
     ASSERT_TRUE(status.ok()) << status.message_;
@@ -170,7 +170,7 @@ TEST_F(ChunkPersistenceFixture, NegativeChunkCoordsFloorDivideIntoBucket) {
     // chunk(-1,-65,0) → floorDiv(-1,64)=-1, floorDiv(-65,64)=-2 → chunks/-1/-2/...
     // Floor division (not truncation) keeps negative coords in correct buckets:
     // floorDiv(-1,64)=-1 (not 0), floorDiv(-65,64)=-2 (not -1).
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     auto key = pack(IRMath::ivec3{-1, -65, 0});
     auto status = persistence.saveChunk(key, makeRecordsWithSentinel(0x2u));
     ASSERT_TRUE(status.ok()) << status.message_;
@@ -204,7 +204,7 @@ class FakePool {
 };
 
 TEST_F(ChunkPersistenceFixture, ManagerSavesDirtyChunkOnEvictAndLoadsOnReResident) {
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     FakePool pool;
 
     ChunkResidencyManager::Config cfg;
@@ -259,7 +259,7 @@ TEST_F(ChunkPersistenceFixture, ManagerSavesDirtyChunkOnEvictAndLoadsOnReResiden
 }
 
 TEST_F(ChunkPersistenceFixture, ManagerSkipsSaveForCleanChunkOnEvict) {
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     FakePool pool;
     ChunkResidencyManager::Config cfg;
     cfg.persistence_ = &persistence;
@@ -275,7 +275,7 @@ TEST_F(ChunkPersistenceFixture, ManagerSkipsSaveForCleanChunkOnEvict) {
 }
 
 TEST_F(ChunkPersistenceFixture, FlushPendingSavesWritesDirtySlotsAndClearsDirty) {
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     FakePool pool;
     ChunkResidencyManager::Config cfg;
     cfg.persistence_ = &persistence;
@@ -305,7 +305,7 @@ TEST_F(ChunkPersistenceFixture, FlushPendingSavesWritesDirtySlotsAndClearsDirty)
 }
 
 TEST_F(ChunkPersistenceFixture, RequestResidentWithNoPriorSaveLeavesSliceFreshlyAllocated) {
-    ChunkDiskPersistence persistence{rootStr()};
+    ChunkVoxelDiskPersistence persistence{rootStr()};
     FakePool pool;
     ChunkResidencyManager::Config cfg;
     cfg.persistence_ = &persistence;
