@@ -241,8 +241,8 @@ struct C_VoxelPool {
         return m_chunkBounds;
     }
 
-    void rebuildChunkBounds() {
-        if (!m_chunkBoundsDirty)
+    void rebuildChunkBounds(CardinalIndex cardinalIndex = CardinalIndex::k0) {
+        if (!m_chunkBoundsDirty && cardinalIndex == m_lastBoundsCardinalIndex)
             return;
 
         int chunkCount = getChunkCount();
@@ -254,9 +254,13 @@ struct C_VoxelPool {
             if (m_voxelColors[i].color_.alpha_ == 0)
                 continue;
             int chunk = i / IRRender::kVoxelChunkSize;
-            vec2 isoPos = IRMath::pos3DtoPos2DIso(m_voxelPositionsGlobal[i].pos_);
+            vec3 pos = m_voxelPositionsGlobal[i].pos_;
+            if (cardinalIndex != CardinalIndex::k0)
+                pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
+            vec2 isoPos = IRMath::pos3DtoPos2DIso(pos);
             m_chunkBounds[chunk].expand(isoPos);
         }
+        m_lastBoundsCardinalIndex = cardinalIndex;
         m_chunkBoundsDirty = false;
     }
 
@@ -379,6 +383,7 @@ struct C_VoxelPool {
     ivec3 m_voxelPoolSize3D;
     bool m_entityIdsDirty = true;
     bool m_chunkBoundsDirty = true;
+    CardinalIndex m_lastBoundsCardinalIndex = CardinalIndex::k0;
 
     std::vector<EntityId> m_voxelEntities;
     std::vector<IRRender::VoxelGpuPosition> m_voxelPositions;

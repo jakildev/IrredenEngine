@@ -42,9 +42,13 @@ inline ivec2 voxelDispatchGridForCount(int voxelCount) {
 }
 
 inline const std::vector<std::uint32_t> &
-buildChunkVisibilityMask(C_VoxelPool &pool, IsoBounds2D viewport) {
+buildChunkVisibilityMask(
+    C_VoxelPool &pool,
+    IsoBounds2D viewport,
+    CardinalIndex cardinalIndex = CardinalIndex::k0
+) {
     static thread_local std::vector<std::uint32_t> mask;
-    pool.rebuildChunkBounds();
+    pool.rebuildChunkBounds(cardinalIndex);
     int chunkCount = pool.getChunkCount();
     mask.assign(chunkCount, 0);
 
@@ -311,7 +315,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         constexpr int kChunkMargin = 8;
         const IsoBounds2D chunkVp =
             IRMath::shadowFeederIsoBounds(cull.isoViewport(kChunkMargin), sunDir_, sweepDistance);
-        const auto &uploadMask = buildChunkVisibilityMask(voxelPool, chunkVp);
+        const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
+        const auto &uploadMask = buildChunkVisibilityMask(voxelPool, chunkVp, chunkCardinal);
         chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
 
         constexpr int kGpuMargin = 4;
