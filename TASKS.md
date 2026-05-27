@@ -174,17 +174,6 @@ Avoid:
   - **Notes:** Phase 5 of multithreading epic (#226). Blocker #1068 (IRJobs::pinTo) is now closed. GL/Metal texture creation must happen on the main thread — pinned worker does disk-read + decode only; upload schedules onto main. One entry point POC only; other loaders follow if the pattern is right.
   - **Links:**
 
-- [~] **perf: IRPerfGrid UPDATE pipeline — reduce 8.6s/frame to ≤33ms on linux-x86_64** — profile + fix dominant UPDATE systems (PropagateTransform, PeriodicIdle, UpdateVoxelSetChildren) to reach ≥30 FPS on IRPerfGrid
-  - **ID:** T-370
-  - **Area:** engine/system, engine/world
-  - **Model:** opus
-  - **Owner:** claude/T-370-perfgrid-update-pipeline
-  - **Blocked by:** (none)
-  - **Acceptance:** IRPerfGrid frame time on linux-x86_64 ≤ 33 ms with visual parity to master
-  - **Issue:** #1161
-  - **Notes:** Diagnosed during T-351 by opus-worker. UPDATE ~8.6s/frame vs RENDER ~0.2s/frame at 262k entities. PropagateTransform (99893ms), PeriodicIdle (69567ms), UpdateVoxelSetChildren (45851ms) dominate. Approaches: (1) cap UPDATE catch-up ticks/frame, (2) parallelize disjoint UPDATE systems (PARALLEL_FOR prerequisites T-222/T-224 landed), (3) reduce per-entity work in dominant systems.
-  - **Links:**
-
 - [~] **world: chunk persistence — wire in-engine consumer end-to-end (T-298 follow-up 3/4)** — pick one consumer (voxel editor save path or new IRChunkStreamingSmoke demo) and wire a real `ChunkResidencyManager` + `VoxelPoolAllocation` round-trip
   - **ID:** T-372
   - **Area:** engine/world
@@ -277,6 +266,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
 - [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
 - [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
 - [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
@@ -296,4 +286,3 @@ Avoid:
 - [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
 - [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
 - [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
-- [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
