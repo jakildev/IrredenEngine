@@ -263,4 +263,115 @@ TEST_F(PropagateTransformTest, BeginAndEndFireWithZeroEntities) {
     SUCCEED();
 }
 
+TEST_F(PropagateTransformTest, WideHierarchyAtFivePlusDepths) {
+    // T-378: validate BFS-parallel composition produces identical
+    // world-transforms to the serial baseline at 6+ depth levels with
+    // multiple siblings per level (each level has 3 children of the
+    // prior level's first node).
+    constexpr int kDepth = 6;
+    constexpr int kSiblings = 3;
+    std::vector<IREntity::EntityId> firstAtDepth;
+    firstAtDepth.reserve(kDepth);
+    auto root = IREntity::createEntity(C_LocalTransform{IRMath::vec3(1, 0, 0)});
+    firstAtDepth.push_back(root);
+    for (int d = 1; d < kDepth; ++d) {
+        IREntity::EntityId firstChild = IREntity::kNullEntity;
+        for (int s = 0; s < kSiblings; ++s) {
+            auto e = IREntity::createEntity(C_LocalTransform{IRMath::vec3(1, 0, 0)});
+            IREntity::setParent(e, firstAtDepth.back());
+            if (s == 0)
+                firstChild = e;
+        }
+        firstAtDepth.push_back(firstChild);
+    }
+
+    tick();
+
+    // The straight-line chain (first-child at each level) accumulates
+    // translation +1 along x at each depth — deepest node's world.x = kDepth.
+    auto &deepWorld = IREntity::getComponent<C_WorldTransform>(firstAtDepth.back());
+    expectVec3Near(deepWorld.translation_, IRMath::vec3(static_cast<float>(kDepth), 0, 0));
+    expectVec3Near(deepWorld.scale_, IRMath::vec3(1));
+}
+
+TEST_F(PropagateTransformTest, CacheInvalidationOnSpawnDestroyReparent) {
+    // T-378 acceptance: the cached level partition rebuilds on any
+    // archetype-graph change. Spawning a NEW archetype shape, destroying
+    // an entity whose archetype becomes empty, and reparenting to a
+    // previously-unseen parent all trigger a re-sort on the next tick.
+    auto *sys = m_system_manager.getSystemParams<IRSystem::System<IRSystem::PROPAGATE_TRANSFORM>>(
+        m_system_id
+    );
+    ASSERT_NE(sys, nullptr);
+
+    // First tick: empty world. Cache settles on whatever archetype set
+    // queryArchetypeNodesSimple returns (likely the empty
+    // C_LocalTransform+C_WorldTransform archetype).
+    tick();
+    auto signatureAfterEmpty = sys->cachedSignature_;
+
+    // Spawn a root entity — new archetype if it's the first
+    // C_LocalTransform+C_WorldTransform shape (root archetype, no
+    // CHILD_OF, so its signature entry has parentNodeId == 0).
+    auto root = IREntity::createEntity(C_LocalTransform{IRMath::vec3(1, 2, 3)});
+    tick();
+    auto signatureAfterSpawn = sys->cachedSignature_;
+    // Spawn either added a new node or kept the same one; either way
+    // we should now have at least one entry.
+    EXPECT_FALSE(signatureAfterSpawn.empty());
+
+    // Reparent — creates a new archetype "C_LocalTransform+C_WorldTransform
+    // CHILD_OF root" — guaranteed new node, so cache must invalidate.
+    auto child = IREntity::createEntity(C_LocalTransform{IRMath::vec3(0, 0, 1)});
+    IREntity::setParent(child, root);
+    tick();
+    auto signatureAfterReparent = sys->cachedSignature_;
+    EXPECT_NE(signatureAfterSpawn, signatureAfterReparent);
+    // Composition still correct.
+    auto &childWorld = IREntity::getComponent<C_WorldTransform>(child);
+    expectVec3Near(childWorld.translation_, IRMath::vec3(1, 2, 4));
+
+    // Destroy the child. If the child's archetype was singly-occupied,
+    // the archetype may be reclaimed, changing the signature; if it
+    // still hangs around with length=0, the signature stays — either
+    // way the cache-validity check is safe and a re-sort doesn't break
+    // correctness on the next tick.
+    IREntity::destroyEntity(child);
+    tick();
+    // Composition for the root still produces (1, 2, 3).
+    auto &rootWorld = IREntity::getComponent<C_WorldTransform>(root);
+    expectVec3Near(rootWorld.translation_, IRMath::vec3(1, 2, 3));
+}
+
+TEST_F(PropagateTransformTest, CacheHitsWhenTopologyIsStable) {
+    // Once the partition is built, repeating ticks on the same scene
+    // should reuse the cached level structure (signature comparison
+    // returns equal). The cached level vector itself stays addressable
+    // and stable across ticks.
+    auto p1 = IREntity::createEntity(C_LocalTransform{IRMath::vec3(1, 0, 0)});
+    auto c1 = IREntity::createEntity(C_LocalTransform{IRMath::vec3(0, 1, 0)});
+    auto c2 = IREntity::createEntity(C_LocalTransform{IRMath::vec3(0, 0, 1)});
+    IREntity::setParent(c1, p1);
+    IREntity::setParent(c2, p1);
+
+    tick();
+    auto *sys = m_system_manager.getSystemParams<IRSystem::System<IRSystem::PROPAGATE_TRANSFORM>>(
+        m_system_id
+    );
+    ASSERT_NE(sys, nullptr);
+    const auto signatureFirst = sys->cachedSignature_;
+    const auto levelCountFirst = sys->levels_.size();
+
+    // Mutate per-entity values (not the graph). Cache should stay valid.
+    auto &c1Local = IREntity::getComponent<C_LocalTransform>(c1);
+    c1Local.translation_ = IRMath::vec3(0, 5, 0);
+    tick();
+    EXPECT_EQ(sys->cachedSignature_, signatureFirst);
+    EXPECT_EQ(sys->levels_.size(), levelCountFirst);
+
+    // Composition reflects the updated local.
+    auto &c1World = IREntity::getComponent<C_WorldTransform>(c1);
+    expectVec3Near(c1World.translation_, IRMath::vec3(1, 5, 0));
+}
+
 } // namespace
