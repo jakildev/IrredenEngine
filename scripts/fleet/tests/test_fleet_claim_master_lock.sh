@@ -4,7 +4,8 @@
 # Covers:
 #   - master_lock_task pushes [~] + Owner to origin/master
 #   - concurrent claims: exactly one wins, the other rolls back FS lock
-#   - FLEET_CLAIM_NO_MASTER_LOCK=1 skips the master push
+#   - master_lock_task is OFF by default (T-380); FLEET_CLAIM_MASTER_LOCK=1 opts in
+#   - FLEET_CLAIM_NO_MASTER_LOCK=1 still skips the master push (legacy compat)
 #   - cmd_release does NOT re-push master (release is queue-tick's job)
 #   - cmd_stack atomicity: one bad task rolls back master pushes too
 #
@@ -112,6 +113,8 @@ TASKSEOF
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 export FLEET_MOLECULES_DIR="$TMPROOT/molecules"
+# T-380: master_lock_task is OFF by default; opt in for tests that verify it.
+export FLEET_CLAIM_MASTER_LOCK=1
 
 # Read TASKS.md from the bare origin's tip — what observers would see
 # after the master push. Avoids any working-tree-state confusion.
@@ -201,23 +204,40 @@ else
     fi
 fi
 
-# --- Test 3: FLEET_CLAIM_NO_MASTER_LOCK=1 skips master push ---------------
-echo "T3: env var skips master push (legacy mode)"
+# --- Test 3: default behavior skips master push (T-380) --------------------
+echo "T3: default (no env var) skips master push"
 setup_fixture
 (
     cd "$WORK"
-    FLEET_CLAIM_NO_MASTER_LOCK=1 \
+    FLEET_CLAIM_MASTER_LOCK=0 \
         "$FLEET_CLAIM" claim "T-902" agent-X >/dev/null
 )
 master_md=$(read_origin_tasks_md)
-# Task B should be untouched on master — only the FS claim was taken.
-assert_contains "$master_md" "- [ ] **Task B**" "T-902 master row unchanged with NO_MASTER_LOCK=1"
+assert_contains "$master_md" "- [ ] **Task B**" "T-902 master row unchanged by default (T-380)"
 if [[ -d "$TMPROOT/claims/t-902" ]]; then
     PASS=$((PASS + 1))
-    echo "  ok: FS claim was taken (FS-lock-only fallback works)"
+    echo "  ok: FS claim was taken (default skips master push)"
 else
     FAIL=$((FAIL + 1))
-    echo "  FAIL: FS claim missing — fallback didn't take the lock"
+    echo "  FAIL: FS claim missing"
+fi
+
+# --- Test 3b: FLEET_CLAIM_NO_MASTER_LOCK=1 still skips (legacy compat) ----
+echo "T3b: legacy env var still skips master push"
+setup_fixture
+(
+    cd "$WORK"
+    FLEET_CLAIM_MASTER_LOCK=1 FLEET_CLAIM_NO_MASTER_LOCK=1 \
+        "$FLEET_CLAIM" claim "T-902" agent-X >/dev/null
+)
+master_md=$(read_origin_tasks_md)
+assert_contains "$master_md" "- [ ] **Task B**" "T-902 master row unchanged with NO_MASTER_LOCK=1 override"
+if [[ -d "$TMPROOT/claims/t-902" ]]; then
+    PASS=$((PASS + 1))
+    echo "  ok: FS claim was taken (legacy NO_MASTER_LOCK overrides MASTER_LOCK)"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: FS claim missing"
 fi
 
 # --- Test 4: re-claim by a different agent (with separate reservation dir)

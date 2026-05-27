@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# fleet-queue-backfill-model-labels — one-time backfill of fleet:opus /
+# fleet:sonnet labels on existing fleet:queued open issues.
+#
+# Reads each open `fleet:queued` issue's body for `**Model:** opus/sonnet`
+# and adds the corresponding label. Idempotent — skips issues that already
+# have a model-affinity label.
+#
+# One-time script — not installed to ~/bin. Run directly:
+#   scripts/fleet/fleet-queue-backfill-model-labels              # engine repo
+#   scripts/fleet/fleet-queue-backfill-model-labels --repo game  # game repo
+#   scripts/fleet/fleet-queue-backfill-model-labels --dry-run    # show what would change
+
+set -euo pipefail
+
+REPO="jakildev/IrredenEngine"
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            shift
+            case "${1:-}" in
+                game) REPO="jakildev/irreden" ;;
+                engine) REPO="jakildev/IrredenEngine" ;;
+                *) REPO="$1" ;;
+            esac
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        *)
+            echo "Usage: fleet-queue-backfill-model-labels [--repo game|engine] [--dry-run]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+issues=$(gh issue list --repo "$REPO" --label "fleet:queued" --state open \
+    --json number,labels,body --limit 500 2>/dev/null) || {
+    echo "failed to query GitHub issues" >&2
+    exit 1
+}
+
+python3 - "$issues" "$REPO" "$DRY_RUN" << 'PYEOF'
+import json, re, subprocess, sys
+
+issues = json.loads(sys.argv[1])
+repo = sys.argv[2]
+dry_run = sys.argv[3] == "1"
+
+added = 0
+skipped = 0
+
+for issue in issues:
+    num = issue["number"]
+    labels = [l["name"] for l in issue.get("labels", [])]
+    body = issue.get("body", "") or ""
+
+    if "fleet:opus" in labels or "fleet:sonnet" in labels:
+        skipped += 1
+        continue
+
+    m = re.search(r'\*\*Model:\*\*\s*(opus|sonnet)', body, re.IGNORECASE)
+    model = m.group(1).lower() if m else "opus"
+    label = f"fleet:{model}"
+
+    if dry_run:
+        print(f"  would add {label} to #{num}")
+    else:
+        r = subprocess.run(
+            ["gh", "issue", "edit", str(num), "--repo", repo, "--add-label", label],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            print(f"  added {label} to #{num}")
+        else:
+            print(f"  FAILED: #{num}: {r.stderr.strip()}", file=sys.stderr)
+    added += 1
+
+print(f"\n{added} labeled, {skipped} already had model label")
+PYEOF

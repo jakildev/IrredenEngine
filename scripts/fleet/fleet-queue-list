@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# fleet-queue-list — human-readable task queue from GitHub Issues.
+#
+# Queries `fleet:queued` open issues and renders a table grouped into
+# Available / In-progress / Blocked sections. Replaces the human-readable
+# function of TASKS.md.
+#
+# Usage:
+#   fleet-queue-list              # all queued issues
+#   fleet-queue-list --repo game  # game repo only
+#   fleet-queue-list --json       # raw JSON output
+#
+# Source of truth: scripts/fleet/fleet-queue-list in the engine repo.
+# Installed to ~/bin/fleet-queue-list by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+REPO="jakildev/IrredenEngine"
+JSON_MODE=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            shift
+            case "${1:-}" in
+                game) REPO="jakildev/irreden" ;;
+                engine) REPO="jakildev/IrredenEngine" ;;
+                *) REPO="$1" ;;
+            esac
+            shift
+            ;;
+        --json)
+            JSON_MODE=1
+            shift
+            ;;
+        *)
+            echo "Usage: fleet-queue-list [--repo game|engine] [--json]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+raw=$(gh issue list --repo "$REPO" --label "fleet:queued" --state open \
+    --json number,title,labels,body --limit 200 2>/dev/null) || {
+    echo "fleet-queue-list: failed to query GitHub issues" >&2
+    exit 1
+}
+
+if [[ "$JSON_MODE" == "1" ]]; then
+    echo "$raw"
+    exit 0
+fi
+
+python3 - "$raw" << 'PYEOF'
+import json, re, sys
+
+raw = json.loads(sys.argv[1]) if len(sys.argv) > 1 else []
+
+def parse_field(body, field):
+    if not body:
+        return ""
+    m = re.search(rf'\*\*{field}:\*\*\s*(.+?)(?:\n|$)', body)
+    return m.group(1).strip() if m else ""
+
+entries = []
+for issue in raw:
+    body = issue.get("body", "") or ""
+    labels = [l["name"] for l in issue.get("labels", [])]
+
+    model = "opus" if "fleet:opus" in labels \
+        else "sonnet" if "fleet:sonnet" in labels \
+        else parse_field(body, "Model") or "—"
+    blocked_by = parse_field(body, "Blocked by") or "(none)"
+
+    owner = "free"
+    in_progress = "fleet:in-progress" in labels
+    for l in labels:
+        if l.startswith("fleet:claim-"):
+            parts = l.split("-", 2)
+            if len(parts) >= 3:
+                owner = f"{parts[1]}/{parts[2]}"
+            break
+
+    is_blocked = blocked_by not in ("(none)", "", "—")
+
+    entries.append({
+        "number": issue["number"],
+        "title": issue["title"],
+        "model": model,
+        "owner": owner,
+        "blocked_by": blocked_by,
+        "in_progress": in_progress,
+        "is_blocked": is_blocked,
+    })
+
+entries.sort(key=lambda e: e["number"])
+
+available = [e for e in entries if not e["in_progress"] and e["owner"] == "free" and not e["is_blocked"]]
+in_prog = [e for e in entries if e["in_progress"] or e["owner"] != "free"]
+blocked = [e for e in entries if e["is_blocked"] and e not in in_prog]
+
+def print_section(title, items):
+    if not items:
+        return
+    print(f"\n## {title} ({len(items)})")
+    print(f"{'#':>6}  {'Model':8}  {'Owner':20}  {'Blocked':15}  Title")
+    print(f"{'─'*6}  {'─'*8}  {'─'*20}  {'─'*15}  {'─'*40}")
+    for e in items:
+        print(f"#{e['number']:>5}  {e['model']:8}  {e['owner']:20}  {e['blocked_by']:15}  {e['title']}")
+
+print(f"fleet-queue-list: {len(entries)} queued issue(s)")
+print_section("Available", available)
+print_section("In-progress", in_prog)
+print_section("Blocked", blocked)
+
+if not available and not in_prog and not blocked:
+    print("  (no queued issues)")
+PYEOF
