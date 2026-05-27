@@ -240,6 +240,8 @@ plain `git push` works.
 
 Use `gh pr create`. Body template per mode: [`procedures/pr-body.md`](procedures/pr-body.md).
 
+> **Before calling `gh pr create` in any snippet below, complete step 8a (Closes# cross-check) if the drafted body contains a `Closes #N` line.**
+
 For the **single-PR flow** (default), target is `master`:
 
 ```bash
@@ -342,8 +344,10 @@ Tokenize both strings: lowercase, strip punctuation, remove stop words
 `not`, `is`, `via`, `from`, `with`, `add`, `—`, `-`). Intersect the
 remaining word sets against the PR title + branch name + first commit line.
 
-If the intersection is **empty**, surface this warning and wait for
-acknowledgement before proceeding:
+If the intersection is **empty**, surface this warning. In interactive
+mode (Cursor / human-in-the-loop), pause for human acknowledgement. In
+autonomous mode (fleet worker / author role), log the warning prominently
+and verify the issue number independently before proceeding:
 
 ```
 ⚠️  Closes-crosscheck: issue #<N> title is:
