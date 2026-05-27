@@ -7,7 +7,7 @@
 # projection changes (new human:approved issue appears, or an existing
 # one gets fleet:queued and drops out of the set).
 #
-# Pure label-stamping — no LLM, no TASKS.md writes, no master push.
+# Pure label-stamping — no LLM, no master push.
 # Idempotent: if there are no pending issues, exits in <1s. Per-host
 # lockfile prevents same-host concurrent runs; cross-host races are
 # caught by the live `gh issue view` re-check inside the stamping loop
@@ -211,8 +211,7 @@ for issue in pending:
         continue
 
     # Parse model from body. Default to fleet:opus on ambiguity — mirrors
-    # the prior role-queue-manager LLM behavior (the heavier-judgment
-    # model is the safer default when intent is unclear).
+    # the safer default when model intent is unclear.
     model_match = MODEL_RE.search(body)
     model_text = (model_match.group(1).strip().lower() if model_match else '')
     if 'opus' in model_text:

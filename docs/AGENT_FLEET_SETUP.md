@@ -1,10 +1,12 @@
 # Parallel-agent workflow: external setup checklist
 
-> **Note (2026-05):** Sections describing the `queue-manager` pane and
-> `TASKS.md` flow are stale — the queue migrated to GitHub issues in T-381/T-389-T-396.
-> The mechanical setup steps (tmux, worktrees, permissions, troubleshooting)
-> remain accurate. See [`docs/agents/FLEET.md`](agents/FLEET.md) for the
-> current workflow.
+> **ARCHIVED CONTENT (2026-05):** This document predates the TASKS.md
+> elimination (#1216). All references to `TASKS.md`, `role-queue-manager`,
+> the `queue-manager` pane, and related workflows below are intentionally
+> preserved as historical record — they describe the previous state of the
+> fleet. The mechanical setup steps (tmux, worktrees, permissions,
+> troubleshooting) remain accurate. See [`docs/agents/FLEET.md`](agents/FLEET.md)
+> for the current workflow.
 
 This is the list of things **you** (the user) need to do once, outside
 the repo, to run the parallel-agent workflow described in the top-level

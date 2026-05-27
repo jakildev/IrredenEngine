@@ -369,7 +369,7 @@ Skip this check only when:
 
 **Incident note (2026-05):** PR #1212 (T-379 PARALLEL_FOR bulk migration)
 shipped with `Closes #1215` instead of `Closes #1196`. GitHub auto-closed
-an unrelated issue (#1215 "fleet: scout reads issues instead of TASKS.md")
+an unrelated issue (#1215)
 and left the correct issue (#1196) open for re-claiming. This cross-check
 catches that class of error before the PR is created.
 

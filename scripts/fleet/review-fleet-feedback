@@ -613,13 +613,13 @@ TITLE_BY_SIGNATURE: dict[str, str] = {
     "label-absent-after-verdict":
         "fleet/review-pr: harden verdict-label step with retry-and-verify guard",
     "stale-task-row":
-        "fleet/queue-manager: maintenance-sync — re-derive TASKS.md from issue bodies on every wake",
+        "fleet/queue-manager: maintenance-sync — re-derive queue state on every wake",
     "stacked-pr-merger-gap":
         "fleet/merger: add merged-base re-target with rebase path for stacked PRs",
     "worktree-tracker-drift":
         "fleet/scripts: re-derive fleet-worktree-busy-branches from live `git worktree list`",
     "queue-staleness":
-        "fleet/queue-manager: flag divergence between `fleet:queued` issue set and TASKS.md `free` rows",
+        "fleet/queue-manager: flag divergence in `fleet:queued` issue set",
     "state-cache-lag":
         "fleet/review-pr: live-check labels after claim acquisition (pre-checkout)",
     "permission-gate-friction":

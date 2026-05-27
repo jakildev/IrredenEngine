@@ -1288,9 +1288,8 @@ def tick_once():
             log(f"projector {role} failed: {e}")
             continue
         if role == "queue-manager":
-            # T-381: TASKS.md maintenance eliminated — scout reads issues
-            # directly. Run fleet-claim cleanup on projection change to reap
-            # stale lock entries. (fleet-stale-sweep removed in #1233.)
+            # Run fleet-claim cleanup on projection change to reap stale
+            # lock entries. (fleet-stale-sweep removed in #1233.)
             new_hash = stable_hash(projection)
             seen_file = SEEN_DIR / role
             try:

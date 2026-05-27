@@ -2,8 +2,8 @@
 # fleet-claim — issue-number-based task claiming for the agent fleet.
 #
 # Tasks are keyed on their GitHub issue number — the queue's canonical
-# primary key. There is no TASKS.md indirection: blocker, model, and
-# stackable-PR lookups all read GitHub directly.
+# primary key. Blocker, model, and stackable-PR lookups all read
+# GitHub directly.
 #
 # Same-host atomicity: atomic mkdir(2) under $CLAIMS_DIR. Cross-host
 # atomicity: a `fleet:claim-<host>-<agent>` label on the linked issue
@@ -108,9 +108,9 @@ require_issue_number() {
     local input="$1"
     if [[ "$input" =~ ^[Tt]-[0-9]+$ ]]; then
         cat >&2 <<EOF
-fleet-claim: '$input' is a legacy T-NNN task ID. The TASKS.md indirection
-layer has been retired (#1216); pass the GitHub issue number directly
-(e.g. '1234' instead of 'T-390'). Update your role-doc invocation.
+fleet-claim: '$input' is a legacy T-NNN task ID; pass the GitHub issue
+number directly (e.g. '1234' instead of 'T-390'). Update your role-doc
+invocation.
 EOF
         return 2
     fi
@@ -335,7 +335,7 @@ check_blockers() {
     #
     # Returns 0 = clear; 1 = blocked (with stderr diagnostic).
     # Soft no-op (return 0) when gh is unavailable or the issue can't be
-    # fetched — same gracefully-degrade contract the TASKS.md form had.
+    # fetched — gracefully degrade (return 0) so claim proceeds.
     local issue_num="$1"
     local skip_ids="${2:-}"
 
@@ -1933,7 +1933,7 @@ cmd_molecule_rebase_downstream() {
 
     # New branch convention is `claude/<N>-…`; legacy `claude/T-NNN-…` is
     # grandfathered while in-flight branches drain (no resolution path
-    # without TASKS.md — pass the issue explicitly for legacy branches).
+    # (pass the issue explicitly via --issue for legacy T-NNN branches).
     if [[ $explicit -eq 0 ]]; then
         local current_branch
         current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
@@ -2505,10 +2505,9 @@ case "${1:-}" in
         ;;
     reclaim)
         cat >&2 <<'EOF'
-fleet-claim reclaim: removed. The TASKS.md master-side [~] lock that
-this command unstuck has been retired (#1216). Stale fleet:claim-*
-labels on open issues are now swept by `fleet-claim cleanup --gh`
-(third pass) after FLEET_CLAIM_STALE_SECS_ISSUES (default 7200s).
+fleet-claim reclaim: removed. Stale fleet:claim-* labels on open
+issues are swept by `fleet-claim cleanup --gh` (third pass) after
+FLEET_CLAIM_STALE_SECS_ISSUES (default 7200s).
 EOF
         exit 2
         ;;
