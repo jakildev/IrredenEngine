@@ -196,28 +196,6 @@ Avoid:
   - **Notes:** Split from #1008 item 4. Low-priority rename pass. May fold into T-371 or T-372 if convenient; standalone skip is fine. Prevents future PRs from assuming entity state is durable via this class.
   - **Links:**
 
-- [~] **tooling: queue-manager — detect stale TASKS.md rows whose scope shipped under a different T-NNN** — before ingesting a `human:approved` issue, search recent merged PRs for the issue number; skip ingest and post a comment if the scope already landed
-  - **ID:** T-374
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-374-queue-manager-scope-shipped-check
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Ingest pass searches merged PR titles/bodies for the issue number; (2) if a merged PR references the issue, skip ingest and post a comment linking the landing PR; (3) normal ingest path unaffected; (4) T-361/T-362 pattern (sub-task shipped under different T-NNN prefix) is caught
-  - **Issue:** #1175
-  - **Notes:** Diagnosed by opus-worker-1 — T-361, T-362, T-363 rows appeared in TASKS.md because implementing PRs used different T-NNN prefixes. T-361 and T-362 have since been removed from TASKS.md. Do NOT auto-close source issues (#1055, #1071, #1074) — human decides. Adjacent to T-338 (maintenance-sync) and T-342 (divergence check).
-  - **Links:**
-
-- [~] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
-  - **ID:** T-377
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-377-commit-and-push-empty-commit-guard
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `commit-and-push` with no staged changes fails with clear error message; (2) error instructs worker to either stage real work or release the claim; (3) existing non-empty-commit path unaffected; (4) skill docs state the empty-commit guard contract
-  - **Issue:** #1192
-  - **Notes:** Root cause: commit `85662e24` on `claude/T-366-fleet-duplicate-claiming` pushed empty tree-delta under a task title. Fix: `git diff --cached --quiet` check before `git commit`; exit non-zero if staged tree equals HEAD. Affects SKILL.md and any procedures/*.md with embedded commit paths. Duplicate issue: #1188.
-  - **Links:**
-
 - [~] **system: PROPAGATE_TRANSFORM BFS-parallel refactor (T-332 follow-up)** — refactor PROPAGATE_TRANSFORM into a two-pass BFS-parallel design; serial pre-sort builds a per-depth level index, then parallelFor dispatches all entities at each depth independently
   - **ID:** T-378
   - **Area:** engine/system, engine/entity
@@ -244,6 +222,8 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-374** — fleet: scope-shipped detection pass in queue-manager ingest · Owner: claude/T-374-queue-manager-scope-shipped-check · PR: https://github.com/jakildev/IrredenEngine/pull/1210
+- [x] **T-377** — fleet: commit-and-push — refuse to commit when staged tree is empty · Owner: claude/T-377-commit-and-push-empty-commit-guard · PR: https://github.com/jakildev/IrredenEngine/pull/1209
 - [x] **T-375** — fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels · Owner: claude/T-375-cross-host-gh-claim-preserve · PR: https://github.com/jakildev/IrredenEngine/pull/1206
 - [x] **T-376** — fleet-claim cleanup --gh — TTL sweep stale fleet:claim-* labels off open issues · Owner: claude/T-376-fleet-claim-ttl-sweep · PR: https://github.com/jakildev/IrredenEngine/pull/1204
 - [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
@@ -262,5 +242,3 @@ Avoid:
 - [x] **T-360** — world: markChunkDirty API + chunk-mutation routing contract · Owner: claude/T-360-chunk-mark-dirty-api · PR: https://github.com/jakildev/IrredenEngine/pull/1172
 - [x] **T-355** — docs: T-189/T-190 disposition under SDF restriction (D4) · Owner: claude/T-355-t189-t190-disposition · PR: https://github.com/jakildev/IrredenEngine/pull/1168
 - [x] **T-354** — render: SHAPES authoring deprecation migration plan (D3) · Owner: claude/T-354-shapes-deprecation-migration-plan · PR: https://github.com/jakildev/IrredenEngine/pull/1167
-- [x] **T-353** — render: SDF entity rotation via C_WorldTransform quaternion (C8) · Owner: claude/T-353-sdf-entity-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1166
-- [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
