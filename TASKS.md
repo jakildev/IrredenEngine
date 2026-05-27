@@ -198,11 +198,11 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). Deletes LLM invocation of role-queue-manager (~line 216), TASKS.md dedup check (~lines 248, 262–273), worktree dedup logic/queue-manager-ingest worktree spawn (~line 200). Keeps per-host lockfile and live GitHub label re-check. Updates fleet:queued, fleet:task, fleet:epic label descriptions.
   - **Links:**
 
-- [ ] **Fleet-state-scout: drop TASKS.md reads and queue-tick spawn after T-381 cleanup** — remove residual TASKS.md reads and fleet-queue-tick spawn left over from PR #1229
+- [~] **Fleet-state-scout: drop TASKS.md reads and queue-tick spawn after T-381 cleanup** — remove residual TASKS.md reads and fleet-queue-tick spawn left over from PR #1229
   - **ID:** T-392
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** claude/1236-scout-drop-tasks-md
   - **Blocked by:** T-389
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** `grep -n "TASKS\|queue-tick\|T-NNN" scripts/fleet/fleet-state-scout` returns 0 non-historical hits; no queue: maintenance sync commits appear during a fleet cycle; projection state cache shape unchanged
@@ -234,18 +234,6 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). Can run in parallel with scripts cleanup. Largest change in role-merger.md (delete ~60 lines of TASKS.md sort-merge conflict class). Medium changes in role-opus-worker.md and role-sonnet-author.md. Small touches to role-opus-architect.md, role-opus-reviewer.md, role-smoke-worker.md. Low risk — pure doc work.
   - **Links:**
 
-- [~] **Fleet: update skills for issue-based queue** — update commit-and-push, start-next-task, review-pr, simplify, backend-parity, platform-catchup, review-fleet-feedback skill docs for issue-based queue
-  - **ID:** T-395
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/1239-update-skills-issue-queue
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-396 tasks-md-elimination
-  - **Acceptance:** `grep -rln "TASKS.md\|T-NNN" .claude/skills/` returns 0 non-historical hits; all branch-name and PR-title examples use `<issue#>` convention; skill workflows read coherently end-to-end
-  - **Issue:** #1239
-  - **Notes:** Part of TASKS.md elimination epic (#1216). Can run in parallel with scripts cleanup. Scope per-file in issue body. Largest changes: commit-and-push/SKILL.md (branch naming, fleet-tasks-render references), start-next-task/SKILL.md (fleet-claim output format, branch pattern). Historical T-NNN refs in reference docs (lighting.md, optimize/reference/) are optional polish. Low risk — doc work.
-  - **Links:**
-
 - [ ] **Fleet: rewrite docs/agents/FLEET.md for issue-based queue** — rewrite FLEET.md workflow, claim-mechanics, and label-state-machine sections to describe the post-TASKS.md fleet
   - **ID:** T-396
   - **Area:** docs
@@ -274,6 +262,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-395** — fleet: update skills for issue-based queue · Owner: claude/1239-update-skills-issue-queue · PR: https://github.com/jakildev/IrredenEngine/pull/1242
 - [x] **T-387** — render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw · Owner: claude/T-387-shadow-aabb-coordinate-frame · PR: https://github.com/jakildev/IrredenEngine/pull/1230
 - [x] **T-381** — fleet: scout reads issues instead of TASKS.md, eliminate queue-tick maintenance sync · Owner: claude/T-381-scout-reads-issues · PR: https://github.com/jakildev/IrredenEngine/pull/1229
 - [x] **T-386** — render: chunk visibility bounds rotation-aware · Owner: claude/T-386-chunk-visibility-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1228
@@ -293,4 +282,3 @@ Avoid:
 - [x] **T-376** — fleet-claim cleanup --gh — TTL sweep stale fleet:claim-* labels off open issues · Owner: claude/T-376-fleet-claim-ttl-sweep · PR: https://github.com/jakildev/IrredenEngine/pull/1204
 - [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
 - [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
-- [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
