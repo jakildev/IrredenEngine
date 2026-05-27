@@ -284,7 +284,7 @@ Each iteration:
    STOP. File a GitHub issue for the opus work (no labels — see
    [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline") and note the escalation
    on your PR:
-   `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --body "Escalated from sonnet. Area: ... Suggested model: [opus]. Context: ..."`
+   `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --body "Escalated from sonnet.\n\n**Area:** ...\n**Model:** opus\n**Blocked by:** (none)\n\nContext: ..."`
    Then comment on your PR: "escalated — filed issue #N for opus".
    The human will triage the issue and add `human:approved` when
    ready. The scout ingests it on its next pass and the opus-workers

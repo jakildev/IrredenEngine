@@ -148,9 +148,10 @@ that needs justification in the linked issue.
    - **Why escalating** — one paragraph: scope-expansion,
      downstream-dependency, tier-mismatch, deferred-by-prior-
      review, etc.
-   - **Suggested model** — `[opus]` or `[sonnet]`.
-   - **Suggested area** — module path.
-   - **Suggested approach** — bullets, for the picker to
+   - **Model:** `opus` or `sonnet`.
+   - **Area:** module path.
+   - **Blocked by:** `(none)` or `#NNN`.
+   - Suggested approach — bullets, for the picker to
      validate.
 2. Swap PR labels atomically — `fleet:changes-made` MUST be added
    in the same call as `human:needs-fix` is removed to prevent a

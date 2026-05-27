@@ -213,8 +213,9 @@ Author-side filing should add zero labels and let the human stamp
 triage flow adds the appropriate state labels post-triage.
 
 Include in the body:
-- **Area** (e.g. `engine/render`, `engine/math`, `docs`)
-- **Suggested model** (`[opus]` or `[sonnet]`)
+- **Area:** e.g. `engine/render`, `engine/math`, `docs`
+- **Model:** `opus` or `sonnet`
+- **Blocked by:** `(none)` or `#NNN`
 - **Acceptance criteria** (concrete check: build passes, test X works)
 - **Context** (why this matters, what you observed)
 

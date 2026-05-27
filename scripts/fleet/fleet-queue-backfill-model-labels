@@ -63,7 +63,7 @@ for issue in issues:
         skipped += 1
         continue
 
-    m = re.search(r'\*\*Model:\*\*\s*(opus|sonnet)', body, re.IGNORECASE)
+    m = re.search(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(opus|sonnet)', body, re.IGNORECASE)
     model = m.group(1).lower() if m else "opus"
     label = f"fleet:{model}"
 
