@@ -33,6 +33,7 @@ usage() {
     exit 1
 }
 
+[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && usage
 [[ $# -lt 3 ]] && usage
 
 target="$1"
