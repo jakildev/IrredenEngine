@@ -186,22 +186,11 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). All of T-389–T-392 must be merged before this PR opens. High risk if any blocker is incomplete. Also updates root CLAUDE.md "Where to find things" table. Verify creations/game/TASKS.md exists on master before deleting.
   - **Links:**
 
-- [~] **Fleet: doc cross-reference cleanup post-TASKS.md** — update CLAUDE.md, CLAUDE-BASELINE.md, FLEET-FEEDBACK-HANDLING.md, FLEET-CACHE.md to remove stale TASKS.md/queue-manager cross-refs; triage and archive stale audit-*.md
-  - **ID:** T-397
-  - **Area:** docs
-  - **Model:** sonnet
-  - **Owner:** claude/1241-doc-xref-cleanup
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-397 tasks-md-elimination
-  - **Acceptance:** root CLAUDE.md "Where to find things" table current; `grep -rln "TASKS.md\|T-NNN\|queue-manager" docs/ CLAUDE.md creations/*/CLAUDE.md` returns 0 non-archived hits; audit docs archived or refreshed; all doc cross-refs resolve
-  - **Issue:** #1241
-  - **Notes:** Part of TASKS.md elimination epic (#1216). Blocked on T-396 (FLEET.md rewrite) so pointers resolve correctly. Scope: root CLAUDE.md table row, CLAUDE-BASELINE.md line ~353 and ~484, FLEET-FEEDBACK-HANDLING.md lines ~39 and ~419, FLEET-CACHE.md lines ~78 and ~95, three audit-*.md files (check shipped status, then mv to docs/agents/.archive/ or delete). Optional sweep of creations/*/CLAUDE.md. Low risk — pure doc work.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-397** — Fleet: doc cross-reference cleanup post-TASKS.md · Owner: claude/1241-doc-xref-cleanup · PR: https://github.com/jakildev/IrredenEngine/pull/1248
 - [x] **T-390** — fleet-claim: accept issue numbers, drop TASKS.md reads, remove master_lock_task · Owner: claude/1234-fleet-claim-issue-numbers · PR: https://github.com/jakildev/IrredenEngine/pull/1246
 - [x] **T-391** — fleet: fleet-queue-ingest drops LLM step (label-only ingest) · Owner: claude/T-391-fleet-queue-ingest-drop-llm · PR: https://github.com/jakildev/IrredenEngine/pull/1244
 - [x] **T-389** — fleet: delete orphaned queue scripts · Owner: claude/T-389-delete-orphaned-queue-scripts · PR: https://github.com/jakildev/IrredenEngine/pull/1243
@@ -221,4 +210,3 @@ Avoid:
 - [x] **T-378** — system: PROPAGATE_TRANSFORM BFS-parallel refactor · Owner: claude/T-378-propagate-transform-bfs-parallel · PR: https://github.com/jakildev/IrredenEngine/pull/1203
 - [x] **T-374** — fleet: scope-shipped detection pass in queue-manager ingest · Owner: claude/T-374-queue-manager-scope-shipped-check · PR: https://github.com/jakildev/IrredenEngine/pull/1210
 - [x] **T-377** — fleet: commit-and-push — refuse to commit when staged tree is empty · Owner: claude/T-377-commit-and-push-empty-commit-guard · PR: https://github.com/jakildev/IrredenEngine/pull/1209
-- [x] **T-375** — fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels · Owner: claude/T-375-cross-host-gh-claim-preserve · PR: https://github.com/jakildev/IrredenEngine/pull/1206
