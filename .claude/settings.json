@@ -36,7 +36,7 @@
       "Bash(fleet-pr-clear-feedback-labels:*)",
       "Bash(fleet-pr-checkout-detached:*)", "Bash(fleet-pr-amend-push:*)",
       "Bash(fleet-worktree-busy-branches:*)", "Bash(fleet-labels:*)",
-      "Bash(fleet-feedback:*)", "Bash(fleet-gate-status:*)",
+      "Bash(fleet-edit:*)", "Bash(fleet-feedback:*)", "Bash(fleet-gate-status:*)",
       "Bash(fleet-tasks-render:*)", "Bash(fleet-queue-tick:*)",
       "Bash(fleet-queue-ingest:*)", "Bash(fleet-reconcile-amendments:*)",
       "Bash(fleet-state-scout:*)", "Bash(fleet-dispatcher:*)",
