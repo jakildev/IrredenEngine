@@ -161,6 +161,18 @@ template <typename VecType> constexpr VecType cross(const VecType &value1, const
     return glm::cross(value1, value2);
 }
 
+// Duff et al. 2017 — builds an orthonormal basis (outU, outV) perpendicular
+// to unit vector n without branch discontinuities. The denominator (s + n.z)
+// is always non-zero and numerically safe across the full n.z ∈ [-1, 1]
+// range: copysign ensures it avoids the 0 singularity at n.z = 0.
+inline void buildOrthonormalBasis(vec3 n, vec3 &outU, vec3 &outV) {
+    const float s = std::copysign(1.0f, n.z);
+    const float a = -1.0f / (s + n.z);
+    const float b = n.x * n.y * a;
+    outU = vec3(1.0f + s * n.x * n.x * a, s * b, -s * n.x);
+    outV = vec3(b, s + n.y * n.y * a, -n.y);
+}
+
 // Hamilton product: in column-vector convention, rotates b first then a (bone hierarchy:
 // quatMul(parent_world, local)).
 inline vec4 quatMul(const vec4 &a, const vec4 &b) {

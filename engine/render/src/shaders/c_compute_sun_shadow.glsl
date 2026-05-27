@@ -79,6 +79,12 @@ const float kShadowBiasTexelScale = 2.0;
 const float kShadowBiasSlopeMin = 0.05;
 const float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
 
+// Reject shadows from occluders farther than this in sun-Z (unpacked
+// voxel units, matching `unpackSunDepth` output and `sunZ`). Prevents
+// adjacent volumes from incorrectly casting onto faces they are
+// beside rather than in front of.
+const float kMaxShadowDepthRange = 24.0;
+
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(trixelDistances);
@@ -130,9 +136,7 @@ void main() {
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
 
     // 2×2 PCF: bilinearly weighted sample of four neighboring sun-space texels.
-    // Fades shadow boundaries across one sun-texel instead of cliff-edging.
-    // floor() pairs with the bake's round() convention (texel centers on
-    // integers) so the four taps surround the fragment's continuous sunPxF.
+    // Both bake and lookup use floor() so the texel grid is consistent.
     vec2 sunPxF = (sunUV - sunBufferOriginUV) / sunBufferTexelSize;
     ivec2 base = ivec2(floor(sunPxF));
     vec2 frac = sunPxF - vec2(base);
@@ -147,9 +151,12 @@ void main() {
             float nearestZ = unpackSunDepth(stored);
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
-            if ((sunZ - nearestZ) > bias) shadowAccum += weight;
+            float depthDiff = sunZ - nearestZ;
+            if (depthDiff > bias && depthDiff < kMaxShadowDepthRange)
+                shadowAccum += weight;
         }
     }
+
     float factor = mix(1.0, kShadowDarken, shadowAccum);
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));
 }

@@ -88,7 +88,7 @@ void main() {
     vec2 sunUV = vec2(dot(pos3D, uHat), dot(pos3D, vHat));
     float sunZ = -dot(pos3D, sunDir);
 
-    ivec2 sunPx = ivec2(round((sunUV - sunBufferOriginUV) / sunBufferTexelSize));
+    ivec2 sunPx = ivec2(floor((sunUV - sunBufferOriginUV) / sunBufferTexelSize));
     if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
         sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
         return;

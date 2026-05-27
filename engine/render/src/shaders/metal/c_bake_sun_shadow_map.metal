@@ -65,7 +65,7 @@ kernel void c_bake_sun_shadow_map(
     float2 sunUV = float2(dot(pos3D, uHat), dot(pos3D, vHat));
     float sunZ = -dot(pos3D, sunDir);
 
-    int2 sunPx = int2(round(
+    int2 sunPx = int2(floor(
         (sunUV - sunFrameData.sunBufferOriginUV) / sunFrameData.sunBufferTexelSize
     ));
     if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
