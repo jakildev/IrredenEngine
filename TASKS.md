@@ -163,17 +163,6 @@ Avoid:
   - **Links:**
 
 
-- [~] **tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count** — skill scans engine/prefabs and system registrations, proposes and applies additive changes to make a target demo more visually complex
-  - **ID:** T-367
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-367-increase-complexity-skill
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `/increase-complexity` skill exists in `.claude/skills/`; (2) when invoked on a demo, scans available systems/prefabs and appends entities or parameters to increase visual complexity; (3) user can optionally specify what kind of change is wanted; (4) fleet-build clean on linux-debug after applying changes to any touched demo
-  - **Issue:** #1064
-  - **Notes:** Skill should look for new engine or game systems and include them in the demo. Optional: dry-run mode prints proposed changes before applying.
-  - **Links:**
-
 - [~] **asset: async texture loading via pinned worker (T-226 Phase 5)** — `IRAsset::loadTextureAsync` returns immediately with an AssetHandle; disk read + decode runs on a pinned I/O worker; GL texture upload schedules onto main thread
   - **ID:** T-368
   - **Area:** engine/system
@@ -310,6 +299,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
 - [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
 - [x] **T-359** — world: entity chunk migration system (Epic E E5) · Owner: claude/T-359-entity-chunk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1183
 - [x] **T-357** — world: camera-aware chunk prefetch (priority by visibility) (E3) · Owner: claude/T-357-camera-chunk-prefetch · PR: https://github.com/jakildev/IrredenEngine/pull/1180
@@ -329,4 +319,3 @@ Avoid:
 - [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
 - [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
 - [x] **T-342** — fleet: queue-manager queued/free divergence check · Owner: claude/T-342-queue-manager-divergence-check · PR: https://github.com/jakildev/IrredenEngine/pull/1148
-- [x] **T-344** — fleet/auto-mode: fix rm -f .review-body.md via Read-then-Write protocol · Owner: claude/T-344-auto-mode-allowlist · PR: https://github.com/jakildev/IrredenEngine/pull/1151
