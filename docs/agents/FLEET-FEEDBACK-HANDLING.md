@@ -35,8 +35,8 @@ Address one PR per iteration, oldest within each tier:
    Address every nit unless it's purely subjective preference.
 4. `fleet:design-unblocked` — architect responded to a prior
    mid-task escalation (`fleet:design-blocked` → resolved). The
-   canonical plan at `.fleet/plans/T-<NNN>.md` has been re-synced
-   by the queue-manager; address per the architect's PR comment +
+   canonical plan at `.fleet/plans/T-<NNN>.md` has been updated;
+   address per the architect's PR comment +
    updated plan, just like a normal feedback fix. **Worker-only**;
    sonnet-author does not encounter this label (only opus-worker
    originates design escalations).
@@ -241,7 +241,7 @@ Only for `human:needs-fix` / `human:blocker` paths — skip for
 which don't enter the human-amending state and complete quickly,
 so the reservation bookkeeping isn't worth the cost.
 
-Extract the task ID from the PR's branch (`claude/T-NNN-…`) and
+Extract the issue number from the PR's branch (`claude/<issue#>-…`) and
 write the reservation file so the amendment becomes a durable
 fleet artifact rather than relying on the `fleet:human-amending`
 label alone. If `fleet-down` or a mid-flight crash interrupts
@@ -251,10 +251,10 @@ resumes the amendment instead of starting a fresh task and
 clobbering the in-progress work:
 
 ```
-fleet-claim reserve <task-id> <your-worktree-basename> <branch>
+fleet-claim reserve <issue-number> <your-worktree-basename> <branch>
 ```
 
-Example: `fleet-claim reserve T-163 opus-worker-2 claude/T-163-stateless-particles`.
+Example: `fleet-claim reserve 163 opus-worker-2 claude/163-stateless-particles`.
 
 ### Step c — address the feedback
 
@@ -337,8 +337,8 @@ Always run, after every feedback fix:
 fleet-claim molecule rebase-downstream <your-worktree-basename>
 ```
 
-The subcommand auto-detects the upstream task ID from the current
-branch (`claude/T-NNN-…`) and is a graceful no-op if there's no
+The subcommand auto-detects the upstream issue number from the current
+branch (`claude/<issue#>-…`) and is a graceful no-op if there's no
 active molecule, the current branch isn't in one, or the upstream
 is already the tail of the chain — so it is safe to invoke
 unconditionally.
@@ -416,8 +416,8 @@ poll and re-reviews.
 
 **Design-unblocked cycle** (opus-worker only): the worker hits a
 mid-task design blocker and sets `fleet:design-blocked`; the
-architect responds and the queue-manager swaps to
-`fleet:design-unblocked` after re-syncing the plan; any opus-worker
-picks it back up via priority tier 4 above.
+architect responds and swaps the label to `fleet:design-unblocked`
+after updating the plan; any opus-worker picks it back up via
+priority tier 4 above.
 
 Address all flagged PRs before doing any other work.

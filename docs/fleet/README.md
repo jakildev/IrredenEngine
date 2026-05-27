@@ -2,8 +2,8 @@
 
 The Irreden Engine ships with a parallel-agent workflow on top of the
 normal IDE-driven one. A handful of Claude Code agents — authors,
-reviewers, queue managers, mergers — sit on top of the same git repo
-the human works in, picking tasks off `TASKS.md`, opening PRs, and
+reviewers, mergers — sit on top of the same git repo
+the human works in, picking tasks from the GitHub issue queue, opening PRs, and
 reviewing each other's work. The human's job becomes "approve issues,
 merge PRs, escalate when something's stuck."
 
@@ -23,11 +23,11 @@ first-class:
 | | **Cursor flow** (human-in-the-loop) | **Fleet flow** (autonomous) |
 |---|---|---|
 | **Driver** | You, in a Cursor chat | Multiple agents in tmux panes |
-| **Pace** | Iterative — edit, build, refine, ask | Continuous — agents drain `TASKS.md` |
+| **Pace** | Iterative — edit, build, refine, ask | Continuous — agents drain the issue queue |
 | **Commits** | Only when you say "commit" / "ship it" | At every logical boundary |
 | **Branching** | Auto-created from `master` at commit time | Each worktree on its own `claude/<area>-<topic>` |
 | **Reviewer** | You skim the PR yourself | Another agent posts a structured review |
-| **Where work comes from** | Whatever you're thinking about | `TASKS.md`, GitHub issues with `human:approved` |
+| **Where work comes from** | Whatever you're thinking about | GitHub issues with `human:approved` + `fleet:queued` |
 | **What you set up** | Nothing beyond Cursor | tmux + worktrees + role files (one-time) |
 
 You can use either, neither, or both at the same time. A common shape
@@ -130,16 +130,16 @@ loop, hard rules. Skills are reusable routines any role can call.
 ### Authors — produce changes
 
 - **`/role-sonnet-author`** (Sonnet, `sonnet-fleet-*` worktrees,
-  continuous loop) — picks bounded `[sonnet]`-tagged tasks from
-  `TASKS.md`. Test generation, doc passes, mechanical refactors,
-  gameplay/creation-level work. Most of the volume goes through
-  here. Escalates back to the queue if a task turns out subtler than
-  expected.
+  continuous loop) — picks bounded `[sonnet]`-tagged issues from the
+  GitHub queue (`fleet:queued` + `fleet:sonnet`). Test generation,
+  doc passes, mechanical refactors, gameplay/creation-level work.
+  Most of the volume goes through here. Escalates back to the queue
+  if a task turns out subtler than expected.
 - **`/role-opus-worker`** (Opus, `opus-worker-*`, continuous loop) —
-  picks `[opus]`-tagged tasks from `TASKS.md` and plans
-  `fleet:needs-plan` GitHub issues (writes a structured plan, posts
-  it as a comment, swaps labels for queue ingestion). Use Opus
-  budget here only when the task is genuinely Opus-grade.
+  picks `[opus]`-tagged issues from the GitHub queue and plans
+  `fleet:needs-plan` issues (writes a structured plan, posts it as
+  a comment, swaps labels). Use Opus budget here only when the task
+  is genuinely Opus-grade.
 - **`/role-opus-architect`** (Opus, `opus-architect`, stand-by) —
   core engine architecture, ECS/render/audio invariants, deep
   ownership/lifetime decisions. Doesn't pick tasks autonomously;
@@ -165,17 +165,8 @@ loop, hard rules. Skills are reusable routines any role can call.
 
 ### Infrastructure — keep the pipeline flowing
 
-- **`/role-queue-manager`** (Sonnet, `queue-manager`, on-demand +
-  15-min maintenance loop) — task intake. The human (or an idle
-  agent) hands it a rough description; it categorizes (engine vs
-  game), tags (`[opus]` vs `[sonnet]`), picks an Area, formats
-  using the `TASKS.md` template, and opens a queue-update PR. Also
-  triages GitHub issues with `human:approved`, ingesting them into
-  `TASKS.md` and adding `fleet:queued`. **Sole `TASKS.md` editor**
-  in the fleet — author agents never touch it.
 - **`/role-merger`** (Opus, `merger`, polling loop ~10 min) —
-  proactively rebases stale PRs, auto-resolves mechanical conflicts
-  (formatting, ordering, sort-merging the `TASKS.md` Done list).
+  proactively rebases stale PRs, auto-resolves mechanical conflicts.
   When it can't resolve mechanically, it sets
   `fleet:semantic-conflict` and the next opus-worker pass picks it
   up.
@@ -195,10 +186,10 @@ human files an issue
 human adds `human:approved`
         │
         ▼
-queue-manager ingests   ──►  appends to TASKS.md, adds `fleet:queued`
+fleet-queue-ingest stamps `fleet:queued` + model label
         │
         ▼
-sonnet-author or opus-worker picks it up
+sonnet-author or opus-worker claims it
         │
         ▼
 work, then `commit-and-push`        ──►  PR opens with `fleet:wip`
@@ -219,7 +210,7 @@ merger rebases                       ──►  resolves mechanical
 human merges via GitHub UI
         │
         ▼
-queue-manager closes loop on next maintenance pass
+issue closes automatically (Closes #N in PR body)
 ```
 
 In Cursor flow you collapse most of this into one chat — you author,
@@ -270,9 +261,9 @@ This is a real foot-gun and the rule lives in
 [`docs/agents/FLEET.md`](../agents/FLEET.md) "Issue/PR labeling discipline":
 
 - `human:approved` — yours to set. Means "yes, work on this." Without
-  it, the queue-manager doesn't ingest.
-- `fleet:queued` / `fleet:task` — queue-manager's. Don't add at
-  filing time; doing so excludes the issue from triage and strands it.
+  it, `fleet-queue-ingest` won't stamp `fleet:queued`.
+- `fleet:queued` — set by `fleet-queue-ingest`. Don't add at filing
+  time; doing so excludes the issue from ingest triage.
 - `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
   `fleet:blocker` — reviewer agents'.
 - `fleet:wip` — fleet author's **in-progress / claim** PRs only; omit on
@@ -285,18 +276,10 @@ This is a real foot-gun and the rule lives in
 **Right pattern when filing an issue:** create it with no labels;
 add `human:approved` when (and if) you want it picked up.
 
-### `TASKS.md` is fleet-only
-
-The shared queue is for fleet authors. Cursor sessions don't pick from
-it and don't append to it — the queue-manager is the sole editor on
-the fleet side. Reference a task title in your PR description if it
-helps reviewers, but don't include `TASKS.md` changes in feature PRs
-(it causes merge conflicts across all parallel author PRs).
-
 ### Model split
 
-Tag tasks `[opus]` or `[sonnet]` in `TASKS.md`. Opus budget is the
-constraint; Sonnet handles the volume. Rough rule:
+Issues are stamped `fleet:opus` or `fleet:sonnet` by `fleet-queue-ingest`.
+Opus budget is the constraint; Sonnet handles the volume. Rough rule:
 
 - **Opus** — core engine architecture, render/ECS/audio invariants,
   GPU lifetime, concurrency-sensitive code, performance investigation,
@@ -364,10 +347,10 @@ ready, "commit and push" / "ship it" closes it out.
 
 ### Adding a task to the fleet queue
 
-In a fleet-up'd session, switch to the `queue-manager` pane and type
-a rough description of the work. It will categorize, tag, format,
-and open a queue-update PR. Once that PR merges, the next idle
-author agent picks the task up automatically.
+File a GitHub issue with a clear title and description, then add
+`human:approved`. The `fleet-queue-ingest` script (run on the next
+scout tick) stamps `fleet:queued` + a model label and makes the issue
+visible to fleet authors automatically.
 
 In Cursor, you don't go through the queue at all — just describe
 what you want and the agent does it.
@@ -396,8 +379,7 @@ what you want and the agent does it.
   exhaustion recovery).
 - **[`scripts/fleet/README.md`](../../scripts/fleet/README.md)** —
   launcher scripts (`fleet-up`, `fleet-down`, `install.sh`) reference.
-- **[`TASKS.md`](../../TASKS.md)** — the shared task queue. Fleet
-  authors pick from here.
+- **`fleet-queue-list`** — CLI view of the issue queue (`fleet:queued` issues). Fleet authors pick from here.
 - **[`CLAUDE.md`](../../CLAUDE.md)** — top-level agent intro: identity,
   build quick-ref, layout, pointers.
 - **[`docs/agents/FLEET.md`](../agents/FLEET.md)** — fleet workflow rules,

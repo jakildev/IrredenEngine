@@ -222,7 +222,7 @@ agent-facing doc, link to the canonical home rather than restating.
 ## Citing source in filed artifacts
 
 When an artifact you're filing or writing references the codebase —
-GitHub issue bodies, PR descriptions, design docs, TASKS.md entries,
+GitHub issue bodies, PR descriptions, design docs,
 review comments — **prefer symbol citations over line-number
 citations** for anything that will be read after the next refactor.
 
@@ -317,22 +317,19 @@ is an additional hardcoded gate on top of that.
 (`jakildev/irreden`) is private.** Information flows one way only:
 
 - **Game-side artifacts MAY reference engine.** The engine is public,
-  so a game PR description, commit message, issue, review comment,
-  or `TASKS.md` blocker can freely cite engine PRs/issues/files. Game
-  agents already do this when filing engine issues for cross-repo
-  dependencies.
+  so a game PR description, commit message, issue, or review comment
+  can freely cite engine PRs/issues/files. Game agents already do
+  this when filing engine issues for cross-repo dependencies.
 - **Engine-side artifacts MUST NOT reference game.** Anything the
   engine repo publishes — PR titles, PR descriptions, commit
-  messages, review comments, `TASKS.md` entries, GitHub issue bodies
-  filed on the engine — is world-readable. Leaking the game's task
+  messages, review comments, GitHub issue bodies filed on the engine
+  — is world-readable. Leaking the game's task
   IDs, feature names, design language, file paths, or repo slug
   exposes private game work.
 
 **Concretely, when filing or writing anything that lands in the
 engine repo, never include:**
 
-- Game task IDs (`game T-005`, or unqualified `T-NNN` IDs that came
-  from the game queue).
 - Game PR or issue URLs (`jakildev/irreden#41`, etc.).
 - The game repo slug `jakildev/irreden`.
 - File paths under `creations/game/` (or any other gitignored
@@ -346,12 +343,12 @@ engine repo, never include:**
 
 1. The work that lands in the engine PR is described in **pure
    engine terms** — generic capabilities, no game-specific
-   motivation. The engine task in `TASKS.md` is self-contained.
-2. The game-side PR's description / TASKS.md entry references the
-   engine task by ID or PR URL as a `Blocked by:` dependency.
+   motivation. The engine issue is self-contained.
+2. The game-side PR's description references the engine issue by
+   number or PR URL as a `Blocked by:` dependency.
 
-This is the existing convention for `Blocked by:` (see queue-manager
-role, "Cross-repo work" section). The information-isolation rule
+This is the existing convention for `Blocked by:` (see FLEET.md
+§"Resource coordination"). The information-isolation rule
 generalizes that direction: engine talks engine, game talks both.
 
 **`commit-and-push` checks for this** before opening an engine PR
@@ -481,9 +478,9 @@ additional role-specific restrictions.
   follow with `commit-and-push` to land them. The next iteration's
   branch switch will discard them. Don't invoke `simplify` standalone
   — let `commit-and-push` invoke it for you.
-- **`.fleet/status/*.md` is queue-manager-owned bookkeeping**, like
-  `TASKS.md`. Read when a CLAUDE.md pointer directs you to one; never
-  include them in a feature PR's diff. See `.fleet/status/README.md`.
+- **`.fleet/status/*.md` is scout-maintained bookkeeping.** Read
+  when a CLAUDE.md pointer directs you to one; never include them in
+  a feature PR's diff. See `.fleet/status/README.md`.
 - **Edit/Write paths must stay inside your worktree.** The parent
   clone at `/Users/evinjkill/src/IrredenEngine/` and your worktree at
   `.../.claude/worktrees/<your-basename>/` both contain the same tree

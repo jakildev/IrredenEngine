@@ -53,7 +53,7 @@ fleet-claim reservation-of <your-worktree-basename>
 ```
 
 - **Empty output** — no reservation; proceed normally to step 1.
-- **Non-empty output (a task ID, e.g. `T-NNN`)** — this worktree is
+- **Non-empty output (an issue number, e.g. `163`)** — this worktree is
   reserved for an in-flight task from a previous interrupted iteration.
   Resume it:
 
