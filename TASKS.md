@@ -218,17 +218,6 @@ Avoid:
   - **Notes:** Root cause: `fleet-tasks-render:load_fs_claims()` host-local; `derive_status()` preserves `[~]` only when task_id in fs_claims. Fix: also treat live `fleet:claim-<host>-<agent>` label on task's linked issue as `[~]`-preservation signal (one `gh issue list -l "fleet:claim-*"` per render). Repro in T-366/#1182 timeline: claim reverted 54s after acquisition. Duplicate issue: #1186.
   - **Links:**
 
-- [~] **fleet: fleet-claim — TTL sweep stale fleet:claim-* labels off open issues (Bug 2 from #1182)** — extend `cmd_cleanup --gh` to drop `fleet:claim-*` from open issues where holder has gone silent (no PR, no recent commit, past TTL)
-  - **ID:** T-376
-  - **Area:** tooling
-  - **Model:** sonnet
-  - **Owner:** claude/T-376-fleet-claim-ttl-sweep
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `fleet-claim cleanup --gh` drops stale `fleet:claim-*` from open issues per TTL rules; (2) active claims (open WIP PR or recent commit) are never swept; (3) idempotent — sweep twice = no-op second time; (4) removal logged in same format as closed-issue sweep; (5) queue-tick calls the sweep so it self-heals
-  - **Issue:** #1191
-  - **Notes:** Root cause: `cmd_check_stale` sweeps FS claims and `fleet:claim-*` off closed issues only — no pass sweeps open issues. T-366/#1182 held `fleet:claim-mac-opus-worker-2` for 17+ hours after an abandoned empty commit. Drop criteria: no matching PR AND label age > TTL (default 7200s) OR linked task Owner → free. Duplicate issue: #1187.
-  - **Links:**
-
 - [~] **fleet: commit-and-push — refuse to commit when staged tree is empty (Bug 3 from #1182)** — add pre-flight check in commit-and-push skill so empty commits can't be pushed; exit non-zero with a release-or-work instruction
   - **ID:** T-377
   - **Area:** tooling
@@ -266,6 +255,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-376** — fleet-claim cleanup --gh — TTL sweep stale fleet:claim-* labels off open issues · Owner: claude/T-376-fleet-claim-ttl-sweep · PR: https://github.com/jakildev/IrredenEngine/pull/1204
 - [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
 - [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
 - [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
@@ -285,4 +275,3 @@ Avoid:
 - [x] **T-353** — render: SDF entity rotation via C_WorldTransform quaternion (C8) · Owner: claude/T-353-sdf-entity-rotation · PR: https://github.com/jakildev/IrredenEngine/pull/1166
 - [x] **T-350** — docs/role-merger — explain re-target + label cleanup order on stacked-base merged path · Owner: claude/T-350-merger-retarget-order-rationale · PR: https://github.com/jakildev/IrredenEngine/pull/1163
 - [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
-- [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
