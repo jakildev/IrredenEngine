@@ -246,14 +246,16 @@ Do the work, then exit cleanly:
     `headRefName`. If the base PR also has `fleet:semantic-conflict`,
     SKIP this candidate — resolve the base first.
 
-    **No branch-lock filter.** This step uses `fleet-pr-checkout-detached`
-    (step c below), which checks out the head ref in detached HEAD —
-    no `branch is already used by worktree` collision with the
-    merger mid-rebase, the operator inspecting the PR locally, or
-    another worker that picked up the same candidate. Concurrency
-    against parallel rebases is handled at push time by
-    `--force-with-lease` (step h): the loser exits clean and the
-    next iteration retries.
+    **Atomic claim before checkout.** Before starting the checkout,
+    take a `fleet:resolving-<host>-<agent>` label on the PR (step b'
+    below). The lex-min tie-break — the same pattern used by
+    `fleet:reviewing-*` and `fleet:claim-*` — lets one winner proceed
+    while the other backs off immediately, before either has spent time
+    on the rebase + build. This eliminates the expensive
+    `--force-with-lease` loser path that previously wasted a full Opus
+    iteration when two workers raced. The detached HEAD checkout
+    (step c) and `--force-with-lease` push (step h) remain in place as
+    safety nets; the resolving label is the first-line prevention.
 
     Game repo is intentionally out of scope for v1: the merger is
     engine-only, so no game PR ever gets the label.
@@ -271,6 +273,15 @@ Do the work, then exit cleanly:
        so you don't need to re-discover them:
        `fleet-pr comments <N>` (engine; for game PRs add `--repo game`).
        Look for the comment ending in `— fleet merger`.
+    b'. **Claim the conflict-resolution lock** before touching the
+       branch. This prevents a parallel worker on any host from
+       starting the same rebase simultaneously:
+       `fleet-claim resolving-claim <N> <your-worktree-basename>`
+       - Exit 0 — you own the lock. Proceed to step c.
+       - Exit 1 — another agent already holds `fleet:resolving-*` on
+         this PR. Skip it: go to step 2 (pick another conflict PR or
+         new task) without touching the branch. No cleanup needed
+         (the label was never added — the tie-break loser self-removes).
     c. Check out the PR in detached HEAD (fetches head ref + writes
        the `.git/fleet-amend-ref` sentinel for the step h push):
        `fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine`
@@ -338,7 +349,8 @@ Do the work, then exit cleanly:
     k. Reset to scratch (runs at the end of every step 1c branch —
        success, lease-fail, or escalation — so the next iteration
        starts clean and reviewers aren't blocked from `gh pr
-       checkout`ing this branch):
+       checkout`ing this branch). Release the resolving lock first:
+       `fleet-claim resolving-release <N> <your-worktree-basename>`
        `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
 
     Conflicts are slow work (read both sides, judge intent, build,

@@ -22,6 +22,8 @@
 #   fleet-claim cleanup [--repo <owner/repo>] [--gh] ...
 #   fleet-claim review-claim <pr-number> <agent>
 #   fleet-claim review-release <pr-number> <agent>
+#   fleet-claim resolving-claim <pr-number> <agent>
+#   fleet-claim resolving-release <pr-number> <agent>
 #   fleet-claim clear-all
 #   fleet-claim stack "T-1 T-2 ..." <agent>
 #   fleet-claim release-stack <agent>
@@ -149,21 +151,27 @@ slugify() {
 # section adds a complementary GitHub-label primitive for the gaps T-138
 # doesn't cover:
 #
-#   - PR review claims  — reviewers (sonnet-reviewer, opus-reviewer) take a
-#                         `fleet:reviewing-<host>-<agent>` label on the PR
-#                         before reading the diff so two reviewers on
-#                         different hosts can't both work the same PR.
-#   - Cross-host smoke  — author roles' step 1b smoke pickup uses the same
-#                         primitive so two same-host author agents can't
-#                         race on the same `fleet:needs-<host>-smoke` PR.
+#   - PR review claims    — reviewers (sonnet-reviewer, opus-reviewer) take a
+#                           `fleet:reviewing-<host>-<agent>` label on the PR
+#                           before reading the diff so two reviewers on
+#                           different hosts can't both work the same PR.
+#   - Cross-host smoke    — author roles' step 1b smoke pickup uses the same
+#                           primitive so two same-host author agents can't
+#                           race on the same `fleet:needs-<host>-smoke` PR.
+#   - Conflict resolution — opus-worker step 1c takes a
+#                           `fleet:resolving-<host>-<agent>` label on the PR
+#                           before checkout + rebase so two workers on
+#                           different hosts can't both start resolving the
+#                           same `fleet:semantic-conflict` PR. (#1223)
 #
 # Tie-break: POST .../labels returns the resulting label set. Filter to the
-# `fleet:reviewing-` prefix and take the lexicographic minimum. If our
-# label is the min we own the lock; otherwise we lost the race, remove
-# our label, and the caller exits 1.
+# relevant label prefix and take the lexicographic minimum. If our label is
+# the min we own the lock; otherwise we lost the race, remove our label,
+# and the caller exits 1.
 #
 # Host disambiguation (`fleet:reviewing-<host>-<agent>`) is required for
-# correctness — both hosts can have an `opus-reviewer` agent.
+# correctness — both hosts can have an `opus-reviewer` agent. Same applies
+# to `fleet:resolving-<host>-<agent>`.
 #
 # Stale label sweep runs from `fleet-queue-tick` via
 # `fleet-claim cleanup --gh`; orphan sentinels under ~/.fleet/orphans/
@@ -1394,6 +1402,58 @@ cmd_release() {
     fi
 }
 
+# _cmd_pr_label_claim <prefix> <cmd-name> <pr-num> <agent>
+#   Shared implementation for review-claim and resolving-claim.
+#   Both commands use the same lex-min tie-break logic with different
+#   label prefixes; extract here to avoid 100% structural duplication.
+_cmd_pr_label_claim() {
+    local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}"
+    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim ${cmd_name}: PR must be a number, got '$pr'" >&2
+        return 2
+    fi
+    local host label repo
+    host=$(derive_host)
+    label="${prefix}${host}-${agent}"
+    repo=$(repo_from_ns)
+
+    if [[ -z "$repo" ]]; then
+        echo "fleet-claim ${cmd_name}: WARN no GH repo for namespace '${REPO_NS:-engine}'; cannot acquire" >&2
+        return 1
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "fleet-claim ${cmd_name}: WARN 'gh' not on PATH; cannot acquire" >&2
+        return 1
+    fi
+
+    if ! _acquire_label_on "$repo" "$pr" "$label" "$prefix"; then
+        return 1
+    fi
+
+    echo "${cmd_name} acquired: $repo PR#$pr ($agent)"
+    return 0
+}
+
+# _cmd_pr_label_release <prefix> <cmd-name> <pr-num> <agent>
+#   Shared implementation for review-release and resolving-release.
+_cmd_pr_label_release() {
+    local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}"
+    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
+        echo "fleet-claim ${cmd_name}: PR must be a number, got '$pr'" >&2
+        return 2
+    fi
+    local host label repo
+    host=$(derive_host)
+    label="${prefix}${host}-${agent}"
+    repo=$(repo_from_ns)
+
+    if [[ -z "$repo" ]] || ! command -v gh >/dev/null 2>&1; then
+        echo "${cmd_name}: no gh / unknown namespace; nothing to do" >&2
+        return 0
+    fi
+    gh_release_label "$repo" "$pr" "$label"
+}
+
 # cmd_review_claim <pr-num> <agent>
 #   Atomically claim a PR for review (or cross-host smoke) work via a
 #   `fleet:reviewing-<host>-<agent>` label. Reviewer roles invoke this
@@ -1404,55 +1464,30 @@ cmd_release() {
 #   Reviewer-role policy: the verdict label-swap also `--remove-label`s
 #   `fleet:reviewing-<host>-<agent>`, so the lock is released as part of
 #   posting the verdict. `cmd_review_release` exists for abort paths.
-cmd_review_claim() {
-    local pr="$1" agent="${2:-unknown}"
-    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
-        echo "fleet-claim review-claim: PR must be a number, got '$pr'" >&2
-        return 2
-    fi
-    local host label repo
-    host=$(derive_host)
-    label="fleet:reviewing-${host}-${agent}"
-    repo=$(repo_from_ns)
-
-    if [[ -z "$repo" ]]; then
-        echo "fleet-claim review-claim: WARN no GH repo for namespace '${REPO_NS:-engine}'; cannot acquire" >&2
-        return 1
-    fi
-    if ! command -v gh >/dev/null 2>&1; then
-        echo "fleet-claim review-claim: WARN 'gh' not on PATH; cannot acquire" >&2
-        return 1
-    fi
-
-    if ! _acquire_label_on "$repo" "$pr" "$label" "fleet:reviewing-"; then
-        return 1
-    fi
-
-    echo "review-claim acquired: $repo PR#$pr ($agent)"
-    return 0
-}
+cmd_review_claim()   { _cmd_pr_label_claim   "fleet:reviewing-" "review-claim"   "$@"; }
 
 # cmd_review_release <pr-num> <agent>
 #   Release a review claim. Mirrors gh_release_label semantics
 #   (retry-once-then-sentinel). Returns 0 on success, 1 if the second
 #   attempt failed (sentinel written; cleanup pass will retry).
-cmd_review_release() {
-    local pr="$1" agent="${2:-unknown}"
-    if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
-        echo "fleet-claim review-release: PR must be a number, got '$pr'" >&2
-        return 2
-    fi
-    local host label repo
-    host=$(derive_host)
-    label="fleet:reviewing-${host}-${agent}"
-    repo=$(repo_from_ns)
+cmd_review_release() { _cmd_pr_label_release "fleet:reviewing-" "review-release" "$@"; }
 
-    if [[ -z "$repo" ]] || ! command -v gh >/dev/null 2>&1; then
-        echo "review-release: no gh / unknown namespace; nothing to do" >&2
-        return 0
-    fi
-    gh_release_label "$repo" "$pr" "$label"
-}
+# cmd_resolving_claim <pr-num> <agent>
+#   Atomically claim a PR for semantic-conflict resolution work via a
+#   `fleet:resolving-<host>-<agent>` label. Opus-worker step 1c invokes
+#   this before `fleet-pr-checkout-detached` so two workers on different
+#   hosts can't both start resolving the same PR simultaneously.
+#
+#   Returns 0 if our label is the lex-min of all fleet:resolving-* labels
+#   (we own the lock). Returns 1 if another agent won the tie-break; caller
+#   should skip this PR and move on. cmd_resolving_release is the unlock.
+cmd_resolving_claim()   { _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"; }
+
+# cmd_resolving_release <pr-num> <agent>
+#   Release a conflict-resolution claim. Always called from step k of the
+#   opus-worker step 1c flow (the common exit point for success, lease-fail,
+#   and escalation paths) so the label is never left stranded after resolution.
+cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
 
 cmd_check() {
     # Exit 0 = free, exit 1 = claimed.
@@ -1608,8 +1643,10 @@ cmd_cleanup() {
 # cmd_cleanup_gh <repo> [<repo> ...]
 #   Three-pass GitHub label sweep:
 #
-#   Pass 1: fleet:reviewing-* off open PRs. Stale after FLEET_CLAIM_STALE_SECS
-#           (default 1800s). No "live PR" gate needed — the PR IS the unit.
+#   Pass 1: fleet:reviewing-* and fleet:resolving-* off open PRs. Stale after
+#           FLEET_CLAIM_STALE_SECS (default 1800s). No "live PR" gate needed
+#           — the PR IS the unit. Both prefixes use the same TTL and removal
+#           path since they're ephemeral per-PR locks (not per-task locks).
 #
 #   Pass 2: fleet:claim-* off CLOSED issues. Age-independent; closed means done.
 #
@@ -1650,7 +1687,7 @@ for pr in prs:
     n = pr.get("number")
     for l in (pr.get("labels") or []):
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
-        if name.startswith("fleet:reviewing-"):
+        if name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-"):
             print(f"{n}\t{name}")
 ' 2>/dev/null || echo "")
 
@@ -3334,6 +3371,20 @@ case "${1:-}" in
         fi
         cmd_review_release "$2" "$3"
         ;;
+    resolving-claim)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] resolving-claim <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_resolving_claim "$2" "$3"
+        ;;
+    resolving-release)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] resolving-release <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_resolving_release "$2" "$3"
+        ;;
     clear-all)
         cmd_clear_all
         ;;
@@ -3496,8 +3547,9 @@ commands:
   cleanup [--repo o/r] [--gh] ...
                                 Remove claims for merged/closed PRs. With
                                 --gh also runs three GitHub sweeps:
-                                (1) stale fleet:reviewing-* labels off open
-                                    PRs (>30 min age),
+                                (1) stale fleet:reviewing-* and
+                                    fleet:resolving-* labels off open PRs
+                                    (>30 min age),
                                 (2) fleet:claim-* labels off closed/merged
                                     issues,
                                 (3) fleet:claim-* labels off open issues
@@ -3520,6 +3572,16 @@ commands:
                                 sentinel; the verdict label swap normally
                                 already removed it, so this is the abort/
                                 cleanup path).
+  resolving-claim <pr> <agent>  atomically claim a PR for semantic-conflict
+                                resolution via a fleet:resolving-<host>-<agent>
+                                label. Opus-worker step 1c calls this before
+                                fleet-pr-checkout-detached to prevent two
+                                workers from racing on the same conflict.
+                                Exit 0 = owned; exit 1 = another agent
+                                holds it.
+  resolving-release <pr> <agent> release a conflict-resolution claim. Always
+                                called from step k (common exit) so the label
+                                is never left stranded after resolution.
   clear-all                     wipe all claims (used by fleet-up on restart)
 
 reservation commands (worktree-pinning, distinct from claims):
