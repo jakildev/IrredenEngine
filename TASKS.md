@@ -174,17 +174,6 @@ Avoid:
   - **Notes:** Phase 5 of multithreading epic (#226). Blocker #1068 (IRJobs::pinTo) is now closed. GL/Metal texture creation must happen on the main thread — pinned worker does disk-read + decode only; upload schedules onto main. One entry point POC only; other loaders follow if the pattern is right.
   - **Links:**
 
-- [~] **math: add IRMath::cbrt cube-root primitive (extract from perf_grid demo)** — hoist `std::cbrt` call from `perf_grid/main.cpp:532` into `engine/math/` as `IRMath::cbrt<T>` following existing IRMath conventions
-  - **ID:** T-369
-  - **Area:** engine/math
-  - **Model:** sonnet
-  - **Owner:** claude/T-369-irmath-cbrt
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) `engine/math/` exports `IRMath::cbrt` (float/double overloads, `constexpr`, `noexcept`); (2) `perf_grid/main.cpp:532` uses `IRMath::cbrt`; (3) `grep -rn "std::cbrt"` returns zero results outside allowlisted backend/glue; (4) IRMath substitution table updated
-  - **Issue:** #1088
-  - **Notes:** Triggered by reviewer nit on PR #1081 (T-220). Primary motivation is preventing a second `std::cbrt` consumer before the primitive is hoisted.
-  - **Links:**
-
 - [~] **perf: IRPerfGrid UPDATE pipeline — reduce 8.6s/frame to ≤33ms on linux-x86_64** — profile + fix dominant UPDATE systems (PropagateTransform, PeriodicIdle, UpdateVoxelSetChildren) to reach ≥30 FPS on IRPerfGrid
   - **ID:** T-370
   - **Area:** engine/system, engine/world
@@ -288,6 +277,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-369** — add IRMath::cbrt and migrate perf_grid off std::cbrt · Owner: claude/T-369-irmath-cbrt · PR: https://github.com/jakildev/IrredenEngine/pull/1201
 - [x] **T-371** — world: chunk persistence — two-level directory split · Owner: claude/T-371-chunk-persistence-two-level-dir-split · PR: https://github.com/jakildev/IrredenEngine/pull/1200
 - [x] **T-367** — tooling: /increase-complexity skill — auto-grow demos with new engine systems and entity count · Owner: claude/T-367-increase-complexity-skill · PR: https://github.com/jakildev/IrredenEngine/pull/1199
 - [x] **T-358** — world: per-frame upload-bandwidth cap + low-LOD billboard metadata (E4) · Owner: claude/T-358-one-frame-upload-budget · PR: https://github.com/jakildev/IrredenEngine/pull/1184
@@ -307,4 +297,3 @@ Avoid:
 - [x] **T-351** — render: adaptive COMPUTE_LIGHT_VOLUME propagate iteration count · Owner: claude/T-351-compute-light-volume-opt · PR: https://github.com/jakildev/IrredenEngine/pull/1162
 - [x] **T-347** — script/codegen: emit per-component tick to unlock PARALLEL_FOR · Owner: claude/T-347-lua-codegen-per-component · PR: https://github.com/jakildev/IrredenEngine/pull/1160
 - [x] **T-349** — engine/system: order validator rules most-specific-first for catch-all + PARALLEL_FOR · Owner: claude/T-349-validator-rule-ordering · PR: https://github.com/jakildev/IrredenEngine/pull/1159
-- [x] **T-348** — engine/system: SERIAL fast-path + dual-slot consolidation · Owner: claude/T-348-serial-fastpath-dual-slot · PR: https://github.com/jakildev/IrredenEngine/pull/1158
