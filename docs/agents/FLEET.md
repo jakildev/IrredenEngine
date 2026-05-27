@@ -112,6 +112,16 @@ coordination mechanisms prevent duplicate work:
   different hosts that try to claim the same PR simultaneously: one wins
   the label race, the other self-removes and picks a different PR.
 
+**Conflict-resolution claiming:**
+- Conflict resolution uses a parallel `fleet:resolving-<host>-<agent>`
+  label on the target PR (same lex-min tie-break). Only the winner
+  proceeds with the rebase+build cycle; the loser self-removes its label
+  and skips the PR immediately — no branch touched, no cleanup needed.
+  Stale `fleet:resolving-*` labels are swept by `fleet-claim cleanup --gh`
+  after the same 1800 s TTL as `fleet:reviewing-*` labels.
+  See `role-opus-worker.md` step 1c and `scripts/fleet/fleet-claim`
+  `resolving-claim` / `resolving-release` subcommands.
+
 **Known limitations:**
 - A network partition during claim causes the claim to fail (not silently
   degrade). The task is retried on the next iteration when connectivity
