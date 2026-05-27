@@ -151,18 +151,6 @@ Avoid:
 
 <!-- Add tasks below this line. -->
 
-- [ ] **fleet: delete TASKS.md, switch T-NNN convention to issue numbers, update all docs** — delete TASKS.md and game TASKS.md; update fleet-claim to accept issue numbers (reject T-NNN with hint); update commit/branch/plan-file naming conventions; update ~7 role docs, ~10 skills, CLAUDE.md, FLEET.md, and test fixtures
-  - **ID:** T-382
-  - **Area:** tooling, docs
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Stack:** T-380..T-382 tasks-to-issues
-  - **Acceptance:** (1) TASKS.md no longer exists; (2) all role docs and skills reference issue numbers and `fleet-queue-list`; (3) `fleet-claim` accepts issue numbers, rejects T-NNN with helpful message; (4) commit messages and branches use issue numbers; (5) test suite passes with updated fixtures
-  - **Issue:** #1216
-  - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 5–6). PR 3 of 3. Completes TASKS.md elimination — queue-related commits drop to near zero.
-  - **Links:**
-
 - [~] **Render: HDR pipeline — RGBA16F canvas, tonemap pass, exposure control, sky term** — grow LDR pipeline into HDR; RGBA16F canvas color attachment; tonemap pass between LIGHTING_TO_TRIXEL and TRIXEL_TO_FRAMEBUFFER; exposure uniform; additive sky-term from emissive top hemisphere
   - **ID:** T-118
   - **Area:** engine/render, shaders/glsl, shaders/metal
