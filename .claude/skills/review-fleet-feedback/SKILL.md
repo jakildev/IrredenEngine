@@ -24,10 +24,18 @@ this skill turns that one-way channel into a track of proposed → applied
 
 **Deterministic work lives in
 [`scripts/fleet/review-fleet-feedback`](../../../scripts/fleet/review-fleet-feedback).**
-This skill body picks the script, reads its JSON output, makes the two
-decisions only a human can make (which proposals are worth logging, which
-previously proposed fixes are now applied), and writes the decisions back
-through the script's `apply` subcommand. If you find yourself parsing
+This skill body picks the script, reads its JSON output, and separates
+two kinds of decisions:
+
+- **Mechanical transitions** (`pending_mutations` in the digest —
+  merged-PR flips, auto-closures, recurrence flags): apply these
+  silently without asking. They are deterministic; the script detected
+  them from GitHub state.
+- **Human-judgment decisions** (which NEW proposals to log, whether to
+  drop a proposed fix): ask the human only for these.
+
+The agent writes both kinds back through the script's `apply`
+subcommand. If you find yourself parsing
 feedback entries with regex in the skill body, stop — extend the script's
 `SIGNATURES` table instead.
 
@@ -117,15 +125,27 @@ gap), list 3-5 of them in a collapsed block; don't dump all of them.
 
 ### 4. Reconcile
 
-Pick the question shape by count:
+**Mechanical transitions — never ask.** `pending_mutations` from the
+digest (merged-PR → applied, 7-day-quiet → closed, post-applied-entry
+→ recurring) are deterministic. Include them in the decisions JSON
+unconditionally. Do not present them as options, do not ask for
+confirmation, do not gate them behind a question. Just apply them and
+report what happened in the summary.
+
+**Human-judgment decisions — ask only for these:**
 
 - **≤ 4 new proposals**: ask one `AskUserQuestion` with each proposal as
   an option (multiSelect = true).
 - **> 4 new proposals**: ask one bulk question — "log all / log top N /
   log none / let me pick" — then drill in only if they pick the last.
-- **Previously proposed fixes** (any number): one question per fix is
-  acceptable when count ≤ 3; otherwise batch with options
-  `applied / still-proposed / drop`.
+- **Manual drops** (human wants to stop tracking a proposed fix): ask
+  only when the human explicitly requests it, or when `still_proposed`
+  rows have been open for an extended period
+  (≥30d). Batch with options
+  `still-proposed / drop` when count > 3.
+- **Manual applied-confirm** (fix merged outside a tracking issue —
+  `still_proposed` row, no `pending_mutation`): ask when the human
+  surfaces it or when presenting ≥30d rows.
 
 Don't ask about `recurring` fixes here — they need a fresh proposal, not
 a status flip. Tell the human: "the recurring fixes need new design;
@@ -142,8 +162,9 @@ scripts/fleet/review-fleet-feedback bump
 
 The script handles ID assignment (`fix-NNN`, monotonic), status flips,
 and atomic file rewrites. **Always include `pending_mutations` from the
-digest in the decisions JSON** so the `flip-to-recurring` and
-`flip-to-closed` transitions land.
+digest in the decisions JSON** — these are the mechanical transitions
+from step 4 that were applied without asking. Combine them with any
+human-chosen new-proposal or drop decisions in one JSON file.
 
 If anything errored before this step, **do not bump the marker** —
 leave it stale so the next run re-surfaces the entries.
@@ -191,14 +212,15 @@ missing fields and re-emits a valid line on rewrite.
 
 Status transitions (driven by step 5 + the script):
 
-| From | To | Trigger |
-|---|---|---|
-| `proposed` | `applied` | Human confirms during step 4 (requires `applied_ref`). |
-| `proposed` | `dropped` | Human drops during step 4 (requires `notes`). |
-| `applied`  | `recurring` | Digest sees fresh entries after `applied_at`. |
-| `applied`  | `closed` | Digest sees no recurrence for ≥ 7d. |
-| `recurring`| `applied` | Human re-applies a tweaked fix (manual edit or new proposal supersedes). |
-| `recurring`| `dropped` | Give up. |
+| From | To | Trigger | Ask human? |
+|---|---|---|---|
+| `proposed` | `applied` | Digest detects merged PR on the tracking issue (`pending_mutations`). | **No** — mechanical. |
+| `proposed` | `applied` | Human manually confirms (no tracking issue, or PR merged outside the issue). | Yes. |
+| `proposed` | `dropped` | Human drops during step 4. | Yes (requires `notes`). |
+| `applied`  | `recurring` | Digest sees fresh entries after `applied_at` (`pending_mutations`). | **No** — mechanical. |
+| `applied`  | `closed` | Digest sees no recurrence for ≥ 7d (`pending_mutations`). | **No** — mechanical. |
+| `recurring`| `applied` | Human re-applies a tweaked fix (manual edit or new proposal supersedes). | Yes. |
+| `recurring`| `dropped` | Give up. | Yes. |
 
 ## Anti-patterns
 
