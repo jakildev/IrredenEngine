@@ -167,7 +167,7 @@ Avoid:
   - **ID:** T-381
   - **Area:** tooling
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-381-scout-reads-issues
   - **Blocked by:** T-380
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) scout projections correctly reflect task queue from issues + labels; (2) no `queue: maintenance sync` commits appear on master; (3) `fleet-claim` model gate works from issue labels; (4) agents see correct available/claimed/blocked task lists
@@ -191,7 +191,7 @@ Avoid:
   - **ID:** T-383
   - **Area:** tooling
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-383-commit-push-closes-crosscheck
   - **Blocked by:** (none)
   - **Acceptance:** `commit-and-push` warns (non-blocking) when `Closes #N` title has zero keyword overlap with the PR title; skill doc includes a regression note for the PR #1212 / #1215 incident
   - **Issue:** #1221
@@ -213,7 +213,7 @@ Avoid:
   - **ID:** T-385
   - **Area:** engine/render, shaders/glsl, shaders/metal
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-385-face-normal-rotation-lighting-shadow
   - **Blocked by:** (none)
   - **Acceptance:** At non-zero yaw, Lambert shading correct per face; shadow bias uses world-space normal; no self-shadow acne; fix is no-op at yaw=0; linux-debug + macos-debug build clean
   - **Issue:** #1218
@@ -224,7 +224,7 @@ Avoid:
   - **ID:** T-386
   - **Area:** engine/render, engine/prefabs/irreden/voxel
   - **Model:** opus
-  - **Owner:** opus-worker-1
+  - **Owner:** claude/T-386-chunk-visibility-rotation
   - **Blocked by:** (none)
   - **Acceptance:** No chunks incorrectly culled at any camera yaw; spinning yaw 0→360° shows no geometry pops or missing sectors; fix is no-op at yaw=0 (cardinalIndex=0 passes identity)
   - **Issue:** #1219
@@ -235,7 +235,7 @@ Avoid:
   - **ID:** T-387
   - **Area:** engine/render
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-1
+  - **Owner:** claude/T-387-shadow-aabb-coordinate-frame
   - **Blocked by:** (none)
   - **Acceptance:** At non-zero yaw, shadow AABB covers correct world-space region; no shadow clip at viewport edges; OR confirm #1198 (cascaded shadow maps, merged 2026-05-27) already resolves this and close the issue
   - **Issue:** #1220
@@ -246,7 +246,7 @@ Avoid:
   - **ID:** T-388
   - **Area:** tooling, docs
   - **Model:** sonnet
-  - **Owner:** sonnet-fleet-2
+  - **Owner:** claude/T-388-resolving-label-conflict-claim
   - **Blocked by:** (none)
   - **Acceptance:** Two workers seeing the same `fleet:semantic-conflict` PR: only one proceeds past label claim (lex-min tie-break), other skips within seconds; winner removes label on success and failure; stale `fleet:resolving-*` labels swept by `fleet-claim cleanup --gh` after TTL
   - **Issue:** #1223
