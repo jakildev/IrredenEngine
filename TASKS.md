@@ -198,18 +198,6 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). All of T-389–T-392 must be merged before this PR opens. High risk if any blocker is incomplete. Also updates root CLAUDE.md "Where to find things" table. Verify creations/game/TASKS.md exists on master before deleting.
   - **Links:**
 
-- [ ] **Fleet: update role docs for issue-based queue** — rewrite role docs (merger, opus-worker, sonnet-author, opus-architect, opus-reviewer, sonnet-reviewer, smoke-worker) to describe issue-based queue instead of TASKS.md
-  - **ID:** T-394
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-396 tasks-md-elimination
-  - **Acceptance:** `grep -rln "TASKS.md\|T-NNN\|queue-manager" .claude/commands/` returns 0 hits; all fleet-claim examples use `fleet-claim claim <issue#>`; role-merger TASKS.md sort-merge section removed; roles still read coherently end-to-end
-  - **Issue:** #1238
-  - **Notes:** Part of TASKS.md elimination epic (#1216). Can run in parallel with scripts cleanup. Largest change in role-merger.md (delete ~60 lines of TASKS.md sort-merge conflict class). Medium changes in role-opus-worker.md and role-sonnet-author.md. Small touches to role-opus-architect.md, role-opus-reviewer.md, role-smoke-worker.md. Low risk — pure doc work.
-  - **Links:**
-
 - [ ] **Fleet: rewrite docs/agents/FLEET.md for issue-based queue** — rewrite FLEET.md workflow, claim-mechanics, and label-state-machine sections to describe the post-TASKS.md fleet
   - **ID:** T-396
   - **Area:** docs
