@@ -202,7 +202,7 @@ Avoid:
   - **ID:** T-384
   - **Area:** engine/render, engine/world
   - **Model:** opus
-  - **Owner:** opus-worker-2
+  - **Owner:** claude/T-384-viewport-clipping-regression
   - **Blocked by:** (none)
   - **Acceptance:** IRShapeDebug renders full platform at yaw=0 with no left-half truncation; shapes on left side visible; regression confirmed fixed on current master
   - **Issue:** #1217
