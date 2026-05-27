@@ -109,6 +109,93 @@ print(count)
     log "cross-host dedup: $still_pending issue(s) still pending after live label check"
 fi
 
+# Scope-shipped pre-flight: detect issues whose scope already landed in a
+# merged PR under a different T-NNN prefix (e.g. sub-task ingested after the
+# parent epic shipped the scope). Posts a comment on the issue, adds the
+# fleet:scope-shipped label so future triage passes skip it, and removes it
+# from the pending list. Avoids burning an LLM iteration on a no-op ingest
+# (issue #1175).
+if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
+    scope_shipped_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" python3 - << 'SCOPE_PY' 2>>"$LOG_FILE"
+import json, os, subprocess, sys
+
+proj_path = os.environ['FLEET_PROJ_FILE']
+try:
+    data = json.load(open(proj_path))
+    pending = data.get('pending_issues', [])
+except Exception:
+    print('0,0')
+    sys.exit(0)
+
+kept, shipped = [], 0
+for issue in pending:
+    n = issue.get('number', 0)
+    if not n:
+        kept.append(issue)
+        continue
+    # Full-text search; may match incidental references — human verifies via comment before closing.
+    r = subprocess.run(
+        ['gh', 'pr', 'list', '--repo', 'jakildev/IrredenEngine', '--state', 'merged',
+         '--search', f'#{n}', '--json', 'number,title,url,mergedAt', '--limit', '5'],
+        capture_output=True, text=True, timeout=15,
+    )
+    try:
+        prs = json.loads(r.stdout or '[]') if r.returncode == 0 else []
+    except Exception:
+        prs = []
+    if not prs:
+        kept.append(issue)
+        continue
+    best = prs[0]
+    merged_date = best.get('mergedAt', '')[:10]
+    comment = (
+        f"Scope check: this issue's scope appears to have landed in "
+        f"\"{best['title']}\" (#{best['number']}, merged {merged_date}). "
+        "Skipping ingest; please close this issue if the scope is fully "
+        "addressed. — fleet-queue-ingest"
+    )
+    cr = subprocess.run(
+        ['gh', 'issue', 'comment', str(n), '--repo', 'jakildev/IrredenEngine',
+         '--body', comment],
+        capture_output=True, timeout=15,
+    )
+    if cr.returncode != 0:
+        kept.append(issue)
+        continue
+    subprocess.run(
+        ['gh', 'issue', 'edit', str(n), '--repo', 'jakildev/IrredenEngine',
+         '--add-label', 'fleet:scope-shipped'],
+        capture_output=True, timeout=15,
+    )
+    shipped += 1
+
+data['pending_issues'] = kept
+tmp_path = proj_path + '.tmp'
+try:
+    with open(tmp_path, 'w') as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp_path, proj_path)
+except Exception:
+    try:
+        os.unlink(tmp_path)
+    except Exception:
+        pass
+
+print(f'{shipped},{len(kept)}')
+SCOPE_PY
+    )
+    if [[ -n "$scope_shipped_out" ]]; then
+        IFS=',' read -r shipped_count kept_count <<< "$scope_shipped_out"
+        if [[ "${shipped_count:-0}" -gt 0 ]]; then
+            log "scope-shipped: skipped $shipped_count issue(s) with merged PR coverage; $kept_count remaining"
+        fi
+        if [[ "${kept_count:-0}" == "0" ]] && [[ "${shipped_count:-0}" -gt "0" ]]; then
+            log "scope-shipped: all pending issues have merged coverage — no LLM ingest needed"
+            exit 0
+        fi
+    fi
+fi
+
 # Use the queue-manager worktree as an isolated working area (mirrors
 # fleet-queue-tick). Fall back to the main clone if the worktree
 # doesn't exist (e.g. fresh fleet install pre-fleet-up).

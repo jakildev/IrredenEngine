@@ -146,16 +146,17 @@ def fetch_prs(repo):
     return prs
 
 
-_ALREADY_QUEUED_LABELS = frozenset({"fleet:queued"})
+_ALREADY_QUEUED_LABELS = frozenset({"fleet:queued", "fleet:scope-shipped"})
 
 # Labels that mark issues the queue-manager role doc explicitly skips at
 # Step 5 — filter these out of the ingest projector/slicer so epics and
 # un-planned issues never hold the projection hash non-zero.
 _INGEST_SKIP_LABELS = frozenset({
-    "fleet:queued",      # pre-filtered by fetch_human_approved, included for explicitness
+    "fleet:queued",        # pre-filtered by fetch_human_approved, included for explicitness
     "fleet:epic",
     "fleet:needs-plan",
     "fleet:needs-info",
+    "fleet:scope-shipped", # scope landed under a different T-NNN; human should close
 })
 
 

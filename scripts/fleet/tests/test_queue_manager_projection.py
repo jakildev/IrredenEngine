@@ -166,6 +166,31 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         self.assertEqual(out["pending_issues"][0]["number"], 9001)
         self.assertEqual(out["pending_issues"][0]["repo"], "engine")
 
+    def test_scope_shipped_excluded_from_pending(self):
+        # fleet:scope-shipped marks issues whose scope already landed under a
+        # different T-NNN; the projector and slicer must exclude them so the
+        # queue-manager never tries to re-ingest them (issue #1175).
+        shipped = [{"number": 9002, "title": "Feature Y",
+                    "labels": ["human:approved", "fleet:scope-shipped"]}]
+        h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=shipped)))
+        self.assertEqual(h, stable_hash(project_queue_manager_ingest(_state())),
+                         "scope-shipped issue must not contribute to the ingest hash")
+        out = slice_queue_manager_ingest(_state(engine_human_approved=shipped))
+        self.assertEqual(out["pending_issues"], [],
+                         "scope-shipped issue must be absent from pending_issues slice")
+
+    def test_scope_shipped_mix_keeps_non_shipped(self):
+        # When some issues are scope-shipped and some are genuinely pending,
+        # only the pending ones should appear in the slice.
+        issues = [
+            {"number": 9003, "title": "Pending", "labels": ["human:approved"]},
+            {"number": 9004, "title": "Shipped", "labels": ["human:approved", "fleet:scope-shipped"]},
+        ]
+        out = slice_queue_manager_ingest(_state(engine_human_approved=issues))
+        nums = [i["number"] for i in out["pending_issues"]]
+        self.assertIn(9003, nums)
+        self.assertNotIn(9004, nums)
+
 
 if __name__ == "__main__":
     unittest.main()
