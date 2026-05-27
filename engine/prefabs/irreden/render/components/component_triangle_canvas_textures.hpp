@@ -152,9 +152,30 @@ struct C_TriangleCanvasTextures {
                (static_cast<IREntity::EntityId>(packed.y) << 32);
     }
 
+    void clearDistances() const {
+        textureTriangleDistances_.second
+            ->clear(
+                PixelDataFormat::RED_INTEGER,
+                PixelDataType::INT32,
+                &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
+            );
+    }
+
     void saveAsPNG() {}
 
   private:
+    // Clears to kTrixelDistanceMaxDistance - 1 (= 65534) rather than
+    // kTrixelDistanceMaxDistance (= 65535). This predates the introduction of
+    // the public clearDistances() helper; the shader's "empty pixel" sentinel
+    // is 65535, so this value is one step below the canonical empty state.
+    //
+    // When invoked via clearCanvasWithBackground() → clearCanvasAndDistances(),
+    // the 65534 value is immediately overwritten by the unconditional
+    // canvas.clearDistances() call at the end of clearCanvasAndDistances(),
+    // which restores kTrixelDistanceMaxDistance (65535) on every frame. The
+    // redundant GPU clear here is negligible in cost but retained for correctness
+    // on call-sites (e.g. entity_trixel_canvas.hpp) that invoke clearWithColor()
+    // or clearWithColorData() without a subsequent clearDistances().
     void clearDistanceTexture() const {
         textureTriangleDistances_.second
             ->clear(
