@@ -54,8 +54,10 @@ Once the worker opens its PR, `fleet-state-scout` derives Owner
 from the PR's `headRefName` (e.g. `claude/1195-foo` → Owner
 `claude/1195-foo`). The `fleet:in-progress` and
 `fleet:claim-<host>-<agent>` labels on the issue together drive
-ownership state until the PR merges and `fleet-claim release`
-clears the claim label.
+ownership state through the PR lifecycle and are retained on the
+closed issue as a historical "who worked on this" record.
+Abandoned claims (no matching open `claude/<N>-*` PR + age > TTL)
+are swept by `fleet-claim cleanup --gh`.
 
 ### Multi-host fleet coordination
 
@@ -775,9 +777,10 @@ Specifically, **never pass these via `--label` when filing**:
   timer; the sweep will re-comment on the next tick if the PR is
   still idle. The human owns the resolution — the fleet won't
   re-free the issue automatically (that would race the worker if it
-  ever resumes). Closing the PR is the canonical reap path; the
-  scout clears `fleet:in-progress` / `fleet:claim-*` from the linked
-  issue on PR close.
+  ever resumes). Closing the PR is the canonical reap path; once
+  the PR is closed and the abandonment TTL passes,
+  `fleet-claim cleanup --gh` sweeps `fleet:claim-*` and
+  `fleet:in-progress` off the open issue.
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` / `fleet:authored-on-windows` — owned by
   the **author's `commit-and-push`** (set at PR creation based on
   `uname -s`). Records which host the PR was opened from so the
@@ -799,10 +802,14 @@ Specifically, **never pass these via `--label` when filing**:
   `fleet:reviewing-<host>-<agent>` (generic prefix is the race lock;
   lex-min wins under contention; losers self-remove and bail). The
   suffix encodes who claimed so issue-tracker views show ownership
-  without anyone reading the PR. Cleared by `fleet-claim release` on
-  completion, by `fleet-claim cleanup --gh` when the linked issue
-  closes, or via orphan-sentinel replay on transient remove-label
-  failures. Don't add manually.
+  without anyone reading the PR. **Retained** through the PR
+  lifecycle and on the closed issue as a historical record;
+  `fleet-claim release` only clears the FS lock and worktree
+  reservation, not the issue-side label. Swept by
+  `fleet-claim cleanup --gh` only when the claim is **abandoned**
+  on an OPEN issue (no matching `claude/<N>-*` PR + TTL).
+  Orphan-sentinel replay retries transient remove-label failures.
+  Don't add manually.
 - `fleet:merger-cooldown` / `fleet:changes-made` — owned by the
   worker / merger pipeline.
 - `fleet:semantic-conflict` — owned by the **merger** (sets when it
