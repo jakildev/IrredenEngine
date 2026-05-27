@@ -175,11 +175,11 @@ Avoid:
   - **Notes:** Part of plan `.claude/plans/can-we-do-a-delightful-sutherland.md` (Phases 3–4). PR 2 of 3. Previously closed without delivering scope — reopened by human 2026-05-27. Eliminates ~530 `queue: maintenance sync` commits per fleet cycle.
   - **Links:**
 
-- [ ] **fleet: delete TASKS.md, switch T-NNN convention to issue numbers, update all docs** — delete TASKS.md and game TASKS.md; update fleet-claim to accept issue numbers (reject T-NNN with hint); update commit/branch/plan-file naming conventions; update ~7 role docs, ~10 skills, CLAUDE.md, FLEET.md, and test fixtures
+- [~] **fleet: delete TASKS.md, switch T-NNN convention to issue numbers, update all docs** — delete TASKS.md and game TASKS.md; update fleet-claim to accept issue numbers (reject T-NNN with hint); update commit/branch/plan-file naming conventions; update ~7 role docs, ~10 skills, CLAUDE.md, FLEET.md, and test fixtures
   - **ID:** T-382
   - **Area:** tooling, docs
   - **Model:** opus
-  - **Owner:** free
+  - **Owner:** opus-worker-2
   - **Blocked by:** T-381
   - **Stack:** T-380..T-382 tasks-to-issues
   - **Acceptance:** (1) TASKS.md no longer exists; (2) all role docs and skills reference issue numbers and `fleet-queue-list`; (3) `fleet-claim` accepts issue numbers, rejects T-NNN with helpful message; (4) commit messages and branches use issue numbers; (5) test suite passes with updated fixtures
