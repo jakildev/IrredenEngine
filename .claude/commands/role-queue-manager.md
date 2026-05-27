@@ -288,8 +288,13 @@ d. Copy plan file if one exists:
    `cp ~/.fleet/plans/issue-<N>.md .fleet/plans/T-<NNN>.md`
    Skip if the local file does not exist. If the issue comments
    contain a `# Plan:` section, write it with the Write tool.
-e. Add the de-dupe signal:
+e. Add the de-dupe signal and model-affinity label:
    `gh issue edit <N> --repo <engine-repo> --add-label "fleet:queued"`
+   Then parse `**Model:** opus` or `**Model:** sonnet` from the issue
+   body and add the corresponding affinity label:
+   `gh issue edit <N> --repo <engine-repo> --add-label "fleet:opus"`
+   (or `fleet:sonnet`). If the model field is missing or ambiguous,
+   default to `fleet:opus`.
 f. Do NOT close the issue — the author agent's `Closes #N` does it.
 
 Repeat for `repos.game.human_approved[]` against the game TASKS.md

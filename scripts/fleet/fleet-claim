@@ -598,16 +598,17 @@ master_lock_task() {
     #   2 — task not found in TASKS.md, or origin unreachable, or
     #       protected push was rejected for a non-race reason
     #
-    # Skipped entirely when FLEET_CLAIM_NO_MASTER_LOCK=1 — exits 0 with
-    # a stderr note. Tests and bootstrap-without-network use this.
+    # Skipped by default (T-380). The GitHub `fleet:claim-*` label with
+    # lex-min tie-break already provides cross-host atomicity — the master
+    # push is redundant. Opt back in with FLEET_CLAIM_MASTER_LOCK=1 for
+    # rollback safety during the transition. The legacy
+    # FLEET_CLAIM_NO_MASTER_LOCK=1 is still respected (same skip effect).
     local action="$1"
     local task_id="$2"
     local owner="$3"
 
-    if [[ "${FLEET_CLAIM_NO_MASTER_LOCK:-0}" == "1" ]]; then
-        echo "fleet-claim: WARNING — master-lock DISABLED (FLEET_CLAIM_NO_MASTER_LOCK=1)." >&2
-        echo "  Cross-host duplicate-claim prevention is OFF. Safe for single-host" >&2
-        echo "  and test use only. Multi-host fleets MUST NOT set this variable." >&2
+    if [[ "${FLEET_CLAIM_MASTER_LOCK:-0}" != "1" ]] || \
+       [[ "${FLEET_CLAIM_NO_MASTER_LOCK:-0}" == "1" ]]; then
         return 0
     fi
 
@@ -1029,6 +1030,18 @@ cmd_claim() {
             fi
         fi
 
+        # Mark as in-progress on the issue (T-380). Best-effort — failure
+        # doesn't block the claim because the FS + claim-label locks are
+        # the authoritative state.
+        if [[ -n "$issue_num" && "$issue_label_acquired" -eq 1 ]]; then
+            local repo_for_label
+            repo_for_label=$(repo_from_ns)
+            if [[ -n "$repo_for_label" ]]; then
+                gh issue edit "$issue_num" --repo "$repo_for_label" \
+                    --add-label "fleet:in-progress" >/dev/null 2>&1 || true
+            fi
+        fi
+
         # Master-side TASKS.md push (T-138). Cross-host race resolution:
         # if another agent already pushed [~] for this task while we were
         # acquiring the FS lock, master_lock_task returns 1 — we roll
@@ -1385,6 +1398,8 @@ cmd_release() {
                 if [[ -n "$repo" ]]; then
                     issue_label="fleet:claim-${host}-${owner}"
                     gh_release_label "$repo" "$issue_num" "$issue_label" || true
+                    gh issue edit "$issue_num" --repo "$repo" \
+                        --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
                 fi
             fi
         fi

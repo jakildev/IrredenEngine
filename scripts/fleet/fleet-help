@@ -170,6 +170,8 @@ Parallel-agent fleet (tmux + Claude)
   fleet-down [--force] [--keep-claims] [--wait] [--summary]
   fleet-babysit …                (normally launched by fleet-up; architects only)
   fleet-claim …                  task claims under ~/.fleet/claims/
+  fleet-queue-list [--repo …] [--json]
+                                 human-readable task queue from GitHub Issues
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
   fleet-dispatcher               transient-claude dispatcher (worker panes)
   fleet-gate-status [--json]     show usage gate + per-pane cooldown state

@@ -213,7 +213,7 @@ log "starting LLM ingestion iteration"
 
 # Dispatch a one-shot claude --print invocation in ingest mode. The role
 # doc reads the queue-manager-ingest projection slice, categorizes each
-# issue, edits TASKS.md, sets fleet:queued labels, and commits on the
+# issue, edits TASKS.md, sets fleet:queued + fleet:opus/fleet:sonnet labels, and commits on the
 # fleet-queue-ingest branch. It does NOT push — the auto-mode permission
 # classifier treats `git push origin HEAD:master` as a shared-state
 # action that requires confirmation, so an unattended LLM iteration
