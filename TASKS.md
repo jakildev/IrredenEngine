@@ -198,24 +198,12 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). All of T-389–T-392 must be merged before this PR opens. High risk if any blocker is incomplete. Also updates root CLAUDE.md "Where to find things" table. Verify creations/game/TASKS.md exists on master before deleting.
   - **Links:**
 
-- [ ] **Fleet: rewrite docs/agents/FLEET.md for issue-based queue** — rewrite FLEET.md workflow, claim-mechanics, and label-state-machine sections to describe the post-TASKS.md fleet
-  - **ID:** T-396
-  - **Area:** docs
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-396 tasks-md-elimination
-  - **Acceptance:** `grep -n "TASKS.md\|T-NNN\|queue-manager\|fleet-queue-tick\|fleet-tasks-render" docs/agents/FLEET.md` returns 0 hits (or only historical-note hits in clearly-marked archive sections); FLEET.md reads coherently end-to-end; examples match new conventions
-  - **Issue:** #1240
-  - **Notes:** Part of TASKS.md elimination epic (#1216). No hard block but should land near the end so it describes actual post-cleanup behavior. ~50 KB file, ~950 lines, ~28 TASKS.md mentions. Treat as a rewrite, not a sweep. Sections to rewrite: §Workflow (rule 6), §How fleet-claim enforces atomicity, §Multi-host coordination, §Cursor flow, §Stack examples, §Label state machine, §Design escalation, §Feedback channel. Medium risk — FLEET.md is the canonical doc.
-  - **Links:**
-
 - [~] **Fleet: doc cross-reference cleanup post-TASKS.md** — update CLAUDE.md, CLAUDE-BASELINE.md, FLEET-FEEDBACK-HANDLING.md, FLEET-CACHE.md to remove stale TASKS.md/queue-manager cross-refs; triage and archive stale audit-*.md
   - **ID:** T-397
   - **Area:** docs
   - **Model:** sonnet
   - **Owner:** claude/1241-doc-xref-cleanup
-  - **Blocked by:** T-396
+  - **Blocked by:** (none)
   - **Stack:** T-389..T-397 tasks-md-elimination
   - **Acceptance:** root CLAUDE.md "Where to find things" table current; `grep -rln "TASKS.md\|T-NNN\|queue-manager" docs/ CLAUDE.md creations/*/CLAUDE.md` returns 0 non-archived hits; audit docs archived or refreshed; all doc cross-refs resolve
   - **Issue:** #1241
