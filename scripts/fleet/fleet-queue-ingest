@@ -1,39 +1,27 @@
 #!/usr/bin/env bash
-# fleet-queue-ingest — spawn one LLM ingestion iteration when scout sees
-# new human:approved issues that aren't yet in TASKS.md.
-#
-# Sibling to fleet-queue-tick. fleet-queue-tick handles MECHANICAL
-# bookkeeping (status flips, Owner, Done section, blocked-by resolution)
-# via fleet-tasks-render — pure deterministic, no LLM. fleet-queue-ingest
-# handles LLM-grade INGESTION (read issue body, categorize, write a new
-# TASKS.md entry with model assignment, blocked-by chain, plan reference)
-# by invoking `claude --print /role-queue-manager ingest`.
+# fleet-queue-ingest — stamp fleet:queued + the model-affinity label on
+# human:approved issues that lack them, so the scout's queue projection
+# picks them up.
 #
 # Invoked directly by fleet-state-scout when the queue-manager-ingest
 # projection changes (new human:approved issue appears, or an existing
 # one gets fleet:queued and drops out of the set).
 #
-# Idempotent: if there are no pending issues to ingest, exits in <1s
-# without invoking claude. The role doc itself re-checks before doing
-# any work, so a spurious spawn (e.g. on the post-ingestion drop-out
-# transition) costs only the bash startup time.
-#
-# Lockfile prevents concurrent runs.
+# Pure label-stamping — no LLM, no TASKS.md writes, no master push.
+# Idempotent: if there are no pending issues, exits in <1s. Per-host
+# lockfile prevents same-host concurrent runs; cross-host races are
+# caught by the live `gh issue view` re-check inside the stamping loop
+# (gh issue edit --add-label converges either way, but the re-check
+# avoids burning API budget on already-stamped issues).
 #
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
 
 set -euo pipefail
 
-ENGINE="${FLEET_ENGINE:-$HOME/src/IrredenEngine}"
 LOCK_DIR="${FLEET_QUEUE_INGEST_LOCK:-$HOME/.fleet/state/queue-ingest.lock}"
 LOG_FILE="$HOME/.fleet/logs/queue-ingest.log"
 PROJECTION_FILE="$HOME/.fleet/state/projections/queue-manager-ingest.json"
-# Dedicated worktree (fleet-queue-tick owns the queue-manager one). When
-# scout fires both on the same projection change, the shared .git/index.lock
-# races — queue-tick wins, queue-ingest's silenced checkout fails under
-# set -e, and the spent seen-hash strands the trigger. Provisioned by fleet-up.
-QM_WT="$ENGINE/.claude/worktrees/queue-manager-ingest"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
@@ -42,24 +30,22 @@ log() {
         | tee -a "$LOG_FILE" >&2
 }
 
-# Directory-based lockfile (atomic on POSIX). Concurrent fleet-queue-ingest
-# would race on TASKS.md edits; fail silently here so the second invocation
-# just exits.
+# Directory-based lockfile (atomic on POSIX). Concurrent same-host runs
+# would only waste API budget (gh issue edit --add-label is idempotent),
+# but the seen-hash invalidation below matters: without it, scout writes
+# the seen-hash before the spawn returns, so a lock-bailed spawn silently
+# consumes the projection-change signal and approved issues can strand
+# until the hash is manually deleted (#973).
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     log "another fleet-queue-ingest is running; exiting"
-    # Invalidate the seen-hash so the next scout tick re-fires the trigger.
-    # Without this, scout writes the seen-hash before the spawn returns, so
-    # a lock-bailed spawn silently consumes the projection-change signal and
-    # approved issues can strand until the hash is manually deleted (issue #973).
     rm -f "$HOME/.fleet/state/seen-hashes/queue-manager-ingest" || true
     exit 0
 fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null; true' EXIT INT TERM
 
 # Fast-path: scout's projection-diff fires on BOTH set-grow (new approved
-# issue) AND set-shrink (issue ingested, dropped out of human:approved-
-# minus-fleet:queued). On the post-ingestion drop-out the set is empty.
-# Bail out cheaply instead of spinning up claude to find nothing to do.
+# issue) AND set-shrink (issue ingested, dropped out of the human:approved-
+# minus-fleet:queued set). On the post-stamp drop-out the set is empty.
 if [[ -f "$PROJECTION_FILE" ]]; then
     pending_count=$(python3 -c "
 import json, sys
@@ -75,49 +61,16 @@ except Exception:
     fi
 fi
 
-# Cross-host dedup: re-check each pending issue against live GitHub state.
-# The projection is a snapshot from the scout's last tick (~30s ago). If
-# another host already ingested and labeled fleet:queued in that window,
-# we'd duplicate the TASKS.md row. Query live labels for each pending
-# issue and filter out any that already have fleet:queued.
-if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
-    still_pending=$(python3 -c "
-import json, subprocess, sys
-try:
-    data = json.load(open('$PROJECTION_FILE'))
-    pending = data.get('pending_issues', [])
-except Exception:
-    pending = []
-count = 0
-for issue in pending:
-    n = issue.get('number', 0)
-    if not n:
-        continue
-    r = subprocess.run(
-        ['gh', 'issue', 'view', str(n), '--repo', 'jakildev/IrredenEngine',
-         '--json', 'labels', '--jq', '[.labels[].name] | map(select(startswith(\"fleet:queued\"))) | length'],
-        capture_output=True, text=True, timeout=10,
-    )
-    if r.returncode == 0 and r.stdout.strip() == '0':
-        count += 1
-print(count)
-" 2>>"$LOG_FILE")
-    if [[ "$still_pending" == "0" ]]; then
-        log "cross-host dedup: all pending issues already fleet:queued — another host ingested first"
-        exit 0
-    fi
-    log "cross-host dedup: $still_pending issue(s) still pending after live label check"
-fi
-
 # Scope-shipped pre-flight: detect issues whose scope already landed in a
-# merged PR under a different T-NNN prefix (e.g. sub-task ingested after the
-# parent epic shipped the scope). Posts a comment on the issue, adds the
-# fleet:scope-shipped label so future triage passes skip it, and removes it
-# from the pending list. Avoids burning an LLM iteration on a no-op ingest
-# (issue #1175).
+# merged PR. Posts a comment on the issue, adds the fleet:scope-shipped
+# label so future triage passes skip it, and removes it from the pending
+# list. Mutating the projection file lets the label-stamping pass below
+# skip scope-shipped issues without re-querying (#1175).
 if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
     scope_shipped_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" python3 - << 'SCOPE_PY' 2>>"$LOG_FILE"
 import json, os, subprocess, sys
+
+REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
 
 proj_path = os.environ['FLEET_PROJ_FILE']
 try:
@@ -130,12 +83,13 @@ except Exception:
 kept, shipped = [], 0
 for issue in pending:
     n = issue.get('number', 0)
+    repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
     if not n:
         kept.append(issue)
         continue
     # Full-text search; may match incidental references — human verifies via comment before closing.
     r = subprocess.run(
-        ['gh', 'pr', 'list', '--repo', 'jakildev/IrredenEngine', '--state', 'merged',
+        ['gh', 'pr', 'list', '--repo', repo, '--state', 'merged',
          '--search', f'#{n}', '--json', 'number,title,url,mergedAt', '--limit', '5'],
         capture_output=True, text=True, timeout=15,
     )
@@ -155,15 +109,14 @@ for issue in pending:
         "addressed. — fleet-queue-ingest"
     )
     cr = subprocess.run(
-        ['gh', 'issue', 'comment', str(n), '--repo', 'jakildev/IrredenEngine',
-         '--body', comment],
+        ['gh', 'issue', 'comment', str(n), '--repo', repo, '--body', comment],
         capture_output=True, timeout=15,
     )
     if cr.returncode != 0:
         kept.append(issue)
         continue
     subprocess.run(
-        ['gh', 'issue', 'edit', str(n), '--repo', 'jakildev/IrredenEngine',
+        ['gh', 'issue', 'edit', str(n), '--repo', repo,
          '--add-label', 'fleet:scope-shipped'],
         capture_output=True, timeout=15,
     )
@@ -190,118 +143,110 @@ SCOPE_PY
             log "scope-shipped: skipped $shipped_count issue(s) with merged PR coverage; $kept_count remaining"
         fi
         if [[ "${kept_count:-0}" == "0" ]] && [[ "${shipped_count:-0}" -gt "0" ]]; then
-            log "scope-shipped: all pending issues have merged coverage — no LLM ingest needed"
+            log "scope-shipped: all pending issues have merged coverage — nothing to stamp"
             exit 0
         fi
     fi
 fi
 
-# Use the queue-manager worktree as an isolated working area (mirrors
-# fleet-queue-tick). Fall back to the main clone if the worktree
-# doesn't exist (e.g. fresh fleet install pre-fleet-up).
-if [[ ! -d "$QM_WT" ]]; then
-    log "queue-manager worktree not found at $QM_WT; using main clone"
-    QM_WT="$ENGINE"
-fi
-
-# Reset the worktree to a clean state on master so we never carry stale
-# branch commits or pre-existing dirty edits into the LLM iteration.
-git -C "$QM_WT" fetch origin --quiet
-git -C "$QM_WT" checkout -B fleet-queue-ingest origin/master >/dev/null 2>&1
-
-log "starting LLM ingestion iteration"
-
-# Dispatch a one-shot claude --print invocation in ingest mode. The role
-# doc reads the queue-manager-ingest projection slice, categorizes each
-# issue, edits TASKS.md, sets fleet:queued + fleet:opus/fleet:sonnet labels, and commits on the
-# fleet-queue-ingest branch. It does NOT push — the auto-mode permission
-# classifier treats `git push origin HEAD:master` as a shared-state
-# action that requires confirmation, so an unattended LLM iteration
-# always exits with the commit stranded on the local branch. The push
-# is done here in the parent script (post-claude block below), where
-# the classifier has no jurisdiction. Same split as fleet-queue-tick,
-# which is pure bash and pushes directly without ever spawning an LLM.
-#
-# stdin/stdout/stderr go to the log so the operator can debug. start a
-# new session so the script can return immediately if needed (though we
-# do wait here so the lockfile stays held until the LLM finishes).
-cd "$QM_WT"
-claude --model sonnet --effort high --print \
-    --output-format stream-json --include-partial-messages --verbose \
-    "/role-queue-manager ingest" >> "$LOG_FILE" 2>&1 || {
-    log "claude exited non-zero (rc=$?); leaving lock for manual inspection"
-    exit 1
-}
-
-# Push any commits the LLM produced. Defensive: only push if (a) there
-# are commits ahead of origin/master AND (b) the diff touches only the
-# bookkeeping files the role doc's exception covers (TASKS.md and
-# .fleet/plans/<file>). Anything else would be a role-doc violation
-# the LLM produced by mistake — refuse to push it.
-commits_ahead=$(git -C "$QM_WT" rev-list --count origin/master..HEAD 2>/dev/null || echo 0)
-if (( commits_ahead == 0 )); then
-    log "no new commits produced — LLM had nothing to ingest"
-    exit 0
-fi
-
-invalid_files=$(git -C "$QM_WT" diff --name-only origin/master..HEAD \
-    | grep -vE '^TASKS\.md$|^\.fleet/plans/' || true)
-if [[ -n "$invalid_files" ]]; then
-    log "ABORT: $commits_ahead commit(s) touch non-bookkeeping files; refusing to push:"
-    log "$invalid_files"
-    log "leaving commits on local fleet-queue-ingest branch for manual review"
+# Label-stamping pass: for each pending human:approved issue, fetch live
+# body + labels, then add `fleet:queued` plus the model-affinity label
+# parsed from the **Model:** body field. Per-issue live re-fetch is what
+# resolves cross-host races — if another host stamped fleet:queued while
+# our projection slice was being read, the live view shows the label and
+# we skip the edit. The projection slice's `repo` field routes engine vs
+# game issues to the right repo slug.
+if ! command -v gh >/dev/null 2>&1; then
+    log "gh not on PATH; cannot stamp labels"
     exit 1
 fi
 
-# Pre-push safety: check for duplicate task IDs in TASKS.md. Two hosts
-# ingesting the same issue simultaneously could produce two rows with the
-# same T-NNN or two rows for the same issue number.
-dup_ids=$(python3 -c "
-import re, sys, collections
+stamping_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" python3 - << 'STAMP_PY' 2>>"$LOG_FILE"
+import json, os, re, subprocess, sys
+
+REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+
+proj_path = os.environ['FLEET_PROJ_FILE']
 try:
-    content = open('TASKS.md').read()
+    data = json.load(open(proj_path))
+    pending = data.get('pending_issues', [])
 except Exception:
+    print('0,0,0')
     sys.exit(0)
-ids = re.findall(r'^\s+- \*\*ID:\*\*\s*(T-\d+)', content, re.MULTILINE)
-issues = re.findall(r'^\s+- \*\*Issue:\*\*\s*#(\d+)', content, re.MULTILINE)
-dup_ids = [k for k, v in collections.Counter(ids).items() if v > 1]
-dup_issues = [f'#{k}' for k, v in collections.Counter(issues).items() if v > 1]
-if dup_ids or dup_issues:
-    print(f'duplicate IDs: {dup_ids}, duplicate issues: {dup_issues}')
-" 2>/dev/null)
-if [[ -n "$dup_ids" ]]; then
-    log "ABORT: duplicate entries detected in TASKS.md: $dup_ids"
-    log "likely cross-host ingest race — another host may have committed first"
-    log "leaving commits on local fleet-queue-ingest branch for manual review"
-    exit 1
-fi
 
-log "pushing $commits_ahead bookkeeping commit(s) to origin/master"
-push_ok=0
-rebase_failed=0
-for attempt in 1 2 3; do
-    git -C "$QM_WT" fetch origin --quiet
-    if ! git -C "$QM_WT" rebase origin/master >>"$LOG_FILE" 2>&1; then
-        log "rebase failed on attempt $attempt — aborting and bailing"
-        git -C "$QM_WT" rebase --abort 2>/dev/null || true
-        rebase_failed=1
-        break
-    fi
-    if git -C "$QM_WT" push origin HEAD:master >>"$LOG_FILE" 2>&1; then
-        log "push succeeded on attempt $attempt"
-        push_ok=1
-        break
-    fi
-    log "push attempt $attempt failed; retrying"
-done
+# Body-field parsers mirror fleet-state-scout._parse_issue_field so we
+# label issues by the same fields the scout reads back out.
+MODEL_RE = re.compile(r'\*\*Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
+BLOCKED_RE = re.compile(r'\*\*Blocked by:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
 
-if (( push_ok == 0 )); then
-    if (( rebase_failed )); then
-        log "rebase failed; commits remain on local fleet-queue-ingest branch"
-    else
-        log "push failed after $attempt attempt(s); commits remain on local fleet-queue-ingest branch"
-    fi
-    exit 1
+stamped = 0
+skipped_already = 0
+failed = 0
+
+for issue in pending:
+    n = issue.get('number', 0)
+    repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
+    if not n:
+        continue
+
+    r = subprocess.run(
+        ['gh', 'issue', 'view', str(n), '--repo', repo,
+         '--json', 'body,labels'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: fetch failed: {r.stderr.strip()}', file=sys.stderr)
+        continue
+    try:
+        view = json.loads(r.stdout)
+    except Exception:
+        failed += 1
+        continue
+    body = view.get('body', '') or ''
+    labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
+
+    if 'fleet:queued' in labels or 'fleet:scope-shipped' in labels:
+        skipped_already += 1
+        continue
+
+    # Parse model from body. Default to fleet:opus on ambiguity — mirrors
+    # the prior role-queue-manager LLM behavior (the heavier-judgment
+    # model is the safer default when intent is unclear).
+    model_match = MODEL_RE.search(body)
+    model_text = (model_match.group(1).strip().lower() if model_match else '')
+    if 'opus' in model_text:
+        model_label = 'fleet:opus'
+    elif 'sonnet' in model_text:
+        model_label = 'fleet:sonnet'
+    else:
+        model_label = 'fleet:opus'
+        print(f'WARN issue {repo}#{n}: **Model:** field missing or unrecognized; defaulting to fleet:opus', file=sys.stderr)
+
+    if not BLOCKED_RE.search(body):
+        print(f'WARN issue {repo}#{n}: **Blocked by:** field missing; scout will treat as unblocked', file=sys.stderr)
+
+    add_labels = ['fleet:queued']
+    if model_label not in labels:
+        add_labels.append(model_label)
+
+    cmd = ['gh', 'issue', 'edit', str(n), '--repo', repo]
+    for lbl in add_labels:
+        cmd.extend(['--add-label', lbl])
+    er = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    if er.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: label edit failed: {er.stderr.strip()}', file=sys.stderr)
+        continue
+    stamped += 1
+
+print(f'{stamped},{skipped_already},{failed}')
+STAMP_PY
+)
+
+if [[ -n "$stamping_out" ]]; then
+    IFS=',' read -r stamped_count skipped_count failed_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s); skipped ${skipped_count:-0} already-labeled; ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"
