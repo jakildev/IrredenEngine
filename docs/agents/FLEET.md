@@ -8,8 +8,10 @@ The parallel-agent workflow that runs this repo. The top-level [`CLAUDE.md`](../
 
 This repo runs a parallel-agent workflow. The rules:
 
-1. **Never commit to `master` directly.** Always work on a short-lived feature
-   branch, typically named `claude/<area>-<topic>`.
+1. **Never commit to `master` directly.** Always work on a short-lived
+   feature branch. Fleet workers use `claude/<issue-number>-<short-topic>`
+   (e.g. `claude/1195-occupancy`); Cursor / ad-hoc work uses
+   `claude/<area>-<topic>`.
 2. **Commit + open a PR via the `commit-and-push` skill.** It branches if
    needed, runs `simplify`, writes the message, pushes, and calls `gh pr
    create` for you. Do **not** bypass and `git push origin master`.
@@ -20,91 +22,72 @@ This repo runs a parallel-agent workflow. The rules:
    worktree) looks at each PR. The user merges.
 5. **Never `--force` push to `master`.** Never use `--no-verify` to skip hooks
    unless the user explicitly asks.
-6. **Shared task queue lives in `TASKS.md`.** Pick the next unblocked item
-   from there rather than inventing work. **Only the queue-manager role and
-   `fleet-queue-tick` edit `TASKS.md`** — author agents must never include
-   TASKS.md changes in their feature PRs (this causes merge conflicts across
-   all parallel PRs). Reference the task title in your PR description instead.
-   The same single-editor rule applies to `.fleet/status/*.md`; see
-   `.fleet/status/README.md`. (`fleet-queue-tick` is a scout-spawned shell
-   script that recomputes derived fields; queue-manager ingestion is
-   human/Cursor-flow only.) **This rule is not overridden by any plan,
-   checklist, or user instruction** — if a plan file you wrote or were
-   handed says "add entries to TASKS.md", treat the plan as wrong on that
-   step. File the GitHub issue(s) and let queue-manager ingest. See each
-   role's "Out of scope" section for the per-role formulation.
+6. **Shared task queue lives in GitHub Issues.** Pick the next unblocked
+   issue labeled `fleet:queued` for your model (`fleet:opus` or
+   `fleet:sonnet`) rather than inventing work. Run `fleet-queue-list`
+   (or `gh issue list --label fleet:queued`) to see what's available. The
+   single-editor rule for `.fleet/status/*.md` still applies; see
+   `.fleet/status/README.md`. Author agents must never include status-file
+   edits in their feature PRs.
 
-See `TASKS.md` for the current queue and `.claude/skills/` for the exact
-commit/PR/review flows.
+See `fleet-queue-list` for the current queue and `.claude/skills/` for the
+exact commit/PR/review flows.
 
 ### How `fleet-claim` enforces single-claim atomicity
 
 Picking a task is two-step: a local FS lock (per-host atomic via
-`mkdir(2)` under `~/.fleet/claims/<slug>/`) and a master-side TASKS.md
-push that flips `[ ] → [~]` and writes `Owner:` on `origin/master`.
-The master push is pure git plumbing (`hash-object` + `mktree` +
-`commit-tree` + `push`) — no working-tree mutation in the agent's
-worktree. Together they catch:
+`mkdir(2)` under `~/.fleet/claims/<issue-slug>/`) and a GitHub
+issue-label tie-break (`fleet:claim-<host>-<agent>` on the issue
+itself). Together they catch:
 
 - **Same-host races** — the FS lock wins atomically; the loser never
-  reaches the master push.
-- **Cross-host races** — both win their FS lock; their master pushes
-  race, and the loser's `git push` returns non-fast-forward. After
-  re-fetching, the loser sees `[~]` set by the winner and aborts with
-  exit 1 ("race lost on master push"), rolling back its FS claim.
+  reaches the label step.
+- **Cross-host races** — both hosts' FS locks succeed independently
+  (separate filesystems). Both attempt to apply
+  `fleet:claim-<host>-<agent>` on the issue. After applying, each
+  host re-reads the issue's label set and runs an atomic lex-min
+  tie-break: if any other `fleet:claim-*` label has a lower name,
+  the loser removes its own label and rolls back its FS claim with
+  exit 1 ("race lost on issue-label tie-break").
 
-Once the worker opens its PR, `fleet-tasks-render` re-derives Owner
-from the PR's `headRefName`. In the no-PR window between
-`fleet-claim claim` and `gh pr create` the renderer preserves `[~]`
-by reading the FS claim directly — so a queue-tick that fires in
-that gap does not clobber the master-push. When `check-stale` prunes
-an abandoned claim the next renderer run reverts `[~]` to `[ ]`
-naturally.
-
-`FLEET_CLAIM_NO_MASTER_LOCK=1` skips the master push entirely
-(used by tests and bootstrap-without-network flows). Cross-host
-race resolution degrades to FS-lock-only when set. **Unsafe for
-multi-host** — silently allows duplicate claims.
+Once the worker opens its PR, `fleet-state-scout` derives Owner
+from the PR's `headRefName` (e.g. `claude/1195-foo` → Owner
+`claude/1195-foo`). The `fleet:in-progress` and
+`fleet:claim-<host>-<agent>` labels on the issue together drive
+ownership state until the PR merges and `fleet-claim release`
+clears the claim label.
 
 ### Multi-host fleet coordination
 
 When running fleets on two or more hosts simultaneously, the following
 coordination mechanisms prevent duplicate work:
 
-**Task claiming (three layers):**
-1. **FS lock** (`~/.fleet/claims/<slug>/` via atomic `mkdir`) — prevents
-   same-host races. Per-host only.
-2. **Master-side TASKS.md push** — pure git plumbing push to
-   `origin/master` that flips `[ ] → [~]`. Cross-host: both hosts' FS
-   locks succeed independently; the master push races; the loser sees
-   non-FF rejection, re-fetches, detects `[~]`, and rolls back its FS
-   claim.
-3. **Issue-label tie-break** (`fleet:claim-<host>-<agent>` on the GitHub
-   issue) — for tasks with a linked `Issue: #N`. Atomic lex-min
-   tie-break: if another agent's `fleet:claim-*` label is already on the
-   issue AND has a lower name, the acquire fails and rolls back.
+**Task claiming (two layers):**
+1. **FS lock** (`~/.fleet/claims/<issue-slug>/` via atomic `mkdir`) —
+   prevents same-host races. Per-host only.
+2. **Issue-label tie-break** (`fleet:claim-<host>-<agent>` on the
+   GitHub issue) — atomic lex-min tie-break. After applying the
+   label, each host re-reads the issue's labels; if another
+   `fleet:claim-*` label has a lower name, the loser removes its
+   label and rolls back its FS claim.
 
 **Requirements for cross-host safety:**
-- `origin/master` must be reachable at claim time. If `git fetch origin
-  master` fails, the claim is rolled back entirely (the agent retries on
-  the next iteration). No silent fallback to FS-lock-only.
-- `FLEET_CLAIM_NO_MASTER_LOCK=1` must NOT be set on any multi-host fleet.
+- The GitHub issue must be reachable at claim time. If `gh issue edit
+  --add-label` fails, the claim is rolled back entirely (the agent
+  retries on the next iteration). No silent fallback to FS-lock-only.
 - Each host must have its own unique `derive_host()` value (mac, linux,
   windows) — two hosts with the same host tag would generate identical
   issue labels and skip the tie-break.
 
-**Queue-manager ingestion (cross-host race prevention):**
+**Ingestion (cross-host race prevention):**
 - The scout fires `fleet-queue-ingest` when new `human:approved` issues
   appear. Two hosts' scouts may fire simultaneously from the same
   projection snapshot.
-- `fleet-queue-ingest` holds a per-host lockfile (prevents same-host
-  concurrency) and performs a live GitHub label re-check before the LLM
-  invocation (catches cross-host races where another host already labeled
-  `fleet:queued`).
-- Post-LLM, a duplicate-task-ID check scans `TASKS.md` before pushing.
-- The push itself uses fetch + rebase + retry (3 attempts); a rebase
-  conflict on the same TASKS.md row is the final cross-host dedup
-  safety net.
+- `fleet-queue-ingest` is pure label-stamping — no LLM, no repo edits.
+  It holds a per-host lockfile and performs a live GitHub label
+  re-check immediately before each `gh issue edit` so two hosts that
+  observe the same `human:approved` issue converge without duplicate
+  label additions.
 
 **Review claiming:**
 - Review claims use `fleet:reviewing-<host>-<agent>` labels on PRs via
@@ -127,11 +110,9 @@ coordination mechanisms prevent duplicate work:
   degrade). The task is retried on the next iteration when connectivity
   returns.
 - The ~30s scout refresh window is the smallest cross-host visibility
-  window. Two agents can independently start work on the same task within
-  that window, but the master-push race resolves it before any PR is
-  opened.
-- Tasks without a linked GitHub issue (free-pasted entries) skip the
-  issue-label layer. They rely on the FS lock + master push alone.
+  window. Two agents can independently start work on the same issue
+  within that window, but the issue-label tie-break resolves it before
+  either host pushes any branch.
 
 ### Cursor flow (human-in-the-loop)
 
@@ -155,8 +136,9 @@ In Cursor flow:
   for an explicit cue (see the cue table below). The fleet's rules
   2 and 3 describe what happens *when* those cues arrive — they
   don't license proactive invocation.
-- **`TASKS.md` is fleet-only.** The Cursor session is not bound to
-  the shared queue; the human decides what to work on.
+- **The fleet queue is fleet-only.** Issues labeled `fleet:queued`
+  drive autonomous worker pickup; the Cursor session is not bound
+  to them. The human decides what to work on.
 
 **Branching.** You do not need to manually create a feature branch
 before starting Cursor work. `commit-and-push` step 2 detects when
@@ -211,7 +193,7 @@ A's PR and immediately start slice B that depends on A — before A
 is merged — with B's diff scoped to its own changes only.
 
 Cursor stacking is a lighter-weight pattern than fleet's
-`fleet-claim stack` mode: no molecules, no task IDs, no worktree
+`fleet-claim stack` mode: no molecules, no issue claims, no worktree
 claims, no `fleet:stacked` label. State is per-branch git config,
 so it survives across chat boundaries automatically.
 
@@ -275,13 +257,11 @@ the question to the architect and resume cleanly:
 1. Worker posts `## NEEDS-DESIGN` comment on the open PR + adds
    `fleet:design-blocked` (keeping `fleet:wip`) + commits whatever
    in-progress work is on the branch + `start-next-task`s away to
-   pick a different unblocked task next iteration.
+   pick a different unblocked issue next iteration.
 2. Architect reads the comment, updates the canonical plan at
    `~/.fleet/plans/issue-<N>.md`, posts a PR comment with concrete
    decisions, swaps `fleet:design-blocked` → `fleet:design-unblocked`.
-3. Queue-manager re-syncs the updated plan into the repo at
-   `.fleet/plans/T-<NNN>.md` when next invoked for ingestion (Cursor flow).
-4. Worker (any worker — not necessarily the original one) sees the
+3. Worker (any worker — not necessarily the original one) sees the
    `fleet:design-unblocked` PR via its feedback-PR loop on the next
    iteration, reads the architect's comment + the updated plan,
    addresses the direction, removes the label, pushes via
@@ -289,9 +269,8 @@ the question to the architect and resume cleanly:
 
 Reviewer agents skip `fleet:design-blocked` PRs (they're in
 escalation limbo, not awaiting review). The full per-role procedure
-is in `role-opus-worker.md` (escalate + resume),
-`role-opus-architect.md` ("Handling `fleet:design-blocked` PRs"),
-and `role-queue-manager.md` (step 5d plan copy).
+is in `role-opus-worker.md` (escalate + resume) and
+`role-opus-architect.md` ("Handling `fleet:design-blocked` PRs").
 
 ### Model split: Opus for core, Sonnet for the fleet
 
@@ -320,14 +299,14 @@ pays off:
   to-smart-pointer, add-logging.
 - **First-pass code review.** Style, obvious bugs, missing null checks,
   naming inconsistencies, untested branches.
-- Clearly-scoped items from `TASKS.md` that have already been thought through
-  by Opus or the user.
+- Clearly-scoped issues from the fleet queue that have already been
+  thought through by Opus or the user.
 - Gameplay / creation-level work where mistakes are cheap to catch.
 
-When tagging tasks in `TASKS.md`, mark them `[opus]` or `[sonnet]`. If a
-Sonnet agent picks up a task and it turns out to be subtler than expected,
-stop and escalate — the cost of running out your Opus budget on routine work
-is much higher than the cost of one handoff.
+When labeling issues, apply `fleet:opus` or `fleet:sonnet`. If a
+Sonnet agent picks up an issue and it turns out to be subtler than
+expected, stop and escalate — the cost of running out your Opus
+budget on routine work is much higher than the cost of one handoff.
 
 Two-tier review is legitimate and encouraged: Sonnet catches the obvious
 stuff cheaply, Opus looks at what's left. Don't skip the Opus second pass
@@ -436,10 +415,10 @@ Two stacking modes exist in this fleet:
 
 - **Cursor stacking** — human-driven; described under
   [Stacking in cursor flow](#cursor-flow-human-in-the-loop) above.
-  No task IDs or fleet labels involved; driven by git config and
-  human cues.
+  No issue claims or fleet labels involved; driven by git config
+  and human cues.
 - **Cross-author stacking (scheduler)** — autonomous; described
-  below. A free worker picks up a blocked task when the blocker
+  below. A free worker picks up a blocked issue when the blocker
   already has an open PR, branches off the blocker's branch, and
   opens a stacked PR. The merger keeps the chain in sync as the
   upstream PR evolves.
@@ -448,24 +427,24 @@ Two stacking modes exist in this fleet:
 
 **Scenario walkthrough:**
 
-1. **Worker A** claims T-X, opens PR #100 with `fleet:wip`.
-2. **Worker B**'s next iteration: no unblocked tasks. The fallback
-   tier in the task-pickup loop finds T-Y (`Blocked by: T-X`,
-   `stackable_blocker_pr = { number: 100, headRefName: "claude/T-X-…" }`
-   pre-computed by the scout). Worker B claims T-Y with:
-   `fleet-claim claim T-Y <agent> --stackable-on 100`
-3. Worker B reads `fleet-claim claim-base T-Y` → returns
-   `claude/T-X-…` (not `master`). It fetches and branches off
-   `origin/claude/T-X-…`, then opens PR #101 with
-   `--base claude/T-X-…` and adds `fleet:stacked`. PR #101's diff
-   shows only T-Y's changes; T-X's commits are part of the base.
+1. **Worker A** claims issue #X, opens PR #100 with `fleet:wip`.
+2. **Worker B**'s next iteration: no unblocked issues. The fallback
+   tier in the task-pickup loop finds issue #Y (blocked by #X,
+   `stackable_blocker_pr = { number: 100, headRefName: "claude/<X>-…" }`
+   pre-computed by the scout). Worker B claims #Y with:
+   `fleet-claim claim <Y> <agent> --stackable-on 100`
+3. Worker B reads `fleet-claim claim-base <Y>` → returns
+   `claude/<X>-…` (not `master`). It fetches and branches off
+   `origin/claude/<X>-…`, then opens PR #101 with
+   `--base claude/<X>-…` and adds `fleet:stacked`. PR #101's diff
+   shows only #Y's changes; #X's commits are part of the base.
 4. **Reviewer** sees `fleet:stacked` on #101 and checks #100's
    approval state. If #100 is not yet approved, the reviewer defers
    with `fleet:awaiting-upstream-review`. Once #100 is approved, the
    reviewer evaluates #101's delta only and notes the cross-author
    topology in the review body.
 5. **Worker A** pushes a feedback fix to #100 (new commits on
-   `claude/T-X-…`). The **merger** detects that #101's upstream tip
+   `claude/<X>-…`). The **merger** detects that #101's upstream tip
    moved on its next iteration:
    - **Clean rebase** → force-push #101, post a confirmation
      comment, leave existing approval labels intact.
@@ -475,7 +454,7 @@ Two stacking modes exist in this fleet:
      the label clears when they push a clean rebase or when the
      upstream merges.
 6. **PR #100 merges.** The merger re-targets #101's base from
-   `claude/T-X-…` to `master` (existing re-target logic, unchanged)
+   `claude/<X>-…` to `master` (existing re-target logic, unchanged)
    and removes `fleet:stacked`. PR #101 is now a standard PR vs
    `master`. The merger also adds `fleet:stacked-rebase` and
    `fleet:changes-made` — the reviewer's re-eval of the re-targeted
@@ -493,8 +472,8 @@ Two stacking modes exist in this fleet:
   child) attempts the rebase. The upstream's author does not rebase
   the child — that would require cross-worktree gymnastics that
   introduce ownership conflicts.
-- **Q3 — Multi-blocker.** Single-blocker tasks only. A task with
-  `Blocked by: T-A, T-B` is never eligible for the fallback tier
+- **Q3 — Multi-blocker.** Single-blocker issues only. An issue
+  blocked by both #A and #B is never eligible for the fallback tier
   even if all blockers have open PRs. Picking a single base branch
   from multiple blockers is a design call the v1 merger machinery
   does not handle.
@@ -517,8 +496,8 @@ authoring roles use live in the next three sections.
 
 `fleet-claim stack ...` writes a molecule file
 (`~/.fleet/molecules/<your-worktree-name>.yml`) so a crash mid-stack
-won't strand the remaining tasks. Authoring roles check for an
-in-flight molecule at the top of each iteration before normal task
+won't strand the remaining issues. Authoring roles check for an
+in-flight molecule at the top of each iteration before normal issue
 pickup:
 
 `fleet-claim molecule resume <your-worktree-name>`
@@ -526,38 +505,39 @@ pickup:
 Always exits 0 (safe to include in a parallel tool batch with
 `git fetch`, `gh pr list`, etc.). Discriminate via stdout:
 
-- **Stdout has a `T-NNN` task ID** — that task is part of a stack
+- **Stdout has an issue number** — that issue is part of a stack
   started earlier (possibly in a previous process before a crash).
-  It is now (or remains) marked `in-progress`. Skip normal task
-  pickup and jump straight to the role's work step. If the task's
-  PR is already open, `fleet-claim stack-pr-state <your-worktree-name>`
-  (add `--repo game` for game-side molecules — `--repo` is a global
-  flag parsed before the subcommand) shows its URL and branch.
-  Check out the task's branch and continue committing normally —
-  one task per branch means the branch itself is the per-task
-  anchor, so no special commit-subject prefix is required.
+  It is now (or remains) marked `fleet:in-progress`. Skip normal
+  issue pickup and jump straight to the role's work step. If the
+  issue's PR is already open, `fleet-claim stack-pr-state
+  <your-worktree-name>` (add `--repo game` for game-side molecules
+  — `--repo` is a global flag parsed before the subcommand) shows
+  its URL and branch. Check out the issue's branch and continue
+  committing normally — one issue per branch means the branch
+  itself is the per-issue anchor, so no special commit-subject
+  prefix is required.
 
   **Resume vs restart judgment.** Read the worktree's git status:
 
-  - No work-in-progress on the branch matching that task ID →
-    **start the task fresh** as if newly claimed.
+  - No work-in-progress on the branch matching that issue number →
+    **start the issue fresh** as if newly claimed.
   - Coherent partial work-in-progress (uncommitted edits, a
     half-applied refactor, an opened-but-empty file that fits the
-    task) → **resume from that state**; the previous process did
+    issue) → **resume from that state**; the previous process did
     real work, reuse it.
   - Incoherent partial work (random dirty files, half-applied edits
     to unrelated areas, mid-conflict markers) → discard with
     `git restore --staged .` + `git checkout -- .` and start fresh.
 
-  After committing a task in the molecule, advance the molecule
+  After committing an issue in the molecule, advance the molecule
   state so the next iteration can move on:
-  `fleet-claim molecule advance <your-worktree-name> <task-id> done pr=<PR-URL> commit=<sha>`
-  If the work failed and the task should be abandoned, use `failed`
+  `fleet-claim molecule advance <your-worktree-name> <issue-number> done pr=<PR-URL> commit=<sha>`
+  If the work failed and the issue should be abandoned, use `failed`
   instead of `done` and surface the failure to the human before
   continuing.
 
   **Cross-repo molecules** (opus-worker only — sonnet-author is
-  engine-only): if the in-flight molecule's tasks live in the game
+  engine-only): if the in-flight molecule's issues live in the game
   repo (claimed with `--repo game`), all
   `fleet-claim molecule advance/complete` calls must include
   `--repo game` too. Cd into the game opus-worker worktree before
@@ -565,7 +545,7 @@ Always exits 0 (safe to include in a parallel tool batch with
 
 - **Stdout is empty** — nothing to resume. Either no molecule exists
   for this agent (overwhelming common case) or a molecule exists but
-  every task is already `done` or `failed`. The stderr message tells
+  every issue is already `done` or `failed`. The stderr message tells
   you which: `"no molecule for agent: ..."` for the former, or
   `"molecule fully complete (no remaining tasks)"` for the latter.
   If the latter, also run
@@ -576,54 +556,55 @@ Always exits 0 (safe to include in a parallel tool batch with
   empty resume is also safe. Either way, proceed with the normal
   pickup flow.
 
-### Per-task stacked PR command sequence
+### Per-issue stacked PR command sequence
 
-When a stack-claim spans multiple tasks (`fleet-claim stack "T-A T-B …"`),
-each task in the chain gets its own branch and its own PR, with each
-PR's `--base` pointing at the previous task's branch. GitHub treats
-these as "stacked PRs": reviewers approve each one independently, and
-when an earlier PR merges, the next PR's base auto-rebases to master.
+When a stack-claim spans multiple issues
+(`fleet-claim stack "<A> <B> …"`), each issue in the chain gets its
+own branch and its own PR, with each PR's `--base` pointing at the
+previous issue's branch. GitHub treats these as "stacked PRs":
+reviewers approve each one independently, and when an earlier PR
+merges, the next PR's base auto-rebases to master.
 
-For the current task in the stack (first `(pending)` row in
+For the current issue in the stack (first `(pending)` row in
 `fleet-claim stack-pr-state <your-worktree-name>`):
 
 1. **Compute the base branch** for this PR:
-   `base=$(fleet-claim stack-base <your-worktree-name> <task-id>)`
-   — returns `master` for the first task, or the previous task's
-   branch (e.g. `claude/T-005-occupancy`) for subsequent tasks.
+   `base=$(fleet-claim stack-base <your-worktree-name> <issue-number>)`
+   — returns `master` for the first issue, or the previous issue's
+   branch (e.g. `claude/1195-occupancy`) for subsequent issues.
 2. **Branch off that base:**
    `git fetch origin "$base"`
-   `git checkout -b claude/<task-id>-<short-topic> "origin/$base"`
-3. Do the task's work in that branch. Commit as normal — no special
-   commit-subject prefix is required; one task per branch means the
-   branch name IS the per-task anchor.
+   `git checkout -b claude/<issue-number>-<short-topic> "origin/$base"`
+3. Do the issue's work in that branch. Commit as normal — no special
+   commit-subject prefix is required; one issue per branch means the
+   branch name IS the per-issue anchor.
 4. **Open the PR with `--base "$base"` and record it in the stack.**
    When `$base` is a feature branch (not `master`), add
    `--label "fleet:stacked"` so the merger and reviewer can filter
    by label without an extra `gh pr view --json baseRefName` call:
-   `gh pr create --base "$base" --title "T-<NNN>: <title>" --body "..." --label "fleet:wip" --label "fleet:stacked"`
-   `fleet-claim stack-set-pr <your-worktree-name> <task-id> "$(git branch --show-current)" "<pr-url>"`
-   For the first task in the chain (`$base == master`), omit
+   `gh pr create --base "$base" --title "<title> (#<N>)" --body "..." --label "fleet:wip" --label "fleet:stacked"`
+   `fleet-claim stack-set-pr <your-worktree-name> <issue-number> "$(git branch --show-current)" "<pr-url>"`
+   For the first issue in the chain (`$base == master`), omit
    `fleet:stacked` — that PR merges into master normally.
 
-**Stacked PR title + body format.** Start the PR title with the
-task ID so reviewers can tell which task in the chain this PR covers.
-The body includes a `Stacked on:` line pointing at the previous PR
-(or `master` for the first) so reviewers see the stack context
-immediately.
+**Stacked PR title + body format.** Use a descriptive title with the
+issue number in parentheses (standard GitHub convention) so reviewers
+can find the source issue. The body includes a `Stacked on:` line
+pointing at the previous PR (or `master` for the first) and a
+`Closes #N` line so the issue auto-closes when the PR merges.
 
 ```markdown
 ## Summary
-- <what this task does>
+- <what this issue does>
 
 ## Stack context
 Stacked on: <previous PR URL, or "master" for the first>
-Full chain: T-005 → T-007 → T-009
+Full chain: #1195 → #1196 → #1197
 
 ## Test plan
-- [ ] <task-specific checks>
+- [ ] <issue-specific checks>
 
-Closes #<issue-N>
+Closes #<N>
 ```
 
 The `commit-and-push` skill's "Stack-aware mode" section walks
@@ -640,29 +621,27 @@ reviewer's approval on the unchanged commits carries over unless a
 conflict actually modified them.
 
 **Addressing review feedback on a stacked PR:** commit the fix on
-the same branch, push, and comment as usual. No cross-task
+the same branch, push, and comment as usual. No cross-issue
 side-effects.
 
-### Single-task base resolution (`claim-base`)
+### Single-issue base resolution (`claim-base`)
 
-For single-task claims (including stackable-on fallback claims),
+For single-issue claims (including stackable-on fallback claims),
 determine the base branch before checking out:
 
-`fleet-claim claim-base "<task-id>"`
+`fleet-claim claim-base "<issue-number>"`
 
 - Returns `master` — branch off `origin/master` normally:
-  `git checkout -b claude/<area>-<topic>`
-  `git commit --allow-empty -m "claim: <task title>"`
-- Returns a feature branch (e.g. `claude/T-NNN-…`) — this is a
+  `git checkout -b claude/<N>-<short-topic>`
+  `git commit --allow-empty -m "claim: <issue title>"`
+- Returns a feature branch (e.g. `claude/<N>-…`) — this is a
   stackable-on claim; fetch and branch off that upstream branch:
   `git fetch origin <upstream-branch>`
-  `git checkout -b claude/<task-id>-<short-topic> origin/<upstream-branch>`
+  `git checkout -b claude/<issue-number>-<short-topic> origin/<upstream-branch>`
 
-Check the task's **Issue:** field. If it has a `#N` reference,
-include `Closes #N` in the PR body so the issue closes automatically
-when the PR merges:
-`gh pr create --title "<task title>" --body "Claiming task. Work in progress.\n\nCloses #N" --label "fleet:wip"`
-If there is no issue (`(none)`), omit the `Closes` line.
+Always include `Closes #<N>` in the PR body so the issue closes
+automatically when the PR merges:
+`gh pr create --title "<issue title> (#<N>)" --body "Claiming issue. Work in progress.\n\nCloses #<N>" --label "fleet:wip"`
 
 For a stackable-on claim (base is a feature branch), open with
 `--base <upstream-branch>` and add `fleet:stacked`:
@@ -671,10 +650,7 @@ First look up the upstream PR URL:
 `gh pr view <stackable_blocker_pr.number> --json url --jq .url`
 
 Then open the PR:
-`gh pr create --base <upstream-branch> --title "T-<NNN>: <title>" --body "Stacked on: <upstream PR URL>\n\nWork in progress." --label "fleet:wip" --label "fleet:stacked"`
-
-Reference the task title in the PR title so the queue-manager can
-match it.
+`gh pr create --base <upstream-branch> --title "<issue title> (#<N>)" --body "Stacked on: <upstream PR URL>\n\nWork in progress.\n\nCloses #<N>" --label "fleet:wip" --label "fleet:stacked"`
 
 ---
 
@@ -749,31 +725,38 @@ are not in that owner set.
 Specifically, **never pass these via `--label` when filing**:
 
 - `human:approved` — owned by the **human**. The human's "yes, work on
-  this" gate. Queue-manager keys ingestion off it.
+  this" gate. `fleet-queue-ingest` keys ingestion off it.
 - `fleet:epic` — owned by the **human**. Marks an issue as a parent
   that bundles multiple child issues (listed as a markdown task list
-  `- [ ] #N` in the body). Queue-manager:
-  (1) skips epics from TASKS.md ingestion (they're meta, not work),
+  `- [ ] #N` in the body). The ingest pipeline:
+  (1) skips epics (they're meta, not work),
   (2) auto-closes the epic once ALL referenced children are closed
-      (handled by `fleet-queue-tick` on projection-change ticks),
+      (handled by `fleet-state-scout` on projection-change ticks),
   (3) re-reads the body LIVE each tick — so adding a new `- [ ] #M`
       after the original children close keeps the epic open until
       #M also closes ("done done").
   The CHILDREN go through the normal `human:approved` ingestion
   flow individually; the epic itself is just visible bookkeeping.
-- `fleet:scope-shipped` — owned by the **queue-manager** (`fleet-queue-ingest`
-  pre-flight). Set when a merged PR is found that references the issue number
-  (#N), indicating the scope landed under a different T-NNN prefix (sub-task-
-  of-epic shipping pattern). The scout's `_INGEST_SKIP_LABELS` excludes these
-  from the ingest projection so future triage passes skip them silently. The
-  human should close the issue once they verify coverage. Added with a comment
-  citing the landing PR; not added if the comment call fails (safe retry on
-  next tick). Don't add manually unless you've verified a merged PR covers the
-  scope.
-- `fleet:queued` / `fleet:task` — owned by the **queue-manager**, set
-  AFTER it ingests an issue into `TASKS.md`. Adding it at filing time
-  excludes the issue from queue-manager's triage search and strands
-  it (observed on issues #270-#273, #287).
+- `fleet:scope-shipped` — owned by **`fleet-queue-ingest`** as a
+  pre-flight check. Set when a merged PR is found that references the
+  issue number (#N), indicating the scope landed under a different
+  branch/PR (sub-task-of-epic shipping pattern). The scout's
+  `_INGEST_SKIP_LABELS` excludes these from the ingest projection so
+  future triage passes skip them silently. The human should close
+  the issue once they verify coverage. Added with a comment citing
+  the landing PR; not added if the comment call fails (safe retry on
+  next tick). Don't add manually unless you've verified a merged PR
+  covers the scope.
+- `fleet:queued` / `fleet:task` — owned by **`fleet-queue-ingest`**,
+  set after `human:approved` has been observed. Adding it at filing
+  time excludes the issue from the ingest search (which looks for
+  `human:approved -label:fleet:queued`) and strands it. Let the
+  scout/ingest path apply these.
+- `fleet:opus` / `fleet:sonnet` — owned by **`fleet-queue-ingest`** as
+  a model-affinity hint. Applied alongside `fleet:queued` when ingest
+  classifies the issue (or left unset for the human to add manually
+  on edge cases). Workers filter pickup by their model label;
+  `fleet-queue-list` groups by these.
 - `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
   `fleet:blocker` — owned by the **reviewer agents** as PR verdicts.
 - `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` / `fleet:needs-windows-smoke` — owned by the
@@ -785,14 +768,16 @@ Specifically, **never pass these via `--label` when filing**:
   label). Set on claim / early fleet-worker PRs; remove when ready for
   review. **Do not** add on **Cursor / human-ready** PRs to `master`
   (those should be reviewable immediately). Don't add to issues.
-- `fleet:stalled` — owned by **`fleet-stale-sweep`** (invoked from
-  `fleet-queue-tick`). Added to a `fleet:wip` PR that hasn't been pushed
-  in 7+ days, along with a one-shot human comment listing the three
-  options (merge / close / push to re-arm). Sticky: removing the label
-  re-arms the timer; the sweep will re-comment on the next tick if the
-  PR is still idle. The human owns the resolution — the fleet won't
-  re-free the TASKS.md row automatically (that would race the worker
-  if it ever resumes). Closing the PR is the canonical reap path.
+- `fleet:stalled` — owned by **`fleet-state-scout`**'s idle-PR sweep.
+  Added to a `fleet:wip` PR that hasn't been pushed in 7+ days, along
+  with a one-shot human comment listing the three options (merge /
+  close / push to re-arm). Sticky: removing the label re-arms the
+  timer; the sweep will re-comment on the next tick if the PR is
+  still idle. The human owns the resolution — the fleet won't
+  re-free the issue automatically (that would race the worker if it
+  ever resumes). Closing the PR is the canonical reap path; the
+  scout clears `fleet:in-progress` / `fleet:claim-*` from the linked
+  issue on PR close.
 - `fleet:authored-on-linux` / `fleet:authored-on-macos` / `fleet:authored-on-windows` — owned by
   the **author's `commit-and-push`** (set at PR creation based on
   `uname -s`). Records which host the PR was opened from so the
@@ -809,15 +794,15 @@ Specifically, **never pass these via `--label` when filing**:
   label remains in `fleet-labels` for cases where the host/agent
   context isn't available.
 - `fleet:claim-<host>-<agent>` — owned by the **`fleet-claim`
-  script**, applied to the **GitHub issue** linked from a TASKS.md row
-  when `fleet-claim claim` succeeds. Same race semantics as
+  script**, applied directly to the **GitHub issue** when
+  `fleet-claim claim` succeeds. Same race semantics as
   `fleet:reviewing-<host>-<agent>` (generic prefix is the race lock;
   lex-min wins under contention; losers self-remove and bail). The
   suffix encodes who claimed so issue-tracker views show ownership
-  without anyone reading TASKS.md or the PR. Cleared by
-  `fleet-claim release` on completion, by `cleanup --gh` when the
-  linked issue closes, or via orphan-sentinel replay on transient
-  remove-label failures. Don't add manually.
+  without anyone reading the PR. Cleared by `fleet-claim release` on
+  completion, by `fleet-claim cleanup --gh` when the linked issue
+  closes, or via orphan-sentinel replay on transient remove-label
+  failures. Don't add manually.
 - `fleet:merger-cooldown` / `fleet:changes-made` — owned by the
   worker / merger pipeline.
 - `fleet:semantic-conflict` — owned by the **merger** (sets when it
@@ -884,7 +869,7 @@ Specifically, **never pass these via `--label` when filing**:
   carrying any `fleet:reviewing-*` label** as a fast-path filter,
   but the real mutex is `fleet-claim review-claim` itself (TOCTOU on
   the label list is benign — the atomic POST resolves the race).
-  Queue-tick's `fleet-claim cleanup --gh` pass sweeps labels older
+  The scout's `fleet-claim cleanup --gh` pass sweeps labels older
   than 30 min and replays orphan sentinels from failed removals.
   Don't add manually; don't add to issues.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
@@ -925,14 +910,14 @@ Specifically, **never pass these via `--label` when filing**:
 
 **The right pattern when filing an issue:** create it with NO labels.
 The human will add `human:approved` if and when they want it picked
-up. The queue-manager will add `fleet:queued` (or `fleet:needs-plan`
-/ `fleet:needs-info`) on the next triage pass after that.
+up. `fleet-queue-ingest` will add `fleet:queued` (and optionally a
+`fleet:opus` / `fleet:sonnet` model tag, or `fleet:needs-plan` /
+`fleet:needs-info` for triage states) on the next scout tick.
 
 **Exception:** if you're operating in a role's own lane (e.g. you
-ARE the queue-manager and you've just ingested an issue, or you ARE
-a reviewer and you've just verdict'd a PR), then setting your role's
-labels is correct. The rule above is about ad-hoc issue/PR filing
-from human conversations.
+ARE a reviewer and you've just verdict'd a PR), then setting your
+role's labels is correct. The rule above is about ad-hoc issue/PR
+filing from human conversations.
 
 ---
 
@@ -961,7 +946,7 @@ from the human knowing this?" Examples worth recording:
 - A concrete fleet-improvement suggestion you'd file as an issue
   if the threshold were lower.
 
-**Skip routine completion notes.** "I did task T-NNN, no issues"
+**Skip routine completion notes.** "I did issue #N, no problems"
 goes in logs (which already capture everything). The feedback
 channel is for things the human should consider acting on. Most
 iterations write nothing — that's correct.
