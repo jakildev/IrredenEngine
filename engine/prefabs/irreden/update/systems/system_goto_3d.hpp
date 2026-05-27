@@ -10,26 +10,29 @@ using namespace IRComponents;
 namespace IRSystem {
 
 template <> struct System<GOTO_3D> {
-    static SystemId create() {
-        return createSystem<C_LocalTransform, C_GotoEasing3D>(
-            "Goto3D",
-            [](C_LocalTransform &localXform, C_GotoEasing3D &gotoComp) {
-                if (gotoComp.done_)
-                    return;
-                gotoComp.currentFrame_++;
-                localXform.translation_ = IRMath::mix(
-                    gotoComp.startPos_,
-                    gotoComp.endPos_,
-                    gotoComp.easingFunction_(
-                        static_cast<float>(gotoComp.currentFrame_) /
-                        static_cast<float>(gotoComp.durationFrames_)
-                    )
-                );
-                if (gotoComp.currentFrame_ >= gotoComp.durationFrames_) {
-                    gotoComp.done_ = true;
-                }
-            }
+    // kEasingFunctions is a const global map of stateless lambdas — safe to
+    // call from multiple threads simultaneously.
+    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+
+    void tick(C_LocalTransform &localXform, C_GotoEasing3D &gotoComp) {
+        if (gotoComp.done_)
+            return;
+        gotoComp.currentFrame_++;
+        localXform.translation_ = IRMath::mix(
+            gotoComp.startPos_,
+            gotoComp.endPos_,
+            gotoComp.easingFunction_(
+                static_cast<float>(gotoComp.currentFrame_) /
+                static_cast<float>(gotoComp.durationFrames_)
+            )
         );
+        if (gotoComp.currentFrame_ >= gotoComp.durationFrames_) {
+            gotoComp.done_ = true;
+        }
+    }
+
+    static SystemId create() {
+        return registerSystem<GOTO_3D, C_LocalTransform, C_GotoEasing3D>("Goto3D");
     }
 };
 

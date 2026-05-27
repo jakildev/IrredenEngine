@@ -14,12 +14,15 @@ namespace IRSystem {
 // doesn't have to call `getComponent<C_WidgetSlider>` from inside a
 // per-entity tick.
 template <> struct System<WIDGET_APPLY_SLIDER> {
+    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+
     void tick(
         const IRComponents::C_Widget &widget,
         const IRComponents::C_WidgetState &state,
         IRComponents::C_WidgetSlider &slider
     ) {
-        if (!state.pressed_) return;
+        if (!state.pressed_)
+            return;
         slider.currentValue_ =
             slider.minValue_ + state.dragValue_ * (slider.maxValue_ - slider.minValue_);
     }
@@ -29,8 +32,7 @@ template <> struct System<WIDGET_APPLY_SLIDER> {
             WIDGET_APPLY_SLIDER,
             IRComponents::C_Widget,
             IRComponents::C_WidgetState,
-            IRComponents::C_WidgetSlider
-        >("WidgetApplySlider");
+            IRComponents::C_WidgetSlider>("WidgetApplySlider");
     }
 };
 
