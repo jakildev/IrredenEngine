@@ -174,21 +174,11 @@ Avoid:
   - **Notes:** Phase 5 of multithreading epic (#226). Blocker #1068 (IRJobs::pinTo) is now closed. GL/Metal texture creation must happen on the main thread — pinned worker does disk-read + decode only; upload schedules onto main. One entry point POC only; other loaders follow if the pattern is right.
   - **Links:**
 
-- [~] **world: chunk persistence — wire in-engine consumer end-to-end (T-298 follow-up 3/4)** — pick one consumer (voxel editor save path or new IRChunkStreamingSmoke demo) and wire a real `ChunkResidencyManager` + `VoxelPoolAllocation` round-trip
-  - **ID:** T-372
-  - **Area:** engine/world
-  - **Model:** sonnet
-  - **Owner:** claude/T-372-chunk-streaming-smoke-demo
-  - **Blocked by:** (none)
-  - **Acceptance:** (1) Consumer wired and running on linux-debug and macos-debug; (2) chunk file lands under `<save>/chunks/`; (3) round-trip preserves voxel data; (4) clean chunks skip the save
-  - **Issue:** #1170
-  - **Notes:** Split from #1008 item 3. T-298's code path has no in-engine consumer — only gtest fake-pool integration. Candidates: voxel editor "save chunks" path, or new `IRChunkStreamingSmoke` demo. Should land before E2/E3 (T-357/T-358) so persistence is proven on a real pool.
-  - **Links:**
-
 ## Done — last 20
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-372** — world: chunk persistence smoke demo (end-to-end consumer wire-in) · Owner: claude/T-372-chunk-streaming-smoke-demo · PR: https://github.com/jakildev/IrredenEngine/pull/1208
 - [x] **T-373** — world: rename ChunkDiskPersistence → ChunkVoxelDiskPersistence · Owner: claude/T-373-rename-chunk-disk-persistence · PR: https://github.com/jakildev/IrredenEngine/pull/1207
 - [x] **T-379** — system: bulk PARALLEL_FOR migration of trivially-safe prefab systems · Owner: claude/T-379-parallel-for-bulk-migration · PR: https://github.com/jakildev/IrredenEngine/pull/1212
 - [x] **T-378** — system: PROPAGATE_TRANSFORM BFS-parallel refactor · Owner: claude/T-378-propagate-transform-bfs-parallel · PR: https://github.com/jakildev/IrredenEngine/pull/1203
@@ -208,4 +198,3 @@ Avoid:
 - [x] **T-363** — tools: ir-host-probe survives non-exec lspci stub in PATH · Owner: claude/T-363-ir-host-probe-harden · PR: https://github.com/jakildev/IrredenEngine/pull/1177
 - [x] **T-364** — render: retire C_CameraYaw — camera rotation sources from C_LocalTransform · Owner: claude/T-364-camera-so3-retire-yaw · PR: https://github.com/jakildev/IrredenEngine/pull/1176
 - [x] **T-352** — render: fix zoom=16 GL_INVALID_VALUE at glBindImageTexture on Linux/OpenGL · Owner: claude/T-352-zoom16-bind-image-fix · PR: https://github.com/jakildev/IrredenEngine/pull/1174
-- [x] **T-365** — fleet: smoke-only mode — persistent cross-host smoke worker · Owner: claude/T-365-smoke-only-mode · PR: https://github.com/jakildev/IrredenEngine/pull/1173
