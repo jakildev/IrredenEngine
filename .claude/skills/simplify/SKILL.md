@@ -393,7 +393,7 @@ top-level `CLAUDE.md` and module-level `CLAUDE.md` files.
   task ID, PR number, or skill name cited in the prose now refers
   to something that no longer exists or means something different.
   Common triggers: a renamed file, a removed label, a role that
-  got merged into another, a TASKS.md task ID that already shipped.
+  got merged into another, a GitHub issue number that already shipped.
   Grep the cited identifiers against the current tree and fix what
   drifted.
 - **Examples that drifted from the current API.** A doc shows a

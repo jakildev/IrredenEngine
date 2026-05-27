@@ -401,7 +401,6 @@ platform-catchup: <repo> on <host-tag>
 - **Never commits to `master`.** All fixes go on a fresh branch off
   `origin/master`.
 - **Never `git pull --rebase` or `--force`.** Only `--ff-only`.
-- **Never edits `TASKS.md`.** Queue-manager owns that.
 - **Hard time budget: 60 minutes default.** Each step has a sub-budget;
   the report is emitted as soon as the budget is exhausted even if
   walk-back is mid-flight. The Bash tool's `timeout` parameter

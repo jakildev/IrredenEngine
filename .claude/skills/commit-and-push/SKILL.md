@@ -32,7 +32,7 @@ Do **not** invoke proactively — only when the user explicitly asks.
 
 This skill has three modes. Detect at the start of the flow, in priority order:
 
-1. **Fleet stack mode** — caller has an active `fleet-claim` stack chain. PRs are chained by `--base` (one PR per task). Detected via `fleet-claim stack-pr-state <worktree>`. See [`procedures/fleet-stack.md`](procedures/fleet-stack.md) for the deltas (branch name with `T-NNN` prefix, `stack-base` lookup for `--base`, `Stack context` body block, `fleet:stacked` label, `stack-set-pr` after PR open).
+1. **Fleet stack mode** — caller has an active `fleet-claim` stack chain. PRs are chained by `--base` (one PR per task). Detected via `fleet-claim stack-pr-state <worktree>`. See [`procedures/fleet-stack.md`](procedures/fleet-stack.md) for the deltas (branch name with `<issue#>` prefix (`claude/<NNN>-<slug>`), `stack-base` lookup for `--base`, `Stack context` body block, `fleet:stacked` label, `stack-set-pr` after PR open).
 2. **Cursor stack mode** — current branch has `branch.<name>.cursor-stack-base` git config set (written by `start-next-task` when the human cued stacking). PRs target the parent branch instead of `master`. See [`procedures/cursor-stack.md`](procedures/cursor-stack.md) for the detection check, the `Stacked on:` body line, and the macOS sandbox note.
 3. **Single-PR mode (default)** — neither stack signal present. Proceed with the standard flow below.
 
@@ -204,7 +204,7 @@ if git diff --cached --quiet; then
 fi
 ```
 
-On fleet branches (`claude/T-NNN-*`), the error is especially important —
+On fleet branches (`claude/<NNN>-*`), the error is especially important —
 an empty commit there leaves misleading task provenance in the repo. If
 `simplify` or `optimize` stripped every changed line, stop and investigate
 before proceeding.
@@ -263,10 +263,7 @@ Title should match the commit title for a single commit; use a broader title
 for multi-commit PRs.
 
 **`Closes #N` line (required when the task has an `Issue:` field).** This is
-what makes GitHub auto-close the originating issue on merge. Without it the
-TASKS.md row still reaps via the title's `T-NNN:` prefix (per
-`fleet-tasks-render`'s closed-issue fallback) but the GitHub issue side
-stays open and the queue silently accumulates stale items. Omit the line
+what makes GitHub auto-close the originating issue on merge. Omit the line
 only when the task's `Issue:` field is `(none)` — cleanup PRs, fleet-tooling
 PRs filed without a tracking issue, etc. See
 [`procedures/pr-body.md`](procedures/pr-body.md) for the full template and

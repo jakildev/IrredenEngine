@@ -22,7 +22,7 @@ git config --get branch.$(git branch --show-current).cursor-stack-base
   parent_pr_url=$(gh pr list --head "$parent_branch" --state all --json url -q '.[0].url' --limit 1)
   ```
   If the parent has no PR yet (e.g. the human hasn't run `commit-and-push` on it — unusual but possible), use the branch name instead: `Stacked on: <parent_branch>` and warn the user.
-- **Title** uses the normal cursor-flow shape (no `T-NNN:` prefix — cursor flow doesn't use the queue).
+- **Title** uses the normal cursor-flow shape (no issue-number prefix — cursor flow branches are named `claude/<area>-<topic>`).
 - **No labels** beyond what the normal flow adds. The `fleet:stacked` label is fleet-only; cursor flow just relies on `Stacked on:` in the PR body.
 
 ## After the PR opens

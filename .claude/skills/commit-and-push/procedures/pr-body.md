@@ -25,10 +25,7 @@ Omit the `Closes #<issue-N>` line when the task's `Issue:` field is `(none)`
 (e.g. cleanup PRs, fleet-tooling PRs filed without a tracking issue).
 
 The `Closes #N` line is what makes GitHub auto-close the originating issue on
-merge. Without it, the closed-issue auto-reaper in `fleet-tasks-render` still
-moves the TASKS.md row to Done (via the PR title's `T-NNN:` prefix), but the
-GitHub issue side stays open and accumulates. Always include it when an Issue
-number exists.
+merge. Always include it when an Issue number exists.
 
 ## Fleet stack delta
 
@@ -40,7 +37,7 @@ This PR is part of a stack. Reviewers: review this PR on its own;
 the chain is coordinated in the PR body's "Stacked on" line.
 
 Stacked on: <previous PR URL, or "master" for the first PR>
-Full chain: T-<A>, T-<B>, T-<C>
+Full chain: #<A>, #<B>, #<C>
 ```
 
 Drop `## Notes for reviewer`. The `Closes #<issue-N>` line is already in the

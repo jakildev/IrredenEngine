@@ -173,7 +173,7 @@ leave it stale so the next run re-surfaces the entries.
 
 If the human wants the proposals worked on rather than just tracked,
 hand them to the existing `human:approved` → `fleet-queue-ingest` →
-queue-manager → worker pipeline:
+worker pipeline:
 
 ```bash
 scripts/fleet/review-fleet-feedback file-tasks --dry-run     # preview titles
