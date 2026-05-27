@@ -166,6 +166,10 @@ class WorldConfig {
             "worker_thread_count",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(-1)
         );
+        m_config.addEntry(
+            "max_update_ticks_per_frame",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(8)
+        );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);
     }

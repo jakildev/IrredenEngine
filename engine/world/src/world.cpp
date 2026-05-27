@@ -47,7 +47,10 @@ World::World(const char *configFileName)
     , m_startRecordingOnFirstInput{
           m_worldConfig["start_recording_on_first_key_press"].get_boolean()
       }
-    , m_hasHandledFirstInput{false} {
+    , m_hasHandledFirstInput{false}
+    , m_maxUpdateTicksPerFrame{static_cast<uint32_t>(
+          m_worldConfig["max_update_ticks_per_frame"].get_integer()
+      )} {
     IRRender::setSubdivisionMode(
         static_cast<IRRender::SubdivisionMode>(m_worldConfig["subdivision_mode"].get_enum())
     );
@@ -83,9 +86,7 @@ World::World(const char *configFileName)
     // staging vector now that JobManager exists. Slot 0 is main,
     // slots 1..N are IRJob worker threads, so the total is
     // `workerCount() + 1`.
-    m_entityManager.resizeWorkerStaging(
-        static_cast<std::size_t>(m_jobManager.workerCount() + 1)
-    );
+    m_entityManager.resizeWorkerStaging(static_cast<std::size_t>(m_jobManager.workerCount() + 1));
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
 }
@@ -196,6 +197,7 @@ void World::gameLoop() {
         }
         while (!m_IRGLFWWindow.shouldClose()) {
             m_timeManager.beginMainLoop();
+            m_timeManager.clampUpdateLag(m_maxUpdateTicksPerFrame);
 
             Clock::time_point frameStart;
             if (m_frameTimingEnabled) {
