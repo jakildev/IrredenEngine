@@ -174,18 +174,6 @@ Avoid:
   - **Notes:** Part of TASKS.md elimination epic (#1216). Interface break: `fleet-claim claim <issue#>` replaces `fleet-claim claim "T-NNN"`. Deletes master_lock_task() and master-push path (~lines 710–900), check_blockers() TASKS.md body, check_model_tag() (reads labels instead), cmd_reclaim(), cmd_find_stackable_blockers() TASKS.md scan. High risk — fleet-claim is on the critical path; fleet is paused for migration.
   - **Links:**
 
-- [~] **Fleet-queue-ingest: stop writing TASKS.md; label-driven ingestion only** — remove the LLM/TASKS.md-write step from fleet-queue-ingest; retain label-stamping only
-  - **ID:** T-391
-  - **Area:** tooling
-  - **Model:** opus
-  - **Owner:** claude/T-391-fleet-queue-ingest-drop-llm
-  - **Blocked by:** (none)
-  - **Stack:** T-389..T-396 tasks-md-elimination
-  - **Acceptance:** fleet-queue-ingest no longer invokes `claude --print /role-queue-manager`; no TASKS.md reads in fleet-queue-ingest; issue moves from human:approved to fleet:queued within one scout tick; two simultaneous ingest runs converge to single label transition; label descriptions updated
-  - **Issue:** #1235
-  - **Notes:** Part of TASKS.md elimination epic (#1216). Deletes LLM invocation of role-queue-manager (~line 216), TASKS.md dedup check (~lines 248, 262–273), worktree dedup logic/queue-manager-ingest worktree spawn (~line 200). Keeps per-host lockfile and live GitHub label re-check. Updates fleet:queued, fleet:task, fleet:epic label descriptions.
-  - **Links:**
-
 - [~] **Fleet-state-scout: drop TASKS.md reads and queue-tick spawn after T-381 cleanup** — remove residual TASKS.md reads and fleet-queue-tick spawn left over from PR #1229
   - **ID:** T-392
   - **Area:** tooling
@@ -203,7 +191,7 @@ Avoid:
   - **Area:** tooling, docs
   - **Model:** sonnet
   - **Owner:** free
-  - **Blocked by:** T-390, T-391, T-392
+  - **Blocked by:** T-390, T-392
   - **Stack:** T-389..T-396 tasks-md-elimination
   - **Acceptance:** TASKS.md, creations/game/TASKS.md, role-queue-manager.md all deleted; root CLAUDE.md table updated with gh issue list / fleet-queue-list pointer; `grep -rln "TASKS.md" .` returns 0 hits; fleet smoke cycle passes on post-deletion branch
   - **Issue:** #1237
@@ -250,6 +238,7 @@ Avoid:
 
 <!-- Completed tasks, newest first. Prune older entries beyond 20. -->
 
+- [x] **T-391** — fleet: fleet-queue-ingest drops LLM step (label-only ingest) · Owner: claude/T-391-fleet-queue-ingest-drop-llm · PR: https://github.com/jakildev/IrredenEngine/pull/1244
 - [x] **T-389** — fleet: delete orphaned queue scripts · Owner: claude/T-389-delete-orphaned-queue-scripts · PR: https://github.com/jakildev/IrredenEngine/pull/1243
 - [x] **T-395** — fleet: update skills for issue-based queue · Owner: claude/1239-update-skills-issue-queue · PR: https://github.com/jakildev/IrredenEngine/pull/1242
 - [x] **T-387** — render: sun shadow AABB sweep uses mismatched coordinate frames at non-zero yaw · Owner: claude/T-387-shadow-aabb-coordinate-frame · PR: https://github.com/jakildev/IrredenEngine/pull/1230
@@ -269,4 +258,3 @@ Avoid:
 - [x] **T-377** — fleet: commit-and-push — refuse to commit when staged tree is empty · Owner: claude/T-377-commit-and-push-empty-commit-guard · PR: https://github.com/jakildev/IrredenEngine/pull/1209
 - [x] **T-375** — fleet-tasks-render — preserve [~] from cross-host fleet:claim-* labels · Owner: claude/T-375-cross-host-gh-claim-preserve · PR: https://github.com/jakildev/IrredenEngine/pull/1206
 - [x] **T-376** — fleet-claim cleanup --gh — TTL sweep stale fleet:claim-* labels off open issues · Owner: claude/T-376-fleet-claim-ttl-sweep · PR: https://github.com/jakildev/IrredenEngine/pull/1204
-- [x] **T-370** — perf: cap UPDATE ticks per frame to prevent IRPerfGrid death spiral · Owner: claude/T-370-perfgrid-update-pipeline · PR: https://github.com/jakildev/IrredenEngine/pull/1202
