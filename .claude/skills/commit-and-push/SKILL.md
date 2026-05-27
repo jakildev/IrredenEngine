@@ -240,6 +240,8 @@ plain `git push` works.
 
 Use `gh pr create`. Body template per mode: [`procedures/pr-body.md`](procedures/pr-body.md).
 
+> **Before calling `gh pr create` in any snippet below, complete step 8a (Closes# cross-check) if the drafted body contains a `Closes #N` line.**
+
 For the **single-PR flow** (default), target is `master`:
 
 ```bash
@@ -324,6 +326,55 @@ EOF
 )"
 fi
 ```
+
+### 8a. Cross-check `Closes #N` before PR creation
+
+When the PR body includes a `Closes #N` line, run this cross-check **before**
+calling `gh pr create`. It catches the class of error where the worker writes
+the wrong issue number, causing GitHub to auto-close an unrelated issue on merge.
+
+```bash
+closes_n="<N from the drafted body>"
+issue_title=$(gh issue view "$closes_n" --repo jakildev/IrredenEngine \
+    --json title --jq '.title' 2>/dev/null || echo "")
+```
+
+Tokenize both strings: lowercase, strip punctuation, remove stop words
+(`a`, `an`, `the`, `for`, `of`, `in`, `to`, `at`, `on`, `and`, `or`,
+`not`, `is`, `via`, `from`, `with`, `add`, `—`, `-`). Intersect the
+remaining word sets against the PR title + branch name + first commit line.
+
+If the intersection is **empty**, surface this warning. In interactive
+mode (Cursor / human-in-the-loop), pause for human acknowledgement. In
+autonomous mode (fleet worker / author role), log the warning prominently
+and verify the issue number independently before proceeding:
+
+```
+⚠️  Closes-crosscheck: issue #<N> title is:
+      "<issue title>"
+    This PR's scope appears to be:
+      "<PR title>"
+    Zero keyword overlap — verify the issue number is correct.
+    (Non-blocking: proceed only if the number is intentional.)
+```
+
+The check is non-blocking. If the worker has confirmed the number is
+correct (e.g. the PR deliberately closes an umbrella or tracking issue
+whose title differs from the implementation PR title), proceed after
+acknowledgement.
+
+Skip this check only when:
+- The PR body has no `Closes #N` line (cleanup PRs, fleet-tooling PRs
+  filed without a tracking issue).
+- You are the queue-manager role (maintenance-sync PRs use `Closes #` for
+  task rows, not GitHub issues — the queue-manager is exempt because its
+  `Closes #` semantics differ from the standard flow).
+
+**Incident note (2026-05):** PR #1212 (T-379 PARALLEL_FOR bulk migration)
+shipped with `Closes #1215` instead of `Closes #1196`. GitHub auto-closed
+an unrelated issue (#1215 "fleet: scout reads issues instead of TASKS.md")
+and left the correct issue (#1196) open for re-claiming. This cross-check
+catches that class of error before the PR is created.
 
 ### 8b. Tag the host the PR was authored on
 
