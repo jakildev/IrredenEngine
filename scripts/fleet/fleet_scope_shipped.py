@@ -18,13 +18,18 @@ import re
 def pr_references_issue(title, body, n):
     """True iff a word-boundary ``#{n}`` appears in the PR title or body.
 
-    The trailing ``(?!\\d)`` guard stops ``#13000`` from satisfying ``n=1300``;
-    requiring the literal ``#`` rejects bare line-number and relevance hits that
+    The leading ``(?<!\\w)`` guard rejects ``abc#1300`` (alphanumeric immediately
+    before ``#``); the trailing ``(?!\\d)`` guard stops ``#13000`` from satisfying
+    ``n=1300``. Together they match GitHub's own link-detection boundaries.
+    Requiring the literal ``#`` rejects bare line-number and relevance hits that
     carry no cross-reference at all.
     """
     if not n:
         return False
-    pattern = re.compile(r'#' + str(int(n)) + r'(?!\d)')
+    try:
+        pattern = re.compile(r'(?<!\w)#' + str(int(n)) + r'(?!\d)')
+    except ValueError:
+        return False
     return bool(pattern.search(title or '')) or bool(pattern.search(body or ''))
 
 

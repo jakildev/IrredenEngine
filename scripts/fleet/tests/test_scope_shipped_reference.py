@@ -63,6 +63,14 @@ class PrReferencesIssue(unittest.TestCase):
     def test_falsy_issue_number(self):
         self.assertFalse(pr_references_issue("#0 ref", "#0 ref", 0))
 
+    def test_alphanumeric_before_hash_is_not_a_reference(self):
+        # "abc#1300" — '#' immediately preceded by a word char must be rejected.
+        self.assertFalse(pr_references_issue("", "abc#1300 fix", 1300))
+
+    def test_non_numeric_truthy_n_returns_false(self):
+        # int(n) raises ValueError for a truthy non-numeric string.
+        self.assertFalse(pr_references_issue("", "Closes #1300", "abc"))
+
 
 class SelectShippedPr(unittest.TestCase):
     def test_empty_candidates(self):
