@@ -45,6 +45,19 @@ scale. Forcing all three onto one canvas makes their supersampling taps
 collide on shared pixels: they fight, and you get seams / checkerboard / the
 #1256 lattice artifact.
 
+**The existing residual face-deform is exactly this single-canvas
+approximation.** `faceDeformationMatrix` → `faceDeform_[slot]` →
+`emitDeformedFace` (T-293 / #1262) deforms each face's diamond on the one shared
+grid, anchored at the cardinal-snapped center — three independent deformations
+forced through one fixed parity/tiling. It degrades worst toward ±45° and is a
+prime suspect for the inter-cardinal artifacts. So this work is **part
+replacement, not pure addition**: the `faceDeformationMatrix` *math* is reused
+as each axis-canvas's uniform basis, but the single-canvas application is
+removed. A cheap, independently-useful first step is to **confirm empirically**
+what the current deform actually renders across a continuous sweep on fresh
+`master` (`--spin-yaw`, native ROI crops) — to separate the single-canvas
+mismatch from any other bug before the rework lands.
+
 ## Core idea: three per-axis trixel canvases
 
 Split the voxel→trixel raster into **three trixel canvases, one per face
