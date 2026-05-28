@@ -4,7 +4,7 @@
 #
 # Called by fleet-dispatcher via tmux send-keys. Arguments:
 #   $1  pane_key  e.g. "pane-3"
-#   $2  model     e.g. "sonnet" or "claude-opus-4-7"
+#   $2  model     e.g. "sonnet[1m]" or "claude-opus-4-8[1m]"
 #   $3  effort    e.g. "high" or "xhigh"
 #   $4  role      e.g. "sonnet-author"
 #

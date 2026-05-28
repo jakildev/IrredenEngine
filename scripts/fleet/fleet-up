@@ -23,10 +23,20 @@ GAME="$ENGINE/creations/game"
 SESSION="fleet"
 
 # Model versions — change these when bumping the fleet to a new release.
-# Use full model names (not aliases) so the fleet is pinned to a known
-# version. The alias "opus" tracks latest and would silently upgrade.
-OPUS_MODEL="claude-opus-4-7"
-SONNET_MODEL="sonnet"   # alias is fine for sonnet — budget is cheap
+# This is the single source of truth: they're exported below so the
+# nohup'd fleet-dispatcher inherits them for its transient roles (workers,
+# reviewers, merger, smoke), and launch_cmd threads OPUS_MODEL into the
+# architect panes via fleet-babysit. Bump here and every role moves.
+#
+# The "[1m]" suffix selects the 1M-token context variant. For Opus 4.8 and
+# Sonnet 4.6 the full 1M window bills at standard per-token rates (no long-
+# context premium) on the same weights as the 200K variant — so it's free
+# headroom for the occasional long iteration and identical on the common
+# short ones. Opus is pinned to a full version (the bare "opus" alias would
+# silently upgrade); sonnet stays an alias since its budget is cheap.
+OPUS_MODEL="claude-opus-4-8[1m]"
+SONNET_MODEL="sonnet[1m]"
+export OPUS_MODEL SONNET_MODEL
 
 # Minimum seconds between opus-reviewer relaunches (cooldown floor).
 # fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
@@ -1004,11 +1014,14 @@ launch_cmd() {
     local model="$1"
     local role="$2"
     local loop="${3:-}"
+    # Single-quote the model: it can carry a "[1m]" suffix, and this string
+    # is replayed as a shell command line inside the tmux pane — unquoted,
+    # bash would treat "[1m]" as a glob bracket expression.
     if [[ -n "$loop" ]]; then
-        printf 'fleet-babysit %s %s %s %s; exec $SHELL\n' \
+        printf "fleet-babysit '%s' %s %s %s; exec \$SHELL\n" \
             "$model" "$role" "$MODE" "$loop"
     else
-        printf 'fleet-babysit %s %s %s; exec $SHELL\n' \
+        printf "fleet-babysit '%s' %s %s; exec \$SHELL\n" \
             "$model" "$role" "$MODE"
     fi
 }
@@ -1086,14 +1099,14 @@ pane_stagger
 MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
     "$(launch_cmd "$OPUS_MODEL" opus-architect)")
-label_pane_id "$MID_LEFT" "opus-architect [opus 4.7]"
+label_pane_id "$MID_LEFT" "opus-architect [opus 4.8]"
 pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-1" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.7]"
+label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.8]"
 set_fleet_role "$BOT_LEFT" "opus-worker"
 pane_stagger
 
@@ -1122,7 +1135,7 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
         -c "$GAME/.claude/worktrees/game-architect" \
         "$(launch_cmd "$OPUS_MODEL" game-architect)")
-    label_pane_id "$MID_RIGHT" "game-architect [opus 4.7]"
+    label_pane_id "$MID_RIGHT" "game-architect [opus 4.8]"
     pane_stagger
 fi
 
@@ -1132,14 +1145,14 @@ fi
 BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.7]"
+label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.8]"
 set_fleet_role "$BOT_MID" "opus-worker"
 pane_stagger
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.7]"
+label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.8]"
 set_fleet_role "$BOT_RIGHT" "opus-reviewer"
 pane_stagger
 
@@ -1166,7 +1179,7 @@ pane_stagger
 OPS_TR=$(tmux split-window -h -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/merger" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$OPS_TR" "merger [opus 4.7]"
+label_pane_id "$OPS_TR" "merger [opus 4.8]"
 set_fleet_role "$OPS_TR" "merger"
 
 OPS_BL=$(tmux split-window -v -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \

@@ -262,15 +262,22 @@ DISPATCHED_ROLES=(
 # now issue-based. Ingestion (new issues → queue) fires on its own
 # scout-driven trigger when human:approved-not-yet-queued issues appear.
 
-# Per-role default claude model. Sourced from fleet-up's
-# OPUS_MODEL / SONNET_MODEL convention.
+# Per-role default claude model. Inherited from fleet-up's exported
+# OPUS_MODEL / SONNET_MODEL (the single source of truth — bump there).
+# The fallbacks apply only when the dispatcher is run standalone (e.g.
+# for debugging) without fleet-up in the environment; keep them in sync
+# with fleet-up. The "[1m]" suffix selects the 1M-token context variant —
+# standard pricing on the same weights as 200K, so it's free headroom for
+# the occasional long iteration.
+OPUS_MODEL="${OPUS_MODEL:-claude-opus-4-8[1m]}"
+SONNET_MODEL="${SONNET_MODEL:-sonnet[1m]}"
 declare -A ROLE_MODEL=(
-    ["sonnet-author"]="sonnet"
-    ["opus-worker"]="claude-opus-4-7"
-    ["sonnet-reviewer"]="sonnet"
-    ["opus-reviewer"]="claude-opus-4-7"
-    ["merger"]="claude-opus-4-7"
-    ["smoke-worker"]="sonnet"
+    ["sonnet-author"]="$SONNET_MODEL"
+    ["opus-worker"]="$OPUS_MODEL"
+    ["sonnet-reviewer"]="$SONNET_MODEL"
+    ["opus-reviewer"]="$OPUS_MODEL"
+    ["merger"]="$OPUS_MODEL"
+    ["smoke-worker"]="$SONNET_MODEL"
 )
 
 # Per-role default effort level. Mirrors fleet-babysit's case stmt.
