@@ -4,11 +4,7 @@
 
 #include <cstddef>
 
-// Runtime tripwire mirroring the compile-time static_asserts on FrameDataSun
-// in ir_render_types.hpp. The struct is the std140 leading edge: the GLSL UBO
-// (binding 29, c_compute_sun_shadow.glsl et al.) and the Metal struct must
-// match it field-for-field. CSM widened the block from 80 to 128 bytes by
-// appending the per-cascade AABB params after the legacy single-map fields.
+// Runtime tripwire mirroring the compile-time static_asserts in ir_render_types.hpp (std140 leading edge).
 TEST(FrameDataSunLayout, MatchesStd140Packing) {
     EXPECT_EQ(sizeof(IRRender::FrameDataSun), 128u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunDirection_), 0u);
