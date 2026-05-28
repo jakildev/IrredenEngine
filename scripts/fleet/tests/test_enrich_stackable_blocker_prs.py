@@ -1,9 +1,9 @@
 """Tests for enrich_stackable_blocker_prs() in fleet-state-scout.
 
 Covers prefix-discrimination, multi-match safety, multi-blocker guard,
-None/empty/free-text blocked_by guards, cross-repo isolation, and author
-pass-through. Import the function via importlib because the script has no
-.py extension.
+single-ref-with-prose pass-through, None/empty/free-text blocked_by guards,
+cross-repo isolation, and author pass-through. Import the function via
+importlib because the script has no .py extension.
 """
 import importlib.machinery
 import importlib.util
@@ -98,13 +98,28 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
                          state["repos"]["engine"]["tasks"]["open"][0])
 
     def test_multi_blocker_no_field(self):
-        """blocked_by with two IDs doesn't match ^#\\d+$ → field absent."""
+        """blocked_by naming two issues is a multi-blocker → field absent."""
         tasks = [_task("#1115", "#1112, #1113")]
         prs = [_pr(540, "claude/1112-some-branch"), _pr(541, "claude/1113-other")]
         state = _state(engine_tasks=tasks, engine_prs=prs)
         enrich_stackable_blocker_prs(state)
         self.assertNotIn("stackable_blocker_pr",
                          state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_two_refs_with_prose_no_field(self):
+        """Two #refs is a multi-blocker regardless of surrounding prose
+        ("#A and #B", "#A, #B (note)") → field absent. Guards the single-ref
+        relaxation from over-matching genuine multi-blockers."""
+        for value in ("#101 and #102", "#101, #102 (both must land)"):
+            with self.subTest(blocked_by=value):
+                tasks = [_task("#999", value)]
+                prs = [_pr(1, "claude/101-x"), _pr(2, "claude/102-y")]
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_stackable_blocker_prs(state)
+                self.assertNotIn(
+                    "stackable_blocker_pr",
+                    state["repos"]["engine"]["tasks"]["open"][0],
+                )
 
     def test_none_blocked_by_no_field(self):
         """blocked_by is None → field absent."""
@@ -173,11 +188,11 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(open_tasks[1]["stackable_blocker_pr"]["author"], "other")
 
     def test_free_text_blocked_by_no_field(self):
-        """Free-text, URL, or legacy-T-NNN blocked_by values don't match regex → field absent."""
+        """blocked_by values that reference zero issues (free text, a bare
+        URL with no #ref, legacy T-NNN) → field absent."""
         values = [
             "pending design",
             "https://github.com/x/y/issues/1",
-            "#101 (waiting)",
             "T-101",
         ]
         for value in values:
@@ -190,6 +205,22 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
                     "stackable_blocker_pr",
                     state["repos"]["engine"]["tasks"]["open"][0],
                 )
+
+    def test_single_ref_with_prose_enriched(self):
+        """A single #ref followed by explanatory prose still stacks. The epic
+        decomposer emits "#NNN (why)"; the old terse-only gate silently
+        dropped the whole chain (#1309 blocked_by "#1308 (T1 must land
+        first…)" never stacked on #1316, observed 2026-05-28)."""
+        tasks = [_task("#1309", "#1308 (T1 must land first; stack on its PR)")]
+        prs = [_pr(1316, "claude/1308-per-axis-trixel-canvas-infra",
+                   author="jakildev")]
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        task = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 1316)
+        self.assertEqual(task["stackable_blocker_pr"]["headRefName"],
+                         "claude/1308-per-axis-trixel-canvas-infra")
 
 
 if __name__ == "__main__":

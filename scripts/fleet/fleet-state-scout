@@ -700,11 +700,16 @@ _SMOKE_SKIP_LABELS = frozenset({
 
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
-# Single-issue blocker (`#1234`). Rejects free-text, URL, and multi-blocker
-# forms. Evaluated AFTER resolve_blocked_by() reduces multi-ref bodies to
-# their unresolved set, so a task originally blocked on `#N1, #N2` where #N1
-# is now CLOSED will have blocked_by=`#N2` at this point and will match.
-SINGLE_TASK_BLOCKER_RE = re.compile(r"^#\d+$")
+# Eligible when blocked_by references exactly one issue. The epic decomposer
+# emits prose suffixes (e.g. "#1308 (T1 must land first)") that the old strict
+# regex rejected, silently killing whole task chains (#1309→#1316, 2026-05-28).
+# Evaluated AFTER resolve_blocked_by(), so a two-ref task whose first blocker
+# is now CLOSED arrives here as one ref and qualifies.
+def _single_blocker_issue(blocked_by):
+    """Return the sole blocker issue number (digits, no '#') when blocked_by
+    references exactly one issue, else None."""
+    refs = re.findall(r"#(\d+)", blocked_by or "")
+    return refs[0] if len(refs) == 1 else None
 
 
 def model_tags(task):
@@ -834,7 +839,9 @@ def enrich_stackable_blocker_prs(state):
     # unblocked tasks are free.
     #
     # The field is always omitted when:
-    #   - blocked_by isn't a single #NNN (multi-blocker, free-text, URL)
+    #   - blocked_by doesn't reference exactly one issue (multi-blocker,
+    #     free-text, URL, none) — see _single_blocker_issue; a single #NNN
+    #     followed by explanatory prose still qualifies
     #   - zero open PRs match the expected branch prefix (blocker not
     #     yet started, or already merged and dropped from open list)
     #   - more than one open PR matches (rare but possible if a stale
@@ -849,9 +856,9 @@ def enrich_stackable_blocker_prs(state):
         prs = repo_state.get("prs", [])
         for task in repo_state.get("tasks", {}).get("open", []):
             blocked_by = (task.get("blocked_by") or "").strip()
-            if not SINGLE_TASK_BLOCKER_RE.match(blocked_by):
+            issue_num = _single_blocker_issue(blocked_by)
+            if not issue_num:
                 continue
-            issue_num = blocked_by.lstrip("#")
             prefix = f"claude/{issue_num}-"
             matches = [pr for pr in prs
                        if pr.get("headRefName", "").startswith(prefix)]
