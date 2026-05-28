@@ -465,6 +465,14 @@ and camera pitch (PR #1265). Read it before touching
 `c_compute_voxel_ao`, `c_lighting_to_trixel`, or the `C_VoxelPool` face
 metadata.
 
+**Smooth camera yaw between cardinals** (interpolating voxel-center
+positions, not just deforming face shapes) is a separate, not-yet-implemented
+architecture: route each visible face axis to its own deformed trixel canvas
+and composite the three by depth at the framebuffer. Bounded by a minimum
+on-screen trixel size; parity in the per-canvas trixel→framebuffer conversion
+is the #1 correctness risk. Spec:
+[`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
+
 ## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
 
 A `C_ShapeDescriptor` (SDF, GPU-evaluated) and a `C_VoxelSetNew` carved

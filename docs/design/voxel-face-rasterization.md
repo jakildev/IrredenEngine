@@ -135,6 +135,15 @@ faces the camera actually sees at the current cardinal, rather than a
 hardcoded set. The depth math is unchanged; only the emitted-face set and the
 exposed-face gating are new.
 
+## Smooth camera yaw (between cardinals)
+
+This doc covers *which* faces emit and at which cardinal. Making the camera
+rotate **smoothly between** cardinals — interpolating voxel-center positions,
+not just deforming face shapes — is a separate architecture: render each
+visible face axis to its own deformed trixel canvas and composite the three by
+depth at the framebuffer. See
+[`per-axis-trixel-canvas-rotation.md`](per-axis-trixel-canvas-rotation.md).
+
 ## Migration / status
 
 - **#1256** — the stripe/checkerboard artifact this model fixes.
