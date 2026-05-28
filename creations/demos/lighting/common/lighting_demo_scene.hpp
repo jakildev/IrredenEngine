@@ -86,6 +86,10 @@ struct DemoConfig {
     vec3 directionalOverrideDirection_ = vec3(-0.3f, -0.2f, -0.93f);
     float directionalOverrideIntensity_ = 1.0f;
     float directionalOverrideAmbient_ = 0.4f;
+    bool hdrEnabled_ = false;
+    float exposure_ = 1.0f;
+    float skyIntensity_ = 0.0f;
+    vec3 skyColor_ = vec3(0.5f, 0.7f, 1.0f);
 
     // Optional override hooks. When `geometryFn_` is set, the demo's scene
     // geometry comes from the callback instead of the default voxel-pool /
@@ -327,6 +331,11 @@ inline void initEntities(const DemoConfig &config) {
     if (config.enableFog_) {
         IRPrefab::Fog::revealRadius(24, 6, 42);
     }
+
+    IRRender::setHDREnabled(config.hdrEnabled_);
+    IRRender::setExposure(config.exposure_);
+    IRRender::setSkyIntensity(config.skyIntensity_);
+    IRRender::setSkyColor(config.skyColor_);
 
     IRRender::setDebugOverlay(
         g_cliOverlay == IRRender::DebugOverlayMode::NONE ? config.overlay_ : g_cliOverlay

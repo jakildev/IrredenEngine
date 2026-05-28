@@ -598,12 +598,10 @@ metalCurrentDepthPixelFormat(),
         if (width == 0 || height == 0) {
             return;
         }
-        // Pixel size derived from format. For the formats we currently
-        // create through the engine (RGBA8, R32I, RG32UI, RGBA32F) the
-        // bytes-per-pixel is uniquely determined.
         std::size_t bytesPerPixel = 4;
         const auto pixelFormat = texture->pixelFormat();
-        if (pixelFormat == MTL::PixelFormatRG32Uint) {
+        if (pixelFormat == MTL::PixelFormatRG32Uint ||
+            pixelFormat == MTL::PixelFormatRGBA16Float) {
             bytesPerPixel = 8;
         } else if (pixelFormat == MTL::PixelFormatRGBA32Float) {
             bytesPerPixel = 16;

@@ -77,6 +77,15 @@ class RenderManager {
     void setDebugOverlay(DebugOverlayMode mode);
     DebugOverlayMode getDebugOverlay() const;
 
+    void setHDREnabled(bool enabled);
+    bool getHDREnabled() const;
+    void setExposure(float exposure);
+    float getExposure() const;
+    void setSkyIntensity(float intensity);
+    float getSkyIntensity() const;
+    void setSkyColor(vec3 color);
+    vec3 getSkyColor() const;
+
     void beginFrame();
     void renderFrame();
     void presentFrame();
@@ -144,6 +153,10 @@ class RenderManager {
     bool m_sunShadowsEnabled = true;
     bool m_aoEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
+    bool m_hdrEnabled = false;
+    float m_hdrExposure = 1.0f;
+    float m_skyIntensity = 0.0f;
+    vec3 m_skyColor = vec3(0.5f, 0.7f, 1.0f);
 
     void initRenderingSystems();
     void initRenderingResources();

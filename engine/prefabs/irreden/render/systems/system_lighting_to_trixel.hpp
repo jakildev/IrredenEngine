@@ -39,8 +39,9 @@ constexpr int kLightingToTrixelGroupSize = 16;
 // `debugOverlayMode_` mirrors `IRRender::DebugOverlayMode`. Non-zero
 // values short-circuit the artistic path and write false-color into
 // `trixelColors` instead — see ir_render_enums.hpp for the encoding.
-// std140 note: five scalars pack tightly at offsets 0,4,8,12,16 for a
-// 20-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
+// std140 note: eight scalars pack at offsets 0..28 (32 bytes), then
+// skyColor_ (vec4) lands at offset 32 (already 16-byte aligned) for a
+// 48-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
 // no explicit padding is needed.
 struct FrameDataLightingToTrixel {
     int lightingEnabled_ = 0;
@@ -48,6 +49,10 @@ struct FrameDataLightingToTrixel {
     int lightVolumeEnabled_ = 0;
     float debugLightLevel_ = 0.0f;
     int debugOverlayMode_ = 0;
+    int hdrEnabled_ = 0;
+    float exposure_ = 1.0f;
+    float skyIntensity_ = 0.0f;
+    vec4 skyColor_ = vec4(0.5f, 0.7f, 1.0f, 0.0f);
 };
 
 // Screen-space lighting application pass. Inserts between the final
@@ -120,6 +125,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         frameData_.lightingEnabled_ = 1;
         frameData_.lightVolumeEnabled_ = 1;
         frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
+        frameData_.hdrEnabled_ = IRRender::getHDREnabled() ? 1 : 0;
+        frameData_.exposure_ = IRRender::getExposure();
+        frameData_.skyIntensity_ = IRRender::getSkyIntensity();
+        const vec3 sc = IRRender::getSkyColor();
+        frameData_.skyColor_ = vec4(sc, 0.0f);
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
     }
 

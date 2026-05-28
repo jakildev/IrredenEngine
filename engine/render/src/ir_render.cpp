@@ -271,4 +271,36 @@ DebugOverlayMode getDebugOverlay() {
     return getRenderManager().getDebugOverlay();
 }
 
+void setHDREnabled(bool enabled) {
+    getRenderManager().setHDREnabled(enabled);
+}
+
+bool getHDREnabled() {
+    return getRenderManager().getHDREnabled();
+}
+
+void setExposure(float exposure) {
+    getRenderManager().setExposure(exposure);
+}
+
+float getExposure() {
+    return getRenderManager().getExposure();
+}
+
+void setSkyIntensity(float intensity) {
+    getRenderManager().setSkyIntensity(intensity);
+}
+
+float getSkyIntensity() {
+    return getRenderManager().getSkyIntensity();
+}
+
+void setSkyColor(vec3 color) {
+    getRenderManager().setSkyColor(color);
+}
+
+vec3 getSkyColor() {
+    return getRenderManager().getSkyColor();
+}
+
 } // namespace IRRender

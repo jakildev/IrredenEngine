@@ -5,33 +5,29 @@
 // compositing. Samples world-space lighting data (AO, directional sun
 // shadow, flood-fill light volume) and modulates the canvas color in
 // place.
+//
+// When hdrEnabled is set, the pass computes in unclamped float precision,
+// adds the sky-term contribution, applies exposure, and tonemaps via the
+// ACES Filmic curve before writing back to the RGBA8 canvas. The HDR
+// dynamic range lives entirely in shader-local variables; no canvas
+// format change is needed for v1.
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 
 layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
-    // Main-canvas pass sets this to 1 once the AO texture is bound. GUI
-    // canvases always see 0 so GUI-sourced pixels are not modulated.
     uniform int   lightingEnabled;
-    // 1 activates LUT palette shading, which replaces the plain grayscale
-    // AO multiplication with a luminance-indexed palette lookup driven by
-    // the per-pixel AO value.
     uniform int   lutEnabled;
-    // 1 activates flood-fill light-volume sampling: per-pixel world
-    // voxel position recovered from the distance texture, sampled in the
-    // bound 3D light volume, and additively combined with the AO base.
     uniform int   lightVolumeEnabled;
     uniform float debugLightLevel;
-    // Mirrors IRRender::DebugOverlayMode. 0 = NONE (artistic path); 1 = AO,
-    // 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write false-color.
     uniform int   debugOverlayMode;
+    uniform int   hdrEnabled;
+    uniform float exposure;
+    uniform float skyIntensity;
+    uniform vec4  skyColor;
 };
 
-// Mirrors the FrameDataVoxelToTrixel UBO used by VOXEL_TO_TRIXEL stages
-// and COMPUTE_VOXEL_AO. We only need a subset of fields here (canvas
-// offset + subdivision toggles) but the full layout must match for
-// std140 binding compatibility.
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
     uniform ivec2 trixelCanvasOffsetZ1;
@@ -102,9 +98,17 @@ layout(std140, binding = 23) uniform LightVolumeParams {
 const float kLightVolumeSize = 128.0;
 const float kLightVolumeHalfExtent = 64.0;
 
-// `faceOutwardNormal()` lives in ir_iso_common.glsl — shared with
-// c_compute_voxel_ao.glsl so the AO sampling direction and the lambert
-// dot product use the same convention.
+// ACES Filmic tone mapping (Stephen Hill's fitted curve).
+// Maps [0, ∞) → [0, 1) with a gentle shoulder that preserves color
+// saturation in bright highlights better than Reinhard.
+vec3 ACESFilm(vec3 x) {
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
 
 void main() {
     if (lightingEnabled == 0) {
@@ -197,7 +201,24 @@ void main() {
             vec3(kLightVolumeSize);
         const vec4 lightSample = texture(lightVolume, sampleCoord);
         const vec3 light = lightSample.rgb * lightSample.a;
-        baseRgb = clamp(baseRgb + src.rgb * light, 0.0, 1.0);
+        baseRgb = baseRgb + src.rgb * light;
+    }
+
+    if (hdrEnabled != 0) {
+        // Sky-term: upward-facing surfaces receive an additive
+        // emissive contribution from the sky hemisphere, gated by
+        // AO so recessed surfaces stay dark.
+        if (skyIntensity > 0.0) {
+            float skyFactor = max(0.0, worldNormal.z);
+            baseRgb += skyColor.rgb * skyIntensity * skyFactor * ao;
+        }
+
+        // Exposure + ACES Filmic tonemap. The HDR dynamic range lives
+        // in the float baseRgb; the tonemap compresses it to [0, 1]
+        // before the RGBA8 imageStore.
+        baseRgb = ACESFilm(baseRgb * exposure);
+    } else {
+        baseRgb = clamp(baseRgb, 0.0, 1.0);
     }
 
     imageStore(trixelColors, pixel, vec4(baseRgb, src.a));

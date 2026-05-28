@@ -562,4 +562,36 @@ DebugOverlayMode RenderManager::getDebugOverlay() const {
     return m_debugOverlayMode;
 }
 
+void RenderManager::setHDREnabled(bool enabled) {
+    m_hdrEnabled = enabled;
+}
+
+bool RenderManager::getHDREnabled() const {
+    return m_hdrEnabled;
+}
+
+void RenderManager::setExposure(float exposure) {
+    m_hdrExposure = IRMath::max(0.0f, exposure);
+}
+
+float RenderManager::getExposure() const {
+    return m_hdrExposure;
+}
+
+void RenderManager::setSkyIntensity(float intensity) {
+    m_skyIntensity = IRMath::max(0.0f, intensity);
+}
+
+float RenderManager::getSkyIntensity() const {
+    return m_skyIntensity;
+}
+
+void RenderManager::setSkyColor(vec3 color) {
+    m_skyColor = color;
+}
+
+vec3 RenderManager::getSkyColor() const {
+    return m_skyColor;
+}
+
 } // namespace IRRender

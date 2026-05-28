@@ -315,6 +315,27 @@ bool getAOEnabled();
 /// @}
 
 /// @{
+/// @name HDR / tonemap / sky term
+/// When enabled, the LIGHTING_TO_TRIXEL pass computes in unclamped float
+/// precision, applies the sky-term contribution, exposure, and ACES Filmic
+/// tonemap before writing back to the canvas. Disabled by default so
+/// existing demos produce identical output; enable per-creation for HDR.
+void setHDREnabled(bool enabled);
+bool getHDREnabled();
+/// Exposure multiplier applied before tonemapping. Default 1.0.
+/// Values >1 brighten; <1 darken.
+void setExposure(float exposure);
+float getExposure();
+/// Additive sky-hemisphere intensity. Upward-facing surfaces receive
+/// @c skyColor * skyIntensity * max(0, normal.z) * ao.
+void setSkyIntensity(float intensity);
+float getSkyIntensity();
+/// RGB color of the sky hemisphere contribution.
+void setSkyColor(vec3 color);
+vec3 getSkyColor();
+/// @}
+
+/// @{
 /// @name Lighting debug overlay
 /// Replaces the artistic composite in @c LIGHTING_TO_TRIXEL with a false-
 /// color visualization of the underlying lighting buffers. See
