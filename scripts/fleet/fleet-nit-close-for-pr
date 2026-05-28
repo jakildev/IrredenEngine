@@ -43,6 +43,7 @@ issues_json=$(gh issue list \
     --repo "$REPO" \
     --state open \
     --label "fleet:nit-of-pr" \
+    --limit "$((MAX_CLOSURES * 3))" \
     --json number,body 2>/dev/null) || {
     echo "fleet-nit-close-for-pr: gh issue list failed (label may not exist yet)" >&2
     exit 0
@@ -94,7 +95,7 @@ for issue in issues:
     # Comment and close
     subprocess.run(
         ["gh", "issue", "comment", issue_num, "--repo", repo,
-         "--body", f"Auto-closed: addressed by merged PR #{pr_num} (per \`fleet:nit-of-pr\` → PR cross-reference)."],
+         "--body", f"Auto-closed: addressed by merged PR #{pr_num} (per `fleet:nit-of-pr` → PR cross-reference)."],
         check=True, timeout=15
     )
     subprocess.run(
