@@ -45,3 +45,22 @@ if [[ "$rc" == "2" ]]; then
     mkdir -p "$RATE_LIMIT_DIR"
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
 fi
+
+# Auto-retrigger: when a worker role exits cleanly (rc=0) with a dirty
+# worktree and an active reservation, the session likely dropped the
+# commit-and-push flow mid-way (e.g. end_turn after simplify). Write a
+# trigger so the dispatcher re-fires the worker on the next tick; the
+# reservation gate at step 0.5 will resume the same task.
+if [[ "$rc" == "0" && ("$ROLE" == "opus-worker" || "$ROLE" == "sonnet-author") ]]; then
+    worktree_name=$(basename "$PWD")
+    reservation_issue=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
+    if [[ -n "$reservation_issue" ]]; then
+        dirty=$(git -C "$PWD" status --porcelain 2>/dev/null || true)
+        if [[ -n "$dirty" ]]; then
+            trigger_dir="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
+            mkdir -p "$trigger_dir"
+            touch "$trigger_dir/$ROLE"
+            echo "fleet-dispatch-wrap: dirty worktree '$worktree_name' + reservation #$reservation_issue after clean exit — wrote retrigger for $ROLE" >&2
+        fi
+    fi
+fi
