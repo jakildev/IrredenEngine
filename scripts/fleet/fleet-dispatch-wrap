@@ -36,6 +36,16 @@ else
     export FLEET_ROLE_MODEL=sonnet
 fi
 
+# Expose the role's repo so fleet-claim can enforce the repo gate
+# (check_repo_tag). A pane whose worktree lives under creations/game/ serves
+# the game repo; everything else serves the engine repo. Stops an
+# engine-worktree worker from claiming a game task (or vice versa) — it can't
+# build, commit, or open a PR in the other repo.
+case "$PWD" in
+    */creations/game/*) export FLEET_ROLE_REPO=game ;;
+    *)                  export FLEET_ROLE_REPO=engine ;;
+esac
+
 claude --model "$MODEL" --effort "$EFFORT" --print \
     --output-format stream-json --include-partial-messages --verbose \
     "/role-$ROLE live" | fleet-claude-stream

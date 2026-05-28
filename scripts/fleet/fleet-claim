@@ -504,6 +504,37 @@ PYEOF
     return 0
 }
 
+check_repo_tag() {
+    # Refuse the claim when the calling role serves a different repo than the
+    # task lives in. A worker is bound to one repo's worktree — it can't build,
+    # commit to, or open PRs in another repo — so an engine-worktree worker
+    # must never claim a game task (or vice versa). The repo-scoped sibling of
+    # check_model_tag.
+    #
+    # The task's repo is the global `--repo` namespace: empty (or "engine")
+    # means the engine repo, "game" means the game repo. The role's repo comes
+    # from FLEET_ROLE_REPO (set by fleet-dispatch-wrap from the pane's
+    # worktree). Cheap and local — no GitHub round-trip — so cmd_claim runs it
+    # before the blocker/model gates. Opt-in: no-op when FLEET_ROLE_REPO is
+    # unset/empty, so manual claims and babysit-launched roles are unaffected.
+    local issue_num="$1"
+    local role_repo="${FLEET_ROLE_REPO:-}"
+    [[ -z "$role_repo" ]] && return 0
+
+    local task_repo="${REPO_NS:-}"
+    [[ -z "$task_repo" ]] && task_repo="engine"
+
+    role_repo="${role_repo,,}"
+    task_repo="${task_repo,,}"
+
+    if [[ "$task_repo" != "$role_repo" ]]; then
+        echo "fleet-claim: refuse #${issue_num} — task is in the [${task_repo}] repo, this role serves [${role_repo}]; route it to a ${task_repo} worker" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 # --- subcommands ----------------------------------------------------------
 
 cmd_claim() {
@@ -588,6 +619,13 @@ cmd_claim() {
                 return 1
                 ;;
         esac
+    fi
+
+    # Repo gate: refuse when FLEET_ROLE_REPO is set and doesn't match the
+    # task's --repo namespace. Cheap, local, and first — a wrong-repo claim
+    # short-circuits before any GitHub round-trip (blockers, model, PR check).
+    if ! check_repo_tag "$issue_num"; then
+        return 1
     fi
 
     # Standard blocker gate. Skipped only when we have a verified-OPEN
