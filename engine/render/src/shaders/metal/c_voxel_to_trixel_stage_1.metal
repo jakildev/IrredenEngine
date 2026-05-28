@@ -69,16 +69,15 @@ struct Voxel {
     uint reserved;
 };
 
-// Face-occlusion bit indices — mirror VoxelFlags::kFaceOccluded{Neg,Pos}{X,Y,Z}
-// in engine/prefabs/irreden/voxel/components/component_voxel.hpp.
-constant uint kVoxelFlagFaceNegX = 1u << 2;
-constant uint kVoxelFlagFaceNegY = 1u << 4;
-constant uint kVoxelFlagFaceNegZ = 1u << 6;
+// Face-occlusion bit indices live at `2 + faceId` in `materialFlagBone`'s
+// byte 5, mirroring `IRComponents::VoxelFlags::kFaceOccluded*`. The
+// exposed-face test (visible-triplet × exposed-mask, #1278) is centralized
+// in `faceIsExposed(flagsByte, faceId)` from ir_iso_common.metal.
 
 kernel void c_voxel_to_trixel_stage_1(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
-    device const Voxel* voxels [[buffer(6)]],  // unused in stage 1; bound for Phase 2 bone transform (#605)
+    device const Voxel* voxels [[buffer(6)]],
     device const uint* compactedVoxelIndices [[buffer(25)]],
     device const IndirectDispatchParamsRO& indirectParams [[buffer(26)]],
     device atomic_int* distanceScratch [[buffer(16)]],
@@ -93,36 +92,21 @@ kernel void c_voxel_to_trixel_stage_1(
     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];
     const uint2 localId = localId3.xy;
-    const int face = localIDToFace_2x3(localId);
+    // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
+    const int slot = localIDToFace_2x3(localId);
+    const int faceId = frameData.visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     const int2 canvasSize = frameData.canvasSizePixels;
 
-    // Face-aware skip: see c_voxel_to_trixel_stage_1.glsl for the matching
-    // GLSL block. Only the iso-visible world-axis -X/-Y/-Z faces are
-    // checked at cardinalIndex==0; non-zero cardinal rotations fall back
-    // to emitting all faces until a follow-up wires the rotation-aware
-    // lookup.
-    if (cardinalIndex == 0) {
-        const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-        if (face == kXFace && (flagsByte & kVoxelFlagFaceNegX) != 0u) return;
-        if (face == kYFace && (flagsByte & kVoxelFlagFaceNegY) != 0u) return;
-        if (face == kZFace && (flagsByte & kVoxelFlagFaceNegZ) != 0u) return;
-    }
+    // Exposed-face gate (#1278) — see GLSL stage 1 for the rationale.
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
-    // At cardinalIndex==0 the rotation is the identity; gating it behind a
-    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
-    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
-    // pixel-for-pixel against master.
-
-    // mat2 D = faceDeformationMatrix(face, residualYaw) — or the SO(3) form
-    // for a detached canvas. Identity at residualYaw==0 so emitDeformedFace
-    // collapses to a single tap at int2(localId) — bit-identical pixel
-    // positions against the pre-T-293 path. Metal mat2 mirror of the GLSL
-    // `mat2(faceDeform[face].xy, faceDeform[face].zw)`.
+    // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(
-        frameData.faceDeform[face].xy,
-        frameData.faceDeform[face].zw
+        frameData.faceDeform[slot].xy,
+        frameData.faceDeform[slot].zw
     );
 
     if (frameData.voxelRenderOptions.x == 0) {
@@ -132,7 +116,7 @@ kernel void c_voxel_to_trixel_stage_1(
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), face
+            pos3DtoDistance(voxelPositionInt), slot
         );
         const int2 base =
             trixelFrameOffset(
@@ -158,7 +142,7 @@ kernel void c_voxel_to_trixel_stage_1(
     );
 
     int3 microPositionFixed =
-        faceMicroPositionFixed(face, voxelPositionFixed, u, v);
+        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
         // Shift is per-world-unit; scale to subdivision units to match
@@ -167,7 +151,7 @@ kernel void c_voxel_to_trixel_stage_1(
     }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
-    const int voxelDistance = encodeDepthWithFace(depthBase, face);
+    const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, distanceScratch, canvasSize);
 }

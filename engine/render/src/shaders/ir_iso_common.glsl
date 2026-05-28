@@ -2,9 +2,32 @@
 // Included via #include "ir_iso_common.glsl" (resolved by the engine's
 // shader preprocessor at compile time).
 
+// Axis-only face indices (X / Y / Z axis, polarity-blind). The 3-face
+// raster helpers (`faceOffset_2x3`, `faceMicroPositionFixed`,
+// `faceDeformationMatrix`) operate on these — they're "the X-axis face"
+// without distinguishing X_NEG vs X_POS, which is fine for the deformation
+// matrix (axis-only) and for the diamond slot layout (slot is a workgroup
+// label, not a polarity).
 const int kXFace = 0;
 const int kYFace = 1;
 const int kZFace = 2;
+
+// Polarity-aware six-face IDs — see `docs/design/voxel-face-rasterization.md`
+// and the matching `IRMath::FaceId` enum in `engine/math/include/irreden/
+// ir_math.hpp`. Used for the per-slot visible-triplet handshake via
+// `FrameDataVoxelToCanvas::visibleFaceIds_` (#1278): the CPU resolves
+// which three WORLD faces are camera-visible this frame and uploads
+// their FaceId per visible-triplet slot; the shader uses the FaceId to
+// gate on the exposed-face bit and to pick the six-face outward normal
+// / micro-position. Bit positions intentionally line up with the
+// occlusion bits in `IRComponents::VoxelFlags::kFaceOccluded*`:
+//   bit(faceId) = 2 + faceId
+const int kFaceXNeg = 0;
+const int kFaceXPos = 1;
+const int kFaceYNeg = 2;
+const int kFaceYPos = 3;
+const int kFaceZNeg = 4;
+const int kFaceZPos = 5;
 
 ivec2 pos3DtoPos2DIso(ivec3 position) {
     return ivec2(
@@ -102,13 +125,18 @@ int encodeDepthWithFace(int rawDepth, int face) {
 }
 
 // Outward unit normal for the visible side of each iso-rendered face. The
-// iso projection has view direction (1,1,1), so the three faces a camera
-// at (-large, -large, -large) actually sees are the ones whose outward
-// normals point AGAINST the view direction — i.e. -X, -Y, -Z (+Z is down,
-// so -Z is up = the top face). Used by both the AO compute (to step OUT
-// of the surface and read neighbor occluders) and the lighting lambert
-// (dot with sun direction). Both consumers MUST share this so AO sampling
+// iso projection has view direction (1,1,1), so at cardinal 0 the three
+// faces a camera at (-large, -large, -large) sees are the ones whose
+// outward normals point AGAINST the view direction — i.e. world -X, -Y,
+// -Z (+Z is down, so -Z is up = the top face). Used by both AO compute
+// and lighting lambert; both consumers MUST share this so AO sampling
 // and shading agree on which way is "out".
+//
+// At non-zero cardinal the camera-visible faces rotate; AO and lighting
+// should call `faceOutwardNormal6` with the per-slot `visibleFaceIds[slot]`
+// from the UBO instead of the slot itself. This 3-face overload is kept
+// for callers that genuinely want the axis-only X_NEG/Y_NEG/Z_NEG normals
+// (e.g. the SDF shape rasterizer at cardinal 0).
 vec3 faceOutwardNormal(int face) {
     if (face == kXFace) return vec3(-1.0, 0.0, 0.0);
     if (face == kYFace) return vec3(0.0, -1.0, 0.0);
@@ -119,6 +147,40 @@ ivec3 faceOutwardNormalI(int face) {
     if (face == kXFace) return ivec3(-1, 0, 0);
     if (face == kYFace) return ivec3(0, -1, 0);
     return ivec3(0, 0, -1);
+}
+
+// Six-face polarity-aware outward unit normal. `faceId` must be one of
+// `kFaceXNeg`/.../`kFaceZPos` (0..5) — typically read from
+// `visibleFaceIds[slot]` in the per-frame UBO. CPU mirror:
+// `IRMath::faceOutwardNormal(FaceId)`.
+vec3 faceOutwardNormal6(int faceId) {
+    if (faceId == kFaceXNeg) return vec3(-1.0, 0.0, 0.0);
+    if (faceId == kFaceXPos) return vec3( 1.0, 0.0, 0.0);
+    if (faceId == kFaceYNeg) return vec3(0.0, -1.0, 0.0);
+    if (faceId == kFaceYPos) return vec3(0.0,  1.0, 0.0);
+    if (faceId == kFaceZNeg) return vec3(0.0, 0.0, -1.0);
+    return vec3(0.0, 0.0, 1.0);  // kFaceZPos
+}
+
+// Integer outward normal — same six-face semantics as `faceOutwardNormal6`,
+// suitable for AO neighbor-step arithmetic that wants the world-frame
+// ±1 vector without float round-trip.
+ivec3 faceOutwardNormal6I(int faceId) {
+    if (faceId == kFaceXNeg) return ivec3(-1, 0, 0);
+    if (faceId == kFaceXPos) return ivec3( 1, 0, 0);
+    if (faceId == kFaceYNeg) return ivec3(0, -1, 0);
+    if (faceId == kFaceYPos) return ivec3(0,  1, 0);
+    if (faceId == kFaceZNeg) return ivec3(0, 0, -1);
+    return ivec3(0, 0, 1);  // kFaceZPos
+}
+
+// Returns true when @p faceId is exposed (neighbor cell empty/absent)
+// according to the per-voxel flags byte. The encoding mirrors
+// `IRComponents::VoxelFlags::kFaceOccluded*`: bit `(2 + faceId)` is set
+// when the matching neighbor is active, so the face should NOT emit.
+// Per the design doc's exposed-face gate (`emit ⟺ visible ∧ exposed`).
+bool faceIsExposed(uint flagsByte, int faceId) {
+    return ((flagsByte >> uint(2 + faceId)) & 1u) == 0u;
 }
 
 ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, int subdivisions) {
@@ -140,6 +202,64 @@ ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, i
         voxelPositionFixed.x + u,
         voxelPositionFixed.y + v,
         voxelPositionFixed.z
+    );
+}
+
+// Six-face polarity-aware micro position. For POS faces the fixed-axis
+// coordinate sits at `voxelPositionFixed.<axis> + subdivisions` (the
+// high-coordinate side of the voxel); for NEG faces it sits at
+// `voxelPositionFixed.<axis>` (the low-coordinate side, identical to
+// the 3-face `faceMicroPositionFixed` above). The other two axes sweep
+// `u, v ∈ [0, subdivisions)` exactly as the 3-face overload does.
+// Used by the subdivided emit path in `c_voxel_to_trixel_stage_{1,2}`
+// after the per-slot world `faceId = visibleFaceIds[slot]` lookup (#1278).
+ivec3 faceMicroPositionFixed6(
+    int faceId,
+    ivec3 voxelPositionFixed,
+    int u,
+    int v,
+    int subdivisions
+) {
+    if (faceId == kFaceXNeg) {
+        return ivec3(
+            voxelPositionFixed.x,
+            voxelPositionFixed.y + u,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceXPos) {
+        return ivec3(
+            voxelPositionFixed.x + subdivisions,
+            voxelPositionFixed.y + u,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceYNeg) {
+        return ivec3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceYPos) {
+        return ivec3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y + subdivisions,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceZNeg) {
+        return ivec3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y + v,
+            voxelPositionFixed.z
+        );
+    }
+    // kFaceZPos
+    return ivec3(
+        voxelPositionFixed.x + u,
+        voxelPositionFixed.y + v,
+        voxelPositionFixed.z + subdivisions
     );
 }
 

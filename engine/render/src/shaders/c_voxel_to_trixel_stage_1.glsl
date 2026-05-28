@@ -37,12 +37,21 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
     // emitDeformedFace max super-sample level (world: 2, detached: 6).
     uniform float isDetachedCanvas;
-    // Per-face deformation matrix packed column-major into vec4: .xy = col0,
-    // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw). Indexed
-    // by kXFace/kYFace/kZFace. Identity at residualYaw==0 so the cardinal-
-    // snap path stays bit-identical pixel-for-pixel against rasterYaw-only
-    // master (T-293).
+    // Per-slot deformation matrix packed column-major into vec4: .xy = col0,
+    // .zw = col1 of IRMath::faceDeformationMatrix(axis(visibleFaceIds[slot]),
+    // residualYaw). **Indexed by visible-triplet SLOT (0/1/2)**, not by axis —
+    // at non-zero cardinal the WORLD face whose matrix lives at slot s
+    // changes per `visibleFaceIds[s]`. Identity at residualYaw==0 so the
+    // cardinal-snap path stays bit-identical pixel-for-pixel against
+    // rasterYaw-only master (T-293 + #1278).
     uniform vec4 faceDeform[3];
+    // Per-slot world FaceId (0..5 = X_NEG/X_POS/Y_NEG/Y_POS/Z_NEG/Z_POS) —
+    // the three camera-visible faces resolved by
+    // `IRMath::visibleFaceTripletCardinal` on the CPU (#1278). Slot 0/1/2
+    // map to the workgroup-local face slot returned by `localIDToFace_2x3`;
+    // `.w` is std140 padding. At cardinal 0 the default {0, 2, 4} = {X_NEG,
+    // Y_NEG, Z_NEG} matches the pre-#1278 lower-coordinate semantics.
+    uniform ivec4 visibleFaceIds;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -66,11 +75,11 @@ layout(std430, binding = 6) readonly buffer ColorBuffer {
     Voxel voxels[];
 };
 
-// Face-occlusion bit indices — mirror VoxelFlags::kFaceOccluded{Neg,Pos}{X,Y,Z}
-// in engine/prefabs/irreden/voxel/components/component_voxel.hpp.
-const uint kVoxelFlagFaceNegX = 1u << 2;
-const uint kVoxelFlagFaceNegY = 1u << 4;
-const uint kVoxelFlagFaceNegZ = 1u << 6;
+// Face-occlusion bit indices live at `2 + faceId` in `materialFlagBone`'s
+// byte 5, mirroring `IRComponents::VoxelFlags::kFaceOccluded*` in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp. The
+// exposed-face test (visible-triplet × exposed-mask, #1278) is centralized
+// in `faceIsExposed(flagsByte, faceId)` from ir_iso_common.glsl.
 
 layout(std430, binding = 25) readonly buffer CompactedIndices {
     uint compactedVoxelIndices[];
@@ -115,34 +124,37 @@ void main() {
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
 
-    const int face = localIDToFace_2x3(gl_LocalInvocationID.xy);
+    // `slot` is the per-voxel visible-triplet index (0/1/2) — a workgroup
+    // label that maps to a diamond region (right column / left column / top
+    // row) and to the per-slot deformation matrix. `faceId` is the WORLD
+    // FaceId (0..5) the camera sees at this slot, resolved by the CPU per
+    // cardinal via `IRMath::visibleFaceTripletCardinal` (#1278).
+    const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
+    const int faceId = visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
-    // Face-aware skip: at cardinalIndex==0 the iso camera renders the world
-    // -X/-Y/-Z faces. If the voxel's neighbor on that face is active, the
-    // face is blocked and emitting only wastes an atomicMin. Skipping the
-    // tap also keeps the depth texture's tile from a transient max-value
-    // overwrite at this pixel. At non-zero cardinalIndex the authored face
-    // bits no longer line up with the iso-visible world face direction;
-    // skip the optimization in that case until a follow-up wires the
-    // rotation-aware lookup (also gates the T-293 C5 deformation work).
-    if (cardinalIndex == 0) {
-        const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-        if (face == kXFace && (flagsByte & kVoxelFlagFaceNegX) != 0u) return;
-        if (face == kYFace && (flagsByte & kVoxelFlagFaceNegY) != 0u) return;
-        if (face == kZFace && (flagsByte & kVoxelFlagFaceNegZ) != 0u) return;
-    }
+    // Exposed-face gate (#1278): emit only when the world face this slot
+    // renders is BOTH camera-visible (the slot-to-faceId resolution above
+    // already guarantees this) AND exposed (neighbor cell empty). Interior
+    // voxels of a solid cube emit nothing — surface area, not volume —
+    // and the depth-tie ambiguity between interior +X and exterior -X
+    // copies that produced the pre-#1278 stripe artifact (#1256) cannot
+    // arise because the interior copy was never emitted. Bit position
+    // matches `IRComponents::VoxelFlags::kFaceOccluded(faceId)`.
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
     // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
     // pixel-for-pixel against master.
 
-    // mat2 D = faceDeformationMatrix(face, residualYaw), reconstructed from
-    // the std140-packed UBO entry. Identity at residualYaw==0 so the
-    // resulting `ivec2 trixelOffset` collapses to faceOffset_2x3(face,
-    // subPixel) — bit-identical pixel positions against the pre-T-293 path.
-    const mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
+    // Per-slot deformation matrix — `D` shapes the diamond corner offsets
+    // under residualYaw and (for detached canvas) per-face SO(3). At cardinal
+    // 0 + residualYaw==0 every slot's D is the identity, so the per-slot
+    // path collapses to faceOffset_2x3(slot, subPixel) — bit-identical
+    // pixel positions against the pre-T-293 path.
+    const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
 
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
@@ -150,8 +162,11 @@ void main() {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
+        // Encode `slot` (not faceId) in depth — keeps the 2-bit field
+        // unchanged, and AO/lighting recover the world faceId via
+        // visibleFaceIds[slot] from the same UBO.
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), face);
+            pos3DtoDistance(voxelPositionInt), slot);
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
@@ -168,8 +183,12 @@ void main() {
     const ivec2 frameOffsetFixed =
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
+    // Six-face micro position — POS faces start at `voxelPositionFixed.<axis>
+    // + subdivisions` (high-coordinate side), NEG faces at
+    // `voxelPositionFixed.<axis>` (low-coordinate side, matching the 3-face
+    // path bit-for-bit at cardinal 0).
     ivec3 microPositionFixed =
-        faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
+        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
         // Shift is per-world-unit; scale to subdivision units to match
@@ -178,7 +197,7 @@ void main() {
     }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
-    const int voxelDistance = encodeDepthWithFace(depthBase, face);
+    const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance);
 }

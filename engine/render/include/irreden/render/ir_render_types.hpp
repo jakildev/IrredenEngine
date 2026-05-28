@@ -128,15 +128,34 @@ struct FrameDataVoxelToCanvas {
     // behavior and preserving its perf baseline. Occupies the std140 padding
     // slot after residualYaw_ so no struct padding changes.
     float isDetachedCanvas_ = 0.0f;
-    // Per-face residual-yaw deformation packed column-major: .xy = col0,
-    // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw_).
-    // Identity (col0=(1,0), col1=(0,1)) when residualYaw_ == 0. Indexed by
-    // IRMath::kXFace / kYFace / kZFace (0/1/2). std140 vec4 array stride
-    // is 16 B so this is 48 B; mirrored as `vec4 faceDeform[3]` in the
-    // GLSL/Metal UBO declarations.
+    // Per-slot residual-yaw (or SO(3) for DETACHED) deformation packed
+    // column-major: .xy = col0, .zw = col1 of `IRMath::faceDeformationMatrix(
+    // axis(visibleFaceIds_[slot]), residualYaw_)`. Identity (col0=(1,0),
+    // col1=(0,1)) when residualYaw_ == 0. **Indexed by visible-triplet SLOT
+    // (0/1/2)**, not by axis — at non-zero cardinal the world face whose
+    // matrix lives at slot s changes per `visibleFaceIds_[s]`. std140 vec4
+    // array stride is 16 B so this is 48 B; mirrored as `vec4 faceDeform[3]`
+    // in the GLSL/Metal UBO declarations. (#1278 generalization of the
+    // T-293 per-axis upload — at cardinal 0 the per-slot matrices match
+    // the per-axis ones bit-for-bit so the yaw=0 path stays unchanged.)
     vec4 faceDeform_[3] = {
         vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f)
     };
+    // Per-slot world `FaceId` (0..5 = X_NEG / X_POS / Y_NEG / Y_POS /
+    // Z_NEG / Z_POS) — the three camera-visible faces resolved from the
+    // camera quaternion via `IRMath::visibleFaceTripletCardinal` (#1278).
+    // Indexed by visible-triplet slot 0/1/2; `.w` is padding (std140 ivec3
+    // would round up to ivec4 stride anyway). Defaults to {X_NEG, Y_NEG,
+    // Z_NEG} = the historical lower-coordinate-faces set, so a UBO that
+    // hasn't been populated by the new path renders identically to
+    // pre-#1278 master at cardinal 0.
+    //
+    // Consumed by raster (`c_voxel_to_trixel_stage_{1,2}` — exposed-mask
+    // check + per-face micro-position) AND by `c_compute_voxel_ao` /
+    // `c_lighting_to_trixel` (decoded slot → world FaceId → six-face
+    // outward normal / tangents). Single source of face metadata per
+    // design-doc § "AO / lighting agree by construction".
+    ivec4 visibleFaceIds_ = ivec4(0, 2, 4, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -285,7 +304,12 @@ static_assert(
     "GLSL std140 enforces for vec4 arr[3]"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 128,
+    offsetof(FrameDataVoxelToCanvas, visibleFaceIds_) == 128,
+    "FrameDataVoxelToCanvas::visibleFaceIds_ must land at offset 128 "
+    "(faceDeform_ at 80 + 3 * 16 B = 128). std140 ivec4 alignment is 16 B"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 144,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block"
 );
 
@@ -336,8 +360,7 @@ static_assert(
     "cascadeOriginUV_0_ must start after legacy fields"
 );
 static_assert(
-    offsetof(FrameDataSun, cascadeOriginUV_1_) == 96,
-    "cascadeOriginUV_1_ must align at offset 96"
+    offsetof(FrameDataSun, cascadeOriginUV_1_) == 96, "cascadeOriginUV_1_ must align at offset 96"
 );
 static_assert(
     offsetof(FrameDataSun, cascadeSplitDepth_) == 112, "cascadeSplitDepth_ must align at offset 112"

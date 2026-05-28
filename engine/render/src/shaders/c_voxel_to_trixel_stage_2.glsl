@@ -22,9 +22,11 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // 1.0 for a detached entity canvas, 0.0 for the world canvas — see
     // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.
     uniform float isDetachedCanvas;
-    // Per-face deformation matrix packed column-major into vec4 (see
-    // c_voxel_to_trixel_stage_1.glsl for the layout). T-293.
+    // Per-slot deformation matrix packed column-major into vec4 (see
+    // c_voxel_to_trixel_stage_1.glsl for the layout). T-293 + #1278.
     uniform vec4 faceDeform[3];
+    // Per-slot world FaceId (0..5). See stage 1 + #1278 for the contract.
+    uniform ivec4 visibleFaceIds;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -104,20 +106,19 @@ void main() {
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
     vec4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
-    int face = localIDToFace_2x3(gl_LocalInvocationID.xy);
+    // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
+    const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
+    const int faceId = visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
-    // At cardinalIndex==0 the rotation is the identity; gating it behind a
-    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
-    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
-    // pixel-for-pixel against master.
+    // Stage 2 mirrors stage 1's exposed-face gate so it doesn't waste an
+    // `imageLoad` + depth compare on faces stage 1 already skipped.
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
-    // mat2 D = faceDeformationMatrix(face, residualYaw) — or the SO(3) form
-    // for a detached canvas. Identity at residualYaw==0 — see
-    // c_voxel_to_trixel_stage_1.glsl for the contract. emitDeformedFace
-    // super-samples the source block when D magnifies.
-    const mat2 D = mat2(faceDeform[face].xy, faceDeform[face].zw);
+    // Per-slot deformation matrix — see stage 1 for the contract.
+    const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
 
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
@@ -126,7 +127,7 @@ void main() {
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), face);
+            pos3DtoDistance(voxelPositionInt), slot);
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
@@ -144,7 +145,7 @@ void main() {
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
     ivec3 microPositionFixed =
-        faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
+        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
         // Shift is per-world-unit; scale to subdivision units to match
@@ -153,7 +154,7 @@ void main() {
     }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
-    const int voxelDistance = encodeDepthWithFace(depthBase, face);
+    const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
 }

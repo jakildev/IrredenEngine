@@ -49,7 +49,13 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;
+    uniform float _yawPadding;            // isDetachedCanvas in the full UBO
+    uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
+    // Per-slot world FaceId (0..5) — see c_voxel_to_trixel_stage_1.glsl + #1278.
+    // AO maps the decoded depth slot → world FaceId via this lookup so the
+    // outward-normal step uses the rotation-aware six-face normal (not the
+    // cardinal-0 lower-coord assumption that broke at non-zero cardinal).
+    uniform ivec4 visibleFaceIds;
 };
 
 // Sun lighting state. Only `aoEnabled` is read by this shader; the block
@@ -94,31 +100,38 @@ void main() {
         return;
     }
 
-    int face = encoded & 3;
+    // Decode the visible-triplet slot (0/1/2) the rasterizer wrote (#1278).
+    // Slot → world FaceId via `visibleFaceIds[slot]` — single source of
+    // face metadata shared with the raster, so AO's "step out of the
+    // surface" arithmetic uses the actually-visible face's outward normal
+    // and tangents at every cardinal (not the cardinal-0 lower-coord
+    // assumption the pre-#1278 path baked in).
+    int slot = encoded & 3;
+    int faceId = visibleFaceIds[slot];
     int rawDepth = encoded >> 2;
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     vec3 pos3D = trixelCanvasPixelToWorld3D(
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
     );
 
-    // The rasterizer encodes `face` in WORLD frame (the lower-coord world
-    // face the per-voxel emit invocation processed: kXFace = world -X
-    // face, kYFace = world -Y face, kZFace = world -Z face). So the
-    // face outward and its in-plane tangents are also in world frame
-    // and used directly without rotation in the world-frame
-    // `d = dot(neighbour - here, worldOutward)` test below. The tangent
-    // step is rotated through R_z(-rasterYaw) before iso projection so
-    // the neighbour-sample direction lands on the canvas pixel that
-    // actually holds the +tangent neighbour at this cardinal.
-    vec3 worldOutward = vec3(faceOutwardNormalI(face));
+    // World-frame outward normal + in-plane tangents for the camera-visible
+    // face this pixel rendered. The tangent step is rotated through
+    // R_z(-rasterYaw) before iso projection so the neighbour-sample
+    // direction lands on the canvas pixel that actually holds the
+    // +tangent neighbour at this cardinal (PR #1275 prep).
+    vec3 worldOutward = vec3(faceOutwardNormal6I(faceId));
     ivec3 t1, t2;
-    if (face == kZFace) {
+    // Pick the two in-plane tangents per face axis. The pair direction
+    // doesn't matter (AO samples ±t1, ±t2); the per-axis split must
+    // match across X / Y / Z faces of both polarities.
+    if (faceId == kFaceZNeg || faceId == kFaceZPos) {
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 1, 0);
-    } else if (face == kXFace) {
+    } else if (faceId == kFaceXNeg || faceId == kFaceXPos) {
         t1 = ivec3(0, 1, 0);
         t2 = ivec3(0, 0, 1);
     } else {
+        // Y_NEG or Y_POS
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 0, 1);
     }
