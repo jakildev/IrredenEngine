@@ -348,6 +348,39 @@ When working a `fleet:design-blocked` PR:
    redesign that invalidates a worker's in-flight approach: it gives
    the model a reviewable home before the worker rebuilds against it,
    and it survives even if the original PR is abandoned.
+
+   **Docs-first ⇒ block the implementation on the docs-PR MERGE, not
+   its open.** The whole point of a separate docs PR is to review the
+   model independently. If you let implementation resume the moment the
+   docs PR is *opened*, the worker builds against an unreviewed model
+   that review may change, reading the spec from an unmerged branch
+   (awkward and error-prone). Block on merge so the worker reads a
+   reviewed, stable spec from master via the normal workflow. Docs PRs
+   review fast (no build, no tests), so the latency cost is small.
+
+   **Route the block through a fresh task, not the blocked PR.** When
+   the resolution needs a docs-first PR, do NOT keep the original PR
+   `fleet:design-blocked` waiting on the doc — that strands it on a
+   manual re-flip nobody owns (who swaps the label when the docs PR
+   merges?). Instead:
+   - **Open the docs-first PR** for the model.
+   - **File a fresh implementation issue** carrying a structured
+     `**Blocked by:** #<docs-PR-number>` line in its body (the scout /
+     fleet-claim gate on that field — prose like "blocked on PR #X" is
+     NOT parsed, it must be the `**Blocked by:** #N` form). When the
+     docs PR merges (→ closed), the block clears automatically and the
+     task becomes claimable. This reuses the existing blocked-by-on-
+     merge machinery and needs no manual label flip.
+   - **Unblock the original PR immediately** (step 5) with wind-down
+     direction: keep any independently-correct prep work (helpers,
+     mechanical fixes), and either close it or narrow it to land just
+     that prep. The original PR is superseded by the fresh task; it is
+     not the thing waiting on the doc.
+
+   The canonical worked example of this whole flow is
+   #1275 (blocked PR, unblocked with wind-down) → #1277 (docs-first PR,
+   `docs/design/voxel-face-rasterization.md`) → #1278 (fresh impl task,
+   `**Blocked by:** #1277`).
 4. Post a PR comment with concrete decisions, re-scoped acceptance
    criteria (if changed), and a pointer to the design doc (if step 3b
    applied) and/or the plan file:
