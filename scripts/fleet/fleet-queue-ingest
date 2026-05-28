@@ -67,8 +67,14 @@ fi
 # list. Mutating the projection file lets the label-stamping pass below
 # skip scope-shipped issues without re-querying (#1175).
 if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
-    scope_shipped_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" python3 - << 'SCOPE_PY' 2>>"$LOG_FILE"
+    scope_shipped_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" INGEST_SELF="${BASH_SOURCE[0]}" python3 - << 'SCOPE_PY' 2>>"$LOG_FILE"
 import json, os, subprocess, sys
+
+# Import the genuine-reference predicate from the sibling module. realpath
+# resolves the ~/bin/fleet-queue-ingest install symlink back to the versioned
+# scripts/fleet/ copy, where fleet_scope_shipped.py lives next to this script.
+sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
+from fleet_scope_shipped import select_shipped_pr
 
 REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
 
@@ -87,20 +93,23 @@ for issue in pending:
     if not n:
         kept.append(issue)
         continue
-    # Full-text search; may match incidental references — human verifies via comment before closing.
+    # GitHub strips the '#' and matches the bare token n anywhere (titles,
+    # bodies, comments, line numbers, relevance) — so the search is a coarse
+    # candidate set, not a reference match. select_shipped_pr() verifies a
+    # genuine word-boundary #n cross-reference in title/body before trusting it.
     r = subprocess.run(
         ['gh', 'pr', 'list', '--repo', repo, '--state', 'merged',
-         '--search', f'#{n}', '--json', 'number,title,url,mergedAt', '--limit', '5'],
+         '--search', f'#{n}', '--json', 'number,title,body,url,mergedAt', '--limit', '5'],
         capture_output=True, text=True, timeout=15,
     )
     try:
         prs = json.loads(r.stdout or '[]') if r.returncode == 0 else []
     except Exception:
         prs = []
-    if not prs:
+    best = select_shipped_pr(prs, n)
+    if best is None:
         kept.append(issue)
         continue
-    best = prs[0]
     merged_date = best.get('mergedAt', '')[:10]
     comment = (
         f"Scope check: this issue's scope appears to have landed in "
