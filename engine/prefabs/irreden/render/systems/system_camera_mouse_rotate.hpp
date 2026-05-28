@@ -45,6 +45,7 @@ template <> struct System<CAMERA_MOUSE_ROTATE> {
             const float deltaX = currentMouse.x - dragStartMouse_.x;
             const float deltaY = currentMouse.y - dragStartMouse_.y;
             const float yawDelta = (deltaX / kPixelsPerRevolution) * IRMath::kTwoPi;
+            // negate: screen +Y is down; pitch up requires negative deltaY
             const float pitchDelta = -(deltaY / kPixelsPerRevolution) * IRMath::kTwoPi;
             IRPrefab::Camera::setYawPitch(dragStartYaw_ + yawDelta, dragStartPitch_ + pitchDelta);
         } else {
