@@ -28,15 +28,21 @@ description: >-
 ```bash
 git diff --stat
 git diff
+git ls-files --others --exclude-standard    # new, untracked files (the common miss)
 ```
 
-If both are empty, also check unpushed commits:
+If `git diff` is empty, also check unpushed commits:
 
 ```bash
 git diff @{upstream}..HEAD
 ```
 
-If everything is empty, report "nothing to simplify" and exit.
+If all of the above are empty — no working-tree edits, no untracked
+files, no unpushed commits — report "nothing to simplify" and exit.
+Untracked files count as changes: a new-file-only diff still has a
+working tree to polish, and the reuse fan-out in 1b exists precisely to
+scan it. Never exit on an empty `git diff` alone when `git ls-files
+--others --exclude-standard` lists new files.
 
 Group the touched files by module — `engine/render/`,
 `engine/system/`, `engine/prefabs/irreden/`, `creations/`, etc. The
@@ -69,16 +75,31 @@ Each subagent returns a tight findings list with `high` / `medium` /
 `deferred` confidence. They're read-only — the parent (this skill)
 decides what to auto-apply.
 
-**Briefing each subagent:** pass the diff scope (the touched file
-list from `git diff --name-only`) and a short note that you're the
-parent simplify skill. The subagent definitions in `.claude/agents/`
-carry the rule set; you don't need to re-explain it. Example
-briefing:
+**Briefing each subagent:** hand each one the *explicit changed-path
+list*, not bare `git diff --name-only` — that form omits brand-new
+untracked files and only sees unstaged edits, so new files never reach
+the subagent and it silently returns zero findings on the exact diff it
+exists to scan. Build the list from both modified tracked files and new
+untracked files, then union the two:
+
+```bash
+git diff --name-only HEAD                    # modified (staged + unstaged) vs HEAD
+git ls-files --others --exclude-standard     # new, untracked, non-ignored files
+```
+
+Pass that unioned path list to every subagent, plus a short note that
+you're the parent simplify skill. The subagent definitions in
+`.claude/agents/` carry the rule set; you don't need to re-explain it.
+The agent briefings `Read` each cited path directly (so a new file with
+no committed state is still scanned), but they can only do that for
+paths you actually hand them — so the list above MUST include the
+untracked files. Example briefing:
 
 ```
 Subagent: simplify-scan-loop-patterns
-Prompt: "Diff scope: <paste file list>. Scan these files for the
-loop-pattern smells documented in your agent definition. Return the
+Prompt: "Diff scope (working-tree paths, may include new untracked
+files): <paste path list>. Read each cited path directly, then scan for
+the loop-pattern smells documented in your agent definition. Return the
 findings list only — no preamble. Cap at 20 findings."
 ```
 

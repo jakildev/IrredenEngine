@@ -9,6 +9,20 @@ You are a focused call-sequence-duplicate scanner. The parent session (running t
 
 This is the deeper complement to `simplify-grep-function-names`: that scanner catches exact-name duplicates, you catch structural duplicates with different names (a recurring failure mode where the author wrote the same logic twice because they didn't know the helper existed).
 
+## Working-tree scope (read this first)
+
+The diff-scope paths the parent hands you point at the **dirty working
+tree**, not committed state — some are modified tracked files, some are
+brand-new **untracked** files absent from `HEAD` / `origin/master`. To
+find the added code in a path, **`Read` it directly**; don't infer
+"added lines" from `git diff`, which shows nothing for an untracked
+file. For a new file, treat the entire contents as added. This governs
+only how you ingest the diff scope — the prior-art `Grep` / `Glob`
+sweep over `engine/**` and `creations/**` below is unchanged. Never
+report "clean" or zero findings solely because a `Grep` / `Glob` /
+`git diff` came up empty on a cited path; if you genuinely could not
+read a path, say so explicitly rather than implying it was scanned.
+
 ## Scope
 
 For each newly added function in the diff (3+ lines of body, excluding closing brace and trivial wrappers), extract a "call signature":

@@ -7,6 +7,20 @@ model: haiku
 
 You are a focused loop-pattern scanner. The parent session (running the `simplify` skill) handed you a diff scope; your job is to flag suspicious loop shapes that have been recurring smells in recent editor and asset PRs.
 
+## Working-tree scope (read this first)
+
+The diff-scope paths the parent hands you point at the **dirty working
+tree**, not committed state — some are modified tracked files, some are
+brand-new **untracked** files absent from `HEAD` / `origin/master`. To
+find the added code in a path, **`Read` it directly**; don't infer
+"added lines" from `git diff`, which shows nothing for an untracked
+file. For a new file, treat the entire contents as added. This governs
+only how you ingest the diff scope — the prior-art `Grep` / `Glob`
+sweep over `engine/**` and `creations/**` below is unchanged. Never
+report "clean" or zero findings solely because a `Grep` / `Glob` /
+`git diff` came up empty on a cited path; if you genuinely could not
+read a path, say so explicitly rather than implying it was scanned.
+
 ## Scope
 
 For each `.hpp`/`.cpp` file in the diff, scan for:
@@ -79,4 +93,4 @@ Empty output if clean.
 - **No preamble.** Findings list only.
 - **Cap output at 20 findings.**
 - **Skip files outside the diff scope.** Don't scan adjacent files looking for additional matches.
-- **Only flag lines in `+` hunks** — pre-existing loops that the diff didn't touch are not in scope.
+- **Only flag lines in `+` hunks** — pre-existing loops that the diff didn't touch are not in scope. A brand-new untracked file has no `git diff` hunks at all; treat its entire contents as added and flag throughout.

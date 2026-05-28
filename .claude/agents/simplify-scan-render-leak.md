@@ -9,6 +9,20 @@ You are a focused renderer-leak scanner. The parent session (running the `simpli
 
 The canonical pattern: **anything that writes pixels, composes vertices, or talks to a backend texture/buffer object lives under `engine/render/include/irreden/render/`. Creations, editors, and update-side systems call into those helpers; they never call backend APIs directly.**
 
+## Working-tree scope (read this first)
+
+The diff-scope paths the parent hands you point at the **dirty working
+tree**, not committed state — some are modified tracked files, some are
+brand-new **untracked** files absent from `HEAD` / `origin/master`. To
+find the added code in a path, **`Read` it directly**; don't infer
+"added lines" from `git diff`, which shows nothing for an untracked
+file. For a new file, treat the entire contents as added. This governs
+only how you ingest the diff scope — the prior-art `Grep` / `Glob`
+sweep over `engine/**` and `creations/**` below is unchanged. Never
+report "clean" or zero findings solely because a `Grep` / `Glob` /
+`git diff` came up empty on a cited path; if you genuinely could not
+read a path, say so explicitly rather than implying it was scanned.
+
 ## Scope
 
 For each `.hpp`/`.cpp` file in the diff, scan for the patterns below. Filter to files **outside** `engine/render/**` and `engine/prefabs/irreden/render/**` — those are the legitimate homes for backend calls.
@@ -69,4 +83,4 @@ Empty output if clean.
 - **Cap output at 15 findings.**
 - **Skip files inside `engine/render/**` and `engine/prefabs/irreden/render/**`** — those are the legitimate homes for backend calls.
 - **Skip `*_test.cpp` files** — tests sometimes legitimately exercise backend APIs directly.
-- **Only flag lines in `+` hunks** — pre-existing renderer leaks are someone else's problem unless the diff touched them.
+- **Only flag lines in `+` hunks** — pre-existing renderer leaks are someone else's problem unless the diff touched them. A brand-new untracked file has no `git diff` hunks at all; treat its entire contents as added and flag throughout.
