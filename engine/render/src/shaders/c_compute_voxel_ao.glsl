@@ -110,6 +110,10 @@ void main() {
     // step is rotated through R_z(-rasterYaw) before iso projection so
     // the neighbour-sample direction lands on the canvas pixel that
     // actually holds the +tangent neighbour at this cardinal.
+    // Supersedes the raster-frame interpretation from T-091/PR #452 —
+    // see PR #1277 (voxel-face-rasterization design doc) for the
+    // architectural reason; post-#1278 this is fully correct at
+    // non-zero cardinal.
     vec3 worldOutward = vec3(faceOutwardNormalI(face));
     ivec3 t1, t2;
     if (face == kZFace) {

@@ -263,9 +263,11 @@ ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
 //   cardinal 1: (0,-1, 0)  (world x in [0,1] -> view y in [-1, 0])
 //   cardinal 2: (-1,-1, 0)
 //   cardinal 3: (-1, 0, 0)
-// Adding this shift keeps the diamond 2x3 emit aligned with the voxel's
-// view-space iso footprint at every cardinal. At cardinal 0 the shift is
-// zero so the cardinal-snap path stays bit-identical to master.
+// Adding this shift keeps the diamond 2x3 emit aligned with the rotated
+// voxel's iso footprint at every cardinal (iso-pixel granularity; the
+// lane-to-world-face mapping remains cardinal-dependent — see AO/lighting
+// shaders). At cardinal 0 the shift is zero so the cardinal-snap path
+// stays bit-identical to master.
 ivec3 cardinalLowerCornerShift(int cardinalIndex) {
     if (cardinalIndex == 1) return ivec3(0, -1, 0);
     if (cardinalIndex == 2) return ivec3(-1, -1, 0);
