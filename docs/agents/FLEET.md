@@ -269,6 +269,14 @@ the question to the architect and resume cleanly:
    addresses the direction, removes the label, pushes via
    `commit-and-push`. PR re-enters normal review flow.
 
+If at step 3 the worker finds the architect's direction surfaces a
+*further* design decision it can't make, it **re-escalates**: it must
+swap `fleet:design-unblocked` back to `fleet:design-blocked` (not leave
+both on the PR), so the PR returns to escalation limbo instead of being
+re-picked as unblocked next iteration. Use
+`fleet-pr-clear-feedback-labels <N> --labels "fleet:design-unblocked"`
+(a no-op when the label is absent) before adding `fleet:design-blocked`.
+
 Reviewer agents skip `fleet:design-blocked` PRs (they're in
 escalation limbo, not awaiting review). The full per-role procedure
 is in `role-opus-worker.md` (escalate + resume) and
@@ -926,7 +934,11 @@ Specifically, **never pass these via `--label` when filing**:
   "Design-escalation flow" above). `design-blocked` is set by the
   **worker** when it escalates and cleared by the **architect** when
   responding (replaced by `design-unblocked`). `design-unblocked`
-  is then cleared by the **worker** when it picks the PR back up.
+  is then cleared by the **worker** when it picks the PR back up — or,
+  if picking it up surfaces a *further* design decision, swapped back to
+  `design-blocked` (re-escalation). The two labels are mutually
+  exclusive: a PR never carries both, or it would be re-picked as
+  unblocked while actually re-blocked.
   Coexist with `fleet:wip` — they're qualifiers, not transfers of
   ownership. Distinct from `fleet:needs-fix` because the worker
   isn't fixing a defect, they're following architectural direction

@@ -276,6 +276,33 @@ def _parse_issue_field(body, field):
     return m.group(1).strip() if m else ""
 
 
+# A dependency may be declared two ways: the canonical `**Blocked by:** #N`
+# field, or free-form header prose like `## Blocked on #1300` / `Blocked on
+# PR-x`. `_parse_blocked_by` prefers the field and falls back to the header
+# form so a header-only dependency still surfaces as blocked — #1301 was
+# mis-listed as claimable (owner=free, blocked_by=(none)) because its blocker
+# lived in a `Blocked on #1300` header the field parser never read (#1326).
+# Complements #1296, which handled #N refs that already live inside the field.
+_BLOCKED_ON_RE = re.compile(
+    r'^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _parse_blocked_by(body):
+    field = _parse_issue_field(body, "Blocked by")
+    if field:
+        return field
+    for m in _BLOCKED_ON_RE.finditer(body or ""):
+        cand = m.group(1).strip().strip("*").strip()
+        # Only treat header prose as a blocker when it actually names a #N
+        # issue or a PR; an incidental "Blocked on the redesign" sentence
+        # must not gate the task forever.
+        if cand and ("#" in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
+            return cand
+    return ""
+
+
 def fetch_task_queue(repo_slug):
     """Fetch open task queue from GitHub Issues with the fleet:queued label."""
     issues_out = run_capture([
@@ -329,7 +356,7 @@ def fetch_task_queue(repo_slug):
         in_progress = "fleet:in-progress" in labels or owner != "free"
         status = "~" if in_progress else " "
 
-        blocked_by = _parse_issue_field(body, "Blocked by") or "(none)"
+        blocked_by = _parse_blocked_by(body) or "(none)"
 
         area_parts = [_AREA_LABEL_MAP[l] for l in labels if l in _AREA_LABEL_MAP]
         area = (

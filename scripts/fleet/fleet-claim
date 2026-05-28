@@ -383,6 +383,26 @@ for line in body.splitlines():
         field_value = m.group(1).strip()
         break
 
+# Fall back to free-form header prose like `## Blocked on #1300` / `Blocked
+# on PR-x` when the canonical field is absent, so a header-only dependency
+# still gates the claim — #1301 slipped through as claimable because its
+# blocker lived in a `Blocked on #1300` header (#1326). Mirrors
+# fleet-state-scout._parse_blocked_by; #1296 covered #N refs INSIDE the
+# field, this covers the header-prose form. Only honor prose that names a #N
+# or PR so an incidental "blocked on the redesign" sentence isn't a gate.
+if field_value is None:
+    blocked_on_re = re.compile(
+        r"^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$",
+        re.IGNORECASE,
+    )
+    for line in body.splitlines():
+        m = blocked_on_re.match(line)
+        if m:
+            cand = m.group(1).strip().strip("*").strip()
+            if cand and ("#" in cand or re.search(r"\bPR\b", cand, re.IGNORECASE)):
+                field_value = cand
+                break
+
 if field_value is None:
     sys.exit(0)
 
