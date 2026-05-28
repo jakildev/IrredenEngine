@@ -66,6 +66,7 @@ kernel void c_voxel_visibility_compact(
                 int3 voxelPos = int3(round(positions[idx].xyz));
                 if (cardinalIndex != 0) {
                     voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
+                    voxelPos += cardinalLowerCornerShift(cardinalIndex);
                 }
                 const int2 isoPos = pos3DtoPos2DIso(voxelPos);
                 if (isoPos.x >= frameData.cullIsoMin.x &&

@@ -255,8 +255,10 @@ struct C_VoxelPool {
                 continue;
             int chunk = i / IRRender::kVoxelChunkSize;
             vec3 pos = m_voxelPositionsGlobal[i].pos_;
-            if (cardinalIndex != CardinalIndex::k0)
+            if (cardinalIndex != CardinalIndex::k0) {
                 pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
+                pos += vec3(IRMath::cardinalLowerCornerShift(cardinalIndex));
+            }
             vec2 isoPos = IRMath::pos3DtoPos2DIso(pos);
             m_chunkBounds[chunk].expand(isoPos);
         }

@@ -153,11 +153,13 @@ void main() {
 
     const int rawDepth = encoded >> 2;
     const int face = encoded & 3;
-    // Rotate raster-frame face normal to world frame so Lambert shading is
-    // correct at non-zero camera yaw. No-op at yaw=0 (cardinalIndex=0).
-    // Matches the AO shader pattern (c_compute_voxel_ao.glsl:91,113).
+    // The rasterizer encodes `face` in WORLD frame — kXFace = world -X
+    // face, kYFace = world -Y, kZFace = world -Z — so `faceOutwardNormal`
+    // already gives the world-frame surface normal directly. Sun
+    // direction lives in the same world frame, so Lambert is a plain
+    // dot product without rotation.
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    vec3 worldNormal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
+    vec3 worldNormal = faceOutwardNormal(face);
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
     const float faceFactor = mix(sunAmbient, 1.0, lambert) * sunIntensity;
 

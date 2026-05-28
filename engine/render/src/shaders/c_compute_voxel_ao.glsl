@@ -101,12 +101,16 @@ void main() {
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
     );
 
-    // Face axes in raster frame (pre-cardinal-rotation). Tangents stay in
-    // raster frame so we can project them straight onto canvas-pixel
-    // offsets via `pos3DtoPos2DIso`. The outward normal is rotated back
-    // to world frame for the d = (pos3D' - pos3D) · outward test, which
-    // happens in the same world frame `pos3D` lives in.
-    ivec3 rasterOutwardI = faceOutwardNormalI(face);
+    // The rasterizer encodes `face` in WORLD frame (the lower-coord world
+    // face the per-voxel emit invocation processed: kXFace = world -X
+    // face, kYFace = world -Y face, kZFace = world -Z face). So the
+    // face outward and its in-plane tangents are also in world frame
+    // and used directly without rotation in the world-frame
+    // `d = dot(neighbour - here, worldOutward)` test below. The tangent
+    // step is rotated through R_z(-rasterYaw) before iso projection so
+    // the neighbour-sample direction lands on the canvas pixel that
+    // actually holds the +tangent neighbour at this cardinal.
+    vec3 worldOutward = vec3(faceOutwardNormalI(face));
     ivec3 t1, t2;
     if (face == kZFace) {
         t1 = ivec3(1, 0, 0);
@@ -118,15 +122,15 @@ void main() {
         t1 = ivec3(1, 0, 0);
         t2 = ivec3(0, 0, 1);
     }
-    vec3 worldOutward = rotateCardinalZInv(vec3(rasterOutwardI), cardinalIndex);
 
-    // 1 world voxel along a tangent axis projects to a fixed iso-pixel
-    // offset (e.g. +X → (-1, -1) for Z-face). Subdivision modes scale
-    // canvas pixels by `effectiveTrixelSubdivisionScale` so the iso
-    // offset for a one-voxel step grows accordingly.
+    // Subdivision modes scale canvas pixels by
+    // `effectiveTrixelSubdivisionScale` so the iso offset for a one-
+    // voxel step grows accordingly.
     int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
-    ivec2 deltaT1 = pos3DtoPos2DIso(t1) * scale;
-    ivec2 deltaT2 = pos3DtoPos2DIso(t2) * scale;
+    ivec3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
+    ivec3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
+    ivec2 deltaT1 = pos3DtoPos2DIso(t1View) * scale;
+    ivec2 deltaT2 = pos3DtoPos2DIso(t2View) * scale;
 
     int occl = 0;
     for (int dir = 0; dir < 4; ++dir) {
