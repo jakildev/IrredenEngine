@@ -61,7 +61,7 @@ ENTRY_HEAD_FILE = re.compile(
     r"^##\s+"
     r"(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)"   # date, optional time
     r"(?:\s*(?:Z|UTC))?"                                      # optional Z / UTC suffix
-    r"(?:\s*[—–:-]+\s*(.*?))?\s*$"                            # optional inline headline
+    r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                       # optional inline headline; separator optional
 )
 
 # Pattern bank — order matters; first match wins. Widen aggressively;
