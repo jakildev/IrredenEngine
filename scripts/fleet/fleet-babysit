@@ -78,6 +78,15 @@ _role_effort_var="FLEET_EFFORT_$(printf '%s' "$ROLE" | tr 'a-z-' 'A-Z_')"
 EFFORT="${!_role_effort_var:-${FLEET_EFFORT:-$_effort_default}}"
 unset _role_effort_var _effort_default
 
+# Inspection hook: print the resolved effort for this <model> <role> and
+# exit, without launching a claude session. Lets an operator check what a
+# pane would get, and lets test_babysit_effort.sh cover the role→var
+# mapping + precedence. Mirrors `fleet-dispatcher --print-effort`.
+if [[ -n "${FLEET_BABYSIT_PRINT_EFFORT:-}" ]]; then
+    echo "$EFFORT"
+    exit 0
+fi
+
 # Architects boot with auto-memory disabled. The project-wide
 # MEMORY.md auto-injects past-session notes into every Claude Code
 # session — useful continuity for autonomous workers/reviewers, but
