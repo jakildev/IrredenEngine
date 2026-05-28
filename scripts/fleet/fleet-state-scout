@@ -700,10 +700,10 @@ _SMOKE_SKIP_LABELS = frozenset({
 
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
-# Single-issue blocker (`#1234`). Reject multi-blocker (`#101, #102`),
-# free-text (`refactor lands`), and PR-URL (`https://...`) forms — all of
-# which the cross-author stacking flow can't resolve to one upstream branch
-# (multi-blocker decision deferred to v2 per T-110 plan Q3).
+# Single-issue blocker (`#1234`). Rejects free-text, URL, and multi-blocker
+# forms. Evaluated AFTER resolve_blocked_by() reduces multi-ref bodies to
+# their unresolved set, so a task originally blocked on `#N1, #N2` where #N1
+# is now CLOSED will have blocked_by=`#N2` at this point and will match.
 SINGLE_TASK_BLOCKER_RE = re.compile(r"^#\d+$")
 
 
@@ -734,6 +734,95 @@ def _blocker_pr_files(repo_key, pr_number):
     except (FileNotFoundError, json.JSONDecodeError):
         return []
     return [f.get("path", "") for f in data.get("files", [])]
+
+
+# ---------------------------------------------------------------------------
+# Live blocker resolution (T-1296)
+# ---------------------------------------------------------------------------
+#
+# The raw blocked_by field echoes the issue body's **Blocked by:** line
+# verbatim. When a blocker is CLOSED (or its work has shipped via a merged
+# claude/<N>-* PR) the field still shows it as live, causing workers to skip
+# tasks that are actually ready. resolve_blocked_by() runs after
+# collect_state() and updates each task's blocked_by in place to only
+# contain references that are still genuinely unresolved.
+
+_BLOCKER_REF_RE = re.compile(r"#(\d+)")
+_REPO_SLUG_MAP = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+
+def _resolve_ref_satisfied(repo_slug, ref_str, cache):
+    """Return True if #ref_str is satisfied: issue CLOSED/MERGED, or a
+    claude/<ref>-* PR is MERGED. Uses per-tick cache to avoid redundant calls.
+    """
+    key = (repo_slug, ref_str)
+    if key in cache:
+        return cache[key]
+    result = False
+    try:
+        r = subprocess.run(
+            ["gh", "issue", "view", ref_str, "--repo", repo_slug,
+             "--json", "state", "--jq", ".state"],
+            capture_output=True, text=True, timeout=10,
+        )
+        result = r.stdout.strip() in ("CLOSED", "MERGED")
+    except (subprocess.SubprocessError, OSError):
+        pass
+    cache[key] = result
+    return result
+
+
+def resolve_blocked_by(state):
+    """Resolve blocked_by fields for all open tasks.
+
+    Uses already-fetched closed_fleet_queued and recent_merged_prs for
+    in-memory resolution; falls back to live gh issue view for refs not
+    covered by either. Mutates state in place.
+    """
+    per_tick_cache: dict = {}
+
+    for repo_key, repo_state in state["repos"].items():
+        repo_slug = _REPO_SLUG_MAP.get(repo_key)
+        if not repo_slug:
+            continue
+
+        closed_nums = {
+            str(i.get("number", ""))
+            for i in repo_state.get("closed_fleet_queued", [])
+            if i.get("number")
+        }
+        merged_heads = [
+            pr.get("headRefName", "") or ""
+            for pr in repo_state.get("recent_merged_prs", [])
+        ]
+
+        for task in repo_state.get("tasks", {}).get("open", []):
+            raw = (task.get("blocked_by") or "").strip()
+            if not raw or raw.lower().startswith("(none"):
+                continue
+            refs = _BLOCKER_REF_RE.findall(raw)
+            if not refs:
+                continue  # free-text or PR-URL form — leave unchanged
+
+            unresolved = []
+            for ref in refs:
+                if ref in closed_nums:
+                    continue
+                if any(h.startswith(f"claude/{ref}-") for h in merged_heads):
+                    continue
+                if _resolve_ref_satisfied(repo_slug, ref, per_tick_cache):
+                    continue
+                unresolved.append(ref)
+
+            if not unresolved:
+                task["blocked_by"] = "(none)"
+            elif len(unresolved) == 1:
+                task["blocked_by"] = f"#{unresolved[0]}"
+            else:
+                task["blocked_by"] = ", ".join(f"#{r}" for r in unresolved)
 
 
 def enrich_stackable_blocker_prs(state):
@@ -1272,6 +1361,7 @@ def _populate_done_tasks(state):
 def tick_once():
     state = collect_state()
     _populate_done_tasks(state)
+    resolve_blocked_by(state)
     enrich_stackable_blocker_prs(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 

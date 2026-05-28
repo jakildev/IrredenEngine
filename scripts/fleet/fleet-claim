@@ -730,13 +730,18 @@ cmd_claim_base() {
 }
 
 cmd_find_stackable_blockers() {
-    # If the task is single-#N-blocked AND that blocker has exactly one
-    # open PR (matched via the head-branch `claude/<N>-*` or a body
-    # `Closes #N` reference), print one tab-separated line:
+    # If the task's **Blocked by:** field resolves to exactly one unresolved
+    # blocker with exactly one matching open PR (head-branch `claude/<N>-*`
+    # or body `Closes #N`), print one tab-separated line:
     #   <pr-url><TAB><headRefName><TAB><author-login><TAB><number>
-    # Otherwise print nothing (and exit 0). Multi-blocker, PR-URL-only,
-    # and zero/multiple-match cases all map to the empty output — callers
-    # treat the result as a strictly optional hint.
+    # Otherwise print nothing (and exit 0).
+    #
+    # Multi-blocker bodies are handled by resolving each #N reference live:
+    # references whose issue is CLOSED/MERGED, or whose claude/<N>-* PR is
+    # already merged, are filtered out first. If exactly one unresolved ref
+    # remains, it qualifies for single-stack (same contract as before, on
+    # the effective unresolved set rather than the raw body count).
+    # Two or more unresolved blockers → empty output (conservative).
     #
     # Usage: fleet-claim find-stackable-blockers <issue-number>
     local issue_num
@@ -755,10 +760,18 @@ cmd_find_stackable_blockers() {
 
     [[ -z "$body_b64" ]] && return 0
 
+    local repo
+    repo=$(repo_from_ns)
+    [[ -z "$repo" ]] && return 0
+    command -v gh >/dev/null 2>&1 || return 0
+
     local blocker
-    blocker=$(BODY_B64="$body_b64" python3 <<'PYEOF'
-import base64, os, re, sys
+    blocker=$(BODY_B64="$body_b64" REPO="$repo" python3 <<'PYEOF'
+import base64, json, os, re, subprocess, sys
+
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
+repo = os.environ.get("REPO", "")
+
 field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
 value = None
 for line in body.splitlines():
@@ -768,13 +781,54 @@ for line in body.splitlines():
         break
 if value is None or value.lower().startswith("(none"):
     sys.exit(0)
-# v1: single-blocker only (matches the scout's stackable_blocker_pr filter
-# in fleet-state-scout). Multi-blocker stacking opens cherry-pick /
-# merge questions the merger has no machinery for.
+
 issue_refs = re.findall(r"#(\d+)", value)
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", value)
-if len(issue_refs) == 1 and not pr_urls:
-    print(issue_refs[0])
+if not issue_refs or pr_urls:
+    sys.exit(0)
+
+# Fetch merged PR heads once for the "tracker-issue open, claude/<N>-* PR merged" case.
+merged_heads = []
+if repo:
+    try:
+        r = subprocess.run(
+            ["gh", "pr", "list", "--repo", repo, "--state", "merged",
+             "--limit", "30", "--json", "headRefName",
+             "--jq", "[.[].headRefName]"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            merged_heads = json.loads(r.stdout or "[]")
+    except Exception:
+        pass
+
+_resolve_cache = {}
+
+def is_satisfied(ref):
+    if ref in _resolve_cache:
+        return _resolve_cache[ref]
+    prefix = f"claude/{ref}-"
+    if any(h.startswith(prefix) for h in merged_heads):
+        _resolve_cache[ref] = True
+        return True
+    if not repo:
+        _resolve_cache[ref] = False
+        return False
+    try:
+        r = subprocess.run(
+            ["gh", "issue", "view", ref, "--repo", repo,
+             "--json", "state", "--jq", ".state"],
+            capture_output=True, text=True, timeout=10,
+        )
+        result = r.stdout.strip() in ("CLOSED", "MERGED")
+    except (subprocess.SubprocessError, OSError):
+        result = False
+    _resolve_cache[ref] = result
+    return result
+
+unresolved = [r for r in issue_refs if not is_satisfied(r)]
+if len(unresolved) == 1:
+    print(unresolved[0])
 PYEOF
 )
     [[ -z "$blocker" ]] && return 0
@@ -782,10 +836,6 @@ PYEOF
     # Find an open PR whose head-branch starts with claude/<N>- OR whose
     # body contains "Closes #N" (case-insensitive). Exactly one match
     # qualifies; zero or multiple → empty output.
-    local repo
-    repo=$(repo_from_ns)
-    [[ -z "$repo" ]] && return 0
-    command -v gh >/dev/null 2>&1 || return 0
 
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
 import json, os, re, subprocess, sys
