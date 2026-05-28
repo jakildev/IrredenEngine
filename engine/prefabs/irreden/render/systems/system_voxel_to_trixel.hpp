@@ -284,13 +284,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Profile this path if the scene voxel count grows significantly.
     IREntity::EntityId lastUploadedCanvas_ = IREntity::kNullEntity;
 
-    // Main world canvas + its lazily-allocated per-axis trixel canvases,
-    // resolved once per frame in beginTick. Caching them here keeps the
-    // per-entity tick from calling getComponent on its own iterating canvas
-    // (.claude/rules/cpp-ecs.md). Non-null only while the camera sits at a
-    // non-cardinal residual yaw (#1308 allocation lifecycle); that is what
-    // gates the smooth-Z-yaw per-axis routing pass (#1309). The pointer is
-    // re-resolved every frame — never held across frames.
+    // Re-resolved every frame in beginTick — never held across frames. (.claude/rules/cpp-ecs.md)
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
