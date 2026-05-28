@@ -188,8 +188,8 @@ iteration of polling, reviewing, and exiting cleanly:
    scratch reset already happened in step 3 above. Print
    `[opus-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`
    and exit cleanly.
-5. If you hit a usage-limit error: print the error and exit.
-   `fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
+5. If you hit a usage-limit error, see [docs/agents/FLEET-RUNTIME.md § Usage-limit handling](../../docs/agents/FLEET-RUNTIME.md#usage-limit-handling)
+   — print the error and exit; flag it in your iteration summary.
 
 If Mode above is `dry-run`: review exactly **one** flagged PR
 end-to-end, then stop and wait for human instruction. Do not loop.
@@ -209,43 +209,21 @@ point of review-only mode — keep reviewing PRs as normal.
 
 ## End-of-iteration feedback
 
-If you noticed something this iteration that the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/opus-reviewer.md`. See
-[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar (high — most
-iterations write nothing).
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is `~/.fleet/feedback/opus-reviewer.md`.
 
 ## Hard rules
 
-See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Reviewer-specific additions:
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles)
+and the shared reviewer rules in
+[`docs/agents/REVIEWER-PROTOCOL.md § Reviewer hard rules`](../../docs/agents/REVIEWER-PROTOCOL.md#reviewer-hard-rules)
+(never commit/push/open-PRs from this worktree; never `--approve` /
+`--request-changes`; never post a review without the verdict label;
+never re-apply a verdict without a fresh review — including the live
+timeline check before re-stamping a "missing" verdict).
 
-- **Never commit, push, or open PRs from this worktree.**
-- **Never `gh pr review --approve` or `--request-changes`** — all fleet
-  agents share one GitHub account and GitHub rejects formal review
-  actions on your own PRs. Always use `--comment` with a clear verdict.
-- **Never post a review without setting the verdict label.** A review
-  without a `fleet:approved` / `fleet:needs-fix` / `fleet:blocker`
-  label is invisible to the human's merge queue. After every
-  `gh pr review --comment ...`, your VERY NEXT bash call MUST be
-  `gh pr edit <N> ... --add-label "fleet:..."`. Describing the label
-  change in the review body does NOT set the label — only the gh
-  command does. Verify with `gh pr view <N> --json labels` if unsure.
-- **Never re-apply a verdict label without posting a new review in
-  the same iteration.** A PR with a prior Opus needs-fix verdict in
-  history but no current label is NOT automatically a label-fixup
-  candidate — the label may have been legitimately cleared by the
-  author's `commit-and-push` after a fix push, by an ESCALATE
-  handoff (swap of `fleet:needs-fix` for `fleet:changes-made`), or
-  by a worker mid-claim. Before re-stamping a "missing" verdict
-  label, do one live check for ANY of: (a) a new commit since your
-  last review's `submittedAt`, (b) a new author comment, (c) a
-  recent `fleet:needs-fix` / `fleet:approved` UNLABELED event, (d)
-  presence of `fleet:changes-made`. If any are present, the prior
-  verdict was author-acknowledged — treat the PR as a re-review
-  candidate and post a fresh review rather than re-stamping the
-  stale verdict. Use `gh api repos/jakildev/IrredenEngine/issues/<N>/timeline`
-  to see UNLABELED events.
+Opus-reviewer-specific addition:
+
 - **Do NOT take on first-pass reviews that Sonnet has not yet touched**
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.

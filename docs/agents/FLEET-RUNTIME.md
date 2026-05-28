@@ -6,7 +6,29 @@ every iteration: heartbeat → reservation check → ...work... → shutdown.
 Each role file points here rather than restating the protocol.
 
 The architect role (`role-opus-architect.md`) is interactive, not
-transient, and does not run these ceremonies.
+transient, and skips the loop ceremonies (heartbeat, reservation check,
+per-iteration shutdown). It still shares the **startup cache read** and
+**end-of-iteration feedback** sections below.
+
+---
+
+## Startup — shared fleet state cache read
+
+Every role's startup reads the scout's cache before doing anything else.
+The *which slice* differs by role — most read the full
+`~/.fleet/state/state.json`; sonnet-author reads its projection slice
+`~/.fleet/state/projections/sonnet-author.json`; reviewers also discover
+repo slugs (see [`FLEET-CACHE.md`](FLEET-CACHE.md)). The **stale-scout
+guard is identical for all of them**:
+
+> If the cache file is missing or its `generated_at` is older than
+> ~5 minutes, the scout is down — print
+> `scout cache stale or missing — run fleet-up` and exit.
+
+Do not fall back to direct `gh` / `git` polling when the cache is stale;
+that's the cost the cache exists to avoid (see
+[`FLEET-CACHE.md`](FLEET-CACHE.md)). The role file names the specific
+arrays it reads from the cache.
 
 ---
 
@@ -143,6 +165,30 @@ this piece is a no-op at shutdown.
 Then exit cleanly. `fleet-dispatcher` launches a fresh `claude` for the
 role when the scout's projection sees new actionable state — no
 carry-over between iterations.
+
+---
+
+## End-of-iteration feedback
+
+If you noticed something this iteration that the human should know about
+— a fleet bug, a missing permission, surprising state, or a suggestion
+for the fleet itself — append a structured entry to your feedback file:
+
+```
+~/.fleet/feedback/<your-feedback-name>.md
+```
+
+The feedback name is per-role:
+
+| Role | File |
+|---|---|
+| opus-worker, sonnet-author | `<your-worktree-basename>.md` (e.g. `opus-worker-1.md`, `sonnet-fleet-1.md`) — per-worktree so the human can tell which pane observed what |
+| opus-reviewer, sonnet-reviewer, merger, smoke-worker | the fixed role name (e.g. `opus-reviewer.md`) |
+| opus-architect | `opus-architect.md` |
+
+See [`FLEET.md § Fleet feedback channel`](FLEET.md) for the entry format
+and the bar — which is **high**. Most iterations write nothing; only
+durable, actionable observations belong here, not per-iteration status.
 
 ---
 

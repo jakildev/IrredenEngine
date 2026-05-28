@@ -144,20 +144,11 @@ When you do pick a task:
 3. Build the target you touched with `fleet-build --target <name>`.
    Run the relevant executable if one exists for the touched code:
    `fleet-run <executable-name>`
-4. **Optimize before commit.** Run the `optimize` skill before
-   invoking `commit-and-push`. This rule applies to architects too —
-   the architect's PRs touch core engine code (render, ECS, math,
-   audio, video) and almost always need a profiling pass. Skip only
-   for pure docs or mechanical refactors.
-
-   You don't need to invoke `simplify` separately — `commit-and-push`
-   runs it as part of its flow. Running `optimize` first matters
-   because optimize may add `IR_PROFILE_*` blocks and rationale
-   comments that simplify should leave alone.
-
-   When **addressing review feedback** (amending or pushing fixes),
-   re-run `optimize` (if the perf surface changed) before invoking
-   `commit-and-push` to push the fix.
+4. **Optimize before commit.** See [docs/agents/AUTHOR-PIPELINE.md § Optimize before commit](../../docs/agents/AUTHOR-PIPELINE.md#optimize-before-commit).
+   This applies to architects too — your PRs touch core engine code
+   (render, ECS, math, audio, video) and almost always need a profiling
+   pass; skip only for pure docs or mechanical refactors. Don't invoke
+   `simplify` separately — `commit-and-push` runs it.
 5. Use the `commit-and-push` skill to open the PR. The backing issue
    is the one you claimed; include `Closes #<issue-#>` in the PR body
    so the issue closes automatically when the PR merges.
@@ -201,72 +192,40 @@ behavior here.
 ## Filing tasks
 
 When you identify work that needs doing — by you, a Sonnet agent, or
-anyone — file it as a GitHub issue **with NO labels**:
+anyone — file it per
+[docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md): a
+GitHub issue with **no labels** and a structured body
+(Area / Model / Blocked by / Acceptance criteria / Context). The human
+stamps `human:approved` when they want it picked up; the scout ingests
+it on its next pass and adds the rest.
 
-`gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<description>"`
-
-Do NOT pre-apply `fleet:task`, `fleet:queued`, `fleet:needs-plan`, or
-any other state label. Per [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline":
-state labels are owned by specific roles (reviewers, the human).
-Author-side filing should add zero labels and let the human stamp
-`human:approved` when they want it picked up. The scout / role
-triage flow adds the appropriate state labels post-triage.
-
-Include in the body:
-- **Area:** e.g. `engine/render`, `engine/math`, `docs`
-- **Model:** `opus` or `sonnet`
-- **Blocked by:** `(none)` or `#NNN`
-- **Acceptance criteria** (concrete check: build passes, test X works)
-- **Context** (why this matters, what you observed)
-
-The issue will sit in the backlog until the **human triages and adds
-the `human:approved` label**. Only then does the scout ingest it into
-the live queue on its next pass.
+**Multi-issue stacks (epic decomposition).** When the work decomposes
+into a stack of N issues that each depend on the prior — the canonical
+smooth-yaw / SO(3) / rotation / streaming patterns — do NOT hand-file
+the children. Invoke the **`file-epic`** skill, which enforces the
+structured `**Blocked by:** #<prior>` chain the scout and `fleet-claim`
+parsers require (`/file-epic <path-to-approved-plan>`). Hand-filing
+reliably drops the standalone `**Blocked by:**` line into header prose,
+where the parsers can't see it and the chain silently fails to stack.
+See [docs/agents/TASK-FILING.md § Multi-issue stacks](../../docs/agents/TASK-FILING.md#multi-issue-stacks-epic-decomposition)
+for the rules (one `#N` per blocker line; issue-number blockers only;
+gate docs-PR dependencies by withholding `human:approved`).
 
 ## Planning issues
 
-The **opus worker** autonomously handles `fleet:needs-plan` issues
-as a transient, scout-triggered invocation — reading the issue thread, posting a plan
-comment, saving a plan file to `~/.fleet/plans/`, and swapping labels.
-You do not need to poll for these.
+The **opus worker** autonomously handles `fleet:needs-plan` issues as a
+transient, scout-triggered invocation. You do not need to poll for them.
 
-If the human asks you to plan an issue directly (e.g., during a design
-conversation), use the same flow:
-
-1. Read the full issue thread (title, body, all comments).
-2. Assess the scope and propose a plan as an issue comment:
-   - What files/modules are involved
-   - Whether it should be one task or broken into subtasks
-   - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
-   - Acceptance criteria
-   - **Cross-system audit (when planning a deletion or migration of
-     a shared resource — component, SSBO, GPU buffer, system,
-     coordinate convention, etc.).** List every consumer of the
-     resource being changed and a per-consumer migration plan.
-     Audit by grep on the type/symbol name and on slot/binding
-     numbers (some consumers reference resources by index, not
-     name). Without this section the worker discovers gaps mid-task
-     and escalates: T-071's design doc planned `BUILD_OCCUPANCY_GRID`
-     deletion based on the sun-shadow consumer alone, missing AO
-     (`c_compute_voxel_ao.glsl` slot 28) and light-volume
-     (`detail::hasLineOfSight`) which both also depend on it. T-072
-     then expected the grid to still exist as a GPU resource T-071
-     was deleting. Sign-convention drift between parallel PRs
-     (T-055 vs T-056 on `visualYaw`→world rotation) is the same
-     class of bug — name the convention and the consumers that
-     must agree on it.
-3. Save the plan to `~/.fleet/plans/issue-<N>.md` using the Write tool.
-4. Remove `fleet:needs-plan`. Do NOT touch `human:approved` —
-   it's still on the issue from when the human triaged it, and
-   removing it would erase the human's signal:
-   `gh issue edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:needs-plan"`
-   The scout picks this issue up on its next pass — `human:approved`
-   without `fleet:needs-plan` (and without `fleet:needs-info`) is the
-   signal that the issue is queue-ready. The plan file stays at
-   `~/.fleet/plans/issue-<N>.md`.
-
-If you disagree with the issue's direction, comment with your
-concerns but leave `fleet:needs-plan` on — let the human decide.
+If the human asks you to plan an issue directly (e.g. during a design
+conversation), follow the shared
+[docs/agents/PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md)
+— read the full thread, post the structured plan comment (including the
+**cross-system audit** when planning a deletion/migration of a shared
+resource), save `~/.fleet/plans/issue-<N>.md`, and remove
+`fleet:needs-plan` (leaving `human:approved`). If you disagree with the
+issue's direction, comment but leave `fleet:needs-plan` on. If the work
+decomposes into a multi-issue stack, file it via `file-epic` per
+[Filing tasks](#filing-tasks) above.
 
 **Game-side scope.** The architect does not autonomously claim game
 tasks. The responsibility list above is engine-only. When the human
@@ -427,12 +386,8 @@ Stop and surface to the human when:
 
 ## End-of-iteration feedback
 
-If during a session you noticed something the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/opus-architect.md`. See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
-"Fleet feedback channel" for the format and the bar (high — write
-only when there's a real signal worth surfacing).
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is `~/.fleet/feedback/opus-architect.md`.
 
 ## Hard rules
 

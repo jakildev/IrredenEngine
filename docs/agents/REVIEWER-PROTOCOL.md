@@ -314,3 +314,43 @@ exactly one of:
 explicitly — "Sonnet flagged X; on closer read I confirm/disagree
 because Y" — so the diff between Sonnet's pass and yours is visible
 in the body.
+
+---
+
+## Reviewer hard rules
+
+Shared by both reviewer roles, on top of
+[`CLAUDE-BASELINE.md § Hard rules for autonomous fleet roles`](CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).
+Each reviewer file points here; role-specific additions stay in the
+role file.
+
+- **Never commit, push, or open PRs from a reviewer worktree.** The
+  `review-pr` skill documents this as an anti-pattern; treat it as a
+  hard rule.
+- **Never `gh pr review --approve` or `--request-changes`.** All fleet
+  agents share one GitHub account and GitHub rejects formal review
+  actions on your own PRs. Always use `--comment` with a clear verdict
+  line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
+- **Never post a review without setting the verdict label.** A review
+  comment without a `fleet:approved` / `fleet:needs-fix` /
+  `fleet:blocker` label is invisible to the human's merge queue — the
+  human filters PRs by label, not by review body. After every
+  `gh pr review --comment ...`, your VERY NEXT bash call MUST be the
+  verdict label-swap (see § Verdict label-swap commands). Describing
+  the label change in the review body does NOT set it — only the `gh`
+  command does. Verify with `gh pr view <N> --json labels`.
+- **Never re-apply a verdict label without posting a new review in the
+  same iteration.** A PR with a prior verdict in history but no current
+  label is NOT automatically a label-fixup candidate — the label may
+  have been legitimately cleared by the author's `commit-and-push`
+  after a fix push, by an ESCALATE handoff (swap of `fleet:needs-fix`
+  for `fleet:changes-made`), or by a worker mid-claim on a
+  `fleet:has-nits` PR. Before re-stamping a "missing" verdict, do one
+  live check for ANY of: (a) a new commit since your last review's
+  `submittedAt`, (b) a new author comment, (c) a recent
+  `fleet:needs-fix` / `fleet:approved` UNLABELED event
+  (`gh api repos/<owner>/<repo>/issues/<N>/timeline`), (d) presence of
+  `fleet:changes-made`. If any are present, the prior verdict was
+  author-acknowledged — treat the PR as a re-review candidate and post
+  a fresh review rather than re-stamping the stale verdict. Otherwise
+  leave the label alone.

@@ -254,24 +254,10 @@ Each iteration:
    rule, early returns, `unique_ptr` over `shared_ptr`, and the rest of
    the engine style guide.
 
-6. **Build and run.**
-   `fleet-build --target <name>`
-
-   **If the diff adds files under `engine/prefabs/**/systems/`**, also
-   build `IrredenEngineTest` (or the engine static library) — creation
-   targets like `IRShapeDebug` only link the systems they reference, so
-   a new system with a missing `SystemName` enum entry is a silent
-   linker error from the creation perspective.
-
-   If the touched code has an executable target, run it to confirm it
-   launches cleanly:
-   - **Demos that support `--auto-screenshot`:** `fleet-run <executable-name> --auto-screenshot 10` (no `--timeout` — auto-screenshot fires `closeWindow()` when done).
-   - **All other GUI executables:** `fleet-run --timeout 15 <executable-name>` — 5 seconds is too short for a demo mid-init.
-   - **Test executables:** `fleet-run --timeout 15 <executable-name>` as a safety net.
-
-   **Never** use `cd <dir> && ./<exe>` — that triggers the
-   compound-command security gate. Untested commits are the single
-   biggest waste of reviewer-agent time.
+6. **Build and run.** See [docs/agents/AUTHOR-PIPELINE.md § Build and run](../../docs/agents/AUTHOR-PIPELINE.md#build-and-run)
+   for the `fleet-build` invocation, the `engine/prefabs/**/systems/`
+   linker-error caveat, the `--auto-screenshot` vs `--timeout` run
+   matrix, and the no-`cd && ./exe` gate. Re-touch the heartbeat first.
 
 7. **Stop and escalate if the task is subtler than expected.** If the
    work touches:
@@ -281,85 +267,35 @@ Each iteration:
    - The public `ir_*.hpp` surface across multiple modules
    - Lifetime/ownership decisions
 
-   STOP. File a GitHub issue for the opus work (no labels — see
-   [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling discipline") and note the escalation
-   on your PR:
-   `gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" --body "Escalated from sonnet.\n\n**Area:** ...\n**Model:** opus\n**Blocked by:** (none)\n\nContext: ..."`
-   Then comment on your PR: "escalated — filed issue #N for opus".
-   The human will triage the issue and add `human:approved` when
-   ready. The scout ingests it on its next pass and the opus-workers
-   become eligible to claim it. Move on to the next task.
+   STOP. File the opus follow-up as a GitHub issue per
+   [docs/agents/TASK-FILING.md § Escalation issues](../../docs/agents/TASK-FILING.md#escalation-issues-sonnet--opus-or-scope-grew)
+   (no labels, `Escalated from sonnet.` + structured body). Then
+   comment on your PR: "escalated — filed issue #N for opus". The
+   human triages and adds `human:approved` when ready; the scout
+   ingests it and the opus-workers become eligible to claim it. Move
+   on to the next task.
 
-8. **Verify visual output (when it changed).** Check whether the diff
-   touches visual/render code:
-   `git diff --name-only origin/master...HEAD`
+8. **Verify visual output (when it changed).** See [docs/agents/AUTHOR-PIPELINE.md § Verify visual output](../../docs/agents/AUTHOR-PIPELINE.md#verify-visual-output-when-it-changed)
+   — the render-path trigger file set, the mandatory
+   `attach-screenshots` + `render-debug-loop` pair, the skip
+   conditions, and the ordering before optimize/commit. The
+   **[sonnet-author]** delta applies: if `render-debug-loop` surfaces
+   something subtler than a known symptom (or a fix that would touch
+   core render pipeline code), STOP and escalate per step 7 — that's
+   an Opus-tier debugging session.
 
-   The trigger file set is the same for both skills below:
-   - `engine/render/` (any file)
-   - `engine/prefabs/irreden/render/` (any file)
-   - Any `*.glsl` or `*.metal` shader file anywhere in the tree
-   - `creations/demos/*/src/**` or `creations/demos/*/main*.cpp`
+9. **Optimize before commit (when relevant).** See [docs/agents/AUTHOR-PIPELINE.md § Optimize before commit](../../docs/agents/AUTHOR-PIPELINE.md#optimize-before-commit).
+   The **[sonnet-author]** delta applies: run `optimize` ONLY if the
+   change touches a system tick, render pipeline stage, shader,
+   audio/video, or math hot path; skip for docs/tests/mechanical
+   refactors. Don't invoke `simplify` separately — `commit-and-push`
+   runs it.
 
-   When the diff includes any of those, you must invoke BOTH skills:
-
-   a. **`attach-screenshots`** — captures before/after pairs (master
-      vs working tree) and writes them under
-      `docs/pr-screenshots/<branch>/` so the PR body can embed them
-      via raw GitHub URLs. Does not diagnose — see (b). Skip if
-      `docs/pr-screenshots/<branch>/` already contains screenshots
-      from a prior run on this branch.
-
-   b. **`render-debug-loop`** — drives any creation that supports
-      `--auto-screenshot` (today: `shape_debug`), reads each
-      captured frame, and diagnoses rendering issues against the
-      topic-indexed reference (trixel/SDF shapes, lighting,
-      backend-parity symptoms). Catches visual regressions that
-      would otherwise reach the reviewer (or, worse, ship). Required
-      by `engine/render/CLAUDE.md` "Verifying render changes" for
-      any PR touching shaders, render systems, or pipeline ordering.
-
-   The two skills serve different purposes — `attach-screenshots`
-   produces the PR record; `render-debug-loop` is the diagnostic
-   pass that confirms the change actually renders correctly. Run
-   both; do not substitute one for the other.
-
-   If `render-debug-loop` surfaces something subtler than expected
-   (the diagnostic table doesn't match a known symptom, or the fix
-   would touch core render pipeline code), STOP and escalate per
-   step 7 — that's an Opus-tier debugging session, not a Sonnet
-   one.
-
-   Skip BOTH if the diff is purely docs, tests, mechanical refactors
-   (rename, extract-header, add-logging), or build/CI changes with no
-   visual effect. The exceptions list in `engine/render/CLAUDE.md`
-   "Verifying render changes" is authoritative — when in doubt, run
-   the loop; a missing diagnostic pass is a fast reviewer-rejection.
-
-   Both must complete before `optimize` and `commit-and-push` so any
-   resulting fixes land in the same commit as the code change.
-
-9. **Optimize before commit (when relevant).** Run the `optimize`
-   skill ONLY if the change touches a system tick, a render pipeline
-   stage, a shader, audio/video, math hot paths, or anywhere on the
-   per-frame critical path. Skip for pure docs, tests, mechanical
-   refactors, or build/CI changes.
-
-   You don't need to invoke `simplify` here — `commit-and-push`
-   runs it as part of its flow. Running `optimize` first matters
-   because optimize may add `IR_PROFILE_*` blocks and rationale
-   comments that simplify should leave alone; commit-and-push's
-   simplify pass then polishes everything together.
-
-   The same applies when **addressing review feedback** — after
-   editing in response to comments, re-run `optimize` (if the perf
-   surface changed) before invoking `commit-and-push` to push the fix.
-
-10. **Finalize the PR.** Use the `commit-and-push` skill to push your
-   work commits to the existing PR branch. Then remove the WIP label
-   and release the claim:
-   `gh pr edit <N> --remove-label "fleet:wip"`
-   `fleet-claim release <issue-#>`
-   Paste the PR URL.
+10. **Finalize the PR.** See [docs/agents/AUTHOR-PIPELINE.md § Finalize the PR](../../docs/agents/AUTHOR-PIPELINE.md#finalize-the-pr)
+   for the `commit-and-push` → remove-`fleet:wip` → `fleet-claim
+   release` sequence and the claim-label lifecycle note. Sonnet-author
+   is engine-only, so the game-task variant doesn't apply. Paste the
+   PR URL.
 
 11. **Reset and exit cleanly.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
    Summary template:
@@ -408,24 +344,17 @@ or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
 
 ## Usage-limit handling
 
-If you hit a usage-limit error:
-1. Print the error and the stated reset time.
-2. Wait until that reset time.
-3. Resume from where you stopped.
-
-Do NOT switch to `/model opus` to keep working — that defeats the
-budget split. Just wait.
+See [docs/agents/FLEET-RUNTIME.md § Usage-limit handling](../../docs/agents/FLEET-RUNTIME.md#usage-limit-handling).
+As a Sonnet role: do NOT switch to `/model opus` to keep working —
+that defeats the budget split. Wait for the stated reset window.
 
 ## End-of-iteration feedback
 
-If you noticed something this iteration that the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is per-worktree:
 `~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
-`~/.fleet/feedback/sonnet-fleet-1.md`). Per-worktree filename so
-the human can tell which sonnet pane observed what. See
-[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
-(high — most iterations write nothing).
+`~/.fleet/feedback/sonnet-fleet-1.md`), so the human can tell which
+sonnet pane observed what.
 
 ## Hard rules
 

@@ -802,17 +802,13 @@ If Mode above is `review-only`: behave as `live`. Auto-rebasing
 mechanical conflicts helps close out PRs, which IS the point of
 review-only mode.
 
-If you hit a usage-limit error: print the error and exit.
-`fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
+If you hit a usage-limit error, see [docs/agents/FLEET-RUNTIME.md § Usage-limit handling](../../docs/agents/FLEET-RUNTIME.md#usage-limit-handling)
+— print the error and exit; flag it in your iteration summary.
 
 ## End-of-iteration feedback
 
-If you noticed something this iteration that the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/merger.md`. See [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet
-feedback channel" for the format and the bar (high — most
-iterations write nothing).
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is `~/.fleet/feedback/merger.md`.
 
 ## Hard rules
 
