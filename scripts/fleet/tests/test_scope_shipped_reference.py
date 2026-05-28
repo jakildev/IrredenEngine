@@ -38,7 +38,7 @@ class PrReferencesIssue(unittest.TestCase):
     def test_genuine_closes_in_body(self):
         self.assertTrue(pr_references_issue("some PR", "Closes #1300.", 1300))
 
-    def test_genuine_hash_ref_in_body(self):
+    def test_genuine_closing_verb_in_body(self):
         self.assertTrue(pr_references_issue("title", "supersedes #1284 here", 1284))
 
     def test_genuine_ref_in_title(self):
@@ -110,7 +110,8 @@ class PrReferencesIssue(unittest.TestCase):
 
     def test_closing_verb_variants_in_body(self):
         for body in ("fixed #1300", "resolves #1300", "Resolved: #1300",
-                     "implements #1300", "shipped #1300", "supersedes #1300"):
+                     "implements #1300", "shipped #1300", "supersedes #1300",
+                     "closes #1300", "Fixes #1300"):
             self.assertTrue(pr_references_issue("", body, 1300), body)
 
 
