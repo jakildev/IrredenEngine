@@ -986,10 +986,11 @@ release_dispatcher_lock() {
 }
 
 rearm_periodic_meta_triggers() {
-    # Scout-watchdog safety net only. With merger's projection now
-    # tightened (only durable signals, not the merger's own toggled
-    # labels), the scout-driven trigger path is sufficient — the
-    # merger only fires when actionable state actually changes.
+    # Scout-watchdog safety net + periodic worker safety rearm.
+    # Scout-watchdog half: with merger's projection now tightened
+    # (only durable signals, not the merger's own toggled labels),
+    # the scout-driven trigger path is sufficient — the merger only
+    # fires when actionable state actually changes.
     #
     # The earlier `maybe_arm("merger", merger_actionable)` periodic
     # re-arm fired every 5 min whenever any approved/blocked PR
@@ -1149,9 +1150,9 @@ main() {
 
         cleanup_stale_dispatches
 
-        # Periodic safety net for chain-broken meta-roles (queue-manager,
-        # merger). Runs first so any rearm-written triggers are picked
-        # up by the normal dispatch_role pass on the same tick.
+        # Scout-watchdog safety net + periodic worker safety rearm.
+        # Runs first so any rearm-written triggers are picked up by
+        # the normal dispatch_role pass on the same tick.
         if (( tick_count % rearm_ticks == 0 )); then
             rearm_periodic_meta_triggers
         fi
