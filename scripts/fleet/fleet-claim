@@ -7,8 +7,8 @@
 #
 # Same-host atomicity: atomic mkdir(2) under $CLAIMS_DIR. Cross-host
 # atomicity: a `fleet:claim-<host>-<agent>` label on the linked issue
-# with lex-min tie-break (the same primitive used by review-claim and
-# resolving-claim).
+# with lex-min tie-break (the same primitive used by review-claim,
+# resolving-claim, and amending-claim).
 #
 # Slug canonicalization: the issue number itself, optionally prefixed
 # with the global --repo namespace (engine → "<N>", game → "game-<N>").
@@ -27,6 +27,8 @@
 #   fleet-claim review-release <pr-number> <agent>
 #   fleet-claim resolving-claim <pr-number> <agent>
 #   fleet-claim resolving-release <pr-number> <agent>
+#   fleet-claim amending-claim <pr-number> <agent>
+#   fleet-claim amending-release <pr-number> <agent>
 #   fleet-claim clear-all
 #   fleet-claim stack "<n1> <n2> ..." <agent>
 #   fleet-claim release-stack <agent>
@@ -148,6 +150,7 @@ slugify() {
 # The same _acquire_label_on primitive backs:
 #   - fleet:reviewing-<host>-<agent>  (reviewer + cross-host smoke claim)
 #   - fleet:resolving-<host>-<agent>  (semantic-conflict claim)
+#   - fleet:amending-<host>-<agent>   (fleet:needs-fix amendment claim)
 #   - fleet:claim-<host>-<agent>      (task claim)
 #
 # Host disambiguation is required for correctness — two hosts can both
@@ -917,9 +920,10 @@ cmd_release() {
 }
 
 # _cmd_pr_label_claim <prefix> <cmd-name> <pr-num> <agent>
-#   Shared implementation for review-claim and resolving-claim.
-#   Both commands use the same lex-min tie-break logic with different
-#   label prefixes; extract here to avoid 100% structural duplication.
+#   Shared implementation for review-claim, resolving-claim, and
+#   amending-claim. All use the same lex-min tie-break logic with
+#   different label prefixes; extract here to avoid 100% structural
+#   duplication.
 _cmd_pr_label_claim() {
     local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}"
     if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
@@ -949,7 +953,8 @@ _cmd_pr_label_claim() {
 }
 
 # _cmd_pr_label_release <prefix> <cmd-name> <pr-num> <agent>
-#   Shared implementation for review-release and resolving-release.
+#   Shared implementation for review-release, resolving-release, and
+#   amending-release.
 _cmd_pr_label_release() {
     local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}"
     if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
@@ -972,6 +977,8 @@ cmd_review_claim()   { _cmd_pr_label_claim   "fleet:reviewing-" "review-claim"  
 cmd_review_release() { _cmd_pr_label_release "fleet:reviewing-" "review-release" "$@"; }
 cmd_resolving_claim()   { _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"; }
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
+cmd_amending_claim()   { _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"; }
+cmd_amending_release() { _cmd_pr_label_release "fleet:amending-" "amending-release" "$@"; }
 
 cmd_check() {
     # Exit 0 = free, exit 1 = claimed.
@@ -1054,8 +1061,8 @@ cmd_cleanup() {
     # Remove claims whose linked issue has been closed (typically via a
     # merged "Closes #N" PR). Accepts zero or more --repo flags; defaults
     # to jakildev/IrredenEngine. With --gh, ALSO sweeps stale
-    # fleet:reviewing-* / fleet:resolving-* labels off open PRs and
-    # abandoned fleet:claim-* labels off OPEN issues (no matching
+    # fleet:reviewing-* / fleet:resolving-* / fleet:amending-* labels off
+    # open PRs and abandoned fleet:claim-* labels off OPEN issues (no matching
     # claude/<N>-* PR + TTL). Claim labels on CLOSED issues are kept
     # as a historical record.
     mkdir -p "$CLAIMS_DIR"
@@ -1145,7 +1152,7 @@ for pr in prs:
     n = pr.get("number")
     for l in (pr.get("labels") or []):
         name = (l or {}).get("name", "") if isinstance(l, dict) else ""
-        if name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-"):
+        if name.startswith("fleet:reviewing-") or name.startswith("fleet:resolving-") or name.startswith("fleet:amending-"):
             print(f"{n}\t{name}")
 ' 2>/dev/null || echo "")
 
@@ -2536,6 +2543,20 @@ case "${1:-}" in
         fi
         cmd_resolving_release "$2" "$3"
         ;;
+    amending-claim)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] amending-claim <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_amending_claim "$2" "$3"
+        ;;
+    amending-release)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] amending-release <pr-number> <agent>" >&2
+            exit 2
+        fi
+        cmd_amending_release "$2" "$3"
+        ;;
     clear-all)
         cmd_clear_all
         ;;
@@ -2697,8 +2718,9 @@ commands:
                                 Remove claims whose linked issue is
                                 CLOSED. With --gh also runs two
                                 GitHub sweeps:
-                                (1) stale fleet:reviewing-* and
-                                    fleet:resolving-* labels off open
+                                (1) stale fleet:reviewing-*,
+                                    fleet:resolving-*, and
+                                    fleet:amending-* labels off open
                                     PRs (>30 min age),
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
@@ -2718,6 +2740,12 @@ commands:
                                 conflict resolution.
   resolving-release <pr> <agent>
                                 release a conflict-resolution claim.
+  amending-claim <pr> <agent>   atomically claim a PR for a
+                                fleet:needs-fix amendment via a
+                                fleet:amending-<host>-<agent> label
+                                (reviewers skip the PR while held).
+  amending-release <pr> <agent>
+                                release an amendment claim.
   clear-all                     wipe all claims (used by fleet-up on
                                 restart).
   reset-sweep-host-claims       unconditionally remove this host's

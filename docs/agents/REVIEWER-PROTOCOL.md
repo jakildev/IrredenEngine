@@ -51,6 +51,15 @@ The queue-tick's `cleanup --gh` pass sweeps stranded
 `fleet:reviewing-*` labels after 30 min, but forgetting blocks
 re-review during that window — always release explicitly.
 
+You will never be handed a PR an author is actively amending: a
+worker fixing `fleet:needs-fix` holds a `fleet:amending-<host>-<agent>`
+claim for the whole fix, and the scout projection excludes any
+`fleet:amending-*` PR from your candidate list (a
+`REVIEW_SKIP_PREFIXES` match, the host-suffixed analogue of the
+`fleet:human-amending` skip). It re-enters your queue with
+`fleet:changes-made` once the worker releases the claim. No action
+on your part — just don't expect to see mid-amend PRs.
+
 ---
 
 ## Stack awareness — gate on upstream status, then note context

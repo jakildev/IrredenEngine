@@ -686,7 +686,23 @@ REVIEW_SKIP_LABELS = frozenset({
     # appears (which RECHECK_LABELS picks up).
     "fleet:human-amending",
 })
+# Dynamic per-host claim prefixes that also bar reviewer pickup. A worker
+# amending a fleet:needs-fix PR holds fleet:amending-<host>-<agent> (minted
+# by `fleet-claim amending-claim`) for the whole fix; reviewers must not
+# review a diff mid-amend. Same intent as the static fleet:human-amending
+# above, but host-suffixed so the label doubles as an atomic fixer-vs-fixer
+# claim. Released alongside fleet:changes-made, which re-triggers review via
+# RECHECK_LABELS.
+REVIEW_SKIP_PREFIXES = ("fleet:amending-",)
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
+
+
+def _review_skipped(labels):
+    """True if a PR's label set bars reviewer pickup — exact-name skip
+    labels or any dynamic per-host claim prefix (e.g. fleet:amending-*)."""
+    if labels & REVIEW_SKIP_LABELS:
+        return True
+    return any(l.startswith(p) for l in labels for p in REVIEW_SKIP_PREFIXES)
 
 # Smoke-worker label sets. Windows smoke is excluded — cleared by
 # platform-catchup (#1093), not by fleet agents.
@@ -941,7 +957,7 @@ def project_sonnet_reviewer(state):
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
             if pr.get("isDraft"):
                 continue
@@ -961,7 +977,7 @@ def project_opus_reviewer(state):
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
             if not (labels & flag_labels):
                 continue
@@ -1181,7 +1197,7 @@ def slice_sonnet_reviewer(state):
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
             if pr.get("isDraft"):
                 continue
@@ -1199,7 +1215,7 @@ def slice_opus_reviewer(state):
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
             if not (labels & flag_labels):
                 continue

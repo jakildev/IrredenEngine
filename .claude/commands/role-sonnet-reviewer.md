@@ -89,6 +89,10 @@ treat it as a hard rule for this role.
      feedback is being addressed.
    - `fleet:human-amending` — author agent is actively addressing
      human feedback. Hold review until `fleet:changes-made` appears.
+   - `fleet:amending-*` — author agent holds an atomic claim while
+     fixing `fleet:needs-fix`. The diff is mid-rewrite; the scout
+     projection already excludes these, so you should never see one.
+     Re-enters with `fleet:changes-made` when the claim releases.
    - `fleet:human-deferred` — author chose DEFER mode: acknowledged
      concerns, filed a follow-up issue, and the human decides to
      merge as-is or re-add `human:needs-fix` to force inline fixes.
@@ -123,6 +127,8 @@ iteration of polling, reviewing, and exiting cleanly:
    - `human:wip` — human is working on it
    - `human:needs-fix` — human feedback is being addressed
    - `fleet:human-amending` — author actively addressing human feedback
+   - `fleet:amending-*` — author holds an amend claim on a `fleet:needs-fix`
+     fix; scout already excludes these (re-enters with `fleet:changes-made`)
    - `fleet:human-deferred` — DEFER mode; human decides to merge or re-flag
    - `fleet:semantic-conflict` — merger conflict pending resolution
    - `fleet:fork-of-other-pr` — inherited commits; skip until `rebase --onto`

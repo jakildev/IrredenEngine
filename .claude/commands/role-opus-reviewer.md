@@ -105,13 +105,16 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    `fleet:human-amending`, `fleet:human-deferred`,
    `fleet:semantic-conflict`, `fleet:fork-of-other-pr`, or carrying
    any label starting with `fleet:reviewing-` (another reviewer holds
-   the atomic claim — see step 2 below) — those are
+   the atomic claim — see step 2 below) or `fleet:amending-` (the
+   author holds an atomic claim while fixing `fleet:needs-fix`; the
+   diff is mid-rewrite and re-enters with `fleet:changes-made` when
+   released) — those are
    either in-progress, human-owned, under active author fixes
-   (`fleet:human-amending`), in DEFER mode where the human decides
-   to merge as-is or re-flag (`fleet:human-deferred` — do NOT
-   re-apply `fleet:needs-fix` for deferred concerns), queued for
-   conflict resolution (diff against master is meaningless until the
-   rebase lands), or forked from another open PR (diff includes
+   (`fleet:human-amending` / `fleet:amending-*`), in DEFER mode where
+   the human decides to merge as-is or re-flag (`fleet:human-deferred`
+   — do NOT re-apply `fleet:needs-fix` for deferred concerns), queued
+   for conflict resolution (diff against master is meaningless until
+   the rebase lands), or forked from another open PR (diff includes
    inherited commits that don't belong to this PR's scope — skip
    until the human runs `rebase --onto` and clears this label).
 

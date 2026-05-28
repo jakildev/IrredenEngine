@@ -102,6 +102,9 @@ diff round-trip on PRs that are not reviewable:
   in an unsettled state.
 - `fleet:wip` — author marked the PR not-ready after the cache snapshot.
 - `human:wip` — human marked the PR not-ready after the cache snapshot.
+- any `fleet:amending-*` label — an author acquired the amend claim (started
+  fixing `fleet:needs-fix`) after the cache snapshot; the diff is mid-rewrite.
+  It re-enters with `fleet:changes-made` once released.
 
 If any bail label is present, release the claim and skip this PR without
 fetching the diff or posting any comment:
