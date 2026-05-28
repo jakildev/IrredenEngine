@@ -31,6 +31,33 @@
 # FLEET_CONCURRENCY_MERGER=1
 # FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker pane
 
+# --- Per-role effort levels -------------------------------------------------
+#
+# Reasoning effort per role: "high" or "xhigh" (xhigh ≈ one notch below the
+# model's max — deeper reasoning, more budget per iteration). Override
+# priority: env var FLEET_EFFORT_<ROLE> > this conf > global FLEET_EFFORT >
+# built-in default.
+#
+# Built-in defaults — the heavy design / render-reasoning roles run xhigh,
+# the rest run high (their work is bounded by the diff / task in front of
+# them, so xhigh buys little):
+#   opus-architect   xhigh        opus-reviewer    high
+#   game-architect   xhigh        merger           high
+#   opus-worker      xhigh        sonnet-author    high
+#                                 sonnet-reviewer  high
+#                                 smoke-worker     high
+#
+# Set FLEET_EFFORT (no role suffix) to force one level on every pane.
+
+# FLEET_EFFORT_OPUS_ARCHITECT=xhigh
+# FLEET_EFFORT_GAME_ARCHITECT=xhigh
+# FLEET_EFFORT_OPUS_WORKER=xhigh
+# FLEET_EFFORT_OPUS_REVIEWER=high
+# FLEET_EFFORT_MERGER=high
+# FLEET_EFFORT_SONNET_AUTHOR=high
+# FLEET_EFFORT_SONNET_REVIEWER=high
+# FLEET_EFFORT_SMOKE_WORKER=high
+
 # --- Usage gate (per-rate-limit-type thresholds) ----------------------------
 #
 # Soft, fleet-wide pre-emption: when any rate_limit_event observation
