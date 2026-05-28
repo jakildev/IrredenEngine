@@ -28,8 +28,14 @@ struct RoiCrop {
 };
 
 /// One entry in an auto-screenshot shot list. The cycling system applies
-/// @c zoom_ and @c cameraIso_ via @c IRRender before capture, waits the
-/// configured settle frames, then triggers a composite screenshot.
+/// @c zoom_, @c cameraIso_, and @c yawRadians_ via @c IRRender /
+/// @c IRPrefab::Camera before capture, waits the configured settle frames,
+/// then triggers a composite screenshot.
+///
+/// @c yawRadians_ writes the camera's continuous Z-yaw before each shot via
+/// @c IRPrefab::Camera::setYaw, letting a shot list cover rotation-variant
+/// regressions (#1261) without per-demo wiring. Default 0 keeps existing
+/// shot tables at the cardinal baseline.
 ///
 /// @c label_ is printed to the log around each capture and — when @c crops_
 /// is set — appears in each crop PNG's filename
@@ -42,6 +48,7 @@ struct RoiCrop {
 struct AutoScreenshotShot {
     float zoom_ = 1.0f;
     vec2 cameraIso_ = vec2(0.0f);
+    float yawRadians_ = 0.0f;
     const char *label_ = "shot";
     const RoiCrop *crops_ = nullptr;
     int numCrops_ = 0;
