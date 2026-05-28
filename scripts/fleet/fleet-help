@@ -219,6 +219,10 @@ Parallel-agent fleet (tmux + Claude)
                                  carry standalone **Model:** / **Part of epic:**
                                  / **Blocked by:** lines (the scout + fleet-claim
                                  parsers can't read prose / multi-ref forms)
+  fleet-assert-worktree [agent]  refuse a mutating flow run in the shared main
+                                 clone (cwd must be a .claude/worktrees/* tree);
+                                 wired into commit-and-push, start-next-task,
+                                 fleet-pr-checkout-detached
 
   fleet-help fleet-up            short summary (fleet-up has no --help)
 

@@ -16,13 +16,20 @@ Do **not** invoke proactively — only when the user explicitly asks.
 
 ## Preconditions — do these before anything else
 
-1. **You must NOT be on `master`.** If `git rev-parse --abbrev-ref HEAD` reports
+1. **Confirm you are in your own worktree, not the shared main clone.** Run
+   `fleet-assert-worktree` (optionally with your worktree basename, e.g.
+   `fleet-assert-worktree opus-worker-2`). If it exits non-zero, STOP and
+   `cd` into your worktree (`…/.claude/worktrees/<name>/`) before doing
+   anything — a commit run from the shared main clone collides with other
+   agents on that checkout (engine #1325). Human-only override:
+   `FLEET_ALLOW_MAIN_CLONE=1`.
+2. **You must NOT be on `master`.** If `git rev-parse --abbrev-ref HEAD` reports
    `master`, stop and warn the user. Branch off master first (see step 2 of
    the flow) — do not commit to master. The old direct-push workflow is
    retired.
-2. **`gh` must be authenticated.** If `gh auth status` fails, stop and ask the
+3. **`gh` must be authenticated.** If `gh auth status` fails, stop and ask the
    user to run `gh auth login`.
-3. **The working tree must have something to commit.** If `git status` is
+4. **The working tree must have something to commit.** If `git status` is
    clean, tell the user and stop. Also check that the *staged* tree is
    non-empty before calling `git commit` (step 6) — `git diff --cached
    --quiet` exits 0 when nothing is staged; that is an empty-commit
