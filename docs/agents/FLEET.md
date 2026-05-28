@@ -277,9 +277,12 @@ is in `role-opus-worker.md` (escalate + resume) and
 ### Model split: Opus for core, Sonnet for the fleet
 
 The user has much more Sonnet budget than Opus budget. Spend each where it
-pays off:
+pays off. Both tiers run the 1M-token context variant; the exact model
+versions are pinned in `scripts/fleet/fleet-up` (`OPUS_MODEL` /
+`SONNET_MODEL`), not here — bump there when moving the fleet to a new
+release.
 
-**Opus 4.6** — use for:
+**Opus 4.8** — use for:
 
 - Core engine architecture. ECS design, ownership and lifetime rules,
   render pipeline decisions.
