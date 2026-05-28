@@ -149,6 +149,8 @@ def latch_usage_observation(rl_type, info):
     safe_type = "".join(c if c.isalnum() or c in "_-" else "_" for c in rl_type)
     if not safe_type:
         return
+    if safe_type == "_":
+        return
     util = info.get("utilization")
     if util is None:
         # status:"allowed" events carry no utilization field; only

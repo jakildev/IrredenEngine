@@ -17,7 +17,6 @@ import unittest
 _SCRIPT = pathlib.Path(__file__).parent.parent / "fleet-claude-stream"
 _loader = importlib.machinery.SourceFileLoader("fleet_claude_stream", str(_SCRIPT))
 _spec = importlib.util.spec_from_loader("fleet_claude_stream", _loader)
-_mod = importlib.util.module_from_spec(_spec)
 
 
 class LatchUsageObservation(unittest.TestCase):
@@ -25,8 +24,9 @@ class LatchUsageObservation(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         self._usage_dir = pathlib.Path(self._tmpdir.name) / "usage"
         self._usage_dir.mkdir()
-        _loader.exec_module(_mod)
-        _mod.USAGE_DIR = self._usage_dir
+        self._mod = importlib.util.module_from_spec(_spec)
+        _loader.exec_module(self._mod)
+        self._mod.USAGE_DIR = self._usage_dir
 
     def tearDown(self):
         self._tmpdir.cleanup()
@@ -38,7 +38,7 @@ class LatchUsageObservation(unittest.TestCase):
         return json.loads(p.read_text())
 
     def test_warning_event_writes_utilization(self):
-        _mod.latch_usage_observation(
+        self._mod.latch_usage_observation(
             "five_hour",
             {"utilization": 0.85, "resetsAt": "2026-05-28T00:00:00Z"},
         )
@@ -49,12 +49,12 @@ class LatchUsageObservation(unittest.TestCase):
 
     def test_allowed_event_preserves_warning_value(self):
         # First: latch a warning observation.
-        _mod.latch_usage_observation(
+        self._mod.latch_usage_observation(
             "five_hour",
             {"utilization": 0.90, "resetsAt": "2026-05-28T00:00:00Z"},
         )
         # Then: an "allowed" event arrives with no utilization field.
-        _mod.latch_usage_observation(
+        self._mod.latch_usage_observation(
             "five_hour",
             {"resetsAt": "2026-05-28T00:00:00Z"},
         )
@@ -67,7 +67,7 @@ class LatchUsageObservation(unittest.TestCase):
         )
 
     def test_junk_question_mark_type_skipped(self):
-        _mod.latch_usage_observation(
+        self._mod.latch_usage_observation(
             "?",
             {"resetsAt": "2026-05-28T00:00:00Z"},
         )
@@ -76,7 +76,7 @@ class LatchUsageObservation(unittest.TestCase):
         self.assertEqual(files, [], "junk '?' type must not create any file")
 
     def test_no_utilization_on_first_event_writes_nothing(self):
-        _mod.latch_usage_observation(
+        self._mod.latch_usage_observation(
             "five_hour",
             {"resetsAt": "2026-05-28T00:00:00Z"},
         )
