@@ -319,10 +319,12 @@ void initSystems() {
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
         if (g_spinYawDegPerSec > 0.0f) {
-            // Sweep one full rotation at fixed zoom=4 / camera=(0,0). zoom=4
-            // is what the existing rotation-coverage shots use (#1261) — same
-            // pixel scale makes sub-pixel parity artifacts visible at
-            // rebracket angles (45°, 135°, 225°, 315°).
+            // Sweep one full rotation at camera=(0,0). Default zoom=4 matches
+            // the rotation-coverage shots (#1261) for scene-scale smoothness;
+            // pass --zoom to sweep at high zoom (e.g. 16), where rotation-only
+            // parity glitches (#1218 black faces, #1256 checkerboard) are
+            // visible at full pixel scale. The regression set baselines both.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
             const int n = IRMath::max(2, g_spinYawShotCount);
             // Reserve up front so push_back never reallocates — moving the
             // label buffer would invalidate the pointers already in
@@ -333,11 +335,15 @@ void initSystems() {
                 const float yaw = (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
                 auto &label = g_spinYawShotLabels.emplace_back();
                 std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
-                g_spinYawShots.push_back({4.0f, vec2(0, 0), yaw, label.data()});
+                g_spinYawShots.push_back({sweepZoom, vec2(0, 0), yaw, label.data()});
             }
             cfg.shots_ = g_spinYawShots.data();
             cfg.numShots_ = static_cast<int>(g_spinYawShots.size());
-            IR_LOG_INFO("Spin-yaw sweep: {} shots across one rotation at zoom=4", cfg.numShots_);
+            IR_LOG_INFO(
+                "Spin-yaw sweep: {} shots across one rotation at zoom={}",
+                cfg.numShots_,
+                sweepZoom
+            );
         } else {
             cfg.shots_ = kShots;
             cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
