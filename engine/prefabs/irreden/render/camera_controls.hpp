@@ -15,14 +15,14 @@
 // any creation that registers LIFETIME in UPDATE.
 //
 // Control scheme:
-//   Pan         Space + left-drag  (mouse + trackpad)
-//                or  middle-drag   (mouse only, legacy)
-//   Rotate yaw  Alt + left-drag    (mouse + trackpad)
-//                or  Ctrl + middle-drag (mouse only, legacy)
-//   Zoom        scroll wheel / two-finger scroll  (register in INPUT)
-//   Pan         WASD               (keyboard)
-//   Zoom        +/-                (keyboard)
-//   Close       Escape             (keyboard)
+//   Pan              Space + left-drag  (mouse + trackpad)
+//                     or  middle-drag   (mouse only, legacy)
+//   Orbit (yaw+pitch) Alt + left-drag  (mouse + trackpad)
+//                     or  Ctrl + middle-drag (mouse only, legacy)
+//   Zoom             scroll wheel / two-finger scroll  (register in INPUT)
+//   Pan              WASD               (keyboard)
+//   Zoom             +/-                (keyboard)
+//   Close            Escape             (keyboard)
 
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_command.hpp>
