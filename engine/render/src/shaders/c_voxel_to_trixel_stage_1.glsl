@@ -93,7 +93,8 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
 // Emit a face's 2x3 trixel block through the deformation matrix D.
 // Super-samples by D's magnification to fill the face with no forward-
 // mapping gaps. World canvas caps at n=2 (Z-yaw residual ≤ π/4 yields
-// column lengths ≤ √2); detached canvases cap at n=6 for full SO(3).
+// column lengths ≤ √3, since |col0|² = 3 - 2(c±s) ≤ 3 for X/Y faces);
+// detached canvases cap at n=6 for full SO(3).
 // At residualYaw==0 on any canvas the identity D collapses n to 1.
 void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance) {
     int maxN = isDetachedCanvas > 0.5 ? 6 : 2;

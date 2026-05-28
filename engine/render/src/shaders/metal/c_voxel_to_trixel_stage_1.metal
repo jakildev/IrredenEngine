@@ -36,7 +36,7 @@ inline void writeDistanceTap(
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
-// World canvas: maxN=2 (Z-yaw residual ≤ π/4, column lengths ≤ √2).
+// World canvas: maxN=2 (Z-yaw residual ≤ π/4, column lengths ≤ √3).
 // Detached canvas: maxN=6 (full SO(3)).
 // See c_voxel_to_trixel_stage_1.glsl for the full contract.
 inline void emitDeformedFace(
