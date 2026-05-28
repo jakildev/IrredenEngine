@@ -381,6 +381,36 @@ Examples:
 This applies to every role that calls `ir-build`, `ir-run`, or any other
 tool that wraps `ir-acquire`.
 
+### Worktree identity — the shared main clone is not your worktree
+
+Every agent operates inside its own `…/.claude/worktrees/<name>/`. The
+main clones (`~/src/IrredenEngine` and `creations/game`) are **shared**:
+`refs/stash`, branch refs, and the working tree are visible to every
+worktree at once. A **mutating** git operation — commit, branch
+checkout, detached PR checkout, stash — run while cwd is the main clone
+instead of your worktree silently contaminates that shared checkout:
+committing on a branch another agent owns, or stranding / clobbering
+work in the wrong tree (observed 5× in two days, engine #1325).
+
+Two footguns produce this:
+
+- **Running a mutating flow from the wrong cwd.** `commit-and-push`,
+  `start-next-task`, and `fleet-pr-checkout-detached` now run
+  `fleet-assert-worktree` first — it refuses (exit 1) when cwd's
+  `git rev-parse --show-toplevel` is not a `.claude/worktrees/*` path.
+  If it fires, `cd` into your worktree and retry; do not set the
+  `FLEET_ALLOW_MAIN_CLONE=1` override unless you are a human in a
+  deliberate main-clone session.
+- **Absolute Edit/Write paths under the main clone.** A path like
+  `/Users/<you>/src/IrredenEngine/engine/…` resolves to the *main
+  clone*, not your worktree — the Edit succeeds silently but your build
+  runs against the worktree, so the change appears to do nothing while
+  orphaning (or clobbering) work in the shared tree. Prefer
+  worktree-relative paths from your cwd; if you must use an absolute
+  path it MUST start with your worktree root. See
+  [`CLAUDE-BASELINE.md`](CLAUDE-BASELINE.md) §"Hard rules for autonomous
+  fleet roles" for the full rule.
+
 ### Editing `.claude/` paths in headless mode (`fleet-edit`)
 
 The Claude Code auto-mode classifier blocks `Edit` and `Write` tool

@@ -38,13 +38,19 @@ The skill operates in three modes, selected in priority order at step 4:
 
 ## Preconditions
 
-1. The working tree should be **clean**. If `git status` shows uncommitted
+1. **You must be in your own worktree, not the shared main clone.** Run
+   `fleet-assert-worktree` (optionally with your worktree basename). If it
+   exits non-zero, STOP and `cd` into your worktree before resetting the
+   branch — a `git checkout -B` in the shared main clone yanks the branch
+   another agent or the operator has checked out there (engine #1325).
+   Human-only override: `FLEET_ALLOW_MAIN_CLONE=1`.
+2. The working tree should be **clean**. If `git status` shows uncommitted
    changes, stop and warn — either they belong in the previous PR (go back
    to `commit-and-push`) or they are a WIP the user wants to keep.
-2. You should be on a feature branch whose PR is **already open and pushed**.
+3. You should be on a feature branch whose PR is **already open and pushed**.
    If the current branch has unpushed commits, stop and warn — those commits
    would be stranded by the branch switch.
-3. `gh` authenticated.
+4. `gh` authenticated.
 
 ## Flow
 

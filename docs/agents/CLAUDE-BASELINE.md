@@ -492,6 +492,15 @@ additional role-specific restrictions.
   absolute path, it MUST start with
   `/Users/evinjkill/src/IrredenEngine/.claude/worktrees/<your-basename>/`.
   Re-confirm with `pwd` if unsure.
+- **Mutating git flows assert their worktree first.** The same
+  parent-clone-vs-worktree confusion bites `git` too: a commit, branch
+  checkout, detached PR checkout, or stash run with cwd in the shared
+  main clone contaminates the checkout other agents share. The
+  `commit-and-push`, `start-next-task`, and `fleet-pr-checkout-detached`
+  flows now run `fleet-assert-worktree` (exit 1 if cwd is not a
+  `.claude/worktrees/*` tree) as a preflight. If it fires, `cd` into your
+  worktree and retry — only a human in a deliberate main-clone session
+  should set the `FLEET_ALLOW_MAIN_CLONE=1` override.
 - **Single-command Bash only** — see [`## Bash tool rules`](#bash-tool-rules)
   above.
 - **Edit/Write blocked for `.claude/commands/` files?** The harness
