@@ -209,6 +209,9 @@ Parallel-agent fleet (tmux + Claude)
                                  idempotently strip feedback labels from a PR
                                  (skips absent labels; one --remove-label per
                                  present label so partial failure can't strand)
+  fleet-nit-close-for-pr [--dry-run] [--repo <owner/repo>]
+                                 close open fleet:nit-of-pr issues whose
+                                 addressing PR has merged (merger step 1.5)
   fleet-issue view <N> [--repo engine|game]
                                  read scout's per-issue cache + gh fallback
 
