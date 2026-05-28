@@ -146,7 +146,7 @@ exposed-face gating are new.
   comment with this model.
 - **#1272** — per-entity SO(3) on the main canvas; consumes this model with a
   per-entity visible triplet.
-- **PR #1265** — camera pitch via quaternion; the visible-triplet resolver
+- **#1265** (merged) — camera pitch via quaternion; the visible-triplet resolver
   reads that quaternion, so pitch shifts the triplet for free on detached
   canvases.
 
