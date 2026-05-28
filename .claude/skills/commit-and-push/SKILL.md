@@ -427,7 +427,11 @@ if the user already asked for the next task).
 If the working tree has changes that clearly weren't made during this
 session (e.g. a half-finished refactor in an unrelated file), ask the user
 whether to include them before staging. When in doubt, stage only the files
-you know the session touched.
+you know the session touched. **Do not `git stash` to "park" unrelated WIP** —
+selective `git add <path>` already leaves it untouched in place, and
+`refs/stash` is shared across all worktrees, so a positional `git stash pop`
+can silently apply another agent's stash into your tree (see
+`docs/agents/CLAUDE-BASELINE.md` §"Hard rules for autonomous fleet roles").
 
 If `gh pr create` fails because a PR already exists for the branch, report
 the existing PR URL and tell the user — don't try to force a new one.

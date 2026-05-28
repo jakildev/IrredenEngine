@@ -501,6 +501,23 @@ additional role-specific restrictions.
   `.claude/worktrees/*` tree) as a preflight. If it fires, `cd` into your
   worktree and retry — only a human in a deliberate main-clone session
   should set the `FLEET_ALLOW_MAIN_CLONE=1` override.
+- **`refs/stash` is shared across all worktrees — never use positional
+  stash refs.** Unlike per-worktree `HEAD`, `refs/stash` lives in the
+  common git dir, so every worktree on this clone shares one stash
+  stack. A bare `git stash pop` / `git stash drop` (or any `stash@{N}`)
+  is a TOCTOU race: a parallel agent in another worktree can push/pop
+  between your push and your pop, so your positional ref operates on
+  *their* entry — silently applying their changes into your tree or
+  consuming your WIP. If a fleet flow must stash, tag the entry with a
+  worktree-unique message (include your branch name), then at restore
+  resolve it by that message and reapply **by commit SHA** (`git stash
+  apply <SHA>` — the SHA is immutable; `drop` by re-resolving its
+  current `stash@{N}` index, since `git stash drop` needs the
+  `stash@{N}` form). Better: skip the shared stack — `git stash create`
+  returns a SHA without touching `refs/stash`, or use a throwaway
+  temp-branch commit / a dedicated `git worktree`. See
+  [`.claude/skills/attach-screenshots/SKILL.md`](../../.claude/skills/attach-screenshots/SKILL.md)
+  for the reference message-keyed, SHA-restored pattern.
 - **Single-command Bash only** — see [`## Bash tool rules`](#bash-tool-rules)
   above.
 - **Edit/Write blocked for `.claude/commands/` files?** The harness
