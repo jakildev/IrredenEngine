@@ -4,15 +4,19 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/ir_constants.hpp>
 #include <irreden/render/camera.hpp>
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
 
+#include <array>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <numbers>
 #include <string>
+#include <vector>
 // COMPONENTS
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -48,6 +52,7 @@
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
+#include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 
 // COMMAND SUITES
 #include <irreden/common/command_suite_capture.hpp>
@@ -122,6 +127,23 @@ IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // built-in shape fixtures. Empty = not requested.
 std::string g_loadVxsPath;
 
+// --spin-yaw [deg/sec] (#1271): drive the camera's Z-yaw at a constant
+// rate so the cardinal/residual rebracket can be eyeballed (live) or sampled
+// at N evenly-spaced angles (auto-screenshot). 0 = flag not requested.
+float g_spinYawDegPerSec = 0.0f;
+// In auto-screenshot + spin-yaw mode, --auto-screenshot's value is
+// reinterpreted as "shot count across one rotation"; default 24 → every 15°
+// which hits every cardinal (0/90/180/270°) and every rebracket (45/135/...).
+int g_spinYawShotCount = 24;
+
+// Dynamic shot table populated at startup when --spin-yaw + --auto-screenshot
+// are both set. Lives at namespace scope so the pointer handed to
+// IRVideo::AutoScreenshotConfig outlives the game loop. The label strings
+// are backed by a parallel buffer so each AutoScreenshotShot::label_ pointer
+// remains stable.
+std::vector<IRVideo::AutoScreenshotShot> g_spinYawShots;
+std::vector<std::array<char, 32>> g_spinYawShotLabels;
+
 } // namespace
 
 void initSystems();
@@ -169,7 +191,25 @@ int main(int argc, char **argv) {
                 g_loadVxsPath = argv[i + 1];
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--spin-yaw") == 0) {
+            g_spinYawDegPerSec = 30.0f; // default rotation rate
+            if (i + 1 < argc) {
+                float v = static_cast<float>(std::atof(argv[i + 1]));
+                if (v > 0.0f) {
+                    g_spinYawDegPerSec = v;
+                    ++i;
+                }
+            }
         }
+    }
+
+    // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as
+    // "shots across one rotation", and use a small internal warmup. This is
+    // the regression-detection mode — N static frames at evenly-spaced yaws
+    // so a render-verify diff can pinpoint the angle a glitch appears at.
+    if (g_spinYawDegPerSec > 0.0f && g_autoWarmupFrames > 0) {
+        g_spinYawShotCount = g_autoWarmupFrames;
+        g_autoWarmupFrames = 10;
     }
 
     IR_LOG_INFO("Starting creation: shape_debug");
@@ -222,6 +262,20 @@ void initSystems() {
     );
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    // --spin-yaw live mode: drive the camera each frame. In auto-screenshot
+    // mode the per-shot setYaw() supplies the rotation instead — running both
+    // would double-rotate between shots and break the "evenly-spaced" contract.
+    if (g_spinYawDegPerSec > 0.0f && g_autoWarmupFrames == 0) {
+        const float radPerFrame =
+            g_spinYawDegPerSec * IRMath::kPi / 180.0f / static_cast<float>(IRConstants::kFPS);
+        renderPipeline.push_front(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(radPerFrame));
+        IR_LOG_INFO(
+            "Spin-yaw live: {} deg/sec ({} rad/frame at {} fps)",
+            g_spinYawDegPerSec,
+            radPerFrame,
+            IRConstants::kFPS
+        );
+    }
     renderPipeline.insert(
         renderPipeline.end(),
         {
@@ -260,8 +314,30 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        if (g_spinYawDegPerSec > 0.0f) {
+            // Sweep one full rotation at fixed zoom=4 / camera=(0,0). zoom=4
+            // is what the existing rotation-coverage shots use (#1261) — same
+            // pixel scale makes sub-pixel parity artifacts visible at
+            // rebracket angles (45°, 135°, 225°, 315°).
+            const int n = IRMath::max(2, g_spinYawShotCount);
+            // Reserve up front so push_back never reallocates — moving the
+            // label buffer would invalidate the pointers already in
+            // g_spinYawShots.
+            g_spinYawShotLabels.reserve(n);
+            g_spinYawShots.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                const float yaw = (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
+                auto &label = g_spinYawShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
+                g_spinYawShots.push_back({4.0f, vec2(0, 0), yaw, label.data()});
+            }
+            cfg.shots_ = g_spinYawShots.data();
+            cfg.numShots_ = static_cast<int>(g_spinYawShots.size());
+            IR_LOG_INFO("Spin-yaw sweep: {} shots across one rotation at zoom=4", cfg.numShots_);
+        } else {
+            cfg.shots_ = kShots;
+            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
