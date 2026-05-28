@@ -34,6 +34,12 @@ in the `UPDATE` pipeline unless explicitly noted.
   no `MODIFIER_DECAY` dependency. `PROPAGATE_TRANSFORM` later folds the
   resolved value into `C_WorldTransform.translation_` per the SQT
   formula.
+- `AUTO_SPIN_LOCAL_TRANSFORM` — composes `quatAxisAngle(axis, rate)` on
+  the left of `C_LocalTransform.rotation_` each tick for entities carrying
+  `C_AutoSpin` (axis + radians-per-frame). Place before
+  `PROPAGATE_TRANSFORM` so the new rotation propagates to `C_WorldTransform`
+  in the same tick — and, for GRID-mode entities, drives
+  `REBUILD_GRID_VOXELS` re-rasterization downstream.
 - `PROPAGATE_TRANSFORM` — walks the `CHILD_OF` parent chain in
   topological order and writes `C_WorldTransform` from each entity's
   `C_LocalTransform` composed with the parent chain. Modifier-resolved

@@ -9,24 +9,37 @@
 #include <irreden/render/camera.hpp>
 
 // Components
+#include <irreden/common/components/component_auto_spin.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/components/component_camera.hpp>
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_light_volume.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_scroll_zoom.hpp>
+#include <irreden/render/systems/system_compute_light_volume.hpp>
+#include <irreden/render/systems/system_compute_sun_shadow.hpp>
+#include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/update/systems/system_auto_spin_local_transform.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 // Prefab helpers
@@ -46,6 +59,13 @@
 // main-canvas GRID grid by ENTITY_CANVAS_TO_FRAMEBUFFER. It is the first
 // demo to spawn RotationMode::DETACHED entities — the permanent visual
 // regression canary for detached canvases and inter-trixel rendering.
+//
+// Per #1259 the demo also serves as the rotation-visualization showcase:
+// camera yaw auto-rotates by default, DETACHED canvases spin continuously
+// at per-entity rates around their assigned axes (full SO(3) bake), a
+// small cluster of GRID-mode cubes re-rasterizes via REBUILD_GRID_VOXELS
+// each frame, and the standard lighting pipeline (AO + sun + shadows)
+// runs so face orientation is visually perceptible.
 
 using namespace IRComponents;
 using namespace IREntity;
@@ -58,8 +78,10 @@ struct CanvasStressSettings {
     int detachedCount_ = 5;
     float initialZoom_ = 1.0f;
     float cameraYaw_ = 0.0f;
-    bool autoRotate_ = false;
+    bool autoRotate_ = true;
     bool fullRotate_ = false;
+    bool noSpin_ = false;
+    bool noLighting_ = false;
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -75,6 +97,26 @@ constexpr float kFullRotatePitchPerFrame = IRMath::kPi / 720.0f;
 constexpr float kFullRotatePitchYPerFrame =
     IRMath::kPi / 900.0f; // Y-axis; Z=yaw, X=pitch in ISO frame
 
+// Per-entity continuous spin for DETACHED canvases (#1259). 0.4° / frame
+// base rate scales by (i + 1) so adjacent canvases visibly de-sync within
+// the auto-screenshot capture window. The slowest entity completes a full
+// rotation in ~900 frames (~15 s at 60 fps); the fastest is ~5×.
+constexpr float kDetachedSpinBaseRadPerFrame = IRMath::kPi / 450.0f;
+
+// GRID-mode spin rate — slower than DETACHED so per-cell re-rasterization
+// aliasing (cells aliased when adjacent voxels round to the same world
+// cell after rotation) is visible as smooth swap-and-settle rather than
+// a strobe. ~0.25° / frame → full revolution in ~1440 frames (~24 s).
+constexpr float kGridSpinRadPerFrame = IRMath::kPi / 720.0f;
+
+// Sun / lighting tuned for the canvas_stress layout — flat ground plane
+// of GRID cubes plus floating DETACHED canvases. Slightly steeper than
+// the standard lighting demo so detached cube tops and main-grid tops
+// both get lambert above ambient at neutral camera yaw.
+constexpr vec3 kSunDirection = vec3(-0.35f, -0.25f, -0.90f);
+constexpr float kSunIntensity = 1.0f;
+constexpr float kSunAmbient = 0.45f;
+
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
 
@@ -87,7 +129,9 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 // cube allocated into that pool, and a world entity carrying C_EntityCanvas
 // + RotationMode::DETACHED that ENTITY_CANVAS_TO_FRAMEBUFFER composites.
 
-void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color color) {
+void spawnDetachedVoxelObject(
+    int index, vec3 worldPos, vec3 spinAxis, float spinRate, Color color
+) {
     // A higher-resolution canvas + cube keeps the per-face SO(3) deformation's
     // forward-mapping gaps sub-pixel once the composite magnifies the canvas.
     constexpr ivec2 kCanvasSize{128, 128};
@@ -107,13 +151,15 @@ void spawnDetachedVoxelObject(int index, vec3 worldPos, vec4 rotationQuat, Color
         C_VoxelSetNew{kCubeSize, color, true, canvas.canvasEntity_}
     );
 
-    // The world entity carries the canvas wrapper + DETACHED rotation mode.
-    // PROPAGATE_CANVAS_ROTATION copies C_LocalTransform's full SO(3) quaternion
-    // onto the canvas; VOXEL_TO_TRIXEL_STAGE_1 bakes it into the voxel emit
-    // (T-295). The composite stage places the canvas axis-aligned.
+    // The world entity carries the canvas wrapper + DETACHED rotation mode +
+    // continuous spin. PROPAGATE_CANVAS_ROTATION copies C_LocalTransform's
+    // SO(3) quaternion onto the canvas; VOXEL_TO_TRIXEL_STAGE_1 bakes it
+    // into the voxel emit (T-295). AUTO_SPIN_LOCAL_TRANSFORM advances the
+    // quaternion each UPDATE tick before PROPAGATE_TRANSFORM runs.
     IREntity::createEntity(
-        C_LocalTransform{worldPos, rotationQuat},
+        C_LocalTransform{worldPos},
         C_RotationMode{RotationMode::DETACHED},
+        C_AutoSpin{spinAxis, spinRate},
         canvas
     );
 }
@@ -156,8 +202,14 @@ void parseArgs(int argc, char **argv) {
             ++i;
         } else if (std::strcmp(argv[i], "--auto-rotate") == 0) {
             g_settings.autoRotate_ = true;
+        } else if (std::strcmp(argv[i], "--no-auto-rotate") == 0) {
+            g_settings.autoRotate_ = false;
         } else if (std::strcmp(argv[i], "--full-rotate") == 0) {
             g_settings.fullRotate_ = true;
+        } else if (std::strcmp(argv[i], "--no-spin") == 0) {
+            g_settings.noSpin_ = true;
+        } else if (std::strcmp(argv[i], "--no-lighting") == 0) {
+            g_settings.noLighting_ = true;
         }
     }
 }
@@ -189,8 +241,10 @@ int main(int argc, char **argv) {
 void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        {IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
@@ -237,7 +291,13 @@ void initSystems() {
         );
     }
 
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
@@ -263,6 +323,23 @@ void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
 
+    // Lighting wiring (#1259). The lighting pipeline writes per-canvas
+    // shadow / AO / light-volume textures sized to the main canvas;
+    // they're allocated once at startup. Sun direction / intensity /
+    // ambient are global render state set below.
+    if (!g_settings.noLighting_) {
+        const ivec2 mainCanvasSize =
+            IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+        IREntity::setComponent(mainCanvas, C_CanvasAOTexture{mainCanvasSize});
+        IREntity::setComponent(mainCanvas, C_CanvasSunShadow{mainCanvasSize});
+        IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
+        IRRender::setSunDirection(kSunDirection);
+        IRRender::setSunIntensity(kSunIntensity);
+        IRRender::setSunAmbient(kSunAmbient);
+        IRRender::setSunShadowsEnabled(true);
+        IRRender::setAOEnabled(true);
+    }
+
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
     // T-293 inter-trixel deformation on the world canvas under camera yaw.
     const int n = IRMath::max(0, g_settings.mainGridSize_);
@@ -280,6 +357,44 @@ void initEntities() {
                 C_VoxelSetNew{ivec3(3, 3, 3), gridColor(x, y, n), true}
             );
         }
+    }
+
+    // GRID-mode rotating cluster: a row of mid-sized cubes that spin in
+    // place around staggered axes. Each tick AUTO_SPIN_LOCAL_TRANSFORM
+    // advances C_LocalTransform.rotation_, PROPAGATE_TRANSFORM composes
+    // C_WorldTransform, and REBUILD_GRID_VOXELS re-rasterizes the voxel
+    // cells into the world pool (#1259 §C6 — face-swapping / cell-aliasing
+    // path). Sits above the main grid so the re-rasterized cells are
+    // clearly visible against the flat ground.
+    constexpr int kGridSpinCount = 4;
+    constexpr ivec3 kGridSpinCubeSize{5, 5, 5};
+    constexpr float kGridSpinSpacing = 16.0f;
+    constexpr vec3 kGridSpinAxes[kGridSpinCount]{
+        {0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 1.0f},
+    };
+    constexpr Color kGridSpinColors[kGridSpinCount]{
+        {255, 120, 120, 255},
+        {120, 255, 120, 255},
+        {120, 160, 255, 255},
+        {255, 220, 120, 255},
+    };
+    const float gridSpinCenter = (static_cast<float>(kGridSpinCount) - 1.0f) * 0.5f;
+    const float gridSpinY = (static_cast<float>(n) * 0.5f + 1.5f) * kGridSpacing;
+    for (int i = 0; i < kGridSpinCount; ++i) {
+        const vec3 pos{
+            (static_cast<float>(i) - gridSpinCenter) * kGridSpinSpacing,
+            gridSpinY,
+            -static_cast<float>(kGridSpinCubeSize.z) * 0.5f
+        };
+        IREntity::createEntity(
+            C_LocalTransform{pos},
+            C_RotationMode{RotationMode::GRID},
+            C_AutoSpin{kGridSpinAxes[i], g_settings.noSpin_ ? 0.0f : kGridSpinRadPerFrame},
+            C_VoxelSetNew{kGridSpinCubeSize, kGridSpinColors[i], true}
+        );
     }
 
     // Detached entities: a grid of per-entity canvases, each at a distinct
@@ -303,6 +418,14 @@ void initEntities() {
         {0.0f, 1.0f, 0.0f}, // roll
         {1.0f, 1.0f, 1.0f}, // mixed diagonal
     };
+    constexpr Color kDetachedColors[]{
+        {230, 70, 70, 255},
+        {70, 210, 90, 255},
+        {80, 110, 230, 255},
+        {230, 200, 60, 255},
+        {210, 90, 220, 255},
+        {70, 210, 210, 255},
+    };
     for (int i = 0; i < detached; ++i) {
         const int col = i % cols;
         const int row = i / cols;
@@ -311,30 +434,21 @@ void initEntities() {
             (static_cast<float>(row) - rowCenter) * kDetachedSpacing,
             0.0f
         };
-        // Angle ramps across [0, 30°); axis cycles so adjacent canvases differ.
-        // The per-face SO(3) deformation (T-295) skews each voxel face — clean
-        // for moderate rotation; past ~40° the forward-mapped trixels gap and
-        // the low-res detached canvas magnifies it into scanline stripes.
-        const float angle = IRMath::kPi / 6.0f * static_cast<float>(i) /
-                            static_cast<float>(IRMath::max(detached - 1, 1));
-        const vec4 rotation = IRMath::quatAxisAngle(kAxes[i % 4], angle);
-        constexpr Color kDistinct[]{
-            {230, 70, 70, 255},
-            {70, 210, 90, 255},
-            {80, 110, 230, 255},
-            {230, 200, 60, 255},
-            {210, 90, 220, 255},
-            {70, 210, 210, 255},
-        };
-        const Color color = kDistinct[i % 6];
-        spawnDetachedVoxelObject(i, worldPos, rotation, color);
+        // Per-entity spin rate: base * (i + 1) so adjacent canvases visibly
+        // de-sync within the auto-screenshot capture window (#1259). Spin
+        // axis cycles independently of rate so axis/rate pairs cover the
+        // full SO(3) bake matrix.
+        const float spinRate =
+            g_settings.noSpin_ ? 0.0f : kDetachedSpinBaseRadPerFrame * static_cast<float>(i + 1);
+        spawnDetachedVoxelObject(i, worldPos, kAxes[i % 4], spinRate, kDetachedColors[i % 6]);
     }
 
     IR_LOG_INFO(
-        "canvas_stress: main grid {}x{} ({} cubes), {} detached canvases",
+        "canvas_stress: main grid {}x{} ({} cubes), {} GRID-spin cubes, {} detached canvases",
         n,
         n,
         n * n,
+        kGridSpinCount,
         detached
     );
 }
