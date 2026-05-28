@@ -82,12 +82,8 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         const IRRender::CullViewportState &cull = IRRender::getCullViewport();
         cullValid_ = cull.canvasSize_.x > 0 && cull.canvasSize_.y > 0;
         if (cullValid_) {
-            // Same chunk margin the GPU chunk-visibility mask uses, plus the
-            // shadow-feeder sweep so off-screen voxels that still cast into
-            // the visible frustum keep rebuilding.
-            constexpr int kChunkMargin = 8;
             chunkVp_ = IRMath::shadowFeederIsoBounds(
-                cull.isoViewport(kChunkMargin),
+                cull.isoViewport(IRRender::kCullChunkMargin),
                 sunDir,
                 sweepDistance
             );
