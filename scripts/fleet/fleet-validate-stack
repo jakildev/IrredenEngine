@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""fleet-validate-stack — pre-approval validator for epic-decomposition stacks.
+
+Given an umbrella (epic) issue number, finds its child issues and asserts each
+body carries the structured fields the queue machinery actually reads — a
+standalone ``**Model:** opus|sonnet`` line, a standalone ``**Part of epic:**
+#<umbrella>`` line, and (for every non-head child) a single-ref standalone
+``**Blocked by:** #N`` line. Exits non-zero and prints each failure if any
+child is malformed.
+
+Run it before stamping ``human:approved`` on a freshly-filed stack:
+
+    fleet-validate-stack 1307                      # auto-discover children
+    fleet-validate-stack 1307 --children 1308 1309 1310 1311
+    fleet-validate-stack 72 --repo game
+
+Why it exists (#1312): the architect's hand-filed stacks repeatedly drift from
+the ``file-epic`` template — prose ``Blocked on ...`` headers the scout can't
+parse, ``**Epic:**`` bullets that ``file-epic``'s own ``--search "Part of
+epic: #N"`` discovery misses, multi-ref ``Blocked by:`` lines that never
+stack-claim. Those defects are invisible until queue time, where they cost
+hours of triage. This is the belt-and-suspenders check that surfaces them up
+front.
+
+Discovery is coarse-search-then-precise-filter (mirrors fleet_scope_shipped):
+GitHub strips ``#`` and matches the bare number anywhere, so the ``gh`` search
+is only a candidate net — ``is_epic_child`` is the authority on membership.
+
+Source of truth: scripts/fleet/fleet-validate-stack in the engine repo.
+Installed to ~/bin/fleet-validate-stack by scripts/fleet/install.sh.
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+# Resolve the symlink (~/bin/fleet-validate-stack) back to the repo's
+# scripts/fleet/ dir so the sibling pure-logic module imports regardless of
+# cwd — same idiom fleet-queue-ingest uses for fleet_scope_shipped.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from fleet_validate_stack import is_epic_child, validate_stack  # noqa: E402
+
+STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")
+REPOS_CACHE = os.path.join(STATE_DIR, "repos.json")
+DEFAULT_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+
+
+def warn(msg):
+    print("fleet-validate-stack: %s" % msg, file=sys.stderr)
+
+
+def repo_slug(repo_key):
+    try:
+        with open(REPOS_CACHE) as f:
+            repos = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        repos = {}
+    return repos.get(repo_key) or DEFAULT_SLUGS.get(repo_key)
+
+
+def _gh_json(args):
+    """Run a gh command expecting JSON on stdout; return parsed value or None."""
+    proc = subprocess.run(args, capture_output=True, text=True)
+    if proc.returncode != 0:
+        warn("gh failed: %s" % (proc.stderr or "").strip())
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        warn("could not parse gh output: %s" % e)
+        return None
+
+
+def fetch_bodies(slug, numbers):
+    """Fetch {number, title, body} for an explicit list of issue numbers."""
+    children = []
+    for n in numbers:
+        detail = _gh_json([
+            "gh", "issue", "view", str(n), "--repo", slug,
+            "--json", "number,title,body",
+        ])
+        if detail is None:
+            warn("could not fetch issue #%s — skipping" % n)
+            continue
+        children.append(detail)
+    return children
+
+
+def discover_children(slug, umbrella, state):
+    """Find children of ``umbrella`` via coarse search + precise membership filter."""
+    candidates = _gh_json([
+        "gh", "issue", "list", "--repo", slug,
+        "--search", "in:body #%d" % umbrella, "--state", state,
+        "--limit", "200", "--json", "number,title,body",
+    ])
+    if candidates is None:
+        return []
+    return [c for c in candidates if is_epic_child(c.get("body", ""), umbrella)]
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Validate a filed epic stack's structured fields.")
+    parser.add_argument("umbrella", type=int, help="umbrella (epic) issue number")
+    parser.add_argument(
+        "--repo", default="engine", choices=["engine", "game"],
+        help="which repo the epic lives in (default: engine)")
+    parser.add_argument(
+        "--children", type=int, nargs="+", metavar="N",
+        help="explicit child issue numbers (bypasses auto-discovery)")
+    parser.add_argument(
+        "--state", default="open", choices=["open", "closed", "all"],
+        help="issue state filter for auto-discovery (default: open)")
+    parser.add_argument(
+        "--strict", action="store_true",
+        help="treat a missing `**Blocked by:**` line (a warning by default) as "
+             "an error — use for a known linear chain where every non-head "
+             "child must chain on the prior")
+    args = parser.parse_args()
+
+    slug = repo_slug(args.repo)
+    if slug is None:
+        warn("unknown repo key: %s" % args.repo)
+        return 2
+
+    if args.children:
+        children = fetch_bodies(slug, args.children)
+    else:
+        children = discover_children(slug, args.umbrella, args.state)
+
+    result = validate_stack(children, args.umbrella)
+
+    print("Epic #%d (%s) — %d child issue(s)"
+          % (args.umbrella, slug, len(result["children"])))
+
+    if result["empty"]:
+        print()
+        print("No children found via `Part of epic:` / `Epic:` body reference "
+              "to #%d." % args.umbrella)
+        print("Either the epic has no children yet, or they omit the "
+              "epic-membership line entirely (file-epic's own discovery would "
+              "miss them too). Pass --children N N N to validate a known set.")
+        # Empty is not a pass signal for a stack that should have children, but
+        # it is not a structural failure we can assert on — surface as exit 0
+        # with the explanatory note above.
+        return 0
+
+    # In --strict a warning counts toward the exit-1 verdict; the per-line
+    # label still reads WARN so the human sees why it is ambiguous.
+    failed_children = 0
+    for c in result["children"]:
+        tag = " (head)" if c["is_head"] else ""
+        title = (" — " + c["title"]) if c["title"] else ""
+        child_failed = c["n_errors"] > 0 or (args.strict and c["n_warnings"] > 0)
+        if child_failed:
+            failed_children += 1
+            label = "FAIL"
+        elif c["n_warnings"] > 0:
+            label = "WARN"
+        else:
+            label = "PASS"
+        print("  %-4s  #%d%s%s" % (label, c["number"], tag, title))
+        for f in c["findings"]:
+            print("          - [%s] %s" % (f["severity"], f["msg"]))
+
+    print()
+    n = len(result["children"])
+    blocking_warns = args.strict and result["n_warnings"] > 0
+    if result["n_errors"] == 0 and not blocking_warns:
+        msg = "OK: all %d child issue(s) carry the required structured fields." % n
+        if result["n_warnings"]:
+            msg += " (%d warning(s) — review the ambiguous ones above.)" % \
+                result["n_warnings"]
+        print(msg)
+        return 0
+    print("FAILED: %d of %d child issue(s) malformed (%d error(s), %d "
+          "warning(s)) — fix the bodies before `human:approved` (the queue "
+          "parsers cannot read prose / multi-ref forms)."
+          % (failed_children, n, result["n_errors"], result["n_warnings"]))
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
