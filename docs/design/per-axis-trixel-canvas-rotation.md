@@ -77,6 +77,10 @@ voxel ─┬─ X-face ─→ X-axis trixel canvas  (uniform D_X, "skinny" basis
               framebuffer depth composite: per pixel, nearest distance wins
 ```
 
+_Basis labels ("skinny", "stretched", "in-plane-rotated") describe each canvas at
+non-zero residualYaw. At `residualYaw == 0` all three collapse to the same cardinal
+basis — the fast path in §Pipeline._
+
 When *drawing a voxel*, each visible face is routed to its axis-canvas; that
 canvas decides **which trixel the face occupies** from a calculation on the
 camera rotation and the voxel's world position, using that canvas's own
