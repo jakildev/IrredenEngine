@@ -22,8 +22,9 @@
 #       misses an event.
 #
 #   Either way the relaunch is fresh (no --continue, no --resume), so the
-#   new task starts with a clean conversation. Mid-task crashes still use
-#   --continue so partial work isn't lost.
+#   new task starts with a clean conversation. Mid-task crashes ALSO relaunch
+#   fresh: --continue can't resume a thinking session (see resume_mid_task),
+#   and the role re-discovers its task from its claim/reservation anyway.
 #
 #   Architects (opus-architect, game-architect): one long conversation,
 #   preserved across crashes AND across fleet-down/fleet-up cycles via
@@ -411,9 +412,11 @@ run_with_heartbeat() {
 #     a clean conversation. This stops a context built up over hours of
 #     prior task work from leaking into the next task's reasoning.
 #
-#     Mid-task crashes are still handled via --continue so partial work
-#     doesn't get lost — the LOOP_INTERVAL gating is the "ok, *task is
-#     done*, start fresh" signal, not "agent is unhealthy, retry".
+#     Mid-task crashes relaunch fresh too (NOT --continue — it can't resume
+#     a thinking session; see resume_mid_task). The in-flight task is
+#     recovered from the role's claim/reservation, not from session context.
+#     The LOOP_INTERVAL gating is the "ok, *task is done*, start fresh"
+#     signal, not "agent is unhealthy, retry".
 
 launch_architect_first() {
     if [[ -f "$SESSION_FILE" ]]; then
@@ -462,15 +465,29 @@ launch_worker_fresh() {
 }
 
 resume_mid_task() {
-    # Mid-task crash recovery. Architects always --resume their persisted
-    # session (interactive — they need the human's next input).
-    # Workers --continue + --print the most recent session in this cwd
-    # (one-shot — resume, finish what was interrupted, exit).
+    # Mid-task crash recovery.
+    #
+    # Architects --resume their persisted session (interactive — they need
+    # the human's next input; their session is created WITHOUT
+    # --include-partial-messages, so its transcript round-trips on resume).
+    #
+    # Workers/reviewers relaunch FRESH — NOT --continue. Their sessions are
+    # created with `--include-partial-messages` + extended thinking, and the
+    # persisted `thinking` blocks of such a session do not round-trip on
+    # resume: `claude --continue` of one fails hard with
+    #   API Error: 400 ... thinking blocks in the latest assistant message
+    #   cannot be modified
+    # which drops the pane straight back to a shell with no recovery (i.e.
+    # the old --continue path was a silent crash for any thinking role). A
+    # fresh relaunch is safe and idempotent: the role re-discovers its
+    # in-flight task from its claim/reservation (worker reservation gate
+    # "step 0.5"; reviewers are read-only and just re-review) and carries on.
+    # The crashed session's in-context scratch is lost, but the task is not.
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
         claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
             "resume your work from where you left off"
     else
-        stream_claude --print --continue "resume your work from where you left off"
+        launch_worker_fresh
     fi
 }
 
@@ -508,7 +525,7 @@ while true; do
     # In dry-run mode, don't auto-resume on clean exit — the agent
     # completed its one-shot task and the human should review.
     if [[ "$MODE" == "dry-run" && $last_exit -eq 0 ]]; then
-        log "clean exit in dry-run mode. standing by (type 'claude --continue' to resume manually)."
+        log "clean exit in dry-run mode. standing by for human review (relaunch fresh to iterate; '--continue' can't resume a thinking session)."
         break
     fi
 
@@ -580,8 +597,9 @@ while true; do
             run_with_heartbeat resume_mid_task || last_exit=$?
             ;;
         *)
-            # Crash mid-task. --continue (workers) / --resume (architects)
-            # so partial work isn't lost.
+            # Crash mid-task. Fresh relaunch (workers/reviewers) / --resume
+            # (architects) — see resume_mid_task for why workers can't
+            # --continue a thinking session.
             log "exit_code=$prev_exit attempt=$attempt (crash), resuming mid-task in ${CRASH_DELAY}s..."
             if ! interruptible_sleep "$CRASH_DELAY"; then
                 log "shutdown signaled during crash recovery wait — exiting"
