@@ -20,6 +20,8 @@ The lighting stack is mostly built out. The `LIGHTING_TO_TRIXEL` pipeline stage 
 | Cel-shade bands smeared | LUT sampler filter mode (`GL_LINEAR` instead of `GL_NEAREST`) |
 | Fog of war reveals through walls | LOS ray casting in `c_fog_to_trixel` not consulting columnar span lists |
 | Lighting fidelity drifts past static window | Missing camera-anchor on GPU light volume (T-094) — `worldOrigin_` not subtracted before volume sample |
+| Faces lit from wrong direction at non-zero camera yaw | Face normal not rotated by `rasterYaw` in lighting / shadow shaders (#1218). Check `c_lighting_to_trixel.{glsl,metal}` and `c_compute_sun_shadow.{glsl,metal}` apply `R_z(rasterYaw)` to the per-face normal before dotting with sun / light direction. |
+| Sun shadow misaligned at non-zero camera yaw | Shadow-map sweep AABB built in mismatched coordinate frame (#1220). Check `system_bake_sun_shadow_map.hpp` AABB construction is in world frame, not in iso frame derived under yaw=0. |
 
 ## Baseline-diff screenshots
 

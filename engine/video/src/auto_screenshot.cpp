@@ -5,6 +5,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
+#include <irreden/render/camera.hpp>
 
 #include <cstdlib>
 #include <cstring>
@@ -31,13 +32,16 @@ struct CyclingState {
 
 bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut) {
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-screenshot") != 0) continue;
+        if (std::strcmp(argv[i], "--auto-screenshot") != 0)
+            continue;
         int warmup = 10;
         if (i + 1 < argc) {
             int parsed = std::atoi(argv[i + 1]);
-            if (parsed > 0) warmup = parsed;
+            if (parsed > 0)
+                warmup = parsed;
         }
-        if (warmupFramesOut != nullptr) *warmupFramesOut = warmup;
+        if (warmupFramesOut != nullptr)
+            *warmupFramesOut = warmup;
         return true;
     }
     return false;
@@ -66,12 +70,18 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
             if (state->settleCounter_ == 0) {
                 const auto &shot = state->config_.shots_[state->currentShot_];
                 IR_LOG_INFO(
-                    "AutoScreenshot {}/{}: {} (zoom={}, cam=({},{}))",
-                    state->currentShot_ + 1, state->config_.numShots_,
-                    shot.label_, shot.zoom_, shot.cameraIso_.x, shot.cameraIso_.y
+                    "AutoScreenshot {}/{}: {} (zoom={}, cam=({},{}), yaw={})",
+                    state->currentShot_ + 1,
+                    state->config_.numShots_,
+                    shot.label_,
+                    shot.zoom_,
+                    shot.cameraIso_.x,
+                    shot.cameraIso_.y,
+                    shot.yawRadians_
                 );
                 IRRender::setCameraZoom(shot.zoom_);
                 IRRender::setCameraPosition2DIso(shot.cameraIso_);
+                IRPrefab::Camera::setYaw(shot.yawRadians_);
                 state->settleCounter_ = state->config_.settleFrames_;
                 state->screenshotPending_ = false;
                 return;
@@ -85,9 +95,7 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
             if (!state->screenshotPending_) {
                 const auto &shot = state->config_.shots_[state->currentShot_];
                 if (shot.numCrops_ > 0 && shot.crops_ != nullptr) {
-                    IRVideo::requestScreenshotWithCrops(
-                        shot.label_, shot.crops_, shot.numCrops_
-                    );
+                    IRVideo::requestScreenshotWithCrops(shot.label_, shot.crops_, shot.numCrops_);
                 } else {
                     IRVideo::requestScreenshot();
                 }

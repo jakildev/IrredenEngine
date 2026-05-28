@@ -128,6 +128,7 @@ render mode, or one specific edge.
 | Pixel-level edge fidelity  | Per ROI crop, every pixel along cube/voxel silhouettes matches the baseline; no zigzag, single-pixel parity drift, or color shift |
 | Parity stable              | Compare each crop pixel-by-pixel across camera-offset shots — any visible drift on a silhouette is a regression unless the PR explicitly intended it |
 | Zoom stable                | Same crop position at zoom 4 and zoom 8 should show the *same* edge geometry, just larger; mismatched stairs are a subdivision/zoom-rounding bug |
+| Rotation stable            | Compare yaw=0 vs yaw=π/2 / π / 3π/2 shots — the scene should rotate but every face remains solid (no checkerboard #1256), inter-cardinal yaw=π/4 shows visible face deformation vs yaw=0 (#1257), and lighting falls on the correct rotated face normals (#1218, #1220). Demos targeted at rotation regressions must include yaw-rotated shots in their `kShots[]` (engine/video `AutoScreenshotShot::yawRadians_`); a shot list at yaw=0 only is blind to every rotation bug. |
 | Backend parity             | OpenGL and Metal produce visually matching frames; backend-only drift in a crop signals a parity port (handoff to `backend-parity` skill) |
 
 Then open whichever diagnosis section below applies to the surface you're

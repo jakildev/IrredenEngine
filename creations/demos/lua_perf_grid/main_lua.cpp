@@ -93,8 +93,8 @@ struct CliOverrides {
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {0.5f, vec2(0, 0), "fit_grid"},
-    {1.0f, vec2(0, 0), "zoom1_origin"},
+    {0.5f, vec2(0, 0), 0.0f, "fit_grid"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
 };
 
 LuaPerfGridSettings g_settings{};

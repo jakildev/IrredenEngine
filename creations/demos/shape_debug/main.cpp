@@ -72,22 +72,40 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "zoom1_origin"},
-    {2.0f, vec2(0, 0), "zoom2_origin"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
     {4.0f,
      vec2(0, 0),
+     0.0f,
      "zoom4_origin",
      kCropsZoom4Origin,
      sizeof(kCropsZoom4Origin) / sizeof(kCropsZoom4Origin[0])},
-    {1.0f, vec2(1, 0), "zoom1_odd_offset"},
+    {1.0f, vec2(1, 0), 0.0f, "zoom1_odd_offset"},
     {8.0f,
      vec2(0, 0),
+     0.0f,
      "zoom8_origin",
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
-    {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
+    {4.0f, vec2(3, 5), 0.0f, "zoom4_offset_3_5"},
     // zoom16_lod_all_visible: active tier LOD_0, LOD_0 (red) tops the co-located stack.
-    {16.0f, vec2(0, 0), "zoom16_lod_all_visible"},
+    {16.0f, vec2(0, 0), 0.0f, "zoom16_lod_all_visible"},
+
+    // Rotation coverage (#1261): four cardinals + one inter-cardinal expose
+    // rotation-only regressions (#1256 checkerboard, #1257 inter-cardinal
+    // deformation, future face-normal / shadow-AABB / chunk-mask bugs) that
+    // a yaw=0 shot list cannot catch. zoom8 close-ups make sub-pixel
+    // parity artifacts visible at full pixel scale.
+    {4.0f, vec2(0, 0), IRMath::kHalfPi, "zoom4_yaw90"},
+    {4.0f, vec2(0, 0), IRMath::kPi, "zoom4_yaw180"},
+    {4.0f, vec2(0, 0), 3.0f * IRMath::kHalfPi, "zoom4_yaw270"},
+    {4.0f, vec2(0, 0), IRMath::kQuarterPi, "zoom4_yaw45_inter_cardinal"},
+    {8.0f,
+     vec2(0, 0),
+     IRMath::kPi,
+     "zoom8_yaw180",
+     kCropsZoom8Origin,
+     sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
 };
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested

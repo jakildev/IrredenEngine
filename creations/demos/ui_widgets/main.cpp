@@ -86,9 +86,9 @@ namespace {
 // full widget set. Camera position is irrelevant for the GUI canvas but
 // the harness still varies it.
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_idle"},
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_after_settle"},
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_followup"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_idle"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_after_settle"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_followup"},
 };
 
 int g_autoWarmupFrames = 0;

@@ -9,9 +9,9 @@
 namespace {
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0),  "metal_clear_zoom1"},
-    {2.0f, vec2(0, 0),  "metal_clear_zoom2"},
-    {4.0f, vec2(4, 4),  "metal_clear_zoom4_offset"},
+    {1.0f, vec2(0, 0),  0.0f, "metal_clear_zoom1"},
+    {2.0f, vec2(0, 0),  0.0f, "metal_clear_zoom2"},
+    {4.0f, vec2(4, 4),  0.0f, "metal_clear_zoom4_offset"},
 };
 
 } // namespace

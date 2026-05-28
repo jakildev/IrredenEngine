@@ -58,8 +58,8 @@
 namespace {
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {2.0f, vec2(0, 0), "zoom2_chunk_cube"},
-    {4.0f, vec2(0, 0), "zoom4_chunk_cube"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_chunk_cube"},
+    {4.0f, vec2(0, 0), 0.0f, "zoom4_chunk_cube"},
 };
 
 int g_autoWarmupFrames = 0;

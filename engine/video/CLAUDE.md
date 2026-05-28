@@ -64,7 +64,9 @@ shot-cycling helper that any creation can opt into with a shot table
 plus five lines of wire-up. Used by the `render-debug-loop` and
 `render-verify` skills.
 
-- `AutoScreenshotShot` — one shot: zoom, camera-iso position, label.
+- `AutoScreenshotShot` — one shot: zoom, camera-iso position,
+  Z-yaw radians (default 0 — set non-zero to cover rotation
+  regressions per render-debug-loop rotation-stable criterion), label.
 - `AutoScreenshotConfig` — warmup/settle frame counts and a
   caller-owned `const AutoScreenshotShot *` table.
 - `parseAutoScreenshotArgv` — CLI parser for
