@@ -700,18 +700,11 @@ _SMOKE_SKIP_LABELS = frozenset({
 
 MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
 
-# A blocked_by value is a "single blocker" — eligible for a stackable claim —
-# when it references exactly one issue. The reference may carry trailing
-# explanatory prose, e.g. "#1308 (T1 must land first)"; the epic decomposer
-# emits that shape, and rejecting it silently kept whole task chains from ever
-# stacking (observed on #1309 → #1316, 2026-05-28). Two or more #refs (a
-# genuine multi-blocker like "#1308, #1309" or "#1308 and #1309") and zero
-# refs ("(none)", free text, a bare URL, legacy "T-101") are NOT single-blocker
-# and get no stackable_blocker_pr.
-#
-# Evaluated AFTER resolve_blocked_by() reduces multi-ref bodies to their
-# unresolved set, so a task originally blocked on `#N1, #N2` where #N1 is now
-# CLOSED arrives here as `#N2` (one ref) and qualifies.
+# Eligible when blocked_by references exactly one issue. The epic decomposer
+# emits prose suffixes (e.g. "#1308 (T1 must land first)") that the old strict
+# regex rejected, silently killing whole task chains (#1309→#1316, 2026-05-28).
+# Evaluated AFTER resolve_blocked_by(), so a two-ref task whose first blocker
+# is now CLOSED arrives here as one ref and qualifies.
 def _single_blocker_issue(blocked_by):
     """Return the sole blocker issue number (digits, no '#') when blocked_by
     references exactly one issue, else None."""
