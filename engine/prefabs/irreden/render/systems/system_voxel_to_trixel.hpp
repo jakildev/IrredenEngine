@@ -20,6 +20,7 @@
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -338,8 +339,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // runs per entity.
         const float sweepDistance = sweepDistance_;
 
-        const IsoBounds2D chunkVp =
-            IRMath::shadowFeederIsoBounds(cull.isoViewport(kCullChunkMargin), sunDir_, sweepDistance);
+        const IsoBounds2D chunkVp = IRMath::shadowFeederIsoBounds(
+            cull.isoViewport(kCullChunkMargin),
+            sunDir_,
+            sweepDistance
+        );
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         const auto &uploadMask = buildChunkVisibilityMask(voxelPool, chunkVp, chunkCardinal);
         chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
@@ -464,6 +468,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (background.has_value() && backgroundTextures.has_value()) {
             (*background.value()).clearCanvasWithBackground(*backgroundTextures.value());
         }
+
+        // Allocate / release the main canvas's per-axis trixel canvases for
+        // smooth camera Z-yaw (#1308). Idempotent and once-per-frame; only
+        // transitions on rotation start/stop. No faces route here in T1, so this
+        // never alters the rendered output — it just stands up the storage that
+        // T2 (#1309) routing will write into.
+        IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw();
     }
 
     static SystemId create() {

@@ -13,6 +13,7 @@
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
@@ -162,6 +163,16 @@ RenderManager::RenderManager(
     );
 
     m_activeCanvas = m_mainCanvas;
+
+    // The main world canvas owns the three per-axis trixel canvases used by the
+    // smooth camera Z-yaw path (#1308;
+    // docs/design/per-axis-trixel-canvas-rotation.md). Their GPU textures are
+    // allocated lazily — only while the camera sits at a non-cardinal residual
+    // yaw — by IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw(), so a static
+    // / cardinal scene pays nothing (the byte-identical fast path). Only the
+    // main GRID canvas carries this: detached canvases rotate via full SO(3)
+    // (PROPAGATE_CANVAS_ROTATION), a separate mechanism.
+    IREntity::setComponent(m_mainCanvas, C_PerAxisTrixelCanvases{});
 
     initRenderingResources();
     initRenderingSystems();

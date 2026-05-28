@@ -47,6 +47,9 @@ constexpr float kHalfPi = 1.57079632679489661923f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 /// Quarter pi (π/4). Cardinal-yaw residual bound, diagonal transforms.
 constexpr float kQuarterPi = 0.78539816339744830961f;
+/// √2. Worst-case footprint growth of a stretched / rotated iso face at the
+/// residual-yaw bound ±π/4 (see perAxisTrixelCanvasWorstCaseSize).
+constexpr float kSqrt2 = 1.41421356237309504880f;
 
 /// Face-index constants for the three visible iso faces. CPU mirror of the
 /// `kXFace`/`kYFace`/`kZFace` integer constants in `shaders/ir_iso_common.glsl`
@@ -1257,6 +1260,36 @@ constexpr uvec2 gameResolutionToSize2DIso(const uvec2 gameResolution, const uvec
 constexpr vec2
 gameResolutionToSize2DIso(const vec2 gameResolution, const vec2 scaleFactor = vec2(1.0f)) {
     return gameResolution / vec2(2, 1) / scaleFactor;
+}
+
+/// Worst-case texel dimensions for one per-axis trixel canvas used by the
+/// smooth camera Z-yaw path (#1308;
+/// docs/design/per-axis-trixel-canvas-rotation.md §"Bounded textures + minimum
+/// on-screen trixel size"). The three axis canvases are allocated once at this
+/// size and reused — never reallocated per frame — so the cost is bounded and
+/// only paid while the camera rotates.
+///
+/// Per dimension the size is the larger of two bounds:
+///   • Footprint — the stretched / rotated axis grows by at most √2 at residual
+///     ±π/4 (faceDeformationMatrix's stretched column has length √2 there).
+///   • Density — a face going edge-on would otherwise need unbounded trixels
+///     along the skinny axis; the minimum on-screen trixel size floors it. The
+///     cardinal iso canvas packs 2 framebuffer px per trixel horizontally and 1
+///     vertically (see gameResolutionToSize2DIso), so flooring at
+///     @p minOnScreenTrixelPx framebuffer px caps extra subdivision at
+///     2 / floor horizontally and 1 / floor vertically over the cardinal texel
+///     count. Zoom scales trixels at TRIXEL_TO_FRAMEBUFFER (not by resizing the
+///     canvas), so it does not enter this bound.
+inline ivec2 perAxisTrixelCanvasWorstCaseSize(
+    const ivec2 cardinalExtent, const float minOnScreenTrixelPx = 1.0f
+) {
+    const float floorPx = max(minOnScreenTrixelPx, 1.0f);
+    const float scaleX = max(kSqrt2, 2.0f / floorPx);
+    const float scaleY = max(kSqrt2, 1.0f / floorPx);
+    return ivec2{
+        static_cast<int>(ceil(static_cast<float>(cardinalExtent.x) * scaleX)),
+        static_cast<int>(ceil(static_cast<float>(cardinalExtent.y) * scaleY))
+    };
 }
 
 /// Returns the screen-pixel size of one iso triangle at the given zoom and
