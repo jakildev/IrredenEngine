@@ -118,6 +118,9 @@ def validate_child(body, umbrella, is_head):
                  "child chains on a sibling (prose `Blocked on ...` headers "
                  "are invisible to the scout / fleet-claim parsers); fine if "
                  "it is a genuine independent root")
+        elif len(bb_lines) > 1:
+            err("multiple separate `**Blocked by:**` lines — use a single "
+                "`**Blocked by:** #N` line; stack-claim requires exactly one")
         else:
             refs = _HASH_REF_RE.findall(bb_lines[0])
             if len(refs) > 1:

@@ -30,10 +30,6 @@ def _msgs(findings):
     return [f["msg"] for f in findings]
 
 
-def _sev(findings):
-    return {f["severity"] for f in findings}
-
-
 # A fully template-compliant non-head child body.
 COMPLIANT_CHILD = (
     "**Model:** opus\n"
@@ -125,6 +121,17 @@ class ValidateChildNonHead(unittest.TestCase):
         )
         findings = validate_child(body, 1307, is_head=False)
         multi = [f for f in findings if "multi-blocker" in f["msg"]]
+        self.assertEqual(len(multi), 1)
+        self.assertEqual(multi[0]["severity"], _mod.ERROR)
+
+    def test_multiple_separate_blocked_by_lines_is_error(self):
+        body = (
+            "**Model:** opus\n**Part of epic:** #1307\n"
+            "**Blocked by:** #1308\n"
+            "**Blocked by:** #1309\n"
+        )
+        findings = validate_child(body, 1307, is_head=False)
+        multi = [f for f in findings if "multiple separate" in f["msg"]]
         self.assertEqual(len(multi), 1)
         self.assertEqual(multi[0]["severity"], _mod.ERROR)
 
