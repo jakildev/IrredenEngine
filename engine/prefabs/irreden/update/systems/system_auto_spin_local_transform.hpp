@@ -28,7 +28,12 @@ template <> struct System<AUTO_SPIN_LOCAL_TRANSFORM> {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     void tick(C_LocalTransform &localXform, const C_AutoSpin &spin) {
-        if (spin.radiansPerFrame_ == 0.0f) {
+        // Both guards keep the component's no-op contract honest:
+        // `quatAxisAngle` calls `normalize(axis)` internally, so a zero axis
+        // with a non-zero rate would produce a NaN quaternion that
+        // PROPAGATE_TRANSFORM then leaks into C_WorldTransform.
+        if (spin.radiansPerFrame_ == 0.0f ||
+            IRMath::dot(spin.axis_, spin.axis_) == 0.0f) {
             return;
         }
         const vec4 delta = IRMath::quatAxisAngle(spin.axis_, spin.radiansPerFrame_);
