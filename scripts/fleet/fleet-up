@@ -671,8 +671,10 @@ fi
 
 if command -v fleet-claim >/dev/null 2>&1; then
     fleet-claim clear-all
+    fleet-claim reset-sweep-host-claims || true
 elif [[ -x "$ENGINE/scripts/fleet/fleet-claim" ]]; then
     "$ENGINE/scripts/fleet/fleet-claim" clear-all
+    "$ENGINE/scripts/fleet/fleet-claim" reset-sweep-host-claims || true
 else
     echo "fleet-up: fleet-claim not found — skipping claims cleanup"
     echo "          (run scripts/fleet/install.sh to install it)"

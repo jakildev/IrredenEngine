@@ -329,9 +329,10 @@ print("body\t" + base64.b64encode(body.encode("utf-8")).decode("ascii"))
 # --- dependency checking --------------------------------------------------
 
 check_blockers() {
-    # Refuse a claim whose **Blocked by:** field references issues that
-    # aren't yet CLOSED (or PRs that aren't MERGED). The field is parsed
-    # from the issue body; `(none)` or absent means no gate.
+    # Refuse a claim whose **Blocked by:** field references items that
+    # aren't yet resolved. #N references accept CLOSED (issues) or MERGED
+    # (PRs referenced by number). PR-URL references accept MERGED only.
+    # The field is parsed from the issue body; `(none)` or absent = no gate.
     #
     # $1 = issue number
     # $2 = space-separated issue numbers to treat as already satisfied
@@ -408,8 +409,8 @@ for ref in issue_refs:
         failed.append(f"#{ref} (check failed: {e})")
         continue
     state = (r.stdout or "").strip()
-    if state != "CLOSED":
-        failed.append(f"#{ref} (state: {state or 'unknown'}, need: CLOSED)")
+    if state not in ("CLOSED", "MERGED"):
+        failed.append(f"#{ref} (state: {state or 'unknown'}, need: CLOSED or MERGED)")
 
 for url in pr_urls:
     try:
@@ -1229,6 +1230,94 @@ print(0)
         echo "cleanup --gh: no stale labels"
     else
         echo "cleanup --gh: removed $total_removed stale label(s)"
+    fi
+}
+
+# cmd_reset_sweep_host_claims
+#   Unconditionally remove this host's fleet:claim-<host>-* labels from open
+#   issues that have no matching open claude/<N>-* PR. Called by fleet-up
+#   immediately after cmd_clear_all so the queue shows a clean slate without
+#   waiting for the 2h TTL in cmd_cleanup_gh's second pass.
+#
+#   Multi-host safety: only touches fleet:claim-<THIS_HOST>-* labels.
+#   Another host's labels are authoritative for that host and MUST NOT be
+#   removed here — they could represent live work on the other host.
+cmd_reset_sweep_host_claims() {
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "reset-sweep-host-claims: 'gh' not on PATH; skipping" >&2
+        return 0
+    fi
+
+    local host
+    host=$(derive_host)
+    local prefix="fleet:claim-${host}-"
+
+    local -a repos=("jakildev/IrredenEngine")
+    if gh repo view "jakildev/irreden" >/dev/null 2>&1; then
+        repos+=("jakildev/irreden")
+    fi
+
+    local total_removed=0
+
+    for repo in "${repos[@]}"; do
+        local open_claim_plan open_pr_branches_json
+        open_claim_plan=$(gh issue list --repo "$repo" --state open \
+            --search "label:\"fleet:queued\"" \
+            --json number,labels --limit 200 2>/dev/null \
+            | HOST_PREFIX="$prefix" python3 -c '
+import json, os, sys
+prefix = os.environ.get("HOST_PREFIX", "")
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith(prefix):
+            print(f"{n}\t{name}")
+' 2>/dev/null || echo "")
+
+        [[ -z "$open_claim_plan" ]] && continue
+
+        open_pr_branches_json=$(gh pr list --repo "$repo" --state open \
+            --json headRefName --limit 300 2>/dev/null || echo "[]")
+
+        while IFS=$'\t' read -r issue_num label_name; do
+            [[ -z "$issue_num" || -z "$label_name" ]] && continue
+
+            local has_wip_pr
+            has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" python3 -c "
+import json, os, sys
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
+prefix = f\"claude/{os.environ['ISSUE_NUM']}-\"
+for pr in prs:
+    if (pr.get('headRefName') or '').startswith(prefix):
+        print(1)
+        sys.exit(0)
+print(0)
+" 2>/dev/null || echo 0)
+
+            [[ "$has_wip_pr" -eq 1 ]] && continue
+
+            if gh issue edit "$issue_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "reset-sweep-host-claims: removed '$label_name' on $repo issue#$issue_num (no open PR)"
+                total_removed=$((total_removed + 1))
+                gh issue edit "$issue_num" --repo "$repo" \
+                    --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
+            fi
+        done <<< "$open_claim_plan"
+    done
+
+    if [[ $total_removed -eq 0 ]]; then
+        echo "reset-sweep-host-claims: no stale ${host} claim labels found"
+    else
+        echo "reset-sweep-host-claims: removed $total_removed stale label(s) for host ${host}"
     fi
 }
 
@@ -2400,6 +2489,9 @@ case "${1:-}" in
     clear-all)
         cmd_clear_all
         ;;
+    reset-sweep-host-claims)
+        cmd_reset_sweep_host_claims
+        ;;
     reserve)
         if [[ -z "${3:-}" ]]; then
             echo "usage: fleet-claim reserve <issue-number> <worktree> [branch]" >&2
@@ -2578,6 +2670,10 @@ commands:
                                 release a conflict-resolution claim.
   clear-all                     wipe all claims (used by fleet-up on
                                 restart).
+  reset-sweep-host-claims       unconditionally remove this host's
+                                fleet:claim-<host>-* labels from open
+                                issues with no matching open PR (called
+                                by fleet-up after clear-all).
 
 reservation commands (worktree-pinning, distinct from claims):
   reserve <issue-number> <worktree> [branch]
@@ -2605,7 +2701,7 @@ molecule commands (crash-recovery state for stack claims):
 
 Dependency gate:
   claim and stack read the issue body's `**Blocked by:**` field. Issue
-  references (#N) must be CLOSED; PR-URL references must be MERGED. The
+  references (#N) must be CLOSED or MERGED; PR-URL references must be MERGED. The
   `(none)` value (with optional parenthetical commentary) is treated as
   no gate.
 
