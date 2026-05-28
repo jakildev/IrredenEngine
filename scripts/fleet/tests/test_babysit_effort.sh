@@ -51,6 +51,7 @@ effort_for() {
     local model="$1" role="$2"; shift 2
     env -u FLEET_EFFORT -u FLEET_EFFORT_OPUS_ARCHITECT -u FLEET_EFFORT_GAME_ARCHITECT \
         -u FLEET_EFFORT_OPUS_REVIEWER -u FLEET_EFFORT_OPUS_WORKER \
+        -u FLEET_EFFORT_SONNET_AUTHOR \
         FLEET_BABYSIT_PRINT_EFFORT=1 "$@" \
         "$BABYSIT" "$model" "$role"
 }
