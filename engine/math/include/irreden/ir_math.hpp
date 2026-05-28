@@ -47,8 +47,9 @@ constexpr float kHalfPi = 1.57079632679489661923f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 /// Quarter pi (π/4). Cardinal-yaw residual bound, diagonal transforms.
 constexpr float kQuarterPi = 0.78539816339744830961f;
-/// √2. Worst-case footprint growth of a stretched / rotated iso face at the
-/// residual-yaw bound ±π/4 (see perAxisTrixelCanvasWorstCaseSize).
+/// √2. Horizontal in-plane growth factor of the Y/X-face deformation at the
+/// residual-yaw bound ±π/4. The full stretched column is (√2, −1), length √3;
+/// √2 is its horizontal component (see perAxisTrixelCanvasWorstCaseSize).
 constexpr float kSqrt2 = 1.41421356237309504880f;
 
 /// Face-index constants for the three visible iso faces. CPU mirror of the
@@ -1270,8 +1271,13 @@ gameResolutionToSize2DIso(const vec2 gameResolution, const vec2 scaleFactor = ve
 /// only paid while the camera rotates.
 ///
 /// Per dimension the size is the larger of two bounds:
-///   • Footprint — the stretched / rotated axis grows by at most √2 at residual
-///     ±π/4 (faceDeformationMatrix's stretched column has length √2 there).
+///   • Footprint — derived from the per-face deformation matrix D_φ at the
+///     residual-yaw bound ±π/4. Horizontal: the in-plane stretch gives √2·W
+///     (D_φ row-0 column magnitude is √2 there). Vertical: the Y/X-face row-1
+///     `(c−s−1, 1)` at ±π/4 gives `(−1, 1)`, so the worst-case AABB height is
+///     |−1|·W + 1·H = W + H, which exceeds √2·H for any W > (√2−1)·H. The
+///     full stretched column is (√2, −1) with length √3, not √2; √2 is only its
+///     horizontal component.
 ///   • Density — a face going edge-on would otherwise need unbounded trixels
 ///     along the skinny axis; the minimum on-screen trixel size floors it. The
 ///     cardinal iso canvas packs 2 framebuffer px per trixel horizontally and 1
@@ -1284,12 +1290,14 @@ inline ivec2 perAxisTrixelCanvasWorstCaseSize(
     const ivec2 cardinalExtent, const float minOnScreenTrixelPx = 1.0f
 ) {
     const float floorPx = max(minOnScreenTrixelPx, 1.0f);
+    const float W = static_cast<float>(cardinalExtent.x);
+    const float H = static_cast<float>(cardinalExtent.y);
+    // Horizontal: √2 in-plane stretch vs. 2px/trixel density floor.
     const float scaleX = max(kSqrt2, 2.0f / floorPx);
-    const float scaleY = max(kSqrt2, 1.0f / floorPx);
-    return ivec2{
-        static_cast<int>(ceil(static_cast<float>(cardinalExtent.x) * scaleX)),
-        static_cast<int>(ceil(static_cast<float>(cardinalExtent.y) * scaleY))
-    };
+    // Vertical: Y/X-face row-1 shear at ±π/4 gives AABB height W + H, which
+    // exceeds the density floor H/floorPx (≤ H ≤ W + H) for any W ≥ 0.
+    const float boundsY = max(W + H, H / floorPx);
+    return ivec2{static_cast<int>(ceil(W * scaleX)), static_cast<int>(ceil(boundsY))};
 }
 
 /// Returns the screen-pixel size of one iso triangle at the given zoom and
