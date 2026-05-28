@@ -141,12 +141,24 @@ def latch_usage_observation(rl_type, info):
     """
     if not isinstance(rl_type, str) or not rl_type:
         return
+    # "?" is the sentinel default used when rateLimitType is absent from the
+    # event payload; sanitizing it yields "_", which creates a junk _.json
+    # that the dispatcher would read. Skip it.
+    if rl_type == "?":
+        return
     safe_type = "".join(c if c.isalnum() or c in "_-" else "_" for c in rl_type)
     if not safe_type:
         return
+    util = info.get("utilization")
+    if util is None:
+        # status:"allowed" events carry no utilization field; only
+        # "allowed_warning" and "rejected" do. Preserve the last known
+        # warning observation so a bare "allowed" burst between warning
+        # events can't silently re-open the dispatcher's gate.
+        return
     payload = {
         "rateLimitType": rl_type,
-        "utilization": info.get("utilization"),
+        "utilization": util,
         "resetsAt": info.get("resetsAt"),
         "observed_at": int(time.time()),
     }
