@@ -274,11 +274,12 @@ DISPATCHED_ROLES=(
 # OPUS_MODEL / SONNET_MODEL (the single source of truth — bump there).
 # The fallbacks apply only when the dispatcher is run standalone (e.g.
 # for debugging) without fleet-up in the environment; keep them in sync
-# with fleet-up. The "[1m]" suffix selects the 1M-token context variant —
-# standard pricing on the same weights as 200K, so it's free headroom for
-# the occasional long iteration.
+# with fleet-up. The "[1m]" suffix selects the 1M-token context variant:
+# kept for Opus, dropped for Sonnet — sonnet[1m] errors "Usage credits
+# required for 1M context" on this plan (see fleet-up's OPUS_MODEL /
+# SONNET_MODEL comment for the full rationale).
 OPUS_MODEL="${OPUS_MODEL:-claude-opus-4-8[1m]}"
-SONNET_MODEL="${SONNET_MODEL:-sonnet[1m]}"
+SONNET_MODEL="${SONNET_MODEL:-sonnet}"
 declare -A ROLE_MODEL=(
     ["sonnet-author"]="$SONNET_MODEL"
     ["opus-worker"]="$OPUS_MODEL"
