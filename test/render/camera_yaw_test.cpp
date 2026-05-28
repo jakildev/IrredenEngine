@@ -20,14 +20,18 @@ TEST(CameraYawWrap, ZeroStaysZero) {
     EXPECT_NEAR(yaw, 0.0f, kTolerance);
 }
 
-TEST(CameraYawWrap, PositivePiMapsToNegativePi) {
+TEST(CameraYawWrap, PositivePiClampsToEpsilonAboveNegativePi) {
+    // Both +π and -π map to -π before the ε guard, which then bumps to
+    // -π + 1e-4 so pitchFromQuat's atan2(q.x, q.w) never sees cos(yaw/2)=0.
     float yaw = IRPrefab::Camera::detail::wrapYaw(IRMath::kPi);
-    EXPECT_NEAR(yaw, -IRMath::kPi, kTolerance);
+    EXPECT_NEAR(yaw, -IRMath::kPi + 1e-4f, kTolerance);
 }
 
-TEST(CameraYawWrap, NegativePiStaysNegativePi) {
+TEST(CameraYawWrap, NegativePiClampsToEpsilonAbove) {
+    // -π is the wrap boundary where cos(yaw/2) = 0; the ε guard nudges the
+    // result to -π + 1e-4 so pitchFromQuat remains valid.
     float yaw = IRPrefab::Camera::detail::wrapYaw(-IRMath::kPi);
-    EXPECT_NEAR(yaw, -IRMath::kPi, kTolerance);
+    EXPECT_NEAR(yaw, -IRMath::kPi + 1e-4f, kTolerance);
 }
 
 TEST(CameraYawWrap, FullRotationWrapsToZero) {
@@ -47,6 +51,30 @@ TEST(CameraYawWrap, ManyFullRotationsDoNotDriftMaterially) {
         yaw = IRPrefab::Camera::detail::wrapYaw(yaw);
     }
     EXPECT_NEAR(yaw, 0.5f, 1e-3f);
+}
+
+// ---------------------------------------------------------------------------
+// Pitch preservation at the wrapYaw boundary.
+// Verifies the ε guard in wrapYaw keeps pitchFromQuat valid at yaw = -π.
+// ---------------------------------------------------------------------------
+
+TEST(CameraYawPitchPreservation, PitchPreservedAtNegativePiBoundary) {
+    // wrapYaw(-π) returns -π + 1e-4 instead of -π, so cos(yaw/2) ≠ 0 and
+    // pitchFromQuat can recover the pitch without reading atan2(0, 0) = 0.
+    const float pitch = 0.3f;
+    const float wrappedYaw = IRPrefab::Camera::detail::wrapYaw(-IRMath::kPi);
+    const auto q = IRPrefab::Camera::detail::quatFromYawPitch(wrappedYaw, pitch);
+    EXPECT_NEAR(IRPrefab::Camera::detail::pitchFromQuat(q), pitch, kTolerance);
+}
+
+TEST(CameraYawPitchPreservation, PitchPreservedAfterYawRotateThroughBoundary) {
+    // Simulates rotateYaw(δ) when the camera sits near yaw = -π.
+    // The pitch must survive even as wrapYaw clamps the result.
+    const float pitch = 0.5f;
+    float yaw = -IRMath::kPi - 0.001f;  // just past the boundary
+    yaw = IRPrefab::Camera::detail::wrapYaw(yaw);
+    const auto q = IRPrefab::Camera::detail::quatFromYawPitch(yaw, pitch);
+    EXPECT_NEAR(IRPrefab::Camera::detail::pitchFromQuat(q), pitch, kTolerance);
 }
 
 // ---------------------------------------------------------------------------

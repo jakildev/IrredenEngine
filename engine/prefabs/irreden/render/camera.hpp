@@ -57,7 +57,8 @@ inline float yawFromQuat(const IRMath::vec4 &q) {
 
 // Extract X-pitch from the ZX-composed camera quaternion.
 // For q = qZ(yaw) × qX(pitch): atan2(q.x, q.w) = pitch/2 when
-// yaw is in (-π, π) (cos(yaw/2) > 0); wrapYaw guarantees this.
+// cos(yaw/2) > 0 (yaw ≠ ±π). The ε guard in wrapYaw keeps the result
+// strictly above -π, so cos(yaw/2) > 0 is guaranteed for all callers.
 inline float pitchFromQuat(const IRMath::vec4 &q) {
     return 2.0f * IRMath::atan2(q.x, q.w);
 }
