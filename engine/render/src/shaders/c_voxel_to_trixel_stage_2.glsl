@@ -10,7 +10,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    uniform int _voxelDispatchPadding;
+    // Smooth-camera-Z-yaw per-axis route selector (see stage 1 + #1309).
+    uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
@@ -119,6 +120,37 @@ void main() {
 
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
+
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309) — mirrors stage 1's
+    // geometry exactly so the color/entity-id taps land on the same trixels the
+    // distance taps did. See c_voxel_to_trixel_stage_1.glsl for the contract.
+    if (perAxisRoute != 0) {
+        if ((faceId >> 1) != perAxisRoute - 1) return;
+        const ivec2 perAxisBase =
+            trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+        if (voxelRenderOptions.x == 0) {
+            const vec3 worldPos = round(voxelPosition.xyz);
+            const int voxelDistance =
+                encodeDepthWithFace(pos3DtoDistance(ivec3(worldPos)), slot);
+            const ivec2 base =
+                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, visualYaw));
+            emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+            return;
+        }
+        const int subPerAxis = max(voxelRenderOptions.y, 1);
+        const int uPerAxis = int(gl_WorkGroupID.z) / subPerAxis;
+        const int vPerAxis = int(gl_WorkGroupID.z) % subPerAxis;
+        const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+        const ivec3 worldFixed = ivec3(round(worldAligned * float(subPerAxis)));
+        const ivec3 microWorld =
+            faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
+        const int voxelDistance =
+            encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
+        const ivec2 base =
+            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(microWorld), visualYaw));
+        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+        return;
+    }
 
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));

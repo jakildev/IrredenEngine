@@ -523,7 +523,10 @@ struct FrameDataVoxelToTrixel {
     int2 voxelRenderOptions;
     int2 voxelDispatchGrid;
     int voxelCount;
-    int voxelDispatchPadding;
+    // Smooth-camera-Z-yaw per-axis route selector (mirrors
+    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single-canvas raster (byte-
+    // identical); 1/2/3 = the X/Y/Z per-axis canvas pass (#1309).
+    int perAxisRoute;
     int2 canvasSizePixels;
     int2 cullIsoMin;
     int2 cullIsoMax;
