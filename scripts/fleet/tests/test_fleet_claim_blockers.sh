@@ -23,6 +23,12 @@
 #   - PR-URL form OPEN → fail
 #   - bare `#N` issue OPEN → fail
 #   - no Blocked-by line → pass
+#   - parenthetical PR ref, PR CLOSED-abandoned → claim succeeds (documents
+#     current `#N`-form behavior: gate accepts CLOSED|MERGED, so an abandoned
+#     PR matched via `#N` passes. Note this differs from the explicit URL
+#     form, which accepts MERGED only — if abandoned-PR refs ever need to
+#     fail the gate, the `#N` branch in fleet-claim.check_blockers needs
+#     to differentiate PR-state CLOSED from issue-state CLOSED.)
 
 set -euo pipefail
 
@@ -75,15 +81,29 @@ cat >"$STUB_DIR/gh" <<'GHSTUB'
 #   gh pr list --repo R --state open --json ... --jq ...        → []
 #   gh api repos/.../issues/N/labels --method POST -f labels[]= → echo back
 #   gh issue edit ... / gh label ...                            → no-op
+#
+# Argument parsing scans for the first bare positive integer rather than
+# trusting positional `$3`. fleet-claim today calls `gh issue view N --repo
+# R --json …`, but the stub stays valid if the call form ever shifts (e.g.
+# `gh issue view --repo R N …`) — otherwise the stub silently falls
+# through to the default `OPEN` branch and the tests pass for the wrong
+# reason.
 
 has_jq=0
+issue_num=""
+pr_url=""
 for arg in "$@"; do
     [[ "$arg" == "--jq" ]] && has_jq=1
+    if [[ -z "$issue_num" && "$arg" =~ ^[0-9]+$ ]]; then
+        issue_num="$arg"
+    fi
+    if [[ -z "$pr_url" && "$arg" == https://github.com/*/pull/* ]]; then
+        pr_url="$arg"
+    fi
 done
 
 case "$1 $2" in
     "issue view")
-        issue_num="$3"
         if [[ "$has_jq" -eq 1 ]]; then
             # check_blockers state-only lookup for `#N` references.
             case "$issue_num" in
@@ -91,6 +111,7 @@ case "$1 $2" in
                 101) echo "OPEN" ;;     # issue, still open
                 200) echo "MERGED" ;;   # PR, merged
                 201) echo "OPEN" ;;     # PR, still open
+                202) echo "CLOSED" ;;   # PR, abandoned (closed without merge)
                 *)   echo "OPEN" ;;
             esac
             exit 0
@@ -125,6 +146,10 @@ case "$1 $2" in
                 # No Blocked-by line at all.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nIndependent task.\n"}'
                 ;;
+            2008)
+                # Parenthetical PR ref, PR closed without merging.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (PR #202 abandoned)\n"}'
+                ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -132,10 +157,10 @@ case "$1 $2" in
         exit 0
         ;;
     "pr view")
-        url="$3"
-        case "$url" in
+        case "$pr_url" in
             *pull/200) echo "MERGED" ;;
             *pull/201) echo "OPEN" ;;
+            *pull/202) echo "CLOSED" ;;
             *)         echo "OPEN" ;;
         esac
         exit 0
@@ -219,6 +244,18 @@ echo "T7: no Blocked-by line → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2007 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "missing field bypasses gate → exit 0"
 release_quiet 2007
+
+# --- T8: parenthetical PR ref — PR CLOSED-abandoned → claim succeeds --------
+# Documents current behavior — the `#N` branch accepts CLOSED|MERGED, so an
+# abandoned PR matched via `#N` passes the gate. Contrast with the URL form
+# (T5, OPEN → fail) which only accepts MERGED. If fleet ever needs to reject
+# closed-abandoned PR refs uniformly, the #N branch in check_blockers needs
+# to detect PR-state CLOSED separately from issue-state CLOSED — at which
+# point this test's expectation flips to exit 1.
+echo "T8: parenthetical PR ref — PR CLOSED-abandoned → claim succeeds (current behavior)"
+actual=0; "$FLEET_CLAIM" claim 2008 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "#100 CLOSED + #202 CLOSED (abandoned) → exit 0"
+release_quiet 2008
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
