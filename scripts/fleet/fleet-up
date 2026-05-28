@@ -28,14 +28,17 @@ SESSION="fleet"
 # reviewers, merger, smoke), and launch_cmd threads OPUS_MODEL into the
 # architect panes via fleet-babysit. Bump here and every role moves.
 #
-# The "[1m]" suffix selects the 1M-token context variant. For Opus 4.8 and
-# Sonnet 4.6 the full 1M window bills at standard per-token rates (no long-
-# context premium) on the same weights as the 200K variant — so it's free
-# headroom for the occasional long iteration and identical on the common
-# short ones. Opus is pinned to a full version (the bare "opus" alias would
-# silently upgrade); sonnet stays an alias since its budget is cheap.
+# The "[1m]" suffix selects the 1M-token context variant. On this Max plan the
+# 1M-context beta is covered for Opus but NOT for Sonnet: a sonnet[1m] dispatch
+# dies instantly with "API Error: Usage credits required for 1M context" (turn
+# 1, $0.00). So Opus keeps [1m] (real headroom for long architect/worker
+# iterations); Sonnet uses the standard 200K alias, which its bounded
+# review/author iterations fit fine. (If you ever want sonnet[1m], enable usage
+# credits at claude.ai/settings/usage and re-add the suffix.) Opus is pinned to
+# a full version (the bare "opus" alias would silently upgrade); sonnet stays an
+# alias since its budget is cheap.
 OPUS_MODEL="claude-opus-4-8[1m]"
-SONNET_MODEL="sonnet[1m]"
+SONNET_MODEL="sonnet"
 export OPUS_MODEL SONNET_MODEL
 
 # Minimum seconds between opus-reviewer relaunches (cooldown floor).
