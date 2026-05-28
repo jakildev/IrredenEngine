@@ -77,10 +77,12 @@ kernel void c_compute_voxel_ao(
         cardinalIndex
     );
 
-    // Face axes in raster frame; tangents project directly to canvas
-    // pixels. Outward normal is rotated back to world frame for the
-    // d-test in `pos3D`'s frame. Mirrors GLSL.
-    int3 rasterOutwardI = faceOutwardNormalI(face);
+    // `face` is encoded in world frame by the rasterizer; the outward
+    // normal and in-plane tangents are world-frame too. Tangents are
+    // rotated through R_z(-rasterYaw) before iso projection so the
+    // neighbour-sample iso direction matches where the rasterizer
+    // wrote the +tangent neighbour at this cardinal. Mirrors GLSL.
+    float3 worldOutward = float3(faceOutwardNormalI(face));
     int3 t1;
     int3 t2;
     if (face == kZFace) {
@@ -93,11 +95,12 @@ kernel void c_compute_voxel_ao(
         t1 = int3(1, 0, 0);
         t2 = int3(0, 0, 1);
     }
-    float3 worldOutward = rotateCardinalZInv(float3(rasterOutwardI), cardinalIndex);
 
     int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
-    int2 deltaT1 = pos3DtoPos2DIso(t1) * scale;
-    int2 deltaT2 = pos3DtoPos2DIso(t2) * scale;
+    int3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
+    int3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
+    int2 deltaT1 = pos3DtoPos2DIso(t1View) * scale;
+    int2 deltaT2 = pos3DtoPos2DIso(t2View) * scale;
 
     int occl = 0;
     for (int dir = 0; dir < 4; ++dir) {

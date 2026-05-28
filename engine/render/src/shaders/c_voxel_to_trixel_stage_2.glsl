@@ -123,6 +123,7 @@ void main() {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+            voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face);
@@ -146,6 +147,7 @@ void main() {
         faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+        microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;

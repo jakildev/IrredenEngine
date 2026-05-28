@@ -65,6 +65,7 @@ void main() {
                 ivec3 voxelPos = ivec3(round(positions[idx].xyz));
                 if (cardinalIndex != 0) {
                     voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
+                    voxelPos += cardinalLowerCornerShift(cardinalIndex);
                 }
                 ivec2 isoPos = pos3DtoPos2DIso(voxelPos);
                 if (isoPos.x >= cullIsoMin.x && isoPos.x <= cullIsoMax.x &&

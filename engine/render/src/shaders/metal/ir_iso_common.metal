@@ -261,6 +261,15 @@ inline int3 rotateCardinalZ(int3 v, int cardinalIndex) {
     return v;
 }
 
+// Mirror of `cardinalLowerCornerShift` in shaders/ir_iso_common.glsl.
+// See that file for the geometric rationale; bodies match line-for-line.
+inline int3 cardinalLowerCornerShift(int cardinalIndex) {
+    if (cardinalIndex == 1) return int3(0, -1, 0);
+    if (cardinalIndex == 2) return int3(-1, -1, 0);
+    if (cardinalIndex == 3) return int3(-1, 0, 0);
+    return int3(0, 0, 0);
+}
+
 inline float3 rotateCardinalZInv(float3 v, int cardinalIndex) {
     if (cardinalIndex == 1) return float3(-v.y,  v.x, v.z); // R_z(+pi/2)
     if (cardinalIndex == 2) return float3(-v.x, -v.y, v.z); // R_z(+/-pi)
@@ -299,6 +308,10 @@ inline float3 trixelCanvasPixelToWorld3D(
         pos3D /= float(scale);
     }
     if (cardinalIndex != 0) {
+        // Undo the rasterizer's `cardinalLowerCornerShift` (applied in
+        // world units after division by scale) before rotating back to
+        // world coordinates. Matches shaders/ir_iso_common.glsl.
+        pos3D -= float3(cardinalLowerCornerShift(cardinalIndex));
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;

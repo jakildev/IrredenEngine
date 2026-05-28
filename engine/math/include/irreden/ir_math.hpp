@@ -362,6 +362,22 @@ constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
     return v;
 }
 
+/// CPU mirror of `cardinalLowerCornerShift` in `shaders/ir_iso_common.glsl`.
+/// After `rotateCardinalZ`, the unit voxel's view-space AABB lower corner
+/// is offset from the rotated origin because R_z permutes/negates axes.
+/// Adding this shift to the rotated voxel position keeps the rasterizer's
+/// diamond 2x3 emit aligned with the voxel's iso footprint at every
+/// cardinal. Zero at cardinal 0 so the cardinal-snap path is unchanged.
+constexpr ivec3 cardinalLowerCornerShift(CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return ivec3(0, -1, 0);
+    if (cardinalIndex == CardinalIndex::k180)
+        return ivec3(-1, -1, 0);
+    if (cardinalIndex == CardinalIndex::k270)
+        return ivec3(-1, 0, 0);
+    return ivec3(0, 0, 0);
+}
+
 /// CPU mirror of `rotateCardinalZInv` in `shaders/ir_iso_common.glsl`.
 /// View→world = R_z(+rasterYaw). Use after `isoPixelToPos3D` to lift a
 /// reconstructed 3D position back to true world coordinates.

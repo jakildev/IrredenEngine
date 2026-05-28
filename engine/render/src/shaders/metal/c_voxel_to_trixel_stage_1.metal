@@ -129,6 +129,7 @@ kernel void c_voxel_to_trixel_stage_1(
         int3 voxelPositionInt = int3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+            voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         const int voxelDistance = encodeDepthWithFace(
             pos3DtoDistance(voxelPositionInt), face
@@ -160,6 +161,9 @@ kernel void c_voxel_to_trixel_stage_1(
         faceMicroPositionFixed(face, voxelPositionFixed, u, v);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+        // Shift is per-world-unit; scale to subdivision units to match
+        // `voxelPositionFixed = round(worldPos * subdivisions)`.
+        microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;

@@ -118,10 +118,13 @@ kernel void c_lighting_to_trixel(
 
     const int rawDepth = encoded >> 2;
     const int face = encoded & 3;
-    // Rotate raster-frame face normal to world frame for Lambert shading
-    // at non-zero camera yaw. Matches c_compute_voxel_ao.metal.
+    // `face` is encoded in world frame by the rasterizer
+    // (kXFace = world -X face, etc.), so `faceOutwardNormal` already
+    // gives the world-frame surface normal. Sun direction is world
+    // frame; Lambert is a plain dot product without rotation. Mirrors
+    // shaders/c_lighting_to_trixel.glsl.
     int cardinalIndex = rasterYawCardinalIndex(voxelFrameData.rasterYaw);
-    float3 worldNormal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
+    float3 worldNormal = faceOutwardNormal(face);
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =
         mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;

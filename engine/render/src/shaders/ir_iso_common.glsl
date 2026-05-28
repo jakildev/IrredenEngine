@@ -255,6 +255,24 @@ ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
     return v;
 }
 
+// View-space lower-corner shift applied after rotateCardinalZ so the
+// rotated unit voxel's view-space AABB lower corner equals the rotated
+// voxel position. R_z permutes/negates axes; for the unit voxel [0,1]^3
+// the post-rotation AABB lower corner relative to the rotated origin is:
+//   cardinal 0: (0, 0, 0)
+//   cardinal 1: (0,-1, 0)  (world x in [0,1] -> view y in [-1, 0])
+//   cardinal 2: (-1,-1, 0)
+//   cardinal 3: (-1, 0, 0)
+// Adding this shift keeps the diamond 2x3 emit aligned with the voxel's
+// view-space iso footprint at every cardinal. At cardinal 0 the shift is
+// zero so the cardinal-snap path stays bit-identical to master.
+ivec3 cardinalLowerCornerShift(int cardinalIndex) {
+    if (cardinalIndex == 1) return ivec3(0, -1, 0);
+    if (cardinalIndex == 2) return ivec3(-1, -1, 0);
+    if (cardinalIndex == 3) return ivec3(-1, 0, 0);
+    return ivec3(0, 0, 0);
+}
+
 vec3 rotateCardinalZInv(vec3 v, int cardinalIndex) {
     if (cardinalIndex == 1) return vec3(-v.y,  v.x, v.z);    // R_z(+pi/2)
     if (cardinalIndex == 2) return vec3(-v.x, -v.y, v.z);    // R_z(+/-pi)
@@ -293,6 +311,10 @@ vec3 trixelCanvasPixelToWorld3D(
         pos3D /= float(scale);
     }
     if (cardinalIndex != 0) {
+        // Undo the rasterizer's `cardinalLowerCornerShift` (applied in
+        // world units after division by scale) before rotating back to
+        // world coordinates.
+        pos3D -= vec3(cardinalLowerCornerShift(cardinalIndex));
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
