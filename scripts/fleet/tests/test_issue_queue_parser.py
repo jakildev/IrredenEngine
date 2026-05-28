@@ -46,6 +46,40 @@ class ParseIssueField(unittest.TestCase):
         self.assertEqual(_mod._parse_issue_field(body, "Area"), "scripts/fleet")
 
 
+class ParseBlockedBy(unittest.TestCase):
+    """`_parse_blocked_by` prefers the `**Blocked by:**` field but falls back
+    to free-form `Blocked on #N` / `Blocked on PR-x` header prose (#1326).
+    """
+    def test_prefers_canonical_field(self):
+        body = "**Blocked by:** #50\n\n## Blocked on #99\n"
+        self.assertEqual(_mod._parse_blocked_by(body), "#50")
+
+    def test_falls_back_to_header_prose(self):
+        self.assertEqual(_mod._parse_blocked_by("## Blocked on #1300\n"), "#1300")
+
+    def test_header_prose_plain_line(self):
+        self.assertEqual(_mod._parse_blocked_by("Blocked on #1300 merging\n"),
+                         "#1300 merging")
+
+    def test_header_prose_bold(self):
+        self.assertEqual(_mod._parse_blocked_by("**Blocked on #1300**\n"), "#1300")
+
+    def test_header_prose_pr_token(self):
+        self.assertEqual(_mod._parse_blocked_by("## Blocked on PR-x\n"), "PR-x")
+
+    def test_header_prose_without_ref_is_not_a_blocker(self):
+        # Incidental prose must not gate the task forever.
+        self.assertEqual(_mod._parse_blocked_by("Blocked on the redesign\n"), "")
+
+    def test_line_not_starting_with_blocked_ignored(self):
+        self.assertEqual(
+            _mod._parse_blocked_by("This was blocked on #99 last week.\n"), "")
+
+    def test_empty_body(self):
+        self.assertEqual(_mod._parse_blocked_by(""), "")
+        self.assertEqual(_mod._parse_blocked_by(None), "")
+
+
 class FetchTaskQueueDispatch(unittest.TestCase):
     """Exercise the per-issue loop with synthetic gh output.
 
@@ -159,6 +193,16 @@ class FetchTaskQueueDispatch(unittest.TestCase):
             "body": "",
         }])
         self.assertEqual(out["open"][0]["blocked_by"], "(none)")
+
+    def test_blocked_by_recovers_header_prose(self):
+        # #1326: a dependency declared only as a `Blocked on #N` header must
+        # surface as blocked, not (none).
+        out = self._run([{
+            "number": 100, "title": "b",
+            "labels": [{"name": "fleet:queued"}],
+            "body": "## Scope\n\n## Blocked on #1300\n\nMore.\n",
+        }])
+        self.assertEqual(out["open"][0]["blocked_by"], "#1300")
 
     def test_empty_gh_output_returns_empty_sections(self):
         out = self._run([])

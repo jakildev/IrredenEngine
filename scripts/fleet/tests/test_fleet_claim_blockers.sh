@@ -150,6 +150,24 @@ case "$1 $2" in
                 # Parenthetical PR ref, PR closed without merging.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (PR #202 abandoned)\n"}'
                 ;;
+            2009)
+                # #1326: dependency declared only as `## Blocked on #N` header
+                # prose (no **Blocked by:** field), the referenced issue OPEN.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\n## Blocked on #101\n\nWork.\n"}'
+                ;;
+            2010)
+                # Header prose, referenced issue CLOSED → no longer a blocker.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Blocked on #100\n"}'
+                ;;
+            2011)
+                # Header prose with no #N / PR reference → not a real blocker.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Blocked on the redesign\n"}'
+                ;;
+            2012)
+                # Canonical field wins over header prose: field says (none),
+                # so the `## Blocked on #101` header must be ignored.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** (none — independent)\n\n## Blocked on #101\n"}'
+                ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -256,6 +274,32 @@ echo "T8: parenthetical PR ref — PR CLOSED-abandoned → claim succeeds (curre
 actual=0; "$FLEET_CLAIM" claim 2008 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "#100 CLOSED + #202 CLOSED (abandoned) → exit 0"
 release_quiet 2008
+
+# --- T9: header-prose blocker — `## Blocked on #N`, #N OPEN → fail ----------
+# #1326: a dependency declared only in a `Blocked on #N` header (no
+# **Blocked by:** field) used to slip through as claimable. The gate now reads
+# the header-prose form.
+echo "T9: header prose '## Blocked on #101' — #101 OPEN → claim fails"
+actual=0; "$FLEET_CLAIM" claim 2009 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "header-prose #101 OPEN → exit 1"
+
+# --- T10: header-prose blocker — referenced issue CLOSED → pass --------------
+echo "T10: header prose 'Blocked on #100' — #100 CLOSED → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2010 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "header-prose #100 CLOSED → exit 0"
+release_quiet 2010
+
+# --- T11: header prose without a #N / PR ref → not a gate --------------------
+echo "T11: header prose 'Blocked on the redesign' (no ref) → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2011 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "ref-less header prose bypasses gate → exit 0"
+release_quiet 2011
+
+# --- T12: canonical field wins over header prose ----------------------------
+echo "T12: field '(none)' overrides a '## Blocked on #101' header → succeeds"
+actual=0; "$FLEET_CLAIM" claim 2012 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "field (none) takes precedence over header prose → exit 0"
+release_quiet 2012
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

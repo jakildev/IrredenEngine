@@ -187,6 +187,19 @@ except Exception:
 # label issues by the same fields the scout reads back out.
 MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
 BLOCKED_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
+# Free-form header prose like `## Blocked on #1300` / `Blocked on PR-x` is an
+# alternate dependency declaration the scout's _parse_blocked_by also reads, so
+# don't warn "treat as unblocked" for an issue whose blocker lives only in a
+# header (#1326). Only count prose that names a #N or PR reference.
+BLOCKED_ON_RE = re.compile(r'(?im)^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$')
+
+
+def _has_header_blocker(text):
+    for m in BLOCKED_ON_RE.finditer(text):
+        cand = m.group(1).strip().strip('*').strip()
+        if cand and ('#' in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
+            return True
+    return False
 
 stamped = 0
 skipped_already = 0
@@ -231,7 +244,7 @@ for issue in pending:
         model_label = 'fleet:opus'
         print(f'WARN issue {repo}#{n}: **Model:** field missing or unrecognized; defaulting to fleet:opus', file=sys.stderr)
 
-    if not BLOCKED_RE.search(body):
+    if not BLOCKED_RE.search(body) and not _has_header_blocker(body):
         print(f'WARN issue {repo}#{n}: **Blocked by:** field missing; scout will treat as unblocked', file=sys.stderr)
 
     add_labels = ['fleet:queued']
