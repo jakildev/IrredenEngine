@@ -579,19 +579,24 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    // T-332: First multi-system parallel group in a demo's UPDATE pipeline.
-    // PERIODIC_IDLE writes only C_PeriodicIdle and MODIFIER_DECAY writes only
-    // C_Modifiers — disjoint write sets per SystemAccess derivation, so the
-    // T-224 cross-system validator approves co-execution. The remaining four
-    // groups stay serial: PERIODIC_IDLE_POSITION_OFFSET reads C_PeriodicIdle
-    // (read-after-write on the prior group) and writes C_Modifiers, then
-    // PROPAGATE_TRANSFORM and UPDATE_VOXEL_SET_CHILDREN form a strict
-    // producer→consumer chain on C_WorldTransform. See
-    // docs/perf-reports/threading_phase3.md for measurement.
+    // Every UPDATE system runs in its own singleton group. PERIODIC_IDLE and
+    // MODIFIER_DECAY each carry Concurrency::PARALLEL_FOR (T-379 bulk
+    // migration), so each drives an inner IRJob::parallelFor that fans its
+    // per-entity work across the whole worker pool. A PARALLEL_FOR system
+    // therefore cannot share a multi-system parallel group: its inner
+    // parallelFor would be asked to fan out from a worker thread, which
+    // SystemManager::validateAllPipelineGroups rejects at boot. (T-332 grouped
+    // PERIODIC_IDLE + MODIFIER_DECAY back when both were SERIAL; T-379 tagged
+    // them PARALLEL_FOR without splitting the group, which is what aborted this
+    // demo at startup.) Per-system data-parallelism supersedes that old
+    // task-parallel co-execution. The three trailing systems are SERIAL and
+    // ordered as a producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads
+    // C_PeriodicIdle (after PERIODIC_IDLE), then PROPAGATE_TRANSFORM and
+    // UPDATE_VOXEL_SET_CHILDREN run in sequence on C_WorldTransform.
     IRSystem::registerPipelineGroups(
         IRTime::Events::UPDATE,
-        {{IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
-          IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
+        {{IRSystem::createSystem<IRSystem::PERIODIC_IDLE>()},
+         {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
          {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()},
          {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()},
          {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}}
