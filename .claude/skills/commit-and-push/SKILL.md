@@ -140,6 +140,16 @@ After `simplify` finishes:
   them to the user before committing and ask whether to proceed.
 - If the working tree is now clean, stop and report — nothing to commit.
 
+> **Autonomous-fleet guardrail (post-simplify boundary):** After processing
+> the simplify results above, your VERY NEXT action must be a **tool call**
+> — either advancing to step 4 (draft commit message) or confirming the
+> clean-tree stop (nothing to commit). Do not emit only prose summarizing
+> simplify's output and end the turn without a tool call. Phrases like
+> "Returning to commit-and-push" or "Clean pass — continuing…" without an
+> immediate following tool call are the signal you are about to drop the
+> flow. If you catch yourself writing them, issue the tool call instead —
+> the prose is redundant, the tool call is what matters.
+
 ### 4. Draft the commit message
 
 Shape:
