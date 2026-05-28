@@ -103,7 +103,16 @@ struct FrameDataVoxelToCanvas {
     ivec2 voxelRenderOptions_;
     ivec2 voxelDispatchGrid_;
     int voxelCount_;
-    int _voxelDispatchPadding_ = 0;
+    // Doubles as the smooth-camera-Z-yaw per-axis route selector (T2 / #1309;
+    // docs/design/per-axis-trixel-canvas-rotation.md). 0 = the normal single-
+    // canvas raster (byte-identical to master — this is the only value the
+    // single-canvas dispatch ever uploads). 1/2/3 = the per-axis dispatch for
+    // the X/Y/Z axis canvas: the voxel→trixel shaders then route ONLY this
+    // axis's visible face, reposition its center continuously via
+    // pos3DtoPos2DIsoYawed (no cardinal snap), and write the shared world-space
+    // depth. Reusing the otherwise-dead std140 padding int keeps the UBO layout
+    // (and the size/offset asserts below) unchanged.
+    int perAxisRoute_ = 0;
     ivec2 canvasSizePixels_;
     // Iso-space cull viewport: voxels whose iso position falls outside
     // [cullIsoMin, cullIsoMax] are skipped.  Matches the CPU chunk mask

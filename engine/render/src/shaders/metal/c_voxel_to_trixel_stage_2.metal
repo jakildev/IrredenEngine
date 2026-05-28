@@ -135,6 +135,49 @@ kernel void c_voxel_to_trixel_stage_2(
         frameData.faceDeform[slot].zw
     );
 
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309) — mirrors stage 1's
+    // geometry exactly so color/entity-id taps match the distance taps. See
+    // c_voxel_to_trixel_stage_1.glsl for the contract.
+    if (frameData.perAxisRoute != 0) {
+        if ((faceId >> 1) != frameData.perAxisRoute - 1) return;
+        const int2 perAxisBase = trixelFrameOffset(
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions
+        );
+        const bool isDetached = frameData.isDetachedCanvas > 0.5f;
+        if (frameData.voxelRenderOptions.x == 0) {
+            const float3 worldPos = round(voxelPosition.xyz);
+            const int voxelDistance =
+                encodeDepthWithFace(pos3DtoDistance(int3(worldPos)), slot);
+            const int2 base =
+                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, frameData.visualYaw));
+            emitDeformedFace(
+                base, D, voxelDistance, voxelColor, packedEntityId, localId, isDetached,
+                canvasSize, distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                triangleCanvasEntityIds
+            );
+            return;
+        }
+        const int subPerAxis = max(frameData.voxelRenderOptions.y, 1);
+        const int uPerAxis = int(groupId.z) / subPerAxis;
+        const int vPerAxis = int(groupId.z) % subPerAxis;
+        const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+        const int3 worldFixed = int3(round(worldAligned * float(subPerAxis)));
+        const int3 microWorld =
+            faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
+        const int voxelDistance =
+            encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
+        const int2 base =
+            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(microWorld), frameData.visualYaw));
+        emitDeformedFace(
+            base, D, voxelDistance, voxelColor, packedEntityId, localId, isDetached,
+            canvasSize, distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+            triangleCanvasEntityIds
+        );
+        return;
+    }
+
     if (frameData.voxelRenderOptions.x == 0) {
         int3 voxelPositionInt = int3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {

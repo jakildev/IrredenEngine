@@ -21,6 +21,7 @@
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -67,6 +68,11 @@ inline void buildVoxelFrameData(
     int liveVoxelCount,
     const C_CanvasLocalRotation &canvasRotation
 ) {
+    // The single-canvas raster always uploads perAxisRoute_ == 0 (byte-
+    // identical to master). The smooth-Z-yaw per-axis pass flips it to 1/2/3
+    // locally per axis and restores it afterward (see dispatchPerAxisCanvases).
+    frameData.perAxisRoute_ = 0;
+
     const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
     const ivec2 dispatchGrid = voxelDispatchGridForCount(liveVoxelCount);
@@ -278,6 +284,82 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Profile this path if the scene voxel count grows significantly.
     IREntity::EntityId lastUploadedCanvas_ = IREntity::kNullEntity;
 
+    // Main world canvas + its lazily-allocated per-axis trixel canvases,
+    // resolved once per frame in beginTick. Caching them here keeps the
+    // per-entity tick from calling getComponent on its own iterating canvas
+    // (.claude/rules/cpp-ecs.md). Non-null only while the camera sits at a
+    // non-cardinal residual yaw (#1308 allocation lifecycle); that is what
+    // gates the smooth-Z-yaw per-axis routing pass (#1309). The pointer is
+    // re-resolved every frame — never held across frames.
+    IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
+    C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+
+    // Route the visible voxel faces into the three per-axis trixel canvases for
+    // smooth camera Z-yaw (T2 / #1309). Runs ONLY on the main world canvas and
+    // ONLY while rotating (the per-axis textures are allocated). Reuses this
+    // frame's compacted-voxel list + indirect dispatch params (the single-
+    // canvas pass already populated them), re-binding each axis canvas's
+    // textures and flipping `perAxisRoute_` so the shaders route + continuously
+    // reposition that axis's face. The single canvas the framebuffer still
+    // reads is untouched, so the rendered frame stays byte-identical until T3
+    // (#1310) composites these canvases. Restores the UBO to the main-canvas
+    // frame data on exit so downstream stages (AO, lighting, fog) are
+    // unaffected.
+    void dispatchPerAxisCanvases(C_PerAxisTrixelCanvases &axes) {
+        IR_PROFILE_SCOPE("vs1_per_axis");
+        static constexpr std::int32_t kDistanceClear =
+            static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
+        const u8vec4 kColorClear{0, 0, 0, 0};
+        const uvec2 kEntityIdClear{0u, 0u};
+
+        // Preserve the main canvas's frame-data fields the per-axis pass
+        // overwrites, so the buffer is restored byte-for-byte on exit.
+        const ivec2 mainOffsetZ1 = frameData_.trixelCanvasOffsetZ1_;
+        const ivec2 mainCanvasSize = frameData_.canvasSizePixels_;
+
+        const ivec2 perAxisOffsetZ1 = IRMath::trixelOriginOffsetZ1(axes.size_);
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            auto &tex = axes.axes_[axis];
+            Texture2D *colors = tex.colors_.second;
+            Texture2D *distances = tex.distances_.second;
+            Texture2D *entityIds = tex.entityIds_.second;
+
+            // Bind the distance image first so its Metal atomic-scratch buffer
+            // exists before clearTexImage mirrors the clear value into it (a
+            // freshly allocated scratch is zero-initialised, which would
+            // otherwise reject every depth-matched color write on the first
+            // rotating frame).
+            distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            IRRender::device()->clearTexImage(distances, 0, &kDistanceClear);
+            colors->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &kColorClear[0]);
+            entityIds->clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &kEntityIdClear);
+
+            frameData_.perAxisRoute_ = axis + 1;
+            frameData_.trixelCanvasOffsetZ1_ = perAxisOffsetZ1;
+            frameData_.canvasSizePixels_ = axes.size_;
+            frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+
+            stage1Program_->use();
+            distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+            stage2Program_->use();
+            colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+            entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
+
+        // Restore the main-canvas frame data so downstream stages read the
+        // exact UBO state the single-canvas pass left.
+        frameData_.perAxisRoute_ = 0;
+        frameData_.trixelCanvasOffsetZ1_ = mainOffsetZ1;
+        frameData_.canvasSizePixels_ = mainCanvasSize;
+        frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+    }
+
     void tick(
         IREntity::EntityId entity,
         C_VoxelPool &voxelPool,
@@ -450,6 +532,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
         IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+        // Smooth camera Z-yaw (T2 / #1309): once the single-canvas pass above
+        // has run (and left the compacted-voxel list + indirect params intact),
+        // route the visible faces into the three per-axis canvases. Only the
+        // main world canvas owns them, and only while rotating — at a cardinal
+        // they are released (#1308 fast path) so this is skipped and the frame
+        // stays byte-identical to master.
+        if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
+            perAxisCanvases_->isAllocated()) {
+            dispatchPerAxisCanvases(*perAxisCanvases_);
+        }
     }
 
     void beginTick() {
@@ -475,6 +568,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // never alters the rendered output — it just stands up the storage that
         // T2 (#1309) routing will write into.
         IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw();
+
+        // Resolve the main canvas's per-axis trixel canvases once per frame for
+        // the per-entity tick to consume without a getComponent on its own
+        // iterating canvas (#1309). Re-resolved every frame; never held across
+        // frames. Null unless the main canvas has the component AND it is
+        // currently allocated (camera rotating).
+        perAxisCanvasEntity_ = IRRender::getCanvas("main");
+        perAxisCanvases_ = nullptr;
+        if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
+            auto perAxis =
+                IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
+            if (perAxis.has_value()) {
+                perAxisCanvases_ = perAxis.value();
+            }
+        }
     }
 
     static SystemId create() {

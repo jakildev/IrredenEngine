@@ -23,7 +23,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    uniform int _voxelDispatchPadding;
+    // Smooth-camera-Z-yaw per-axis route selector (mirrors
+    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single-canvas raster
+    // (byte-identical); 1/2/3 = the X/Y/Z per-axis canvas pass (#1309).
+    uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;         // trixel canvas dimensions
     uniform ivec2 cullIsoMin;               // iso-space cull viewport (matches CPU chunk mask)
     uniform ivec2 cullIsoMax;
@@ -155,6 +158,46 @@ void main() {
     // path collapses to faceOffset_2x3(slot, subPixel) — bit-identical
     // pixel positions against the pre-T-293 path.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
+
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309;
+    // docs/design/per-axis-trixel-canvas-rotation.md). At perAxisRoute==0 this
+    // is skipped and the single-canvas path below runs unchanged (byte-
+    // identical to master). At perAxisRoute 1/2/3 we are rasterizing the X/Y/Z
+    // axis canvas: emit ONLY the visible face on that axis, reposition its
+    // center *continuously* with pos3DtoPos2DIsoYawed (replacing the
+    // rotateCardinalZ integer snap, so centers swing smoothly between
+    // cardinals), and write the shared world-space depth pos3DtoDistance —
+    // identical across all three axis canvases so T3's framebuffer composite
+    // (#1310) can pick the nearest. The per-slot basis D (faceDeform[slot]) is
+    // reused unchanged as this canvas's uniform affine. Per-canvas coverage /
+    // parity re-derivation is T3's job; T2 lands routing + geometry only.
+    if (perAxisRoute != 0) {
+        if ((faceId >> 1) != perAxisRoute - 1) return;
+        const ivec2 perAxisBase =
+            trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+        if (voxelRenderOptions.x == 0) {
+            const vec3 worldPos = round(voxelPosition.xyz);
+            const int voxelDistance =
+                encodeDepthWithFace(pos3DtoDistance(ivec3(worldPos)), slot);
+            const ivec2 base =
+                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, visualYaw));
+            emitDeformedFace(base, D, voxelDistance);
+            return;
+        }
+        const int subPerAxis = max(voxelRenderOptions.y, 1);
+        const int uPerAxis = int(gl_WorkGroupID.z) / subPerAxis;
+        const int vPerAxis = int(gl_WorkGroupID.z) % subPerAxis;
+        const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+        const ivec3 worldFixed = ivec3(round(worldAligned * float(subPerAxis)));
+        const ivec3 microWorld =
+            faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
+        const int voxelDistance =
+            encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
+        const ivec2 base =
+            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(microWorld), visualYaw));
+        emitDeformedFace(base, D, voxelDistance);
+        return;
+    }
 
     if (voxelRenderOptions.x == 0) {
         ivec3 voxelPositionInt = ivec3(round(voxelPosition.xyz));

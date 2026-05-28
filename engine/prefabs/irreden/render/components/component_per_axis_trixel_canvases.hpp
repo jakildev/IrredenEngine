@@ -31,9 +31,11 @@ namespace IRComponents {
 // memory. Allocation is driven once per frame by
 // IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw().
 //
-// T1 stands up the storage + allocation lifecycle only; no voxel faces route
-// here yet (Stage-1 routing is T2 / #1309), so allocating or releasing these
-// textures never changes the rendered output.
+// T2 (#1309) routes each visible voxel face into its axis canvas (Stage-1
+// routing + continuous center reposition + shared world depth). The
+// framebuffer still reads only the single main canvas, so populating these
+// textures does not change the rendered output until T3 (#1310) composites
+// the three by depth.
 //
 // This is the GPU-resource-RAII component pattern (engine/prefabs/CLAUDE.md
 // §"Documented exceptions") — the component owns the textures and frees them in

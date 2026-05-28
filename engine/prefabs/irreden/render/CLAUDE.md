@@ -18,8 +18,11 @@ the ECS surface.
   **lazily** — only on the main world canvas while the camera sits at a
   non-cardinal residual yaw, freed at the cardinal (byte-identical fast
   path). Lifecycle driven by `IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw()`
-  from `VOXEL_TO_TRIXEL_STAGE_1::beginTick`. T1 stands up the storage only —
-  no voxel faces route here yet (T2 / #1309).
+  from `VOXEL_TO_TRIXEL_STAGE_1::beginTick`. T2 (#1309) routes each
+  visible voxel face into its axis canvas with continuous
+  (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; the
+  framebuffer still reads only the single main canvas, so output stays
+  byte-identical until T3 (#1310) composites the three by depth.
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
