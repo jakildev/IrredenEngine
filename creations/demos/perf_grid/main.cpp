@@ -124,12 +124,12 @@ struct CliOverrides {
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {0.5f, vec2(0, 0), "fit_grid"},
-    {1.0f, vec2(0, 0), "zoom1_origin"},
+    {0.5f, vec2(0, 0), 0.0f, "fit_grid"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
     // Profiler-overlay regression shot — captures the perf_stats overlay
     // backing T-275 acceptance: future overlay-breaking diffs (font, layout,
     // CPU/GPU readout) trip the render-verify image compare.
-    {0.5f, vec2(0, 0), "profiler_overlay"},
+    {0.5f, vec2(0, 0), 0.0f, "profiler_overlay"},
 };
 
 PerfGridSettings g_settings{};

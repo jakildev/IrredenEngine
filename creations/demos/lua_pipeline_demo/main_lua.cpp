@@ -27,7 +27,7 @@
 namespace {
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "lua_pipeline_demo_zoom1"},
+    {1.0f, vec2(0, 0), 0.0f, "lua_pipeline_demo_zoom1"},
 };
 
 void registerLuaBindings() {

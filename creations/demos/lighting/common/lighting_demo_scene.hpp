@@ -99,17 +99,17 @@ struct DemoConfig {
 namespace detail {
 
 inline constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "zoom1_origin"},
-    {2.0f, vec2(0, 0), "zoom2_origin"},
-    {4.0f, vec2(0, 0), "zoom4_origin"},
-    {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
+    {4.0f, vec2(0, 0), 0.0f, "zoom4_origin"},
+    {4.0f, vec2(3, 5), 0.0f, "zoom4_offset_3_5"},
     // Higher-zoom shots make per-voxel-pool / SDF parity issues
     // (self-shadowing, AO mismatch from rounding-half-integer voxel
     // positions) immediately visible — they're how the rounding bug
     // fixed in commit `<this>` was found and how regressions on it
     // would surface.
-    {8.0f, vec2(0, 0), "zoom8_origin"},
-    {16.0f, vec2(0, 0), "zoom16_origin"},
+    {8.0f, vec2(0, 0), 0.0f, "zoom8_origin"},
+    {16.0f, vec2(0, 0), 0.0f, "zoom16_origin"},
 };
 
 inline int g_autoWarmupFrames = 0;

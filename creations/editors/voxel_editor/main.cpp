@@ -243,9 +243,9 @@ LoftToolState g_loftTool;
 // stable camera. Camera position is irrelevant to the GUI canvas but
 // it does anchor the world-space scene render.
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "editor_idle"},
-    {0.75f, IRMath::vec2(0.0f, 0.0f), "editor_zoom_out"},
-    {1.5f, IRMath::vec2(0.0f, 0.0f), "editor_zoom_in"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_idle"},
+    {0.75f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_out"},
+    {1.5f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_in"},
 };
 
 int g_autoWarmupFrames = 0;

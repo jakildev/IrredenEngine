@@ -37,8 +37,8 @@ namespace {
 constexpr float kYawDeltaPerFrame = IRMath::kPi / 360.0f;
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "zoom1_yaw0"},
-    {2.0f, vec2(0, 0), "zoom2_yaw0"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_yaw0"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_yaw0"},
 };
 
 int g_autoWarmupFrames = 0;

@@ -37,9 +37,9 @@ constexpr float kVelocityRange = 6.0f;   // ± voxels/second
 constexpr float kLifetimeSeconds = 8.0f; // long enough that all 6 shots see live particles
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {0.5f, vec2(0, 0), "fit_field"},
-    {1.0f, vec2(0, 0), "zoom1_origin"},
-    {2.0f, vec2(0, 0), "zoom2_origin"},
+    {0.5f, vec2(0, 0), 0.0f, "fit_field"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
 };
 
 int g_autoWarmupFrames = 0;

@@ -119,8 +119,8 @@ inline vec3 rowWorldCenter(int i) {
 // Screenshot shots: an overview of the floor and a closer cube-lane view.
 namespace {
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {2.0f, vec2(20.0f, 0.0f), "overview"},
-    {2.5f, vec2(40.0f, 0.0f), "cubes_focus"},
+    {2.0f, vec2(20.0f, 0.0f), 0.0f, "overview"},
+    {2.5f, vec2(40.0f, 0.0f), 0.0f, "cubes_focus"},
 };
 } // namespace
 

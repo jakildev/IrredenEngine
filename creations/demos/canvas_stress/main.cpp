@@ -79,8 +79,8 @@ CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "overview"},
-    {0.6f, vec2(0, 0), "wide"},
+    {1.0f, vec2(0, 0), 0.0f, "overview"},
+    {0.6f, vec2(0, 0), 0.0f, "wide"},
 };
 
 // One detached object: a per-entity canvas (textures + voxel pool), a voxel

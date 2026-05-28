@@ -56,7 +56,7 @@ constexpr int kBottomH = 160;
 
 namespace {
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "dockspace_idle"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "dockspace_idle"},
 };
 int g_autoWarmupFrames = 0;
 } // namespace

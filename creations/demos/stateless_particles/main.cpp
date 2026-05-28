@@ -51,10 +51,10 @@ constexpr float kVelocityJitter = 3.0f;
 constexpr float kPositionJitter = 2.0f;
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "zoom1_origin"},
-    {2.0f, vec2(0, 0), "zoom2_origin"},
-    {4.0f, vec2(0, 0), "zoom4_origin"},
-    {8.0f, vec2(0, 0), "zoom8_origin"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
+    {4.0f, vec2(0, 0), 0.0f, "zoom4_origin"},
+    {8.0f, vec2(0, 0), 0.0f, "zoom8_origin"},
 };
 
 int g_autoWarmupFrames = 0;

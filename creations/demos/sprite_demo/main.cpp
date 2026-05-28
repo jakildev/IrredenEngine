@@ -27,8 +27,8 @@ using namespace IRMath;
 namespace {
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0.0f, 0.0f), "layout_zoom1"},
-    {2.0f, vec2(0.0f, 0.0f), "layout_zoom2"},
+    {1.0f, vec2(0.0f, 0.0f), 0.0f, "layout_zoom1"},
+    {2.0f, vec2(0.0f, 0.0f), 0.0f, "layout_zoom2"},
 };
 
 int g_autoWarmupFrames = 0;

@@ -38,14 +38,14 @@ using namespace IRMath;
 namespace {
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0.00f, 0.0f), "pan_x_00"},
-    {1.0f, vec2(0.05f, 0.0f), "pan_x_05"},
-    {1.0f, vec2(0.10f, 0.0f), "pan_x_10"},
-    {1.0f, vec2(0.15f, 0.0f), "pan_x_15"},
-    {1.0f, vec2(0.20f, 0.0f), "pan_x_20"},
-    {1.0f, vec2(0.25f, 0.0f), "pan_x_25"},
-    {1.0f, vec2(0.30f, 0.0f), "pan_x_30"},
-    {1.0f, vec2(0.35f, 0.0f), "pan_x_35"},
+    {1.0f, vec2(0.00f, 0.0f), 0.0f, "pan_x_00"},
+    {1.0f, vec2(0.05f, 0.0f), 0.0f, "pan_x_05"},
+    {1.0f, vec2(0.10f, 0.0f), 0.0f, "pan_x_10"},
+    {1.0f, vec2(0.15f, 0.0f), 0.0f, "pan_x_15"},
+    {1.0f, vec2(0.20f, 0.0f), 0.0f, "pan_x_20"},
+    {1.0f, vec2(0.25f, 0.0f), 0.0f, "pan_x_25"},
+    {1.0f, vec2(0.30f, 0.0f), 0.0f, "pan_x_30"},
+    {1.0f, vec2(0.35f, 0.0f), 0.0f, "pan_x_35"},
 };
 
 int g_autoWarmupFrames = 0;
