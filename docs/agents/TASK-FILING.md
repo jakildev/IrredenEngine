@@ -107,11 +107,11 @@ Rules that make the stack actually stack:
   satisfied ref. (Live multi-blocker resolution is planned but not
   landed — track via the open scout/fleet-claim blocker-resolution
   issue.)
-- **The blocker must be an issue number, not a PR number.**
-  `fleet-claim`'s blocker gate resolves `#N` via `gh issue view --json
-  state` (CLOSED = satisfied). To gate on a docs PR that has no backing
-  issue, withhold `human:approved` on the first task until that PR
-  merges, rather than writing `**Blocked by:** #<pr>`.
+- **Use issue numbers as blockers; PR numbers are unreliable.**
+  `fleet-claim` treats a `#N` ref as gate-blocked until CLOSED (issues
+  close when their PR merges), whereas a PR number left as blocker adds
+  ambiguity. To gate on a docs PR that has no backing issue, withhold
+  `human:approved` on the dependent task instead.
 
 Once filed correctly, the cascade is automatic: T1 claims plain and
 opens `claude/<T1>-*`; the scout enriches T2 with `stackable_blocker_pr`
