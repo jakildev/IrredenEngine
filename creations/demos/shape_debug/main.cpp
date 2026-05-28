@@ -210,6 +210,10 @@ int main(int argc, char **argv) {
     if (g_spinYawDegPerSec > 0.0f && g_autoWarmupFrames > 0) {
         g_spinYawShotCount = g_autoWarmupFrames;
         g_autoWarmupFrames = 10;
+        IR_LOG_INFO(
+            "Spin-yaw: warmup reset to 10 frames (--auto-screenshot value {} reinterpreted as shot count)",
+            g_spinYawShotCount
+        );
     }
 
     IR_LOG_INFO("Starting creation: shape_debug");
@@ -265,7 +269,7 @@ void initSystems() {
     // --spin-yaw live mode: drive the camera each frame. In auto-screenshot
     // mode the per-shot setYaw() supplies the rotation instead — running both
     // would double-rotate between shots and break the "evenly-spaced" contract.
-    if (g_spinYawDegPerSec > 0.0f && g_autoWarmupFrames == 0) {
+    if (g_spinYawDegPerSec > 0.0f && g_autoWarmupFrames == 0) {  // == 0: no auto-screenshot requested
         const float radPerFrame =
             g_spinYawDegPerSec * IRMath::kPi / 180.0f / static_cast<float>(IRConstants::kFPS);
         renderPipeline.push_front(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(radPerFrame));
