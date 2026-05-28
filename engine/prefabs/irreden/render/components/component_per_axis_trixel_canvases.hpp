@@ -10,9 +10,6 @@
 #include <array>
 #include <utility>
 
-using namespace IRMath;
-using namespace IRRender;
-
 namespace IRComponents {
 
 // Three per-axis trixel canvases (one per face axis: X / Y / Z) that back the
@@ -46,12 +43,12 @@ struct C_PerAxisTrixelCanvases {
     // C_TriangleCanvasTextures texture layout so the existing trixel machinery
     // (image binds, atomicMin distance writes, clears) applies per axis unchanged.
     struct AxisTextures {
-        std::pair<ResourceId, Texture2D *> colors_{0, nullptr};
-        std::pair<ResourceId, Texture2D *> distances_{0, nullptr};
-        std::pair<ResourceId, Texture2D *> entityIds_{0, nullptr};
+        std::pair<IRRender::ResourceId, IRRender::Texture2D *> colors_{0, nullptr};
+        std::pair<IRRender::ResourceId, IRRender::Texture2D *> distances_{0, nullptr};
+        std::pair<IRRender::ResourceId, IRRender::Texture2D *> entityIds_{0, nullptr};
     };
 
-    ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
+    IRMath::ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
     std::array<AxisTextures, kAxisCount> axes_{};
 
     // Allocation state is the texture handles themselves — no separate bool to
@@ -62,7 +59,7 @@ struct C_PerAxisTrixelCanvases {
 
     // Allocate all three axis texture sets at @p size. No-op if already
     // allocated. Called at rotation start by the lifecycle.
-    void allocate(ivec2 size) {
+    void allocate(IRMath::ivec2 size) {
         if (isAllocated()) {
             return;
         }
@@ -84,12 +81,12 @@ struct C_PerAxisTrixelCanvases {
             return;
         }
         for (AxisTextures &axis : axes_) {
-            IRRender::destroyResource<Texture2D>(axis.colors_.first);
-            IRRender::destroyResource<Texture2D>(axis.distances_.first);
-            IRRender::destroyResource<Texture2D>(axis.entityIds_.first);
+            IRRender::destroyResource<IRRender::Texture2D>(axis.colors_.first);
+            IRRender::destroyResource<IRRender::Texture2D>(axis.distances_.first);
+            IRRender::destroyResource<IRRender::Texture2D>(axis.entityIds_.first);
             axis = AxisTextures{};
         }
-        size_ = ivec2{0, 0};
+        size_ = IRMath::ivec2{0, 0};
     }
 
     void onDestroy() {
