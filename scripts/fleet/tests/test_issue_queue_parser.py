@@ -71,7 +71,7 @@ class ParseBlockedBy(unittest.TestCase):
         # Incidental prose must not gate the task forever.
         self.assertEqual(_mod._parse_blocked_by("Blocked on the redesign\n"), "")
 
-    def test_mid_sentence_blocked_on_ignored(self):
+    def test_line_not_starting_with_blocked_ignored(self):
         self.assertEqual(
             _mod._parse_blocked_by("This was blocked on #99 last week.\n"), "")
 
