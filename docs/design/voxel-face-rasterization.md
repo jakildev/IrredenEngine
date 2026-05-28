@@ -145,7 +145,13 @@ exposed-face gating are new.
   changes what comes next: replace the four options in that PR's NEEDS-DESIGN
   comment with this model.
 - **#1272** — per-entity SO(3) on the main canvas; consumes this model with a
-  per-entity visible triplet.
+  per-entity visible triplet. **Blocked pending an architect call on the
+  per-voxel→transform-slot indirection mechanism**, which overlaps the reserved
+  skeletal `bone_id_` path (#605): both are a per-voxel index into a per-frame
+  transform SSBO, so whether they share one indirection convention or run two
+  parallel ones is a cross-feature decision. The model above fixes face
+  *selection*; it does not pin *how a voxel finds its entity's transform slot*.
+  See the `fleet:design-blocked` PR on #1272 for the candidate mechanisms.
 - **#1265** (merged) — camera pitch via quaternion; the visible-triplet resolver
   reads that quaternion, so pitch shifts the triplet for free on detached
   canvases.
