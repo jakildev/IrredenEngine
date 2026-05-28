@@ -49,11 +49,11 @@ The voxel-to-trixel path runs three GPU passes inside one per-canvas tick
 (`system_voxel_to_trixel.hpp`), preceded by a CPU chunk cull:
 
 1. **CPU frustum cull** — `buildChunkVisibilityMask`
-   (`engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp:44`)
+   (`engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp:45`)
    walks per-pool-chunk iso AABBs (`C_VoxelPool::rebuildChunkBounds`,
    `engine/prefabs/irreden/voxel/components/component_voxel_pool.hpp:244`)
    against the iso viewport, widened by the shadow-feeder sweep
-   (`IRMath::shadowFeederIsoBounds`, `engine/math/include/irreden/ir_math.hpp:920`;
+   (`IRMath::shadowFeederIsoBounds`, `engine/math/include/irreden/ir_math.hpp:792`;
    `kSunShadowMaxDistance = 64`). Writes a per-chunk `0/1` visibility mask
    into the `ChunkVisibility` SSBO (binding 24).
 
@@ -89,7 +89,10 @@ mechanism already exists.**
 Stage 2 only writes where a voxel won the atomicMin. A voxel that is **fully
 occluded** — every projected tap loses to closer geometry — therefore writes
 **zero** color, zero entity id, and its losing `imageAtomicMin` calls in stage
-1 leave the distance texture unchanged. **The final `trixelDistances`,
+1 leave the distance texture unchanged. **The final `trixelDistances`
+(the `R32I` distance texture; called `triangleCanvasDistances` in stage 1/2
+shaders at binding 1, and `trixelDistances` in the sun-shadow bake shader at
+binding 0 — both refer to the same `C_TriangleCanvasTextures::textureTriangleDistances_`),
 `triangleCanvasColors`, and `triangleCanvasEntityIds` are bit-identical
 whether or not a fully-occluded voxel was dispatched.** Occlusion culling buys
 exactly the *compute* of those losing taps — never a change in output. This is
