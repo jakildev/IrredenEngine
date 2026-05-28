@@ -14,9 +14,12 @@ the ECS surface.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
   ctor-allocated, `onDestroy()`-freed.
 - Camera rotation lives in `C_LocalTransform.rotation_` (the same SQT
-  quaternion every entity uses). `camera.hpp` exposes `IRPrefab::Camera::`
-  helpers that extract Z-yaw for the cardinal/residual split consumed by
-  the trixel rasterizer. `C_CameraYaw` was retired in T-364.
+  quaternion every entity uses), composed as `qZ(yaw) × qX(pitch)`.
+  `camera.hpp` exposes `IRPrefab::Camera::` helpers for both halves;
+  the GRID trixel rasterizer reads only Z-yaw (via the cardinal/residual
+  split), while DETACHED canvases consume the full quaternion through
+  `system_propagate_canvas_rotation`. Pitch is clamped to ±(π/2 − ε)
+  to avoid gimbal lock. `C_CameraYaw` was retired in T-364.
 - `C_Sprite` / `C_SpriteSheet` / `C_SpriteAnimation` — 2D screen-composite
   sprite + atlas metadata + per-instance playback state. Sprites bypass the
   trixel pipeline and draw at the `FRAMEBUFFER_TO_SCREEN` stage;
