@@ -29,6 +29,7 @@ _loader.exec_module(_mod)
 project_sonnet_author = _mod.project_sonnet_author
 project_opus_worker = _mod.project_opus_worker
 project_opus_reviewer = _mod.project_opus_reviewer
+project_sonnet_reviewer = _mod.project_sonnet_reviewer
 stable_hash = _mod.stable_hash
 
 
@@ -260,6 +261,47 @@ class OpusReviewerActionableTransitionsFlipHash(unittest.TestCase):
             "fleet:needs-fix", "fleet:merger-cooldown",
         ])])
         self.assertNotEqual(before, after)
+
+
+class AmendingClaimBarsReviewerPickup(unittest.TestCase):
+    """A worker amending a fleet:needs-fix PR holds a host-suffixed
+    fleet:amending-<host>-<agent> claim for the whole fix. Reviewers must
+    not review a diff mid-amend; the claim is a REVIEW_SKIP_PREFIXES match.
+    Closes the gap observed on PR #1316 (2026-05-28): the worker cleared
+    fleet:needs-fix to start fixing, leaving the PR with no skip label, so
+    a reviewer poll claimed and reviewed it mid-rewrite."""
+
+    def _sonnet(self, prs):
+        return project_sonnet_reviewer(_state(prs))
+
+    def _opus(self, prs):
+        return project_opus_reviewer(_state(prs))
+
+    def test_amending_drops_pr_from_sonnet_reviewer(self):
+        # needs-fix cleared, amend claim held -> not reviewable.
+        held = self._sonnet([_pr(101, labels=["fleet:amending-mac-sonnet-fleet-1"])])
+        self.assertEqual(held, [])
+
+    def test_amending_plus_needs_fix_drops_pr_from_opus_reviewer(self):
+        # Brief window before the worker removes needs-fix: still skipped.
+        held = self._opus([_pr(101, labels=[
+            "fleet:needs-fix", "fleet:amending-mac-opus-worker-1",
+        ])])
+        self.assertEqual(held, [])
+
+    def test_release_then_changes_made_re_enters_sonnet_reviewer(self):
+        # amend claim released, fleet:changes-made added -> recheck fires.
+        before = stable_hash(self._sonnet([
+            _pr(101, labels=["fleet:amending-mac-sonnet-fleet-1"])]))
+        after = stable_hash(self._sonnet([
+            _pr(101, labels=["fleet:changes-made"])]))
+        self.assertNotEqual(before, after)
+        self.assertEqual(len(self._sonnet([
+            _pr(101, labels=["fleet:changes-made"])])), 1)
+
+    def test_plain_needs_fix_unaffected(self):
+        # No amend claim -> opus-reviewer still sees the flagged PR.
+        self.assertEqual(len(self._opus([_pr(101, labels=["fleet:needs-fix"])])), 1)
 
 
 if __name__ == "__main__":

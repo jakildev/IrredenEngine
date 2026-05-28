@@ -133,6 +133,10 @@ LABELS=(
     # first use) and removed by the verdict label-swap or by
     # `fleet-claim review-release`. Queue-tick's `fleet-claim cleanup --gh`
     # pass sweeps stale ones (>30 min) and replays orphan sentinels.
+    # Siblings on the same dynamic-PR-label pattern: fleet:resolving-* (the
+    # semantic-conflict claim) and fleet:amending-* (the fleet:needs-fix
+    # amendment claim — held by the author worker so reviewers skip the PR
+    # mid-fix). Both created/swept exactly like fleet:reviewing-*.
     #
     # Sibling: fleet:claim-<host>-<agent> on **issues** (not PRs) — stamped
     # by `fleet-claim claim` after FS lock + master push succeed. Generic

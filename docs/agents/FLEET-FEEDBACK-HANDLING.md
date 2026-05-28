@@ -197,8 +197,32 @@ If the wrapper fails (e.g. fetch error), **do NOT remove the
 feedback label**. Skip this PR and move to the next iteration —
 the label stays on the PR so a retry has something to pick up.
 
-With checkout confirmed, **remove the feedback label** to prevent
-another agent from also picking it up:
+**For `fleet:needs-fix`: acquire the amend claim before clearing
+the label.** `fleet:needs-fix` is the PR's only verdict label, so
+removing it leaves the PR verdict-less — indistinguishable from a
+fresh reviewable PR until `fleet:changes-made` lands. Without a
+marker over that window a reviewer poll claims and reviews the diff
+you're mid-rewrite on (observed on PR #1316, 2026-05-28). Acquire an
+atomic per-host claim — reviewers skip any `fleet:amending-*` PR
+(a `REVIEW_SKIP_PREFIXES` match), and the lex-min tie-break also
+prevents two workers from both grabbing the same flagged PR:
+
+```
+fleet-claim amending-claim <N> <your-worktree-basename>
+```
+
+If the claim fails (lost the tie-break, or `gh` unreachable),
+**do NOT remove the feedback label** — another worker owns the
+amendment, or a retry will. Skip this PR and move on. Released in
+step e alongside `fleet:changes-made`; an abandoned claim is swept
+by `fleet-claim cleanup --gh` on the 30-min TTL. Skip this claim for
+`fleet:has-nits` / `fleet:design-unblocked` (they keep
+`fleet:approved`, so the PR never goes verdict-less) and for the
+`human:*` paths (covered by `fleet:human-amending` below).
+
+With checkout confirmed (and, for `fleet:needs-fix`, the amend claim
+held), **remove the feedback label** to prevent another agent from
+also picking it up:
 
 ```
 fleet-pr-clear-feedback-labels <N>
@@ -304,9 +328,15 @@ Per original feedback label:
   gh pr edit <N> --remove-label "fleet:human-amending" --add-label "fleet:changes-made"
   ```
 - **`fleet:needs-fix`** — add `fleet:changes-made` so the reviewer
-  knows new commits arrived and should re-verify:
+  knows new commits arrived and should re-verify, **then** release
+  the amend claim. Order matters: add `fleet:changes-made` first so
+  the PR is never label-less between dropping the amend claim and
+  re-entering the review queue (while both are present the reviewer
+  still skips on the `fleet:amending-*` prefix; once the claim drops,
+  `fleet:changes-made` re-triggers review via `RECHECK_LABELS`):
   ```
   gh pr edit <N> --add-label "fleet:changes-made"
+  fleet-claim amending-release <N> <your-worktree-basename>
   ```
 - **`fleet:has-nits`** — no response label needed; the existing
   `fleet:approved` stays valid (cleanups don't invalidate approval).
@@ -411,9 +441,13 @@ Human can add multiple comments before re-tagging; ALL are picked
 up when the tag appears.
 
 **Fleet feedback cycle:** fleet reviewer adds `fleet:needs-fix` →
-author removes it (via the wrapper), fixes, pushes, adds
-`fleet:changes-made` → fleet reviewer sees the new commits on next
-poll and re-reviews.
+author acquires the `fleet:amending-<host>-<agent>` claim, removes
+`fleet:needs-fix` (via the wrapper), fixes, pushes, adds
+`fleet:changes-made` and releases the claim → fleet reviewer sees
+the new commits on next poll and re-reviews. The amend claim keeps
+reviewers off the PR for the whole fix (mirrors `fleet:human-amending`
+on the human path) and tie-breaks two workers racing the same
+flagged PR.
 
 **Design-unblocked cycle** (opus-worker only): the worker hits a
 mid-task design blocker and sets `fleet:design-blocked`; the
