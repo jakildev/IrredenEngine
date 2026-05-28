@@ -147,6 +147,8 @@ void main() {
         faceMicroPositionFixed(face, voxelPositionFixed, u, v, subdivisions);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+        // Shift is per-world-unit; scale to subdivision units to match
+        // `voxelPositionFixed = round(worldPos * subdivisions)`.
         microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
     const int depthBase =
