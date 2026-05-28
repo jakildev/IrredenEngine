@@ -110,6 +110,13 @@ _env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
 _env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
 _env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
 _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
+# Per-role effort: capture caller-env architect overrides before the conf
+# source (same precedence guard as the caps above). Dispatched-role effort
+# is resolved inside fleet-dispatcher; fleet-up only needs the architect
+# efforts here because fleet-babysit — which launches them — does not source
+# the conf itself.
+_env_effort_opus_architect="${FLEET_EFFORT_OPUS_ARCHITECT:-}"
+_env_effort_game_architect="${FLEET_EFFORT_GAME_ARCHITECT:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
@@ -119,11 +126,21 @@ FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNE
 FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
 FLEET_CONCURRENCY_OPUS_REVIEWER="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
 FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
+# Architect effort: env > conf > global FLEET_EFFORT > built-in xhigh.
+# Exported so fleet-babysit (which launches the architect panes) inherits
+# the resolved value; it does not read the conf itself.
+FLEET_EFFORT_OPUS_ARCHITECT="${_env_effort_opus_architect:-${FLEET_EFFORT_OPUS_ARCHITECT:-${FLEET_EFFORT:-xhigh}}}"
+FLEET_EFFORT_GAME_ARCHITECT="${_env_effort_game_architect:-${FLEET_EFFORT_GAME_ARCHITECT:-${FLEET_EFFORT:-xhigh}}}"
 unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
-      _env_opus_reviewer _env_merger
+      _env_opus_reviewer _env_merger \
+      _env_effort_opus_architect _env_effort_game_architect
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
 export FLEET_CONCURRENCY_MERGER
+export FLEET_EFFORT_OPUS_ARCHITECT FLEET_EFFORT_GAME_ARCHITECT
+# Propagate a conf-set global FLEET_EFFORT to the dispatcher + babysit
+# (a bare `FLEET_EFFORT=` in the conf is otherwise a non-exported shell var).
+if [[ -n "${FLEET_EFFORT:-}" ]]; then export FLEET_EFFORT; fi
 
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
@@ -1228,12 +1245,10 @@ layout (two windows):
     top    — queue-manager  merger
     bottom — witness        terminal (\$HOME, free-form shell)
 
-effort levels:
-  opus agents (architects, opus-workers, opus-reviewer, merger) — xhigh
-  sonnet agents (sonnet-fleet-1/2, sonnet-reviewer, queue-manager) — high
-  override globally by exporting FLEET_EFFORT=<level> before fleet-up.
-  (to change one pane, edit fleet-babysit's case statement — fleet-up
-  does not thread env per-pane.)
+effort levels (per-role; override with FLEET_EFFORT_<ROLE> in env or
+~/.fleet/fleet-up.conf, or FLEET_EFFORT=<level> to force all panes):
+  xhigh — opus-architect, game-architect, opus-worker
+  high  — opus-reviewer, merger, sonnet-author, sonnet-reviewer, smoke-worker
 
 permission mode: auto (model decides when to ask vs proceed)
 

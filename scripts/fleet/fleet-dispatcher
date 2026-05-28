@@ -90,6 +90,14 @@ _env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
 _env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
 _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
 _env_smoke_worker="${FLEET_CONCURRENCY_SMOKE_WORKER:-}"
+# Same capture-before-source guard for per-role effort (FLEET_EFFORT_<ROLE>),
+# consumed by the ROLE_EFFORT map further down. Caller env wins over conf.
+_env_effort_opus_worker="${FLEET_EFFORT_OPUS_WORKER:-}"
+_env_effort_sonnet_author="${FLEET_EFFORT_SONNET_AUTHOR:-}"
+_env_effort_sonnet_reviewer="${FLEET_EFFORT_SONNET_REVIEWER:-}"
+_env_effort_opus_reviewer="${FLEET_EFFORT_OPUS_REVIEWER:-}"
+_env_effort_merger="${FLEET_EFFORT_MERGER:-}"
+_env_effort_smoke_worker="${FLEET_EFFORT_SMOKE_WORKER:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
@@ -280,15 +288,25 @@ declare -A ROLE_MODEL=(
     ["smoke-worker"]="$SONNET_MODEL"
 )
 
-# Per-role default effort level. Mirrors fleet-babysit's case stmt.
+# Per-role effort level. Override priority mirrors ROLE_CONCURRENCY:
+# caller env FLEET_EFFORT_<ROLE> > conf FLEET_EFFORT_<ROLE> > global
+# FLEET_EFFORT > built-in default. Defaults: the heavy-reasoning roles —
+# the opus-worker here, plus the architects (launched by fleet-babysit,
+# not dispatched) — run xhigh; everything else runs high. opus-reviewer
+# and merger run high (not xhigh): their reasoning is bounded by the diff
+# in front of them, so the extra budget buys little. Retune a default
+# here, or set FLEET_EFFORT_<ROLE> in ~/.fleet/fleet-up.conf.
 declare -A ROLE_EFFORT=(
-    ["sonnet-author"]="high"
-    ["opus-worker"]="xhigh"
-    ["sonnet-reviewer"]="high"
-    ["opus-reviewer"]="xhigh"
-    ["merger"]="xhigh"
-    ["smoke-worker"]="high"
+    ["sonnet-author"]="${_env_effort_sonnet_author:-${FLEET_EFFORT_SONNET_AUTHOR:-${FLEET_EFFORT:-high}}}"
+    ["opus-worker"]="${_env_effort_opus_worker:-${FLEET_EFFORT_OPUS_WORKER:-${FLEET_EFFORT:-xhigh}}}"
+    ["sonnet-reviewer"]="${_env_effort_sonnet_reviewer:-${FLEET_EFFORT_SONNET_REVIEWER:-${FLEET_EFFORT:-high}}}"
+    ["opus-reviewer"]="${_env_effort_opus_reviewer:-${FLEET_EFFORT_OPUS_REVIEWER:-${FLEET_EFFORT:-high}}}"
+    ["merger"]="${_env_effort_merger:-${FLEET_EFFORT_MERGER:-${FLEET_EFFORT:-high}}}"
+    ["smoke-worker"]="${_env_effort_smoke_worker:-${FLEET_EFFORT_SMOKE_WORKER:-${FLEET_EFFORT:-high}}}"
 )
+unset _env_effort_opus_worker _env_effort_sonnet_author \
+      _env_effort_sonnet_reviewer _env_effort_opus_reviewer \
+      _env_effort_merger _env_effort_smoke_worker
 
 # Tracks which panes have already had their cooldown logged this cycle so
 # the "in rate-limit cooldown" message fires once per pane per cooldown
@@ -1207,6 +1225,15 @@ case "${1:-}" in
             exit 2
         fi
         echo "${ROLE_CONCURRENCY[$2]:-0}"
+        exit 0
+        ;;
+    --print-effort)
+        # Print configured effort for a role. Used by tests and operators.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --print-effort <role>" >&2
+            exit 2
+        fi
+        echo "${ROLE_EFFORT[$2]:-high}"
         exit 0
         ;;
     --gate-status)
