@@ -30,17 +30,6 @@ struct C_VoxelSetNew {
     vec3 lastParentPosition_ = vec3(0.0f);
     bool hasLastParentPosition_ = false;
 
-    // SYSTEM_REBUILD_GRID_VOXELS push-at-mutation cache. The rebuild system
-    // compares the entity's live `C_WorldTransform` against these values
-    // each tick and only re-rasterizes the pool span when something
-    // changed — quaternion rotation, scale, or world translation. Mirrors
-    // the `lastParentPosition_` early-out UPDATE_VOXEL_SET_CHILDREN uses
-    // (both systems now read `C_WorldTransform.translation_` — T-301a).
-    vec4 lastRebuildWorldRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    vec3 lastRebuildWorldScale_ = vec3(1.0f, 1.0f, 1.0f);
-    vec3 lastRebuildWorldTranslation_ = vec3(0.0f);
-    bool hasLastRebuildWorldTransform_ = false;
-
     // Index into the canvas voxel pool's underlying arrays. Captured at
     // allocation time so consumers never recompute it from a pointer-diff
     // against a separately-cached @c C_VoxelPool* (a stale cached pool

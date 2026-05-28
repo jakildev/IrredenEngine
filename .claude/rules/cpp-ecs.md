@@ -66,6 +66,29 @@ Why the dirty-flag pattern is wrong:
 
 Allowed exception: the destination resource is **strictly CPU-authored, GPU-read-only, and re-uploading the whole buffer is genuinely expensive enough** that the optimization pays off. The fog-of-war texture is the only current example — `C_CanvasFogOfWar` uploads a 256×256 RGBA8 texture (256 KiB), the GPU never writes back, and per-cell `subImage2D` would split `revealRadius`'s loop into ~hundreds of API calls. Document the exception in the component header and in the `## Live deviations` block below; new components should not introduce dirty flags.
 
+### A snapshot-compare-and-early-return is a dirty flag in disguise
+
+The rule covers more than a literal `bool dirty_`. **Caching last frame's inputs on the component and early-returning when they match is the same anti-pattern** — the stored snapshot IS the "did this change since last frame" side-channel, regardless of whether the field is named `dirty_`, `lastFoo_`, or `cachedTransform_`. A naming argument ("these are component fields, not a dirty flag") does not exempt it.
+
+```cpp
+// FORBIDDEN — snapshot-compare-and-early-return (a dirty flag in disguise).
+if (set.hasLastTransform_ &&
+    set.lastRotation_ == xform.rotation_ &&
+    set.lastScale_ == xform.scale_ &&
+    set.lastTranslation_ == xform.translation_) {
+    return;                       // "nothing changed since last frame"
+}
+doWork(...);
+set.lastRotation_ = xform.rotation_;   // re-stamp the snapshot
+set.lastScale_ = xform.scale_;
+set.lastTranslation_ = xform.translation_;
+set.hasLastTransform_ = true;
+```
+
+It carries every cost the boolean does — it bloats the component (hurting archetype iteration density), accumulates re-stamp sites that silently drift, and hides the real ownership question. **Assume per-frame work is unconditional for entities that are actually being rendered**; the only honest reason to skip is that the result isn't observable this frame. Gate on **visibility / cull** (the work product is off-screen), not on input-equality.
+
+Worked example (#1288): `SYSTEM_REBUILD_GRID_VOXELS` cached `lastRebuildWorld{Rotation,Scale,Translation}_` on `C_VoxelSetNew` and early-returned when the live `C_WorldTransform` matched. That snapshot was a dirty flag wearing component-field clothing. The fix dropped the snapshot entirely: on-screen voxel sets re-rasterize every frame, and the system instead skips sets whose pool chunks are outside the cull viewport (`C_VoxelPool::isRangeVisible`). The cull gate answers "is this work observable?" — the honest question — instead of "did the inputs change?".
+
 ### Live deviations
 
 - `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). T-161 evaluated migration to per-region `subImage2D` and deferred; see [`docs/design/fog-of-war-upload-strategy.md`](../../docs/design/fog-of-war-upload-strategy.md) for the analysis, the trigger conditions for revisiting, and the mechanical Strategy C migration sketch.

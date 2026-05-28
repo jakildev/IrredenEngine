@@ -270,6 +270,42 @@ struct C_VoxelPool {
         m_chunkBoundsDirty = true;
     }
 
+    // Cull query: true if any chunk overlapping the pool slot range
+    // [startIdx, startIdx + count) has an iso-space AABB that intersects
+    // `viewport`. Reads the chunk bounds as last computed by
+    // `rebuildChunkBounds` (driven by the render pipeline) — a caller in
+    // the UPDATE pipeline gets a one-frame-lagged but self-consistent
+    // answer (both the bounds and the cull viewport are last-render state).
+    // Chunk granularity is conservative: a chunk shared by several voxel
+    // sets reports visible if ANY of its voxels are in view, so the gate
+    // over-rebuilds rather than dropping geometry. Fail-safe: returns true
+    // when the bounds aren't available yet (pre-first-render) or the range
+    // runs past the computed chunk set, so geometry is never silently
+    // culled before bounds exist. The intersection test mirrors
+    // `buildChunkVisibilityMask` in `system_voxel_to_trixel.hpp`.
+    bool
+    isRangeVisible(std::size_t startIdx, std::size_t count, const IsoBounds2D &viewport) const {
+        if (count == 0) {
+            return false;
+        }
+        if (m_chunkBounds.empty()) {
+            return true;
+        }
+        const std::size_t firstChunk = startIdx / IRRender::kVoxelChunkSize;
+        const std::size_t lastChunk = (startIdx + count - 1) / IRRender::kVoxelChunkSize;
+        for (std::size_t c = firstChunk; c <= lastChunk; ++c) {
+            if (c >= m_chunkBounds.size()) {
+                return true;
+            }
+            const ChunkBounds &cb = m_chunkBounds[c];
+            if (cb.isoMax_.x >= viewport.min_.x && cb.isoMin_.x <= viewport.max_.x &&
+                cb.isoMax_.y >= viewport.min_.y && cb.isoMin_.y <= viewport.max_.y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Active-slot mask: 1 bit per pool slot, mirroring `m_voxelColors[i].color_.alpha_ != 0`.
     // The GPU compact shader at `c_voxel_visibility_compact.{glsl,metal}` reads this in place
     // of the per-voxel alpha test (T-287 / #950). CPU storage is `std::vector<uint32_t>`; the
