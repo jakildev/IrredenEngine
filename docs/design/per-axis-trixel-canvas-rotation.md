@@ -130,9 +130,13 @@ allocated **once at the worst-case size** and reused — never reallocated
 per-frame. The bound:
 
 - Residual is capped at ±45° (beyond that we rebracket), so the
-  **stretched / rotated** axis maxes at **√2× the cardinal extent** — bounded.
-  (At φ=45°, `faceDeformationMatrix`'s stretched column has length √2; the
-  Z-face rotation's bounding box grows by √2.)
+  **stretched / rotated** axis is bounded. The in-plane horizontal scale
+  factor at φ=45° is √2 (`c+s` where c=s=1/√2), but `faceDeformationMatrix`
+  also shears the vertical extent — the stretched face's first column at φ=45°
+  is `(√2, −1)`, length √3, not √2. The Z-face rotation's bounding box
+  grows by √2 (unit square rotated 45°). The full worst-case texture size
+  per canvas must be derived by applying `D_φ` to the grid AABB at φ=±45°
+  (see Open decisions; T1 has a "no clipping at ±45°" acceptance gate).
 - The **skinny** axis is the unbounded risk: as a face goes edge-on its
   on-screen width → 0, so naively covering the screen needs → ∞ trixels. The
   floor is a **minimum on-screen trixel size** (≈ 1 framebuffer pixel): once a
@@ -141,10 +145,12 @@ per-frame. The bound:
   footprint is always fully covered by the triplet), so the canvas resolution
   is capped there with no gap.
 
-So each axis-canvas texture is sized once to `√2 × cardinal extent` in
-footprint and `screen-resolution / min-trixel-size` in density. Bounded,
-finite, no per-frame reallocation. The min-trixel-size value is a tuning
-decision (see Open decisions).
+So each axis-canvas texture is sized once to the per-canvas worst-case
+footprint (derived from `D_φ` applied to the grid AABB at φ=±45°; exact
+per-axis extent is an Open decision for T1) and
+`screen-resolution / min-trixel-size` in density. Bounded, finite, no
+per-frame reallocation. The min-trixel-size value is a tuning decision (see
+Open decisions).
 
 ## Face-jump at the rebracket
 
