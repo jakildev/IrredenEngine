@@ -25,17 +25,19 @@ namespace IRPrefab::RotationMode {
 /// Transition an entity to `newMode`, allocating or destroying its
 /// per-entity canvas as required.
 ///
-/// - GRID → DETACHED: allocates a child canvas via
+/// - → DETACHED: allocates a child canvas via
 ///   `IRPrefab::EntityCanvas::create(canvasName, canvasSize)` and
 ///   attaches `C_EntityCanvas` to `entity`. The previous canvas (if
 ///   any) is left alone — re-entering DETACHED from DETACHED is a
 ///   no-op rather than a re-allocation churn.
-/// - DETACHED → GRID: destroys the entity's `C_EntityCanvas` child
-///   entity (freeing its GPU textures via `onDestroy`) and removes
-///   the component from `entity`.
+/// - → GRID or MAIN_CANVAS_SO3 (both canvas-free): destroys the
+///   entity's `C_EntityCanvas` child entity (freeing its GPU textures
+///   via `onDestroy`) if one exists and removes the component from
+///   `entity`. MAIN_CANVAS_SO3 rotates on the shared main canvas, so
+///   like GRID it owns no detached canvas.
 /// - Same mode in/out: no-op.
 ///
-/// `canvasName` and `canvasSize` are only consulted on a GRID→DETACHED
+/// `canvasName` and `canvasSize` are only consulted on a →DETACHED
 /// transition; pass sensible defaults otherwise.
 inline void setMode(
     IREntity::EntityId entity,
@@ -62,7 +64,7 @@ inline void setMode(
         if (!existing) {
             IREntity::setComponent(entity, IRPrefab::EntityCanvas::create(canvasName, canvasSize));
         }
-    } else { // GRID
+    } else { // GRID or MAIN_CANVAS_SO3 — both canvas-free
         auto existing = IREntity::getComponentOptional<C_EntityCanvas>(entity);
         if (existing) {
             const IREntity::EntityId canvas = existing.value()->canvasEntity_;

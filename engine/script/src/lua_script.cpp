@@ -457,6 +457,7 @@ void LuaScript::bindLuaDrivenEcs() {
     rotationModeTable[#name] = static_cast<lua_Integer>(IRComponents::RotationMode::name)
     IR_BIND_ROTMODE(GRID);
     IR_BIND_ROTMODE(DETACHED);
+    IR_BIND_ROTMODE(MAIN_CANVAS_SO3);
 #undef IR_BIND_ROTMODE
     m_lua["IRComponent"]["RotationMode"] = rotationModeTable;
 

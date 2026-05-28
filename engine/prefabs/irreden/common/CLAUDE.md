@@ -23,18 +23,24 @@ in `update/`.
   `C_RotationMode::DETACHED` (GRID-mode entities snap to world cells
   regardless).
 - `C_RotationMode` (Epic C C2) — `enum class RotationMode { GRID,
-  DETACHED }`. GRID (default) puts the entity in the shared world
-  voxel pool with grid-quantized rotation; DETACHED lives in a
-  per-entity `C_EntityCanvas` whose voxel emit bakes the entity's full
-  SO(3) rotation directly (T-295, via `PROPAGATE_CANVAS_ROTATION` →
+  DETACHED, MAIN_CANVAS_SO3 }`. GRID (default) puts the entity in the
+  shared world voxel pool with grid-quantized rotation; DETACHED lives
+  in a per-entity `C_EntityCanvas` whose voxel emit bakes the entity's
+  full SO(3) rotation directly (T-295, via `PROPAGATE_CANVAS_ROTATION` →
   `C_CanvasLocalRotation`) — the composite stage just places the canvas.
-  Attached by
+  MAIN_CANVAS_SO3 (#1272 PR-A) carries a full SO(3) rotation like
+  DETACHED but allocates no canvas — the entity renders rotated on the
+  *shared* main canvas (shared textures/lighting/depth). **The mode
+  value + plumbing (spawn, `setMode`, Lua surface) land first; the
+  main-canvas voxel-to-trixel raster that consumes the mode is in
+  progress (#1299/#1300).** Attached by
   `IRPrefab::Prefab::spawnPrefab` (default GRID, or
   `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab
   table — the enum value, not the string). Mutate at runtime with
   `IRPrefab::RotationMode::setMode(entity, newMode, name, size)` —
-  allocates or destroys the canvas as needed. Non-prefab entities
-  without the component are implicitly GRID.
+  allocates or destroys the canvas as needed (GRID and MAIN_CANVAS_SO3
+  are canvas-free). Non-prefab entities without the component are
+  implicitly GRID.
 - `C_ChunkMembership` — which streaming chunk an entity belongs to
   (Epic E / `IRPrefab::Chunk::ChunkKey`). **NOT auto-added** —
   single-chunk creations carry no chunk metadata. Attached by the

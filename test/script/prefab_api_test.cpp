@@ -869,6 +869,24 @@ TEST_F(PrefabApi, SpawnRotationModeDetachedAttachesComponent) {
     EXPECT_EQ(modeOpt.value()->mode_, IRComponents::RotationMode::DETACHED);
 }
 
+TEST_F(PrefabApi, SpawnRotationModeMainCanvasSo3AttachesComponent) {
+    // MAIN_CANVAS_SO3 (#1272 PR-A) rotates on the shared main canvas, so —
+    // like GRID — it requires no canvas_size and allocates no per-entity
+    // canvas. Spawn just tags the entity with the mode.
+    PrefabFiles f = writeFixtureSet(
+        "rot_main_canvas_so3",
+        "return { prefab_version = 1, rotation_mode = "
+        "IRComponent.RotationMode.MAIN_CANVAS_SO3 }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto modeOpt = IREntity::getComponentOptional<IRComponents::C_RotationMode>(r.entity_);
+    ASSERT_TRUE(modeOpt.has_value());
+    EXPECT_EQ(modeOpt.value()->mode_, IRComponents::RotationMode::MAIN_CANVAS_SO3);
+}
+
 TEST_F(PrefabApi, SpawnUnboundedSetsLocalTransformFlag) {
     PrefabFiles f = writeFixtureSet(
         "rot_unbounded",

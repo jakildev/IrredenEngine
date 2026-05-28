@@ -741,7 +741,8 @@ return {
     voxel_ref      = "creations/...vxs", -- OPTIONAL, loaded via loadVoxelSet
     rig_ref        = "creations/...rig", -- OPTIONAL, loaded via loadRig
     rotation_mode  = IRComponent.RotationMode.GRID
-                  | IRComponent.RotationMode.DETACHED,
+                  | IRComponent.RotationMode.DETACHED
+                  | IRComponent.RotationMode.MAIN_CANVAS_SO3,
                                          -- OPTIONAL, default GRID
     unbounded      = true | false,       -- OPTIONAL, default false
     canvas_size    = { x = 64, y = 64 }, -- REQUIRED when DETACHED
@@ -756,13 +757,17 @@ root. GRID (default) renders into the world voxel pool with grid-
 quantized rotation; DETACHED allocates a per-entity `C_EntityCanvas`
 via `IRPrefab::EntityCanvas::create()` so a future C3 composite pass
 threads the entity's `C_LocalTransform` through the per-canvas TRS
-without per-voxel rebake. `canvas_size = { x, y }` is required for
-DETACHED — sized in trixels — and is ignored for GRID. `unbounded =
-true` sets `C_LocalTransform::unbounded_` for sub-trixel positioning;
-only meaningful with DETACHED.
+without per-voxel rebake. MAIN_CANVAS_SO3 (#1272 PR-A) carries a full
+SO(3) rotation like DETACHED but allocates no canvas — the entity
+renders rotated on the shared main canvas (the consuming raster is in
+progress; the mode value + spawn plumbing land first). `canvas_size =
+{ x, y }` is required for DETACHED — sized in trixels — and is ignored
+for GRID / MAIN_CANVAS_SO3. `unbounded = true` sets
+`C_LocalTransform::unbounded_` for sub-trixel positioning; only
+meaningful with DETACHED.
 
-**The schema accepts the `IRComponent.RotationMode.{GRID,DETACHED}`
-enum value (an integer), not a string.** String-name lookups —
+**The schema accepts the `IRComponent.RotationMode.{GRID,DETACHED,
+MAIN_CANVAS_SO3}` enum value (an integer), not a string.** String-name lookups —
 `rotation_mode = 'GRID'` — surface a schema error with the
 `IRComponent.RotationMode.X` spelling in the diagnostic. This keeps
 the Lua-side authoring surface in lockstep with the C++ enum, the

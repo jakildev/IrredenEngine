@@ -145,10 +145,12 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // Default rotation mode is GRID (today's behavior). DETACHED allocates
     // a per-entity canvas via `IRPrefab::EntityCanvas::create` so the C3
     // composite pass can thread `C_LocalTransform` through the per-canvas
-    // TRS without re-rasterizing voxels per frame. The schema accepts the
-    // `IRComponent.RotationMode.{GRID,DETACHED}` enum value (an integer),
-    // not a string — string-name lookups are deliberately avoided so the
-    // Lua surface stays in lockstep with the C++ enum.
+    // TRS without re-rasterizing voxels per frame. MAIN_CANVAS_SO3 rotates
+    // on the shared main canvas with no canvas allocation (#1272 PR-A). The
+    // schema accepts the `IRComponent.RotationMode.{GRID,DETACHED,
+    // MAIN_CANVAS_SO3}` enum value (an integer), not a string — string-name
+    // lookups are deliberately avoided so the Lua surface stays in lockstep
+    // with the C++ enum.
     IRComponents::RotationMode rotationMode = IRComponents::RotationMode::GRID;
     sol::object modeObj = prefab["rotation_mode"];
     if (modeObj.valid() && modeObj.get_type() != sol::type::lua_nil) {
@@ -156,15 +158,16 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             return makeError(
                 idStr,
                 path,
-                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED} "
-                "value; string names are not accepted"
+                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED,"
+                "MAIN_CANVAS_SO3} value; string names are not accepted"
             );
         }
         if (!modeObj.is<lua_Integer>()) {
             return makeError(
                 idStr,
                 path,
-                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED} value"
+                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED,"
+                "MAIN_CANVAS_SO3} value"
             );
         }
         const lua_Integer raw = modeObj.as<lua_Integer>();
@@ -174,7 +177,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 idStr,
                 path,
                 "rotation_mode=" + std::to_string(raw) +
-                    " not recognized (expected IRComponent.RotationMode.GRID or .DETACHED)"
+                    " not recognized (expected IRComponent.RotationMode.GRID, "
+                    ".DETACHED, or .MAIN_CANVAS_SO3)"
             );
         }
         rotationMode = static_cast<IRComponents::RotationMode>(raw);
@@ -186,8 +190,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     }
     if (unbounded && rotationMode != IRComponents::RotationMode::DETACHED) {
         IRE_LOG_WARN(
-            "Prefab.spawn('{}'): unbounded=true has no effect with "
-            "rotation_mode=IRComponent.RotationMode.GRID.",
+            "Prefab.spawn('{}'): unbounded=true has no effect unless "
+            "rotation_mode=IRComponent.RotationMode.DETACHED.",
             idStr.c_str()
         );
     }
