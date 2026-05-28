@@ -4,8 +4,13 @@
 
 #include <cstddef>
 
+// Runtime tripwire mirroring the compile-time static_asserts on FrameDataSun
+// in ir_render_types.hpp. The struct is the std140 leading edge: the GLSL UBO
+// (binding 29, c_compute_sun_shadow.glsl et al.) and the Metal struct must
+// match it field-for-field. CSM widened the block from 80 to 128 bytes by
+// appending the per-cascade AABB params after the legacy single-map fields.
 TEST(FrameDataSunLayout, MatchesStd140Packing) {
-    EXPECT_EQ(sizeof(IRRender::FrameDataSun), 80u);
+    EXPECT_EQ(sizeof(IRRender::FrameDataSun), 128u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunDirection_), 0u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunIntensity_), 16u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunAmbient_), 20u);
@@ -15,4 +20,10 @@ TEST(FrameDataSunLayout, MatchesStd140Packing) {
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunBasisV_), 48u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunBufferOriginUV_), 64u);
     EXPECT_EQ(offsetof(IRRender::FrameDataSun, sunBufferTexelSize_), 72u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeOriginUV_0_), 80u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeTexelSize_0_), 88u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeOriginUV_1_), 96u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeTexelSize_1_), 104u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeSplitDepth_), 112u);
+    EXPECT_EQ(offsetof(IRRender::FrameDataSun, cascadeCount_), 116u);
 }
