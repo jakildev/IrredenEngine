@@ -48,7 +48,21 @@ MAX_SINCE_HOURS = 24 * 90         # cap stale markers at 90d
 AUTO_CLOSE_DAYS = 7               # quiet days before auto-close
 MIN_CLUSTER_SIZE_FOR_PROPOSAL = 2 # singletons never get a proposal
 
-ENTRY_HEAD_FILE = re.compile(r"^## (\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?)$")
+# Entry headers come in several shapes across the role files:
+#   ## 2026-05-26 14:15            (strict: date + time, nothing trailing)
+#   ## 2026-05-08T17:34Z — headline (ISO-T, Z/UTC suffix, inline headline)
+#   ## 2026-05-13 — headline        (date only, inline headline)
+#   ## 2026-05-19 opus-worker-1: …  (date only, inline headline w/o em-dash)
+# Group 1 is the timestamp (date, optional time); group 2 is the optional
+# inline headline. Anything that doesn't lead with a date is a prose section
+# divider and is ignored. Keep this a strict superset of the old date+time
+# form so previously-parsed entries are unaffected.
+ENTRY_HEAD_FILE = re.compile(
+    r"^##\s+"
+    r"(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)"   # date, optional time
+    r"(?:\s*(?:Z|UTC))?"                                      # optional Z / UTC suffix
+    r"(?:\s*[—–:-]+\s*(.*?))?\s*$"                            # optional inline headline
+)
 
 # Pattern bank — order matters; first match wins. Widen aggressively;
 # uncategorized noise drowns the signal otherwise.
@@ -72,6 +86,15 @@ SIGNATURES: list[tuple[str, re.Pattern]] = [
         r"(fleet-worktree-busy-branches"
         r"|worktree.*(branch-lock|race|drift|reservation|stranded|contention)"
         r"|worktree\s+(reservation|prune)|stale\s+worktree)", re.I)),
+    # An agent operating on the wrong checkout: Edit/Write/git -C landing in the
+    # main repo or a parent clone instead of the agent's own worktree (and the
+    # reverse). Lookahead form: a worktree/clone token AND a misroute indicator.
+    ("worktree-misroute", re.compile(
+        r"(?=.*(worktree|parent[- ]?(repo|clone)|main\s+(repo|clone)|cwd\s+repo))"
+        r"(?=.*(misroute|wrong\s+worktree|landed\s+in|silently\s+(writes?|edited|targets?|lands?)"
+        r"|instead\s+of\s+(my\s+)?worktree|not\s+(the\s+)?worktree|path\s+vs|repo-?path"
+        r"|git\s+-C|shared\s+main\s+clone|parent[- ]?(repo|clone)|main\s+repo))",
+        re.I | re.S)),
     ("state-cache-lag", re.compile(
         r"((cache|projection|scout|state\.json|sonnet-reviewer\.json|tasks_open|snapshot)"
         r".*(lag|stale|race|raced|miss|6-second|stale-cache|stale-data"
@@ -83,13 +106,18 @@ SIGNATURES: list[tuple[str, re.Pattern]] = [
     ("skill-flow-friction", re.compile(
         r"(attach-screenshots|skill\s+flow|skill\s+errored|review-pr\s+skill"
         r"|fleet-iteration-summary|fleet-issue\s+view)", re.I)),
+    # simplify's reuse fan-out (and similar Bash/Read-driven subagents) reading
+    # committed/origin state instead of the dirty working tree, then returning
+    # zero findings — "completed with no output." Lookahead form: requires the
+    # skill name, a reuse/subagent token, AND a no-coverage indicator together.
+    ("simplify-reuse-coverage", re.compile(
+        r"(?=.*simplify)(?=.*(reuse|subagent))"
+        r"(?=.*(silent|no-op|zero\s+finding|no\s+coverage|under-report|miss"
+        r"|do(?:\s+not|n.t)\s+exist|not\s+present|working[- ]?tree|origin.?master"
+        r"|committed\s+state))", re.I | re.S)),
     ("queue-staleness", re.compile(
         r"(queue.*(staleness|stale-queue|starved|wall|wedge|wedged|starving|race|backlog|invisible)"
         r"|stale-queue\s+wall|fleet:queued\b.*(diverge|no\s+TASKS|ingest))", re.I)),
-    ("worktree-misroute", re.compile(
-        r"(worktree\s+misroute|edited?\s+parent\s+clone"
-        r"|silently\s+(writes?|edited|failed)\s+(to\s+(wrong\s+worktree|parent)|to\s+persist)"
-        r"|Edit/Write\s+tools\s+silently)", re.I)),
     ("stacked-pr-merger-gap", re.compile(
         r"(stacked\s+PR|fleet:awaiting-base|MERGEABLE\s+stacked"
         r"|merger\s+(re-?target|falls?\s+through|left\s+rebase|posted)"
@@ -125,7 +153,8 @@ class Entry:
         s = self.ts.replace(" ", "T")
         # Headlines from feedback files use "YYYY-MM-DD HH:MM" (no seconds);
         # be permissive about the seconds variant.
-        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"):
+        # Date-only headers ("## 2026-05-13 — …") anchor to midnight UTC.
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
             try:
                 return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
             except ValueError:
@@ -142,7 +171,10 @@ def role_files() -> list[Path]:
 def parse_role_file(path: Path) -> list[Entry]:
     """Parse a role feedback file into Entry objects.
 
-    Same regex as scripts/fleet/fleet-feedback for entry boundaries.
+    Uses ENTRY_HEAD_FILE for entry boundaries — intentionally a superset of
+    scripts/fleet/fleet-feedback's writer regex (date-only headers, Z/UTC
+    suffixes, inline headlines), so the reviewer never drops an entry the
+    append tool or a hand-edit accepted.
     """
     role = path.stem
     entries: list[Entry] = []
@@ -153,6 +185,9 @@ def parse_role_file(path: Path) -> list[Entry]:
             if cur:
                 entries.append(cur)
             cur = Entry(ts=m.group(1).replace("T", " "), role=role, headline="")
+            inline = (m.group(2) or "").strip()
+            if inline:
+                cur.headline = inline
             continue
         if cur is None:
             continue
