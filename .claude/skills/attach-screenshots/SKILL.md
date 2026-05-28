@@ -192,14 +192,13 @@ propagating the failure. Check the branch back out, then re-resolve
 
 ```bash
 git checkout <BRANCH>
-git stash list --format='%gd %H %gs'
+git stash list --format='%gd %H %gs' | grep "attach-screenshots:<BRANCH>"
 ```
 
-Find the line whose message ends `attach-screenshots:<BRANCH>` and
-note its `stash@{N}` index and `<SHA>`. Reapply by **SHA** (immutable —
-race-proof even if a parallel agent shifted the index), then drop that
-entry by its `stash@{N}` index (`git stash drop` requires the
-`stash@{N}` form, not a raw SHA):
+That returns exactly one line; note its `stash@{N}` index and `<SHA>`.
+Reapply by **SHA** (immutable — race-proof even if a parallel agent
+shifted the index), then drop that entry by its `stash@{N}` index
+(`git stash drop` requires the `stash@{N}` form, not a raw SHA):
 
 ```bash
 git stash apply <SHA>
@@ -236,11 +235,11 @@ SHA — never bare `git stash pop`:
 
 ```bash
 git checkout <BRANCH>
-git stash list --format='%gd %H %gs'
+git stash list --format='%gd %H %gs' | grep "attach-screenshots:<BRANCH>"
 ```
 
-Take the `stash@{N}` index and `<SHA>` of the line ending
-`attach-screenshots:<BRANCH>`, then:
+That returns the single matching line; take its `stash@{N}` index
+and `<SHA>`, then:
 
 ```bash
 git stash apply <SHA>

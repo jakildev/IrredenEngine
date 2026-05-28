@@ -513,9 +513,13 @@ additional role-specific restrictions.
   resolve it by that message and reapply **by commit SHA** (`git stash
   apply <SHA>` — the SHA is immutable; `drop` by re-resolving its
   current `stash@{N}` index, since `git stash drop` needs the
-  `stash@{N}` form). Better: skip the shared stack — `git stash create`
-  returns a SHA without touching `refs/stash`, or use a throwaway
-  temp-branch commit / a dedicated `git worktree`. See
+  `stash@{N}` form). Alternative if untracked files aren't needed
+  (or combine with `git add -A` first): skip the shared stack — `git
+  stash create` returns a SHA without touching `refs/stash`; or use a
+  throwaway temp-branch commit / a dedicated `git worktree`. Note:
+  `git stash create` has no `-u` equivalent, so it does not capture
+  untracked files — do not substitute it for `git stash push -u`
+  without staging untracked files first. See
   [`.claude/skills/attach-screenshots/SKILL.md`](../../.claude/skills/attach-screenshots/SKILL.md)
   for the reference message-keyed, SHA-restored pattern.
 - **Single-command Bash only** — see [`## Bash tool rules`](#bash-tool-rules)
