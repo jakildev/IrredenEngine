@@ -35,7 +35,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // absorbs it during the trixel emit instead.
     uniform float residualYaw;
     // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
-    // emitDeformedFace super-sampling (n > 1) to the detached path only.
+    // emitDeformedFace max super-sample level (world: 2, detached: 6).
     uniform float isDetachedCanvas;
     // Per-face deformation matrix packed column-major into vec4: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw). Indexed
@@ -90,14 +90,14 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
     imageAtomicMin(triangleCanvasDistances, canvasPixel, voxelDistance);
 }
 
-// Emit a face's 2x3 trixel block through the deformation matrix D. For
-// detached canvases (isDetachedCanvas == 1.0), super-samples by D's
-// magnification so SO(3) pitch/roll rotations (T-295) fill the face with no
-// forward-mapping gaps. For the world canvas (isDetachedCanvas == 0.0),
-// n is capped at 1 — single-tap behavior identical to T-293's baseline.
-// At residualYaw==0 on any canvas the identity D also collapses n to 1.
+// Emit a face's 2x3 trixel block through the deformation matrix D.
+// Super-samples by D's magnification to fill the face with no forward-
+// mapping gaps. World canvas caps at n=2 (Z-yaw residual ≤ π/4 yields
+// column lengths ≤ √3, since |col0|² = 3 - 2(c±s) ≤ 3 for X/Y faces);
+// detached canvases cap at n=6 for full SO(3).
+// At residualYaw==0 on any canvas the identity D collapses n to 1.
 void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance) {
-    int maxN = isDetachedCanvas > 0.5 ? 6 : 1;
+    int maxN = isDetachedCanvas > 0.5 ? 6 : 2;
     int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
