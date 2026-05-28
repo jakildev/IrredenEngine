@@ -74,9 +74,12 @@ for single voxels and particles.
 - `REBUILD_GRID_VOXELS` (UPDATE pipeline, T-294) — Epic C C6. Runs AFTER
   `UPDATE_VOXEL_SET_CHILDREN`. Re-rasterizes GRID-mode entities (entities
   carrying `C_RotationMode::GRID`, the default) into rotated world cells
-  whenever their `C_WorldTransform` changes. Cache lives on
-  `C_VoxelSetNew::lastRebuild*_`; ticks are O(1) when the transform is
-  unchanged. DETACHED-mode entities are skipped — they rotate through
+  from their live `C_WorldTransform`. On-screen sets re-rasterize every
+  frame (no per-set transform-comparison early-out — that was a dirty flag
+  in disguise, see `.claude/rules/cpp-ecs.md` "No dirty flags"); the only
+  skip is a frustum-cull gate (`C_VoxelPool::isRangeVisible` against the
+  shadow-feeder-expanded cull viewport), so sets whose pool chunks are all
+  off-screen pay nothing. DETACHED-mode entities are skipped — they rotate through
   the per-canvas TRS composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`) and
   never touch the world voxel pool's globals. Cell aliasing
   (multiple authored voxels collapsing into one world cell after

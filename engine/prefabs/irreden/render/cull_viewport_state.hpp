@@ -8,6 +8,12 @@ using namespace IRMath;
 
 namespace IRRender {
 
+// Chunk margin for the CPU-side cull gate in REBUILD_GRID_VOXELS and the GPU
+// chunk-visibility mask in VOXEL_TO_TRIXEL_STAGE_1.  Both use this value so
+// the CPU skip decision is never tighter than the GPU raster decision:
+// if the GPU still renders a chunk's voxels, the CPU must still rebuild them.
+constexpr int kCullChunkMargin = 8;
+
 // Shared cull viewport state.  Updated once per frame (during the render
 // event) so that every render system sees a consistent frozen-or-live
 // viewport without maintaining its own snapshot.

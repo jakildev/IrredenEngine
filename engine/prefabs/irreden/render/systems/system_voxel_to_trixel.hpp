@@ -338,9 +338,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // runs per entity.
         const float sweepDistance = sweepDistance_;
 
-        constexpr int kChunkMargin = 8;
         const IsoBounds2D chunkVp =
-            IRMath::shadowFeederIsoBounds(cull.isoViewport(kChunkMargin), sunDir_, sweepDistance);
+            IRMath::shadowFeederIsoBounds(cull.isoViewport(kCullChunkMargin), sunDir_, sweepDistance);
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         const auto &uploadMask = buildChunkVisibilityMask(voxelPool, chunkVp, chunkCardinal);
         chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
