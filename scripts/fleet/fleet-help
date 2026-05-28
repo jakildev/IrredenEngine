@@ -214,6 +214,11 @@ Parallel-agent fleet (tmux + Claude)
                                  addressing PR has merged (merger step 1.5)
   fleet-issue view <N> [--repo engine|game]
                                  read scout's per-issue cache + gh fallback
+  fleet-validate-stack <umbrella> [--repo engine|game] [--children N…] [--strict]
+                                 pre-approval check that an epic's child issues
+                                 carry standalone **Model:** / **Part of epic:**
+                                 / **Blocked by:** lines (the scout + fleet-claim
+                                 parsers can't read prose / multi-ref forms)
 
   fleet-help fleet-up            short summary (fleet-up has no --help)
 
