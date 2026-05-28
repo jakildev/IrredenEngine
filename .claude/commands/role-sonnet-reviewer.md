@@ -201,8 +201,8 @@ iteration of polling, reviewing, and exiting cleanly:
    scratch reset already happened in step 3 above. Print
    `[sonnet-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`
    and exit cleanly.
-5. If you hit a usage-limit error: print the error and exit.
-   `fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
+5. If you hit a usage-limit error, see [docs/agents/FLEET-RUNTIME.md § Usage-limit handling](../../docs/agents/FLEET-RUNTIME.md#usage-limit-handling)
+   — print the error and exit; flag it in your iteration summary.
 
 If Mode above is `dry-run`: review exactly **one** PR end-to-end
 (complete one iteration of step 2 with one PR), then stop and wait
@@ -225,35 +225,15 @@ point of review-only mode — keep reviewing PRs as normal.
 
 ## End-of-iteration feedback
 
-If you noticed something this iteration that the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/sonnet-reviewer.md`. See
-[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar (high — most
-iterations write nothing).
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is `~/.fleet/feedback/sonnet-reviewer.md`.
 
 ## Hard rules
 
-See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Reviewer-specific additions:
-
-- **Never commit, push, or open PRs from this worktree.**
-- **Never `gh pr review --approve` or `--request-changes`** — all fleet
-  agents share one GitHub account and GitHub rejects formal review
-  actions on your own PRs. Always use `--comment` with a clear
-  verdict line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
-- **Never post a review without setting the verdict label.** A review
-  comment without a `fleet:approved` / `fleet:needs-fix` /
-  `fleet:blocker` label is invisible to the human's merge queue —
-  the human filters PRs by label, not by review body. After every
-  `gh pr review --comment ...`, your VERY NEXT bash call MUST be
-  `gh pr edit <N> ... --add-label "fleet:..."`. Verify with
-  `gh pr view <N> --json labels`.
-- **Never re-apply a verdict label without posting a new review in
-  the same iteration.** If a PR you previously verdicted is now
-  missing its verdict label, that is NOT a label-fixup trigger —
-  the label may have been legitimately cleared by the author's
-  `commit-and-push` after a fix push, by an ESCALATE handoff (which
-  swaps `fleet:needs-fix` for `fleet:changes-made`), or by a worker
-  mid-claim on a `fleet:has-nits` PR. If you decide to re-review,
-  post a new review and set the label as part of THAT review's flow.
-  Otherwise leave the label alone.
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles)
+and the shared reviewer rules in
+[`docs/agents/REVIEWER-PROTOCOL.md § Reviewer hard rules`](../../docs/agents/REVIEWER-PROTOCOL.md#reviewer-hard-rules)
+(never commit/push/open-PRs from this worktree; never `--approve` /
+`--request-changes`; never post a review without setting the verdict
+label; never re-apply a verdict without a fresh review). No
+sonnet-reviewer-specific additions beyond those.

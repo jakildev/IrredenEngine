@@ -63,13 +63,14 @@ body suggests:
 
 - **Modifying the issue queue directly to add new work.** If a plan
   step says "add entries to the queue" or "create follow-up tasks",
-  file the GitHub issue(s) for any new work uncovered via
-  `gh issue create` (no labels). The human stamps `human:approved` and
-  the scout ingests on its next pass. Do not edit other issues' bodies
-  or labels to retitle / re-scope them.
+  file the GitHub issue(s) per
+  [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md)
+  (no labels). The human stamps `human:approved` and the scout
+  ingests on its next pass. Do not edit other issues' bodies or labels
+  to retitle / re-scope them.
 - **Pre-applying labels at filing time.** When you file an issue for
-  follow-up work, file it with **no labels**. The human stamps
-  `human:approved`; the scout adds the rest.
+  follow-up work, file it with **no labels** (see TASK-FILING.md). The
+  human stamps `human:approved`; the scout adds the rest.
 - **Editing another issue's `Blocked by:` / labels to declare a
   reservation.** Reservations are held by `fleet-claim`'s atomic
   lock fabric (filesystem locks + `fleet:claim-*` labels), not by
@@ -353,68 +354,17 @@ Do the work, then exit cleanly:
     push) and force-push retriggers CI — keep this step bounded to
     one PR per iteration.
 
-2. **Plan any `fleet:needs-plan` issues on either repo.** The
-   cached `repos.engine.needs_plan[]` and `repos.game.needs_plan[]`
-   arrays hold the open needs-plan issues. Pick the oldest
-   unprocessed entry (smallest `number`) across both repos.
-
-   The cache only stores list-shaped data — for per-issue body and
-   comments, pull live (per-item lookup, stays inline):
-   `fleet-issue view <N>` (engine; for game issues add `--repo game`).
-
-   For each issue:
-   a. Read the full issue thread (title, body, all comments).
-   b. Assess the scope and write a structured plan. Post it as an
-      issue comment covering:
-      - What files/modules are involved
-      - Step-by-step implementation approach
-      - Whether it should be one task or broken into subtasks
-      - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
-      - Acceptance criteria
-      - Known gotchas or pitfalls
-   c. **Save the plan locally** for workers to read later:
-      `mkdir -p ~/.fleet/plans`
-      Then use the **Write tool** to create `~/.fleet/plans/issue-<N>.md`
-      (where N is the issue number). Use this format:
-
-      ```markdown
-      # Plan: <issue title>
-
-      - **Issue:** #N
-      - **Model:** opus | sonnet
-      - **Date:** YYYY-MM-DD
-
-      ## Scope
-      <what this task achieves>
-
-      ## Approach
-      <step-by-step: which files, what order, key decisions>
-
-      ## Affected files
-      - `path/to/file.hpp` — <what changes>
-
-      ## Acceptance criteria
-      <concrete checks>
-
-      ## Gotchas
-      <pitfalls the worker should watch for>
-      ```
-
-   d. Remove the `fleet:needs-plan` label. Do NOT touch
-      `human:approved` — it's still on the issue from when the
-      human triaged it, and removing it would erase the human's
-      original signal. Use the issue's repo:
-      `gh issue edit <N> --repo <owner/repo> --remove-label "fleet:needs-plan"`
-      (where `<owner/repo>` is `jakildev/IrredenEngine` for engine
-      issues or `jakildev/irreden` for game issues — the repo where
-      the issue lives, not your worktree's repo).
-      The scout picks this issue up on its next pass — `human:approved`
-      without `fleet:needs-plan` (and without `fleet:needs-info`) is
-      the signal that the issue is queue-ready. The plan file stays
-      at `~/.fleet/plans/issue-<N>.md` for the lifetime of the task.
-
-   If you disagree with the issue's direction, comment with your
-   concerns but leave `fleet:needs-plan` on — let the human decide.
+2. **Plan any `fleet:needs-plan` issues on either repo.** The cached
+   `repos.engine.needs_plan[]` and `repos.game.needs_plan[]` arrays
+   hold the open needs-plan issues. Pick the oldest unprocessed entry
+   (smallest `number`) across both repos, then follow
+   [docs/agents/PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md)
+   — read the full thread (`fleet-issue view <N>`, add `--repo game`
+   for game), post the structured plan comment, save
+   `~/.fleet/plans/issue-<N>.md`, and remove `fleet:needs-plan`
+   (leaving `human:approved`). If the work decomposes into a stack,
+   that doc routes you to `file-epic` via
+   [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md).
 
 3. **Resume an active molecule first, then pick the next task.**
 
@@ -585,24 +535,10 @@ Do the work, then exit cleanly:
    rule, early returns, `unique_ptr` over `shared_ptr`, and the rest of
    the engine style guide.
 
-7. **Build and run.**
-   `fleet-build --target <name>`
-
-   **If the diff adds files under `engine/prefabs/**/systems/`**, also
-   build `IrredenEngineTest` (or the engine static library) — creation
-   targets like `IRShapeDebug` only link the systems they reference, so
-   a new system with a missing `SystemName` enum entry is a silent
-   linker error from the creation perspective.
-
-   If the touched code has an executable target, run it to confirm it
-   launches cleanly:
-   - **Demos that support `--auto-screenshot`:** `fleet-run <name> --auto-screenshot 10` (no `--timeout` — auto-screenshot fires `closeWindow()` when done).
-   - **All other GUI executables:** `fleet-run --timeout 15 <name>` — 5 seconds is too short for a demo mid-init.
-   - **Test executables:** `fleet-run --timeout 15 <name>` as a safety net.
-
-   **Never** use `cd <dir> && ./<exe>` — that triggers the
-   compound-command security gate. Untested commits are the single
-   biggest waste of reviewer-agent time.
+7. **Build and run.** See [docs/agents/AUTHOR-PIPELINE.md § Build and run](../../docs/agents/AUTHOR-PIPELINE.md#build-and-run)
+   for the `fleet-build` invocation, the `engine/prefabs/**/systems/`
+   linker-error caveat, the `--auto-screenshot` vs `--timeout` run
+   matrix, and the no-`cd && ./exe` gate. Re-touch the heartbeat first.
 
 8. **Stop and escalate if the task scope grows.** If:
    - The scope grows beyond one PR's worth of work
@@ -653,88 +589,31 @@ Do the work, then exit cleanly:
 
    For non-architectural escalations (scope grew, build break is
    structural, public-API surface) where there's no design call to
-   route — file a GitHub issue (no labels), comment on your PR
-   linking it with the blocker context, release the claim with
+   route — file a GitHub issue per
+   [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md)
+   (no labels, structured body), comment on your PR linking it with
+   the blocker context, release the claim with
    `fleet-claim release <issue-#>`, reset via `start-next-task`,
    and exit. The human will add `human:approved` to the follow-up
    issue when ready to resume.
 
-9. **Verify visual output (when it changed).** Check whether the diff
-   touches visual/render code:
-   `git diff --name-only origin/master...HEAD`
+9. **Verify visual output (when it changed).** See [docs/agents/AUTHOR-PIPELINE.md § Verify visual output](../../docs/agents/AUTHOR-PIPELINE.md#verify-visual-output-when-it-changed)
+   — the render-path trigger file set, the mandatory
+   `attach-screenshots` + `render-debug-loop` pair, the skip
+   conditions, and the "both complete before optimize/commit" ordering.
 
-   The trigger file set is the same for both skills below:
-   - `engine/render/` (any file)
-   - `engine/prefabs/irreden/render/` (any file)
-   - Any `*.glsl` or `*.metal` shader file anywhere in the tree
-   - `creations/demos/*/src/**` or `creations/demos/*/main*.cpp`
+10. **Optimize before commit.** See [docs/agents/AUTHOR-PIPELINE.md § Optimize before commit](../../docs/agents/AUTHOR-PIPELINE.md#optimize-before-commit).
+    The **[opus-worker]** delta applies: run `optimize` almost always
+    (`[opus]` work almost always touches a hot path); skip only for
+    pure docs or mechanical refactors. Don't invoke `simplify`
+    separately — `commit-and-push` runs it.
 
-   When the diff includes any of those, you must invoke BOTH skills:
-
-   a. **`attach-screenshots`** — captures before/after pairs (master
-      vs working tree) and writes them under
-      `docs/pr-screenshots/<branch>/` so the PR body can embed them
-      via raw GitHub URLs. Does not diagnose — see (b). Skip if
-      `docs/pr-screenshots/<branch>/` already contains screenshots
-      from a prior run on this branch.
-
-   b. **`render-debug-loop`** — drives any creation that supports
-      `--auto-screenshot` (today: `shape_debug`), reads each
-      captured frame, and diagnoses rendering issues against the
-      topic-indexed reference (trixel/SDF shapes, lighting,
-      backend-parity symptoms). Catches visual regressions that
-      would otherwise reach the reviewer (or, worse, ship). Required
-      by `engine/render/CLAUDE.md` "Verifying render changes" for
-      any PR touching shaders, render systems, or pipeline ordering.
-
-   The two skills serve different purposes — `attach-screenshots`
-   produces the PR record; `render-debug-loop` is the diagnostic
-   pass that confirms the change actually renders correctly. Run
-   both; do not substitute one for the other.
-
-   Skip BOTH if the diff is purely docs, tests, mechanical refactors
-   (rename, extract-header, add-logging), or build/CI changes with no
-   visual effect. The exceptions list in `engine/render/CLAUDE.md`
-   "Verifying render changes" is authoritative — when in doubt, run
-   the loop; a missing diagnostic pass is a fast reviewer-rejection.
-
-   Both must complete before `optimize` and `commit-and-push` so any
-   resulting fixes land in the same commit as the code change.
-
-10. **Optimize before commit.** Run the `optimize` skill — `[opus]`
-    work almost always touches perf-critical code (engine/render,
-    engine/system, engine/world, engine/audio, engine/video,
-    engine/math). Optimize profiles the new code, identifies hotspots,
-    and verifies no regressions. Skip only for pure docs or mechanical
-    refactors that preserve hot-path structure.
-
-    You don't need to invoke `simplify` separately — `commit-and-push`
-    runs it as part of its flow. Running `optimize` first matters
-    because optimize may add `IR_PROFILE_*` blocks and rationale
-    comments that simplify should leave alone.
-
-    The same applies when **addressing review feedback** — after
-    editing in response to comments, re-run `optimize` (if the perf
-    surface changed) before invoking `commit-and-push` to push the fix.
-
-11. **Finalize the PR.** Use `commit-and-push` to push work commits
-    (commit-and-push uses cwd's git repo automatically — for game
-    tasks, you cd'd in step 4, so it targets the right repo).
-    Remove the WIP label and release the claim. **For game tasks,
-    add `--repo jakildev/irreden` to gh and `--repo game` to
-    fleet-claim release** so the right PR + the right slug are
-    targeted:
-
-    ```
-    # engine task
-    gh pr edit <N> --remove-label "fleet:wip"
-    fleet-claim release <issue-#>
-
-    # game task
-    gh pr edit <N> --repo jakildev/irreden --remove-label "fleet:wip"
-    fleet-claim --repo game release <issue-#>
-    ```
-    Paste the PR URL.
+11. **Finalize the PR.** See [docs/agents/AUTHOR-PIPELINE.md § Finalize the PR](../../docs/agents/AUTHOR-PIPELINE.md#finalize-the-pr)
+    for the `commit-and-push` → remove-`fleet:wip` → `fleet-claim
+    release` sequence and the claim-label lifecycle note. The
+    **[opus-worker] game task** variant (`--repo jakildev/irreden` on
+    `gh`, `--repo game` on `fleet-claim`) applies when you cd'd into the
+    game worktree at step 4. Paste the PR URL.
 
 12. **Reset.** See [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
     Summary template:
@@ -784,22 +663,16 @@ or `review-only` (passed by `fleet-dispatcher` from `fleet-up`'s mode arg).
   and exit. fleet-dispatcher will re-fire when scout sees new
   actionable state.
 
-If you hit a usage-limit error: print the error and exit. The pane
-returns to shell; fleet-dispatcher's next tick clears the dispatch
-record. The dispatcher does not implement usage-limit back-off, so
-the next scout-trigger will re-fire and may hit the same limit —
-flag the limit in your iteration summary so the human can adjust.
+If you hit a usage-limit error, see [docs/agents/FLEET-RUNTIME.md § Usage-limit handling](../../docs/agents/FLEET-RUNTIME.md#usage-limit-handling)
+— print the error and exit; flag the limit in your iteration summary.
 
 ## End-of-iteration feedback
 
-If you noticed something this iteration that the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is per-worktree:
 `~/.fleet/feedback/<your-worktree-basename>.md` (e.g.
-`~/.fleet/feedback/opus-worker-1.md`). Per-worktree filename so the
-human can tell which opus-worker observed what. See
-[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar
-(high — most iterations write nothing).
+`~/.fleet/feedback/opus-worker-1.md`), so the human can tell which
+opus-worker observed what.
 
 ## Hard rules
 

@@ -221,11 +221,11 @@ Per [docs/agents/FLEET-RUNTIME.md § Per-iteration shutdown](../../docs/agents/F
 
 ## End-of-iteration feedback
 
-If you noticed something worth surfacing — a persistent smoke label across
-multiple iterations, a systematic build failure pattern, a missing label —
-append an entry to `~/.fleet/feedback/<your-worktree-basename>.md`.
-See [docs/agents/FLEET.md § "Fleet feedback channel"](../../docs/agents/FLEET.md#fleet-feedback-channel)
-for the format. High bar — most iterations write nothing.
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is per-worktree
+(`~/.fleet/feedback/<your-worktree-basename>.md`). Worth surfacing for
+smoke: a persistent smoke label across multiple iterations, a systematic
+build-failure pattern, or a missing label.
 
 ---
 
