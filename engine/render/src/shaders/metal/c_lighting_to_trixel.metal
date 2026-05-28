@@ -117,14 +117,14 @@ kernel void c_lighting_to_trixel(
     }
 
     const int rawDepth = encoded >> 2;
-    const int face = encoded & 3;
-    // `face` is encoded in world frame by the rasterizer
-    // (kXFace = world -X face, etc.), so `faceOutwardNormal` already
-    // gives the world-frame surface normal. Sun direction is world
-    // frame; Lambert is a plain dot product without rotation. Mirrors
-    // shaders/c_lighting_to_trixel.glsl.
+    // Decode the visible-triplet slot (0/1/2) and resolve to the world
+    // FaceId via `visibleFaceIds[slot]` (#1278). Six-face outward normal
+    // is in the world frame; sun direction is world frame; Lambert is a
+    // plain dot product without rotation. Mirrors GLSL.
+    const int slot = encoded & 3;
+    const int faceId = voxelFrameData.visibleFaceIds[slot];
     int cardinalIndex = rasterYawCardinalIndex(voxelFrameData.rasterYaw);
-    float3 worldNormal = faceOutwardNormal(face);
+    float3 worldNormal = faceOutwardNormal6(faceId);
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =
         mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;

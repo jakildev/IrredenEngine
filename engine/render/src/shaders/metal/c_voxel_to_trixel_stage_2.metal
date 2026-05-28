@@ -117,25 +117,23 @@ kernel void c_voxel_to_trixel_stage_2(
         return;
     }
     const uint2 localId = localId3.xy;
-    const int face = localIDToFace_2x3(localId);
+    // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
+    const int slot = localIDToFace_2x3(localId);
+    const int faceId = frameData.visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];
 
-    // mat2 D = faceDeformationMatrix(face, residualYaw) — or the SO(3) form
-    // for a detached canvas. Identity at residualYaw==0 — see
-    // c_voxel_to_trixel_stage_1.metal for the contract. emitDeformedFace
-    // super-samples the source block when D magnifies.
-    const float2x2 D = float2x2(
-        frameData.faceDeform[face].xy,
-        frameData.faceDeform[face].zw
-    );
+    // Stage 2 mirrors stage 1's exposed-face gate (#1278).
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
-    // At cardinalIndex==0 the rotation is the identity; gating it behind a
-    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
-    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
-    // pixel-for-pixel against master.
+    // Per-slot deformation matrix — see stage 1 GLSL for the contract.
+    const float2x2 D = float2x2(
+        frameData.faceDeform[slot].xy,
+        frameData.faceDeform[slot].zw
+    );
 
     if (frameData.voxelRenderOptions.x == 0) {
         int3 voxelPositionInt = int3(round(voxelPosition.xyz));
@@ -144,7 +142,7 @@ kernel void c_voxel_to_trixel_stage_2(
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
         const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), face
+            pos3DtoDistance(voxelPositionInt), slot
         );
         const int2 base =
             trixelFrameOffset(
@@ -183,14 +181,14 @@ kernel void c_voxel_to_trixel_stage_2(
     );
 
     int3 microPositionFixed =
-        faceMicroPositionFixed(face, voxelPositionFixed, u, v);
+        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
         microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
     const int depthBase =
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
-    const int voxelDistance = encodeDepthWithFace(depthBase, face);
+    const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(
         base,

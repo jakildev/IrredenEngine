@@ -41,7 +41,12 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;
+    uniform float _yawPadding;            // isDetachedCanvas in the full UBO
+    uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
+    // Per-slot world FaceId (0..5) — see c_voxel_to_trixel_stage_1.glsl + #1278.
+    // Lighting maps the decoded depth slot → world FaceId for the
+    // six-face outward normal used by Lambert + the HDR sky-term.
+    uniform ivec4 visibleFaceIds;
 };
 
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -152,14 +157,14 @@ void main() {
     }
 
     const int rawDepth = encoded >> 2;
-    const int face = encoded & 3;
-    // The rasterizer encodes `face` in WORLD frame — kXFace = world -X
-    // face, kYFace = world -Y, kZFace = world -Z — so `faceOutwardNormal`
-    // already gives the world-frame surface normal directly. Sun
-    // direction lives in the same world frame, so Lambert is a plain
-    // dot product without rotation.
+    // Decode the visible-triplet slot the rasterizer wrote (#1278) and
+    // resolve the world FaceId via `visibleFaceIds[slot]`. Sun direction
+    // lives in the world frame; the six-face `faceOutwardNormal6` gives
+    // the matching world-frame surface normal.
+    const int slot = encoded & 3;
+    const int faceId = visibleFaceIds[slot];
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    vec3 worldNormal = faceOutwardNormal(face);
+    vec3 worldNormal = faceOutwardNormal6(faceId);
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
     const float faceFactor = mix(sunAmbient, 1.0, lambert) * sunIntensity;
 

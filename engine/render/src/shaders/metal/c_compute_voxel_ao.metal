@@ -65,7 +65,11 @@ kernel void c_compute_voxel_ao(
         return;
     }
 
-    int face = encoded & 3;
+    // Decode the visible-triplet slot (0/1/2) the rasterizer wrote, then
+    // resolve the world FaceId via `visibleFaceIds[slot]` (#1278). Single
+    // source of face metadata shared with the raster.
+    int slot = encoded & 3;
+    int faceId = frameData.visibleFaceIds[slot];
     int rawDepth = encoded >> 2;
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     float3 pos3D = trixelCanvasPixelToWorld3D(
@@ -77,21 +81,22 @@ kernel void c_compute_voxel_ao(
         cardinalIndex
     );
 
-    // `face` is encoded in world frame by the rasterizer; the outward
-    // normal and in-plane tangents are world-frame too. Tangents are
-    // rotated through R_z(-rasterYaw) before iso projection so the
-    // neighbour-sample iso direction matches where the rasterizer
-    // wrote the +tangent neighbour at this cardinal. Mirrors GLSL.
-    float3 worldOutward = float3(faceOutwardNormalI(face));
+    // World-frame outward normal + in-plane tangents for the camera-visible
+    // face this pixel rendered. Tangents are rotated through R_z(-rasterYaw)
+    // before iso projection so the neighbour-sample iso direction matches
+    // where the rasterizer wrote the +tangent neighbour at this cardinal
+    // (PR #1275 prep). Mirrors GLSL.
+    float3 worldOutward = float3(faceOutwardNormal6I(faceId));
     int3 t1;
     int3 t2;
-    if (face == kZFace) {
+    if (faceId == kFaceZNeg || faceId == kFaceZPos) {
         t1 = int3(1, 0, 0);
         t2 = int3(0, 1, 0);
-    } else if (face == kXFace) {
+    } else if (faceId == kFaceXNeg || faceId == kFaceXPos) {
         t1 = int3(0, 1, 0);
         t2 = int3(0, 0, 1);
     } else {
+        // Y_NEG or Y_POS
         t1 = int3(1, 0, 0);
         t2 = int3(0, 0, 1);
     }

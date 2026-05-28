@@ -41,11 +41,8 @@ inline ivec2 voxelDispatchGridForCount(int voxelCount) {
     return ivec2(groupsX, groupsY);
 }
 
-inline const std::vector<std::uint32_t> &
-buildChunkVisibilityMask(
-    C_VoxelPool &pool,
-    IsoBounds2D viewport,
-    CardinalIndex cardinalIndex = CardinalIndex::k0
+inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
+    C_VoxelPool &pool, IsoBounds2D viewport, CardinalIndex cardinalIndex = CardinalIndex::k0
 ) {
     static thread_local std::vector<std::uint32_t> mask;
     pool.rebuildChunkBounds(cardinalIndex);
@@ -91,6 +88,18 @@ inline void buildVoxelFrameData(
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
         frameData.residualYaw_ = 0.0f;
+        // DETACHED canvas keeps the legacy lower-coordinate-faces visible
+        // set {X_NEG, Y_NEG, Z_NEG} — the per-canvas SO(3) bake
+        // (`propagate_canvas_rotation`) absorbs the entity rotation, so the
+        // raster always emits the same three faces in the entity-local frame.
+        // Per-entity SO(3) visible-triplet resolution is the follow-on work
+        // in #1272 (the design doc § "Per-entity SO(3) is the same model").
+        frameData.visibleFaceIds_ = ivec4(
+            static_cast<int>(IRMath::FaceId::X_NEG),
+            static_cast<int>(IRMath::FaceId::Y_NEG),
+            static_cast<int>(IRMath::FaceId::Z_NEG),
+            0
+        );
         // Snap to the nearest of the 24 cube orientations and deform by the
         // residual only: a cube is invariant under the snap, so this keeps
         // the per-face skew small enough to stay clean (T-295).
@@ -98,26 +107,43 @@ inline void buildVoxelFrameData(
         const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, residual);
         const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, residual);
         const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, residual);
-        frameData.faceDeform_[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
-        frameData.faceDeform_[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
-        frameData.faceDeform_[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
+        // Per-slot upload: slot 0 / 1 / 2 carries the X / Y / Z axis face
+        // matrix (matches the visibleFaceIds_ assignment above).
+        frameData.faceDeform_[0] = vec4(fdX[0], fdX[1]);
+        frameData.faceDeform_[1] = vec4(fdY[0], fdY[1]);
+        frameData.faceDeform_[2] = vec4(fdZ[0], fdZ[1]);
         return;
     }
 
     // Main world canvas: rasterYaw picks the integer trixel basis permutation
     // (T-055); residualYaw is folded into faceDeform_[] which the trixel emit
     // shader applies to each sub-pixel offset in 2D iso space (T-293, replaces
-    // the T-058 / T-322 screen-space bilinear residual composite).
+    // the T-058 / T-322 screen-space bilinear residual composite). At every
+    // non-zero cardinal the WORLD face whose iso footprint lands in each
+    // diamond slot rotates with the camera — `visibleFaceIds_` carries the
+    // current slot ↔ FaceId map (#1278).
     frameData.visualYaw_ = IRPrefab::Camera::getYaw();
     const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
     frameData.rasterYaw_ = rasterYaw;
     frameData.residualYaw_ = residualYaw;
-    const mat2 fdX = IRMath::faceDeformationMatrix(IRMath::kXFace, residualYaw);
-    const mat2 fdY = IRMath::faceDeformationMatrix(IRMath::kYFace, residualYaw);
-    const mat2 fdZ = IRMath::faceDeformationMatrix(IRMath::kZFace, residualYaw);
-    frameData.faceDeform_[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
-    frameData.faceDeform_[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
-    frameData.faceDeform_[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
+    const auto cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
+    const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
+    frameData.visibleFaceIds_ = ivec4(
+        static_cast<int>(visibleFaces[0]),
+        static_cast<int>(visibleFaces[1]),
+        static_cast<int>(visibleFaces[2]),
+        0
+    );
+    // Per-slot deformation (axis-only; X_NEG and X_POS share the X-axis
+    // matrix). At cardinal 0 the per-slot order {X_NEG, Y_NEG, Z_NEG}
+    // collapses to the legacy axis order {kXFace, kYFace, kZFace}, so the
+    // upload is bit-identical to pre-#1278 master.
+    const mat2 fd0 = IRMath::faceDeformationMatrix(visibleFaces[0], residualYaw);
+    const mat2 fd1 = IRMath::faceDeformationMatrix(visibleFaces[1], residualYaw);
+    const mat2 fd2 = IRMath::faceDeformationMatrix(visibleFaces[2], residualYaw);
+    frameData.faceDeform_[0] = vec4(fd0[0], fd0[1]);
+    frameData.faceDeform_[1] = vec4(fd1[0], fd1[1]);
+    frameData.faceDeform_[2] = vec4(fd2[0], fd2[1]);
 }
 
 inline void

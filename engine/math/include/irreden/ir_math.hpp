@@ -11,6 +11,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <random>
@@ -53,11 +54,83 @@ constexpr float kQuarterPi = 0.78539816339744830961f;
 /// enum in `ir_math_types.hpp` (which is 1-indexed with `NONE_FACE` first);
 /// these match the shader convention so any helper that crosses the CPU↔GPU
 /// boundary can use the same integer in both directions.
+///
+/// These three indices are AXIS-only (0 = X-axis face, 1 = Y-axis face,
+/// 2 = Z-axis face), NOT polarity-aware: the X-axis face is whichever of
+/// X_NEG / X_POS the camera is looking at. The six-face polarity-aware
+/// FaceId enum below replaces this for visible-triplet rasterization
+/// (#1278) — `kXFace` etc. are kept for the still-3-face helpers
+/// (`faceDeformationMatrix`, AO tangent selection) since the deformation
+/// matrix is identical for X_NEG / X_POS.
 /// @{
 constexpr int kXFace = 0;
 constexpr int kYFace = 1;
 constexpr int kZFace = 2;
 /// @}
+
+/// Polarity-aware six-face enumeration matching the model in
+/// [`docs/design/voxel-face-rasterization.md`](../../../../docs/design/voxel-face-rasterization.md).
+/// One enum value per cube face — explicitly NOT three axes with a ± sign.
+/// Bit positions intentionally line up with the face-occlusion bits in
+/// `IRComponents::VoxelFlags::kFaceOccluded*`: `bit(FaceId f) = 2 + int(f)`.
+///
+/// CPU mirror: shader-side constants `kFaceXNeg`/.../`kFaceZPos` in
+/// `shaders/ir_iso_common.glsl` and `metal/ir_iso_common.metal`. CPU and
+/// GPU MUST agree on the integer value of each face for the
+/// `visibleFaceIds_` UBO handshake (`FrameDataVoxelToCanvas`).
+enum class FaceId : int {
+    X_NEG = 0,
+    X_POS = 1,
+    Y_NEG = 2,
+    Y_POS = 3,
+    Z_NEG = 4,
+    Z_POS = 5,
+    NONE = 6,
+};
+
+/// Axis index (0/1/2 = X/Y/Z) for a FaceId. The deformation matrix is
+/// per-axis, not per-polarity, so use this when forwarding into the
+/// 3-face `faceDeformationMatrix(int, float)`.
+constexpr int faceAxis(FaceId f) {
+    return static_cast<int>(f) >> 1; // {0,1}→0, {2,3}→1, {4,5}→2
+}
+
+/// True when @p f is the positive-coordinate face of its axis (X_POS,
+/// Y_POS, Z_POS). The matching negative face is `bit(f) ^ 1`.
+constexpr bool faceIsPositive(FaceId f) {
+    return (static_cast<int>(f) & 1) != 0;
+}
+
+/// Bit position within `IRComponents::VoxelFlags::flags_` byte for the
+/// occlusion bit of @p f. Bit set ⟺ neighbor exists ⟺ face occluded.
+/// Inverting (`& ~kFaceOccludedMask` ^ 0x3F) at the shader yields the
+/// exposed-face mask consumed by visible-triplet rasterization.
+constexpr int faceOcclusionBit(FaceId f) {
+    return 2 + static_cast<int>(f);
+}
+
+/// World-frame outward unit normal for @p f. Used by AO neighbor-step
+/// math and Lambert shading. Six-face generalization of the
+/// three-face `faceOutwardNormal(int)` shader helper, which only
+/// returned the X_NEG / Y_NEG / Z_NEG normals.
+constexpr vec3 faceOutwardNormal(FaceId f) {
+    switch (f) {
+    case FaceId::X_NEG:
+        return vec3(-1.0f, 0.0f, 0.0f);
+    case FaceId::X_POS:
+        return vec3(1.0f, 0.0f, 0.0f);
+    case FaceId::Y_NEG:
+        return vec3(0.0f, -1.0f, 0.0f);
+    case FaceId::Y_POS:
+        return vec3(0.0f, 1.0f, 0.0f);
+    case FaceId::Z_NEG:
+        return vec3(0.0f, 0.0f, -1.0f);
+    case FaceId::Z_POS:
+        return vec3(0.0f, 0.0f, 1.0f);
+    default:
+        return vec3(0.0f);
+    }
+}
 
 /// Loads a color palette from a file and returns it as a vector of Colors.
 std::vector<Color> createColorPaletteFromFile(const char *filename);
@@ -362,6 +435,51 @@ constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
     return v;
 }
 
+/// Visible-face triplet (`docs/design/voxel-face-rasterization.md`) for a
+/// Z-yaw-only camera (`GRID` mode) snapped to @p cardinalIndex. Returns
+/// the three world-frame FaceIds whose outward normal dots positive with
+/// the rotated view direction.
+///
+/// Derivation: view direction in world frame =
+/// `rotateCardinalZInv(viewDir, cardinalIndex)` where the unrotated
+/// view direction is `(-1,-1,-1)` (camera at +∞ along (1,1,1) looking
+/// toward origin). The Z-component never flips for Z-yaw, so the Z slot
+/// is always `Z_NEG`. The X/Y axes rotate through the cardinal
+/// permutation; slots 0/1 carry the camera-visible polarity per cardinal.
+///
+/// Slot ordering matches the 2×3 voxel-rasterizer workgroup convention
+/// in `localIDToFace_2x3`: slot 0 = X-axis face (the "right column" of
+/// the diamond at cardinal 0), slot 1 = Y-axis face (left column), slot
+/// 2 = Z-axis face (top row). Per-cardinal slot ↔ FaceId mapping:
+///
+/// - cardinal 0:   {X_NEG, Y_NEG, Z_NEG}
+/// - cardinal 90:  {Y_NEG, X_POS, Z_NEG}
+/// - cardinal 180: {X_POS, Y_POS, Z_NEG}
+/// - cardinal 270: {Y_POS, X_NEG, Z_NEG}
+///
+/// At cardinal 0 the result reduces to the pre-#1278 three-face set the
+/// rasterizer always assumed; at every other cardinal the rasterizer
+/// now picks the actually-visible faces instead of the back-facing ones,
+/// fixing the stripe artifact in #1256.
+///
+/// DETACHED-canvas paths bypass this and use the legacy
+/// `{X_NEG, Y_NEG, Z_NEG}` set — the canvas SO(3) bake (#1075/#1076)
+/// already absorbs the entity rotation; per-entity SO(3) visible-triplet
+/// is the follow-on work in #1272.
+constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardinalIndex) {
+    switch (cardinalIndex) {
+    case CardinalIndex::k90:
+        return {FaceId::Y_NEG, FaceId::X_POS, FaceId::Z_NEG};
+    case CardinalIndex::k180:
+        return {FaceId::X_POS, FaceId::Y_POS, FaceId::Z_NEG};
+    case CardinalIndex::k270:
+        return {FaceId::Y_POS, FaceId::X_NEG, FaceId::Z_NEG};
+    case CardinalIndex::k0:
+    default:
+        return {FaceId::X_NEG, FaceId::Y_NEG, FaceId::Z_NEG};
+    }
+}
+
 /// CPU mirror of `cardinalLowerCornerShift` in `shaders/ir_iso_common.glsl`.
 /// After `rotateCardinalZ`, the unit voxel's view-space AABB lower corner
 /// is offset from the rotated origin because R_z permutes/negates axes.
@@ -457,6 +575,16 @@ constexpr mat2 faceDeformationMatrix(int face, float residualYaw) {
         return mat2(c, -s, s, c);
     }
     return mat2(1.0f, 0.0f, 0.0f, 1.0f);
+}
+
+/// FaceId-accepting overload of @ref faceDeformationMatrix. The deformation
+/// matrix is axis-only (X_NEG and X_POS share the X-face matrix, etc.) — a
+/// face's iso footprint shape depends on its tangent plane, which is shared
+/// across the two opposite faces of the axis. Used by the per-slot
+/// `FrameDataVoxelToCanvas::faceDeform_[]` upload in
+/// `system_voxel_to_trixel::buildVoxelFrameData`.
+constexpr mat2 faceDeformationMatrix(FaceId face, float residualYaw) {
+    return faceDeformationMatrix(faceAxis(face), residualYaw);
 }
 
 /// SO(3) generalization of @ref faceDeformationMatrix: the 2x2 matrix that

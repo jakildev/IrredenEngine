@@ -8,9 +8,23 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Axis-only face indices (X / Y / Z axis, polarity-blind). The 3-face
+// helpers use these; the 6-face FaceId constants below are the
+// polarity-aware version used by visible-triplet rasterization (#1278).
 constant int kXFace = 0;
 constant int kYFace = 1;
 constant int kZFace = 2;
+
+// Polarity-aware six-face IDs (mirrors `kFaceXNeg`/... in the GLSL
+// `ir_iso_common.glsl` and `IRMath::FaceId` in C++). Bit positions line
+// up with `IRComponents::VoxelFlags::kFaceOccluded*`:
+//   bit(faceId) = 2 + faceId
+constant int kFaceXNeg = 0;
+constant int kFaceXPos = 1;
+constant int kFaceYNeg = 2;
+constant int kFaceYPos = 3;
+constant int kFaceZNeg = 4;
+constant int kFaceZPos = 5;
 
 inline int2 pos3DtoPos2DIso(int3 position) {
     return int2(
@@ -119,6 +133,35 @@ inline int3 faceOutwardNormalI(int face) {
     return int3(0, 0, -1);
 }
 
+// Six-face polarity-aware outward unit normal. Mirrors
+// `faceOutwardNormal6` in shaders/ir_iso_common.glsl and
+// `IRMath::faceOutwardNormal(FaceId)`. Used by AO + lighting after the
+// per-slot `faceId = visibleFaceIds[slot]` lookup.
+inline float3 faceOutwardNormal6(int faceId) {
+    if (faceId == kFaceXNeg) return float3(-1.0, 0.0, 0.0);
+    if (faceId == kFaceXPos) return float3( 1.0, 0.0, 0.0);
+    if (faceId == kFaceYNeg) return float3(0.0, -1.0, 0.0);
+    if (faceId == kFaceYPos) return float3(0.0,  1.0, 0.0);
+    if (faceId == kFaceZNeg) return float3(0.0, 0.0, -1.0);
+    return float3(0.0, 0.0, 1.0);  // kFaceZPos
+}
+
+inline int3 faceOutwardNormal6I(int faceId) {
+    if (faceId == kFaceXNeg) return int3(-1, 0, 0);
+    if (faceId == kFaceXPos) return int3( 1, 0, 0);
+    if (faceId == kFaceYNeg) return int3(0, -1, 0);
+    if (faceId == kFaceYPos) return int3(0,  1, 0);
+    if (faceId == kFaceZNeg) return int3(0, 0, -1);
+    return int3(0, 0, 1);  // kFaceZPos
+}
+
+// True when face `faceId` is exposed (neighbor cell empty). Encoding
+// mirrors `IRComponents::VoxelFlags::kFaceOccluded*`: bit `(2 + faceId)`
+// set ⟺ neighbor exists ⟺ face occluded ⟺ skip emit.
+inline bool faceIsExposed(uint flagsByte, int faceId) {
+    return ((flagsByte >> uint(2 + faceId)) & 1u) == 0u;
+}
+
 inline int3 faceMicroPositionFixed(
     int face,
     int3 voxelPositionFixed,
@@ -143,6 +186,63 @@ inline int3 faceMicroPositionFixed(
         voxelPositionFixed.x + u,
         voxelPositionFixed.y + v,
         voxelPositionFixed.z
+    );
+}
+
+// Six-face polarity-aware micro position. For POS faces the fixed-axis
+// coordinate sits at `voxelPositionFixed.<axis> + subdivisions`; for NEG
+// faces it sits at `voxelPositionFixed.<axis>` (identical to the 3-face
+// overload above). Mirrors `faceMicroPositionFixed6` in
+// shaders/ir_iso_common.glsl. Used by the subdivided emit path in
+// `c_voxel_to_trixel_stage_{1,2}.metal` after the per-slot world
+// `faceId = visibleFaceIds[slot]` lookup (#1278).
+inline int3 faceMicroPositionFixed6(
+    int faceId,
+    int3 voxelPositionFixed,
+    int u,
+    int v,
+    int subdivisions
+) {
+    if (faceId == kFaceXNeg) {
+        return int3(
+            voxelPositionFixed.x,
+            voxelPositionFixed.y + u,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceXPos) {
+        return int3(
+            voxelPositionFixed.x + subdivisions,
+            voxelPositionFixed.y + u,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceYNeg) {
+        return int3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceYPos) {
+        return int3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y + subdivisions,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceZNeg) {
+        return int3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y + v,
+            voxelPositionFixed.z
+        );
+    }
+    // kFaceZPos
+    return int3(
+        voxelPositionFixed.x + u,
+        voxelPositionFixed.y + v,
+        voxelPositionFixed.z + subdivisions
     );
 }
 
@@ -437,11 +537,19 @@ struct FrameDataVoxelToTrixel {
     // emitDeformedFace super-sampling to the detached path only — see
     // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.
     float isDetachedCanvas;
-    // Per-face deformation matrix packed column-major: .xy = col0, .zw = col1
-    // of IRMath::faceDeformationMatrix(face, residualYaw). Identity when
-    // residualYaw==0 so cardinal-snap stays bit-identical pixel-for-pixel.
-    // Mirrors the GLSL `vec4 faceDeform[3]` in c_voxel_to_trixel_stage_*.glsl.
+    // Per-slot deformation matrix packed column-major: .xy = col0, .zw =
+    // col1 of `IRMath::faceDeformationMatrix(axis(visibleFaceIds[slot]),
+    // residualYaw)`. **Indexed by visible-triplet SLOT (0/1/2)**, not by
+    // axis — at non-zero cardinal the world face whose matrix lives at
+    // slot s changes per `visibleFaceIds[s]`. Identity when residualYaw==0
+    // so cardinal-snap stays bit-identical pixel-for-pixel against pre-#1278
+    // master at cardinal 0. Mirrors the GLSL `vec4 faceDeform[3]`.
     float4 faceDeform[3];
+    // Per-slot world FaceId (0..5) — the three camera-visible faces
+    // resolved on the CPU via `IRMath::visibleFaceTripletCardinal` (#1278).
+    // .w is std140 padding. Mirrors `ivec4 visibleFaceIds` in the GLSL
+    // UBO declarations.
+    int4 visibleFaceIds;
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED
