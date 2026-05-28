@@ -8,7 +8,18 @@ the ECS surface.
 ## Key components
 
 - `C_TriangleCanvasTextures` — owns 3 GPU textures (color / distance /
-  entity-id). **Created in ctor, destroyed in `onDestroy()`.**
+  entity-id). **Created in ctor, destroyed in `onDestroy()`.** The
+  color/distance/entity-id format triple is centralized in
+  `detail::makeCanvas*Texture` factories in its header so other canvas
+  components can't drift from it.
+- `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
+  for smooth camera Z-yaw (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
+  Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
+  **lazily** — only on the main world canvas while the camera sits at a
+  non-cardinal residual yaw, freed at the cardinal (byte-identical fast
+  path). Lifecycle driven by `IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw()`
+  from `VOXEL_TO_TRIXEL_STAGE_1::beginTick`. T1 stands up the storage only —
+  no voxel faces route here yet (T2 / #1309).
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
