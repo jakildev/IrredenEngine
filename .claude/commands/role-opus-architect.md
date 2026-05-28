@@ -298,19 +298,59 @@ When working a `fleet:design-blocked` PR:
    suggested options.
 2. Decide on the architectural questions. You are not coding the
    fix yourself; you are providing direction the worker will execute.
-3. **Update the canonical plan file at `~/.fleet/plans/issue-<N>.md`**
+3. **Capture durable design decisions in `docs/design/`, not just the
+   plan file.** The plan file (`~/.fleet/plans/issue-<N>.md`) is
+   task-scoped and transient — it informs the worker resuming THIS PR
+   and then stops mattering once the task completes. If your decision
+   establishes or changes an **engine-level architectural invariant,
+   model, or contract** that outlives the task (a rasterizer face-
+   selection model, a coordinate-system invariant, a component-
+   ownership rule, a pipeline-ordering contract, a data-layout
+   decision), it belongs in a durable `docs/design/<feature>.md` that
+   is the **source of truth** — otherwise the decision evaporates when
+   the PR merges and a future worker re-derives or contradicts it.
+   Decide which bucket the decision is in:
+
+   - **Task-local** (this PR's approach, no reuse implication beyond
+     this deliverable) → plan file only (step 3a).
+   - **Engine-level architecture** (any future consumer needs to know
+     this; it constrains or enables work beyond this PR) → design doc
+     (step 3b) AND reference it from the plan file + nearest module
+     `CLAUDE.md`.
+
+   When in doubt, ask: "would a worker on a *different* task six weeks
+   from now need this decision to avoid re-deriving it or contradicting
+   it?" If yes, it's a design doc.
+
+   3a. **Plan file** (always): update `~/.fleet/plans/issue-<N>.md`
    (where `<N>` is the issue number referenced in the PR body via
-   `Closes #<N>` — assumes the task was ingested from a backing
-   issue, which is the common case). Add a revision-history entry
-   at the bottom and update the scope / acceptance criteria
-   sections in place. The worker reads the updated plan when it
-   picks the PR back up — open a follow-up PR to land the
-   `issue-<N>.md` change in `.fleet/plans/` if the direction is
-   substantial enough to need a repo-side trail. If the PR has no
-   backing issue (rare — ad-hoc work), skip the plan-file update and
-   put the full direction inline in the PR comment in step 4.
+   `Closes #<N>`). Add a revision-history entry at the bottom and
+   update scope / acceptance criteria in place. The worker reads the
+   updated plan when it picks the PR back up. If the PR has no backing
+   issue (rare), skip the plan-file update and put the full direction
+   inline in the PR comment in step 4. For an engine-level decision,
+   keep the plan file short and **point at the design doc** rather than
+   duplicating it — the doc is canonical, the plan file is the worker's
+   task pointer into it.
+
+   3b. **Design doc** (for engine-level architecture): create or update
+   `docs/design/<feature>.md` as the source of truth for the
+   model/invariant/contract. Match the existing docs' conventions
+   (`docs/design/iso-depth-axis-invariant.md` is a good template:
+   states the invariant, why it holds, what consumes it, migration
+   status, what to verify). Cross-reference it from the nearest module
+   `CLAUDE.md` so the next person opening that subtree finds it. Land
+   the doc in the **same PR as the implementation** (the worker adds
+   it), OR — when the redesign supersedes the PR's existing approach
+   and the model itself needs review independent of the code — open a
+   small **docs-only PR for the design doc first** and have the
+   implementation PR reference it. Prefer the docs-first PR for any
+   redesign that invalidates a worker's in-flight approach: it gives
+   the model a reviewable home before the worker rebuilds against it,
+   and it survives even if the original PR is abandoned.
 4. Post a PR comment with concrete decisions, re-scoped acceptance
-   criteria (if changed), and a pointer to the plan file:
+   criteria (if changed), and a pointer to the design doc (if step 3b
+   applied) and/or the plan file:
    ```
    gh pr comment <N> --body "## Architect direction
 
@@ -318,8 +358,9 @@ When working a `fleet:design-blocked` PR:
 
    <re-scoped acceptance criteria if the original ones changed>
 
-   The canonical plan at \`~/.fleet/plans/issue-<N>.md\` has been
-   updated."
+   Source of truth for this model: \`docs/design/<feature>.md\`
+   (engine-level decisions). Task pointer:
+   \`~/.fleet/plans/issue-<N>.md\` has been updated."
    ```
 5. Swap labels — remove `fleet:design-blocked`, add
    `fleet:design-unblocked`. The worker's next iteration picks

@@ -442,6 +442,29 @@ of the lighting pass. Invoke from a creation via the engine API
 (`IRRender::setDebugOverlay`) or in `shape_debug` via
 `--debug-overlay <none|ao|light_level|shadow>`.
 
+## Voxel face rasterization (which faces a voxel emits)
+
+The voxel-pool raster's face-selection model — which of a voxel's six
+faces get emitted into the canvas at a given camera orientation — is
+specified in
+[`docs/design/voxel-face-rasterization.md`](../../docs/design/voxel-face-rasterization.md).
+The canonical model is **visible-face triplet × exposed-face mask**: the
+three camera-facing faces (a pure function of the camera quaternion,
+recomputed per frame) intersected with the voxel's exposed faces (the
+camera-independent `exposedFaces` mask set at pool build/mutate time). A
+voxel emits a face iff it is both camera-visible and exposed.
+
+This supersedes the historical "always emit the three lower-coordinate
+faces (−X, −Y, −Z)" model, which was correct only at cardinal yaw 0 and
+caused the stripe/checkerboard artifact (#1256) at every other cardinal.
+Treat the six faces as six distinct enum values, **not** three axes each
+with a ± sign — see the design doc for why that distinction is what fixes
+the bug, and how the same model generalizes to per-entity SO(3) (#1272)
+and camera pitch (PR #1265). Read it before touching
+`c_voxel_to_trixel_stage_{1,2}`, `c_voxel_visibility_compact`,
+`c_compute_voxel_ao`, `c_lighting_to_trixel`, or the `C_VoxelPool` face
+metadata.
+
 ## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
 
 A `C_ShapeDescriptor` (SDF, GPU-evaluated) and a `C_VoxelSetNew` carved
