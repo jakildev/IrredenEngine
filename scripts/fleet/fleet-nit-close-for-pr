@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# fleet-nit-close-for-pr — auto-close fleet:nit-of-pr issues when their PR merges.
+#
+# Queries all open issues labeled `fleet:nit-of-pr` in the engine repo, parses
+# the `**Nit of PR:** #N` body line, and closes issues whose PR has merged.
+#
+# Usage (from merger step 1.5 or standalone):
+#   fleet-nit-close-for-pr [--dry-run] [--repo <owner/repo>]
+#
+# Options:
+#   --dry-run    Print what would be closed without actually closing.
+#   --repo       Target repo slug (default: jakildev/IrredenEngine).
+#
+# Exit codes:
+#   0  Ran successfully (even if nothing was closed).
+#   1  gh CLI error or unexpected failure.
+#
+# Emits one line per closed issue to stdout so the caller (e.g. the merger)
+# can append it to the audit log.
+#
+# Source of truth: scripts/fleet/fleet-nit-close-for-pr in the engine repo.
+# Installed to ~/bin/fleet-nit-close-for-pr by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+REPO="jakildev/IrredenEngine"
+DRY_RUN=0
+MAX_CLOSURES=10
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run) DRY_RUN=1 ;;
+        --repo)    shift; REPO="$1" ;;
+        --) shift; break ;;
+        -*) echo "fleet-nit-close-for-pr: unknown option '$1'" >&2; exit 1 ;;
+        *) break ;;
+    esac
+    shift
+done
+
+# Fetch all open fleet:nit-of-pr issues. Returns a JSON array.
+issues_json=$(gh issue list \
+    --repo "$REPO" \
+    --state open \
+    --label "fleet:nit-of-pr" \
+    --limit "$((MAX_CLOSURES * 3))" \
+    --json number,body 2>/dev/null) || {
+    echo "fleet-nit-close-for-pr: gh issue list failed (label may not exist yet)" >&2
+    exit 0
+}
+
+if [[ -z "$issues_json" ]] || [[ "$issues_json" == "[]" ]]; then
+    exit 0
+fi
+
+# Process each issue via Python — avoids repeated subshell spawns and keeps
+# the JSON parsing straightforward. Pass JSON via env var so double-quotes in
+# the payload can't break the inline heredoc string literal.
+ISSUES_JSON="$issues_json" python3 - "$REPO" "$DRY_RUN" "$MAX_CLOSURES" <<PYEOF
+import json, os, re, subprocess, sys
+
+issues_json = os.environ["ISSUES_JSON"]
+repo = sys.argv[1]
+dry_run = sys.argv[2] == "1"
+max_closures = int(sys.argv[3])
+
+issues = json.loads(issues_json)
+closed = 0
+
+for issue in issues:
+    if closed >= max_closures:
+        break
+    issue_num = str(issue["number"])
+    body = issue.get("body") or ""
+
+    # Parse **Nit of PR:** #N
+    m = re.search(r'^\*\*Nit of PR:\*\*\s*#(\d+)', body, re.MULTILINE)
+    if not m:
+        continue
+    pr_num = m.group(1)
+
+    # Check PR state
+    r = subprocess.run(
+        ["gh", "pr", "view", pr_num, "--repo", repo, "--json", "state", "--jq", ".state"],
+        capture_output=True, text=True, timeout=15
+    )
+    pr_state = r.stdout.strip() if r.returncode == 0 else ""
+    if pr_state != "MERGED":
+        continue
+
+    if dry_run:
+        print(f"dry-run: would close issue #{issue_num} — addressing PR #{pr_num} merged")
+        continue
+
+    # Comment and close
+    subprocess.run(
+        ["gh", "issue", "comment", issue_num, "--repo", repo,
+         "--body", f"Auto-closed: addressed by merged PR #{pr_num} (per `fleet:nit-of-pr` → PR cross-reference)."],
+        check=True, timeout=15
+    )
+    subprocess.run(
+        ["gh", "issue", "close", issue_num, "--repo", repo],
+        check=True, timeout=15
+    )
+    print(f"nit-close: issue #{issue_num} closed — addressing PR #{pr_num} merged")
+    closed += 1
+PYEOF

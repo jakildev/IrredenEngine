@@ -226,6 +226,49 @@ conditions for game-repo and non-render PRs.
 
 ---
 
+## Nit-tracking issues (`fleet:nit-of-pr`)
+
+When a nit is bigger than a single inline entry in the review body,
+crosses scope, or you want it tracked separately, file a GitHub issue
+instead of embedding it in the `### Nits` section. Use this convention
+so the merger can auto-close it when the addressing PR merges:
+
+1. **Label:** `fleet:nit-of-pr`
+2. **Body must include** exactly one line:
+   ```
+   **Nit of PR:** #<addressing-pr-N>
+   ```
+   This is the durable cross-reference the merger's auto-close step
+   reads. Both the label (cheap projection signal) and the body line
+   (audit trail) are required.
+
+```bash
+gh issue create --repo jakildev/IrredenEngine \
+  --label "fleet:nit-of-pr" \
+  --title "<nit title>" \
+  --body "**Nit of PR:** #<N>
+
+<Description of the nit, file:line references, suggested fix.>"
+```
+
+**When to use:**
+- The nit requires multi-line explanation or spans multiple files
+- You want it discoverable in the issue list (e.g. for the human to
+  prioritize independently)
+- The nit is optional-but-noted and too large for the review body
+
+**When NOT to use:**
+- Simple one-line nits (`path:line — <nit>`) belong inline in the
+  `### Nits` section; no need to file a separate issue
+- Anything that must land before merge → `fleet:needs-fix`, not a nit
+
+**If the worker did not address the nit** (it's still genuinely
+open after the PR merges), remove the `**Nit of PR:** #<N>` line
+from the body so the merger's auto-close step skips it. The nit
+issue then lives on as a standalone task.
+
+---
+
 ## Posting the review body
 
 Both reviewers post the review body with `gh pr review --body-file`
