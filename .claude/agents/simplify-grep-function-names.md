@@ -74,4 +74,5 @@ Empty output if every new function name is unique in the tree.
 - **No preamble.** Findings list only.
 - **Cap output at 20 findings.** If the diff adds dozens of new functions, prioritize `high` > `medium` > `deferred`.
 - **Don't grep the file the function was added in** — every name will trivially match its own definition.
+- **A brand-new untracked file has no `git diff` hunks at all; treat its entire contents as added** and scan it for function names before concluding there are zero new definitions.
 - **Skip if the diff has zero added function definitions** — output a single line `no new function names`.

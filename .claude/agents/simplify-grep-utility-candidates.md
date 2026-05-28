@@ -69,5 +69,6 @@ Empty output if no candidates surface.
 - **Read-only.** Do not edit files.
 - **No preamble.** Findings list only.
 - **Cap output at 15 findings.**
+- **A brand-new untracked file has no `git diff` hunks at all; treat its entire contents as added** and scan it for utility candidates.
 - **Don't flag functions that are obviously creation-specific** — e.g. ones that take a `World*` or `IREntity` parameter and call ECS APIs internally.
 - **Don't flag overrides** — if the new function is a virtual method override, it has to live where the interface puts it.
