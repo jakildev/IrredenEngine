@@ -986,10 +986,11 @@ release_dispatcher_lock() {
 }
 
 rearm_periodic_meta_triggers() {
-    # Scout-watchdog safety net only. With merger's projection now
-    # tightened (only durable signals, not the merger's own toggled
-    # labels), the scout-driven trigger path is sufficient — the
-    # merger only fires when actionable state actually changes.
+    # Scout-watchdog safety net + periodic worker safety rearm.
+    # Scout-watchdog half: with merger's projection now tightened
+    # (only durable signals, not the merger's own toggled labels),
+    # the scout-driven trigger path is sufficient — the merger only
+    # fires when actionable state actually changes.
     #
     # The earlier `maybe_arm("merger", merger_actionable)` periodic
     # re-arm fired every 5 min whenever any approved/blocked PR
@@ -1039,6 +1040,82 @@ if scout_unhealthy():
         trig.touch()
         print("scout-watchdog: re-arming merger (state.json stale)")
 PY
+
+    # Worker safety rearm. Scout's projection-diff can miss transitions
+    # (a manually-cleared claim label, a claim-then-bail iteration that
+    # leaves stale labels hiding the next-tick transition, etc.) and
+    # strand the queue with unblocked free work and no trigger. When
+    # the role's projection has at least one actionable task AND no
+    # worker for that role is active AND no trigger is already pending,
+    # re-arm the role.
+    #
+    # Stacking compatibility: stack-claimed tasks (via
+    # `--stackable-on`) show `owner != "free"` once the claim lands,
+    # so they don't pass the predicate. Tasks with a
+    # `stackable_blocker_pr` enrichment but still `owner == "free"`
+    # DO count — the worker will see them and decide whether to
+    # claim plain or as a stack.
+    #
+    # Cost: a worker iteration is ~$0.30. The predicate (free unblocked
+    # task AND zero active worker AND no existing trigger) means it
+    # only fires when the fleet has work it forgot to dispatch — work
+    # the fleet should be doing anyway. No idle-fleet token burn.
+    local _role _active
+    for _role in "opus-worker" "sonnet-author"; do
+        # Skip if a trigger is already pending — scout's normal path
+        # is doing its job and the dispatcher will fire on next tick.
+        if [[ -f "$TRIGGERS_DIR/$_role" ]]; then
+            continue
+        fi
+        # Skip if any worker for this role is in-flight.
+        _active=$(count_active_for_role "$_role")
+        if [[ "$_active" -gt 0 ]]; then
+            continue
+        fi
+        # Read the role's projection and check the predicate.
+        TRIGGERS_DIR="$TRIGGERS_DIR" \
+        STATE_DIR="$STATE_DIR" \
+        ROLE="$_role" \
+        python3 - <<'PY' || true
+import json
+import os
+import pathlib
+
+trig_dir = pathlib.Path(os.environ["TRIGGERS_DIR"])
+state_dir = pathlib.Path(os.environ["STATE_DIR"])
+role = os.environ["ROLE"]
+
+ROLE_MODEL = {"opus-worker": "opus", "sonnet-author": "sonnet"}
+model = ROLE_MODEL.get(role)
+if not model:
+    raise SystemExit(0)
+
+proj_path = state_dir / "projections" / f"{role}.json"
+if not proj_path.is_file():
+    raise SystemExit(0)
+try:
+    proj = json.loads(proj_path.read_text())
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(0)
+
+# Predicate: at least one task that is unowned, unblocked, and matches
+# this role's model tier. The projection's `blocked_by` is rendered as
+# "(none)" (literal) when there are no blockers.
+def is_actionable(task):
+    if task.get("owner") != "free":
+        return False
+    blocked = (task.get("blocked_by") or "").strip()
+    if blocked and blocked != "(none)":
+        return False
+    return task.get("model") == model
+
+if any(is_actionable(t) for t in (proj.get("tasks_open") or [])):
+    trig = trig_dir / role
+    if not trig.exists():
+        trig.touch()
+        print(f"worker-rearm: re-armed {role} (projection has actionable free work, no active iteration)")
+PY
+    done
 }
 
 main() {
@@ -1073,9 +1150,9 @@ main() {
 
         cleanup_stale_dispatches
 
-        # Periodic safety net for chain-broken meta-roles (queue-manager,
-        # merger). Runs first so any rearm-written triggers are picked
-        # up by the normal dispatch_role pass on the same tick.
+        # Scout-watchdog safety net + periodic worker safety rearm.
+        # Runs first so any rearm-written triggers are picked up by
+        # the normal dispatch_role pass on the same tick.
         if (( tick_count % rearm_ticks == 0 )); then
             rearm_periodic_meta_triggers
         fi
