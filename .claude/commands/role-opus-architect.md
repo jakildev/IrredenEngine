@@ -211,6 +211,18 @@ See [docs/agents/TASK-FILING.md § Multi-issue stacks](../../docs/agents/TASK-FI
 for the rules (one `#N` per blocker line; issue-number blockers only;
 gate docs-PR dependencies by withholding `human:approved`).
 
+**Fleet self-config changes are human-only — don't file them for
+autonomous pickup.** Edits to the role/command/agent configs the fleet
+loads (`.claude/commands/role-*.md`, `.claude/agents/*`) can't be applied
+by a queue worker: the auto-mode classifier gates editing a role's own
+config from an issue-queue task as self-modification (it needs explicit
+human authorization for the specific change). A worker that claims such a
+task hits the wall deterministically and the dispatcher keeps re-feeding it,
+burning iterations on a no-op (see #1326). So for a self-config change,
+either apply it yourself in this interactive session (you have the human in
+the loop) or write it up for the human to apply directly — do NOT file it as
+a `human:approved` fleet task.
+
 ## Planning issues
 
 The **opus worker** autonomously handles `fleet:needs-plan` issues as a
