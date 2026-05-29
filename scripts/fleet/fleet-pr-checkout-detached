@@ -145,8 +145,15 @@ fi
 # the right one for both layouts). Using `--git-dir` avoids needing
 # to special-case the worktree case.
 git_dir=$(git rev-parse --git-dir)
-printf '%s\n' "$head_ref" >"$git_dir/fleet-amend-ref"
+# Record the checkout-time base SHA next to the head ref (line 2).
+# fleet-pr-amend-push leases its force-push against THIS sha
+# (--force-with-lease=<ref>:<sha>), so a concurrent push that moved
+# origin/<head_ref> after this checkout is REJECTED, not clobbered. A bare
+# --force-with-lease leases against the remote-tracking ref, which any
+# intervening `git fetch` silently refreshes to the other agent's commit —
+# defeating the protection (observed dual-worker clobber on #1310, 2026-05-29).
+base_sha=$(git rev-parse HEAD)
+printf '%s\n%s\n' "$head_ref" "$base_sha" >"$git_dir/fleet-amend-ref"
 
-printf 'fleet-pr-checkout-detached: PR #%s on detached HEAD at origin/%s\n' "$pr_number" "$head_ref"
-printf '  Push the amendment with: git push --force-with-lease origin HEAD:%s\n' "$head_ref"
-printf '  Or use:                   fleet-pr-amend-push\n'
+printf 'fleet-pr-checkout-detached: PR #%s on detached HEAD at origin/%s (base %s)\n' "$pr_number" "$head_ref" "${base_sha:0:8}"
+printf '  Push the amendment with: fleet-pr-amend-push  (lease pinned to base %s)\n' "${base_sha:0:8}"
