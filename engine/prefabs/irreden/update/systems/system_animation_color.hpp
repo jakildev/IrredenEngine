@@ -211,14 +211,12 @@ template <> struct System<ANIMATION_COLOR> {
     }
 
     static SystemId create() {
-        return registerSystem<
-            ANIMATION_COLOR,
-            const C_ActionAnimation,
-            C_AnimColorState,
-            C_VoxelSetNew>("AnimationColor");
+        return registerSystem<ANIMATION_COLOR, C_ActionAnimation, C_AnimColorState, C_VoxelSetNew>(
+            "AnimationColor"
+        );
     }
 
-private:
+  private:
     // Per-tick caches replacing the prior function-local statics. Live
     // on the System<N> instance so the engine owns the lifetime and
     // multi-instance use cannot cross-talk. `endTick` clears both so
