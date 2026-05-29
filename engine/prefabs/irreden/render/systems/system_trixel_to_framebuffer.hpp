@@ -128,18 +128,26 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 
-    // NOTE (T3 / #1310, design-blocked): this is the composite SCAFFOLD. The
-    // three-pass depth composite, the perAxisSize/mainSize scale, and the
-    // byte-identical cardinal fast path all work, but the per-canvas
-    // trixel→framebuffer PARITY is unresolved — T2 (#1309) bakes the continuous
+    // NOTE (T3 / #1310, forward-scatter rework pending): this is the composite
+    // SCAFFOLD. The three-pass depth composite, the perAxisSize/mainSize scale,
+    // and the byte-identical cardinal fast path all work, but the per-canvas
+    // trixel→framebuffer PARITY is wrong — T2 (#1309) bakes the continuous
     // reposition (roundHalfUp(pos3DtoPos2DIsoYawed)) into each canvas, so trixel
     // centers land on mixed-parity iso cells, and the single-global-parity
     // de-tiling in f_trixel_to_framebuffer.glsl
     // (trixelFramebufferSamplePosition + trixelOriginModifier) cannot de-tile
     // them → the #1256 stripe/checkerboard artifact at every inter-cardinal yaw.
-    // Resolving it is an architectural call (see the PR's NEEDS-DESIGN comment):
-    // restructure to basis-at-expansion (design doc) vs even-parity-snapped
-    // reposition vs basis-aware de-tiling. Do not treat this as finished.
+    //
+    // The architect RESOLVED this (PR #1336; docs/design/
+    // per-axis-trixel-canvas-rotation.md §"T3 addendum"): the decision is
+    // forward-scatter (Option 4), NOT any gather-based option. This gather
+    // scaffold is SUPERSEDED — do not treat it as finished. The rework keeps
+    // T2's per-voxel reposition but, on the non-cardinal path only, replaces
+    // Stage-1 storage with a face-local in-plane-coord G-buffer ({iso-depth,
+    // color, entityId}, atomicMin winner) and replaces this drawPerAxisComposite
+    // + the gather de-tiling with a forward-scatter of each occupied cell's true
+    // deformed face footprint, depth-tested into the framebuffer (GL + Metal).
+    // The cardinal residualYaw==0 fast path stays byte-identical.
     //
     // Composite the three per-axis trixel canvases into the framebuffer by depth
     // (T3 / #1310). Reuses the single-canvas trixel→framebuffer shader unchanged
