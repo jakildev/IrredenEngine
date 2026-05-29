@@ -466,11 +466,15 @@ and camera pitch (PR #1265). Read it before touching
 metadata.
 
 **Smooth camera yaw between cardinals** (interpolating voxel-center
-positions, not just deforming face shapes) is a separate, not-yet-implemented
-architecture: route each visible face axis to its own deformed trixel canvas
-and composite the three by depth at the framebuffer. Bounded by a minimum
-on-screen trixel size; parity in the per-canvas trixel→framebuffer conversion
-is the #1 correctness risk. Spec:
+positions, not just deforming face shapes) is a separate architecture, now
+**in implementation** (T1 #1308 / T2 #1309 merged; T3 #1310 in flight): route
+each visible face axis to its own deformed trixel canvas and composite the
+three by depth at the framebuffer. Bounded by a minimum on-screen trixel size.
+The per-canvas trixel→framebuffer **parity** was the #1 correctness risk; it is
+resolved by a **forward-scatter** composite (Option 4) — each non-empty canvas
+cell is scattered to its true deformed footprint with no gather inverse, so the
+single-global-parity stripe class (#1256) cannot occur. Spec + the rejected
+gather/inverse alternatives:
 [`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
 
 ## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity

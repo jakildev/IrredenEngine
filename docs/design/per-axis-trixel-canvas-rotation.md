@@ -1,11 +1,102 @@
 # Smooth camera Z-yaw via per-axis trixel canvases
 
-Status: **design, not yet implemented.** This doc is the architecture for
-*smooth* continuous world-camera Z-yaw — rotation that visually interpolates
-between the 90° cardinals instead of snapping. Read
+Status: **in implementation.** T1 (#1308) and T2 (#1309) have merged; T3
+(#1310) is in flight. The framebuffer composite is decided: **Option 4 —
+forward-scatter** (see "## Implementation decision" below). This doc is the
+architecture for *smooth* continuous world-camera Z-yaw — rotation that
+visually interpolates between the 90° cardinals instead of snapping. Read
 [`voxel-face-rasterization.md`](voxel-face-rasterization.md) (which faces a
 voxel emits) and [`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)
 first; this builds directly on both.
+
+## Implementation decision (T3 / #1310) — forward-scatter composite
+
+During T3 the empirical sweep (`fleet-run IRShapeDebug --spin-yaw
+--auto-screenshot`) confirmed the design doc's flagged "#1 risk": the
+per-canvas trixel→framebuffer **parity**. T2 correctly bakes the continuous
+center reposition (`roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, visualYaw))`)
+per-voxel at write time, so trixel centers land on **mixed-parity** iso cells.
+The original stage-2 plan (a gather expansion with the single-global-parity
+de-tiling `trixelFramebufferSamplePosition`) cannot de-tile mixed-parity
+content → the #1256 stripe/checkerboard at every inter-cardinal yaw. Three
+candidate fixes were costed; the decision is **Option 4**:
+
+**Keep T2's per-voxel reposition (it is correct and necessary). Change only
+the trixel→framebuffer expansion from a parity-broken _gather_ to a _forward
+scatter_:**
+
+1. **Per-axis canvas stays at trixel resolution** (tracks zoom — coarse at
+   high zoom; NOT framebuffer resolution). It is a per-axis visible-face
+   G-buffer `{ iso-depth, color, entityId }` per cell. **Recommended store:
+   face-local in-plane integer coords** (X-canvas → (y,z), Y → (x,z),
+   Z → (x,y)) so the grid is a plain regular lattice and parity is a non-issue
+   by construction. (Iso-position indexing also works with scatter; face-local
+   is the cleaner store.)
+2. **Stage 1 (write):** each exposed visible face (visible-triplet × exposed
+   mask) `atomicMin`s its shared world-space `pos3DtoDistance` into its axis
+   canvas cell; store the depth winner's color + entityId. **Voxel-vs-voxel
+   occlusion resolves here, at trixel/face granularity, once** — same order as
+   today, preserving the trixel-level occlusion win.
+3. **Stage 2 (composite):** forward-scatter each non-empty canvas cell as its
+   **true deformed face footprint** — a quad whose 4 corners are the projected
+   cube-face corners `P(θ)·(face corner)` (px recovered from stored depth:
+   `px = depth − inPlaneA − inPlaneB + 0.5`). Rasterize with the shared
+   framebuffer depth buffer (GL_LESS); write color + winning entity-id where it
+   wins. The per-pixel depth test composites only the **3 canvases**, not a
+   per-voxel competition. **Drop `trixelFramebufferSamplePosition` on this path
+   → no single-global-parity assumption → the #1256 stripe class cannot
+   occur.**
+4. **Cardinal fast path unchanged:** at `residualYaw == 0` the per-axis
+   canvases release and the existing single-canvas diamond path runs
+   **byte-identical**. Only `residualYaw != 0` takes the scatter path.
+
+The scatter **mechanism** (instanced quads over the trixel grid vs. a compute
+`imageStore` splat vs. a forward primitive over a full-screen pass) is an
+implementation choice — pick and **measure**. The firm contract is: forward,
+true deformed footprint, depth competition at trixel granularity, no parity
+inverse.
+
+### Rejected alternatives
+
+- **Option 1 — basis-at-expansion (write cardinal even-parity content, apply
+  the per-canvas affine + reposition at the trixel→framebuffer pass).
+  Geometrically unsound.** A single uniform 2×2 affine of the *collapsed*
+  cardinal iso image cannot reproduce true smooth yaw: residual yaw is a 3D
+  rotation and the iso projection is rank-deficient (depth collapsed), so the
+  best uniform affine fixing a canvas's in-plane axes **mis-places the depth
+  (z) axis** by `0.52 / 1.04 / 1.53` iso-px per z-step at φ = 15° / 30° / 45°
+  (a one-voxel-tall wall shears visibly wrong). Algebraically
+  `D_Z = R(−φ) ⟹ D_Z·(0,2) = (2sinφ, 2cosφ) ≠ (0,2)`. The continuous center
+  reposition must stay **per-voxel at write time** — exactly what merged T2
+  does. T2's reposition is *not* the bug.
+- **Option 3 — basis-aware inverse de-tiling (keep mixed-parity content; make
+  `f_trixel_to_framebuffer` de-tile per-canvas via `D`/its inverse). Rejected,
+  same root cause.** The de-tiling is a *gather* inverse with one global parity
+  bit; with per-voxel continuous centers the screen position carries a
+  depth-dependent parallax term (`px·dx(θ)`) no uniform-affine inverse can
+  undo.
+- **Option 2 — even-parity-snapped reposition. Documented fallback.** Snap the
+  per-axis reposition to the nearest even-parity iso cell, keep the existing
+  diamond de-tiling. Parity-correct, smallest change, but centers step at
+  √2-iso-px (visible stepping at high zoom) — fails the strict "continuous"
+  goal. Ship Option 4; keep Option 2 as the escape hatch if rotation-time
+  scatter cost proves unacceptable, and note the tradeoff if taken.
+
+### Cost model (perf constraint — must hold)
+
+- Depth winning (voxel occlusion) stays at **trixel/face granularity** in
+  stage 1 (`atomicMin`).
+- The framebuffer pass is **O(screen pixels)**, a bounded 3-canvas composite —
+  not a per-voxel per-pixel competition.
+- Extra cost (deformed-footprint fill + 3-canvas overhead) is paid **only while
+  rotating**; zero extra at a cardinal.
+- **Intrinsic caveat:** at non-cardinal yaw the occlusion axis
+  `R_z(θ)·(1,1,1)` is not a lattice direction, so perfectly-stacked voxels no
+  longer collapse to one cell — a bounded sliver of occluded faces survives
+  stage-1 culling to the framebuffer depth test. Bounded by **visible surface
+  area, not volume** (exposed mask), rotation-only. Acceptable; Option 2
+  shrinks it further. Measure cardinal vs. mid-rotation frame time at high zoom
+  and run `optimize` on the touched stages.
 
 ## Problem
 
@@ -113,12 +204,20 @@ deformed geometry.
    canvas's geometry; write **shared `pos3DtoDistance` + color**. Voxel centers
    are **continuously repositioned** (`pos3DtoPos2DIsoYawed`) — now safe,
    because within a canvas the deform is one consistent affine.
-2. **Stage 2 — three trixel→framebuffer passes.** Each canvas expands its
-   trixels into framebuffer pixels using **its own basis**; each `atomicMin`s
-   its distance into the **shared framebuffer depth buffer** and writes color
-   where it wins.
-3. **Stage 3 — winner resolution.** Nearest distance across the three canvases
-   wins per framebuffer pixel (shared metric → valid).
+2. **Stage 2 — forward-scatter composite (superseded by the Option 4 decision
+   above).** Each non-empty canvas cell is **forward-scattered** as its true
+   deformed face footprint (a quad of projected cube-face corners
+   `P(θ)·corner`), depth-tested into the **shared framebuffer depth buffer**;
+   color + winning entity-id are written where it wins. This replaces the
+   original gather wording ("each canvas expands its trixels … using its own
+   basis") — a gather inverse assumes a single global parity and stripes on
+   mixed-parity content (#1256). Forward scatter writes each cell to its exact
+   footprint, so there is **no parity inverse** and the stripe class cannot
+   occur. See "## Implementation decision" for the firm contract.
+3. **Stage 3 — winner resolution.** Nearest depth across the three canvases
+   wins per framebuffer pixel (shared world-space `pos3DtoDistance` metric →
+   valid). With forward scatter this is the per-pixel framebuffer depth test
+   over the 3 scattered canvases — not a per-voxel competition.
 4. **Fast path.** At `residualYaw == 0` the three canvases collapse to today's
    single uniform grid → byte-identical to current behavior, zero extra cost
    when not rotating.
@@ -159,29 +258,34 @@ sign flip, `cardinalLowerCornerShift`); the new requirement is that each
 axis-canvas's **face identity swaps at the zero-width instant**, validated
 under continuous rotation (#1271 `--spin-yaw`).
 
-## Parity in the trixel→framebuffer conversion (the #1 implementation risk)
+## Parity in the trixel→framebuffer conversion (resolved by forward scatter)
 
-The trixel raster lives on the **even-parity iso sublattice**
-(`(iso.x + iso.y) & 1 == 0` — the same set integer voxels project to; see the
-SDF/voxel parity note in `engine/render/CLAUDE.md`). Get parity wrong and you
-get the #1256 checkerboard / lattice artifact, gaps, or double-writes at the
-framebuffer.
+This was flagged as the **#1 implementation risk**, and T3's empirical sweep
+confirmed it: the single-canvas trixel raster lives on the **even-parity iso
+sublattice** (`(iso.x + iso.y) & 1 == 0` — the set integer voxels project to;
+see the SDF/voxel parity note in `engine/render/CLAUDE.md`), and the gather
+de-tiling (`trixelFramebufferSamplePosition`) assumes a single global parity.
+T2's per-voxel continuous reposition lands centers on **mixed-parity** cells,
+which the gather cannot de-tile → the #1256 checkerboard / lattice artifact.
 
-Each per-axis canvas applies its **own** deformed basis in the
-trixel→framebuffer expansion, so the parity / interlock math must be
-**re-derived per canvas** so that:
+**The Option 4 forward-scatter resolves parity _by construction_.** Each
+non-empty canvas cell is scattered forward to its exact deformed footprint, so:
 
-- adjacent trixels within a canvas still tile gap-free **and** never
-  double-write the same framebuffer pixel after the affine basis is applied;
-- CPU and GPU classify half-integer positions identically (use `roundHalfUp`,
-  never `glm::round` — the CPU/GPU consistency rule in `.claude/rules/cpp-math.md`);
-- the parity rule is consistent with the per-canvas basis at *every* yaw in the
-  ±45° bracket, not just at the cardinal.
+- there is **no gather inverse** and therefore **no single-global-parity
+  assumption** — the stripe/checkerboard/double-write class cannot occur,
+  regardless of where the per-voxel reposition lands a center;
+- with the recommended **face-local in-plane store** (X→(y,z), Y→(x,z),
+  Z→(x,y)) the per-axis grid is a plain regular lattice, so parity is a
+  non-issue in the store as well as the composite;
+- CPU and GPU must still classify half-integer positions identically — use
+  `roundHalfUp`, never `glm::round` (the CPU/GPU consistency rule in
+  `.claude/rules/cpp-math.md`) — for the depth-px recovery
+  (`px = depth − inPlaneA − inPlaneB + 0.5`) and footprint-corner projection.
 
-**Every implementation ticket below carries parity validation as a hard
-acceptance gate** — continuous-rotation sweeps + native-resolution ROI crops
-inspected for checkerboard / lattice / seam artifacts (`render-debug-loop`,
-`tools/img_diff`).
+Parity is now a **regression check**, not an open design risk: still validate
+with continuous-rotation sweeps + native-resolution ROI crops inspected for
+checkerboard / lattice / seam artifacts (`render-debug-loop`, `tools/img_diff`)
+so a future change can't silently reintroduce a gather inverse.
 
 ## Relationship to per-entity SO(3) (#1272)
 
@@ -222,16 +326,20 @@ parity correctness.
 - **T2 — Stage-1 routing + per-canvas deformed geometry** + continuous center
   reposition (`pos3DtoPos2DIsoYawed`); write shared `pos3DtoDistance` + color
   per axis-canvas.
-- **T3 — three trixel→framebuffer passes + framebuffer depth composite** +
-  face-jump/rebracket cleanliness; **parity re-derivation + validation** is the
-  core of this ticket.
-- **T4 — AO / lighting on the resolved composite** (winning face-id carried
-  through; no double-rotation drift).
+- **T3 — forward-scatter trixel→framebuffer composite** (Option 4) +
+  face-jump/rebracket cleanliness; the scatter (no parity inverse) is the core
+  of this ticket. Also widen the cull to the rotated √2 footprint (off-center
+  geometry is otherwise culled from the cardinal-snapped viewport — the
+  "most objects missing during rotation" symptom).
+- **T4 — AO / lighting on the resolved composite** (winning face-id / entity-id
+  carried through the scatter; no double-rotation drift).
 
 ## What to verify when implementing
 
 1. **Parity.** No checkerboard / lattice / seam / double-write per canvas at
    *every* yaw in the bracket — native ROI crops, not downscaled full-frames.
+   Satisfied **by construction** under forward scatter (no gather inverse);
+   the sweep is now a regression check.
 2. **Smoothness.** Centers swing continuously by distance from the rotation
    center; no 90° layout snap. `--spin-yaw` continuous sweep.
 3. **Rebracket.** Face-jump is invisible (swap at zero width); no pop at ±45°.
@@ -240,4 +348,14 @@ parity correctness.
 5. **Bounded memory.** Textures sized once to the worst case; no per-frame
    reallocation; no unbounded growth as a face goes edge-on.
 6. **Depth composite.** Correct occlusion across the three canvases under
-   rotation (shared metric).
+   rotation (shared world-space `pos3DtoDistance` metric).
+7. **Perf gate.** Depth competition stays at trixel granularity (stage-1
+   `atomicMin`); cardinal vs. mid-rotation frame time at high zoom differs only
+   by the bounded fill/composite overhead, not a per-pixel-per-voxel blowup.
+   Run `optimize` on the touched stages.
+8. **Arbitrary topology.** Disconnected clusters, holes, lone voxels, and
+   non-convex shapes all render correctly — no solidity assumption. Add a
+   non-solid arrangement to the verification sweep.
+9. **Cull coverage.** Off-center geometry that the rotated √2 footprint reaches
+   is not culled from the cardinal-snapped viewport (all on-screen objects
+   composite during rotation, not just the screen-center ones).
