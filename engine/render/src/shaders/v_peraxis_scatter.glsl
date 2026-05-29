@@ -18,6 +18,10 @@ layout (location = 0) in vec2 aPos;
 layout (binding = 0) uniform sampler2D  triangleColors;
 layout (binding = 1) uniform isampler2D triangleDistances;
 
+// binding = 1 is intentionally reused below for the GlobalConstants UBO: in
+// GL 4.5 sampler texture-image units and uniform-buffer binding points are
+// separate namespaces, so the shared index does not collide (same pattern as
+// f_trixel_to_framebuffer.glsl).
 layout(std140, binding = 1) uniform GlobalConstants {
     int kMinTriangleDistance;
     int kMaxTriangleDistance;

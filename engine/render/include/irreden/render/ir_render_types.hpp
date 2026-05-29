@@ -108,6 +108,19 @@ struct FrameDataTrixelToFramebuffer {
     int scatterPad_ = 0;
     ivec4 visibleFaceIds_{0, 0, 0, 0};
 };
+static_assert(
+    offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
+    "FrameDataTrixelToFramebuffer::visibleFaceIds_ must land at offset 128 "
+    "(distanceOffset_ ends at 112 → perAxisBase_ 112 / visualYaw_ 120 / "
+    "scatterPad_ 124, then std140 ivec4 alignment rounds to 128)"
+);
+static_assert(
+    sizeof(FrameDataTrixelToFramebuffer) == 144,
+    "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
+    "T3 scatter shaders (v_/f_peraxis_scatter) read the appended perAxisBase_ / "
+    "visualYaw_ / scatterPad_ / visibleFaceIds_ fields; a silent reorder or "
+    "resize would corrupt the scatter UBO with no compile-time diagnostic"
+);
 
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
