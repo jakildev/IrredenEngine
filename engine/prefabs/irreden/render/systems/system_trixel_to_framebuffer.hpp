@@ -7,6 +7,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_window.hpp>
 
+#include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
@@ -31,6 +32,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     Buffer *frameDataBuf_ = nullptr;
     Buffer *hoveredIdBuf_ = nullptr;
     ShaderProgram *program_ = nullptr;
+    // Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Replaces the
+    // single-canvas gather draw on the main canvas while rotating; see
+    // drawPerAxisScatter.
+    ShaderProgram *scatterProgram_ = nullptr;
     VAO *quadVao_ = nullptr;
 
     // Smooth camera Z-yaw (T3 / #1310). Re-resolved every frame in beginTick,
@@ -98,22 +103,40 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
 
         // Smooth camera Z-yaw composite (T3 / #1310). On the main world canvas
-        // while rotating, replace the single cardinal-snapped draw with a
-        // three-pass depth composite of the per-axis (X/Y/Z) canvases T2 (#1309)
-        // populated. Each pass writes the shared world-space `pos3DtoDistance`
-        // into the framebuffer depth buffer; the GL_LESS depth test (enabled on
-        // framebuffer bind) resolves the nearest face per pixel — that is the
-        // composite. The per-axis draw is REPLACE-not-add: the main canvas's
-        // cardinal-snapped voxels sit at the same world depth as the smooth
-        // copies, so drawing both would let depth ties ghost the snapped layer
-        // through. Lighting / AO on the resolved composite is T4 (#1311); during
-        // rotation the composite shows raw voxel color.
+        // while rotating, replace the single cardinal-snapped gather draw with
+        // the forward-scatter composite of the per-axis (X/Y/Z) canvases T2
+        // (#1309) populated. Each non-empty canvas cell is scattered as its true
+        // deformed face quad into the shared framebuffer depth buffer; the
+        // GL_LESS depth test (enabled on framebuffer bind) resolves the nearest
+        // face per pixel — that is the composite. The scatter is REPLACE-not-add:
+        // the main canvas's cardinal-snapped single-canvas voxels sit at the same
+        // world depth as the smooth copies, so drawing both would let depth ties
+        // ghost the snapped layer through. Lighting / AO on the resolved
+        // composite is T4 (#1311); during rotation the composite shows raw voxel
+        // color.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
-            drawPerAxisComposite(
-                frameData, *perAxisCanvases_, triangleCanvasTextures.size_, framebufferResolution
+            drawPerAxisScatter(
+                frameData,
+                *perAxisCanvases_,
+                triangleCanvasTextures.size_,
+                framebufferResolution
             );
-            return;
+            // Fall through (no early return) to the single-canvas gather below:
+            // during rotation the main canvas holds only SDF / text / overlay
+            // content (its voxel pass is skipped in VOXEL_TO_TRIXEL_STAGE_1), so
+            // the gather composites that content by depth alongside the smooth
+            // voxels with no double-draw. SDF stays cardinal-snapped during
+            // rotation — splitting SDF into the per-axis canvases is the
+            // documented follow-up (design doc §Blast radius). Restore the
+            // main-canvas model-projection the scatter overwrote with its
+            // per-axis zoomEff matrix.
+            frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
+                                             calcModelMatrix(
+                                                 framebufferResolution,
+                                                 frameData.frameData_.cameraTrixelOffset_,
+                                                 frameData.frameData_.canvasZoomLevel_
+                                             );
         }
 
         frameData.updateFrameData(frameDataBuf_);
@@ -128,42 +151,39 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 
-    // NOTE (T3 / #1310, forward-scatter rework pending): this is the composite
-    // SCAFFOLD. The three-pass depth composite, the perAxisSize/mainSize scale,
-    // and the byte-identical cardinal fast path all work, but the per-canvas
-    // trixel→framebuffer PARITY is wrong — T2 (#1309) bakes the continuous
-    // reposition (roundHalfUp(pos3DtoPos2DIsoYawed)) into each canvas, so trixel
-    // centers land on mixed-parity iso cells, and the single-global-parity
-    // de-tiling in f_trixel_to_framebuffer.glsl
-    // (trixelFramebufferSamplePosition + trixelOriginModifier) cannot de-tile
-    // them → the #1256 stripe/checkerboard artifact at every inter-cardinal yaw.
+    // Smooth camera Z-yaw forward-scatter composite (Option 4, T3 / #1310;
+    // docs/design/per-axis-trixel-canvas-rotation.md §"Mechanism chosen").
     //
-    // The architect RESOLVED this (PR #1336; docs/design/
-    // per-axis-trixel-canvas-rotation.md §"T3 addendum"): the decision is
-    // forward-scatter (Option 4), NOT any gather-based option. This gather
-    // scaffold is SUPERSEDED — do not treat it as finished. The rework keeps
-    // T2's per-voxel reposition but, on the non-cardinal path only, replaces
-    // Stage-1 storage with a face-local in-plane-coord G-buffer ({iso-depth,
-    // color, entityId}, atomicMin winner) and replaces this drawPerAxisComposite
-    // + the gather de-tiling with a forward-scatter of each occupied cell's true
-    // deformed face footprint, depth-tested into the framebuffer (GL + Metal).
-    // The cardinal residualYaw==0 fast path stays byte-identical.
-    //
-    // Composite the three per-axis trixel canvases into the framebuffer by depth
-    // (T3 / #1310). Reuses the single-canvas trixel→framebuffer shader unchanged
-    // — each per-axis canvas is a standard iso-pixel image T2 baked the
-    // continuous reposition + per-face deform into, so no shader change is
-    // needed (and OpenGL/Metal stay in parity for free). Draws one full-screen
-    // quad per axis canvas; the framebuffer's GL_LESS depth test picks the
-    // nearest `pos3DtoDistance` per pixel.
+    // T2 (#1309) routes each visible voxel face into its axis canvas and
+    // stores ONE cell per face center (atomicMin on the shared world-space
+    // `pos3DtoDistance`, so each non-empty cell is the occlusion winner on its
+    // view ray). This pass forward-scatters each non-empty cell as its true
+    // deformed face quad: instanced over the canvas grid (one instance per
+    // cell), the vertex shader recovers the face's world origin from
+    // (cell - perAxisBase, storedDepth>>2, visualYaw) — closed form, the
+    // denominator 2cos(yaw)+1 is the design doc's depth-monotonicity quantity,
+    // positive across the ±45° bracket — then projects the four cube-face
+    // corners with pos3DtoPos2DIsoYawed (which IS P(θ)·corner, the deform
+    // implicit). The framebuffer GL_LESS depth test (enabled on bind) composites
+    // the three canvases per pixel. No gather / parity inverse ⇒ the #1256
+    // stripe class cannot occur. Cardinal residualYaw==0 keeps the byte-
+    // identical single-canvas gather (this path is taken only while rotating).
     //
     // The per-axis textures are sized to the bounded worst case
     // (IRMath::perAxisTrixelCanvasWorstCaseSize → ~(2W, W+H)), larger than the
     // main canvas, so the model-matrix zoom is scaled component-wise by
-    // perAxisSize / mainSize. That keeps one per-axis texel mapping to the same
-    // screen footprint (and the canvas-center iso origin to screen center) as a
-    // main-canvas texel, so the composite lands at the right scale and position.
-    void drawPerAxisComposite(
+    // perAxisSize / mainSize — one per-axis texel maps to the same screen
+    // footprint (and the canvas-center iso origin to screen center) as a
+    // main-canvas texel. The vertex shader uses the same canvas→clip mapping
+    // the gather did, so the scatter lands at the same scale/position.
+    //
+    // v1 cost: instances over all size.x·size.y cells, degenerating empties in
+    // the vertex shader. The compaction follow-up (compute pre-pass appending
+    // non-empty cell indices + indirect draw args) is scoped in the design doc
+    // if the perf gate flags the empty-cell sweep. Picking during rotation
+    // (winning entity-id from the composite) is also a follow-up — the gather
+    // fast path still resolves it at every cardinal.
+    void drawPerAxisScatter(
         C_FrameDataTrixelToFramebuffer &frameData,
         const C_PerAxisTrixelCanvases &axes,
         const ivec2 mainCanvasSize,
@@ -171,26 +191,58 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     ) {
         const vec2 zoomEff =
             frameData.frameData_.canvasZoomLevel_ * vec2(axes.size_) / vec2(mainCanvasSize);
-        frameData.frameData_.mpMatrix_ =
-            calcProjectionMatrix(framebufferResolution) *
-            calcModelMatrix(
-                framebufferResolution, frameData.frameData_.cameraTrixelOffset_, zoomEff
-            );
+        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
+                                         calcModelMatrix(
+                                             framebufferResolution,
+                                             frameData.frameData_.cameraTrixelOffset_,
+                                             zoomEff
+                                         );
+
+        // Per-axis scatter inputs. `perAxisBase` MUST match
+        // VOXEL_TO_TRIXEL_STAGE_1's trixelFrameOffset for this axis canvas
+        // (trixelOriginOffsetZ1(axisSize) + floor(cameraIso * subdivisionScale))
+        // so the vertex shader's world-origin recovery is bit-consistent with
+        // where the cells were written. visualYaw + visibleFaceIds mirror
+        // buildVoxelFrameData.
+        const float visualYaw = IRPrefab::Camera::getYaw();
+        const auto cardinalIndex =
+            IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
+        const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
+        const int subdivisionScale =
+            IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
+                ? IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1)
+                : 1;
+        const vec2 cameraIso = IRRender::getCameraPosition2DIso();
+        frameData.frameData_.perAxisBase_ =
+            IRMath::trixelOriginOffsetZ1(axes.size_) +
+            ivec2(IRMath::floor(cameraIso * static_cast<float>(subdivisionScale)));
+        frameData.frameData_.visualYaw_ = visualYaw;
+        frameData.frameData_.visibleFaceIds_ = ivec4(
+            static_cast<int>(visibleFaces[0]),
+            static_cast<int>(visibleFaces[1]),
+            static_cast<int>(visibleFaces[2]),
+            0
+        );
+        frameData.frameData_.distanceOffset_ = 0;
         frameData.updateFrameData(frameDataBuf_);
 
+        scatterProgram_->use();
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
+        const int instanceCount = axes.size_.x * axes.size_.y;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             const C_PerAxisTrixelCanvases::AxisTextures &tex = axes.axes_[axis];
             tex.colors_.second->bind(0);
             tex.distances_.second->bind(1);
-            tex.entityIds_.second->bind(2);
-            IRRender::device()->drawElements(
+            IRRender::device()->drawElementsInstanced(
                 DrawMode::TRIANGLES,
                 IRShapes2D::kQuadIndicesLength,
-                IndexType::UNSIGNED_SHORT
+                IndexType::UNSIGNED_SHORT,
+                instanceCount
             );
-            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         }
+        // Restore the gather program for any subsequent canvas's single-canvas
+        // tick (background / gui / overlays draw after the main canvas).
+        program_->use();
     }
 
     void beginTick() {
@@ -213,9 +265,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         perAxisCanvasEntity_ = IRRender::getCanvas("main");
         perAxisCanvases_ = nullptr;
         if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
-            auto perAxis = IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(
-                perAxisCanvasEntity_
-            );
+            auto perAxis =
+                IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
             if (perAxis.has_value() && (*perAxis.value()).isAllocated()) {
                 perAxisCanvases_ = perAxis.value();
             }
@@ -228,6 +279,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             std::vector{
                 ShaderStage{IRRender::kFileVertTrixelToFramebuffer, ShaderType::VERTEX},
                 ShaderStage{IRRender::kFileFragTrixelToFramebuffer, ShaderType::FRAGMENT}
+            }
+        );
+        // Smooth camera Z-yaw forward-scatter composite (T3 / #1310) — see
+        // drawPerAxisScatter. Instanced over the per-axis canvas grid.
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisScatterProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileVertPerAxisScatter, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragPerAxisScatter, ShaderType::FRAGMENT}
             }
         );
         IRRender::createNamedResource<Buffer>(
@@ -262,6 +322,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
+        sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         IRRender::tagGpuStage(id, "trixelToFb");
         return id;

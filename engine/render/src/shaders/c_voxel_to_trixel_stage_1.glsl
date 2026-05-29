@@ -159,7 +159,7 @@ void main() {
     // pixel positions against the pre-T-293 path.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
 
-    // Smooth camera Z-yaw per-axis routing (T2 / #1309;
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310;
     // docs/design/per-axis-trixel-canvas-rotation.md). At perAxisRoute==0 this
     // is skipped and the single-canvas path below runs unchanged (byte-
     // identical to master). At perAxisRoute 1/2/3 we are rasterizing the X/Y/Z
@@ -167,10 +167,20 @@ void main() {
     // center *continuously* with pos3DtoPos2DIsoYawed (replacing the
     // rotateCardinalZ integer snap, so centers swing smoothly between
     // cardinals), and write the shared world-space depth pos3DtoDistance —
-    // identical across all three axis canvases so T3's framebuffer composite
-    // (#1310) can pick the nearest. The per-slot basis D (faceDeform[slot]) is
-    // reused unchanged as this canvas's uniform affine. Per-canvas coverage /
-    // parity re-derivation is T3's job; T2 lands routing + geometry only.
+    // identical across all three axis canvases so the framebuffer composite
+    // can pick the nearest.
+    //
+    // T3 (#1310, Option-4 forward scatter): store ONE cell per face center
+    // (not the emitDeformedFace super-sampled cluster T2 wrote). The cell sits
+    // at the voxel's continuously-yawed iso position; `atomicMin` resolves
+    // voxel-vs-voxel occlusion per cell (nearest face on this view ray wins),
+    // so every non-empty cell is exactly one occlusion-winning face. The
+    // framebuffer scatter (system_trixel_to_framebuffer) then forward-projects
+    // each non-empty cell as its true deformed face quad — recovering the
+    // world origin from (cell - perAxisBase, depth>>2, visualYaw) — with no
+    // gather/parity inverse, so the #1256 stripe class cannot occur. The face
+    // SHAPE is reconstructed at scatter time, so the per-slot deform D is no
+    // longer applied here.
     if (perAxisRoute != 0) {
         if ((faceId >> 1) != perAxisRoute - 1) return;
         const ivec2 perAxisBase =
@@ -181,7 +191,7 @@ void main() {
                 encodeDepthWithFace(pos3DtoDistance(ivec3(worldPos)), slot);
             const ivec2 base =
                 perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, visualYaw));
-            emitDeformedFace(base, D, voxelDistance);
+            writeDistanceTap(base, voxelDistance);
             return;
         }
         const int subPerAxis = max(voxelRenderOptions.y, 1);
@@ -195,7 +205,7 @@ void main() {
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
         const ivec2 base =
             perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(microWorld), visualYaw));
-        emitDeformedFace(base, D, voxelDistance);
+        writeDistanceTap(base, voxelDistance);
         return;
     }
 

@@ -62,14 +62,34 @@ void main() {
             // 32-bit word stride matches `kVoxelActiveMaskBits` on the CPU side.
             uint maskWord = activeMask[idx >> 5u];
             if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
-                ivec3 voxelPos = ivec3(round(positions[idx].xyz));
-                if (cardinalIndex != 0) {
-                    voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
-                    voxelPos += cardinalLowerCornerShift(cardinalIndex);
+                ivec3 voxelPosRaw = ivec3(round(positions[idx].xyz));
+                ivec2 isoPos;
+                int cullMargin = 0;
+                // Smooth camera Z-yaw (T3 / #1310): while the per-axis canvases
+                // are active (residual yaw != 0) the framebuffer scatter
+                // rasterizes each voxel at its CONTINUOUS yawed iso position, so
+                // the cull must project the same way — the cardinal-snapped iso
+                // disagrees by the residual and drops off-center voxels (the
+                // "missing objects during rotation" symptom). Widen by the
+                // deformed-face sqrt2 footprint (~2 iso px) so a voxel whose
+                // center is just off-screen but whose face reaches on-screen
+                // still rasterizes. residual == 0 keeps the byte-identical
+                // cardinal-snap path.
+                if (residualYaw != 0.0) {
+                    isoPos = roundHalfUp(pos3DtoPos2DIsoYawed(vec3(voxelPosRaw), visualYaw));
+                    cullMargin = 2;
+                } else {
+                    ivec3 voxelPos = voxelPosRaw;
+                    if (cardinalIndex != 0) {
+                        voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
+                        voxelPos += cardinalLowerCornerShift(cardinalIndex);
+                    }
+                    isoPos = pos3DtoPos2DIso(voxelPos);
                 }
-                ivec2 isoPos = pos3DtoPos2DIso(voxelPos);
-                if (isoPos.x >= cullIsoMin.x && isoPos.x <= cullIsoMax.x &&
-                    isoPos.y >= cullIsoMin.y && isoPos.y <= cullIsoMax.y) {
+                if (isoPos.x >= cullIsoMin.x - cullMargin &&
+                    isoPos.x <= cullIsoMax.x + cullMargin &&
+                    isoPos.y >= cullIsoMin.y - cullMargin &&
+                    isoPos.y <= cullIsoMax.y + cullMargin) {
                     uint slot = atomicAdd(visibleCount, 1u);
                     compactedVoxelIndices[slot] = idx;
                 }

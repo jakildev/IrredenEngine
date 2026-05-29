@@ -121,9 +121,11 @@ void main() {
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
 
-    // Smooth camera Z-yaw per-axis routing (T2 / #1309) — mirrors stage 1's
-    // geometry exactly so the color/entity-id taps land on the same trixels the
-    // distance taps did. See c_voxel_to_trixel_stage_1.glsl for the contract.
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — mirrors
+    // stage 1's geometry exactly so the color/entity-id tap lands on the same
+    // single center cell the distance tap did. T3 stores one cell per face
+    // center (not the emitDeformedFace cluster); the framebuffer scatter
+    // reconstructs the face quad. See c_voxel_to_trixel_stage_1.glsl.
     if (perAxisRoute != 0) {
         if ((faceId >> 1) != perAxisRoute - 1) return;
         const ivec2 perAxisBase =
@@ -134,7 +136,7 @@ void main() {
                 encodeDepthWithFace(pos3DtoDistance(ivec3(worldPos)), slot);
             const ivec2 base =
                 perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, visualYaw));
-            emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+            writeColorTap(base, voxelDistance, voxelColor, voxelIndex);
             return;
         }
         const int subPerAxis = max(voxelRenderOptions.y, 1);
@@ -148,7 +150,7 @@ void main() {
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
         const ivec2 base =
             perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(microWorld), visualYaw));
-        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+        writeColorTap(base, voxelDistance, voxelColor, voxelIndex);
         return;
     }
 

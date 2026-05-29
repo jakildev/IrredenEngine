@@ -95,6 +95,18 @@ struct FrameDataTrixelToFramebuffer {
     /// Added to raw canvas distance before depth normalization.
     /// 0 for world/overlay canvases; pos3DtoDistance(entityPos) for per-entity canvases.
     int distanceOffset_ = 0;
+    /// Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Consumed
+    /// only by the per-axis scatter shaders (v_/f_peraxis_scatter); the
+    /// cardinal-fast-path gather shaders read only the prefix above, so these
+    /// are an std140 append (existing field offsets unchanged → byte-identical
+    /// fast path preserved). `perAxisBase_` is the canvas-pixel origin of the
+    /// per-axis canvas being scattered (= trixelOriginOffsetZ1(axisSize) +
+    /// floor(cameraIso * subdivisionScale)); `visibleFaceIds_` mirrors
+    /// FrameDataVoxelToCanvas (per-slot world FaceId, .w pad).
+    ivec2 perAxisBase_{0, 0};
+    float visualYaw_ = 0.0f;
+    int scatterPad_ = 0;
+    ivec4 visibleFaceIds_{0, 0, 0, 0};
 };
 
 struct FrameDataVoxelToCanvas {

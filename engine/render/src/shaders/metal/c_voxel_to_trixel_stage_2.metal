@@ -135,8 +135,10 @@ kernel void c_voxel_to_trixel_stage_2(
         frameData.faceDeform[slot].zw
     );
 
-    // Smooth camera Z-yaw per-axis routing (T2 / #1309) — mirrors stage 1's
-    // geometry exactly so color/entity-id taps match the distance taps. See
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — mirrors
+    // stage 1's geometry exactly so the color/entity-id tap lands on the same
+    // single center cell. T3 stores one cell per face center; the framebuffer
+    // scatter reconstructs the deformed face quad. See
     // c_voxel_to_trixel_stage_1.glsl for the contract.
     if (frameData.perAxisRoute != 0) {
         if ((faceId >> 1) != frameData.perAxisRoute - 1) return;
@@ -145,17 +147,15 @@ kernel void c_voxel_to_trixel_stage_2(
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions
         );
-        const bool isDetached = frameData.isDetachedCanvas > 0.5f;
         if (frameData.voxelRenderOptions.x == 0) {
             const float3 worldPos = round(voxelPosition.xyz);
             const int voxelDistance =
                 encodeDepthWithFace(pos3DtoDistance(int3(worldPos)), slot);
             const int2 base =
                 perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, frameData.visualYaw));
-            emitDeformedFace(
-                base, D, voxelDistance, voxelColor, packedEntityId, localId, isDetached,
-                canvasSize, distanceScratch, triangleCanvasColors, triangleCanvasDistances,
-                triangleCanvasEntityIds
+            writeColorTap(
+                base, voxelDistance, voxelColor, packedEntityId, canvasSize, distanceScratch,
+                triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
             );
             return;
         }
@@ -170,10 +170,9 @@ kernel void c_voxel_to_trixel_stage_2(
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
         const int2 base =
             perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(microWorld), frameData.visualYaw));
-        emitDeformedFace(
-            base, D, voxelDistance, voxelColor, packedEntityId, localId, isDetached,
-            canvasSize, distanceScratch, triangleCanvasColors, triangleCanvasDistances,
-            triangleCanvasEntityIds
+        writeColorTap(
+            base, voxelDistance, voxelColor, packedEntityId, canvasSize, distanceScratch,
+            triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );
         return;
     }

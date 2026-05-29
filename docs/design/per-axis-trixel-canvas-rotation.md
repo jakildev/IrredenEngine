@@ -56,6 +56,87 @@ implementation choice — pick and **measure**. The firm contract is: forward,
 true deformed footprint, depth competition at trixel granularity, no parity
 inverse.
 
+#### Mechanism chosen (worker, T3 #1310) — canvas-cell scatter with depth-recovered face quads
+
+The implementation scatters **from the per-axis canvas cells**, not from the
+compacted voxel list. Rationale: the compacted-voxel SSBO + indirect-args
+buffer are *shared* across every canvas's Stage-1 dispatch, so by the time
+`TRIXEL_TO_FRAMEBUFFER` runs they hold whichever canvas ran last — not
+necessarily the main canvas. The per-axis canvas **textures**, by contrast, are
+owned by the main canvas and persist to the framebuffer stage (the same reason
+the old gather could read them). So the canvas is the durable G-buffer.
+
+Concretely:
+
+1. **Stage-1 / Stage-2 per-axis store one cell per face center** (not the
+   `emitDeformedFace` super-sampled cluster T2 wrote). `writeDistanceTap(base,
+   encodeDepthWithFace(pos3DtoDistance(worldOrigin), slot))` `atomicMin`s the
+   shared world depth into the single cell `base = perAxisBase +
+   roundHalfUp(pos3DtoPos2DIsoYawed(worldOrigin, visualYaw))`; Stage-2 writes
+   that cell's color + entityId on the depth match. **The `atomicMin` winner per
+   cell IS the occlusion resolution** — every non-empty cell already holds the
+   nearest face that landed there, so the scatter draws exactly the winners with
+   no extra gate.
+2. **The scatter is an instanced draw over the canvas grid** (one instance per
+   cell, `drawElementsInstanced` of the shared 6-index quad). The vertex shader:
+   reads the cell's stored distance; degenerates (off-screen) if it is the clear
+   value; otherwise recovers the **world origin** from the cell — closed form
+   from `(isoRel = cell − perAxisBase, rawDepth = dist >> 2, visualYaw)`:
+
+   ```
+   P = (isoRel.x + isoRel.y) / 2 ;  Q = (isoRel.x − isoRel.y) / 2
+   z  = (rawDepth + P·(c+s) − Q·(c−s)) / (2c + 1)     // c=cos, s=sin(visualYaw)
+   vx = z − P ;  vy = Q + z ;  x = vx·c − vy·s ;  y = vx·s + vy·c
+   ```
+
+   The denominator `2cosθ + 1` is the **same depth-monotonicity quantity** the
+   cost-model section cites — strictly positive (`≥ 1+√2`) across the whole
+   ±45° residual bracket, so the inverse is always well defined. `slot = dist &
+   3` recovers the visible-triplet slot → `faceId = visibleFaceIds[slot]`.
+3. **The 4 quad corners are the projected cube-face corners** — `perAxisBase +
+   pos3DtoPos2DIsoYawed(worldOrigin + faceCornerOffset, visualYaw)` for the four
+   in-plane corner offsets of `faceId`, then through the same canvas→clip
+   `mpMatrix` the gather used. Because `pos3DtoPos2DIsoYawed` is linear, this is
+   exactly the "P(θ)·(face corner)" footprint with the deform implicit — no
+   `faceDeform` matrix needed at the framebuffer. Depth is the cell's
+   `normalizeDistance(dist)` (constant per face = trixel-granular). Color +
+   entityId come from the cell's color/id textures. **No gather, no parity
+   inverse** ⇒ the #1256 stripe class cannot occur.
+4. **Cost:** v1 instances over all `size.x·size.y` cells and degenerates empties
+   in the vertex shader. If the perf gate (camera parked at ~30°, high zoom)
+   shows the empty-cell vertex-shader sweep dominating, the measured follow-up is
+   a compute compaction pre-pass that appends non-empty cell indices + writes
+   indirect draw args, shrinking the instance count to ≈ visible faces. Recorded
+   here so the optimization is scoped, not silent.
+
+#### Status — landed in #1310 (this PR) vs deferred
+
+**Landed + validated (Metal, `--spin-yaw`/`--yaw` sweeps on `IRShapeDebug`):**
+voxel forward-scatter composite (the cube renders as a correctly-deformed 3D iso
+cube through the ±45° bracket); **zero parity / stripe / checkerboard artifacts**
+(the #1256 class, the ticket's core gate — satisfied by construction);
+**byte-identical at the cardinal fast path** (`residualYaw == 0` releases the
+per-axis canvases and runs the unchanged single-canvas gather); cull-in-yawed-
+space at both **chunk** (`rebuildChunkBounds`) and **voxel** (`c_voxel_visibility_
+compact`, GL + Metal) granularity, gated so the cardinal path is untouched. The
+single main canvas's voxel pass is skipped while rotating so its SDF / text /
+overlay content composites alongside the smooth voxels with no double-draw.
+
+**Deferred (documented follow-ups, not regressions):**
+- **SDF smooth rotation.** `SHAPES_TO_TRIXEL` shapes composite during rotation
+  but stay **cardinal-snapped** (the per-axis split is voxel-only). Splitting SDF
+  into the three axis canvases — or an analytic per-shape yaw — is the blast-radius
+  "decide: split SDF too" item. v1 keeps them visible (snapped) rather than absent.
+- **±45° rebracket polish.** At the exact bracket edge the swept axis goes edge-on
+  as designed; tighten the zero-width face-identity swap under continuous sweep.
+- **Lighting / AO on the composite (T4 / #1311).** During rotation the composite
+  shows raw voxel color.
+- **Picking during rotation.** Winning entity-id from the composite — the gather
+  fast path still resolves hover at every cardinal; the scatter does not yet
+  write the hovered-id SSBO.
+- **Perf gate + `optimize`** on the touched stages, and the compaction pre-pass
+  if the empty-cell sweep dominates (see Cost above).
+
 ### Rejected alternatives
 
 - **Option 1 — basis-at-expansion (write cardinal even-parity content, apply

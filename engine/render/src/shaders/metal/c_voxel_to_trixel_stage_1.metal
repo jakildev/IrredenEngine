@@ -109,9 +109,12 @@ kernel void c_voxel_to_trixel_stage_1(
         frameData.faceDeform[slot].zw
     );
 
-    // Smooth camera Z-yaw per-axis routing (T2 / #1309) — see
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — see
     // c_voxel_to_trixel_stage_1.glsl for the full contract. perAxisRoute==0
-    // falls through to the byte-identical single-canvas path below.
+    // falls through to the byte-identical single-canvas path below. T3 stores
+    // ONE cell per face center (not the emitDeformedFace cluster); atomicMin
+    // resolves occlusion per cell and the framebuffer scatter reconstructs the
+    // deformed face quad, so D is no longer applied here.
     if (frameData.perAxisRoute != 0) {
         if ((faceId >> 1) != frameData.perAxisRoute - 1) return;
         const int2 perAxisBase = trixelFrameOffset(
@@ -119,14 +122,13 @@ kernel void c_voxel_to_trixel_stage_1(
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions
         );
-        const bool isDetached = frameData.isDetachedCanvas > 0.5f;
         if (frameData.voxelRenderOptions.x == 0) {
             const float3 worldPos = round(voxelPosition.xyz);
             const int voxelDistance =
                 encodeDepthWithFace(pos3DtoDistance(int3(worldPos)), slot);
             const int2 base =
                 perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, frameData.visualYaw));
-            emitDeformedFace(base, D, voxelDistance, localId, isDetached, distanceScratch, canvasSize);
+            writeDistanceTap(base, voxelDistance, distanceScratch, canvasSize);
             return;
         }
         const int subPerAxis = max(frameData.voxelRenderOptions.y, 1);
@@ -140,7 +142,7 @@ kernel void c_voxel_to_trixel_stage_1(
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
         const int2 base =
             perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(microWorld), frameData.visualYaw));
-        emitDeformedFace(base, D, voxelDistance, localId, isDetached, distanceScratch, canvasSize);
+        writeDistanceTap(base, voxelDistance, distanceScratch, canvasSize);
         return;
     }
 

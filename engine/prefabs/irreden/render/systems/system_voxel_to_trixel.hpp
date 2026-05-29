@@ -44,10 +44,14 @@ inline ivec2 voxelDispatchGridForCount(int voxelCount) {
 }
 
 inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
-    C_VoxelPool &pool, IsoBounds2D viewport, CardinalIndex cardinalIndex = CardinalIndex::k0
+    C_VoxelPool &pool,
+    IsoBounds2D viewport,
+    CardinalIndex cardinalIndex = CardinalIndex::k0,
+    bool useContinuousYaw = false,
+    float visualYaw = 0.0f
 ) {
     static thread_local std::vector<std::uint32_t> mask;
-    pool.rebuildChunkBounds(cardinalIndex);
+    pool.rebuildChunkBounds(cardinalIndex, useContinuousYaw, visualYaw);
     int chunkCount = pool.getChunkCount();
     mask.assign(chunkCount, 0);
 
@@ -421,7 +425,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             sweepDistance
         );
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
-        const auto &uploadMask = buildChunkVisibilityMask(voxelPool, chunkVp, chunkCardinal);
+        // Smooth camera Z-yaw (T3 / #1310): while rotating (residual yaw != 0,
+        // i.e. the per-axis canvases are active), project the chunk-visibility
+        // gate with the same continuous yaw the per-axis scatter raster uses, so
+        // off-center chunks aren't dropped by the cardinal snap. residual == 0
+        // keeps the byte-identical cardinal path.
+        const bool rotating = frameData_.residualYaw_ != 0.0f;
+        const auto &uploadMask = buildChunkVisibilityMask(
+            voxelPool,
+            chunkVp,
+            chunkCardinal,
+            rotating,
+            frameData_.visualYaw_
+        );
         chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
 
         constexpr int kGpuMargin = 4;
@@ -501,31 +517,47 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
-        stage1Program_->use();
-        triangleCanvasTextures.getTextureDistances()
-            ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-        IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        // Smooth camera Z-yaw (T3 / #1310): while the main canvas's per-axis
+        // canvases are active, SKIP the single-canvas voxel rasterization. The
+        // per-axis dispatch below writes the voxels (smooth), and the
+        // framebuffer scatter composites them; rasterizing the cardinal-snapped
+        // voxels into the single canvas too would double-draw them (the single
+        // canvas is composited for its SDF / overlay content, which sits at the
+        // SAME world depth as the smooth copies → snapped ghosts). Skipping
+        // leaves the single canvas holding only SHAPES_TO_TRIXEL / text /
+        // overlay content, which the scatter path composites alongside the
+        // smooth voxels. The compact pass above still runs (the per-axis
+        // dispatch reuses its compacted-voxel list).
+        const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
+                                            perAxisCanvases_ != nullptr &&
+                                            perAxisCanvases_->isAllocated();
+        if (!skipSingleCanvasVoxels) {
+            stage1Program_->use();
+            triangleCanvasTextures.getTextureDistances()
+                ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
-        // Stage 2 runs in the SAME per-canvas tick rather than as a separate
-        // system. The compact + position/color SSBOs (`voxelPosBuf_`,
-        // `voxelColorBuf_`, `CompactedVoxelIndices`, `IndirectDispatchParams`)
-        // are single-instance, shared across every voxel-pool canvas. A
-        // separate STAGE_2 system runs after STAGE_1 has ticked *all*
-        // canvases, so those buffers only ever hold the last canvas's data —
-        // every detached canvas would rasterize the wrong voxels. Folding the
-        // stage-2 dispatch in here keeps each canvas's upload→compact→stage1
-        // →stage2 sequence atomic before the next canvas overwrites the
-        // buffers.
-        stage2Program_->use();
-        triangleCanvasTextures.getTextureColors()
-            ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
-        triangleCanvasTextures.getTextureDistances()
-            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
-        triangleCanvasTextures.getTextureEntityIds()
-            ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-        IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            // Stage 2 runs in the SAME per-canvas tick rather than as a separate
+            // system. The compact + position/color SSBOs (`voxelPosBuf_`,
+            // `voxelColorBuf_`, `CompactedVoxelIndices`, `IndirectDispatchParams`)
+            // are single-instance, shared across every voxel-pool canvas. A
+            // separate STAGE_2 system runs after STAGE_1 has ticked *all*
+            // canvases, so those buffers only ever hold the last canvas's data —
+            // every detached canvas would rasterize the wrong voxels. Folding the
+            // stage-2 dispatch in here keeps each canvas's upload→compact→stage1
+            // →stage2 sequence atomic before the next canvas overwrites the
+            // buffers.
+            stage2Program_->use();
+            triangleCanvasTextures.getTextureColors()
+                ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            triangleCanvasTextures.getTextureDistances()
+                ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+            triangleCanvasTextures.getTextureEntityIds()
+                ->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
+            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        }
 
         // Smooth camera Z-yaw (T2 / #1309): once the single-canvas pass above
         // has run (and left the compacted-voxel list + indirect params intact),
