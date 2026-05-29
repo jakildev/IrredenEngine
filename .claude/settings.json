@@ -76,5 +76,18 @@
       "Bash(sudo:*)",
       "Bash(apt:*)", "Bash(apt-get:*)", "Bash(dpkg:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/fleet/fleet-guard-worktree-edit"
+          }
+        ]
+      }
+    ]
   }
 }
