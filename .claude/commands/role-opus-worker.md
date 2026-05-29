@@ -546,9 +546,31 @@ Do the work, then exit cleanly:
    - You're about to touch the public `ir_*.hpp` surface across
      multiple modules in one PR
    - A build break looks structural
+   - The task can only be completed by editing fleet self-config you
+     load (`.claude/commands/role-*.md`, `.claude/agents/*`) — editing
+     your own role definition is gated as self-modification, and a
+     queue-sourced worker can NEVER apply it (the gate is deterministic
+     across workers, by design)
 
    STOP. Do NOT try to redesign mid-task — the architect handles
    design conversations.
+
+   **You run headless — never ask the human interactively.** You're a
+   dispatched `--print` one-shot; no human is attached to your pane, so
+   `AskUserQuestion` (or "let me confirm with you first…") has nowhere to
+   land — it stalls or burns the iteration. Resolve from the plan/issue,
+   or escalate **asynchronously** on the issue/PR (the artifact a human
+   reviews on their own schedule), then move to a different task:
+
+   - **A design call you can't make** → the `fleet:design-blocked` flow
+     below.
+   - **A step you cannot perform** (e.g. the self-config edit above):
+     comment on the issue naming exactly what a human must apply, then
+     bump it out of autonomous pickup so you stop re-claiming it —
+     `gh issue edit <N> --remove-label human:approved --remove-label fleet:queued` —
+     and release your `fleet-claim`. Do NOT re-claim it next iteration:
+     the gate is deterministic, so retrying only burns iterations on a
+     wall until a human applies it.
 
    **Design escalation via `fleet:design-blocked`.** When the
    blocker is specifically architectural — the assigned task can't
@@ -573,12 +595,29 @@ Do the work, then exit cleanly:
 
       <suggested options if you have a view; the architect picks,
       you don't have to know the right answer>"`
-   c. Add the `fleet:design-blocked` label:
+   c. Move the PR into the `fleet:design-blocked` state. If you reached
+      this PR via the `fleet:design-unblocked` feedback tier — i.e.
+      you're **re-escalating** after the architect already responded
+      once — the PR still carries `fleet:design-unblocked`. Clear it in
+      the same step, otherwise the PR keeps both labels and gets
+      re-picked as unblocked next iteration (step 1 priority 4). The
+      helper only removes labels that are present, so it's a safe no-op
+      on a first-time escalation straight from the queue:
+      `fleet-pr-clear-feedback-labels <N> --labels "fleet:design-unblocked"`
       `gh pr edit <N> --add-label "fleet:design-blocked"`
       Keep `fleet:wip` — design-blocked is a state qualifier on top
-      of WIP, not a transfer of ownership. Don't release the
-      `fleet-claim` lock — the open PR + the claim lock together
-      keep the issue reserved for resumption.
+      of WIP. But **release your `fleet-claim` and worktree
+      reservation** — a design-blocked task is NOT yours to hold.
+      Resolution can take the architect a while, and when it returns as
+      `fleet:design-unblocked` ANY opus-worker should resume it cleanly
+      (step d frees the branch; step 1 priority 4 re-picks it). The
+      handoff is the PR, not your claim: the pushed WIP commit (a), the
+      `## NEEDS-DESIGN` comment + the architect's reply, the plan file
+      (`~/.fleet/plans/issue-<N>.md`), and the `fleet:design-blocked`
+      label carry everything the next worker needs. Holding the claim
+      through the block is what let two workers race the #1310 resume
+      and force-push over each other — release it:
+      `fleet-claim release <N>` (add `--repo game` for game tasks)
    d. Reset the worktree via `start-next-task` so the branch is free
       for the architect (or anyone else) to `gh pr checkout`. Then
       pick a different unblocked task from the issue queue as your
