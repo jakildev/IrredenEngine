@@ -334,6 +334,36 @@ parity correctness.
 - **T4 — AO / lighting on the resolved composite** (winning face-id / entity-id
   carried through the scatter; no double-rotation drift).
 
+## Cull is NOT the "missing objects" cause — composite/canvas-write is (#1310 finding)
+
+**Empirically established (2026-05-29, IRShapeDebug `--spin-yaw --auto-screenshot
+12 --zoom 4`, Metal):** force-disabling the cull entirely during rotation
+(every chunk visible + per-voxel compaction cull relaxed to a pass-through) does
+**not** restore the off-center objects — the inter-cardinal frame still shows
+only the ~2 screen-centre objects. So the architect's addendum-#2 hypothesis
+("the missing objects is a cull bug") does not hold for the **current** scaffold:
+the off-center voxels are already compacted, and the bottleneck that hides them
+is the **SUPERSEDED gather composite / per-axis canvas write** (`drawPerAxisComposite`
++ the stage-1 per-axis canvas placement), not the cull. The forward-scatter
+stage-2 (Option 4) is what makes them appear, because it scatters each per-axis
+cell to its true deformed screen footprint instead of gather-de-tiling a single
+zoomed canvas.
+
+**Cull-in-yawed-space is still required — as a prerequisite, landed *with* the
+scatter (not before).** Once the scatter shows off-center geometry, those voxels
+must actually reach the per-axis canvases, which means the **compaction** cull
+must include them. Today's cull (CPU chunk mask `buildChunkVisibilityMask` +
+GPU per-voxel test in `c_voxel_visibility_compact`) both compute
+**cardinal-snapped** iso (`pos3DtoPos2DIso(rotateCardinalZ(...))`), so with the
+scatter in place they would re-drop off-center voxels. The fix is to compute the
+cull from the **same `pos3DtoPos2DIsoYawed`** the raster uses, at **both** chunk
+(CPU, `rebuildChunkBounds`) and voxel (GPU compact shader, **both backends**)
+granularity, widened by the deformed-face √2 footprint, gated on the per-axis
+canvases being allocated so the cardinal fast path stays byte-identical. Land
+this together with the scatter so it is visually verifiable (a standalone cull
+change produces no observable difference while the gather composite is the
+limiter — confirmed above).
+
 ## What to verify when implementing
 
 1. **Parity.** No checkerboard / lattice / seam / double-write per canvas at
