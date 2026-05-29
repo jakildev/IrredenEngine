@@ -301,7 +301,18 @@ Read/Glob/Grep tools instead of Bash when possible.
 - **Body files for `--body-file`** — write them to a worktree-local path
   (e.g. `.review-body.md`, `.merger-body.md`) via the **Write** tool,
   not `/tmp/`; run `rm -f <path>` first if a prior session may have
-  left the file behind.
+  left the file behind. **Always use `--body-file` (never inline
+  `--body "..."`) for any PR/issue comment containing backticks or `$`** —
+  an inline `gh ... comment --body "...\`code\`..."` lets the shell execute
+  the backticked text and expand `$vars`, corrupting the comment or running
+  arbitrary tokens (observed on PR #1336).
+- **Verify before you report a push.** Stalled Bash output can flush late,
+  out of order, or duplicated — never state that a commit "landed", or cite a
+  SHA, from such a view. Confirm with a fresh `git fetch` then
+  `git rev-parse origin/<branch>` matching local `HEAD` first; if any tool
+  result looks empty or stale, run one trivial probe before the next
+  state-changing call or status-reporting comment (false SHAs `ab12cd34` /
+  `f3a9b2c1` were posted this way on PR #1336 — the real commit was different).
 
 This rule exists because the user-level allowlist (`~/.claude/settings.json`)
 matches on the first token of each Bash command. A compound command like
