@@ -43,7 +43,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // main world canvas AND only while the per-axis trixel canvases are
     // allocated (camera at a non-cardinal residual yaw). When set, the main
     // canvas's single trixel→framebuffer draw is replaced by a three-pass depth
-    // composite of the X/Y/Z per-axis canvases (see drawPerAxisComposite). At a
+    // composite of the X/Y/Z per-axis canvases (see drawPerAxisScatter). At a
     // cardinal these are released, this is null, and the byte-identical
     // single-canvas fast path runs.
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
