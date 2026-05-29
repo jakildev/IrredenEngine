@@ -63,7 +63,10 @@ if [[ ! -f "$sentinel" ]]; then
     exit 1
 fi
 
-head_ref=$(cat "$sentinel")
+# Sentinel is two lines: head ref (line 1) + checkout-time base SHA (line 2;
+# absent on legacy sentinels written before the base-sha lease landed). The
+# base SHA is what makes the lease safe — see the push below.
+{ read -r head_ref; read -r base_sha; } < "$sentinel" 2>/dev/null || true
 if [[ -z "$head_ref" ]]; then
     echo "fleet-pr-amend-push: sentinel $sentinel is empty" >&2
     exit 1
@@ -82,11 +85,21 @@ if git symbolic-ref -q HEAD >/dev/null 2>&1; then
     exit 1
 fi
 
-# Push with force-with-lease. Quoting HEAD:$head_ref defensively in
-# case a future fleet adopts head refs with shell-significant chars
-# (today they're all `claude/...` which is safe, but cheap to harden).
-if ! git push --force-with-lease origin "HEAD:$head_ref"; then
-    echo "fleet-pr-amend-push: push failed — lease may be broken (concurrent amendment) or remote rejected the push" >&2
+# Push with force-with-lease pinned to the CHECKOUT-TIME base SHA, not the bare
+# remote-tracking ref. A bare --force-with-lease leases against origin/<head_ref>,
+# which an intervening `git fetch` refreshes to a concurrent agent's push — so
+# the lease passes and clobbers their commit (the #1310 dual-worker clobber,
+# 2026-05-29). Pinning the expected SHA makes the push REFUSE if origin/<head_ref>
+# moved since checkout, full stop. (Quoting HEAD:$head_ref defensively in case a
+# future fleet adopts head refs with shell-significant chars.)
+if [[ -n "$base_sha" ]]; then
+    lease="--force-with-lease=$head_ref:$base_sha"
+else
+    echo "fleet-pr-amend-push: sentinel has no base SHA (legacy checkout) — using a bare lease, which does NOT guard against an intervening fetch. Re-run fleet-pr-checkout-detached for full clobber protection." >&2
+    lease="--force-with-lease"
+fi
+if ! git push "$lease" origin "HEAD:$head_ref"; then
+    echo "fleet-pr-amend-push: push REFUSED — origin/$head_ref moved since you checked out (another agent pushed). Do NOT force past this: re-run fleet-pr-checkout-detached to re-base on their commit, re-apply your amendment, then push again." >&2
     exit 1
 fi
 
