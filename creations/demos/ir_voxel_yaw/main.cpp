@@ -105,7 +105,12 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
      "zoom8_yaw30_stair",
      kCropsStaircaseSeam,
      sizeof(kCropsStaircaseSeam) / sizeof(kCropsStaircaseSeam[0])},
-    {4.0f, vec2(0, 0), IRMath::kQuarterPi, "zoom4_yaw45"},
+    {4.0f,
+     vec2(0, 0),
+     IRMath::kQuarterPi,
+     "zoom4_yaw45",
+     kCropsCubeSilhouette,
+     sizeof(kCropsCubeSilhouette) / sizeof(kCropsCubeSilhouette[0])},
 };
 
 int g_autoWarmupFrames = 0;
