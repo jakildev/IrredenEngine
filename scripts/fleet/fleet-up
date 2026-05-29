@@ -258,7 +258,7 @@ if [[ -d "$GAME/.git" ]]; then
     ensure_worktree "$GAME" .claude/worktrees/opus-worker-1   fleet/game-opus-worker-1
     ensure_worktree "$GAME" .claude/worktrees/opus-worker-2   fleet/game-opus-worker-2
     # Sonnet authors likewise cover the game `[sonnet]` queue (docs / skills /
-    # content); each sonnet-fleet pane gets its own game worktree to `cd` into,
+    # content / light code); each sonnet-fleet pane gets its own game worktree to `cd` into,
     # same dual-worktree model as the opus-workers above.
     ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-1  fleet/game-sonnet-fleet-1
     ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-2  fleet/game-sonnet-fleet-2
