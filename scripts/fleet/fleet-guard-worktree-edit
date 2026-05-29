@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# fleet-guard-worktree-edit — PreToolUse hook for Edit | Write | MultiEdit.
+#
+# Refuses an edit whose absolute file_path lands OUTSIDE the fleet worktree the
+# session is working in. A fleet agent runs with its cwd inside
+# `.../.claude/worktrees/<name>/`; if it edits via a bare
+# `~/src/IrredenEngine/engine/...` absolute path, the write silently hits the
+# shared MAIN clone instead of the worktree. `fleet-build` (run in the worktree)
+# then compiles nothing and the agent wrongly concludes its fix "had no effect"
+# (observed on PR #1310 / #1336). The #1332 worktree-identity preflight guards
+# Bash/git, NOT the file tools — this closes that gap by enforcement instead of
+# role-doc discipline.
+#
+# Scope: ONLY constrains sessions whose cwd is inside a fleet worktree. The main
+# clone and isolated (e.g. /tmp) worktrees are unaffected. Relative paths
+# (resolved against the in-worktree cwd) are always allowed; only an absolute
+# path escaping the worktree root is blocked. Reads are NOT gated — the matcher
+# is Edit|Write|MultiEdit only (the silent-misroute hazard is mutations).
+#
+# Contract: reads the PreToolUse JSON on stdin; denies via the
+# hookSpecificOutput JSON form. ANY parse failure or missing field fails OPEN
+# (exit 0) — a hook must never wedge the fleet.
+set -uo pipefail
+
+input=$(cat 2>/dev/null || true)
+[[ -z "$input" ]] && exit 0
+
+cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
+file=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
+
+# Not in a fleet worktree → no restriction.
+case "$cwd" in
+    */.claude/worktrees/*) ;;
+    *) exit 0 ;;
+esac
+
+# No path, or a relative path (the tools resolve it against the in-worktree
+# cwd, so it stays in-worktree) → allow.
+[[ -z "$file" ]] && exit 0
+case "$file" in
+    /*) ;;
+    *)  exit 0 ;;
+esac
+
+# Derive the worktree root: <prefix>/.claude/worktrees/<name>
+prefix="${cwd%%/.claude/worktrees/*}"
+rest="${cwd#*/.claude/worktrees/}"
+wt_name="${rest%%/*}"
+[[ -z "$prefix" || -z "$wt_name" ]] && exit 0
+wt_root="$prefix/.claude/worktrees/$wt_name"
+
+# Inside the worktree (trailing slash on both sides so a sibling worktree like
+# `<name>-foo` can't prefix-match `<name>`) → allow.
+case "$file/" in
+    "$wt_root"/*) exit 0 ;;
+esac
+
+# Outside the worktree → deny with a corrective message.
+reason="fleet worktree guard: refusing to edit a path outside your worktree.
+  your worktree: $wt_root
+  edit target:   $file
+You are working in a fleet worktree, but this absolute path points into the
+shared main clone (or a sibling worktree). Editing it there silently misroutes
+the write — fleet-build runs in your worktree and compiles nothing, so the
+change looks like it 'had no effect' (PR #1310 / #1336). Redo this edit with a
+path INSIDE your worktree, or a path relative to your current directory."
+
+jq -n --arg r "$reason" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}' \
+    2>/dev/null && exit 0
+
+# jq output failed for some reason — fall back to the exit-2 block form so the
+# guard still fires rather than failing open on a deny.
+printf '%s\n' "$reason" >&2
+exit 2
