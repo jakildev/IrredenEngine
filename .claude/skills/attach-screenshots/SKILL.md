@@ -138,6 +138,16 @@ git stash push -u -m "attach-screenshots:<BRANCH>"
 If the stash reports "No local changes to save", the tree was
 already clean — stop and report that there is no delta to capture.
 
+The `-m "attach-screenshots:<BRANCH>"` message is our **race-safe
+handle** for this stash. `refs/stash` is shared across every worktree
+on this clone (see [CLAUDE-BASELINE.md § Hard rules](../../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles)),
+so a parallel agent's `git stash push` in another worktree can shift
+`stash@{0}` out from under us between now and the restore. Every
+restore below re-resolves *our* entry by this branch-unique message
+(`<BRANCH>` differs per worktree) and reapplies it **by commit SHA** —
+never by `stash@{0}` / bare `git stash pop`, which would silently
+apply or consume another worktree's entry.
+
 ```bash
 git checkout --detach origin/master
 ```
@@ -177,12 +187,28 @@ Do not add `--timeout` — auto-screenshot fires `closeWindow()` when the
 shot sequence is done; a timeout would mask hangs (see [BUILD.md §Timeout choices](../../../docs/agents/BUILD.md#timeout-choices)).
 
 If `fleet-build` or `fleet-run` fails, **restore** before
-propagating the failure:
+propagating the failure. Check the branch back out, then re-resolve
+*our* stash by its branch-unique message and reapply it by SHA:
 
 ```bash
 git checkout <BRANCH>
-git stash pop
+git stash list --format='%gd %H %gs' | grep "attach-screenshots:<BRANCH>"
 ```
+
+That returns exactly one line; note its `stash@{N}` index and `<SHA>`.
+Reapply by **SHA** (immutable — race-proof even if a parallel agent
+shifted the index), then drop that entry by its `stash@{N}` index
+(`git stash drop` requires the `stash@{N}` form, not a raw SHA):
+
+```bash
+git stash apply <SHA>
+git stash drop stash@{N}
+```
+
+Never use bare `git stash pop` / `git stash drop` here — both default
+to `stash@{0}`, which may be another worktree's entry. If the index
+shifted between the two commands above, re-run `git stash list` and
+take the index of the line matching `<SHA>`.
 
 Then report and exit. Do **not** stage any partial output.
 
@@ -203,11 +229,21 @@ build/creations/demos/<demo-dir>/save_files/screenshots/screenshot_000001.png
 If the PNG count differs from the label count, something crashed
 mid-sequence — report and exit without staging.
 
-Restore the branch state:
+Restore the branch state. As in the build-failure restore above,
+re-resolve *our* stash by its branch-unique message and reapply by
+SHA — never bare `git stash pop`:
 
 ```bash
 git checkout <BRANCH>
-git stash pop
+git stash list --format='%gd %H %gs' | grep "attach-screenshots:<BRANCH>"
+```
+
+That returns the single matching line; take its `stash@{N}` index
+and `<SHA>`, then:
+
+```bash
+git stash apply <SHA>
+git stash drop stash@{N}
 ```
 
 ### 6. Capture the "after" pass (dirty working tree)
@@ -306,7 +342,7 @@ over stash:
 | `fleet-run` crashes / times out        | Restore stash if mid-before-pass, report the crash, exit. No PNGs staged.                              |
 | Headless host (no display)             | Detect via `fleet-run`'s exit code + empty `save_files/screenshots/`. Report; recommend running on a host with a display (WSLg, native Linux desktop, macOS). |
 | Shot count mismatch (before ≠ after)   | Report both counts; do not stage a half-paired set.                                                    |
-| Stash pop conflicts on restore         | Do **not** force-pop; report and ask the worker to resolve manually. The stash ref is preserved.       |
+| Stash apply conflicts on restore       | Do **not** force; report and ask the worker to resolve manually. We `apply` (then `drop` only on a clean apply), so the entry survives — recover it by its `<SHA>` from `git stash list`. |
 
 ## Anti-patterns
 
@@ -322,11 +358,17 @@ over stash:
 If the skill exits mid-flight (usage-limit error, interrupted, crash
 during "before" pass):
 
-1. Check `git stash list` — the stash entry begins with
-   `attach-screenshots:<BRANCH>`.
+1. Find *our* entry by its branch-unique message — **do not assume
+   `stash@{0}` is ours**; `refs/stash` is shared across all worktrees
+   on this clone, so a parallel agent's stash may sit on top:
+   `git stash list --format='%gd %H %gs'` and pick the line ending
+   `attach-screenshots:<BRANCH>`. Note its `stash@{N}` index and `<SHA>`.
 2. If the worktree is detached (detached HEAD from step 5), check
    the branch back out: `git checkout <BRANCH>`.
-3. `git stash pop` to restore.
+3. Reapply by SHA, then drop that entry by its index (never bare
+   `git stash pop` / `git stash drop` — both default to `stash@{0}`
+   and may consume another worktree's entry):
+   `git stash apply <SHA>` then `git stash drop stash@{N}`.
 4. Verify with `git status` that the dirty tree matches what you had
    before the skill ran.
 5. Re-invoke the skill once the underlying issue is resolved.
