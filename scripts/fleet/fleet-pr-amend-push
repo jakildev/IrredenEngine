@@ -85,7 +85,28 @@ if git symbolic-ref -q HEAD >/dev/null 2>&1; then
     exit 1
 fi
 
-# Push with force-with-lease pinned to the CHECKOUT-TIME base SHA, not the bare
+# Fast-forward fast path. Refresh the remote tip; if HEAD descends from it
+# (the clean common case: detached checkout -> commit on top -> push, and a
+# follow-up amend once the prior push became the tip), land it with a PLAIN
+# push — no force, so it is not classifier-gated and there is nothing to
+# clobber. `merge-base --is-ancestor` is robust to the fetch; the non-FF path
+# below leases against the sentinel's base SHA, which the fetch can't refresh.
+# (In the #1310 clobber, HEAD did NOT descend from the other worker's push, so
+# this path is skipped and the lease-and-refuse below correctly fires.)
+git fetch origin "$head_ref" >/dev/null 2>&1 || true
+remote_tip=$(git rev-parse "origin/$head_ref" 2>/dev/null || echo "")
+if [[ -n "$remote_tip" ]] && git merge-base --is-ancestor "$remote_tip" HEAD 2>/dev/null; then
+    if ! git push origin "HEAD:$head_ref"; then
+        echo "fleet-pr-amend-push: fast-forward push failed (remote rejected)." >&2
+        exit 1
+    fi
+    rm -f "$sentinel"
+    printf 'fleet-pr-amend-push: fast-forwarded origin/%s (no force needed)\n' "$head_ref"
+    exit 0
+fi
+
+# Not a fast-forward — the amendment replaced commits. Force-with-lease pinned
+# to the CHECKOUT-TIME base SHA, not the bare
 # remote-tracking ref. A bare --force-with-lease leases against origin/<head_ref>,
 # which an intervening `git fetch` refreshes to a concurrent agent's push — so
 # the lease passes and clobbers their commit (the #1310 dual-worker clobber,
