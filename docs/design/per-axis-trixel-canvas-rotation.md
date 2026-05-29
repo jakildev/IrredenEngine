@@ -122,6 +122,20 @@ compact`, GL + Metal) granularity, gated so the cardinal path is untouched. The
 single main canvas's voxel pass is skipped while rotating so its SDF / text /
 overlay content composites alongside the smooth voxels with no double-draw.
 
+**Perf gate — PASSED (`--auto-profile 300`, `IRShapeDebug`, Metal, GPU stage
+timing).** Camera parked at a cardinal vs. parked at a non-cardinal 30° (the
+sustained steady-state, not just a sweep), at high zoom (8). The composite adds
+a **bounded ~0.075 ms/frame**: `voxelStage1` (per-axis G-buffer atomicMin
+occlusion) 0.022 → 0.062 ms and `trixelToFb` (forward scatter) 0.044 → 0.078 ms;
+every other stage is within noise and `shapePass1` (0.34 ms, SDF) stays the
+dominant GPU stage. Frame time is vsync-capped at 120 Hz (p50 8.33 ms) in both —
+no per-pixel-per-voxel cliff. Voxel cull stats are identical across yaw
+(1062/7820 visible). This confirms the cost model: depth winning stays
+trixel-granular, so a non-cardinal rest is a bounded constant factor, not a perf
+cliff. `optimize` found no actionable hotspot — the empty-cell instanced vertex
+sweep degenerates after a single `texelFetch` + branch and does **not** dominate
+(0.078 ms), so the compute-compaction pre-pass below stays correctly deferred.
+
 **Deferred (documented follow-ups, not regressions):**
 - **SDF smooth rotation.** `SHAPES_TO_TRIXEL` shapes composite during rotation
   but stay **cardinal-snapped** (the per-axis split is voxel-only). Splitting SDF
@@ -134,8 +148,11 @@ overlay content composites alongside the smooth voxels with no double-draw.
 - **Picking during rotation.** Winning entity-id from the composite — the gather
   fast path still resolves hover at every cardinal; the scatter does not yet
   write the hovered-id SSBO.
-- **Perf gate + `optimize`** on the touched stages, and the compaction pre-pass
-  if the empty-cell sweep dominates (see Cost above).
+- **Compute-compaction pre-pass** (append non-empty cell indices + indirect
+  draw args to shrink the scatter instance count). Measured-deferred: the perf
+  gate above shows the empty-cell sweep does not dominate, so this is a future
+  optimization only if a heavier scene flags it (see Cost above). The perf gate
+  itself + `optimize` are **done** (results in the Landed block).
 
 ### Rejected alternatives
 
