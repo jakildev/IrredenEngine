@@ -234,10 +234,10 @@ exclusion**. A design-blocked task releases its owner on block
 opus-worker; without the atomic lex-min claim two workers both resume
 the same PR and force-push over each other (observed clobber on #1310,
 2026-05-29). Acquire `fleet-claim amending-claim <N> <your-worktree>`
-before checkout; if it fails, another worker is already resuming —
+before removing the feedback label; if it fails, another worker is already resuming —
 skip and move on.
 
-With checkout confirmed (and, for `fleet:needs-fix`, the amend claim
+With checkout confirmed (and, for `fleet:needs-fix` and `fleet:design-unblocked`, the amend claim
 held), **remove the feedback label** to prevent another agent from
 also picking it up:
 
