@@ -606,9 +606,18 @@ Do the work, then exit cleanly:
       `fleet-pr-clear-feedback-labels <N> --labels "fleet:design-unblocked"`
       `gh pr edit <N> --add-label "fleet:design-blocked"`
       Keep `fleet:wip` — design-blocked is a state qualifier on top
-      of WIP, not a transfer of ownership. Don't release the
-      `fleet-claim` lock — the open PR + the claim lock together
-      keep the issue reserved for resumption.
+      of WIP. But **release your `fleet-claim` and worktree
+      reservation** — a design-blocked task is NOT yours to hold.
+      Resolution can take the architect a while, and when it returns as
+      `fleet:design-unblocked` ANY opus-worker should resume it cleanly
+      (step d frees the branch; step 1 priority 4 re-picks it). The
+      handoff is the PR, not your claim: the pushed WIP commit (a), the
+      `## NEEDS-DESIGN` comment + the architect's reply, the plan file
+      (`~/.fleet/plans/issue-<N>.md`), and the `fleet:design-blocked`
+      label carry everything the next worker needs. Holding the claim
+      through the block is what let two workers race the #1310 resume
+      and force-push over each other — release it:
+      `fleet-claim release <N>` (add `--repo game` for game tasks)
    d. Reset the worktree via `start-next-task` so the branch is free
       for the architect (or anyone else) to `gh pr checkout`. Then
       pick a different unblocked task from the issue queue as your

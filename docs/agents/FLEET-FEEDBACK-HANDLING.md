@@ -97,9 +97,16 @@ output.
   section. Treat it like a checklist. Address every nit unless
   it's purely subjective preference.
 - **For `fleet:design-unblocked`** (opus-worker only): also re-read
-  the canonical plan file at `.fleet/plans/T-<NNN>.md`. The latest
-  architect comment is the authoritative direction; the plan file
-  is the long-form version. If the two diverge, the comment wins
+  the architect's plan file at `~/.fleet/plans/issue-<N>.md` (current
+  naming, keyed to the issue number; some older plans use `T-<NNN>.md`
+  — check both, prefer the `issue-` form). This is REQUIRED reading
+  before you resume — it is the architect's design for the task and
+  carries the decision + decomposition the latest comment summarizes.
+  Because a design-blocked task releases its owner (you may be resuming
+  someone else's escalation), the plan file + the PR are your only
+  handoff context — do not assume in-conversation memory of it. The
+  latest architect comment is the authoritative direction; the plan
+  file is the long-form version. If the two diverge, the comment wins
   for this PR.
 
 ## AMEND vs ESCALATE (human-label paths only)
@@ -216,9 +223,19 @@ If the claim fails (lost the tie-break, or `gh` unreachable),
 amendment, or a retry will. Skip this PR and move on. Released in
 step e alongside `fleet:changes-made`; an abandoned claim is swept
 by `fleet-claim cleanup --gh` on the 30-min TTL. Skip this claim for
-`fleet:has-nits` / `fleet:design-unblocked` (they keep
-`fleet:approved`, so the PR never goes verdict-less) and for the
-`human:*` paths (covered by `fleet:human-amending` below).
+`fleet:has-nits` (it keeps `fleet:approved`, so the PR never goes
+verdict-less) and for the `human:*` paths (covered by
+`fleet:human-amending` below).
+
+**`fleet:design-unblocked` DOES acquire this claim** — not for the
+verdict-less reason (it keeps `fleet:approved`) but for **mutual
+exclusion**. A design-blocked task releases its owner on block
+(`role-opus-worker.md` step 8c), so on unblock it is free for *any*
+opus-worker; without the atomic lex-min claim two workers both resume
+the same PR and force-push over each other (observed clobber on #1310,
+2026-05-29). Acquire `fleet-claim amending-claim <N> <your-worktree>`
+before checkout; if it fails, another worker is already resuming —
+skip and move on.
 
 With checkout confirmed (and, for `fleet:needs-fix`, the amend claim
 held), **remove the feedback label** to prevent another agent from
