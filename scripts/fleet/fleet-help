@@ -209,6 +209,12 @@ Parallel-agent fleet (tmux + Claude)
                                  idempotently strip feedback labels from a PR
                                  (skips absent labels; one --remove-label per
                                  present label so partial failure can't strand)
+  fleet-pr-claim-feedback <N> <agent> [--repo <slug>]
+                                 claim-first entry into feedback handling:
+                                 atomic amending-claim then detached checkout,
+                                 as one unskippable step (loser exits ~1s
+                                 touching nothing; releases the claim if the
+                                 checkout fails so no fleet:amending-* dangles)
   fleet-nit-close-for-pr [--dry-run] [--repo <owner/repo>]
                                  close open fleet:nit-of-pr issues whose
                                  addressing PR has merged (merger step 1.5)
