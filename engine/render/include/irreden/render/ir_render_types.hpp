@@ -308,12 +308,16 @@ struct GPUShapesFrameData {
     // computes tileIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * tileGridX so
     // the dispatch stays within GL_MAX_COMPUTE_WORK_GROUP_COUNT[0].
     int tileGridX = 1;
-    // Explicit 8-byte pad so faceDeform lands on the 16-byte boundary GLSL
-    // std140 enforces for `vec4 arr[3]`. glm::vec4 has 4-byte alignment in
-    // this codebase's GLM config (see GpuParticle's 32-byte assertion); the
-    // compiler would otherwise pack faceDeform at offset 72 while the
-    // shader UBO places it at 80, silently reading the wrong words.
-    ivec2 _faceDeformPad_ = ivec2(0);
+    // Smooth camera Z-yaw (#1345): 1 enables the continuous-yaw SDF path
+    // (full visualYaw query + continuous center reposition + shared world-space
+    // x+y+z depth so the SDF composites with the per-axis voxel canvases, T3
+    // #1310); 0 keeps the cardinal-snap rasterYaw + faceDeform path. Set per
+    // canvas — only the rotating MAIN world canvas turns it on, so detached
+    // per-entity canvases keep their faceDeform path. Occupies the first word of
+    // the former 8-byte std140 alignment pad before faceDeform (faceDeform stays
+    // at offset 80); the second word remains explicit pad.
+    int smoothYawEnabled = 0;
+    int _faceDeformPad_ = 0;
     // Per-face residual-yaw deformation packed column-major: .xy = col0,
     // .zw = col1 of IRMath::faceDeformationMatrix(face, residualYaw).
     // Identity (col0=(1,0), col1=(0,1)) when residualYaw == 0. Indexed by

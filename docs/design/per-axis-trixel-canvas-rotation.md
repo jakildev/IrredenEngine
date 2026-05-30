@@ -171,10 +171,14 @@ sweep degenerates after a single `texelFetch` + branch and does **not** dominate
 (0.078 ms), so the compute-compaction pre-pass below stays correctly deferred.
 
 **Deferred (documented follow-ups, not regressions):**
-- **SDF smooth rotation.** `SHAPES_TO_TRIXEL` shapes composite during rotation
-  but stay **cardinal-snapped** (the per-axis split is voxel-only). Splitting SDF
-  into the three axis canvases — or an analytic per-shape yaw — is the blast-radius
-  "decide: split SDF too" item. v1 keeps them visible (snapped) rather than absent.
+- ~~**SDF smooth rotation.**~~ **Resolved by T5 (#1345).** `SHAPES_TO_TRIXEL`
+  shapes now rotate by the full continuous `visualYaw` (continuous center
+  reposition + continuous-yaw surface query) and write the shared world-space
+  `x+y+z` depth, so they glide between cardinals and composite by depth with the
+  three voxel canvases. SDF needs **no** three-canvas split — it solves the
+  surface analytically per pixel, so the architect's "analytic per-shape yaw"
+  option was taken instead of the split. Gated per-canvas (main world canvas
+  only) so `residualYaw==0` stays byte-identical.
 - **±45° rebracket polish.** At the exact bracket edge the swept axis goes edge-on
   as designed; tighten the zero-width face-identity swap under continuous sweep.
 - **Lighting / AO on the composite (T4 / #1311).** During rotation the composite
@@ -465,6 +469,13 @@ parity correctness.
   "most objects missing during rotation" symptom).
 - **T4 — AO / lighting on the resolved composite** (winning face-id / entity-id
   carried through the scatter; no double-rotation drift).
+- **T5 — SDF shapes under the composite (#1345, landed).** `SHAPES_TO_TRIXEL`
+  rotates by the full continuous `visualYaw` and writes the shared world-space
+  `x+y+z` depth so analytic SDF shapes glide between cardinals and composite by
+  depth alongside the three voxel canvases. No three-canvas split for SDF (it
+  solves analytically per pixel); stacked on T3 and independent of T4. Writing
+  the SDF normal + material into T4's composite G-buffer (for post-composite
+  lighting of SDF) is deferred until that G-buffer exists.
 
 ## Cull is NOT the "missing objects" cause — composite/canvas-write is (#1310 finding)
 

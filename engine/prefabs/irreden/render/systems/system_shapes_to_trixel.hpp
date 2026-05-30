@@ -62,6 +62,16 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     float yawCos_ = 1.0f;
     float yawSin_ = 0.0f;
     bool yawZero_ = true;
+    // Continuous-yaw snapshot for the smooth camera Z-yaw SDF path (#1345).
+    // smoothYaw_ is true inside a residual bracket (residualYaw != 0); the cull
+    // (any canvas — widening is conservative) and the main-canvas tile footprint
+    // then project at the full visualYaw and grow by the continuous |cos|,|sin|
+    // (up to the sqrt(2) footprint at +/-45deg) so off-center shapes inside the
+    // rotated footprint are not dropped from the cardinal-snapped viewport.
+    // yawCosVisual_/yawSinVisual_ are cos/sin(visualYaw_).
+    bool smoothYaw_ = false;
+    float yawCosVisual_ = 1.0f;
+    float yawSinVisual_ = 0.0f;
     // LOD tier snapshotted at beginTick from the C_ActiveLodLevel singleton
     // (written by LOD_UPDATE in UPDATE phase). Per-entity tick skips shapes
     // whose lodMin_ < activeLod_ — those are too-fine-grained for this
@@ -76,7 +86,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             return;
         }
         if (cullBounds_.has_value()) {
-            vec3 viewPos = xform.translation_;
             vec3 sizeForExtent = vec3(shape.params_);
             const bool hasRotation = IRMath::abs(xform.rotation_.w) < 0.9999f;
             if (hasRotation) {
@@ -91,21 +100,38 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 );
                 sizeForExtent = ax + ay + az;
             }
-            if (!yawZero_) {
-                viewPos = vec3(
-                    yawCos_ * xform.translation_.x + yawSin_ * xform.translation_.y,
-                    -yawSin_ * xform.translation_.x + yawCos_ * xform.translation_.y,
-                    xform.translation_.z
-                );
-                const float absC = IRMath::abs(yawCos_);
-                const float absS = IRMath::abs(yawSin_);
+            vec2 shapeIsoPosition;
+            if (smoothYaw_) {
+                // Continuous-yaw cull: project the center at the full visualYaw
+                // and grow the iso half-extent by the continuous |c|,|s| (up to
+                // the sqrt(2) footprint at +/-45deg) so off-center shapes inside
+                // the rotated footprint survive the cardinal-snapped viewport.
+                const float absC = IRMath::abs(yawCosVisual_);
+                const float absS = IRMath::abs(yawSinVisual_);
                 sizeForExtent = vec3(
                     sizeForExtent.x * absC + sizeForExtent.y * absS,
                     sizeForExtent.x * absS + sizeForExtent.y * absC,
                     sizeForExtent.z
                 );
+                shapeIsoPosition = IRMath::pos3DtoPos2DIsoYawed(xform.translation_, visualYaw_);
+            } else {
+                vec3 viewPos = xform.translation_;
+                if (!yawZero_) {
+                    viewPos = vec3(
+                        yawCos_ * xform.translation_.x + yawSin_ * xform.translation_.y,
+                        -yawSin_ * xform.translation_.x + yawCos_ * xform.translation_.y,
+                        xform.translation_.z
+                    );
+                    const float absC = IRMath::abs(yawCos_);
+                    const float absS = IRMath::abs(yawSin_);
+                    sizeForExtent = vec3(
+                        sizeForExtent.x * absC + sizeForExtent.y * absS,
+                        sizeForExtent.x * absS + sizeForExtent.y * absC,
+                        sizeForExtent.z
+                    );
+                }
+                shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
             }
-            vec2 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
             vec2 shapeIsoHalfExtent = IRMath::shapeIsoHalfExtent(sizeForExtent);
             if (shapeIsoPosition.x + shapeIsoHalfExtent.x < cullBounds_->min_.x ||
                 shapeIsoPosition.x - shapeIsoHalfExtent.x > cullBounds_->max_.x ||
@@ -169,6 +195,12 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         yawCos_ = kCardinalCos[cardinalIdx];
         yawSin_ = kCardinalSin[cardinalIdx];
         yawZero_ = (rasterYaw_ == 0.0f);
+        // Smooth camera Z-yaw (#1345): continuous-yaw cull/footprint inside a
+        // residual bracket. cos/sin of the full visualYaw (not the cardinal
+        // table) so the rotated footprint grows to the true sqrt(2) extent.
+        smoothYaw_ = (residualYaw_ != 0.0f);
+        yawCosVisual_ = IRMath::cos(visualYaw_);
+        yawSinVisual_ = IRMath::sin(visualYaw_);
 
         IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
         auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
@@ -242,6 +274,12 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.visualYaw = visualYaw;
             frameData_.rasterYaw = rasterYaw;
             frameData_.residualYaw = residualYaw;
+            // Smooth camera Z-yaw (#1345): the continuous-yaw SDF path is enabled
+            // only on the rotating MAIN world canvas. Detached per-entity canvases
+            // keep the cardinal rasterYaw + faceDeform path (their camera-rotation
+            // is absorbed by their own SO(3) bake, not the SDF rasterizer).
+            const bool canvasSmoothYaw = smoothYaw_ && (canvasId == mainCanvas);
+            frameData_.smoothYawEnabled = canvasSmoothYaw ? 1 : 0;
             // Residual yaw is folded into faceDeform per-face for the
             // shapes shader (T-293, replaces the T-058 / T-322 bilinear
             // path). Identity at residualYaw==0.
@@ -268,6 +306,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 rasterYaw,
                 yawCos_,
                 yawSin_,
+                canvasSmoothYaw,
+                visualYaw,
+                yawCosVisual_,
+                yawSinVisual_,
                 gridX
             );
             if (tileCount == 0) {
@@ -395,6 +437,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // @p yawCos/@p yawSin are cos/sin of rasterYaw, snapshotted at frame
     // start so the cull pass and the per-tile dispatch see byte-identical
     // values even if a script mutates yaw mid-frame.
+    //
+    // Smooth camera Z-yaw (#1345): when @p smoothYaw is set the tile footprint
+    // is centered on the FULL-visualYaw iso projection (matching the shader's
+    // continuous originIsoScaled) and grown by the continuous |cos|,|sin| up to
+    // the sqrt(2) extent. @p visualYaw / @p yawCosVisual / @p yawSinVisual are
+    // the continuous angle and its cos/sin. At @p smoothYaw=false the cardinal
+    // rasterYaw footprint is used unchanged (byte-identical).
     static int buildAndUploadTileDescriptors(
         const std::vector<GPUShapeDescriptor> &gpuShapes,
         Buffer *tileDescBuf,
@@ -403,6 +452,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         float rasterYaw,
         float yawCos,
         float yawSin,
+        bool smoothYaw,
+        float visualYaw,
+        float yawCosVisual,
+        float yawSinVisual,
         int &gridXOut
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
@@ -447,18 +500,40 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // Z-yaw expands the XY AABB by |c|·hX + |s|·hY (and symmetric).
             // Grow the iso footprint conservatively so every visible pixel
             // of the rotated shape is inside at least one dispatched tile.
-            if (!yawZero) {
+            ivec2 isoMin;
+            ivec2 isoMax;
+            if (smoothYaw) {
+                // Continuous-yaw footprint: center on the full-visualYaw iso
+                // projection (matches the shader's originIsoScaled) and grow by
+                // the continuous |c|,|s| (sqrt(2) extent at +/-45deg).
+                const float absC = IRMath::abs(yawCosVisual);
+                const float absS = IRMath::abs(yawSinVisual);
                 boundingHalf = vec3(
-                    boundingHalf.x * absYawC + boundingHalf.y * absYawS,
-                    boundingHalf.x * absYawS + boundingHalf.y * absYawC,
+                    boundingHalf.x * absC + boundingHalf.y * absS,
+                    boundingHalf.x * absS + boundingHalf.y * absC,
                     boundingHalf.z
                 );
+                const vec2 originIsoF =
+                    IRMath::pos3DtoPos2DIsoYawed(worldPos * static_cast<float>(sub), visualYaw);
+                const ivec2 originIsoScaled =
+                    ivec2(IRMath::roundHalfUp(originIsoF.x), IRMath::roundHalfUp(originIsoF.y));
+                const ivec2 isoHalfExtent =
+                    ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f)) * sub;
+                isoMin = originIsoScaled - isoHalfExtent - ivec2(2);
+                isoMax = originIsoScaled + isoHalfExtent + ivec2(2);
+            } else {
+                if (!yawZero) {
+                    boundingHalf = vec3(
+                        boundingHalf.x * absYawC + boundingHalf.y * absYawS,
+                        boundingHalf.x * absYawS + boundingHalf.y * absYawC,
+                        boundingHalf.z
+                    );
+                }
+                const ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
+                const ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
+                isoMin = (originIso - isoHalfExtent) * sub - ivec2(2);
+                isoMax = (originIso + isoHalfExtent) * sub + ivec2(2);
             }
-            ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
-            ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
-
-            ivec2 isoMin = (originIso - isoHalfExtent) * sub - ivec2(2);
-            ivec2 isoMax = (originIso + isoHalfExtent) * sub + ivec2(2);
             ivec2 isoSize = isoMax - isoMin;
 
             const int tilesX = IRMath::divCeil(IRMath::max(isoSize.x, 1), kShapeTileSize);
