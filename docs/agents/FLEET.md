@@ -921,21 +921,27 @@ Specifically, **never pass these via `--label` when filing**:
   than 30 min and replays orphan sentinels from failed removals.
   Don't add manually; don't add to issues.
 - `fleet:amending-<host>-<agent>` — owned by the **`fleet-claim`
-  script** (atomic amend-claim primitive; same lex-min tie-break as
-  `fleet:reviewing-`). Applied by the **author worker** at the start
-  of a `fleet:needs-fix` amendment — `fleet-claim amending-claim`,
-  before it removes `fleet:needs-fix` — and removed by
-  `fleet-claim amending-release` once `fleet:changes-made` is set, or
-  swept on abort. It closes the gap that `fleet:needs-fix` is the
-  PR's only verdict label: once removed the PR is verdict-less and a
-  reviewer poll would otherwise claim and review the diff mid-rewrite
-  (observed on PR #1316, 2026-05-28). Reviewer projections **skip any
-  PR carrying a `fleet:amending-*` label** (a `REVIEW_SKIP_PREFIXES`
-  match in `fleet-state-scout`) — the host-suffixed analogue of the
-  static `fleet:human-amending` skip, doubling as a fixer-vs-fixer
-  mutex. The scout's `fleet-claim cleanup --gh` pass sweeps labels
-  older than 30 min and replays orphan sentinels. Don't add manually;
-  don't add to issues.
+  script** (atomic feedback-claim primitive; same lex-min tie-break as
+  `fleet:reviewing-`). The **single mutex for all feedback handling**:
+  the author worker acquires it via `fleet-claim amending-claim` as the
+  **first** action of feedback pickup — before reading feedback,
+  checking out, or touching any label — for *every* feedback path
+  (`human:needs-fix`/`blocker`, `fleet:needs-fix`, `fleet:has-nits`,
+  `fleet:design-unblocked`, AMEND and ESCALATE alike). Released by
+  `fleet-claim amending-release` at the terminal step (after the
+  done-label swap), or swept on abort. It replaces the per-path guards
+  that were bolted on reactively and still left gaps — `fleet:needs-fix`
+  got an atomic claim after #1316, `fleet:design-unblocked` after a
+  #1310 clobber, while `human:needs-fix` had only the non-atomic
+  `fleet:human-amending` + a TOCTOU worktree reservation and let two
+  workers race the same PR (#1336, 2026-05-30). Two roles fire on one
+  dispatcher trigger, so the claim being **first** is also what makes
+  the loser exit in ~1s instead of burning a full iteration. Reviewer
+  projections **skip any PR carrying a `fleet:amending-*` label**
+  (a `REVIEW_SKIP_PREFIXES` match in `fleet-state-scout`), so no
+  reviewer touches an in-flight diff. The scout's `fleet-claim cleanup
+  --gh` pass sweeps labels older than 30 min and replays orphan
+  sentinels. Don't add manually; don't add to issues.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
   **author worker** (sonnet-author / opus-worker) when picking up
   `human:needs-fix`. The two labels express which disposition the
