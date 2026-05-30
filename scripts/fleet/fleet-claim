@@ -1985,6 +1985,17 @@ for repo in repos:
             labs = pr["labels"]
             if "fleet:wip" not in labs and not (labs & FEEDBACK):
                 continue
+            # A fleet:design-blocked PR is intentionally claim-less, not drift.
+            # The design-escalation protocol (role-opus-worker.md step 8c) has
+            # the worker RELEASE its claim + worktree reservation when parking
+            # the PR for the architect; re-adoption is gated on the architect
+            # flipping it to fleet:design-unblocked, not a free pickup decision.
+            # So "no claim / reservation / claim-label" here is the correct
+            # parked state. (fleet:design-unblocked stays flaggable — it IS in
+            # FEEDBACK above — because an unclaimed unblocked PR genuinely is
+            # awaiting re-adoption.)
+            if "fleet:design-blocked" in labs:
+                continue
             issue_labs = d["issue_labels"].get(issue_n, set())
             if (any(l.startswith("fleet:claim-") for l in issue_labs)
                     or (repo, issue_n) in fs_by_task
