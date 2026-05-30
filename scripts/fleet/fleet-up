@@ -262,6 +262,11 @@ if [[ -d "$GAME/.git" ]]; then
     # same dual-worktree model as the opus-workers above.
     ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-1  fleet/game-sonnet-fleet-1
     ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-2  fleet/game-sonnet-fleet-2
+    # The single merger pane covers both repos (one dispatcher role, two
+    # passes per iteration). This game worktree is where it checks out and
+    # rebases game PRs; the engine pass uses .claude/worktrees/merger under
+    # the engine root above. Same dual-worktree model as the opus-workers.
+    ensure_worktree "$GAME" .claude/worktrees/merger          fleet/game-merger
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi

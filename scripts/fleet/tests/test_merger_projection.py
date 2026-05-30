@@ -27,11 +27,17 @@ _spec = importlib.util.spec_from_loader("fleet_state_scout", _loader)
 _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 project_merger = _mod.project_merger
+slice_merger = _mod.slice_merger
 stable_hash = _mod.stable_hash
 
 
 def _state(prs):
     return {"repos": {"engine": {"prs": prs}}}
+
+
+def _state_eng_game(engine_prs, game_prs):
+    return {"repos": {"engine": {"prs": engine_prs},
+                      "game": {"prs": game_prs}}}
 
 
 def _pr(num, *, labels=None, mergeable="MERGEABLE", base="master",
@@ -163,6 +169,38 @@ class SignalSemantics(unittest.TestCase):
     def test_unapproved_is_dropped(self):
         items = project_merger(_state([_pr(101, labels=[])]))
         self.assertEqual(items, [])
+
+
+class MergerCoversBothRepos(unittest.TestCase):
+    """The merger handles engine AND game PRs (the game pass added after the
+    engine-only v1). A CONFLICTING approved game PR must be visible to the
+    merger — the gap that left game #99 rotting with no actor."""
+
+    def test_game_conflict_in_projection(self):
+        items = project_merger(_state_eng_game(
+            engine_prs=[],
+            game_prs=[_pr(99, labels=["fleet:approved"], mergeable="CONFLICTING")],
+        ))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["repo"], "game")
+        self.assertEqual(items[0]["signal"], "needs-resolve")
+
+    def test_game_conflict_in_slice_tagged_repo(self):
+        out = slice_merger(_state_eng_game(
+            engine_prs=[_pr(101, labels=["fleet:approved"], mergeable="CONFLICTING")],
+            game_prs=[_pr(99, labels=["fleet:approved"], mergeable="CONFLICTING")],
+        ))
+        repos = sorted(pr["repo"] for pr in out["prs"])
+        self.assertEqual(repos, ["engine", "game"])
+
+    def test_slice_excludes_clean_unapproved_game_pr(self):
+        # Same filter as engine: a MERGEABLE, unapproved game PR is not the
+        # merger's business and must not bloat the slice.
+        out = slice_merger(_state_eng_game(
+            engine_prs=[],
+            game_prs=[_pr(99, labels=[], mergeable="MERGEABLE")],
+        ))
+        self.assertEqual(out["prs"], [])
 
 
 if __name__ == "__main__":
