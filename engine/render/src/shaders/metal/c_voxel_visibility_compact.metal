@@ -63,16 +63,31 @@ kernel void c_voxel_visibility_compact(
         if (chunkVisible[chunkIdx] != 0u) {
             const uint maskWord = activeMask[idx >> 5u];
             if (((maskWord >> (idx & 31u)) & 1u) != 0u) {
-                int3 voxelPos = int3(round(positions[idx].xyz));
-                if (cardinalIndex != 0) {
-                    voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
-                    voxelPos += cardinalLowerCornerShift(cardinalIndex);
+                const int3 voxelPosRaw = int3(round(positions[idx].xyz));
+                int2 isoPos;
+                int cullMargin = 0;
+                // Smooth camera Z-yaw (T3 / #1310) — see the GLSL mirror for the
+                // rationale: while rotating, project the cull with the same
+                // continuous yaw the per-axis scatter raster uses (cardinal snap
+                // drops off-center voxels), widened by the sqrt2 face footprint.
+                // residual == 0 keeps the byte-identical cardinal-snap path.
+                if (frameData.residualYaw != 0.0f) {
+                    isoPos = roundHalfUp(
+                        pos3DtoPos2DIsoYawed(float3(voxelPosRaw), frameData.visualYaw)
+                    );
+                    cullMargin = 2;
+                } else {
+                    int3 voxelPos = voxelPosRaw;
+                    if (cardinalIndex != 0) {
+                        voxelPos = rotateCardinalZ(voxelPos, cardinalIndex);
+                        voxelPos += cardinalLowerCornerShift(cardinalIndex);
+                    }
+                    isoPos = pos3DtoPos2DIso(voxelPos);
                 }
-                const int2 isoPos = pos3DtoPos2DIso(voxelPos);
-                if (isoPos.x >= frameData.cullIsoMin.x &&
-                    isoPos.x <= frameData.cullIsoMax.x &&
-                    isoPos.y >= frameData.cullIsoMin.y &&
-                    isoPos.y <= frameData.cullIsoMax.y) {
+                if (isoPos.x >= frameData.cullIsoMin.x - cullMargin &&
+                    isoPos.x <= frameData.cullIsoMax.x + cullMargin &&
+                    isoPos.y >= frameData.cullIsoMin.y - cullMargin &&
+                    isoPos.y <= frameData.cullIsoMax.y + cullMargin) {
                     const uint slot = atomic_fetch_add_explicit(
                         &indirectParams[kSlotVisibleCount],
                         1u,

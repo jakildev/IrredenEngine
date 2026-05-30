@@ -135,27 +135,34 @@ kernel void c_voxel_to_trixel_stage_2(
         frameData.faceDeform[slot].zw
     );
 
-    // Smooth camera Z-yaw per-axis routing (T2 / #1309) — mirrors stage 1's
-    // geometry exactly so color/entity-id taps match the distance taps. See
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — mirrors
+    // stage 1's geometry exactly so the color/entity-id tap lands on the same
+    // single center cell. T3 stores one cell per face center; the framebuffer
+    // scatter reconstructs the deformed face quad. See
     // c_voxel_to_trixel_stage_1.glsl for the contract.
     if (frameData.perAxisRoute != 0) {
-        if ((faceId >> 1) != frameData.perAxisRoute - 1) return;
+        const int axis = frameData.perAxisRoute - 1;
+        if ((faceId >> 1) != axis) return;
+        // Face-local in-plane store — mirrors stage 1 (#1310 fix). See
+        // c_voxel_to_trixel_stage_1.glsl / ir_iso_common.metal.
         const int2 perAxisBase = trixelFrameOffset(
             frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions
         );
-        const bool isDetached = frameData.isDetachedCanvas > 0.5f;
+        const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
+        const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (frameData.voxelRenderOptions.x == 0) {
-            const float3 worldPos = round(voxelPosition.xyz);
+            const int3 worldPos = int3(round(voxelPosition.xyz));
+            // Mirror stage 1's face-plane store (#1310 seam fix) so the color
+            // tap lands on the same cell + depth the distance tap did.
+            const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(int3(worldPos)), slot);
-            const int2 base =
-                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, frameData.visualYaw));
-            emitDeformedFace(
-                base, D, voxelDistance, voxelColor, packedEntityId, localId, isDetached,
-                canvasSize, distanceScratch, triangleCanvasColors, triangleCanvasDistances,
-                triangleCanvasEntityIds
+                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
+            writeColorTap(
+                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance, voxelColor,
+                packedEntityId, canvasSize, distanceScratch,
+                triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
             );
             return;
         }
@@ -168,12 +175,10 @@ kernel void c_voxel_to_trixel_stage_2(
             faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
         const int voxelDistance =
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
-        const int2 base =
-            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(microWorld), frameData.visualYaw));
-        emitDeformedFace(
-            base, D, voxelDistance, voxelColor, packedEntityId, localId, isDetached,
-            canvasSize, distanceScratch, triangleCanvasColors, triangleCanvasDistances,
-            triangleCanvasEntityIds
+        writeColorTap(
+            cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance, voxelColor,
+            packedEntityId, canvasSize, distanceScratch,
+            triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );
         return;
     }

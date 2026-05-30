@@ -109,24 +109,39 @@ kernel void c_voxel_to_trixel_stage_1(
         frameData.faceDeform[slot].zw
     );
 
-    // Smooth camera Z-yaw per-axis routing (T2 / #1309) — see
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — see
     // c_voxel_to_trixel_stage_1.glsl for the full contract. perAxisRoute==0
-    // falls through to the byte-identical single-canvas path below.
+    // falls through to the byte-identical single-canvas path below. T3 stores
+    // ONE cell per face center (not the emitDeformedFace cluster); atomicMin
+    // resolves occlusion per cell and the framebuffer scatter reconstructs the
+    // deformed face quad, so D is no longer applied here.
     if (frameData.perAxisRoute != 0) {
-        if ((faceId >> 1) != frameData.perAxisRoute - 1) return;
+        const int axis = frameData.perAxisRoute - 1;
+        if ((faceId >> 1) != axis) return;
+        // Face-local in-plane store (#1310 fix) — see c_voxel_to_trixel_stage_1.glsl
+        // and ir_iso_common.metal. Dense collision-free lattice replaces the
+        // yawed iso store (cracks on the compressed axis, singular recovery at
+        // +/-120 deg); the scatter recovers the origin exactly and reprojects.
         const int2 perAxisBase = trixelFrameOffset(
             frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions
         );
-        const bool isDetached = frameData.isDetachedCanvas > 0.5f;
+        const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
+        const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (frameData.voxelRenderOptions.x == 0) {
-            const float3 worldPos = round(voxelPosition.xyz);
+            const int3 worldPos = int3(round(voxelPosition.xyz));
+            // Store the FACE-PLANE position (#1310 seam fix) — mirror of
+            // c_voxel_to_trixel_stage_1.glsl. faceInPlaneCoords ignores the
+            // fixed axis so the cell is unchanged; the depth now recovers the
+            // face plane, which faceSpanCorner spans without re-adding polarity.
+            const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(int3(worldPos)), slot);
-            const int2 base =
-                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, frameData.visualYaw));
-            emitDeformedFace(base, D, voxelDistance, localId, isDetached, distanceScratch, canvasSize);
+                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
+            writeDistanceTap(
+                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance,
+                distanceScratch, canvasSize
+            );
             return;
         }
         const int subPerAxis = max(frameData.voxelRenderOptions.y, 1);
@@ -138,9 +153,10 @@ kernel void c_voxel_to_trixel_stage_1(
             faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
         const int voxelDistance =
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
-        const int2 base =
-            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(microWorld), frameData.visualYaw));
-        emitDeformedFace(base, D, voxelDistance, localId, isDetached, distanceScratch, canvasSize);
+        writeDistanceTap(
+            cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance,
+            distanceScratch, canvasSize
+        );
         return;
     }
 

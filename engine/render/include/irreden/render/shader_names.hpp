@@ -12,6 +12,13 @@ const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";
 const char *const kFileVertTrixelToFramebuffer = "shaders/v_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffer.glsl";
 
+// Smooth camera Z-yaw forward-scatter composite (T3 / #1310): instanced draw
+// over per-axis canvas cells, scattering each occupied cell as its deformed
+// face quad into the framebuffer depth buffer (Metal mirror in
+// metal/peraxis_scatter.metal).
+const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
+const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
+
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";
 const char *const kFileCompTrixelToTrixel = "shaders/c_trixel_to_trixel.glsl";

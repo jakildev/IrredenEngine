@@ -241,8 +241,19 @@ struct C_VoxelPool {
         return m_chunkBounds;
     }
 
-    void rebuildChunkBounds(CardinalIndex cardinalIndex = CardinalIndex::k0) {
-        if (!m_chunkBoundsDirty && cardinalIndex == m_lastBoundsCardinalIndex)
+    // @p useContinuousYaw (smooth camera Z-yaw, T3 / #1310): while the per-axis
+    // canvases are active the framebuffer scatter rasterizes voxels at their
+    // CONTINUOUS yawed iso position, so the chunk-visibility gate must project
+    // the same way — the cardinal-snapped chunk bounds otherwise drop off-center
+    // chunks (the "missing objects / ground during rotation" symptom). The
+    // continuous-yaw bounds change every frame, so they bypass the cardinal-
+    // index cache and force a fresh recompute on the next cardinal-path call.
+    void rebuildChunkBounds(
+        CardinalIndex cardinalIndex = CardinalIndex::k0,
+        bool useContinuousYaw = false,
+        float visualYaw = 0.0f
+    ) {
+        if (!useContinuousYaw && !m_chunkBoundsDirty && cardinalIndex == m_lastBoundsCardinalIndex)
             return;
 
         int chunkCount = getChunkCount();
@@ -255,15 +266,26 @@ struct C_VoxelPool {
                 continue;
             int chunk = i / IRRender::kVoxelChunkSize;
             vec3 pos = m_voxelPositionsGlobal[i].pos_;
-            if (cardinalIndex != CardinalIndex::k0) {
-                pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
-                pos += vec3(IRMath::cardinalLowerCornerShift(cardinalIndex));
+            vec2 isoPos;
+            if (useContinuousYaw) {
+                isoPos = IRMath::pos3DtoPos2DIsoYawed(pos, visualYaw);
+            } else {
+                if (cardinalIndex != CardinalIndex::k0) {
+                    pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
+                    pos += vec3(IRMath::cardinalLowerCornerShift(cardinalIndex));
+                }
+                isoPos = IRMath::pos3DtoPos2DIso(pos);
             }
-            vec2 isoPos = IRMath::pos3DtoPos2DIso(pos);
             m_chunkBounds[chunk].expand(isoPos);
         }
-        m_lastBoundsCardinalIndex = cardinalIndex;
-        m_chunkBoundsDirty = false;
+        if (useContinuousYaw) {
+            // Never cache a per-frame yaw snapshot; force the next cardinal-path
+            // call to rebuild rather than trust stale continuous bounds.
+            m_chunkBoundsDirty = true;
+        } else {
+            m_lastBoundsCardinalIndex = cardinalIndex;
+            m_chunkBoundsDirty = false;
+        }
     }
 
     void markChunkBoundsDirty() {
