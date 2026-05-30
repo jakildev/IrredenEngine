@@ -202,7 +202,10 @@ Do the work, then exit cleanly:
    longer in your conversation context. From `repos.engine.prs[]`
    and `repos.game.prs[]`, pick PRs whose `labels` array contains
    any of `human:needs-fix`, `human:blocker`, `fleet:needs-fix`,
-   `fleet:has-nits`, `fleet:design-unblocked`.
+   `fleet:has-nits`, `fleet:design-unblocked` — but **skip any PR
+   already carrying a `fleet:amending-*` label** (another worker
+   holds the atomic feedback claim and is handling it; step a will
+   reject your claim anyway).
 
    Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
    it owns the priority order, the detached-HEAD checkout flow,

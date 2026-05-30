@@ -132,7 +132,10 @@ Each iteration:
    `~/.fleet/state/state.json` if its contents are no longer in your
    conversation context. From `repos.engine.prs[]`, pick PRs whose
    `labels` array contains any of `human:needs-fix`,
-   `human:blocker`, `fleet:needs-fix`, `fleet:has-nits`.
+   `human:blocker`, `fleet:needs-fix`, `fleet:has-nits` — but **skip
+   any PR already carrying a `fleet:amending-*` label** (another
+   worker holds the atomic feedback claim; step a will reject your
+   claim anyway).
 
    Follow [`docs/agents/FLEET-FEEDBACK-HANDLING.md`](../../docs/agents/FLEET-FEEDBACK-HANDLING.md) —
    it owns the priority order, the detached-HEAD checkout flow,
