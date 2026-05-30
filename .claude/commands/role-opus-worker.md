@@ -569,11 +569,17 @@ Do the work, then exit cleanly:
      below.
    - **A step you cannot perform** (e.g. the self-config edit above):
      comment on the issue naming exactly what a human must apply, then
-     bump it out of autonomous pickup so you stop re-claiming it —
-     `gh issue edit <N> --remove-label human:approved --remove-label fleet:queued` —
-     and release your `fleet-claim`. Do NOT re-claim it next iteration:
-     the gate is deterministic, so retrying only burns iterations on a
-     wall until a human applies it.
+     park it out of autonomous pickup so you stop re-claiming it —
+     `gh issue edit <N> --remove-label fleet:queued --add-label fleet:needs-human` —
+     and release your `fleet-claim`. **Keep `human:approved`** — it's the
+     human's durable approval signal, not yours to strip; removing it was
+     the old workaround for the ingest re-stamping `fleet:queued` (it
+     re-queues any `human:approved` issue lacking it), which is exactly
+     what `fleet:needs-human` now suppresses (it's in the ingest skip set,
+     like `fleet:scope-shipped`). Do NOT re-claim it next iteration: the
+     gate is deterministic, so retrying only burns iterations on a wall.
+     The label clears when the human applies the change — then the ingest
+     re-queues it — or the human closes the issue.
 
    **Design escalation via `fleet:design-blocked`.** When the
    blocker is specifically architectural — the assigned task can't

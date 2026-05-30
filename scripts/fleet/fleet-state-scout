@@ -157,6 +157,8 @@ _INGEST_SKIP_LABELS = frozenset({
     "fleet:needs-plan",
     "fleet:needs-info",
     "fleet:scope-shipped", # scope landed under a different issue; human should close
+    "fleet:needs-human",   # parked: fleet can't do it autonomously, human must act;
+                           # keeps human:approved but must NOT be re-queued
 })
 
 

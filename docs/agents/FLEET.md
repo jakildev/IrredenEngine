@@ -792,6 +792,19 @@ Specifically, **never pass these via `--label` when filing**:
   the landing PR; not added if the comment call fails (safe retry on
   next tick). Don't add manually unless you've verified a merged PR
   covers the scope.
+- `fleet:needs-human` — owned by the **author worker** (opus-worker).
+  Set when a queued task can only be completed by a step the fleet
+  can't perform autonomously — most often a gated self-config edit
+  (`.claude/commands/role-*.md`, `.claude/agents/*`). The worker
+  comments naming what the human must apply, removes `fleet:queued`,
+  adds this label, and releases its claim. **`human:approved` is
+  KEPT** — it is the human's durable approval, not the worker's to
+  strip. Like `fleet:scope-shipped`, this label is in the scout's
+  `_INGEST_SKIP_LABELS` and the ingest's stamping skip, so the ingest
+  does NOT re-stamp `fleet:queued` while it's present (removing
+  `human:approved` used to be the only way to defeat that re-stamp —
+  this label replaces that workaround). Clears when the human applies
+  the change (the ingest then re-queues the issue) or closes it.
 - `fleet:queued` / `fleet:task` — owned by **`fleet-queue-ingest`**,
   set after `human:approved` has been observed. Adding it at filing
   time excludes the issue from the ingest search (which looks for
