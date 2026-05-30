@@ -1896,6 +1896,16 @@ for repo in repos:
     for issue_n, prlist in d["pr_by_issue"].items():
         for pr in prlist:
             labs = pr["labels"]
+            # A design-blocked PR is intentionally parked with no claim: the
+            # design-escalation protocol (role-opus-worker.md step 8) mandates
+            # releasing the fleet-claim + worktree reservation when a PR goes
+            # design-blocked, so ANY opus-worker can resume it once the
+            # architect re-arms it as fleet:design-unblocked. Its no-claim
+            # state is correct-by-protocol, not orphaned drift, and there is no
+            # re-adoption pickup decision to make here (it waits on the
+            # architect, not a worker). Flagging it every tick is pure noise.
+            if "fleet:design-blocked" in labs:
+                continue
             if "fleet:wip" not in labs and not (labs & FEEDBACK):
                 continue
             issue_labs = d["issue_labels"].get(issue_n, set())
@@ -3427,8 +3437,10 @@ commands:
                                   R4b   queued + in-progress with no claim
                                         (any host) + no open PR → remove the
                                         stale fleet:in-progress.
-                                R2 (orphaned WIP/feedback PR with no claim)
-                                is report-only. Cross-host is flag-only by
+                                R2 (orphaned WIP/feedback PR with no claim;
+                                fleet:design-blocked PRs exempt — their
+                                no-claim state is protocol-correct) is
+                                report-only. Cross-host is flag-only by
                                 construction — never auto-releases another
                                 host's FS state or claim label. Defaults to
                                 engine + game (when reachable); --repo

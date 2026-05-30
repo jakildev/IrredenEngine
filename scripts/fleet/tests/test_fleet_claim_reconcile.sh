@@ -20,6 +20,9 @@
 #     (design-unblocked applied later → remove the older design-blocked).
 #   - issue #504 carries queued + in-progress, no claim/PR → R4b stale in-progress.
 #   - PR #600 (head claude/505-orphan, fleet:wip) with no claim → R2 flag only.
+#   - PR #602 (head claude/507-design-blocked, fleet:wip + fleet:design-blocked)
+#     with no claim → R2 EXEMPT (design-blocked PRs release their claim by
+#     protocol; their no-claim state is correct, not orphaned drift).
 #
 # Covers the acceptance criteria of #1356:
 #   - report-only mutates nothing and writes a well-formed drift-report.json
@@ -97,7 +100,8 @@ JSON
 cat > "$PRS_JSON" <<'JSON'
 [
   {"number":600,"headRefName":"claude/505-orphan","labels":[{"name":"fleet:wip"}],"body":"Work in progress."},
-  {"number":601,"headRefName":"claude/topic-506","labels":[{"name":"fleet:wip"}],"body":"Implements the thing.\n\nCloses #506\n"}
+  {"number":601,"headRefName":"claude/topic-506","labels":[{"name":"fleet:wip"}],"body":"Implements the thing.\n\nCloses #506\n"},
+  {"number":602,"headRefName":"claude/507-design-blocked","labels":[{"name":"fleet:wip"},{"name":"fleet:design-blocked"}],"body":"Parked on the architect."}
 ]
 JSON
 
@@ -201,6 +205,11 @@ assert 506 not in r1_targets, "R1 must NOT flag #506 (PR closes it via body)"
 # Flag-only R2 carries no apply action.
 r2 = [f for f in r["findings"] if f["rule"] == "R2"]
 assert all(f["apply"] is None for f in r2), "R2 must be flag-only"
+# R2 flags the orphaned WIP PR but EXEMPTS the design-blocked PR (#602): a
+# design-blocked PR is parked with no claim by protocol, not orphaned drift.
+r2_targets = {f["target"] for f in r2}
+assert 600 in r2_targets, "R2 should flag orphaned WIP PR #600"
+assert 602 not in r2_targets, "R2 must NOT flag design-blocked PR #602"
 PY
 
 echo "=== Phase 2: --apply (gated host-local repairs) ==="
