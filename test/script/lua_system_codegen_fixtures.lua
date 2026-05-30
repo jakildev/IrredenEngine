@@ -117,3 +117,40 @@ IRSystem.registerSystem({
         end
     end,
 })
+
+-- #1353 row-alias safety: bind the row, write field x through the column,
+-- then read x AGAIN (after the write) to set y. The binding must stay a
+-- by-value copy — an alias would observe the just-written x and emit y == 99
+-- instead of the original x. Pins the analysis that blocks aliasing when a
+-- read is sequenced after a same-column write.
+IRSystem.registerSystem({
+    name = 'CodegenReadAfterWrite',
+    components = { 'CodegenSysPos' },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local r = arch.CodegenSysPos:at(i)
+            arch.CodegenSysPos:setField(i, 'x', 99.0)
+            arch.CodegenSysPos:setField(i, 'y', r.x)
+        end
+    end,
+})
+
+-- #1353 FOR_NUMERIC back-edge: bind the row before a nested for_numeric loop
+-- that writes the same component. Across the loop back-edge, iteration j+1
+-- reads `a.x` after iteration j already wrote it — the binding must stay a
+-- by-value copy. With initial x=1.0 and 3 iterations (j=0,1,2), copy
+-- semantics produce x=2.0 each write (reads unchanged 1.0); an alias would
+-- accumulate: 1→2→3→4.
+IRSystem.registerSystem({
+    name = 'CodegenForNumericBackEdge',
+    components = { 'CodegenSysPos' },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local a = arch.CodegenSysPos:at(i)
+            for j = 0, 2 do
+                local tmp = a.x
+                arch.CodegenSysPos:setField(i, 'x', tmp + 1.0)
+            end
+        end
+    end,
+})

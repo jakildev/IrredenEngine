@@ -527,6 +527,16 @@ local sysId = IRSystem.registerSystem({
   available via `mode = "eval"` for bodies that need a different
   shape.
 
+  A `local a = arch.Comp:at(i)` binding that is only read — never
+  reassigned, and never read after the same column is written via
+  `setAt`/`setField` — lowers to a `const auto&` alias of the row
+  (`const auto& a = _ir_row_Comp;`) instead of a by-value copy, so
+  read-light kernels skip the per-row struct copy (#1353). Any
+  binding the emitter can't prove read-only stays by-value: the DSL
+  forbids `a.field = ...`, so the only way the row changes mid-body
+  is a `setAt`/`setField` on the same component, and a copy vs an
+  alias differ only when a read is sequenced after such a write.
+
 ## Hot-reload of Lua system bodies (`IRSystem.replaceSystemBody`)
 
 `IRSystem.replaceSystemBody(systemId, newTick)` reseats the tick

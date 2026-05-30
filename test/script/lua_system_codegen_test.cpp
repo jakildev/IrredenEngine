@@ -46,6 +46,13 @@ class LuaSystemCodegenTest : public testing::Test {
 };
 
 // ---- Canonical loop + column ops -----------------------------------------
+//
+// pos and vel are read-only (no write to CodegenSysPos between the at(i)
+// binding and any subsequent read). The emitter should lower both to
+// `const auto& pos` / `const auto& vel` rather than `auto` (copy). Verify
+// in: build/test/codegen/lua_system_codegen_fixtures.hpp →
+// createSystem_CodegenMove(). If the alias path silently regresses to copy,
+// the fixture will show `auto pos` instead of `const auto& pos`.
 
 TEST_F(LuaSystemCodegenTest, MovePositionByVelocityRoundTrip) {
     using IRComponents::C_CodegenSysPos;
@@ -161,6 +168,8 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
     EXPECT_NE(ids.CodegenClampPositive, ids.CodegenAddOne);
     EXPECT_NE(ids.CodegenAddOne, ids.CodegenDamage);
     EXPECT_NE(ids.CodegenDamage, ids.CodegenParallelInc);
+    EXPECT_NE(ids.CodegenParallelInc, ids.CodegenReadAfterWrite);
+    EXPECT_NE(ids.CodegenReadAfterWrite, ids.CodegenForNumericBackEdge);
 }
 
 // ---- PARALLEL_FOR registers without FATAL and updates every row --------
@@ -186,6 +195,52 @@ TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {
         );
         EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(entities[i]).y_, 2.0f);
     }
+}
+
+// ---- #1353: row-alias optimisation preserves copy semantics --------------
+//
+// `CodegenReadAfterWrite` reads `r.x` AFTER writing column x through
+// `setField`. The optimised emitter must keep `local r = arch.C:at(i)` a
+// by-value copy here (a row alias would observe the just-written x). With an
+// initial (x=3, y=7): x is overwritten to 99, then y is set from the
+// PRE-write x (3). An (incorrect) alias would yield y == 99.
+
+TEST_F(LuaSystemCodegenTest, ReadAfterWriteKeepsCopySemantics) {
+    using IRComponents::C_CodegenSysPos;
+
+    const auto e = IREntity::createEntity(C_CodegenSysPos(3.0f, 7.0f));
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenReadAfterWrite();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 99.0f);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).y_, 3.0f);
+}
+
+// ---- #1353: FOR_NUMERIC back-edge keeps copy semantics for outer binding --
+//
+// `CodegenForNumericBackEdge` binds `local a = arch.C:at(i)` before a
+// for_numeric loop that writes field x inside the body. The back-edge
+// analysis passes `cWritten || bodyWrites` so a read in iteration N+1
+// must not see the write from iteration N via an alias. With an initial
+// x=1.0 and 3 iterations (j=0,1,2), copy semantics yield x=2.0 (each
+// write reads the unchanged copy 1.0). An incorrect alias would
+// accumulate: 1→2→3→4.
+
+TEST_F(LuaSystemCodegenTest, ForNumericBackEdgeKeepsCopySemantics) {
+    using IRComponents::C_CodegenSysPos;
+
+    const auto e = IREntity::createEntity(C_CodegenSysPos(1.0f, 0.0f));
+
+    const IRSystem::SystemId sys =
+        IRScript::CodegenRegistry::createSystem_CodegenForNumericBackEdge();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    // Copy semantics: each of the 3 iterations reads the original a.x (1.0)
+    // and writes 1.0 + 1.0 = 2.0. An alias would accumulate to 4.0.
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 2.0f);
 }
 
 } // namespace
