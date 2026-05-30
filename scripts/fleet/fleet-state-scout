@@ -147,6 +147,7 @@ def fetch_prs(repo):
 
 
 _ALREADY_QUEUED_LABELS = frozenset({"fleet:queued", "fleet:scope-shipped"})
+# fleet:needs-human intentionally absent; parked issues remain visible in human_approved[]
 
 # Labels that mark issues the queue-manager role doc explicitly skips at
 # Step 5 — filter these out of the ingest projector/slicer so epics and
