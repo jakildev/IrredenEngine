@@ -309,6 +309,19 @@ constexpr vec3 isoPixelToPos3D(int isoX, int isoY, float depth) {
     return vec3(wx, wy, wz);
 }
 
+/// Float-precise overload of @ref isoPixelToPos3D taking a fractional iso
+/// point (e.g. a sub-trixel camera pan). The int overload above snaps to whole
+/// iso pixels; this one preserves the fractional offset, so the round-trip
+/// `pos3DtoPos2DIso(isoPixelToPos3D(iso, depth))` is the exact identity for any
+/// real @p iso — required when re-projecting a fractional offset under yaw must
+/// collapse back to the original offset at `yaw == 0`.
+constexpr vec3 isoPixelToPos3D(vec2 iso, float depth) {
+    const float wx = (2.0f * depth - 3.0f * iso.x - iso.y) / 6.0f;
+    const float wy = wx + iso.x;
+    const float wz = (iso.y + 2.0f * wx + iso.x) / 2.0f;
+    return vec3(wx, wy, wz);
+}
+
 /// Component-wise less-than comparison. GLM wrapper.
 template <typename T> constexpr auto lessThan(const T &value1, const T &value2) {
     return glm::lessThan(value1, value2);

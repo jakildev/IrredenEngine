@@ -157,6 +157,12 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 
 /// Camera position in isometric 2-D canvas space (trixel units).
 vec2 getCameraPosition2DIso();
+/// Camera iso offset corrected for the active @ref RotationPivotMode. Producers
+/// that position world content relative to the camera should read THIS, not
+/// @ref getCameraPosition2DIso, so Z-yaw pivots about the camera focus rather
+/// than the world origin. In @c ORIGIN mode and at `visualYaw == 0` it returns
+/// exactly @ref getCameraPosition2DIso (the cardinal fast path is byte-identical).
+vec2 getEffectiveCameraIso();
 /// Current zoom factor as a 2-D scale (x and y may differ for anisotropic zoom).
 vec2 getCameraZoom();
 /// Size of one trixel in screen pixels at the current zoom level.
@@ -260,6 +266,18 @@ void setCameraPosition2DIso(vec2 pos);
 /// @see getVoxelRenderEffectiveSubdivisions for the value actually used by shaders.
 void setSubdivisionMode(SubdivisionMode mode);
 SubdivisionMode getSubdivisionMode();
+/// @}
+
+/// @{
+/// @name Rotation pivot mode
+/// @see RotationPivotMode for the ORIGIN / CAMERA_CENTER trade-off.
+/// @see getEffectiveCameraIso for the camera iso offset this setting corrects.
+void setRotationPivotMode(RotationPivotMode mode);
+RotationPivotMode getRotationPivotMode();
+/// @}
+
+/// @{
+/// @name Subdivision count
 /// Set the base subdivision count. In @c FULL mode it is multiplied by zoom;
 /// in @c POSITION_ONLY it is used as-is; in @c NONE it is ignored (always 1).
 void setVoxelRenderSubdivisions(int subdivisions);

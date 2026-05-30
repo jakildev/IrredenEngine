@@ -74,7 +74,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
 
         frameData.frameData_.cameraTrixelOffset_ =
-            behavior.useCameraPositionIso_ ? IRRender::getCameraPosition2DIso() : vec2(0.0f);
+            behavior.useCameraPositionIso_ ? IRRender::getEffectiveCameraIso() : vec2(0.0f);
         frameData.frameData_.cameraTrixelOffset_ +=
             vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
         if (behavior.applyRenderSubdivisions_ && renderMode != IRRender::SubdivisionMode::NONE) {

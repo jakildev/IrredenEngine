@@ -81,7 +81,7 @@ inline void buildVoxelFrameData(
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
     const ivec2 dispatchGrid = voxelDispatchGridForCount(liveVoxelCount);
 
-    frameData.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
+    frameData.cameraTrixelOffset_ = IRRender::getEffectiveCameraIso();
     frameData.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(canvas.size_);
     frameData.voxelRenderOptions_ = ivec2(static_cast<int>(renderMode), effectiveSubdivisions);
     frameData.voxelDispatchGrid_ = dispatchGrid;

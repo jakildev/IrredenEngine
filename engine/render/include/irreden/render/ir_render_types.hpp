@@ -222,6 +222,16 @@ enum class FitMode { FIT, STRETCH, UNKNOWN };
 /// @note Currently global (per-frame). Per-entity subdivision modes are future work.
 enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 
+/// Where camera Z-yaw rotation pivots.
+/// - @c ORIGIN        — yaw rotates content about the fixed world origin. A
+///   panned-off-origin camera swings the scene in an arc. Deterministic; the
+///   pre-#1352 behavior, kept selectable for demos that rely on it.
+/// - @c CAMERA_CENTER — yaw rotates content about the world point under screen
+///   center (the camera focus), so panning then rotating spins the scene in
+///   place. The correction collapses to the identity at `yaw == 0`, so the
+///   cardinal fast path stays byte-identical to @c ORIGIN. Engine default.
+enum class RotationPivotMode { ORIGIN = 0, CAMERA_CENTER = 1 };
+
 /// Sentinel `entityTransformIndex` marking a voxel as CPU-direct (static):
 /// the GPU voxel-position prepass skips it, leaving its binding-5 slot exactly
 /// as the CPU pending-range flush wrote it. Every voxel defaults to this, so a

@@ -45,6 +45,8 @@ class RenderManager {
     vec2 screenToOutputWindowOffset() const;
     void setSubdivisionMode(SubdivisionMode mode);
     SubdivisionMode getSubdivisionMode() const;
+    void setRotationPivotMode(RotationPivotMode mode);
+    RotationPivotMode getRotationPivotMode() const;
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
@@ -134,6 +136,7 @@ class RenderManager {
     EntityId m_activeCanvas = kNullEntity;
     FitMode m_fitMode;
     SubdivisionMode m_subdivisionMode = SubdivisionMode::FULL;
+    RotationPivotMode m_rotationPivotMode = RotationPivotMode::CAMERA_CENTER;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;

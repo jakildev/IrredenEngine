@@ -242,6 +242,14 @@ SubdivisionMode RenderManager::getSubdivisionMode() const {
     return m_subdivisionMode;
 }
 
+void RenderManager::setRotationPivotMode(RotationPivotMode mode) {
+    m_rotationPivotMode = mode;
+}
+
+RotationPivotMode RenderManager::getRotationPivotMode() const {
+    return m_rotationPivotMode;
+}
+
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {
     m_voxelRenderSubdivisions = IRMath::max(1, subdivisions);
 }
