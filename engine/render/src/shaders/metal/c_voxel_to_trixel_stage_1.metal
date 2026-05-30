@@ -131,10 +131,15 @@ kernel void c_voxel_to_trixel_stage_1(
         const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (frameData.voxelRenderOptions.x == 0) {
             const int3 worldPos = int3(round(voxelPosition.xyz));
+            // Store the FACE-PLANE position (#1310 seam fix) — mirror of
+            // c_voxel_to_trixel_stage_1.glsl. faceInPlaneCoords ignores the
+            // fixed axis so the cell is unchanged; the depth now recovers the
+            // face plane, which faceSpanCorner spans without re-adding polarity.
+            const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(worldPos), slot);
+                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
             writeDistanceTap(
-                cellBase + faceInPlaneCoords(faceId, worldPos), voxelDistance,
+                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance,
                 distanceScratch, canvasSize
             );
             return;

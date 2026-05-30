@@ -48,13 +48,15 @@ struct FragmentOut {
     float depth [[depth(any)]];
 };
 
-static inline float3 faceCorner(int faceId, float3 origin, float2 cornerSel) {
-    if (faceId == kFaceXNeg) return origin + float3(0.0, cornerSel.x, cornerSel.y);
-    if (faceId == kFaceXPos) return origin + float3(1.0, cornerSel.x, cornerSel.y);
-    if (faceId == kFaceYNeg) return origin + float3(cornerSel.x, 0.0, cornerSel.y);
-    if (faceId == kFaceYPos) return origin + float3(cornerSel.x, 1.0, cornerSel.y);
-    if (faceId == kFaceZNeg) return origin + float3(cornerSel.x, cornerSel.y, 0.0);
-    return origin + float3(cornerSel.x, cornerSel.y, 1.0); // kFaceZPos
+// In-plane corner of a face whose `origin` ALREADY sits at the face plane on
+// the fixed axis (the store bakes the polarity via faceMicroPositionFixed6).
+// Spans only the face's two in-plane world axes (X->y,z  Y->x,z  Z->x,y); re-
+// adding the polarity offset double-shifts POS faces one cell past the plane —
+// the #1310 back-face seam. Mirror of faceSpanCorner in v_peraxis_scatter.glsl.
+static inline float3 faceSpanCorner(int axis, float3 origin, float2 cornerSel) {
+    if (axis == 0) return origin + float3(0.0, cornerSel.x, cornerSel.y); // X face: span y,z
+    if (axis == 1) return origin + float3(cornerSel.x, 0.0, cornerSel.y); // Y face: span x,z
+    return origin + float3(cornerSel.x, cornerSel.y, 0.0);                // Z face: span x,y
 }
 
 vertex VertexOut v_peraxis_scatter(
@@ -93,7 +95,7 @@ vertex VertexOut v_peraxis_scatter(
     const float3 origin = float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
 
     const float2 cornerSel = in.position + float2(0.5);
-    const float3 worldCorner = faceCorner(faceId, origin, cornerSel);
+    const float3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
     const float2 cornerIso =
         float2(frameData.perAxisBase) + pos3DtoPos2DIsoYawed(worldCorner, frameData.visualYaw);
 

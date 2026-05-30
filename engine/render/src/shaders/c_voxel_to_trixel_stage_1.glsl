@@ -200,9 +200,16 @@ void main() {
         const ivec2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (voxelRenderOptions.x == 0) {
             const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
+            // Store the FACE-PLANE position (POS faces at the high side, NEG at
+            // the low side) so the scatter's faceSpanCorner — which no longer
+            // re-applies polarity — lands the quad on the correct plane for both
+            // polarities, and the stored depth is the face's true iso distance.
+            // faceInPlaneCoords ignores the fixed axis, so the cell is identical
+            // to worldPos's; only the recovered fixed-axis plane changes.
+            const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(worldPos), slot);
-            writeDistanceTap(cellBase + faceInPlaneCoords(faceId, worldPos), voxelDistance);
+                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
+            writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance);
             return;
         }
         const int subPerAxis = max(voxelRenderOptions.y, 1);

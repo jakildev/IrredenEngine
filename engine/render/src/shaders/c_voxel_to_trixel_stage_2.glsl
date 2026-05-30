@@ -139,10 +139,13 @@ void main() {
         const ivec2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (voxelRenderOptions.x == 0) {
             const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
+            // Mirror stage 1's face-plane store (#1310 seam fix) so the color
+            // tap lands on the same cell + depth the distance tap did.
+            const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(worldPos), slot);
+                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
             writeColorTap(
-                cellBase + faceInPlaneCoords(faceId, worldPos), voxelDistance,
+                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance,
                 voxelColor, voxelIndex
             );
             return;

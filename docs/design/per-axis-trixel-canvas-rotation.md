@@ -100,15 +100,29 @@ Concretely:
    `faceLocalAnchor` recovers the screen-center world voxel via the **un-yawed**
    `isoPixelToPos3D` (never singular) and is computed identically by the store
    and the scatter from the matching `perAxisBase` + canvas size.
-3. **The 4 quad corners are the projected cube-face corners** — `perAxisBase +
-   pos3DtoPos2DIsoYawed(worldOrigin + faceCornerOffset, visualYaw)` for the four
-   in-plane corner offsets of `faceId`, then through the same canvas→clip
-   `mpMatrix` the gather used. Because `pos3DtoPos2DIsoYawed` is linear, this is
-   exactly the "P(θ)·(face corner)" footprint with the deform implicit — no
-   `faceDeform` matrix needed at the framebuffer. Depth is the cell's
-   `normalizeDistance(dist)` (constant per face = trixel-granular). Color +
-   entityId come from the cell's color/id textures. **No gather, no parity
-   inverse** ⇒ the #1256 stripe class cannot occur.
+3. **The 4 quad corners are the projected face corners** — `perAxisBase +
+   pos3DtoPos2DIsoYawed(facePlanePos + inPlaneCornerOffset, visualYaw)` for the
+   four in-plane corner offsets of the face's two world axes (`faceSpanCorner`),
+   then through the same canvas→clip `mpMatrix` the gather used. Because
+   `pos3DtoPos2DIsoYawed` is linear, this is exactly the "P(θ)·(face corner)"
+   footprint with the deform implicit — no `faceDeform` matrix needed at the
+   framebuffer. Depth is the cell's `normalizeDistance(dist)` (constant per face
+   = trixel-granular). Color + entityId come from the cell's color/id textures.
+   **No gather, no parity inverse** ⇒ the #1256 stripe class cannot occur.
+
+   **Polarity is applied exactly once, in the store.** The store
+   (`c_voxel_to_trixel_stage_{1,2}`) bakes the face plane into the stored cell
+   via `faceMicroPositionFixed6` — a POS face stores the high-side plane
+   (`origin + 1` on the fixed axis), a NEG face the low-side plane — and the
+   stored depth is that plane's iso distance. The recovery (`faceOriginFromInPlane`)
+   therefore returns the **face plane**, and `faceSpanCorner` only spans the two
+   in-plane axes (it must NOT re-add the polarity). The original cut applied the
+   polarity offset a second time in the scatter (a per-`faceId` `+1`); since the
+   subdivided store already baked it, POS faces were drawn one micro-cell past
+   the plane — a ~1px dark back-face seam between each POS face and its NEG/Z
+   neighbours at every non-cardinal yaw of cardinals 1/2/3 (cardinal 0's
+   all-NEG triplet was unaffected). Storing the face plane + spanning without
+   polarity is the single-application fix.
 4. **Cost:** v1 instances over all `size.x·size.y` cells and degenerates empties
    in the vertex shader. If the perf gate (camera parked at ~30°, high zoom)
    shows the empty-cell vertex-shader sweep dominating, the measured follow-up is
@@ -126,7 +140,14 @@ class, satisfied by construction). The **face-local in-plane store** (point 1
 above) is what makes the faces solid: the first cut shipped the iso-position
 index, which dropped compressed-axis faces (vertical cracks through each face)
 and went singular at ±120° / ±240° (a speckled cube); the face-local store has
-neither failure by construction. **Byte-identical at the cardinal fast path**
+neither failure by construction. A follow-up pass closed the **back-face seam**
+— a ~1px dark gap between each POS face and its neighbours at non-cardinal yaw
+(cardinals 1/2/3) — by applying the face polarity offset exactly once: the store
+bakes the face plane, the scatter spans the in-plane axes only (`faceSpanCorner`,
+no second `+1`); see point 3 above. Verified across a full 24-shot zoom-8
+rotation: seam-region pixels are the only delta at every inter-cardinal frame
+(≤0.13%), and the output is byte-identical at all four cardinals and ±45°
+brackets. **Byte-identical at the cardinal fast path**
 (`residualYaw == 0` releases the per-axis canvases and runs the unchanged
 single-canvas gather — the store/scatter change touches only the `perAxisRoute`
 branch); cull-in-yawed-space at both **chunk** (`rebuildChunkBounds`) and

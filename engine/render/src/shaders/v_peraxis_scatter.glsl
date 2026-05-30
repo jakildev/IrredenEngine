@@ -48,16 +48,19 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
 flat out vec4 vColor;
 flat out float vDepth;
 
-// World (or micro) in-plane corner of a cube face. cornerSel in {0,1}^2 maps
-// to the face's two in-plane axes; the fixed axis sits at the NEG (low) or
-// POS (high, +1) side.
-vec3 faceCorner(int faceId, vec3 origin, vec2 cornerSel) {
-    if (faceId == kFaceXNeg) return origin + vec3(0.0, cornerSel.x, cornerSel.y);
-    if (faceId == kFaceXPos) return origin + vec3(1.0, cornerSel.x, cornerSel.y);
-    if (faceId == kFaceYNeg) return origin + vec3(cornerSel.x, 0.0, cornerSel.y);
-    if (faceId == kFaceYPos) return origin + vec3(cornerSel.x, 1.0, cornerSel.y);
-    if (faceId == kFaceZNeg) return origin + vec3(cornerSel.x, cornerSel.y, 0.0);
-    return origin + vec3(cornerSel.x, cornerSel.y, 1.0); // kFaceZPos
+// In-plane corner of a face whose `origin` ALREADY sits at the face plane on
+// the fixed axis. The store (c_voxel_to_trixel_stage_{1,2}) bakes the polarity
+// via faceMicroPositionFixed6 — POS faces store the high-side plane, NEG faces
+// the low-side plane — so the recovered depth lands on the face plane and the
+// scatter only spans the face's two in-plane world axes (X->y,z  Y->x,z
+// Z->x,y, matching faceInPlaneCoords). Re-adding the polarity offset here (the
+// old per-faceId +1) double-shifts POS faces one cell past the plane: the
+// #1310 back-face seam (a ~1px dark gap between the POS face and its neighbors
+// at cardinals 1/2/3). cornerSel in {0,1}^2.
+vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
+    if (axis == 0) return origin + vec3(0.0, cornerSel.x, cornerSel.y); // X face: span y,z
+    if (axis == 1) return origin + vec3(cornerSel.x, 0.0, cornerSel.y); // Y face: span x,z
+    return origin + vec3(cornerSel.x, cornerSel.y, 0.0);                // Z face: span x,y
 }
 
 void main() {
@@ -92,11 +95,12 @@ void main() {
     const ivec2 inPlane = ij - faceLocalBase(axis, anchor, canvasSize);
     const vec3 origin = vec3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
 
-    // Project the selected cube-face corner under the continuous yaw
+    // Project the selected face corner under the continuous yaw
     // (pos3DtoPos2DIsoYawed is linear, so this IS P(theta)*corner — the true
-    // deformed footprint, with no gather / parity inverse).
+    // deformed footprint, with no gather / parity inverse). `origin` is already
+    // the face plane, so only the in-plane axes are spanned (no polarity).
     const vec2 cornerSel = aPos + vec2(0.5);
-    const vec3 worldCorner = faceCorner(faceId, origin, cornerSel);
+    const vec3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
     const vec2 cornerIso = vec2(perAxisBase) + pos3DtoPos2DIsoYawed(worldCorner, visualYaw);
 
     // Inverse of the gather's aPos->canvasPixel map (v_trixel_to_framebuffer):

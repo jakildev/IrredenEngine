@@ -154,10 +154,13 @@ kernel void c_voxel_to_trixel_stage_2(
         const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (frameData.voxelRenderOptions.x == 0) {
             const int3 worldPos = int3(round(voxelPosition.xyz));
+            // Mirror stage 1's face-plane store (#1310 seam fix) so the color
+            // tap lands on the same cell + depth the distance tap did.
+            const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(worldPos), slot);
+                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
             writeColorTap(
-                cellBase + faceInPlaneCoords(faceId, worldPos), voxelDistance, voxelColor,
+                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance, voxelColor,
                 packedEntityId, canvasSize, distanceScratch,
                 triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
             );
