@@ -92,6 +92,7 @@ fi
 
 LABELS=(
     "fleet:scope-shipped|fbca04|Issue scope already landed under a different T-NNN; queue-manager skipped ingest; human should close"
+    "fleet:needs-human|fbca04|Fleet can't complete this autonomously (e.g. a gated self-config edit); a human must act. Parks the issue out of the queue while KEEPING human:approved; clears when the human resolves it (ingest re-queues) or closes the issue"
     "fleet:state-drift|fbca04|reconcile surfaced unresolved/ambiguous claim-surface drift that persisted across N ticks; one deduped tracking issue, human resolves"
     "fleet:task|0366d6|Task from the fleet issue queue"
     "fleet:epic|cc317c|Parent issue tracking a set of child issues; queue-manager auto-closes when all children close"
