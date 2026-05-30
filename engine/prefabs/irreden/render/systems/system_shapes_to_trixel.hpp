@@ -219,16 +219,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // shaders never clip a shadow-feeder pixel. Sun-direction
             // resolution is gated on the shadow flag so a disabled-
             // shadow creation skips the C_LightSource archetype scan.
-            const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
-            const vec3 sunDir =
-                shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
-            const float sweepDistance =
-                shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
-            cullBounds_ = IRMath::shadowFeederIsoBounds(
-                IRRender::getCullViewport().isoViewport(kMargin),
-                sunDir,
-                sweepDistance
-            );
+            const auto shadowFeeder = IRPrefab::SunShadow::frameShadowFeederParams();
+            cullBounds_ = IRPrefab::SunShadow::shadowFeederCullViewport(kMargin, shadowFeeder);
         } else {
             cullBounds_.reset();
         }

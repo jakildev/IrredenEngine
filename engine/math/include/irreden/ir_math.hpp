@@ -870,6 +870,13 @@ struct IsoBounds2D {
         return point.x >= min_.x && point.x <= max_.x && point.y >= min_.y && point.y <= max_.y;
     }
 
+    /// Returns true if the axis-aligned box spanning [@p aMin, @p aMax]
+    /// overlaps these bounds (inclusive on every edge); @p aMin / @p aMax are
+    /// the box's min / max iso corners.
+    bool overlapsAABB(vec2 aMin, vec2 aMax) const {
+        return aMax.x >= min_.x && aMin.x <= max_.x && aMax.y >= min_.y && aMin.y <= max_.y;
+    }
+
     /// Returns the centre of the bounds.
     vec2 center() const {
         return (min_ + max_) * 0.5f;
