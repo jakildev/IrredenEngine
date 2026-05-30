@@ -79,7 +79,16 @@ coordination mechanisms prevent duplicate work:
   retries on the next iteration). No silent fallback to FS-lock-only.
 - Each host must have its own unique `derive_host()` value (mac, linux,
   windows) — two hosts with the same host tag would generate identical
-  issue labels and skip the tie-break.
+  issue labels and skip the tie-break. The taxonomy is a single canonical
+  set shared by every host-name producer: claim labels (`derive_host`),
+  cross-host smoke (`uname -s` → linux/macos), the build presets, and
+  `commit-and-push`'s `fleet:authored-on-<host>` all agree. **WSL2 derives
+  `linux`** (it runs the `linux-debug` OpenGL build and provides the linux
+  smoke), so `windows` is reserved for native MSYS2/mingw. Run
+  `fleet-claim host` to print this machine's key. **Collision caveat:** a
+  WSL2 host and a native-Linux host both derive `linux`; do not run both as
+  separate fleets simultaneously without forcing `FLEET_TEST_HOST` to
+  disambiguate one. Today's topology (mac + WSL2) is collision-free.
 
 **Ingestion (cross-host race prevention):**
 - The scout fires `fleet-queue-ingest` when new `human:approved` issues

@@ -164,29 +164,36 @@ slugify() {
 # cleanup only sweeps them off OPEN issues whose claim is abandoned (no
 # matching open `claude/<N>-*` PR + age > TTL).
 
+host_from_uname() {
+    # Pure mapping from a `uname -s` string to the canonical host key
+    # (mac | linux | windows | unknown). Extracted as a seam so a test can
+    # pin every mapping without depending on the runner's real OS.
+    #
+    # WSL2 and native Linux BOTH map to "linux": both run the `linux-debug`
+    # OpenGL build, provide the *linux* cross-host smoke (`fleet:needs-linux-
+    # smoke`), and are stamped `fleet:authored-on-linux` by commit-and-push
+    # (which keys off this same `uname -s`). So the claim-label host token must
+    # also be "linux" for the whole taxonomy to agree on one name per host.
+    # Native Windows (MSYS2 / mingw, where `uname -s` is MINGW*/MSYS*/CYGWIN*)
+    # is the only "windows" host. See #1383.
+    case "$1" in
+        Darwin)                        echo mac ;;
+        Linux)                         echo linux ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) echo windows ;;
+        *)                             echo unknown ;;
+    esac
+}
+
 derive_host() {
-    # Normalize uname output to one of: mac | windows | linux.
-    # WSL2 (/proc/version contains "Microsoft" or "WSL") maps to "windows"
-    # because the user runs the WSL2 fleet as their Windows fleet.
-    # FLEET_TEST_HOST overrides for test scaffolding.
+    # Canonical host key for this machine: mac | linux | windows.
+    # FLEET_TEST_HOST overrides for test scaffolding (and lets an operator
+    # running WSL2 alongside native Linux force-disambiguate the collision
+    # documented in FLEET.md § Multi-host fleet coordination).
     if [[ -n "${FLEET_TEST_HOST:-}" ]]; then
         echo "$FLEET_TEST_HOST"
         return
     fi
-    local u
-    u=$(uname -s 2>/dev/null || echo Unknown)
-    case "$u" in
-        Darwin) echo mac ;;
-        Linux)
-            if [[ -f /proc/version ]] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
-                echo windows
-            else
-                echo linux
-            fi
-            ;;
-        MINGW*|MSYS*|CYGWIN*|Windows*) echo windows ;;
-        *) echo unknown ;;
-    esac
+    host_from_uname "$(uname -s 2>/dev/null || echo Unknown)"
 }
 
 repo_from_ns() {
@@ -3122,6 +3129,17 @@ case "${1:-}" in
     list)
         cmd_list "${2:-}"
         ;;
+    host)
+        # Print this machine's canonical host key (mac|linux|windows), the
+        # token behind every fleet:claim-*/reviewing-*/resolving-*/amending-*
+        # label. With an explicit `uname -s` string as $2, map that instead —
+        # the seam test_derive_host.sh uses to pin each mapping portably.
+        if [[ -n "${2:-}" ]]; then
+            host_from_uname "$2"
+        else
+            derive_host
+        fi
+        ;;
     check-stale)
         shift
         cmd_check_stale "${1:-7200}"
@@ -3355,6 +3373,11 @@ commands:
                                 matching open PR exists.
   check <issue-number>          check if free (exit 0=free, 1=taken).
   list                          list all active claims.
+  host [uname-string]           print this host's canonical key
+                                (mac|linux|windows) used in claim labels;
+                                WSL2 and native Linux both derive "linux".
+                                With an explicit `uname -s` string, map
+                                that instead (test seam).
   stack "<n1> <n2> ..." [agent]
                                 atomically claim a dependency chain
                                 (all-or-nothing).
