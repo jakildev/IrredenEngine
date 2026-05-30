@@ -2055,7 +2055,8 @@ reconcile_escalate_drift() {
     local persist_file="$state_dir/drift-persistence.json"
     local now body_file
     now=$(date +%s)
-    body_file=$(mktemp /tmp/fleet-state-drift-XXXXXX)
+    body_file=$(mktemp /tmp/fleet-state-drift-XXXXXX) \
+        || { echo "  reconcile --apply: mktemp failed, skipping escalation" >&2; return 0; }
 
     local persistent_count
     persistent_count=$(NOW="$now" THRESHOLD="$threshold" PERSIST="$persist_file" \
@@ -2141,7 +2142,12 @@ print(len(persistent))
 PYEOF
 )
 
-    if [[ "${persistent_count:-0}" -le 0 ]]; then
+    if [[ -z "$persistent_count" || ! "$persistent_count" =~ ^[0-9]+$ ]]; then
+        echo "  reconcile --apply: python3 returned invalid output (empty or non-numeric); stderr above — skipping escalation" >&2
+        rm -f "$body_file"
+        return 0
+    fi
+    if [[ "$persistent_count" -le 0 ]]; then
         rm -f "$body_file"
         return 0
     fi
