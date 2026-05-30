@@ -44,6 +44,37 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
 Read the top-level `CLAUDE.md` and the sub-module `CLAUDE.md` for
 whatever directory the task touches before editing anything.
 
+## Cross-repo model
+
+You cover the `[sonnet]` queue in **both** repos — engine and game. There is
+no separate game-side sonnet author. Each sonnet-fleet pane has TWO worktrees:
+
+- **Engine worktree** (pane cwd at launch):
+  `~/src/IrredenEngine/.claude/worktrees/sonnet-fleet-<N>`
+- **Game worktree** (cd here for game tasks):
+  `~/src/IrredenEngine/creations/game/.claude/worktrees/sonnet-fleet-<N>`
+
+When you pick a task, **decide first which repo it's in** (the `tasks_open[]`
+entry's `repo` field, or which queue it came from). For a **game** task, `cd`
+into the game worktree **before** any git/gh/build operation; the Bash tool's
+cwd persists across calls, so one `cd` at the start of the work covers the rest
+of the iteration (the next fresh launch lands you back in the engine worktree).
+For `gh issue ...` / `gh api ...` (which don't honor cwd) pass
+`--repo jakildev/irreden`, and `fleet-claim` needs the `--repo game` namespace
+flag for game tasks:
+
+```
+# engine task (issue #1234)
+fleet-claim claim 1234 sonnet-fleet-1
+# game task (issue #79) — note --repo game BEFORE the subcommand
+fleet-claim --repo game claim 79 sonnet-fleet-1
+```
+
+Read `~/src/IrredenEngine/creations/game/CLAUDE.md` before touching game code;
+game build/run is wired differently (no per-worktree preset) — most `[sonnet]`
+game work is docs/skills/content with no build, but see that file if a task
+needs one.
+
 ## Startup actions (do these immediately, in order)
 
 0. Print your role banner:
@@ -59,16 +90,17 @@ whatever directory the task touches before editing anything.
    issue queue and PR metadata but doesn't fetch refs.
 3. **Read your slice** with the Read tool:
    `~/.fleet/state/projections/sonnet-author.json`. Carries
-   `tasks_open` (filtered to `[sonnet]` engine tasks) and
-   `feedback_prs` (open PRs with feedback labels). If the slice
-   file is missing or its `generated_at` is older than ~5 minutes,
-   the scout is down — print
-   `scout cache stale or missing — run fleet-up` and exit.
+   `tasks_open` (filtered to `[sonnet]` tasks across **both** repos —
+   each entry's `repo` is `engine` or `game`) and `feedback_prs`
+   (open PRs with feedback labels). If the slice file is missing or
+   its `generated_at` is older than ~5 minutes, the scout is down —
+   print `scout cache stale or missing — run fleet-up` and exit.
 4. Print a one-line summary: which `tasks_open[]` items look
    unblocked (`owner == "free"`, `blocked_by` resolves to `(none)`
-   or merged work) and not currently claimed in any open PR. To
-   cross-check against open PR titles / headRefNames, fall back to
-   `~/.fleet/state/state.json` `repos.engine.prs[]` (the slice only
+   or merged work) and not currently claimed in any open PR, noting
+   each item's `repo`. To cross-check against open PR titles /
+   headRefNames, fall back to `~/.fleet/state/state.json`
+   `repos.engine.prs[]` **and** `repos.game.prs[]` (the slice only
    carries feedback PRs, not all open PRs).
 
 ## Loop behavior
@@ -149,8 +181,10 @@ Each iteration:
 
    **Normal pickup (no active molecule):** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
-   conversation context. From `repos.engine.tasks.open[]`, find the
-   first row with `status == " "` (open) and `model` containing
+   conversation context. From **`repos.engine.tasks.open[]` and
+   `repos.game.tasks.open[]`** (equivalently, your slice's
+   `tasks_open[]`, which merges both and tags each with `repo`), find
+   the first row with `status == " "` (open) and `model` containing
    `sonnet` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
@@ -169,7 +203,10 @@ Each iteration:
    the task. Reservations only count if held in `fleet-claim`. If a
    task's `Blocked by:` says it depends on opus work, skip it (a
    `[sonnet]` agent shouldn't pick `[opus]` tasks anyway). Otherwise
-   the task is yours to claim.
+   the task is yours to claim. **If the chosen task's `repo` is
+   `game`, follow the Cross-repo model above first:** `cd` into your
+   game worktree and claim with the namespace flag —
+   `fleet-claim --repo game claim <issue-#> <your-worktree-name>`.
 
    **If no matching unblocked task exists, try the fallback tier.**
 

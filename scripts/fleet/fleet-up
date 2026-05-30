@@ -257,6 +257,11 @@ if [[ -d "$GAME/.git" ]]; then
     # cwd at launch is the engine worktree; the agent cd's per task.
     ensure_worktree "$GAME" .claude/worktrees/opus-worker-1   fleet/game-opus-worker-1
     ensure_worktree "$GAME" .claude/worktrees/opus-worker-2   fleet/game-opus-worker-2
+    # Sonnet authors likewise cover the game `[sonnet]` queue (docs / skills /
+    # content / light code); each sonnet-fleet pane gets its own game worktree to `cd` into,
+    # same dual-worktree model as the opus-workers above.
+    ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-1  fleet/game-sonnet-fleet-1
+    ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-2  fleet/game-sonnet-fleet-2
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
@@ -515,6 +520,12 @@ fi
 if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
     reset_worktree "$GAME/.claude/worktrees/opus-worker-2" claude/game-opus-worker-2-scratch
 fi
+if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-1" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/sonnet-fleet-1" claude/game-sonnet-fleet-1-scratch
+fi
+if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-2" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/sonnet-fleet-2" claude/game-sonnet-fleet-2-scratch
+fi
 
 # ----------------------------------------------------------------------
 # Step 3: write per-worktree .claude/settings.local.json
@@ -690,6 +701,14 @@ if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
 fi
 if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/opus-worker-2" "$ENGINE"
+fi
+# Game-side sonnet-fleet worktrees (used by sonnet-author panes when they cd
+# over for game `[sonnet]` tasks) — same engine+game access as the opus ones.
+if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-1" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/sonnet-fleet-1" "$ENGINE"
+fi
+if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-2" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/sonnet-fleet-2" "$ENGINE"
 fi
 
 # ----------------------------------------------------------------------
