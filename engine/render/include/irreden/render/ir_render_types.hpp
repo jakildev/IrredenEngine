@@ -232,6 +232,10 @@ enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 /// already fills 0..30, so packing the slot into the otherwise-unused padding
 /// lane avoids spending a scarce binding point.
 constexpr std::uint32_t kVoxelTransformStatic = 0xFFFFFFFFu;
+/// Cap on concurrently GPU-transformed voxel sets (= EntityTransformBuffer slots).
+/// A set whose `gpuTransformSlot_` meets or exceeds this stays on the CPU path.
+/// Matches the `GpuVoxelTransform` array size allocated by `UPDATE_VOXEL_POSITIONS_GPU`.
+constexpr int kMaxGpuVoxelTransforms = 4096;
 
 /// One per GPU-transformed voxel-set, indexed by `C_VoxelSetNew::gpuTransformSlot_`
 /// (and by each owned voxel's per-voxel transform index). The compute prepass

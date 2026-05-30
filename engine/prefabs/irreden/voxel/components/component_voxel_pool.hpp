@@ -448,10 +448,11 @@ struct C_VoxelPool {
     }
 
     // Per-voxel GPU transform-slot index, consumed by UPDATE_VOXEL_POSITIONS_GPU
-    // (binding 31). Defaults to `kVoxelTransformStatic` for every voxel, so an
-    // untouched pool leaves the GPU prepass a no-op and binding 5 fully CPU-owned
-    // (byte-identical to the pre-prepass path). A voxel set marks its range
-    // GPU-dynamic by pointing it at an EntityTransformBuffer slot.
+    // (packed into the `.w` lane of the local-position buffer,
+    // kBufferIndex_LocalVoxelPositions = 17). Defaults to `kVoxelTransformStatic`
+    // for every voxel, so an untouched pool leaves the GPU prepass a no-op and
+    // binding 5 fully CPU-owned (byte-identical to the pre-prepass path). A voxel
+    // set marks its range GPU-dynamic by pointing it at an EntityTransformBuffer slot.
     const std::vector<std::uint32_t> &getTransformIndices() const {
         return m_voxelTransformIndices;
     }
@@ -470,6 +471,13 @@ struct C_VoxelPool {
             startIdx,
             count,
             m_voxelTransformIndices.size()
+        );
+        IR_ASSERT(
+            transformIndex == IRRender::kVoxelTransformStatic ||
+                transformIndex < static_cast<std::uint32_t>(IRRender::kMaxGpuVoxelTransforms),
+            "setTransformIndexForRange: transformIndex={} out of range (kMaxGpuVoxelTransforms={})",
+            transformIndex,
+            IRRender::kMaxGpuVoxelTransforms
         );
         std::fill(
             m_voxelTransformIndices.begin() + startIdx,
@@ -516,7 +524,8 @@ struct C_VoxelPool {
     std::vector<std::pair<size_t, size_t>> m_pendingPositionRanges;
     // Per-voxel GPU transform-slot index (see `setTransformIndexForRange`).
     std::vector<std::uint32_t> m_voxelTransformIndices;
-    // Per-frame queue of transform-index slices to re-upload to binding 31;
+    // Per-frame queue of transform-index slices that pack transform-slot indices
+    // into the .w lane of binding 17 (kBufferIndex_LocalVoxelPositions);
     // mirrors `m_pendingPositionRanges`. Empty for static scenes.
     std::vector<std::pair<size_t, size_t>> m_pendingTransformIndexRanges;
 

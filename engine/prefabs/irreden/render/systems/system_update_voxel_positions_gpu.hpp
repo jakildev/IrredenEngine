@@ -58,10 +58,6 @@ using namespace IRRender;
 namespace IRSystem {
 
 template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
-    // Cap on concurrently GPU-transformed voxel sets (= EntityTransformBuffer
-    // slots). A set whose `gpuTransformSlot_` exceeds this stays on the CPU path.
-    static constexpr int kMaxGpuVoxelTransforms = 4096;
-
     ShaderProgram *program_ = nullptr;
     // binding 17 — entity-local positions, with the per-voxel transform slot
     // bit-packed into each entry's `.w` lane (see kVoxelTransformStatic doc;
