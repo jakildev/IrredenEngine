@@ -475,7 +475,7 @@ inline int3 faceLocalAnchor(int2 perAxisBase, int2 canvasSize) {
     return roundHalfUp(isoPixelToPos3D(isoCenter.x, isoCenter.y, 0.0f));
 }
 
-// Face-local storage base for `axis`: anchor's in-plane coords land at center.
+// Face-local storage base for `axis`: cell = canvasSize/2 + inPlane(origin - anchor).
 inline int2 faceLocalBase(int axis, int3 anchor, int2 canvasSize) {
     int2 anchorInPlane;
     if (axis == 0) anchorInPlane = int2(anchor.y, anchor.z);

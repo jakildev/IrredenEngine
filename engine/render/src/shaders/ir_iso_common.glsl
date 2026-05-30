@@ -522,8 +522,8 @@ ivec3 faceLocalAnchor(ivec2 perAxisBase, ivec2 canvasSize) {
 }
 
 // Face-local storage base for `axis` (faceId >> 1): the anchor's in-plane coords
-// land at canvas center, so cell = base + inPlane(o) = center + inPlane(o -
-// anchor) keeps the visible region inside the canvas.
+// land at canvas center, so cell = canvasSize/2 + inPlane(origin - anchor)
+// keeps the visible region inside the canvas.
 ivec2 faceLocalBase(int axis, ivec3 anchor, ivec2 canvasSize) {
     ivec2 anchorInPlane;
     if (axis == 0) anchorInPlane = ivec2(anchor.y, anchor.z);
