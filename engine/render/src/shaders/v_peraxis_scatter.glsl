@@ -79,32 +79,22 @@ void main() {
     const int rawDepth = rawDist >> 2;       // pos3DtoDistance of the face origin
     const int slot = rawDist & 3;            // visible-triplet slot
     const int faceId = visibleFaceIds[slot];
+    const int axis = faceId >> 1;
 
-    // Recover the integer world (or micro) origin from the stored cell.
-    // (isoRel, rawDepth) + visualYaw uniquely invert pos3DtoPos2DIsoYawed:
-    //   isoRel.x = -vx + vy ; isoRel.y = -vx - vy + 2z ; rawDepth = x+y+z
-    // with (vx,vy) = R_z(-yaw)(x,y). Solving:
-    //   z = (rawDepth + P(c+s) - Q(c-s)) / (2c+1),  P=(ix+iy)/2, Q=(ix-iy)/2
-    // The denominator 2cos(yaw)+1 is the depth-monotonicity quantity from the
-    // design doc — strictly positive (>= 1+sqrt2) across the +/-45 bracket, so
-    // the inverse is always well defined.
-    const vec2 isoRel = vec2(ij - perAxisBase);
-    const float c = cos(visualYaw);
-    const float s = sin(visualYaw);
-    const float P = (isoRel.x + isoRel.y) * 0.5;
-    const float Q = (isoRel.x - isoRel.y) * 0.5;
-    const float z = (float(rawDepth) + P * (c + s) - Q * (c - s)) / (2.0 * c + 1.0);
-    const float vx = z - P;
-    const float vy = Q + z;
-    const vec3 origin = vec3(
-        roundHalfUp(vx * c - vy * s),
-        roundHalfUp(vx * s + vy * c),
-        roundHalfUp(z)
-    );
+    // Recover the exact integer (or micro) face origin from the face-local
+    // store. The cell's two in-plane coords + the stored iso depth give the
+    // origin by one integer subtraction (faceOriginFromInPlane) — no
+    // 2cos(yaw)+1 inverse, so it is exact at every yaw. The replaced iso-inverse
+    // dropped compressed-axis faces (cell collisions -> cracks) and went
+    // singular at yaw = +/-120 deg (-> a speckled cube). faceLocalAnchor matches
+    // stage 1/2's store: same perAxisBase + canvasSize. See ir_iso_common.glsl.
+    const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
+    const ivec2 inPlane = ij - faceLocalBase(axis, anchor, canvasSize);
+    const vec3 origin = vec3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
 
-    // Project the selected cube-face corner under the same continuous yaw the
-    // store used (pos3DtoPos2DIsoYawed is linear, so this IS P(theta)*corner —
-    // the true deformed footprint, with no gather / parity inverse).
+    // Project the selected cube-face corner under the continuous yaw
+    // (pos3DtoPos2DIsoYawed is linear, so this IS P(theta)*corner — the true
+    // deformed footprint, with no gather / parity inverse).
     const vec2 cornerSel = aPos + vec2(0.5);
     const vec3 worldCorner = faceCorner(faceId, origin, cornerSel);
     const vec2 cornerIso = vec2(perAxisBase) + pos3DtoPos2DIsoYawed(worldCorner, visualYaw);

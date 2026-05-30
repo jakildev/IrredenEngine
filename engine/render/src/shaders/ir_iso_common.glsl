@@ -472,6 +472,66 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
     return vec2(-vx + vy, -vx - vy + 2.0 * worldPos.z);
 }
 
+// --- Smooth camera Z-yaw forward-scatter: face-local in-plane store (#1310) ---
+//
+// The per-axis trixel canvas is a face-local in-plane G-buffer: each visible
+// face is stored at the integer lattice of its two in-plane world axes
+// (X-canvas -> (y,z), Y -> (x,z), Z -> (x,y)). That lattice is dense and
+// collision-free at every yaw — the design doc's recommended store
+// (docs/design/per-axis-trixel-canvas-rotation.md §"Recommended store"). The
+// iso-position store it replaces (roundHalfUp(pos3DtoPos2DIsoYawed(origin)))
+// collapsed distinct faces onto one cell on the compressed axis (atomicMin
+// dropped all but one -> the dropped faces' footprints showed background as
+// vertical cracks), and its scatter-side recovery divided by 2cos(yaw)+1, which
+// is singular at yaw = +/-120 deg (-> garbage origins, a speckled cube). The
+// face-local store has neither failure: storage is a plain lattice and recovery
+// is an exact integer subtraction.
+//
+// `worldPos` may be in world or subdivision (fixed-point) units; the matching
+// face-local base is computed in the same canvas-native units so the unit
+// cancels. `faceId` is 0..5; axis = faceId >> 1 (0=X, 1=Y, 2=Z).
+
+ivec2 faceInPlaneCoords(int faceId, ivec3 worldPos) {
+    int axis = faceId >> 1;
+    if (axis == 0) return ivec2(worldPos.y, worldPos.z);
+    if (axis == 1) return ivec2(worldPos.x, worldPos.z);
+    return ivec2(worldPos.x, worldPos.y);
+}
+
+// Inverse of faceInPlaneCoords: recover the integer origin from the stored
+// in-plane coords + iso depth (rawDepth = x + y + z). Exact, no trig, no
+// division — so it cannot misrecover or hit the old 2cos(yaw)+1 singularity.
+ivec3 faceOriginFromInPlane(int faceId, ivec2 inPlane, int rawDepth) {
+    int third = rawDepth - inPlane.x - inPlane.y;
+    int axis = faceId >> 1;
+    if (axis == 0) return ivec3(third, inPlane.x, inPlane.y);
+    if (axis == 1) return ivec3(inPlane.x, third, inPlane.y);
+    return ivec3(inPlane.x, inPlane.y, third);
+}
+
+// Camera-tracking anchor (canvas-native units) that centers the face-local
+// store on screen. The world point whose UN-yawed iso lands at canvas center;
+// isoPixelToPos3D never divides by 2cos(yaw)+1, so it is robust at every yaw.
+// Exact centering is not required — the (2W, W+H) worst-case canvas has ample
+// headroom — only that the store (stage 1/2) and the scatter recover compute it
+// identically, which holds because both pass the matching perAxisBase +
+// canvasSize (stage's trixelFrameOffset == the scatter's perAxisBase_ uniform).
+ivec3 faceLocalAnchor(ivec2 perAxisBase, ivec2 canvasSize) {
+    ivec2 isoCenter = canvasSize / ivec2(2) - perAxisBase;
+    return roundHalfUp(isoPixelToPos3D(isoCenter.x, isoCenter.y, 0.0));
+}
+
+// Face-local storage base for `axis` (faceId >> 1): the anchor's in-plane coords
+// land at canvas center, so cell = base + inPlane(o) = center + inPlane(o -
+// anchor) keeps the visible region inside the canvas.
+ivec2 faceLocalBase(int axis, ivec3 anchor, ivec2 canvasSize) {
+    ivec2 anchorInPlane;
+    if (axis == 0) anchorInPlane = ivec2(anchor.y, anchor.z);
+    else if (axis == 1) anchorInPlane = ivec2(anchor.x, anchor.z);
+    else anchorInPlane = ivec2(anchor.x, anchor.y);
+    return canvasSize / ivec2(2) - anchorInPlane;
+}
+
 // 2x2 deformation matrix that maps a face's un-yawed iso-pixel offset to the
 // offset under residual yaw `residualYaw` (in [-pi/4, pi/4]).
 //

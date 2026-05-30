@@ -182,16 +182,27 @@ void main() {
     // SHAPE is reconstructed at scatter time, so the per-slot deform D is no
     // longer applied here.
     if (perAxisRoute != 0) {
-        if ((faceId >> 1) != perAxisRoute - 1) return;
+        const int axis = perAxisRoute - 1;
+        if ((faceId >> 1) != axis) return;
+        // Face-local in-plane store (#1310 fix): index each face by its two
+        // in-plane world axes, a dense collision-free lattice, instead of the
+        // yawed iso position (which collapsed compressed-axis faces onto one
+        // cell -> dropped faces -> cracks, and recovered via the 2cos(yaw)+1
+        // inverse that is singular at +/-120 deg). The scatter recovers the
+        // origin from the cell exactly (faceOriginFromInPlane) and forward-
+        // projects the deformed face quad. The anchor centers the canvas and is
+        // computed identically here and at scatter time from the same
+        // perAxisBase + canvasSize. See ir_iso_common.glsl.
         const ivec2 perAxisBase =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+        const ivec2 canvasSize = imageSize(triangleCanvasDistances);
+        const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
+        const ivec2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (voxelRenderOptions.x == 0) {
-            const vec3 worldPos = round(voxelPosition.xyz);
+            const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(ivec3(worldPos)), slot);
-            const ivec2 base =
-                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, visualYaw));
-            writeDistanceTap(base, voxelDistance);
+                encodeDepthWithFace(pos3DtoDistance(worldPos), slot);
+            writeDistanceTap(cellBase + faceInPlaneCoords(faceId, worldPos), voxelDistance);
             return;
         }
         const int subPerAxis = max(voxelRenderOptions.y, 1);
@@ -203,9 +214,7 @@ void main() {
             faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
         const int voxelDistance =
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
-        const ivec2 base =
-            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(microWorld), visualYaw));
-        writeDistanceTap(base, voxelDistance);
+        writeDistanceTap(cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance);
         return;
     }
 

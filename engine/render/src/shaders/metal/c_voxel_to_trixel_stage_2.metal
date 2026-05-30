@@ -141,20 +141,24 @@ kernel void c_voxel_to_trixel_stage_2(
     // scatter reconstructs the deformed face quad. See
     // c_voxel_to_trixel_stage_1.glsl for the contract.
     if (frameData.perAxisRoute != 0) {
-        if ((faceId >> 1) != frameData.perAxisRoute - 1) return;
+        const int axis = frameData.perAxisRoute - 1;
+        if ((faceId >> 1) != axis) return;
+        // Face-local in-plane store — mirrors stage 1 (#1310 fix). See
+        // c_voxel_to_trixel_stage_1.glsl / ir_iso_common.metal.
         const int2 perAxisBase = trixelFrameOffset(
             frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions
         );
+        const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
+        const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (frameData.voxelRenderOptions.x == 0) {
-            const float3 worldPos = round(voxelPosition.xyz);
+            const int3 worldPos = int3(round(voxelPosition.xyz));
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(int3(worldPos)), slot);
-            const int2 base =
-                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, frameData.visualYaw));
+                encodeDepthWithFace(pos3DtoDistance(worldPos), slot);
             writeColorTap(
-                base, voxelDistance, voxelColor, packedEntityId, canvasSize, distanceScratch,
+                cellBase + faceInPlaneCoords(faceId, worldPos), voxelDistance, voxelColor,
+                packedEntityId, canvasSize, distanceScratch,
                 triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
             );
             return;
@@ -168,10 +172,9 @@ kernel void c_voxel_to_trixel_stage_2(
             faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
         const int voxelDistance =
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
-        const int2 base =
-            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(float3(microWorld), frameData.visualYaw));
         writeColorTap(
-            base, voxelDistance, voxelColor, packedEntityId, canvasSize, distanceScratch,
+            cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance, voxelColor,
+            packedEntityId, canvasSize, distanceScratch,
             triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );
         return;

@@ -82,20 +82,15 @@ vertex VertexOut v_peraxis_scatter(
     const int rawDepth = rawDist >> 2;
     const int slot = rawDist & 3;
     const int faceId = frameData.visibleFaceIds[slot];
+    const int axis = faceId >> 1;
 
-    const float2 isoRel = float2(int2(ij) - frameData.perAxisBase);
-    const float c = cos(frameData.visualYaw);
-    const float s = sin(frameData.visualYaw);
-    const float P = (isoRel.x + isoRel.y) * 0.5f;
-    const float Q = (isoRel.x - isoRel.y) * 0.5f;
-    const float z = (float(rawDepth) + P * (c + s) - Q * (c - s)) / (2.0f * c + 1.0f);
-    const float vx = z - P;
-    const float vy = Q + z;
-    const float3 origin = float3(
-        float(roundHalfUp(vx * c - vy * s)),
-        float(roundHalfUp(vx * s + vy * c)),
-        float(roundHalfUp(z))
-    );
+    // Exact face-local recovery (#1310 fix) — mirror of v_peraxis_scatter.glsl.
+    // The cell's in-plane coords + iso depth give the origin by one integer
+    // subtraction: no 2cos(yaw)+1 inverse (which dropped compressed-axis faces
+    // and went singular at +/-120 deg). anchor matches the stage 1/2 store.
+    const int3 anchor = faceLocalAnchor(frameData.perAxisBase, canvasSize);
+    const int2 inPlane = int2(ij) - faceLocalBase(axis, anchor, canvasSize);
+    const float3 origin = float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
 
     const float2 cornerSel = in.position + float2(0.5);
     const float3 worldCorner = faceCorner(faceId, origin, cornerSel);

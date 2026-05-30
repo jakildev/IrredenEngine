@@ -68,31 +68,38 @@ the old gather could read them). So the canvas is the durable G-buffer.
 
 Concretely:
 
-1. **Stage-1 / Stage-2 per-axis store one cell per face center** (not the
-   `emitDeformedFace` super-sampled cluster T2 wrote). `writeDistanceTap(base,
-   encodeDepthWithFace(pos3DtoDistance(worldOrigin), slot))` `atomicMin`s the
-   shared world depth into the single cell `base = perAxisBase +
-   roundHalfUp(pos3DtoPos2DIsoYawed(worldOrigin, visualYaw))`; Stage-2 writes
-   that cell's color + entityId on the depth match. **The `atomicMin` winner per
-   cell IS the occlusion resolution** — every non-empty cell already holds the
-   nearest face that landed there, so the scatter draws exactly the winners with
-   no extra gate.
+1. **Stage-1 / Stage-2 per-axis store one cell per face center, indexed
+   face-locally** (not the `emitDeformedFace` super-sampled cluster T2 wrote).
+   The cell is the face's two in-plane world axes — X-canvas → `(y,z)`, Y →
+   `(x,z)`, Z → `(x,y)` (`faceInPlaneCoords`) — offset by a camera-tracking
+   `faceLocalBase`. `writeDistanceTap(base, encodeDepthWithFace(
+   pos3DtoDistance(worldOrigin), slot))` `atomicMin`s the shared world depth into
+   that cell; Stage-2 writes its color + entityId on the depth match. **The
+   `atomicMin` winner per cell IS the occlusion resolution** — every non-empty
+   cell holds the nearest exposed face on its in-plane column. The face-local
+   lattice is **dense and collision-free at every yaw** — this is the design's
+   §"Recommended store", and the reason it is mandatory rather than optional:
+   the originally-shipped iso-position index `perAxisBase + roundHalfUp(
+   pos3DtoPos2DIsoYawed(worldOrigin, visualYaw))` collapsed distinct faces onto
+   one cell on the compressed axis (the iso projection foreshortens it), so
+   `atomicMin` dropped all but one and the dropped faces' footprints showed
+   background as **vertical cracks** through the cube (worsening toward ±45°).
 2. **The scatter is an instanced draw over the canvas grid** (one instance per
    cell, `drawElementsInstanced` of the shared 6-index quad). The vertex shader:
    reads the cell's stored distance; degenerates (off-screen) if it is the clear
-   value; otherwise recovers the **world origin** from the cell — closed form
-   from `(isoRel = cell − perAxisBase, rawDepth = dist >> 2, visualYaw)`:
-
-   ```
-   P = (isoRel.x + isoRel.y) / 2 ;  Q = (isoRel.x − isoRel.y) / 2
-   z  = (rawDepth + P·(c+s) − Q·(c−s)) / (2c + 1)     // c=cos, s=sin(visualYaw)
-   vx = z − P ;  vy = Q + z ;  x = vx·c − vy·s ;  y = vx·s + vy·c
-   ```
-
-   The denominator `2cosθ + 1` is the **same depth-monotonicity quantity** the
-   cost-model section cites — strictly positive (`≥ 1+√2`) across the whole
-   ±45° residual bracket, so the inverse is always well defined. `slot = dist &
-   3` recovers the visible-triplet slot → `faceId = visibleFaceIds[slot]`.
+   value; otherwise recovers the **world origin** from the cell by an exact
+   integer subtraction — `inPlane = cell − faceLocalBase`, third axis =
+   `rawDepth − inPlane.x − inPlane.y` (`faceOriginFromInPlane`, with
+   `rawDepth = dist >> 2 = x+y+z`). `slot = dist & 3` recovers the visible-triplet
+   slot → `faceId = visibleFaceIds[slot]`. This recovery is **exact and
+   trig-free**, so it has neither failure of the iso-inverse it replaces: that
+   inverse `z = (rawDepth + P(c+s) − Q(c−s)) / (2cosθ+1)` was singular at the
+   **full** `visualYaw` values ±120° / ±240° (denominator zero → garbage origins,
+   a speckled cube), because the store keys on full `visualYaw`, not the residual
+   the `≥ 1+√2` bound assumes. `faceLocalBase` centers the store on the camera —
+   `faceLocalAnchor` recovers the screen-center world voxel via the **un-yawed**
+   `isoPixelToPos3D` (never singular) and is computed identically by the store
+   and the scatter from the matching `perAxisBase` + canvas size.
 3. **The 4 quad corners are the projected cube-face corners** — `perAxisBase +
    pos3DtoPos2DIsoYawed(worldOrigin + faceCornerOffset, visualYaw)` for the four
    in-plane corner offsets of `faceId`, then through the same canvas→clip
@@ -112,15 +119,21 @@ Concretely:
 #### Status — landed in #1310 (this PR) vs deferred
 
 **Landed + validated (Metal, `--spin-yaw`/`--yaw` sweeps on `IRShapeDebug`):**
-voxel forward-scatter composite (the cube renders as a correctly-deformed 3D iso
-cube through the ±45° bracket); **zero parity / stripe / checkerboard artifacts**
-(the #1256 class, the ticket's core gate — satisfied by construction);
-**byte-identical at the cardinal fast path** (`residualYaw == 0` releases the
-per-axis canvases and runs the unchanged single-canvas gather); cull-in-yawed-
-space at both **chunk** (`rebuildChunkBounds`) and **voxel** (`c_voxel_visibility_
-compact`, GL + Metal) granularity, gated so the cardinal path is untouched. The
-single main canvas's voxel pass is skipped while rotating so its SDF / text /
-overlay content composites alongside the smooth voxels with no double-draw.
+voxel forward-scatter composite (the cube renders as a solid, correctly-deformed
+3D iso cube at every yaw across a full rotation — verified at 30 / 60 / 120 / 240°
+zoomed close-ups); **zero parity / stripe / checkerboard artifacts** (the #1256
+class, satisfied by construction). The **face-local in-plane store** (point 1
+above) is what makes the faces solid: the first cut shipped the iso-position
+index, which dropped compressed-axis faces (vertical cracks through each face)
+and went singular at ±120° / ±240° (a speckled cube); the face-local store has
+neither failure by construction. **Byte-identical at the cardinal fast path**
+(`residualYaw == 0` releases the per-axis canvases and runs the unchanged
+single-canvas gather — the store/scatter change touches only the `perAxisRoute`
+branch); cull-in-yawed-space at both **chunk** (`rebuildChunkBounds`) and
+**voxel** (`c_voxel_visibility_compact`, GL + Metal) granularity, gated so the
+cardinal path is untouched. The single main canvas's voxel pass is skipped while
+rotating so its SDF / text / overlay content composites alongside the smooth
+voxels with no double-draw.
 
 **Perf gate — PASSED (`--auto-profile 300`, `IRShapeDebug`, Metal, GPU stage
 timing).** Camera parked at a cardinal vs. parked at a non-cardinal 30° (the

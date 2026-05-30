@@ -444,6 +444,46 @@ inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
     return float2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
 }
 
+// --- Smooth camera Z-yaw forward-scatter: face-local in-plane store (#1310) ---
+// Mirror of shaders/ir_iso_common.glsl. See that file for the full rationale:
+// each visible face is stored at the dense, collision-free lattice of its two
+// in-plane world axes (X -> (y,z), Y -> (x,z), Z -> (x,y)), replacing the
+// iso-position store that dropped compressed-axis faces (cracks) and whose
+// recovery was singular at yaw = +/-120 deg (speckle). axis = faceId >> 1.
+
+inline int2 faceInPlaneCoords(int faceId, int3 worldPos) {
+    const int axis = faceId >> 1;
+    if (axis == 0) return int2(worldPos.y, worldPos.z);
+    if (axis == 1) return int2(worldPos.x, worldPos.z);
+    return int2(worldPos.x, worldPos.y);
+}
+
+// Inverse of faceInPlaneCoords: exact integer recovery (rawDepth = x + y + z).
+inline int3 faceOriginFromInPlane(int faceId, int2 inPlane, int rawDepth) {
+    const int third = rawDepth - inPlane.x - inPlane.y;
+    const int axis = faceId >> 1;
+    if (axis == 0) return int3(third, inPlane.x, inPlane.y);
+    if (axis == 1) return int3(inPlane.x, third, inPlane.y);
+    return int3(inPlane.x, inPlane.y, third);
+}
+
+// Camera-tracking anchor (canvas-native units) centering the store on screen;
+// uses the non-singular UN-yawed iso inverse. Store + scatter must compute it
+// identically (matching perAxisBase + canvasSize) — they do.
+inline int3 faceLocalAnchor(int2 perAxisBase, int2 canvasSize) {
+    const int2 isoCenter = canvasSize / int2(2) - perAxisBase;
+    return roundHalfUp(isoPixelToPos3D(isoCenter.x, isoCenter.y, 0.0f));
+}
+
+// Face-local storage base for `axis`: anchor's in-plane coords land at center.
+inline int2 faceLocalBase(int axis, int3 anchor, int2 canvasSize) {
+    int2 anchorInPlane;
+    if (axis == 0) anchorInPlane = int2(anchor.y, anchor.z);
+    else if (axis == 1) anchorInPlane = int2(anchor.x, anchor.z);
+    else anchorInPlane = int2(anchor.x, anchor.y);
+    return canvasSize / int2(2) - anchorInPlane;
+}
+
 // 2x2 deformation matrix per face for residual yaw. At residualYaw == 0 all
 // three return identity. `face` uses the kXFace / kYFace / kZFace convention;
 // other values return identity. CPU mirror: IRMath::faceDeformationMatrix.

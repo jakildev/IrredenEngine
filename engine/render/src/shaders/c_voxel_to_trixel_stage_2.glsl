@@ -127,16 +127,24 @@ void main() {
     // center (not the emitDeformedFace cluster); the framebuffer scatter
     // reconstructs the face quad. See c_voxel_to_trixel_stage_1.glsl.
     if (perAxisRoute != 0) {
-        if ((faceId >> 1) != perAxisRoute - 1) return;
+        const int axis = perAxisRoute - 1;
+        if ((faceId >> 1) != axis) return;
+        // Face-local in-plane store — mirrors stage 1 exactly so the color tap
+        // lands on the same cell the distance tap did. See
+        // c_voxel_to_trixel_stage_1.glsl / ir_iso_common.glsl (#1310 fix).
         const ivec2 perAxisBase =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+        const ivec2 canvasSize = imageSize(triangleCanvasDistances);
+        const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
+        const ivec2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (voxelRenderOptions.x == 0) {
-            const vec3 worldPos = round(voxelPosition.xyz);
+            const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(ivec3(worldPos)), slot);
-            const ivec2 base =
-                perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(worldPos, visualYaw));
-            writeColorTap(base, voxelDistance, voxelColor, voxelIndex);
+                encodeDepthWithFace(pos3DtoDistance(worldPos), slot);
+            writeColorTap(
+                cellBase + faceInPlaneCoords(faceId, worldPos), voxelDistance,
+                voxelColor, voxelIndex
+            );
             return;
         }
         const int subPerAxis = max(voxelRenderOptions.y, 1);
@@ -148,9 +156,10 @@ void main() {
             faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
         const int voxelDistance =
             encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
-        const ivec2 base =
-            perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(vec3(microWorld), visualYaw));
-        writeColorTap(base, voxelDistance, voxelColor, voxelIndex);
+        writeColorTap(
+            cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance,
+            voxelColor, voxelIndex
+        );
         return;
     }
 
