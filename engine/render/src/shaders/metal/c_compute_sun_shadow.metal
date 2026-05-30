@@ -1,4 +1,5 @@
 #include "ir_iso_common.metal"
+#include "ir_per_axis_lighting.metal"
 
 // Mirrors shaders/c_compute_sun_shadow.glsl. Per-pixel directional sun
 // shadow compute with cascaded shadow maps.
@@ -101,22 +102,37 @@ kernel void c_compute_sun_shadow(
     }
 
     int rawDepth = encoded >> 2;
-
-    float3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel,
-        rawDepth,
-        frameData.trixelCanvasOffsetZ1,
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions,
-        frameData.rasterYaw
-    );
-
     int face = encoded & 3;
-    // Rotate raster-frame face normal to world frame so normal bias and slope
-    // bias are applied in the correct world-space direction at non-zero camera
-    // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    float3 normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
+
+    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
+    // face-locally — recover world-pos via faceOriginFromInPlane and read the
+    // world-frame outward normal directly. The single canvas keeps its
+    // cardinal-snap reconstruction + R_z(-rasterYaw) normal rotation. Mirrors GLSL.
+    bool perAxis = frameData.perAxisRoute != 0;
+    float3 pos3D;
+    float3 normal;
+    if (perAxis) {
+        int faceId = frameData.visibleFaceIds[face];
+        pos3D = perAxisCellToWorld3D(
+            pixel, rawDepth, faceId, size,
+            frameData.frameCanvasOffset, frameData.voxelRenderOptions
+        );
+        normal = faceOutwardNormal6(faceId);
+    } else {
+        pos3D = trixelCanvasPixelToWorld3D(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.rasterYaw
+        );
+        // Rotate raster-frame face normal to world frame so normal bias and slope
+        // bias are applied in the correct world-space direction at non-zero camera
+        // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
+        normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
+    }
 
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;

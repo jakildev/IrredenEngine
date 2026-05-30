@@ -8,6 +8,7 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+#include "ir_per_axis_lighting.glsl"
 
 const int kEmptyDistanceEncoded = 65535;
 const int kSunShadowMapDim = 1024;
@@ -31,14 +32,20 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    uniform int _voxelDispatchPadding;
+    // Smooth-camera-Z-yaw per-axis route selector (mirrors
+    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single canvas; nonzero = baking
+    // a per-axis voxel canvas into the shared sun map (#1311).
+    uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;
+    uniform float _yawPadding;            // isDetachedCanvas in the full UBO
+    uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
+    // Per-slot world FaceId (0..5); used only on the per-axis path (#1311).
+    uniform ivec4 visibleFaceIds;
 };
 
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -86,9 +93,18 @@ void main() {
     }
     int rawDepth = encoded >> 2;
 
-    vec3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-    );
+    // Smooth camera Z-yaw (#1311): the per-axis voxel canvases bake into the same
+    // shared sun depth map as the main canvas (SDF/text) so voxels and shapes
+    // shadow each other under rotation. A per-axis canvas stores the world frame
+    // face-locally; the single canvas stores the cardinal-snapped iso pixel.
+    vec3 pos3D = perAxisRoute != 0
+        ? perAxisCellToWorld3D(
+              pixel, rawDepth, visibleFaceIds[encoded & 3], size,
+              frameCanvasOffset, voxelRenderOptions
+          )
+        : trixelCanvasPixelToWorld3D(
+              pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+          );
 
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;

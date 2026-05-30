@@ -1,4 +1,5 @@
 #include "ir_iso_common.metal"
+#include "ir_per_axis_lighting.metal"
 #include <metal_atomic>
 
 // Mirrors shaders/c_bake_sun_shadow_map.glsl. Projects each rasterized
@@ -74,14 +75,23 @@ kernel void c_bake_sun_shadow_map(
     }
     int rawDepth = encoded >> 2;
 
-    float3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel,
-        rawDepth,
-        frameData.trixelCanvasOffsetZ1,
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions,
-        frameData.rasterYaw
-    );
+    // Smooth camera Z-yaw (#1311): the per-axis voxel canvases bake into the same
+    // shared sun depth map as the main canvas (SDF/text) so voxels and shapes
+    // shadow each other under rotation. Per-axis stores the world frame
+    // face-locally; the single canvas stores the cardinal-snapped iso pixel.
+    float3 pos3D = frameData.perAxisRoute != 0
+        ? perAxisCellToWorld3D(
+              pixel, rawDepth, frameData.visibleFaceIds[encoded & 3], size,
+              frameData.frameCanvasOffset, frameData.voxelRenderOptions
+          )
+        : trixelCanvasPixelToWorld3D(
+              pixel,
+              rawDepth,
+              frameData.trixelCanvasOffsetZ1,
+              frameData.frameCanvasOffset,
+              frameData.voxelRenderOptions,
+              frameData.rasterYaw
+          );
 
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;
