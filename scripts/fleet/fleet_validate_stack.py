@@ -11,11 +11,13 @@ an umbrella issue plus one child per phase, each child chaining
     **Blocked by:** #<prior>            # non-root children only
 
 Prose forms — a header bullet like ``**Epic:** #1307 · **Blocked on T1 + docs
-PR #1306**`` — are invisible to both parsers, so a child filed that way
-projects as Available (never stack-claims) and is undiscoverable by
-``file-epic``'s own ``--search "Part of epic: #N"`` step. Multi-ref
-``**Blocked by:** #A, #B`` lines defeat stack-claim too (the predicate wants
-exactly one blocker). This module is the pure predicate half of
+PR #1306**`` — are read by check_blockers / the scout only as a ``Blocked on``
+fallback (#1326); the canonical standalone ``**Blocked by:** #N`` line is what
+``file-epic``'s own ``--search "Part of epic: #N"`` discovery and the queue
+rely on, so a prose-only child still warrants a warning. Multiple blockers —
+whether ``#A, #B`` on one line or several ``**Blocked by:**`` lines — are
+supported (#1296): the gate unions every ref and find-stackable-blockers
+live-resolves them. This module is the pure predicate half of
 ``fleet-validate-stack``; the executable supplies the ``gh`` I/O.
 
 Severity split — a finding is an ``error`` only when it is an unambiguous
@@ -43,11 +45,10 @@ _EPIC_HEADER_TMPL = r"^\*\*Epic:\*\*\s+#{n}(?!\d)"
 _MODEL_RE = re.compile(r"^\*\*Model:\*\* (opus|sonnet)\b", re.MULTILINE)
 _BLOCKED_BY_LINE_RE = re.compile(r"^\*\*Blocked by:\*\*.*$", re.MULTILINE)
 _HASH_REF_RE = re.compile(r"#(\d+)\b")
-# A well-formed single-blocker line: ``#N`` is the only ref, optionally
-# followed by a `` (rationale)``. The trailing ``( \(|$)`` rejects a second
-# ``, #M`` (multi-blocker) by requiring the char after the number to be the
-# start of a parenthetical or end-of-line.
-_SINGLE_BLOCKED_BY_RE = re.compile(r"^\*\*Blocked by:\*\* #\d+( \(|$)", re.MULTILINE)
+# Multiple blockers are supported as of #1296 (see validate_child): a line may
+# carry one or more ``#N`` refs, and a child may carry more than one
+# ``**Blocked by:**`` line. The only malformed shape is a line that names no
+# ``#N`` at all.
 
 ERROR = "error"
 WARN = "warn"
@@ -116,20 +117,24 @@ def validate_child(body, umbrella, is_head):
         if not bb_lines:
             warn("no standalone `**Blocked by:** #N` line — drift if this "
                  "child chains on a sibling (prose `Blocked on ...` headers "
-                 "are invisible to the scout / fleet-claim parsers); fine if "
-                 "it is a genuine independent root")
-        elif len(bb_lines) > 1:
-            err("multiple separate `**Blocked by:**` lines — use a single "
-                "`**Blocked by:** #N` line; stack-claim requires exactly one")
+                 "are read only as a fallback; the standalone line is "
+                 "canonical); fine if it is a genuine independent root")
         else:
-            refs = _HASH_REF_RE.findall(bb_lines[0])
-            if len(refs) > 1:
-                err("multi-blocker `**Blocked by:** #%s` line — stack-claim "
-                    "needs exactly one ref (strip satisfied refs once "
-                    "upstreams merge)" % ", #".join(refs))
-            elif not _SINGLE_BLOCKED_BY_RE.search(b):
-                err("malformed `**Blocked by:**` line (expected `**Blocked "
-                    "by:** #N` or `**Blocked by:** #N (rationale)`)")
+            # Multiple blockers are supported (#1296): check_blockers gates on
+            # the union of every `#N` across all `**Blocked by:**` lines, and
+            # find-stackable-blockers live-resolves them (stacking on the last
+            # unresolved ref as the others merge). So neither multi-ref
+            # (`#A, #B`) nor several lines is an error — only a line that names
+            # no `#N` at all is malformed.
+            for ln in bb_lines:
+                val = re.sub(r"^\*\*Blocked by:\*\*\s*", "", ln,
+                             flags=re.IGNORECASE).strip()
+                if val.lower().startswith("(none"):
+                    continue
+                if not _HASH_REF_RE.search(val):
+                    err("malformed `**Blocked by:**` line (expected one or "
+                        "more `#N` refs, e.g. `**Blocked by:** #1308` or "
+                        "`**Blocked by:** #1308, #1309`): %r" % ln)
 
     return findings
 

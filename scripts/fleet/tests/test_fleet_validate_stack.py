@@ -5,8 +5,10 @@ prose-only / missing `**Blocked by:**` (the #1300, #1309-#1311 shape, treated
 as an ambiguous *warning* since it may be a legit root), `**Epic:**` header
 bullets in place of the canonical `**Part of epic:**` line (the #1308-#1311
 shape, which also breaks file-epic's own discovery — a hard *error*),
-multi-ref `**Blocked by:**` (the #1301/#1070 shape that never stack-claims — a
-hard error), and a missing `**Model:**` line.
+malformed `**Blocked by:**` lines that name no `#N`, and a missing
+`**Model:**` line. Multiple blockers — multi-ref `#A, #B` or several
+`**Blocked by:**` lines — are accepted as of #1296 (the gate unions every ref
+and find-stackable-blockers live-resolves them).
 
 The module is loaded via importlib (mirroring test_scope_shipped_reference.py)
 so the test runs regardless of cwd.
@@ -114,26 +116,35 @@ class ValidateChildNonHead(unittest.TestCase):
         self.assertEqual(epic[0]["severity"], _mod.ERROR)
         self.assertEqual(blocked[0]["severity"], _mod.WARN)
 
-    def test_multi_blocker_line_is_error(self):
+    def test_multi_ref_blocked_by_line_is_accepted(self):
+        # #1296: multiple refs on one line are supported — the gate unions them
+        # and find-stackable-blockers live-resolves them. No longer an error.
         body = (
             "**Model:** opus\n**Part of epic:** #1307\n"
             "**Blocked by:** #1299, #1300\n"
         )
-        findings = validate_child(body, 1307, is_head=False)
-        multi = [f for f in findings if "multi-blocker" in f["msg"]]
-        self.assertEqual(len(multi), 1)
-        self.assertEqual(multi[0]["severity"], _mod.ERROR)
+        self.assertEqual(validate_child(body, 1307, is_head=False), [])
 
-    def test_multiple_separate_blocked_by_lines_is_error(self):
+    def test_multiple_separate_blocked_by_lines_are_accepted(self):
+        # #1296: several **Blocked by:** lines are unioned by the gate and
+        # live-resolved by find-stackable-blockers. No longer an error.
         body = (
             "**Model:** opus\n**Part of epic:** #1307\n"
             "**Blocked by:** #1308\n"
             "**Blocked by:** #1309\n"
         )
+        self.assertEqual(validate_child(body, 1307, is_head=False), [])
+
+    def test_blocked_by_line_without_ref_is_error(self):
+        # A **Blocked by:** line that names no #N is still malformed.
+        body = (
+            "**Model:** opus\n**Part of epic:** #1307\n"
+            "**Blocked by:** the upstream redesign\n"
+        )
         findings = validate_child(body, 1307, is_head=False)
-        multi = [f for f in findings if "multiple separate" in f["msg"]]
-        self.assertEqual(len(multi), 1)
-        self.assertEqual(multi[0]["severity"], _mod.ERROR)
+        bad = [f for f in findings if "malformed" in f["msg"]]
+        self.assertEqual(len(bad), 1)
+        self.assertEqual(bad[0]["severity"], _mod.ERROR)
 
     def test_single_blocker_with_rationale_passes(self):
         body = (
