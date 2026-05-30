@@ -1,4 +1,5 @@
 #include "ir_iso_common.metal"
+#include "ir_per_axis_lighting.metal"
 
 // Mirrors shaders/c_compute_voxel_ao.glsl. Per-pixel ambient-occlusion
 // compute. Samples four face-tangent neighbour pixels in trixelDistances
@@ -72,14 +73,23 @@ kernel void c_compute_voxel_ao(
     int faceId = frameData.visibleFaceIds[slot];
     int rawDepth = encoded >> 2;
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    float3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel,
-        rawDepth,
-        frameData.trixelCanvasOffsetZ1,
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions,
-        cardinalIndex
-    );
+    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
+    // face-locally (perAxisRoute != 0), recovered via faceOriginFromInPlane; the
+    // single canvas uses the cardinal-snap reconstruction. Mirrors GLSL.
+    bool perAxis = frameData.perAxisRoute != 0;
+    float3 pos3D = perAxis
+        ? perAxisCellToWorld3D(
+              pixel, rawDepth, faceId, size,
+              frameData.frameCanvasOffset, frameData.voxelRenderOptions
+          )
+        : trixelCanvasPixelToWorld3D(
+              pixel,
+              rawDepth,
+              frameData.trixelCanvasOffsetZ1,
+              frameData.frameCanvasOffset,
+              frameData.voxelRenderOptions,
+              cardinalIndex
+          );
 
     // World-frame outward normal + in-plane tangents for the camera-visible
     // face this pixel rendered. Tangents are rotated through R_z(-rasterYaw)
@@ -102,10 +112,20 @@ kernel void c_compute_voxel_ao(
     }
 
     int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
-    int3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
-    int3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
-    int2 deltaT1 = pos3DtoPos2DIso(t1View) * scale;
-    int2 deltaT2 = pos3DtoPos2DIso(t2View) * scale;
+    int2 deltaT1;
+    int2 deltaT2;
+    if (perAxis) {
+        // Face-local in-plane lattice: a +/-1 cell step along each canvas axis is
+        // the +/-1 in-plane world-tangent neighbour. Step `scale` cells per world
+        // voxel under subdivision. No iso projection / cardinal rotation.
+        deltaT1 = int2(scale, 0);
+        deltaT2 = int2(0, scale);
+    } else {
+        int3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
+        int3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
+        deltaT1 = pos3DtoPos2DIso(t1View) * scale;
+        deltaT2 = pos3DtoPos2DIso(t2View) * scale;
+    }
 
     int occl = 0;
     for (int dir = 0; dir < 4; ++dir) {
@@ -122,14 +142,23 @@ kernel void c_compute_voxel_ao(
         if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
 
         int neighbourRawDepth = neighbourEncoded >> 2;
-        float3 neighbourPos3D = trixelCanvasPixelToWorld3D(
-            samplePixel,
-            neighbourRawDepth,
-            frameData.trixelCanvasOffsetZ1,
-            frameData.frameCanvasOffset,
-            frameData.voxelRenderOptions,
-            cardinalIndex
-        );
+        float3 neighbourPos3D;
+        if (perAxis) {
+            int neighbourFaceId = frameData.visibleFaceIds[neighbourEncoded & 3];
+            neighbourPos3D = perAxisCellToWorld3D(
+                samplePixel, neighbourRawDepth, neighbourFaceId, size,
+                frameData.frameCanvasOffset, frameData.voxelRenderOptions
+            );
+        } else {
+            neighbourPos3D = trixelCanvasPixelToWorld3D(
+                samplePixel,
+                neighbourRawDepth,
+                frameData.trixelCanvasOffsetZ1,
+                frameData.frameCanvasOffset,
+                frameData.voxelRenderOptions,
+                cardinalIndex
+            );
+        }
 
         float d = dot(neighbourPos3D - pos3D, worldOutward);
         if (d > kAOMinHeight && d < kAOMaxHeight) occl++;

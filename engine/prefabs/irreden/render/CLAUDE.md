@@ -20,9 +20,12 @@ the ECS surface.
   path). Lifecycle driven by `IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw()`
   from `VOXEL_TO_TRIXEL_STAGE_1::beginTick`. T2 (#1309) routes each
   visible voxel face into its axis canvas with continuous
-  (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; the
-  framebuffer still reads only the single main canvas, so output stays
-  byte-identical until T3 (#1310) composites the three by depth.
+  (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; T3
+  (#1310) composites the three by depth-tested forward scatter at the
+  framebuffer; T4 (#1311) lights each per-axis canvas (AO + sun-shadow +
+  light-volume + Lambert) at trixel resolution before the scatter, adding
+  per-axis `ao_` / `sunShadow_` textures with the same rotation-only
+  lifecycle (the world sun-shadow map + 128³ light volume stay shared).
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also

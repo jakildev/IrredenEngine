@@ -47,10 +47,21 @@ struct C_PerAxisTrixelCanvases {
     // One color / distance / entity-id texture set per face axis. Mirrors the
     // C_TriangleCanvasTextures texture layout so the existing trixel machinery
     // (image binds, atomicMin distance writes, clears) applies per axis unchanged.
+    //
+    // T4 (#1311) adds a per-axis AO + sun-shadow texture so the smooth-yaw
+    // lighting passes (COMPUTE_VOXEL_AO / COMPUTE_SUN_SHADOW / LIGHTING_TO_TRIXEL)
+    // can light each axis canvas at trixel resolution before the framebuffer
+    // scatter composites it — same rotation-only lifecycle as the colour /
+    // distance / id triple. Both are canvas-resolution RGBA8, matching the
+    // single-canvas C_CanvasAOTexture / C_CanvasSunShadow formats. The world
+    // light volume + sun-shadow depth map stay SHARED (sampled by reconstructed
+    // world-pos), so there is no per-axis copy of those.
     struct AxisTextures {
         std::pair<ResourceId, Texture2D *> colors_{0, nullptr};
         std::pair<ResourceId, Texture2D *> distances_{0, nullptr};
         std::pair<ResourceId, Texture2D *> entityIds_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> ao_{0, nullptr};
+        std::pair<ResourceId, Texture2D *> sunShadow_{0, nullptr};
     };
 
     ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
@@ -76,6 +87,10 @@ struct C_PerAxisTrixelCanvases {
             axis.colors_ = detail::makeCanvasColorTexture(size);
             axis.distances_ = detail::makeCanvasDistanceTexture(size);
             axis.entityIds_ = detail::makeCanvasEntityIdTexture(size);
+            // AO + sun-shadow are RGBA8 like the single-canvas lighting
+            // textures (#1311); the colour factory matches that format.
+            axis.ao_ = detail::makeCanvasColorTexture(size);
+            axis.sunShadow_ = detail::makeCanvasColorTexture(size);
         }
     }
 
@@ -89,6 +104,8 @@ struct C_PerAxisTrixelCanvases {
             IRRender::destroyResource<Texture2D>(axis.colors_.first);
             IRRender::destroyResource<Texture2D>(axis.distances_.first);
             IRRender::destroyResource<Texture2D>(axis.entityIds_.first);
+            IRRender::destroyResource<Texture2D>(axis.ao_.first);
+            IRRender::destroyResource<Texture2D>(axis.sunShadow_.first);
             axis = AxisTextures{};
         }
         size_ = ivec2{0, 0};

@@ -13,6 +13,7 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -80,7 +81,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     Texture2D *paletteLUT_ = nullptr;
     FrameDataLightingToTrixel frameData_{};
 
+    // Smooth camera Z-yaw (#1311): main canvas + per-axis voxel canvases,
+    // re-resolved every frame in beginTick. Null unless allocated (rotating).
+    IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
+    C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+
     void tick(
+        IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
         const C_TrixelCanvasRenderBehavior &behavior,
         const C_CanvasAOTexture &ao,
@@ -118,6 +125,61 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+        // Smooth camera Z-yaw (#1311): apply lighting to each per-axis voxel
+        // canvas (AO x sun-shadow x face Lambert + shared world light volume) so
+        // the framebuffer scatter composites LIT colours while rotating.
+        if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
+            perAxisCanvases_->isAllocated()) {
+            dispatchPerAxisLighting(*perAxisCanvases_, canvasTextures, ao, shadow);
+        }
+    }
+
+    // Light each per-axis canvas in place. The palette LUT (3) and the shared
+    // light volume (5) plus all four UBOs stay bound from the main pass; only the
+    // per-axis colour/distance/AO/sun-shadow images and the perAxisRoute selector
+    // change. perAxisRoute is restored to 0 on exit.
+    void dispatchPerAxisLighting(
+        C_PerAxisTrixelCanvases &axes,
+        const C_TriangleCanvasTextures &mainTextures,
+        const C_CanvasAOTexture &mainAO,
+        const C_CanvasSunShadow &mainShadow
+    ) {
+        const int kPerAxisRoute = 1;
+        voxelFrameDataBuf_
+            ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
+        const int groupsX = IRMath::divCeil(axes.size_.x, kLightingToTrixelGroupSize);
+        const int groupsY = IRMath::divCeil(axes.size_.y, kLightingToTrixelGroupSize);
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            auto &tex = axes.axes_[axis];
+            tex.colors_.second->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+            tex.distances_.second->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            tex.ao_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            tex.sunShadow_.second->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+        }
+        // One barrier after the 3 independent per-axis dispatches
+        // (separate textures; the bake's atomicMin is order-safe) so they
+        // overlap on the GPU instead of serializing per axis (#1311).
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        const int kSingleCanvasRoute = 0;
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
+            sizeof(int),
+            &kSingleCanvasRoute
+        );
+        // Restore the main-canvas image bindings the loop overwrote. This is the
+        // critical one: LIGHTING_TO_TRIXEL is the last image-binding compute stage,
+        // so without this the freed per-axis textures linger in the persistent
+        // Metal image-binding table and dangle when release() frees them at the
+        // next cardinal frame — the #1311 mid-rotation crash. Same restore
+        // discipline as the other per-axis lighting passes.
+        mainTextures.getTextureColors()
+            ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+        mainTextures.getTextureDistances()
+            ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        mainAO.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        mainShadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
     }
 
     void beginTick() {
@@ -131,6 +193,17 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const vec3 sc = IRRender::getSkyColor();
         frameData_.skyColor_ = vec4(sc, 0.0f);
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
+
+        // Resolve the main canvas + its per-axis voxel canvases (#1311).
+        perAxisCanvasEntity_ = IRRender::getCanvas("main");
+        perAxisCanvases_ = nullptr;
+        if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
+            auto perAxis =
+                IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
+            if (perAxis.has_value()) {
+                perAxisCanvases_ = perAxis.value();
+            }
+        }
     }
 
     static SystemId create() {

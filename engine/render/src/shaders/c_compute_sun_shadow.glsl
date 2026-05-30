@@ -9,6 +9,7 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+#include "ir_per_axis_lighting.glsl"
 
 const int kEmptyDistanceEncoded = 65535;
 const float kShadowDarken = 0.45;
@@ -32,14 +33,20 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    uniform int _voxelDispatchPadding;
+    // Smooth-camera-Z-yaw per-axis route selector (mirrors
+    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single canvas; nonzero = a
+    // per-axis canvas bake (#1311), reconstruct world-pos face-locally.
+    uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;
+    uniform float _yawPadding;            // isDetachedCanvas in the full UBO
+    uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
+    // Per-slot world FaceId (0..5); used only on the per-axis path (#1278/#1311).
+    uniform ivec4 visibleFaceIds;
 };
 
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -121,17 +128,31 @@ void main() {
     }
 
     int rawDepth = encoded >> 2;
-
-    vec3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-    );
-
     int face = encoded & 3;
-    // Rotate raster-frame face normal to world frame so normal bias and slope
-    // bias are applied in the correct world-space direction at non-zero camera
-    // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    vec3 normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
+
+    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
+    // face-locally, so recover world-pos via faceOriginFromInPlane and read the
+    // world-frame outward normal directly (no cardinal rotation — the store
+    // already wrote world coords). The single canvas keeps its cardinal-snap
+    // reconstruction + R_z(-rasterYaw) normal rotation, byte-identical at the
+    // cardinal fast path (per-axis canvases are only allocated while rotating).
+    bool perAxis = perAxisRoute != 0;
+    vec3 pos3D;
+    vec3 normal;
+    if (perAxis) {
+        int faceId = visibleFaceIds[face];
+        pos3D = perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions);
+        normal = faceOutwardNormal6(faceId);
+    } else {
+        pos3D = trixelCanvasPixelToWorld3D(
+            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+        );
+        // Rotate raster-frame face normal to world frame so normal bias and slope
+        // bias are applied in the correct world-space direction at non-zero camera
+        // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
+        normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
+    }
 
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;

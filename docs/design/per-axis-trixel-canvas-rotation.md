@@ -177,8 +177,11 @@ sweep degenerates after a single `texelFetch` + branch and does **not** dominate
   "decide: split SDF too" item. v1 keeps them visible (snapped) rather than absent.
 - **±45° rebracket polish.** At the exact bracket edge the swept axis goes edge-on
   as designed; tighten the zero-width face-identity swap under continuous sweep.
-- **Lighting / AO on the composite (T4 / #1311).** During rotation the composite
-  shows raw voxel color.
+- **Lighting / AO on the composite (T4 / #1311).** ~~During rotation the composite
+  shows raw voxel color.~~ **Landed in T4 (#1311):** the per-axis voxel canvases
+  are lit (AO + sun-shadow + light-volume + Lambert) at trixel resolution before
+  the scatter composites them, so rotating voxels show full lighting. See the
+  §"Open decisions" → "Lighting / AO placement" resolution.
 - **Picking during rotation.** Winning entity-id from the composite — the gather
   fast path still resolves hover at every cardinal; the scatter does not yet
   write the hovered-id SSBO.
@@ -434,10 +437,23 @@ split.
 
 ## Open decisions (resolve during implementation)
 
-- **Lighting / AO placement.** AO samples neighbor faces. With three layers it
-  either runs **post-composite** on the resolved framebuffer (winning face-id +
-  normal carried through the composite — preferred) or per-canvas (duplicated
-  work). Pick post-composite unless a blocker emerges.
+- **Lighting / AO placement. — RESOLVED (T4 / #1311): trixel-level per-axis.**
+  Light each of the three per-axis voxel canvases *before* the framebuffer
+  scatter composites it — run AO + sun-shadow + light-volume + `LIGHTING_TO_TRIXEL`
+  over each axis canvas, gated on `residualYaw != 0`. The framebuffer-resolution
+  **MRT G-buffer / post-composite per-fragment** approach (the pre-implementation
+  findings note below) is **rejected**: the engine keeps lighting at trixel
+  resolution (hard product constraint — no fragment-rate lighting). The two
+  cross-canvas maps stay **world-space and SHARED** — the sun-shadow depth SSBO
+  and the 128³ light volume are sampled by world-pos reconstructed per-axis
+  (`perAxisCellToWorld3D`, the exact `faceOriginFromInPlane` inverse), never from
+  a resolved framebuffer (which would hit the singular screen→world iso-yawed
+  inverse). AO is same-axis ⇒ runs correctly on each axis canvas's in-plane
+  lattice. 3× AO + 3× sun-shadow textures live on `C_PerAxisTrixelCanvases`
+  (rotation-only lifecycle); the world volume + sun map are NOT per-axis. The
+  sun-shadow bake reads main (SDF/text) **+** all three per-axis voxel canvases
+  into the shared world sun map (pre-composite `atomicMin`), so voxels and SDF
+  shadow each other under rotation.
 - **Memory / allocation policy.** Three worst-case textures during rotation;
   gate allocation on `residualYaw != 0` so static scenes pay nothing. Define
   the allocate/free churn behavior at rotation start/stop.
@@ -447,6 +463,18 @@ split.
   cardinal) to each canvas's basis + extent; reuse `faceDeformationMatrix`.
 
 ### T4 (#1311) implementation note — lighting placement requires a structural pipeline change (worker findings, pre-implementation)
+
+> **SUPERSEDED by the §"Open decisions" → "Lighting / AO placement" resolution
+> above (architect direction, 2026-05-30).** This note proposed a framebuffer
+> MRT G-buffer + post-composite per-fragment pass; that was **rejected** in
+> favour of trixel-level per-axis lighting (the per-axis voxel canvases are lit
+> before the scatter; the sun-shadow SSBO + 128³ light volume stay world-space
+> and shared). The pipeline map below is accurate and is what made the per-axis
+> approach clean; only its *recommended mechanism* (pieces 1–3) is obsolete.
+> As-shipped: AO + sun-shadow + light-volume + `LIGHTING_TO_TRIXEL` run over each
+> per-axis canvas (`perAxisRoute != 0`), reconstructing world-pos via
+> `perAxisCellToWorld3D`; `BAKE_SUN_SHADOW_MAP` bakes main + 3 per-axis into the
+> shared sun map. No framebuffer MRT; no per-fragment lighting.
 
 Mapping the current pipeline against T4's "AO / sun-shadow / lighting on the
 resolved composite" scope surfaced that **every lighting stage today runs
