@@ -320,8 +320,7 @@ struct C_VoxelPool {
                 return true;
             }
             const ChunkBounds &cb = m_chunkBounds[c];
-            if (cb.isoMax_.x >= viewport.min_.x && cb.isoMin_.x <= viewport.max_.x &&
-                cb.isoMax_.y >= viewport.min_.y && cb.isoMin_.y <= viewport.max_.y) {
+            if (viewport.overlapsAABB(cb.isoMin_, cb.isoMax_)) {
                 return true;
             }
         }

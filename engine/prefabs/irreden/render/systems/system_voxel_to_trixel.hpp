@@ -58,8 +58,7 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     auto &bounds = pool.getChunkBounds();
     for (int c = 0; c < chunkCount; ++c) {
         const auto &cb = bounds[c];
-        if (cb.isoMax_.x >= viewport.min_.x && cb.isoMin_.x <= viewport.max_.x &&
-            cb.isoMax_.y >= viewport.min_.y && cb.isoMin_.y <= viewport.max_.y) {
+        if (viewport.overlapsAABB(cb.isoMin_, cb.isoMax_)) {
             mask[c] = 1;
         }
     }
@@ -266,8 +265,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *indirectBuf_ = nullptr;
     FrameDataVoxelToCanvas frameData_{};
     // Resolved once per frame in beginTick; read by the per-entity tick.
-    vec3 sunDir_{};
-    float sweepDistance_ = 0.0f;
+    IRPrefab::SunShadow::ShadowFeederParams shadowFeederParams_{};
     // Log-throttle state — emit the render-mode log line only when
     // mode or effective subdivisions change.
     int previousRenderMode_ = -1;
@@ -388,7 +386,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getCameraZoom(),
             triangleCanvasTextures.size_
         );
-        const auto &cull = IRRender::getCullViewport();
 
         buildVoxelFrameData(
             frameData_,
@@ -413,17 +410,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             previousEffectiveSubdivisions_ = effectiveSub;
         }
 
-        // Sun direction and sweep distance are resolved once per
-        // frame in beginTick (via IRPrefab::SunShadow::getFrameSunDirection)
-        // and cached in params, so no C_LightSource archetype scan
-        // runs per entity.
-        const float sweepDistance = sweepDistance_;
-
-        const IsoBounds2D chunkVp = IRMath::shadowFeederIsoBounds(
-            cull.isoViewport(kCullChunkMargin),
-            sunDir_,
-            sweepDistance
-        );
+        // Shadow-feeder params are resolved once per frame in beginTick
+        // (frameShadowFeederParams), so no C_LightSource archetype scan runs
+        // per entity; shadowFeederCullViewport reuses them at both margins.
+        const IsoBounds2D chunkVp =
+            IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, shadowFeederParams_);
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         // Smooth camera Z-yaw (T3 / #1310): while rotating (residual yaw != 0,
         // i.e. the per-axis canvases are active), project the chunk-visibility
@@ -442,7 +433,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         constexpr int kGpuMargin = 4;
         const IsoBounds2D gpuVp =
-            IRMath::shadowFeederIsoBounds(cull.isoViewport(kGpuMargin), sunDir_, sweepDistance);
+            IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
         frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
         frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
@@ -575,9 +566,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Resolve sun direction once per frame so the per-entity tick
         // reads the cached value instead of scanning C_LightSource
         // once per voxel-pool-canvas pair.
-        const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
-        sunDir_ = shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
-        sweepDistance_ = shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
+        shadowFeederParams_ = IRPrefab::SunShadow::frameShadowFeederParams();
 
         IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
         auto background =
