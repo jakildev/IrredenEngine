@@ -27,6 +27,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -98,16 +99,20 @@ inline void buildVoxelFrameData(
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
         frameData.residualYaw_ = 0.0f;
-        // DETACHED canvas keeps the legacy lower-coordinate-faces visible
-        // set {X_NEG, Y_NEG, Z_NEG} — the per-canvas SO(3) bake
-        // (`propagate_canvas_rotation`) absorbs the entity rotation, so the
-        // raster always emits the same three faces in the entity-local frame.
-        // Per-entity SO(3) visible-triplet resolution is the follow-on work
-        // in #1272 (the design doc § "Per-entity SO(3) is the same model").
+        // Per-entity SO(3) visible triplet: the three faces the camera
+        // actually sees for this entity's orientation (one per axis, in
+        // X/Y/Z slot order). Previously hardcoded to {X_NEG, Y_NEG, Z_NEG}
+        // regardless of rotation, so the snap+residual deform below ran on
+        // back-facing faces and entities glitched instead of rotating
+        // (#1386). At identity the resolver returns the same legacy triplet,
+        // so non-rotating entities stay byte-identical. The resolver is
+        // reused verbatim by the main-canvas per-entity path (#1299).
+        const std::array<IRMath::FaceId, 3> visibleFaces =
+            IRMath::visibleTriplet(canvasRotation.rotation_);
         frameData.visibleFaceIds_ = ivec4(
-            static_cast<int>(IRMath::FaceId::X_NEG),
-            static_cast<int>(IRMath::FaceId::Y_NEG),
-            static_cast<int>(IRMath::FaceId::Z_NEG),
+            static_cast<int>(visibleFaces[0]),
+            static_cast<int>(visibleFaces[1]),
+            static_cast<int>(visibleFaces[2]),
             0
         );
         // Snap to the nearest of the 24 cube orientations and deform by the
@@ -118,7 +123,9 @@ inline void buildVoxelFrameData(
         const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, residual);
         const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, residual);
         // Per-slot upload: slot 0 / 1 / 2 carries the X / Y / Z axis face
-        // matrix (matches the visibleFaceIds_ assignment above).
+        // matrix. `visibleTriplet` returns faces in axis order, so each
+        // slot's axis is fixed regardless of polarity — the deform is
+        // axis-only (X_NEG and X_POS share the X matrix), so it is unchanged.
         frameData.faceDeform_[0] = vec4(fdX[0], fdX[1]);
         frameData.faceDeform_[1] = vec4(fdY[0], fdY[1]);
         frameData.faceDeform_[2] = vec4(fdZ[0], fdZ[1]);

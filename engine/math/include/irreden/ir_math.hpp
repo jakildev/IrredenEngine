@@ -484,6 +484,44 @@ constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardina
     }
 }
 
+/// The three camera-visible cube faces for an entity rotated by @p rotation —
+/// the SO(3) generalization of @ref visibleFaceTripletCardinal (which only
+/// covers the camera's Z-yaw cardinals). A cube face is visible when its
+/// world-space outward normal opposes the iso view direction: the camera
+/// looks down the +(1,1,1) iso depth axis (see engine/math/CLAUDE.md,
+/// `depth = x + y + z`, higher = further), so model normal `n` is front-facing
+/// iff `(R·n)·viewDir < 0`. Expressed in the entity's model frame that is
+/// `n·(R⁻¹·viewDir) < 0`, so the per-axis sign of `R⁻¹·viewDir` picks the
+/// POS or NEG face of each axis.
+///
+/// Slot ordering matches @ref visibleFaceTripletCardinal and the rasterizer's
+/// `faceDeform_[]` upload: slot 0 = X-axis face, 1 = Y-axis face, 2 = Z-axis
+/// face. Each slot is axis-fixed, so the per-slot `faceDeformationMatrixSO3`
+/// (axis-only) is unchanged by this — only which polarity each slot renders.
+///
+/// At identity rotation `R⁻¹·viewDir = (1,1,1)` (all positive) so the result is
+/// `{X_NEG, Y_NEG, Z_NEG}` — byte-identical to `visibleFaceTripletCardinal(k0)`
+/// and to the legacy hardcoded detached triplet. Within an octahedral cell the
+/// residual (@ref octahedralSnapResidual) stays below the covering radius, so a
+/// face only flips polarity when it is edge-on (its view-space normal ≈ 0) —
+/// where the deformation is near-singular and the face shows no visible area,
+/// making the choice visually inconsequential.
+///
+/// CPU-only by design: the result is uploaded into
+/// `FrameDataVoxelToCanvas::visibleFaceIds_` and consumed shader-side exactly
+/// like the cardinal path (#1278), so there is no GPU-side mirror to keep in
+/// sync. Reused verbatim by per-entity main-canvas SO(3) (#1299).
+inline std::array<FaceId, 3> visibleTriplet(const vec4 &rotation) {
+    // View direction expressed in the entity's model frame (R⁻¹ · viewDir).
+    // Only the per-axis signs matter, so viewDir need not be normalized.
+    const vec3 viewInModel = rotateVectorByQuat(vec3(1.0f, 1.0f, 1.0f), quatInverse(rotation));
+    return {
+        viewInModel.x < 0.0f ? FaceId::X_POS : FaceId::X_NEG,
+        viewInModel.y < 0.0f ? FaceId::Y_POS : FaceId::Y_NEG,
+        viewInModel.z < 0.0f ? FaceId::Z_POS : FaceId::Z_NEG,
+    };
+}
+
 /// CPU mirror of `cardinalLowerCornerShift` in `shaders/ir_iso_common.glsl`.
 /// After `rotateCardinalZ`, the unit voxel's view-space AABB lower corner
 /// is offset from the rotated origin because R_z permutes/negates axes.
