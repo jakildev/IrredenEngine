@@ -2139,6 +2139,17 @@ reconcile_apply_field() {
         'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))'
 }
 
+# reconcile_open_drift_tracker
+#   Echo the number of the single open fleet:state-drift tracker, or empty if
+#   none. `// empty` keeps gojq from emitting the literal `null` (which would
+#   otherwise read as a real issue number). Both the refresh/create path and
+#   the auto-close path resolve the tracker the same way.
+reconcile_open_drift_tracker() {
+    gh issue list --repo "$FLEET_GITHUB_REPO" --state open \
+        --label "fleet:state-drift" --json number --jq '.[0].number // empty' \
+        2>/dev/null || true
+}
+
 # reconcile_escalate_drift <findings-jsonl> <state-dir> <threshold>
 #   Persistence-gated, deduped escalation of flag-only drift (R2/R6/...).
 #   Maintains a per-key tick counter in <state-dir>/drift-persistence.json:
@@ -2147,6 +2158,8 @@ reconcile_apply_field() {
 #   transient one-tick blip never escalates). When ANY key crosses <threshold>
 #   ticks, file or update a SINGLE open fleet:state-drift tracking issue on the
 #   engine repo (deduped — body refreshed in place, never one issue per tick).
+#   When NO finding remains persistent (all cleared), close any open tracker so
+#   a fixed claim surface does not leave a stale issue open forever.
 #   Mutates local state + a GH issue, so cmd_reconcile only calls it on --apply.
 reconcile_escalate_drift() {
     local findings="$1" state_dir="$2" threshold="$3"
@@ -2247,6 +2260,22 @@ PYEOF
     fi
     if [[ "$persistent_count" -le 0 ]]; then
         rm -f "$body_file"
+        # No persistent drift this run. If a tracker is still open, every row
+        # it lists has cleared, so close it — reconcile filed the tracker and
+        # owns its lifecycle, and a fixed claim surface must not leave a stale
+        # tracker lingering open with findings that no longer reproduce. The
+        # counter reset above means a genuinely-recurring finding re-accrues
+        # from zero and re-files a fresh tracker once it crosses threshold.
+        local cleared
+        cleared=$(reconcile_open_drift_tracker)
+        if [[ -n "$cleared" && "$cleared" != "null" ]]; then
+            if gh issue close "$cleared" --repo "$FLEET_GITHUB_REPO" \
+                --comment "All tracked claim-surface drift has cleared across reconcile ticks; auto-closing. \`fleet-claim reconcile\` re-files a fresh tracker if new persistent drift appears." >/dev/null 2>&1; then
+                echo "  reconcile --apply: drift cleared — auto-closed fleet:state-drift tracker #$cleared"
+            else
+                echo "  reconcile --apply: drift cleared but failed to auto-close fleet:state-drift tracker #$cleared" >&2
+            fi
+        fi
         return 0
     fi
 
@@ -2258,10 +2287,7 @@ PYEOF
 
     local existing title
     title="fleet: claim-surface drift — $persistent_count persistent finding(s)"
-    # `// empty` so an empty match prints nothing rather than gojq's literal
-    # `null` (which would otherwise read as an existing-issue number).
-    existing=$(gh issue list --repo "$FLEET_GITHUB_REPO" --state open \
-        --label "fleet:state-drift" --json number --jq '.[0].number // empty' 2>/dev/null || true)
+    existing=$(reconcile_open_drift_tracker)
     if [[ -n "$existing" && "$existing" != "null" ]]; then
         if gh issue edit "$existing" --repo "$FLEET_GITHUB_REPO" \
             --title "$title" --body-file "$body_file" >/dev/null 2>&1; then
