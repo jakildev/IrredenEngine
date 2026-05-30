@@ -2236,8 +2236,9 @@ lines = [
     "deduped tracker for claim-surface drift the cross-surface reconcile pass",
     "could **not** auto-fix and that persisted across **%d+ reconcile ticks**."
     % threshold,
-    "Resolve each row, then close this issue — reconcile refreshes this body in",
-    "place and will not open a second tracker.",
+    "Resolve each row — `fleet-claim reconcile` auto-closes this tracker when",
+    "all findings clear. Reconcile also refreshes this body in place and will not",
+    "open a second tracker.",
     "",
     "| Rule | Repo | Target | Ticks | Detail |",
     "| --- | --- | --- | --- | --- |",
