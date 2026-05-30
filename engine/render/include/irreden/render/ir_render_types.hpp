@@ -222,17 +222,31 @@ enum class FitMode { FIT, STRETCH, UNKNOWN };
 /// @note Currently global (per-frame). Per-entity subdivision modes are future work.
 enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 
-struct GPUEntityTransform {
-    vec4 worldPosition;
-    std::uint32_t poolOffset;
-    std::uint32_t voxelCount;
-    std::uint32_t _padding0 = 0;
-    std::uint32_t _padding1 = 0;
+/// Sentinel `entityTransformIndex` marking a voxel as CPU-direct (static):
+/// the GPU voxel-position prepass skips it, leaving its binding-5 slot exactly
+/// as the CPU pending-range flush wrote it. Every voxel defaults to this, so a
+/// scene with no GPU-transformed voxels is byte-identical to the pre-prepass path.
+/// The prepass reads the per-voxel slot from the `.w` lane of its local-position
+/// SSBO (binding `kBufferIndex_LocalVoxelPositions`, bit-cast to uint) rather
+/// than a dedicated buffer — Metal caps buffer indices at 30 and the engine
+/// already fills 0..30, so packing the slot into the otherwise-unused padding
+/// lane avoids spending a scarce binding point.
+constexpr std::uint32_t kVoxelTransformStatic = 0xFFFFFFFFu;
+
+/// One per GPU-transformed voxel-set, indexed by `C_VoxelSetNew::gpuTransformSlot_`
+/// (and by each owned voxel's per-voxel transform index). The compute prepass
+/// computes `world = modelToWorld_ * vec4(localPos, 1)`, so this carries the full
+/// SO(3)+translation (built CPU-side via `IRMath::sqtToMat4`). Column-major
+/// `mat4` matches the GLSL `mat4` / Metal `float4x4` layout byte-for-byte (64 B).
+/// Generic by design: an entity transform today, a bone transform for skeletal
+/// voxels (#605) tomorrow — the prepass never assumes which.
+struct GpuVoxelTransform {
+    mat4 modelToWorld_ = mat4(1.0f);
 };
 
 struct GPUUpdateParams {
-    int entityCount;
-    int _padding[3] = {};
+    int voxelCount_ = 0;
+    int padding_[3] = {};
 };
 
 /// SDF primitive type dispatched to the shapes→trixel compute shader.

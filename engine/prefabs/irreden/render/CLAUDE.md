@@ -75,6 +75,17 @@ the ECS surface.
 
 ## Key systems
 
+- `UPDATE_VOXEL_POSITIONS_GPU` — GPU voxel-position prepass (#1396). Runs
+  **before** `VOXEL_TO_TRIXEL_STAGE_1` and computes `world = modelToWorld *
+  localPos` into the binding-5 position SSBO for voxel sets that opt into
+  transform indirection (`C_VoxelSetNew::gpuTransformSlot_ != kVoxelTransformStatic`).
+  Voxels keep the sentinel by default, so the prepass skips them and the
+  CPU-direct `UPDATE_VOXEL_SET_CHILDREN` flush still owns their slots —
+  scenes with no GPU-transformed sets are byte-identical and pay no
+  dispatch. Per-frame upload is one `mat4` per dynamic set, not O(voxels).
+  Shared substrate for per-entity SO(3) (#1272/#1299) and skeletal voxels
+  (#605). The transform slot is bit-packed into the local-position `.w`
+  lane (Metal has no free buffer index past 30).
 - `VOXEL_TO_TRIXEL_STAGE_1` — compute-shader voxel rasterization to the
   3 canvas textures. Runs compact + stage-1 + stage-2 dispatches in one
   per-canvas tick (the former separate `VOXEL_TO_TRIXEL_STAGE_2` system
