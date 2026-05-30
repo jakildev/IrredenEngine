@@ -232,6 +232,15 @@ for issue in pending:
         skipped_already += 1
         continue
 
+    # human:owned is a human de-queue marker — the human took the issue out
+    # of fleet rotation. Never re-stamp fleet:queued onto it, even though it
+    # still carries human:approved (so it stays in the ingest pending set).
+    # reconcile (R6) flags any issue that ends up carrying both labels.
+    if 'human:owned' in labels:
+        skipped_already += 1
+        print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
+        continue
+
     # Parse model from body. Default to fleet:opus on ambiguity — mirrors
     # the safer default when model intent is unclear.
     model_match = MODEL_RE.search(body)

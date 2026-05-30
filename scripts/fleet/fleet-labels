@@ -92,6 +92,7 @@ fi
 
 LABELS=(
     "fleet:scope-shipped|fbca04|Issue scope already landed under a different T-NNN; queue-manager skipped ingest; human should close"
+    "fleet:state-drift|fbca04|reconcile surfaced unresolved/ambiguous claim-surface drift that persisted across N ticks; one deduped tracking issue, human resolves"
     "fleet:task|0366d6|Task from the fleet issue queue"
     "fleet:epic|cc317c|Parent issue tracking a set of child issues; queue-manager auto-closes when all children close"
     "fleet:queued|c5def5|Queued for fleet pickup (requires human:approved)"
@@ -120,6 +121,7 @@ LABELS=(
     "fleet:awaiting-upstream-review|c5def5|Stacked PR; reviewer is holding verdict until upstream PR is approved"
     "fleet:human-deferred|fbca04|Worker filed human:needs-fix concerns as a follow-up issue; PR is internally OK to merge if human accepts the deferral (fleet:approved kept)"
     "fleet:human-amending|c5def5|Worker is amending this PR with the fixes for the human:needs-fix concerns; hold merge until fleet:changes-made appears"
+    "human:owned|5319e7|Human took ownership of this issue and de-queued it; fleet-queue-ingest never re-stamps fleet:queued; reconcile flags fleet:queued+human:owned"
     "human:wip|5319e7|Human is editing the PR directly; agents stand off"
     "human:approved|0e8a16|Human approved the PR (overrides agent verdict)"
     "human:needs-fix|d4c5f9|Human flagged a fix request; agent should address"

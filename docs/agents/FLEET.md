@@ -981,6 +981,38 @@ Specifically, **never pass these via `--label` when filing**:
   (which may include "no code change, just doc update"). Reviewer
   agents skip `fleet:design-blocked` PRs (the scout's
   `REVIEW_SKIP_LABELS` excludes them).
+- `human:owned` — a human de-queue marker on an **issue**. A human
+  stamps it to take an issue out of fleet rotation; `fleet-queue-ingest`
+  then never re-stamps `fleet:queued` onto it (even though it keeps
+  `human:approved`, which would otherwise keep it in the ingest pending
+  set and get it re-queued). `human:*`-prefixed by convention
+  (human-initiated, like `human:approved`/`wip`/`needs-fix`) — there is
+  no `fleet:`-prefixed variant. The cross-surface `reconcile` pass (R6)
+  flags any issue carrying both `fleet:queued` and `human:owned`; it
+  never auto-strips either (you don't auto-undo a human signal), so the
+  human removes one.
+- `fleet:state-drift` — the single **deduped tracker** that
+  `fleet-claim reconcile` opens for claim-surface drift it could **not**
+  auto-fix (flag-only findings: R2 orphaned WIP/feedback PRs, R6
+  `fleet:queued`+`human:owned`) that persisted across N reconcile
+  `--apply` ticks (`FLEET_RECONCILE_DRIFT_TICKS`, default 3). Reconcile
+  refreshes one open issue's body in place and never opens a second; the
+  human resolves the listed rows and closes it. The counter resets the
+  moment a finding stops recurring, so a transient one-tick blip never
+  escalates.
+
+**The cross-surface `reconcile` pass.** `fleet-claim reconcile`
+cross-checks the four claim surfaces (issue/PR labels, open-PR state,
+host-local FS claims, worktree reservations) against each other and
+reports drift the single-surface sweeps (`cleanup --gh`,
+`check-stale`, `reset-sweep-host-claims`) can't see. Report-only by
+default; `--apply` performs only the conservative host-local,
+TTL/corroboration-gated repairs (R1 stale claim, R3 reservation
+mismatch, R4 contradictory/orphaned labels) and leaves ambiguous drift
+(R2/R6) flag-only. It runs at **boot** (`fleet-up`, before the
+dispatcher launches) and **periodically** — the scout backgrounds a
+single multi-repo `reconcile --apply` alongside `cleanup --gh` on every
+queue-manager projection change, never inside its synchronous tick.
 
 **The right pattern when filing an issue:** create it with NO labels.
 The human will add `human:approved` if and when they want it picked
