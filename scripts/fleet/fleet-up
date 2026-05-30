@@ -146,23 +146,9 @@ export FLEET_EFFORT_OPUS_ARCHITECT FLEET_EFFORT_GAME_ARCHITECT
 if [[ -n "${FLEET_EFFORT:-}" ]]; then export FLEET_EFFORT; fi
 
 # --- Build-parallelism budget for ir-build's CPU semaphore -----------------
-#
-# ir-build (engine/tools) sizes both `cmake -j N` and the `ir-acquire cpu N`
-# slot count from per_build_max = cpu_budget / workers, where `workers`
-# resolves from $IR_FLEET_WORKERS (concurrency.toml's `[concurrency]
-# workers = "auto"`). Nothing exported IR_FLEET_WORKERS, so it fell back to
-# 1 and every fleet build ran `ir-acquire cpu <nproc>` — grabbing the whole
-# CPU budget. Concurrent builds then serialized on the slot semaphore and
-# could hit ir-acquire's 600 s queue timeout ("can't allocate enough CPU").
-#
-# Size it to the build-heavy panes — the two author tiers, which build on
-# nearly every iteration — so per_build_max = cpu_budget / (opus-worker +
-# sonnet-author panes). Reviewers / merger / architects build occasionally
-# and share the remaining slots or queue briefly; the point is that no
-# single build hogs all cores. Overrides, highest first: IR_FLEET_WORKERS in
-# the environment, FLEET_BUILD_WORKERS in fleet-up.conf, then this derived
-# default. (A ~/.config/irreden/host.toml [concurrency] workers still applies
-# to non-fleet `ir-build` invocations, where this env is unset.)
+# ir-build reads $IR_FLEET_WORKERS; it was never exported so workers fell
+# back to 1 and every fleet build grabbed all cores. Default: OPUS_WORKER +
+# SONNET_AUTHOR panes. Override order: IR_FLEET_WORKERS > FLEET_BUILD_WORKERS.
 FLEET_BUILD_WORKERS="${FLEET_BUILD_WORKERS:-$(( FLEET_CONCURRENCY_OPUS_WORKER + FLEET_CONCURRENCY_SONNET_AUTHOR ))}"
 if (( FLEET_BUILD_WORKERS < 1 )); then FLEET_BUILD_WORKERS=1; fi
 export IR_FLEET_WORKERS="${IR_FLEET_WORKERS:-$FLEET_BUILD_WORKERS}"
