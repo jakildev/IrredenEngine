@@ -721,9 +721,16 @@ fi
 if command -v fleet-claim >/dev/null 2>&1; then
     fleet-claim clear-all
     fleet-claim reset-sweep-host-claims || true
+    # Cross-surface reconcile is safe to run aggressively at boot: the
+    # dispatcher hasn't launched yet (Step 3f), so no live pane can race
+    # the auto-fixes. Report-only by default; --apply repairs host-local
+    # drift the single-surface sweeps above can't see (reservation/claim
+    # mismatches, contradictory design labels, orphaned fleet:in-progress).
+    fleet-claim reconcile --apply || true
 elif [[ -x "$ENGINE/scripts/fleet/fleet-claim" ]]; then
     "$ENGINE/scripts/fleet/fleet-claim" clear-all
     "$ENGINE/scripts/fleet/fleet-claim" reset-sweep-host-claims || true
+    "$ENGINE/scripts/fleet/fleet-claim" reconcile --apply || true
 else
     echo "fleet-up: fleet-claim not found — skipping claims cleanup"
     echo "          (run scripts/fleet/install.sh to install it)"
