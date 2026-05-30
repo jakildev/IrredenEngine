@@ -211,11 +211,9 @@ template <> struct System<ANIMATION_COLOR> {
     }
 
     static SystemId create() {
-        return registerSystem<
-            ANIMATION_COLOR,
-            const C_ActionAnimation,
-            C_AnimColorState,
-            C_VoxelSetNew>("AnimationColor");
+        return registerSystem<ANIMATION_COLOR, C_ActionAnimation, C_AnimColorState, C_VoxelSetNew>(
+            "AnimationColor"
+        );
     }
 
 private:
