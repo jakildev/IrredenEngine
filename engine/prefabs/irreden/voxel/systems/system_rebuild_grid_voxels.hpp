@@ -78,7 +78,8 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         if (cullValid_) {
             chunkVp_ = IRPrefab::SunShadow::shadowFeederCullViewport(
                 IRRender::kCullChunkMargin,
-                IRPrefab::SunShadow::frameShadowFeederParams()
+                IRPrefab::SunShadow::frameShadowFeederParams(),
+                cull
             );
         }
     }

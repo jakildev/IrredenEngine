@@ -872,10 +872,7 @@ struct IsoBounds2D {
 
     /// Returns true if the axis-aligned box spanning [@p aMin, @p aMax]
     /// overlaps these bounds (inclusive on every edge); @p aMin / @p aMax are
-    /// the box's min / max iso corners. The chunk-visibility gate shares this
-    /// test — `buildChunkVisibilityMask` (the GPU mask build) and
-    /// `C_VoxelPool::isRangeVisible` (the CPU rebuild cull) both delegate here
-    /// so the iso-AABB overlap predicate lives in one place.
+    /// the box's min / max iso corners.
     bool overlapsAABB(vec2 aMin, vec2 aMax) const {
         return aMax.x >= min_.x && aMin.x <= max_.x && aMax.y >= min_.y && aMin.y <= max_.y;
     }

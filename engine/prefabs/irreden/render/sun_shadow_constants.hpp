@@ -84,6 +84,18 @@ inline IRMath::IsoBounds2D shadowFeederCullViewport(int margin, const ShadowFeed
     );
 }
 
+inline IRMath::IsoBounds2D shadowFeederCullViewport(
+    int margin,
+    const ShadowFeederParams &params,
+    const IRRender::CullViewportState &cull
+) {
+    return IRMath::shadowFeederIsoBounds(
+        cull.isoViewport(margin),
+        params.sunDir_,
+        params.sweepDistance_
+    );
+}
+
 } // namespace IRPrefab::SunShadow
 
 #endif /* IRREDEN_RENDER_SUN_SHADOW_CONSTANTS_H */
