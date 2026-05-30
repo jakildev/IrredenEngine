@@ -117,3 +117,20 @@ IRSystem.registerSystem({
         end
     end,
 })
+
+-- #1353 row-alias safety: bind the row, write field x through the column,
+-- then read x AGAIN (after the write) to set y. The binding must stay a
+-- by-value copy — an alias would observe the just-written x and emit y == 99
+-- instead of the original x. Pins the analysis that blocks aliasing when a
+-- read is sequenced after a same-column write.
+IRSystem.registerSystem({
+    name = 'CodegenReadAfterWrite',
+    components = { 'CodegenSysPos' },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local r = arch.CodegenSysPos:at(i)
+            arch.CodegenSysPos:setField(i, 'x', 99.0)
+            arch.CodegenSysPos:setField(i, 'y', r.x)
+        end
+    end,
+})

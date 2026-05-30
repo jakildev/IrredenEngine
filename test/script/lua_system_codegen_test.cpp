@@ -161,6 +161,7 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
     EXPECT_NE(ids.CodegenClampPositive, ids.CodegenAddOne);
     EXPECT_NE(ids.CodegenAddOne, ids.CodegenDamage);
     EXPECT_NE(ids.CodegenDamage, ids.CodegenParallelInc);
+    EXPECT_NE(ids.CodegenParallelInc, ids.CodegenReadAfterWrite);
 }
 
 // ---- PARALLEL_FOR registers without FATAL and updates every row --------
@@ -186,6 +187,27 @@ TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {
         );
         EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(entities[i]).y_, 2.0f);
     }
+}
+
+// ---- #1353: row-alias optimisation preserves copy semantics --------------
+//
+// `CodegenReadAfterWrite` reads `r.x` AFTER writing column x through
+// `setField`. The optimised emitter must keep `local r = arch.C:at(i)` a
+// by-value copy here (a row alias would observe the just-written x). With an
+// initial (x=3, y=7): x is overwritten to 99, then y is set from the
+// PRE-write x (3). An (incorrect) alias would yield y == 99.
+
+TEST_F(LuaSystemCodegenTest, ReadAfterWriteKeepsCopySemantics) {
+    using IRComponents::C_CodegenSysPos;
+
+    const auto e = IREntity::createEntity(C_CodegenSysPos(3.0f, 7.0f));
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenReadAfterWrite();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 99.0f);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).y_, 3.0f);
 }
 
 } // namespace

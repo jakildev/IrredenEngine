@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace IRLuaCodegen {
@@ -883,12 +884,181 @@ const char *cppTypeForExprType(ExprType t) {
     }
 }
 
+// ---- #1353: row-alias vs row-copy analysis ---------------------------------
+//
+// The per-row emitter lowers `local a = arch.C:at(i)` to `auto a =
+// _ir_row_C;` — a by-value copy of the whole component row. For read-light
+// kernels that copy is the dominant per-row cost (#1353: ~2.5x hand-C++ at
+// 1024 rows). When the binding is only ever READ, an alias (`const auto& a =
+// _ir_row_C;`) is observationally identical and skips the copy.
+//
+// Soundness rests on one fact about the DSL: a component-typed local cannot
+// be mutated through field assignment — `a.x = ...` is rejected by the
+// parser, so the only way component C's row changes mid-body is a
+// `setAt`/`setField` on `arch.C`. A copy freezes the row at bind time; an
+// alias tracks live writes. They diverge exactly when a read of `a` is
+// sequenced AFTER a write to C's row. The analysis below emits an alias only
+// when the binding is never reassigned and no read of it can follow a write
+// to its component; any uncertainty falls back to the safe by-value copy.
+
+// True if `e` reads the local `name` anywhere in the expression tree.
+bool exprReadsName(const Expr &e, const std::string &name) {
+    switch (e.kind_) {
+        case ExprKind::NAME_REF:
+            return e.name_ == name;
+        case ExprKind::UNARY_OP:
+            return e.lhs_ && exprReadsName(*e.lhs_, name);
+        case ExprKind::BINARY_OP:
+            return (e.lhs_ && exprReadsName(*e.lhs_, name)) ||
+                   (e.rhs_ && exprReadsName(*e.rhs_, name));
+        case ExprKind::INDEX:   // `a.field` — receiver is the NAME_REF
+            return e.receiver_ && exprReadsName(*e.receiver_, name);
+        case ExprKind::INTRINSIC_CALL:
+        case ExprKind::COLUMN_AT:
+        case ExprKind::COLUMN_GET_FIELD:
+        case ExprKind::COMPONENT_NEW:
+            for (const auto &a : e.args_) if (a && exprReadsName(*a, name)) return true;
+            return false;
+        default:                // literals
+            return false;
+    }
+}
+
+bool blockWritesComponent(const std::vector<StmtPtr> &stmts, const std::string &comp);
+
+// True if statement `s` (recursing into nested if/for bodies) writes
+// component `comp` via `arch.comp:setAt`/`setField`.
+bool stmtWritesComponent(const Stmt &s, const std::string &comp) {
+    switch (s.kind_) {
+        case StmtKind::ASSIGN:
+            return (s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_AT ||
+                    s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_FIELD) &&
+                   s.assignTarget_.componentName_ == comp;
+        case StmtKind::IF: {
+            for (const auto &br : s.ifBranches_)
+                if (blockWritesComponent(br.body_, comp)) return true;
+            return s.hasElse_ && blockWritesComponent(s.elseBody_, comp);
+        }
+        case StmtKind::FOR_NUMERIC:
+            return blockWritesComponent(s.forBody_, comp);
+        default:
+            return false;
+    }
+}
+
+bool blockWritesComponent(const std::vector<StmtPtr> &stmts, const std::string &comp) {
+    for (const auto &s : stmts) if (s && stmtWritesComponent(*s, comp)) return true;
+    return false;
+}
+
+// Forward pass over `stmts[startIdx..]` for the binding `name` (component
+// `comp`). `cWritten` is true if `comp` may already have been written before
+// this range. Sets `unsafe = true` if `name` is reassigned, redeclared
+// (shadowed), or read after a write to `comp`. A nested loop is entered with
+// `cWritten` OR-ed with whether its body writes `comp`, so a write-then-read
+// across the loop back-edge is caught; the enclosing loop needs no such
+// treatment because the binding's decl re-runs (refreshing a copy) at the
+// top of every iteration.
+void analyzeForward(const std::vector<StmtPtr> &stmts, std::size_t startIdx,
+                    const std::string &name, const std::string &comp,
+                    bool cWritten, bool &unsafe) {
+    for (std::size_t i = startIdx; i < stmts.size(); ++i) {
+        if (!stmts[i]) continue;
+        const Stmt &s = *stmts[i];
+        switch (s.kind_) {
+            case StmtKind::LOCAL_DECL:
+                if (s.localInit_ && exprReadsName(*s.localInit_, name) && cWritten)
+                    unsafe = true;
+                if (s.localName_ == name) unsafe = true;   // shadow → fall back to copy
+                break;
+            case StmtKind::ASSIGN: {
+                // Index + RHS are evaluated before the column write takes effect.
+                if (s.assignTarget_.indexExpr_ &&
+                    exprReadsName(*s.assignTarget_.indexExpr_, name) && cWritten)
+                    unsafe = true;
+                if (s.assignRhs_ && exprReadsName(*s.assignRhs_, name) && cWritten)
+                    unsafe = true;
+                if (s.assignTarget_.kind_ == AssignTargetKind::NAME &&
+                    s.assignTarget_.name_ == name)
+                    unsafe = true;                          // reassignment
+                if ((s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_AT ||
+                     s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_FIELD) &&
+                    s.assignTarget_.componentName_ == comp)
+                    cWritten = true;
+                break;
+            }
+            case StmtKind::IF:
+                for (const auto &br : s.ifBranches_) {
+                    if (br.cond_ && exprReadsName(*br.cond_, name) && cWritten)
+                        unsafe = true;
+                    analyzeForward(br.body_, 0, name, comp, cWritten, unsafe);
+                }
+                if (s.hasElse_)
+                    analyzeForward(s.elseBody_, 0, name, comp, cWritten, unsafe);
+                if (stmtWritesComponent(s, comp)) cWritten = true;
+                break;
+            case StmtKind::FOR_NUMERIC: {
+                if (s.forLo_ && exprReadsName(*s.forLo_, name) && cWritten) unsafe = true;
+                if (s.forHi_ && exprReadsName(*s.forHi_, name) && cWritten) unsafe = true;
+                const bool bodyWrites = blockWritesComponent(s.forBody_, comp);
+                analyzeForward(s.forBody_, 0, name, comp, cWritten || bodyWrites, unsafe);
+                if (bodyWrites) cWritten = true;
+                break;
+            }
+            case StmtKind::RETURN:
+                if (s.hasReturnExpr_ && s.returnExpr_ &&
+                    exprReadsName(*s.returnExpr_, name) && cWritten)
+                    unsafe = true;
+                break;
+            case StmtKind::EXPR_STMT:
+                if (s.exprStmt_ && exprReadsName(*s.exprStmt_, name) && cWritten)
+                    unsafe = true;
+                break;
+        }
+    }
+}
+
+// Walk `stmts`, adding every `local a = arch.C:at(i)` decl whose binding is
+// alias-safe to `out` (keyed by the LOCAL_DECL Stmt address). Recurses into
+// nested if/for bodies so decls in inner scopes are analysed in their own
+// scope.
+void collectRefSafeColumnAtDecls(const std::vector<StmtPtr> &stmts,
+                                 std::unordered_set<const Stmt *> &out) {
+    for (std::size_t k = 0; k < stmts.size(); ++k) {
+        if (!stmts[k]) continue;
+        const Stmt &s = *stmts[k];
+        if (s.kind_ == StmtKind::LOCAL_DECL && s.localInit_ &&
+            s.localInit_->kind_ == ExprKind::COLUMN_AT) {
+            bool unsafe = false;
+            analyzeForward(stmts, k + 1, s.localName_,
+                           s.localInit_->componentName_, /*cWritten=*/false, unsafe);
+            if (!unsafe) out.insert(&s);
+        }
+        switch (s.kind_) {
+            case StmtKind::IF:
+                for (const auto &br : s.ifBranches_) collectRefSafeColumnAtDecls(br.body_, out);
+                if (s.hasElse_) collectRefSafeColumnAtDecls(s.elseBody_, out);
+                break;
+            case StmtKind::FOR_NUMERIC:
+                collectRefSafeColumnAtDecls(s.forBody_, out);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 struct Emitter {
     std::ostringstream out_;
     int indent_ = 0;
     const std::string &file_;
     const std::vector<ComponentSchema> &registry_;
     std::unordered_map<std::string, Symbol> symbols_;
+
+    // #1353: LOCAL_DECL Stmt addresses whose `arch.C:at(i)` binding is safe to
+    // emit as a `const auto&` alias of the row instead of a by-value copy.
+    // Populated by collectRefSafeColumnAtDecls() before emission.
+    std::unordered_set<const Stmt *> refSafeColumnAtDecls_;
 
     // Per-row emission mode. When non-empty, the emitted lambda is
     // the per-component form `[](C_X& _ir_row_X, ...)` rather than the
@@ -1210,7 +1380,14 @@ struct Emitter {
                 // headaches); for scalars, declare an explicit type so subsequent uses get
                 // the right inference.
                 if (t == ExprType::COMPONENT) {
-                    out_ << "auto " << s.localName_ << " = ";
+                    // #1353: a read-only `local a = arch.C:at(i)` binding can
+                    // alias the row (`const auto&`) instead of copying it.
+                    // Only COLUMN_AT bindings are aliasable — a COMPONENT_NEW
+                    // value is a temporary, so it stays by-value.
+                    const bool aliasRow =
+                        s.localInit_->kind_ == ExprKind::COLUMN_AT &&
+                        refSafeColumnAtDecls_.count(&s) != 0;
+                    out_ << (aliasRow ? "const auto& " : "auto ") << s.localName_ << " = ";
                     sym.type_ = ExprType::COMPONENT;
                     sym.componentName_ = componentName;
                     symbols_[s.localName_] = sym;
@@ -1526,6 +1703,9 @@ void emitSystem(
 
     emitter.loopVarName_ = perRowLoop->forVar_;
     emitter.indent_ = 3;
+    // #1353: decide which `arch.C:at(i)` bindings can alias the row instead of
+    // copying it, before emitting the body.
+    collectRefSafeColumnAtDecls(perRowLoop->forBody_, emitter.refSafeColumnAtDecls_);
     for (const auto &s : perRowLoop->forBody_) emitter.emitStmt(*s);
 
     out += emitter.str();
