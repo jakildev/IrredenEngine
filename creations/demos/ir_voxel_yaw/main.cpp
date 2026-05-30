@@ -4,6 +4,16 @@
 // and AO/lighting on the resolved composite (#1311 / T4) in isolation from SDF shapes.
 // See docs/design/per-axis-trixel-canvas-rotation.md and issue #1344 / epic #1307.
 //
+// The scene wires the full voxel lighting stack (occlusion grid → AO → sun
+// shadow → colored light volume → lighting composite) over a multi-level
+// voxel floor + platforms, so the depth composite is exercised against real
+// lighting interactions: directional sun shadows across the ground, contact
+// AO where objects meet a slab, and colored lamps attached to visible marker
+// objects, each tucked against a piece of geometry so its lit-near/dark-far
+// split shows the light's direction. This makes it a richer companion to
+// IRShapeDebug while staying voxel-set-only (no C_ShapeDescriptor / SDF
+// anywhere).
+//
 // Scene: varied voxel topology spread across the whole viewport so off-center geometry
 // exercises the cull-in-yawed-space path (off-center objects move most under residual
 // yaw; a cardinal-snapped cull drops them — the "most objects missing" symptom).
@@ -34,6 +44,11 @@
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_canvas_light_volume.hpp>
+#include <irreden/render/components/component_light_source.hpp>
 
 // SYSTEMS
 #include <irreden/render/systems/system_lod_update.hpp>
@@ -42,6 +57,12 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
+#include <irreden/render/systems/system_compute_voxel_ao.hpp>
+#include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_compute_sun_shadow.hpp>
+#include <irreden/render/systems/system_compute_light_volume.hpp>
+#include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
@@ -218,7 +239,21 @@ void initSystems() {
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            // Lighting feeder: rasterizes the full voxel pool into the
+            // world-space occlusion grid that COMPUTE_LIGHT_VOLUME's
+            // propagate chain reads for point/emissive light LOS.
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            // Lighting stack on the resolved trixel composite (#1311 / T4):
+            // AO from screen-space neighbour occupancy, sun shadow from the
+            // baked depth map, point/emissive light volume, then the artistic
+            // composite that multiplies canvas color by (AO × shadow) and
+            // adds the light-volume contribution.
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
         }
@@ -296,6 +331,22 @@ static EntityId createHollowShell(vec3 position, ivec3 halfExtent, Color color) 
     return e;
 }
 
+// A glowing "lamp" object that disperses colored light into the scene. The
+// small bright marker cube co-locates with the light so the dispersion origin
+// is a *visible object* — the light's direction reads against the surrounding
+// geometry (occlusion-shaped pools, the cone of a SPOT) rather than appearing
+// from nowhere. The light is created WORLD-scoped (no setParent): per
+// `C_LightSource`'s per-canvas scope contract, a non-directional light
+// parented to a non-canvas entity is invisible to every canvas, so "attach to
+// an object" must be co-location, not a CHILD_OF parent.
+static void createLamp(vec3 position, Color color, const C_LightSource &disperseLight) {
+    // 3×3×3 bright marker so the source reads as an object at every zoom; the
+    // co-located light seeds the volume from this same cell, so the colored
+    // glow visibly emanates from the marker.
+    createSolidBox(position, ivec3(1, 1, 1), color);
+    IREntity::createEntity(C_LocalTransform{position}, disperseLight);
+}
+
 void initEntities() {
     // Scene: varied voxel topology spread to all four screen quadrants.
     // This is the T3/T4 composite verification vehicle — geometry placement
@@ -303,6 +354,26 @@ void initEntities() {
     // path, which must compute the cull from pos3DtoPos2DIsoYawed (not
     // cardinal-snapped positions) or off-center objects disappear at
     // oblique camera angles.
+
+    // GROUND + PLATFORMS (voxel slabs). Give AO / sun-shadow / light-volume
+    // a multi-level set of surfaces to fall on so the lighting interactions
+    // read clearly — long wall shadows across the ground, contact AO where
+    // objects meet a slab, colored emissive falloff pooling on the floor.
+    // +Z is down in this iso convention; objects sit near z=0 so the ground
+    // slab at z=+4 is just below them (1-unit gap under the center cube).
+    constexpr float kGroundZ = 4.0f;
+
+    // Wide ground slab covering the whole spread (objects span x∈[-22,25],
+    // y∈[-18,20]). 61×51×1 ≈ 3.1k voxels — trivial for the pool.
+    createSolidBox(vec3(0.0f, 0.0f, kGroundZ), ivec3(30, 25, 0), Color{120, 120, 130, 255});
+
+    // Raised dais under the center cube — a closer surface for the cube's
+    // contact AO and a second z-level for the wall's shadow to step onto.
+    createSolidBox(vec3(0.0f, 0.0f, kGroundZ - 2.0f), ivec3(8, 8, 0), Color{150, 145, 135, 255});
+
+    // Low plinth under the front-right staircase so each step casts onto the
+    // step below AND onto the plinth — depth-cliff shadow seams under yaw.
+    createSolidBox(vec3(16.0f, -10.0f, kGroundZ - 1.0f), ivec3(12, 5, 0), Color{135, 125, 145, 255});
 
     // CENTER: solid cube 7×7×7 — silhouette baseline for ROI crops.
     createSolidBox(vec3(0.0f, 0.0f, 0.0f), ivec3(3, 3, 3), Color{100, 200, 220, 255});
@@ -343,4 +414,68 @@ void initEntities() {
     // so VOXEL_TO_TRIXEL_STAGE_1 / TRIXEL_TO_FRAMEBUFFER archetype filters match.
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
+
+    // Lighting (#1311 / T4): attach the per-canvas lighting targets so the
+    // AO / sun-shadow / light-volume / lighting-to-trixel systems' archetype
+    // filters match the main canvas — without these the lighting stack
+    // silently skips and the composite renders flat (unlit) color.
+    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
+
+    // Sun: high and slightly off-axis so the wall + staircase + cube cast
+    // visible directional shadows across the ground. Dim the directional
+    // contribution and lift the ambient floor so (a) shadowed ground reads as
+    // dim grey rather than the noisy near-black the screen-space sun shadow
+    // produces on a flat voxel slab, and (b) the colored lamps below have
+    // room to dominate — their throw is what shows the light *direction*.
+    IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+    IRRender::setSunIntensity(0.95f);
+    IRRender::setSunAmbient(0.32f);
+
+    // Colored lamps attached to visible marker objects, each tucked right up
+    // against a piece of geometry. The current light volume floods
+    // omnidirectionally and is shaped by the occlusion grid (per-light cone /
+    // radius shaping is a pending engine phase — see
+    // system_compute_light_volume.hpp), so the directional cue is the
+    // lit-near / dark-far split: the object face toward the lamp glows in the
+    // lamp's color, the far face stays in shadow. Placing each lamp offset to
+    // one side of its object makes that split — and therefore the light's
+    // direction — read clearly, and the visible marker is the source you trace
+    // it back to. Under --spin-yaw the camera orbits while the lamps stay put,
+    // so the colored near-faces track the lamps as you rotate.
+    //
+    // Intensity is kept near 1.6: the seed shader computes `color × intensity`
+    // clamped to RGBA8, so a high intensity drives every channel to 255 and
+    // washes the *hue* out to white. Saturated base colors × a modest
+    // intensity keep the light readably colored.
+
+    // Cyan lamp tucked against the LEFT side of the center cube, low to the
+    // dais. The cube's left faces + the dais glow cyan; its right faces fall
+    // to sun-only shadow — the cyan clearly comes from screen-left.
+    createLamp(
+        vec3(-6.0f, -1.0f, 1.0f),
+        Color{120, 220, 255, 255},
+        C_LightSource{LightType::EMISSIVE, Color{40, 150, 230, 255}, 1.7f, static_cast<uint8_t>(16)}
+    );
+
+    // Amber lamp at the FOOT of the staircase, below the first step. The warm
+    // light climbs the risers from the low side, each step shadowing the tread
+    // behind it — the amber gradient reads as "coming from the bottom-right."
+    createLamp(
+        vec3(10.0f, -10.0f, 2.0f),
+        Color{255, 200, 120, 255},
+        C_LightSource{LightType::EMISSIVE, Color{235, 120, 30, 255}, 1.7f, static_cast<uint8_t>(16)}
+    );
+
+    // Warm "beacon" point light perched on top of the tall back wall — a high
+    // source on one side of the scene. Everything below it catches a warm rim
+    // on its wall-facing side. (A true SPOT cone would aim this; per-light cone
+    // shaping is a pending engine phase, so it currently floods from the apex.)
+    createLamp(
+        vec3(-5.0f, 14.0f, -14.0f),
+        Color{255, 240, 200, 255},
+        C_LightSource{LightType::EMISSIVE, Color{230, 170, 90, 255}, 1.6f, static_cast<uint8_t>(18)}
+    );
 }
