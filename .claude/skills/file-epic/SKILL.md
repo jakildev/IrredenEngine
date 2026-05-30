@@ -1,3 +1,11 @@
+---
+name: file-epic
+description: >-
+  Take an approved architect plan and file it as the fleet expects: umbrella
+  issue labeled fleet:epic, one child fleet:task per phase, per-ticket plan
+  files at ~/.fleet/plans/issue-<N>.md, and post-filing stack validation.
+---
+
 # file-epic
 
 Take an architect plan that covers a multi-ticket epic and file it as
@@ -100,13 +108,15 @@ Sequential filing matters because:
 
 For each child:
 
-```bash
-gh issue create --repo <repo> --label "fleet:task" \
-  --title "<area>: <descriptive title> (T-<slug>)" \
-  --body "$(cat <<'EOF'
+Write the issue body to a temp file first (avoids command-substitution and
+backtick hazards in the body text):
+
+```
+rm -f .file-epic-body.md
+[Write tool → .file-epic-body.md → content:]
 **Model:** <opus|sonnet>
 **Part of epic:** #<umbrella>
-**Plan file:** \`~/.fleet/plans/issue-<umbrella>.md\` (full epic plan)
+**Plan file:** `~/.fleet/plans/issue-<umbrella>.md` (full epic plan)
 **Blocked by:** #<prior-child-number> (if applicable)
 
 ## Scope
@@ -126,8 +136,15 @@ gh issue create --repo <repo> --label "fleet:task" \
 
 ## References
 <links to related design sections, prior PRs>
-EOF
-)"
+```
+
+Then file:
+
+```bash
+gh issue create --repo <repo> --label "fleet:task" \
+  --title "<area>: <descriptive title> (T-<slug>)" \
+  --body-file .file-epic-body.md
+rm -f .file-epic-body.md
 ```
 
 Title convention: `<area>: <descriptive title> (T-<slug>)`. The
@@ -179,13 +196,15 @@ verification steps.
 
 ### 7. Post the umbrella summary comment
 
-After all children are filed:
+After all children are filed, write the summary comment body to a file
+first (avoids command-substitution and backtick hazards):
 
-```bash
-gh issue comment <umbrella> --repo <repo> --body "$(cat <<'EOF'
+```
+rm -f .file-epic-body.md
+[Write tool → .file-epic-body.md → content:]
 ## Epic execution plan
 
-Architect plan filed: \`~/.fleet/plans/issue-<umbrella>.md\`.
+Architect plan filed: `~/.fleet/plans/issue-<umbrella>.md`.
 
 ### Children — closing path
 
@@ -202,9 +221,9 @@ Architect plan filed: \`~/.fleet/plans/issue-<umbrella>.md\`.
 
 ### Dependency chain
 
-\`\`\`
+```
 <ASCII dependency graph>
-\`\`\`
+```
 
 ### Closing criteria
 
@@ -214,9 +233,14 @@ Architect plan filed: \`~/.fleet/plans/issue-<umbrella>.md\`.
 
 <deltas explained, if the architect plan made any>
 
-Tickets ready for \`human:approved\` triage on individual basis.
-EOF
-)"
+Tickets ready for `human:approved` triage on individual basis.
+```
+
+Then post:
+
+```bash
+gh issue comment <umbrella> --repo <repo> --body-file .file-epic-body.md
+rm -f .file-epic-body.md
 ```
 
 The summary comment is the single source of truth linking the
