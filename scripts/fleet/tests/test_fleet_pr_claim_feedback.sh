@@ -15,6 +15,8 @@
 #       slug
 #   T5: usage errors (non-int PR, missing agent, unknown slug) → exit 2,
 #       no claim attempted
+#   T6: engine-explicit (--repo jakildev/IrredenEngine) → checkout gets the
+#       slug but fleet-claim gets NO --repo namespace (engine default)
 
 set -euo pipefail
 
@@ -143,6 +145,19 @@ assert_eq "$(grep -c '\-\-repo game amending-claim 45 opus-worker-2' "$FC_LOG")"
     "T4 fleet-claim got --repo game namespace before subcommand"
 assert_eq "$(grep -c '45 --repo jakildev/irreden' "$CO_LOG")" "1" \
     "T4 checkout got --repo jakildev/irreden slug"
+
+# === T6: engine-explicit slug → checkout gets slug, claim gets no --repo ===
+echo "T6: --repo jakildev/IrredenEngine → checkout gets slug, fleet-claim no namespace"
+reset_logs
+FAKE_CLAIM_RC=0 FAKE_CHECKOUT_RC=0 "$WRAPPER" 77 sonnet-fleet-1 \
+    --repo jakildev/IrredenEngine >"$TMPROOT/t6.log" 2>&1
+assert_eq "$?" "0" "T6 exit 0 on engine-explicit slug"
+assert_eq "$(grep -c 'amending-claim 77 sonnet-fleet-1' "$FC_LOG")" "1" \
+    "T6 amending-claim called once with PR + agent"
+assert_eq "$(grep -c '\-\-repo' "$FC_LOG" || true)" "0" \
+    "T6 fleet-claim got no --repo namespace (engine slug maps to default)"
+assert_eq "$(grep -c '77 --repo jakildev/IrredenEngine' "$CO_LOG")" "1" \
+    "T6 checkout got --repo jakildev/IrredenEngine slug"
 
 # === T5: usage errors → exit 2, no claim attempted ========================
 echo "T5: usage errors → exit 2, nothing claimed"
