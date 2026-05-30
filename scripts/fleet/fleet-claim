@@ -252,7 +252,8 @@ label_added_epoch() {
     command -v gh >/dev/null 2>&1 || { echo 0; return 0; }
     local added_at
     added_at=$(gh api "repos/${repo}/issues/${target}/events" --paginate \
-        --jq '.[] | select(.event=="labeled" and .label.name=="'"$label"'") | .created_at' \
+        --arg lname "$label" \
+        --jq '.[] | select(.event=="labeled" and .label.name==$lname) | .created_at' \
         2>/dev/null | tail -n1 || true)
     [[ -z "$added_at" ]] && { echo 0; return 0; }
     ADDED_AT="$added_at" python3 -c '
@@ -1631,6 +1632,8 @@ PYEOF
 # reconcile_reservations_json
 #   Emit the reservation set as a JSON array (worktree, task_id, branch,
 #   created_epoch) so the classifier can detect reservation/claim drift.
+#   Reservations carry no namespace (game tasks do not use worktree
+#   reservations), so the R3 block hardcodes the engine repo.
 reconcile_reservations_json() {
     reservations_dump | python3 -c '
 import sys, json
@@ -1951,7 +1954,7 @@ PYEOF
                     if [[ "$e_block" -eq 0 && "$e_unblock" -eq 0 ]]; then
                         echo "  reconcile --apply: R4a could not order labels on $c_repo #$c_target; skipping" >&2
                     else
-                        if [[ "$e_block" -ge "$e_unblock" ]]; then
+                        if [[ "$e_block" -ge "$e_unblock" ]]; then  # timestamp tie → keep blocked (conservative)
                             older="fleet:design-unblocked"
                         else
                             older="fleet:design-blocked"
