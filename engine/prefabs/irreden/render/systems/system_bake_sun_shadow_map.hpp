@@ -172,6 +172,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     void dispatchPerAxisBake(
         C_PerAxisTrixelCanvases &axes, const C_TriangleCanvasTextures &mainTextures
     ) {
+        // perAxisRoute is a boolean route flag on the lighting path (any nonzero
+        // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
+        // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
         const int kPerAxisRoute = 1;
         voxelFrameDataBuf_
             ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);

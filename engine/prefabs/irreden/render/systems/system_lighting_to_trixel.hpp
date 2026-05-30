@@ -145,6 +145,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const C_CanvasAOTexture &mainAO,
         const C_CanvasSunShadow &mainShadow
     ) {
+        // perAxisRoute is a boolean route flag on the lighting path (any nonzero
+        // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
+        // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
         const int kPerAxisRoute = 1;
         voxelFrameDataBuf_
             ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
@@ -158,9 +161,10 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
             tex.sunShadow_.second->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         }
-        // One barrier after the 3 independent per-axis dispatches
-        // (separate textures; the bake's atomicMin is order-safe) so they
-        // overlap on the GPU instead of serializing per axis (#1311).
+        // One barrier after the 3 independent per-axis dispatches (each axis
+        // writes its own colour image texture in place — disjoint outputs, so
+        // dispatch order doesn't matter) so they overlap on the GPU instead of
+        // serializing per axis (#1311).
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         const int kSingleCanvasRoute = 0;
         voxelFrameDataBuf_->subData(
