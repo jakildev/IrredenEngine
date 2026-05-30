@@ -34,6 +34,11 @@
 //     a dynamic set read that mirror, so they lag the GPU rotation until #1299
 //     folds the prepass output back into the cull frame.
 //
+// RESOLVED: the canvas-switch re-seed in VOXEL_TO_TRIXEL_STAGE_1 no longer
+//   clobbers this prepass's binding-5 output — it gates on static voxel runs
+//   (`flushStaticPositionRanges`, #1396 commit e04f29cd) and leaves
+//   GPU-transformed slots intact.
+//
 // DEPENDENCIES: C_VoxelPool, C_VoxelSetNew, C_WorldTransform,
 //   IRRender::VoxelGpuPosition, GpuVoxelTransform, GPUUpdateParams
 //   (ir_render_types.hpp), shaders/c_update_voxel_positions.{glsl,metal}.
