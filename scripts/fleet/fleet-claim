@@ -1587,8 +1587,11 @@ cmd_check_stale() {
 # reservations — and reports (or, with --apply, repairs) drift between
 # them. Every pre-existing sweep is single-surface (cmd_cleanup_gh,
 # cmd_check_stale, cmd_reset_sweep_host_claims); this is the pass that
-# catches inconsistencies BETWEEN surfaces. C1 (#1356) lands R1/R3/R4/R5
-# auto-fix + R2 flag; the periodic path and R6 are deferred to C2 (#1357).
+# catches inconsistencies BETWEEN surfaces. C1 (#1356) landed R1/R3/R4/R5
+# auto-fix + R2 flag. C2 (#1357) adds R6 (fleet:queued+human:owned flag),
+# the periodic scout spawn (see fleet-state-scout), and the deduped
+# fleet:state-drift escalation issue for flag-only drift that persists
+# across N --apply ticks.
 
 # reconcile_fs_claims_json
 #   Emit the host-local FS claim set as a JSON array, one object per claim
@@ -1870,6 +1873,22 @@ for repo in repos:
             "queued+in-progress, no claim-label, no FS claim, no open PR",
             apply={"type": "remove_in_progress", "issue": n, "repo": repo})
 
+# ---- R6 (flag only): fleet:queued + human:owned contradiction ----
+# human:owned is a human de-queue marker (fleet-queue-ingest skips it). An
+# issue carrying BOTH means a human took it out of rotation but the queued
+# label is still on — flag for the human, never auto-strip a human signal.
+# (The issue surface is fetched filtered to label:"fleet:queued", so every
+# issue here already has fleet:queued; we only test for human:owned.)
+for repo in repos:
+    d = repo_data[repo]
+    for n, labs in d["issue_labels"].items():
+        if "human:owned" in labs:
+            add("R6", repo, n, "issue", ["label"],
+                "fleet:queued + human:owned: human de-queued this issue but it "
+                "is still queued for pickup; human removes fleet:queued or drops "
+                "human:owned (flag-only — never auto-strip a human signal)",
+                "flag-only (R6)")
+
 # ---- R2 (flag only): orphaned WIP/feedback PR ----
 reserved_tasks = set(r["task_id"] for r in reservations)
 for repo in repos:
@@ -1974,6 +1993,15 @@ PYEOF
         done < "$findings"
     fi
 
+    # ---- persistence-gated, deduped escalation of unfixable drift (C2) ----
+    # Only --apply advances persistence + files the tracker (report-only
+    # stays pure). Flag-only drift (R2/R6/...) that the auto-fix rules can't
+    # clear escalates to a single deduped fleet:state-drift issue after it
+    # survives N --apply ticks.
+    if [[ $do_apply -eq 1 ]]; then
+        reconcile_escalate_drift "$findings" "$state_dir" "${FLEET_RECONCILE_DRIFT_TICKS:-3}"
+    fi
+
     # ---- write the structured drift report -------------------------------
     local generated_at out_file
     generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -2011,6 +2039,149 @@ PYEOF
 reconcile_apply_field() {
     printf '%s' "$1" | KEY="$2" python3 -c \
         'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))'
+}
+
+# reconcile_escalate_drift <findings-jsonl> <state-dir> <threshold>
+#   Persistence-gated, deduped escalation of flag-only drift (R2/R6/...).
+#   Maintains a per-key tick counter in <state-dir>/drift-persistence.json:
+#   every flag-only finding (apply == null) seen this run bumps its counter;
+#   keys NOT seen this run are dropped (drift resolved → counter resets, so a
+#   transient one-tick blip never escalates). When ANY key crosses <threshold>
+#   ticks, file or update a SINGLE open fleet:state-drift tracking issue on the
+#   engine repo (deduped — body refreshed in place, never one issue per tick).
+#   Mutates local state + a GH issue, so cmd_reconcile only calls it on --apply.
+reconcile_escalate_drift() {
+    local findings="$1" state_dir="$2" threshold="$3"
+    local persist_file="$state_dir/drift-persistence.json"
+    local now body_file
+    now=$(date +%s)
+    body_file=$(mktemp /tmp/fleet-state-drift-XXXXXX) \
+        || { echo "  reconcile --apply: mktemp failed, skipping escalation" >&2; return 0; }
+
+    local persistent_count
+    persistent_count=$(NOW="$now" THRESHOLD="$threshold" PERSIST="$persist_file" \
+        BODY="$body_file" python3 - "$findings" <<'PYEOF'
+import sys, os, json
+findings_path = sys.argv[1]
+now = int(os.environ["NOW"])
+threshold = int(os.environ["THRESHOLD"])
+persist_path = os.environ["PERSIST"]
+body_path = os.environ["BODY"]
+
+def load(p, default):
+    try:
+        return json.load(open(p))
+    except Exception:
+        return default
+
+findings = []
+try:
+    for line in open(findings_path):
+        line = line.strip()
+        if line:
+            findings.append(json.loads(line))
+except Exception:
+    findings = []
+
+# Flag-only findings (no auto-fix action) are the "unresolved/ambiguous" drift
+# the auto-fix rules can't clear; only these accrue persistence and escalate.
+flag_only = [f for f in findings if not f.get("apply")]
+
+def key(f):
+    return "%s:%s:%s:%s" % (f["rule"], f["repo"], f["target_kind"], f["target"])
+
+state = load(persist_path, {})
+if not isinstance(state, dict):
+    state = {}
+
+seen = {}
+for f in flag_only:
+    k = key(f)
+    prev = state.get(k) if isinstance(state.get(k), dict) else {}
+    seen[k] = {
+        "count": int(prev.get("count", 0)) + 1,
+        "first_seen": int(prev.get("first_seen", now)),
+        "last_seen": now,
+        "rule": f["rule"], "repo": f["repo"],
+        "target_kind": f["target_kind"], "target": f["target"],
+        "action": f["action"],
+    }
+
+# Only this run's flag-only keys survive — keys absent this run reset to zero.
+with open(persist_path, "w") as fh:
+    json.dump(seen, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+
+persistent = sorted(
+    (v for v in seen.values() if v["count"] >= threshold),
+    key=lambda v: (v["repo"], v["rule"], str(v["target"])),
+)
+if not persistent:
+    print(0)
+    sys.exit(0)
+
+lines = [
+    "Auto-filed and maintained by `fleet-claim reconcile`. This is the single",
+    "deduped tracker for claim-surface drift the cross-surface reconcile pass",
+    "could **not** auto-fix and that persisted across **%d+ reconcile ticks**."
+    % threshold,
+    "Resolve each row, then close this issue — reconcile refreshes this body in",
+    "place and will not open a second tracker.",
+    "",
+    "| Rule | Repo | Target | Ticks | Detail |",
+    "| --- | --- | --- | --- | --- |",
+]
+for v in persistent:
+    lines.append("| %s | %s | %s #%s | %d | %s |" % (
+        v["rule"], v["repo"], v["target_kind"], v["target"],
+        v["count"], v["action"].replace("|", "\\|")))
+lines.append("")
+with open(body_path, "w") as fh:
+    fh.write("\n".join(lines) + "\n")
+print(len(persistent))
+PYEOF
+)
+
+    if [[ -z "$persistent_count" || ! "$persistent_count" =~ ^[0-9]+$ ]]; then
+        echo "  reconcile --apply: python3 returned invalid output (empty or non-numeric); stderr above — skipping escalation" >&2
+        rm -f "$body_file"
+        return 0
+    fi
+    if [[ "$persistent_count" -le 0 ]]; then
+        rm -f "$body_file"
+        return 0
+    fi
+
+    # Lazy-create the label (same safety net as check-stale's stuck-worktree).
+    gh label create "fleet:state-drift" \
+        --repo "$FLEET_GITHUB_REPO" \
+        --description "reconcile surfaced persistent unresolved claim-surface drift" \
+        --color "fbca04" 2>/dev/null || true
+
+    local existing title
+    title="fleet: claim-surface drift — $persistent_count persistent finding(s)"
+    # `// empty` so an empty match prints nothing rather than gojq's literal
+    # `null` (which would otherwise read as an existing-issue number).
+    existing=$(gh issue list --repo "$FLEET_GITHUB_REPO" --state open \
+        --label "fleet:state-drift" --json number --jq '.[0].number // empty' 2>/dev/null || true)
+    if [[ -n "$existing" && "$existing" != "null" ]]; then
+        if gh issue edit "$existing" --repo "$FLEET_GITHUB_REPO" \
+            --title "$title" --body-file "$body_file" >/dev/null 2>&1; then
+            echo "  reconcile --apply: refreshed deduped fleet:state-drift tracker #$existing ($persistent_count finding(s))"
+        else
+            echo "  reconcile --apply: failed to refresh fleet:state-drift tracker #$existing" >&2
+        fi
+    else
+        local created
+        if created=$(gh issue create --repo "$FLEET_GITHUB_REPO" \
+            --title "$title" --body-file "$body_file" \
+            --label "fleet:state-drift" 2>&1); then
+            echo "  reconcile --apply: filed deduped fleet:state-drift tracker $created ($persistent_count finding(s))"
+        else
+            echo "  reconcile --apply: failed to file fleet:state-drift tracker: $created" >&2
+        fi
+    fi
+    rm -f "$body_file"
 }
 
 cmd_stack() {

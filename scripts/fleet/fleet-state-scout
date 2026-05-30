@@ -1442,11 +1442,21 @@ def tick_once():
                     ["fleet-claim", "cleanup", "--gh",
                      "--repo", "jakildev/IrredenEngine"],
                 ]
+                # Cross-surface reconcile is a SINGLE multi-repo pass (one
+                # drift report + one deduped tracker), so unlike per-repo
+                # cleanup it gets exactly one command with the reachable repos
+                # as --repo flags. --apply runs the conservative host-local +
+                # TTL-gated auto-fixes; backgrounded like cleanup so its gh
+                # calls never stall the 30s tick or race a live pane.
+                reconcile_cmd = ["fleet-claim", "reconcile", "--apply",
+                                 "--repo", "jakildev/IrredenEngine"]
                 if (GAME / ".git").exists():
                     sweep_cmds.append(
                         ["fleet-claim", "--repo", "game", "cleanup",
                          "--gh", "--repo", "jakildev/irreden"]
                     )
+                    reconcile_cmd += ["--repo", "jakildev/irreden"]
+                sweep_cmds.append(reconcile_cmd)
                 for sweep_cmd in sweep_cmds:
                     try:
                         subprocess.Popen(
@@ -1457,7 +1467,7 @@ def tick_once():
                         )
                     except Exception as e:
                         log(f"queue-manager: sweep failed to spawn {sweep_cmd[0]}: {e}")
-                log("queue-manager: spawned claim cleanup (projection changed)")
+                log("queue-manager: spawned claim cleanup + reconcile (projection changed)")
                 triggers_fired.append("queue-manager(claim-cleanup)")
         elif role == "queue-manager-ingest":
             # Auto-fire ingestion when the human:approved-and-not-yet-queued
