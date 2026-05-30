@@ -134,3 +134,23 @@ IRSystem.registerSystem({
         end
     end,
 })
+
+-- #1353 FOR_NUMERIC back-edge: bind the row before a nested for_numeric loop
+-- that writes the same component. Across the loop back-edge, iteration j+1
+-- reads `a.x` after iteration j already wrote it — the binding must stay a
+-- by-value copy. With initial x=1.0 and 3 iterations (j=0,1,2), copy
+-- semantics produce x=2.0 each write (reads unchanged 1.0); an alias would
+-- accumulate: 1→2→3→4.
+IRSystem.registerSystem({
+    name = 'CodegenForNumericBackEdge',
+    components = { 'CodegenSysPos' },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local a = arch.CodegenSysPos:at(i)
+            for j = 0, 2 do
+                local tmp = a.x
+                arch.CodegenSysPos:setField(i, 'x', tmp + 1.0)
+            end
+        end
+    end,
+})
