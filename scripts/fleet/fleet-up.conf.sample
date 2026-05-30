@@ -31,6 +31,21 @@
 # FLEET_CONCURRENCY_MERGER=1
 # FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker pane
 
+# --- Build parallelism (ir-build CPU budget) --------------------------------
+#
+# How many concurrent fleet builds to size the CPU budget for. fleet-up
+# exports this as IR_FLEET_WORKERS, which ir-build uses to compute
+# per_build_max = cpu_budget / workers (each build takes that many of `nproc`
+# cores; the rest stay free for other panes' builds). Without it the engine
+# default is 1 -> every build grabs all cores and concurrent builds serialize
+# on the ir-acquire semaphore (600 s timeout = "can't allocate enough CPU").
+# Default = OPUS_WORKER + SONNET_AUTHOR caps (the build-heavy panes). Raise
+# for more build concurrency at fewer cores each; lower for faster individual
+# builds. A process-level IR_FLEET_WORKERS env var overrides this;
+# ~/.config/irreden/host.toml [concurrency] workers applies to non-fleet
+# ir-build invocations.
+# FLEET_BUILD_WORKERS=4
+
 # --- Per-role effort levels -------------------------------------------------
 #
 # Reasoning effort per role: "high" or "xhigh" (xhigh ≈ one notch below the
