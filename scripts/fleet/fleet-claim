@@ -23,6 +23,7 @@
 #   fleet-claim check <issue-number>
 #   fleet-claim list [--with-age]
 #   fleet-claim cleanup [--repo <owner/repo>] [--gh] ...
+#   fleet-claim reconcile [--apply] [--repo <owner/repo>] ...
 #   fleet-claim review-claim <pr-number> <agent>
 #   fleet-claim review-release <pr-number> <agent>
 #   fleet-claim resolving-claim <pr-number> <agent>
@@ -238,6 +239,31 @@ gh_release_label() {
     fi
     write_orphan_sentinel "$repo" "$issue" "$label" "remove-label failed after retry"
     return 1
+}
+
+# label_added_epoch <repo> <issue-or-pr> <label>
+#   Echo the Unix epoch of the most recent "labeled" event for <label> on
+#   the target issue/PR, or 0 when unknown (gh missing, no matching event,
+#   or a parse failure). Mirrors the events-API timestamp method
+#   cmd_cleanup_gh uses to age out stale labels; reconcile (R4a) uses it to
+#   keep the most-recently-applied of two contradictory labels.
+label_added_epoch() {
+    local repo="$1" target="$2" label="$3"
+    command -v gh >/dev/null 2>&1 || { echo 0; return 0; }
+    local added_at
+    added_at=$(gh api "repos/${repo}/issues/${target}/events" --paginate \
+        --arg lname "$label" \
+        --jq '.[] | select(.event=="labeled" and .label.name==$lname) | .created_at' \
+        2>/dev/null | tail -n1 || true)
+    [[ -z "$added_at" ]] && { echo 0; return 0; }
+    ADDED_AT="$added_at" python3 -c '
+import os, datetime
+try:
+    dt = datetime.datetime.strptime(os.environ["ADDED_AT"], "%Y-%m-%dT%H:%M:%SZ")
+    print(int(dt.replace(tzinfo=datetime.timezone.utc).timestamp()))
+except Exception:
+    print(0)
+' 2>/dev/null || echo 0
 }
 
 # _acquire_label_on <repo> <pr-or-issue> <label> <label-prefix>
@@ -1554,6 +1580,439 @@ cmd_check_stale() {
     done < <(reservations_dump)
 }
 
+# --- cross-surface reconciliation (reconcile) -----------------------------
+#
+# reconcile cross-checks the FOUR claim surfaces against each other —
+# issue/PR labels, open-PR state, host-local FS claims, and worktree
+# reservations — and reports (or, with --apply, repairs) drift between
+# them. Every pre-existing sweep is single-surface (cmd_cleanup_gh,
+# cmd_check_stale, cmd_reset_sweep_host_claims); this is the pass that
+# catches inconsistencies BETWEEN surfaces. C1 (#1356) lands R1/R3/R4/R5
+# auto-fix + R2 flag; the periodic path and R6 are deferred to C2 (#1357).
+
+# reconcile_fs_claims_json
+#   Emit the host-local FS claim set as a JSON array, one object per claim
+#   dir under $CLAIMS_DIR (skipping _stack_* molecule dirs). Each record
+#   carries the repo derived from the slug namespace so the classifier can
+#   correlate a claim against the right repo's open-PR set.
+reconcile_fs_claims_json() {
+    python3 - "$CLAIMS_DIR" <<'PYEOF'
+import sys, os, json
+claims_dir = sys.argv[1]
+out = []
+if os.path.isdir(claims_dir):
+    for name in sorted(os.listdir(claims_dir)):
+        path = os.path.join(claims_dir, name)
+        if not os.path.isdir(path) or name.startswith('_stack_'):
+            continue
+        if name.startswith('game-'):
+            ns, num = 'game', name[len('game-'):]
+            repo = 'jakildev/irreden'
+        else:
+            ns, num = 'engine', name
+            repo = 'jakildev/IrredenEngine'
+        if not num.isdigit():
+            continue
+        def rd(f):
+            try:
+                return open(os.path.join(path, f)).read().strip()
+            except Exception:
+                return ''
+        try:
+            created = int(rd('created') or 0)
+        except ValueError:
+            created = 0
+        out.append({'slug': name, 'issue': int(num), 'ns': ns,
+                    'repo': repo, 'owner': rd('owner') or 'unknown',
+                    'created': created})
+print(json.dumps(out))
+PYEOF
+}
+
+# reconcile_reservations_json
+#   Emit the reservation set as a JSON array (worktree, task_id, branch,
+#   created_epoch) so the classifier can detect reservation/claim drift.
+#   Reservations carry no namespace (game tasks do not use worktree
+#   reservations), so the R3 block hardcodes the engine repo.
+reconcile_reservations_json() {
+    reservations_dump | python3 -c '
+import sys, json
+out = []
+for line in sys.stdin:
+    parts = line.rstrip("\n").split("\t")
+    if len(parts) < 5 or not parts[0]:
+        continue
+    wt, tid, branch, ts, epoch = parts[:5]
+    try:
+        ep = int(epoch)
+    except ValueError:
+        ep = 0
+    out.append({"worktree": wt, "task_id": tid, "branch": branch, "created_epoch": ep})
+print(json.dumps(out))
+'
+}
+
+cmd_reconcile() {
+    # Cross-surface reconciliation pass.
+    # Usage: fleet-claim reconcile [--apply] [--repo <owner/repo>] ...
+    # Report-only by default (detect + report, mutate nothing). With --apply,
+    # perform only the host-local, TTL/corroboration-gated auto-fixes
+    # (R1/R3/R4/R5); R2 stays report-only.
+    local do_apply=0
+    local -a repos=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --apply)  do_apply=1; shift ;;
+            --repo)   repos+=("$2"); shift 2 ;;
+            --repo=*) repos+=("${1#--repo=}"); shift ;;
+            *) echo "fleet-claim reconcile: unknown arg '$1'" >&2; return 2 ;;
+        esac
+    done
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "fleet-claim reconcile: 'gh' not on PATH; skipping" >&2
+        return 0
+    fi
+
+    # Default repo set mirrors reset-sweep-host-claims: engine always, game
+    # when reachable. An explicit --repo overrides the auto-discovery.
+    if [[ ${#repos[@]} -eq 0 ]]; then
+        repos=("jakildev/IrredenEngine")
+        if gh repo view "jakildev/irreden" >/dev/null 2>&1; then
+            repos+=("jakildev/irreden")
+        fi
+    fi
+
+    local host now claim_ttl state_dir
+    host=$(derive_host)
+    now=$(date +%s)
+    claim_ttl="${FLEET_CLAIM_STALE_SECS:-1800}"
+    state_dir="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+    mkdir -p "$CLAIMS_DIR" "$state_dir"
+
+    local work
+    work=$(mktemp -d)
+
+    # ---- gather per-repo label/PR surfaces -------------------------------
+    local repo safe
+    for repo in "${repos[@]}"; do
+        safe="${repo//\//_}"
+        gh issue list --repo "$repo" --state open \
+            --search "label:\"fleet:queued\"" \
+            --json number,labels,state --limit 300 \
+            > "$work/issues-$safe.json" 2>/dev/null \
+            || echo "[]" > "$work/issues-$safe.json"
+        gh pr list --repo "$repo" --state open \
+            --json number,headRefName,labels,body --limit 300 \
+            > "$work/prs-$safe.json" 2>/dev/null \
+            || echo "[]" > "$work/prs-$safe.json"
+    done
+
+    # ---- gather host-local surfaces --------------------------------------
+    reconcile_fs_claims_json    > "$work/fs_claims.json"
+    reconcile_reservations_json > "$work/reservations.json"
+
+    # ---- classify drift across the four surfaces -------------------------
+    local findings="$work/findings.jsonl"
+    python3 - "$work" "$host" "$now" "$claim_ttl" "${repos[*]}" \
+        "$work/fs_claims.json" "$work/reservations.json" \
+        > "$findings" <<'PYEOF'
+import sys, os, json, re
+
+work, host, now_s, ttl_s = sys.argv[1:5]
+repos = sys.argv[5].split() if sys.argv[5] else []
+fs_path, res_path = sys.argv[6], sys.argv[7]
+now, ttl = int(now_s), int(ttl_s)
+
+def load(p, default):
+    try:
+        return json.load(open(p))
+    except Exception:
+        return default
+
+fs_claims = load(fs_path, [])
+reservations = load(res_path, [])
+
+FEEDBACK = {"human:needs-fix", "human:blocker", "fleet:needs-fix",
+            "fleet:has-nits", "fleet:design-unblocked"}
+
+findings = []
+def add(rule, repo, target, kind, surfaces, action, gated_by, apply=None):
+    findings.append({"rule": rule, "repo": repo, "target": target,
+                     "target_kind": kind, "surfaces": surfaces,
+                     "action": action, "gated_by": gated_by,
+                     "apply": apply, "applied": None})
+
+def labelset(obj):
+    return set(l.get("name", "") for l in (obj.get("labels") or [])
+               if isinstance(l, dict))
+
+def head_issue(head):
+    # claude/<N>-... -> N
+    if not head.startswith("claude/"):
+        return None
+    rest = head[len("claude/"):]
+    num = ""
+    for ch in rest:
+        if ch.isdigit():
+            num += ch
+        else:
+            break
+    return int(num) if num else None
+
+# A PR resolves an issue when its head branch is claude/<N>-* OR its body
+# carries a Closes/Fixes/Resolves #N reference — the same dual-match
+# find-stackable-blockers uses. Covers non-standard branch names (e.g.
+# claude/<topic>-<N>) that the head-prefix form alone would miss.
+CLOSES_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b",
+                       re.IGNORECASE)
+
+repo_data = {}
+for repo in repos:
+    safe = repo.replace("/", "_")
+    issues = load(os.path.join(work, "issues-%s.json" % safe), [])
+    prs = load(os.path.join(work, "prs-%s.json" % safe), [])
+    issue_labels = {it.get("number"): labelset(it) for it in issues}
+    pr_by_issue, open_pr_issues = {}, set()
+    for pr in prs:
+        n = head_issue(pr.get("headRefName", "") or "")
+        if n is not None:
+            open_pr_issues.add(n)
+            pr_by_issue.setdefault(n, []).append(
+                {"number": pr.get("number"), "labels": labelset(pr)})
+        for m in CLOSES_RE.finditer(pr.get("body", "") or ""):
+            open_pr_issues.add(int(m.group(1)))
+    repo_data[repo] = {"issue_labels": issue_labels, "prs": prs,
+                       "pr_by_issue": pr_by_issue,
+                       "open_pr_issues": open_pr_issues}
+
+def has_open_pr(repo, issue):
+    d = repo_data.get(repo)
+    return None if d is None else (issue in d["open_pr_issues"])
+
+# ---- R1/R5: host-local stale claim (FS lock + label, no PR, age>TTL) ----
+fs_by_task = {}
+for c in fs_claims:
+    repo = c["repo"]
+    fs_by_task[(repo, c["issue"])] = c
+    age = now - c.get("created", 0)
+    op = has_open_pr(repo, c["issue"])
+    if op is None:
+        if age >= ttl:
+            add("R1", repo, c["issue"], "issue", ["fs_claim"],
+                "stale claim suspected but its repo is outside the scan set; skipped",
+                "repo-not-scanned")
+        continue
+    if not op and age >= ttl:
+        add("R1", repo, c["issue"], "issue", ["fs_claim", "label", "pr"],
+            "release host-local stale FS claim + remove this host's claim "
+            "label + fleet:in-progress",
+            "age %dm >= TTL %dm, no open claude/%d-* PR" % (age // 60, ttl // 60, c["issue"]),
+            apply={"type": "stale_claim", "slug": c["slug"], "issue": c["issue"],
+                   "repo": repo, "claim_label": "fleet:claim-%s-%s" % (host, c["owner"]),
+                   "owner": c["owner"]})
+
+# ---- R3: reservation/claim consistency ----
+for r in reservations:
+    wt, tid = r["worktree"], r["task_id"]
+    if not tid or not tid.isdigit():
+        continue
+    issue = int(tid)
+    repo = "jakildev/IrredenEngine"   # reservations carry no namespace; engine default
+    claim = fs_by_task.get((repo, issue))
+    if claim is not None:
+        if claim["owner"] != wt:
+            add("R3", repo, issue, "reservation", ["reservation", "fs_claim"],
+                "reservation owner '%s' != claim owner '%s'; claim authoritative, "
+                "drop stale reservation" % (wt, claim["owner"]),
+                "claim present with different owner",
+                apply={"type": "drop_reservation", "worktree": wt, "issue": issue})
+        continue
+    op = has_open_pr(repo, issue)
+    if op is None or op:
+        continue
+    add("R3", repo, issue, "reservation", ["reservation"],
+        "reservation for '%s' has no claim and no open claude/%d-* PR; drop" % (wt, issue),
+        "no claim, no open PR",
+        apply={"type": "drop_reservation", "worktree": wt, "issue": issue})
+
+# ---- R4a: design-blocked + design-unblocked contradiction ----
+for repo in repos:
+    d = repo_data[repo]
+    for n, labs in d["issue_labels"].items():
+        if "fleet:design-blocked" in labs and "fleet:design-unblocked" in labs:
+            add("R4a", repo, n, "issue", ["label"],
+                "contradictory design-blocked + design-unblocked; keep "
+                "most-recently-applied, remove older", "both labels present",
+                apply={"type": "resolve_design_contradiction", "target": n, "repo": repo})
+    for pr in d["prs"]:
+        labs = labelset(pr)
+        if "fleet:design-blocked" in labs and "fleet:design-unblocked" in labs:
+            add("R4a", repo, pr.get("number"), "pr", ["label"],
+                "contradictory design-blocked + design-unblocked; keep "
+                "most-recently-applied, remove older", "both labels present",
+                apply={"type": "resolve_design_contradiction",
+                       "target": pr.get("number"), "repo": repo})
+
+# ---- R4b: queued + in-progress, no claim (any host), no PR ----
+for repo in repos:
+    d = repo_data[repo]
+    for n, labs in d["issue_labels"].items():
+        if "fleet:queued" not in labs or "fleet:in-progress" not in labs:
+            continue
+        if any(l.startswith("fleet:claim-") for l in labs):
+            continue
+        if (repo, n) in fs_by_task or n in d["open_pr_issues"]:
+            continue
+        add("R4b", repo, n, "issue", ["label", "pr"],
+            "fleet:in-progress with no claim (any host) and no open PR; "
+            "remove stale fleet:in-progress",
+            "queued+in-progress, no claim-label, no FS claim, no open PR",
+            apply={"type": "remove_in_progress", "issue": n, "repo": repo})
+
+# ---- R2 (flag only): orphaned WIP/feedback PR ----
+reserved_tasks = set(r["task_id"] for r in reservations)
+for repo in repos:
+    d = repo_data[repo]
+    for issue_n, prlist in d["pr_by_issue"].items():
+        for pr in prlist:
+            labs = pr["labels"]
+            if "fleet:wip" not in labs and not (labs & FEEDBACK):
+                continue
+            issue_labs = d["issue_labels"].get(issue_n, set())
+            if (any(l.startswith("fleet:claim-") for l in issue_labs)
+                    or (repo, issue_n) in fs_by_task
+                    or str(issue_n) in reserved_tasks):
+                continue
+            kind = "WIP" if "fleet:wip" in labs else "feedback"
+            add("R2", repo, pr["number"], "pr", ["pr", "label"],
+                "open %s PR for #%d with no claim/reservation/claim-label "
+                "(re-adoption is a pickup decision)" % (kind, issue_n),
+                "flag-only (R2)")
+
+for f in findings:
+    print(json.dumps(f))
+PYEOF
+
+    # ---- report the findings ---------------------------------------------
+    local mode_label
+    if [[ $do_apply -eq 1 ]]; then mode_label="apply"; else mode_label="report-only"; fi
+    if [[ ! -s "$findings" ]]; then
+        echo "reconcile ($mode_label): no drift detected across ${repos[*]}"
+    else
+        echo "reconcile ($mode_label) drift findings:"
+        python3 - "$findings" <<'PYEOF'
+import sys, json
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    f = json.loads(line)
+    mark = "fix " if f.get("apply") else "flag"
+    print("  [%-3s %s] %s %s#%s: %s"
+          % (f["rule"], mark, f["repo"], f["target_kind"], f["target"], f["action"]))
+PYEOF
+    fi
+
+    # ---- apply gated fixes ------------------------------------------------
+    if [[ $do_apply -eq 1 && -s "$findings" ]]; then
+        local line atype
+        while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            atype=$(printf '%s' "$line" | python3 -c 'import sys,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get("type",""))')
+            case "$atype" in
+                stale_claim)
+                    local s_slug s_issue s_repo s_label s_owner s_reserved
+                    s_slug=$(reconcile_apply_field "$line" slug)
+                    s_issue=$(reconcile_apply_field "$line" issue)
+                    s_repo=$(reconcile_apply_field "$line" repo)
+                    s_label=$(reconcile_apply_field "$line" claim_label)
+                    s_owner=$(reconcile_apply_field "$line" owner)
+                    __remove_claim "$s_slug"
+                    if [[ -n "$s_owner" && "$s_owner" != "unknown" ]]; then
+                        s_reserved=$(reservation_task_id "$s_owner")
+                        if [[ "$s_reserved" == "$s_issue" ]]; then
+                            cmd_release_worktree "$s_owner" >/dev/null 2>&1 || true
+                        fi
+                    fi
+                    gh_release_label "$s_repo" "$s_issue" "$s_label" || true
+                    gh_release_label "$s_repo" "$s_issue" "fleet:in-progress" || true
+                    echo "  reconcile --apply: R1 released stale claim #$s_issue (slug $s_slug, owner $s_owner)"
+                    ;;
+                drop_reservation)
+                    local d_wt
+                    d_wt=$(reconcile_apply_field "$line" worktree)
+                    cmd_release_worktree "$d_wt" >/dev/null 2>&1 || true
+                    echo "  reconcile --apply: R3 dropped stale reservation for $d_wt"
+                    ;;
+                resolve_design_contradiction)
+                    local c_target c_repo e_block e_unblock older
+                    c_target=$(reconcile_apply_field "$line" target)
+                    c_repo=$(reconcile_apply_field "$line" repo)
+                    e_block=$(label_added_epoch "$c_repo" "$c_target" "fleet:design-blocked")
+                    e_unblock=$(label_added_epoch "$c_repo" "$c_target" "fleet:design-unblocked")
+                    if [[ "$e_block" -eq 0 && "$e_unblock" -eq 0 ]]; then
+                        echo "  reconcile --apply: R4a could not order labels on $c_repo #$c_target; skipping" >&2
+                    else
+                        if [[ "$e_block" -ge "$e_unblock" ]]; then  # timestamp tie → keep blocked (conservative)
+                            older="fleet:design-unblocked"
+                        else
+                            older="fleet:design-blocked"
+                        fi
+                        gh_release_label "$c_repo" "$c_target" "$older" || true
+                        echo "  reconcile --apply: R4a removed older '$older' on $c_repo #$c_target"
+                    fi
+                    ;;
+                remove_in_progress)
+                    local p_issue p_repo
+                    p_issue=$(reconcile_apply_field "$line" issue)
+                    p_repo=$(reconcile_apply_field "$line" repo)
+                    gh_release_label "$p_repo" "$p_issue" "fleet:in-progress" || true
+                    echo "  reconcile --apply: R4b removed stale fleet:in-progress on $p_repo #$p_issue"
+                    ;;
+            esac
+        done < "$findings"
+    fi
+
+    # ---- write the structured drift report -------------------------------
+    local generated_at out_file
+    generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    out_file="$state_dir/drift-report.json"
+    GEN_AT="$generated_at" HOST="$host" DO_APPLY="$do_apply" \
+        REPOS="${repos[*]}" OUT="$out_file" \
+        python3 - "$findings" <<'PYEOF'
+import sys, os, json
+findings = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+do_apply = os.environ["DO_APPLY"] == "1"
+for f in findings:
+    f["applied"] = bool(do_apply) if f.get("apply") else None
+summary = {}
+for f in findings:
+    summary[f["rule"]] = summary.get(f["rule"], 0) + 1
+report = {
+    "generated_at": os.environ["GEN_AT"],
+    "host": os.environ["HOST"],
+    "apply": do_apply,
+    "repos": os.environ["REPOS"].split(),
+    "summary": summary,
+    "findings": findings,
+}
+with open(os.environ["OUT"], "w") as fh:
+    json.dump(report, fh, indent=2)
+    fh.write("\n")
+PYEOF
+    echo "reconcile: wrote drift report → $out_file"
+
+    rm -rf "$work"
+}
+
+# reconcile_apply_field <finding-json-line> <key>
+#   Echo apply.<key> from one finding JSONL line (apply helper for cmd_reconcile).
+reconcile_apply_field() {
+    printf '%s' "$1" | KEY="$2" python3 -c \
+        'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))'
+}
+
 cmd_stack() {
     # Atomically claim a chain of dependent tasks. All-or-nothing.
     # Cross-host locking: FS lock only (atomic mkdir). Unlike cmd_claim,
@@ -2535,6 +2994,10 @@ case "${1:-}" in
         shift
         cmd_cleanup "$@"
         ;;
+    reconcile)
+        shift
+        cmd_reconcile "$@"
+        ;;
     review-claim)
         if [[ -z "${3:-}" ]]; then
             echo "usage: fleet-claim [--repo <ns>] review-claim <pr-number> <agent>" >&2
@@ -2772,6 +3235,33 @@ commands:
                                 fleet:claim-<host>-* labels from open
                                 issues with no matching open PR (called
                                 by fleet-up after clear-all).
+  reconcile [--apply] [--repo o/r] ...
+                                Cross-surface reconciliation pass: cross-
+                                checks labels, open-PR state, host-local FS
+                                claims, and reservations AGAINST each other
+                                and reports drift. Report-only by default
+                                (mutates nothing; writes
+                                ~/.fleet/state/drift-report.json). With
+                                --apply, performs only host-local,
+                                TTL/corroboration-gated auto-fixes:
+                                  R1/R5 stale FS claim (no open PR + age>TTL)
+                                        → release FS lock + this host's
+                                        claim label + fleet:in-progress;
+                                  R3    reservation/claim owner mismatch (or
+                                        reservation with no claim + no PR)
+                                        → drop the stale reservation;
+                                  R4a   design-blocked + design-unblocked on
+                                        the same issue/PR → keep the most-
+                                        recently-applied, remove the older;
+                                  R4b   queued + in-progress with no claim
+                                        (any host) + no open PR → remove the
+                                        stale fleet:in-progress.
+                                R2 (orphaned WIP/feedback PR with no claim)
+                                is report-only. Cross-host is flag-only by
+                                construction — never auto-releases another
+                                host's FS state or claim label. Defaults to
+                                engine + game (when reachable); --repo
+                                overrides. Run by fleet-up at boot (Step 3b).
 
 reservation commands (worktree-pinning, distinct from claims):
   reserve <issue-number> <worktree> [branch]
