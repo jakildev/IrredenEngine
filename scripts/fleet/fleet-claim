@@ -372,7 +372,9 @@ for name in sorted(
                 # Drop and retry: in a simultaneous race the lex-larger
                 # contenders yield, so the next POST re-acquires alone.
                 gh_release_label "$repo" "$target" "$label" || true
-                _acquire_jitter_sleep
+                if (( attempt < retries )); then
+                    _acquire_jitter_sleep
+                fi
                 continue
                 ;;
             *)  # lose
