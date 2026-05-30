@@ -466,10 +466,9 @@ constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
 /// now picks the actually-visible faces instead of the back-facing ones,
 /// fixing the stripe artifact in #1256.
 ///
-/// DETACHED-canvas paths bypass this and use the legacy
-/// `{X_NEG, Y_NEG, Z_NEG}` set — the canvas SO(3) bake (#1075/#1076)
-/// already absorbs the entity rotation; per-entity SO(3) visible-triplet
-/// is the follow-on work in #1272.
+/// DETACHED-canvas paths call @ref visibleTriplet (#1386) instead — per-entity
+/// rotation determines which faces the octahedral-snap residual acts on, so
+/// the canvas SO(3) bake (#1075/#1076) alone is not sufficient.
 constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardinalIndex) {
     switch (cardinalIndex) {
     case CardinalIndex::k90:
