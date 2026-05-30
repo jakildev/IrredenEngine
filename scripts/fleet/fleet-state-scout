@@ -1284,19 +1284,19 @@ def slice_queue_manager_ingest(state):
 
 
 def slice_merger(state):
-    # Merger is engine-only (v1 scope per role-merger.md). Game-repo
-    # PRs would just be skipped by the merger's own filter, but
-    # including them in the slice bloats the file with full review
-    # records the role never reads.
+    # Merger covers both repos (role-merger.md runs an engine pass then a
+    # game pass each iteration). Each PR record is tagged with its repo via
+    # _slice_pr_with_repo so the role knows which worktree / --repo to use.
     out = {"prs": []}
-    repo_state = state["repos"].get("engine", {})
-    for pr in repo_state.get("prs", []):
-        labels = set(pr["labels"])
-        mergeable = pr.get("mergeable")
-        approved = "fleet:approved" in labels
-        blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
-        if approved or blocked:
-            out["prs"].append(_slice_pr_with_repo("engine", pr))
+    for repo_key in ("engine", "game"):
+        repo_state = state["repos"].get(repo_key, {})
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            mergeable = pr.get("mergeable")
+            approved = "fleet:approved" in labels
+            blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
+            if approved or blocked:
+                out["prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
 
 

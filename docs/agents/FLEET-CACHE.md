@@ -75,7 +75,7 @@ just the items that role works on:
 | opus-worker | `tasks_open` (filtered to `[opus]` tasks, both repos), `needs_plan`, `feedback_prs` |
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
 | opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix`) |
-| merger | `prs` (engine, approved or non-MERGEABLE only) |
+| merger | `prs` (engine + game, approved or non-MERGEABLE only; each tagged with its `repo`) |
 
 **opus-reviewer:** review bodies longer than 2 KB are stored as
 head + tail with an `…[truncated]…` separator (the verdict line

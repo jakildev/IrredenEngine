@@ -523,9 +523,11 @@ Two stacking modes exist in this fleet:
 
 **v1 limitations:**
 
-- Engine tasks only — game repo has no merger, so the cascade-rebase
-  step has no actor. The scout may populate `stackable_blocker_pr`
-  for game tasks for visibility, but worker pickup skips them.
+- Engine tasks only — the merger's game pass handles plain conflicts
+  but intentionally omits the stacked-PR cascade-rebase machinery
+  (steps 2.5/2.6/a.5/a.6), so a game stack would have no actor for the
+  cascade step. The scout may populate `stackable_blocker_pr` for game
+  tasks for visibility, but worker pickup skips them.
 - Single-blocker tasks only (see Q3).
 
 For role-specific framing (when to stack, role-specific edge cases),
