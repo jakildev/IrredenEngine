@@ -66,21 +66,27 @@ by design — that's how `opus-worker-1` and `-2` run concurrently). So
 two workers routinely select the same flagged PR in the same tick
 (observed #1336, 2026-05-30 — two opus-workers both started the same
 `human:needs-fix` AMEND). The **only** thing that makes pickup safe is
-an atomic claim, acquired **first** — before reading the feedback,
-checking out, or touching any label:
+an atomic claim, acquired **first** — before reading the feedback or
+touching any label. `fleet-pr-claim-feedback` performs that claim-first
+entry as one unskippable command: it wins the lex-min claim, then checks
+out the PR in detached HEAD (so reaching the work is proof the claim was
+won), and releases the claim if the checkout fails so nothing dangles:
 
 ```
-fleet-claim amending-claim <N> <your-worktree-basename>
+fleet-pr-claim-feedback <N> <your-worktree-basename>
 ```
 
-(Add `--repo jakildev/irreden` before the subcommand for game PRs.)
+(Add `--repo jakildev/irreden` for game PRs; the wrapper maps the slug
+to the `fleet-claim` namespace internally.)
 
-- **Exit 0** — you own this PR's feedback handling. Continue to the rest
-  of the flow. The `fleet:amending-<host>-<agent>` label is the lex-min
-  mutex against every other worker, and reviewers skip it
-  (a `REVIEW_SKIP_PREFIXES` match) so no reviewer re-reviews your
-  in-flight diff.
-- **Exit 1** — another worker holds the claim, or `gh` is unreachable.
+- **Exit 0** — you own this PR's feedback handling AND the PR is checked
+  out in detached HEAD (the `.git/fleet-amend-ref` sentinel is written, so
+  step b goes straight to the label work). The `fleet:amending-<host>-<agent>`
+  label is the lex-min mutex against every other worker, and reviewers
+  skip it (a `REVIEW_SKIP_PREFIXES` match) so no reviewer re-reviews your
+  in-flight diff. Continue to reading the feedback.
+- **Non-zero** — you lost the claim, `gh` is unreachable, or the checkout
+  failed (the wrapper already released the claim — nothing dangles).
   **Skip this PR** — do not read its feedback, check it out, or touch
   any label — and move to the next candidate in the priority tier. The
   loser exits in ~1s; that is what keeps the dispatcher's fan-out cheap
@@ -117,11 +123,14 @@ safety against concurrent amendments comes from `--force-with-lease`
 at push time: if the remote ref moved between fetch and push, the
 loser exits clean and the next iteration retries.
 
-Use `fleet-pr-checkout-detached <N> [--repo <slug>]` instead of
-`gh pr checkout <N>`. The wrapper fetches the PR's head ref, runs
-`git checkout --detach origin/<head-ref>`, and writes a
-`.git/fleet-amend-ref` sentinel that `fleet-pr-amend-push` reads
-to route the amendment push to the right ref.
+The detached checkout is driven by `fleet-pr-claim-feedback` in Step a,
+which composes `fleet-pr-checkout-detached <N> [--repo <slug>]` (in place
+of `gh pr checkout <N>`). That underlying wrapper fetches the PR's head
+ref, runs `git checkout --detach origin/<head-ref>`, and writes a
+`.git/fleet-amend-ref` sentinel that `fleet-pr-amend-push` reads to route
+the amendment push to the right ref. You do not invoke it directly on the
+feedback path — Step a's claim-first wrapper already did, atomically after
+winning the claim.
 
 There is **no busy-branch filter**. Any candidate PR that survives
 the label filters at the top of this doc is fair game; the worker
@@ -241,32 +250,16 @@ that needs justification in the linked issue.
 
 ## AMEND path
 
-### Step b — check out and remove the feedback label
+### Step b — remove the feedback label
 
-You already hold the atomic claim from step a — no other worker can
-reach this point on the same PR. Now **check out the PR in detached
-HEAD.** The wrapper fetches the PR's head ref and checks it out
-detached — no busy-branch filter, no `branch is already used by
-worktree` error. Do this BEFORE removing any label so a checkout
-failure (network, unknown ref, fork PR) cannot leave the PR in a
-labeless state:
-
-```
-fleet-pr-checkout-detached <N> --repo jakildev/IrredenEngine
-```
-
-If the wrapper fails (e.g. fetch error), **do NOT remove the
-feedback label** — release the claim and skip this PR so a retry has
-something to pick up:
-
-```
-fleet-claim amending-release <N> <your-worktree-basename>
-```
-
-With checkout confirmed, **remove the feedback label** (the
-`fleet:amending-*` claim from step a already keeps other workers and
-reviewers off the PR, so this is just clearing the now-handled
-verdict, not a race guard):
+You already hold the atomic claim AND the detached checkout from step a
+— `fleet-pr-claim-feedback` did both, so the PR's head ref is checked out
+with the `.git/fleet-amend-ref` sentinel written and no other worker can
+reach this point on the same PR. (If the checkout had failed, step a
+would have released the claim and exited non-zero, and you'd never get
+here.) **Remove the feedback label** (the `fleet:amending-*` claim from
+step a already keeps other workers and reviewers off the PR, so this is
+just clearing the now-handled verdict, not a race guard):
 
 ```
 fleet-pr-clear-feedback-labels <N>
@@ -348,12 +341,13 @@ fleet-pr-amend-push
 ```
 
 The wrapper reads the head ref name from the `.git/fleet-amend-ref`
-sentinel that `fleet-pr-checkout-detached` wrote in step b, and
-runs `git push --force-with-lease origin HEAD:<head-ref>`. The
+sentinel that `fleet-pr-checkout-detached` wrote when `fleet-pr-claim-feedback`
+checked the PR out in step a, and runs
+`git push --force-with-lease origin HEAD:<head-ref>`. The
 `--force-with-lease` is the safety belt against concurrent
 amendments (another worker, the operator pushing from the main
 clone, the merger mid-rebase) — if the remote moved between the
-fetch in step b and the push here, the lease fails and the
+fetch in step a and the push here, the lease fails and the
 iteration exits clean for the next retry.
 
 Do NOT invoke the `commit-and-push` skill here: it would try to
@@ -462,9 +456,9 @@ cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>
 Then add `--repo jakildev/irreden` to all `gh pr edit` /
 `gh pr comment` / `gh issue create` calls in this protocol. The
 bash cwd persists across calls in the same iteration, so a single
-`cd` covers everything until the next fresh launch. Step b's
-checkout also needs the repo flag for game PRs:
-`fleet-pr-checkout-detached <N> --repo jakildev/irreden`.
+`cd` covers everything until the next fresh launch. Step a's
+claim+checkout also needs the repo flag for game PRs:
+`fleet-pr-claim-feedback <N> <your-worktree-name> --repo jakildev/irreden`.
 
 ---
 
