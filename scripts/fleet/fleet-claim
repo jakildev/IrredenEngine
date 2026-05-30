@@ -7,8 +7,8 @@
 #
 # Same-host atomicity: atomic mkdir(2) under $CLAIMS_DIR. Cross-host
 # atomicity: a `fleet:claim-<host>-<agent>` label on the linked issue
-# with lex-min tie-break (the same primitive used by review-claim,
-# resolving-claim, and amending-claim).
+# with a sole-holder claim (the same primitive used by review-claim,
+# resolving-claim, and amending-claim — see _acquire_label_on / #1384).
 #
 # Slug canonicalization: the issue number itself, optionally prefixed
 # with the global --repo namespace (engine → "<N>", game → "game-<N>").
@@ -144,9 +144,11 @@ slugify() {
 # Cross-host atomicity for task claims is provided by a
 # `fleet:claim-<host>-<agent>` label on the linked issue. POST .../labels
 # is atomic; the response includes the resulting label set, which we
-# filter to the `fleet:claim-*` prefix and take the lex-min as the winner.
-# If our label isn't the lex-min we lost the race; we remove our label and
-# the caller exits 1.
+# filter to the `fleet:claim-*` prefix. We win only as the SOLE holder of
+# the prefix; if others are present and ours is the lex-min we drop and
+# retry to re-acquire alone, otherwise we yield to the existing holder,
+# remove our label, and the caller exits 1. See _acquire_label_on for the
+# full algorithm and #1384 for the co-win hole this closes.
 #
 # The same _acquire_label_on primitive backs:
 #   - fleet:reviewing-<host>-<agent>  (reviewer + cross-host smoke claim)
@@ -273,50 +275,128 @@ except Exception:
 ' 2>/dev/null || echo 0
 }
 
+# _claim_decision <mine> <matching-label>...
+#   PURE decision helper (no I/O) — the table-testable seam for the claim
+#   mutex. Given my just-POSTed label and the full set of <prefix>* labels
+#   present on the POST response (which includes mine), decide the outcome:
+#     win   — I am the SOLE holder of the prefix → own the lock.
+#     retry — other holders are present but I am the lex-min → drop my label
+#             and retry alone; in a simultaneous race the lex-larger
+#             contenders also drop, so the retry re-acquires uncontested.
+#     lose  — other holders are present and an earlier/lex-smaller one
+#             remains → yield to it.
+#   This replaces the old "win iff I'm the lex-min of the snapshot" rule,
+#   which let a LATER, lex-smaller claimant co-win with an existing holder
+#   that had already passed its own check and never re-validated (#1384).
+_claim_decision() {
+    local mine="$1"; shift
+    local has_other=0 lbl
+    for lbl in "$@"; do
+        [[ "$lbl" != "$mine" ]] && has_other=1
+    done
+    if [[ "$has_other" -eq 0 ]]; then
+        echo win
+        return 0
+    fi
+    local lexmin
+    lexmin=$(printf '%s\n' "$@" | LC_ALL=C sort | head -n1)
+    if [[ "$mine" == "$lexmin" ]]; then
+        echo retry
+    else
+        echo lose
+    fi
+}
+
+# _acquire_jitter_sleep
+#   Brief jittered backoff between claim retries so simultaneous racers
+#   don't lock-step. No-op under FLEET_CLAIM_NO_SLEEP=1 (test determinism).
+_acquire_jitter_sleep() {
+    [[ "${FLEET_CLAIM_NO_SLEEP:-0}" == "1" ]] && return 0
+    local ms=$(( (RANDOM % 400) + 100 ))   # 100–499 ms
+    sleep "$(printf '0.%03d' "$ms")"
+}
+
 # _acquire_label_on <repo> <pr-or-issue> <label> <label-prefix>
-#   Atomic-add + deterministic-min tie-break primitive. PRs and issues
-#   share GitHub's /issues/N/labels endpoint, so this works for both.
+#   Atomic-add + sole-holder-wins claim primitive. PRs and issues share
+#   GitHub's /issues/N/labels endpoint, so this works for both.
 #
-#   Returns 0 if our label is the lex-min of all <label-prefix>*
-#   labels on the response (we own the lock); 1 otherwise (we lost
-#   the race and self-removed our label). On API error, returns 1.
+#   Contract: at most one holder of <label-prefix>* on the target at a
+#   time. Returns 0 if we own the lock (sole holder after our POST), 1
+#   otherwise (we lost / yielded and self-removed our label). On API
+#   error, returns 1.
+#
+#   Algorithm (Option A from #1384): POST our label, re-read the <prefix>*
+#   set, and route through _claim_decision. `win` → hold; `retry` → drop
+#   and re-POST (bounded by FLEET_CLAIM_ACQUIRE_RETRIES, default 3, with a
+#   jittered backoff) so a simultaneous race converges to one winner;
+#   `lose` → yield to the existing holder. This closes the co-win hole
+#   where a later, lex-smaller claimant beat an existing holder that had
+#   passed its own snapshot check and never re-validated.
 _acquire_label_on() {
     local repo="$1" target="$2" label="$3" prefix="$4"
+    local retries="${FLEET_CLAIM_ACQUIRE_RETRIES:-3}"
+    local attempt
+    for (( attempt = 1; attempt <= retries; attempt++ )); do
+        local labels_json
+        if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
+                --method POST -f "labels[]=${label}" 2>&1); then
+            echo "fleet-claim: gh api POST labels failed on $repo#$target:" >&2
+            echo "$labels_json" >&2
+            return 1
+        fi
 
-    local labels_json
-    if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
-            --method POST -f "labels[]=${label}" 2>&1); then
-        echo "fleet-claim: gh api POST labels failed on $repo#$target:" >&2
-        echo "$labels_json" >&2
-        return 1
-    fi
-
-    local min_label
-    min_label=$(echo "$labels_json" | python3 -c '
+        # Extract the full <prefix>* set from the POST response, one per line.
+        local matching
+        matching=$(echo "$labels_json" | python3 -c '
 import json, sys
 try:
     labels = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
 prefix = sys.argv[1]
-matching = sorted(l["name"] for l in labels if isinstance(l, dict) and l.get("name", "").startswith(prefix))
-if matching:
-    print(matching[0])
+for name in sorted(
+        l["name"] for l in labels
+        if isinstance(l, dict) and l.get("name", "").startswith(prefix)):
+    print(name)
 ' "$prefix" 2>/dev/null || echo "")
 
-    if [[ -z "$min_label" ]]; then
-        echo "fleet-claim: WARN gh api response missing ${prefix}* labels on $repo#$target; aborting" >&2
-        gh_release_label "$repo" "$target" "$label" || true
-        return 1
-    fi
+        if [[ -z "$matching" ]]; then
+            echo "fleet-claim: WARN gh api response missing ${prefix}* labels on $repo#$target; aborting" >&2
+            gh_release_label "$repo" "$target" "$label" || true
+            return 1
+        fi
 
-    if [[ "$min_label" != "$label" ]]; then
-        echo "fleet-claim: lost tie-break to ${min_label#$prefix} on $repo#$target" >&2
-        gh_release_label "$repo" "$target" "$label" || true
-        return 1
-    fi
+        local -a matching_arr
+        mapfile -t matching_arr <<< "$matching"
 
-    return 0
+        local decision
+        decision=$(_claim_decision "$label" "${matching_arr[@]}")
+        case "$decision" in
+            win)
+                return 0
+                ;;
+            retry)
+                # Drop and retry: in a simultaneous race the lex-larger
+                # contenders yield, so the next POST re-acquires alone.
+                gh_release_label "$repo" "$target" "$label" || true
+                if (( attempt < retries )); then
+                    _acquire_jitter_sleep
+                fi
+                continue
+                ;;
+            *)  # lose
+                echo "fleet-claim: lost tie-break on $repo#$target; yielding to an existing ${prefix}* holder" >&2
+                gh_release_label "$repo" "$target" "$label" || true
+                return 1
+                ;;
+        esac
+    done
+
+    # Exhausted the retry budget while always lex-min: an earlier holder
+    # persists and never yielded (the non-simultaneous #1384 case). Our
+    # label was already removed by the final retry's release. Yield.
+    echo "fleet-claim: gave up after ${retries} attempt(s); an earlier ${prefix}* holder persists on $repo#$target" >&2
+    return 1
 }
 
 # --- issue lookup ---------------------------------------------------------
@@ -3088,6 +3168,13 @@ for line in body.splitlines():
 }
 
 # --- main -----------------------------------------------------------------
+
+# Sourcing seam for unit tests: `FLEET_CLAIM_LIB=1 source fleet-claim`
+# defines every helper (e.g. _claim_decision, _acquire_label_on) without
+# running the dispatch below. See tests/test_fleet_claim_acquire.sh.
+if [[ "${FLEET_CLAIM_LIB:-}" == "1" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 case "${1:-}" in
     claim)
