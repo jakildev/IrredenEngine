@@ -45,10 +45,14 @@ itself). Together they catch:
 - **Cross-host races** — both hosts' FS locks succeed independently
   (separate filesystems). Both attempt to apply
   `fleet:claim-<host>-<agent>` on the issue. After applying, each
-  host re-reads the issue's label set and runs an atomic lex-min
-  tie-break: if any other `fleet:claim-*` label has a lower name,
-  the loser removes its own label and rolls back its FS claim with
-  exit 1 ("race lost on issue-label tie-break").
+  host re-reads the issue's label set and resolves a **sole-holder**
+  claim: you win only if no other `fleet:claim-*` label is present.
+  If others are present and yours is the lex-min you drop and retry
+  (so a simultaneous race converges to exactly one winner); otherwise
+  you yield to the existing holder, remove your own label, and roll
+  back the FS claim with exit 1. This closes the co-win hole where a
+  later, lex-smaller claimant beat an existing holder that had passed
+  its own snapshot check and never re-validated (#1384).
 
 Once the worker opens its PR, `fleet-state-scout` derives Owner
 from the PR's `headRefName` (e.g. `claude/1195-foo` → Owner
@@ -67,11 +71,13 @@ coordination mechanisms prevent duplicate work:
 **Task claiming (two layers):**
 1. **FS lock** (`~/.fleet/claims/<issue-slug>/` via atomic `mkdir`) —
    prevents same-host races. Per-host only.
-2. **Issue-label tie-break** (`fleet:claim-<host>-<agent>` on the
-   GitHub issue) — atomic lex-min tie-break. After applying the
-   label, each host re-reads the issue's labels; if another
-   `fleet:claim-*` label has a lower name, the loser removes its
-   label and rolls back its FS claim.
+2. **Issue-label claim** (`fleet:claim-<host>-<agent>` on the
+   GitHub issue) — atomic sole-holder claim. After applying the
+   label, each host re-reads the issue's labels: a claimant wins only
+   as the sole `fleet:claim-*` holder; the lex-min of a simultaneous
+   race drops and retries to re-acquire alone, and any later claimant
+   that finds an existing holder yields and rolls back its FS claim
+   (#1384).
 
 **Requirements for cross-host safety:**
 - The GitHub issue must be reachable at claim time. If `gh issue edit
@@ -926,17 +932,19 @@ Specifically, **never pass these via `--label` when filing**:
   is set, or on abort paths. Host disambiguation
   (mac / linux / windows) is required for correctness — both hosts
   can have an `opus-reviewer` agent; without the host prefix the
-  deterministic-min tie-break would collide. The lex-min of all
-  `fleet:reviewing-*` labels on the PR wins; losers self-remove their
-  label and exit 1. Reviewer / smoke-pickup agents **skip any PR
-  carrying any `fleet:reviewing-*` label** as a fast-path filter,
-  but the real mutex is `fleet-claim review-claim` itself (TOCTOU on
-  the label list is benign — the atomic POST resolves the race).
+  sole-holder claim would collide. A claimant wins only as the sole
+  `fleet:reviewing-*` holder; in a simultaneous race the lex-min drops
+  and retries to re-acquire alone, and any later claimant that finds an
+  existing holder yields (exit 1). Reviewer / smoke-pickup agents
+  **skip any PR carrying any `fleet:reviewing-*` label** as a fast-path
+  filter, but the real mutex is `fleet-claim review-claim` itself — and
+  it now holds even when a later claim is lex-smaller than the existing
+  holder (#1384), so two same-prefix holders never coexist.
   The scout's `fleet-claim cleanup --gh` pass sweeps labels older
   than 30 min and replays orphan sentinels from failed removals.
   Don't add manually; don't add to issues.
 - `fleet:amending-<host>-<agent>` — owned by the **`fleet-claim`
-  script** (atomic feedback-claim primitive; same lex-min tie-break as
+  script** (atomic feedback-claim primitive; same sole-holder claim as
   `fleet:reviewing-`). The **single mutex for all feedback handling**:
   the author worker acquires it via `fleet-claim amending-claim` as the
   **first** action of feedback pickup — before reading feedback,
