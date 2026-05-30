@@ -3548,8 +3548,10 @@ commands:
                                   R4b   queued + in-progress with no claim
                                         (any host) + no open PR → remove the
                                         stale fleet:in-progress.
-                                R2 (orphaned WIP/feedback PR with no claim)
-                                is report-only. Cross-host is flag-only by
+                                R2 (orphaned WIP/feedback PR with no claim;
+                                fleet:design-blocked PRs exempt — their
+                                no-claim state is protocol-correct) is
+                                report-only. Cross-host is flag-only by
                                 construction — never auto-releases another
                                 host's FS state or claim label. Defaults to
                                 engine + game (when reachable); --repo
