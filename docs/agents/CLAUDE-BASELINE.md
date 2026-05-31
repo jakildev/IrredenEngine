@@ -273,8 +273,8 @@ reads like a hang, not an error. So one `which a b c` that doesn't find a
 tool, an `ls`/`cat` on a maybe-absent path, or a `gh` lookup that 404s
 silently kills every other call you batched with it. Therefore:
 
-- Only parallel-batch Bash calls you're confident exit 0 (e.g. a
-  `git -C <path> fetch` plus a `date`).
+- Only parallel-batch Bash calls you're confident exit 0 (e.g.
+  `git branch --show-current` plus `pwd`).
 - Issue **probing / maybe-failing** commands (`which`, `ls`/`cat` on
   paths that may not exist, `gh` lookups that may 404, a build that may
   break) **one per turn** — read each result before the next.
@@ -282,9 +282,10 @@ silently kills every other call you batched with it. Therefore:
   an empty/no-match result instead of a non-zero exit, so they never
   trigger the cascade.
 
-This compounds with the single-command rule above: a chain like
-`foo | head || echo x ; which a b c` both violates that rule *and*, by
-exiting non-zero, cancels its batch siblings.
+This compounds with the single-command rule above: even a
+single-command-compliant but fallible call like `which some-tool`,
+when batched alongside unrelated Bash calls, exits non-zero and
+cancels its batch siblings.
 
 - **No `cd <path> && git ...`** — use `git -C <path> ...` instead.
   `cd && git` triggers a hardcoded Claude Code security gate
