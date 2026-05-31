@@ -30,6 +30,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+# Shared branch<->issue matcher, also imported by fleet-claim's inline
+# python. Insert this script's own dir so the import resolves whether the
+# scout is run directly or loaded by-path in the unit tests (#1425).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fleet_branch_match import branch_matches_issue
+
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
 
@@ -878,7 +884,7 @@ def resolve_blocked_by(state):
             for ref in refs:
                 if ref in closed_nums:
                     continue
-                if any(h.startswith(f"claude/{ref}-") for h in merged_heads):
+                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
                     continue
                 if _resolve_ref_satisfied(repo_slug, ref, per_tick_cache):
                     continue
@@ -921,9 +927,8 @@ def enrich_stackable_blocker_prs(state):
             issue_num = _single_blocker_issue(blocked_by)
             if not issue_num:
                 continue
-            prefix = f"claude/{issue_num}-"
             matches = [pr for pr in prs
-                       if pr.get("headRefName", "").startswith(prefix)]
+                       if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)]
             if len(matches) != 1:
                 continue
             pr = matches[0]

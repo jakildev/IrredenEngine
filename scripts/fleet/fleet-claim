@@ -99,6 +99,12 @@ while [[ $# -gt 0 && "$1" == --* ]]; do
     esac
 done
 
+# Directory of this script, so inline `python3` blocks can import the shared
+# branch<->issue matcher (fleet_branch_match.py) regardless of cwd. Exported
+# so it survives the subshells/pipes those blocks run in. See #1425.
+FLEET_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export FLEET_LIB_DIR
+
 # --- input validation -----------------------------------------------------
 
 # require_issue_number <input>
@@ -767,9 +773,22 @@ cmd_claim() {
         if [[ -n "$repo_for_pr_check" ]]; then
             local existing_pr
             existing_pr=$(gh pr list --repo "$repo_for_pr_check" --state open \
-                --json number,headRefName \
-                --jq ".[] | select(.headRefName | startswith(\"claude/${issue_num}-\")) | .number" \
-                2>/dev/null | head -1)
+                --json number,headRefName 2>/dev/null \
+                | ISSUE_NUM="$issue_num" REPO_NS="$REPO_NS" python3 -c '
+import json, os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import branch_matches_issue
+issue = os.environ["ISSUE_NUM"]
+repo = os.environ.get("REPO_NS", "")
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
+for pr in prs:
+    if branch_matches_issue(pr.get("headRefName") or "", issue, repo):
+        print(pr.get("number"))
+        break
+' 2>/dev/null | head -1)
             if [[ -n "$existing_pr" ]]; then
                 echo "fleet-claim claim: #${issue_num} already has open PR #${existing_pr} (head claude/${issue_num}-…); refusing duplicate claim" >&2
                 return 1
@@ -909,6 +928,8 @@ cmd_find_stackable_blockers() {
     local blocker
     blocker=$(BODY_B64="$body_b64" REPO="$repo" python3 <<'PYEOF'
 import base64, json, os, re, subprocess, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import branch_matches_issue
 
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 repo = os.environ.get("REPO", "")
@@ -950,8 +971,7 @@ _resolve_cache = {}
 def is_satisfied(ref):
     if ref in _resolve_cache:
         return _resolve_cache[ref]
-    prefix = f"claude/{ref}-"
-    if any(h.startswith(prefix) for h in merged_heads):
+    if any(branch_matches_issue(h, ref, repo) for h in merged_heads):
         _resolve_cache[ref] = True
         return True
     if not repo:
@@ -982,6 +1002,8 @@ PYEOF
 
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
 import json, os, re, subprocess, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import branch_matches_issue
 blocker = os.environ["BLOCKER"]
 repo = os.environ["REPO"]
 try:
@@ -1000,14 +1022,13 @@ try:
 except json.JSONDecodeError:
     sys.exit(0)
 
-branch_prefix = f"claude/{blocker}-"
 closes_re = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#" + re.escape(blocker) + r"\b", re.IGNORECASE)
 
 matches = []
 for pr in prs:
     head = pr.get("headRefName", "") or ""
     body = pr.get("body", "") or ""
-    if head.startswith(branch_prefix) or closes_re.search(body):
+    if branch_matches_issue(head, blocker, repo) or closes_re.search(body):
         matches.append(pr)
 if len(matches) != 1:
     sys.exit(0)
@@ -1394,19 +1415,22 @@ except Exception:
             [[ $age -lt $claim_issue_stale_secs ]] && continue
 
             local has_wip_pr
-            has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" python3 -c "
+            has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" REPO="$repo" python3 -c '
 import json, os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import branch_matches_issue
 try:
     prs = json.load(sys.stdin)
 except Exception:
     prs = []
-prefix = f\"claude/{os.environ['ISSUE_NUM']}-\"
+issue = os.environ["ISSUE_NUM"]
+repo = os.environ.get("REPO", "")
 for pr in prs:
-    if (pr.get('headRefName') or '').startswith(prefix):
+    if branch_matches_issue(pr.get("headRefName") or "", issue, repo):
         print(1)
         sys.exit(0)
 print(0)
-" 2>/dev/null || echo 0)
+' 2>/dev/null || echo 0)
 
             [[ "$has_wip_pr" -eq 1 ]] && continue
 
@@ -1485,19 +1509,22 @@ for issue in issues:
             [[ -z "$issue_num" || -z "$label_name" ]] && continue
 
             local has_wip_pr
-            has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" python3 -c "
+            has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" REPO="$repo" python3 -c '
 import json, os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import branch_matches_issue
 try:
     prs = json.load(sys.stdin)
 except Exception:
     prs = []
-prefix = f\"claude/{os.environ['ISSUE_NUM']}-\"
+issue = os.environ["ISSUE_NUM"]
+repo = os.environ.get("REPO", "")
 for pr in prs:
-    if (pr.get('headRefName') or '').startswith(prefix):
+    if branch_matches_issue(pr.get("headRefName") or "", issue, repo):
         print(1)
         sys.exit(0)
 print(0)
-" 2>/dev/null || echo 0)
+' 2>/dev/null || echo 0)
 
             [[ "$has_wip_pr" -eq 1 ]] && continue
 
@@ -1815,6 +1842,8 @@ cmd_reconcile() {
         "$work/fs_claims.json" "$work/reservations.json" \
         > "$findings" <<'PYEOF'
 import sys, os, json, re
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import issue_from_branch
 
 work, host, now_s, ttl_s = sys.argv[1:5]
 repos = sys.argv[5].split() if sys.argv[5] else []
@@ -1845,17 +1874,9 @@ def labelset(obj):
                if isinstance(l, dict))
 
 def head_issue(head):
-    # claude/<N>-... -> N
-    if not head.startswith("claude/"):
-        return None
-    rest = head[len("claude/"):]
-    num = ""
-    for ch in rest:
-        if ch.isdigit():
-            num += ch
-        else:
-            break
-    return int(num) if num else None
+    # claude/<N>-... or claude/game-<N>-... -> N. Routed through the shared
+    # matcher so the game `game-` infix is handled here too (#1425).
+    return issue_from_branch(head or "")
 
 # A PR resolves an issue when its head branch is claude/<N>-* OR its body
 # carries a Closes/Fixes/Resolves #N reference — the same dual-match
@@ -2853,8 +2874,10 @@ cmd_molecule_rebase_downstream() {
     if [[ $explicit -eq 0 ]]; then
         local current_branch
         current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-        if [[ "$current_branch" =~ ^claude/([0-9]+) ]]; then
-            upstream_id="${BASH_REMATCH[1]}"
+        if [[ "$current_branch" =~ ^claude/(game-)?([0-9]+) ]]; then
+            # Optional `game-` infix mirrors issue_from_branch / the shared
+            # matcher so legacy claude/game-<N>-… branches resolve too (#1425).
+            upstream_id="${BASH_REMATCH[2]}"
             echo "auto-detected upstream issue: #${upstream_id} (from branch $current_branch)"
         elif [[ "$current_branch" =~ ^claude/[Tt]-([0-9]+) ]]; then
             echo "auto-detect: legacy claude/T-NNN branch ($current_branch) — pass the issue number explicitly" >&2
