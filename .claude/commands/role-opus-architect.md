@@ -67,7 +67,29 @@ See [`docs/agents/CLAUDE-BASELINE.md § Engine API removal rule`](../../docs/age
 
 0. Print your role banner:
    `[opus-architect] Interactive design partner — core engine architecture, ECS design, render pipeline decisions. On-demand (no loop).`
-1. `git -C ~/src/IrredenEngine fetch origin --quiet`
+1. **Sync this worktree to current `origin/master` — ALWAYS, on every
+   fresh engagement (first boot AND every new prompt after a context
+   `/clear`).** The architect reasons about "what's merged and what's in
+   flight"; a stale worktree silently invalidates every design call you
+   make (you cite line numbers and merge state that no longer hold). So
+   before any design work:
+   ```
+   git -C ~/src/IrredenEngine fetch origin --quiet
+   git -C ~/src/IrredenEngine/.claude/worktrees/opus-architect fetch origin --quiet
+   ```
+   Then bring the architect worktree to `origin/master`:
+   - If the worktree is **clean** (`git -C <worktree> status --porcelain`
+     empty): hard-reset the scratch branch to master —
+     `git -C <worktree> reset --hard origin/master`. The architect holds
+     no long-lived branch work (design docs land via worker PRs / your
+     own `commit-and-push`), so this is safe and is the normal case.
+   - If the worktree is **dirty** (an in-progress design-doc draft, say):
+     do **not** clobber it. Print the dirty paths, `git stash` or commit
+     them to a feature branch first, then sync. Surface this to the human
+     rather than silently discarding work.
+   This step is non-negotiable because there is no `/loop` re-arming the
+   role — a `/clear` drops you into a fresh context still checked out at
+   whatever commit the last session left, which may be many merges behind.
 2. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. Covers open PRs, the
    `fleet:design-blocked` filter, the feedback-label filter, and
