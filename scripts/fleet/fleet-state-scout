@@ -293,9 +293,19 @@ _BLOCKED_ON_RE = re.compile(
 
 
 def _parse_blocked_by(body):
-    field = _parse_issue_field(body, "Blocked by")
-    if field:
-        return field
+    # Union every standalone **Blocked by:** line (multi-line + multi-ref) so a
+    # child blocked by several refs surfaces all of them — check_blockers gates
+    # on the union and find-stackable-blockers live-resolves them (#1296). Falls
+    # back to a `Blocked on` header (#1326) only when no canonical line exists.
+    # Kept consistent with fleet-claim's check_blockers parser.
+    vals = re.findall(r'^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$',
+                      body or "", re.IGNORECASE | re.MULTILINE)
+    real = [v.strip() for v in vals if not v.strip().lower().startswith("(none")]
+    if real:
+        return ", ".join(real)
+    if vals:
+        # Every canonical line says (none) → genuinely unblocked.
+        return ""
     for m in _BLOCKED_ON_RE.finditer(body or ""):
         cand = m.group(1).strip().strip("*").strip()
         # Only treat header prose as a blocker when it actually names a #N

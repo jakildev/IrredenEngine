@@ -489,12 +489,17 @@ repo = os.environ.get("REPO", "")
 #   **Blocked by:** (none — explanatory text)
 # Accept either bare `**Blocked by:**` or list-bullet `- **Blocked by:**`.
 field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-field_value = None
+field_values = []
 for line in body.splitlines():
     m = field_re.match(line)
     if m:
-        field_value = m.group(1).strip()
-        break
+        field_values.append(m.group(1).strip())
+# Union every canonical line (multi-line + multi-ref); drop explicit (none)
+# declarations. If every **Blocked by:** line is (none), the task is unblocked.
+real = [v for v in field_values if not v.lower().startswith("(none")]
+if field_values and not real:
+    sys.exit(0)
+field_value = ", ".join(real) if real else None
 
 # Fall back to free-form header prose like `## Blocked on #1300` / `Blocked
 # on PR-x` when the canonical field is absent, so a header-only dependency
@@ -909,14 +914,16 @@ body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace"
 repo = os.environ.get("REPO", "")
 
 field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-value = None
+field_values = []
 for line in body.splitlines():
     m = field_re.match(line)
     if m:
-        value = m.group(1).strip()
-        break
-if value is None or value.lower().startswith("(none"):
+        field_values.append(m.group(1).strip())
+# Union every canonical line (multi-line + multi-ref); drop (none).
+real = [v for v in field_values if not v.lower().startswith("(none")]
+if not real:
     sys.exit(0)
+value = ", ".join(real)
 
 issue_refs = re.findall(r"#(\d+)", value)
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", value)

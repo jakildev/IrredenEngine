@@ -168,6 +168,11 @@ case "$1 $2" in
                 # so the `## Blocked on #101` header must be ignored.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** (none — independent)\n\n## Blocked on #101\n"}'
                 ;;
+            2013)
+                # #1296: two separate **Blocked by:** lines — the gate unions
+                # them; #101 is still OPEN so the claim must be blocked.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
+                ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -300,6 +305,11 @@ echo "T12: field '(none)' overrides a '## Blocked on #101' header → succeeds"
 actual=0; "$FLEET_CLAIM" claim 2012 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "field (none) takes precedence over header prose → exit 0"
 release_quiet 2012
+
+# --- T13: multi-line **Blocked by:** — a later ref still OPEN → fail (#1296) -
+echo "T13: two **Blocked by:** lines (#100 CLOSED, #101 OPEN) → claim fails"
+actual=0; "$FLEET_CLAIM" claim 2013 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "multi-line blocked-by, #101 OPEN → exit 1"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
