@@ -52,6 +52,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -94,6 +95,32 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
     // slots were last seeded into binding 17. A switch re-seeds the live range.
     IREntity::EntityId lastSeededCanvas_ = IREntity::kNullEntity;
 
+    // EntityTransformBuffer slot allocator (#1299, PR-A). MAIN_CANVAS_SO3
+    // entities acquire a slot at `setMode` time (via `IRPrefab::VoxelTransform`)
+    // and release it when leaving the mode. A monotonic high-water plus a
+    // recycle stack keeps slot ids dense and bounded by kMaxGpuVoxelTransforms.
+    // Acquire/release are rare (mode changes), not per-frame.
+    std::uint32_t nextFreeSlot_ = 0;
+    std::vector<std::uint32_t> recycledSlots_;
+
+    std::uint32_t acquireTransformSlot() {
+        if (!recycledSlots_.empty()) {
+            const std::uint32_t slot = recycledSlots_.back();
+            recycledSlots_.pop_back();
+            return slot;
+        }
+        if (nextFreeSlot_ < static_cast<std::uint32_t>(kMaxGpuVoxelTransforms)) {
+            return nextFreeSlot_++;
+        }
+        return kVoxelTransformStatic; // budget exhausted — caller stays CPU-direct
+    }
+
+    void releaseTransformSlot(std::uint32_t slot) {
+        if (slot < static_cast<std::uint32_t>(kMaxGpuVoxelTransforms)) {
+            recycledSlots_.push_back(slot);
+        }
+    }
+
     void beginTick() {
         if (transforms_.size() != static_cast<std::size_t>(kMaxGpuVoxelTransforms)) {
             transforms_.assign(kMaxGpuVoxelTransforms, GpuVoxelTransform{});
@@ -114,12 +141,21 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         if (slot >= static_cast<std::uint32_t>(kMaxGpuVoxelTransforms)) {
             return; // out of transform-slot budget — set stays CPU-direct
         }
+        // Per-entity main-canvas SO(3) (#1299, PR-A): octahedral-snap the
+        // orientation to one of the 24 cube orientations ONCE here, and drive
+        // BOTH the prepass matrix and the per-voxel visible triplet from it so
+        // the rotated geometry and the faces it shows always agree (the
+        // architect's "one snap site"). Non-snap sets (e.g. the continuous
+        // GPU-transform smoke) keep the raw rotation — byte-identical prepass.
+        const IRMath::vec4 rotation = voxelSet.snapTransformOctahedral_
+                                          ? IRMath::octahedralSnap(worldTransform.rotation_)
+                                          : worldTransform.rotation_;
         // CPU mirror of the GLSL/Metal `transform * localPos`: sqtToMat4 is
         // bit-identical to the shader-side helper, so the same operands classify
         // the same on both sides (the CPU↔GPU consistency the plan flags).
         transforms_[slot].modelToWorld_ = IRMath::sqtToMat4(
             worldTransform.scale_,
-            worldTransform.rotation_,
+            rotation,
             worldTransform.translation_
         );
         maxSlotUsed_ = IRMath::max(maxSlotUsed_, static_cast<int>(slot));
@@ -137,6 +173,20 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         }
         touchedPool_ = lastTickPool_;
         touchedCanvas_ = canvas;
+
+        // Stamp the per-voxel visible triplet from the SAME snapped orientation
+        // onto every owned voxel's `C_Voxel::reserved_`, so the raster stages
+        // render the entity's own faces (binding 6, re-uploaded in full by
+        // VOXEL_TO_TRIXEL_STAGE_1 right after this prepass). One stamp value for
+        // the whole set — every voxel shares the snapped orientation.
+        if (voxelSet.snapTransformOctahedral_) {
+            const std::array<IRMath::FaceId, 3> triplet = IRMath::visibleTriplet(rotation);
+            const std::uint32_t packed =
+                IRComponents::packVoxelVisibleTriplet(triplet[0], triplet[1], triplet[2]);
+            lastTickPool_->setVoxelReservedForRange(
+                voxelSet.voxelStartIdx_, static_cast<std::size_t>(voxelSet.numVoxels_), packed
+            );
+        }
     }
 
     void endTick() {
@@ -199,7 +249,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         // (workGroupIndex * 64 + localId.x) lines up with what we dispatch. This
         // is the same fold as `voxelDispatchGridForCount` in system_voxel_to_trixel.hpp;
         // it is inlined here to avoid depending on that heavy STAGE_1 header just
-        // for the helper (a shared home for it is a worthwhile follow-up cleanup).
+        // for the helper. Extraction tracked in #1422.
         constexpr int kLocalSize = 64;
         constexpr int kMaxGroupsX = 1024;
         const int groups = IRMath::divCeil(liveCount, kLocalSize);
@@ -255,5 +305,50 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
 };
 
 } // namespace IRSystem
+
+namespace IRPrefab::VoxelTransform {
+
+// Wire-once-at-init handle to the UPDATE_VOXEL_POSITIONS_GPU transform-slot
+// allocator (#1299, PR-A). The generic `IRPrefab::RotationMode::setMode` reaches
+// the system's free-list through this rather than threading the SystemId through
+// every call — the same shape as `IRPrefab::Chunk::setMembershipMigrationManager`
+// (which threads the id per call; here the id is config so a generic setMode can
+// stay id-free). Init-config: a creation that uses MAIN_CANVAS_SO3 entities calls
+// `setAllocatorSystem(systemId)` once, right after
+// `System<UPDATE_VOXEL_POSITIONS_GPU>::create()`. `IREntity::kNullEntity` is the
+// "never wired" sentinel (system ids count up from 0, so they never collide).
+inline IRSystem::SystemId g_allocatorSystem = IREntity::kNullEntity;
+
+inline void setAllocatorSystem(IRSystem::SystemId systemId) {
+    g_allocatorSystem = systemId;
+}
+
+inline IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU> *allocator() {
+    if (g_allocatorSystem == IREntity::kNullEntity) {
+        return nullptr;
+    }
+    return IRSystem::getSystemParams<IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>>(
+        g_allocatorSystem
+    );
+}
+
+// Acquire an EntityTransformBuffer slot for a MAIN_CANVAS_SO3 set. Returns
+// `IRRender::kVoxelTransformStatic` when the allocator was never wired or the
+// budget is exhausted — callers treat that as "stay GRID / CPU-direct".
+inline std::uint32_t acquireSlot() {
+    auto *p = allocator();
+    return p ? p->acquireTransformSlot() : IRRender::kVoxelTransformStatic;
+}
+
+inline void releaseSlot(std::uint32_t slot) {
+    if (slot == IRRender::kVoxelTransformStatic) {
+        return;
+    }
+    if (auto *p = allocator()) {
+        p->releaseTransformSlot(slot);
+    }
+}
+
+} // namespace IRPrefab::VoxelTransform
 
 #endif /* SYSTEM_UPDATE_VOXEL_POSITIONS_GPU_H */

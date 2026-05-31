@@ -501,7 +501,48 @@ struct C_VoxelPool {
         m_pendingTransformIndexRanges.clear();
     }
 
+    // Stamp a packed `C_Voxel::reserved_` value across a voxel range (#1299,
+    // PR-A). Used by UPDATE_VOXEL_POSITIONS_GPU to write the per-entity SO(3)
+    // visible triplet (see `IRComponents::packVoxelVisibleTriplet`) onto every
+    // voxel of a MAIN_CANVAS_SO3 set. No pending-range queue: the color SSBO
+    // (slot 6) is re-uploaded in full each frame by VOXEL_TO_TRIXEL_STAGE_1, so
+    // the stamp reaches the GPU without extra bookkeeping.
+    void setVoxelReservedForRange(size_t startIdx, size_t count, std::uint32_t reserved) {
+        if (count == 0) {
+            return;
+        }
+        IR_ASSERT(
+            startIdx + count <= m_voxelColors.size(),
+            "setVoxelReservedForRange out of bounds: startIdx={}, count={}, poolSize={}",
+            startIdx,
+            count,
+            m_voxelColors.size()
+        );
+        for (size_t i = startIdx; i < startIdx + count; ++i) {
+            m_voxelColors[i].reserved_ = reserved;
+        }
+    }
+
+    // Count of voxel sets currently in RotationMode::MAIN_CANVAS_SO3 on this
+    // canvas (#1299). VOXEL_TO_TRIXEL_STAGE_1 reads it to set the per-canvas
+    // `visibleFaceIds_.w` flag that gates the raster stages' per-voxel triplet
+    // path; `setMode` bumps it on enter/exit. Zero keeps the byte-identical
+    // shared-triplet path.
+    void incrementSO3SetCount() {
+        ++m_so3SetCount;
+    }
+    void decrementSO3SetCount() {
+        if (m_so3SetCount > 0) {
+            --m_so3SetCount;
+        }
+    }
+    int so3SetCount() const {
+        return m_so3SetCount;
+    }
+
   private:
+    int m_so3SetCount = 0;
+
     int m_voxelPoolSize;
     ivec3 m_voxelPoolSize3D;
     bool m_entityIdsDirty = true;

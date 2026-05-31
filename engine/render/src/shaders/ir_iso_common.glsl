@@ -183,6 +183,24 @@ bool faceIsExposed(uint flagsByte, int faceId) {
     return ((flagsByte >> uint(2 + faceId)) & 1u) == 0u;
 }
 
+// Per-voxel SO(3) visible-triplet unpack from C_Voxel::reserved (binding 6,
+// offset 8). Mirror of `IRComponents::VoxelReservedSO3` /
+// `packVoxelVisibleTriplet` in
+// engine/prefabs/irreden/voxel/components/component_voxel.hpp — the bit offsets
+// MUST stay in lockstep. A main-canvas entity in RotationMode::MAIN_CANVAS_SO3
+// (#1299) stamps the three faces of its octahedral-snapped orientation here, so
+// the raster stages read the entity's own visible triplet instead of the shared
+// per-canvas `visibleFaceIds_` UBO. Bit 0 marks a voxel as carrying a triplet.
+bool reservedHasSO3(uint reserved) {
+    return (reserved & 1u) != 0u;
+}
+
+// `slot` is the visible-triplet index 0/1/2 (X/Y/Z axis), matching the
+// `visibleFaceIds[slot]` UBO indexing. Returns the world FaceId 0..5.
+int unpackReservedFaceId(uint reserved, int slot) {
+    return int((reserved >> uint(1 + slot * 3)) & 0x7u);
+}
+
 ivec3 faceMicroPositionFixed(int face, ivec3 voxelPositionFixed, int u, int v, int subdivisions) {
     if (face == kXFace) {
         return ivec3(
