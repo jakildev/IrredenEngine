@@ -461,18 +461,7 @@ void LuaScript::bindLuaDrivenEcs() {
 #undef IR_BIND_ROTMODE
     m_lua["IRComponent"]["RotationMode"] = rotationModeTable;
 
-    // IREnum.register("Name", { "MEMBER_A", "MEMBER_B", ... }) — define a
-    // closed enum in Lua, the Lua-native counterpart to the C++
-    // `registerEnum` stopgap (#1403). Members map to 0-based integer
-    // ordinals in declaration order; the returned handle IS the enum table
-    // (`handle.MEMBER_A == 0`) and the same table is stored at
-    // `IREnum.<Name>` for cross-file reference. Unlike IRComponent.register
-    // there is no native storage to allocate — an enum is a pure name->int
-    // table — so CODEGEN and EVAL register identically via the shared
-    // detail::registerLuaEnum helper (the codegen tool calls the same helper
-    // from its IREnum shim, so codegen-mode .lua files validate and ordinal-
-    // number the same way at build time).
-    // See .claude/rules/cpp-lua-enums.md and engine/script/CLAUDE.md.
+    // Shared detail::registerLuaEnum guarantees identical ordinals at build time and runtime.
     m_lua["IREnum"] = m_lua.create_table();
     m_lua["IREnum"]["register"] =
         [this](const std::string &enumName, sol::table members) -> sol::object {

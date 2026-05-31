@@ -108,6 +108,11 @@ TEST_F(LuaEnumTest, NonStringMemberRaises) {
     EXPECT_FALSE(result.valid());
 }
 
+TEST_F(LuaEnumTest, EmptyEnumNameRaises) {
+    auto &lua = m_lua.lua();
+    EXPECT_FALSE(lua.safe_script("IREnum.register('', { 'A' })", sol::script_pass_on_error).valid());
+}
+
 TEST_F(LuaEnumTest, EmptyMemberListRaises) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script("IREnum.register('Empty', {})", sol::script_pass_on_error);

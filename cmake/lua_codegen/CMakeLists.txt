@@ -11,10 +11,7 @@ add_executable(ir_lua_codegen main.cpp system_dsl.cpp)
 target_link_libraries(ir_lua_codegen PRIVATE lua sol2)
 target_compile_features(ir_lua_codegen PRIVATE cxx_std_20)
 
-# #1403: the IREnum.register shim shares engine/script's enum-validation
-# header (IRScript::detail::buildLuaEnumTable) so build-time and runtime
-# assign identical ordinals. Header is self-contained (sol2 + std only);
-# the path is engine-relative so it resolves under user-project superbuilds.
+# The IREnum shim shares engine/script's lua_enum_def.hpp so ordinals are identical at build time and runtime.
 target_include_directories(ir_lua_codegen PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../engine/script/include
 )

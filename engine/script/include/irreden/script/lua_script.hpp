@@ -280,11 +280,7 @@ class LuaScript {
     // the misuse.
     std::unordered_set<std::string> m_warnedParallelForEvalSystems;
 
-    // #1403: names of enums defined via `IREnum.register` (the Lua-defined
-    // closed-enum surface bound in bindLuaDrivenEcs). Tracked so a second
-    // registration of the same name raises rather than silently shadowing
-    // the prior table — the duplicate guard `IRComponent.register` gets
-    // from EntityManager::isComponentRegistered.
+    // Tracked so a second registration raises rather than silently shadowing the prior table.
     std::unordered_set<std::string> m_luaEnumNames;
 
     // Declared last so it destructs first: lua_close() runs before any
