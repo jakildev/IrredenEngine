@@ -37,18 +37,17 @@ inline void writeDistanceTap(
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
 // World canvas: maxN=2 (Z-yaw residual ≤ π/4, column lengths ≤ √3).
-// Detached canvas: maxN=6 (full SO(3)).
-// See c_voxel_to_trixel_stage_1.glsl for the full contract.
+// Detached canvas AND per-entity MAIN_CANVAS_SO3 voxels: maxN=6 (full SO(3)).
+// `maxN` is resolved per voxel by the caller; see c_voxel_to_trixel_stage_1.glsl.
 inline void emitDeformedFace(
     int2 base,
     float2x2 D,
     int voxelDistance,
     uint2 localId,
-    bool isDetached,
+    int maxN,
     device atomic_int* distanceScratch,
     int2 canvasSize
 ) {
-    const int maxN = isDetached ? 6 : 2;
     const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     const float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
@@ -99,10 +98,10 @@ kernel void c_voxel_to_trixel_stage_1(
     // this voxel carries a stamped triplet, read the entity's own snapped face;
     // otherwise fall back to the shared per-canvas triplet (byte-identical when
     // the flag is 0).
-    const int faceId =
-        (frameData.visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
-            ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
-            : frameData.visibleFaceIds[slot];
+    const uint reserved = voxels[voxelIndex].reserved;
+    const bool voxelSO3 = frameData.visibleFaceIds[3] != 0 && reservedHasSO3(reserved);
+    const int faceId = voxelSO3 ? unpackReservedFaceId(reserved, slot)
+                                : frameData.visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     const int2 canvasSize = frameData.canvasSizePixels;
@@ -111,11 +110,21 @@ kernel void c_voxel_to_trixel_stage_1(
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
     if (!faceIsExposed(flagsByte, faceId)) return;
 
-    // Per-slot deformation matrix — see stage 1 GLSL for the contract.
-    const float2x2 D = float2x2(
-        frameData.faceDeform[slot].xy,
-        frameData.faceDeform[slot].zw
-    );
+    // Per-slot deformation matrix — see stage 1 GLSL for the contract. A
+    // MAIN_CANVAS_SO3 voxel (#1300, PR-B) reads the canvas's single SO(3)
+    // entity's residual face-deform (residual SO(3) composed with the camera
+    // residual, baked per frame by the prepass) from the per-canvas
+    // faceDeformSO3[] UBO field, and super-samples at n≤6; everything else keeps
+    // the shared per-canvas deform and world cap (n≤2).
+    float2x2 D;
+    int emitMaxN;
+    if (voxelSO3) {
+        D = float2x2(frameData.faceDeformSO3[slot].xy, frameData.faceDeformSO3[slot].zw);
+        emitMaxN = 6;
+    } else {
+        D = float2x2(frameData.faceDeform[slot].xy, frameData.faceDeform[slot].zw);
+        emitMaxN = frameData.isDetachedCanvas > 0.5f ? 6 : 2;
+    }
 
     // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — see
     // c_voxel_to_trixel_stage_1.glsl for the full contract. perAxisRoute==0
@@ -184,7 +193,7 @@ kernel void c_voxel_to_trixel_stage_1(
                 frameData.voxelRenderOptions
             ) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, distanceScratch, canvasSize);
+        emitDeformedFace(base, D, voxelDistance, localId, emitMaxN, distanceScratch, canvasSize);
         return;
     }
 

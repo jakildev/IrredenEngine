@@ -28,6 +28,11 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec4 faceDeform[3];
     // Per-slot world FaceId (0..5). See stage 1 + #1278 for the contract.
     uniform ivec4 visibleFaceIds;
+    // Per-slot residual face-deform for the canvas's single MAIN_CANVAS_SO3
+    // entity (#1300, PR-B) — see stage 1. Read in place of faceDeform[] for
+    // SO(3) voxels so the color tap lands on the same deformed pixels stage 1
+    // wrote distance to.
+    uniform vec4 faceDeformSO3[3];
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -81,15 +86,16 @@ void writeColorTap(
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
-// Super-sampling gated by isDetachedCanvas — see stage-1 for the contract.
+// Super-sampling cap is resolved per voxel by the caller (detached canvas and
+// MAIN_CANVAS_SO3 voxels cap at n=6) — see stage-1 for the contract.
 void emitDeformedFace(
     const ivec2 base,
     const mat2 D,
     const int voxelDistance,
     const vec4 voxelColor,
-    const uint voxelIndex
+    const uint voxelIndex,
+    const int maxN
 ) {
-    int maxN = isDetachedCanvas > 0.5 ? 6 : 1;
     int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
@@ -112,9 +118,10 @@ void main() {
     // Per-entity SO(3) (#1299) — mirrors c_voxel_to_trixel_stage_1.glsl so both
     // raster stages gate the exposed-face check on the same face. Byte-identical
     // to pre-#1299 when visibleFaceIds.w == 0.
-    const int faceId = (visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
-                           ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
-                           : visibleFaceIds[slot];
+    const uint reserved = voxels[voxelIndex].reserved;
+    const bool voxelSO3 = visibleFaceIds[3] != 0 && reservedHasSO3(reserved);
+    const int faceId = voxelSO3 ? unpackReservedFaceId(reserved, slot)
+                                : visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
@@ -123,8 +130,21 @@ void main() {
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
     if (!faceIsExposed(flagsByte, faceId)) return;
 
-    // Per-slot deformation matrix — see stage 1 for the contract.
-    const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
+    // Per-slot deformation matrix — see stage 1 for the contract. A
+    // MAIN_CANVAS_SO3 voxel (#1300, PR-B) reads the canvas's single SO(3)
+    // entity's residual face-deform from the per-canvas faceDeformSO3[] UBO field
+    // and super-samples at n≤6 so the color tap covers every pixel stage 1 wrote
+    // distance to; otherwise the shared per-canvas deform with the existing world
+    // cap (n≤1).
+    mat2 D;
+    int emitMaxN;
+    if (voxelSO3) {
+        D = mat2(faceDeformSO3[slot].xy, faceDeformSO3[slot].zw);
+        emitMaxN = 6;
+    } else {
+        D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
+        emitMaxN = isDetachedCanvas > 0.5 ? 6 : 1;
+    }
 
     // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — mirrors
     // stage 1's geometry exactly so the color/entity-id tap lands on the same
@@ -182,7 +202,7 @@ void main() {
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex, emitMaxN);
         return;
     }
 
@@ -207,5 +227,5 @@ void main() {
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+    emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex, emitMaxN);
 }

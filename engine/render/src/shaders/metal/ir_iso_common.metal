@@ -609,6 +609,14 @@ struct FrameDataVoxelToTrixel {
     // .w is std140 padding. Mirrors `ivec4 visibleFaceIds` in the GLSL
     // UBO declarations.
     int4 visibleFaceIds;
+    // Per-slot residual face-deform for the canvas's single MAIN_CANVAS_SO3
+    // entity (#1300, PR-B), same column-major packing as faceDeform[]. The
+    // voxel raster reads this in place of faceDeform[] for SO(3) voxels (gated
+    // by visibleFaceIds.w); identity and unread otherwise. Appended at the tail
+    // so the other buffer(7) consumers (lighting / shadow / AO / fog / compact)
+    // that share this struct simply don't read it — the CPU buffer is larger
+    // than what they index. Mirrors `vec4 faceDeformSO3[3]` in the raster GLSL.
+    float4 faceDeformSO3[3];
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

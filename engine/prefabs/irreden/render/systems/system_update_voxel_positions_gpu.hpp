@@ -48,6 +48,8 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/voxel_pool_allocation.hpp>
+#include <irreden/render/camera.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -103,6 +105,14 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
     std::uint32_t nextFreeSlot_ = 0;
     std::vector<std::uint32_t> recycledSlots_;
 
+    // Camera residual yaw, snapshotted once per frame in beginTick (#1300,
+    // PR-B). The per-entity SO(3) face-deform bake composes it with each
+    // entity's octahedral-snap residual so a MAIN_CANVAS_SO3 entity rasterized
+    // directly onto the shared canvas deforms its faces by BOTH its own
+    // rotation and the camera residual. The camera is moved in the INPUT
+    // pipeline, so this value is stable through the RENDER stages that read it.
+    float cameraResidualYaw_ = 0.0f;
+
     std::uint32_t acquireTransformSlot() {
         if (!recycledSlots_.empty()) {
             const std::uint32_t slot = recycledSlots_.back();
@@ -131,6 +141,13 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         touchedCanvas_ = IREntity::kNullEntity;
         lastTickCanvas_ = IREntity::kNullEntity;
         lastTickPool_ = nullptr;
+        // Snapshot the camera residual yaw once per frame for the per-entity
+        // SO(3) face-deform bake (#1300, PR-B). residualYaw is 0 at every
+        // cardinal — which is exactly when the main canvas runs the
+        // single-canvas voxel raster that consumes faceDeform (the per-axis
+        // canvas path owns the non-cardinal residual window) — so the bake
+        // reduces to the entity residual there, byte-matching the detached path.
+        cameraResidualYaw_ = IRPrefab::Camera::getYawSplit().second;
     }
 
     void tick(C_VoxelSetNew &voxelSet, const C_WorldTransform &worldTransform) {
@@ -185,6 +202,39 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
                 IRComponents::packVoxelVisibleTriplet(triplet[0], triplet[1], triplet[2]);
             lastTickPool_->setVoxelReservedForRange(
                 voxelSet.voxelStartIdx_, static_cast<std::size_t>(voxelSet.numVoxels_), packed
+            );
+
+            // Per-entity residual face deformation (#1300, PR-B). The octahedral
+            // snap above quantizes the orientation; the residual is the leftover
+            // continuous rotation that turns PR-A's per-orientation *stepping*
+            // into smooth SO(3). Compose it with the camera residual yaw — exact
+            // because faceDeformationMatrix(face, yaw) == faceDeformationMatrixSO3(
+            // face, qZ(-yaw)), so the two residuals fuse into one quaternion
+            // instead of two linearized 2x2 products. The raster emits at the
+            // snapped orientation (positions via modelToWorld_, faces via the
+            // triplet) and applies this 2x2 per axis at emit time. Axis-only
+            // (X_NEG/X_POS share the X matrix), matching the detached per-canvas
+            // bake in system_voxel_to_trixel.hpp.
+            //
+            // Hand it to the pool (binding-7 per-canvas UBO path, #1300 Q2),
+            // NOT the per-entity SSBO (binding 18): the raster reading a
+            // prepass-owned `BUFFER_STORAGE_DYNAMIC` SSBO every frame tripped a
+            // Metal cross-stage orphan hazard (architect direction; the SSBO
+            // "hordes" path is the deferred follow-up). VOXEL_TO_TRIXEL_STAGE_1
+            // copies this into `FrameDataVoxelToCanvas::faceDeformSO3_` for the
+            // single SO(3) entity on this canvas; the surrounding world voxels
+            // keep the shared camera-residual `faceDeform_`.
+            const IRMath::vec4 residual = IRMath::octahedralSnapResidual(worldTransform.rotation_);
+            const IRMath::vec4 cameraResidual =
+                IRMath::quatAxisAngle(IRMath::vec3(0.0f, 0.0f, 1.0f), -cameraResidualYaw_);
+            const IRMath::vec4 combined = IRMath::quatMul(cameraResidual, residual);
+            const IRMath::mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, combined);
+            const IRMath::mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, combined);
+            const IRMath::mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, combined);
+            lastTickPool_->setSO3FaceDeform(
+                IRMath::vec4(fdX[0], fdX[1]),
+                IRMath::vec4(fdY[0], fdY[1]),
+                IRMath::vec4(fdZ[0], fdZ[1])
             );
         }
     }

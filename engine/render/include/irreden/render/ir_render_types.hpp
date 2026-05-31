@@ -190,6 +190,25 @@ struct FrameDataVoxelToCanvas {
     // outward normal / tangents). Single source of face metadata per
     // design-doc § "AO / lighting agree by construction".
     ivec4 visibleFaceIds_ = ivec4(0, 2, 4, 0);
+    // Per-slot residual face-deform for the canvas's single
+    // `RotationMode::MAIN_CANVAS_SO3` entity (#1300, PR-B), packed column-major
+    // (.xy = col0, .zw = col1) exactly like `faceDeform_[]`. Baked CPU-side each
+    // frame by `UPDATE_VOXEL_POSITIONS_GPU` as the entity's octahedral-snap
+    // residual composed with the camera residual yaw
+    // (`faceDeformationMatrixSO3(axis, combined)`), handed off via
+    // `C_VoxelPool::so3FaceDeform()`. The voxel raster reads THIS (not the
+    // shared `faceDeform_`) for voxels whose `reserved_` carries the SO(3) valid
+    // bit, so the entity deforms by its OWN rotation while the surrounding world
+    // voxels keep the camera-residual `faceDeform_`. Only consumed when
+    // `visibleFaceIds_.w != 0` (an SO(3) set is present); identity otherwise, so
+    // a canvas with no SO(3) set is byte-identical to pre-#1300. One deform per
+    // canvas — multiple distinct-deform entities ("hordes") are the deferred
+    // per-entity-SSBO follow-up (#1300 design note; the binding-18 SSBO path
+    // hit a Metal cross-stage orphan hazard). std140 vec4[3] = 48 B; mirrored as
+    // `vec4 faceDeformSO3[3]` in the raster shaders' binding-7 UBO.
+    vec4 faceDeformSO3_[3] = {
+        vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f)
+    };
 };
 
 struct FrameDataTrixelToTrixel {
@@ -375,8 +394,16 @@ static_assert(
     "(faceDeform_ at 80 + 3 * 16 B = 128). std140 ivec4 alignment is 16 B"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 144,
-    "FrameDataVoxelToCanvas size must mirror its std140 GLSL block"
+    offsetof(FrameDataVoxelToCanvas, faceDeformSO3_) == 144,
+    "FrameDataVoxelToCanvas::faceDeformSO3_ must follow visibleFaceIds_ at "
+    "offset 144 (128 + 16 B ivec4). Appended at the tail so binding-7 consumers "
+    "that declare only the prefix block (lighting/shadow/AO/scatter) are "
+    "unaffected — the bound buffer may exceed their declared block size (#1300)"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 192,
+    "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
+    "(faceDeformSO3_ at 144 + 3 * 16 B = 192)"
 );
 
 struct FrameDataSun {

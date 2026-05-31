@@ -477,8 +477,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // one MAIN_CANVAS_SO3 set. Rides in the otherwise-dead `.w` lane of
         // visibleFaceIds_ — zero struct-layout change. 0 (no SO(3) set) keeps
         // the byte-identical shared-triplet path; the shader skips the extra
-        // SSBO load entirely.
+        // SO(3) face-deform read entirely.
         frameData_.visibleFaceIds_.w = voxelPool.so3SetCount() > 0 ? 1 : 0;
+        // Per-entity SO(3) residual face-deform (#1300, PR-B, Q2 binding-7 path):
+        // copy the single SO(3) entity's composed residual — baked this frame by
+        // UPDATE_VOXEL_POSITIONS_GPU into the pool — into the per-canvas UBO. The
+        // raster reads `faceDeformSO3_` for SO(3) voxels (gated by the `.w` flag
+        // above) while the surrounding world voxels keep the shared
+        // camera-residual `faceDeform_`. No per-entity SSBO bind (binding 18) —
+        // that tripped a Metal cross-stage orphan hazard; the per-canvas UBO is
+        // already a RENDER-stage resource the raster consumes. Left at identity
+        // when no SO(3) set is present (unread there, so byte-identical).
+        if (frameData_.visibleFaceIds_.w != 0) {
+            const auto &so3FaceDeform = voxelPool.so3FaceDeform();
+            frameData_.faceDeformSO3_[0] = so3FaceDeform[0];
+            frameData_.faceDeformSO3_[1] = so3FaceDeform[1];
+            frameData_.faceDeformSO3_[2] = so3FaceDeform[2];
+        }
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         // Voxel positions are uploaded via the pending-range queue populated by

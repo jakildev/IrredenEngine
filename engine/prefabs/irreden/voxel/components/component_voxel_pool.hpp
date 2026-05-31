@@ -7,6 +7,7 @@
 
 #include <irreden/voxel/components/component_voxel.hpp>
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <optional>
@@ -540,8 +541,33 @@ struct C_VoxelPool {
         return m_so3SetCount;
     }
 
+    // Per-slot residual face-deform (X/Y/Z axis, column-major in vec4) for this
+    // canvas's single `RotationMode::MAIN_CANVAS_SO3` entity (#1300, PR-B).
+    // `UPDATE_VOXEL_POSITIONS_GPU` bakes it each frame (the entity's
+    // octahedral-snap residual composed with the camera residual yaw) and stores
+    // it here; `VOXEL_TO_TRIXEL_STAGE_1` copies it into the per-canvas
+    // `FrameDataVoxelToCanvas::faceDeformSO3_` UBO field the raster reads for
+    // SO(3) voxels. This is a per-frame compute hand-off between two systems
+    // sharing the canvas's pool, NOT a CPU-authored cache — it is rewritten
+    // unconditionally every frame an SO(3) set is present (`so3SetCount() > 0`)
+    // and read only in that same case. One deform per canvas: with multiple
+    // SO(3) sets the last set ticked wins (single-entity scope; "hordes" are the
+    // deferred per-entity-SSBO follow-up).
+    void setSO3FaceDeform(const vec4 &slotX, const vec4 &slotY, const vec4 &slotZ) {
+        m_so3FaceDeform[0] = slotX;
+        m_so3FaceDeform[1] = slotY;
+        m_so3FaceDeform[2] = slotZ;
+    }
+    const std::array<vec4, 3> &so3FaceDeform() const {
+        return m_so3FaceDeform;
+    }
+
   private:
     int m_so3SetCount = 0;
+    // Identity 2x2 per axis (col0 = (1,0), col1 = (0,1)) until baked.
+    std::array<vec4, 3> m_so3FaceDeform = {
+        vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f)
+    };
 
     int m_voxelPoolSize;
     ivec3 m_voxelPoolSize3D;

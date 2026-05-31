@@ -46,8 +46,9 @@ inline void writeColorTap(
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
-// Super-sampling gated by isDetached — see c_voxel_to_trixel_stage_1.glsl
-// for the full super-sampling contract.
+// `maxN` is resolved per voxel by the caller (detached canvas and
+// MAIN_CANVAS_SO3 voxels cap at n=6) — see c_voxel_to_trixel_stage_1.glsl for
+// the full super-sampling contract.
 inline void emitDeformedFace(
     int2 base,
     float2x2 D,
@@ -55,14 +56,13 @@ inline void emitDeformedFace(
     float4 voxelColor,
     uint2 packedEntityId,
     uint2 localId,
-    bool isDetached,
+    int maxN,
     int2 canvasSize,
     device const atomic_int* distanceScratch,
     texture2d<float, access::write> triangleCanvasColors,
     texture2d<int, access::write> triangleCanvasDistances,
     texture2d<uint, access::write> triangleCanvasEntityIds
 ) {
-    const int maxN = isDetached ? 6 : 1;
     const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     const float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
@@ -120,10 +120,10 @@ kernel void c_voxel_to_trixel_stage_2(
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(localId);
     // Per-entity SO(3) (#1299) — mirror of c_voxel_to_trixel_stage_2.glsl.
-    const int faceId =
-        (frameData.visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
-            ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
-            : frameData.visibleFaceIds[slot];
+    const uint reserved = voxels[voxelIndex].reserved;
+    const bool voxelSO3 = frameData.visibleFaceIds[3] != 0 && reservedHasSO3(reserved);
+    const int faceId = voxelSO3 ? unpackReservedFaceId(reserved, slot)
+                                : frameData.visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;
@@ -133,11 +133,21 @@ kernel void c_voxel_to_trixel_stage_2(
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
     if (!faceIsExposed(flagsByte, faceId)) return;
 
-    // Per-slot deformation matrix — see stage 1 GLSL for the contract.
-    const float2x2 D = float2x2(
-        frameData.faceDeform[slot].xy,
-        frameData.faceDeform[slot].zw
-    );
+    // Per-slot deformation matrix — see stage 1 for the contract. A
+    // MAIN_CANVAS_SO3 voxel (#1300, PR-B) reads the canvas's single SO(3)
+    // entity's residual face-deform from the per-canvas faceDeformSO3[] UBO field
+    // and super-samples at n≤6 so the color tap covers every pixel stage 1 wrote
+    // distance to; otherwise the shared per-canvas deform with the existing world
+    // cap (n≤1).
+    float2x2 D;
+    int emitMaxN;
+    if (voxelSO3) {
+        D = float2x2(frameData.faceDeformSO3[slot].xy, frameData.faceDeformSO3[slot].zw);
+        emitMaxN = 6;
+    } else {
+        D = float2x2(frameData.faceDeform[slot].xy, frameData.faceDeform[slot].zw);
+        emitMaxN = frameData.isDetachedCanvas > 0.5f ? 6 : 1;
+    }
 
     // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — mirrors
     // stage 1's geometry exactly so the color/entity-id tap lands on the same
@@ -249,7 +259,7 @@ kernel void c_voxel_to_trixel_stage_2(
         voxelColor,
         packedEntityId,
         localId,
-        frameData.isDetachedCanvas > 0.5f,
+        emitMaxN,
         canvasSize,
         distanceScratch,
         triangleCanvasColors,

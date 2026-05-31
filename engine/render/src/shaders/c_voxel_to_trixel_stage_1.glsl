@@ -55,6 +55,13 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // `.w` is std140 padding. At cardinal 0 the default {0, 2, 4} = {X_NEG,
     // Y_NEG, Z_NEG} matches the pre-#1278 lower-coordinate semantics.
     uniform ivec4 visibleFaceIds;
+    // Per-slot residual face-deform for the canvas's single MAIN_CANVAS_SO3
+    // entity (#1300, PR-B), same column-major packing as faceDeform[]. Read in
+    // place of faceDeform[] for voxels carrying the reserved_ SO(3) valid bit so
+    // the entity deforms by its own rotation; identity (and unread) when
+    // visibleFaceIds.w == 0. Appended at the tail of the binding-7 UBO — other
+    // binding-7 consumers declare only the prefix block and are unaffected.
+    uniform vec4 faceDeformSO3[3];
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -106,10 +113,10 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
 // Super-samples by D's magnification to fill the face with no forward-
 // mapping gaps. World canvas caps at n=2 (Z-yaw residual ≤ π/4 yields
 // column lengths ≤ √3, since |col0|² = 3 - 2(c±s) ≤ 3 for X/Y faces);
-// detached canvases cap at n=6 for full SO(3).
-// At residualYaw==0 on any canvas the identity D collapses n to 1.
-void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance) {
-    int maxN = isDetachedCanvas > 0.5 ? 6 : 2;
+// detached canvases AND per-entity MAIN_CANVAS_SO3 voxels cap at n=6 for full
+// SO(3) (the residual quaternion can magnify a face well past √3). `maxN` is
+// resolved per voxel by the caller. At an identity D any cap collapses n to 1.
+void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance, const int maxN) {
     int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     float inv = 1.0 / float(n);
     for (int sy = 0; sy < n; ++sy) {
@@ -139,9 +146,10 @@ void main() {
     // fall back to the shared per-canvas triplet. When the flag is 0 (no SO(3)
     // set on the canvas) the `reserved` load is skipped — byte-identical to
     // pre-#1299.
-    const int faceId = (visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
-                           ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
-                           : visibleFaceIds[slot];
+    const uint reserved = voxels[voxelIndex].reserved;
+    const bool voxelSO3 = visibleFaceIds[3] != 0 && reservedHasSO3(reserved);
+    const int faceId = voxelSO3 ? unpackReservedFaceId(reserved, slot)
+                                : visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     // Exposed-face gate (#1278): emit only when the world face this slot
@@ -165,7 +173,23 @@ void main() {
     // 0 + residualYaw==0 every slot's D is the identity, so the per-slot
     // path collapses to faceOffset_2x3(slot, subPixel) — bit-identical
     // pixel positions against the pre-T-293 path.
-    const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
+    //
+    // Per-entity SO(3) (#1300, PR-B): a MAIN_CANVAS_SO3 voxel reads the canvas's
+    // single SO(3) entity's residual face-deform (residual SO(3) composed with
+    // the camera residual, baked per frame by UPDATE_VOXEL_POSITIONS_GPU) from
+    // the per-canvas faceDeformSO3[] UBO field, and super-samples at the detached
+    // cap (n≤6) to fill the larger residual skew. Every other voxel keeps the
+    // shared per-canvas camera-residual deform and the world cap (n≤2) —
+    // byte-identical to pre-#1300.
+    mat2 D;
+    int emitMaxN;
+    if (voxelSO3) {
+        D = mat2(faceDeformSO3[slot].xy, faceDeformSO3[slot].zw);
+        emitMaxN = 6;
+    } else {
+        D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
+        emitMaxN = isDetachedCanvas > 0.5 ? 6 : 2;
+    }
 
     // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310;
     // docs/design/per-axis-trixel-canvas-rotation.md). At perAxisRoute==0 this
@@ -247,7 +271,7 @@ void main() {
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance);
+        emitDeformedFace(base, D, voxelDistance, emitMaxN);
         return;
     }
 
@@ -276,5 +300,5 @@ void main() {
         microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance);
+    emitDeformedFace(base, D, voxelDistance, emitMaxN);
 }
