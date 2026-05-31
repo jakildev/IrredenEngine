@@ -280,6 +280,9 @@ class LuaScript {
     // the misuse.
     std::unordered_set<std::string> m_warnedParallelForEvalSystems;
 
+    // Tracked so a second registration raises rather than silently shadowing the prior table.
+    std::unordered_set<std::string> m_luaEnumNames;
+
     // Declared last so it destructs first: lua_close() runs before any
     // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the
     // invariant in world.hpp where m_lua leads so EntityManager outlives

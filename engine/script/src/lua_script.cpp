@@ -7,6 +7,7 @@
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
+#include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
@@ -459,6 +460,16 @@ void LuaScript::bindLuaDrivenEcs() {
     IR_BIND_ROTMODE(DETACHED);
 #undef IR_BIND_ROTMODE
     m_lua["IRComponent"]["RotationMode"] = rotationModeTable;
+
+    // Shared detail::registerLuaEnum guarantees identical ordinals at build time and runtime.
+    m_lua["IREnum"] = m_lua.create_table();
+    m_lua["IREnum"]["register"] =
+        [this](const std::string &enumName, sol::table members) -> sol::object {
+        return sol::make_object(
+            m_lua,
+            detail::registerLuaEnum(m_lua, m_luaEnumNames, enumName, members)
+        );
+    };
 
     m_lua.new_usertype<IRScript::LuaEntity>(
         "LuaEntity",

@@ -37,3 +37,14 @@ IRComponent.register("CodegenHpForced", {
 IRComponent.register("CodegenScore", {
     value = 0,
 })
+
+-- #1403: a Lua-defined enum consumed at codegen-capture time. CodegenDevice's
+-- `kind` field defaults to CodegenDeviceType.SYNTH (0-based ordinal 1), so the
+-- codegen IREnum shim must build the enum table and resolve the member to its
+-- ordinal during the capture pass — and to the SAME ordinal the runtime
+-- IREnum.register produces (both share detail::buildLuaEnumTable).
+local CodegenDeviceType = IREnum.register("CodegenDeviceType", { "EFFECT", "SYNTH", "CONTROLLER" })
+
+IRComponent.register("CodegenDevice", {
+    kind = CodegenDeviceType.SYNTH,
+})

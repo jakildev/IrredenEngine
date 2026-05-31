@@ -225,6 +225,15 @@ local C_Hp = IRComponent.register("Hp", {
 -- Manual field binding (Q5, schemaless field):
 IRComponent.bindField("Tag", "morale", "float")
 
+-- Enums (#1403) -----------------------------------------------------
+-- Closed enums defined in Lua, the Lua-native counterpart to the C++
+-- registerEnum stopgap. Members map to 0-based ordinals in declaration
+-- order; the returned handle is the enum table and is also stored at
+-- IREnum.<Name>. No C++ lowering — a pure name->int table built the same
+-- way in CODEGEN and EVAL (shared IRScript::detail::buildLuaEnumTable).
+local DeviceType = IREnum.register("DeviceType", { "EFFECT", "SYNTH", "CONTROLLER" })
+local kind = DeviceType.SYNTH                       -- 1; usable as an int32 default
+
 -- Systems -----------------------------------------------------------
 local regenSystemId = IRSystem.registerSystem({
     name       = "Regen",
