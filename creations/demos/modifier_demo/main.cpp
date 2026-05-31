@@ -678,8 +678,7 @@ void initEntities() {
     }
 
     // HUD: combined per-cube status panel.
-    // Smallest font (fontSize=1) + gui_scale=1 keeps the HUD compact so it
-    // doesn't dominate the viewport. Press [H] to surface the extended help.
+    // Press [H] to surface the extended help.
     IRModifierDemo::g_hudStatusEntity = IREntity::createEntity(
         C_TextSegment{""},
         C_GuiPosition{12, 12},

@@ -305,8 +305,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
 
     int columnTrixels() const {
         // Clamp to fit narrow canvases — the GUI canvas is
-        // `mainCanvasSize / guiScale` (default scale=2), so a 480-trixel
-        // main canvas yields a 240-trixel GUI canvas. The overlay's
+        // `mainCanvasSize / guiScale` (default scale=1), so a 480-trixel
+        // main canvas yields a 480-trixel GUI canvas. The overlay's
         // formatted lines truncate cleanly on the right at the canvas edge
         // if the column shrinks below the format's preferred width.
         const int available = canvasWidth_ - 2 * kPerfStatsPadding.x;

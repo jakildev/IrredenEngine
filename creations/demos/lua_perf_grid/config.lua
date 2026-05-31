@@ -27,7 +27,7 @@ config = {
     profiling_enabled = true,
     gpu_stage_timing = true,
     gpu_stage_timing_legacy = false,
-    gui_scale = 2,
+    gui_scale = 1,
     hovered_trixel_visible = false,
 }
 
