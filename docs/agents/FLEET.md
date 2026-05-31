@@ -884,9 +884,13 @@ Specifically, **never pass these via `--label` when filing**:
 - `fleet:merger-cooldown` / `fleet:changes-made` — owned by the
   worker / merger pipeline.
 - `fleet:semantic-conflict` — owned by the **merger** (sets when it
-  can't auto-rebase). Cleared by the **opus-worker** after it
-  resolves the conflict, or escalated to `human:needs-fix` if even
-  Opus can't resolve.
+  can't auto-rebase), on **either repo** (the merger runs a game pass
+  too — PR #1371). Cleared by the **opus-worker** after it resolves the
+  conflict — its step 1c covers **both** engine and game PRs (game via
+  the game worktree + `--repo jakildev/irreden` + the
+  `IRREDEN_USER_PROJECTS` build-verify) — or escalated to
+  `human:needs-fix` if even Opus can't resolve (or, for a game PR, can't
+  build-verify the resolution).
 - `fleet:fork-of-other-pr` — owned by the **merger** (sets when it
   detects this PR's branch was forked from another open PR's branch
   rather than from master, meaning the diff carries inherited commits
