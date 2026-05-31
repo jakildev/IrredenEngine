@@ -1029,9 +1029,10 @@ Specifically, **never pass these via `--label` when filing**:
   `fleet:queued`+`human:owned`) that persisted across N reconcile
   `--apply` ticks (`FLEET_RECONCILE_DRIFT_TICKS`, default 3). Reconcile
   refreshes one open issue's body in place and never opens a second; the
-  human resolves the listed rows and closes it. The counter resets the
-  moment a finding stops recurring, so a transient one-tick blip never
-  escalates.
+  human resolves the listed rows, and reconcile auto-closes the tracker
+  once every finding clears (re-filing a fresh one if drift recurs). The
+  counter resets the moment a finding stops recurring, so a transient
+  one-tick blip never escalates.
 
 **The cross-surface `reconcile` pass.** `fleet-claim reconcile`
 cross-checks the four claim surfaces (issue/PR labels, open-PR state,
