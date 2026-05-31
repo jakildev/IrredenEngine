@@ -366,6 +366,12 @@ def fetch_task_queue(repo_slug):
                 owner = agent or suffix
                 break
 
+        # fleet:needs-human marks tasks that require manual human action
+        # before agents can work them. Skip so they don't appear in
+        # tasks.open and trigger infinite autonomous pickup attempts.
+        if "fleet:needs-human" in labels:
+            continue
+
         in_progress = "fleet:in-progress" in labels or owner != "free"
         status = "~" if in_progress else " "
 
