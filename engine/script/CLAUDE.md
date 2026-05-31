@@ -187,6 +187,45 @@ out-of-range. Use index-style inside any per-tick Lua system body.
 
 The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
 
+## Lua-defined enums (`IREnum.register`)
+
+Closed enums can be defined in Lua, the Lua-native counterpart to the C++
+`registerEnum` stopgap (`*_lua.hpp` + `kHasLuaBinding`). Bound by the same
+`bindLuaDrivenEcs()` call, so no extra init:
+
+```lua
+local DeviceType = IREnum.register("DeviceType", { "EFFECT", "SYNTH", "CONTROLLER" })
+DeviceType.EFFECT       -- 0
+DeviceType.SYNTH        -- 1
+IREnum.DeviceType.SYNTH -- same table, reachable by name from any file
+```
+
+- **Members map to 0-based ordinals** in declaration order — same numbering
+  as a C++ `enum class` and the 0-based field `index` of
+  `IRComponent.register`. The returned handle *is* the enum table, and the
+  same table is also stored at `IREnum.<Name>` for cross-file reference.
+- **Validated at registration, not silently.** A non-string member, an
+  empty-string member, an empty member list, a duplicate member, a
+  duplicate enum name, or the reserved name `"register"` raises a Lua error
+  at the `IREnum.register` call. A *typo on access* (`DeviceType.EFEKT`) is
+  plain Lua `nil` — push enum members up to load time by spelling them
+  through the table, never as bare strings (see
+  [`.claude/rules/cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)).
+- **Usable wherever a C++ `registerEnum` enum is** — the value is an
+  integer, so `kind = DeviceType.SYNTH` is a valid `int32` component-field
+  default, a function argument, etc.
+- **No native storage.** Unlike `IRComponent.register`, an enum is a pure
+  name→int table with nothing to lower to C++, so **CODEGEN and EVAL behave
+  identically**: both build the table at runtime, and the build-time codegen
+  tool carries a matching `IREnum.register` shim (sharing
+  `IRScript::detail::buildLuaEnumTable`, `lua_enum_def.hpp`) so codegen-mode
+  `.lua` files that reference enum members — e.g. as a component default —
+  resolve to the *same* ordinals at build time and validate the same way.
+- **Limitation:** an enum member used *inside a CODEGEN system tick body*
+  (lowered by `system_dsl`) is not yet folded to a literal by the DSL —
+  enums are for setup/identity/config and EVAL-mode logic in v1. Use a
+  literal in CODEGEN tick bodies, or keep the enum-consuming system in EVAL.
+
 ## Build-time codegen of Lua-defined components (CODEGEN mode)
 
 The same `IRComponent.register("Name", { ... })` schema can be **statically

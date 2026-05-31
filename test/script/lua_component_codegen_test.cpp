@@ -28,10 +28,10 @@
 
 // MSVC names the POSIX pipe-spawn helpers with a leading underscore.
 #ifdef _WIN32
-#define ir_popen  _popen
+#define ir_popen _popen
 #define ir_pclose _pclose
 #else
-#define ir_popen  popen
+#define ir_popen popen
 #define ir_pclose pclose
 #endif
 
@@ -173,6 +173,16 @@ TEST_F(LuaComponentCodegenTest, LuaFieldAccessorReturnsValue) {
 
 // ---- Schema-error coverage (subprocess invocation) -------------------------
 
+// #1403: CodegenDevice.kind defaults to CodegenDeviceType.SYNTH (0-based
+// ordinal 1). Proves the codegen IREnum shim built the enum table and
+// resolved the member during the capture pass, and that codegen and EVAL
+// assign identical ordinals (both go through detail::buildLuaEnumTable).
+TEST_F(LuaComponentCodegenTest, EnumMemberResolvesAsFieldDefaultDuringCodegen) {
+    static_assert(std::is_same_v<decltype(IRComponents::C_CodegenDevice::kind_), std::int32_t>);
+    IRComponents::C_CodegenDevice d;
+    EXPECT_EQ(d.kind_, 1);
+}
+
 // Runs the codegen binary on a fixture that uses the explicit
 // `{ type = 'int32', default = <out-of-range> }` form and verifies the tool
 // errors out with a clear diagnostic instead of silently truncating. The
@@ -184,8 +194,8 @@ TEST(LuaComponentCodegenSchemaError, ExplicitInt32OverflowRaisesError) {
         std::filesystem::temp_directory_path() / "ir_lua_codegen_overflow.hpp";
     std::filesystem::remove(outPath);
 
-    const std::string cmd = std::string{IR_LUA_CODEGEN_BINARY} + " --out " +
-        outPath.string() + " " + IR_LUA_CODEGEN_OVERFLOW_FIXTURE + " 2>&1";
+    const std::string cmd = std::string{IR_LUA_CODEGEN_BINARY} + " --out " + outPath.string() +
+                            " " + IR_LUA_CODEGEN_OVERFLOW_FIXTURE + " 2>&1";
 
     FILE *pipe = ir_popen(cmd.c_str(), "r");
     ASSERT_NE(pipe, nullptr) << "failed to spawn ir_lua_codegen";
@@ -200,6 +210,35 @@ TEST(LuaComponentCodegenSchemaError, ExplicitInt32OverflowRaisesError) {
     EXPECT_NE(status, 0) << "codegen tool should fail on int32 overflow; output: " << output;
     EXPECT_NE(output.find("out of int32 range"), std::string::npos)
         << "expected 'out of int32 range' diagnostic; got: " << output;
+    EXPECT_FALSE(std::filesystem::exists(outPath))
+        << "codegen tool should not write output on schema error";
+}
+
+// #1403: the codegen IREnum shim validates member lists at build time. A
+// non-string member must abort the tool with the same diagnostic the EVAL
+// path raises (shared detail::buildLuaEnumTable), and no header is written.
+TEST(LuaEnumCodegenSchemaError, NonStringMemberRaisesError) {
+    const std::filesystem::path outPath =
+        std::filesystem::temp_directory_path() / "ir_lua_codegen_enum_error.hpp";
+    std::filesystem::remove(outPath);
+
+    const std::string cmd = std::string{IR_LUA_CODEGEN_BINARY} + " --out " + outPath.string() +
+                            " " + IR_LUA_CODEGEN_ENUM_ERROR_FIXTURE + " 2>&1";
+
+    FILE *pipe = ir_popen(cmd.c_str(), "r");
+    ASSERT_NE(pipe, nullptr) << "failed to spawn ir_lua_codegen";
+
+    std::string output;
+    char buf[256];
+    while (std::fgets(buf, sizeof(buf), pipe) != nullptr) {
+        output += buf;
+    }
+    const int status = ir_pclose(pipe);
+
+    EXPECT_NE(status, 0) << "codegen tool should fail on non-string enum member; output: "
+                         << output;
+    EXPECT_NE(output.find("is not a string"), std::string::npos)
+        << "expected 'is not a string' diagnostic; got: " << output;
     EXPECT_FALSE(std::filesystem::exists(outPath))
         << "codegen tool should not write output on schema error";
 }

@@ -50,6 +50,7 @@ add_executable(IrredenEngineTest
   script/lua_command_test.cpp
   script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
+  script/lua_enum_register_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_system_codegen_test.cpp
   script/prefab_api_test.cpp
@@ -100,6 +101,7 @@ irreden_lua_codegen(IrredenEngineTest
 target_compile_definitions(IrredenEngineTest PRIVATE
     IR_LUA_CODEGEN_BINARY="$<TARGET_FILE:ir_lua_codegen>"
     IR_LUA_CODEGEN_OVERFLOW_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_component_codegen_overflow_fixture.lua"
+    IR_LUA_CODEGEN_ENUM_ERROR_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_enum_codegen_error_fixture.lua"
 )
 add_dependencies(IrredenEngineTest ir_lua_codegen)
 

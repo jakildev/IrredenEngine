@@ -27,6 +27,8 @@
 
 #include "system_dsl.hpp"
 
+#include <irreden/script/lua_enum_def.hpp>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -38,6 +40,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -905,6 +908,36 @@ int main(int argc, char **argv) {
             handle["componentId"] = 0;
             handle["fields"] = sv.create_table();
             return handle;
+        }
+    );
+
+    // #1403: IREnum.register shim — the build-time counterpart of the
+    // runtime binding in engine/script/src/lua_script.cpp. Lua-defined
+    // enums have no C++ lowering (an enum is a pure name->ordinal table),
+    // so codegen emits nothing for them — but the stub MUST build the real
+    // table and validate it, because codegen-mode .lua files reference enum
+    // members (e.g. as a component-field default) and those references are
+    // resolved during this capture pass. Calling the shared
+    // detail::registerLuaEnum (the same helper the runtime binding uses)
+    // guarantees the ordinals captured here match what the same .lua
+    // produces at runtime.
+    std::unordered_set<std::string> enumNames;
+    sol::table irEnum = lua.create_named_table("IREnum");
+    irEnum.set_function(
+        "register",
+        [&lua, &enumNames](
+            sol::this_state, const std::string &name, const sol::table &members
+        ) -> sol::table {
+            try {
+                return IRScript::detail::registerLuaEnum(lua, enumNames, name, members);
+            } catch (const std::exception &e) {
+                // Mirror schemaError(): print before the exception unwinds
+                // through LuaJIT, which drops what() in this tool (no
+                // SOL_EXCEPTIONS_ALWAYS_UNSAFE here). Keeps the diagnostic
+                // visible in the codegen build log / test 2>&1 capture.
+                std::cerr << e.what() << "\n";
+                throw;
+            }
         }
     );
 
