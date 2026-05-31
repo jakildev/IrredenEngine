@@ -265,6 +265,27 @@ shell compound operators (`&&`, `||`, `;`, `|`) to chain commands.
 Issue each command as its own separate Bash tool call, or use the
 Read/Glob/Grep tools instead of Bash when possible.
 
+**Don't put fallible Bash calls in the same parallel batch.** When you
+emit several Bash calls in one turn they run in parallel, and the harness
+**cancels the entire batch the moment any one call exits non-zero** — the
+siblings come back as `Cancelled: parallel tool call … errored`, which
+reads like a hang, not an error. So one `which a b c` that doesn't find a
+tool, an `ls`/`cat` on a maybe-absent path, or a `gh` lookup that 404s
+silently kills every other call you batched with it. Therefore:
+
+- Only parallel-batch Bash calls you're confident exit 0 (e.g. a
+  `git -C <path> fetch` plus a `date`).
+- Issue **probing / maybe-failing** commands (`which`, `ls`/`cat` on
+  paths that may not exist, `gh` lookups that may 404, a build that may
+  break) **one per turn** — read each result before the next.
+- Prefer Read/Glob/Grep over Bash for files and directories; they return
+  an empty/no-match result instead of a non-zero exit, so they never
+  trigger the cascade.
+
+This compounds with the single-command rule above: a chain like
+`foo | head || echo x ; which a b c` both violates that rule *and*, by
+exiting non-zero, cancels its batch siblings.
+
 - **No `cd <path> && git ...`** — use `git -C <path> ...` instead.
   `cd && git` triggers a hardcoded Claude Code security gate
   ("Compound commands with cd and git require approval to prevent
