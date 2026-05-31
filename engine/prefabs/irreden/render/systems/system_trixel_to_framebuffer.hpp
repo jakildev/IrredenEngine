@@ -212,7 +212,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
                 ? IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1)
                 : 1;
-        const vec2 cameraIso = IRRender::getCameraPosition2DIso();
+        const vec2 cameraIso = IRRender::getEffectiveCameraIso();
         frameData.frameData_.perAxisBase_ =
             IRMath::trixelOriginOffsetZ1(axes.size_) +
             ivec2(IRMath::floor(cameraIso * static_cast<float>(subdivisionScale)));

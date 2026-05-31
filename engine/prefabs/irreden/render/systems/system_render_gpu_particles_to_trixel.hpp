@@ -60,12 +60,13 @@ template <> struct System<RENDER_GPU_PARTICLES_TO_TRIXEL> {
         SystemId systemId = createSystem<C_GPUParticlePool, C_TriangleCanvasTextures>(
             "RenderGpuParticlesToTrixel",
             [p](C_GPUParticlePool &pool, C_TriangleCanvasTextures &canvas) {
-                if (pool.capacity_ == 0u || pool.buffer_.second == nullptr) return;
+                if (pool.capacity_ == 0u || pool.buffer_.second == nullptr)
+                    return;
 
                 // Refresh render-pass fields every tick — camera and canvas
                 // can both change. Update-pass fields (deltaTime / count)
                 // were written by the update system earlier this frame.
-                p->frameData_.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
+                p->frameData_.cameraTrixelOffset_ = IRRender::getEffectiveCameraIso();
                 p->frameData_.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(canvas.size_);
                 p->frameData_.canvasSizePixels_ = canvas.size_;
                 p->frameData_.particleCount_ = pool.capacity_;
@@ -73,18 +74,18 @@ template <> struct System<RENDER_GPU_PARTICLES_TO_TRIXEL> {
 
                 p->renderProgram_->use();
                 pool.buffer_.second->bindBase(
-                    BufferTarget::SHADER_STORAGE, kBufferIndex_GpuParticleData
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_GpuParticleData
                 );
                 p->frameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM, kBufferIndex_FrameDataGpuParticles
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataGpuParticles
                 );
 
-                canvas.getTextureColors()->bindAsImage(
-                    0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-                );
-                canvas.getTextureDistances()->bindAsImage(
-                    1, TextureAccess::READ_WRITE, TextureFormat::R32I
-                );
+                canvas.getTextureColors()
+                    ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                canvas.getTextureDistances()
+                    ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
 
                 constexpr std::uint32_t kLocalSize = 64u;
                 const std::uint32_t groups = (pool.capacity_ + kLocalSize - 1u) / kLocalSize;

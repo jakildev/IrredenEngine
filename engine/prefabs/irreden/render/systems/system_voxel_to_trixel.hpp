@@ -273,10 +273,10 @@ inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCo
 
     int runStart = -1;
     for (int i = 0; i <= n; ++i) {
-        const bool isStatic =
-            (i < n) && (indices[i] == IRRender::kVoxelTransformStatic);
+        const bool isStatic = (i < n) && (indices[i] == IRRender::kVoxelTransformStatic);
         if (isStatic) {
-            if (runStart < 0) runStart = i;
+            if (runStart < 0)
+                runStart = i;
         } else if (runStart >= 0) {
             buf->subData(
                 static_cast<std::ptrdiff_t>(runStart) * kStride,
@@ -418,7 +418,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             return;
 
         IRRender::updateCullViewport(
-            IRRender::getCameraPosition2DIso(),
+            IRRender::getEffectiveCameraIso(),
             IRRender::getCameraZoom(),
             triangleCanvasTextures.size_
         );

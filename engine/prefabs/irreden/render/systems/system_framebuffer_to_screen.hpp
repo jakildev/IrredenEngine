@@ -39,7 +39,7 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
                                                             framebuffer.getResolution(),
                                                             framebuffer.getResolutionPlusBuffer(),
                                                             cameraWorldXform.translation_,
-                                                            IRRender::getCameraPosition2DIso(),
+                                                            IRRender::getEffectiveCameraIso(),
                                                             name.name_
                                                         );
         frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &frameData_);

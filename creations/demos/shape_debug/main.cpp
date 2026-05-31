@@ -113,6 +113,21 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
      "zoom8_yaw180",
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
+
+    // Camera-focus pivot coverage (#1352): the camera is panned off-origin and
+    // then yawed. With RotationPivotMode::CAMERA_CENTER (the new engine default)
+    // the world point under screen center stays pinned across the whole sweep —
+    // the same focused content sits at the same screen pixel in all four shots.
+    // The pre-#1352 ORIGIN pivot (reproducible via --pivot-origin) instead swings
+    // that content in an arc. A shot list with only unpanned-or-yaw0 entries
+    // cannot catch a pivot regression: the CAMERA_CENTER correction is the
+    // identity unless the camera is BOTH panned and rotated, so every existing
+    // shot is byte-identical between the two modes. yaw45 also exercises the
+    // per-axis smooth-yaw scatter base (perAxisBase_) under the pivot.
+    {4.0f, vec2(16, 16), 0.0f, "zoom4_pan16_yaw0_pivot"},
+    {4.0f, vec2(16, 16), IRMath::kHalfPi, "zoom4_pan16_yaw90_pivot"},
+    {4.0f, vec2(16, 16), IRMath::kPi, "zoom4_pan16_yaw180_pivot"},
+    {4.0f, vec2(16, 16), IRMath::kQuarterPi, "zoom4_pan16_yaw45_pivot"},
 };
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
@@ -129,6 +144,12 @@ float g_initialZoom = 0.0f; // 0 = use engine default
 float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
 bool g_initialYawSet = false;
+// --pivot-origin (#1352): force RotationPivotMode::ORIGIN (the pre-#1352
+// world-origin pivot) instead of the CAMERA_CENTER engine default. Lets the
+// same panned+rotated shot list be captured in both modes for an A/B compare —
+// CAMERA_CENTER pins the focused content at screen center, ORIGIN swings it in
+// an arc. Off by default so the demo exercises the shipped default.
+bool g_pivotOrigin = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // --load-vxs <path>: load a DENSE-mode .vxs and render frame 0 alongside the
 // built-in shape fixtures. Empty = not requested.
@@ -195,6 +216,8 @@ int main(int argc, char **argv) {
                 g_initialYawSet = true;
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--pivot-origin") == 0) {
+            g_pivotOrigin = true;
         } else if (std::strcmp(argv[i], "--load-vxs") == 0) {
             if (i + 1 < argc) {
                 g_loadVxsPath = argv[i + 1];
@@ -257,6 +280,12 @@ int main(int argc, char **argv) {
     if (g_initialYawSet) {
         IRPrefab::Camera::setYaw(g_initialYaw);
         IR_LOG_INFO("Initial yaw: {} rad", g_initialYaw);
+    }
+    if (g_pivotOrigin) {
+        IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
+        IR_LOG_INFO(
+            "RotationPivotMode: ORIGIN (--pivot-origin) — Z-yaw pivots about the world origin"
+        );
     }
     IREngine::gameLoop();
     return 0;
