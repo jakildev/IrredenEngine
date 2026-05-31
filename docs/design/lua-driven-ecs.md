@@ -19,6 +19,8 @@ stack — see [Staged delivery](#staged-delivery).
 - [Performance budget](#performance-budget)
 - [Out of scope](#out-of-scope)
 - [Notes for implementers](#notes-for-implementers)
+- [Retrospective — T-104 parity measurement](#retrospective--t-104-parity-measurement)
+- [Navigation / steering authoring boundary (gaps G1–G4)](#navigation--steering-authoring-boundary-gaps-g1g4)
 
 ## Vocabulary
 
@@ -235,13 +237,22 @@ local DeviceType = IREnum.register("DeviceType", { "EFFECT", "SYNTH", "CONTROLLE
 local kind = DeviceType.SYNTH                       -- 1; usable as an int32 default
 
 -- Systems -----------------------------------------------------------
+-- The shipped tick receives a single `arch` archview (NOT one column-table
+-- argument per component); iterate rows by index and read/write each column
+-- through `arch.<RegisteredName>`. The original column-list proposal
+-- (`function(hp, tag) ... for i = 1, #hp`) was superseded by this archview
+-- form before PR 3 shipped — see `engine/script/CLAUDE.md` §"Lua-defined
+-- systems" for the full column-view surface (`:at`/`:setAt` for C++ columns,
+-- `:getField`/`:setField`/`:getRow`/`:setRow` for Lua-defined columns).
 local regenSystemId = IRSystem.registerSystem({
     name       = "Regen",
-    components = { C_Hp, C_Tag },                   -- iteration list
+    components = { C_Hp, C_Tag },                   -- register handles or name strings
     excludes   = { C_Dead },                        -- optional
-    tick       = function(hp, tag)                  -- column views
-        for i = 1, #hp do
-            hp[i].current = math.min(hp[i].max, hp[i].current + 1)
+    tick       = function(arch)                     -- single archview
+        for i = 0, arch.length - 1 do               -- 0-based, arch.length rows
+            local cur = arch.Hp:getField(i, "current")
+            local max = arch.Hp:getField(i, "max")
+            arch.Hp:setField(i, "current", math.min(max, cur + 1))
         end
     end,
 })
@@ -253,9 +264,9 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
     IRGameSystem.systemId(GameSystemName.GRID_BAKE),
 })
 
--- Hot reload --------------------------------------------------------
-IRSystem.replaceSystemBody(regenSystemId, function(hp, tag)
-    -- new body
+-- Hot reload (EVAL mode only) ---------------------------------------
+IRSystem.replaceSystemBody(regenSystemId, function(arch)
+    -- new body, same archview shape
 end)
 
 -- Modifiers ---------------------------------------------------------
@@ -607,3 +618,224 @@ per-mode rewrites.
   2.082 ms — ratio ~0.46×. Merged as the gate-passing artifact;
   EVAL-mode canonical-grid measurements remain a separate
   mechanical follow-up (see Stage 2 note).
+
+## Navigation / steering authoring boundary (gaps G1–G4)
+
+The parity gate (Retrospective, Stage 3) proved the Lua-driven ECS reaches
+native speed for the **data-parallel scalar** entity shape — a per-entity
+arithmetic kernel over flat columns. Engine #1400 reported the complementary
+result: a **many-entity navigation / steering** stack of this class
+(pathfinding, flow-field steering, spatial-neighbour collision over N agents)
+*cannot be authored* in the Lua-driven ECS today, and identified four
+separable gaps (G1–G4). This section records the decision per gap and the
+authoring boundary they imply. It is the "design decision recorded per gap"
+deliverable for #1400; the per-gap **Actionable as** lines are the scoped
+follow-up engine tasks.
+
+Each decision is one of two shapes:
+
+- **Lua-expresses** — close the gap by extending the Lua / CODEGEN surface so
+  the author writes the capability in Lua, lowering to native columns.
+- **Engine-primitive** — the capability stays C++; Lua **consumes** it through
+  a batched query or call. Reserved for cross-entity stateful structures.
+
+### The boundary ruling
+
+> **Per-entity data-parallel arithmetic is authored in Lua (CODEGEN);
+> cross-entity stateful solvers stay C++ engine primitives that Lua consumes
+> by batched query.** A Lua system never resolves cross-entity state by
+> looping a per-candidate foreign accessor inside its tick.
+
+This is not a new constraint — it is the union of three already-locked rules
+read together:
+
+- **Q2 (archetype-batched dispatch is the only system shape).** The cost model
+  that makes parity reachable is "one `sol::function`/native body per
+  archetype, flat-column per-entity work inside." A per-neighbour foreign read
+  inside the loop is exactly the per-entity dispatch Q2 forbids.
+- **The batched-foreign-entity rule** (`.claude/rules/cpp-ecs.md`
+  §"Foreign-entity lookups", and its spatial corollary in
+  [`lua-world-space-neighbour-query.md`](lua-world-space-neighbour-query.md)):
+  the consumer iterates a **batched vector** the producer built at the frame
+  boundary, not individual foreign lookups.
+- **The parity retrospective.** Native speed was demonstrated for flat-SoA
+  fields + one counted loop. Graph search, neighbour resolution, and
+  incremental field propagation fit *neither* the flat-SoA storage model
+  (ragged / shared state) *nor* the single-counted-loop control model — so
+  they are outside the shape the gate validated, by construction.
+
+The boundary is drawn **per capability**, not wholesale: Lua expresses the
+embarrassingly-parallel arithmetic (steering integration, force accumulation
+from already-queried neighbours, waypoint follow, field sampling); the engine
+owns the cross-entity stateful structures (spatial index, pathfinder, field
+grid). This is the "explicit *stays C++ as an engine-consumed primitive*
+ruling" #1400 asked for, scoped to the solver shapes rather than to the whole
+workload.
+
+### G1 — structured / container component field types
+
+Lua component fields are scalar-only today (`int32 / float / bool / string /
+function / table`; `engine/script/include/irreden/script/lua_component_data.hpp`
+`LuaFieldType`), and CODEGEN supports only `int32 / float / bool / string`.
+The #1400 ask has two independent halves.
+
+**G1a — `vec2 / vec3 / ivec3 / quat` scalar-packed fields → Lua-expresses.**
+Today every vector field is hand-decomposed to N float fields — the
+`lua_perf_grid` port literally flattens `vec3 → 3 floats` (Retrospective,
+Stage 3). That is ergonomic friction, not an architectural boundary: a packed
+vec/quat field lowers to the same native storage. The Q1 inference table
+already *names* "Bound C++ usertype (`vec3.new(...)`)" as an inferable field
+type, but neither the EVAL `LuaFieldColumn` variant nor the CODEGEN emitter
+implements it — this gap closes that intent. Byte-identity with a C++ `vec3`
+field (Q3) is preserved by storing the column as a real `IRMath::vec3` (EVAL)
+/ a `vec3` struct member or three alphabetically-sorted float fields (CODEGEN).
+Enum-typed fields are **not** part of this gap — `IREnum.register` already
+yields an `int32`-valued member usable as a field default
+(`engine/script/CLAUDE.md` §"Lua-defined enums").
+
+- **Actionable as (engine task):** add `vec2 / vec3 / ivec3 / quat` to
+  `LuaFieldType` + the EVAL `LuaFieldColumn` variant + the CODEGEN field-type
+  set, with per-component access (`.x/.y/.z` or a swizzle) in the tick DSL.
+  Bounded; no cross-entity state.
+
+**G1b — per-entity dynamic array (variable-length list, e.g. a waypoint path)
+→ engine-primitive / bounded, NOT an unbounded Lua column.** A true ragged
+column is `std::vector<std::vector<T>>` — per-entity heap indirection, the
+exact cache-hostile shape native-SoA storage exists to avoid, and it cannot
+lower to CODEGEN's flat struct. Do **not** add an unbounded per-entity column.
+Two honest paths cover the real need:
+
+1. **Fixed-capacity inline arrays** (`waypoints = { type = "float[8]" }`) for
+   bounded per-entity lists — these lower to flat columns and stay
+   CODEGEN-native.
+2. **Genuinely variable-length data stays engine-owned or EVAL-table.** A
+   *path* is the output of the pathfinder primitive (G3), held in an engine
+   handle, not re-stored as an unbounded Lua column; an author who insists on a
+   variable-length Lua field uses the existing EVAL `table` type and pays the
+   `sol::table` cost on purpose (Q1's opaque-table opt-in).
+
+- **Actionable as (engine task):** a bounded inline-array field type
+  (`"float[K]"` / `"int32[K]"`), CODEGEN-lowerable to a flat struct.
+  Unbounded ragged columns stay out of scope.
+
+### G2 — cross-entity / shared-index capability → engine-primitive (already decided)
+
+**This gap is already resolved in design** by
+[`lua-world-space-neighbour-query.md`](lua-world-space-neighbour-query.md)
+(engine #1354): a once-per-frame-rebuilt **world-space spatial index**
+(`BUILD_SPATIAL_INDEX` system + `C_SpatialIndex` singleton) queried as a batch
+that returns `{ id, position }` records **inline**, so the consumer iterates a
+vector and never loops per-neighbour foreign reads. That doc also corrects the
+#1400 premise that Lua has no foreign-entity read surface — `getLuaField` /
+`getLuaComponent` / `singleton` / `arch.entityAt(i)` already ship; the genuine
+gap was only the *neighbour-find* half, which that design owns.
+
+The remaining sub-gap #1400 raises under G2 — a Lua-side `beginTick` /
+`endTick` hook so an author can build a **shared accumulator** (flow-field
+grid, crowd-score grid) once per frame — is **deferred in favour of
+engine-owned shared structures**, for the same reason as G3: a Lua `beginTick`
+that mutates shared cross-archetype state is C++-only state that cannot lower
+to CODEGEN, and it re-opens the cross-entity-ownership question the spatial
+index answers cleanly. The spatial index is the first such primitive; a shared
+**field-grid** primitive is its sibling, to be filed when a flow-field consumer
+actually exists rather than speculatively.
+
+- **Actionable as (engine task):** the spatial-index *implementation* task
+  already blocked on #1354's doc (see its "Migration status"). A `C_FieldGrid`
+  / `propagateField` primitive is a separate task filed when flow-fields land.
+  Lua `beginTick`/`endTick` remains out of scope (consistent with
+  `engine/script/CLAUDE.md` §"Lua-defined systems" → "No begin/end ticks yet").
+
+### G3 — CODEGEN control-flow for iterative kernels → engine-primitive (solvers stay C++)
+
+CODEGEN allows exactly one canonical counted loop — `for i = 0, arch.length - 1
+do ... end` — and forbids `while` / `repeat` / `break` / generic-`for`
+(`engine/script/CLAUDE.md` §"CODEGEN system bodies"). Dijkstra / A*-class
+frontier loops and incremental field propagation cannot lower. These are
+cross-entity stateful solvers — the architectural boundary the ruling draws.
+
+**Do not add unbounded `while` to CODEGEN.** An unbounded loop emitted as
+native C++ with no static bound is a footgun (a non-terminating tick body the
+DSL cannot prove safe), and the solvers it would enable are exactly the
+cross-entity state the engine should own. Instead the graph-search / field
+solvers stay **C++ engine primitives Lua composes** — `Nav.findPath(start,
+goal) -> path`, `propagateField(...)` — mirroring the G2 spatial-index decision.
+
+An *optional, narrow* CODEGEN extension is compatible with the boundary: a
+**bounded** counted loop with `break` (e.g. `for k = 0, maxIter - 1 do ... if
+done then break end end`) is still statically bounded and CODEGEN-safe. It is
+worth landing only if a real **bounded per-entity** iterative kernel (a fixed
+relaxation step, not open-ended graph search) appears — filed separately, not
+blocking, and explicitly *not* a license for unbounded `while`.
+
+- **Actionable as (engine task):** a pathfinder / flow-field primitive surface
+  (C++ core + Lua binding returning a batched result) when a consumer needs it.
+  Optional secondary task: a bounded-`break` counted-loop CODEGEN extension,
+  gated on a concrete bounded-iteration kernel.
+
+### G4 — structural change in a Lua tick → Lua-expresses (deferred-command shim)
+
+There is no add/remove-component mid-Lua-tick today (e.g. dropping a one-shot
+order component after it is consumed). The engine already forbids the same
+thing in C++ and routes it through the **deferred** ECS API
+(`IREntity::deferredCreate` / `deferredSetComponent` / `deferredRemoveComponent`,
+flushed by `flushStructuralChanges` at pipeline end; `.claude/rules/cpp-ecs.md`
+§"Deferred entity operations"). `engine/script/CLAUDE.md` already states a Lua
+tick "still needs to go through the deferred ECS API, just like a C++ system" —
+the machinery exists; only the Lua binding is missing.
+
+Decision: **bind the deferred ops to Lua** so a Lua tick queues structural
+changes that flush safely at pipeline end. This respects the
+no-mid-tick-structural-change invariant by construction and reuses existing
+machinery — no new framework. Lower priority per #1400.
+
+- **Actionable as (engine task):** Lua bindings for the deferred ECS ops
+  (`IREntity.deferredSetComponent` / `deferredRemoveComponent` /
+  `deferredCreate`), plus CODEGEN lowering of those calls to the same deferred
+  C++ entry points.
+
+### The documented authoring path
+
+The #1400 acceptance criterion asks for "a documented path to author
+many-entity navigation/steering in Lua-defined ECS (or an explicit *stays C++*
+ruling)." With the decisions above, the path is a **hybrid**: engine primitives
+own the cross-entity structures, Lua owns the per-entity arithmetic.
+
+1. **Index** — the engine rebuilds the world-space spatial index once per frame
+   (`BUILD_SPATIAL_INDEX`, ordered before every consumer). [G2]
+2. **Steer** — a Lua CODEGEN system calls `Spatial.queryRadius(pos, r)` → a
+   batched `{ id, pos }` vector, and computes separation / alignment / cohesion
+   (or collision push-out) as native per-entity arithmetic over `vec3` fields.
+   No per-neighbour foreign read. [G1a + G2]
+3. **Path-find** — pathfinding is an engine primitive: `Nav.findPath(start,
+   goal)` returns a path; the Lua system *follows* it (waypoint advance is a
+   bounded per-entity kernel). The path lives in an engine handle or a bounded
+   inline-array field, not an unbounded Lua column. [G1b + G3]
+4. **Flow-field** — flow fields are an engine field-grid primitive (sibling to
+   the spatial index); a Lua system samples the field per entity (native read)
+   and integrates velocity. [G2 + G3]
+5. **One-shot orders** — a "move-to" order consumed once is dropped via the
+   deferred-structural shim. [G4]
+
+Net: the steering integration, force accumulation, waypoint follow, and field
+sampling are authored in Lua at native speed; the spatial index, pathfinder,
+and field grid are engine-consumed primitives. A workload that is *only* the
+graph-search / field-propagation solver (no per-entity arithmetic worth
+expressing) legitimately **stays C++** — that is the explicit primitive ruling,
+and it is the legitimate-C++ reason a downstream consumer's review gate asks
+for.
+
+### Decision summary
+
+| Gap | Capability | Decision | Actionable as |
+|-----|------------|----------|---------------|
+| G1a | `vec2/vec3/ivec3/quat` packed fields | **Lua-expresses** | add vec/quat to `LuaFieldType` + `LuaFieldColumn` + CODEGEN field set |
+| G1b | per-entity variable-length list | **Engine/bounded** | bounded inline-array field (`"float[K]"`); unbounded out of scope |
+| G2  | spatial index / neighbour query | **Engine-primitive** (decided) | spatial-index impl (blocked on #1354 doc); field-grid sibling later |
+| G2′ | Lua `beginTick`/`endTick` shared accumulator | **Deferred** | covered by engine primitives; not exposed |
+| G3  | graph-search / iterative control-flow | **Engine-primitive** | pathfinder/field primitive; optional bounded-`break` CODEGEN ext |
+| G4  | structural change mid-tick | **Lua-expresses** | bind deferred ECS ops to Lua + CODEGEN lowering |
+
+These follow-ups are filed as engine tasks from this doc once the human
+approves the recorded decisions; per fleet convention this design PR does not
+self-expand the queue.
