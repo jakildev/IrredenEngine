@@ -45,6 +45,15 @@ struct C_VoxelSetNew {
     // EntityTransformBuffer[slot] from the entity's C_WorldTransform each frame.
     std::uint32_t gpuTransformSlot_ = IRRender::kVoxelTransformStatic;
 
+    // Per-entity main-canvas SO(3) opt-in (#1299, PR-A). When true AND the set
+    // has a GPU transform slot, UPDATE_VOXEL_POSITIONS_GPU octahedral-snaps the
+    // entity's rotation (one snap site) before building the prepass matrix, and
+    // stamps the matching visible triplet into every owned voxel's
+    // `C_Voxel::reserved_`. False (the default) keeps the raw continuous
+    // rotation — the existing GPU-transform smoke path is byte-identical. Set by
+    // `IRPrefab::RotationMode::setMode(entity, MAIN_CANVAS_SO3)`.
+    bool snapTransformOctahedral_ = false;
+
     // Local voxel position (16-byte GPU stride POD; see VoxelGpuPosition).
     std::span<IRRender::VoxelGpuPosition> positions_;
 

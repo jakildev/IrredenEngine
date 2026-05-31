@@ -119,7 +119,11 @@ kernel void c_voxel_to_trixel_stage_2(
     const uint2 localId = localId3.xy;
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(localId);
-    const int faceId = frameData.visibleFaceIds[slot];
+    // Per-entity SO(3) (#1299) — mirror of c_voxel_to_trixel_stage_2.glsl.
+    const int faceId =
+        (frameData.visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
+            ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
+            : frameData.visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;

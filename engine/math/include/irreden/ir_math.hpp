@@ -680,17 +680,19 @@ inline mat2 faceDeformationMatrixSO3(int face, const vec4 &rotationQuat) {
 }
 
 /// Snap a rotation to the nearest of the 24 cube (chiral octahedral)
-/// orientations and return the residual rotation `R_snap⁻¹ · R`, normalized
-/// to the `w >= 0` hemisphere.
+/// orientations and return that orientation as a quaternion (one of the 24
+/// canonical representatives; either sign hemisphere — `q` and `-q` are the
+/// same rotation, so callers that feed the result to a rotation matrix or to
+/// `visibleTriplet` are sign-invariant).
 ///
-/// A cube is invariant under all 24 octahedral rotations, so the snap is
-/// visually a no-op — but it bounds the residual to the octahedral covering
-/// radius. T-295 deforms a detached canvas's voxel emit by this residual
-/// rather than the full rotation, keeping `faceDeformationMatrixSO3`'s
-/// per-face skew in its clean (small-angle) range so pitch / roll do not
-/// degrade into forward-mapped scanline gaps. (Non-cube voxel objects also
-/// need `R_snap` applied as a coordinate permutation — a separate step.)
-inline vec4 octahedralSnapResidual(const vec4 &rotation) {
+/// A cube is invariant under all 24 octahedral rotations, so substituting the
+/// snapped orientation for the live rotation leaves a cube's silhouette
+/// unchanged while quantizing its face-visibility to one of 24 discrete states
+/// — the "steps through the 24 octahedral orientations" increment per-entity
+/// main-canvas SO(3) wants (#1299, PR-A): the GPU prepass matrix and the
+/// per-voxel visible triplet both drive off this one snap, so the rotated
+/// geometry and the faces it shows always agree.
+inline vec4 octahedralSnap(const vec4 &rotation) {
     constexpr float h = 0.5f;
     constexpr float r = 0.70710678118654752f; // 1 / sqrt(2)
     static const vec4 kOctahedral[24] = {
@@ -713,7 +715,22 @@ inline vec4 octahedralSnapResidual(const vec4 &rotation) {
             best = i;
         }
     }
-    const vec4 &s = kOctahedral[best];
+    return kOctahedral[best];
+}
+
+/// Snap a rotation to the nearest of the 24 cube (chiral octahedral)
+/// orientations and return the residual rotation `R_snap⁻¹ · R`, normalized
+/// to the `w >= 0` hemisphere.
+///
+/// A cube is invariant under all 24 octahedral rotations, so the snap is
+/// visually a no-op — but it bounds the residual to the octahedral covering
+/// radius. T-295 deforms a detached canvas's voxel emit by this residual
+/// rather than the full rotation, keeping `faceDeformationMatrixSO3`'s
+/// per-face skew in its clean (small-angle) range so pitch / roll do not
+/// degrade into forward-mapped scanline gaps. (Non-cube voxel objects also
+/// need `R_snap` applied as a coordinate permutation — a separate step.)
+inline vec4 octahedralSnapResidual(const vec4 &rotation) {
+    const vec4 s = octahedralSnap(rotation);
     const vec4 sConjugate = vec4(-s.x, -s.y, -s.z, s.w);
     vec4 residual = quatMul(sConjugate, rotation);
     if (residual.w < 0.0f) {

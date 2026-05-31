@@ -40,6 +40,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
+#include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
@@ -123,6 +124,9 @@ bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by def
 // standard scene stays byte-identical; the rotated cube is direct proof the
 // prepass applied modelToWorld (the CPU world-position path is translation-only).
 bool g_gpuVoxelSmoke = false;
+// --main-canvas-so3-smoke (#1299, PR-A): spawn a MAIN_CANVAS_SO3 cube to
+// exercise the per-entity SO(3) snap + per-voxel visible-triplet raster path.
+bool g_mainCanvasSO3Smoke = false;
 int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f; // 0 = use engine default
@@ -175,6 +179,8 @@ int main(int argc, char **argv) {
             g_checkerboard = true;
         } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
             g_gpuVoxelSmoke = true;
+        } else if (std::strcmp(argv[i], "--main-canvas-so3-smoke") == 0) {
+            g_mainCanvasSO3Smoke = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
             if (i + 1 < argc) {
                 float z = static_cast<float>(std::atof(argv[i + 1]));
@@ -291,16 +297,21 @@ void initSystems() {
             IRConstants::kFPS
         );
     }
+    // GPU voxel-position prepass (#1396) — writes binding 5 for
+    // GPU-transform-indirected voxel sets before STAGE_1 reads it. A no-op (no
+    // dispatch) unless a voxel set opts in via gpuTransformSlot_, so the default
+    // scene stays byte-identical. Created up-front so its SystemId can wire the
+    // per-entity SO(3) transform-slot allocator (#1299); it keeps its pipeline
+    // position below (before STAGE_1).
+    const IRSystem::SystemId updateVoxelPositionsId =
+        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
+    IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
     renderPipeline.insert(
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-            // GPU voxel-position prepass (#1396) — writes binding 5 for
-            // GPU-transform-indirected voxel sets before STAGE_1 reads it.
-            // A no-op (no dispatch) unless a voxel set opts in via
-            // gpuTransformSlot_, so the default scene stays byte-identical.
-            IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>(),
+            updateVoxelPositionsId,
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
@@ -541,6 +552,48 @@ void createGpuVoxelTransformSmoke() {
         vs.canvasEntity_,
         vs.numVoxels_,
         kSmokeSlot
+    );
+}
+
+// Spawn one voxel cube on the SHARED main canvas in RotationMode::MAIN_CANVAS_SO3
+// (#1299, PR-A). `setMode` acquires a GPU transform slot from the allocator
+// wired at init, routes the set through the prepass, and opts it into the
+// octahedral snap; the prepass then snaps the cube's orientation to one of the
+// 24 cube orientations and stamps the matching visible triplet into every
+// voxel's `C_Voxel::reserved_`, so the raster stages read the entity's own faces
+// (the per-voxel path the shared-canvas world voxels never take). Unlike the
+// `--gpu-voxel-smoke` cube — which applies the continuous rotation to the GPU
+// positions but keeps the shared per-canvas visible triplet — this validates the
+// per-entity triplet end to end. Opt-in (--main-canvas-so3-smoke); the default
+// scene stays byte-identical.
+void createMainCanvasSO3Smoke() {
+    const vec3 axis = IRMath::normalize(vec3(0.3f, 0.7f, 0.5f));
+    const vec4 rot = IRMath::quatAxisAngle(axis, IRMath::kQuarterPi);
+    // On the z=0 gallery plane near the camera focus (gallery shapes sit at
+    // (i*16, 0, 0); LOD trio at (0, -16, 0)), so the auto-screenshot shots frame
+    // it. The prepass culls on the set's UNROTATED bbox, so it must sit where an
+    // axis-aligned cube would be visible.
+    const vec3 position = vec3(48.0f, -16.0f, 0.0f);
+    const ivec3 halfExtent = ivec3(5, 5, 5);
+    const ivec3 size = halfExtent * 2 + ivec3(1);
+
+    EntityId entity = IREntity::createEntity(
+        C_LocalTransform{position, rot},
+        C_VoxelSetNew{size, Color{120, 220, 160, 255}, true}
+    );
+    // setMode acquires the slot, stamps the transform-index range, opts the set
+    // into the octahedral snap, and bumps the canvas SO(3) counter (which flips
+    // the raster stages' per-voxel-triplet flag). The prepass re-snaps + restamps
+    // the live rotation each frame.
+    IRPrefab::RotationMode::setMode(entity, IRComponents::RotationMode::MAIN_CANVAS_SO3);
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
+    IR_LOG_INFO(
+        "MAIN_CANVAS_SO3 smoke entity={} canvas={} voxels={} slot={} snap={}",
+        entity,
+        vs.canvasEntity_,
+        vs.numVoxels_,
+        vs.gpuTransformSlot_,
+        vs.snapTransformOctahedral_
     );
 }
 
@@ -791,5 +844,10 @@ void initEntities() {
     if (g_gpuVoxelSmoke) {
         IR_LOG_INFO("--- GPU voxel-position prepass smoke (#1396) ---");
         createGpuVoxelTransformSmoke();
+    }
+
+    if (g_mainCanvasSO3Smoke) {
+        IR_LOG_INFO("--- main-canvas per-entity SO(3) smoke (#1299, PR-A) ---");
+        createMainCanvasSO3Smoke();
     }
 }

@@ -472,6 +472,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
         frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
         frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
+        // Per-entity SO(3) (#1299, PR-A): flag the raster stages to consult the
+        // per-voxel `reserved_` triplet only when this canvas carries at least
+        // one MAIN_CANVAS_SO3 set. Rides in the otherwise-dead `.w` lane of
+        // visibleFaceIds_ — zero struct-layout change. 0 (no SO(3) set) keeps
+        // the byte-identical shared-triplet path; the shader skips the extra
+        // SSBO load entirely.
+        frameData_.visibleFaceIds_.w = voxelPool.so3SetCount() > 0 ? 1 : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         // Voxel positions are uploaded via the pending-range queue populated by

@@ -44,9 +44,19 @@ namespace IRComponents {
 enum class RotationMode : std::uint8_t {
     GRID = 0,
     DETACHED = 1,
+    // MAIN_CANVAS_SO3 (Epic #1272 / #1299, PR-A): rotation lives on the SHARED
+    // main world canvas — no per-entity child canvas. The entity opts its voxel
+    // range into the GPU voxel-position prepass via a transform slot, and the
+    // prepass octahedral-snaps the orientation to one of the 24 cube
+    // orientations, driving both the per-voxel world positions and the per-voxel
+    // visible triplet stamped into `C_Voxel::reserved_`. Steps through the 24
+    // discrete orientations; the continuous residual-deform increment is PR-B
+    // (#1300). Rotated-entity lighting/AO/sun-shadow is scoped to a follow-up
+    // (PR-A.5) per the architect's Option 1C.
+    MAIN_CANVAS_SO3 = 2,
 
     kFirst = GRID,
-    kLast = DETACHED,
+    kLast = MAIN_CANVAS_SO3,
 };
 
 struct C_RotationMode {
