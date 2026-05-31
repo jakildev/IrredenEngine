@@ -17,8 +17,11 @@ namespace IRRender {
 // upload mis-strides and every voxel after slot 0 renders at the wrong
 // world position. A bare `IRMath::vec3` (12 bytes) cannot back that
 // contract — the static_assert below enforces the requirement at
-// compile time. `pad_` is uninitialized GPU don't-care padding; the
-// renderer never reads it. Voxels never rotate or scale independently
+// compile time. `pad_` carries the per-voxel GPU transform-slot index
+// for `UPDATE_VOXEL_POSITIONS_GPU` (#1396), bit-packed via `kVoxelTransformStatic`
+// convention. Defaults to all-ones (`kVoxelTransformStatic`); the prepass skips
+// those slots (byte-identical to the pre-prepass path). Voxels never rotate or
+// scale independently
 // of their owning `C_VoxelSetNew`, so a full per-slot SQT would
 // 2.5×-3.3× the largest hot array (~1M slots) and force a strided GPU
 // upload to carry data the shader cannot consume — the architect

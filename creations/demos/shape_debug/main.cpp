@@ -20,6 +20,7 @@
 // COMPONENTS
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -38,6 +39,7 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
@@ -116,6 +118,11 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 bool g_depthColor = false;
 bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by default
+// --gpu-voxel-smoke (#1396): spawn one voxel cube routed through the GPU
+// voxel-position prepass with a fixed 45° rotation. Off by default so the
+// standard scene stays byte-identical; the rotated cube is direct proof the
+// prepass applied modelToWorld (the CPU world-position path is translation-only).
+bool g_gpuVoxelSmoke = false;
 int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f; // 0 = use engine default
@@ -166,6 +173,8 @@ int main(int argc, char **argv) {
             g_depthColor = true;
         } else if (std::strcmp(argv[i], "--checkerboard") == 0) {
             g_checkerboard = true;
+        } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
+            g_gpuVoxelSmoke = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
             if (i + 1 < argc) {
                 float z = static_cast<float>(std::atof(argv[i + 1]));
@@ -211,7 +220,8 @@ int main(int argc, char **argv) {
         g_spinYawShotCount = g_autoWarmupFrames;
         g_autoWarmupFrames = 10;
         IR_LOG_INFO(
-            "Spin-yaw: warmup reset to 10 frames (--auto-screenshot value {} reinterpreted as shot count)",
+            "Spin-yaw: warmup reset to 10 frames (--auto-screenshot value {} reinterpreted as shot "
+            "count)",
             g_spinYawShotCount
         );
     }
@@ -269,7 +279,8 @@ void initSystems() {
     // --spin-yaw live mode: drive the camera each frame. In auto-screenshot
     // mode the per-shot setYaw() supplies the rotation instead — running both
     // would double-rotate between shots and break the "evenly-spaced" contract.
-    if (g_spinYawDegPerSec > 0.0f && g_autoWarmupFrames == 0) {  // == 0: no auto-screenshot requested
+    if (g_spinYawDegPerSec > 0.0f &&
+        g_autoWarmupFrames == 0) { // == 0: no auto-screenshot requested
         const float radPerFrame =
             g_spinYawDegPerSec * IRMath::kPi / 180.0f / static_cast<float>(IRConstants::kFPS);
         renderPipeline.push_front(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(radPerFrame));
@@ -285,6 +296,11 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            // GPU voxel-position prepass (#1396) — writes binding 5 for
+            // GPU-transform-indirected voxel sets before STAGE_1 reads it.
+            // A no-op (no dispatch) unless a voxel set opts in via
+            // gpuTransformSlot_, so the default scene stays byte-identical.
+            IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>(),
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
@@ -488,6 +504,44 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
         params.w
     );
     return entity;
+}
+
+// Spawn one voxel cube routed through the GPU voxel-position prepass (#1396).
+// The fixed 45° SO(3) rotation can only reach the rendered voxels via the
+// prepass — UPDATE_VOXEL_SET_CHILDREN folds in translation only — so a rotated
+// cube on screen is the smoke test that the prepass computed modelToWorld *
+// localPos for every voxel in this set. Opt-in (--gpu-voxel-smoke) so the
+// default scene stays byte-identical.
+void createGpuVoxelTransformSmoke() {
+    const vec3 axis = IRMath::normalize(vec3(0.3f, 0.7f, 0.5f));
+    const vec4 rot = IRMath::quatAxisAngle(axis, IRMath::kQuarterPi);
+    const vec3 position = vec3(0.0f, 0.0f, -14.0f);
+    const ivec3 halfExtent = ivec3(5, 5, 5);
+    const ivec3 size = halfExtent * 2 + ivec3(1);
+
+    EntityId entity = IREntity::createEntity(
+        C_LocalTransform{position, rot},
+        C_VoxelSetNew{size, Color{120, 220, 160, 255}, true}
+    );
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
+
+    // Slot 0 carries this set's SO(3)+translation each frame; every owned voxel
+    // points at slot 0 so the prepass transforms it instead of the CPU path.
+    constexpr std::uint32_t kSmokeSlot = 0u;
+    vs.gpuTransformSlot_ = kSmokeSlot;
+    auto &pool = IREntity::getComponent<C_VoxelPool>(vs.canvasEntity_);
+    pool.setTransformIndexForRange(
+        vs.voxelStartIdx_,
+        static_cast<size_t>(vs.numVoxels_),
+        kSmokeSlot
+    );
+    IR_LOG_INFO(
+        "GPU voxel-transform smoke entity={} canvas={} voxels={} slot={}",
+        entity,
+        vs.canvasEntity_,
+        vs.numVoxels_,
+        kSmokeSlot
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -732,5 +786,10 @@ void initEntities() {
                 loaded.value_.dense_.voxelCount()
             );
         }
+    }
+
+    if (g_gpuVoxelSmoke) {
+        IR_LOG_INFO("--- GPU voxel-position prepass smoke (#1396) ---");
+        createGpuVoxelTransformSmoke();
     }
 }

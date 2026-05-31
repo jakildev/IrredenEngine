@@ -36,6 +36,15 @@ struct C_VoxelSetNew {
     // pointer made the diff resolve to a wild index).
     size_t voxelStartIdx_ = 0;
 
+    // GPU transform-indirection slot for this set (#1396). `kVoxelTransformStatic`
+    // (the default) keeps the set on the CPU-direct world-position path:
+    // UPDATE_VOXEL_SET_CHILDREN folds the parent translation in and uploads
+    // binding 5 directly. Any other value routes the set through the GPU
+    // voxel-position prepass — its voxels carry this slot as their per-voxel
+    // transform index, and UPDATE_VOXEL_POSITIONS_GPU writes
+    // EntityTransformBuffer[slot] from the entity's C_WorldTransform each frame.
+    std::uint32_t gpuTransformSlot_ = IRRender::kVoxelTransformStatic;
+
     // Local voxel position (16-byte GPU stride POD; see VoxelGpuPosition).
     std::span<IRRender::VoxelGpuPosition> positions_;
 

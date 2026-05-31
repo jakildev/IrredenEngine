@@ -48,7 +48,13 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             pool.getPositions(),
             pool.getPositionOffsets()
         );
-        if (writtenCount > 0) {
+        // A GPU-transform-indirected set (#1396) has binding 5 written by the
+        // UPDATE_VOXEL_POSITIONS_GPU prepass each frame. We still recompute its
+        // CPU global mirror above (a sane translation-only fallback for the
+        // STAGE_1 canvas-switch re-seed, and for cull/picking), but we must NOT
+        // queue it for the steady-state binding-5 flush — that flush runs after
+        // the prepass in the RENDER pipeline and would clobber the GPU positions.
+        if (writtenCount > 0 && voxelSet.gpuTransformSlot_ == IRRender::kVoxelTransformStatic) {
             pool.queuePositionRange(voxelSet.voxelStartIdx_, static_cast<size_t>(writtenCount));
         }
         if (voxelSet.ownerEntityId_ == IREntity::kNullEntity && entityId != IREntity::kNullEntity &&

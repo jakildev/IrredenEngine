@@ -73,6 +73,16 @@ struct C_VoxelPool {
         m_voxelEntities.resize(m_voxelPoolSize);
         std::fill(m_voxelEntities.begin(), m_voxelEntities.end(), IREntity::kNullEntity);
 
+        // Every voxel starts CPU-direct (static); a voxel set opts into GPU
+        // transform indirection by pointing its range at an EntityTransformBuffer
+        // slot via `setTransformIndexForRange`.
+        m_voxelTransformIndices.resize(m_voxelPoolSize);
+        std::fill(
+            m_voxelTransformIndices.begin(),
+            m_voxelTransformIndices.end(),
+            IRRender::kVoxelTransformStatic
+        );
+
         const std::size_t maskWords =
             (static_cast<std::size_t>(m_voxelPoolSize) + kVoxelActiveMaskBits - 1) /
             kVoxelActiveMaskBits;
@@ -437,6 +447,60 @@ struct C_VoxelPool {
         m_pendingPositionRanges.clear();
     }
 
+    // Per-voxel GPU transform-slot index, consumed by UPDATE_VOXEL_POSITIONS_GPU
+    // (packed into the `.w` lane of the local-position buffer,
+    // kBufferIndex_LocalVoxelPositions = 17). Defaults to `kVoxelTransformStatic`
+    // for every voxel, so an untouched pool leaves the GPU prepass a no-op and
+    // binding 5 fully CPU-owned (byte-identical to the pre-prepass path). A voxel
+    // set marks its range GPU-dynamic by pointing it at an EntityTransformBuffer slot.
+    const std::vector<std::uint32_t> &getTransformIndices() const {
+        return m_voxelTransformIndices;
+    }
+
+    // Point a voxel range at a GPU transform slot (or back at
+    // `kVoxelTransformStatic`). Queues the slice for upload via the same
+    // pending-range flush the positions use — set once at voxel-set creation,
+    // so a static scene queues nothing and pays zero bytes/frame.
+    void setTransformIndexForRange(size_t startIdx, size_t count, std::uint32_t transformIndex) {
+        if (count == 0) {
+            return;
+        }
+        IR_ASSERT(
+            startIdx + count <= m_voxelTransformIndices.size(),
+            "setTransformIndexForRange out of bounds: startIdx={}, count={}, poolSize={}",
+            startIdx,
+            count,
+            m_voxelTransformIndices.size()
+        );
+        IR_ASSERT(
+            transformIndex == IRRender::kVoxelTransformStatic ||
+                transformIndex < static_cast<std::uint32_t>(IRRender::kMaxGpuVoxelTransforms),
+            "setTransformIndexForRange: transformIndex={} out of range (kMaxGpuVoxelTransforms={})",
+            transformIndex,
+            IRRender::kMaxGpuVoxelTransforms
+        );
+        std::fill(
+            m_voxelTransformIndices.begin() + startIdx,
+            m_voxelTransformIndices.begin() + startIdx + count,
+            transformIndex
+        );
+        if (m_pendingTransformIndexRanges.size() < kMaxPendingPositionRanges) {
+            m_pendingTransformIndexRanges.emplace_back(startIdx, count);
+        }
+    }
+
+    const std::vector<std::pair<size_t, size_t>> &getPendingTransformIndexRanges() const {
+        return m_pendingTransformIndexRanges;
+    }
+
+    std::vector<std::pair<size_t, size_t>> &getPendingTransformIndexRanges() {
+        return m_pendingTransformIndexRanges;
+    }
+
+    void clearPendingTransformIndexRanges() {
+        m_pendingTransformIndexRanges.clear();
+    }
+
   private:
     int m_voxelPoolSize;
     ivec3 m_voxelPoolSize3D;
@@ -458,6 +522,12 @@ struct C_VoxelPool {
     // VOXEL_TO_TRIXEL_STAGE_1; capacity is preserved across frames so
     // a steady-state moving scene avoids per-frame allocation.
     std::vector<std::pair<size_t, size_t>> m_pendingPositionRanges;
+    // Per-voxel GPU transform-slot index (see `setTransformIndexForRange`).
+    std::vector<std::uint32_t> m_voxelTransformIndices;
+    // Per-frame queue of transform-index slices that pack transform-slot indices
+    // into the .w lane of binding 17 (kBufferIndex_LocalVoxelPositions);
+    // mirrors `m_pendingPositionRanges`. Empty for static scenes.
+    std::vector<std::pair<size_t, size_t>> m_pendingTransformIndexRanges;
 
     int m_voxelPoolIndex = 0;
 

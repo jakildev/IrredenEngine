@@ -259,6 +259,35 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
     pool.clearPendingPositionRanges();
 }
 
+// Re-seed binding 5 on a canvas switch without clobbering GPU-prepass output.
+// Scans `pool.getTransformIndices()` up to `liveCount` and emits one `subData`
+// per contiguous static run. GPU-transformed slots (index != kVoxelTransformStatic)
+// are skipped — UPDATE_VOXEL_POSITIONS_GPU already wrote their correct world
+// positions ahead of this stage. When all voxels are static this produces a
+// single upload equivalent to the old full-range subData.
+inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCount) {
+    constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
+    const auto &globals = pool.getPositionGlobals();
+    const auto &indices = pool.getTransformIndices();
+    const int n = IRMath::min(liveCount, static_cast<int>(indices.size()));
+
+    int runStart = -1;
+    for (int i = 0; i <= n; ++i) {
+        const bool isStatic =
+            (i < n) && (indices[i] == IRRender::kVoxelTransformStatic);
+        if (isStatic) {
+            if (runStart < 0) runStart = i;
+        } else if (runStart >= 0) {
+            buf->subData(
+                static_cast<std::ptrdiff_t>(runStart) * kStride,
+                static_cast<size_t>(i - runStart) * kStride,
+                &globals[runStart]
+            );
+            runStart = -1;
+        }
+    }
+}
+
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
@@ -445,23 +474,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
-        // Voxel positions are now uploaded via the pending-range queue
-        // populated by `UPDATE_VOXEL_SET_CHILDREN` (`cpp-ecs.md`
-        // pending-list-flush rule). Single-canvas-with-voxels steady-
-        // state: queue empty for static entities → zero `subData`
-        // bytes/frame; moving entities coalesce into runs. Multi-
-        // canvas-with-voxels: each canvas's SSBO state can be clobbered
-        // by another canvas's mutator pushes since both write to the
-        // shared `voxelPosBuf_`, so on a canvas switch we re-seed the
-        // whole live range and drain this pool's queue.
+        // Voxel positions are uploaded via the pending-range queue populated by
+        // `UPDATE_VOXEL_SET_CHILDREN` (`cpp-ecs.md` pending-list-flush rule).
+        // Steady-state: queue empty for static entities → zero subData bytes/frame;
+        // moving entities coalesce into runs. On a canvas switch the queue is
+        // drained and the static-transform runs are re-seeded from the CPU mirror
+        // (`flushStaticPositionRanges`). GPU-transformed slots are left intact —
+        // `UPDATE_VOXEL_POSITIONS_GPU` already wrote their correct world positions
+        // into binding 5 ahead of this stage, and re-uploading the CPU mirror
+        // would clobber the prepass output with translation-only data.
         {
             IR_PROFILE_SCOPE("vs1_pos");
             if (lastUploadedCanvas_ != entity) {
-                voxelPosBuf_->subData(
-                    0,
-                    liveVoxelCount * sizeof(IRRender::VoxelGpuPosition),
-                    voxelPool.getPositionGlobals().data()
-                );
+                // Re-seed only static-transform voxel runs so the GPU-prepass
+                // output (UPDATE_VOXEL_POSITIONS_GPU, binding 5) is preserved
+                // for GPU-transformed slots across canvas switches.
+                flushStaticPositionRanges(voxelPool, voxelPosBuf_, liveVoxelCount);
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
             } else {
