@@ -86,11 +86,14 @@ pattern (`C_ActiveLodLevel` ← `LOD_UPDATE`; `C_GlobalModifiers`):
   (`engine/system/include/irreden/system/ir_system_types.hpp`) per
   `engine/CLAUDE.md`.
 - **Query surface (C++)** — `IRPrefab::Spatial::queryRadius(vec3 center, float
-  radius, std::vector<SpatialHit>& out)` where `SpatialHit { EntityId id; vec3
-  pos; }`. Out-param, caller owns capacity.
+  radius, std::vector<SpatialHit>& out)` and `queryAabb(vec3 min, vec3 max,
+  std::vector<SpatialHit>& out)` where `SpatialHit { EntityId m_id; vec3
+  m_pos; }`. Out-param, caller owns capacity.
 - **Query surface (Lua)** — a binding next to `bindLuaDrivenEcs` that returns a
-  Lua array of `{id, x, y, z}` records. Returning the position **inline** is
-  what keeps the Lua path footgun-safe *and* sidesteps the
+  Lua array of `{id, x, y, z}` records from `queryRadius` only. `queryAabb` is
+  intentionally C++-only in v1 (rect-region Lua queries are a future extension
+  — nothing in the #1354 motivation needed them). Returning the position
+  **inline** is what keeps the Lua path footgun-safe *and* sidesteps the
   C++-component-foreign-read gap (gap 2 above): the caller never needs a
   foreign `C_WorldTransform` read.
 
