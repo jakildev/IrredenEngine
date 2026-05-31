@@ -249,7 +249,7 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         // (workGroupIndex * 64 + localId.x) lines up with what we dispatch. This
         // is the same fold as `voxelDispatchGridForCount` in system_voxel_to_trixel.hpp;
         // it is inlined here to avoid depending on that heavy STAGE_1 header just
-        // for the helper (a shared home for it is a worthwhile follow-up cleanup).
+        // for the helper. Extraction tracked in #1422.
         constexpr int kLocalSize = 64;
         constexpr int kMaxGroupsX = 1024;
         const int groups = IRMath::divCeil(liveCount, kLocalSize);

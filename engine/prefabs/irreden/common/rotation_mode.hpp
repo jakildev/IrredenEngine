@@ -74,6 +74,16 @@ inline void setupMainCanvasSO3(IREntity::EntityId entity) {
     }
     vs.gpuTransformSlot_ = slot;
     vs.snapTransformOctahedral_ = true;
+    // Only wire the pool when the canvas and voxels are live. A headless/staged
+    // entity (canvasEntity_ == kNullEntity or numVoxels_ == 0) at setMode time
+    // already has snapTransformOctahedral_ = true, but the pool's SO3 counter
+    // stays at 0 — visibleFaceIds_.w will be 0 for that canvas and the per-entity
+    // triplet path won't fire until the count rises. Any future canvas-attach pass
+    // that migrates pendingVoxels_ into the pool for an entity whose
+    // snapTransformOctahedral_ is already true MUST call both
+    // setTransformIndexForRange and incrementSO3SetCount to bring the pool into
+    // sync; otherwise the entity renders with the shared UBO triplet instead of
+    // its per-voxel snapped orientation.
     if (vs.canvasEntity_ != IREntity::kNullEntity && vs.numVoxels_ > 0) {
         C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(vs.canvasEntity_);
         pool.setTransformIndexForRange(
