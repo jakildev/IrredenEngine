@@ -310,8 +310,9 @@ constexpr vec3 isoPixelToPos3D(int isoX, int isoY, float depth) {
 }
 
 /// Float-precise overload of @ref isoPixelToPos3D taking a fractional iso
-/// point (e.g. a sub-trixel camera pan). The int overload above snaps to whole
-/// iso pixels; this one preserves the fractional offset, so the round-trip
+/// point (e.g. a sub-trixel camera pan). The int overload requires integer iso
+/// coordinates; this overload accepts fractional values and preserves sub-pixel
+/// precision, so the round-trip
 /// `pos3DtoPos2DIso(isoPixelToPos3D(iso, depth))` is the exact identity for any
 /// real @p iso — required when re-projecting a fractional offset under yaw must
 /// collapse back to the original offset at `yaw == 0`.

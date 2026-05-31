@@ -46,12 +46,13 @@ vec2 getEffectiveCameraIso() {
     }
     // CAMERA_CENTER: pivot Z-yaw about the world point under screen center (the
     // camera focus) instead of the world origin. `P` is the un-yawed world point
-    // that projects to `cameraIso` at z = 0 (the correction is independent of
-    // depth, so z = 0 is exact); re-projecting `P` under the live visual yaw is
-    // the offset that keeps that focus point pinned on screen as the camera
-    // rotates. At `visualYaw == 0` this collapses to `cameraIso` exactly (the
-    // round-trip identity `pos3DtoPos2DIso(isoPixelToPos3D(iso, 0)) == iso`), so
-    // the cardinal fast path stays byte-identical to ORIGIN mode.
+    // that projects to `cameraIso` at z = 0 (depth = 0 is the canonical iso-ray
+    // representative; `pos3DtoPos2DIso(isoPixelToPos3D(iso, 0)) == iso` holds
+    // exactly); re-projecting `P` under the live visual yaw is the offset that
+    // keeps that focus point pinned on screen as the camera rotates. At
+    // `visualYaw == 0` this collapses to `cameraIso` exactly (the round-trip
+    // identity above holds for any depth at yaw = 0, so the cardinal fast path
+    // stays byte-identical to ORIGIN mode).
     const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(cameraIso, 0.0f);
     return IRMath::pos3DtoPos2DIsoYawed(cameraFocusWorld, IRPrefab::Camera::getYaw());
 }
