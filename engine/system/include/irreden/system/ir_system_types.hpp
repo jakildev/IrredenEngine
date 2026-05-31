@@ -103,6 +103,13 @@ enum SystemName {
     SPRITE_ANIMATION_ADVANCE,
     GIZMO_SCREEN_SPACE_SIZE,
     LOD_UPDATE,
+    // World-space neighbour/spatial-query index. Rebuilds the
+    // C_SpatialIndex singleton each frame from C_WorldTransform +
+    // C_SpatialQueryable entities; a creation places it AFTER
+    // PROPAGATE_TRANSFORM (so translations are current) and BEFORE any
+    // consumer that calls IRPrefab::Spatial::queryRadius. See
+    // engine/prefabs/irreden/spatial/.
+    BUILD_SPATIAL_INDEX,
 
     // Modifier framework — runs at end of UPDATE, before RENDER reads
     // C_ResolvedFields. Order: decay all three vectors (per-entity,

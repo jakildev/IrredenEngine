@@ -10,6 +10,7 @@
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
+#include <irreden/script/lua_spatial_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
@@ -620,6 +621,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindRegisterPipelineAndSystemId(*this, prefabSystemIds());
     detail::bindModifierFramework(*this);
     detail::bindPrefabApi(*this);
+    detail::bindSpatialApi(*this);
 }
 
 void LuaScript::bindLuaCommands() {

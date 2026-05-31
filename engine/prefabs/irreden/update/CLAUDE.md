@@ -63,9 +63,10 @@ in the `UPDATE` pipeline unless explicitly noted.
 
 ## Free functions
 
-- `engine/prefabs/irreden/update/nav_query.hpp` — grid navigation helper
-  functions (not a system or component). Lives in the domain root
-  because it's a set of pure functions.
+- None in this domain currently. The domain-root free-function pattern (a
+  set of pure functions, not a component/system/command, living in the
+  domain root) is exemplified by
+  `engine/prefabs/irreden/spatial/spatial_query.hpp`.
 
 ## Gotchas
 

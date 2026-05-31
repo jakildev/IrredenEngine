@@ -4,11 +4,13 @@
 // PURPOSE: CPU-side 2D spatial hash for entity-level isometric viewport
 //   queries. Entities are inserted by their iso-space bounding rect, then
 //   queried against the camera's visible region to get the visible set.
-// STATUS: WIP stub -- not yet included or referenced by any system.
+// STATUS: Used by DEBUG_CULLING_MINIMAP (system_debug_culling_minimap.hpp),
+//   which inserts entities each frame and queries the visible set. This is an
+//   ISO-SCREEN 2D index and allocates a set + vector per query — it is a
+//   render-culling tool, NOT a reusable world-space neighbour index. For
+//   world-space gameplay neighbour queries use the allocation-disciplined
+//   IRPrefab::Spatial::SpatialGrid in engine/prefabs/irreden/spatial/.
 // TODO:
-//   - Wire into a render-side system (e.g. DEBUG_CULLING_MINIMAP or
-//     chunk-level frustum culling) that inserts entities each frame and
-//     queries for visible set.
 //   - Consider using for CPU-side chunk visibility before indirect
 //     dispatch (see system_voxel_to_trixel.hpp).
 //   - Evaluate cell size tuning vs typical entity density.
