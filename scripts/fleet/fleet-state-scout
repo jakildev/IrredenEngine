@@ -300,11 +300,18 @@ def _parse_blocked_by(body):
     # Kept consistent with fleet-claim's check_blockers parser.
     vals = re.findall(r'^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$',
                       body or "", re.IGNORECASE | re.MULTILINE)
-    real = [v.strip() for v in vals if not v.strip().lower().startswith("(none")]
+    # Also handle inline-bold form: **Blocked by: #N (label)** mid-line where
+    # the colon and value are inside one bold span (#1423). The two patterns are
+    # mutually exclusive: canonical has **Blocked by:** (bold closes at colon),
+    # inline has **Blocked by: value** (space after colon, bold stays open).
+    inline_vals = re.findall(r'\*\*Blocked by:\s+(.+?)\*\*',
+                             body or "", re.IGNORECASE)
+    all_vals = vals + inline_vals
+    real = [v.strip() for v in all_vals if not v.strip().lower().startswith("(none")]
     if real:
         return ", ".join(real)
-    if vals:
-        # Every canonical line says (none) → genuinely unblocked.
+    if all_vals:
+        # Every matched form says (none) → genuinely unblocked.
         return ""
     for m in _BLOCKED_ON_RE.finditer(body or ""):
         cand = m.group(1).strip().strip("*").strip()

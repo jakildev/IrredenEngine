@@ -488,12 +488,22 @@ repo = os.environ.get("REPO", "")
 #   **Blocked by:** #1234, #1235
 #   **Blocked by:** (none — explanatory text)
 # Accept either bare `**Blocked by:**` or list-bullet `- **Blocked by:**`.
+# Also handle inline-bold form: **Blocked by: #N (label)** mid-line where the
+# colon and value sit inside one bold span (#1423). The two patterns are
+# mutually exclusive: canonical has **Blocked by:** (bold closes at colon),
+# inline has **Blocked by: value** (space after colon, bold stays open).
 field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
+inline_re = re.compile(r"\*\*Blocked by:\s+(.+?)\*\*", re.IGNORECASE)
 field_values = []
 for line in body.splitlines():
     m = field_re.match(line)
     if m:
         field_values.append(m.group(1).strip())
+        continue
+    for m2 in inline_re.finditer(line):
+        val = m2.group(1).strip()
+        if val:
+            field_values.append(val)
 # Union every canonical line (multi-line + multi-ref); drop explicit (none)
 # declarations. If every **Blocked by:** line is (none), the task is unblocked.
 real = [v for v in field_values if not v.lower().startswith("(none")]
@@ -914,11 +924,17 @@ body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace"
 repo = os.environ.get("REPO", "")
 
 field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
+inline_re = re.compile(r"\*\*Blocked by:\s+(.+?)\*\*", re.IGNORECASE)
 field_values = []
 for line in body.splitlines():
     m = field_re.match(line)
     if m:
         field_values.append(m.group(1).strip())
+        continue
+    for m2 in inline_re.finditer(line):
+        val = m2.group(1).strip()
+        if val:
+            field_values.append(val)
 # Union every canonical line (multi-line + multi-ref); drop (none).
 real = [v for v in field_values if not v.lower().startswith("(none")]
 if not real:
