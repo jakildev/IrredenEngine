@@ -55,10 +55,7 @@ class SpatialGrid {
     // working set has been seen. O(cells touched last frame), not O(world).
     void clear() {
         for (std::int64_t key : m_touchedKeys) {
-            auto it = m_cells.find(key);
-            if (it != m_cells.end()) {
-                it->second.clear(); // keep the bucket's vector capacity
-            }
+            m_cells[key].clear(); // keep the bucket's vector capacity
         }
         m_touchedKeys.clear(); // keep the touched-key vector's capacity
     }

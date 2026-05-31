@@ -19,8 +19,8 @@ namespace IRSystem {
 // its own pipeline group — it cannot co-execute with anything else that
 // touches C_SpatialIndex.
 template <> struct System<BUILD_SPATIAL_INDEX> {
-    // Resolved once per frame in beginTick (a manager hash lookup), then
-    // reused by every per-entity tick — never stored across frames.
+    // Refreshed at the start of every frame in beginTick() — stale value from
+    // the prior frame is always overwritten before use.
     IRComponents::C_SpatialIndex *index_ = nullptr;
 
     void beginTick() {
