@@ -790,7 +790,7 @@ for pr in prs:
         break
 ' 2>/dev/null | head -1)
             if [[ -n "$existing_pr" ]]; then
-                echo "fleet-claim claim: #${issue_num} already has open PR #${existing_pr} (head claude/${issue_num}-…); refusing duplicate claim" >&2
+                echo "fleet-claim claim: #${issue_num} already has open PR #${existing_pr} (head claude/[game-]${issue_num}-…); refusing duplicate claim" >&2
                 return 1
             fi
         fi
