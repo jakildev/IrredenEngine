@@ -230,11 +230,14 @@ Do the work, then exit cleanly:
     PR matches the filter.
 
 1c. **Resolve one `fleet:semantic-conflict` PR per iteration
-    (engine only).** The merger sets this label when mechanical
+    (engine + game).** The merger sets this label when mechanical
     rebase fails (label semantics: see [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Issue/PR labeling
-    discipline"). That's your lane.
+    discipline"). That's your lane — for **both** repos, since the
+    merger now runs a game pass too (PR #1371) and flags game PRs
+    `fleet:semantic-conflict`.
 
-    From the cached `repos.engine.prs[]`, pick PRs whose `labels`
+    From the cached `repos.engine.prs[]` **and `repos.game.prs[]`**,
+    pick PRs whose `labels`
     array contains `fleet:semantic-conflict` AND contains NONE of
     `fleet:wip`, `human:wip`, `human:needs-fix`, `human:blocker`,
     `fleet:awaiting-base`, `fleet:awaiting-upstream-review`,
@@ -257,11 +260,24 @@ Do the work, then exit cleanly:
     (step c) and `--force-with-lease` push (step h) remain in place as
     safety nets; the resolving label is the first-line prevention.
 
-    Game repo is intentionally out of scope for v1: the merger is
-    engine-only, so no game PR ever gets the label.
-    All `--repo` flags in this step use `jakildev/IrredenEngine`
-    (`<engine-repo>` in the merger-role convention — same slug, not
-    auto-derived here since this step is always engine-only).
+    **Repo routing.** Each candidate carries its source repo (the
+    `repo` field on the cached PR record: `engine` or `game`). Resolve
+    engine PRs first (engine is the priority lane), then game. For the
+    chosen PR, substitute throughout the steps below:
+
+    | | engine PR | game PR |
+    |---|---|---|
+    | `gh` repo flag | `--repo jakildev/IrredenEngine` | `--repo jakildev/irreden` |
+    | cwd for git/gh | your engine worktree | `cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>` **first** |
+    | `fleet-claim` | `fleet-claim resolving-claim …` | `fleet-claim --repo game resolving-claim …` |
+    | `fleet-pr-checkout-detached` | `--repo jakildev/IrredenEngine` | `--repo jakildev/irreden` |
+    | build-verify (step g) | `fleet-build --target IRShapeDebug` | game build — see step g |
+
+    For a game PR, `cd` into the game worktree before any git/gh op (the
+    bash cwd persists across calls in the iteration), and reset *that*
+    worktree to scratch in step k. Game stacked-PRs don't exist (game
+    worker pickup skips stackables), so the stack-aware filter above is a
+    no-op for game.
 
     If the filtered list is empty, skip to step 2. Otherwise pick
     the oldest (smallest `number`) and:
@@ -303,12 +319,41 @@ Do the work, then exit cleanly:
        surface in subsequent commits, repeat step e for each.
     g. **Build before pushing.** Safety net for resolutions that
        compile-broke without a textual conflict marker (the most
-       common Opus failure mode):
-       `fleet-build --target IRShapeDebug`
-       If the build fails AND the failure is in code that this PR
-       touched, fix it inline and rebuild. If the failure is in
-       unrelated code, your resolution introduced a regression —
-       jump to step j (escalate).
+       common Opus failure mode).
+
+       **Engine PR:** `fleet-build --target IRShapeDebug`.
+
+       **Game PR:** the game can't build standalone — it compiles via
+       the engine with your game worktree added as a user project. Use a
+       **dedicated** game build dir (so it doesn't clobber your engine
+       worktree's preset build) and point `ir-build` at it with the
+       `IRREDEN_BUILD_DIR` env var (that's the override knob — there is
+       no `--build-dir` flag). `ir-build` only auto-configures with the
+       bare preset, which omits `IRREDEN_USER_PROJECTS`, so you must
+       configure this dir yourself **once** (idempotent; reuse across
+       iterations) with the game worktree as the user project, then
+       build the **affected project's** target:
+       ```
+       ENG=<your-engine-worktree-abs-path>
+       GAME_WT=~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>
+       # one-time configure (skip if $ENG/build-game/CMakeCache.txt exists):
+       cmake --preset <host>-debug -B "$ENG/build-game" -DIRREDEN_USER_PROJECTS="$GAME_WT"
+       # build the affected project target via ir-build, pointed at that dir:
+       IRREDEN_BUILD_DIR="$ENG/build-game" fleet-build --target IRIrredenAll
+       ```
+       `<host>-debug` is your host preset (`macos-debug` / `linux-debug`).
+       Pick the target that matches what the PR touches — `IRIrredenAll`
+       (or `IRGame` for the demo) for `irreden/`, the corresponding
+       `IR<Project>All` otherwise. **Never build `IRGameAll`** — it
+       depends on the midi project, currently broken (game #88), so it
+       always fails regardless of your resolution.
+
+       Then, for either repo: if the build fails AND the failure is in
+       code this PR touched, fix it inline and rebuild. If the failure
+       is in unrelated code — or (game) you cannot get a clean
+       configure/build at all — your resolution can't be verified, so
+       **do NOT push**: jump to step j (escalate to the human). An
+       unverified game push is worse than a human handoff.
     h. Push. You're on detached HEAD (from step c), so the wrapper
        reads the head ref from `.git/fleet-amend-ref` and runs
        `git push --force-with-lease origin HEAD:<head-ref>`:
@@ -349,9 +394,15 @@ Do the work, then exit cleanly:
     k. Reset to scratch (runs at the end of every step 1c branch —
        success, lease-fail, or escalation — so the next iteration
        starts clean and reviewers aren't blocked from `gh pr
-       checkout`ing this branch). Release the resolving lock first:
+       checkout`ing this branch). Release the resolving lock first;
+       reset the worktree the PR was checked out in (engine worktree
+       for an engine PR, game worktree for a game PR — the `git
+       checkout` runs there):
        `fleet-claim resolving-release <N> <your-worktree-basename>`
+       (game: `fleet-claim --repo game resolving-release <N> <your-worktree-basename>`)
        `git checkout -B claude/<your-worktree-basename>-scratch origin/master`
+       The `build-game` dir, if you created one, is reused next iteration
+       — leave it.
 
     Conflicts are slow work (read both sides, judge intent, build,
     push) and force-push retriggers CI — keep this step bounded to
