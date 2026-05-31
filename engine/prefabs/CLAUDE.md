@@ -43,8 +43,8 @@ before adding or modifying.
 | Command     | `<domain>/commands/command_<name>.hpp`       | `command_zoom_in.hpp`        |
 | Entity      | `<domain>/entities/entity_<name>.hpp`        | `entity_camera.hpp`          |
 
-Exceptions exist (e.g. `engine/prefabs/irreden/update/nav_query.hpp` lives
-directly in the domain root because it's a set of free functions, not a
+Exceptions exist (e.g. `engine/prefabs/irreden/spatial/spatial_query.hpp`
+lives directly in the domain root because it's a set of free functions, not a
 component/system/command). When in doubt, follow the shape of existing files
 in that domain.
 
