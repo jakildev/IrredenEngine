@@ -29,7 +29,7 @@ local config_2kfullscreen = {
     start_updates_on_first_key_press = false,
     start_recording_on_first_key_press = false,
     profiling_enabled = true,
-    gui_scale = 2, -- 1 = full res, higher = bigger GUI trixels
+    gui_scale = 1, -- 1 = full res, higher = bigger GUI trixels
     hovered_trixel_visible = true,
     -- END
 
@@ -63,7 +63,7 @@ local config_1080_windowed = {
     start_updates_on_first_key_press = true,
     start_recording_on_first_key_press = true,
     profiling_enabled = true,
-    gui_scale = 2,
+    gui_scale = 1,
     hovered_trixel_visible = true,
     -- END
 
@@ -98,7 +98,7 @@ local config_1080_windowed_vertical = {
     start_updates_on_first_key_press = true,
     start_recording_on_first_key_press = true,
     profiling_enabled = false,
-    gui_scale = 2,
+    gui_scale = 1,
     hovered_trixel_visible = true,
     -- END
 

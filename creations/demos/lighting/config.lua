@@ -26,6 +26,6 @@ config = {
     start_recording_on_first_key_press = false,
     profiling_enabled = false,
     gpu_stage_timing = true,
-    gui_scale = 2,
+    gui_scale = 1,
     hovered_trixel_visible = false,
 }

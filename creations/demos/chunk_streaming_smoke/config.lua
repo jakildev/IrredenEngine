@@ -25,6 +25,6 @@ config = {
     start_updates_on_first_key_press = false,
     start_recording_on_first_key_press = false,
     profiling_enabled = false,
-    gui_scale = 2,
+    gui_scale = 1,
     hovered_trixel_visible = false,
 }
