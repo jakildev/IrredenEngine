@@ -104,7 +104,7 @@ registration, hard fail when it cannot be honored.
 
 Per-entity Lua dispatch is a footgun (10-100× slower per the issue).
 The default and only API: Lua passes a `tick` function that receives
-**column views** (one Lua table per component, indexable `1..N`) and
+a single archview (`arch`), with `0..arch.length-1` row indices, and
 processes the whole archetype in one call. One `sol::function`
 invocation per matching archetype per tick.
 
@@ -246,7 +246,7 @@ local kind = DeviceType.SYNTH                       -- 1; usable as an int32 def
 -- `:getField`/`:setField`/`:getRow`/`:setRow` for Lua-defined columns).
 local regenSystemId = IRSystem.registerSystem({
     name       = "Regen",
-    components = { C_Hp, C_Tag },                   -- register handles or name strings
+    components = { C_Hp, C_Tag },                   -- component handles; bare strings accepted but use handles for C++ types
     excludes   = { C_Dead },                        -- optional
     tick       = function(arch)                     -- single archview
         for i = 0, arch.length - 1 do               -- 0-based, arch.length rows
@@ -800,6 +800,11 @@ The #1400 acceptance criterion asks for "a documented path to author
 many-entity navigation/steering in Lua-defined ECS (or an explicit *stays C++*
 ruling)." With the decisions above, the path is a **hybrid**: engine primitives
 own the cross-entity structures, Lua owns the per-entity arithmetic.
+
+> **Note:** The path below assumes all four gaps have been closed; steps 2–5
+> reference engine primitives (`Spatial.queryRadius`, `Nav.findPath`) that are
+> future tasks — see the per-gap Actionable-as lines above for implementation
+> status.
 
 1. **Index** — the engine rebuilds the world-space spatial index once per frame
    (`BUILD_SPATIAL_INDEX`, ordered before every consumer). [G2]
