@@ -306,6 +306,10 @@ def _parse_blocked_by(body):
     # inline has **Blocked by: value** (space after colon, bold stays open).
     inline_vals = re.findall(r'\*\*Blocked by:\s+(.+?)\*\*',
                              body or "", re.IGNORECASE)
+    # No per-line `continue` guard needed (unlike fleet-claim's check_blockers
+    # loop): re.findall over the whole body is safe because canonical and inline
+    # are mutually exclusive — canonical bold closes at ":**", inline bold stays
+    # open past the value — so a single line cannot match both patterns.
     all_vals = vals + inline_vals
     real = [v.strip() for v in all_vals if not v.strip().lower().startswith("(none")]
     if real:
