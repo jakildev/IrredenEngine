@@ -49,7 +49,7 @@ template <> struct System<HITBOX_MOUSE_TEST> {
                                   abs(s_mouseCanvas.y - entityCenter.y) <= hitbox.halfExtent_.y;
             },
             []() {
-                s_cameraIso = IRRender::getCameraPosition2DIso();
+                s_cameraIso = IRRender::getEffectiveCameraIso();
                 s_cameraZoom = IRRender::getCameraZoom();
                 auto &framebuffer =
                     IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");

@@ -206,7 +206,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
         if (texOpt.has_value()) {
             IRRender::updateCullViewport(
-                IRRender::getCameraPosition2DIso(),
+                IRRender::getEffectiveCameraIso(),
                 IRRender::getCameraZoom(),
                 texOpt.value()->size_
             );
@@ -244,7 +244,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             auto &canvasTextures = *texturesOpt.value();
 
             if (canvasId == mainCanvas) {
-                frameData_.cameraTrixelOffset = IRRender::getCameraPosition2DIso();
+                frameData_.cameraTrixelOffset = IRRender::getEffectiveCameraIso();
             } else {
                 canvasTextures.clear();
                 vec3 entityPos = vec3(gpuShapes[0].worldPosition);

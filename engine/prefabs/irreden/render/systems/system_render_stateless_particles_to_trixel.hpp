@@ -54,18 +54,16 @@ template <> struct System<RENDER_STATELESS_PARTICLES_TO_TRIXEL> {
         program_->use();
     }
 
-    void tick(
-        C_StatelessParticleEmitters &emitters,
-        C_TriangleCanvasTextures &canvas
-    ) {
-        if (emitters.frameBuffer_.second == nullptr ||
-            emitters.emitterBuffer_.second == nullptr) return;
+    void tick(C_StatelessParticleEmitters &emitters, C_TriangleCanvasTextures &canvas) {
+        if (emitters.frameBuffer_.second == nullptr || emitters.emitterBuffer_.second == nullptr)
+            return;
         const std::uint32_t emitterCount = emitters.emitterCount();
-        if (emitterCount == 0u) return;
+        if (emitterCount == 0u)
+            return;
 
         frameHeader_.currentTime_ = currentTime_;
         frameHeader_.emitterCount_ = emitterCount;
-        frameHeader_.cameraTrixelOffset_ = IRRender::getCameraPosition2DIso();
+        frameHeader_.cameraTrixelOffset_ = IRRender::getEffectiveCameraIso();
         frameHeader_.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(canvas.size_);
         frameHeader_.canvasSizePixels_ = canvas.size_;
         // Mirror the voxel pipeline's (renderMode, effectiveSubdivisions) so
@@ -89,12 +87,9 @@ template <> struct System<RENDER_STATELESS_PARTICLES_TO_TRIXEL> {
             kBufferIndex_StatelessParticleEmitters
         );
 
-        canvas.getTextureColors()->bindAsImage(
-            0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8
-        );
-        canvas.getTextureDistances()->bindAsImage(
-            1, TextureAccess::READ_WRITE, TextureFormat::R32I
-        );
+        canvas.getTextureColors()->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        canvas.getTextureDistances()
+            ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
 
         constexpr std::uint32_t kLocalSize = 64u;
         const std::uint32_t threadCount = emitterCount * kMaxParticlesPerEmitter;
@@ -117,8 +112,7 @@ template <> struct System<RENDER_STATELESS_PARTICLES_TO_TRIXEL> {
             C_StatelessParticleEmitters,
             C_TriangleCanvasTextures>("RenderStatelessParticlesToTrixel");
         auto *p = getSystemParams<System<RENDER_STATELESS_PARTICLES_TO_TRIXEL>>(systemId);
-        p->program_ =
-            IRRender::getNamedResource<ShaderProgram>("StatelessParticleRenderProgram");
+        p->program_ = IRRender::getNamedResource<ShaderProgram>("StatelessParticleRenderProgram");
         return systemId;
     }
 };
