@@ -466,9 +466,10 @@ constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
 /// now picks the actually-visible faces instead of the back-facing ones,
 /// fixing the stripe artifact in #1256.
 ///
-/// DETACHED-canvas paths call @ref visibleTriplet (#1386) instead — per-entity
-/// rotation determines which faces the octahedral-snap residual acts on, so
-/// the canvas SO(3) bake (#1075/#1076) alone is not sufficient.
+/// DETACHED-canvas paths bypass this and use the legacy
+/// `{X_NEG, Y_NEG, Z_NEG}` set — the canvas SO(3) bake (#1075/#1076)
+/// already absorbs the entity rotation; per-entity SO(3) visible-triplet
+/// is the follow-on work in #1272.
 constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardinalIndex) {
     switch (cardinalIndex) {
     case CardinalIndex::k90:
@@ -481,44 +482,6 @@ constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardina
     default:
         return {FaceId::X_NEG, FaceId::Y_NEG, FaceId::Z_NEG};
     }
-}
-
-/// The three camera-visible cube faces for an entity rotated by @p rotation —
-/// the SO(3) generalization of @ref visibleFaceTripletCardinal (which only
-/// covers the camera's Z-yaw cardinals). A cube face is visible when its
-/// world-space outward normal opposes the iso view direction: the camera
-/// looks down the +(1,1,1) iso depth axis (see engine/math/CLAUDE.md,
-/// `depth = x + y + z`, higher = further), so model normal `n` is front-facing
-/// iff `(R·n)·viewDir < 0`. Expressed in the entity's model frame that is
-/// `n·(R⁻¹·viewDir) < 0`, so the per-axis sign of `R⁻¹·viewDir` picks the
-/// POS or NEG face of each axis.
-///
-/// Slot ordering matches @ref visibleFaceTripletCardinal and the rasterizer's
-/// `faceDeform_[]` upload: slot 0 = X-axis face, 1 = Y-axis face, 2 = Z-axis
-/// face. Each slot is axis-fixed, so the per-slot `faceDeformationMatrixSO3`
-/// (axis-only) is unchanged by this — only which polarity each slot renders.
-///
-/// At identity rotation `R⁻¹·viewDir = (1,1,1)` (all positive) so the result is
-/// `{X_NEG, Y_NEG, Z_NEG}` — byte-identical to `visibleFaceTripletCardinal(k0)`
-/// and to the legacy hardcoded detached triplet. Within an octahedral cell the
-/// residual (@ref octahedralSnapResidual) stays below the covering radius, so a
-/// face only flips polarity when it is edge-on (its view-space normal ≈ 0) —
-/// where the deformation is near-singular and the face shows no visible area,
-/// making the choice visually inconsequential.
-///
-/// CPU-only by design: the result is uploaded into
-/// `FrameDataVoxelToCanvas::visibleFaceIds_` and consumed shader-side exactly
-/// like the cardinal path (#1278), so there is no GPU-side mirror to keep in
-/// sync. Reused verbatim by per-entity main-canvas SO(3) (#1299).
-inline std::array<FaceId, 3> visibleTriplet(const vec4 &rotation) {
-    // View direction expressed in the entity's model frame (R⁻¹ · viewDir).
-    // Only the per-axis signs matter, so viewDir need not be normalized.
-    const vec3 viewInModel = rotateVectorByQuat(vec3(1.0f, 1.0f, 1.0f), quatInverse(rotation));
-    return {
-        viewInModel.x < 0.0f ? FaceId::X_POS : FaceId::X_NEG,
-        viewInModel.y < 0.0f ? FaceId::Y_POS : FaceId::Y_NEG,
-        viewInModel.z < 0.0f ? FaceId::Z_POS : FaceId::Z_NEG,
-    };
 }
 
 /// CPU mirror of `cardinalLowerCornerShift` in `shaders/ir_iso_common.glsl`.
@@ -905,13 +868,6 @@ struct IsoBounds2D {
     /// Returns true if @p point lies within [min_, max_] (inclusive).
     bool contains(vec2 point) const {
         return point.x >= min_.x && point.x <= max_.x && point.y >= min_.y && point.y <= max_.y;
-    }
-
-    /// Returns true if the axis-aligned box spanning [@p aMin, @p aMax]
-    /// overlaps these bounds (inclusive on every edge); @p aMin / @p aMax are
-    /// the box's min / max iso corners.
-    bool overlapsAABB(vec2 aMin, vec2 aMax) const {
-        return aMax.x >= min_.x && aMin.x <= max_.x && aMax.y >= min_.y && aMin.y <= max_.y;
     }
 
     /// Returns the centre of the bounds.

@@ -228,8 +228,7 @@ for issue in pending:
     body = view.get('body', '') or ''
     labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
 
-    if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
-            or 'fleet:needs-human' in labels):
+    if 'fleet:queued' in labels or 'fleet:scope-shipped' in labels:
         skipped_already += 1
         continue
 

@@ -45,14 +45,10 @@ itself). Together they catch:
 - **Cross-host races** — both hosts' FS locks succeed independently
   (separate filesystems). Both attempt to apply
   `fleet:claim-<host>-<agent>` on the issue. After applying, each
-  host re-reads the issue's label set and resolves a **sole-holder**
-  claim: you win only if no other `fleet:claim-*` label is present.
-  If others are present and yours is the lex-min you drop and retry
-  (so a simultaneous race converges to exactly one winner); otherwise
-  you yield to the existing holder, remove your own label, and roll
-  back the FS claim with exit 1. This closes the co-win hole where a
-  later, lex-smaller claimant beat an existing holder that had passed
-  its own snapshot check and never re-validated (#1384).
+  host re-reads the issue's label set and runs an atomic lex-min
+  tie-break: if any other `fleet:claim-*` label has a lower name,
+  the loser removes its own label and rolls back its FS claim with
+  exit 1 ("race lost on issue-label tie-break").
 
 Once the worker opens its PR, `fleet-state-scout` derives Owner
 from the PR's `headRefName` (e.g. `claude/1195-foo` → Owner
@@ -71,13 +67,11 @@ coordination mechanisms prevent duplicate work:
 **Task claiming (two layers):**
 1. **FS lock** (`~/.fleet/claims/<issue-slug>/` via atomic `mkdir`) —
    prevents same-host races. Per-host only.
-2. **Issue-label claim** (`fleet:claim-<host>-<agent>` on the
-   GitHub issue) — atomic sole-holder claim. After applying the
-   label, each host re-reads the issue's labels: a claimant wins only
-   as the sole `fleet:claim-*` holder; the lex-min of a simultaneous
-   race drops and retries to re-acquire alone, and any later claimant
-   that finds an existing holder yields and rolls back its FS claim
-   (#1384).
+2. **Issue-label tie-break** (`fleet:claim-<host>-<agent>` on the
+   GitHub issue) — atomic lex-min tie-break. After applying the
+   label, each host re-reads the issue's labels; if another
+   `fleet:claim-*` label has a lower name, the loser removes its
+   label and rolls back its FS claim.
 
 **Requirements for cross-host safety:**
 - The GitHub issue must be reachable at claim time. If `gh issue edit
@@ -85,16 +79,7 @@ coordination mechanisms prevent duplicate work:
   retries on the next iteration). No silent fallback to FS-lock-only.
 - Each host must have its own unique `derive_host()` value (mac, linux,
   windows) — two hosts with the same host tag would generate identical
-  issue labels and skip the tie-break. The taxonomy is a single canonical
-  set shared by every host-name producer: claim labels (`derive_host`),
-  cross-host smoke (`uname -s` → linux/macos), the build presets, and
-  `commit-and-push`'s `fleet:authored-on-<host>` all agree. **WSL2 derives
-  `linux`** (it runs the `linux-debug` OpenGL build and provides the linux
-  smoke), so `windows` is reserved for native MSYS2/mingw. Run
-  `fleet-claim host` to print this machine's key. **Collision caveat:** a
-  WSL2 host and a native-Linux host both derive `linux`; do not run both as
-  separate fleets simultaneously without forcing `FLEET_TEST_HOST` to
-  disambiguate one. Today's topology (mac + WSL2) is collision-free.
+  issue labels and skip the tie-break.
 
 **Ingestion (cross-host race prevention):**
 - The scout fires `fleet-queue-ingest` when new `human:approved` issues
@@ -807,19 +792,6 @@ Specifically, **never pass these via `--label` when filing**:
   the landing PR; not added if the comment call fails (safe retry on
   next tick). Don't add manually unless you've verified a merged PR
   covers the scope.
-- `fleet:needs-human` — owned by the **author worker** (opus-worker).
-  Set when a queued task can only be completed by a step the fleet
-  can't perform autonomously — most often a gated self-config edit
-  (`.claude/commands/role-*.md`, `.claude/agents/*`). The worker
-  comments naming what the human must apply, removes `fleet:queued`,
-  adds this label, and releases its claim. **`human:approved` is
-  KEPT** — it is the human's durable approval, not the worker's to
-  strip. Like `fleet:scope-shipped`, this label is in the scout's
-  `_INGEST_SKIP_LABELS` and the ingest's stamping skip, so the ingest
-  does NOT re-stamp `fleet:queued` while it's present (removing
-  `human:approved` used to be the only way to defeat that re-stamp —
-  this label replaces that workaround). Clears when the human applies
-  the change (the ingest then re-queues the issue) or closes it.
 - `fleet:queued` / `fleet:task` — owned by **`fleet-queue-ingest`**,
   set after `human:approved` has been observed. Adding it at filing
   time excludes the issue from the ingest search (which looks for
@@ -941,19 +913,17 @@ Specifically, **never pass these via `--label` when filing**:
   is set, or on abort paths. Host disambiguation
   (mac / linux / windows) is required for correctness — both hosts
   can have an `opus-reviewer` agent; without the host prefix the
-  sole-holder claim would collide. A claimant wins only as the sole
-  `fleet:reviewing-*` holder; in a simultaneous race the lex-min drops
-  and retries to re-acquire alone, and any later claimant that finds an
-  existing holder yields (exit 1). Reviewer / smoke-pickup agents
-  **skip any PR carrying any `fleet:reviewing-*` label** as a fast-path
-  filter, but the real mutex is `fleet-claim review-claim` itself — and
-  it now holds even when a later claim is lex-smaller than the existing
-  holder (#1384), so two same-prefix holders never coexist.
+  deterministic-min tie-break would collide. The lex-min of all
+  `fleet:reviewing-*` labels on the PR wins; losers self-remove their
+  label and exit 1. Reviewer / smoke-pickup agents **skip any PR
+  carrying any `fleet:reviewing-*` label** as a fast-path filter,
+  but the real mutex is `fleet-claim review-claim` itself (TOCTOU on
+  the label list is benign — the atomic POST resolves the race).
   The scout's `fleet-claim cleanup --gh` pass sweeps labels older
   than 30 min and replays orphan sentinels from failed removals.
   Don't add manually; don't add to issues.
 - `fleet:amending-<host>-<agent>` — owned by the **`fleet-claim`
-  script** (atomic feedback-claim primitive; same sole-holder claim as
+  script** (atomic feedback-claim primitive; same lex-min tie-break as
   `fleet:reviewing-`). The **single mutex for all feedback handling**:
   the author worker acquires it via `fleet-claim amending-claim` as the
   **first** action of feedback pickup — before reading feedback,
@@ -1029,10 +999,9 @@ Specifically, **never pass these via `--label` when filing**:
   `fleet:queued`+`human:owned`) that persisted across N reconcile
   `--apply` ticks (`FLEET_RECONCILE_DRIFT_TICKS`, default 3). Reconcile
   refreshes one open issue's body in place and never opens a second; the
-  human resolves the listed rows, and reconcile auto-closes the tracker
-  once every finding clears (re-filing a fresh one if drift recurs). The
-  counter resets the moment a finding stops recurring, so a transient
-  one-tick blip never escalates.
+  human resolves the listed rows and closes it. The counter resets the
+  moment a finding stops recurring, so a transient one-tick blip never
+  escalates.
 
 **The cross-surface `reconcile` pass.** `fleet-claim reconcile`
 cross-checks the four claim surfaces (issue/PR labels, open-PR state,

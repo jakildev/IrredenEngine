@@ -7,8 +7,8 @@
 #
 # Same-host atomicity: atomic mkdir(2) under $CLAIMS_DIR. Cross-host
 # atomicity: a `fleet:claim-<host>-<agent>` label on the linked issue
-# with a sole-holder claim (the same primitive used by review-claim,
-# resolving-claim, and amending-claim — see _acquire_label_on / #1384).
+# with lex-min tie-break (the same primitive used by review-claim,
+# resolving-claim, and amending-claim).
 #
 # Slug canonicalization: the issue number itself, optionally prefixed
 # with the global --repo namespace (engine → "<N>", game → "game-<N>").
@@ -144,11 +144,9 @@ slugify() {
 # Cross-host atomicity for task claims is provided by a
 # `fleet:claim-<host>-<agent>` label on the linked issue. POST .../labels
 # is atomic; the response includes the resulting label set, which we
-# filter to the `fleet:claim-*` prefix. We win only as the SOLE holder of
-# the prefix; if others are present and ours is the lex-min we drop and
-# retry to re-acquire alone, otherwise we yield to the existing holder,
-# remove our label, and the caller exits 1. See _acquire_label_on for the
-# full algorithm and #1384 for the co-win hole this closes.
+# filter to the `fleet:claim-*` prefix and take the lex-min as the winner.
+# If our label isn't the lex-min we lost the race; we remove our label and
+# the caller exits 1.
 #
 # The same _acquire_label_on primitive backs:
 #   - fleet:reviewing-<host>-<agent>  (reviewer + cross-host smoke claim)
@@ -166,36 +164,29 @@ slugify() {
 # cleanup only sweeps them off OPEN issues whose claim is abandoned (no
 # matching open `claude/<N>-*` PR + age > TTL).
 
-host_from_uname() {
-    # Pure mapping from a `uname -s` string to the canonical host key
-    # (mac | linux | windows | unknown). Extracted as a seam so a test can
-    # pin every mapping without depending on the runner's real OS.
-    #
-    # WSL2 and native Linux BOTH map to "linux": both run the `linux-debug`
-    # OpenGL build, provide the *linux* cross-host smoke (`fleet:needs-linux-
-    # smoke`), and are stamped `fleet:authored-on-linux` by commit-and-push
-    # (which keys off this same `uname -s`). So the claim-label host token must
-    # also be "linux" for the whole taxonomy to agree on one name per host.
-    # Native Windows (MSYS2 / mingw, where `uname -s` is MINGW*/MSYS*/CYGWIN*)
-    # is the only "windows" host. See #1383.
-    case "$1" in
-        Darwin)                        echo mac ;;
-        Linux)                         echo linux ;;
-        MINGW*|MSYS*|CYGWIN*|Windows*) echo windows ;;
-        *)                             echo unknown ;;
-    esac
-}
-
 derive_host() {
-    # Canonical host key for this machine: mac | linux | windows.
-    # FLEET_TEST_HOST overrides for test scaffolding (and lets an operator
-    # running WSL2 alongside native Linux force-disambiguate the collision
-    # documented in FLEET.md § Multi-host fleet coordination).
+    # Normalize uname output to one of: mac | windows | linux.
+    # WSL2 (/proc/version contains "Microsoft" or "WSL") maps to "windows"
+    # because the user runs the WSL2 fleet as their Windows fleet.
+    # FLEET_TEST_HOST overrides for test scaffolding.
     if [[ -n "${FLEET_TEST_HOST:-}" ]]; then
         echo "$FLEET_TEST_HOST"
         return
     fi
-    host_from_uname "$(uname -s 2>/dev/null || echo Unknown)"
+    local u
+    u=$(uname -s 2>/dev/null || echo Unknown)
+    case "$u" in
+        Darwin) echo mac ;;
+        Linux)
+            if [[ -f /proc/version ]] && grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+                echo windows
+            else
+                echo linux
+            fi
+            ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) echo windows ;;
+        *) echo unknown ;;
+    esac
 }
 
 repo_from_ns() {
@@ -275,128 +266,50 @@ except Exception:
 ' 2>/dev/null || echo 0
 }
 
-# _claim_decision <mine> <matching-label>...
-#   PURE decision helper (no I/O) — the table-testable seam for the claim
-#   mutex. Given my just-POSTed label and the full set of <prefix>* labels
-#   present on the POST response (which includes mine), decide the outcome:
-#     win   — I am the SOLE holder of the prefix → own the lock.
-#     retry — other holders are present but I am the lex-min → drop my label
-#             and retry alone; in a simultaneous race the lex-larger
-#             contenders also drop, so the retry re-acquires uncontested.
-#     lose  — other holders are present and an earlier/lex-smaller one
-#             remains → yield to it.
-#   This replaces the old "win iff I'm the lex-min of the snapshot" rule,
-#   which let a LATER, lex-smaller claimant co-win with an existing holder
-#   that had already passed its own check and never re-validated (#1384).
-_claim_decision() {
-    local mine="$1"; shift
-    local has_other=0 lbl
-    for lbl in "$@"; do
-        [[ "$lbl" != "$mine" ]] && has_other=1
-    done
-    if [[ "$has_other" -eq 0 ]]; then
-        echo win
-        return 0
-    fi
-    local lexmin
-    lexmin=$(printf '%s\n' "$@" | LC_ALL=C sort | head -n1)
-    if [[ "$mine" == "$lexmin" ]]; then
-        echo retry
-    else
-        echo lose
-    fi
-}
-
-# _acquire_jitter_sleep
-#   Brief jittered backoff between claim retries so simultaneous racers
-#   don't lock-step. No-op under FLEET_CLAIM_NO_SLEEP=1 (test determinism).
-_acquire_jitter_sleep() {
-    [[ "${FLEET_CLAIM_NO_SLEEP:-0}" == "1" ]] && return 0
-    local ms=$(( (RANDOM % 400) + 100 ))   # 100–499 ms
-    sleep "$(printf '0.%03d' "$ms")"
-}
-
 # _acquire_label_on <repo> <pr-or-issue> <label> <label-prefix>
-#   Atomic-add + sole-holder-wins claim primitive. PRs and issues share
-#   GitHub's /issues/N/labels endpoint, so this works for both.
+#   Atomic-add + deterministic-min tie-break primitive. PRs and issues
+#   share GitHub's /issues/N/labels endpoint, so this works for both.
 #
-#   Contract: at most one holder of <label-prefix>* on the target at a
-#   time. Returns 0 if we own the lock (sole holder after our POST), 1
-#   otherwise (we lost / yielded and self-removed our label). On API
-#   error, returns 1.
-#
-#   Algorithm (Option A from #1384): POST our label, re-read the <prefix>*
-#   set, and route through _claim_decision. `win` → hold; `retry` → drop
-#   and re-POST (bounded by FLEET_CLAIM_ACQUIRE_RETRIES, default 3, with a
-#   jittered backoff) so a simultaneous race converges to one winner;
-#   `lose` → yield to the existing holder. This closes the co-win hole
-#   where a later, lex-smaller claimant beat an existing holder that had
-#   passed its own snapshot check and never re-validated.
+#   Returns 0 if our label is the lex-min of all <label-prefix>*
+#   labels on the response (we own the lock); 1 otherwise (we lost
+#   the race and self-removed our label). On API error, returns 1.
 _acquire_label_on() {
     local repo="$1" target="$2" label="$3" prefix="$4"
-    local retries="${FLEET_CLAIM_ACQUIRE_RETRIES:-3}"
-    local attempt
-    for (( attempt = 1; attempt <= retries; attempt++ )); do
-        local labels_json
-        if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
-                --method POST -f "labels[]=${label}" 2>&1); then
-            echo "fleet-claim: gh api POST labels failed on $repo#$target:" >&2
-            echo "$labels_json" >&2
-            return 1
-        fi
 
-        # Extract the full <prefix>* set from the POST response, one per line.
-        local matching
-        matching=$(echo "$labels_json" | python3 -c '
+    local labels_json
+    if ! labels_json=$(gh api "repos/${repo}/issues/${target}/labels" \
+            --method POST -f "labels[]=${label}" 2>&1); then
+        echo "fleet-claim: gh api POST labels failed on $repo#$target:" >&2
+        echo "$labels_json" >&2
+        return 1
+    fi
+
+    local min_label
+    min_label=$(echo "$labels_json" | python3 -c '
 import json, sys
 try:
     labels = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
 prefix = sys.argv[1]
-for name in sorted(
-        l["name"] for l in labels
-        if isinstance(l, dict) and l.get("name", "").startswith(prefix)):
-    print(name)
+matching = sorted(l["name"] for l in labels if isinstance(l, dict) and l.get("name", "").startswith(prefix))
+if matching:
+    print(matching[0])
 ' "$prefix" 2>/dev/null || echo "")
 
-        if [[ -z "$matching" ]]; then
-            echo "fleet-claim: WARN gh api response missing ${prefix}* labels on $repo#$target; aborting" >&2
-            gh_release_label "$repo" "$target" "$label" || true
-            return 1
-        fi
+    if [[ -z "$min_label" ]]; then
+        echo "fleet-claim: WARN gh api response missing ${prefix}* labels on $repo#$target; aborting" >&2
+        gh_release_label "$repo" "$target" "$label" || true
+        return 1
+    fi
 
-        local -a matching_arr
-        mapfile -t matching_arr <<< "$matching"
+    if [[ "$min_label" != "$label" ]]; then
+        echo "fleet-claim: lost tie-break to ${min_label#$prefix} on $repo#$target" >&2
+        gh_release_label "$repo" "$target" "$label" || true
+        return 1
+    fi
 
-        local decision
-        decision=$(_claim_decision "$label" "${matching_arr[@]}")
-        case "$decision" in
-            win)
-                return 0
-                ;;
-            retry)
-                # Drop and retry: in a simultaneous race the lex-larger
-                # contenders yield, so the next POST re-acquires alone.
-                gh_release_label "$repo" "$target" "$label" || true
-                if (( attempt < retries )); then
-                    _acquire_jitter_sleep
-                fi
-                continue
-                ;;
-            *)  # lose
-                echo "fleet-claim: lost tie-break on $repo#$target; yielding to an existing ${prefix}* holder" >&2
-                gh_release_label "$repo" "$target" "$label" || true
-                return 1
-                ;;
-        esac
-    done
-
-    # Exhausted the retry budget while always lex-min: an earlier holder
-    # persists and never yielded (the non-simultaneous #1384 case). Our
-    # label was already removed by the final retry's release. Yield.
-    echo "fleet-claim: gave up after ${retries} attempt(s); an earlier ${prefix}* holder persists on $repo#$target" >&2
-    return 1
+    return 0
 }
 
 # --- issue lookup ---------------------------------------------------------
@@ -489,17 +402,12 @@ repo = os.environ.get("REPO", "")
 #   **Blocked by:** (none — explanatory text)
 # Accept either bare `**Blocked by:**` or list-bullet `- **Blocked by:**`.
 field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-field_values = []
+field_value = None
 for line in body.splitlines():
     m = field_re.match(line)
     if m:
-        field_values.append(m.group(1).strip())
-# Union every canonical line (multi-line + multi-ref); drop explicit (none)
-# declarations. If every **Blocked by:** line is (none), the task is unblocked.
-real = [v for v in field_values if not v.lower().startswith("(none")]
-if field_values and not real:
-    sys.exit(0)
-field_value = ", ".join(real) if real else None
+        field_value = m.group(1).strip()
+        break
 
 # Fall back to free-form header prose like `## Blocked on #1300` / `Blocked
 # on PR-x` when the canonical field is absent, so a header-only dependency
@@ -914,16 +822,14 @@ body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace"
 repo = os.environ.get("REPO", "")
 
 field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-field_values = []
+value = None
 for line in body.splitlines():
     m = field_re.match(line)
     if m:
-        field_values.append(m.group(1).strip())
-# Union every canonical line (multi-line + multi-ref); drop (none).
-real = [v for v in field_values if not v.lower().startswith("(none")]
-if not real:
+        value = m.group(1).strip()
+        break
+if value is None or value.lower().startswith("(none"):
     sys.exit(0)
-value = ", ".join(real)
 
 issue_refs = re.findall(r"#(\d+)", value)
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", value)
@@ -1992,17 +1898,6 @@ for repo in repos:
             labs = pr["labels"]
             if "fleet:wip" not in labs and not (labs & FEEDBACK):
                 continue
-            # A fleet:design-blocked PR is intentionally claim-less, not drift.
-            # The design-escalation protocol (role-opus-worker.md step 8c) has
-            # the worker RELEASE its claim + worktree reservation when parking
-            # the PR for the architect; re-adoption is gated on the architect
-            # flipping it to fleet:design-unblocked, not a free pickup decision.
-            # So "no claim / reservation / claim-label" here is the correct
-            # parked state. (fleet:design-unblocked stays flaggable — it IS in
-            # FEEDBACK above — because an unclaimed unblocked PR genuinely is
-            # awaiting re-adoption.)
-            if "fleet:design-blocked" in labs:
-                continue
             issue_labs = d["issue_labels"].get(issue_n, set())
             if (any(l.startswith("fleet:claim-") for l in issue_labs)
                     or (repo, issue_n) in fs_by_task
@@ -2146,17 +2041,6 @@ reconcile_apply_field() {
         'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))'
 }
 
-# reconcile_open_drift_tracker
-#   Echo the number of the single open fleet:state-drift tracker, or empty if
-#   none. `// empty` keeps gojq from emitting the literal `null` (which would
-#   otherwise read as a real issue number). Both the refresh/create path and
-#   the auto-close path resolve the tracker the same way.
-reconcile_open_drift_tracker() {
-    gh issue list --repo "$FLEET_GITHUB_REPO" --state open \
-        --label "fleet:state-drift" --json number --jq '.[0].number // empty' \
-        2>/dev/null || true
-}
-
 # reconcile_escalate_drift <findings-jsonl> <state-dir> <threshold>
 #   Persistence-gated, deduped escalation of flag-only drift (R2/R6/...).
 #   Maintains a per-key tick counter in <state-dir>/drift-persistence.json:
@@ -2165,8 +2049,6 @@ reconcile_open_drift_tracker() {
 #   transient one-tick blip never escalates). When ANY key crosses <threshold>
 #   ticks, file or update a SINGLE open fleet:state-drift tracking issue on the
 #   engine repo (deduped — body refreshed in place, never one issue per tick).
-#   When NO finding remains persistent (all cleared), close any open tracker so
-#   a fixed claim surface does not leave a stale issue open forever.
 #   Mutates local state + a GH issue, so cmd_reconcile only calls it on --apply.
 reconcile_escalate_drift() {
     local findings="$1" state_dir="$2" threshold="$3"
@@ -2243,9 +2125,8 @@ lines = [
     "deduped tracker for claim-surface drift the cross-surface reconcile pass",
     "could **not** auto-fix and that persisted across **%d+ reconcile ticks**."
     % threshold,
-    "Resolve each row — `fleet-claim reconcile` auto-closes this tracker when",
-    "all findings clear. Reconcile also refreshes this body in place and will not",
-    "open a second tracker.",
+    "Resolve each row, then close this issue — reconcile refreshes this body in",
+    "place and will not open a second tracker.",
     "",
     "| Rule | Repo | Target | Ticks | Detail |",
     "| --- | --- | --- | --- | --- |",
@@ -2268,22 +2149,6 @@ PYEOF
     fi
     if [[ "$persistent_count" -le 0 ]]; then
         rm -f "$body_file"
-        # No persistent drift this run. If a tracker is still open, every row
-        # it lists has cleared, so close it — reconcile filed the tracker and
-        # owns its lifecycle, and a fixed claim surface must not leave a stale
-        # tracker lingering open with findings that no longer reproduce. The
-        # counter reset above means a genuinely-recurring finding re-accrues
-        # from zero and re-files a fresh tracker once it crosses threshold.
-        local cleared
-        cleared=$(reconcile_open_drift_tracker)
-        if [[ -n "$cleared" && "$cleared" != "null" ]]; then
-            if gh issue close "$cleared" --repo "$FLEET_GITHUB_REPO" \
-                --comment "All tracked claim-surface drift has cleared across reconcile ticks; auto-closing. \`fleet-claim reconcile\` re-files a fresh tracker if new persistent drift appears." >/dev/null 2>&1; then
-                echo "  reconcile --apply: drift cleared — auto-closed fleet:state-drift tracker #$cleared"
-            else
-                echo "  reconcile --apply: drift cleared but failed to auto-close fleet:state-drift tracker #$cleared" >&2
-            fi
-        fi
         return 0
     fi
 
@@ -2295,7 +2160,10 @@ PYEOF
 
     local existing title
     title="fleet: claim-surface drift — $persistent_count persistent finding(s)"
-    existing=$(reconcile_open_drift_tracker)
+    # `// empty` so an empty match prints nothing rather than gojq's literal
+    # `null` (which would otherwise read as an existing-issue number).
+    existing=$(gh issue list --repo "$FLEET_GITHUB_REPO" --state open \
+        --label "fleet:state-drift" --json number --jq '.[0].number // empty' 2>/dev/null || true)
     if [[ -n "$existing" && "$existing" != "null" ]]; then
         if gh issue edit "$existing" --repo "$FLEET_GITHUB_REPO" \
             --title "$title" --body-file "$body_file" >/dev/null 2>&1; then
@@ -3214,13 +3082,6 @@ for line in body.splitlines():
 
 # --- main -----------------------------------------------------------------
 
-# Sourcing seam for unit tests: `FLEET_CLAIM_LIB=1 source fleet-claim`
-# defines every helper (e.g. _claim_decision, _acquire_label_on) without
-# running the dispatch below. See tests/test_fleet_claim_acquire.sh.
-if [[ "${FLEET_CLAIM_LIB:-}" == "1" ]]; then
-    return 0 2>/dev/null || exit 0
-fi
-
 case "${1:-}" in
     claim)
         if [[ -z "${2:-}" ]]; then
@@ -3260,17 +3121,6 @@ case "${1:-}" in
         ;;
     list)
         cmd_list "${2:-}"
-        ;;
-    host)
-        # Print this machine's canonical host key (mac|linux|windows), the
-        # token behind every fleet:claim-*/reviewing-*/resolving-*/amending-*
-        # label. With an explicit `uname -s` string as $2, map that instead —
-        # the seam test_derive_host.sh uses to pin each mapping portably.
-        if [[ -n "${2:-}" ]]; then
-            host_from_uname "$2"
-        else
-            derive_host
-        fi
         ;;
     check-stale)
         shift
@@ -3505,11 +3355,6 @@ commands:
                                 matching open PR exists.
   check <issue-number>          check if free (exit 0=free, 1=taken).
   list                          list all active claims.
-  host [uname-string]           print this host's canonical key
-                                (mac|linux|windows) used in claim labels;
-                                WSL2 and native Linux both derive "linux".
-                                With an explicit `uname -s` string, map
-                                that instead (test seam).
   stack "<n1> <n2> ..." [agent]
                                 atomically claim a dependency chain
                                 (all-or-nothing).
@@ -3582,10 +3427,8 @@ commands:
                                   R4b   queued + in-progress with no claim
                                         (any host) + no open PR → remove the
                                         stale fleet:in-progress.
-                                R2 (orphaned WIP/feedback PR with no claim;
-                                fleet:design-blocked PRs exempt — their
-                                no-claim state is protocol-correct) is
-                                report-only. Cross-host is flag-only by
+                                R2 (orphaned WIP/feedback PR with no claim)
+                                is report-only. Cross-host is flag-only by
                                 construction — never auto-releases another
                                 host's FS state or claim label. Defaults to
                                 engine + game (when reachable); --repo

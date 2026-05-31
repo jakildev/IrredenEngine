@@ -144,7 +144,7 @@ class WorldConfig {
         );
         m_config.addEntry(
             "gui_scale",
-            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1)
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(2)
         );
         m_config.addEntry(
             "hovered_trixel_visible",

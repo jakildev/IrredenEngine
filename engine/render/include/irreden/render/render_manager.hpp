@@ -122,7 +122,7 @@ class RenderManager {
     EntityId m_mainFramebuffer;
     EntityId m_mainCanvas;
     EntityId m_backgroundCanvas;
-    int m_guiScale = 1;
+    int m_guiScale = 2;
     EntityId m_guiCanvas;
     // EntityId m_playerCanvas;
     EntityId m_camera;

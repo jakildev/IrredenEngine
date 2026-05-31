@@ -15,7 +15,6 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
-#include "ir_per_axis_lighting.glsl"
 
 layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     uniform int   lightingEnabled;
@@ -35,10 +34,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    // Smooth-camera-Z-yaw per-axis route selector (mirrors
-    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single canvas; nonzero = lighting
-    // a per-axis canvas (#1311), reconstruct world-pos face-locally.
-    uniform int perAxisRoute;
+    uniform int _voxelDispatchPadding;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
@@ -193,16 +189,9 @@ void main() {
         // At cardinalIndex==0 the path collapses to master so yaw=0 stays
         // byte-identical; non-zero cardinal yaw composes R(-rasterYaw)
         // afterward to recover world coordinates.
-        // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-        // face-locally, so recover world-pos via faceOriginFromInPlane; the single
-        // canvas uses the cardinal-snap reconstruction. The shared world light
-        // volume is then sampled the same way for both (per-axis canvases are only
-        // allocated while rotating, so the cardinal fast path is byte-identical).
-        vec3 pos3D = perAxisRoute != 0
-            ? perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions)
-            : trixelCanvasPixelToWorld3D(
-                  pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-              );
+        vec3 pos3D = trixelCanvasPixelToWorld3D(
+            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+        );
 
         // Sample the light volume at the surface voxel. CLAMP_TO_EDGE
         // means out-of-volume samples read zero light (the border texels

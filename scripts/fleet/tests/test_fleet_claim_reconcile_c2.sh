@@ -59,7 +59,6 @@ STUB_DIR="$TMPROOT/bin"
 mkdir -p "$STUB_DIR"
 export CREATE_LOG="$TMPROOT/create.log"; : > "$CREATE_LOG"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
-export CLOSE_LOG="$TMPROOT/close.log"; : > "$CLOSE_LOG"
 export TRACKER_STATE="$TMPROOT/tracker.exists"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
@@ -83,12 +82,6 @@ case "$1" in
                 exit 0 ;;
             edit)
                 printf '%s\n' "$*" >> "$EDIT_LOG"
-                exit 0 ;;
-            close)
-                # Auto-close path: log the call and flip the tracker marker off
-                # so a later `issue list --label fleet:state-drift` reports none.
-                printf '%s\n' "$*" >> "$CLOSE_LOG"
-                rm -f "$TRACKER_STATE"
                 exit 0 ;;
             *) exit 0 ;;
         esac ;;
@@ -164,34 +157,12 @@ create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
 [[ "$edit_n" -ge "1" ]] && ok "tick 4 refreshed the existing tracker via issue edit" || bad "tick 4 did not edit the tracker"
 
-echo "=== Phase 5: drift clears → counter resets + tracker auto-closed ==="
+echo "=== Phase 5: drift clears → counter resets, no new tracker ==="
 echo '[]' > "$ISSUES_JSON"   # #700 no longer queued+human:owned
 run_reconcile --apply
 c=$(persist_count); [[ "$c" == "0" ]] && ok "cleared drift resets #700 counter to 0" || bad "counter not reset (count=$c)"
 create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 [[ "$create_n" == "1" ]] && ok "no new tracker filed after drift cleared" || bad "filed a tracker after clear (create count=$create_n)"
-close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
-[[ "$close_n" == "1" ]] && ok "drift cleared → auto-closed the open tracker exactly once" || bad "tracker not auto-closed on clear (close count=$close_n)"
-if grep -q '9001' "$CLOSE_LOG"; then ok "auto-close targeted the existing tracker #9001"; else bad "auto-close did not target the tracker number"; fi
-
-# An idempotent re-run with no drift must NOT keep trying to close (tracker gone).
-run_reconcile --apply
-close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
-[[ "$close_n" == "1" ]] && ok "no-drift re-run does not re-close (tracker already gone)" || bad "re-run closed again (close count=$close_n)"
-
-echo "=== Phase 6: drift re-appears → fresh tracker re-filed after threshold ==="
-cat > "$ISSUES_JSON" <<'JSON'
-[
-  {"number":700,"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"human:owned"}]}
-]
-JSON
-run_reconcile --apply   # count 1
-run_reconcile --apply   # count 2
-create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
-[[ "$create_n" == "1" ]] && ok "re-accrual below threshold files no tracker yet" || bad "re-accrual filed early (create count=$create_n)"
-run_reconcile --apply   # count 3 == threshold → re-file
-create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
-[[ "$create_n" == "2" ]] && ok "recurring drift re-files a fresh tracker after auto-close" || bad "no fresh tracker after recurrence (create count=$create_n)"
 
 echo
 echo "================================"

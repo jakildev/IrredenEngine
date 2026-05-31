@@ -20,12 +20,9 @@ the ECS surface.
   path). Lifecycle driven by `IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw()`
   from `VOXEL_TO_TRIXEL_STAGE_1::beginTick`. T2 (#1309) routes each
   visible voxel face into its axis canvas with continuous
-  (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; T3
-  (#1310) composites the three by depth-tested forward scatter at the
-  framebuffer; T4 (#1311) lights each per-axis canvas (AO + sun-shadow +
-  light-volume + Lambert) at trixel resolution before the scatter, adding
-  per-axis `ao_` / `sunShadow_` textures with the same rotation-only
-  lifecycle (the world sun-shadow map + 128³ light volume stay shared).
+  (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; the
+  framebuffer still reads only the single main canvas, so output stays
+  byte-identical until T3 (#1310) composites the three by depth.
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
@@ -75,17 +72,6 @@ the ECS surface.
 
 ## Key systems
 
-- `UPDATE_VOXEL_POSITIONS_GPU` — GPU voxel-position prepass (#1396). Runs
-  **before** `VOXEL_TO_TRIXEL_STAGE_1` and computes `world = modelToWorld *
-  localPos` into the binding-5 position SSBO for voxel sets that opt into
-  transform indirection (`C_VoxelSetNew::gpuTransformSlot_ != kVoxelTransformStatic`).
-  Voxels keep the sentinel by default, so the prepass skips them and the
-  CPU-direct `UPDATE_VOXEL_SET_CHILDREN` flush still owns their slots —
-  scenes with no GPU-transformed sets are byte-identical and pay no
-  dispatch. Per-frame upload is one `mat4` per dynamic set, not O(voxels).
-  Shared substrate for per-entity SO(3) (#1272/#1299) and skeletal voxels
-  (#605). The transform slot is bit-packed into the local-position `.w`
-  lane (Metal has no free buffer index past 30).
 - `VOXEL_TO_TRIXEL_STAGE_1` — compute-shader voxel rasterization to the
   3 canvas textures. Runs compact + stage-1 + stage-2 dispatches in one
   per-canvas tick (the former separate `VOXEL_TO_TRIXEL_STAGE_2` system

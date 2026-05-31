@@ -27,7 +27,6 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -59,7 +58,8 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     auto &bounds = pool.getChunkBounds();
     for (int c = 0; c < chunkCount; ++c) {
         const auto &cb = bounds[c];
-        if (viewport.overlapsAABB(cb.isoMin_, cb.isoMax_)) {
+        if (cb.isoMax_.x >= viewport.min_.x && cb.isoMin_.x <= viewport.max_.x &&
+            cb.isoMax_.y >= viewport.min_.y && cb.isoMin_.y <= viewport.max_.y) {
             mask[c] = 1;
         }
     }
@@ -99,20 +99,16 @@ inline void buildVoxelFrameData(
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
         frameData.residualYaw_ = 0.0f;
-        // Per-entity SO(3) visible triplet: the three faces the camera
-        // actually sees for this entity's orientation (one per axis, in
-        // X/Y/Z slot order). Previously hardcoded to {X_NEG, Y_NEG, Z_NEG}
-        // regardless of rotation, so the snap+residual deform below ran on
-        // back-facing faces and entities glitched instead of rotating
-        // (#1386). At identity the resolver returns the same legacy triplet,
-        // so non-rotating entities stay byte-identical. The resolver is
-        // reused verbatim by the main-canvas per-entity path (#1299).
-        const std::array<IRMath::FaceId, 3> visibleFaces =
-            IRMath::visibleTriplet(canvasRotation.rotation_);
+        // DETACHED canvas keeps the legacy lower-coordinate-faces visible
+        // set {X_NEG, Y_NEG, Z_NEG} — the per-canvas SO(3) bake
+        // (`propagate_canvas_rotation`) absorbs the entity rotation, so the
+        // raster always emits the same three faces in the entity-local frame.
+        // Per-entity SO(3) visible-triplet resolution is the follow-on work
+        // in #1272 (the design doc § "Per-entity SO(3) is the same model").
         frameData.visibleFaceIds_ = ivec4(
-            static_cast<int>(visibleFaces[0]),
-            static_cast<int>(visibleFaces[1]),
-            static_cast<int>(visibleFaces[2]),
+            static_cast<int>(IRMath::FaceId::X_NEG),
+            static_cast<int>(IRMath::FaceId::Y_NEG),
+            static_cast<int>(IRMath::FaceId::Z_NEG),
             0
         );
         // Snap to the nearest of the 24 cube orientations and deform by the
@@ -123,9 +119,7 @@ inline void buildVoxelFrameData(
         const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, residual);
         const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, residual);
         // Per-slot upload: slot 0 / 1 / 2 carries the X / Y / Z axis face
-        // matrix. `visibleTriplet` returns faces in axis order, so each
-        // slot's axis is fixed regardless of polarity — the deform is
-        // axis-only (X_NEG and X_POS share the X matrix), so it is unchanged.
+        // matrix (matches the visibleFaceIds_ assignment above).
         frameData.faceDeform_[0] = vec4(fdX[0], fdX[1]);
         frameData.faceDeform_[1] = vec4(fdY[0], fdY[1]);
         frameData.faceDeform_[2] = vec4(fdZ[0], fdZ[1]);
@@ -259,35 +253,6 @@ inline void flushPendingPositionRanges(C_VoxelPool &pool, Buffer *buf) {
     pool.clearPendingPositionRanges();
 }
 
-// Re-seed binding 5 on a canvas switch without clobbering GPU-prepass output.
-// Scans `pool.getTransformIndices()` up to `liveCount` and emits one `subData`
-// per contiguous static run. GPU-transformed slots (index != kVoxelTransformStatic)
-// are skipped — UPDATE_VOXEL_POSITIONS_GPU already wrote their correct world
-// positions ahead of this stage. When all voxels are static this produces a
-// single upload equivalent to the old full-range subData.
-inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCount) {
-    constexpr size_t kStride = sizeof(IRRender::VoxelGpuPosition);
-    const auto &globals = pool.getPositionGlobals();
-    const auto &indices = pool.getTransformIndices();
-    const int n = IRMath::min(liveCount, static_cast<int>(indices.size()));
-
-    int runStart = -1;
-    for (int i = 0; i <= n; ++i) {
-        const bool isStatic =
-            (i < n) && (indices[i] == IRRender::kVoxelTransformStatic);
-        if (isStatic) {
-            if (runStart < 0) runStart = i;
-        } else if (runStart >= 0) {
-            buf->subData(
-                static_cast<std::ptrdiff_t>(runStart) * kStride,
-                static_cast<size_t>(i - runStart) * kStride,
-                &globals[runStart]
-            );
-            runStart = -1;
-        }
-    }
-}
-
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
@@ -301,7 +266,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *indirectBuf_ = nullptr;
     FrameDataVoxelToCanvas frameData_{};
     // Resolved once per frame in beginTick; read by the per-entity tick.
-    IRPrefab::SunShadow::ShadowFeederParams shadowFeederParams_{};
+    vec3 sunDir_{};
+    float sweepDistance_ = 0.0f;
     // Log-throttle state — emit the render-mode log line only when
     // mode or effective subdivisions change.
     int previousRenderMode_ = -1;
@@ -422,6 +388,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getCameraZoom(),
             triangleCanvasTextures.size_
         );
+        const auto &cull = IRRender::getCullViewport();
 
         buildVoxelFrameData(
             frameData_,
@@ -446,11 +413,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             previousEffectiveSubdivisions_ = effectiveSub;
         }
 
-        // Shadow-feeder params are resolved once per frame in beginTick
-        // (frameShadowFeederParams), so no C_LightSource archetype scan runs
-        // per entity; shadowFeederCullViewport reuses them at both margins.
-        const IsoBounds2D chunkVp =
-            IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, shadowFeederParams_);
+        // Sun direction and sweep distance are resolved once per
+        // frame in beginTick (via IRPrefab::SunShadow::getFrameSunDirection)
+        // and cached in params, so no C_LightSource archetype scan
+        // runs per entity.
+        const float sweepDistance = sweepDistance_;
+
+        const IsoBounds2D chunkVp = IRMath::shadowFeederIsoBounds(
+            cull.isoViewport(kCullChunkMargin),
+            sunDir_,
+            sweepDistance
+        );
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         // Smooth camera Z-yaw (T3 / #1310): while rotating (residual yaw != 0,
         // i.e. the per-axis canvases are active), project the chunk-visibility
@@ -469,27 +442,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         constexpr int kGpuMargin = 4;
         const IsoBounds2D gpuVp =
-            IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
+            IRMath::shadowFeederIsoBounds(cull.isoViewport(kGpuMargin), sunDir_, sweepDistance);
         frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
         frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
-        // Voxel positions are uploaded via the pending-range queue populated by
-        // `UPDATE_VOXEL_SET_CHILDREN` (`cpp-ecs.md` pending-list-flush rule).
-        // Steady-state: queue empty for static entities → zero subData bytes/frame;
-        // moving entities coalesce into runs. On a canvas switch the queue is
-        // drained and the static-transform runs are re-seeded from the CPU mirror
-        // (`flushStaticPositionRanges`). GPU-transformed slots are left intact —
-        // `UPDATE_VOXEL_POSITIONS_GPU` already wrote their correct world positions
-        // into binding 5 ahead of this stage, and re-uploading the CPU mirror
-        // would clobber the prepass output with translation-only data.
+        // Voxel positions are now uploaded via the pending-range queue
+        // populated by `UPDATE_VOXEL_SET_CHILDREN` (`cpp-ecs.md`
+        // pending-list-flush rule). Single-canvas-with-voxels steady-
+        // state: queue empty for static entities → zero `subData`
+        // bytes/frame; moving entities coalesce into runs. Multi-
+        // canvas-with-voxels: each canvas's SSBO state can be clobbered
+        // by another canvas's mutator pushes since both write to the
+        // shared `voxelPosBuf_`, so on a canvas switch we re-seed the
+        // whole live range and drain this pool's queue.
         {
             IR_PROFILE_SCOPE("vs1_pos");
             if (lastUploadedCanvas_ != entity) {
-                // Re-seed only static-transform voxel runs so the GPU-prepass
-                // output (UPDATE_VOXEL_POSITIONS_GPU, binding 5) is preserved
-                // for GPU-transformed slots across canvas switches.
-                flushStaticPositionRanges(voxelPool, voxelPosBuf_, liveVoxelCount);
+                voxelPosBuf_->subData(
+                    0,
+                    liveVoxelCount * sizeof(IRRender::VoxelGpuPosition),
+                    voxelPool.getPositionGlobals().data()
+                );
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
             } else {
@@ -601,7 +575,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Resolve sun direction once per frame so the per-entity tick
         // reads the cached value instead of scanning C_LightSource
         // once per voxel-pool-canvas pair.
-        shadowFeederParams_ = IRPrefab::SunShadow::frameShadowFeederParams();
+        const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
+        sunDir_ = shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
+        sweepDistance_ = shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
 
         IREntity::EntityId backgroundCanvas = IRRender::getCanvas("background");
         auto background =

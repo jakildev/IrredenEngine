@@ -181,11 +181,8 @@ sweep degenerates after a single `texelFetch` + branch and does **not** dominate
   only) so `residualYaw==0` stays byte-identical.
 - **±45° rebracket polish.** At the exact bracket edge the swept axis goes edge-on
   as designed; tighten the zero-width face-identity swap under continuous sweep.
-- **Lighting / AO on the composite (T4 / #1311).** ~~During rotation the composite
-  shows raw voxel color.~~ **Landed in T4 (#1311):** the per-axis voxel canvases
-  are lit (AO + sun-shadow + light-volume + Lambert) at trixel resolution before
-  the scatter composites them, so rotating voxels show full lighting. See the
-  §"Open decisions" → "Lighting / AO placement" resolution.
+- **Lighting / AO on the composite (T4 / #1311).** During rotation the composite
+  shows raw voxel color.
 - **Picking during rotation.** Winning entity-id from the composite — the gather
   fast path still resolves hover at every cardinal; the scatter does not yet
   write the hovered-id SSBO.
@@ -441,23 +438,10 @@ split.
 
 ## Open decisions (resolve during implementation)
 
-- **Lighting / AO placement. — RESOLVED (T4 / #1311): trixel-level per-axis.**
-  Light each of the three per-axis voxel canvases *before* the framebuffer
-  scatter composites it — run AO + sun-shadow + light-volume + `LIGHTING_TO_TRIXEL`
-  over each axis canvas, gated on `residualYaw != 0`. The framebuffer-resolution
-  **MRT G-buffer / post-composite per-fragment** approach (the pre-implementation
-  findings note below) is **rejected**: the engine keeps lighting at trixel
-  resolution (hard product constraint — no fragment-rate lighting). The two
-  cross-canvas maps stay **world-space and SHARED** — the sun-shadow depth SSBO
-  and the 128³ light volume are sampled by world-pos reconstructed per-axis
-  (`perAxisCellToWorld3D`, the exact `faceOriginFromInPlane` inverse), never from
-  a resolved framebuffer (which would hit the singular screen→world iso-yawed
-  inverse). AO is same-axis ⇒ runs correctly on each axis canvas's in-plane
-  lattice. 3× AO + 3× sun-shadow textures live on `C_PerAxisTrixelCanvases`
-  (rotation-only lifecycle); the world volume + sun map are NOT per-axis. The
-  sun-shadow bake reads main (SDF/text) **+** all three per-axis voxel canvases
-  into the shared world sun map (pre-composite `atomicMin`), so voxels and SDF
-  shadow each other under rotation.
+- **Lighting / AO placement.** AO samples neighbor faces. With three layers it
+  either runs **post-composite** on the resolved framebuffer (winning face-id +
+  normal carried through the composite — preferred) or per-canvas (duplicated
+  work). Pick post-composite unless a blocker emerges.
 - **Memory / allocation policy.** Three worst-case textures during rotation;
   gate allocation on `residualYaw != 0` so static scenes pay nothing. Define
   the allocate/free churn behavior at rotation start/stop.
@@ -465,76 +449,6 @@ split.
   tune against seam-free coverage vs texture size.
 - **Per-canvas basis derivation.** Exact mapping from `residualYaw` (and
   cardinal) to each canvas's basis + extent; reuse `faceDeformationMatrix`.
-
-### T4 (#1311) implementation note — lighting placement requires a structural pipeline change (worker findings, pre-implementation)
-
-> **SUPERSEDED by the §"Open decisions" → "Lighting / AO placement" resolution
-> above (architect direction, 2026-05-30).** This note proposed a framebuffer
-> MRT G-buffer + post-composite per-fragment pass; that was **rejected** in
-> favour of trixel-level per-axis lighting (the per-axis voxel canvases are lit
-> before the scatter; the sun-shadow SSBO + 128³ light volume stay world-space
-> and shared). The pipeline map below is accurate and is what made the per-axis
-> approach clean; only its *recommended mechanism* (pieces 1–3) is obsolete.
-> As-shipped: AO + sun-shadow + light-volume + `LIGHTING_TO_TRIXEL` run over each
-> per-axis canvas (`perAxisRoute != 0`), reconstructing world-pos via
-> `perAxisCellToWorld3D`; `BAKE_SUN_SHADOW_MAP` bakes main + 3 per-axis into the
-> shared sun map. No framebuffer MRT; no per-fragment lighting.
-
-Mapping the current pipeline against T4's "AO / sun-shadow / lighting on the
-resolved composite" scope surfaced that **every lighting stage today runs
-pre-composite, in canvas/iso space** — none is post-composite:
-
-- `COMPUTE_VOXEL_AO`, `COMPUTE_SUN_SHADOW`, `COMPUTE_LIGHT_VOLUME`,
-  `LIGHTING_TO_TRIXEL` all read the main canvas `trixelDistances` (binding 0,
-  r32i) + `visibleFaceIds[slot]` and write canvas-resolution textures
-  (`canvasAO`, `canvasSunShadow`) consumed by `LIGHTING_TO_TRIXEL`, which
-  modulates the canvas color **before** `TRIXEL_TO_FRAMEBUFFER` runs.
-- `BAKE_SUN_SHADOW_MAP` projects the main canvas `trixelDistances` into the
-  sun-aligned depth map (slot 28) — also pre-composite, canvas-space.
-- During rotation the main canvas's voxel pass is skipped (T3), so the main
-  canvas `trixelDistances` holds **only SDF/text** — the smooth voxels live in
-  the per-axis canvases and reach the framebuffer via the scatter, carrying no
-  lighting. That is the "raw voxel color while rotating" symptom T4 fixes.
-
-So there is **no post-composite lighting infrastructure to extend** — T4 builds
-it. Three distinct pieces fall out:
-
-1. **G-buffer producer (new).** The main framebuffer is single color + depth
-   (`engine/render/include/irreden/render/framebuffer.hpp`; `C_TrixelCanvasFramebuffer`).
-   Post-composite lighting needs an **MRT G-buffer** — recommend one extra
-   attachment carrying per winning pixel: **world position** (the scatter
-   already recovers the face-plane `origin` via `faceOriginFromInPlane`; write
-   it flat) + **faceId (0..5) + material-tag (voxel/sdf/text/bg)**. Storing
-   world-pos directly sidesteps the singular screen→world iso-yawed inverse
-   (`z = (rawDepth + …)/(2cosθ+1)`, zero at full visualYaw ±120°/±240°) the
-   gather path can't use — AO neighbor sampling and light-volume/sun-shadow
-   projection then run in framebuffer space off the stored world-pos. Both
-   the scatter (`*_peraxis_scatter`) and the cardinal gather
-   (`*_trixel_to_framebuffer`, which composites SDF/text during rotation) write
-   it, **on both GL and Metal**. MRT on the main framebuffer is the highest-risk
-   sub-change (Metal render-pass + pipeline-state color-attachment count/format
-   must match every framebuffer-writing shader).
-2. **Generic lighting consumer (new).** One post-composite compute pass reading
-   the G-buffer: directional (`faceOutwardNormal6(faceId)` Lambert) + light-volume
-   (`texture(lightVolume, worldPos→coord)`) + AO (the four-tangent neighbour walk
-   from `c_compute_voxel_ao.glsl`, retargeted to framebuffer pixels with
-   `pos3DtoPos2DIsoYawed` offsets, **gated on the voxel material-tag** so SDF
-   pixels take the ambient default per #1345). Gated on `residualYaw != 0`; the
-   cardinal path keeps its byte-identical per-canvas lighting untouched.
-3. **Sun-shadow on the composite (structural reorder).** The issue's "side
-   effects to evaluate" flags this: `BAKE_SUN_SHADOW_MAP` runs **pre-composite**,
-   so during rotation it bakes only SDF/text, not the smooth voxels. Making the
-   bake "consume the composite" means **reordering it after the framebuffer
-   composite** (bake from the resolved world-pos G-buffer) — a render-pipeline
-   ordering change that interacts with the cardinal lighting order and must keep
-   `residualYaw == 0` byte-identical.
-
-Piece 3 is the open call: whether T4 ships as **one large PR** (heavier than the
-T3 #1336 baseline of 51 files / ~1.1k lines, plus new MRT infra) or **splits**
-into **T4a** (pieces 1+2 — G-buffer + directional/AO/light-volume) and **T4b**
-(piece 3 — sun-shadow bake reordered onto the composite) is an architect
-decomposition decision (and the bake-reorder mechanism wants the architect's
-direction). Resolve before implementation lands.
 
 ## Decomposition (implementation tickets)
 

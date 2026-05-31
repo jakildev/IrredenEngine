@@ -73,13 +73,19 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         // in the UPDATE pipeline, so getCullViewport() holds the previous
         // frame's render-event snapshot — a one-frame lag that stays
         // consistent with the GPU cull and is invisible for camera pans.
+        const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
+        const vec3 sunDir =
+            shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
+        const float sweepDistance =
+            shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
+
         const IRRender::CullViewportState &cull = IRRender::getCullViewport();
         cullValid_ = cull.canvasSize_.x > 0 && cull.canvasSize_.y > 0;
         if (cullValid_) {
-            chunkVp_ = IRPrefab::SunShadow::shadowFeederCullViewport(
-                IRRender::kCullChunkMargin,
-                IRPrefab::SunShadow::frameShadowFeederParams(),
-                cull
+            chunkVp_ = IRMath::shadowFeederIsoBounds(
+                cull.isoViewport(IRRender::kCullChunkMargin),
+                sunDir,
+                sweepDistance
             );
         }
     }

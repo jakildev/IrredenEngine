@@ -253,8 +253,8 @@ fills in when each child explicitly references the umbrella.
 Before reporting success, assert every child carries the structured
 fields the queue machinery actually reads — a standalone
 `**Model:** opus|sonnet` line, a standalone `**Part of epic:**
-#<umbrella>` line, and (for every non-head child) a standalone
-`**Blocked by:** #N` line (one or more `#N` refs). The `fleet-validate-stack`
+#<umbrella>` line, and (for every non-head child) a **single-ref**
+standalone `**Blocked by:** #N` line. The `fleet-validate-stack`
 helper (shipped #1317) checks exactly this, auto-discovers the
 children, and fails loudly:
 
@@ -268,12 +268,11 @@ each malformed child; patch the offending issue bodies (`gh issue
 edit <N> --body-file ...`) or re-file, then re-run until it passes.
 
 Never report success on a stack the validator rejects. A prose-only
-`Blocked on ...` header is read only as a *fallback* (#1326); the
-canonical standalone `**Blocked by:** #N` line is what file-epic's
-`--search "Part of epic: #N"` discovery relies on, so the validator
-still wants it. Multiple blockers are fine (`#A, #B` on one line or
-several `**Blocked by:**` lines; #1296). This is the belt that the
-hand-filing convention (step 5) is the suspenders for.
+`Blocked on ...` header or a multi-`#N` `Blocked by:` line is
+**invisible to the scout and `fleet-claim` parsers** — the stack
+projects wrong at queue time and costs hours of triage downstream.
+This is the belt that the hand-filing convention (step 5) is the
+suspenders for.
 
 ### 8. Report
 
@@ -301,11 +300,13 @@ Reply with:
   lines; header prose is invisible to the queue machinery. This is
   the #1 hand-filing drift (#1300 / #1308–#1311 all hit it). Step 7.5
   catches it — don't rely on catching it; write the standalone line.
-- ✅ Multiple blockers are supported (#1296): `**Blocked by:** #1299,
-  #1300` on one line, or several `**Blocked by:**` lines. The gate
-  unions every ref, and `find-stackable-blockers` live-resolves them —
-  stacking on the last unresolved ref as the upstreams merge. (Single
-  `#N` is still the simplest form when a child has just one blocker.)
+- ❌ Multiple `#N` refs on one `**Blocked by:**` line
+  (`**Blocked by:** #1299, #1300`). The current
+  `find-stackable-blockers` predicate requires exactly one blocker;
+  multi-ref forms project as "blocked" but never stack-claim, so
+  workers skip them indefinitely. Wait for an upstream to merge, then
+  strip the satisfied ref from the body. (#1296 will live-resolve
+  this; until it lands, one `#N` per `Blocked by:` line.)
 - ❌ Per-ticket plan files that duplicate the issue body verbatim.
   The plan adds implementation detail (file paths, code-level
   approach); the issue is the discussion surface.

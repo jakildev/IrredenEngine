@@ -141,7 +141,7 @@ if [[ -n "$repo_slug" ]]; then
     esac
 fi
 
-# Step 1 — atomic claim FIRST. The sole-holder claim decides one winner;
+# Step 1 — atomic claim FIRST. The lex-min tie-break decides one winner;
 # the loser (or a gh outage) exits here having mutated nothing.
 if ! fleet-claim "${claim_repo_args[@]}" amending-claim "$pr_number" "$agent"; then
     echo "fleet-pr-claim-feedback: did not win the amending claim for PR #$pr_number — skip it." >&2

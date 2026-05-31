@@ -14,7 +14,6 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
-#include "ir_per_axis_lighting.glsl"
 
 // Same threshold LIGHTING_TO_TRIXEL uses for "empty pixel" — encoded
 // distances >= 65535 mean the clear value was never overwritten.
@@ -43,10 +42,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    // Smooth-camera-Z-yaw per-axis route selector (mirrors
-    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single-canvas raster; nonzero
-    // = lighting a per-axis canvas (#1311), so reconstruct world-pos face-locally.
-    uniform int perAxisRoute;
+    uniform int _voxelDispatchPadding;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
@@ -114,18 +110,9 @@ void main() {
     int faceId = visibleFaceIds[slot];
     int rawDepth = encoded >> 2;
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-    // face-locally (perAxisRoute != 0), so recover world-pos via
-    // faceOriginFromInPlane; the single canvas stores the cardinal-snapped iso
-    // pixel, recovered via trixelCanvasPixelToWorld3D. Per-axis canvases are
-    // only allocated while rotating, so the single-canvas path stays byte-
-    // identical at the cardinal fast path.
-    bool perAxis = perAxisRoute != 0;
-    vec3 pos3D = perAxis
-        ? perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions)
-        : trixelCanvasPixelToWorld3D(
-              pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
-          );
+    vec3 pos3D = trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
+    );
 
     // World-frame outward normal + in-plane tangents for the camera-visible
     // face this pixel rendered. The tangent step is rotated through
@@ -153,21 +140,10 @@ void main() {
     // `effectiveTrixelSubdivisionScale` so the iso offset for a one-
     // voxel step grows accordingly.
     int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
-    ivec2 deltaT1;
-    ivec2 deltaT2;
-    if (perAxis) {
-        // The per-axis canvas is a face-local in-plane lattice (X->(y,z),
-        // Y->(x,z), Z->(x,y)), so a +/-1 cell step along each canvas axis IS the
-        // +/-1 in-plane world-tangent neighbour — no iso projection or cardinal
-        // rotation. Step `scale` cells to cover one world voxel under subdivision.
-        deltaT1 = ivec2(scale, 0);
-        deltaT2 = ivec2(0, scale);
-    } else {
-        ivec3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
-        ivec3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
-        deltaT1 = pos3DtoPos2DIso(t1View) * scale;
-        deltaT2 = pos3DtoPos2DIso(t2View) * scale;
-    }
+    ivec3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
+    ivec3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
+    ivec2 deltaT1 = pos3DtoPos2DIso(t1View) * scale;
+    ivec2 deltaT2 = pos3DtoPos2DIso(t2View) * scale;
 
     int occl = 0;
     for (int dir = 0; dir < 4; ++dir) {
@@ -184,19 +160,10 @@ void main() {
         if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
 
         int neighbourRawDepth = neighbourEncoded >> 2;
-        vec3 neighbourPos3D;
-        if (perAxis) {
-            int neighbourFaceId = visibleFaceIds[neighbourEncoded & 3];
-            neighbourPos3D = perAxisCellToWorld3D(
-                samplePixel, neighbourRawDepth, neighbourFaceId, size,
-                frameCanvasOffset, voxelRenderOptions
-            );
-        } else {
-            neighbourPos3D = trixelCanvasPixelToWorld3D(
-                samplePixel, neighbourRawDepth, trixelCanvasOffsetZ1,
-                frameCanvasOffset, voxelRenderOptions, cardinalIndex
-            );
-        }
+        vec3 neighbourPos3D = trixelCanvasPixelToWorld3D(
+            samplePixel, neighbourRawDepth, trixelCanvasOffsetZ1,
+            frameCanvasOffset, voxelRenderOptions, cardinalIndex
+        );
 
         float d = dot(neighbourPos3D - pos3D, worldOutward);
         if (d > kAOMinHeight && d < kAOMaxHeight) occl++;

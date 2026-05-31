@@ -108,8 +108,6 @@ inline void bindSystemNameEnum(LuaScript &script) {
     IR_BIND_SYS(UPDATE_VOXEL_SET_CHILDREN);
     IR_BIND_SYS(REBUILD_GRID_VOXELS);
     IR_BIND_SYS(PROPAGATE_CANVAS_ROTATION);
-    IR_BIND_SYS(PROPAGATE_TRANSFORM);
-    IR_BIND_SYS(PROPAGATE_CHUNK_MEMBERSHIP);
     IR_BIND_SYS(VOXEL_SET_RESHAPER);
     IR_BIND_SYS(VOXEL_POOL);
     IR_BIND_SYS(LIFETIME);
@@ -260,12 +258,15 @@ inline void bindRegisterPipelineAndSystemId(
         for (auto &outerKv : groups) {
             sol::optional<sol::table> innerOpt = outerKv.second.as<sol::optional<sol::table>>();
             if (!innerOpt) {
-                throw sol::error{"IRSystem.registerPipelineGroups: each group must be a table of "
-                                 "SystemId integers"};
+                throw sol::error{
+                    "IRSystem.registerPipelineGroups: each group must be a table of "
+                    "SystemId integers"
+                };
             }
             std::vector<IRSystem::SystemId> group;
             for (auto &innerKv : *innerOpt) {
-                sol::optional<lua_Integer> id = innerKv.second.as<sol::optional<lua_Integer>>();
+                sol::optional<lua_Integer> id =
+                    innerKv.second.as<sol::optional<lua_Integer>>();
                 if (!id) {
                     throw sol::error{
                         "IRSystem.registerPipelineGroups: every entry in a group must be "
@@ -277,7 +278,9 @@ inline void bindRegisterPipelineAndSystemId(
             }
             built.push_back(std::move(group));
         }
-        IRSystem::registerPipelineGroups(static_cast<IRTime::Events>(event), std::move(built));
+        IRSystem::registerPipelineGroups(
+            static_cast<IRTime::Events>(event), std::move(built)
+        );
     };
 }
 

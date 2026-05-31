@@ -554,6 +554,14 @@ int main(int argc, char **argv) {
         IRRender::setVoxelRenderSubdivisions(g_settings.baseSubdivisions_);
     }
 
+    // Render the GUI canvas at the main canvas resolution (default is half).
+    // The text renderer's smallest fontSize is 1 trixel-per-bitmap-pixel, so
+    // doubling the GUI trixel grid effectively halves the on-screen glyph
+    // height — needed to make the perf overlay legible without dominating
+    // the viewport. perf_grid uses no widgets, so the higher-resolution
+    // GUI canvas has no cost to other consumers.
+    IRRender::setGuiScale(1);
+
     initSystems();
     initCommands();
     initEntities();

@@ -191,21 +191,6 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         self.assertIn(9003, nums)
         self.assertNotIn(9004, nums)
 
-    def test_needs_human_excluded_from_pending(self):
-        # fleet:needs-human parks an approved issue (fleet can't do it
-        # autonomously) while KEEPING human:approved. The ingest must not
-        # re-stamp fleet:queued — otherwise the worker would re-claim a task
-        # it can never complete. So the issue must be absent from the ingest
-        # set even though human:approved is still on it (#1312).
-        parked = [{"number": 1312, "title": "self-config edit",
-                   "labels": ["human:approved", "fleet:needs-human"]}]
-        h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=parked)))
-        self.assertEqual(h, stable_hash(project_queue_manager_ingest(_state())),
-                         "needs-human issue must not contribute to the ingest hash")
-        out = slice_queue_manager_ingest(_state(engine_human_approved=parked))
-        self.assertEqual(out["pending_issues"], [],
-                         "needs-human issue must be absent from pending_issues slice")
-
 
 if __name__ == "__main__":
     unittest.main()

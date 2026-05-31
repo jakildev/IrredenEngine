@@ -145,14 +145,6 @@ export FLEET_EFFORT_OPUS_ARCHITECT FLEET_EFFORT_GAME_ARCHITECT
 # (a bare `FLEET_EFFORT=` in the conf is otherwise a non-exported shell var).
 if [[ -n "${FLEET_EFFORT:-}" ]]; then export FLEET_EFFORT; fi
 
-# --- Build-parallelism budget for ir-build's CPU semaphore -----------------
-# ir-build reads $IR_FLEET_WORKERS; it was never exported so workers fell
-# back to 1 and every fleet build grabbed all cores. Default: OPUS_WORKER +
-# SONNET_AUTHOR panes. Override order: IR_FLEET_WORKERS > FLEET_BUILD_WORKERS.
-FLEET_BUILD_WORKERS="${FLEET_BUILD_WORKERS:-$(( FLEET_CONCURRENCY_OPUS_WORKER + FLEET_CONCURRENCY_SONNET_AUTHOR ))}"
-if (( FLEET_BUILD_WORKERS < 1 )); then FLEET_BUILD_WORKERS=1; fi
-export IR_FLEET_WORKERS="${IR_FLEET_WORKERS:-$FLEET_BUILD_WORKERS}"
-
 if ! command -v tmux >/dev/null 2>&1; then
     echo "fleet-up: tmux not found. Install tmux (brew install tmux / apt install tmux) first." >&2
     exit 1
@@ -1149,12 +1141,6 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
     "$TRANSIENT_PANE_CMD"
-# Seed IR_FLEET_WORKERS into the tmux server env so the split-window panes
-# below inherit it even when this fleet-up attached to a pre-existing tmux
-# server (fleet-down kills the session, not the server, so the server's env
-# can predate this process). Panes feed it to ir-build -> ir-acquire for
-# correct per-build CPU sizing.
-tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
 label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
 set_fleet_role "$TOP_LEFT" "sonnet-author"

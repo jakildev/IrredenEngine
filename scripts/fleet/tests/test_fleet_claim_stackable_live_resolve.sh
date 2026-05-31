@@ -137,11 +137,6 @@ case "$1 $2" in
             3004)
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** (none)\n"}'
                 ;;
-            3005)
-                # #1296: two separate **Blocked by:** lines — #100 CLOSED,
-                # #101 OPEN with a PR → stacks on the remaining #101.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
-                ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -211,19 +206,6 @@ assert_output "$result" "" "single closed blocker → empty (no stackable needed
 echo "T4: (none) blocker → empty output"
 result=$("$FLEET_CLAIM" find-stackable-blockers 3004 2>/dev/null || true)
 assert_output "$result" "" "(none) blocker → empty"
-
-# --- T5: multi-LINE blockers (#100 closed, #101 open) → returns #101 PR ------
-echo "T5: two **Blocked by:** lines (#100 closed, #101 open) → returns PR for #101"
-result=$("$FLEET_CLAIM" find-stackable-blockers 3005 2>/dev/null || true)
-assert_nonempty "$result" "multi-line: find-stackable-blockers returns PR line"
-echo "  result: $result"
-if echo "$result" | grep -q "claude/101-work-branch"; then
-    PASS=$((PASS + 1))
-    echo "  ok: multi-line result includes claude/101-work-branch"
-else
-    FAIL=$((FAIL + 1))
-    echo "  FAIL: multi-line result does not include claude/101-work-branch"
-fi
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

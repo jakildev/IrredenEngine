@@ -39,25 +39,11 @@ from pathlib import Path
 FEEDBACK_DIR = Path.home() / ".fleet" / "feedback"
 ARCHIVE_DIR = FEEDBACK_DIR / ".archive"
 
-# Entry header grammar. Kept matching `ENTRY_HEAD_FILE` in
-# scripts/fleet/review-fleet-feedback (the closed-loop reviewer that reads
-# the SAME ~/.fleet/feedback/*.md files) so the quick CLI and the skill never
-# disagree on which entries exist. Agents write several shapes — all accepted:
-#   ## 2026-05-26 14:15              (date + time; headline on the next line)
-#   ## 2026-05-08T17:34Z — headline  (ISO-T date, Z/UTC suffix, inline headline)
-#   ## 2026-05-13 — headline         (date only, inline headline)
-#   ## 2026-05-19 opus-worker-1: …   (date only, inline headline, ':' separator)
-# Group 1 = timestamp (date, optional time); group 2 = optional inline
-# headline (when absent, the first non-blank body line is the headline).
-# The earlier regex required a time AND a bare next-line headline, so the
-# date-only / inline-headline entries agents actually write were all dropped —
-# the CLI reported "no entries" while the files held weeks of feedback. See
-# FLEET.md "Fleet feedback channel" for the writer-facing format.
+# `## YYYY-MM-DD HH:MM` (24h time, optional seconds, optional TZ suffix
+# we ignore). The agent writes this when it appends an entry — see
+# CLAUDE.md "Fleet feedback channel" for the format.
 HEADER_RE = re.compile(
-    r"^##\s+"
-    r"(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)"   # date, optional time
-    r"(?:\s*(?:Z|UTC))?"                                      # optional Z / UTC suffix
-    r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                       # optional inline headline
+    r"^## (\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?)(?:\s+\S+)?\s*$"
 )
 
 
@@ -99,29 +85,22 @@ def parse_role_file(path: Path) -> list[Entry]:
 
     entries: list[Entry] = []
     cur_ts: datetime | None = None
-    cur_inline: str = ""  # headline captured from the header line, if any
     cur_body: list[str] = []
 
     def flush() -> None:
         if cur_ts is None:
             return
-        if cur_inline:
-            # Headline was inline on the header line (## DATE — headline);
-            # every following non-blank line is context.
-            headline = cur_inline
-            body = "\n".join(cur_body).strip()
+        # First non-blank line of body is the headline; rest is context.
+        non_blank_idx = next(
+            (i for i, ln in enumerate(cur_body) if ln.strip()), None
+        )
+        if non_blank_idx is None:
+            headline = "(no headline)"
+            body = ""
         else:
-            # No inline headline: first non-blank body line is the headline,
-            # the rest is context.
-            non_blank_idx = next(
-                (i for i, ln in enumerate(cur_body) if ln.strip()), None
-            )
-            if non_blank_idx is None:
-                headline = "(no headline)"
-                body = ""
-            else:
-                headline = cur_body[non_blank_idx].strip()
-                body = "\n".join(cur_body[non_blank_idx + 1 :]).strip()
+            headline = cur_body[non_blank_idx].strip()
+            rest = cur_body[non_blank_idx + 1 :]
+            body = "\n".join(rest).strip()
         entries.append(Entry(role=role, timestamp=cur_ts, headline=headline, body=body))
 
     for line in lines:
@@ -129,10 +108,8 @@ def parse_role_file(path: Path) -> list[Entry]:
         if match:
             flush()
             cur_body = []
-            cur_inline = (match.group(2) or "").strip()
             ts_str = match.group(1).replace("T", " ")
-            # Date-only headers ("## 2026-05-13 — …") anchor to midnight.
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
                 try:
                     cur_ts = datetime.strptime(ts_str, fmt)
                     break
@@ -144,7 +121,6 @@ def parse_role_file(path: Path) -> list[Entry]:
                     file=sys.stderr,
                 )
                 cur_ts = None
-                cur_inline = ""
         else:
             cur_body.append(line)
     flush()

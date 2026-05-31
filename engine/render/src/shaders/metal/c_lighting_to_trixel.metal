@@ -1,5 +1,4 @@
 #include "ir_iso_common.metal"
-#include "ir_per_axis_lighting.metal"
 
 // Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
 // application pass — modulates trixelColors.rgb by (AO × sun-shadow),
@@ -141,22 +140,14 @@ kernel void c_lighting_to_trixel(
     }
 
     if (frameData.lightVolumeEnabled != 0) {
-        // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-        // face-locally; the single canvas uses the cardinal-snap reconstruction.
-        // The shared world light volume is sampled the same way for both. Mirrors GLSL.
-        float3 pos3D = voxelFrameData.perAxisRoute != 0
-            ? perAxisCellToWorld3D(
-                  pixel, rawDepth, faceId, size,
-                  voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
-              )
-            : trixelCanvasPixelToWorld3D(
-                  pixel,
-                  rawDepth,
-                  voxelFrameData.trixelCanvasOffsetZ1,
-                  voxelFrameData.frameCanvasOffset,
-                  voxelFrameData.voxelRenderOptions,
-                  voxelFrameData.rasterYaw
-              );
+        float3 pos3D = trixelCanvasPixelToWorld3D(
+            pixel,
+            rawDepth,
+            voxelFrameData.trixelCanvasOffsetZ1,
+            voxelFrameData.frameCanvasOffset,
+            voxelFrameData.voxelRenderOptions,
+            voxelFrameData.rasterYaw
+        );
 
         constexpr sampler volumeSampler(
             filter::nearest, address::clamp_to_edge
