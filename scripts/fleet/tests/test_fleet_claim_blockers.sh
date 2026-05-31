@@ -173,6 +173,19 @@ case "$1 $2" in
                 # them; #101 is still OPEN so the claim must be blocked.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
                 ;;
+            2014)
+                # #1423: inline-bold form — **Blocked by: #N (label)** mid-line,
+                # referenced issue #101 still OPEN → claim must be blocked.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #101 (Phase 2)**\n"}'
+                ;;
+            2015)
+                # #1423: inline-bold form, referenced issue #100 CLOSED → pass.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #100 (Phase 2)**\n"}'
+                ;;
+            2016)
+                # #1423: inline-bold form with no #N/PR ref — must not gate.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Blocked by: the redesign**\n"}'
+                ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -310,6 +323,23 @@ release_quiet 2012
 echo "T13: two **Blocked by:** lines (#100 CLOSED, #101 OPEN) → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2013 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "multi-line blocked-by, #101 OPEN → exit 1"
+
+# --- T14: inline-bold form — #101 OPEN → fail (#1423) -----------------------
+echo "T14: inline-bold '**Blocked by: #101 (Phase 2)**' — #101 OPEN → claim fails"
+actual=0; "$FLEET_CLAIM" claim 2014 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "inline-bold #101 OPEN → exit 1"
+
+# --- T15: inline-bold form — #100 CLOSED → pass (#1423) ---------------------
+echo "T15: inline-bold '**Blocked by: #100 (Phase 2)**' — #100 CLOSED → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2015 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "inline-bold #100 CLOSED → exit 0"
+release_quiet 2015
+
+# --- T16: inline-bold with no #N/PR ref — not a gate (#1423) ----------------
+echo "T16: inline-bold 'Blocked by: the redesign' (no ref) → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2016 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "inline-bold no-ref bypasses gate → exit 0"
+release_quiet 2016
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

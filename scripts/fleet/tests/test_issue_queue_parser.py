@@ -79,6 +79,36 @@ class ParseBlockedBy(unittest.TestCase):
         self.assertEqual(_mod._parse_blocked_by(""), "")
         self.assertEqual(_mod._parse_blocked_by(None), "")
 
+    def test_inline_bold_mid_line_extracts_ref(self):
+        # #1423: colon and value inside one bold span, mid-line after · separators.
+        line = "**Part of epic:** #104 · **Phase 3 of 4** · **Blocked by: #106 (Phase 2)**"
+        result = _mod._parse_blocked_by(line)
+        self.assertIn("#106", result)
+
+    def test_inline_bold_gate_blocks_open_ref(self):
+        # Variant used in fleet-claim acceptance test: value must surface so
+        # check_blockers can reject the claim.
+        body = "**Part of epic:** #104 · **Phase 4 of 4** · **Blocked by: #107 (Phase 3)**\n"
+        result = _mod._parse_blocked_by(body)
+        self.assertIn("#107", result)
+
+    def test_inline_bold_none_value_is_unblocked(self):
+        body = "**Part of epic:** #104 · **Blocked by: (none)**\n"
+        self.assertEqual(_mod._parse_blocked_by(body), "")
+
+    def test_canonical_form_not_affected_by_inline_pattern(self):
+        # The inline pattern must not fire on canonical **Blocked by:** form
+        # (bold closes at colon; space+value follows outside the bold span).
+        body = "**Blocked by:** #50\n"
+        self.assertEqual(_mod._parse_blocked_by(body), "#50")
+
+    def test_inline_bold_combined_with_canonical(self):
+        # Both forms present — union both refs.
+        body = "**Blocked by:** #50\n**Part of epic:** #1 · **Blocked by: #60 (Phase 2)**\n"
+        result = _mod._parse_blocked_by(body)
+        self.assertIn("#50", result)
+        self.assertIn("#60", result)
+
 
 class FetchTaskQueueDispatch(unittest.TestCase):
     """Exercise the per-issue loop with synthetic gh output.
