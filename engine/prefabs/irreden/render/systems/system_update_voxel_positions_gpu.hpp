@@ -48,6 +48,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/render/voxel_pool_allocation.hpp>
+#include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -153,11 +154,8 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         // CPU mirror of the GLSL/Metal `transform * localPos`: sqtToMat4 is
         // bit-identical to the shader-side helper, so the same operands classify
         // the same on both sides (the CPU↔GPU consistency the plan flags).
-        transforms_[slot].modelToWorld_ = IRMath::sqtToMat4(
-            worldTransform.scale_,
-            rotation,
-            worldTransform.translation_
-        );
+        transforms_[slot].modelToWorld_ =
+            IRMath::sqtToMat4(worldTransform.scale_, rotation, worldTransform.translation_);
         maxSlotUsed_ = IRMath::max(maxSlotUsed_, static_cast<int>(slot));
         anyDynamic_ = true;
 
@@ -184,7 +182,9 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
             const std::uint32_t packed =
                 IRComponents::packVoxelVisibleTriplet(triplet[0], triplet[1], triplet[2]);
             lastTickPool_->setVoxelReservedForRange(
-                voxelSet.voxelStartIdx_, static_cast<std::size_t>(voxelSet.numVoxels_), packed
+                voxelSet.voxelStartIdx_,
+                static_cast<std::size_t>(voxelSet.numVoxels_),
+                packed
             );
         }
     }
@@ -246,16 +246,13 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
 
         // One thread per live voxel; the 2D workgroup grid mirrors the visibility
         // compact dispatch exactly so the shader's linear-index reconstruction
-        // (workGroupIndex * 64 + localId.x) lines up with what we dispatch. This
-        // is the same fold as `voxelDispatchGridForCount` in system_voxel_to_trixel.hpp;
-        // it is inlined here to avoid depending on that heavy STAGE_1 header just
-        // for the helper. Extraction tracked in #1422.
+        // (workGroupIndex * 64 + localId.x) lines up with what we dispatch. The
+        // count→grid fold is shared with VOXEL_TO_TRIXEL_STAGE_1 via the
+        // lightweight voxel_dispatch_grid.hpp helper (#1422) — no dependency on
+        // the heavy STAGE_1 system header.
         constexpr int kLocalSize = 64;
-        constexpr int kMaxGroupsX = 1024;
-        const int groups = IRMath::divCeil(liveCount, kLocalSize);
-        const int groupsX = IRMath::min(groups, kMaxGroupsX);
-        const int groupsY = IRMath::divCeil(groups, groupsX);
-        IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(liveCount, kLocalSize));
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 
