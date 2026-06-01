@@ -45,7 +45,14 @@ struct RoiCrop {
 ///
 /// @c crops_ / @c numCrops_ point at a caller-owned table that must
 /// outlive the game loop, same lifetime contract as @c shots_.
-///
+
+/// Cull-freeze action to apply when this shot is active.
+enum class CullAction {
+    NONE,
+    FREEZE,
+    UNFREEZE,
+};
+
 /// @c cullAction_ drives the shared cull-freeze state alongside the camera
 /// params (#1438). @c NONE leaves the freeze flag untouched, so existing shot
 /// tables are unaffected. @c FREEZE pins the cull viewport at THIS shot's
@@ -54,12 +61,6 @@ struct RoiCrop {
 /// frame; later shots can then move the camera while the cull stays pinned.
 /// @c UNFREEZE returns to live cull tracking. Used to build a frozen-cull
 /// free-fly sweep that proves the live cull retains the on-screen set.
-enum class CullAction {
-    NONE,
-    FREEZE,
-    UNFREEZE,
-};
-
 struct AutoScreenshotShot {
     float zoom_ = 1.0f;
     vec2 cameraIso_ = vec2(0.0f);
