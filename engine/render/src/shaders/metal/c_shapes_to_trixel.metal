@@ -1037,7 +1037,13 @@ kernel void c_shapes_to_trixel(
                                           yawS * viewOffset.x + yawC * viewOffset.y,
                                           viewOffset.z);
         const float3 worldSurface = worldPos * float(sub) + worldOffset;
-        baseDepth = roundHalfUp(worldSurface.x + worldSurface.y + worldSurface.z);
+        // Yaw-consistent composite depth (#1370) — mirror of the GLSL. Order by
+        // the depth matching the YAWED iso projection (iso of R_z(-visualYaw)*
+        // world), not the un-yawed world x+y+z, so a low/back surface stops
+        // winning the depth test against geometry above it at residual yaw.
+        const float dvx = worldSurface.x * yawC + worldSurface.y * yawS;
+        const float dvy = -worldSurface.x * yawS + worldSurface.y * yawC;
+        baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;

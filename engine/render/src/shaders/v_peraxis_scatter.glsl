@@ -112,6 +112,22 @@ void main() {
     gl_Position = mpMatrix * vec4(quadPos, 1.0, 1.0);
 
     vColor = color;
-    vDepth = float(rawDist + distanceOffset - kMinTriangleDistance) /
+    // Yaw-consistent composite depth (#1370). The stored `rawDepth` (= un-yawed
+    // world x+y+z) is the face-local origin-recovery KEY and must not change.
+    // But the framebuffer depth test must order by the depth that matches the
+    // YAWED screen projection above (iso of R_z(-visualYaw)*world), not the
+    // un-yawed metric — otherwise the ordering diverges from the on-screen
+    // placement as residual yaw grows and a low/back surface (the ground
+    // platform) wins the depth test against geometry above it near +/-45 deg.
+    // Re-derive the composite depth from the recovered origin, rotated by
+    // R_z(-visualYaw); keep the *4 + slot encoding so it co-sorts with the SDF
+    // (c_shapes_to_trixel smoothYaw applies the identical transform). Per-axis
+    // is residual-only, so the cardinal fast path is untouched (byte-identical).
+    float yc = cos(visualYaw);
+    float ys = sin(visualYaw);
+    float dvx = origin.x * yc + origin.y * ys;
+    float dvy = -origin.x * ys + origin.y * yc;
+    int yawedDist = roundHalfUp(dvx + dvy + origin.z) * 4 + slot;
+    vDepth = float(yawedDist + distanceOffset - kMinTriangleDistance) /
              float(kMaxTriangleDistance - kMinTriangleDistance);
 }
