@@ -178,11 +178,15 @@ struct FrameDataVoxelToCanvas {
     // Per-slot world `FaceId` (0..5 = X_NEG / X_POS / Y_NEG / Y_POS /
     // Z_NEG / Z_POS) — the three camera-visible faces resolved from the
     // camera quaternion via `IRMath::visibleFaceTripletCardinal` (#1278).
-    // Indexed by visible-triplet slot 0/1/2; `.w` is padding (std140 ivec3
-    // would round up to ivec4 stride anyway). Defaults to {X_NEG, Y_NEG,
-    // Z_NEG} = the historical lower-coordinate-faces set, so a UBO that
-    // hasn't been populated by the new path renders identically to
-    // pre-#1278 master at cardinal 0.
+    // Indexed by visible-triplet slot 0/1/2; `.w` is std140 padding
+    // (std140 ivec3 rounds up to ivec4 stride anyway). `.w` was formerly
+    // written by VOXEL_TO_TRIXEL_STAGE_1 as the MAIN_CANVAS_SO3 canvas
+    // flag; that write was removed in #1443 when MAIN_CANVAS_SO3 was
+    // retired. No shader reads `visibleFaceIds[3]`; the lane is zero
+    // and available for future use. Defaults to {X_NEG, Y_NEG, Z_NEG, 0}
+    // = the historical lower-coordinate-faces set, so a UBO that hasn't
+    // been populated by the new path renders identically to pre-#1278
+    // master at cardinal 0.
     //
     // Consumed by raster (`c_voxel_to_trixel_stage_{1,2}` — exposed-mask
     // check + per-face micro-position) AND by `c_compute_voxel_ao` /
