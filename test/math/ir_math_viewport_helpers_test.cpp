@@ -439,4 +439,74 @@ TEST(ShadowFeederIsoBoundsTest, DefaultSunDirectionExpandsCorrectAxes) {
     EXPECT_NEAR(r.max_.y, 10.0f, 1e-4f);
 }
 
+// ---------------------------------------------------------------------------
+// isoAABBOfWorldAABBUnderYaw
+// Iso-space AABB of a world box projected under continuous camera Z-yaw.
+// Enumerates the 8 world corners through pos3DtoPos2DIsoYawed and bounds them.
+// pos3DtoPos2DIsoYawed(p, yaw): vx = p.x*cos + p.y*sin, vy = -p.x*sin + p.y*cos
+//   iso = (-vx + vy, -vx - vy + 2*p.z)
+// ---------------------------------------------------------------------------
+
+TEST(IsoAABBUnderYawTest, ZeroYawMatchesUnYawedProjection) {
+    // yaw=0 reduces to the plain iso projection of the box corners.
+    // Box [0,0,0]-[2,2,2]: iso.x=-x+y ∈ [-2,2]; iso.y=-x-y+2z ∈ [-4,4].
+    auto b = IRMath::isoAABBOfWorldAABBUnderYaw(
+        IRMath::vec3(0.0f),
+        IRMath::vec3(2.0f, 2.0f, 2.0f),
+        0.0f
+    );
+    EXPECT_NEAR(b.min_.x, -2.0f, kTolerance);
+    EXPECT_NEAR(b.min_.y, -4.0f, kTolerance);
+    EXPECT_NEAR(b.max_.x, 2.0f, kTolerance);
+    EXPECT_NEAR(b.max_.y, 4.0f, kTolerance);
+}
+
+TEST(IsoAABBUnderYawTest, DegeneratePointBox) {
+    // Zero-size box → AABB collapses to the single yawed iso point.
+    // yaw=0, p=(1,2,3): iso = (-1+2, -1-2+6) = (1, 3).
+    auto b = IRMath::isoAABBOfWorldAABBUnderYaw(
+        IRMath::vec3(1.0f, 2.0f, 3.0f),
+        IRMath::vec3(1.0f, 2.0f, 3.0f),
+        0.0f
+    );
+    EXPECT_NEAR(b.min_.x, 1.0f, kTolerance);
+    EXPECT_NEAR(b.min_.y, 3.0f, kTolerance);
+    EXPECT_NEAR(b.max_.x, 1.0f, kTolerance);
+    EXPECT_NEAR(b.max_.y, 3.0f, kTolerance);
+}
+
+TEST(IsoAABBUnderYawTest, QuarterTurnYaw) {
+    // yaw=π/2 → cos≈0, sin=1: vx=y, vy=-x.
+    //   iso.x = -y - x, iso.y = x - y + 2z.
+    // Box [0,0,0]-[2,2,2]: iso.x ∈ [-4,0]; iso.y ∈ [-2,6].
+    auto b = IRMath::isoAABBOfWorldAABBUnderYaw(
+        IRMath::vec3(0.0f),
+        IRMath::vec3(2.0f, 2.0f, 2.0f),
+        IRMath::kHalfPi
+    );
+    EXPECT_NEAR(b.min_.x, -4.0f, 1e-4f);
+    EXPECT_NEAR(b.min_.y, -2.0f, 1e-4f);
+    EXPECT_NEAR(b.max_.x, 0.0f, 1e-4f);
+    EXPECT_NEAR(b.max_.y, 6.0f, 1e-4f);
+}
+
+TEST(IsoAABBUnderYawTest, ContainsInteriorPointProjection) {
+    // The core cull-safety property: the AABB conservatively contains the
+    // projection of any point inside the world box, at an arbitrary yaw.
+    const float yaw = 0.7f;
+    const IRMath::vec3 lo(0.0f, 0.0f, 0.0f);
+    const IRMath::vec3 hi(4.0f, 6.0f, 3.0f);
+    auto b = IRMath::isoAABBOfWorldAABBUnderYaw(lo, hi, yaw);
+    for (const IRMath::vec3 interior :
+         {IRMath::vec3(1.0f, 3.0f, 2.0f),
+          IRMath::vec3(4.0f, 0.0f, 3.0f),
+          IRMath::vec3(2.5f, 5.5f, 0.5f)}) {
+        const IRMath::vec2 iso = IRMath::pos3DtoPos2DIsoYawed(interior, yaw);
+        EXPECT_GE(iso.x, b.min_.x - kTolerance);
+        EXPECT_LE(iso.x, b.max_.x + kTolerance);
+        EXPECT_GE(iso.y, b.min_.y - kTolerance);
+        EXPECT_LE(iso.y, b.max_.y + kTolerance);
+    }
+}
+
 } // namespace

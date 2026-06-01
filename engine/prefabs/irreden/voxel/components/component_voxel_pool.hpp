@@ -39,6 +39,26 @@ struct ChunkBounds {
     }
 };
 
+// Static (camera-independent) world-space AABB of a chunk's live voxels.
+// Cached once per allocation/position change so the continuous-yaw cull can
+// recover a chunk's iso bounds by projecting 8 corners under the live yaw
+// (`IRMath::isoAABBOfWorldAABBUnderYaw`) — O(chunks)/frame — instead of
+// re-projecting every voxel every frame (#1439).
+struct ChunkWorldBounds {
+    vec3 worldMin_ = vec3(std::numeric_limits<float>::max());
+    vec3 worldMax_ = vec3(std::numeric_limits<float>::lowest());
+
+    void expand(vec3 worldPos) {
+        worldMin_ = IRMath::min(worldMin_, worldPos);
+        worldMax_ = IRMath::max(worldMax_, worldPos);
+    }
+
+    // A chunk with no live voxels keeps the inverted sentinel.
+    bool empty() const {
+        return worldMin_.x > worldMax_.x;
+    }
+};
+
 struct C_VoxelPool {
   public:
     C_VoxelPool(ivec3 numVoxels)
@@ -103,6 +123,7 @@ struct C_VoxelPool {
                 m_freeSpanLookup.erase(size);
             }
             m_chunkBoundsDirty = true;
+            m_chunkWorldBoundsDirty = true;
             return IRRender::VoxelPoolAllocation{
                 startIndex,
                 std::span<IRRender::VoxelGpuPosition>{m_voxelPositions.data() + startIndex, size},
@@ -119,6 +140,7 @@ struct C_VoxelPool {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
             m_chunkBoundsDirty = true;
+            m_chunkWorldBoundsDirty = true;
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
             return IRRender::VoxelPoolAllocation{
                 startIndex,
@@ -163,6 +185,7 @@ struct C_VoxelPool {
         );
         m_entityIdsDirty = true;
         m_chunkBoundsDirty = true;
+        m_chunkWorldBoundsDirty = true;
 
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
@@ -271,31 +294,60 @@ struct C_VoxelPool {
         for (auto &cb : m_chunkBounds)
             cb.reset();
 
+        if (useContinuousYaw) {
+            // Closed-form O(chunks) cull region (#1439): project each chunk's
+            // cached static world-AABB under the live yaw instead of
+            // re-projecting every voxel. The 8-corner projection is a
+            // conservative superset of the per-voxel iso bounds
+            // (`pos3DtoPos2DIsoYawed` is linear), so the gate over-includes
+            // rather than dropping on-screen chunks. The world-AABB cache is
+            // rebuilt (O(voxels)) only when voxel positions actually change
+            // (alloc/dealloc, in-place rewrites signalled via
+            // `markChunkWorldBoundsDirty`), so a static world under a rotating
+            // camera pays only O(chunks)/frame here.
+            ensureChunkWorldBounds(chunkCount);
+            for (int c = 0; c < chunkCount; ++c) {
+                const ChunkWorldBounds &wb = m_chunkWorldBounds[c];
+                if (wb.empty())
+                    continue; // leave the inverted sentinel → chunk never visible
+                const IsoBounds2D iso =
+                    IRMath::isoAABBOfWorldAABBUnderYaw(wb.worldMin_, wb.worldMax_, visualYaw);
+                m_chunkBounds[c].isoMin_ = iso.min_;
+                m_chunkBounds[c].isoMax_ = iso.max_;
+            }
+            // Never cache a per-frame yaw snapshot in the iso bounds; force the
+            // next cardinal-path call to rebuild rather than trust stale
+            // continuous bounds. (The world-AABB cache is yaw-independent and
+            // stays valid across yaw frames — only position changes evict it.)
+            m_chunkBoundsDirty = true;
+            return;
+        }
+
+        // Cardinal path: per-voxel iso expand, cached by cardinal index.
+        // Unchanged from master so the yaw==0 / cardinal render path stays
+        // byte-identical.
         for (int i = 0; i < m_voxelPoolIndex; ++i) {
             if (m_voxelColors[i].color_.alpha_ == 0)
                 continue;
             int chunk = i / IRRender::kVoxelChunkSize;
             vec3 pos = m_voxelPositionsGlobal[i].pos_;
-            vec2 isoPos;
-            if (useContinuousYaw) {
-                isoPos = IRMath::pos3DtoPos2DIsoYawed(pos, visualYaw);
-            } else {
-                if (cardinalIndex != CardinalIndex::k0) {
-                    pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
-                    pos += vec3(IRMath::cardinalLowerCornerShift(cardinalIndex));
-                }
-                isoPos = IRMath::pos3DtoPos2DIso(pos);
+            if (cardinalIndex != CardinalIndex::k0) {
+                pos = IRMath::rotateCardinalZ(pos, cardinalIndex);
+                pos += vec3(IRMath::cardinalLowerCornerShift(cardinalIndex));
             }
-            m_chunkBounds[chunk].expand(isoPos);
+            m_chunkBounds[chunk].expand(IRMath::pos3DtoPos2DIso(pos));
         }
-        if (useContinuousYaw) {
-            // Never cache a per-frame yaw snapshot; force the next cardinal-path
-            // call to rebuild rather than trust stale continuous bounds.
-            m_chunkBoundsDirty = true;
-        } else {
-            m_lastBoundsCardinalIndex = cardinalIndex;
-            m_chunkBoundsDirty = false;
-        }
+        m_lastBoundsCardinalIndex = cardinalIndex;
+        m_chunkBoundsDirty = false;
+    }
+
+    // Signals that voxel world positions changed in place (no realloc) — e.g.
+    // a parent move (`UPDATE_VOXEL_SET_CHILDREN`) or a GRID re-voxelize
+    // (`REBUILD_GRID_VOXELS`). Evicts the cached chunk world-AABBs so the next
+    // continuous-yaw cull rebuilds them and stays a conservative superset of
+    // the live voxels (otherwise a moved/rotated chunk could be dropped).
+    void markChunkWorldBoundsDirty() {
+        m_chunkWorldBoundsDirty = true;
     }
 
     void markChunkBoundsDirty() {
@@ -558,6 +610,12 @@ struct C_VoxelPool {
     std::vector<std::pair<size_t, size_t>> m_freeVoxelSpans;
     std::map<size_t, std::set<std::pair<size_t, size_t>>> m_freeSpanLookup;
     std::vector<ChunkBounds> m_chunkBounds;
+    // Cached static (camera-independent) world-AABB per chunk, projected under
+    // the live yaw by the continuous-yaw cull (#1439). Rebuilt only when voxel
+    // positions change, so a static world under a rotating camera skips the
+    // per-voxel re-projection entirely.
+    std::vector<ChunkWorldBounds> m_chunkWorldBounds;
+    bool m_chunkWorldBoundsDirty = true;
     // Per-frame queue of position-global slices whose CPU contents were
     // rewritten since the last GPU flush. Drained + coalesced by
     // VOXEL_TO_TRIXEL_STAGE_1; capacity is preserved across frames so
@@ -574,6 +632,24 @@ struct C_VoxelPool {
 
     void updateFreeSpanLookup(size_t startIndex, size_t size) {
         m_freeSpanLookup[size].insert({startIndex, size});
+    }
+
+    // Rebuilds the per-chunk static world-AABB cache from the live voxels'
+    // world positions (O(voxels)). Runs only when the cache is dirty or its
+    // chunk count is stale; the result is camera-independent, so the
+    // continuous-yaw cull reuses it across yaw frames (#1439).
+    void ensureChunkWorldBounds(int chunkCount) {
+        if (!m_chunkWorldBoundsDirty && static_cast<int>(m_chunkWorldBounds.size()) == chunkCount) {
+            return;
+        }
+        m_chunkWorldBounds.assign(chunkCount, ChunkWorldBounds{});
+        for (int i = 0; i < m_voxelPoolIndex; ++i) {
+            if (m_voxelColors[i].color_.alpha_ == 0)
+                continue;
+            int chunk = i / IRRender::kVoxelChunkSize;
+            m_chunkWorldBounds[chunk].expand(m_voxelPositionsGlobal[i].pos_);
+        }
+        m_chunkWorldBoundsDirty = false;
     }
 
     void setMaskRange(std::size_t start, std::size_t count, bool value) {

@@ -1017,18 +1017,31 @@ inline vec2 shapeIsoHalfExtent(vec3 voxelSize) {
     return vec2(extentX + extentY, extentX + extentY + 2.0f * extentZ);
 }
 
-/// Returns the tight iso-space axis-aligned bounding box of a rectangular
-/// prism entity at @p worldPos with @p voxelSize dimensions.  Enumerates
-/// all 8 corners for an exact result (prefer shapeIsoHalfExtent when a
-/// conservative approximation is acceptable).
-inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
+/// Returns the iso-space AABB of the world-space box [@p worldMin, @p worldMax]
+/// projected under a continuous camera Z-yaw of @p visualYaw. Enumerates the 8
+/// world corners through @ref pos3DtoPos2DIsoYawed and bounds the result.
+///
+/// Closed-form O(1) companion to per-voxel cull projection (#1439): a chunk
+/// caches its static world-AABB once, and its cull region under the live yaw is
+/// recovered by projecting 8 corners instead of re-projecting every voxel each
+/// frame. `pos3DtoPos2DIsoYawed` is linear, so the iso-AABB of the projected
+/// corners is the tight iso-AABB of the projected box — and for a voxel set
+/// that does not fill its world-AABB it is a *conservative superset* of the
+/// per-voxel iso bounds (never tighter), so the chunk-visibility gate keeps
+/// over-including rather than dropping on-screen geometry. At @p visualYaw == 0
+/// it reduces to the un-yawed iso projection of the box corners.
+inline IsoBounds2D isoAABBOfWorldAABBUnderYaw(vec3 worldMin, vec3 worldMax, float visualYaw) {
     vec2 corners[8];
     int idx = 0;
     for (int dx = 0; dx <= 1; ++dx) {
         for (int dy = 0; dy <= 1; ++dy) {
             for (int dz = 0; dz <= 1; ++dz) {
-                vec3 corner = worldPos + vec3(dx * voxelSize.x, dy * voxelSize.y, dz * voxelSize.z);
-                corners[idx++] = pos3DtoPos2DIso(corner);
+                const vec3 corner = vec3(
+                    dx ? worldMax.x : worldMin.x,
+                    dy ? worldMax.y : worldMin.y,
+                    dz ? worldMax.z : worldMin.z
+                );
+                corners[idx++] = pos3DtoPos2DIsoYawed(corner, visualYaw);
             }
         }
     }
@@ -1039,6 +1052,15 @@ inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
         bmax = glm::max(bmax, corners[i]);
     }
     return IsoBounds2D{bmin, bmax};
+}
+
+/// Returns the tight iso-space axis-aligned bounding box of a rectangular
+/// prism entity at @p worldPos with @p voxelSize dimensions.  The un-yawed,
+/// axis-aligned special case of @ref isoAABBOfWorldAABBUnderYaw over the box
+/// [worldPos, worldPos + voxelSize] (prefer shapeIsoHalfExtent when a
+/// conservative approximation is acceptable).
+inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
+    return isoAABBOfWorldAABBUnderYaw(worldPos, worldPos + vec3(voxelSize), 0.0f);
 }
 
 /// Returns true if a rectangular-prism entity's iso bounding box overlaps
