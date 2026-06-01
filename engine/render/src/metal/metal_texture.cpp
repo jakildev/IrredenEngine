@@ -157,12 +157,58 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         }
         const std::size_t bytesPerRow =
             static_cast<std::size_t>(width) * pixelSizeBytes(format, type);
-        m_texture->replaceRegion(
-            MTL::Region::Make2D(xoffset, yoffset, width, height),
-            0,
+        const std::size_t totalSize = bytesPerRow * static_cast<std::size_t>(height);
+
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer == nullptr) {
+            // No frame command buffer (startup / one-off init): no GPU work is
+            // queued against this texture, so a direct CPU write is safe and
+            // skips the transient staging buffer.
+            m_texture->replaceRegion(
+                MTL::Region::Make2D(xoffset, yoffset, width, height),
+                0,
+                data,
+                static_cast<NS::UInteger>(bytesPerRow)
+            );
+            return;
+        }
+
+        // A frame command buffer is open. replaceRegion is an immediate CPU
+        // write to shared storage and is NOT ordered against the GPU encoders
+        // already queued on this texture this frame — most importantly the
+        // deferred clear blit (Texture2D::clear / C_TriangleCanvasTextures::clear)
+        // that executes at commit time and would clobber a CPU write made now.
+        // The GUI canvas hit this every frame: TEXT_TO_TRIXEL queues the clear
+        // blit then writes glyphs via a compute imageStore (GPU, survives the
+        // clear), while the WIDGET_RENDER_* systems draw panels/borders/labels
+        // via subImage2D — a CPU replaceRegion was erased by the queued clear, so
+        // widgets rendered invisible while text composited fine (#1436). Stage the
+        // upload and blit copyFromBuffer so it lands in encoder order after the
+        // clear/compute, matching OpenGL's submission-ordered subImage2D.
+        MTL::Buffer *staging = metalDevice()->newBuffer(
             data,
-            static_cast<NS::UInteger>(bytesPerRow)
+            static_cast<NS::UInteger>(totalSize),
+            MTL::ResourceStorageModeShared
         );
+        IR_ASSERT(staging != nullptr, "Failed to create Metal subImage2D staging buffer");
+
+        auto *blit = commandBuffer->blitCommandEncoder();
+        blit->copyFromBuffer(
+            staging,
+            0,
+            static_cast<NS::UInteger>(bytesPerRow),
+            static_cast<NS::UInteger>(totalSize),
+            MTL::Size::Make(width, height, 1),
+            m_texture,
+            0,
+            0,
+            MTL::Origin::Make(xoffset, yoffset, 0)
+        );
+        blit->endEncoding();
+
+        // The staging buffer must outlive the GPU read. releaseDeferredMetalBuffers()
+        // runs only after the frame's waitUntilCompleted(), so defer its release.
+        deferReleaseMetalBuffer(staging);
     }
 
     void readSubImage2D(
