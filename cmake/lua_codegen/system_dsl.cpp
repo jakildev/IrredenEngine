@@ -1190,11 +1190,15 @@ struct Emitter {
                 }
                 out_ << "(";
                 ExprType lt = emitExpr(*e.lhs_);
+                if (lt == ExprType::VEC3 || lt == ExprType::IVEC3) {
+                    fail(file_, e.line_,
+                         "vector values have no whole-vector operators in CODEGEN; operate on "
+                         "components via `.x` / `.y` / `.z`");
+                }
                 out_ << " " << op << " ";
                 ExprType rt = emitExpr(*e.rhs_);
                 out_ << ")";
-                if (lt == ExprType::VEC3 || lt == ExprType::IVEC3 ||
-                    rt == ExprType::VEC3 || rt == ExprType::IVEC3) {
+                if (rt == ExprType::VEC3 || rt == ExprType::IVEC3) {
                     fail(file_, e.line_,
                          "vector values have no whole-vector operators in CODEGEN; operate on "
                          "components via `.x` / `.y` / `.z`");
