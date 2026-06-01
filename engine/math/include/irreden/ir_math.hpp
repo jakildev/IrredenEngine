@@ -424,6 +424,22 @@ constexpr CardinalIndex rasterYawCardinalIndex(float rasterYaw) {
     return static_cast<CardinalIndex>(((q % 4) + 4) % 4);
 }
 
+/// `(cos, sin)` of the cardinal angle named by @p cardinalIndex — exact
+/// `±1`/`0`, the snapped Z-yaw the `GRID` voxel/SDF rasterizer projects at.
+/// Pairs with @ref rasterYawCardinalIndex to retire the open-coded
+/// `kCardinalCos`/`kCardinalSin` tables callers used to inline.
+///
+/// GPU mirror: `cardinalYawCosSin` in `shaders/ir_iso_common.glsl`.
+constexpr vec2 cardinalYawCosSin(CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return vec2(0.0f, 1.0f);
+    if (cardinalIndex == CardinalIndex::k180)
+        return vec2(-1.0f, 0.0f);
+    if (cardinalIndex == CardinalIndex::k270)
+        return vec2(0.0f, -1.0f);
+    return vec2(1.0f, 0.0f);
+}
+
 /// CPU mirror of `rotateCardinalZ` in `shaders/ir_iso_common.glsl`.
 /// World→view = R_z(-rasterYaw) for the given cardinal snap. The voxel
 /// rasterizer applies this to world positions before iso projection, so
@@ -595,6 +611,24 @@ constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
     const float vx = worldPos.x * c + worldPos.y * s;
     const float vy = -worldPos.x * s + worldPos.y * c;
     return vec2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
+}
+
+/// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
+/// `(cosYaw, sinYaw)`: each in-plane axis grows to `|c|·hX + |s|·hY` (the
+/// footprint the rotated box covers, up to the √2 extent at ±45°); Z is
+/// unchanged. Centralizes the iso-cull / GPU-tile-dispatch footprint expansion
+/// the SDF + voxel paths used to inline at each call site, so the CPU cull and
+/// the GPU rasterizer grow their bounds identically.
+///
+/// GPU mirror: `yawGrownIsoHalfExtent` in `shaders/ir_iso_common.glsl`.
+constexpr vec3 yawGrownIsoHalfExtent(const vec3 halfExtent, float cosYaw, float sinYaw) {
+    const float absC = abs(cosYaw);
+    const float absS = abs(sinYaw);
+    return vec3(
+        halfExtent.x * absC + halfExtent.y * absS,
+        halfExtent.x * absS + halfExtent.y * absC,
+        halfExtent.z
+    );
 }
 
 /// 2x2 deformation matrix that maps a face's un-yawed iso-pixel offset to the

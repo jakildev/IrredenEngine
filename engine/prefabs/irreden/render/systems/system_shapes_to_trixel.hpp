@@ -62,6 +62,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     float residualYaw_ = 0.0f;
     float yawCos_ = 1.0f;
     float yawSin_ = 0.0f;
+    // Cardinal snap index of rasterYaw_, reused by the cull-pass view rotation
+    // (IRMath::rotateCardinalZ) so it shares the rasterizer's world->view
+    // permutation instead of open-coding the same cos/sin product.
+    IRMath::CardinalIndex cardinalIndex_ = IRMath::CardinalIndex::k0;
     bool yawZero_ = true;
     // Continuous-yaw snapshot for the smooth camera Z-yaw SDF path (#1345).
     // smoothYaw_ is true inside a residual bracket (residualYaw != 0); the cull
@@ -107,29 +111,14 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 // and grow the iso half-extent by the continuous |c|,|s| (up to
                 // the sqrt(2) footprint at +/-45deg) so off-center shapes inside
                 // the rotated footprint survive the cardinal-snapped viewport.
-                const float absC = IRMath::abs(yawCosVisual_);
-                const float absS = IRMath::abs(yawSinVisual_);
-                sizeForExtent = vec3(
-                    sizeForExtent.x * absC + sizeForExtent.y * absS,
-                    sizeForExtent.x * absS + sizeForExtent.y * absC,
-                    sizeForExtent.z
-                );
+                sizeForExtent =
+                    IRMath::yawGrownIsoHalfExtent(sizeForExtent, yawCosVisual_, yawSinVisual_);
                 shapeIsoPosition = IRMath::pos3DtoPos2DIsoYawed(xform.translation_, visualYaw_);
             } else {
                 vec3 viewPos = xform.translation_;
                 if (!yawZero_) {
-                    viewPos = vec3(
-                        yawCos_ * xform.translation_.x + yawSin_ * xform.translation_.y,
-                        -yawSin_ * xform.translation_.x + yawCos_ * xform.translation_.y,
-                        xform.translation_.z
-                    );
-                    const float absC = IRMath::abs(yawCos_);
-                    const float absS = IRMath::abs(yawSin_);
-                    sizeForExtent = vec3(
-                        sizeForExtent.x * absC + sizeForExtent.y * absS,
-                        sizeForExtent.x * absS + sizeForExtent.y * absC,
-                        sizeForExtent.z
-                    );
+                    viewPos = IRMath::rotateCardinalZ(xform.translation_, cardinalIndex_);
+                    sizeForExtent = IRMath::yawGrownIsoHalfExtent(sizeForExtent, yawCos_, yawSin_);
                 }
                 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
             }
@@ -188,13 +177,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(visualYaw_);
         rasterYaw_ = rasterYaw;
         residualYaw_ = residualYaw;
-        static constexpr float kCardinalCos[4] = {1.f, 0.f, -1.f, 0.f};
-        static constexpr float kCardinalSin[4] = {0.f, 1.f, 0.f, -1.f};
-        constexpr float kHalfPi = 1.5707963267948966f;
-        const int q = IRMath::round(rasterYaw / kHalfPi);
-        const int cardinalIdx = ((q % 4) + 4) % 4;
-        yawCos_ = kCardinalCos[cardinalIdx];
-        yawSin_ = kCardinalSin[cardinalIdx];
+        cardinalIndex_ = IRMath::rasterYawCardinalIndex(rasterYaw);
+        const vec2 cardinalCosSin = IRMath::cardinalYawCosSin(cardinalIndex_);
+        yawCos_ = cardinalCosSin.x;
+        yawSin_ = cardinalCosSin.y;
         yawZero_ = (rasterYaw_ == 0.0f);
         // Smooth camera Z-yaw (#1345): continuous-yaw cull/footprint inside a
         // residual bracket. cos/sin of the full visualYaw (not the cardinal
@@ -456,18 +442,12 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
         const int sub = (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
         const bool yawZero = (rasterYaw == 0.0f);
-        const float absYawC = IRMath::abs(yawCos);
-        const float absYawS = IRMath::abs(yawSin);
+        const IRMath::CardinalIndex cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];
             vec3 worldPos = vec3(desc.worldPosition);
-            vec3 viewPos = yawZero ? worldPos
-                                   : vec3(
-                                         yawCos * worldPos.x + yawSin * worldPos.y,
-                                         -yawSin * worldPos.x + yawCos * worldPos.y,
-                                         worldPos.z
-                                     );
+            vec3 viewPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);
             ivec3 origin = IRMath::roundVec3HalfUp(viewPos);
 
             // Canonical bounding half-extent lives in IRMath::SDF (shared with
@@ -499,13 +479,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 // Continuous-yaw footprint: center on the full-visualYaw iso
                 // projection (matches the shader's originIsoScaled) and grow by
                 // the continuous |c|,|s| (sqrt(2) extent at +/-45deg).
-                const float absC = IRMath::abs(yawCosVisual);
-                const float absS = IRMath::abs(yawSinVisual);
-                boundingHalf = vec3(
-                    boundingHalf.x * absC + boundingHalf.y * absS,
-                    boundingHalf.x * absS + boundingHalf.y * absC,
-                    boundingHalf.z
-                );
+                boundingHalf =
+                    IRMath::yawGrownIsoHalfExtent(boundingHalf, yawCosVisual, yawSinVisual);
                 const vec2 originIsoF =
                     IRMath::pos3DtoPos2DIsoYawed(worldPos * static_cast<float>(sub), visualYaw);
                 const ivec2 originIsoScaled =
@@ -516,11 +491,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 isoMax = originIsoScaled + isoHalfExtent + ivec2(2);
             } else {
                 if (!yawZero) {
-                    boundingHalf = vec3(
-                        boundingHalf.x * absYawC + boundingHalf.y * absYawS,
-                        boundingHalf.x * absYawS + boundingHalf.y * absYawC,
-                        boundingHalf.z
-                    );
+                    boundingHalf = IRMath::yawGrownIsoHalfExtent(boundingHalf, yawCos, yawSin);
                 }
                 const ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
                 const ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));

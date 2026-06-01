@@ -879,8 +879,7 @@ kernel void c_shapes_to_trixel(
     // every line below collapses to the integer-only yaw=0 path, and the
     // existing reference renders stay pixel-exact.
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    constexpr float cardinalCos[4] = { 1.0,  0.0, -1.0,  0.0};
-    constexpr float cardinalSin[4] = { 0.0,  1.0,  0.0, -1.0};
+    const float2 cardinalCosSin = cardinalYawCosSin(cardinalIndex);
     // Smooth camera Z-yaw (#1345). Mirrors c_shapes_to_trixel.glsl. Inside a
     // residual bracket the SDF rotates by the FULL continuous visualYaw
     // (cardinal snap + residual) instead of snapping to rasterYaw + faceDeform:
@@ -891,8 +890,8 @@ kernel void c_shapes_to_trixel(
     // per-axis voxel scatter (T3 #1310). residualYaw==0 keeps the byte-identical
     // cardinal path (faceDeform identity, view-space depth).
     const bool smoothYaw = (frameData.smoothYawEnabled != 0);
-    const float yawC = smoothYaw ? cos(frameData.visualYaw) : cardinalCos[cardinalIndex];
-    const float yawS = smoothYaw ? sin(frameData.visualYaw) : cardinalSin[cardinalIndex];
+    const float yawC = smoothYaw ? cos(frameData.visualYaw) : cardinalCosSin.x;
+    const float yawS = smoothYaw ? sin(frameData.visualYaw) : cardinalCosSin.y;
     const bool yawZero = (!smoothYaw) && (cardinalIndex == 0);
 
     const float3 worldPos = shape.worldPosition.xyz;
@@ -952,16 +951,9 @@ kernel void c_shapes_to_trixel(
     // (and symmetrically for Y). Use this expanded half-extent for the iso
     // footprint check and the generalDepthSearch range so the full rotated
     // shape stays inside the search window.
-    float3 boundingHalfView;
-    if (yawZero) {
-        boundingHalfView = boundingHalf;
-    } else {
-        const float absC = abs(yawC);
-        const float absS = abs(yawS);
-        boundingHalfView = float3(boundingHalf.x * absC + boundingHalf.y * absS,
-                                  boundingHalf.x * absS + boundingHalf.y * absC,
-                                  boundingHalf.z);
-    }
+    const float3 boundingHalfView = yawZero
+        ? boundingHalf
+        : yawGrownIsoHalfExtent(boundingHalf, yawC, yawS);
     const int3 extentScaled = int3(ceil(boundingHalfView)) + int3(1);
 
     // Smooth path repositions the center continuously (round the continuous-yaw

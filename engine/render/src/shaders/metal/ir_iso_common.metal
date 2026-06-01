@@ -370,6 +370,17 @@ inline int rasterYawCardinalIndex(float rasterYaw) {
     return ((q % 4) + 4) % 4;
 }
 
+// (cos, sin) of the cardinal angle named by cardinalIndex — exact ±1/0, the
+// snapped Z-yaw the GRID rasterizer projects at. Mirrors
+// IRMath::cardinalYawCosSin and ir_iso_common.glsl; retires the open-coded
+// cardinalCos/cardinalSin tables that callers used to inline.
+inline float2 cardinalYawCosSin(int cardinalIndex) {
+    if (cardinalIndex == 1) return float2( 0.0,  1.0);
+    if (cardinalIndex == 2) return float2(-1.0,  0.0);
+    if (cardinalIndex == 3) return float2( 0.0, -1.0);
+    return float2(1.0, 0.0);
+}
+
 inline int3 rotateCardinalZ(int3 v, int cardinalIndex) {
     if (cardinalIndex == 1) return int3( v.y, -v.x, v.z);   // R_z(-pi/2)
     if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);   // R_z(+/-pi)
@@ -458,6 +469,17 @@ inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
     const float vx = worldPos.x * c + worldPos.y * s;
     const float vy = -worldPos.x * s + worldPos.y * c;
     return float2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
+}
+
+// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
+// (cosYaw, sinYaw): each in-plane axis grows to |c|*hX + |s|*hY, Z unchanged.
+// CPU mirror: IRMath::yawGrownIsoHalfExtent; GLSL mirror in ir_iso_common.glsl.
+inline float3 yawGrownIsoHalfExtent(float3 halfExtent, float cosYaw, float sinYaw) {
+    const float absC = abs(cosYaw);
+    const float absS = abs(sinYaw);
+    return float3(halfExtent.x * absC + halfExtent.y * absS,
+                  halfExtent.x * absS + halfExtent.y * absC,
+                  halfExtent.z);
 }
 
 // --- Smooth camera Z-yaw forward-scatter: face-local in-plane store (#1310) ---
