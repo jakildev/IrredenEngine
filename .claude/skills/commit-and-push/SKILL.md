@@ -41,9 +41,9 @@ This skill has three modes. Detect at the start of the flow, in priority order:
 
 1. **Fleet stack mode** — caller has an active `fleet-claim` stack chain. PRs are chained by `--base` (one PR per task). Detected via `fleet-claim stack-pr-state <worktree>`. See [`procedures/fleet-stack.md`](procedures/fleet-stack.md) for the deltas (branch name with `<issue#>` prefix (`claude/<NNN>-<slug>`), `stack-base` lookup for `--base`, `Stack context` body block, `fleet:stacked` label, `stack-set-pr` after PR open).
 2. **Cursor stack mode** — current branch has `branch.<name>.cursor-stack-base` git config set (written by `start-next-task` when the human cued stacking). PRs target the parent branch instead of `master`. See [`procedures/cursor-stack.md`](procedures/cursor-stack.md) for the detection check, the `Stacked on:` body line, and the macOS sandbox note.
-3. **Single-PR mode (default)** — neither stack signal present. Proceed with the standard flow below.
+3. **Single-task mode (default)** — neither stack signal above. The PR base is resolved via `fleet-claim claim-base <issue#>`: `master` for a normal claim (or a plain human PR), or the blocker's branch for an opportunistic `--stackable-on` claim — which then also gets the `fleet:stacked` label. See [`procedures/stackable-on.md`](procedures/stackable-on.md).
 
-The two stack modes are mutually exclusive. In single-PR mode, ignore `procedures/fleet-stack.md` and `procedures/cursor-stack.md`; `procedures/pr-body.md` still applies for the step 8 body template.
+The three modes are mutually exclusive and checked in the order above. In single-task mode, ignore `procedures/fleet-stack.md` and `procedures/cursor-stack.md`; `procedures/pr-body.md` still applies for the step 8 body template, and `procedures/stackable-on.md` covers the base + `fleet:stacked` resolution.
 
 ## Flow
 
@@ -259,7 +259,7 @@ Use `gh pr create`. Body template per mode: [`procedures/pr-body.md`](procedures
 
 > **Before calling `gh pr create` in any snippet below, complete step 8a (Closes# cross-check) if the drafted body contains a `Closes #N` line.**
 
-For the **single-PR flow** (default), target is `master`:
+For the **single-task flow** (default), resolve the base via `fleet-claim claim-base` — `master` for a normal claim or a plain human PR (the common case, shown below), or the blocker's branch for a `--stackable-on` claim (which also gets `fleet:stacked`). The issue-number lookup, the idempotent edit-or-create (the fleet-worker WIP PR is usually already open from claim time), and the `Stacked on:` body line all live in [`procedures/stackable-on.md`](procedures/stackable-on.md). The common `master` case:
 
 ```bash
 gh pr create --base master --title "<scope>: <title>" --body "$(cat <<'EOF'
