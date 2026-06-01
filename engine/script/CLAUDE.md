@@ -143,8 +143,11 @@ IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
   short form fails registration with a Lua error if a default value isn't
   natively classifiable; nested tables in the short form are intentionally
   rejected. Use the explicit `{ type = "...", default = ... }` form to
-  disambiguate (`current = { type = "float", default = 100 }`) or to opt
-  in to opaque table storage (`payload = { type = "table", default = {} }`).
+  disambiguate (`current = { type = "float", default = 100 }`), to opt
+  in to opaque table storage (`payload = { type = "table", default = {} }`),
+  or to declare a packed `vec3` / `ivec3` field (`pos = { type = "vec3",
+  default = { x = 0, y = 0, z = 0 } }` — see "Packed vec3 / ivec3 fields"
+  below).
 - **Identity rule:** registering the same `name` twice raises a Lua error.
   C++ and Lua share one `ComponentId` space (`EntityManager::registerComponentDynamic`
   goes through the same component-id allocator).
@@ -158,9 +161,49 @@ IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
   `kInvalidFieldId` (not modifier-targetable).
 - **Storage:** a Lua-typed component is one `IComponentDataLuaTyped`
   impl with one native vector column per declared field
-  (`std::vector<int32_t>`, `std::vector<float>`, etc., per field type).
-  Reading or writing a field is a typed vector index — never a per-frame
-  `sol::table` lookup.
+  (`std::vector<int32_t>`, `std::vector<float>`, `std::vector<IRMath::vec3>`,
+  etc., per field type). Reading or writing a field is a typed vector index —
+  never a per-frame `sol::table` lookup.
+
+### Packed vec3 / ivec3 fields (#1368, design G1a)
+
+A field can declare a packed `vec3` / `ivec3` kind instead of hand-flattening
+to `_x/_y/_z` scalars. Declared via the explicit-tag form with an `{ x, y, z }`
+(or positional `{ 1, 2, 3 }`) default:
+
+```lua
+local C_Body = IRComponent.register("Body", {
+    pos  = { type = "vec3",  default = { 0, 0, 0 } },
+    cell = { type = "ivec3", default = { x = 0, y = 0, z = 0 } },
+})
+```
+
+- **EVAL** stores a real `std::vector<IRMath::vec3>` / `ivec3` column —
+  byte-identical to a hand-C++ `vec3` field. The table-style accessors surface
+  a value as an `{ x, y, z }` Lua table (`getLuaComponent`, `getLuaField`); the
+  write accessors (`setLuaField`, `addLuaComponent` overrides) accept an
+  `{ x, y, z }` table **or** an `IRMath::vec3` userdata. The friendly read
+  allocates a 3-key table per call — fine for setup/inspection, not a per-tick
+  hot path; a zero-alloc hot path uses three scalar fields instead.
+- **CODEGEN** emits a real `IRMath::vec3` / `ivec3` struct member. Inside a
+  CODEGEN tick body, read a packed field's components with `.x` / `.y` / `.z`
+  and build a fresh value with the `vec3.new(x, y, z)` / `ivec3.new(x, y, z)`
+  built-in constructors (the only DSL way to write a packed field — there is no
+  whole-vector arithmetic; operate on components):
+
+  ```lua
+  local p = arch.Body:getField(i, "pos")
+  arch.Body:setField(i, "pos", vec3.new(p.x + vx, p.y + vy, p.z + vz))
+  ```
+
+- **Not modifier-targetable.** Packed fields receive `kInvalidFieldId` — only
+  scalar `int32` / `float` / `bool` fields auto-register a modifier binding.
+  For modifier-driven vec3 offsets use the modifier framework's typed vec3
+  fields (`IRModifier.registerFieldVec3`), not a component field binding.
+- **Out of scope:** `vec2` / `quat` (same mechanism, deferred until needed)
+  and variable-length array fields (G1b: a bounded `"float[K]"` inline-array,
+  or engine-owned data for genuinely ragged lists — see
+  `docs/design/lua-driven-ecs.md`).
 
 ### Two-tier accessor contract
 
@@ -254,9 +297,13 @@ the matching `kHasLuaBinding` + `bindLuaType` specializations and a
 that pre-registers each component with the EntityManager and binds the
 usertype.
 
-**CODEGEN supports:** `int32` / `float` / `bool` / `string` field types and
-both the short form (`current = 100`) and the explicit-type form
-(`current = { type = "float", default = 100 }`).
+**CODEGEN supports:** `int32` / `float` / `bool` / `string` / `vec3` / `ivec3`
+field types and both the short form (`current = 100`) and the explicit-type
+form (`current = { type = "float", default = 100 }`). Packed `vec3` / `ivec3`
+fields require the explicit-tag form with an `{ x, y, z }` default (the codegen
+tool has no `vec3` usertype to infer from a short-form value) and lower to real
+`IRMath::vec3` / `ivec3` struct members — see "Packed vec3 / ivec3 fields"
+above for the tick-body `.x/.y/.z` + `vec3.new` DSL surface.
 
 **EVAL-only (codegen-time error if used in CODEGEN):** `table` and
 `function` field types, nested-table short form, duplicate component names,

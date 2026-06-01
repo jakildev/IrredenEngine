@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -130,6 +131,33 @@ TEST_F(LuaSystemCodegenTest, ExcludesFilterDropsTaggedArchetype) {
 
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(eKeep).x_, 1.0f);
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(eSkip).x_, 0.0f);
+}
+
+// ---- #1368: packed vec3 / ivec3 fields in a tick -------------------------
+//
+// CodegenVecStep reads each packed field via getField (typed VEC3 / IVEC3),
+// reads its `.x/.y/.z` components, rebuilds the value via vec3.new / ivec3.new,
+// and writes it back via setField. Verifies the DSL lowers component access to
+// bare `.x/.y/.z` (no trailing `_`) and the constructors to IRMath aggregates.
+
+TEST_F(LuaSystemCodegenTest, VecStepReadsComponentsAndWritesPackedFields) {
+    using IRComponents::C_CodegenSysBody;
+    // Fields sort alphabetically: ctor order is (cell, pos).
+    const auto e = IREntity::createEntity(
+        C_CodegenSysBody{IRMath::ivec3{10, 20, 30}, IRMath::vec3{1.0f, 2.0f, 3.0f}}
+    );
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenVecStep();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    const auto &b = IREntity::getComponent<C_CodegenSysBody>(e);
+    EXPECT_FLOAT_EQ(b.pos_.x, 2.0f);
+    EXPECT_FLOAT_EQ(b.pos_.y, 4.0f);
+    EXPECT_FLOAT_EQ(b.pos_.z, 6.0f);
+    EXPECT_EQ(b.cell_.x, 11);
+    EXPECT_EQ(b.cell_.y, 20);
+    EXPECT_EQ(b.cell_.z, 30);
 }
 
 // ---- Field-level column ops (getField / setField) ------------------------

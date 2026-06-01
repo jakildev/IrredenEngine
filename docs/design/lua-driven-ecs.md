@@ -697,6 +697,20 @@ yields an `int32`-valued member usable as a field default
   `LuaFieldType` + the EVAL `LuaFieldColumn` variant + the CODEGEN field-type
   set, with per-component access (`.x/.y/.z` or a swizzle) in the tick DSL.
   Bounded; no cross-entity state.
+- **Status (#1368): `vec3` / `ivec3` landed.** Both kinds now round-trip
+  through both paths. EVAL stores a real `std::vector<IRMath::vec3>` / `ivec3`
+  column (byte-identical to a hand-C++ field per Q3) and surfaces a value to
+  Lua as an `{ x, y, z }` table; writes accept a table or a `vec3` / `ivec3`
+  userdata. CODEGEN emits a real `IRMath::vec3` / `ivec3` struct member, and
+  the system DSL lowers `.x/.y/.z` component reads to bare member access plus
+  `vec3.new(x,y,z)` / `ivec3.new(x,y,z)` built-in constructors for `setField`.
+  Declared via the explicit-tag form `{ type = "vec3" }` with an `{ x, y, z }`
+  (or positional `{ 1, 2, 3 }`) default; short-form inference only fires when
+  the creation has registered a `vec3` usertype. Packed fields are **not**
+  modifier-targetable (the auto-registry stays scalar-only). `vec2` / `quat`
+  are the same mechanism and extend trivially — deferred until a consumer
+  needs them. The `lua_perf_grid` `vec3 → 3 floats` flatten (one of #1368's
+  two concrete shapes) is now a single packed field.
 
 **G1b — per-entity dynamic array (variable-length list, e.g. a waypoint path)
 → engine-primitive / bounded, NOT an unbounded Lua column.** A true ragged
@@ -717,6 +731,15 @@ Two honest paths cover the real need:
 - **Actionable as (engine task):** a bounded inline-array field type
   (`"float[K]"` / `"int32[K]"`), CODEGEN-lowerable to a flat struct.
   Unbounded ragged columns stay out of scope.
+- **Status (#1368): variable-length array fields ruled out, not implemented.**
+  #1368's second concrete shape — a per-entity A* waypoint list
+  (`std::vector<IRMath::ivec3>`) — is the unbounded ragged case above and stays
+  out of scope per this ruling: an A* path is the output of the G3 pathfinder
+  primitive, engine-owned, not re-stored as a per-entity Lua column. An author
+  who needs a bounded per-entity list gets the `"float[K]"` inline-array field
+  (filed separately, not yet built); one who needs genuinely variable-length
+  data uses the EVAL `table` type and pays the `sol::table` cost deliberately.
+  #1368 implements only G1a (`vec3` / `ivec3`).
 
 ### G2 — cross-entity / shared-index capability → engine-primitive (already decided)
 

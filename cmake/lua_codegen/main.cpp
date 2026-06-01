@@ -16,8 +16,8 @@
 //
 // Usage: ir_lua_codegen --out <output.hpp> <input1.lua> [input2.lua ...]
 //
-// Field types supported in CODEGEN mode: int32, float, bool, string.
-// Tables and functions in component schemas are an explicit codegen-time
+// Field types supported in CODEGEN mode: int32, float, bool, string, vec3,
+// ivec3. Tables and functions in component schemas are an explicit codegen-time
 // error pointing at file/line/field — those fields belong in EVAL mode.
 // CODEGEN system bodies must use only Lua-defined components (declared via
 // `IRComponent.register`); systems that touch C++-bound types stay in EVAL.
@@ -30,6 +30,7 @@
 #include <irreden/script/lua_enum_def.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -46,12 +47,18 @@
 
 namespace {
 
-enum class FieldType { INT32, FLOAT, BOOL, STRING };
+enum class FieldType { INT32, FLOAT, BOOL, STRING, VEC3, IVEC3 };
 
 struct Field {
     std::string name_;
     FieldType type_;
-    std::variant<std::int32_t, float, bool, std::string> default_;
+    // vec3 / ivec3 defaults are held as a 3-element POD here because the
+    // codegen tool links only sol2 + Lua (no engine math); the generated
+    // header — which DOES include <irreden/ir_math.hpp> — spells the value as
+    // an `IRMath::vec3{...}` / `IRMath::ivec3{...}` literal (renderDefaultLiteral).
+    std::variant<std::int32_t, float, bool, std::string, std::array<float, 3>,
+                 std::array<std::int32_t, 3>>
+        default_;
 };
 
 struct Component {
@@ -86,6 +93,8 @@ const char *fieldTypeName(FieldType t) {
         case FieldType::FLOAT: return "float";
         case FieldType::BOOL: return "bool";
         case FieldType::STRING: return "string";
+        case FieldType::VEC3: return "vec3";
+        case FieldType::IVEC3: return "ivec3";
     }
     return "?";
 }
@@ -96,6 +105,8 @@ const char *fieldCppType(FieldType t) {
         case FieldType::FLOAT: return "float";
         case FieldType::BOOL: return "bool";
         case FieldType::STRING: return "std::string";
+        case FieldType::VEC3: return "IRMath::vec3";
+        case FieldType::IVEC3: return "IRMath::ivec3";
     }
     return "?";
 }
@@ -125,26 +136,37 @@ std::string escapeStringLiteral(std::string_view s) {
     return out;
 }
 
+// Render a float as a valid C++ float literal — always with a decimal point
+// before the `f` suffix (`100f` is a parse error; `100.f` is fine).
+std::string renderFloatLiteral(float v) {
+    std::ostringstream os;
+    os.precision(9);
+    os << v;
+    std::string s = os.str();
+    if (s.find('.') == std::string::npos && s.find('e') == std::string::npos &&
+        s.find('E') == std::string::npos) {
+        s += ".0";
+    }
+    s += "f";
+    return s;
+}
+
 std::string renderDefaultLiteral(const Field &f) {
     switch (f.type_) {
         case FieldType::INT32: return std::to_string(std::get<std::int32_t>(f.default_));
-        case FieldType::FLOAT: {
-            // Always emit a decimal point so the literal is a valid C++
-            // float (`100f` is a parse error; `100.f` is fine).
-            const float v = std::get<float>(f.default_);
-            std::ostringstream os;
-            os.precision(9);
-            os << v;
-            std::string s = os.str();
-            if (s.find('.') == std::string::npos && s.find('e') == std::string::npos &&
-                s.find('E') == std::string::npos) {
-                s += ".0";
-            }
-            s += "f";
-            return s;
-        }
+        case FieldType::FLOAT: return renderFloatLiteral(std::get<float>(f.default_));
         case FieldType::BOOL: return std::get<bool>(f.default_) ? "true" : "false";
         case FieldType::STRING: return escapeStringLiteral(std::get<std::string>(f.default_));
+        case FieldType::VEC3: {
+            const auto &v = std::get<std::array<float, 3>>(f.default_);
+            return "IRMath::vec3{" + renderFloatLiteral(v[0]) + ", " + renderFloatLiteral(v[1]) +
+                   ", " + renderFloatLiteral(v[2]) + "}";
+        }
+        case FieldType::IVEC3: {
+            const auto &v = std::get<std::array<std::int32_t, 3>>(f.default_);
+            return "IRMath::ivec3{" + std::to_string(v[0]) + ", " + std::to_string(v[1]) + ", " +
+                   std::to_string(v[2]) + "}";
+        }
     }
     return "/*unknown*/";
 }
@@ -237,6 +259,43 @@ Field inferFromShortValue(
     );
 }
 
+// Read a vec3 / ivec3 `{ x, y, z }` (or positional `{1, 2, 3}`) default table
+// into 3 components. nil → zeros. Accepts named (x/y/z) or positional (1/2/3)
+// keys, matching vec3FromLua / ivec3FromLua on the EVAL side. `T` is `float`
+// for vec3 and `std::int32_t` for ivec3 (the int cast truncates toward zero,
+// same as a C++ `static_cast<int>`).
+template <typename T>
+std::array<T, 3> readVec3Default(
+    sol::this_state ts,
+    const std::string &componentName,
+    const std::string &fieldName,
+    const sol::object &def,
+    const char *typeName
+) {
+    if (def.is<sol::nil_t>()) {
+        return {T{}, T{}, T{}};
+    }
+    if (def.get_type() != sol::type::table) {
+        schemaError(
+            ts,
+            "lua_codegen: field '" + componentName + "." + fieldName + "' " + typeName +
+                " default must be an { x, y, z } table"
+        );
+    }
+    sol::table t = def.as<sol::table>();
+    auto pick = [&](const char *key, int idx) -> T {
+        sol::object o = t[key];
+        if (!o.valid() || o.get_type() == sol::type::lua_nil) {
+            o = t[idx];
+        }
+        if (o.valid() && o.get_type() == sol::type::number) {
+            return static_cast<T>(o.as<double>());
+        }
+        return T{};
+    };
+    return {pick("x", 1), pick("y", 2), pick("z", 3)};
+}
+
 Field inferFromExplicitTable(
     sol::this_state ts,
     const std::string &componentName,
@@ -297,6 +356,13 @@ Field inferFromExplicitTable(
         } else {
             f.default_ = defaultVal.as<std::string>();
         }
+    } else if (typeStr == "vec3") {
+        f.type_ = FieldType::VEC3;
+        f.default_ = readVec3Default<float>(ts, componentName, fieldName, defaultVal, "vec3");
+    } else if (typeStr == "ivec3") {
+        f.type_ = FieldType::IVEC3;
+        f.default_ =
+            readVec3Default<std::int32_t>(ts, componentName, fieldName, defaultVal, "ivec3");
     } else if (typeStr == "table" || typeStr == "function") {
         schemaError(
             ts,
@@ -307,7 +373,7 @@ Field inferFromExplicitTable(
         schemaError(
             ts,
             "lua_codegen: field '" + componentName + "." + fieldName + "' has unknown type '" +
-                typeStr + "'. Allowed: int32, float, bool, string."
+                typeStr + "'. Allowed: int32, float, bool, string, vec3, ivec3."
         );
     }
     return f;
@@ -585,6 +651,8 @@ toComponentSchemas(const std::vector<Component> &comps) {
                 case FieldType::FLOAT:  sf.type_ = IRLuaCodegen::FieldType::FLOAT; break;
                 case FieldType::BOOL:   sf.type_ = IRLuaCodegen::FieldType::BOOL; break;
                 case FieldType::STRING: sf.type_ = IRLuaCodegen::FieldType::STRING; break;
+                case FieldType::VEC3:   sf.type_ = IRLuaCodegen::FieldType::VEC3; break;
+                case FieldType::IVEC3:  sf.type_ = IRLuaCodegen::FieldType::IVEC3; break;
             }
             s.fields_.push_back(std::move(sf));
         }

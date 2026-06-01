@@ -847,6 +847,8 @@ enum class ExprType {
     BOOL,
     STRING,
     COMPONENT,        // a Lua-defined codegen'd component value (typed by name)
+    VEC3,             // IRMath::vec3 — from a vec3 field or `vec3.new(x,y,z)`
+    IVEC3,            // IRMath::ivec3 — from an ivec3 field or `ivec3.new(x,y,z)`
 };
 
 struct Symbol {
@@ -860,6 +862,8 @@ ExprType fieldTypeToExprType(FieldType t) {
         case FieldType::FLOAT:  return ExprType::FLOAT;
         case FieldType::BOOL:   return ExprType::BOOL;
         case FieldType::STRING: return ExprType::STRING;
+        case FieldType::VEC3:   return ExprType::VEC3;
+        case FieldType::IVEC3:  return ExprType::IVEC3;
     }
     return ExprType::UNKNOWN;
 }
@@ -870,6 +874,8 @@ const char *cppTypeForFieldType(FieldType t) {
         case FieldType::FLOAT:  return "float";
         case FieldType::BOOL:   return "bool";
         case FieldType::STRING: return "std::string";
+        case FieldType::VEC3:   return "IRMath::vec3";
+        case FieldType::IVEC3:  return "IRMath::ivec3";
     }
     return "/*unknown*/";
 }
@@ -880,6 +886,8 @@ const char *cppTypeForExprType(ExprType t) {
         case ExprType::FLOAT:    return "float";
         case ExprType::BOOL:     return "bool";
         case ExprType::STRING:   return "std::string";
+        case ExprType::VEC3:     return "IRMath::vec3";
+        case ExprType::IVEC3:    return "IRMath::ivec3";
         default:                 return "auto";
     }
 }
@@ -1182,9 +1190,19 @@ struct Emitter {
                 }
                 out_ << "(";
                 ExprType lt = emitExpr(*e.lhs_);
+                if (lt == ExprType::VEC3 || lt == ExprType::IVEC3) {
+                    fail(file_, e.line_,
+                         "vector values have no whole-vector operators in CODEGEN; operate on "
+                         "components via `.x` / `.y` / `.z`");
+                }
                 out_ << " " << op << " ";
                 ExprType rt = emitExpr(*e.rhs_);
                 out_ << ")";
+                if (rt == ExprType::VEC3 || rt == ExprType::IVEC3) {
+                    fail(file_, e.line_,
+                         "vector values have no whole-vector operators in CODEGEN; operate on "
+                         "components via `.x` / `.y` / `.z`");
+                }
                 // Result-type inference (kept simple for v1):
                 switch (e.binOp_) {
                     case BinOp::LT: case BinOp::GT: case BinOp::LE: case BinOp::GE:
@@ -1230,10 +1248,27 @@ struct Emitter {
                 }
                 const std::string &recvName = e.receiver_->name_;
                 auto it = symbols_.find(recvName);
-                if (it == symbols_.end() || it->second.type_ != ExprType::COMPONENT) {
+                if (it == symbols_.end()) {
                     fail(file_, e.line_,
-                         "field access on `" + recvName + "` requires it to hold a component value "
-                         "(declared via `local x = arch.Comp:at(i)` or `Comp.new(...)`)");
+                         "field access on `" + recvName + "` requires it to be a `local` "
+                         "declared in this body");
+                }
+                // vec3 / ivec3 value: only `.x` / `.y` / `.z` component reads.
+                // IRMath::vec3 members are bare `.x/.y/.z` (no trailing `_`).
+                if (it->second.type_ == ExprType::VEC3 || it->second.type_ == ExprType::IVEC3) {
+                    if (e.field_ != "x" && e.field_ != "y" && e.field_ != "z") {
+                        fail(file_, e.line_,
+                             "vector value `" + recvName + "` supports only `.x`, `.y`, `.z` "
+                             "(got `." + e.field_ + "`)");
+                    }
+                    out_ << recvName << "." << e.field_;
+                    return it->second.type_ == ExprType::VEC3 ? ExprType::FLOAT : ExprType::INT32;
+                }
+                if (it->second.type_ != ExprType::COMPONENT) {
+                    fail(file_, e.line_,
+                         "field access on `" + recvName + "` requires it to hold a component or "
+                         "vector value (declared via `local x = arch.Comp:at(i)`, `Comp.new(...)`, "
+                         "or a vec3 / ivec3 field)");
                 }
                 const auto *schema = findComponent(it->second.componentName_);
                 if (!schema) {
@@ -1327,6 +1362,27 @@ struct Emitter {
                 return fieldTypeToExprType(field->type_);
             }
             case ExprKind::COMPONENT_NEW: {
+                // Built-in vector constructors: `vec3.new(x, y, z)` /
+                // `ivec3.new(x, y, z)`. These are not registered components —
+                // they lower directly to IRMath aggregate literals so a tick
+                // can write a packed field: `arch.C:setField(i, "pos", vec3.new(...))`.
+                if (e.componentName_ == "vec3" || e.componentName_ == "ivec3") {
+                    const bool isInt = e.componentName_ == "ivec3";
+                    if (e.args_.size() != 3) {
+                        fail(file_, e.line_,
+                             "`" + e.componentName_ + ".new(...)` expects 3 arguments (x, y, z), got " +
+                                 std::to_string(e.args_.size()));
+                    }
+                    out_ << (isInt ? "IRMath::ivec3{" : "IRMath::vec3{");
+                    for (size_t i = 0; i < 3; ++i) {
+                        if (i) out_ << ", ";
+                        out_ << "static_cast<" << (isInt ? "std::int32_t" : "float") << ">(";
+                        emitExpr(*e.args_[i]);
+                        out_ << ")";
+                    }
+                    out_ << "}";
+                    return isInt ? ExprType::IVEC3 : ExprType::VEC3;
+                }
                 const auto *schema = findComponent(e.componentName_);
                 if (!schema) {
                     fail(file_, e.line_,
@@ -1367,8 +1423,14 @@ struct Emitter {
                     t = ExprType::COMPONENT;
                     componentName = s.localInit_->componentName_;
                 } else if (s.localInit_->kind_ == ExprKind::COMPONENT_NEW) {
-                    t = ExprType::COMPONENT;
-                    componentName = s.localInit_->componentName_;
+                    if (s.localInit_->componentName_ == "vec3") {
+                        t = ExprType::VEC3;
+                    } else if (s.localInit_->componentName_ == "ivec3") {
+                        t = ExprType::IVEC3;
+                    } else {
+                        t = ExprType::COMPONENT;
+                        componentName = s.localInit_->componentName_;
+                    }
                 } else if (s.localInit_->kind_ == ExprKind::COLUMN_GET_FIELD) {
                     const auto *schema = findComponent(s.localInit_->componentName_);
                     if (schema) {

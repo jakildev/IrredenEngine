@@ -27,6 +27,12 @@ IRComponent.register('CodegenSysHp', {
 
 IRComponent.register('CodegenSysSkip', { dummy = 0 })
 
+-- #1368: packed vec3 / ivec3 fields consumed inside a CODEGEN tick.
+IRComponent.register('CodegenSysBody', {
+    pos = { type = 'vec3', default = { 0, 0, 0 } },
+    cell = { type = 'ivec3', default = { 0, 0, 0 } },
+})
+
 -- Canonical loop + column at/setAt with constructed value: the smallest
 -- "real" CODEGEN system. Translates to a `IRSystem::createSystem<...>` with
 -- a per-archetype tick body that walks the column vectors directly.
@@ -131,6 +137,23 @@ IRSystem.registerSystem({
             local r = arch.CodegenSysPos:at(i)
             arch.CodegenSysPos:setField(i, 'x', 99.0)
             arch.CodegenSysPos:setField(i, 'y', r.x)
+        end
+    end,
+})
+
+-- #1368: packed vec3 / ivec3 fields in a CODEGEN tick. Reads a packed field
+-- via getField (typed VEC3 / IVEC3), accesses its components (`.x/.y/.z`),
+-- builds a fresh value with the `vec3.new` / `ivec3.new` built-in constructors,
+-- and writes it back via setField — the full DSL round-trip for packed fields.
+IRSystem.registerSystem({
+    name = 'CodegenVecStep',
+    components = { 'CodegenSysBody' },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local p = arch.CodegenSysBody:getField(i, 'pos')
+            arch.CodegenSysBody:setField(i, 'pos', vec3.new(p.x + 1.0, p.y + 2.0, p.z + 3.0))
+            local c = arch.CodegenSysBody:getField(i, 'cell')
+            arch.CodegenSysBody:setField(i, 'cell', ivec3.new(c.x + 1, c.y, c.z))
         end
     end,
 })
