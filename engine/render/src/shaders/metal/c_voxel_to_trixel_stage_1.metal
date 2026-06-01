@@ -94,15 +94,7 @@ kernel void c_voxel_to_trixel_stage_1(
     const uint2 localId = localId3.xy;
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(localId);
-    // Per-entity SO(3) (#1299): mirror of c_voxel_to_trixel_stage_1.glsl. When
-    // this canvas carries a MAIN_CANVAS_SO3 entity (visibleFaceIds.w set) AND
-    // this voxel carries a stamped triplet, read the entity's own snapped face;
-    // otherwise fall back to the shared per-canvas triplet (byte-identical when
-    // the flag is 0).
-    const int faceId =
-        (frameData.visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
-            ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
-            : frameData.visibleFaceIds[slot];
+    const int faceId = frameData.visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     const int2 canvasSize = frameData.canvasSizePixels;

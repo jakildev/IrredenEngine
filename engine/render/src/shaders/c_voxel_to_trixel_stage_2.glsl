@@ -109,12 +109,7 @@ void main() {
     vec4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
-    // Per-entity SO(3) (#1299) — mirrors c_voxel_to_trixel_stage_1.glsl so both
-    // raster stages gate the exposed-face check on the same face. Byte-identical
-    // to pre-#1299 when visibleFaceIds.w == 0.
-    const int faceId = (visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
-                           ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
-                           : visibleFaceIds[slot];
+    const int faceId = visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
