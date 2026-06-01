@@ -454,10 +454,21 @@ split.
   a resolved framebuffer (which would hit the singular screen→world iso-yawed
   inverse). AO is same-axis ⇒ runs correctly on each axis canvas's in-plane
   lattice. 3× AO + 3× sun-shadow textures live on `C_PerAxisTrixelCanvases`
-  (rotation-only lifecycle); the world volume + sun map are NOT per-axis. The
-  sun-shadow bake reads main (SDF/text) **+** all three per-axis voxel canvases
-  into the shared world sun map (pre-composite `atomicMin`), so voxels and SDF
-  shadow each other under rotation.
+  (rotation-only lifecycle); the world volume + sun map are NOT per-axis.
+  **Per-axis voxels do NOT cast into the shared sun map while rotating (#1370,
+  option C — revises the original "+ all three per-axis voxel canvases" bake.)**
+  Baking the face-local per-axis canvases into the shared map made a block's own
+  mutually-perpendicular faces self/cross-occlude — the face-local
+  representation lacks the cardinal path's per-screen-pixel iso-depth-plane
+  flattening, so a block's top face shadows its own side faces in the sun
+  projection — producing false black side faces at non-cardinal yaw
+  (135°/225°/315° worst). As-shipped, `BAKE_SUN_SHADOW_MAP` bakes **only the
+  main canvas (SDF/text)** during rotation (`dispatchPerAxisBake` dropped); the
+  per-axis voxels still RECEIVE sun shadows (from the main canvas / SDF) and are
+  still AO-shaded, they just stop CASTING. Cardinal (`residualYaw == 0`) is
+  byte-identical. Restoring faithful per-axis cast-shadows via a trixel /
+  screen-space resolve (the north star: one resolved representation both
+  detached and per-axis content derive from) is deferred to **#1435**.
 - **Memory / allocation policy.** Three worst-case textures during rotation;
   gate allocation on `residualYaw != 0` so static scenes pay nothing. Define
   the allocate/free churn behavior at rotation start/stop.
@@ -477,8 +488,10 @@ split.
 > approach clean; only its *recommended mechanism* (pieces 1–3) is obsolete.
 > As-shipped: AO + sun-shadow + light-volume + `LIGHTING_TO_TRIXEL` run over each
 > per-axis canvas (`perAxisRoute != 0`), reconstructing world-pos via
-> `perAxisCellToWorld3D`; `BAKE_SUN_SHADOW_MAP` bakes main + 3 per-axis into the
-> shared sun map. No framebuffer MRT; no per-fragment lighting.
+> `perAxisCellToWorld3D`; `BAKE_SUN_SHADOW_MAP` bakes the main canvas into the
+> shared sun map (per-axis voxel casting dropped in #1370 option C — see the
+> §"Open decisions" bake note above; deferred to #1435). No framebuffer MRT; no
+> per-fragment lighting.
 
 Mapping the current pipeline against T4's "AO / sun-shadow / lighting on the
 resolved composite" scope surfaced that **every lighting stage today runs

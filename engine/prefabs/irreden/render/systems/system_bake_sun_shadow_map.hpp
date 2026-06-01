@@ -24,7 +24,6 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -108,13 +107,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     Buffer *voxelFrameDataBuf_ = nullptr;
     FrameDataSun frameData_{};
 
-    // Smooth camera Z-yaw (#1311): main canvas + per-axis voxel canvases,
-    // re-resolved every frame in beginTick. Null unless allocated (rotating).
-    IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
-    C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
-
     void tick(
-        IREntity::EntityId entity,
+        IREntity::EntityId,
         const C_TriangleCanvasTextures &canvasTextures,
         const C_CanvasSunShadow &,
         const C_TrixelCanvasRenderBehavior &behavior
@@ -154,70 +148,24 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
 
-        // Smooth camera Z-yaw (#1311): bake the three per-axis voxel canvases
-        // into the SAME shared depth map (no extra clear) so the smooth voxels
-        // and the main canvas's SDF/text shadow each other under rotation
-        // (architect direction, option (b) — bake pre-composite from the trixel
-        // maps, not from a resolved framebuffer projection).
-        if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
-            perAxisCanvases_->isAllocated()) {
-            dispatchPerAxisBake(*perAxisCanvases_, canvasTextures);
-        }
-    }
-
-    // Bake each per-axis voxel canvas into the shared sun depth map. The bake
-    // program, SSBO (binding 28), and FrameDataSun stay bound; only the input
-    // distance image and the perAxisRoute selector change. Restores
-    // perAxisRoute to 0 so COMPUTE_SUN_SHADOW's main-canvas pass is unaffected.
-    void dispatchPerAxisBake(
-        C_PerAxisTrixelCanvases &axes, const C_TriangleCanvasTextures &mainTextures
-    ) {
-        // perAxisRoute is a boolean route flag on the lighting path (any nonzero
-        // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
-        // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
-        const int kPerAxisRoute = 1;
-        voxelFrameDataBuf_
-            ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
-        const int groupsX = IRMath::divCeil(axes.size_.x, kBakeSunShadowGroupSize);
-        const int groupsY = IRMath::divCeil(axes.size_.y, kBakeSunShadowGroupSize);
-        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-            axes.axes_[axis]
-                .distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
-        }
-        // One barrier after the 3 independent per-axis dispatches
-        // (separate textures; the bake's atomicMin is order-safe) so they
-        // overlap on the GPU instead of serializing per axis (#1311).
-        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-        const int kSingleCanvasRoute = 0;
-        voxelFrameDataBuf_->subData(
-            offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
-            sizeof(int),
-            &kSingleCanvasRoute
-        );
-        // Restore the main-canvas distance image binding (see the #1311 note in
-        // system_compute_voxel_ao.hpp — the persistent Metal image-binding table
-        // would otherwise dangle when release() frees the per-axis textures).
-        mainTextures.getTextureDistances()
-            ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        // Smooth camera Z-yaw (#1370, option C): the per-axis voxel canvases
+        // deliberately do NOT bake into the shared sun depth map while rotating.
+        // The face-local per-axis bake (#1311) made a block's own
+        // mutually-perpendicular faces self/cross-occlude in the shared map —
+        // structural to the face-local representation, which lacks the cardinal
+        // path's per-screen-pixel iso-depth-plane flattening — producing false
+        // black side faces at non-cardinal yaw (135°/225°/315° worst). Per-axis
+        // voxels still RECEIVE sun shadows (from the main canvas / SDF) and are
+        // still AO-shaded via COMPUTE_SUN_SHADOW / LIGHTING; they just stop
+        // CASTING. Cardinal (residualYaw == 0) is byte-identical — the per-axis
+        // canvases are only allocated while rotating. Restoring faithful per-axis
+        // cast-shadows via a trixel/screen-space resolve is deferred to #1435.
     }
 
     void beginTick() {
         if (sunShadowFrameDataBuf_ == nullptr) {
             sunShadowFrameDataBuf_ =
                 IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
-        }
-
-        // Resolve the main canvas + its per-axis voxel canvases (#1311). Re-
-        // resolved every frame; null unless the component exists AND is allocated.
-        perAxisCanvasEntity_ = IRRender::getCanvas("main");
-        perAxisCanvases_ = nullptr;
-        if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
-            auto perAxis =
-                IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
-            if (perAxis.has_value()) {
-                perAxisCanvases_ = perAxis.value();
-            }
         }
 
         const detail::ResolvedSun sun = detail::resolveSun();
