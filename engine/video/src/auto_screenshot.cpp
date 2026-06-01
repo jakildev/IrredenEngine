@@ -6,6 +6,7 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/cull_viewport_state.hpp>
 
 #include <cstdlib>
 #include <cstring>
@@ -70,18 +71,29 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
             if (state->settleCounter_ == 0) {
                 const auto &shot = state->config_.shots_[state->currentShot_];
                 IR_LOG_INFO(
-                    "AutoScreenshot {}/{}: {} (zoom={}, cam=({},{}), yaw={})",
+                    "AutoScreenshot {}/{}: {} (zoom={}, cam=({},{}), yaw={}, cull={})",
                     state->currentShot_ + 1,
                     state->config_.numShots_,
                     shot.label_,
                     shot.zoom_,
                     shot.cameraIso_.x,
                     shot.cameraIso_.y,
-                    shot.yawRadians_
+                    shot.yawRadians_,
+                    static_cast<int>(shot.cullAction_)
                 );
                 IRRender::setCameraZoom(shot.zoom_);
                 IRRender::setCameraPosition2DIso(shot.cameraIso_);
                 IRPrefab::Camera::setYaw(shot.yawRadians_);
+                // Drive the shared cull-freeze flag while the camera sits at
+                // THIS shot's pose. FREEZE pins the cull here (the snapshot is
+                // taken on the next IRRender::updateCullViewport, within the
+                // settle frames); subsequent shots move the camera with the
+                // cull held. NONE leaves the flag as-is.
+                if (shot.cullAction_ == CullAction::FREEZE) {
+                    IRRender::setCullingFrozen(true);
+                } else if (shot.cullAction_ == CullAction::UNFREEZE) {
+                    IRRender::setCullingFrozen(false);
+                }
                 state->settleCounter_ = state->config_.settleFrames_;
                 state->screenshotPending_ = false;
                 return;

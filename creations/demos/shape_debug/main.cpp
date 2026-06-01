@@ -59,6 +59,7 @@
 
 // COMMAND SUITES
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/commands/command_toggle_culling_freeze.hpp>
 
 namespace {
 
@@ -176,6 +177,17 @@ int g_spinYawShotCount = 24;
 std::vector<IRVideo::AutoScreenshotShot> g_spinYawShots;
 std::vector<std::array<char, 32>> g_spinYawShotLabels;
 
+// --cull-validate (#1438): frozen-cull free-fly validation harness. Requires
+// --auto-screenshot. Builds a paired live/frozen camera sweep — a live
+// (cull-tracking) pass followed by a frozen pass over the SAME poses with the
+// cull pinned at a deliberately wide reference. Pairwise-diffing the on-screen
+// region of cv_live_NNN vs cv_frozen_NNN proves the live cull never drops
+// on-screen content under yaw + camera movement. Same stable-storage discipline
+// as the spin-yaw buffers above.
+bool g_cullValidate = false;
+std::vector<IRVideo::AutoScreenshotShot> g_cullValidateShots;
+std::vector<std::array<char, 40>> g_cullValidateShotLabels;
+
 } // namespace
 
 void initSystems();
@@ -224,6 +236,8 @@ int main(int argc, char **argv) {
             }
         } else if (std::strcmp(argv[i], "--pivot-origin") == 0) {
             g_pivotOrigin = true;
+        } else if (std::strcmp(argv[i], "--cull-validate") == 0) {
+            g_cullValidate = true;
         } else if (std::strcmp(argv[i], "--load-vxs") == 0) {
             if (i + 1 < argc) {
                 g_loadVxsPath = argv[i + 1];
@@ -291,6 +305,19 @@ int main(int argc, char **argv) {
         IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
         IR_LOG_INFO(
             "RotationPivotMode: ORIGIN (--pivot-origin) — Z-yaw pivots about the world origin"
+        );
+    }
+    if (g_cullValidate) {
+        // The cull viewport also drives the sun-shadow-feeder AABB
+        // (shadowFeederCullViewport), so a frozen wide cull bakes *different*
+        // shadows than the live cull — a confound that otherwise dominates the
+        // live-vs-frozen diff. Disabling sun shadows leaves the cull's only
+        // on-screen effect as which voxels rasterize, so the diff isolates
+        // voxel retention. (The interactive F10 path keeps shadows.)
+        IRRender::setSunShadowsEnabled(false);
+        IR_LOG_INFO(
+            "Cull-validate: sun shadows disabled to isolate voxel retention from "
+            "shadow-feeder coupling"
         );
     }
     IREngine::gameLoop();
@@ -374,7 +401,89 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        if (g_spinYawDegPerSec > 0.0f) {
+        if (g_cullValidate) {
+            // Frozen-cull free-fly validation harness (#1438). Two phases over
+            // the SAME pose list: (1) live cull, (2) cull frozen at a wide
+            // reference. A wide freeze reference (zoom 1 at origin) has an iso
+            // cull viewport that is a superset of every sweep pose, so a frozen
+            // frame is the "cull-effectively-disabled" ground truth — every
+            // voxel geometrically on-screen at that pose is drawn. Pairwise-
+            // diffing the on-screen region of cv_live_NNN against cv_frozen_NNN
+            // proves the live cull never drops on-screen content. Capture order
+            // makes screenshot_i (live i) pair with screenshot_(i + n + 1)
+            // (frozen i); the freeze-ref shot sits between the two phases.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            constexpr int kYawSteps = 8;
+            const vec2 kPanOffsets[] = {vec2(12, 0), vec2(-12, 0), vec2(0, 12), vec2(0, -12)};
+            constexpr int kNumPans = sizeof(kPanOffsets) / sizeof(kPanOffsets[0]);
+            const int posesPerPhase = kYawSteps + kNumPans;
+            // live poses + freeze-ref + frozen poses + unfreeze
+            const int totalShots = posesPerPhase * 2 + 2;
+            g_cullValidateShotLabels.reserve(totalShots);
+            g_cullValidateShots.reserve(totalShots);
+
+            const auto emitShot = [&](float zoom,
+                                      vec2 cam,
+                                      float yaw,
+                                      const char *fmt,
+                                      int idx,
+                                      IRVideo::CullAction action) {
+                auto &label = g_cullValidateShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), fmt, idx);
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = zoom;
+                shot.cameraIso_ = cam;
+                shot.yawRadians_ = yaw;
+                shot.label_ = label.data();
+                shot.cullAction_ = action;
+                g_cullValidateShots.push_back(shot);
+            };
+
+            // The pose list: a full yaw rotation at the focus, then a pan sweep
+            // at a non-cardinal yaw (residual != 0 → per-axis composite active)
+            // so camera *movement* under rotation is exercised, not just
+            // rotation in place.
+            const auto emitPhase = [&](const char *fmt) {
+                for (int i = 0; i < kYawSteps; ++i) {
+                    const float yaw =
+                        (static_cast<float>(i) / static_cast<float>(kYawSteps)) * IRMath::kTwoPi;
+                    emitShot(sweepZoom, vec2(0, 0), yaw, fmt, i, IRVideo::CullAction::NONE);
+                }
+                for (int i = 0; i < kNumPans; ++i) {
+                    emitShot(
+                        sweepZoom,
+                        kPanOffsets[i],
+                        IRMath::kQuarterPi,
+                        fmt,
+                        kYawSteps + i,
+                        IRVideo::CullAction::NONE
+                    );
+                }
+            };
+
+            emitPhase("cv_live_%03d");
+            // Freeze the cull at the wide reference between the two phases.
+            emitShot(1.0f, vec2(0, 0), 0.0f, "cv_freeze_ref_%03d", 0, IRVideo::CullAction::FREEZE);
+            emitPhase("cv_frozen_%03d");
+            // Release the freeze so the harness leaves global state clean.
+            emitShot(
+                sweepZoom,
+                vec2(0, 0),
+                0.0f,
+                "cv_unfreeze_%03d",
+                0,
+                IRVideo::CullAction::UNFREEZE
+            );
+
+            cfg.shots_ = g_cullValidateShots.data();
+            cfg.numShots_ = static_cast<int>(g_cullValidateShots.size());
+            IR_LOG_INFO(
+                "Cull-validate sweep: {} poses/phase, {} total shots (live + frozen) at zoom={}",
+                posesPerPhase,
+                cfg.numShots_,
+                sweepZoom
+            );
+        } else if (g_spinYawDegPerSec > 0.0f) {
             // Sweep one full rotation at camera=(0,0). Default zoom=4 matches
             // the rotation-coverage shots (#1261) for scene-scale smoothness;
             // pass --zoom to sweep at high zoom (e.g. 16), where rotation-only
@@ -413,6 +522,15 @@ void initSystems() {
 void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
+    // Interactive cull-freeze toggle (#1438): freeze the cull viewport at the
+    // current camera pose, then free-fly (WASD pan / mouse drag / scroll zoom,
+    // all from standardControlSystems) to see exactly what the frozen cull
+    // retains as the camera moves. F10 matches the other demos' binding.
+    IRCommand::createCommand<IRCommand::TOGGLE_CULLING_FREEZE>(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonF10
+    );
 }
 
 void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {
