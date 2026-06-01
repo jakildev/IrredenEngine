@@ -21,6 +21,7 @@
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -36,13 +37,6 @@ using namespace IRMath;
 using namespace IRRender;
 
 namespace IRSystem {
-
-inline ivec2 voxelDispatchGridForCount(int voxelCount) {
-    constexpr int kMaxDispatchGroupsX = 1024;
-    const int groupsX = IRMath::min(voxelCount, kMaxDispatchGroupsX);
-    const int groupsY = IRMath::divCeil(voxelCount, groupsX);
-    return ivec2(groupsX, groupsY);
-}
 
 inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
     C_VoxelPool &pool,

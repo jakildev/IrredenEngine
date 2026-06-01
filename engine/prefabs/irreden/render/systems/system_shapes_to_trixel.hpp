@@ -15,6 +15,7 @@
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/voxel_dispatch_grid.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -550,17 +551,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             gridXOut = 1;
             return 0;
         }
-        constexpr int kMaxDispatchGroupsX = 1024;
-        const int gridX = IRMath::min(tileCount, kMaxDispatchGroupsX);
-        const int gridY = IRMath::divCeil(tileCount, gridX);
-        const int paddedCount = gridX * gridY;
+        const ivec2 grid = voxelDispatchGridForCount(tileCount);
+        const int paddedCount = grid.x * grid.y;
         ShapeTileDescriptor sentinel{};
         sentinel.shapeIndex = -1;
         while (static_cast<int>(tiles.size()) < paddedCount) {
             tiles.push_back(sentinel);
         }
         tileDescBuf->subData(0, paddedCount * sizeof(ShapeTileDescriptor), tiles.data());
-        gridXOut = gridX;
+        gridXOut = grid.x;
         return tileCount;
     }
 };
