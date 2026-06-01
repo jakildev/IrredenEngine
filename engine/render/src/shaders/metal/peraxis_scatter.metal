@@ -106,7 +106,17 @@ vertex VertexOut v_peraxis_scatter(
     out.position.y = -out.position.y;
 
     out.color = color;
-    out.depth = float(rawDist + frameData.distanceOffset - globals.kMinTriangleDistance) /
+    // Yaw-consistent composite depth (#1370) — mirror of v_peraxis_scatter.glsl.
+    // `rawDepth` is the origin-recovery key (unchanged); re-derive the composite
+    // depth from the recovered origin rotated by R_z(-visualYaw) so it matches
+    // the YAWED screen projection and co-sorts with the SDF. Keeps the *4 + slot
+    // encoding. Per-axis is residual-only -> cardinal fast path byte-identical.
+    const float yc = cos(frameData.visualYaw);
+    const float ys = sin(frameData.visualYaw);
+    const float dvx = origin.x * yc + origin.y * ys;
+    const float dvy = -origin.x * ys + origin.y * yc;
+    const int yawedDist = roundHalfUp(dvx + dvy + origin.z) * 4 + slot;
+    out.depth = float(yawedDist + frameData.distanceOffset - globals.kMinTriangleDistance) /
                 float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     return out;
 }

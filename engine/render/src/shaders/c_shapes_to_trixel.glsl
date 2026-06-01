@@ -931,7 +931,19 @@ void main() {
                                 yawS * viewOffset.x + yawC * viewOffset.y,
                                 viewOffset.z);
         vec3 worldSurface = worldPos * float(sub) + worldOffset;
-        baseDepth = roundHalfUp(worldSurface.x + worldSurface.y + worldSurface.z);
+        // Yaw-consistent composite depth (#1370): the framebuffer depth test
+        // must order by the depth that matches the YAWED iso projection
+        // (pos3DtoPos2DIsoYawed = iso of R_z(-visualYaw)*world), NOT the
+        // un-yawed world x+y+z. With the un-yawed metric the ordering diverges
+        // from the on-screen projection as residual yaw grows, so a low/back
+        // surface (e.g. the ground platform) wins the depth test against
+        // geometry above it near the +/-45 deg bracket. Rotate the surface by
+        // R_z(-visualYaw) and take its iso-depth (vx+vy+z). yawC/yawS are
+        // cos/sin(visualYaw) on the smoothYaw path. Per-axis voxel scatter
+        // applies the identical transform so SDF + voxels stay co-sorted.
+        float dvx = worldSurface.x * yawC + worldSurface.y * yawS;
+        float dvy = -worldSurface.x * yawS + worldSurface.y * yawC;
+        baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;

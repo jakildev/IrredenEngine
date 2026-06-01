@@ -354,9 +354,28 @@ deformed geometry.
    footprint, so there is **no parity inverse** and the stripe class cannot
    occur. See "## Implementation decision" for the firm contract.
 3. **Stage 3 — winner resolution.** Nearest depth across the three canvases
-   wins per framebuffer pixel (shared world-space `pos3DtoDistance` metric →
-   valid). With forward scatter this is the per-pixel framebuffer depth test
-   over the 3 scattered canvases — not a per-voxel competition.
+   wins per framebuffer pixel. With forward scatter this is the per-pixel
+   framebuffer depth test over the 3 scattered canvases — not a per-voxel
+   competition.
+
+   > **⚑ Depth-metric correction (#1370).** The composite depth must be the
+   > iso-depth in the **yawed** frame — `pos3DtoDistance(R_z(-visualYaw)·world)`
+   > = `x(cosφ−sinφ) + y(sinφ+cosφ) + z` — **not** the un-yawed world `x+y+z`
+   > that the rest of this doc (and the original implementation) describes. The
+   > scatter projects screen position with the full `visualYaw`
+   > (`pos3DtoPos2DIsoYawed`), so ordering by the un-yawed `x+y+z` diverges from
+   > the on-screen placement as residual yaw grows — a low/back surface (the
+   > ground platform) then wins the depth test against geometry above it near
+   > the ±45° bracket. The fix re-derives the composite depth from the recovered
+   > origin rotated by `R_z(-visualYaw)` in **both** the per-axis voxel scatter
+   > (`v_peraxis_scatter` / `peraxis_scatter.metal`) and the SDF smooth-yaw path
+   > (`c_shapes_to_trixel`), so the two stay co-sorted. The stored face-local
+   > `rawDepth` (the origin-recovery key) is unchanged; only the composite depth
+   > is rotated. Where this doc says "shared world-space `x+y+z` / `pos3DtoDistance`"
+   > for the composite, read it as the yawed metric above (at exactly 0°
+   > residual yaw the formula is byte-identical to the un-yawed metric; at
+   > other cardinals the per-axis scatter is inactive so the formula is
+   > never evaluated).
 4. **Fast path.** At `residualYaw == 0` the three canvases collapse to today's
    single uniform grid → byte-identical to current behavior, zero extra cost
    when not rotating.
