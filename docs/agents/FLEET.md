@@ -616,7 +616,7 @@ Always exits 0 (safe to include in a parallel tool batch with
   empty resume is also safe. Either way, proceed with the normal
   pickup flow.
 
-### Per-issue stacked PR command sequence
+### Per-task stacked PR command sequence
 
 When a stack-claim spans multiple issues
 (`fleet-claim stack "<A> <B> …"`), each issue in the chain gets its
@@ -684,9 +684,9 @@ conflict actually modified them.
 the same branch, push, and comment as usual. No cross-issue
 side-effects.
 
-### Single-issue base resolution (`claim-base`)
+### Single-task base resolution (`claim-base`)
 
-For single-issue claims (including stackable-on fallback claims),
+For single-task claims (including stackable-on fallback claims),
 determine the base branch before checking out:
 
 `fleet-claim claim-base "<issue-number>"`
@@ -711,6 +711,12 @@ First look up the upstream PR URL:
 
 Then open the PR:
 `gh pr create --base <upstream-branch> --title "<issue title> (#<N>)" --body "Stacked on: <upstream PR URL>\n\nWork in progress.\n\nCloses #<N>" --label "fleet:wip" --label "fleet:stacked"`
+
+> You don't have to get this exactly right by hand: **`commit-and-push`
+> resolves the base via `claim-base` and applies `fleet:stacked`
+> automatically for single-task claims** (idempotent edit-or-create), so a
+> missed `--base`/label here is repaired before review — see
+> [`commit-and-push/procedures/stackable-on.md`](../../.claude/skills/commit-and-push/procedures/stackable-on.md).
 
 ---
 
