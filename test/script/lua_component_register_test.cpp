@@ -281,6 +281,69 @@ TEST_F(LuaComponentTest, NonScalarFieldsHaveInvalidBindingId) {
     EXPECT_EQ(payloadId, static_cast<lua_Integer>(IRComponents::kInvalidFieldId));
 }
 
+// ---- #1368: packed vec3 / ivec3 field kinds (G1a) -------------------------
+
+TEST_F(LuaComponentTest, Vec3AndIvec3FieldsStoreAsNativeColumnsAndRoundTrip) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script(
+                       "C_Vec = IRComponent.register('VecBody', {\n"
+                       "    pos = { type = 'vec3', default = { 1.5, 2.5, 3.5 } },\n"
+                       "    cell = { type = 'ivec3', default = { x = 4, y = 5, z = 6 } },\n"
+                       "})"
+    )
+                    .valid());
+    const IREntity::ComponentId componentId = m_entity_manager.getComponentTypeByName("VecBody");
+
+    IREntity::EntityId e = IREntity::createEntity();
+    m_entity_manager.addComponentDynamic(e, componentId);
+
+    auto [data, row] = m_entity_manager.getComponentDataAndRow(e, componentId);
+    ASSERT_NE(data, nullptr);
+    auto *typed = static_cast<IRScript::IComponentDataLuaTyped *>(data);
+
+    // Packed fields materialise as real IRMath::vec3 / IRMath::ivec3 columns —
+    // byte-identical to a hand-written C++ component (G1a / Q3).
+    const auto &posCol = typed->columnAt(typed->findFieldIndex("pos"));
+    const auto *vec3Col = std::get_if<std::vector<IRMath::vec3>>(&posCol);
+    ASSERT_NE(vec3Col, nullptr);
+    EXPECT_FLOAT_EQ((*vec3Col)[row].x, 1.5f);
+    EXPECT_FLOAT_EQ((*vec3Col)[row].y, 2.5f);
+    EXPECT_FLOAT_EQ((*vec3Col)[row].z, 3.5f);
+
+    const auto &cellCol = typed->columnAt(typed->findFieldIndex("cell"));
+    const auto *ivec3Col = std::get_if<std::vector<IRMath::ivec3>>(&cellCol);
+    ASSERT_NE(ivec3Col, nullptr);
+    EXPECT_EQ((*ivec3Col)[row], IRMath::ivec3(4, 5, 6)); // named { x, y, z } default
+
+    // write→read round-trip through the sol::object accessors: writeFieldAt
+    // accepts an { x, y, z } table; readFieldAt returns one.
+    typed->writeFieldAt(
+        row,
+        typed->findFieldIndex("pos"),
+        sol::make_object(lua, lua.create_table_with("x", 10.0, "y", 20.0, "z", 30.0))
+    );
+    EXPECT_FLOAT_EQ((*vec3Col)[row].x, 10.0f);
+
+    sol::object readBack = typed->readFieldAt(row, typed->findFieldIndex("pos"), lua);
+    ASSERT_TRUE(readBack.is<sol::table>());
+    sol::table t = readBack.as<sol::table>();
+    EXPECT_FLOAT_EQ(t["x"].get<float>(), 10.0f);
+    EXPECT_FLOAT_EQ(t["y"].get<float>(), 20.0f);
+    EXPECT_FLOAT_EQ(t["z"].get<float>(), 30.0f);
+}
+
+TEST_F(LuaComponentTest, Vec3FieldsAreNotModifierTargetable) {
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "local C = IRComponent.register('VecModTarget', {\n"
+        "    pos = { type = 'vec3', default = { 0, 0, 0 } },\n"
+        "})\n"
+        "return C.fields.pos.bindingId"
+    );
+    ASSERT_TRUE(result.valid());
+    EXPECT_EQ(result.get<lua_Integer>(), static_cast<lua_Integer>(IRComponents::kInvalidFieldId));
+}
+
 // ---- Archetype-move correctness -------------------------------------------
 
 struct ArchetypeMoveMarker {};

@@ -48,3 +48,13 @@ local CodegenDeviceType = IREnum.register("CodegenDeviceType", { "EFFECT", "SYNT
 IRComponent.register("CodegenDevice", {
     kind = CodegenDeviceType.SYNTH,
 })
+
+-- #1368: packed vec3 / ivec3 fields (G1a). The codegen tool has no vec3
+-- usertype to infer from a short-form value, so packed fields use the
+-- explicit-tag form with an { x, y, z } (or positional { 1, 2, 3 }) default.
+-- They emit as real IRMath::vec3 / IRMath::ivec3 struct members. Fields sort
+-- alphabetically, so the generated ctor order is (cell, position).
+IRComponent.register("CodegenTransform", {
+    position = { type = "vec3", default = { 1.5, 2.5, 3.5 } },
+    cell = { type = "ivec3", default = { x = 4, y = 5, z = 6 } },
+})

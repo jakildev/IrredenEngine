@@ -28,7 +28,7 @@ namespace IRLuaCodegen {
 // via `IRComponent.register(...)` so it can validate column-ops references
 // and translate Lua field names to C++ field names (with the `_` suffix).
 
-enum class FieldType { INT32, FLOAT, BOOL, STRING };
+enum class FieldType { INT32, FLOAT, BOOL, STRING, VEC3, IVEC3 };
 
 struct ComponentField {
     std::string name_;

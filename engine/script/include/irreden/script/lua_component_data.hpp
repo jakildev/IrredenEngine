@@ -19,6 +19,8 @@
 #include <sol/sol.hpp>
 
 #include <irreden/entity/i_component_data.hpp>
+#include <irreden/ir_math.hpp>
+#include <irreden/script/ir_script_utils.hpp>
 
 #include <cstdint>
 #include <string>
@@ -39,6 +41,8 @@ enum class LuaFieldType : std::uint8_t {
     STRING,
     FUNCTION, // sol::function — per-entity callbacks (onDeath, behavior)
     TABLE,    // explicit opt-in only; pays per-access sol::table cost
+    VEC3,     // IRMath::vec3 — packed 3-float field (G1a, docs/design/lua-driven-ecs.md)
+    IVEC3,    // IRMath::ivec3 — packed 3-int field
 };
 
 inline const char *toString(LuaFieldType t) {
@@ -55,6 +59,10 @@ inline const char *toString(LuaFieldType t) {
         return "function";
     case LuaFieldType::TABLE:
         return "table";
+    case LuaFieldType::VEC3:
+        return "vec3";
+    case LuaFieldType::IVEC3:
+        return "ivec3";
     }
     return "?";
 }
@@ -74,7 +82,9 @@ using LuaFieldColumn = std::variant<
     std::vector<std::uint8_t>, // bool stored as uint8 to keep std::vector indexable as &[i]
     std::vector<std::string>,
     std::vector<sol::function>,
-    std::vector<sol::table>>;
+    std::vector<sol::table>,
+    std::vector<IRMath::vec3>,
+    std::vector<IRMath::ivec3>>;
 
 namespace detail {
 
@@ -92,6 +102,10 @@ inline LuaFieldColumn makeEmptyColumn(LuaFieldType t) {
         return std::vector<sol::function>{};
     case LuaFieldType::TABLE:
         return std::vector<sol::table>{};
+    case LuaFieldType::VEC3:
+        return std::vector<IRMath::vec3>{};
+    case LuaFieldType::IVEC3:
+        return std::vector<IRMath::ivec3>{};
     }
     return std::vector<std::int32_t>{};
 }
@@ -124,6 +138,10 @@ inline void columnAppendDefault(LuaFieldColumn &c, const sol::object &defaultVal
                 v.push_back(
                     defaultValue.is<sol::table>() ? defaultValue.as<sol::table>() : sol::table{}
                 );
+            } else if constexpr (std::is_same_v<Elem, IRMath::vec3>) {
+                v.push_back(vec3FromLua(defaultValue));
+            } else if constexpr (std::is_same_v<Elem, IRMath::ivec3>) {
+                v.push_back(ivec3FromLua(defaultValue));
             }
         },
         c
@@ -291,6 +309,12 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
                 } else if constexpr (std::is_same_v<Elem, sol::table>) {
                     if (value.is<sol::table>())
                         v[row] = value.as<sol::table>();
+                } else if constexpr (std::is_same_v<Elem, IRMath::vec3>) {
+                    if (value.is<sol::table>() || value.is<IRMath::vec3>())
+                        v[row] = vec3FromLua(value);
+                } else if constexpr (std::is_same_v<Elem, IRMath::ivec3>) {
+                    if (value.is<sol::table>() || value.is<IRMath::ivec3>())
+                        v[row] = ivec3FromLua(value);
                 }
             },
             m_columns[fieldIdx]
@@ -304,6 +328,16 @@ class IComponentDataLuaTyped : public IREntity::IComponentData {
                 using Elem = typename V::value_type;
                 if constexpr (std::is_same_v<Elem, std::uint8_t>) {
                     return sol::make_object(lua, v[row] != 0);
+                } else if constexpr (
+                    std::is_same_v<Elem, IRMath::vec3> || std::is_same_v<Elem, IRMath::ivec3>
+                ) {
+                    // vec3 / ivec3 surface to Lua as an { x, y, z } table —
+                    // round-trips through writeFieldAt (vec3FromLua accepts the
+                    // same shape) without requiring the creation to register an
+                    // IRMath::vec3 usertype. Index-style hot paths that need
+                    // zero-alloc per-component reads use three scalar fields.
+                    const Elem &val = v[row];
+                    return lua.create_table_with("x", val.x, "y", val.y, "z", val.z);
                 } else {
                     return sol::make_object(lua, v[row]);
                 }
