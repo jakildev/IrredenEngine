@@ -185,6 +185,12 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         // widgets rendered invisible while text composited fine (#1436). Stage the
         // upload and blit copyFromBuffer so it lands in encoder order after the
         // clear/compute, matching OpenGL's submission-ordered subImage2D.
+        // Per-call transient staging buffer. At current call frequency (a handful
+        // of widget panels/borders/labels per frame, fog-of-war dirty-gated) the
+        // per-frame allocation cost is negligible. If a future system drives
+        // high-rate per-frame subImage2D on Metal, replace with a per-texture
+        // reusable staging buffer mirroring m_clearSourceBuf's change-detected
+        // reuse pattern in clear().
         MTL::Buffer *staging = metalDevice()->newBuffer(
             data,
             static_cast<NS::UInteger>(totalSize),
