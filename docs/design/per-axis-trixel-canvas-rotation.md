@@ -372,8 +372,10 @@ deformed geometry.
    > (`c_shapes_to_trixel`), so the two stay co-sorted. The stored face-local
    > `rawDepth` (the origin-recovery key) is unchanged; only the composite depth
    > is rotated. Where this doc says "shared world-space `x+y+z` / `pos3DtoDistance`"
-   > for the composite, read it as the yawed metric above (identical at
-   > cardinals, where `R_z(-visualYaw)` permutes `x+y+z`).
+   > for the composite, read it as the yawed metric above (at exactly 0°
+   > residual yaw the formula is byte-identical to the un-yawed metric; at
+   > other cardinals the per-axis scatter is inactive so the formula is
+   > never evaluated).
 4. **Fast path.** At `residualYaw == 0` the three canvases collapse to today's
    single uniform grid → byte-identical to current behavior, zero extra cost
    when not rotating.
