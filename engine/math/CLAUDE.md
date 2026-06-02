@@ -66,9 +66,11 @@ formulas. The convention is world→view = R\_z(−yaw), so view→world = R\_z(
 - `IRMath::faceDeformationMatrix(face, residualYaw)` — 2×2 matrix that maps a
   face's un-yawed iso-pixel offset to its offset under a residual yaw
   (residualYaw ∈ [−π/4, π/4]). GPU mirror: `faceDeformationMatrix`.
-- `IRMath::cameraMoveRelativeToYaw(isoDelta, visualYaw)` — converts a
-  camera-pan delta in view-aligned iso coordinates to the corresponding
-  world-iso camera-position delta. At yaw=0 returns `isoDelta` unchanged.
+- `IRMath::cameraMoveRelativeToYaw(isoDelta, visualYaw)` — returns the
+  `cameraIso` delta that produces an on-screen shift equal to `isoDelta`
+  in `CAMERA_CENTER` pivot mode (solves the 2×2 iso-projection system;
+  identity at yaw=0; degenerate-guard at yaw=±2π/3). **CAMERA_CENTER only**
+  — in `ORIGIN` mode use `isoDelta` directly.
   Use in pan systems: `camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, getYaw())`.
 
 **Split helpers** (live in `engine/prefabs/irreden/render/camera.hpp`):
