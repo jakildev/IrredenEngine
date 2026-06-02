@@ -766,8 +766,7 @@ void main() {
     // exact. See engine/render/CLAUDE.md and
     // docs/design/iso-basis-baked-assumptions.md for the model.
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    const float cardinalCos[4] = float[]( 1.0, 0.0, -1.0, 0.0);
-    const float cardinalSin[4] = float[]( 0.0, 1.0,  0.0, -1.0);
+    vec2 cardinalCosSin = cardinalYawCosSin(cardinalIndex);
     // Smooth camera Z-yaw (#1345). Inside a residual bracket the SDF rotates by
     // the FULL continuous visualYaw (cardinal snap + residual) instead of
     // snapping to rasterYaw + faceDeform: the shape center repositions
@@ -781,8 +780,8 @@ void main() {
     // pixel-exact. Gated per-canvas by smoothYawEnabled (main world canvas
     // only; detached per-entity canvases keep the faceDeform path).
     bool smoothYaw = (smoothYawEnabled != 0);
-    float yawC = smoothYaw ? cos(visualYaw) : cardinalCos[cardinalIndex];
-    float yawS = smoothYaw ? sin(visualYaw) : cardinalSin[cardinalIndex];
+    float yawC = smoothYaw ? cos(visualYaw) : cardinalCosSin.x;
+    float yawS = smoothYaw ? sin(visualYaw) : cardinalCosSin.y;
     bool yawZero = (!smoothYaw) && (cardinalIndex == 0);
 
     vec3 worldPos = shape.worldPosition.xyz;
@@ -847,16 +846,9 @@ void main() {
     // (and symmetrically for Y).  Use this expanded half-extent for the iso
     // footprint check and the generalDepthSearch range so the full rotated
     // shape stays inside the search window.
-    vec3 boundingHalfView;
-    if (yawZero) {
-        boundingHalfView = boundingHalf;
-    } else {
-        float absC = abs(yawC);
-        float absS = abs(yawS);
-        boundingHalfView = vec3(boundingHalf.x * absC + boundingHalf.y * absS,
-                                boundingHalf.x * absS + boundingHalf.y * absC,
-                                boundingHalf.z);
-    }
+    vec3 boundingHalfView = yawZero
+        ? boundingHalf
+        : yawGrownIsoHalfExtent(boundingHalf, yawC, yawS);
     ivec3 extentScaled = ivec3(ceil(boundingHalfView)) + ivec3(1);
 
     // Smooth path repositions the center continuously: round the continuous-yaw

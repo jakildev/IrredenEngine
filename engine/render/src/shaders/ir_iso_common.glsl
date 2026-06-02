@@ -368,6 +368,17 @@ int rasterYawCardinalIndex(float rasterYaw) {
     return ((q % 4) + 4) % 4;
 }
 
+// (cos, sin) of the cardinal angle named by cardinalIndex — exact ±1/0, the
+// snapped Z-yaw the GRID rasterizer projects at. Mirrors
+// IRMath::cardinalYawCosSin; retires the open-coded cardinalCos/cardinalSin
+// tables that callers used to inline.
+vec2 cardinalYawCosSin(int cardinalIndex) {
+    if (cardinalIndex == 1) return vec2( 0.0,  1.0);
+    if (cardinalIndex == 2) return vec2(-1.0,  0.0);
+    if (cardinalIndex == 3) return vec2( 0.0, -1.0);
+    return vec2(1.0, 0.0);
+}
+
 ivec3 rotateCardinalZ(ivec3 v, int cardinalIndex) {
     if (cardinalIndex == 1) return ivec3( v.y, -v.x, v.z);   // R_z(-pi/2)
     if (cardinalIndex == 2) return ivec3(-v.x, -v.y, v.z);   // R_z(+/-pi)
@@ -470,6 +481,18 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
     float vx = worldPos.x * c + worldPos.y * s;
     float vy = -worldPos.x * s + worldPos.y * c;
     return vec2(-vx + vy, -vx - vy + 2.0 * worldPos.z);
+}
+
+// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
+// (cosYaw, sinYaw): each in-plane axis grows to |c|*hX + |s|*hY, Z unchanged.
+// CPU mirror: IRMath::yawGrownIsoHalfExtent. Keeps the SDF/voxel iso-cull
+// footprint identical on both sides.
+vec3 yawGrownIsoHalfExtent(vec3 halfExtent, float cosYaw, float sinYaw) {
+    float absC = abs(cosYaw);
+    float absS = abs(sinYaw);
+    return vec3(halfExtent.x * absC + halfExtent.y * absS,
+                halfExtent.x * absS + halfExtent.y * absC,
+                halfExtent.z);
 }
 
 // --- Smooth camera Z-yaw forward-scatter: face-local in-plane store (#1310) ---
