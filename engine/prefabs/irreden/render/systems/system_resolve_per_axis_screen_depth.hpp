@@ -33,6 +33,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -119,8 +120,16 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         // Guarantee the scatter reads the MAIN canvas size from the UBO — a
         // per-axis store dispatch may have left a per-axis size in this field.
         // The bake never reads canvasSizePixels_, so this is safe to leave set.
+        // Also patch the #1431-capped subdivision density — the store restored
+        // the uncapped value on exit, but the scatter inverts face-plane origins
+        // through effectiveTrixelSubdivisionScale(voxelRenderOptions.y), so it
+        // must use the same capped density the store wrote. Restored below.
         voxelFrameDataBuf_->subData(
             offsetof(FrameDataVoxelToCanvas, canvasSizePixels_), sizeof(ivec2), &mainSize
+        );
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRPrefab::PerAxisCanvas::subdivisionDensity()
         );
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
 
@@ -152,6 +161,12 @@ template <> struct System<RESOLVE_PER_AXIS_SCREEN_DEPTH> {
         // ALL: the resolve texture is read as an image by BAKE, and the scratch
         // reset must be visible to next frame's scatter.
         IRRender::device()->memoryBarrier(BarrierType::ALL);
+        // Restore the uncapped density so downstream BAKE recovers the main
+        // canvas distances at the correct single-canvas scale.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRRender::getVoxelRenderEffectiveSubdivisions()
+        );
     }
 
     void beginTick() {
