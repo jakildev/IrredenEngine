@@ -838,6 +838,21 @@ Specifically, **never pass these via `--label` when filing**:
   `fleet-queue-list` groups by these.
 - `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
   `fleet:blocker` — owned by the **reviewer agents** as PR verdicts.
+- `fleet:needs-opus-recheck` — owned by the **sonnet-reviewer**.
+  Stamped *instead of* a verdict label when a first-pass review
+  approves but ends `Opus recheck required:`. This is the durable
+  signal the scout's `project_opus_reviewer` wakes the opus-reviewer
+  pane on — the review-body text alone is invisible to the trigger
+  projection, so before this label the opus pane only woke
+  coincidentally on another PR's `fleet:has-nits` / `fleet:needs-fix`
+  transition (PR #1473 sat un-rechecked for exactly this reason).
+  Cleared by the **opus-reviewer** as part of its verdict label-swap,
+  whatever the verdict (approve consumes the escalation; needs-fix /
+  blocker also clear it and hand the PR back to the
+  author → sonnet-reviewer cycle). Gated by the standard review-skip
+  labels — dormant while a PR is `fleet:semantic-conflict` / `wip` /
+  amending, then re-activates once the PR is reviewable again. Don't
+  add to issues.
 - `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` / `fleet:needs-windows-smoke` — owned by the
   **reviewer agents**, added after the verdict to request a cross-host
   build + run validation. `fleet:needs-windows-smoke` is cleared by

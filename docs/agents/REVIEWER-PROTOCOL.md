@@ -134,7 +134,7 @@ queue. After every `gh pr review --comment ...`, your VERY NEXT bash
 calls MUST be the split remove + add + verify sequence below.
 
 Always remove stale verdict labels before adding the new one. Each
-verdict also clears three derived-state labels so a single verdict
+verdict also clears four derived-state labels so a single verdict
 re-evaluation cleans them up:
 
 - `fleet:awaiting-upstream-review` — a previously-gated stacked PR
@@ -145,6 +145,12 @@ re-evaluation cleans them up:
 - `fleet:needs-base-update` — set by the merger when a stacked child
   PR conflicted on rebase and needed manual resolution; cleared by
   the next review verdict once the author has resolved and pushed.
+- `fleet:needs-opus-recheck` — the opus-reviewer consumes its own
+  escalation the moment it posts any verdict (approve clears it;
+  needs-fix / blocker also clear it and hand the PR back to the
+  author → sonnet-reviewer cycle). For the sonnet-reviewer this
+  remove is a harmless no-op — it only ever ADDS this label in the
+  special case below, which sets no verdict and bypasses this swap.
 
 For game PRs, add `--repo <game-repo>` to each `gh pr edit` call.
 
@@ -158,22 +164,22 @@ feedback cluster — fix-002 in the fleet fix-log):
 
 ```
 # Verdict approve, no Nits section — removes first (absent OK), then add + verify:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
 gh pr edit <N> --add-label "fleet:approved"
 gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:approved" || gh pr edit <N> --add-label "fleet:approved"
 
 # Verdict approve WITH a non-empty `### Nits` section (also set fleet:has-nits):
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
+gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
 gh pr edit <N> --add-label "fleet:approved" --add-label "fleet:has-nits"
 gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:approved" || gh pr edit <N> --add-label "fleet:approved"
 
 # Verdict needs-fix:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
 gh pr edit <N> --add-label "fleet:needs-fix"
 gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:needs-fix" || gh pr edit <N> --add-label "fleet:needs-fix"
 
 # Verdict blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
+gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
 gh pr edit <N> --add-label "fleet:blocker"
 gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:blocker" || gh pr edit <N> --add-label "fleet:blocker"
 
@@ -183,10 +189,21 @@ gh pr edit <N> --remove-label "fleet:has-nits" 2>/dev/null || true
 ```
 
 **Sonnet-reviewer special case: verdict approve + "Opus recheck
-required"** → do NOT set any verdict label. Leave it unlabeled;
-opus-reviewer will set the final label on its next pass. (You still
-set `fleet:has-nits` here if there are nits, even without a verdict
-label.)
+required"** → do NOT set a verdict label (`fleet:approved` is the
+opus-reviewer's to set). Instead stamp the explicit escalation so the
+scout's opus-reviewer projection wakes the pane — the review-body text
+alone is invisible to that projection, so without this label the opus
+pane only fires coincidentally on another PR's has-nits/needs-fix
+transition (PR #1473 sat un-rechecked for exactly this reason):
+
+```
+gh pr edit <N> --add-label "fleet:needs-opus-recheck"
+gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:needs-opus-recheck" || gh pr edit <N> --add-label "fleet:needs-opus-recheck"
+```
+
+(You still set `fleet:has-nits` here if there are nits, even without a
+verdict label.) The opus-reviewer removes `fleet:needs-opus-recheck`
+as part of its own verdict label-swap, whatever verdict it reaches.
 
 The `review-pr` skill (invoked for engine single-task PRs by
 sonnet-reviewer) prescribes its own label-swap in step 5b — if you

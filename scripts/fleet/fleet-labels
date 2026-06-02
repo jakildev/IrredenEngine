@@ -107,6 +107,7 @@ LABELS=(
     "fleet:has-nits|fbca04|Approved but author should clean up nits before merge"
     "fleet:needs-fix|d73a4a|Reviewer agent flagged correctness/quality issues"
     "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
+    "fleet:needs-opus-recheck|1d76db|Sonnet first-pass review approved but ended 'Opus recheck required'; the explicit signal the scout projection wakes the opus-reviewer on. opus-reviewer removes it when its pass completes, whatever the verdict"
     "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus-worker resolves or escalates"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
     "fleet:design-blocked|fbca04|Worker escalated for architectural input mid-task; architect should respond"

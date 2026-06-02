@@ -83,6 +83,10 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    ~5 minutes, the scout is down — print
    `scout cache stale or missing — run fleet-up` and exit.
 5. Identify the candidates from both repos. A PR is a candidate if:
+   - Its `labels` contains `fleet:needs-opus-recheck` — the explicit
+     escalation the sonnet-reviewer stamps on an approve-and-escalate
+     first pass. This is the signal the scout projection wakes you on;
+     your verdict label-swap (step 2.g) removes it, OR
    - Its latest review (sort `reviews[]` by `submittedAt`) has a
      `body` containing `Opus recheck required`, OR
    - The PR touches core engine/game invariants (need to read its
