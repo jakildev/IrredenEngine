@@ -59,6 +59,7 @@
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
+#include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
@@ -187,7 +188,8 @@ int main(int argc, char **argv) {
         g_spinYawShotCount = g_autoWarmupFrames;
         g_autoWarmupFrames = 10;
         IR_LOG_INFO(
-            "Spin-yaw: warmup reset to 10 frames (--auto-screenshot value {} reinterpreted as shot count)",
+            "Spin-yaw: warmup reset to 10 frames (--auto-screenshot value {} reinterpreted as shot "
+            "count)",
             g_spinYawShotCount
         );
     }
@@ -250,6 +252,10 @@ void initSystems() {
             // composite that multiplies canvas color by (AO × shadow) and
             // adds the light-volume contribution.
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            // Per-axis voxel sun-shadow casting under continuous Z-yaw (#1435):
+            // resolves the three per-axis voxel canvases into a screen-space
+            // depth the bake casts through its cardinal path.
+            IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
             IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
@@ -273,8 +279,7 @@ void initSystems() {
             g_spinYawShotLabels.reserve(n);
             g_spinYawShots.reserve(n);
             for (int i = 0; i < n; ++i) {
-                const float yaw =
-                    (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
+                const float yaw = (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
                 auto &label = g_spinYawShotLabels.emplace_back();
                 std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
                 g_spinYawShots.push_back({sweepZoom, vec2(0, 0), yaw, label.data()});
@@ -311,7 +316,8 @@ static EntityId createSolidBox(vec3 position, ivec3 halfExtent, Color color) {
 // Validates exposed-face-mask correctness: interior faces become visible.
 static EntityId createHollowShell(vec3 position, ivec3 halfExtent, Color color) {
     ivec3 size = halfExtent * 2 + ivec3(1);
-    EntityId e = IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
+    EntityId e =
+        IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(e);
     for (int i = 0; i < vs.numVoxels_; ++i) {
         // Positions are stored as exact integer-valued floats relative to the center.
@@ -320,10 +326,8 @@ static EntityId createHollowShell(vec3 position, ivec3 halfExtent, Color color) 
             static_cast<int>(vs.positions_[i].pos_.y),
             static_cast<int>(vs.positions_[i].pos_.z)
         );
-        bool onSurface =
-            IRMath::abs(p.x) >= halfExtent.x ||
-            IRMath::abs(p.y) >= halfExtent.y ||
-            IRMath::abs(p.z) >= halfExtent.z;
+        bool onSurface = IRMath::abs(p.x) >= halfExtent.x || IRMath::abs(p.y) >= halfExtent.y ||
+                         IRMath::abs(p.z) >= halfExtent.z;
         if (!onSurface)
             vs.voxels_[i].deactivate();
     }
@@ -373,7 +377,11 @@ void initEntities() {
 
     // Low plinth under the front-right staircase so each step casts onto the
     // step below AND onto the plinth — depth-cliff shadow seams under yaw.
-    createSolidBox(vec3(16.0f, -10.0f, kGroundZ - 1.0f), ivec3(12, 5, 0), Color{135, 125, 145, 255});
+    createSolidBox(
+        vec3(16.0f, -10.0f, kGroundZ - 1.0f),
+        ivec3(12, 5, 0),
+        Color{135, 125, 145, 255}
+    );
 
     // CENTER: solid cube 7×7×7 — silhouette baseline for ROI crops.
     createSolidBox(vec3(0.0f, 0.0f, 0.0f), ivec3(3, 3, 3), Color{100, 200, 220, 255});
@@ -394,21 +402,34 @@ void initEntities() {
     {
         const Color kStairColor{200, 130, 220, 255};
         for (int s = 0; s < 4; ++s) {
-            vec3 stepPos = vec3(
-                12.0f + static_cast<float>(s) * 4.0f,
-                -10.0f,
-                -static_cast<float>(s) * 3.0f
-            );
+            vec3 stepPos =
+                vec3(12.0f + static_cast<float>(s) * 4.0f, -10.0f, -static_cast<float>(s) * 3.0f);
             createSolidBox(stepPos, ivec3(1, 1, 1), kStairColor);
         }
     }
 
     // CORNER CLUSTERS: one 3×3×3 cube per screen quadrant.
     // At zoom=2–4 these land near the screen edges to catch cull regressions.
-    createSolidBox(vec3( 25.0f, -18.0f, 0.0f), ivec3(1, 1, 1), Color{240, 200,  80, 255}); // front-right
-    createSolidBox(vec3(-22.0f, -16.0f, 0.0f), ivec3(1, 1, 1), Color{ 80, 200, 240, 255}); // front-left
-    createSolidBox(vec3( 22.0f,  18.0f, 0.0f), ivec3(1, 1, 1), Color{240,  80, 200, 255}); // back-right
-    createSolidBox(vec3(-20.0f,  20.0f, 0.0f), ivec3(1, 1, 1), Color{200, 240,  80, 255}); // back-left
+    createSolidBox(
+        vec3(25.0f, -18.0f, 0.0f),
+        ivec3(1, 1, 1),
+        Color{240, 200, 80, 255}
+    ); // front-right
+    createSolidBox(
+        vec3(-22.0f, -16.0f, 0.0f),
+        ivec3(1, 1, 1),
+        Color{80, 200, 240, 255}
+    ); // front-left
+    createSolidBox(
+        vec3(22.0f, 18.0f, 0.0f),
+        ivec3(1, 1, 1),
+        Color{240, 80, 200, 255}
+    ); // back-right
+    createSolidBox(
+        vec3(-20.0f, 20.0f, 0.0f),
+        ivec3(1, 1, 1),
+        Color{200, 240, 80, 255}
+    ); // back-left
 
     // Required: activate the trixel-canvas render behavior on the main canvas
     // so VOXEL_TO_TRIXEL_STAGE_1 / TRIXEL_TO_FRAMEBUFFER archetype filters match.

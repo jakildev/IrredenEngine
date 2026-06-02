@@ -67,15 +67,26 @@ struct C_PerAxisTrixelCanvases {
     ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
     std::array<AxisTextures, kAxisCount> axes_{};
 
+    // Screen-space (MAIN-canvas-sized) front-most iso-depth texture produced by
+    // RESOLVE_PER_AXIS_SCREEN_DEPTH (#1435): the three face-local per-axis voxel
+    // canvases scattered into one cardinal-layout distance texture so
+    // BAKE_SUN_SHADOW_MAP casts per-axis sun shadows through its existing
+    // cardinal recovery, without the cross-face self-occlusion that retired the
+    // face-local bake in #1380. R32I, same format/clear sentinel as the main
+    // distance texture. Distinct from the per-axis `distances_` (face-local,
+    // worst-case sized) — this is a single screen-space resolve.
+    std::pair<ResourceId, Texture2D *> resolveDepth_{0, nullptr};
+
     // Allocation state is the texture handles themselves — no separate bool to
     // drift out of sync (cf. the no-dirty-flags rule in .claude/rules/cpp-ecs.md).
     bool isAllocated() const {
         return axes_[0].colors_.second != nullptr;
     }
 
-    // Allocate all three axis texture sets at @p size. No-op if already
+    // Allocate the three axis texture sets at @p size (worst-case per-axis) plus
+    // the screen-space resolve texture at @p mainSize. No-op if already
     // allocated. Called at rotation start by the lifecycle.
-    void allocate(ivec2 size) {
+    void allocate(ivec2 size, ivec2 mainSize) {
         if (isAllocated()) {
             return;
         }
@@ -92,10 +103,21 @@ struct C_PerAxisTrixelCanvases {
             axis.ao_ = detail::makeCanvasColorTexture(size);
             axis.sunShadow_ = detail::makeCanvasColorTexture(size);
         }
+        resolveDepth_ = detail::makeCanvasDistanceTexture(mainSize);
+        // Clear to the empty sentinel so a creation that allocates per-axis
+        // canvases but does NOT register RESOLVE_PER_AXIS_SCREEN_DEPTH still
+        // reads "no per-axis caster" from BAKE rather than garbage — the
+        // feature degrades to the #1380 no-cast behavior instead of corrupting
+        // the shared sun map. When the resolve stage IS registered it
+        // overwrites every texel each frame.
+        static constexpr std::int32_t kDistanceClear =
+            static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
+        IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
     }
 
-    // Release all three axis texture sets and reset to the unallocated state.
-    // No-op if not allocated. Called at rotation stop by the lifecycle.
+    // Release all three axis texture sets + the resolve texture and reset to the
+    // unallocated state. No-op if not allocated. Called at rotation stop by the
+    // lifecycle.
     void release() {
         if (!isAllocated()) {
             return;
@@ -108,6 +130,8 @@ struct C_PerAxisTrixelCanvases {
             IRRender::destroyResource<Texture2D>(axis.sunShadow_.first);
             axis = AxisTextures{};
         }
+        IRRender::destroyResource<Texture2D>(resolveDepth_.first);
+        resolveDepth_ = {0, nullptr};
         size_ = ivec2{0, 0};
     }
 

@@ -477,6 +477,15 @@ single-global-parity stripe class (#1256) cannot occur. Spec + the rejected
 gather/inverse alternatives:
 [`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
 
+Per-axis voxels **cast** sun shadows under continuous yaw via
+`RESOLVE_PER_AXIS_SCREEN_DEPTH` (#1435), which collapses the three face-local
+per-axis canvases into one screen-space cardinal-layout depth texture so
+`BAKE_SUN_SHADOW_MAP` casts them through its existing cardinal recovery — the
+per-screen-pixel flattening the raw face-local store lacks (which is what
+caused #1380's cross-face self-occlusion). Invariant + the cast/receive
+agreement + the Metal `threadgroupSizeForFunctionName` requirement:
+[`docs/design/per-axis-sun-shadow-resolve.md`](../../docs/design/per-axis-sun-shadow-resolve.md).
+
 ## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
 
 A `C_ShapeDescriptor` (SDF, GPU-evaluated) and a `C_VoxelSetNew` carved
