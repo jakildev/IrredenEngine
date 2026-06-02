@@ -275,6 +275,17 @@ inline int2 roundHalfUp(float2 v) {
     return int2(floor(v + float2(0.5)));
 }
 
+// Per-voxel iso occlusion depth of model position `pos` projected onto a
+// (possibly entity-rotated) iso depth `axis` — the SO(3) generalization of
+// pos3DtoDistance (identical to it when axis == (1,1,1)). For a rotated
+// DETACHED canvas `axis` is `R⁻¹·(1,1,1)` (uploaded in
+// FrameDataVoxelToTrixel.voxelDepthAxis); the world canvas keeps (1,1,1).
+// CPU twin: IRMath::isoDepthAlongAxis — roundHalfUp keeps the half-integer
+// rounding bit-identical across the CPU/GPU boundary (#1462).
+inline int isoDepthAlongAxis(int3 pos, float3 axis) {
+    return roundHalfUp(dot(float3(pos), axis));
+}
+
 inline int2 trixelOriginOffsetX1(int2 trixelCanvasSize) {
     return trixelCanvasSize / int2(2);
 }
@@ -615,6 +626,14 @@ struct FrameDataVoxelToTrixel {
     // .w is std140 padding. Mirrors `ivec4 visibleFaceIds` in the GLSL
     // UBO declarations.
     int4 visibleFaceIds;
+    // Model-frame iso depth axis `R⁻¹·(1,1,1)` for the per-voxel occlusion
+    // metric (#1462). (1,1,1) for the world canvas / identity entity →
+    // isoDepthAlongAxis collapses to x+y+z (byte-identical); a rotated
+    // DETACHED canvas uploads IRMath::isoDepthAxisModel(rotation). .w is
+    // padding. Mirrors `vec4 voxelDepthAxis` appended in the GLSL stage-1 UBO
+    // and FrameDataVoxelToCanvas::voxelDepthAxis_. Other kernels that bind
+    // this struct never read it.
+    float4 voxelDepthAxis;
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

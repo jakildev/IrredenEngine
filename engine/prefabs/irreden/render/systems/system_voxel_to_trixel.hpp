@@ -81,6 +81,12 @@ inline void buildVoxelFrameData(
     frameData.voxelDispatchGrid_ = dispatchGrid;
     frameData.voxelCount_ = liveVoxelCount;
     frameData.canvasSizePixels_ = canvas.size_;
+    // Per-voxel occlusion depth axis (#1462). World canvas + the smooth-Z-yaw
+    // per-axis route keep the fixed (1,1,1) iso depth axis (byte-identical
+    // x+y+z); the detached branch below overrides it with the entity-rotated
+    // axis. frameData_ is a reused member, so this must be reset every frame so
+    // a prior detached canvas's axis can't leak into a world frame.
+    frameData.voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
 
     // A non-zero `canvasRotation` marks a detached entity canvas (the main
     // world canvas keeps the all-zero `C_CanvasLocalRotation::kSentinelNoRotation`
@@ -109,6 +115,11 @@ inline void buildVoxelFrameData(
             static_cast<int>(visibleFaces[2]),
             0
         );
+        // Per-voxel occlusion depth projects onto the entity-rotated iso axis
+        // `R⁻¹·(1,1,1)` (#1462) — the same model-frame axis `visibleTriplet`
+        // selects faces from, so face visibility and occlusion order stay on
+        // one per-entity frame. Identity entity → (1,1,1) → byte-identical.
+        frameData.voxelDepthAxis_ = vec4(IRMath::isoDepthAxisModel(canvasRotation.rotation_), 0.0f);
         // Snap to the nearest of the 24 cube orientations and deform by the
         // residual only: a cube is invariant under the snap, so this keeps
         // the per-face skew small enough to stay clean (T-295).

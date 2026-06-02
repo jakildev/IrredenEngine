@@ -420,4 +420,97 @@ TEST(MatrixApplyToVoxelGridTest, RoundsHalfIntegerUp) {
     EXPECT_EQ(r.z, 0);
 }
 
+// ---------------------------------------------------------------------------
+// isoDepthAxisModel / isoDepthAlongAxis (#1462 — detached SO(3) occlusion depth)
+// ---------------------------------------------------------------------------
+
+// Identity entity → the model-frame iso depth axis is exactly (1,1,1) with no
+// FP drift (rotateVectorByQuat by the identity quat is the exact identity), so
+// isoDepthAlongAxis collapses to pos3DtoDistance and the detached path stays
+// byte-identical to master / the GRID world canvas.
+TEST(IsoDepthAxisModelTest, IdentityIsExactlyOnes) {
+    const IRMath::vec3 axis = IRMath::isoDepthAxisModel(IRMath::vec4(0, 0, 0, 1));
+    EXPECT_EQ(axis.x, 1.0f);
+    EXPECT_EQ(axis.y, 1.0f);
+    EXPECT_EQ(axis.z, 1.0f);
+}
+
+// A 180-deg entity rotation about Z negates the in-plane (x,y) components of
+// R⁻¹·(1,1,1) and leaves z — the depth order flips in x/y, exactly the
+// occlusion the fixed (1,1,1) got wrong for the camera-facing +X/+Y faces.
+TEST(IsoDepthAxisModelTest, Rotation180ZNegatesXY) {
+    const IRMath::vec4 q = IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), IRMath::kPi);
+    const IRMath::vec3 axis = IRMath::isoDepthAxisModel(q);
+    EXPECT_NEAR(axis.x, -1.0f, 1e-5f);
+    EXPECT_NEAR(axis.y, -1.0f, 1e-5f);
+    EXPECT_NEAR(axis.z, 1.0f, 1e-5f);
+}
+
+// The depth axis is the exact vector visibleTriplet selects faces from, so the
+// per-axis sign of the axis agrees with the visible face polarity — face
+// visibility and occlusion order share one per-entity frame by construction.
+TEST(IsoDepthAxisModelTest, SignsAgreeWithVisibleTriplet) {
+    const IRMath::vec4 rots[] = {
+        IRMath::vec4(0, 0, 0, 1),
+        IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), IRMath::kPi),
+        IRMath::quatAxisAngle(IRMath::vec3(1, 0, 0), IRMath::kHalfPi),
+        IRMath::quatAxisAngle(IRMath::vec3(1, 1, 1), IRMath::kTwoPi / 3.0f),
+        IRMath::quatAxisAngle(IRMath::vec3(0, 1, 0), IRMath::kPi / 3.0f),
+    };
+    for (const IRMath::vec4 &q : rots) {
+        const IRMath::vec3 axis = IRMath::isoDepthAxisModel(q);
+        const std::array<IRMath::FaceId, 3> faces = IRMath::visibleTriplet(q);
+        EXPECT_EQ(axis.x < 0.0f, IRMath::faceIsPositive(faces[0]));
+        EXPECT_EQ(axis.y < 0.0f, IRMath::faceIsPositive(faces[1]));
+        EXPECT_EQ(axis.z < 0.0f, IRMath::faceIsPositive(faces[2]));
+    }
+}
+
+// At the (1,1,1) axis the projection is exactly pos3DtoDistance (x+y+z) for
+// integer positions — the world/GRID byte-identical invariant.
+TEST(IsoDepthAlongAxisTest, OnesAxisMatchesPos3DtoDistance) {
+    const IRMath::ivec3 samples[] =
+        {{0, 0, 0}, {3, -2, 5}, {-7, 4, -1}, {10, 10, 10}, {-4, -4, -4}};
+    const IRMath::vec3 ones(1.0f, 1.0f, 1.0f);
+    for (const IRMath::ivec3 &p : samples) {
+        EXPECT_EQ(IRMath::isoDepthAlongAxis(p, ones), IRMath::pos3DtoDistance(p));
+    }
+}
+
+// The composition the renderer relies on for the identity-detached
+// byte-identical invariant: isoDepthAlongAxis(p, isoDepthAxisModel(identity))
+// reproduces pos3DtoDistance exactly.
+TEST(IsoDepthAlongAxisTest, IdentityEntityIsBitIdenticalToPos3DtoDistance) {
+    const IRMath::vec3 axis = IRMath::isoDepthAxisModel(IRMath::vec4(0, 0, 0, 1));
+    const IRMath::ivec3 samples[] = {{0, 0, 0}, {3, -2, 5}, {-7, 4, -1}, {10, 10, 10}};
+    for (const IRMath::ivec3 &p : samples) {
+        EXPECT_EQ(IRMath::isoDepthAlongAxis(p, axis), IRMath::pos3DtoDistance(p));
+    }
+}
+
+// roundHalfUp parity: a projection landing on a half-integer rounds UP, matching
+// the GLSL/Metal isoDepthAlongAxis mirror (floor(v + 0.5)).
+TEST(IsoDepthAlongAxisTest, RoundsHalfUpLikeShaderMirror) {
+    const IRMath::vec3 axis(0.5f, 0.0f, 0.0f);
+    EXPECT_EQ(IRMath::isoDepthAlongAxis(IRMath::ivec3(1, 0, 0), axis), 1);  // 0.5 → 1
+    EXPECT_EQ(IRMath::isoDepthAlongAxis(IRMath::ivec3(3, 0, 0), axis), 2);  // 1.5 → 2
+    EXPECT_EQ(IRMath::isoDepthAlongAxis(IRMath::ivec3(-1, 0, 0), axis), 0); // -0.5 → 0
+}
+
+// The fix in one assertion: a 180-deg-Z detached entity orders voxels along
+// (-1,-1,1), the opposite in-plane sense from the fixed (1,1,1). A voxel "in
+// front" under the old metric is "behind" under the rotated one — the occlusion
+// swap the pitch/roll-reveals bug (#1462) was missing.
+TEST(IsoDepthAlongAxisTest, Rotation180ZFlipsInPlaneOrder) {
+    const IRMath::vec3 axis =
+        IRMath::isoDepthAxisModel(IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), IRMath::kPi));
+    const IRMath::ivec3 front(5, 5, 0); // high x+y → "far" under (1,1,1)
+    const IRMath::ivec3 back(-5, -5, 0);
+    EXPECT_GT(IRMath::pos3DtoDistance(front), IRMath::pos3DtoDistance(back)); // old metric
+    EXPECT_LT(
+        IRMath::isoDepthAlongAxis(front, axis),
+        IRMath::isoDepthAlongAxis(back, axis)
+    ); // rotated metric reverses the in-plane order
+}
+
 } // namespace

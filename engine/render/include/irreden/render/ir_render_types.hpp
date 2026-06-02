@@ -194,6 +194,17 @@ struct FrameDataVoxelToCanvas {
     // outward normal / tangents). Single source of face metadata per
     // design-doc § "AO / lighting agree by construction".
     ivec4 visibleFaceIds_ = ivec4(0, 2, 4, 0);
+    // Model-frame iso depth axis `R⁻¹·(1,1,1)` for the per-voxel occlusion
+    // metric (#1462). The world canvas and any identity entity keep the
+    // default (1,1,1) so `isoDepthAlongAxis` collapses to `x+y+z` and the
+    // GRID / identity raster stays byte-identical; a rotated DETACHED canvas
+    // uploads `IRMath::isoDepthAxisModel(rotation)` so off-octahedral pitch /
+    // roll orders voxels along the entity-rotated axis instead of the snapped
+    // (1,1,1). `.w` is std140 padding. std140-appended after visibleFaceIds_
+    // (offset 144), so every prior field offset — and the world/GRID fast
+    // path — is unchanged; the gather shaders that read only the prefix
+    // (stage 2, AO, lighting) are unaffected and need no declaration update.
+    vec4 voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -379,8 +390,15 @@ static_assert(
     "(faceDeform_ at 80 + 3 * 16 B = 128). std140 ivec4 alignment is 16 B"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 144,
-    "FrameDataVoxelToCanvas size must mirror its std140 GLSL block"
+    offsetof(FrameDataVoxelToCanvas, voxelDepthAxis_) == 144,
+    "FrameDataVoxelToCanvas::voxelDepthAxis_ must land at offset 144 "
+    "(visibleFaceIds_ at 128 + 16 B). Appended after the prior last field so "
+    "every existing offset — and the world/GRID fast path — stays unchanged"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 160,
+    "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
+    "(voxelDepthAxis_ vec4 append: 144 + 16 = 160)"
 );
 
 struct FrameDataSun {

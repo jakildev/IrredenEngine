@@ -28,6 +28,13 @@ Helpers:
 - `IRMath::isoDepthShift(pos, d)` — returns `pos + (d, d, d)`, which shifts
   depth without affecting the 2D projection. Used for stacked depth layers
   at the same apparent position.
+- `IRMath::isoDepthAxisModel(rotation)` / `IRMath::isoDepthAlongAxis(pos, axis)`
+  — the entity-rotated generalization of the depth scalar. A DETACHED entity
+  rasters in model space, so its per-voxel occlusion projects onto
+  `R⁻¹·(1,1,1)` (the model-frame depth axis) rather than the fixed world
+  (1,1,1); at identity the axis is exactly (1,1,1) so it collapses to
+  `pos3DtoDistance`. GPU mirror `isoDepthAlongAxis` in `ir_iso_common.{glsl,metal}`.
+  See the design doc's entity-rotation carve-out (#1462).
 
 **Never inline these equations in system code.** Always call the helpers
 so there's one place to fix a coordinate-system bug.

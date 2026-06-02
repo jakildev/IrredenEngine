@@ -292,6 +292,17 @@ ivec2 roundHalfUp(vec2 v) {
     return ivec2(floor(v + vec2(0.5)));
 }
 
+// Per-voxel iso occlusion depth of model position `pos` projected onto a
+// (possibly entity-rotated) iso depth `axis` — the SO(3) generalization of
+// pos3DtoDistance (identical to it when axis == (1,1,1)). For a rotated
+// DETACHED canvas `axis` is `R⁻¹·(1,1,1)` (uploaded in
+// FrameDataVoxelToTrixel.voxelDepthAxis); the world canvas keeps (1,1,1).
+// CPU twin: IRMath::isoDepthAlongAxis — roundHalfUp keeps the half-integer
+// rounding bit-identical across the CPU/GPU boundary (#1462).
+int isoDepthAlongAxis(ivec3 pos, vec3 axis) {
+    return roundHalfUp(dot(vec3(pos), axis));
+}
+
 ivec2 trixelOriginOffsetX1(ivec2 trixelCanvasSize) {
     return trixelCanvasSize / ivec2(2);
 }
