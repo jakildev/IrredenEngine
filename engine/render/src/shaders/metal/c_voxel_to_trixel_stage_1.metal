@@ -172,9 +172,13 @@ kernel void c_voxel_to_trixel_stage_1(
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
-        const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), slot
-        );
+        // Detached entities raster in model space; project occlusion depth
+        // onto the entity-rotated iso axis (#1462). World/GRID keeps the fixed
+        // (1,1,1) via pos3DtoDistance — byte-identical. See the GLSL twin.
+        const int rawDepth = frameData.isDetachedCanvas > 0.5f
+            ? isoDepthAlongAxis(voxelPositionInt, frameData.voxelDepthAxis.xyz)
+            : pos3DtoDistance(voxelPositionInt);
+        const int voxelDistance = encodeDepthWithFace(rawDepth, slot);
         const int2 base =
             trixelFrameOffset(
                 frameData.trixelCanvasOffsetZ1,
@@ -206,8 +210,12 @@ kernel void c_voxel_to_trixel_stage_1(
         // `voxelPositionFixed = round(worldPos * subdivisions)`.
         microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
-    const int depthBase =
-        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+    // Detached entities project occlusion depth onto the entity-rotated iso
+    // axis (#1462); world/GRID keeps the (x+y+z) fixed-(1,1,1) form. Depth is
+    // in subdivision units on both branches, so the encode scale is unchanged.
+    const int depthBase = frameData.isDetachedCanvas > 0.5f
+        ? isoDepthAlongAxis(microPositionFixed, frameData.voxelDepthAxis.xyz)
+        : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, distanceScratch, canvasSize);

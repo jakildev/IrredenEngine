@@ -107,6 +107,31 @@ DETACHED rasterization because the per-canvas bake collapses the
 world-to-screen transform into a 2x2 (face deformation) instead of
 relying on the (1,1,1) depth-axis algebra.
 
+### Entity-rotation carve-out: per-voxel occlusion depth (#1462)
+
+One shortcut *did* survive on the DETACHED path and is carved out here.
+A detached canvas rasters its voxels at their model-space iso positions
+(camera yaw zeroed) and rotates only the face *shapes* via
+`faceDeformationMatrixSO3`; the voxel *centers* are not repositioned.
+The per-voxel occlusion depth that orders overlapping centers therefore
+cannot use the fixed world (1,1,1) — that is correct only when the
+entity rotation `R` fixes (1,1,1). Off that, the snapped order leaks
+back-face voxels through (the "pitch/roll reveals" bug, live since
+#1386 / #1398 landed full-SO(3) face selection on detached canvases).
+
+The fix (#1462) projects each detached voxel's model position onto the
+**entity-rotated** iso depth axis `R⁻¹·(1,1,1)` — symmetric with
+`IRMath::visibleTriplet`'s `R⁻¹·viewDir` face selection, so face
+visibility and occlusion order stay on one per-entity frame. The axis is
+computed CPU-side by `IRMath::isoDepthAxisModel`, uploaded in
+`FrameDataVoxelToCanvas::voxelDepthAxis_`, and projected GPU-side by
+`isoDepthAlongAxis` (ir_iso_common.{glsl,metal}) — its CPU twin
+`IRMath::isoDepthAlongAxis` rounds identically. This is **gated per
+ENTITY rotation only**: the world / GRID canvas keeps `voxelDepthAxis_
+== (1,1,1)`, so `isoDepthAlongAxis` collapses to `pos3DtoDistance`
+(`x+y+z`) and every GRID consumer above — and a zero-rotation detached
+entity — is byte-identical. The (1,1,1) world invariant is untouched.
+
 ## Full call-site map
 
 Re-greppable with `Z-yaw|rasterYaw|cardinalIndex|rotation-invariant` in
@@ -180,4 +205,4 @@ combined. Don't promise either in the same release.
 - [`docs/design/iso-basis-baked-assumptions.md`](iso-basis-baked-assumptions.md) — T-054 audit of what is baked into the iso basis (the consumer-side rasterYaw enabling work).
 - [`docs/agents/CLAUDE-BASELINE.md`](../agents/CLAUDE-BASELINE.md) — engine-wide ECS/style conventions.
 - Issue #1075 (T-319, PR #1087) — `PROPAGATE_CANVAS_ROTATION` composes camera yaw into per-canvas SO(3); the composition step that lets DETACHED entities pick up future camera pitch/roll.
-- Issue #1076 — camera SO(3) quaternion surface for DETACHED rotation; A/B decision still pending an opus-architect call.
+- Issue #1076 — camera SO(3) quaternion surface for DETACHED rotation; **RESOLVED (closed, Option B):** camera rotation lives in `C_LocalTransform.rotation_` and the DETACHED path reads the full quaternion (T-364). The detached SO(3) epic #1444 builds the smooth-deform + correct-occlusion pipeline on top of it.

@@ -55,6 +55,14 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // `.w` is std140 padding. At cardinal 0 the default {0, 2, 4} = {X_NEG,
     // Y_NEG, Z_NEG} matches the pre-#1278 lower-coordinate semantics.
     uniform ivec4 visibleFaceIds;
+    // Model-frame iso depth axis `R⁻¹·(1,1,1)` for the per-voxel occlusion
+    // metric (#1462). (1,1,1) for the world canvas / identity entity, so
+    // isoDepthAlongAxis collapses to pos3DtoDistance and the GRID / identity
+    // raster stays byte-identical; a rotated DETACHED canvas uploads
+    // `IRMath::isoDepthAxisModel(rotation)`. `.w` is std140 padding. Appended
+    // after visibleFaceIds (offset 144) — the prefix the other binding-7
+    // shaders declare is unchanged, so only this stage reads it.
+    uniform vec4 voxelDepthAxis;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -242,8 +250,16 @@ void main() {
         // Encode `slot` (not faceId) in depth — keeps the 2-bit field
         // unchanged, and AO/lighting recover the world faceId via
         // visibleFaceIds[slot] from the same UBO.
-        const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), slot);
+        // Detached entities raster in model space (camera yaw zeroed), so the
+        // occlusion order projects onto the entity-rotated iso axis (#1462).
+        // The world canvas keeps the fixed (1,1,1) via pos3DtoDistance, so its
+        // depth is byte-identical to master (voxelPositionInt is integer, so
+        // the detached path's roundHalfUp(dot(pos,(1,1,1))) would equal x+y+z
+        // at identity too — the branch only guards the GRID fast path).
+        const int rawDepth = isDetachedCanvas > 0.5
+            ? isoDepthAlongAxis(voxelPositionInt, voxelDepthAxis.xyz)
+            : pos3DtoDistance(voxelPositionInt);
+        const int voxelDistance = encodeDepthWithFace(rawDepth, slot);
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
@@ -272,8 +288,12 @@ void main() {
         // `voxelPositionFixed = round(worldPos * subdivisions)`.
         microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
-    const int depthBase =
-        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+    // Detached entities project occlusion depth onto the entity-rotated iso
+    // axis (#1462); world/GRID keeps the (x+y+z) fixed-(1,1,1) form. Depth is
+    // in subdivision units on both branches, so the encode scale is unchanged.
+    const int depthBase = isDetachedCanvas > 0.5
+        ? isoDepthAlongAxis(microPositionFixed, voxelDepthAxis.xyz)
+        : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance);

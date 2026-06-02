@@ -513,6 +513,40 @@ constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardina
     }
 }
 
+/// Model-frame iso depth axis for a detached entity rotated by @p rotation:
+/// `R⁻¹ · (1,1,1)`. The iso projection's depth axis is the world (1,1,1)
+/// direction (@ref pos3DtoDistance, `depth = x+y+z`); a detached canvas
+/// rasters its voxels in model space (camera yaw zeroed), so the per-voxel
+/// metric that orders them front-to-back under the *rotated* view must
+/// project onto this model-frame axis rather than the fixed (1,1,1).
+/// Symmetric with @ref visibleTriplet's `R⁻¹·viewDir` face selection — one
+/// per-entity frame drives both which faces show and how they occlude. Using
+/// the fixed (1,1,1) instead is correct only when `R` fixes (1,1,1); off that
+/// the snapped order leaks back-face voxels through (the "pitch/roll reveals"
+/// bug, live since #1386/#1398 landed full-SO(3) face selection).
+///
+/// At identity the axis is exactly (1,1,1) — `rotateVectorByQuat` by the
+/// identity quat is the exact identity — so @ref isoDepthAlongAxis collapses
+/// to `x+y+z` and the detached path stays byte-identical to master; the GRID
+/// world canvas keeps the fixed (1,1,1) and is untouched.
+///
+/// CPU-computed and uploaded into `FrameDataVoxelToCanvas::voxelDepthAxis_`;
+/// the shader does only the `roundHalfUp(dot(pos, axis))` projection (GPU
+/// mirror `isoDepthAlongAxis` in ir_iso_common.glsl/.metal). Reused by the
+/// detached SO(3) forward-scatter composite (#1462 P1 → #1464 P3).
+inline vec3 isoDepthAxisModel(const vec4 &rotation) {
+    return rotateVectorByQuat(vec3(1.0f, 1.0f, 1.0f), quatInverse(rotation));
+}
+
+/// Per-voxel iso occlusion depth: model position @p pos projected onto a
+/// (possibly entity-rotated) iso depth @p axis. The SO(3) generalization of
+/// @ref pos3DtoDistance — identical to it when `axis == (1,1,1)`. Rounds via
+/// @ref roundHalfUp so it matches the GPU mirror (`isoDepthAlongAxis` in
+/// ir_iso_common.glsl/.metal) bit-for-bit at half-integer projections.
+inline Distance isoDepthAlongAxis(const ivec3 pos, const vec3 axis) {
+    return roundHalfUp(dot(vec3(pos), axis));
+}
+
 /// The three camera-visible cube faces for an entity rotated by @p rotation —
 /// the SO(3) generalization of @ref visibleFaceTripletCardinal (which only
 /// covers the camera's Z-yaw cardinals). A cube face is visible when its
@@ -541,9 +575,10 @@ constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardina
 /// like the cardinal path (#1278), so there is no GPU-side mirror to keep in
 /// sync. Reused verbatim by per-entity main-canvas SO(3) (#1299).
 inline std::array<FaceId, 3> visibleTriplet(const vec4 &rotation) {
-    // View direction expressed in the entity's model frame (R⁻¹ · viewDir).
-    // Only the per-axis signs matter, so viewDir need not be normalized.
-    const vec3 viewInModel = rotateVectorByQuat(vec3(1.0f, 1.0f, 1.0f), quatInverse(rotation));
+    // View direction expressed in the entity's model frame (R⁻¹ · viewDir) —
+    // the same axis the per-voxel occlusion depth projects onto (@ref
+    // isoDepthAxisModel). Only the per-axis signs matter here.
+    const vec3 viewInModel = isoDepthAxisModel(rotation);
     return {
         viewInModel.x < 0.0f ? FaceId::X_POS : FaceId::X_NEG,
         viewInModel.y < 0.0f ? FaceId::Y_POS : FaceId::Y_NEG,
