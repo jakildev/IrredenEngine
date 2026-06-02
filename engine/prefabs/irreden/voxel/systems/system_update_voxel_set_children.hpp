@@ -48,6 +48,12 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             pool.getPositions(),
             pool.getPositionOffsets()
         );
+        if (writtenCount > 0) {
+            // CPU world positions moved in place; evict the chunk world-AABB
+            // cache so the continuous-yaw cull re-derives this set's bounds and
+            // stays a conservative superset of the live voxels (#1439).
+            pool.markChunkWorldBoundsDirty();
+        }
         // A GPU-transform-indirected set (#1396) has binding 5 written by the
         // UPDATE_VOXEL_POSITIONS_GPU prepass each frame. We still recompute its
         // CPU global mirror above (a sane translation-only fallback for the

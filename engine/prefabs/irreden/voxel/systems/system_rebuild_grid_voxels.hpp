@@ -138,6 +138,12 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                 worldTransform
             );
         }
+        if (safeCount > 0) {
+            // The chunk world-AABB cache must follow the rewritten positions, or
+            // the continuous-yaw cull would project a stale (pre-rotation) box
+            // and could drop this set's chunks (#1439).
+            pool.markChunkWorldBoundsDirty();
+        }
     }
 
     static SystemId create() {
