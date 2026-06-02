@@ -14,6 +14,14 @@
 # (gh issue edit --add-label converges either way, but the re-check
 # avoids burning API budget on already-stamped issues).
 #
+# Blocked-by gate (#1476): an issue is stamped fleet:queued only when every
+# `**Blocked by:** #N` predecessor is CLOSED/MERGED. The scout's ingest
+# projection already keeps blocked children out of the pending set; the
+# per-issue live `gh issue view <ref> --json state` re-check here is the
+# authoritative gate at the actual stamp point (and the sole gate when ingest
+# runs against a hand-built projection). So a freshly-filed stacked epic shows
+# only its head queued; each child is queued as its blocker closes.
+#
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
 
@@ -180,18 +188,23 @@ try:
     data = json.load(open(proj_path))
     pending = data.get('pending_issues', [])
 except Exception:
-    print('0,0,0')
+    print('0,0,0,0')
     sys.exit(0)
 
 # Body-field parsers mirror fleet-state-scout._parse_issue_field so we
 # label issues by the same fields the scout reads back out.
 MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
 BLOCKED_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
+# Inline-bold form `**Blocked by: #N (label)**` (#1423): colon + value inside
+# one bold span. Mutually exclusive with BLOCKED_RE (canonical bold closes at
+# the colon), so scanning both over the whole body never double-counts a line.
+BLOCKED_INLINE_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\s+(.+?)\*\*', re.IGNORECASE)
 # Free-form header prose like `## Blocked on #1300` / `Blocked on PR-x` is an
 # alternate dependency declaration the scout's _parse_blocked_by also reads, so
 # don't warn "treat as unblocked" for an issue whose blocker lives only in a
 # header (#1326). Only count prose that names a #N or PR reference.
 BLOCKED_ON_RE = re.compile(r'(?im)^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$')
+REF_RE = re.compile(r'#(\d+)')
 
 
 def _has_header_blocker(text):
@@ -201,9 +214,51 @@ def _has_header_blocker(text):
             return True
     return False
 
+
+def _blocker_refs(body):
+    """All `#N` predecessor refs from canonical `**Blocked by:** #N` lines, the
+    inline-bold `**Blocked by: #N**` form, and `Blocked on` header prose.
+    Mirrors fleet-state-scout._parse_blocked_by so the gate reads the same refs
+    the scout and fleet-claim do. `(none)` values contribute nothing."""
+    vals = [m.group(1) for m in BLOCKED_RE.finditer(body)]
+    vals += BLOCKED_INLINE_RE.findall(body)
+    real = [v.strip() for v in vals if not v.strip().lower().startswith('(none')]
+    refs = []
+    for v in real:
+        refs.extend(REF_RE.findall(v))
+    if refs:
+        return refs
+    # No canonical/inline #N refs → fall back to a `Blocked on …` header.
+    for m in BLOCKED_ON_RE.finditer(body):
+        cand = m.group(1).strip().strip('*').strip()
+        if cand and ('#' in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
+            refs.extend(REF_RE.findall(cand))
+    return refs
+
+
+def _blocker_open(repo, ref, cache):
+    """True when predecessor #ref is still open (state not CLOSED/MERGED).
+    Per-run cache dedupes repeated refs across the batch. An unreadable state
+    is treated as still-open — defer queuing rather than risk queuing a child
+    whose blocker we could not confirm closed."""
+    key = (repo, ref)
+    if key in cache:
+        return cache[key]
+    r = subprocess.run(
+        ['gh', 'issue', 'view', ref, '--repo', repo,
+         '--json', 'state', '--jq', '.state'],
+        capture_output=True, text=True, timeout=15,
+    )
+    state = r.stdout.strip() if r.returncode == 0 else ''
+    is_open = state not in ('CLOSED', 'MERGED')
+    cache[key] = is_open
+    return is_open
+
 stamped = 0
 skipped_already = 0
+skipped_blocked = 0
 failed = 0
+blocker_cache = {}
 
 for issue in pending:
     n = issue.get('number', 0)
@@ -242,6 +297,23 @@ for issue in pending:
         print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
         continue
 
+    # Blocked-by gate (#1476): never stamp fleet:queued onto a child whose
+    # **Blocked by:** predecessors aren't all closed. fleet-claim already
+    # enforces this at claim time, but stamping a blocked child anyway makes a
+    # stacked epic show every child queued at once, defeating "queue one at a
+    # time". The scout's projection normally keeps blocked children out of the
+    # pending set; this is the authoritative live re-check at the actual stamp
+    # point — and the only gate when ingest runs against a hand-built
+    # projection (e.g. tests, or a manual fleet-queue-ingest invocation).
+    open_blockers = [ref for ref in _blocker_refs(body)
+                     if _blocker_open(repo, ref, blocker_cache)]
+    if open_blockers:
+        skipped_blocked += 1
+        joined = ', '.join(f'#{r}' for r in open_blockers)
+        print(f'INFO issue {repo}#{n}: blocked by open {joined} — '
+              'deferring fleet:queued until predecessors close', file=sys.stderr)
+        continue
+
     # Parse model from body. Default to fleet:opus on ambiguity — mirrors
     # the safer default when model intent is unclear.
     model_match = MODEL_RE.search(body)
@@ -271,13 +343,13 @@ for issue in pending:
         continue
     stamped += 1
 
-print(f'{stamped},{skipped_already},{failed}')
+print(f'{stamped},{skipped_already},{failed},{skipped_blocked}')
 STAMP_PY
 )
 
 if [[ -n "$stamping_out" ]]; then
-    IFS=',' read -r stamped_count skipped_count failed_count <<< "$stamping_out"
-    log "stamped ${stamped_count:-0} issue(s); skipped ${skipped_count:-0} already-labeled; ${failed_count:-0} failed"
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s); skipped ${skipped_count:-0} already-labeled; ${blocked_count:-0} blocked (deferred); ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"

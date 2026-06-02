@@ -170,11 +170,16 @@ _INGEST_SKIP_LABELS = frozenset({
 })
 
 
-def fetch_issues_by_label(repo, filter_label, exclude_labels=None):
+def fetch_issues_by_label(repo, filter_label, exclude_labels=None, with_body=False):
+    # with_body pulls the issue body too — the queue-manager-ingest projection
+    # needs it to resolve each human:approved issue's `**Blocked by:**` chain
+    # (resolve_human_approved_blockers); the cheaper label-only fetch is the
+    # default for callers that never inspect blockers (needs-plan).
+    fields = "number,title,labels,updatedAt" + (",body" if with_body else "")
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
         "--label", filter_label, "--state", "open",
-        "--json", "number,title,labels,updatedAt",
+        "--json", fields,
     ])
     if out is None:
         return []
@@ -197,7 +202,10 @@ def fetch_needs_plan(repo):
 
 def fetch_human_approved(repo):
     # Exclude already-ingested issues to avoid re-triggering queue-manager.
-    return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS)
+    # with_body=True so resolve_human_approved_blockers can parse the
+    # `**Blocked by:**` chain and keep blocked children out of the ingest set.
+    return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS,
+                                 with_body=True)
 
 
 def fetch_closed_fleet_queued(repo, limit=100):
@@ -925,6 +933,60 @@ def resolve_blocked_by(state):
                 task["blocked_by"] = ", ".join(f"#{r}" for r in unresolved)
 
 
+def resolve_human_approved_blockers(state):
+    """Annotate each human:approved issue with `blocked` — True when one or
+    more of its `**Blocked by:**` predecessors is still open.
+
+    The queue-manager-ingest projector/slicer treat a blocked issue like a
+    skip-label issue: it stays OUT of the actionable set, so a freshly-filed
+    stacked epic contributes only its workable head to the trigger hash and
+    the ingest pass. The moment the last blocker closes (and lands in this
+    repo's closed_fleet_queued / recent_merged_prs window) `blocked` flips
+    False, the issue ENTERS the set, the hash flips, and the scout spawns
+    fleet-queue-ingest to queue the now-workable child — the "queue one at a
+    time / queue the next child when a blocker closes" behavior (#1476).
+
+    Resolution is in-memory only (closed_fleet_queued + merged `claude/<N>-*`
+    heads), mirroring resolve_blocked_by()'s cheap path — NO live gh here, so
+    the per-tick projection stays fast. fleet-queue-ingest does the
+    authoritative live `gh issue view` re-check before it actually stamps
+    fleet:queued, so this flag only decides *when the trigger fires*, never
+    whether the label is applied. `body` is popped after parsing so it never
+    bloats state.json or the per-role slices.
+    """
+    for repo_key, repo_state in state["repos"].items():
+        closed_nums = {
+            str(i.get("number", ""))
+            for i in repo_state.get("closed_fleet_queued", [])
+            if i.get("number")
+        }
+        merged_heads = [
+            pr.get("headRefName", "") or ""
+            for pr in repo_state.get("recent_merged_prs", [])
+        ]
+
+        for issue in repo_state.get("human_approved", []):
+            body = issue.pop("body", "") or ""
+            issue["blocked"] = False
+            raw = _parse_blocked_by(body)
+            if not raw:
+                continue
+            refs = _BLOCKER_REF_RE.findall(raw)
+            if not refs:
+                # Blocker named only as prose / a PR URL with no resolvable #N
+                # (e.g. "Blocked on the redesign"). Hold the child out of the
+                # trigger set — matches resolve_blocked_by leaving it blocked.
+                issue["blocked"] = True
+                continue
+            for ref in refs:
+                if ref in closed_nums:
+                    continue
+                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                    continue
+                issue["blocked"] = True
+                break
+
+
 def enrich_stackable_blocker_prs(state):
     # Per T-110 PR 2: for each task whose blocked_by is exactly one issue
     # number (`#NNN`) with exactly one matching open PR (head ref
@@ -1160,11 +1222,19 @@ def project_queue_manager_ingest(state):
     `human_approved` already excludes `fleet:queued` via fetch_human_approved;
     _INGEST_SKIP_LABELS mirrors the role-doc Step 5 filter so epics and
     un-planned issues don't hold the hash non-zero indefinitely.
+
+    `blocked` issues (set by resolve_human_approved_blockers — a `**Blocked
+    by:**` predecessor is still open) are excluded too, so a stacked epic
+    contributes only its workable head to the hash. When the last blocker
+    closes the child's `blocked` flips False, it re-enters the set, the hash
+    flips, and ingest re-fires to queue it (#1476).
     """
     items = []
     for repo, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
             if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+                continue
+            if issue.get("blocked"):
                 continue
             items.append({"repo": repo, "issue": issue["number"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
@@ -1322,11 +1392,16 @@ def slice_queue_manager_ingest(state):
     """Slice for fleet-queue-ingest. Mirrors the projector — list of
     actionable issues the human has approved but the queue hasn't filed yet.
     Applies _INGEST_SKIP_LABELS so the LLM slice never includes epics or
-    un-planned issues that the role-doc skips at Step 5."""
+    un-planned issues that the role-doc skips at Step 5, and skips `blocked`
+    issues (an open `**Blocked by:**` predecessor) so fleet-queue-ingest's
+    pending set only carries workable issues — the head of a stacked epic,
+    then each child as its blocker closes (#1476)."""
     out = {"pending_issues": []}
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
             if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+                continue
+            if issue.get("blocked"):
                 continue
             out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
     return out
@@ -1461,6 +1536,7 @@ def tick_once():
     state = collect_state()
     _populate_done_tasks(state)
     resolve_blocked_by(state)
+    resolve_human_approved_blockers(state)
     enrich_stackable_blocker_prs(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 

@@ -1,5 +1,12 @@
 # CLAUDE.md sharing — design
 
+> **Sibling:** [`skill-sharing.md`](skill-sharing.md) applies this same
+> reference-by-name-with-explicit-deltas pattern to fleet **skills** — the
+> shared *flow* of `commit-and-push` / `review-pr` / `start-next-task` /
+> `file-epic` lives in one canonical `docs/agents/skills/<name>.md` and each
+> repo's `SKILL.md` is a thin wrapper carrying only deltas. Read both
+> together: this doc covers cross-cutting rules, that one covers skills.
+
 ## Problem
 
 Multiple creations layer on the engine. Cross-cutting rules — naming
