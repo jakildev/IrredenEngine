@@ -158,6 +158,7 @@ void main() {
         const int subPerAxis = max(voxelRenderOptions.y, 1);
         const int uPerAxis = int(gl_WorkGroupID.z) / subPerAxis;
         const int vPerAxis = int(gl_WorkGroupID.z) % subPerAxis;
+        if (uPerAxis >= subPerAxis) return; // compact dispatch uses effSub², capped store uses cappedSub²
         const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const ivec3 worldFixed = ivec3(round(worldAligned * float(subPerAxis)));
         const ivec3 microWorld =

@@ -1413,6 +1413,7 @@ inline int perAxisSubdivisionCap(const ivec2 cardinalExtent, const vec2 zoom) {
     // Depth-0 inverse of isoPixelToPos3D over the visible iso rect. The canvas
     // X axis stores an in-plane x/y world axis; the Y axis stores z (X/Y faces)
     // or x/y (Z face) — bound each by the larger candidate.
+    // At depth=0 (x+y+z=0): iso.y=-x-y+2z=3z → z=iso.y/3, y=iso.x/2-iso.y/6.
     const float maxInPlaneXY = 0.5f * isoHalfX + isoHalfY / 6.0f;
     const float maxInPlaneZ = isoHalfY / 3.0f;
     const float maxDispX = maxInPlaneXY;
