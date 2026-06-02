@@ -63,11 +63,10 @@ inline void syncAllocationToCameraYaw() {
         if (!cardinal.has_value()) {
             return;
         }
+        const ivec2 mainSize = (*cardinal.value()).size_;
         axes.allocate(
-            IRMath::perAxisTrixelCanvasWorstCaseSize(
-                (*cardinal.value()).size_,
-                kMinOnScreenTrixelSizePx
-            )
+            IRMath::perAxisTrixelCanvasWorstCaseSize(mainSize, kMinOnScreenTrixelSizePx),
+            mainSize
         );
     } else {
         axes.release();

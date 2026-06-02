@@ -28,6 +28,15 @@ const char *const kFileCompShapesToTrixel = "shaders/c_shapes_to_trixel.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
+// Smooth camera Z-yaw per-axis sun-shadow resolve (#1435): the scatter pass
+// re-projects the three face-local per-axis voxel canvases into a screen-space
+// front-most iso-depth scratch SSBO; the blit pass materializes that scratch
+// into the resolve R32I texture BAKE_SUN_SHADOW_MAP reads via its cardinal
+// path. Metal mirrors in metal/c_resolve_per_axis_screen_depth.metal /
+// metal/c_resolve_per_axis_blit.metal.
+const char *const kFileCompResolvePerAxisScreenDepth =
+    "shaders/c_resolve_per_axis_screen_depth.glsl";
+const char *const kFileCompResolvePerAxisBlit = "shaders/c_resolve_per_axis_blit.glsl";
 const char *const kFileCompClearSunShadowMap = "shaders/c_clear_sun_shadow_map.glsl";
 const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";

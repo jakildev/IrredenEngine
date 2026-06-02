@@ -500,6 +500,16 @@ constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
 // this aliasing goes away in T-09Y once light-volume LOS moves off the
 // world-space bitfield.
 constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclusionGrid;
+// Aliases slot 28 again. RESOLVE_PER_AXIS_SCREEN_DEPTH (#1435) scatters the
+// three per-axis voxel canvases into this scratch SSBO via imageAtomicMin
+// (a screen-space front-most iso-depth, main-canvas sized), then blits it
+// into the per-axis resolve TEXTURE. The whole resolve runs as its own
+// pipeline stage strictly before BAKE_SUN_SHADOW_MAP rebinds slot 28 to the
+// SunShadowDepthMap, so the alias is safe — same non-overlapping-stage
+// rationale as the LightOcclusionGrid/SunShadowDepthMap alias above. The
+// scratch lives on a buffer because Metal has no portable image-atomic
+// syntax (see c_voxel_to_trixel_stage_1.metal's distance scratch).
+constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightOcclusionGrid;
 // SPRITE_TO_SCREEN aliases two slots whose prior consumers finish before the
 // sprite draw. Safety is enforced by a defensive rebind in
 // `SPRITE_TO_SCREEN::bindPipeline()` — both slots are re-asserted to the

@@ -63,6 +63,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_clear_sun_shadow_map") {
         return MTL::Size(16, 16, 1);
     }
+    if (functionName == "c_resolve_per_axis_screen_depth" ||
+        functionName == "c_resolve_per_axis_blit") {
+        return MTL::Size(16, 16, 1);
+    }
     if (functionName == "c_clear_light_volume") {
         return MTL::Size(8, 8, 8);
     }
