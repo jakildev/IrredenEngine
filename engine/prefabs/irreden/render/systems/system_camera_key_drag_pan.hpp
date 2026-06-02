@@ -60,8 +60,11 @@ template <> struct System<CAMERA_KEY_DRAG_PAN> {
             const vec2 deltaPx = currentMouse - dragStartMouse_;
             const vec2 deltaIso =
                 screenDeltaToIsoDelta(deltaPx, IRRender::getTriangleStepSizeScreen());
-            camPos.pos_ =
-                dragStartCameraPos_ + cameraMoveRelativeToYaw(deltaIso, IRPrefab::Camera::getYaw());
+            const float panYaw =
+                IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
+                    ? IRPrefab::Camera::getYaw()
+                    : 0.0f;
+            camPos.pos_ = dragStartCameraPos_ + cameraMoveRelativeToYaw(deltaIso, panYaw);
         } else {
             dragging_ = false;
         }
