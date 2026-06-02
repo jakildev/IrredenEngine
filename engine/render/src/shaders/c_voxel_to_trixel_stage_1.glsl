@@ -133,15 +133,7 @@ void main() {
     // FaceId (0..5) the camera sees at this slot, resolved by the CPU per
     // cardinal via `IRMath::visibleFaceTripletCardinal` (#1278).
     const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
-    // Per-entity SO(3) (#1299): when this canvas carries a MAIN_CANVAS_SO3
-    // entity (visibleFaceIds.w flag set) AND this voxel carries a stamped
-    // triplet, read the entity's own octahedral-snapped visible face; otherwise
-    // fall back to the shared per-canvas triplet. When the flag is 0 (no SO(3)
-    // set on the canvas) the `reserved` load is skipped — byte-identical to
-    // pre-#1299.
-    const int faceId = (visibleFaceIds[3] != 0 && reservedHasSO3(voxels[voxelIndex].reserved))
-                           ? unpackReservedFaceId(voxels[voxelIndex].reserved, slot)
-                           : visibleFaceIds[slot];
+    const int faceId = visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     // Exposed-face gate (#1278): emit only when the world face this slot

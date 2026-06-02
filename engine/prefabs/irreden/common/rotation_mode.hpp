@@ -13,16 +13,12 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/entity_canvas.hpp>
-#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
-#include <irreden/voxel/components/component_voxel_pool.hpp>
-#include <irreden/voxel/components/component_voxel_set.hpp>
 
-#include <cstddef>
-#include <cstdint>
 #include <string>
 
 namespace IRPrefab::RotationMode {
@@ -42,86 +38,6 @@ namespace IRPrefab::RotationMode {
 ///
 /// `canvasName` and `canvasSize` are only consulted on a GRID→DETACHED
 /// transition; pass sensible defaults otherwise.
-namespace detail {
-
-// Enter MAIN_CANVAS_SO3 (#1299, PR-A): acquire a GPU transform slot, route the
-// entity's voxel range through the prepass, and opt it into the octahedral snap.
-// The entity stays on the shared main canvas — no child canvas. Degrades to a
-// warning + no-op when the entity has no voxel set or the slot allocator was
-// never wired (`IRPrefab::VoxelTransform::setAllocatorSystem`).
-inline void setupMainCanvasSO3(IREntity::EntityId entity) {
-    using IRComponents::C_VoxelPool;
-    using IRComponents::C_VoxelSetNew;
-    auto vsOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
-    if (!vsOpt) {
-        IR_LOG_WARN(
-            "setMode(MAIN_CANVAS_SO3): entity {} has no C_VoxelSetNew; mode set "
-            "but no GPU transform applied",
-            entity
-        );
-        return;
-    }
-    C_VoxelSetNew &vs = *vsOpt.value();
-    const std::uint32_t slot = IRPrefab::VoxelTransform::acquireSlot();
-    if (slot == IRRender::kVoxelTransformStatic) {
-        IR_LOG_WARN(
-            "setMode(MAIN_CANVAS_SO3): no transform slot for entity {} — wire "
-            "IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId) "
-            "at init (or the slot budget is exhausted); set stays CPU-direct",
-            entity
-        );
-        return;
-    }
-    vs.gpuTransformSlot_ = slot;
-    vs.snapTransformOctahedral_ = true;
-    // Only wire the pool when the canvas and voxels are live. A headless/staged
-    // entity (canvasEntity_ == kNullEntity or numVoxels_ == 0) at setMode time
-    // already has snapTransformOctahedral_ = true, but the pool's SO3 counter
-    // stays at 0 — visibleFaceIds_.w will be 0 for that canvas and the per-entity
-    // triplet path won't fire until the count rises. Any future canvas-attach pass
-    // that migrates pendingVoxels_ into the pool for an entity whose
-    // snapTransformOctahedral_ is already true MUST call both
-    // setTransformIndexForRange and incrementSO3SetCount to bring the pool into
-    // sync; otherwise the entity renders with the shared UBO triplet instead of
-    // its per-voxel snapped orientation.
-    if (vs.canvasEntity_ != IREntity::kNullEntity && vs.numVoxels_ > 0) {
-        C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(vs.canvasEntity_);
-        pool.setTransformIndexForRange(
-            vs.voxelStartIdx_, static_cast<std::size_t>(vs.numVoxels_), slot
-        );
-        pool.incrementSO3SetCount();
-    }
-}
-
-// Leave MAIN_CANVAS_SO3: release the slot, reset the set back to CPU-direct,
-// clear the per-voxel triplet stamp, and decrement the canvas SO(3) counter.
-inline void teardownMainCanvasSO3(IREntity::EntityId entity) {
-    using IRComponents::C_VoxelPool;
-    using IRComponents::C_VoxelSetNew;
-    auto vsOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
-    if (!vsOpt) {
-        return;
-    }
-    C_VoxelSetNew &vs = *vsOpt.value();
-    if (vs.canvasEntity_ != IREntity::kNullEntity && vs.numVoxels_ > 0) {
-        C_VoxelPool &pool = IREntity::getComponent<C_VoxelPool>(vs.canvasEntity_);
-        pool.setTransformIndexForRange(
-            vs.voxelStartIdx_,
-            static_cast<std::size_t>(vs.numVoxels_),
-            IRRender::kVoxelTransformStatic
-        );
-        pool.setVoxelReservedForRange(
-            vs.voxelStartIdx_, static_cast<std::size_t>(vs.numVoxels_), 0u
-        );
-        pool.decrementSO3SetCount();
-    }
-    IRPrefab::VoxelTransform::releaseSlot(vs.gpuTransformSlot_);
-    vs.gpuTransformSlot_ = IRRender::kVoxelTransformStatic;
-    vs.snapTransformOctahedral_ = false;
-}
-
-} // namespace detail
-
 inline void setMode(
     IREntity::EntityId entity,
     IRComponents::RotationMode newMode,
@@ -139,8 +55,7 @@ inline void setMode(
     }
 
     // Exit the current mode's resources first (symmetric teardown), then enter
-    // the new mode. Each mode owns a distinct resource: DETACHED a child canvas,
-    // MAIN_CANVAS_SO3 a GPU transform slot; GRID owns neither.
+    // the new mode. DETACHED owns a per-entity child canvas; GRID owns neither.
     if (current == RotationMode::DETACHED) {
         auto existing = IREntity::getComponentOptional<C_EntityCanvas>(entity);
         if (existing) {
@@ -150,8 +65,6 @@ inline void setMode(
             }
             IREntity::removeComponent<C_EntityCanvas>(entity);
         }
-    } else if (current == RotationMode::MAIN_CANVAS_SO3) {
-        detail::teardownMainCanvasSO3(entity);
     }
 
     if (newMode == RotationMode::DETACHED) {
@@ -163,12 +76,6 @@ inline void setMode(
         if (!existing) {
             IREntity::setComponent(entity, IRPrefab::EntityCanvas::create(canvasName, canvasSize));
         }
-    } else if (newMode == RotationMode::MAIN_CANVAS_SO3) {
-        IR_ASSERT(
-            IRRender::g_renderManager != nullptr,
-            "setMode(MAIN_CANVAS_SO3) requires a live RenderManager"
-        );
-        detail::setupMainCanvasSO3(entity);
     }
     // GRID: no entry work — the exit branch above already released resources.
 

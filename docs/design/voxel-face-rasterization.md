@@ -108,21 +108,33 @@ Interior voxels skip all three branches and do zero `atomicMin` work — a
 throughput win at high voxel counts (a solid 32³ cube does emit work for
 ~6·32² boundary voxels instead of all 32³).
 
-## Per-entity SO(3) (#1272) is the same model, per entity
+## Per-entity SO(3) on the main canvas — RETIRED (#1443)
 
-For an entity with its own SO(3) rotation rendered onto the main canvas, the
-visible triplet is computed in the **entity-local** frame:
-`visibleTriplet(cameraQuat × entityRotation⁻¹)`. The exposed-face mask is the
-same camera-independent per-voxel value. Each entity reads its own
-`FaceRenderContext` triplet from its UBO slot; the deformation matrix in each
-context composes the entity rotation with the camera. No separate render path
-— the main-canvas raster generalizes to per-entity rotation by indexing the
-face-context source per entity.
+> **Status (#1443):** the per-entity visible-triplet + GPU position-transform
+> model described below was implemented as `RotationMode::MAIN_CANVAS_SO3`
+> (#1272 / #1299, PR-A) and then **retired**. Attached main-canvas SO(3) is now
+> the **GRID re-voxelize** model (`RotationMode::GRID` →
+> `SYSTEM_REBUILD_GRID_VOXELS` → `GridRotation::worldCellForGridVoxel`): the
+> entity's rotation only changes *which* world cells are filled, and the
+> **camera alone** drives trixel deformation + visible-face selection (this
+> doc's model, unchanged — the re-voxelized cells are ordinary main-canvas
+> voxels). Per-entity trixel deformation does **not** belong on the main
+> canvas: a tilted-axis `faceDeformationMatrixSO3` cannot be represented under
+> the fixed-(1,1,1) iso-depth-axis invariant (the cube's color drops). Smooth
+> per-entity SO(3) trixel deformation lives on **DETACHED** canvases
+> (camera-zeroed, exempt from the invariant). If per-voxel-identity-preserving
+> *attached* rotation is ever needed, the path is a GPU re-voxelize (fill cells
+> on the GPU under the full rotation), not the retired transform + per-entity
+> face-deform approach. See #1443 for the decision and the removal.
 
-This is why the six-distinct-faces model matters: under arbitrary entity
-rotation, the visible triplet can be any three of the six (e.g. a voxel tipped
-45° around two axes exposes a different triplet than any cardinal). The model
-handles it with no special cases.
+The retired model computed the visible triplet in the **entity-local** frame
+(`visibleTriplet(cameraQuat × entityRotation⁻¹)`), octahedral-snapped the
+orientation to one of the 24 cube orientations, and stamped the resulting
+triplet per-voxel into `C_Voxel::reserved_` so the raster stages read the
+entity's own faces instead of the shared per-canvas `visibleFaceIds_`. The
+six-distinct-faces model below is unchanged — it is still exactly what the
+**camera** uses to pick faces every frame; only the per-entity indexing was
+removed.
 
 ## Relationship to the iso-depth-axis invariant
 
@@ -153,8 +165,9 @@ depth at the framebuffer. See
   independently correct preparatory work and should be kept. The design redirect
   changes what comes next: replace the four options in that PR's NEEDS-DESIGN
   comment with this model.
-- **#1272** — per-entity SO(3) on the main canvas; consumes this model with a
-  per-entity visible triplet.
+- **#1272 / #1299** — per-entity SO(3) on the main canvas (per-entity visible
+  triplet). **Retired in #1443** — attached SO(3) is GRID re-voxelize; see the
+  "Per-entity SO(3) on the main canvas — RETIRED" section above.
 - **#1265** (merged) — camera pitch via quaternion; the visible-triplet resolver
   reads that quaternion, so pitch shifts the triplet for free on detached
   canvases.
@@ -172,6 +185,8 @@ depth at the framebuffer. See
    cardinal.
 4. **Throughput.** Interior voxels emit nothing; measure that a solid cube's
    emit count scales with surface area, not volume.
-5. **Per-entity (when #1272 lands).** A rotated entity on the main canvas
-   renders matched to its detached-canvas equivalent (the #1272 side-by-side
-   demo).
+5. **Attached rotation (GRID).** A rotated entity on the main canvas renders
+   via GRID re-voxelize (`SYSTEM_REBUILD_GRID_VOXELS`) — the camera drives the
+   faces; the entity's rotation only changes which cells fill. Per-entity
+   trixel deformation is DETACHED-only (the MAIN_CANVAS_SO3 path was retired in
+   #1443).

@@ -162,22 +162,6 @@ inline bool faceIsExposed(uint flagsByte, int faceId) {
     return ((flagsByte >> uint(2 + faceId)) & 1u) == 0u;
 }
 
-// Per-voxel SO(3) visible-triplet unpack from C_Voxel::reserved (buffer 6,
-// offset 8). Mirror of `IRComponents::VoxelReservedSO3` /
-// `packVoxelVisibleTriplet` in
-// engine/prefabs/irreden/voxel/components/component_voxel.hpp and of the GLSL
-// helpers in ir_iso_common.glsl — keep all three in lockstep. A MAIN_CANVAS_SO3
-// entity (#1299) stamps its octahedral-snapped visible triplet here; bit 0
-// marks the voxel as carrying a valid triplet.
-inline bool reservedHasSO3(uint reserved) {
-    return (reserved & 1u) != 0u;
-}
-
-// `slot` is the visible-triplet index 0/1/2 (X/Y/Z axis); returns FaceId 0..5.
-inline int unpackReservedFaceId(uint reserved, int slot) {
-    return int((reserved >> uint(1 + slot * 3)) & 0x7u);
-}
-
 inline int3 faceMicroPositionFixed(
     int face,
     int3 voxelPositionFixed,

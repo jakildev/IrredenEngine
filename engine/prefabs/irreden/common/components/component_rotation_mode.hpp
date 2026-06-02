@@ -44,19 +44,17 @@ namespace IRComponents {
 enum class RotationMode : std::uint8_t {
     GRID = 0,
     DETACHED = 1,
-    // MAIN_CANVAS_SO3 (Epic #1272 / #1299, PR-A): rotation lives on the SHARED
-    // main world canvas — no per-entity child canvas. The entity opts its voxel
-    // range into the GPU voxel-position prepass via a transform slot, and the
-    // prepass octahedral-snaps the orientation to one of the 24 cube
-    // orientations, driving both the per-voxel world positions and the per-voxel
-    // visible triplet stamped into `C_Voxel::reserved_`. Steps through the 24
-    // discrete orientations; the continuous residual-deform increment is PR-B
-    // (#1300). Rotated-entity lighting/AO/sun-shadow is scoped to a follow-up
-    // (PR-A.5) per the architect's Option 1C.
-    MAIN_CANVAS_SO3 = 2,
+    // Attached main-canvas SO(3) rotation is the GRID re-voxelize model
+    // (`SYSTEM_REBUILD_GRID_VOXELS`), where the camera alone drives trixel
+    // deformation and the entity's rotation only changes which cells are
+    // filled. The retired `MAIN_CANVAS_SO3` mode (#1272 / #1299) — a GPU
+    // position-transform + octahedral-snap + per-entity visible triplet on the
+    // shared canvas — was removed in #1443: a tilted-axis face deformation
+    // can't be represented under the main canvas's fixed-(1,1,1) iso-depth-axis
+    // invariant, so per-entity trixel deformation lives on DETACHED canvases.
 
     kFirst = GRID,
-    kLast = MAIN_CANVAS_SO3,
+    kLast = DETACHED,
 };
 
 struct C_RotationMode {
