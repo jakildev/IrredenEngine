@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -121,8 +122,20 @@ def _load_manifest(demo_dir: Path) -> dict[str, Any]:
     return data
 
 
+# Full-frame captures are ``screenshot_<6-digit-index>.png``. ROI crop files
+# share the prefix but append ``_<shotLabel>__crop_<crop>.png`` (see
+# VideoManager::writePendingRoiCrops). A bare ``screenshot_*.png`` glob matches
+# both, and since ``.`` < ``_`` the crops sort *between* full frames — so the
+# first-N slice below would pick 128x128 crops as full shots. Match the
+# index-only form so crops never enter the shot->reference mapping.
+_FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
+
+
 def _collect_shots(shots_dir: Path, num_shots: int) -> list[Path]:
-    shots = sorted(shots_dir.glob("screenshot_*.png"))
+    shots = sorted(
+        p for p in shots_dir.glob("screenshot_*.png")
+        if _FULL_FRAME_RE.fullmatch(p.name)
+    )
     if len(shots) < num_shots:
         raise SystemExit(
             f"expected {num_shots} screenshots in {shots_dir}, got {len(shots)}"
