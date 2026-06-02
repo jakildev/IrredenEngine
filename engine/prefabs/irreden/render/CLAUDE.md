@@ -26,6 +26,16 @@ the ECS surface.
   light-volume + Lambert) at trixel resolution before the scatter, adding
   per-axis `ao_` / `sunShadow_` textures with the same rotation-only
   lifecycle (the world sun-shadow map + 128³ light volume stay shared).
+  **Per-axis subdivision-density cap (#1431):** the face-local store is a
+  `world × subPerAxis` integer lattice, but the canvas is sized to the
+  base-resolution footprint and does NOT scale with the subdivision factor —
+  a large `effSub` (high `voxel_render_subdivisions` or zoom) overflows the
+  canvas and on-screen faces clip to background. Every per-axis pass (store,
+  AO, sun-shadow, lighting, the framebuffer scatter) MUST therefore use the
+  CAPPED density from `IRPrefab::PerAxisCanvas::subdivisionDensity()` — the
+  store and the lighting/scatter recovery share that one scale through
+  `voxelRenderOptions.y` so cells map back to world consistently. A new
+  per-axis pass (e.g. the SDF-per-axis follow-up) must cap the same way.
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also

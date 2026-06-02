@@ -300,6 +300,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // mode or effective subdivisions change.
     int previousRenderMode_ = -1;
     int previousEffectiveSubdivisions_ = -1;
+    // One-shot per-axis subdivision-cap warn throttle (#1431). Latches the last
+    // (effSub, capped) pair logged so the "cap engaged, sub-voxel detail lost
+    // while rotating" warning fires once per distinct cap transition rather than
+    // every frame — mirrors the light-volume out-of-range one-shot warn.
+    int previousCapWarnEffSub_ = -1;
+    int previousCapWarnDensity_ = -1;
     // Last canvas whose position SSBO contents were written to
     // `voxelPosBuf_`. Positions are otherwise pushed at mutation time by
     // `UPDATE_VOXEL_SET_CHILDREN`; we still need a per-canvas full
@@ -342,6 +348,31 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // overwrites, so the buffer is restored byte-for-byte on exit.
         const ivec2 mainOffsetZ1 = frameData_.trixelCanvasOffsetZ1_;
         const ivec2 mainCanvasSize = frameData_.canvasSizePixels_;
+        const int uncappedSub = frameData_.voxelRenderOptions_.y;
+
+        // Cap the per-axis lattice density so face-local cells stay inside the
+        // bounded per-axis canvas (#1431). The canvas isn't sized for the
+        // ×subPerAxis lattice, so a large effSub (high voxel_render_subdivisions
+        // or zoom) overflows it and on-screen faces are silently clipped to
+        // background. The capped value rides in voxelRenderOptions_.y so the
+        // store shader (subPerAxis + trixelFrameOffset), the per-axis AO/lighting
+        // world recovery, and the framebuffer scatter all share one consistent
+        // world↔cell scale. Restored to uncappedSub on exit (cardinal /
+        // single-canvas / detached paths are unaffected).
+        const int cappedSub = IRPrefab::PerAxisCanvas::subdivisionDensity();
+        frameData_.voxelRenderOptions_.y = cappedSub;
+        if (cappedSub < uncappedSub &&
+            (uncappedSub != previousCapWarnEffSub_ || cappedSub != previousCapWarnDensity_)) {
+            IRE_LOG_INFO(
+                "Per-axis Z-yaw store: subdivision density capped {} -> {} so "
+                "on-screen voxel faces aren't clipped by the bounded per-axis "
+                "canvas (#1431); sub-voxel detail reduced while rotating only.",
+                uncappedSub,
+                cappedSub
+            );
+            previousCapWarnEffSub_ = uncappedSub;
+            previousCapWarnDensity_ = cappedSub;
+        }
 
         const ivec2 perAxisOffsetZ1 = IRMath::trixelOriginOffsetZ1(axes.size_);
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
@@ -383,6 +414,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameData_.perAxisRoute_ = 0;
         frameData_.trixelCanvasOffsetZ1_ = mainOffsetZ1;
         frameData_.canvasSizePixels_ = mainCanvasSize;
+        frameData_.voxelRenderOptions_.y = uncappedSub;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
     }
 

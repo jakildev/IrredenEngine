@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
@@ -189,8 +190,17 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const ivec2 mainCanvasSize,
         const vec2 framebufferResolution
     ) {
-        const vec2 zoomEff =
-            frameData.frameData_.canvasZoomLevel_ * vec2(axes.size_) / vec2(mainCanvasSize);
+        // #1431: the per-axis store wrote its face-local lattice at the CAPPED
+        // density (subPerAxis), not the raw effSub baked into canvasZoomLevel_
+        // (= baseZoom / effSub). The scatter recovers cell origins in those
+        // capped lattice units, so the model matrix must un-scale by the capped
+        // density too: rescale zoomEff by effSub/cappedDensity (= 1 when the cap
+        // doesn't bite, so the cardinal / un-capped path is unchanged).
+        const int effSub = IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
+        const int cappedDensity = IRPrefab::PerAxisCanvas::subdivisionDensity();
+        const float densityRescale = static_cast<float>(effSub) / static_cast<float>(cappedDensity);
+        const vec2 zoomEff = frameData.frameData_.canvasZoomLevel_ * densityRescale *
+                             vec2(axes.size_) / vec2(mainCanvasSize);
         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                          calcModelMatrix(
                                              framebufferResolution,
@@ -208,10 +218,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const auto cardinalIndex =
             IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
+        // perAxisBase MUST match the store's trixelFrameOffset, which now uses
+        // the #1431-capped density (in voxelRenderOptions.y) — so the scatter's
+        // face-origin recovery (faceLocalAnchor/faceLocalBase) is bit-consistent
+        // with where the cells were written. NONE mode stores at world scale
+        // (effectiveTrixelSubdivisionScale == 1 when renderMode == NONE).
         const int subdivisionScale =
-            IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
-                ? IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1)
-                : 1;
+            IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE ? cappedDensity : 1;
         const vec2 cameraIso = IRRender::getEffectiveCameraIso();
         frameData.frameData_.perAxisBase_ =
             IRMath::trixelOriginOffsetZ1(axes.size_) +

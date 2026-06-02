@@ -22,6 +22,7 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -92,6 +93,12 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         const int kPerAxisRoute = 1;
         voxelFrameDataBuf_
             ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
+        // Recover world-pos with the SAME #1431-capped lattice density the store
+        // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRPrefab::PerAxisCanvas::subdivisionDensity()
+        );
         const int groupsX = IRMath::divCeil(axes.size_.x, kComputeSunShadowGroupSize);
         const int groupsY = IRMath::divCeil(axes.size_.y, kComputeSunShadowGroupSize);
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
@@ -110,6 +117,11 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
             offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
             sizeof(int),
             &kSingleCanvasRoute
+        );
+        // Restore the uncapped density for downstream single-canvas passes.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRRender::getVoxelRenderEffectiveSubdivisions()
         );
         // Restore the main-canvas image bindings (see the #1311 note in
         // system_compute_voxel_ao.hpp — the persistent Metal image-binding table

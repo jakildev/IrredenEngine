@@ -1375,6 +1375,53 @@ inline ivec2 perAxisTrixelCanvasWorstCaseSize(
     return ivec2{static_cast<int>(ceil(W * scaleX)), static_cast<int>(ceil(boundsY))};
 }
 
+/// Per-axis lattice-density cap for the smooth-camera-Z-yaw store (#1431).
+///
+/// The per-axis store (`c_voxel_to_trixel_stage_1`, `perAxisRoute != 0`) writes
+/// each voxel face into a face-local integer lattice at `world × subPerAxis`,
+/// keyed at `canvasHalf + inPlane(worldDisp) × subPerAxis` (see
+/// `ir_iso_common.glsl` `faceLocalBase`/`faceInPlaneCoords`). The canvas is
+/// sized once to the base-resolution rotated footprint
+/// (@ref perAxisTrixelCanvasWorstCaseSize) and does NOT scale with
+/// `subPerAxis`, so a large `subPerAxis` (high `voxel_render_subdivisions`, or
+/// high zoom — both fold into `effSub`) drives on-screen cells past
+/// `canvasSize` and `isInsideCanvas` silently drops them: the #1431 black-hole
+/// clip. This caps `subPerAxis` so the worst-case on-screen cell stays inside
+/// the canvas:
+///
+///     subPerAxisCapped = min(effSub, floor( canvasHalf / maxOnScreenWorldDisp ))
+///
+/// `maxOnScreenWorldDisp` is the largest in-plane world displacement of an
+/// on-screen voxel from the camera-tracked anchor: the visible cardinal-iso
+/// half-extent (`cardinalExtent / 2·zoom`) inverted to world on the depth-0
+/// plane (the `isoPixelToPos3D` closed form: `|wx|,|wy| ≤ isoHalf.x/2 +
+/// isoHalf.y/6`, `|wz| ≤ isoHalf.y/3`), grown by the √2 residual-yaw rotation
+/// footprint the canvas was sized for (@ref kSqrt2). The cap MUST be computed
+/// CPU-side: `effSub = clamp(m_vrs × round(zoom), 1, 16)` conflates subdivision
+/// and zoom, so a shader given only `effSub` + `canvasSize` cannot recover the
+/// zoom-dependent on-screen extent — the host knows `zoom` and feeds the capped
+/// value through `voxelRenderOptions.y` so the store, the framebuffer scatter,
+/// and the per-axis AO/lighting recovery all share one consistent world↔cell
+/// scale. Returns ≥ 1.
+inline int perAxisSubdivisionCap(const ivec2 cardinalExtent, const vec2 zoom) {
+    const float W = static_cast<float>(cardinalExtent.x);
+    const float H = static_cast<float>(cardinalExtent.y);
+    const ivec2 canvasSize = perAxisTrixelCanvasWorstCaseSize(cardinalExtent);
+    // Smaller zoom ⇒ larger visible extent ⇒ tighter cap; clamp away from 0.
+    const float isoHalfX = W / (2.0f * max(zoom.x, 1e-3f));
+    const float isoHalfY = H / (2.0f * max(zoom.y, 1e-3f));
+    // Depth-0 inverse of isoPixelToPos3D over the visible iso rect. The canvas
+    // X axis stores an in-plane x/y world axis; the Y axis stores z (X/Y faces)
+    // or x/y (Z face) — bound each by the larger candidate.
+    const float maxInPlaneXY = 0.5f * isoHalfX + isoHalfY / 6.0f;
+    const float maxInPlaneZ = isoHalfY / 3.0f;
+    const float maxDispX = maxInPlaneXY;
+    const float maxDispY = max(maxInPlaneZ, maxInPlaneXY);
+    const float capX = (0.5f * static_cast<float>(canvasSize.x)) / (kSqrt2 * maxDispX);
+    const float capY = (0.5f * static_cast<float>(canvasSize.y)) / (kSqrt2 * maxDispY);
+    return max(static_cast<int>(floor(min(capX, capY))), 1);
+}
+
 /// Returns the screen-pixel size of one iso triangle at the given zoom and
 /// pixel scale.  Used by the trixel-to-framebuffer stage to map iso offsets
 /// to screen offsets.
