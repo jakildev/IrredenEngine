@@ -458,6 +458,61 @@ scoped in #1300. **Camera-smooth-yaw and per-entity-smooth-rotation are two
 different mechanisms**; do not try to force #1272 through the three-axis-canvas
 split.
 
+## Detached per-entity SO(3) reuses this machinery (epic #1444)
+
+The per-entity smooth-rotation mechanism the section above defers to —
+**detached canvases** — is itself generalized onto this same three-per-axis
+split by epic #1444 (`~/.fleet/plans/issue-1444.md`). Where the camera path has
+**one global** Z-yaw split into a cardinal + a residual in `[−π/4, π/4]`, a
+rotating detached entity has its **own SO(3)** rotation split into an
+**octahedral snap** (one of 24, the cardinal-snap analogue — a cube is
+invariant under it) + a **residual** bounded by the octahedral covering radius
+(`IRMath::octahedralSnapResidual`). Each detached entity then drives its own
+three per-axis canvases off *its* residual, exactly as the main canvas does off
+the camera residual. The composite (#1464, P3) is the SO(3) generalization of
+the camera path's forward-scatter.
+
+**Reposition helper (#1463, P2).** The camera path repositions voxel centers
+with `pos3DtoPos2DIsoYawed(worldPos, visualYaw) = iso(R_z(−yaw)·world)` (1-DOF).
+The detached path repositions with the SO(3) companion
+`pos3DtoPos2DIsoRotated(modelPos, residual) = iso(R_residual·modelPos)` — same
+shape, an arbitrary-axis quaternion in place of the Z-only yaw. Both have GLSL +
+Metal mirrors (`rotateByQuat` then the shared iso columns) kept CPU↔GPU
+bit-identical; at identity rotation the helper is exactly `pos3DtoPos2DIso`, and
+a pure-Z quaternion `qZ(θ)` reduces to `pos3DtoPos2DIsoYawed(·, −θ)` (the
+entity-rotation sign is opposite the camera-residual sign, matching
+`faceDeformationMatrixSO3`).
+
+**Allocation policy + memory bound (#1463, P2).** `C_PerAxisTrixelCanvases` is
+now bundled on **every** voxel-pool canvas by `Prefab<kVoxelPoolCanvas>` (main
+canvas + every detached entity), default-constructed inert — a static / cardinal
+canvas pays only the component slot, no GPU textures. Two once-per-frame gates in
+`VOXEL_TO_TRIXEL_STAGE_1::beginTick` drive the lazy allocation:
+
+- `IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw()` — the **main** canvas,
+  gated on the camera residual yaw (unchanged from T1).
+- `IRPrefab::PerAxisCanvas::syncAllocationToDetachedEntities()` — every
+  **detached** entity (`C_CanvasLocalRotation::isDetached()`), gated on its
+  octahedral-snap residual magnitude (`> kDetachedResidualDeadband`). At an
+  octahedral snap the single-canvas `faceDeformationMatrixSO3` deform is already
+  exact, so the textures stay released and the detached raster is byte-identical.
+
+  **Memory is the bound.** Each allocation is 3 axis canvases × 5 textures
+  (color / distance / entity-id / AO / sun-shadow) sized to that entity's
+  worst-case trixel canvas, so peak cost scales with the number of
+  *simultaneously rotating* detached entities. That is capped at
+  `kMaxDetachedRotatingCanvases` (currently 8). **Eviction:** entities
+  encountered first in archetype-iteration order win the budget; an entity past
+  the cap (or one that returns to a snap) has its textures **released** and keeps
+  rendering through the single-canvas octahedral-snap + `faceDeformationMatrixSO3`
+  path — graceful degradation (blockier off-snap deform), never a crash or a
+  leak. Allocation only transitions on rotation start / stop, so a full spin
+  allocates once and frees once.
+
+P2 (#1463) is **infrastructure only** — it stands up and bounds the textures and
+adds the reposition helper, but routes no faces into them, so the rendered frame
+is byte-identical; the P3 forward-scatter composite (#1464) is what reads them.
+
 ## Open decisions (resolve during implementation)
 
 - **Lighting / AO placement. — RESOLVED (T4 / #1311): trixel-level per-axis.**

@@ -656,6 +656,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // T2 (#1309) routing will write into.
         IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw();
 
+        // Same lazy lifecycle for DETACHED entities rotating off an octahedral
+        // snap (per-entity SO(3), #1463), bounded by kMaxDetachedRotatingCanvases.
+        // Infrastructure only — no faces route into these textures yet (the P3
+        // forward-scatter composite, #1464, consumes them), so the frame stays
+        // byte-identical and a non-rotating / cardinal scene pays nothing.
+        IRPrefab::PerAxisCanvas::syncAllocationToDetachedEntities();
+
         // Resolve the main canvas's per-axis trixel canvases once per frame for
         // the per-entity tick to consume without a getComponent on its own
         // iterating canvas (#1309). Re-resolved every frame; never held across
