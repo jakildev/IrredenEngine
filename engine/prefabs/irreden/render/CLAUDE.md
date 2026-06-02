@@ -79,9 +79,10 @@ the ECS surface.
 - `C_ActiveLodLevel` — singleton row written by `LOD_UPDATE` each frame
   with the camera-zoom-derived `IRRender::LodLevel`. Read by
   `SHAPES_TO_TRIXEL` at `beginTick` to filter `C_ShapeDescriptor`
-  entities whose `lodMin_` is below the active tier (i.e. requested
-  more detail than the camera is providing). Phase 1 of the LOD story;
-  see `docs/design/lod-strategy.md`.
+  entities whose inclusive `[lodMax_ .. lodMin_]` band excludes the
+  active tier (too-fine or too-coarse for the camera's zoom). Disjoint
+  bands across co-located variants give exclusive swap-not-stack LOD
+  (#1467). Phase 1 of the LOD story; see `docs/design/lod-strategy.md`.
 
 ## Key systems
 
@@ -137,17 +138,21 @@ story (`docs/design/lod-strategy.md`). Each frame it snapshots
 `IRRender::getCameraZoom()`, maps it through
 `lod_utils.hpp::computeLodLevel()`, and writes the result into the
 `C_ActiveLodLevel` singleton. `SHAPES_TO_TRIXEL` reads the singleton
-at `beginTick` and skips `C_ShapeDescriptor` rows whose `lodMin_` is
-below the active tier — purely a CPU-side filter ahead of the yaw /
-cull-bounds math, no GPU staging cost for culled shapes, no shader
-change. `LodLevel` indexes go DOWN as detail goes UP (`LOD_0` =
-highest detail at zoom ≥ 16, `LOD_4` = silhouette tier always
-drawn), and a shape's default `lodMin_ = LOD_4` means an unmarked
-shape renders at every zoom. Register before `PROPAGATE_TRANSFORM`
-in the UPDATE pipeline so the singleton is current by the time
-RENDER ticks. Phase 1 only filters `SHAPES_TO_TRIXEL`; DENSE-mode
-voxel LOD, rig LOD, and multi-tier `.vxs` composition are out of
-scope.
+at `beginTick` and draws each `C_ShapeDescriptor` row only when the
+active tier falls inside its inclusive LOD band `[lodMax_ .. lodMin_]`
+(`shouldSkipAtLod` in `lod_utils.hpp`) — purely a CPU-side filter ahead
+of the yaw / cull-bounds math, no GPU staging cost for culled shapes,
+no shader change. `LodLevel` indexes go DOWN as detail goes UP (`LOD_0`
+= highest detail at zoom ≥ 16, `LOD_4` = silhouette tier always drawn);
+the band defaults (`lodMin_ = LOD_4`, `lodMax_ = LOD_0`) span the whole
+range, so an unmarked shape renders at every zoom — byte-identical to
+the pre-band single-sided filter. Co-located variants authored with
+**disjoint** bands render exclusively: exactly one per zoom, swapping
+in place instead of stacking (the #1467 fix — additive co-location
+z-fought and read as glitchy). Register before `PROPAGATE_TRANSFORM` in
+the UPDATE pipeline so the singleton is current by the time RENDER
+ticks. Filters `SHAPES_TO_TRIXEL` only; DENSE-mode voxel LOD, rig LOD,
+and multi-tier `.vxs` composition are out of scope.
 
 ## Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3)
 

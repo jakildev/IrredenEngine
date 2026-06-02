@@ -21,7 +21,9 @@ template <> inline void bindLuaType<IRComponents::C_ShapeDescriptor>(LuaScript &
         "flags",
         &IRComponents::C_ShapeDescriptor::flags_,
         "lodMin",
-        &IRComponents::C_ShapeDescriptor::lodMin_
+        &IRComponents::C_ShapeDescriptor::lodMin_,
+        "lodMax",
+        &IRComponents::C_ShapeDescriptor::lodMax_
     );
 }
 } // namespace IRScript

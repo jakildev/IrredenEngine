@@ -79,15 +79,16 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     float yawSinVisual_ = 0.0f;
     // LOD tier snapshotted at beginTick from the C_ActiveLodLevel singleton
     // (written by LOD_UPDATE in UPDATE phase). Per-entity tick skips shapes
-    // whose lodMin_ < activeLod_ — those are too-fine-grained for this
-    // frame's zoom. Defaults to LOD_4 (no culling) so creations that don't
-    // register LOD_UPDATE keep their pre-LOD behavior.
+    // whose [lodMax_ .. lodMin_] band does not contain activeLod_ — they want
+    // more (or less) detail than this frame's zoom provides. Defaults to LOD_4
+    // (no culling) so creations that don't register LOD_UPDATE keep their
+    // pre-LOD behavior.
     IRRender::LodLevel activeLod_ = IRRender::LodLevel::LOD_4;
 
     void tick(
         IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
     ) {
-        if (IRRender::shouldSkipAtLod(shape.lodMin_, activeLod_)) {
+        if (IRRender::shouldSkipAtLod(shape.lodMin_, shape.lodMax_, activeLod_)) {
             return;
         }
         if (cullBounds_.has_value()) {
