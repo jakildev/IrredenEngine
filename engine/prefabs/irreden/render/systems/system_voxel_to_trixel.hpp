@@ -603,20 +603,32 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
-        // Smooth camera Z-yaw (T3 / #1310): while the main canvas's per-axis
-        // canvases are active, SKIP the single-canvas voxel rasterization. The
-        // per-axis dispatch below writes the voxels (smooth), and the
-        // framebuffer scatter composites them; rasterizing the cardinal-snapped
+        // Detached entity with allocated per-axis canvases (rotating off an
+        // octahedral snap) → its smooth voxels are forward-scattered to the
+        // framebuffer by ENTITY_CANVAS_TO_FRAMEBUFFER (P3b / #1475). Resolve the
+        // lookup once: it gates BOTH the single-canvas skip just below and the
+        // per-axis store dispatch later in this tick. Null for the main canvas
+        // (not detached) and for at-snap detached entities (no allocation).
+        C_PerAxisTrixelCanvases *detachedAxes =
+            canvasLocalRotation.isDetached() ? lookupDetachedPerAxis(entity) : nullptr;
+
+        // Smooth camera Z-yaw (T3 / #1310) + detached SO(3) (P3b / #1475): while
+        // the per-axis canvases are active, SKIP the single-canvas voxel
+        // rasterization. The per-axis dispatch below writes the voxels (smooth),
+        // and the framebuffer scatter composites them; rasterizing the snapped
         // voxels into the single canvas too would double-draw them (the single
         // canvas is composited for its SDF / overlay content, which sits at the
-        // SAME world depth as the smooth copies → snapped ghosts). Skipping
-        // leaves the single canvas holding only SHAPES_TO_TRIXEL / text /
-        // overlay content, which the scatter path composites alongside the
-        // smooth voxels. The compact pass above still runs (the per-axis
-        // dispatch reuses its compacted-voxel list).
-        const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
-                                            perAxisCanvases_ != nullptr &&
-                                            perAxisCanvases_->isAllocated();
+        // SAME depth as the smooth copies → snapped ghosts). Skipping leaves the
+        // single canvas holding only SHAPES_TO_TRIXEL / text / overlay content,
+        // which the composite draws alongside the smooth voxels. The compact pass
+        // above still runs (the per-axis dispatch reuses its compacted list). For
+        // a detached entity, skipping retires its off-snap octahedral
+        // single-canvas emit (P3a left it ADDITIVE); the at-snap path
+        // (detachedAxes == nullptr) still emits + blits, byte-identical to master.
+        const bool skipSingleCanvasVoxels =
+            (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
+             perAxisCanvases_->isAllocated()) ||
+            detachedAxes != nullptr;
         if (!skipSingleCanvasVoxels) {
             stage1Program_->use();
             triangleCanvasTextures.getTextureDistances()
@@ -654,28 +666,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
             dispatchPerAxisCanvases(*perAxisCanvases_);
-        } else if (canvasLocalRotation.isDetached()) {
-            // Detached entity SO(3) per-axis store (P3a / #1464). Route this
-            // entity's visible model-space faces into its OWN per-axis canvases
-            // — the SO(3) generalization of the camera-yaw store above. The
-            // store path is shared (perAxisRoute != 0 in the shaders): the
-            // detached frame data buildVoxelFrameData set this tick (model-frame
-            // visibleFaceIds_ from visibleTriplet, isDetachedCanvas_, the model
-            // iso depth axis) flows through unchanged, so each face is stored in
-            // its model-axis face-local lattice keyed on pos3DtoDistance — the
-            // exact origin-recovery key faceOriginFromInPlane consumes at scatter
-            // time (P3b / #1475, which applies the residual reposition).
-            //
-            // Purely ADDITIVE: the single-canvas octahedral emit above still
-            // renders this entity (skipSingleCanvasVoxels is main-canvas-only),
-            // so the populated per-axis textures are not yet consumed and the
-            // frame is byte-identical until P3b reads them. Only fires when the
-            // entity is rotating off an octahedral snap (textures allocated in
-            // beginTick by syncAllocationToDetachedEntities); at a snap / identity
-            // nothing is allocated, so lookup returns null → byte-identical.
-            if (C_PerAxisTrixelCanvases *detachedAxes = lookupDetachedPerAxis(entity)) {
-                dispatchPerAxisCanvases(*detachedAxes);
-            }
+        } else if (detachedAxes != nullptr) {
+            // Detached entity SO(3) per-axis store (P3a / #1464) → consumed by
+            // the P3b (#1475) framebuffer forward-scatter. Route this entity's
+            // visible model-space faces into its OWN per-axis canvases — the
+            // SO(3) generalization of the camera-yaw store above. The store path
+            // is shared (perAxisRoute != 0 in the shaders): the detached frame
+            // data buildVoxelFrameData set this tick (model-frame visibleFaceIds_
+            // from visibleTriplet, isDetachedCanvas_, the model iso depth axis)
+            // flows through unchanged, so each face is stored in its model-axis
+            // face-local lattice keyed on pos3DtoDistance — the exact
+            // origin-recovery key faceOriginFromInPlane consumes at scatter time.
+            // The single-canvas octahedral emit was skipped above
+            // (skipSingleCanvasVoxels), so these per-axis textures are now the
+            // sole render path for this off-snap entity (no double-draw). Only
+            // fires off an octahedral snap (textures allocated in beginTick by
+            // syncAllocationToDetachedEntities); at a snap / identity detachedAxes
+            // is null → single-canvas emit + blit, byte-identical to master.
+            dispatchPerAxisCanvases(*detachedAxes);
         }
     }
 

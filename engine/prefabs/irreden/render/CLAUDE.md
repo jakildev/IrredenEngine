@@ -26,9 +26,13 @@ the ECS surface.
   `faceDeformationMatrixSO3` path). Both free at the snap/cardinal so a static
   scene is byte-identical (fast path). A rotating detached entity's visible
   faces are written into its own per-axis canvases by the model-space
-  face-local store (#1464, P3a) — additive, so the single-canvas octahedral emit
-  still renders the entity and the frame is unchanged until the resolve-scatter
-  that consumes them lands in P3b (#1475). For the **main world canvas**, T2
+  face-local store (#1464, P3a). P3b (#1475) is the consumer:
+  `ENTITY_CANVAS_TO_FRAMEBUFFER` forward-scatters those per-axis canvases to the
+  framebuffer (`PerAxisScatterDetachedProgram`, GL_LESS) under the entity's
+  octahedral-snap residual (`pos3DtoPos2DIsoRotated`), the SO(3) analog of the
+  camera path's `drawPerAxisScatter`; `VOXEL_TO_TRIXEL_STAGE_1` retires the
+  off-snap octahedral single-canvas emit for those entities (no double-draw),
+  keeping the at-snap emit + blit byte-identical. For the **main world canvas**, T2
   (#1309) routes each visible voxel face into its axis canvas with continuous
   (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; T3
   (#1310) composites the three by depth-tested forward scatter at the
