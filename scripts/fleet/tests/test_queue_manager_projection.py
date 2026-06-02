@@ -26,10 +26,12 @@ project_queue_manager = _mod.project_queue_manager
 slice_queue_manager = _mod.slice_queue_manager
 project_queue_manager_ingest = _mod.project_queue_manager_ingest
 slice_queue_manager_ingest = _mod.slice_queue_manager_ingest
+resolve_human_approved_blockers = _mod.resolve_human_approved_blockers
 stable_hash = _mod.stable_hash
 
 
-def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None):
+def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None,
+           engine_closed=None):
     """Build a minimal scout-state dict with the fields the projection reads."""
     return {
         "repos": {
@@ -37,7 +39,7 @@ def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None):
                 "needs_plan": [],
                 "human_approved": engine_human_approved or [],
                 "tasks": {"open": [], "in_progress": [], "done": engine_done or []},
-                "closed_fleet_queued": [],
+                "closed_fleet_queued": engine_closed or [],
                 "recent_merged_prs": engine_merged or [],
             },
         },
@@ -205,6 +207,98 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         out = slice_queue_manager_ingest(_state(engine_human_approved=parked))
         self.assertEqual(out["pending_issues"], [],
                          "needs-human issue must be absent from pending_issues slice")
+
+
+class IngestHonorsBlockedBy(unittest.TestCase):
+    """resolve_human_approved_blockers() flags issues whose `**Blocked by:**`
+    predecessors are still open; the ingest projector + slicer then exclude
+    them, so a freshly-filed stacked epic only queues its head until each
+    blocker closes (#1476)."""
+
+    def _resolved(self, *, human_approved, closed=None, merged=None):
+        st = _state(engine_human_approved=human_approved,
+                    engine_closed=closed, engine_merged=merged)
+        resolve_human_approved_blockers(st)
+        return st
+
+    def test_open_blocker_marks_issue_blocked(self):
+        st = self._resolved(human_approved=[
+            {"number": 801, "title": "child", "labels": ["human:approved"],
+             "body": "**Model:** opus\n**Blocked by:** #800"},
+        ])
+        issue = st["repos"]["engine"]["human_approved"][0]
+        self.assertTrue(issue["blocked"], "open predecessor must mark child blocked")
+        self.assertNotIn("body", issue, "body must be stripped after resolution")
+
+    def test_closed_blocker_clears_blocked(self):
+        st = self._resolved(
+            human_approved=[
+                {"number": 801, "title": "child", "labels": ["human:approved"],
+                 "body": "**Model:** opus\n**Blocked by:** #800"},
+            ],
+            closed=[{"number": 800, "title": "head"}],
+        )
+        self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"],
+                         "predecessor in closed_fleet_queued must clear blocked")
+
+    def test_merged_head_pr_clears_blocked(self):
+        # A merged `claude/<N>-*` head satisfies the blocker the same way
+        # resolve_blocked_by() treats it, even before the issue's CLOSED state
+        # has propagated into closed_fleet_queued.
+        st = self._resolved(
+            human_approved=[
+                {"number": 811, "title": "child", "labels": ["human:approved"],
+                 "body": "**Blocked by:** #810"},
+            ],
+            merged=[{"number": 950, "title": "T", "headRefName": "claude/810-head",
+                     "baseRefName": "master", "mergedAt": "2026-06-01T00:00:00Z"}],
+        )
+        self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"],
+                         "a merged claude/810-* head must clear the child's blocker")
+
+    def test_no_blocker_is_not_blocked(self):
+        st = self._resolved(human_approved=[
+            {"number": 801, "title": "head", "labels": ["human:approved"],
+             "body": "**Model:** opus\n**Blocked by:** (none)"},
+        ])
+        self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"])
+
+    def test_prose_only_blocker_holds_child(self):
+        # A blocker named only in prose with no resolvable #N (e.g. a redesign)
+        # must hold the child back — matches resolve_blocked_by.
+        st = self._resolved(human_approved=[
+            {"number": 801, "title": "child", "labels": ["human:approved"],
+             "body": "## Blocked on the lighting redesign PR\n\n**Model:** opus"},
+        ])
+        self.assertTrue(st["repos"]["engine"]["human_approved"][0]["blocked"])
+
+    def test_blocked_child_excluded_from_projection_and_slice(self):
+        st = self._resolved(human_approved=[
+            {"number": 810, "title": "head", "labels": ["human:approved"],
+             "body": "**Blocked by:** (none)"},
+            {"number": 811, "title": "child", "labels": ["human:approved"],
+             "body": "**Blocked by:** #810"},
+        ])
+        proj_nums = [i["issue"] for i in project_queue_manager_ingest(st)]
+        self.assertIn(810, proj_nums, "workable head must contribute to the hash")
+        self.assertNotIn(811, proj_nums, "blocked child must not contribute to the hash")
+        slice_nums = [i["number"] for i in slice_queue_manager_ingest(st)["pending_issues"]]
+        self.assertIn(810, slice_nums)
+        self.assertNotIn(811, slice_nums)
+
+    def test_unblock_flips_hash(self):
+        # The crux of #1476: when the head closes, the child becomes workable,
+        # re-enters the ingest set, and the trigger hash flips so the scout
+        # re-fires fleet-queue-ingest to queue it.
+        child = {"number": 811, "title": "child", "labels": ["human:approved"],
+                 "body": "**Blocked by:** #810"}
+        blocked = self._resolved(human_approved=[dict(child)])
+        unblocked = self._resolved(human_approved=[dict(child)],
+                                   closed=[{"number": 810, "title": "head"}])
+        self.assertNotEqual(
+            stable_hash(project_queue_manager_ingest(blocked)),
+            stable_hash(project_queue_manager_ingest(unblocked)),
+            "closing the blocker must flip the ingest hash so ingest re-fires")
 
 
 if __name__ == "__main__":

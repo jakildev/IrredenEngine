@@ -105,6 +105,15 @@ coordination mechanisms prevent duplicate work:
   re-check immediately before each `gh issue edit` so two hosts that
   observe the same `human:approved` issue converge without duplicate
   label additions.
+- **Blocked-by gating (#1476):** ingest stamps `fleet:queued` only when
+  every `**Blocked by:** #N` predecessor is closed. A freshly-filed
+  stacked epic therefore shows only its head queued; each child is queued
+  as its blocker closes. The scout's ingest projection keeps blocked
+  children out of the pending set (so the trigger re-fires when a blocker
+  closes), and `fleet-queue-ingest` does an authoritative live
+  `gh issue view <ref> --json state` re-check before it stamps. This makes
+  the label honest — `fleet-claim` already enforced Blocked-by at claim
+  time, but the label previously showed every child queued at once.
 
 **Review claiming:**
 - Review claims use `fleet:reviewing-<host>-<agent>` labels on PRs via
