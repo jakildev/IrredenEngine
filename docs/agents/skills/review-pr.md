@@ -21,6 +21,8 @@ Wherever a step needs a repo-specific value it names a **delta key** in bold.
 | Delta key | What it is | Engine value |
 |---|---|---|
 | **repo** | The `gh --repo` slug / `gh api repos/<repo>` path. | `jakildev/IrredenEngine` |
+| **claim tool** | The fleet claim/release helper. | `fleet-claim` |
+| **default branch** | The repo's main branch (step-1c base check). | `master` |
 | **review checklist** | The repo's domain-specific review items (step 4). | the engine checklist in the wrapper |
 | **smoke procedure** | Cross-host/backend validation tagging, if any. | the wrapper's `procedures/cross-host-smoke.md` |
 | **re-review procedure** | The repo's re-review expansion. | the wrapper's `procedures/re-review.md` |
