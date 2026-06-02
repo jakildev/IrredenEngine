@@ -8,7 +8,22 @@
     "zoom4_origin",
     "zoom1_odd_offset",
     "zoom8_origin",
-    "zoom4_offset_3_5"
+    "zoom4_offset_3_5",
+    "zoom16_lod_fine_sphere",
+    "lod_swap_zoom1_cube",
+    "lod_swap_zoom2_cube",
+    "lod_swap_zoom4_cone",
+    "lod_swap_zoom8_cone",
+    "lod_swap_zoom16_sphere",
+    "zoom4_yaw90",
+    "zoom4_yaw180",
+    "zoom4_yaw270",
+    "zoom4_yaw45_inter_cardinal",
+    "zoom8_yaw180",
+    "zoom4_pan16_yaw0_pivot",
+    "zoom4_pan16_yaw90_pivot",
+    "zoom4_pan16_yaw180_pivot",
+    "zoom4_pan16_yaw45_pivot"
   ],
   "thresholds": {
     "per_pixel_tol": 8,
@@ -16,5 +31,5 @@
     "max_delta": 64,
     "psnr_db": 35.0
   },
-  "notes": "Shot order mirrors the g_shots[] table in main.cpp. Each shot produces one screenshot_NNNNNN.png in order — the Nth entry here maps to the Nth screenshot by numeric index. Reference PNGs live in sibling subdirs named after the CMake preset (e.g. macos-debug/, linux-debug/) since GL and Metal produce pixel-different output."
+  "notes": "Shot order mirrors the kShots[] table in main.cpp. Each full-frame shot produces one screenshot_NNNNNN.png in order — the Nth entry here maps to the Nth full-frame screenshot by numeric index. ROI crop captures (screenshot_NNNNNN_<label>__crop_*.png) are inspection-only and are NOT part of the comparison set; render-verify's _collect_shots filters them out, so this list must enumerate only the full-frame shots. Reference PNGs live in sibling subdirs named after the CMake preset (e.g. macos-debug/, linux-debug/) since GL and Metal produce pixel-different output."
 }
