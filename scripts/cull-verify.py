@@ -195,6 +195,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="Skip the --update-baselines confirmation prompt.")
     args = ap.parse_args(argv)
 
+    # Fast-fail on a misconfigured checkout before the build+run cycle.
+    if not RENDER_COMPARE.exists():
+        raise SystemExit(f"render-compare.py not found at {RENDER_COMPARE}")
+
     worktree = _detect_worktree_root(Path.cwd())
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
     backend = _detect_backend(build_dir)
