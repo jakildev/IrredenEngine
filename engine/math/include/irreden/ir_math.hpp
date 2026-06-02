@@ -959,7 +959,11 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
 /// (`det = 1 + 2·cos(yaw) ≈ 0`); the helper returns @p isoDelta unchanged.
 ///
 /// ```cpp
-///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(deltaIso, Camera::getYaw());
+///   const float panYaw =
+///       IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
+///           ? IRPrefab::Camera::getYaw()
+///           : 0.0f;
+///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(deltaIso, panYaw);
 /// ```
 constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYaw) {
     const float c = cos(visualYaw);

@@ -71,7 +71,15 @@ formulas. The convention is world→view = R\_z(−yaw), so view→world = R\_z(
   in `CAMERA_CENTER` pivot mode (solves the 2×2 iso-projection system;
   identity at yaw=0; degenerate-guard at yaw=±2π/3). **CAMERA_CENTER only**
   — in `ORIGIN` mode use `isoDelta` directly.
-  Use in pan systems: `camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, getYaw())`.
+  Use in pan systems (gate on pivot mode — ORIGIN mode passes `0` so the call
+  collapses to the identity and doesn't regress on non-yaw paths):
+  ```cpp
+  const float panYaw =
+      IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
+          ? IRPrefab::Camera::getYaw()
+          : 0.0f;
+  camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, panYaw);
+  ```
 
 **Split helpers** (live in `engine/prefabs/irreden/render/camera.hpp`):
 
