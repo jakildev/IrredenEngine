@@ -6,6 +6,7 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/common/components/component_position_2d_iso.hpp>
 
@@ -59,7 +60,8 @@ template <> struct System<CAMERA_KEY_DRAG_PAN> {
             const vec2 deltaPx = currentMouse - dragStartMouse_;
             const vec2 deltaIso =
                 screenDeltaToIsoDelta(deltaPx, IRRender::getTriangleStepSizeScreen());
-            camPos.pos_ = dragStartCameraPos_ + deltaIso;
+            camPos.pos_ =
+                dragStartCameraPos_ + cameraMoveRelativeToYaw(deltaIso, IRPrefab::Camera::getYaw());
         } else {
             dragging_ = false;
         }

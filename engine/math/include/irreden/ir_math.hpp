@@ -938,6 +938,27 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
     return vec2(-position.x + position.y, -position.x - position.y + (2 * position.z));
 }
 
+/// Converts a camera-pan delta in view-aligned iso coordinates to the
+/// corresponding world-iso camera-position delta at the given visual yaw.
+/// At `visualYaw == 0` the result equals @p isoDelta exactly (the cardinal
+/// fast path is byte-identical to the pre-yaw behaviour).
+///
+/// Use in camera-pan systems so dragging always moves the camera in the
+/// on-screen direction regardless of the current view yaw:
+/// ```cpp
+///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, Camera::getYaw());
+/// ```
+/// The inverse direction (world-iso → view-iso) is
+/// `pos3DtoPos2DIsoYawed(isoPixelToPos3D(worldIsoDelta, 0.f), visualYaw)`.
+constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYaw) {
+    const vec3 viewPoint = isoPixelToPos3D(isoDelta, 0.0f);
+    const float c = glm::cos(visualYaw);
+    const float s = glm::sin(visualYaw);
+    const vec3 worldPoint =
+        vec3(c * viewPoint.x - s * viewPoint.y, s * viewPoint.x + c * viewPoint.y, viewPoint.z);
+    return pos3DtoPos2DIso(worldPoint);
+}
+
 /// Projects @p position to screen space by scaling the iso result by
 /// @p triangleStepSizeScreen and applying the backend-specific Y sign from
 /// IRPlatform::kGfx.
