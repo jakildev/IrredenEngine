@@ -236,6 +236,35 @@ See [docs/agents/TASK-FILING.md § Multi-issue stacks](../../docs/agents/TASK-FI
 for the rules (one `#N` per blocker line; issue-number blockers only;
 gate docs-PR dependencies by withholding `human:approved`).
 
+**Carve-offs are unplanned tickets — never queue a hypothesis.** When
+you split a residual, follow-up, or "investigate later" half out of an
+in-flight or over-scoped ticket (the #1370 → #1414 / #1431 / #1435
+pattern), the carve-off is a **new, unplanned** ticket — splitting does
+not transfer the parent's planning to it. A body that ends in "Likely
+suspects / approach (confirm during investigation)" is a *hypothesis*,
+not a plan. If it goes straight to `human:approved` + `fleet:queued`
+(skipping `fleet:needs-plan`, with no `~/.fleet/plans/issue-<N>.md`),
+the worker is the first person to open the code: it finds the premise
+wrong, the root cause in an out-of-scope path, or the approach
+undecided, and design-blocks on claim. Every #1370 carve-off blocked
+exactly this way. So **route carve-offs through planning before they're
+queue-ready**: file them unlabeled per [Filing tasks](#filing-tasks)
+(the human triages → `fleet:needs-plan` → you plan it per
+[PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md) and
+commit `~/.fleet/plans/issue-<N>.md`), or — if the residual is part of a
+dependent stack — file the whole stack via `file-epic` so each child
+gets its own plan file. The committed plan (not the issue body) is what
+must (1) name a **confirmed repro** of the symptom against the actual
+code path, (2) **pick one approach** rather than hand the choice to the
+worker, and (3) **reconcile siblings + in-flight PRs** on the same
+surface (a carve-off's fix often duplicates or contradicts an active PR
+or a sibling ticket's recorded conclusion — e.g. #1440's planned
+approach was the one #1420 had already proved wrong). A carve-off that
+cannot yet clear those three is not a queued task — it is either a
+`fleet:needs-plan` issue or, if you genuinely need a worker to
+investigate before the design exists, an explicit investigation spike,
+never a `human:approved` build task.
+
 **Fleet self-config changes are human-only — don't file them for
 autonomous pickup.** Edits to the role/command/agent configs the fleet
 loads (`.claude/commands/role-*.md`, `.claude/agents/*`) can't be applied
