@@ -179,10 +179,22 @@ iteration of polling, reviewing, and exiting cleanly:
       `gh pr edit` yourself immediately. Don't assume the skill did it.
 
       **Special case — Verdict approve + "Opus recheck required"** →
-      do NOT set any verdict label. Leave it unlabeled; opus-reviewer
-      will set the final label on its next pass. (Still set
-      `fleet:has-nits` here if there are nits, even without a verdict
-      label.)
+      do NOT set a verdict label (`fleet:approved` is opus-reviewer's
+      to set). Instead add `fleet:needs-opus-recheck` — the durable,
+      machine-readable escalation the scout's opus-reviewer projection
+      wakes the pane on. The review-body text alone is invisible to
+      that projection, so without this label the opus pane only fires
+      coincidentally on another PR's has-nits/needs-fix transition
+      (PR #1473 sat un-rechecked for exactly this reason). Still set
+      `fleet:has-nits` here if there are nits. opus-reviewer removes
+      `fleet:needs-opus-recheck` as part of its verdict label-swap
+      when its pass completes.
+
+      ```
+      gh pr edit <N> --add-label "fleet:needs-opus-recheck"
+      ```
+      (Add `--repo <game-repo>` for game PRs.) See
+      [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands).
    f. **Release the review claim** immediately after the verdict
       label-swap (or after a no-verdict skip path — broken stack,
       gated upstream-not-yet-approved, "Opus recheck required"). See

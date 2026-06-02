@@ -760,6 +760,21 @@ REVIEW_SKIP_LABELS = frozenset({
 REVIEW_SKIP_PREFIXES = ("fleet:amending-",)
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
+# Labels that wake the opus-reviewer pane. fleet:needs-opus-recheck is the
+# explicit escalation the sonnet-reviewer stamps when its first-pass review
+# approves but ends "Opus recheck required:" — that case sets NO verdict
+# label, so before this marker existed the projection had no label-shaped
+# signal for it and the opus pane only woke coincidentally on some OTHER PR's
+# has-nits/needs-fix transition. PR #1473 sat un-rechecked for exactly this
+# reason (approve + recheck-required + no nits → zero flag labels → no
+# trigger). has-nits / needs-fix stay in the set: they already woke the pane
+# and a flagged PR may still warrant an Opus pass. opus-reviewer removes
+# fleet:needs-opus-recheck as part of its verdict label-swap (whatever the
+# verdict), so a handled escalation drops back out of the projection.
+OPUS_REVIEWER_FLAG_LABELS = frozenset({
+    "fleet:has-nits", "fleet:needs-fix", "fleet:needs-opus-recheck",
+})
+
 
 def _review_skipped(labels):
     """True if a PR's label set bars reviewer pickup — exact-name skip
@@ -1035,17 +1050,16 @@ def project_sonnet_reviewer(state):
 
 
 def project_opus_reviewer(state):
-    flag_labels = frozenset({"fleet:has-nits", "fleet:needs-fix"})
     items = []
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
             if _review_skipped(labels):
                 continue
-            if not (labels & flag_labels):
+            if not (labels & OPUS_REVIEWER_FLAG_LABELS):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
-                          "labels": sorted(labels & flag_labels)})
+                          "labels": sorted(labels & OPUS_REVIEWER_FLAG_LABELS)})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -1273,14 +1287,13 @@ def slice_sonnet_reviewer(state):
 
 
 def slice_opus_reviewer(state):
-    flag_labels = frozenset({"fleet:has-nits", "fleet:needs-fix"})
     out = {"flagged_prs": []}
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
             if _review_skipped(labels):
                 continue
-            if not (labels & flag_labels):
+            if not (labels & OPUS_REVIEWER_FLAG_LABELS):
                 continue
             out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
