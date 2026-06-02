@@ -29,6 +29,12 @@ struct CyclingState {
     bool screenshotPending_ = false;
 };
 
+// Set true the first time createAutoScreenshotSystem runs this process, i.e. a
+// headless --auto-screenshot capture is active. Read by World via
+// isAutoCaptureActive() to switch the UPDATE loop to a deterministic fixed
+// step. Process-lifetime flag; capture is one-shot per process.
+bool g_autoCaptureActive = false;
+
 } // namespace
 
 bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut) {
@@ -48,7 +54,12 @@ bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut) {
     return false;
 }
 
+bool isAutoCaptureActive() {
+    return g_autoCaptureActive;
+}
+
 IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config) {
+    g_autoCaptureActive = true;
     auto state = std::make_shared<CyclingState>();
     state->config_ = config;
     state->warmupRemaining_ = config.warmupFrames_;
