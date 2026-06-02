@@ -577,3 +577,17 @@ parity with voxel-pool primary shapes.
 - **GUI canvas scaling.** GUI canvas is sized `mainCanvasSize / guiScale`.
   Changing `guiScale` without resizing the GUI canvas entity breaks
   coordinate mapping.
+- **CPU texture writes order via the command buffer on Metal.**
+  `Texture2D::subImage2D` and `clear()` write canvas textures, but on Metal
+  the per-frame work is deferred: `clear()` enqueues a GPU blit and the
+  `subImage2D` backend stages + blits through the frame's command buffer so a
+  CPU `replaceRegion` can't be clobbered by a clear that *executes* later
+  (the OpenGL path is already submission-ordered). The upshot: a system that
+  writes a canvas via `subImage2D` (the widget render systems, fog-of-war) and
+  one that clears it (`TEXT_TO_TRIXEL` clears the GUI canvas each frame) compose
+  correctly **only because** both routes land on the command buffer in encoder
+  order. If you reintroduce an immediate CPU texture path on Metal — or move a
+  clear off the command buffer — CPU writes made earlier in the frame silently
+  vanish under the deferred clear (the #1436 invisible-widgets bug). Mixing a
+  `subImage2D` write with a same-frame CPU `getBytes` readback of the same
+  texture still needs an explicit commit+wait (picking already does this).
