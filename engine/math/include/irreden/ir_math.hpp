@@ -938,6 +938,48 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
     return vec2(-position.x + position.y, -position.x - position.y + (2 * position.z));
 }
 
+/// Returns the `cameraIso` delta that produces an on-screen shift equal to
+/// @p isoDelta when the camera is at `RotationPivotMode::CAMERA_CENTER`.
+///
+/// In `CAMERA_CENTER` mode, applying a delta `Δ` to `cameraIso` shifts
+/// on-screen content by `P(R_z(−yaw)·Pinv(Δ,0))` (where `P` is the iso
+/// projection and `Pinv` is `isoPixelToPos3D`).  This helper solves the
+/// resulting 2×2 linear system for `Δ` such that that expression equals
+/// @p isoDelta — so dragging the camera moves content parallel to the
+/// drag direction on screen at every yaw.
+///
+/// **Precondition — `CAMERA_CENTER` only.**  In `ORIGIN` mode
+/// `getEffectiveCameraIso()` returns `cameraIso` directly, so a delta
+/// `Δ = isoDelta` already produces the correct on-screen shift; the pan
+/// systems must use `isoDelta` unchanged (or pass `visualYaw = 0`) in that
+/// mode.
+///
+/// At `visualYaw == 0` returns @p isoDelta exactly (identity).  At
+/// `yaw = ±2π/3` the iso projection is geometrically degenerate
+/// (`det = 1 + 2·cos(yaw) ≈ 0`); the helper returns @p isoDelta unchanged.
+///
+/// ```cpp
+///   const float panYaw =
+///       IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
+///           ? IRPrefab::Camera::getYaw()
+///           : 0.0f;
+///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(deltaIso, panYaw);
+/// ```
+constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYaw) {
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
+    // det = 1 + 2*cos(yaw); singular at yaw = ±2π/3 (degenerate iso view).
+    const float det = 1.0f + 2.0f * c;
+    if (det > -1e-6f && det < 1e-6f)
+        return isoDelta;
+    const float dx = isoDelta.x;
+    const float dy = isoDelta.y;
+    return vec2(
+        ((c + 2.0f) * dx - s * dy) / det,
+        3.0f * (s * dx + c * dy) / det
+    );
+}
+
 /// Projects @p position to screen space by scaling the iso result by
 /// @p triangleStepSizeScreen and applying the backend-specific Y sign from
 /// IRPlatform::kGfx.

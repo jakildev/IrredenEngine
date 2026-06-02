@@ -39,6 +39,58 @@ rotation around any axis other than Z silently breaks those shortcuts;
 see [`docs/design/iso-depth-axis-invariant.md`](../../docs/design/iso-depth-axis-invariant.md)
 for the full consumer map and the cost of widening to SO(3).
 
+## Rotation primitives (Z-yaw)
+
+All camera-yaw and rotation math goes through this surface — never inline the
+formulas. The convention is world→view = R\_z(−yaw), so view→world = R\_z(+yaw).
+
+**Cardinal helpers** (snapped to multiples of π/2, `CardinalIndex` enum):
+
+- `IRMath::rasterYawCardinalIndex(rasterYaw)` — snaps a rasterYaw to a
+  `CardinalIndex` (0..3). CPU mirror of the shader `rasterYawCardinalIndex`.
+- `IRMath::cardinalYawCosSin(cardinalIndex)` — returns `(cos, sin)` for the
+  snapped angle. GPU mirror: `cardinalYawCosSin` in `ir_iso_common.glsl`.
+- `IRMath::rotateCardinalZ(v, cardinalIndex)` — world→view rotation R\_z(−rasterYaw)
+  at a cardinal snap. Integer and float overloads. GPU mirror: `rotateCardinalZ`.
+- `IRMath::rotateCardinalZInv(v, cardinalIndex)` — view→world R\_z(+rasterYaw).
+  GPU mirror: `rotateCardinalZInv`.
+
+**Continuous helpers** (full continuous yaw):
+
+- `IRMath::pos3DtoPos2DIsoYawed(worldPos, visualYaw)` — iso projection under
+  a continuous Z-yaw: equivalent to `pos3DtoPos2DIso(R_z(−yaw) · worldPos)`.
+  GPU mirror: `pos3DtoPos2DIsoYawed` in `ir_iso_common.glsl`.
+- `IRMath::yawGrownIsoHalfExtent(halfExtent, cosYaw, sinYaw)` — conservative
+  XY expansion of an AABB swept under yaw (for cull bounds). GPU mirror:
+  `yawGrownIsoHalfExtent`.
+- `IRMath::faceDeformationMatrix(face, residualYaw)` — 2×2 matrix that maps a
+  face's un-yawed iso-pixel offset to its offset under a residual yaw
+  (residualYaw ∈ [−π/4, π/4]). GPU mirror: `faceDeformationMatrix`.
+- `IRMath::cameraMoveRelativeToYaw(isoDelta, visualYaw)` — returns the
+  `cameraIso` delta that produces an on-screen shift equal to `isoDelta`
+  in `CAMERA_CENTER` pivot mode (solves the 2×2 iso-projection system;
+  identity at yaw=0; degenerate-guard at yaw=±2π/3). **CAMERA_CENTER only**
+  — in `ORIGIN` mode use `isoDelta` directly.
+  Use in pan systems (gate on pivot mode — ORIGIN mode passes `0` so the call
+  collapses to the identity and doesn't regress on non-yaw paths):
+  ```cpp
+  const float panYaw =
+      IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
+          ? IRPrefab::Camera::getYaw()
+          : 0.0f;
+  camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, panYaw);
+  ```
+
+**Split helpers** (live in `engine/prefabs/irreden/render/camera.hpp`):
+
+- `IRPrefab::Camera::computeYawSplit(visualYaw)` — returns `{rasterYaw, residualYaw}`:
+  rasterYaw is the nearest π/2 cardinal; residualYaw is the leftover in [−π/4, π/4].
+  Used by the trixel rasterizer and the per-axis canvas composite.
+- `IRPrefab::Camera::getYaw()` / `getYawSplit()` — live camera yaw reads.
+
+**Invariant.** At `visualYaw == 0` every helper collapses to its un-yawed
+equivalent and produces byte-identical results to the pre-yaw path.
+
 ## Layout helpers
 
 `layout.hpp` — grid, zigzag, circle, spiral, helix, and arc-path placement helpers. Each returns a `vec3` for index `i` in `[0, count)`, called in a loop. Gotcha: most helpers take a `PlaneIso` argument — `XY` vs `YZ` axis swap is the #1 source of wrong depth and is silent at compile time.
