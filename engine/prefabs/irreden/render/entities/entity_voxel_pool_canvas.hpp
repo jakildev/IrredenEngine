@@ -5,6 +5,7 @@
 
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
@@ -25,6 +26,13 @@ template <> struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
             C_SizeTriangles{triangleCanvasSize},
             C_TriangleCanvasTextures{triangleCanvasSize},
             C_CanvasLocalRotation{},
+            // Per-axis trixel canvases for smooth rotation. Inert until allocated
+            // lazily — the main world canvas's by syncAllocationToCameraYaw()
+            // (camera Z-yaw, #1308), a rotating DETACHED entity's by
+            // syncAllocationToDetachedEntities() (per-entity SO(3), #1463).
+            // Default-constructed = (0,0) size + null handles, so a static /
+            // cardinal canvas pays only the component slot, no GPU memory.
+            C_PerAxisTrixelCanvases{},
             C_Name{canvasName}
         );
         if (framebuffer == kNullEntity) {

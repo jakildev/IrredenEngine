@@ -35,6 +35,15 @@ Helpers:
   (1,1,1); at identity the axis is exactly (1,1,1) so it collapses to
   `pos3DtoDistance`. GPU mirror `isoDepthAlongAxis` in `ir_iso_common.{glsl,metal}`.
   See the design doc's entity-rotation carve-out (#1462).
+- `IRMath::pos3DtoPos2DIsoYawed(worldPos, visualYaw)` /
+  `IRMath::pos3DtoPos2DIsoRotated(modelPos, rotation)` — continuous-rotation
+  iso reposition. The first is `iso(R_z(−yaw)·world)` (1-DOF, smooth camera
+  Z-yaw, #1308); the second is its SO(3) companion `iso(R·model)` for a
+  detached entity's octahedral-snap residual (#1463). At identity / zero yaw
+  both collapse to `pos3DtoPos2DIso`, and a pure-Z quaternion `qZ(θ)` makes the
+  rotated form equal `pos3DtoPos2DIsoYawed(·, −θ)`. GPU mirrors of both in
+  `ir_iso_common.{glsl,metal}`, kept CPU↔GPU bit-identical. See
+  [`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
 
 **Never inline these equations in system code.** Always call the helpers
 so there's one place to fix a coordinate-system bug.

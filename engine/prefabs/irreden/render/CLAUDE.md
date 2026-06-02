@@ -13,12 +13,18 @@ the ECS surface.
   `detail::makeCanvas*Texture` factories in its header so other canvas
   components can't drift from it.
 - `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
-  for smooth camera Z-yaw (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
+  for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
   Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
-  **lazily** — only on the main world canvas while the camera sits at a
-  non-cardinal residual yaw, freed at the cardinal (byte-identical fast
-  path). Lifecycle driven by `IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw()`
-  from `VOXEL_TO_TRIXEL_STAGE_1::beginTick`. T2 (#1309) routes each
+  **lazily**. Bundled on **every** voxel-pool canvas by
+  `Prefab<kVoxelPoolCanvas>` (default-constructed inert), and two once-per-frame
+  gates in `VOXEL_TO_TRIXEL_STAGE_1::beginTick` stand the textures up only while
+  there is rotation to smooth: `syncAllocationToCameraYaw()` allocates the
+  **main canvas's** while the camera sits at a non-cardinal residual yaw, and
+  `syncAllocationToDetachedEntities()` allocates a **rotating detached entity's**
+  while it sits off an octahedral snap (#1463), bounded by
+  `kMaxDetachedRotatingCanvases` (overflow falls back to the single-canvas
+  `faceDeformationMatrixSO3` path). Both free at the snap/cardinal so a static
+  scene is byte-identical (fast path). T2 (#1309) routes each
   visible voxel face into its axis canvas with continuous
   (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; T3
   (#1310) composites the three by depth-tested forward scatter at the

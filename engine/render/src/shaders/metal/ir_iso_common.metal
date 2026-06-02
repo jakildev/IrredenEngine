@@ -556,6 +556,16 @@ inline float3 rotateByInverseQuat(float3 v, float4 q) {
     return rotateByQuat(v, float4(-q.xyz, q.w));
 }
 
+// Iso projection of a detached entity's model point under SO(3) rotation:
+// iso(R * modelPos). Full-rotation companion to pos3DtoPos2DIsoYawed (Z-yaw
+// only). Feed the octahedral-snap residual as `rotation`; at identity this is
+// pos3DtoPos2DIso(modelPos). CPU mirror: IRMath::pos3DtoPos2DIsoRotated —
+// rotateByQuat then the same iso columns keep CPU/GPU bit-identical (#1463).
+inline float2 pos3DtoPos2DIsoRotated(float3 modelPos, float4 rotation) {
+    const float3 r = rotateByQuat(modelPos, rotation);
+    return float2(-r.x + r.y, -r.x - r.y + 2.0f * r.z);
+}
+
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S; quaternion layout matches
 // the engine canon: float4(qx, qy, qz, qw) with .w the scalar; identity is

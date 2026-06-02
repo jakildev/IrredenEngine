@@ -164,15 +164,14 @@ RenderManager::RenderManager(
 
     m_activeCanvas = m_mainCanvas;
 
-    // The main world canvas owns the three per-axis trixel canvases used by the
-    // smooth camera Z-yaw path (#1308;
-    // docs/design/per-axis-trixel-canvas-rotation.md). Their GPU textures are
-    // allocated lazily — only while the camera sits at a non-cardinal residual
-    // yaw — by IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw(), so a static
-    // / cardinal scene pays nothing (the byte-identical fast path). Only the
-    // main GRID canvas carries this: detached canvases rotate via full SO(3)
-    // (PROPAGATE_CANVAS_ROTATION), a separate mechanism.
-    IREntity::setComponent(m_mainCanvas, C_PerAxisTrixelCanvases{});
+    // The main world canvas's per-axis trixel canvases (smooth camera Z-yaw,
+    // #1308; docs/design/per-axis-trixel-canvas-rotation.md) are now bundled on
+    // every voxel-pool canvas by Prefab<kVoxelPoolCanvas> (so detached entities
+    // also carry them for per-entity SO(3), #1463). Their GPU textures stay
+    // allocated lazily — the main canvas's only while the camera sits at a
+    // non-cardinal residual yaw (syncAllocationToCameraYaw), a detached entity's
+    // only while it rotates off an octahedral snap (syncAllocationToDetachedEntities)
+    // — so a static / cardinal scene pays nothing (the byte-identical fast path).
 
     initRenderingResources();
     initRenderingSystems();
