@@ -101,8 +101,9 @@ inline int subdivisionDensity() {
     if (!cardinal.has_value()) {
         return effSub;
     }
-    const int cap =
-        IRMath::perAxisSubdivisionCap((*cardinal.value()).size_, IRRender::getCameraZoom());
+    const int cap = IRMath::perAxisSubdivisionCap(
+        (*cardinal.value()).size_, IRRender::getCameraZoom(), kMinOnScreenTrixelSizePx
+    );
     return IRMath::clamp(effSub, 1, cap);
 }
 

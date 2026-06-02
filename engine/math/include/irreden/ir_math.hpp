@@ -1402,11 +1402,15 @@ inline ivec2 perAxisTrixelCanvasWorstCaseSize(
 /// zoom-dependent on-screen extent — the host knows `zoom` and feeds the capped
 /// value through `voxelRenderOptions.y` so the store, the framebuffer scatter,
 /// and the per-axis AO/lighting recovery all share one consistent world↔cell
-/// scale. Returns ≥ 1.
-inline int perAxisSubdivisionCap(const ivec2 cardinalExtent, const vec2 zoom) {
+/// scale. Pass the same @p minOnScreenTrixelPx used to allocate the canvas
+/// (e.g. `kMinOnScreenTrixelSizePx`) so the cap is sized against the actual
+/// allocated canvas rather than the default. Returns ≥ 1.
+inline int perAxisSubdivisionCap(
+    const ivec2 cardinalExtent, const vec2 zoom, const float minOnScreenTrixelPx = 1.0f
+) {
     const float W = static_cast<float>(cardinalExtent.x);
     const float H = static_cast<float>(cardinalExtent.y);
-    const ivec2 canvasSize = perAxisTrixelCanvasWorstCaseSize(cardinalExtent);
+    const ivec2 canvasSize = perAxisTrixelCanvasWorstCaseSize(cardinalExtent, minOnScreenTrixelPx);
     // Smaller zoom ⇒ larger visible extent ⇒ tighter cap; clamp away from 0.
     const float isoHalfX = W / (2.0f * max(zoom.x, 1e-3f));
     const float isoHalfY = H / (2.0f * max(zoom.y, 1e-3f));
