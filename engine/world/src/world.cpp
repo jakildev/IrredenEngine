@@ -6,6 +6,7 @@
 #include <irreden/ir_audio.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/profile/profile_report.hpp>
+#include <irreden/video/auto_screenshot.hpp>
 
 #include <irreden/world.hpp>
 
@@ -192,6 +193,13 @@ void World::gameLoop() {
     using Clock = std::chrono::steady_clock;
     try {
         start();
+        if (IRVideo::isAutoCaptureActive()) {
+            // Headless --auto-screenshot capture: advance the sim exactly one
+            // UPDATE tick per render frame so per-tick animation (AUTO_SPIN,
+            // etc.) is deterministic and not starved by the uncapped
+            // (vsync-off) loop racing through the frame-counted capture window.
+            m_timeManager.enableFixedStep();
+        }
         if (m_waitForFirstUpdateInput) {
             // Prime render-facing state so paused mode shows initialized voxels.
             update();

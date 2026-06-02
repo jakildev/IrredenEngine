@@ -93,6 +93,14 @@ struct AutoScreenshotConfig {
 /// own loop could interpret that token, skip past it explicitly.
 bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut);
 
+/// True once @c createAutoScreenshotSystem has been called this run — i.e. the
+/// process is doing a headless auto-screenshot capture. @c World reads this to
+/// switch the UPDATE loop to a deterministic fixed step (one tick per render
+/// frame) so per-tick animation (AUTO_SPIN, etc.) advances reproducibly during
+/// the frame-counted capture window instead of being starved by the uncapped
+/// (vsync-off) headless loop.
+bool isAutoCaptureActive();
+
 /// Create a system that cycles through @c config.shots_ — one screenshot per
 /// shot with @c settleFrames_ between shots — then calls
 /// @c IRWindow::closeWindow(). The caller must append the returned @c SystemId
