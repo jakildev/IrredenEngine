@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 using namespace IRComponents;
@@ -337,6 +338,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // Every rotating DETACHED entity's allocated per-axis canvases, resolved once
+    // per frame in beginTick and consumed by the per-entity tick (#1464). The
+    // canvas the system iterates is NOT in its template params (the main-canvas-
+    // only `perAxisCanvases_` is resolved by a single beginTick getComponent), and
+    // a voxel canvas built via `EntityCanvas::addVoxelPool` may lack
+    // C_PerAxisTrixelCanvases — so adding it to the archetype filter would silently
+    // drop such a canvas. We instead key the allocated set by canvas entity here and
+    // linear-scan it in the tick (bounded by kMaxDetachedRotatingCanvases, so a tiny
+    // list). The stored pointers are column addresses valid only within this frame's
+    // ticks — no structural change runs between beginTick and the per-entity ticks of
+    // the same pipeline pass, same contract as `perAxisCanvases_`.
+    std::vector<std::pair<IREntity::EntityId, C_PerAxisTrixelCanvases *>> detachedPerAxisAllocated_;
+
+    C_PerAxisTrixelCanvases *lookupDetachedPerAxis(IREntity::EntityId entity) const {
+        for (const auto &[id, axes] : detachedPerAxisAllocated_) {
+            if (id == entity) {
+                return axes;
+            }
+        }
+        return nullptr;
+    }
+
     // Route the visible voxel faces into the three per-axis trixel canvases for
     // smooth camera Z-yaw (T2 / #1309). Runs ONLY on the main world canvas and
     // ONLY while rotating (the per-axis textures are allocated). Reuses this
@@ -631,6 +654,28 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
             dispatchPerAxisCanvases(*perAxisCanvases_);
+        } else if (canvasLocalRotation.isDetached()) {
+            // Detached entity SO(3) per-axis store (P3a / #1464). Route this
+            // entity's visible model-space faces into its OWN per-axis canvases
+            // — the SO(3) generalization of the camera-yaw store above. The
+            // store path is shared (perAxisRoute != 0 in the shaders): the
+            // detached frame data buildVoxelFrameData set this tick (model-frame
+            // visibleFaceIds_ from visibleTriplet, isDetachedCanvas_, the model
+            // iso depth axis) flows through unchanged, so each face is stored in
+            // its model-axis face-local lattice keyed on pos3DtoDistance — the
+            // exact origin-recovery key faceOriginFromInPlane consumes at scatter
+            // time (P3b / #1475, which applies the residual reposition).
+            //
+            // Purely ADDITIVE: the single-canvas octahedral emit above still
+            // renders this entity (skipSingleCanvasVoxels is main-canvas-only),
+            // so the populated per-axis textures are not yet consumed and the
+            // frame is byte-identical until P3b reads them. Only fires when the
+            // entity is rotating off an octahedral snap (textures allocated in
+            // beginTick by syncAllocationToDetachedEntities); at a snap / identity
+            // nothing is allocated, so lookup returns null → byte-identical.
+            if (C_PerAxisTrixelCanvases *detachedAxes = lookupDetachedPerAxis(entity)) {
+                dispatchPerAxisCanvases(*detachedAxes);
+            }
         }
     }
 
@@ -658,10 +703,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         // Same lazy lifecycle for DETACHED entities rotating off an octahedral
         // snap (per-entity SO(3), #1463), bounded by kMaxDetachedRotatingCanvases.
-        // Infrastructure only — no faces route into these textures yet (the P3
-        // forward-scatter composite, #1464, consumes them), so the frame stays
-        // byte-identical and a non-rotating / cardinal scene pays nothing.
-        IRPrefab::PerAxisCanvas::syncAllocationToDetachedEntities();
+        // Pass detachedPerAxisAllocated_ so the single allocation scan also reports
+        // the {canvas, &axes} pairs it left allocated — the per-entity tick reuses
+        // that by canvas entity (#1464) instead of re-walking the same archetype.
+        // The column pointers stay valid for the rest of this pipeline pass (no
+        // structural change before the per-entity ticks consume them); the vector
+        // is cleared (capacity kept) inside the call. No per-entity getComponent.
+        IRPrefab::PerAxisCanvas::syncAllocationToDetachedEntities(&detachedPerAxisAllocated_);
 
         // Resolve the main canvas's per-axis trixel canvases once per frame for
         // the per-entity tick to consume without a getComponent on its own

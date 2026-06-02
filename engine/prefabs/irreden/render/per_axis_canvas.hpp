@@ -18,6 +18,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 namespace IRPrefab::PerAxisCanvas {
@@ -166,11 +167,26 @@ inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density
 // C_PerAxisTrixelCanvases) but keeps the C_CanvasLocalRotation sentinel, so
 // isDetached() is false and it stays owned by syncAllocationToCameraYaw().
 //
-// Infrastructure only (#1463): no faces route into these textures yet, so the
-// rendered frame is unchanged — this just stands up (and bounds) the storage
-// the P3 forward-scatter composite (#1464) will write. Called once per frame
-// from VOXEL_TO_TRIXEL_STAGE_1::beginTick.
-inline void syncAllocationToDetachedEntities() {
+// When @p allocatedOut is non-null, it is filled (cleared first) with one
+// {canvasEntity, &axes} pair per detached canvas left ALLOCATED this frame —
+// the set the P3 forward-scatter store (#1464) routes into. Folding the
+// collection into this same scan keeps the per-frame archetype walk single-pass:
+// the consumer (VOXEL_TO_TRIXEL_STAGE_1) reuses the result by canvas entity in
+// its per-entity tick instead of re-querying the same archetype. The pointers
+// are column addresses, valid only for the rest of this pipeline pass (no
+// structural change runs before the per-entity ticks consume them).
+//
+// (#1463) stood the textures up as infrastructure; (#1464, P3a) is the first
+// consumer — the detached per-axis face-local store. Called once per frame from
+// VOXEL_TO_TRIXEL_STAGE_1::beginTick.
+inline void syncAllocationToDetachedEntities(
+    std::vector<std::pair<IREntity::EntityId, IRComponents::C_PerAxisTrixelCanvases *>>
+        *allocatedOut = nullptr
+) {
+    if (allocatedOut != nullptr) {
+        allocatedOut->clear();
+    }
+
     // Dense per-archetype-column iteration (no per-entity getComponent): the
     // three components arrive as parallel column vectors indexed by row.
     const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
@@ -207,6 +223,13 @@ inline void syncAllocationToDetachedEntities() {
                                        allocatedRotating < kMaxDetachedRotatingCanvases;
             if (wantAllocated) {
                 ++allocatedRotating; // counts whether kept from last frame or newly allocated
+                // wantAllocated == the post-sync allocation state (the block
+                // below only transitions a row that isn't already there), so
+                // collect here — before the already-in-state early-out — to
+                // catch rows kept allocated from the prior frame too.
+                if (allocatedOut != nullptr) {
+                    allocatedOut->emplace_back(node->entities_[i], &axes);
+                }
             }
 
             if (wantAllocated == axes.isAllocated()) {
