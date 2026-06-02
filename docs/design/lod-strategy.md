@@ -201,6 +201,44 @@ Concrete pieces:
 Verified by a render-verify shot list at zoom 1× / 2× / 4× / 8× of a
 test entity with shapes at multiple `lodMin_` thresholds.
 
+### Phase 1b — exclusive (swap, not stack) LOD via a band (#1467)
+
+The single-sided `lodMin_` filter above is **additive**: every co-located
+variant whose `lodMin_` admits the active tier renders, so at high zoom all
+tiers draw at once. When the variants share a position (the natural authoring
+for "this entity, at different detail levels") that means they stack — and
+identical-or-near SDFs at the same depth z-fight, which read as the glitch
+reported in #1467 ("multiple ones layered over each other … glitchy").
+
+The fix gives each shape an inclusive LOD **band** `[lodMax_ .. lodMin_]`:
+
+- `lodMin_` — coarsest tier (largest index) the shape draws at (existing).
+- `lodMax_` — finest tier (smallest index) the shape draws at (**new field**).
+
+`shouldSkipAtLod` draws iff `lodMax_ <= activeLod <= lodMin_`. The defaults
+(`lodMin_ = LOD_4`, `lodMax_ = LOD_0`) span the whole tier range, so an
+unmarked shape is never culled — **byte-identical to the pre-band filter**;
+no existing content changes. Additive composition is still expressible
+(overlapping bands), so the Phase 2 lean toward additive `.vxs` loading is
+unaffected.
+
+Authoring co-located variants with **disjoint** bands yields exclusive LOD:
+exactly one variant renders per zoom, so they *swap* in place rather than
+stack. The conventions that give the behavior #1467 describes:
+
+- The coarsest variant keeps `lodMin_ = LOD_4` so it persists at min zoom.
+- The finest variant keeps `lodMax_ = LOD_0` so it persists past its
+  threshold (zoom 32×/64× clamp to `LOD_0`).
+- Interior variants tile the remaining tiers with no gaps or overlaps.
+
+This is the **discrete** form of the per-shape `lodMin`/`lodMax` ramp model
+sketched for Phase 3 below (hard pop at the band edge instead of an alpha
+ramp). Phase 3 can later make `activeLod` continuous and turn the same two
+fields into a cross-fade without a data-model change. Applies to SHAPES mode
+only — DENSE-mode voxel-set LOD remains out of scope. The `shape_debug` demo's
+LOD fixture (cube → cone → sphere swap + a single-LOD control) is the
+reference; render-verify covers it at zoom 1×–16×.
+
 What Phase 1 explicitly does **not** do:
 
 - Multi-tier `.vxs` composition. A Phase 1 entity carries all its shapes

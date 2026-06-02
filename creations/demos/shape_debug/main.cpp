@@ -97,8 +97,21 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
     {4.0f, vec2(3, 5), 0.0f, "zoom4_offset_3_5"},
-    // zoom16_lod_all_visible: active tier LOD_0, LOD_0 (red) tops the co-located stack.
-    {16.0f, vec2(0, 0), 0.0f, "zoom16_lod_all_visible"},
+    // LOD swap (#1467): the co-located stack renders exactly ONE variant per
+    // zoom band — cube (zoom 1-3) -> cone (zoom 4-15) -> sphere (zoom >=16) —
+    // never stacked. This whole-scene shot samples the finest (sphere) tier.
+    {16.0f, vec2(0, 0), 0.0f, "zoom16_lod_fine_sphere"},
+
+    // Dedicated LOD swap series (#1467): cameraIso (16,-16) centers the
+    // co-located LOD stack at world (0,-16,0) (= -pos3DtoPos2DIso((0,-16,0))),
+    // with the single-LOD control cylinder beside it. As zoom climbs the stack
+    // visibly swaps silhouette (cube -> cone -> sphere) while the control holds
+    // constant — the unambiguous "LOD is working" read the issue asks for.
+    {1.0f, vec2(16, -16), 0.0f, "lod_swap_zoom1_cube"},
+    {2.0f, vec2(16, -16), 0.0f, "lod_swap_zoom2_cube"},
+    {4.0f, vec2(16, -16), 0.0f, "lod_swap_zoom4_cone"},
+    {8.0f, vec2(16, -16), 0.0f, "lod_swap_zoom8_cone"},
+    {16.0f, vec2(16, -16), 0.0f, "lod_swap_zoom16_sphere"},
 
     // Rotation coverage (#1261): four cardinals + one inter-cardinal expose
     // rotation-only regressions (#1256 checkerboard, #1257 inter-cardinal
@@ -791,27 +804,70 @@ void initEntities() {
         createSDFShape(vec3(xPos, kRowSeparationY, 0.0f), tc.type_, tc.params_, tc.color_);
     }
 
-    // Co-located trio, coarse-first: zoom1=blue(LOD_4 only), zoom4=green(LOD_2) tops,
-    // zoom16=red(LOD_0) tops.
+    // LOD demonstration (#1467). The engine LOD filter is an inclusive band
+    // [lodMax_ .. lodMin_], so co-located variants with DISJOINT bands render
+    // exclusively — exactly one per zoom, swapping in place instead of
+    // stacking. Three variants with deliberately distinct silhouettes
+    // (cube -> cone -> sphere) share one world position; as the camera zooms
+    // in the silhouette visibly changes, the unambiguous "LOD is working"
+    // signal the issue asks for. A single-LOD control shape beside the stack
+    // stays constant at every zoom for comparison.
+    //
+    // Bands vs. zoom (computeLodLevel: zoom<2 -> LOD_4, <4 -> LOD_3, <8 ->
+    // LOD_2, <16 -> LOD_1, >=16 -> LOD_0):
+    //   coarse cube   band [LOD_3 .. LOD_4]  -> zoom 1..3
+    //   mid    cone   band [LOD_1 .. LOD_2]  -> zoom 4..15
+    //   fine   sphere band [LOD_0 .. LOD_0]  -> zoom >=16 (persists at 32/64)
+    // The coarsest variant keeps lodMin_ = LOD_4 (persists at min zoom); the
+    // finest keeps lodMax_ = LOD_0 (persists past its threshold).
     constexpr float kLodFixtureY = -16.0f;
-    constexpr vec4 kLodSphereParams = vec4(3, 3, 3, 0);
-    struct LodFixture {
-        IRRender::LodLevel lodMin_;
+    constexpr float kLodControlX = 14.0f;
+    struct LodVariant {
+        IRRender::ShapeType type_;
+        vec4 params_;
+        IRRender::LodLevel lodMin_; // coarsest tier (largest index) visible
+        IRRender::LodLevel lodMax_; // finest tier (smallest index) visible
         Color color_;
         const char *label_;
     };
-    const LodFixture lodFixtures[] = {
-        {IRRender::LodLevel::LOD_4, Color{80, 130, 240, 255}, "LOD_4 (always visible)"},
-        {IRRender::LodLevel::LOD_2, Color{80, 240, 100, 255}, "LOD_2 (zoom>=4)"},
-        {IRRender::LodLevel::LOD_0, Color{240, 80, 80, 255}, "LOD_0 (zoom>=16 only)"},
+    const LodVariant lodStack[] = {
+        {IRRender::ShapeType::BOX,
+         vec4(8, 8, 8, 0),
+         IRRender::LodLevel::LOD_4,
+         IRRender::LodLevel::LOD_3,
+         Color{80, 130, 240, 255},
+         "coarse cube (zoom 1-3)"},
+        {IRRender::ShapeType::CONE,
+         vec4(5, 5, 11, 0),
+         IRRender::LodLevel::LOD_2,
+         IRRender::LodLevel::LOD_1,
+         Color{80, 240, 100, 255},
+         "mid cone (zoom 4-15)"},
+        {IRRender::ShapeType::SPHERE,
+         vec4(4, 4, 4, 0),
+         IRRender::LodLevel::LOD_0,
+         IRRender::LodLevel::LOD_0,
+         Color{240, 80, 80, 255},
+         "fine sphere (zoom >=16)"},
     };
-    constexpr int kNumLodFixtures = sizeof(lodFixtures) / sizeof(lodFixtures[0]);
-    for (int i = 0; i < kNumLodFixtures; ++i) {
-        const auto &lf = lodFixtures[i];
-        IR_LOG_INFO("--- {} ---", lf.label_);
-        C_ShapeDescriptor desc{IRRender::ShapeType::SPHERE, kLodSphereParams, lf.color_};
-        desc.lodMin_ = lf.lodMin_;
+    for (const auto &v : lodStack) {
+        IR_LOG_INFO("--- LOD variant: {} ---", v.label_);
+        C_ShapeDescriptor desc{v.type_, v.params_, v.color_};
+        desc.lodMin_ = v.lodMin_;
+        desc.lodMax_ = v.lodMax_;
         IREntity::createEntity(C_LocalTransform{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
+    }
+
+    // Single-LOD control: default band (always visible), constant across the
+    // whole zoom range so the swapping stack reads against a fixed reference.
+    {
+        IR_LOG_INFO("--- LOD control: constant cylinder (all zooms) ---");
+        C_ShapeDescriptor control{
+            IRRender::ShapeType::CYLINDER,
+            vec4(4, 4, 9, 0),
+            Color{230, 200, 90, 255}
+        };
+        IREntity::createEntity(C_LocalTransform{vec3(kLodControlX, kLodFixtureY, 0.0f)}, control);
     }
 
     // Rotation test: SDF shapes with non-identity entity rotation,
