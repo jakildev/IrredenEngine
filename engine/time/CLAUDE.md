@@ -80,15 +80,16 @@ of lag manually (used by the loading-screen / pause path).
   catches up via extra ticks; it doesn't "drop" anything.
 - **`skipUpdate()` is a footgun.** Skipping ticks silently desyncs any
   system that counts ticks. Use only for loading screens.
-- **`setFixedStep(true)` decouples UPDATE from wall-clock.** Set by
+- **`enableFixedStep()` decouples UPDATE from wall-clock.** Set by
   `World::gameLoop` when `IRVideo::isAutoCaptureActive()` (a headless
-  `--auto-screenshot` run). `beginMainLoop` then feeds exactly one fixed
-  period per render frame, so the loop runs **one UPDATE tick per render
-  frame** regardless of wall-clock. This makes per-tick animation
-  (`AUTO_SPIN`, particles) advance deterministically across the
-  frame-counted capture window; without it the uncapped (vsync-off) capture
-  loop races through the window in under one update period and animated
-  state is captured at ~identity and non-deterministically. No effect on
-  interactive runs (defaults off).
+  `--auto-screenshot` run). Resets the UPDATE lag accumulator to zero and
+  switches `beginMainLoop` to feed exactly one fixed period per render frame,
+  so the loop runs **exactly one UPDATE tick per render frame** and
+  `warmup=N` render frames advance exactly N animation ticks. Without the
+  lag reset, the profiler's initial `m_lag = kFPSNanoDuration` seeds two
+  UPDATE ticks on frame 0 (N+1 ticks total). Without the fixed-step mode
+  itself, the uncapped (vsync-off) capture loop races through the window in
+  under one update period and animated state is captured at ~identity and
+  non-deterministically. No effect on interactive runs (defaults off).
 - **FPS windows don't match display frequency.** The 1-second rolling
   window is in engine time, not vsync time. Numbers can look noisy.

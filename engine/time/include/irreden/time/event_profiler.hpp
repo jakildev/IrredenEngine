@@ -69,6 +69,10 @@ template <> class EventProfiler<UPDATE> {
         m_tickCount++;
     }
 
+    void resetLag() {
+        m_lag = NanoDuration{0};
+    }
+
     bool shouldUpdate() {
         return m_lag >= kFPSNanoDuration;
     }

@@ -198,7 +198,7 @@ void World::gameLoop() {
             // UPDATE tick per render frame so per-tick animation (AUTO_SPIN,
             // etc.) is deterministic and not starved by the uncapped
             // (vsync-off) loop racing through the frame-counted capture window.
-            m_timeManager.setFixedStep(true);
+            m_timeManager.enableFixedStep();
         }
         if (m_waitForFirstUpdateInput) {
             // Prime render-facing state so paused mode shows initialized voxels.

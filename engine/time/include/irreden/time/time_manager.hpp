@@ -52,10 +52,12 @@ class TimeManager {
 
     /// Enable deterministic fixed-step UPDATE pacing: beginMainLoop feeds the
     /// UPDATE accumulator exactly one fixed period per render frame instead of
-    /// real wall-clock elapsed. Used for headless --auto-screenshot capture so
-    /// per-tick animation advances reproducibly. Off in interactive runs.
-    void setFixedStep(bool enabled) {
-        m_fixedStep = enabled;
+    /// real wall-clock elapsed. Resets the UPDATE lag accumulator so warmup=N
+    /// render frames produce exactly N UPDATE ticks. Used for headless
+    /// --auto-screenshot capture so per-tick animation advances reproducibly.
+    void enableFixedStep() {
+        m_profilerUpdate.resetLag();
+        m_fixedStep = true;
     }
 
     template <Events event> double deltaTime();
