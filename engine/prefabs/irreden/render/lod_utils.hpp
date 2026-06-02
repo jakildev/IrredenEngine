@@ -8,11 +8,12 @@
 //
 // Tier index goes DOWN as detail goes UP: LOD_0 is the highest-detail tier
 // (zoom-in close-up), LOD_4 is the coarsest silhouette tier (always
-// rendered). A shape's lodMin_ field carries the smallest index at which it
-// remains visible — i.e. the coarsest tier in which it still draws. The
-// filter rule is "draw if activeLod <= lodMin_" (skip if lodMin_ <
-// activeLod). LOD_4 is the default for new shapes so unmarked content keeps
-// rendering at every zoom.
+// rendered). A shape carries a LOD band [lodMax_ .. lodMin_]: lodMin_ is the
+// coarsest tier (largest index) it still draws at, lodMax_ the finest tier
+// (smallest index). The filter draws iff lodMax_ <= activeLod <= lodMin_.
+// Defaults (lodMin_ = LOD_4, lodMax_ = LOD_0) span the whole range so unmarked
+// content renders at every zoom; disjoint bands across co-located variants
+// give exclusive (swap, not stack) LOD. See docs/design/lod-strategy.md.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
@@ -59,12 +60,23 @@ inline float lodVoxelScale(LodLevel lodLevel) {
     }
 }
 
-// True when a shape with lodMin_ == @p entityLodMin should be culled at
-// the current @p activeLod. Strict inequality matches the Phase 1 spec —
-// a shape with lodMin_ == LOD_4 is never culled because no activeLod
-// satisfies activeLod > LOD_4.
-inline bool shouldSkipAtLod(LodLevel entityLodMin, LodLevel activeLod) {
-    return toUnderlying(entityLodMin) < toUnderlying(activeLod);
+// True when a shape occupying the inclusive LOD band [@p lodMax (finest tier,
+// smallest index) .. @p lodMin (coarsest tier, largest index)] should be culled
+// at the current @p activeLod. The shape draws only when activeLod lands inside
+// the band; it is skipped when the camera is coarser than the band's low-detail
+// floor (activeLod > lodMin) or finer than its high-detail ceiling
+// (activeLod < lodMax — a finer variant has taken over).
+//
+// Defaults (lodMin = LOD_4, lodMax = LOD_0) span the whole tier range, so an
+// unmarked shape is never culled (every activeLod satisfies LOD_0 <= activeLod
+// <= LOD_4) — byte-identical to the pre-band single-sided filter. Authoring
+// co-located variants with disjoint bands yields exclusive LOD: exactly one
+// renders per zoom, so they swap rather than stack (the additive-overlap
+// glitch from #1467). The coarsest variant keeps lodMin = LOD_4 to persist at
+// min zoom; the finest keeps lodMax = LOD_0 to persist past its threshold.
+inline bool shouldSkipAtLod(LodLevel lodMin, LodLevel lodMax, LodLevel activeLod) {
+    const std::uint32_t active = toUnderlying(activeLod);
+    return active > toUnderlying(lodMin) || active < toUnderlying(lodMax);
 }
 
 } // namespace IRRender
