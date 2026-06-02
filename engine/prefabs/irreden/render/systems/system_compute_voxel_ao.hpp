@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -97,6 +98,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         const int kPerAxisRoute = 1;
         voxelFrameDataBuf_
             ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
+        // Recover world-pos with the SAME #1431-capped lattice density the store
+        // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRPrefab::PerAxisCanvas::subdivisionDensity()
+        );
         const int groupsX = IRMath::divCeil(axes.size_.x, kComputeVoxelAOGroupSize);
         const int groupsY = IRMath::divCeil(axes.size_.y, kComputeVoxelAOGroupSize);
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
@@ -115,6 +122,11 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
             sizeof(int),
             &kSingleCanvasRoute
+        );
+        // Restore the uncapped density for downstream single-canvas passes.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRRender::getVoxelRenderEffectiveSubdivisions()
         );
         // Restore the main-canvas image bindings the loop overwrote. The Metal
         // backend's image-binding table persists across frames and is read on

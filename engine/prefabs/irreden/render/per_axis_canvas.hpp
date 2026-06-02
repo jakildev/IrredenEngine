@@ -16,6 +16,8 @@
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
+#include <cstddef>
+
 namespace IRPrefab::PerAxisCanvas {
 
 // Minimum on-screen trixel size (framebuffer px) bounding the skinny-axis
@@ -49,8 +51,7 @@ inline void syncAllocationToCameraYaw() {
     }
     IRComponents::C_PerAxisTrixelCanvases &axes = *perAxis.value();
 
-    const float residualYaw =
-        IRPrefab::Camera::computeYawSplit(IRPrefab::Camera::getYaw()).second;
+    const float residualYaw = IRPrefab::Camera::computeYawSplit(IRPrefab::Camera::getYaw()).second;
     const bool rotating = IRMath::abs(residualYaw) > kResidualYawDeadband;
 
     if (rotating == axes.isAllocated()) {
@@ -62,13 +63,63 @@ inline void syncAllocationToCameraYaw() {
         if (!cardinal.has_value()) {
             return;
         }
-        axes.allocate(IRMath::perAxisTrixelCanvasWorstCaseSize(
-            (*cardinal.value()).size_,
-            kMinOnScreenTrixelSizePx
-        ));
+        axes.allocate(
+            IRMath::perAxisTrixelCanvasWorstCaseSize(
+                (*cardinal.value()).size_,
+                kMinOnScreenTrixelSizePx
+            )
+        );
     } else {
         axes.release();
     }
+}
+
+// Capped per-axis lattice density (`subPerAxis`) for the smooth-camera-Z-yaw
+// store (#1431). The per-axis face-local lattice is `world × density`; the
+// bounded canvas (perAxisTrixelCanvasWorstCaseSize) does NOT scale with the
+// subdivision factor, so a large density drives on-screen cells off the canvas
+// and they are silently dropped (the black-hole clip). This caps the density
+// to the canvas via IRMath::perAxisSubdivisionCap.
+//
+// It is a pure function of the main canvas cardinal size + camera zoom + render
+// subdivisions, so EVERY per-axis pass — the store, the per-axis AO/lighting
+// recovery (perAxisCellToWorld3D reads it via voxelRenderOptions.y), and the
+// framebuffer forward-scatter — computes the identical value and the world↔cell
+// scale stays consistent. Returns the uncapped effective subdivisions when not
+// subdividing (NONE mode) or when the cap doesn't bite.
+inline int subdivisionDensity() {
+    const int effSub = IRRender::getVoxelRenderEffectiveSubdivisions();
+    if (IRRender::getSubdivisionMode() == IRRender::SubdivisionMode::NONE) {
+        return effSub;
+    }
+    const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
+    if (mainCanvas == IREntity::kNullEntity) {
+        return effSub;
+    }
+    auto cardinal =
+        IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
+    if (!cardinal.has_value()) {
+        return effSub;
+    }
+    const int cap = IRMath::perAxisSubdivisionCap(
+        (*cardinal.value()).size_, IRRender::getCameraZoom(), kMinOnScreenTrixelSizePx
+    );
+    return IRMath::clamp(effSub, 1, cap);
+}
+
+// Patch the shared voxel frame-data UBO's `voxelRenderOptions_.y` (the per-axis
+// `subPerAxis` density). Pass-scoped: a per-axis dispatch sets the capped
+// density before its loop and restores the uncapped `effSub` after, mirroring
+// the existing per-axis `perAxisRoute_` set/restore. AO / lighting / sun-shadow
+// only `subData` `perAxisRoute_`, so they reuse the UBO's `voxelRenderOptions_`
+// and must patch the density here for their face-local world recovery to match
+// the capped store.
+inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density) {
+    frameDataUbo->subData(
+        offsetof(IRRender::FrameDataVoxelToCanvas, voxelRenderOptions_) + sizeof(int),
+        sizeof(int),
+        &density
+    );
 }
 
 } // namespace IRPrefab::PerAxisCanvas

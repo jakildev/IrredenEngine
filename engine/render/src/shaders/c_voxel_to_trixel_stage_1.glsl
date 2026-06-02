@@ -212,9 +212,17 @@ void main() {
             writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance);
             return;
         }
+        // subPerAxis is the #1431-capped lattice density (uploaded in
+        // voxelRenderOptions.y for the per-axis pass). The compact pass sized
+        // the indirect dispatch's Z count from the UNCAPPED effSub (it runs on
+        // the single-canvas frame data), so gl_WorkGroupID.z ranges over
+        // effSub², not subPerAxis². Skip the surplus invocations whose sub-cell
+        // index overflows the capped grid — without this they would re-emit at
+        // uPerAxis >= subPerAxis, stepping a full voxel past the cell.
         const int subPerAxis = max(voxelRenderOptions.y, 1);
         const int uPerAxis = int(gl_WorkGroupID.z) / subPerAxis;
         const int vPerAxis = int(gl_WorkGroupID.z) % subPerAxis;
+        if (uPerAxis >= subPerAxis) return;
         const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const ivec3 worldFixed = ivec3(round(worldAligned * float(subPerAxis)));
         const ivec3 microWorld =

@@ -144,9 +144,15 @@ kernel void c_voxel_to_trixel_stage_1(
             );
             return;
         }
+        // subPerAxis is the #1431-capped lattice density (voxelRenderOptions.y).
+        // The compact pass sized the indirect dispatch Z count from the
+        // UNCAPPED effSub, so groupId.z ranges over effSub², not subPerAxis².
+        // Skip surplus sub-cell invocations that overflow the capped grid (they
+        // would step a full voxel past the cell). Mirrors the GLSL guard.
         const int subPerAxis = max(frameData.voxelRenderOptions.y, 1);
         const int uPerAxis = int(groupId.z) / subPerAxis;
         const int vPerAxis = int(groupId.z) % subPerAxis;
+        if (uPerAxis >= subPerAxis) return;
         const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const int3 worldFixed = int3(round(worldAligned * float(subPerAxis)));
         const int3 microWorld =

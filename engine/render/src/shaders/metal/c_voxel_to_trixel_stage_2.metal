@@ -169,6 +169,7 @@ kernel void c_voxel_to_trixel_stage_2(
         const int subPerAxis = max(frameData.voxelRenderOptions.y, 1);
         const int uPerAxis = int(groupId.z) / subPerAxis;
         const int vPerAxis = int(groupId.z) % subPerAxis;
+        if (uPerAxis >= subPerAxis) return; // compact dispatch uses effSub², capped store uses cappedSub²
         const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
         const int3 worldFixed = int3(round(worldAligned * float(subPerAxis)));
         const int3 microWorld =
