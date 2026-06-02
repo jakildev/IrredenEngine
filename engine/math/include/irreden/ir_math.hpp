@@ -962,8 +962,8 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
 ///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(deltaIso, Camera::getYaw());
 /// ```
 constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYaw) {
-    const float c = glm::cos(visualYaw);
-    const float s = glm::sin(visualYaw);
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
     // det = 1 + 2*cos(yaw); singular at yaw = ±2π/3 (degenerate iso view).
     const float det = 1.0f + 2.0f * c;
     if (det > -1e-6f && det < 1e-6f)
