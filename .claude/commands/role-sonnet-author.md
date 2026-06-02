@@ -315,6 +315,30 @@ Each iteration:
    ingests it and the opus-workers become eligible to claim it. Move
    on to the next task.
 
+   **Gated self-config edits — park, don't abandon.** A distinct case
+   from the opus-escalation above: if the bounded task turns out to
+   require editing a fleet self-config file the auto-mode classifier
+   gates — `.claude/commands/role-*.md`, `.claude/agents/*`, or a
+   `.claude/skills/**/SKILL.md` — you cannot apply it autonomously, and
+   escalating to opus does **not** help (the gate is model-independent:
+   it needs a human or an interactive session). Do NOT silently abandon
+   the claim. Mirror the opus-worker escape hatch:
+   - Comment on the issue naming **exactly** what a human must apply (the
+     file, the insertion point, the text).
+   - Park it out of autonomous pickup with a **single atomic** label edit
+     — `gh issue edit <N> --add-label fleet:needs-human --remove-label fleet:queued`
+     — and release your `fleet-claim`. The single call matters: removing
+     `fleet:queued` and adding `fleet:needs-human` in two separate calls
+     opens a TOCTOU window where the scout re-ingests and re-stamps
+     `fleet:queued`.
+   - **Keep `human:approved`** — it's the human's durable signal, not
+     yours to strip; `fleet:needs-human` is in the ingest skip set, so it
+     suppresses the re-stamp on its own.
+   - Do NOT re-claim it next iteration — the gate is deterministic, so
+     retrying only burns iterations on a wall. The label clears when the
+     human applies the change (the ingest re-queues it) or closes the
+     issue.
+
 8. **Verify visual output (when it changed).** See [docs/agents/AUTHOR-PIPELINE.md § Verify visual output](../../docs/agents/AUTHOR-PIPELINE.md#verify-visual-output-when-it-changed)
    — the render-path trigger file set, the mandatory
    `attach-screenshots` + `render-debug-loop` pair, the skip
