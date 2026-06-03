@@ -24,8 +24,12 @@ the ECS surface.
   while it sits off an octahedral snap (#1463), bounded by
   `kMaxDetachedRotatingCanvases` (overflow falls back to the single-canvas
   `faceDeformationMatrixSO3` path). Both free at the snap/cardinal so a static
-  scene is byte-identical (fast path). T2 (#1309) routes each
-  visible voxel face into its axis canvas with continuous
+  scene is byte-identical (fast path). A rotating detached entity's visible
+  faces are written into its own per-axis canvases by the model-space
+  face-local store (#1464, P3a) — additive, so the single-canvas octahedral emit
+  still renders the entity and the frame is unchanged until the resolve-scatter
+  that consumes them lands in P3b (#1475). For the **main world canvas**, T2
+  (#1309) routes each visible voxel face into its axis canvas with continuous
   (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; T3
   (#1310) composites the three by depth-tested forward scatter at the
   framebuffer; T4 (#1311) lights each per-axis canvas (AO + sun-shadow +
