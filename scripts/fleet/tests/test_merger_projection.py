@@ -146,6 +146,28 @@ class SkipLabelsRemovedFromProjection(unittest.TestCase):
         ])])
         self.assertEqual(_hash(empty), _hash(with_blocker))
 
+    def test_human_deferred_conflicting_dropped(self):
+        # A fleet:human-deferred + CONFLICTING PR is at a terminal
+        # "human owns this decision" state. The merger re-applying
+        # fleet:semantic-conflict causes an opus-worker thrash loop
+        # (observed game #101, three identical passes). The projection
+        # must treat it as invisible so the merger is never dispatched.
+        empty = _state([])
+        deferred = _state([_pr(101, labels=[
+            "fleet:approved", "fleet:human-deferred",
+        ], mergeable="CONFLICTING")])
+        self.assertEqual(_hash(empty), _hash(deferred),
+                         "human-deferred PRs must be invisible to merger")
+
+    def test_human_deferred_mergeable_dropped(self):
+        # Even a MERGEABLE human-deferred PR is not the merger's business —
+        # the deferral label means a human decides the fate.
+        empty = _state([])
+        deferred = _state([_pr(101, labels=[
+            "fleet:approved", "fleet:human-deferred",
+        ], mergeable="MERGEABLE")])
+        self.assertEqual(_hash(empty), _hash(deferred))
+
 
 class SignalSemantics(unittest.TestCase):
     """Verify the action signal categorization matches the role doc."""
@@ -168,6 +190,15 @@ class SignalSemantics(unittest.TestCase):
 
     def test_unapproved_is_dropped(self):
         items = project_merger(_state([_pr(101, labels=[])]))
+        self.assertEqual(items, [])
+
+    def test_human_deferred_conflicting_not_needs_resolve(self):
+        # fleet:human-deferred marks a terminal handoff state; the merger
+        # must not classify it as needs-resolve and re-apply
+        # fleet:semantic-conflict (game #101 thrash).
+        items = project_merger(_state([_pr(101, labels=[
+            "fleet:approved", "fleet:human-deferred",
+        ], mergeable="CONFLICTING")]))
         self.assertEqual(items, [])
 
 
