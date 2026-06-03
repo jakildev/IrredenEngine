@@ -15,22 +15,8 @@ using namespace IRComponents;
 
 namespace IRSystem {
 
-// Integrates the camera's WASD pan velocity into its iso-space position.
-// The MOVE_CAMERA_* commands write a screen-aligned intent into
-// C_Velocity2DIso (W = up-on-screen, A = left-on-screen, ...); that intent
-// is only correct in iso space at yaw 0. Under camera Z-yaw the velocity
-// must be remapped to the iso offset that moves the CAMERA_CENTER focus
-// along screen axes — the same `cameraMoveRelativeToYaw` correction
-// CAMERA_MOUSE_PAN / CAMERA_KEY_DRAG_PAN apply to their drag deltas, so
-// keyboard and pointer panning stay consistent.
-//
-// The yaw is snapshotted once per frame in beginTick (serialized on the
-// main thread regardless of PARALLEL_FOR) rather than read per-entity in
-// the tick — the camera is the only entity carrying C_Velocity2DIso, and
-// this keeps the parallel tick free of a getComponent. panYaw_ is 0 in
-// ORIGIN pivot mode (yaw pivots about the world origin, so iso velocity
-// needs no remap) and at yaw 0 `cameraMoveRelativeToYaw` is exactly the
-// identity, so a static / cardinal scene stays byte-identical.
+// Snapshot yaw in beginTick so the PARALLEL_FOR tick stays free of getComponent;
+// panYaw_=0 in ORIGIN mode preserves raw-iso behaviour.
 template <> struct System<RENDERING_VELOCITY_2D_ISO> {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
