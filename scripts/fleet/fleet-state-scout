@@ -1167,12 +1167,19 @@ def _merger_action_signal(labels, mergeable, base_ref):
     skip signals — the merger isn't the agent that resolves those;
     a smoke-runner clears them. Including them as merger candidates
     just makes the merger fire repeatedly to find nothing to do.
+
+    `fleet:human-deferred` is a terminal handoff label — an opus-worker
+    diagnosed the conflict as not-agent-resolvable and filed a follow-up
+    issue; only the human decides (close-as-superseded / replace /
+    reconcile). Re-dispatching the merger just re-triggers the
+    opus-worker thrash cycle (observed game #101, three passes).
     """
     skip = labels & {
         "fleet:wip", "human:wip", "fleet:blocker",
         "fleet:fork-of-other-pr", "fleet:design-blocked",
         "fleet:needs-info", "fleet:needs-linux-smoke",
         "fleet:needs-macos-smoke",
+        "fleet:human-deferred",
     }
     if skip:
         return None
