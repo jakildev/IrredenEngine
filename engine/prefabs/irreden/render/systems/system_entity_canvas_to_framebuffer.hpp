@@ -269,6 +269,23 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 // composites them against the gather content above and against
                 // each other. Mirrors system_trixel_to_framebuffer's world
                 // drawPerAxisScatter, retargeted at the entity's own canvases.
+                //
+                // Backend parity (P4 / #1465): the Metal mirror
+                // (metal/peraxis_scatter_detached.metal — vertex; fragment reuses
+                // f_peraxis_scatter) is a faithful port of v_peraxis_scatter_detached.glsl
+                // and was hardware-verified rendering correct smooth SO(3) detached
+                // solids on macOS/Metal (IRCanvasStress, off-octahedral-snap poses).
+                // The shared FrameDataTrixelToFramebuffer std140/MSL layout is pinned
+                // by the static_asserts in ir_render_types.hpp.
+                //
+                // UNLIT by design (today): the scatter binds only colors_/distances_
+                // per axis — NOT the per-axis ao_/sunShadow_ textures — so detached
+                // entities composite raw voxel color while rotating. Receiving world
+                // AO / sun-shadow on the resolved composite (the trixel-level per-axis
+                // design in docs/design/per-axis-trixel-canvas-rotation.md §"Lighting /
+                // AO placement") is tracked by #1375 (receive) / #1376 (cast); it is
+                // NOT wired here yet. A missing highlight on a spinning detached cube
+                // is that pending work, not a regression.
                 if (!scatterInstances.empty()) {
                     IRRender::getNamedResource<ShaderProgram>("PerAxisScatterDetachedProgram")
                         ->use();
