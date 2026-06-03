@@ -1058,6 +1058,61 @@ if url and head:
 PYEOF
 }
 
+# _issue_pr_state_from <prs-json> <issue-num> <repo>
+#   Echo the shared issue_pr_state() classification ("active" / "parked" /
+#   "none") for <issue-num> over a `gh pr list --json headRefName,labels` blob.
+#   Defaults to "none" on any parse/import failure so callers fail safe (treat
+#   the claim as abandoned rather than wedged-active).
+_issue_pr_state_from() {
+    echo "$1" | ISSUE_NUM="$2" REPO="$3" python3 -c '
+import json, os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_branch_match import issue_pr_state
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
+print(issue_pr_state(prs, os.environ["ISSUE_NUM"], os.environ.get("REPO", "")))
+' 2>/dev/null || echo none
+}
+
+# _release_parked_issue_labels <issue-num>
+#   When the issue's matching open PR is PARKED (fleet:design-blocked /
+#   fleet:design-unblocked), clear this host's `fleet:claim-<host>-*` and
+#   `fleet:in-progress` labels off the issue so the scout stops seeing it as
+#   in-progress and any worker can re-claim after the architect unblocks it
+#   (#1488 Fix A). Returns 0 only when a parked PR was detected and the sweep
+#   ran; returns 1 otherwise (gh missing, no GH repo for the namespace, or the
+#   matching PR is active — the normal PR-open release keeps its labels through
+#   the merge lifecycle, per AUTHOR-PIPELINE.md "Claim-label lifecycle").
+#   Multi-host safe: only this host's `fleet:claim-<host>-*` labels are touched.
+_release_parked_issue_labels() {
+    local issue_num="$1"
+    command -v gh >/dev/null 2>&1 || return 1
+    local repo host
+    repo=$(repo_from_ns)
+    host=$(derive_host)
+    [[ -z "$repo" ]] && return 1
+
+    local prs_json
+    prs_json=$(gh pr list --repo "$repo" --state open \
+        --json number,headRefName,labels --limit 300 2>/dev/null || echo "[]")
+
+    [[ "$(_issue_pr_state_from "$prs_json" "$issue_num" "$repo")" == "parked" ]] || return 1
+
+    # Remove this host's claim label(s) + fleet:in-progress (mirrors the
+    # cleanup --gh open-issue sweep).
+    local issue_labels lbl
+    issue_labels=$(gh issue view "$issue_num" --repo "$repo" \
+        --json labels --jq '.labels[].name' 2>/dev/null || echo "")
+    while IFS= read -r lbl; do
+        [[ "$lbl" == fleet:claim-${host}-* ]] || continue
+        gh_release_label "$repo" "$issue_num" "$lbl" || true
+    done <<< "$issue_labels"
+    gh_release_label "$repo" "$issue_num" "fleet:in-progress" || true
+    return 0
+}
+
 cmd_release() {
     local issue_num
     if ! issue_num=$(require_issue_number "$1"); then
@@ -1083,14 +1138,23 @@ cmd_release() {
                 cmd_release_worktree "$owner" >/dev/null 2>&1 || true
             fi
         fi
-        # Issue-side `fleet:claim-*` and `fleet:in-progress` are NOT
-        # cleared here. The claim label is the canonical lock through
-        # PR lifecycle and stays as a historical record after merge;
-        # `fleet:in-progress` follows the same lifecycle so queue-list
-        # accurately reflects "active work present" until the issue
-        # closes. Abandoned claims (no matching open PR + TTL) are
-        # swept by `fleet-claim cleanup --gh` (second pass).
-        echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation cleared; issue labels retained)"
+        # Issue-side `fleet:claim-*` + `fleet:in-progress` normally persist
+        # through the PR's review/merge lifecycle (see AUTHOR-PIPELINE.md
+        # "Claim-label lifecycle"): the queue reflects "active work present"
+        # until the issue closes, and `cleanup --gh` ages out abandoned
+        # claims. The ONE exception is a design-blocked / design-unblocked
+        # escalation — the worker releases precisely so ANY worker can resume
+        # after the architect responds, but the lingering claim/in-progress
+        # labels make the scout treat the issue as in-progress and block
+        # re-claim (#1488 Fix A). The escalation step adds fleet:design-blocked
+        # to the PR before calling release, so we detect the park here and
+        # clear both sides. (cleanup --gh's parked-PR carve-out is the TTL
+        # safety net if the label landed late or release was skipped.)
+        if _release_parked_issue_labels "$issue_num"; then
+            echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation + parked issue labels cleared)"
+        else
+            echo "released: #${issue_num} (slug: $slug, FS lock + worktree reservation cleared; issue labels retained)"
+        fi
     else
         echo "not claimed: #${issue_num} (slug: $slug)"
     fi
@@ -1379,8 +1443,12 @@ except Exception:
     # closed-issue label sweep runs here.
 
     # Second pass: sweep `fleet:claim-*` labels off OPEN issues when the
-    # claim is stale — no matching open WIP PR (head-branch claude/<N>-*)
-    # exists and age > TTL.
+    # claim is stale (age > TTL) and no *active* matching PR exists. A
+    # matching PR that is parked (fleet:design-blocked / -unblocked) does NOT
+    # count as active: the worker released its claim to let any worker resume
+    # after the architect responds, so its lingering claim is sweepable just
+    # like a no-PR abandon (#1488 Fix B). Only an active (non-parked) matching
+    # WIP PR (head-branch claude/<N>-*) keeps the claim.
     local claim_issue_stale_secs="${FLEET_CLAIM_STALE_SECS_ISSUES:-7200}"
     for repo in "${repos[@]}"; do
         local open_claim_plan open_pr_branches_json
@@ -1404,7 +1472,7 @@ for issue in issues:
         [[ -z "$open_claim_plan" ]] && continue
 
         open_pr_branches_json=$(gh pr list --repo "$repo" --state open \
-            --json headRefName --limit 300 2>/dev/null || echo "[]")
+            --json headRefName,labels --limit 300 2>/dev/null || echo "[]")
 
         while IFS=$'\t' read -r issue_num label_name; do
             [[ -z "$issue_num" || -z "$label_name" ]] && continue
@@ -1430,29 +1498,20 @@ except Exception:
             local age=$(( now - added_epoch ))
             [[ $age -lt $claim_issue_stale_secs ]] && continue
 
-            local has_wip_pr
-            has_wip_pr=$(echo "$open_pr_branches_json" | ISSUE_NUM="$issue_num" REPO="$repo" python3 -c '
-import json, os, sys
-sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import branch_matches_issue
-try:
-    prs = json.load(sys.stdin)
-except Exception:
-    prs = []
-issue = os.environ["ISSUE_NUM"]
-repo = os.environ.get("REPO", "")
-for pr in prs:
-    if branch_matches_issue(pr.get("headRefName") or "", issue, repo):
-        print(1)
-        sys.exit(0)
-print(0)
-' 2>/dev/null || echo 0)
+            local pr_state
+            pr_state=$(_issue_pr_state_from "$open_pr_branches_json" "$issue_num" "$repo")
 
-            [[ "$has_wip_pr" -eq 1 ]] && continue
+            # Keep the claim only while a matching PR is *active* work; a
+            # parked (design-blocked/-unblocked) or absent matching PR falls
+            # through to the sweep below (#1488 Fix B).
+            [[ "$pr_state" == "active" ]] && continue
+
+            local sweep_reason="no open PR"
+            [[ "$pr_state" == "parked" ]] && sweep_reason="parked PR (design-blocked/unblocked)"
 
             if gh issue edit "$issue_num" --repo "$repo" \
                     --remove-label "$label_name" >/dev/null 2>&1; then
-                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m, no open PR)"
+                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m, ${sweep_reason})"
                 total_removed=$((total_removed + 1))
                 gh issue edit "$issue_num" --repo "$repo" \
                     --remove-label "fleet:in-progress" >/dev/null 2>&1 || true
@@ -3539,9 +3598,15 @@ commands:
                                 reservation + --stackable-on .meta
                                 sidecar). Issue-side `fleet:claim-*`
                                 and `fleet:in-progress` labels are
-                                retained — abandoned-claim sweep in
-                                `cleanup --gh` handles those when no
-                                matching open PR exists.
+                                retained through the PR's review/merge
+                                lifecycle — EXCEPT when the issue's
+                                matching open PR is parked
+                                (fleet:design-blocked/-unblocked), in
+                                which case they are cleared so any
+                                worker can re-claim after the architect
+                                unblocks (#1488). The abandoned-claim
+                                sweep in `cleanup --gh` is the TTL
+                                safety net.
   check <issue-number>          check if free (exit 0=free, 1=taken).
   list                          list all active claims.
   host [uname-string]           print this host's canonical key
@@ -3572,11 +3637,13 @@ commands:
                                     PRs (>30 min age),
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
-                                    abandoned — no matching WIP PR
-                                    (head-branch claude/<N>-*) exists
-                                    and age > TTL (default 7200s).
-                                    `fleet:in-progress` is removed
-                                    alongside the claim label.
+                                    abandoned — age > TTL (default
+                                    7200s) AND no *active* matching PR
+                                    exists. A matching PR that is parked
+                                    (fleet:design-blocked/-unblocked)
+                                    counts as abandoned, not active
+                                    (#1488). `fleet:in-progress` is
+                                    removed alongside the claim label.
                                 `fleet:claim-*` labels on CLOSED
                                 issues are preserved as a historical
                                 "who worked on this" record.

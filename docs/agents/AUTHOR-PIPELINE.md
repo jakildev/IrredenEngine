@@ -155,10 +155,16 @@ Paste the PR URL.
 > **Claim-label lifecycle.** `fleet-claim release` clears the local
 > filesystem lock and the worktree reservation. The issue's
 > `fleet:claim-<host>-<agent>` and `fleet:in-progress` labels are
-> **left in place** — they persist through the PR's review/merge
-> lifecycle and are swept by `fleet-claim cleanup --gh` only when the
-> issue closes or the claim goes stale with no matching open
-> `claude/<N>-*` PR. Don't hand-strip them.
+> normally **left in place** — they persist through the PR's
+> review/merge lifecycle and are swept by `fleet-claim cleanup --gh`
+> only when the issue closes or the claim goes stale with no matching
+> open `claude/<N>-*` PR. Don't hand-strip them. The one exception is
+> a **design-blocked / design-unblocked** escalation: when the issue's
+> matching PR is parked, `release` clears those two labels itself so
+> the scout stops treating the issue as in-progress and any worker can
+> re-claim once the architect unblocks it (#1488). You don't do
+> anything special — the design-escalation step's existing
+> `fleet-claim release <N>` call handles it.
 
 Then run the shared shutdown ceremony — see
 [`FLEET-RUNTIME.md § Per-iteration shutdown`](FLEET-RUNTIME.md#per-iteration-shutdown--final-step).
