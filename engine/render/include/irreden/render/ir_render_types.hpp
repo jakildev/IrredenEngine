@@ -107,6 +107,19 @@ struct FrameDataTrixelToFramebuffer {
     float visualYaw_ = 0.0f;
     int scatterPad_ = 0;
     ivec4 visibleFaceIds_{0, 0, 0, 0};
+    /// Detached-entity SO(3) forward-scatter composite (P3b / #1475). Consumed
+    /// ONLY by v_peraxis_scatter_detached (the per-DETACHED-entity analog of the
+    /// camera-yaw scatter above), another std140 append so the world scatter +
+    /// gather shaders — which stop their UBO block at `visibleFaceIds_` — stay
+    /// byte-identical. The detached scatter projects each face corner under the
+    /// octahedral-snap RESIDUAL quaternion via `pos3DtoPos2DIsoRotated` (instead
+    /// of the camera path's scalar `visualYaw_`) and co-sorts the composite by
+    /// `isoDepthAlongAxis(origin, detachedDepthAxis_.xyz)`. `detachedResidual_`
+    /// is that residual quat (qx,qy,qz,qw); `detachedDepthAxis_.xyz` =
+    /// isoDepthAxisModel(residual). Both are computed CPU-side from the canvas's
+    /// C_CanvasLocalRotation by ENTITY_CANVAS_TO_FRAMEBUFFER.
+    vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
+    vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -115,11 +128,20 @@ static_assert(
     "scatterPad_ 124, then std140 ivec4 alignment rounds to 128)"
 );
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 144,
+    offsetof(FrameDataTrixelToFramebuffer, detachedResidual_) == 144 &&
+        offsetof(FrameDataTrixelToFramebuffer, detachedDepthAxis_) == 160,
+    "Detached scatter fields (P3b / #1475) must std140-append after "
+    "visibleFaceIds_ (ends at 144): detachedResidual_ 144 / detachedDepthAxis_ "
+    "160. Read only by v_peraxis_scatter_detached; the world scatter + gather "
+    "blocks stop at visibleFaceIds_, so they stay byte-identical"
+);
+static_assert(
+    sizeof(FrameDataTrixelToFramebuffer) == 176,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
-    "T3 scatter shaders (v_/f_peraxis_scatter) read the appended perAxisBase_ / "
-    "visualYaw_ / scatterPad_ / visibleFaceIds_ fields; a silent reorder or "
-    "resize would corrupt the scatter UBO with no compile-time diagnostic"
+    "scatter shaders (v_/f_peraxis_scatter[_detached]) read the appended "
+    "perAxisBase_ / visualYaw_ / visibleFaceIds_ and the P3b detachedResidual_ "
+    "/ detachedDepthAxis_ fields; a silent reorder or resize would corrupt the "
+    "scatter UBO with no compile-time diagnostic"
 );
 
 struct FrameDataVoxelToCanvas {

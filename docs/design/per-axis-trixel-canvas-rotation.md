@@ -511,7 +511,44 @@ canvas pays only the component slot, no GPU textures. Two once-per-frame gates i
 
 P2 (#1463) is **infrastructure only** — it stands up and bounds the textures and
 adds the reposition helper, but routes no faces into them, so the rendered frame
-is byte-identical; the P3 forward-scatter composite (#1464) is what reads them.
+is byte-identical. P3a (#1464) is the first writer: the model-space face-local
+store routes each rotating detached entity's visible faces into its own per-axis
+canvases (keyed by `faceInPlaneCoords`, depth `pos3DtoDistance` — the un-rotated
+`x+y+z` origin-recovery key), still additive (the single-canvas octahedral emit
+keeps rendering). P3b (#1475) is the first reader: the forward-scatter composite.
+
+**P3b — forward-scatter composite (#1475).** `ENTITY_CANVAS_TO_FRAMEBUFFER`
+forward-scatters a rotating detached entity's three per-axis canvases straight
+to the framebuffer (`PerAxisScatterDetachedProgram` =
+`v_peraxis_scatter_detached` + the reused `f_peraxis_scatter`, GL_LESS), the
+per-DETACHED-entity analog of the camera path's
+`system_trixel_to_framebuffer::drawPerAxisScatter`. Each non-empty cell recovers
+its exact model origin via `faceOriginFromInPlane` (the camera-iso baked into
+`perAxisBase` cancels), repositions the face corners under the octahedral-snap
+**residual** with `pos3DtoPos2DIsoRotated`, and places them at the entity's iso
+screen position via the same placement TRS the gather blit uses — so
+`perAxisBase` is recovery-only. Composite depth sorts by
+`isoDepthAlongAxis(origin, isoDepthAxisModel(residual))` (the reposition's
+rotation, **not** the store's `x+y+z` key and **not** the full composed
+rotation). `VOXEL_TO_TRIXEL_STAGE_1` retires the off-snap octahedral
+single-canvas emit for these entities (no double-draw); the at-snap path
+(per-axis released) keeps the single-canvas emit + blit, byte-identical to
+master. As with the camera path, detached rotating entities freeze at identity
+under `--auto-screenshot`, so the smooth-rotation visual is verified at P5 /
+#1466; identity / at-snap is the headless-verifiable byte-identical case.
+
+> **Anti-pattern (rejected — issue-1475 plan, architect 2026-06-02):** do
+> **not** "resolve" the per-axis canvases back into the entity's single trixel
+> canvas and reuse the unchanged `ENTITY_CANVAS_TO_FRAMEBUFFER` blit. That blit
+> is `CanvasToFramebufferProgram` = `f_trixel_to_framebuffer.glsl`, whose
+> `main()` de-tiles via `trixelFramebufferSamplePosition` — the
+> **single-global-parity gather**. A smooth resolve writes continuous
+> `pos3DtoPos2DIsoRotated` centers (mixed parity) into a trixel canvas; reading
+> them back through that gather re-introduces the #1256 stripe. The blit cannot
+> be both *unchanged* and *smooth*. Forward-scatter to the framebuffer (above)
+> is parity-correct by construction — no gather inverse, no single-parity
+> assumption — exactly as the camera path's T3 decision (`## Implementation
+> decision` above) established.
 
 ## Open decisions (resolve during implementation)
 
