@@ -539,7 +539,7 @@ cleanup_stale_dispatches() {
 # is cleared so the next cooldown produces a fresh log.
 pane_in_rate_limit_cooldown() {
     local pane_key="$1"
-    local now in_cooldown=1 marker
+    local now found_active=0 marker
     now=$(date +%s)
     for marker in "ts:$LIMIT_DELAY" "throttle.ts:$RATE429_DELAY"; do
         local suffix="${marker%%:*}" delay="${marker#*:}"
@@ -549,12 +549,12 @@ pane_in_rate_limit_cooldown() {
         ts=$(cat "$ts_file" 2>/dev/null || printf '0')
         elapsed=$(( now - ts ))
         if (( elapsed < delay )); then
-            in_cooldown=0
+            found_active=1
         else
             rm -f "$ts_file"
         fi
     done
-    if (( in_cooldown == 0 )); then
+    if (( found_active )); then
         return 0
     fi
     unset "RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]"
@@ -978,6 +978,8 @@ dispatch_role() {
     if [[ -n "$gap_blocked" ]]; then
         if (( dispatched > 0 )); then
             log "$role: dispatched $dispatched; min-gap (${DISPATCH_MIN_GAP_SECONDS}s) deferring remaining idle panes — trigger kept"
+        else
+            log "$role: min-gap deferring first idle pane — trigger kept"
         fi
         return
     fi
