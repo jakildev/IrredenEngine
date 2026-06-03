@@ -426,7 +426,47 @@ When working a `fleet:design-blocked` PR:
    ```
    gh pr edit <N> --remove-label "fleet:design-blocked" --add-label "fleet:design-unblocked"
    ```
-6. (Optional) If the re-scope changes the semantics significantly,
+6. **Self-heal stale resume-state (do this every unblock).** A worker
+   that escalated typically released its claim and reset/parked the
+   branch ("releasing the claim so any worker can resume"), but two
+   pieces of stale state routinely survive and silently keep the
+   unblocked PR from being picked up. The architect unblock is the one
+   chokepoint where both are always observable, so clear them here:
+
+   a. **Orphaned claim labels on the backing issue.** A parked
+      (design-blocked) PR is NOT active work, but its matching
+      `fleet:wip` PR makes the TTL cleanup sweep treat the issue's
+      `fleet:claim-<host>-<agent>` + `fleet:in-progress` labels as a
+      live claim, so they never get swept — the scout then sees the
+      issue as in-progress and no worker can claim it. Check and clear:
+      ```
+      gh issue view <issueN> --repo <repo> --json labels \
+        --jq '[.labels[].name] | map(select(startswith("fleet:claim-") or . == "fleet:in-progress"))'
+      # if non-empty:
+      gh issue edit <issueN> --repo <repo> \
+        --remove-label "fleet:in-progress" --remove-label "fleet:claim-<host>-<agent>"
+      ```
+      (Safe because design-blocked ⇒ parked-for-architect ⇒ the claim
+      is by definition not active. The released worker's FS claim is
+      already gone; only the GitHub labels linger.)
+
+   b. **Stacked-on-merged base.** If the PR's `baseRefName` is a branch
+      that has since merged, the merger never re-targeted it (the merger
+      skips `fleet:wip` PRs), so the worker's stacked-resume has no clean
+      rebase target. Re-target to `master` and drop the stacked label:
+      ```
+      gh pr view <N> --repo <repo> --json baseRefName,labels
+      # if base merged / is not master:
+      gh pr edit <N> --repo <repo> --base master --remove-label "fleet:stacked"
+      ```
+      (For a genuinely-stacked PR whose base is still open, leave the
+      base alone — only re-target when the base has merged.)
+
+   The root-cause fixes for both (full claim release on escalation; the
+   cleanup sweep ignoring parked PRs; merged-base re-target running on
+   `fleet:wip` PRs) are tracked separately; this step is the standing
+   safety net until they land. Worked example: PR #1483 / issue #1475.
+7. (Optional) If the re-scope changes the semantics significantly,
    update the PR title:
    ```
    gh pr edit <N> --title "<new title>"
