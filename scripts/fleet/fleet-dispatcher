@@ -124,6 +124,31 @@ declare -A CAP_DEFER_LOGGED=()
 # panes hits a limit, the other keeps running.
 LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 
+# Seconds to back off a pane after a short-window 429 ("Server is temporarily
+# limiting requests (not your usage limit)") — distinct from the usage-limit
+# LIMIT_DELAY above. The 429 is Anthropic's per-minute load-shed, not a quota
+# wall, so it clears in well under a minute; a short cooldown lets the pane
+# retry soon instead of burning the full 15-min usage-limit delay. The marker
+# is the per-pane `<pane>.throttle.ts` file written by fleet-dispatch-wrap when
+# claude exits non-zero AND fleet-claude-stream flagged a throttle error.
+RATE429_DELAY="${FLEET_DISPATCHER_RATE429_DELAY:-90}"
+
+# Minimum wall-clock gap between any two claude launches, across ALL roles and
+# panes. The dispatcher otherwise fires every idle pane in a single tick — at
+# fleet-up that's ~8 cold `claude` cold-starts (each doing a large state.json
+# read) inside one minute, which trips Anthropic's short-window 429. The gap
+# spreads the burst: with the default below and a 10s poll, launches land one
+# per tick (8 panes over ~80s) instead of all at once. It is a *minimum* gap,
+# not a fixed cadence — a lone steady-state dispatch whose last launch was long
+# ago fires immediately; only simultaneous bursts get spaced. Set to 0 to
+# disable (tests / single-pane setups). Tracked via LAST_DISPATCH_EPOCH below.
+DISPATCH_MIN_GAP_SECONDS="${FLEET_DISPATCH_MIN_GAP_SECONDS:-8}"
+# Wall-clock epoch of the most recent claude launch (0 = none yet). Updated in
+# dispatch_role after each successful send-keys; read by the min-gap gate.
+# Process-global on purpose: the gap must hold across roles within a tick and
+# across ticks, so it must NOT be declared `local` anywhere.
+LAST_DISPATCH_EPOCH=0
+
 # --- Usage gate (per-rate-limit-type thresholds) --------------------------
 #
 # Soft, fleet-wide pre-emption: when any rate_limit_event observation
@@ -505,24 +530,33 @@ cleanup_stale_dispatches() {
 
 # --- Rate-limit cooldown ---------------------------------------------------
 
-# Returns 0 (true) if the pane is still within its usage-limit cooldown
-# window; returns 1 (false) if the pane is free to dispatch.
-# As a side effect, removes the marker file when the cooldown expires and
-# clears the "already logged" flag so the next cooldown produces a fresh log.
+# Returns 0 (true) if the pane is still within a cooldown window; returns 1
+# (false) if the pane is free to dispatch. Two independent marker kinds are
+# checked: the usage-limit marker (`<pane>.ts`, LIMIT_DELAY) and the
+# short-window 429 marker (`<pane>.throttle.ts`, RATE429_DELAY). A pane is in
+# cooldown if EITHER is still within its window. As a side effect, expired
+# markers are reaped and — once no marker remains — the "already logged" flag
+# is cleared so the next cooldown produces a fresh log.
 pane_in_rate_limit_cooldown() {
     local pane_key="$1"
-    local ts_file="$RATE_LIMIT_DIR/$pane_key.ts"
-    if [[ ! -f "$ts_file" ]]; then
-        return 1
-    fi
-    local ts now elapsed
-    ts=$(cat "$ts_file" 2>/dev/null || printf '0')
+    local now found_active=0 marker
     now=$(date +%s)
-    elapsed=$(( now - ts ))
-    if (( elapsed < LIMIT_DELAY )); then
+    for marker in "ts:$LIMIT_DELAY" "throttle.ts:$RATE429_DELAY"; do
+        local suffix="${marker%%:*}" delay="${marker#*:}"
+        local ts_file="$RATE_LIMIT_DIR/$pane_key.$suffix"
+        [[ -f "$ts_file" ]] || continue
+        local ts elapsed
+        ts=$(cat "$ts_file" 2>/dev/null || printf '0')
+        elapsed=$(( now - ts ))
+        if (( elapsed < delay )); then
+            found_active=1
+        else
+            rm -f "$ts_file"
+        fi
+    done
+    if (( found_active )); then
         return 0
     fi
-    rm -f "$ts_file"
     unset "RATE_LIMIT_COOLDOWN_LOGGED[$pane_key]"
     return 1
 }
@@ -864,6 +898,7 @@ dispatch_role() {
     fi
 
     local dispatched=0
+    local gap_blocked=""
     while IFS= read -r pane_id; do
         [[ -n "$pane_id" ]] || continue
         # Skip panes that already have an in-flight dispatch record.
@@ -885,6 +920,19 @@ dispatch_role() {
                 RATE_LIMIT_COOLDOWN_LOGGED["$pane_key"]=1
             fi
             continue
+        fi
+        # Global min-gap stagger. Stop fanning out once the most recent launch
+        # is younger than the gap, so a single tick can't fire every idle pane
+        # at once (the fleet-up 429 burst). `break` (not `continue`) — the gap
+        # is global, so if this pane is too soon, every later pane is too. The
+        # gap_blocked flag below makes the post-loop logic keep the trigger so
+        # the deferred panes fire on later ticks. now_epoch is reused to stamp
+        # LAST_DISPATCH_EPOCH only after a successful send.
+        local now_epoch
+        now_epoch=$(date +%s)
+        if (( DISPATCH_MIN_GAP_SECONDS > 0 && now_epoch - LAST_DISPATCH_EPOCH < DISPATCH_MIN_GAP_SECONDS )); then
+            gap_blocked=1
+            break
         fi
         local cmd
         cmd=$(build_dispatch_command "$role" "$pane_key")
@@ -919,8 +967,22 @@ dispatch_role() {
             continue
         fi
         write_dispatch_record "$role" "$pane_id"
+        LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
     done <<< "$idle_panes"
+
+    # If the global min-gap stopped us mid-fan-out (gap_blocked set on break),
+    # keep the trigger so the remaining idle panes launch on later ticks — one
+    # per gap — regardless of how many fired this tick or the boot-window
+    # state. This is what spreads the fleet-up burst to ~one launch per tick.
+    if [[ -n "$gap_blocked" ]]; then
+        if (( dispatched > 0 )); then
+            log "$role: dispatched $dispatched; min-gap (${DISPATCH_MIN_GAP_SECONDS}s) deferring remaining idle panes — trigger kept"
+        else
+            log "$role: min-gap deferring first idle pane — trigger kept"
+        fi
+        return
+    fi
 
     if (( dispatched > 0 )); then
         # Boot fan-out guard. If the role's post-dispatch active count
@@ -1263,6 +1325,27 @@ case "${1:-}" in
             echo "retain"
         else
             echo "consume"
+        fi
+        exit 0
+        ;;
+    --dispatch-gap-check)
+        # Test/debug: print `ok` (a launch may proceed) or `wait` (the global
+        # min-gap is still holding) for a given last-launch epoch and now-epoch.
+        # Honors FLEET_DISPATCH_MIN_GAP_SECONDS (env override); 0 disables the
+        # gap so the answer is always `ok`. Same gate the dispatch_role loop
+        # applies per pane.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --dispatch-gap-check <last-epoch> <now-epoch>" >&2
+            exit 2
+        fi
+        if ! [[ "$2" =~ ^[0-9]+$ && "$3" =~ ^[0-9]+$ ]]; then
+            echo "fleet-dispatcher --dispatch-gap-check: <last-epoch> and <now-epoch> must be non-negative integers" >&2
+            exit 2
+        fi
+        if (( DISPATCH_MIN_GAP_SECONDS > 0 && $3 - $2 < DISPATCH_MIN_GAP_SECONDS )); then
+            echo "wait"
+        else
+            echo "ok"
         fi
         exit 0
         ;;

@@ -36,15 +36,38 @@ else
     export FLEET_ROLE_MODEL=sonnet
 fi
 
+# Short-window 429 detection. fleet-claude-stream touches this flag if it sees
+# the "Server is temporarily limiting requests (not your usage limit)" error in
+# the stream. Combined with a non-zero exit below, that's the signal to apply a
+# SHORT throttle cooldown + re-arm the role — distinct from the 15-min
+# usage-limit cooldown, which is the wrong tool for a per-minute load-shed.
+# Clear any stale flag from a previous run first.
+mkdir -p "$RATE_LIMIT_DIR"
+export FLEET_THROTTLE_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.throttle-seen"
+rm -f "$FLEET_THROTTLE_FLAG"
+
 claude --model "$MODEL" --effort "$EFFORT" --print \
     --output-format stream-json --include-partial-messages --verbose \
     "/role-$ROLE live" | fleet-claude-stream
 
 rc="${PIPESTATUS[0]}"
+TRIGGERS_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
 if [[ "$rc" == "2" ]]; then
-    mkdir -p "$RATE_LIMIT_DIR"
+    # Usage-limit (quota) exit — long cooldown via the .ts marker.
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
+elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then
+    # Short-window 429 failure: claude exhausted its internal retries against a
+    # per-minute load-shed (not a quota wall). Write the short throttle cooldown
+    # and re-arm the role so the dispatcher retries this pane once the window
+    # clears. The re-arm matters most for reviewer / smoke roles, which have no
+    # periodic safety re-arm and would otherwise stall until the scout
+    # projection next changes.
+    mkdir -p "$TRIGGERS_DIR"
+    date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.throttle.ts"
+    touch "$TRIGGERS_DIR/$ROLE"
+    echo "fleet-dispatch-wrap: short-window 429 on $ROLE ($PANE_KEY); wrote throttle cooldown + re-armed $ROLE" >&2
 fi
+rm -f "$FLEET_THROTTLE_FLAG"
 
 # Auto-retrigger: when a worker role exits cleanly (rc=0) with a dirty
 # worktree and an active reservation, the session likely dropped the

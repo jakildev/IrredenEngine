@@ -124,6 +124,29 @@
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
 # FLEET_DISPATCHER_RESET_GRACE_SECONDS=600
 
+# --- Dispatch stagger + short-window 429 backoff --------------------------
+#
+# The dispatcher otherwise fires every idle pane in a single tick — at
+# fleet-up that's ~8 cold `claude` cold-starts (each doing a large
+# state.json read) inside one minute, which trips Anthropic's short-window
+# 429 ("Server is temporarily limiting requests (not your usage limit)").
+#
+# FLEET_DISPATCH_MIN_GAP_SECONDS is a MINIMUM wall-clock gap between any two
+# claude launches, across all roles and panes. It spreads the burst (with a
+# 10s poll, launches land ~one per tick); a lone steady-state dispatch whose
+# last launch was long ago still fires immediately. Default 8. Set 0 to
+# disable (single-pane / test setups).
+# FLEET_DISPATCH_MIN_GAP_SECONDS=8
+#
+# FLEET_DISPATCHER_RATE429_DELAY is the per-pane cooldown applied after a
+# short-window 429 *failure* (claude exhausted its internal retries). It is
+# deliberately much shorter than FLEET_DISPATCHER_LIMIT_DELAY (the usage /
+# quota cooldown): the 429 is a per-minute load-shed that clears in seconds,
+# not a quota wall. fleet-dispatch-wrap also re-arms the role's trigger on a
+# 429 failure so reviewer / smoke panes (no periodic re-arm) retry once the
+# window clears. Default 90s.
+# FLEET_DISPATCHER_RATE429_DELAY=90
+
 # --- fleet-run default watchdog -------------------------------------------
 #
 # When fleet-run is invoked without an explicit --timeout, apply this
