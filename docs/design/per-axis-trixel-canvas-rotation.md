@@ -580,6 +580,17 @@ under `--auto-screenshot`, so the smooth-rotation visual is verified at P5 /
   byte-identical. Restoring faithful per-axis cast-shadows via a trixel /
   screen-space resolve (the north star: one resolved representation both
   detached and per-axis content derive from) is deferred to **#1435**.
+  - **DETACHED status (P4 / #1465).** The resolution above is shipped for the
+    **camera / main-canvas** path (T4 / #1311). For **detached** entities it is
+    designed but **not yet wired**: `ENTITY_CANVAS_TO_FRAMEBUFFER`'s scatter pass
+    binds only `colors_`/`distances_` per axis, so a rotating detached entity
+    composites raw voxel color (unlit). Receiving world AO / sun-shadow on the
+    detached composite (reusing the per-axis `ao_`/`sunShadow_` textures already
+    on `C_PerAxisTrixelCanvases`) is tracked by **#1375** (receive) / **#1376**
+    (cast). P4 (#1465) confirmed Metal backend parity for the shipped detached
+    geometry/depth/scatter (P1 stage-1 `R⁻¹·(1,1,1)` depth + P3b forward-scatter)
+    — built clean and hardware-verified on macOS/Metal — and handed the detached
+    lighting integration to #1375/#1376 rather than duplicating it here.
 - **Memory / allocation policy.** Three worst-case textures during rotation;
   gate allocation on `residualYaw != 0` so static scenes pay nothing. Define
   the allocate/free churn behavior at rotation start/stop.
