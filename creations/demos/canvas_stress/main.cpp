@@ -120,9 +120,29 @@ constexpr float kSunAmbient = 0.45f;
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
 
+// SO(3) detached-canvas regression suite (#1444).
+//
+// Five shots at varying camera yaw and zoom cover the five regression checks:
+// smooth-deformation at cardinal yaw, off-snap discriminating at 45°, wide
+// cross-host parity, GRID cross-check (GRID path unaffected by DETACHED
+// changes), and a second cross-host parity angle at 30°.
+//
+// Identity fast-path (zero-rotation) is verified by running the demo with
+// --no-spin (entities stay at quaternion identity): any regression in the
+// identity shader path causes that separate run to diverge from its baseline.
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), 0.0f, "overview"},
-    {0.6f, vec2(0, 0), 0.0f, "wide"},
+    // (1) Primary: standard camera at yaw=0. Fails if SO(3) deform breaks.
+    {1.0f, vec2(0, 0), 0.0f, "so3_smooth_sweep"},
+    // (2) Discriminating: 45° camera yaw exposes per-voxel depth ordering on
+    //     non-octahedral-snap poses (R^-1*(1,1,1) depth axis regression).
+    {1.0f, vec2(0, 0), IRMath::kQuarterPi, "so3_offsnap_disc"},
+    // (3) Wide parity: full-scene zoom-out for cross-host GL/Metal comparison.
+    {0.65f, vec2(0, 0), 0.0f, "so3_wide_parity"},
+    // (4) GRID cross-check: wider zoom reveals GRID-mode cubes on the ground.
+    //     Validates the (1,1,1) depth path is untouched by DETACHED changes.
+    {0.45f, vec2(0, 0), 0.0f, "so3_grid_cross"},
+    // (5) Off-snap wide: 30° camera yaw + wide zoom; second cross-host angle.
+    {0.65f, vec2(0, 0), IRMath::kPi / 6.0f, "so3_offsnap_wide"},
 };
 
 // One detached object: a per-entity canvas (textures + voxel pool), a voxel
@@ -305,7 +325,9 @@ void initSystems() {
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
-        cfg.settleFrames_ = 3;
+        // 60 settle frames between shots: entities advance ~24° at base spin rate,
+        // giving clearly distinct rotation states per shot for the SO(3) suite.
+        cfg.settleFrames_ = 60;
         cfg.shots_ = kShots;
         cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
