@@ -181,8 +181,9 @@ def main(argv: list[str] | None = None) -> int:
                          "if the mapping doesn't hold).")
     ap.add_argument("--build-dir", default=None,
                     help="CMake build dir (default: <repo>/build).")
-    ap.add_argument("--warmup", type=int, default=10,
-                    help="Warmup frames before the first shot (default: 10).")
+    ap.add_argument("--warmup", type=int, default=None,
+                    help="Warmup frames before the first shot (default: 10, or "
+                         "manifest['warmup'] if set; CLI value always wins).")
     ap.add_argument("--timeout", type=int, default=60,
                     help="Per-run timeout in seconds (default: 60).")
     ap.add_argument("--update-references", action="store_true",
@@ -206,8 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     shot_labels: list[str] = manifest["shots"]
     thresholds = manifest.get("thresholds", {})
     screenshot_subdir = manifest.get("screenshot_subdir", "save_files/screenshots")
+    # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
+    warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
 
-    print(f"[render-verify] target={args.target} demo={demo_name} backend={backend}")
+    print(f"[render-verify] target={args.target} demo={demo_name} backend={backend} warmup={warmup}")
     print(f"[render-verify] {len(shot_labels)} shots: {', '.join(shot_labels)}")
 
     if not args.no_build:
@@ -220,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     shots_dir.mkdir(parents=True, exist_ok=True)
 
     run_cmd = ["fleet-run", "--timeout", str(args.timeout), args.target,
-               "--auto-screenshot", str(args.warmup)]
+               "--auto-screenshot", str(warmup)]
     print("+ " + " ".join(run_cmd), flush=True)
     proc = subprocess.run(run_cmd, cwd=str(worktree),
                           capture_output=True, text=True)
