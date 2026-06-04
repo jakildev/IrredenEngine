@@ -60,6 +60,16 @@ Specifically, **never pass these via `--label` when filing**:
   time excludes the issue from the ingest search (which looks for
   `human:approved -label:fleet:queued`) and strands it. Let the
   scout/ingest path apply these.
+- `fleet:needs-info` — owned by **`fleet-queue-ingest`** as a triage state.
+  Set alongside `fleet:queued` when an issue lacks enough context for any
+  worker to start. Workers skip issues carrying this label; the human adds
+  the missing detail and removes it to re-enter normal pickup flow.
+  Don't add manually.
+- `fleet:needs-plan` — owned by **`fleet-queue-ingest`** as a triage state.
+  Set alongside `fleet:queued` when the scope is understood but an architect
+  plan is required before a worker can begin. Cleared once the human (or
+  opus-architect via the `file-epic` skill) attaches a plan. Workers skip
+  issues carrying this label. Don't add manually.
 - `fleet:opus` / `fleet:sonnet` — owned by **`fleet-queue-ingest`** as
   a model-affinity hint. Applied alongside `fleet:queued` when ingest
   classifies the issue (or left unset for the human to add manually
@@ -288,6 +298,16 @@ Specifically, **never pass these via `--label` when filing**:
   the PR has a show-stopper the human wants resolved before merge. Cleared by
   the author worker (same AMEND flow as `human:needs-fix`) after the fix is
   addressed.
+- `human:needs-fix` — owned by the **human**. Set on an open PR to signal a
+  fix request the agent should address before merge. The author worker picks
+  it up as the top-priority feedback tier (above `fleet:needs-fix` /
+  `fleet:has-nits`): the worker claims the PR atomically, then chooses
+  AMEND (inline fix) or ESCALATE (defer to a follow-up issue). AMEND removes
+  this label, adds `fleet:human-amending`, fixes, pushes, and swaps
+  `fleet:human-amending` for `fleet:changes-made`. ESCALATE replaces it with
+  `fleet:human-deferred` + `fleet:changes-made` and keeps `fleet:approved`.
+  See [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md) for the
+  full protocol. Don't add to issues.
 - `human:re-review` — owned by the **human**. Signals that the human pushed
   new commits to the PR branch and wants the reviewer agent to re-examine.
   Cleared by the **reviewer** as part of the verdict label-swap.
