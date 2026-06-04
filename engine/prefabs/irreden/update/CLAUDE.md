@@ -15,6 +15,13 @@ in the `UPDATE` pipeline unless explicitly noted.
   face bias, gravity mode).
 - `C_PeriodicIdle` — sine/easing position offset for drift.
 - `C_Lifetime` — integer countdown; destroyed when ≤ 0.
+- `C_RotationTarget` — drives local rotation from a normalized control input
+  (axis + min/max angle + input value/range + optional easing curve). The
+  rotation sibling of `C_GotoEasing3D` (which eases local *position*):
+  input-driven, not time-driven — a creation updates `input_` each frame from
+  a CC, slider, or any [0,1] signal, and the entity holds the last mapped
+  angle when the input is unchanged. Owns the entity's local rotation (writes
+  it absolutely); don't pair with `C_AutoSpin` on the same entity.
 
 ## Key systems (all UPDATE pipeline)
 
@@ -40,6 +47,13 @@ in the `UPDATE` pipeline unless explicitly noted.
   `PROPAGATE_TRANSFORM` so the new rotation propagates to `C_WorldTransform`
   in the same tick — and, for GRID-mode entities, drives
   `REBUILD_GRID_VOXELS` re-rasterization downstream.
+- `ROTATION_TARGET_LOCAL_TRANSFORM` — maps each `C_RotationTarget`'s
+  normalized `input_` (over `[inputMin_, inputMax_]`, through the easing
+  curve) onto `[minAngle_, maxAngle_]` and writes it as an **absolute**
+  `quatAxisAngle(axis, angle)` into `C_LocalTransform.rotation_`. The
+  rotation sibling of `GOTO_3D` (eased local translation). Same ordering
+  contract as `AUTO_SPIN_LOCAL_TRANSFORM`: place before `PROPAGATE_TRANSFORM`.
+  A zero `axis_` is a no-op (guards the NaN quaternion).
 - `PROPAGATE_TRANSFORM` — walks the `CHILD_OF` parent chain in
   topological order and writes `C_WorldTransform` from each entity's
   `C_LocalTransform` composed with the parent chain. Modifier-resolved
