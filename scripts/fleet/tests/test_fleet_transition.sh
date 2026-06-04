@@ -17,6 +17,8 @@
 #   T8: smoke-verify-linux edge → needs-linux-smoke → verified-linux
 #   T9: typo protection — edge references a non-node label (fixture JSON)
 #       → exit 2, no edits
+#   T10: verdict-needs-opus-recheck → adds fleet:needs-opus-recheck,
+#        clears awaiting-upstream-review, leaves other labels intact
 
 set -euo pipefail
 
@@ -201,6 +203,15 @@ set_labels pr 104 fleet:approved
 assert_eq "$(FLEET_STATE_MACHINE="$BAD_SM" run bad-edge 104)" "2" \
     "T9 unknown-label edge exits 2"
 assert_eq "$(edit_calls)" "0" "T9 made no edit calls"
+
+# === T10: verdict-needs-opus-recheck → adds needs-opus-recheck ===========
+echo "T10: verdict-needs-opus-recheck → fleet:needs-opus-recheck added, awaiting-upstream-review cleared"
+reset_log
+set_labels pr 105 fleet:awaiting-upstream-review fleet:wip
+assert_eq "$(run verdict-needs-opus-recheck 105)" "0" "T10 exits 0"
+assert_eq "$(get_labels pr 105)" "fleet:needs-opus-recheck fleet:wip" \
+    "T10 awaiting-upstream-review removed, needs-opus-recheck added, wip preserved"
+assert_eq "$(edit_calls)" "1" "T10 exactly one edit call"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

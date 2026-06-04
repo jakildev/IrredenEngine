@@ -353,6 +353,20 @@
       "note": "Reviewer flags a show-stopper; do not merge."
     },
     {
+      "name": "verdict-needs-opus-recheck",
+      "scope": "pr",
+      "owner": "reviewer",
+      "remove": [
+        "fleet:awaiting-upstream-review",
+        "fleet:stacked-rebase",
+        "fleet:needs-base-update"
+      ],
+      "add": [
+        "fleet:needs-opus-recheck"
+      ],
+      "note": "Sonnet-reviewer escalates to Opus recheck. Does NOT set fleet:approved (opus-reviewer's to set). REVIEWER-PROTOCOL.md needs-opus-recheck special case."
+    },
+    {
       "name": "design-block",
       "scope": "pr",
       "owner": "opus-worker",

@@ -196,8 +196,7 @@ pane only fires coincidentally on another PR's has-nits/needs-fix
 transition (PR #1473 sat un-rechecked for exactly this reason):
 
 ```
-gh pr edit <N> --add-label "fleet:needs-opus-recheck"
-gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:needs-opus-recheck" || gh pr edit <N> --add-label "fleet:needs-opus-recheck"
+fleet-transition verdict-needs-opus-recheck <N>
 ```
 
 (You still set `fleet:has-nits` here if there are nits, even without a
@@ -207,7 +206,7 @@ as part of its own verdict label-swap, whatever verdict it reaches.
 The `review-pr` skill (invoked for engine single-task PRs by
 sonnet-reviewer) prescribes its own label-swap in step 5b — if you
 find a PR you reviewed without a label after the skill returns, run
-the `gh pr edit` yourself using the pattern above immediately. Don't
+`fleet-transition verdict-<verdict> <N>` yourself immediately. Don't
 assume the skill did it; verify with `gh pr view <N> --json labels
 --jq '.labels[].name'` if unsure.
 
