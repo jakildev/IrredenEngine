@@ -16,6 +16,14 @@ IAudioCaptureSource &getAudioCaptureSource() {
     return getAudioManager().getAudio();
 }
 
+std::vector<std::string> midiInPorts() {
+    return getAudioManager().getMidiIn().getPortNames();
+}
+
+std::vector<std::string> midiOutPorts() {
+    return getAudioManager().getMidiOut().getPortNames();
+}
+
 int openPortMidiIn(MidiInInterfaces port) {
     return getAudioManager().getMidiIn().openPort(port);
 }
@@ -59,10 +67,7 @@ void insertCCMessage(MidiChannel channel, const IRComponents::C_MidiMessage &mes
 }
 
 bool startAudioInputCapture(
-    const std::string &deviceName,
-    int sampleRate,
-    int channels,
-    AudioInputCallback callback
+    const std::string &deviceName, int sampleRate, int channels, AudioInputCallback callback
 ) {
     Audio &audio = getAudioManager().getAudio();
     if (!audio.openStreamIn(deviceName, sampleRate, channels, std::move(callback))) {
