@@ -62,6 +62,45 @@ def branch_matches_issue(head_ref, issue, repo):
     return any(head.startswith(p) for p in issue_branch_prefixes(repo, issue))
 
 
+# A PR carrying either of these is *parked*: a worker hit a design wall and
+# released its claim so ANY worker can resume once the architect responds.
+# Such a PR is NOT active work even though it is open and `fleet:wip` — its
+# lingering issue-side `fleet:claim-*` / `fleet:in-progress` labels would
+# otherwise wedge the issue as "in progress" and block re-claim (#1488).
+PARKED_PR_LABELS = frozenset({"fleet:design-blocked", "fleet:design-unblocked"})
+
+
+def issue_pr_state(prs, issue, repo):
+    """Classify the open PRs whose branch matches `issue` in `repo`.
+
+    Returns one of:
+      "active" — a matching PR exists that is NOT parked: live work, so the
+                 issue's claim/in-progress labels should stay.
+      "parked" — every matching PR is parked (PARKED_PR_LABELS). The claim is
+                 awaiting-resume, not active, so its issue-side labels are
+                 stale and safe to clear/sweep (#1488 Fix A/B).
+      "none"   — no open PR branch matches the issue.
+
+    `prs` is a list of `gh pr list --json headRefName,labels` records (any
+    extra keys are ignored). Callers that only distinguish "keep the claim"
+    from "release the claim" treat "parked" and "none" identically.
+    """
+    saw_parked = False
+    for pr in (prs or []):
+        if not branch_matches_issue(pr.get("headRefName") or "", issue, repo):
+            continue
+        names = {
+            (lbl or {}).get("name", "")
+            for lbl in (pr.get("labels") or [])
+            if isinstance(lbl, dict)
+        }
+        if names & PARKED_PR_LABELS:
+            saw_parked = True
+            continue
+        return "active"
+    return "parked" if saw_parked else "none"
+
+
 def issue_from_branch(head_ref):
     """Extract the issue number from a `claude/...` branch, or None.
 
