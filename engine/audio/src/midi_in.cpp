@@ -84,12 +84,20 @@ int MidiIn::openPort(const std::string &portNameSubstring) {
             return i;
         }
     }
-    IR_ASSERT(false, "Attempted to open non-existant MIDI In port by name");
+    IRE_LOG_WARN(
+        "No MIDI input port matching '{}' — {} port(s) available",
+        portNameSubstring,
+        m_numberPorts
+    );
     return -1;
 }
 
 int MidiIn::openPort(MidiInInterfaces interface) {
     return openPort(kMidiInInterfaceNames[midiInInterfaceIndex(interface)]);
+}
+
+const std::vector<std::string> &MidiIn::getPortNames() const {
+    return m_portNames;
 }
 
 void MidiIn::processMidiMessageQueue() {

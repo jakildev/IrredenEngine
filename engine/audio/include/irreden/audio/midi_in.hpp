@@ -38,6 +38,7 @@ class MidiIn {
 
     int openPort(MidiInInterfaces midiInInterface);
     int openPort(const std::string &deviceName);
+    const std::vector<std::string> &getPortNames() const;
     void processMidiMessageQueue();
     CCData checkCCMessageThisFrame(MidiChannel channel, CCMessage ccNumber) const;
     const std::vector<C_MidiMessage> &getMidiNotesOnThisFrame(MidiChannel channel) const;

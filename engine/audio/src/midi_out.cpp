@@ -25,11 +25,8 @@ void MidiOut::sendAllNotesOff() {
         return;
     }
     for (unsigned char ch = 0; ch < kNumMidiChannels; ++ch) {
-        std::vector<unsigned char> msg = {
-            buildMidiStatus(kMidiStatus_CONTROL_CHANGE, ch),
-            kMidiCC_ALL_NOTES_OFF,
-            0
-        };
+        std::vector<unsigned char> msg =
+            {buildMidiStatus(kMidiStatus_CONTROL_CHANGE, ch), kMidiCC_ALL_NOTES_OFF, 0};
         m_rtMidiOut.sendMessage(&msg);
     }
     IRE_LOG_INFO("Sent All Notes Off on all channels");
@@ -49,8 +46,16 @@ int MidiOut::openPort(std::string portNameSubstring) {
             return i;
         }
     }
-    IR_ASSERT(false, "Attempted to open non-existant MIDI Out port by name");
+    IRE_LOG_WARN(
+        "No MIDI output port matching '{}' — {} port(s) available",
+        portNameSubstring,
+        m_numberPorts
+    );
     return -1;
+}
+
+const std::vector<std::string> &MidiOut::getPortNames() const {
+    return m_portNames;
 }
 
 void MidiOut::sendMessage(const std::vector<unsigned char> &message) {
