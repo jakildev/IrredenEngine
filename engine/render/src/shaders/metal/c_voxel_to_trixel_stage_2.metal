@@ -190,9 +190,14 @@ kernel void c_voxel_to_trixel_stage_2(
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
-        const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), slot
-        );
+        // Detached entities project occlusion depth onto the entity-rotated
+        // iso axis (#1462); world/GRID keeps the fixed (1,1,1) via
+        // pos3DtoDistance. MUST mirror stage 1's distance-tap depth or the
+        // re-test in writeColorTap rejects the tap (#1499).
+        const int rawDepth = frameData.isDetachedCanvas > 0.5f
+            ? isoDepthAlongAxis(voxelPositionInt, frameData.voxelDepthAxis.xyz)
+            : pos3DtoDistance(voxelPositionInt);
+        const int voxelDistance = encodeDepthWithFace(rawDepth, slot);
         const int2 base =
             trixelFrameOffset(
                 frameData.trixelCanvasOffsetZ1,
@@ -235,8 +240,11 @@ kernel void c_voxel_to_trixel_stage_2(
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
         microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
-    const int depthBase =
-        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+    // Detached: mirror stage 1's entity-rotated occlusion axis (#1462 / #1499);
+    // depth is in subdivision units on both branches so the encode is unchanged.
+    const int depthBase = frameData.isDetachedCanvas > 0.5f
+        ? isoDepthAlongAxis(microPositionFixed, frameData.voxelDepthAxis.xyz)
+        : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(

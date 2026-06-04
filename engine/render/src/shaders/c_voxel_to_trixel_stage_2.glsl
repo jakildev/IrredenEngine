@@ -28,6 +28,13 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec4 faceDeform[3];
     // Per-slot world FaceId (0..5). See stage 1 + #1278 for the contract.
     uniform ivec4 visibleFaceIds;
+    // Model-frame iso depth axis `R⁻¹·(1,1,1)` for the per-voxel occlusion
+    // metric (#1462). Stage 2 MUST read the same axis stage 1 wrote the
+    // distance tap on, or the depth re-test below rejects every detached
+    // color tap off a snap (the #1499 sliver). (1,1,1) for world / identity
+    // so the GRID path stays byte-identical. Appended after visibleFaceIds
+    // (offset 144) to match the CPU struct + stage 1's binding-7 layout.
+    uniform vec4 voxelDepthAxis;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -173,8 +180,14 @@ void main() {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
             voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
-        const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), slot);
+        // Detached entities project occlusion depth onto the entity-rotated
+        // iso axis (#1462); world/GRID keeps the fixed (1,1,1) via
+        // pos3DtoDistance. MUST mirror stage 1's distance-tap depth or the
+        // re-test in writeColorTap rejects the tap (#1499).
+        const int rawDepth = isDetachedCanvas > 0.5
+            ? isoDepthAlongAxis(voxelPositionInt, voxelDepthAxis.xyz)
+            : pos3DtoDistance(voxelPositionInt);
+        const int voxelDistance = encodeDepthWithFace(rawDepth, slot);
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
@@ -199,8 +212,11 @@ void main() {
         // `voxelPositionFixed = round(worldPos * subdivisions)`.
         microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
-    const int depthBase =
-        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
+    // Detached: mirror stage 1's entity-rotated occlusion axis (#1462 / #1499);
+    // depth is in subdivision units on both branches so the encode is unchanged.
+    const int depthBase = isDetachedCanvas > 0.5
+        ? isoDepthAlongAxis(microPositionFixed, voxelDepthAxis.xyz)
+        : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
     emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);

@@ -82,6 +82,11 @@ struct CanvasStressSettings {
     bool fullRotate_ = false;
     bool noSpin_ = false;
     bool noLighting_ = false;
+    // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
+    // config `auto_rotate` would otherwise clobber an explicit
+    // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
+    // supplies the default when the flag is absent (CLI overrides config).
+    bool autoRotateSetByCli_ = false;
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -210,7 +215,7 @@ void readConfig() {
     if (zoom.is<float>())
         g_settings.initialZoom_ = zoom.as<float>();
     sol::object autoRotate = table["auto_rotate"];
-    if (autoRotate.is<bool>())
+    if (autoRotate.is<bool>() && !g_settings.autoRotateSetByCli_)
         g_settings.autoRotate_ = autoRotate.as<bool>();
 }
 
@@ -222,8 +227,10 @@ void parseArgs(int argc, char **argv) {
             ++i;
         } else if (std::strcmp(argv[i], "--auto-rotate") == 0) {
             g_settings.autoRotate_ = true;
+            g_settings.autoRotateSetByCli_ = true;
         } else if (std::strcmp(argv[i], "--no-auto-rotate") == 0) {
             g_settings.autoRotate_ = false;
+            g_settings.autoRotateSetByCli_ = true;
         } else if (std::strcmp(argv[i], "--full-rotate") == 0) {
             g_settings.fullRotate_ = true;
         } else if (std::strcmp(argv[i], "--no-spin") == 0) {
