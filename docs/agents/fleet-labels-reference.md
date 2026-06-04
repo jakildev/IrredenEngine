@@ -4,9 +4,12 @@ Canonical, repo-neutral reference for every `fleet:*` and `human:*` label the
 fleet uses. Engine and game repos both consume this via share-by-reference (see
 [`docs/design/claude-md-sharing.md`](../design/claude-md-sharing.md)).
 
-When a label is added, removed, or its ownership changes: update this file
-**and** `scripts/fleet/fleet-labels` in the same commit so the GitHub label set
-stays in 1:1 correspondence with the prose.
+When a label is added, removed, or its ownership changes: update this file,
+`scripts/fleet/fleet-labels` (the catalog that creates the GitHub labels),
+**and** `docs/agents/fleet-state-machine.json` (the machine-readable node set
+`fleet-transition` reads) in the same commit so all three stay in 1:1
+correspondence. `fleet-labels --check` diffs the catalog against the JSON node
+set and fails on drift — run it (or wire it into CI) to catch a forgotten edit.
 
 ---
 
@@ -352,6 +355,9 @@ filing from human conversations.
 
 - [`scripts/fleet/fleet-labels`](../../scripts/fleet/fleet-labels) — the label catalog that keeps the
   GitHub label set in sync with this prose; add new labels here too.
+- [`fleet-state-machine.json`](fleet-state-machine.json) — the machine-readable
+  node set (labels) + transition table (edges) that `scripts/fleet/fleet-transition`
+  applies; keep its `labels[]` 1:1 with the catalog (`fleet-labels --check`).
 - [`FLEET.md`](FLEET.md) — workflow rules, cursor cue table, model split,
   design-escalation flow, feedback channel.
 - [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md) — smoke-label lifecycle in detail.

@@ -131,7 +131,7 @@ re-review the parent.
 The verdict label is the primary signal the human uses to decide what
 to merge — a review without a label is invisible to the human's merge
 queue. After every `gh pr review --comment ...`, your VERY NEXT bash
-calls MUST be the split remove + add + verify sequence below.
+call MUST be the `fleet-transition` verdict edge below.
 
 Always remove stale verdict labels before adding the new one. Each
 verdict also clears four derived-state labels so a single verdict
@@ -152,41 +152,40 @@ re-evaluation cleans them up:
   remove is a harmless no-op — it only ever ADDS this label in the
   special case below, which sets no verdict and bypasses this swap.
 
-For game PRs, add `--repo <game-repo>` to each `gh pr edit` call.
-
-**Two-call split required.** `gh pr edit --remove-label X` exits
-non-zero when label X is absent, aborting any trailing `--add-label`
-in the same call. Split the removes from the add into separate
-calls; suffix the remove call with `|| true` so absent labels don't
-block the add. After the add, re-query labels and retry once if the
-verdict label didn't land (observed as `label-absent-after-verdict`
-feedback cluster — fix-002 in the fleet fix-log):
+**One named edge per verdict.** Apply the verdict label-swap with
+`fleet-transition` (`scripts/fleet/fleet-transition`), which reads the
+edge from [`fleet-state-machine.json`](fleet-state-machine.json),
+computes the delta against the PR's **live** label set, and writes it in
+a single idempotent `gh pr edit` call. This supersedes the old
+remove-then-add-then-verify split — that split existed only because
+`gh pr edit --remove-label X` exits non-zero on an *absent* label, and
+`fleet-transition` only ever removes labels actually present, so the
+split (and the `|| true`) is unnecessary. It still verifies after the
+write and retries once, so the `label-absent-after-verdict` guard
+(fix-002 in the fleet fix-log) is preserved. For game PRs, add
+`--repo <game-repo>` (the `gh` slug, e.g. `--repo jakildev/irreden`).
 
 ```
-# Verdict approve, no Nits section — removes first (absent OK), then add + verify:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
-gh pr edit <N> --add-label "fleet:approved"
-gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:approved" || gh pr edit <N> --add-label "fleet:approved"
+# Verdict approve, no Nits section:
+fleet-transition verdict-approve <N>
 
-# Verdict approve WITH a non-empty `### Nits` section (also set fleet:has-nits):
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
-gh pr edit <N> --add-label "fleet:approved" --add-label "fleet:has-nits"
-gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:approved" || gh pr edit <N> --add-label "fleet:approved"
+# Verdict approve WITH a non-empty `### Nits` section (also sets fleet:has-nits):
+fleet-transition verdict-approve-nits <N>
 
 # Verdict needs-fix:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
-gh pr edit <N> --add-label "fleet:needs-fix"
-gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:needs-fix" || gh pr edit <N> --add-label "fleet:needs-fix"
+fleet-transition verdict-needs-fix <N>
 
 # Verdict blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:needs-opus-recheck" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" 2>/dev/null || true
-gh pr edit <N> --add-label "fleet:blocker"
-gh pr view <N> --json labels --jq '[.labels[].name]' | grep -q "fleet:blocker" || gh pr edit <N> --add-label "fleet:blocker"
+fleet-transition verdict-blocker <N>
 
-# Re-review of a previously fleet:has-nits PR that's now clean:
-#   removes the has-nits flag while keeping fleet:approved
-gh pr edit <N> --remove-label "fleet:has-nits" 2>/dev/null || true
+# Re-review of a previously fleet:has-nits PR that's now clean (drop
+# has-nits, keep fleet:approved): verdict-approve subsumes this — it
+# removes has-nits and leaves the already-present fleet:approved as-is.
+fleet-transition verdict-approve <N>
 ```
+
+The exact remove/add set behind each edge lives in `fleet-state-machine.json`
+(`transitions[]`); edit there, not here, if a verdict's label delta changes.
 
 **Sonnet-reviewer special case: verdict approve + "Opus recheck
 required"** → do NOT set a verdict label (`fleet:approved` is the
