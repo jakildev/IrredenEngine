@@ -307,6 +307,29 @@ _BLOCKED_ON_RE = re.compile(
 )
 
 
+def _is_no_blocker_value(value):
+    """True when a **Blocked by:** value declares NO blocker.
+
+    The canonical form is `(none)`, but agents also hand-write a bare `none`,
+    `n/a`, `tbd`, a lone dash, or `(none) — prose`, all of which mean "nothing
+    blocks this". The old filter recognized only the parenthesized `(none)`
+    form, so a bare `none — first unblocked.` fell through to the prose-blocker
+    path and stranded the issue as permanently blocked — freezing the whole
+    downstream chain out of the queue (game #138 → #143). A value that names a
+    `#N` or describes a real blocker in prose ("the auth redesign") is NOT a
+    sentinel and must still gate.
+    """
+    # A concrete `#N` ref anywhere in the value means there IS a blocker —
+    # never let a leading "none" word swallow a real reference.
+    if re.search(r"#\d+", value):
+        return False
+    head = value.strip().lower().lstrip("(").strip()
+    if not head or head[0] in "-–—.":
+        return True
+    token = re.split(r"[\s.,;:)\-–—]", head, maxsplit=1)[0]
+    return token in {"none", "n/a", "na", "tbd"}
+
+
 def _parse_blocked_by(body):
     # Union every standalone **Blocked by:** line (multi-line + multi-ref) so a
     # child blocked by several refs surfaces all of them — check_blockers gates
@@ -326,11 +349,11 @@ def _parse_blocked_by(body):
     # are mutually exclusive — canonical bold closes at ":**", inline bold stays
     # open past the value — so a single line cannot match both patterns.
     all_vals = vals + inline_vals
-    real = [v.strip() for v in all_vals if not v.strip().lower().startswith("(none")]
+    real = [v.strip() for v in all_vals if not _is_no_blocker_value(v)]
     if real:
         return ", ".join(real)
     if all_vals:
-        # Every matched form says (none) → genuinely unblocked.
+        # Every matched form is a no-blocker sentinel → genuinely unblocked.
         return ""
     for m in _BLOCKED_ON_RE.finditer(body or ""):
         cand = m.group(1).strip().strip("*").strip()
