@@ -4,23 +4,26 @@
 # picks them up.
 #
 # Invoked directly by fleet-state-scout when the queue-manager-ingest
-# projection changes (new human:approved issue appears, or an existing
-# one gets fleet:queued and drops out of the set).
+# projection changes (new human:approved issue appears, an existing one gets
+# fleet:queued and drops out of the set, or a queued task's last blocker closes
+# and it enters the unblock set).
 #
 # Pure label-stamping — no LLM, no master push.
-# Idempotent: if there are no pending issues, exits in <1s. Per-host
+# Idempotent: if there is no pending or unblock work, exits in <1s. Per-host
 # lockfile prevents same-host concurrent runs; cross-host races are
 # caught by the live `gh issue view` re-check inside the stamping loop
 # (gh issue edit --add-label converges either way, but the re-check
 # avoids burning API budget on already-stamped issues).
 #
-# Blocked-by gate (#1476): an issue is stamped fleet:queued only when every
-# `**Blocked by:** #N` predecessor is CLOSED/MERGED. The scout's ingest
-# projection already keeps blocked children out of the pending set; the
-# per-issue live `gh issue view <ref> --json state` re-check here is the
-# authoritative gate at the actual stamp point (and the sole gate when ingest
-# runs against a hand-built projection). So a freshly-filed stacked epic shows
-# only its head queued; each child is queued as its blocker closes.
+# Queue-all / mark-blocked (#1527, supersedes the #1476 defer-the-stamp gate):
+# every approved, non-skip task is stamped fleet:queued + model up front; a task
+# whose `**Blocked by:** #N` predecessor is still open additionally gets a
+# fleet:blocked marker (the whole queue is visible immediately, not one child at
+# a time). The unblock pass strips fleet:blocked once the last blocker closes.
+# The per-issue live `gh issue view <ref> --json state` re-check is authoritative
+# for both add and remove (and the sole blocker gate when ingest runs against a
+# hand-built projection). Claimability is unchanged — fleet-claim's own
+# Blocked-by gate still refuses a plain claim; see docs/design/fleet-queue-stacking.md.
 #
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
@@ -52,19 +55,21 @@ fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null; true' EXIT INT TERM
 
 # Fast-path: scout's projection-diff fires on BOTH set-grow (new approved
-# issue) AND set-shrink (issue ingested, dropped out of the human:approved-
-# minus-fleet:queued set). On the post-stamp drop-out the set is empty.
+# issue, or a queued task whose last blocker just closed) AND set-shrink
+# (issue ingested / fleet:blocked removed, dropped out of the set). On a
+# post-action drop-out both work lists are empty.
 if [[ -f "$PROJECTION_FILE" ]]; then
-    pending_count=$(python3 -c "
+    counts=$(python3 -c "
 import json, sys
 try:
     data = json.load(open('$PROJECTION_FILE'))
-    print(len(data.get('pending_issues', [])))
+    print(len(data.get('pending_issues', [])), len(data.get('unblock_issues', [])))
 except Exception:
-    print(0)
+    print(0, 0)
 ")
-    if [[ "$pending_count" == "0" ]]; then
-        log "no pending issues — empty projection, exiting"
+    read -r pending_count unblock_count <<< "$counts"
+    if [[ "${pending_count:-0}" == "0" && "${unblock_count:-0}" == "0" ]]; then
+        log "no pending or unblock issues — empty projection, exiting"
         exit 0
     fi
 fi
@@ -256,7 +261,7 @@ def _blocker_open(repo, ref, cache):
 
 stamped = 0
 skipped_already = 0
-skipped_blocked = 0
+blocked_marked = 0
 failed = 0
 blocker_cache = {}
 
@@ -297,22 +302,18 @@ for issue in pending:
         print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
         continue
 
-    # Blocked-by gate (#1476): never stamp fleet:queued onto a child whose
-    # **Blocked by:** predecessors aren't all closed. fleet-claim already
-    # enforces this at claim time, but stamping a blocked child anyway makes a
-    # stacked epic show every child queued at once, defeating "queue one at a
-    # time". The scout's projection normally keeps blocked children out of the
-    # pending set; this is the authoritative live re-check at the actual stamp
-    # point — and the only gate when ingest runs against a hand-built
-    # projection (e.g. tests, or a manual fleet-queue-ingest invocation).
+    # Blocked-by handling (#1527): queue blocked tasks too. A task whose
+    # **Blocked by:** predecessors aren't all closed still gets fleet:queued +
+    # a model label, plus a fleet:blocked marker — the whole approved queue is
+    # visible up front instead of one child at a time (the old #1476 "defer the
+    # stamp" behavior). Claimability is unchanged: fleet-claim's own Blocked-by
+    # gate still refuses a plain claim on it, and --stackable-on still works;
+    # fleet:blocked is the operator-visible "queued but not plainly claimable
+    # yet" signal that the unblock pass below removes once the last blocker
+    # closes. The live re-check is authoritative — it's the only blocker gate
+    # when ingest runs against a hand-built projection (tests, manual run).
     open_blockers = [ref for ref in _blocker_refs(body)
                      if _blocker_open(repo, ref, blocker_cache)]
-    if open_blockers:
-        skipped_blocked += 1
-        joined = ', '.join(f'#{r}' for r in open_blockers)
-        print(f'INFO issue {repo}#{n}: blocked by open {joined} — '
-              'deferring fleet:queued until predecessors close', file=sys.stderr)
-        continue
 
     # Parse model from body. Default to fleet:opus on ambiguity — mirrors
     # the safer default when model intent is unclear.
@@ -332,6 +333,11 @@ for issue in pending:
     add_labels = ['fleet:queued']
     if model_label not in labels:
         add_labels.append(model_label)
+    if open_blockers and 'fleet:blocked' not in labels:
+        add_labels.append('fleet:blocked')
+        joined = ', '.join(f'#{r}' for r in open_blockers)
+        print(f'INFO issue {repo}#{n}: queuing with fleet:blocked '
+              f'(blocked by open {joined})', file=sys.stderr)
 
     cmd = ['gh', 'issue', 'edit', str(n), '--repo', repo]
     for lbl in add_labels:
@@ -342,14 +348,62 @@ for issue in pending:
         print(f'WARN issue {repo}#{n}: label edit failed: {er.stderr.strip()}', file=sys.stderr)
         continue
     stamped += 1
+    if open_blockers:
+        blocked_marked += 1
 
-print(f'{stamped},{skipped_already},{failed},{skipped_blocked}')
+# Unblock pass (#1527): drop fleet:blocked from queued tasks whose last blocker
+# has closed. Sourced from unblock_issues (tasks.open-derived in the scout)
+# since a fleet:queued issue has already left the human:approved add set above.
+# Reuses the same blocker parsers + per-run cache as the stamping pass.
+unblocked = 0
+unblock_still = 0
+for issue in data.get('unblock_issues', []):
+    n = issue.get('number', 0)
+    repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
+    if not n:
+        continue
+    r = subprocess.run(
+        ['gh', 'issue', 'view', str(n), '--repo', repo, '--json', 'body,labels'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: fetch failed: {r.stderr.strip()}', file=sys.stderr)
+        continue
+    try:
+        view = json.loads(r.stdout)
+    except Exception:
+        failed += 1
+        continue
+    labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
+    # Already cleared (or never marked) — nothing to do. Guards the one-tick
+    # window where the scout still lists the candidate after a prior removal.
+    if 'fleet:blocked' not in labels:
+        continue
+    body = view.get('body', '') or ''
+    open_blockers = [ref for ref in _blocker_refs(body)
+                     if _blocker_open(repo, ref, blocker_cache)]
+    if open_blockers:
+        unblock_still += 1
+        continue  # still genuinely blocked — leave the marker
+    er = subprocess.run(
+        ['gh', 'issue', 'edit', str(n), '--repo', repo,
+         '--remove-label', 'fleet:blocked'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if er.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: remove fleet:blocked failed: {er.stderr.strip()}', file=sys.stderr)
+        continue
+    unblocked += 1
+
+print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still}')
 STAMP_PY
 )
 
 if [[ -n "$stamping_out" ]]; then
-    IFS=',' read -r stamped_count skipped_count failed_count blocked_count <<< "$stamping_out"
-    log "stamped ${stamped_count:-0} issue(s); skipped ${skipped_count:-0} already-labeled; ${blocked_count:-0} blocked (deferred); ${failed_count:-0} failed"
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"

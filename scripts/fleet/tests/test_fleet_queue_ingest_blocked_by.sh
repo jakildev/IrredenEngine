@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Test that fleet-queue-ingest honors `**Blocked by:**` (Gap 2 of #1476).
+# Test that fleet-queue-ingest queues blocked tasks with a fleet:blocked
+# marker and removes the marker once the last blocker closes (#1527,
+# supersedes the #1476 "defer the stamp until unblocked" behavior).
 #
-# An issue is stamped fleet:queued only when every `**Blocked by:** #N`
-# predecessor is CLOSED/MERGED. A freshly-filed stacked epic must therefore
-# show only its head queued, not every child at once. fleet-claim already
-# enforces Blocked-by at claim time; this gate makes the LABEL honest.
+# Add path: every approved, non-skip task is stamped fleet:queued + model;
+# a task whose **Blocked by:** predecessor is still open additionally gets
+# fleet:blocked. Remove path: a queued task carrying fleet:blocked whose
+# blocker has closed (surfaced in unblock_issues) has the marker stripped.
+# The blocker issues are only READ (live state probe), never edited.
 #
 # HOME is redirected to a temp dir so the script's hardcoded projection/log/lock
 # paths land in the sandbox, and `gh` is stubbed to canned issue/PR surfaces.
@@ -32,13 +35,18 @@ export HOME="$TMPROOT/home"
 mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
-# A stacked epic: #730 is the head (no blocker), #731 is blocked by an OPEN
-# predecessor (#719), #732 is blocked by a CLOSED predecessor (#718).
+# Add path: a stacked epic. #730 = head (no blocker), #731 = blocked by an OPEN
+# predecessor (#719), #732 = blocked by a CLOSED predecessor (#718).
+# Remove path: #733 = queued+fleet:blocked, blocker #717 now CLOSED (unblock);
+#              #734 = queued+fleet:blocked, blocker #719 still OPEN (stay).
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":730,"repo":"engine"},
   {"number":731,"repo":"engine"},
   {"number":732,"repo":"engine"}
+],"unblock_issues":[
+  {"number":733,"repo":"engine"},
+  {"number":734,"repo":"engine"}
 ]}
 JSON
 
@@ -52,12 +60,13 @@ case "$1" in
     issue)
         case "$2" in
             view)
-                # Blocker-state probes pass `--jq .state`; the stamping fetch
+                # Blocker-state probes pass `--jq .state`; the body/labels fetch
                 # asks for `--json body,labels`. Dispatch on which one this is.
                 if [[ "$*" == *"--jq"* ]]; then
                     case "$3" in
+                        717) echo "CLOSED" ;;   # #733's predecessor — satisfied
                         718) echo "CLOSED" ;;   # #732's predecessor — satisfied
-                        719) echo "OPEN" ;;     # #731's predecessor — still open
+                        719) echo "OPEN" ;;     # #731/#734's predecessor — open
                         *)   echo "OPEN" ;;
                     esac
                     exit 0
@@ -66,6 +75,8 @@ case "$1" in
                     730) echo '{"body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
                     731) echo '{"body":"**Model:** sonnet\n**Blocked by:** #719","labels":[{"name":"human:approved"}]}' ;;
                     732) echo '{"body":"**Model:** opus\n**Blocked by:** #718","labels":[{"name":"human:approved"}]}' ;;
+                    733) echo '{"body":"**Blocked by:** #717","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
+                    734) echo '{"body":"**Blocked by:** #719","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
                     *)   echo '{"body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;
@@ -86,35 +97,61 @@ GHSTUB
 chmod +x "$STUB_DIR/gh"
 export PATH="$STUB_DIR:$PATH"
 
-echo "=== run fleet-queue-ingest over a stacked epic (head + blocked + unblocked children) ==="
+# Per-issue edit-log line (gh issue edit <N> ...) for assertions. Tolerates
+# no-match (empty) without tripping `set -e` / pipefail.
+edit_line() { grep -E "(^| )edit ${1}( |$)" "$EDIT_LOG" | head -1 || true; }
+
+echo "=== run fleet-queue-ingest over a stacked epic + unblock candidates ==="
 bash "$INGEST" >/dev/null 2>&1 || true
 
-# #730 (head, no blocker) must be stamped fleet:queued.
-if grep -qE '(^| )730( |$)' "$EDIT_LOG" && grep -q 'fleet:queued' "$EDIT_LOG"; then
-    ok "head #730 (no blocker) was stamped fleet:queued"
+# --- Add path -------------------------------------------------------------
+# #730 (head, no blocker) → fleet:queued, NO fleet:blocked.
+l730=$(edit_line 730)
+if [[ -n "$l730" && "$l730" == *"fleet:queued"* && "$l730" != *"fleet:blocked"* ]]; then
+    ok "head #730 stamped fleet:queued without fleet:blocked"
 else
-    bad "head #730 was NOT stamped — gate is over-blocking or harness broken"
+    bad "head #730 mis-stamped: '$l730'"
 fi
 
-# #732 (blocker CLOSED) must be stamped — a satisfied predecessor does not gate.
-if grep -qE '(^| )732( |$)' "$EDIT_LOG"; then
-    ok "#732 (predecessor #718 CLOSED) was stamped"
+# #732 (blocker CLOSED) → fleet:queued, NO fleet:blocked.
+l732=$(edit_line 732)
+if [[ -n "$l732" && "$l732" == *"fleet:queued"* && "$l732" != *"fleet:blocked"* ]]; then
+    ok "#732 (predecessor #718 CLOSED) stamped without fleet:blocked"
 else
-    bad "#732 was NOT stamped — gate wrongly blocked on a CLOSED predecessor"
+    bad "#732 mis-stamped: '$l732'"
 fi
 
-# #731 (blocker OPEN) must NOT be stamped — deferred until #719 closes.
-if grep -qE '(^| )731( |$)' "$EDIT_LOG"; then
-    bad "#731 was stamped despite OPEN predecessor #719: $(grep 731 "$EDIT_LOG")"
+# #731 (blocker OPEN) → fleet:queued + fleet:blocked (queued, marked).
+l731=$(edit_line 731)
+if [[ -n "$l731" && "$l731" == *"fleet:queued"* && "$l731" == *"fleet:blocked"* ]]; then
+    ok "#731 (predecessor #719 OPEN) stamped fleet:queued + fleet:blocked"
 else
-    ok "#731 (predecessor #719 OPEN) was deferred — not stamped"
+    bad "#731 not queued-with-marker as expected: '$l731'"
 fi
 
+# --- Remove path ----------------------------------------------------------
+# #733 (blocker #717 now CLOSED) → fleet:blocked removed.
+l733=$(edit_line 733)
+if [[ -n "$l733" && "$l733" == *"--remove-label fleet:blocked"* ]]; then
+    ok "#733 (predecessor #717 CLOSED) had fleet:blocked removed"
+else
+    bad "#733 fleet:blocked NOT removed despite closed blocker: '$l733'"
+fi
+
+# #734 (blocker #719 still OPEN) → fleet:blocked NOT removed (no edit).
+l734=$(edit_line 734)
+if [[ -z "$l734" ]]; then
+    ok "#734 (predecessor #719 OPEN) left fleet:blocked in place (no edit)"
+else
+    bad "#734 fleet:blocked wrongly removed while blocker open: '$l734'"
+fi
+
+# --- Read-only blocker invariant -----------------------------------------
 # The blocker issues themselves must never be edited (we only read their state).
-if grep -qE '(^| )(718|719)( |$)' "$EDIT_LOG"; then
-    bad "a blocker issue (#718/#719) was edited — gate must only READ blocker state"
+if grep -qE '(^| )edit (717|718|719)( |$)' "$EDIT_LOG"; then
+    bad "a blocker issue (#717/#718/#719) was edited — must only READ blocker state"
 else
-    ok "blocker issues #718/#719 were never edited (read-only state probe)"
+    ok "blocker issues #717/#718/#719 were never edited (read-only state probe)"
 fi
 
 echo

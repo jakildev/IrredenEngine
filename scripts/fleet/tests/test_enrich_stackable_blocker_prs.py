@@ -68,6 +68,19 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
                          "claude/1111-scout-stackable-blocker-pr")
         self.assertEqual(task["stackable_blocker_pr"]["author"], "jakildev")
 
+    def test_queued_blocked_task_is_enriched(self):
+        """#1527: a queued-blocked task (carries the fleet:blocked-derived
+        `blocked: True` flag) now lives in tasks.open, so enrichment attaches
+        the blocker's open PR — the autonomous "feed stacking" half. The
+        `blocked` flag must not interfere with enrichment."""
+        task = {"id": "#1112", "blocked_by": "#1111", "blocked": True}
+        prs = [_pr(536, "claude/1111-scout-stackable-blocker-pr", author="jakildev")]
+        state = _state(engine_tasks=[task], engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        out = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertIn("stackable_blocker_pr", out)
+        self.assertEqual(out["stackable_blocker_pr"]["number"], 536)
+
     def test_zero_matches_no_field(self):
         """No open PR matches prefix → field absent."""
         tasks = [_task("#1112", "#1111")]
