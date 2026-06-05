@@ -199,8 +199,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                     return;
                 }
                 const C_PerAxisTrixelCanvases &axes = *perAxisOpt.value();
-                const vec4 residual =
-                    IRMath::octahedralSnapResidual((*rotationOpt.value()).rotation_);
+                const vec4 fullRotation = (*rotationOpt.value()).rotation_;
+                const vec4 residual = IRMath::octahedralSnapResidual(fullRotation);
 
                 // perAxisBase mirrors P3a's store trixelFrameOffset for this
                 // entity's axis canvases — the identical formula
@@ -235,6 +235,25 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 sfd.mpMatrix_ = calcProjectionMatrix(fbRes) * scatterModel;
                 sfd.distanceOffset_ = 0;
                 sfd.perAxisBase_ = perAxisBase;
+                // Per-slot model FaceId triplet — MUST be the identical array
+                // P3a's store wrote (buildVoxelFrameData: visibleTriplet on the
+                // FULL rotation, not the residual). The store encodes the
+                // workgroup SLOT into rawDist & 3, so the scatter recovers each
+                // face via visibleFaceIds[slot]. Left unset it defaulted to
+                // {0,0,0,0} — every slot resolved to X_NEG / axis 0, so the
+                // Y- and Z-axis canvases recovered with the wrong in-plane axis
+                // (faceOriginFromInPlane) and spanned the wrong face plane
+                // (faceSpanCorner), flinging those faces off the cube silhouette
+                // instead of meeting at shared edges (#1525). Camera-path twin:
+                // drawPerAxisScatter in system_trixel_to_framebuffer.hpp.
+                const std::array<IRMath::FaceId, 3> visibleFaces =
+                    IRMath::visibleTriplet(fullRotation);
+                sfd.visibleFaceIds_ = ivec4(
+                    static_cast<int>(visibleFaces[0]),
+                    static_cast<int>(visibleFaces[1]),
+                    static_cast<int>(visibleFaces[2]),
+                    0
+                );
                 sfd.detachedResidual_ = residual;
                 sfd.detachedDepthAxis_ = vec4(IRMath::isoDepthAxisModel(residual), 0.0f);
                 // Conservative-coverage dilation needs the framebuffer extent the
