@@ -100,6 +100,6 @@ for where it sits in the iteration. Cross-repo: add `--repo game` to
 **[opus-architect]** You plan these when the human asks during a design
 conversation (the opus-worker handles the autonomous queue). Same flow;
 you do not poll for them. If the plan needs an independently-reviewed
-design doc first, see [`role-opus-architect.md § Handling
-fleet:design-blocked PRs`](../../.claude/commands/role-opus-architect.md)
+design doc first, see [`docs/agents/architect-protocol.md § Handling
+fleet:design-blocked PRs`](architect-protocol.md)
 for the docs-first-PR + `**Blocked by:** #<docs-PR>` routing.

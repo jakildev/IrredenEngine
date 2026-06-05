@@ -303,8 +303,10 @@ re-picked as unblocked next iteration. Use
 
 Reviewer agents skip `fleet:design-blocked` PRs (they're in
 escalation limbo, not awaiting review). The full per-role procedure
-is in `role-opus-worker.md` (escalate + resume) and
-`role-opus-architect.md` ("Handling `fleet:design-blocked` PRs").
+is in `role-opus-worker.md` (escalate + resume) and the shared
+[`docs/agents/architect-protocol.md`](architect-protocol.md)
+("Handling `fleet:design-blocked` PRs"), which `role-opus-architect.md`
+wraps.
 
 ### Model split: Opus for core, Sonnet for the fleet
 
