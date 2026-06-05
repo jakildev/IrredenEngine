@@ -225,7 +225,7 @@ struct FrameDataVoxelToCanvas {
     // (1,1,1). `.w` is std140 padding. std140-appended after visibleFaceIds_
     // (offset 144), so every prior field offset — and the world/GRID fast
     // path — is unchanged; the gather shaders that read only the prefix
-    // (stage 2, AO, lighting) are unaffected and need no declaration update.
+    // (AO, lighting) are unaffected and need no declaration update.
     vec4 voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
 };
 
