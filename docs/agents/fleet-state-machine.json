@@ -1,0 +1,430 @@
+{
+  "_note": "Machine-readable fleet label state machine. MECHANISM ONLY: fleet-transition applies a NAMED edge atomically/idempotently and does NOT decide legality -- the agent names the edge. labels[] is the canonical node set (names mirror scripts/fleet/fleet-labels; fleet-labels --check guards the two against drift). scope is the PRIMARY surface; a few labels (e.g. human:approved, fleet:needs-info) appear on both issues and PRs.",
+  "_source": "scripts/fleet/fleet-labels (catalog) + docs/agents/fleet-labels-reference.md (prose)",
+  "labels": [
+    {
+      "name": "fleet:scope-shipped",
+      "scope": "issue",
+      "color": "fbca04",
+      "description": "Issue scope already landed under a different T-NNN; queue-manager skipped ingest; human should close"
+    },
+    {
+      "name": "fleet:needs-human",
+      "scope": "issue",
+      "color": "fbca04",
+      "description": "Fleet can't complete this autonomously (e.g. a gated self-config edit); a human must act. Parks the issue out of the queue while KEEPING human:approved; clears when the human resolves it (ingest re-queues) or closes the issue"
+    },
+    {
+      "name": "fleet:state-drift",
+      "scope": "issue",
+      "color": "fbca04",
+      "description": "reconcile surfaced unresolved/ambiguous claim-surface drift that persisted across N ticks; one deduped tracking issue, human resolves"
+    },
+    {
+      "name": "fleet:task",
+      "scope": "issue",
+      "color": "0366d6",
+      "description": "Task from the fleet issue queue"
+    },
+    {
+      "name": "fleet:epic",
+      "scope": "issue",
+      "color": "cc317c",
+      "description": "Parent issue tracking a set of child issues; queue-manager auto-closes when all children close"
+    },
+    {
+      "name": "fleet:queued",
+      "scope": "issue",
+      "color": "c5def5",
+      "description": "Queued for fleet pickup (requires human:approved)"
+    },
+    {
+      "name": "fleet:opus",
+      "scope": "issue",
+      "color": "1d76db",
+      "description": "Model-affinity tag set by fleet-queue-ingest; opus-worker picks tasks with this label"
+    },
+    {
+      "name": "fleet:sonnet",
+      "scope": "issue",
+      "color": "1d76db",
+      "description": "Model-affinity tag set by fleet-queue-ingest; sonnet-author picks tasks with this label"
+    },
+    {
+      "name": "fleet:needs-info",
+      "scope": "issue",
+      "color": "fbca04",
+      "description": "Needs more info from the author before triage"
+    },
+    {
+      "name": "fleet:needs-plan",
+      "scope": "issue",
+      "color": "fbca04",
+      "description": "Needs an architect plan before a worker can pick it up"
+    },
+    {
+      "name": "fleet:in-progress",
+      "scope": "issue",
+      "color": "c5def5",
+      "description": "A fleet worker has claimed this task"
+    },
+    {
+      "name": "fleet:wip",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Fleet worker is mid-task on the corresponding PR"
+    },
+    {
+      "name": "fleet:stalled",
+      "scope": "pr",
+      "color": "fbca04",
+      "description": "A fleet:wip PR has been idle 7+ days; human decides to merge / close / re-arm"
+    },
+    {
+      "name": "fleet:changes-made",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Worker addressed feedback; awaiting re-review"
+    },
+    {
+      "name": "fleet:approved",
+      "scope": "pr",
+      "color": "0e8a16",
+      "description": "Reviewer agent approved; safe for human merge"
+    },
+    {
+      "name": "fleet:has-nits",
+      "scope": "pr",
+      "color": "fbca04",
+      "description": "Approved but author should clean up nits before merge"
+    },
+    {
+      "name": "fleet:needs-fix",
+      "scope": "pr",
+      "color": "d73a4a",
+      "description": "Reviewer agent flagged correctness/quality issues"
+    },
+    {
+      "name": "fleet:blocker",
+      "scope": "pr",
+      "color": "800010",
+      "description": "Reviewer agent flagged a blocker; do not merge"
+    },
+    {
+      "name": "fleet:needs-opus-recheck",
+      "scope": "pr",
+      "color": "1d76db",
+      "description": "Sonnet first-pass review approved but ended 'Opus recheck required'; the explicit signal the scout projection wakes the opus-reviewer on. opus-reviewer removes it when its pass completes, whatever the verdict"
+    },
+    {
+      "name": "fleet:semantic-conflict",
+      "scope": "pr",
+      "color": "d73a4a",
+      "description": "Merger hit non-mechanical conflict; opus-worker resolves or escalates"
+    },
+    {
+      "name": "fleet:merger-cooldown",
+      "scope": "pr",
+      "color": "bfdadc",
+      "description": "Merger touched this PR; skip until next iteration"
+    },
+    {
+      "name": "fleet:design-blocked",
+      "scope": "pr",
+      "color": "fbca04",
+      "description": "Worker escalated for architectural input mid-task; architect should respond"
+    },
+    {
+      "name": "fleet:design-unblocked",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Architect responded; worker resumes per the architect comment + updated plan file"
+    },
+    {
+      "name": "fleet:needs-linux-smoke",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
+    },
+    {
+      "name": "fleet:needs-macos-smoke",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Engine render PR awaiting macOS/Metal cross-host smoke validation"
+    },
+    {
+      "name": "fleet:needs-windows-smoke",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Engine render PR awaiting Windows cross-host smoke validation; cleared by platform-catchup, not an author agent"
+    },
+    {
+      "name": "fleet:authored-on-linux",
+      "scope": "pr",
+      "color": "ededed",
+      "description": "PR was opened from a Linux/WSL host; reviewer skips fleet:needs-linux-smoke"
+    },
+    {
+      "name": "fleet:authored-on-macos",
+      "scope": "pr",
+      "color": "ededed",
+      "description": "PR was opened from a macOS host; reviewer skips fleet:needs-macos-smoke"
+    },
+    {
+      "name": "fleet:authored-on-windows",
+      "scope": "pr",
+      "color": "ededed",
+      "description": "PR was opened from a Windows host; reviewer skips fleet:needs-windows-smoke"
+    },
+    {
+      "name": "fleet:verified-linux",
+      "scope": "pr",
+      "color": "0e8a16",
+      "description": "Set by the smoking agent on a successful Linux smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
+    },
+    {
+      "name": "fleet:verified-macos",
+      "scope": "pr",
+      "color": "0e8a16",
+      "description": "Set by the smoking agent on a successful macOS smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
+    },
+    {
+      "name": "fleet:verified-windows",
+      "scope": "pr",
+      "color": "0e8a16",
+      "description": "Set by platform-catchup on a successful Windows smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
+    },
+    {
+      "name": "fleet:stacked",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "PR's base is a feature branch (stacked PR)"
+    },
+    {
+      "name": "fleet:awaiting-base",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Stacked PR; merger is waiting for base PR to merge"
+    },
+    {
+      "name": "fleet:needs-base-update",
+      "scope": "pr",
+      "color": "fbca04",
+      "description": "Stacked child PR; upstream force-pushed and cascade-rebase conflicted; author rebases manually"
+    },
+    {
+      "name": "fleet:fork-of-other-pr",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Merger detected this PR's branch was forked from another open PR's branch (inherited commits); wait for the upstream PR to merge, then rebase --onto to drop them"
+    },
+    {
+      "name": "fleet:stacked-rebase",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Stacked PR; base just merged, re-targeted to master, awaiting reviewer re-eval"
+    },
+    {
+      "name": "fleet:awaiting-upstream-review",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Stacked PR; reviewer is holding verdict until upstream PR is approved"
+    },
+    {
+      "name": "fleet:human-deferred",
+      "scope": "pr",
+      "color": "fbca04",
+      "description": "Worker filed human:needs-fix concerns as a follow-up issue; PR is internally OK to merge if human accepts the deferral (fleet:approved kept)"
+    },
+    {
+      "name": "fleet:human-amending",
+      "scope": "pr",
+      "color": "c5def5",
+      "description": "Worker is amending this PR with the fixes for the human:needs-fix concerns; hold merge until fleet:changes-made appears"
+    },
+    {
+      "name": "human:owned",
+      "scope": "issue",
+      "color": "5319e7",
+      "description": "Human took ownership of this issue and de-queued it; fleet-queue-ingest never re-stamps fleet:queued; reconcile flags fleet:queued+human:owned"
+    },
+    {
+      "name": "human:wip",
+      "scope": "pr",
+      "color": "5319e7",
+      "description": "Human is editing the PR directly; agents stand off"
+    },
+    {
+      "name": "human:approved",
+      "scope": "issue",
+      "color": "0e8a16",
+      "description": "Human approved the PR (overrides agent verdict)"
+    },
+    {
+      "name": "human:needs-fix",
+      "scope": "pr",
+      "color": "d4c5f9",
+      "description": "Human flagged a fix request; agent should address"
+    },
+    {
+      "name": "human:blocker",
+      "scope": "pr",
+      "color": "d4c5f9",
+      "description": "Human flagged a blocker; do not merge"
+    },
+    {
+      "name": "human:re-review",
+      "scope": "pr",
+      "color": "5319e7",
+      "description": "Human pushed changes; reviewer agent should re-review"
+    }
+  ],
+  "transitions": [
+    {
+      "name": "verdict-approve",
+      "scope": "pr",
+      "owner": "reviewer",
+      "remove": [
+        "fleet:needs-fix",
+        "fleet:blocker",
+        "fleet:has-nits",
+        "fleet:needs-opus-recheck",
+        "fleet:awaiting-upstream-review",
+        "fleet:stacked-rebase",
+        "fleet:needs-base-update"
+      ],
+      "add": [
+        "fleet:approved"
+      ],
+      "note": "Reviewer approves cleanly. Mirrors REVIEWER-PROTOCOL.md verdict label-swap (approve, no nits)."
+    },
+    {
+      "name": "verdict-approve-nits",
+      "scope": "pr",
+      "owner": "reviewer",
+      "remove": [
+        "fleet:needs-fix",
+        "fleet:blocker",
+        "fleet:needs-opus-recheck",
+        "fleet:awaiting-upstream-review",
+        "fleet:stacked-rebase",
+        "fleet:needs-base-update"
+      ],
+      "add": [
+        "fleet:approved",
+        "fleet:has-nits"
+      ],
+      "note": "Reviewer approves with a non-empty Nits section. Keeps has-nits so the author cleans up before merge."
+    },
+    {
+      "name": "verdict-needs-fix",
+      "scope": "pr",
+      "owner": "reviewer",
+      "remove": [
+        "fleet:approved",
+        "fleet:blocker",
+        "fleet:has-nits",
+        "fleet:needs-opus-recheck",
+        "fleet:awaiting-upstream-review",
+        "fleet:stacked-rebase",
+        "fleet:needs-base-update"
+      ],
+      "add": [
+        "fleet:needs-fix"
+      ],
+      "note": "Reviewer flags correctness/quality issues to address before merge."
+    },
+    {
+      "name": "verdict-blocker",
+      "scope": "pr",
+      "owner": "reviewer",
+      "remove": [
+        "fleet:approved",
+        "fleet:needs-fix",
+        "fleet:has-nits",
+        "fleet:needs-opus-recheck",
+        "fleet:awaiting-upstream-review",
+        "fleet:stacked-rebase",
+        "fleet:needs-base-update"
+      ],
+      "add": [
+        "fleet:blocker"
+      ],
+      "note": "Reviewer flags a show-stopper; do not merge."
+    },
+    {
+      "name": "verdict-needs-opus-recheck",
+      "scope": "pr",
+      "owner": "reviewer",
+      "remove": [
+        "fleet:awaiting-upstream-review",
+        "fleet:stacked-rebase",
+        "fleet:needs-base-update"
+      ],
+      "add": [
+        "fleet:needs-opus-recheck"
+      ],
+      "note": "Sonnet-reviewer escalates to Opus recheck. Does NOT set fleet:approved (opus-reviewer's to set). REVIEWER-PROTOCOL.md needs-opus-recheck special case."
+    },
+    {
+      "name": "design-block",
+      "scope": "pr",
+      "owner": "opus-worker",
+      "remove": [
+        "fleet:design-unblocked"
+      ],
+      "add": [
+        "fleet:design-blocked"
+      ],
+      "note": "Worker escalates for architectural input mid-task. Keeps fleet:wip (qualifier). role-opus-worker.md step 8c."
+    },
+    {
+      "name": "design-unblock",
+      "scope": "pr",
+      "owner": "architect",
+      "remove": [
+        "fleet:design-blocked"
+      ],
+      "add": [
+        "fleet:design-unblocked"
+      ],
+      "note": "Architect responded; worker resumes. role-opus-architect.md design-unblock swap."
+    },
+    {
+      "name": "smoke-verify-linux",
+      "scope": "pr",
+      "owner": "smoke-worker",
+      "remove": [
+        "fleet:needs-linux-smoke"
+      ],
+      "add": [
+        "fleet:verified-linux"
+      ],
+      "note": "Linux/OpenGL cross-host smoke passed. FLEET-CROSS-HOST-SMOKE.md."
+    },
+    {
+      "name": "smoke-verify-macos",
+      "scope": "pr",
+      "owner": "smoke-worker",
+      "remove": [
+        "fleet:needs-macos-smoke"
+      ],
+      "add": [
+        "fleet:verified-macos"
+      ],
+      "note": "macOS/Metal cross-host smoke passed. FLEET-CROSS-HOST-SMOKE.md."
+    },
+    {
+      "name": "smoke-verify-windows",
+      "scope": "pr",
+      "owner": "platform-catchup",
+      "remove": [
+        "fleet:needs-windows-smoke"
+      ],
+      "add": [
+        "fleet:verified-windows"
+      ],
+      "note": "Windows cross-host smoke passed (platform-catchup). FLEET-CROSS-HOST-SMOKE.md."
+    }
+  ]
+}

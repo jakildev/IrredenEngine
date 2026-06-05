@@ -17,6 +17,10 @@
 #   fleet-labels --repo <ns>      sync only the named repo
 #                                 (e.g. --repo jakildev/IrredenEngine)
 #   fleet-labels --dry-run        print what would be created, don't act
+#   fleet-labels --check          drift-guard: diff this catalog against the
+#                                 node set in docs/agents/fleet-state-machine.json;
+#                                 exit non-zero on any difference. Makes no GitHub
+#                                 calls. (FLEET_STATE_MACHINE overrides the path.)
 #
 # Source of truth: scripts/fleet/fleet-labels in the engine repo.
 # Installed to ~/bin/fleet-labels by scripts/fleet/install.sh.
@@ -24,6 +28,7 @@
 set -euo pipefail
 
 DRY_RUN=0
+CHECK=0
 TARGET_REPO=""
 
 # Use a while-loop so `--repo <ns>` consumes its value with `shift 2`
@@ -33,6 +38,7 @@ TARGET_REPO=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
+        --check) CHECK=1; shift ;;
         --repo)
             # Reject if next arg is missing OR looks like another flag.
             if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
@@ -51,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            sed -n '2,22p' "$0"
+            sed -n '2,26p' "$0"
             exit 0
             ;;
         *)
@@ -242,6 +248,52 @@ slug_from_remote() {
     slug="${slug%.git}"
     echo "$slug"
 }
+
+# ----------------------------------------------------------------------
+# --check: drift-guard the catalog against the state-machine node set
+# ----------------------------------------------------------------------
+# The label names in this script and in docs/agents/fleet-state-machine.json
+# must stay 1:1 (the JSON is the machine-readable node set fleet-transition
+# reads; this array is what actually gets created on GitHub). --check diffs
+# the two and fails on any difference so a forgotten edit to one side is
+# caught in CI / pre-commit rather than at runtime. Names only — color and
+# description are intentionally not compared (humans re-skin labels).
+if [[ "$CHECK" -eq 1 ]]; then
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "fleet-labels --check: jq not found." >&2
+        exit 2
+    fi
+    SCRIPT_PATH=$(resolve_symlink_chain "${BASH_SOURCE[0]}")
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    ENGINE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    STATE_MACHINE="${FLEET_STATE_MACHINE:-$ENGINE_ROOT/docs/agents/fleet-state-machine.json}"
+    if [[ ! -f "$STATE_MACHINE" ]]; then
+        echo "fleet-labels --check: state-machine file not found: $STATE_MACHINE" >&2
+        exit 2
+    fi
+
+    catalog_names=$(printf '%s\n' "${LABELS[@]}" | sed 's/|.*//' | sort -u)
+    json_names=$(jq -r '.labels[].name' "$STATE_MACHINE" | sort -u)
+
+    only_catalog=$(comm -23 <(printf '%s\n' "$catalog_names") <(printf '%s\n' "$json_names"))
+    only_json=$(comm -13 <(printf '%s\n' "$catalog_names") <(printf '%s\n' "$json_names"))
+
+    if [[ -z "$only_catalog" && -z "$only_json" ]]; then
+        echo "fleet-labels --check: OK — catalog and $STATE_MACHINE agree ($(printf '%s\n' "$catalog_names" | grep -c . ) labels)."
+        exit 0
+    fi
+    echo "fleet-labels --check: DRIFT between the catalog and the state-machine node set." >&2
+    if [[ -n "$only_catalog" ]]; then
+        echo "  In fleet-labels but NOT in fleet-state-machine.json:" >&2
+        printf '    %s\n' $only_catalog >&2
+    fi
+    if [[ -n "$only_json" ]]; then
+        echo "  In fleet-state-machine.json but NOT in fleet-labels:" >&2
+        printf '    %s\n' $only_json >&2
+    fi
+    echo "  Add/remove the label in BOTH places (and docs/agents/fleet-labels-reference.md)." >&2
+    exit 1
+fi
 
 REPOS=()
 if [[ -n "$TARGET_REPO" ]]; then
