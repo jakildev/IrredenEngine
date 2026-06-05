@@ -237,6 +237,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 sfd.perAxisBase_ = perAxisBase;
                 sfd.detachedResidual_ = residual;
                 sfd.detachedDepthAxis_ = vec4(IRMath::isoDepthAxisModel(residual), 0.0f);
+                // Conservative-coverage dilation needs the framebuffer extent the
+                // ortho mpMatrix maps into, to convert a pixel margin to NDC (#1494).
+                sfd.scatterFbResolution_ = vec4(fbRes, 0.0f, 0.0f);
 
                 ScatterInstance sinst{};
                 sinst.frameData_ = sfd;

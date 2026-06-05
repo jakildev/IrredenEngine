@@ -237,6 +237,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             0
         );
         frameData.frameData_.distanceOffset_ = 0;
+        // Conservative-coverage dilation needs the framebuffer extent the ortho
+        // mpMatrix maps into, to convert a pixel margin to NDC (#1494).
+        frameData.frameData_.scatterFbResolution_ = vec4(framebufferResolution, 0.0f, 0.0f);
         frameData.updateFrameData(frameDataBuf_);
 
         scatterProgram_->use();

@@ -35,6 +35,11 @@ struct FrameDataIsoTriangles {
     float visualYaw;
     int _scatterPad;
     int4 visibleFaceIds;
+    // P3b detached fields (unused on the camera path) — declared only to reach
+    // scatterFbResolution at the shared std140 offset 176 (#1494).
+    float4 _detachedResidualPad;
+    float4 _detachedDepthAxisPad;
+    float4 scatterFbResolution; // framebuffer .xy for the conservative dilation (#1494)
 };
 
 struct VertexOut {
@@ -102,8 +107,24 @@ vertex VertexOut v_peraxis_scatter(
     float2 quadPos;
     quadPos.x = cornerIso.x / float(canvasSize.x) - 0.5f;
     quadPos.y = 0.5f - cornerIso.y / float(canvasSize.y);
-    out.position = frameData.mpMatrix * float4(quadPos, 1.0, 1.0);
-    out.position.y = -out.position.y;
+    float4 clipCorner = frameData.mpMatrix * float4(quadPos, 1.0, 1.0);
+    // Conservative screen-space coverage (#1494) — mirror of v_peraxis_scatter.glsl.
+    // Grow the quad outward along its two screen edge normals so a sub-pixel-thin
+    // deformed rhombus still covers a fragment center. Pre-y-flip clip space.
+    const float2 fbRes = max(frameData.scatterFbResolution.xy, float2(1.0));
+    const float2 ndcPerPx = float2(2.0) / fbRes;
+    const float2 pxPerNdc = fbRes * 0.5;
+    float3 eu, ev;
+    faceInPlaneUnitAxes(axis, eu, ev);
+    float2 isoEu = pos3DtoPos2DIsoYawed(eu, frameData.visualYaw);
+    float2 isoEv = pos3DtoPos2DIsoYawed(ev, frameData.visualYaw);
+    float2 quadEu = float2(isoEu.x / float(canvasSize.x), -isoEu.y / float(canvasSize.y));
+    float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
+    float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
+    float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
+    clipCorner.xy += scatterConservativeDilation(su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx);
+    clipCorner.y = -clipCorner.y;
+    out.position = clipCorner;
 
     out.color = color;
     // Yaw-consistent composite depth (#1370) — mirror of v_peraxis_scatter.glsl.

@@ -53,6 +53,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     ivec4 visibleFaceIds;    // per-slot model FaceId (visibleTriplet); .w pad
     vec4 detachedResidual;   // octahedral-snap residual quat (qx,qy,qz,qw)
     vec4 detachedDepthAxis;  // isoDepthAxisModel(residual); .xyz used, .w pad
+    vec4 scatterFbResolution; // framebuffer .xy for the conservative dilation (#1494)
 };
 
 flat out vec4 vColor;
@@ -104,7 +105,22 @@ void main() {
     const vec2 cornerSel = aPos + vec2(0.5);
     const vec3 modelCorner = faceSpanCorner(axis, vec3(origin), cornerSel);
     const vec2 isoModel = pos3DtoPos2DIsoRotated(modelCorner, detachedResidual);
-    gl_Position = mpMatrix * vec4(isoModel, 1.0, 1.0);
+    vec4 clipCorner = mpMatrix * vec4(isoModel, 1.0, 1.0);
+    // Conservative screen-space coverage (#1494): grow the quad outward along its
+    // two screen edge normals so a sub-pixel-thin deformed rhombus still covers a
+    // fragment center (without it, off-snap poses waffle/stripe). The face's two
+    // in-plane unit model axes project (linearly, since pos3DtoPos2DIsoRotated is
+    // linear) to the quad's screen edges; convert to framebuffer pixels via the
+    // ortho mpMatrix (gl_Position.w == 1) and the uploaded resolution.
+    const vec2 fbRes = max(scatterFbResolution.xy, vec2(1.0));
+    const vec2 ndcPerPx = vec2(2.0) / fbRes;
+    const vec2 pxPerNdc = fbRes * 0.5;
+    vec3 eu, ev;
+    faceInPlaneUnitAxes(axis, eu, ev);
+    vec2 su = (mpMatrix * vec4(pos3DtoPos2DIsoRotated(eu, detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
+    vec2 sv = (mpMatrix * vec4(pos3DtoPos2DIsoRotated(ev, detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
+    clipCorner.xy += scatterConservativeDilation(su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
+    gl_Position = clipCorner;
 
     vColor = color;
     // Composite depth along the residual's model iso axis (#1475). NOT the store

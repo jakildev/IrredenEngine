@@ -39,6 +39,7 @@ struct FrameDataIsoTriangles {
     int4 visibleFaceIds;
     float4 detachedResidual;   // octahedral-snap residual quat (qx,qy,qz,qw)
     float4 detachedDepthAxis;  // isoDepthAxisModel(residual); .xyz used
+    float4 scatterFbResolution; // framebuffer .xy for the conservative dilation (#1494)
 };
 
 // Must match f_peraxis_scatter's [[stage_in]] VertexOut (peraxis_scatter.metal).
@@ -91,8 +92,21 @@ vertex VertexOut v_peraxis_scatter_detached(
     const float2 cornerSel = in.position + float2(0.5);
     const float3 modelCorner = faceSpanCorner(axis, float3(origin), cornerSel);
     const float2 isoModel = pos3DtoPos2DIsoRotated(modelCorner, frameData.detachedResidual);
-    out.position = frameData.mpMatrix * float4(isoModel, 1.0, 1.0);
-    out.position.y = -out.position.y;
+    float4 clipCorner = frameData.mpMatrix * float4(isoModel, 1.0, 1.0);
+    // Conservative screen-space coverage (#1494) — mirror of the GLSL twin. Grow
+    // the quad outward along its two screen edge normals so a sub-pixel-thin
+    // deformed rhombus still covers a fragment center (off-snap poses waffle
+    // without it). Done in pre-y-flip clip space (mpMatrix is ortho, w == 1).
+    const float2 fbRes = max(frameData.scatterFbResolution.xy, float2(1.0));
+    const float2 ndcPerPx = float2(2.0) / fbRes;
+    const float2 pxPerNdc = fbRes * 0.5;
+    float3 eu, ev;
+    faceInPlaneUnitAxes(axis, eu, ev);
+    float2 su = (frameData.mpMatrix * float4(pos3DtoPos2DIsoRotated(eu, frameData.detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
+    float2 sv = (frameData.mpMatrix * float4(pos3DtoPos2DIsoRotated(ev, frameData.detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
+    clipCorner.xy += scatterConservativeDilation(su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx);
+    clipCorner.y = -clipCorner.y;
+    out.position = clipCorner;
 
     out.color = color;
     // Composite depth along the residual's model iso axis (#1475) — mirror of

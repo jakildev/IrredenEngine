@@ -631,6 +631,50 @@ vec2 pos3DtoPos2DIsoRotated(vec3 modelPos, vec4 rotation) {
     return vec2(-r.x + r.y, -r.x - r.y + 2.0 * r.z);
 }
 
+// The two in-plane unit model axes (e_u, e_v) a face's scatter quad spans, by
+// axis = faceId >> 1 (0=X spans y,z; 1=Y spans x,z; 2=Z spans x,y) — matching
+// faceSpanCorner's cornerSel.x -> e_u, cornerSel.y -> e_v ordering. Returned in
+// `eu`/`ev` out-params (GLSL/Metal both pass by reference).
+void faceInPlaneUnitAxes(int axis, out vec3 eu, out vec3 ev) {
+    eu = (axis == 0) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    ev = (axis == 2) ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+}
+
+// Default conservative-coverage margin (framebuffer pixels) the per-axis
+// forward-scatter grows each quad by along each screen edge normal (#1494).
+// ~0.85px reliably closes the sub-pixel thin-sliver waffle while keeping the
+// silhouette/over-fill within a fraction of a pixel.
+const float kScatterDilateMarginPx = 0.85;
+
+// Conservative screen-space coverage for the per-axis forward-scatter (#1494).
+// Each non-empty cell scatters one deformed face rhombus; at off-snap residual
+// poses the rhombus can collapse to a sub-pixel-thin sliver that slips between
+// fragment centers and drops out under pixel-center rasterization — the visible
+// "thin vertical sliver"/waffle (#1494). A linear iso-of-rotation map of the
+// gap-free unit-cell tiling is gap-free in CONTINUOUS space, but that guarantee
+// does not survive finite-resolution rasterization of a sub-pixel polygon.
+//
+// Grow each quad ~`marginPx` framebuffer pixels outward along BOTH of its screen
+// edge normals so the thin dimension always spans a fragment center. `su`/`sv`
+// are the face's two in-plane unit axes projected to framebuffer pixels; the
+// margin is a fixed pixel amount, so it is negligible at large on-screen size
+// (silhouette unchanged) and is screen-space (independent of subdivision
+// density / zoom) — unlike the rejected model-space ×2 quad span, which scales
+// with size and over-fills. Returns the clip-space (NDC) offset to add to the
+// corner; `cornerSign` is sign(aPos) (cornerSign.x -> e_u edge, .y -> e_v edge).
+vec2 scatterConservativeDilation(
+    vec2 su, vec2 sv, vec2 cornerSign, float marginPx, vec2 ndcPerPx
+) {
+    // Outward normal of each edge = the component of the OTHER edge perpendicular
+    // to it (so a thin sliver is grown across its thin dimension, not along it).
+    vec2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8));
+    vec2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8));
+    vec2 push = vec2(0.0);
+    if (dot(nu, nu) > 1e-10) push += cornerSign.y * normalize(nu) * marginPx;
+    if (dot(nv, nv) > 1e-10) push += cornerSign.x * normalize(nv) * marginPx;
+    return push * ndcPerPx;
+}
+
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S: local p maps to
 // R * (S * p) + t — the same ordering SYSTEM_PROPAGATE_TRANSFORM uses when

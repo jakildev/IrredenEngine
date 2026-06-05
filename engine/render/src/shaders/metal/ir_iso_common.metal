@@ -566,6 +566,42 @@ inline float2 pos3DtoPos2DIsoRotated(float3 modelPos, float4 rotation) {
     return float2(-r.x + r.y, -r.x - r.y + 2.0f * r.z);
 }
 
+// The two in-plane unit model axes (e_u, e_v) a face's scatter quad spans, by
+// axis = faceId >> 1 (0=X spans y,z; 1=Y spans x,z; 2=Z spans x,y) — matching
+// faceSpanCorner's cornerSel.x -> e_u, cornerSel.y -> e_v ordering. Mirror of
+// the GLSL twin in ir_iso_common.glsl.
+inline void faceInPlaneUnitAxes(int axis, thread float3& eu, thread float3& ev) {
+    eu = (axis == 0) ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    ev = (axis == 2) ? float3(0.0, 1.0, 0.0) : float3(0.0, 0.0, 1.0);
+}
+
+// Default conservative-coverage margin (framebuffer pixels) the per-axis
+// forward-scatter grows each quad by along each screen edge normal (#1494).
+// Mirror of the GLSL constant in ir_iso_common.glsl.
+constant float kScatterDilateMarginPx = 0.85;
+
+// Conservative screen-space coverage for the per-axis forward-scatter (#1494) —
+// mirror of scatterConservativeDilation in ir_iso_common.glsl. At off-snap
+// residual poses a per-cell deformed rhombus can collapse to a sub-pixel-thin
+// sliver that slips between fragment centers and drops out under pixel-center
+// rasterization (the visible "thin vertical sliver"/waffle). Grow each quad
+// ~`marginPx` framebuffer pixels outward along BOTH screen edge normals so the
+// thin dimension always spans a fragment center; the margin is a fixed pixel
+// amount (negligible at large size -> silhouette unchanged; screen-space ->
+// independent of subdivision density), unlike the rejected model-space ×2 span.
+// `su`/`sv` are the face in-plane unit axes projected to framebuffer pixels;
+// `cornerSign` is sign(aPos). Returns the clip-space (NDC) offset to add.
+inline float2 scatterConservativeDilation(
+    float2 su, float2 sv, float2 cornerSign, float marginPx, float2 ndcPerPx
+) {
+    float2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8f));
+    float2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8f));
+    float2 push = float2(0.0);
+    if (dot(nu, nu) > 1e-10f) push += cornerSign.y * normalize(nu) * marginPx;
+    if (dot(nv, nv) > 1e-10f) push += cornerSign.x * normalize(nv) * marginPx;
+    return push * ndcPerPx;
+}
+
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S; quaternion layout matches
 // the engine canon: float4(qx, qy, qz, qw) with .w the scalar; identity is
