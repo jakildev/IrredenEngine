@@ -12,6 +12,7 @@
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/camera.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
@@ -101,11 +102,26 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 vec2 cameraIso = IRRender::getCameraPosition2DIso();
                 vec2 cameraZoom = IRRender::getCameraZoom();
 
+                // The detached canvas texture is rasterized camera-yaw-zeroed in
+                // the entity's own model space (buildVoxelFrameData's detached
+                // branch), so its de-tile gather phase is keyed to the entity's
+                // FIXED world iso position — constant under camera yaw, reused
+                // below as `-entityIso` for the gather's `cameraTrixelOffset_`
+                // parity (unchanged, so no new #1256-class stripe risk). The
+                // screen PLACEMENT, by contrast, must orbit with the rotating
+                // world: project the world position under the camera's continuous
+                // Z-yaw (#1500), exactly as the world / SDF content does
+                // (system_shapes_to_trixel via pos3DtoPos2DIsoYawed). The two
+                // coincide at yaw == 0, so cardinal frames stay byte-identical.
+                const float visualYaw = IRPrefab::Camera::getYaw();
                 vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
+                vec2 entityIsoPlacement =
+                    pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw);
 
                 ivec2 mainCanvasSizeI = ivec2(mainCanvasSize);
                 vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
-                vec2 entityOnMainCanvas = canvasOriginZ1 + IRMath::floor(cameraIso) + entityIso;
+                vec2 entityOnMainCanvas =
+                    canvasOriginZ1 + IRMath::floor(cameraIso) + entityIsoPlacement;
                 vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize;
 
                 // Game-pixel half of the anti-vibration decomposition —
