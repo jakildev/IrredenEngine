@@ -2110,6 +2110,46 @@ for repo in repos:
                 "(re-adoption is a pickup decision)" % (kind, issue_n),
                 "flag-only (R2)")
 
+# ---- R7 (auto-heal): half-executed design-unblock — stranded WIP, no label --
+# Symmetric counterpart to R4a (R4a = BOTH design labels present; R7 = NEITHER
+# on a stranded PR). The half-executed-design-unblock state (#1516): an
+# architect unblock removed fleet:design-blocked but never added
+# fleet:design-unblocked, leaving a fleet:wip PR with no claim and neither
+# design label while its backing issue stays fleet:queued — so the worker
+# resume loop (keyed on fleet:design-unblocked) never surfaces it AND the
+# duplicate-claim guard refuses the queued issue. Unlike R2 (which only flags
+# this state and punts to a human), R7 auto-heals by re-adding
+# fleet:design-unblocked so a worker re-adopts the PR — reconcile never decides
+# to resume, it just restores the routing signal; the worker makes the
+# resume-or-close call. Always-safe even for a genuinely abandoned PR. The
+# heal is persistence-gated in reconcile_heal_design_unblock (it carries an
+# apply action so reconcile_escalate_drift's flag-only accrual skips it), so a
+# freshly-opened WIP PR still propagating its claim is never touched.
+for repo in repos:
+    d = repo_data[repo]
+    for issue_n, prlist in d["pr_by_issue"].items():
+        issue_labs = d["issue_labels"].get(issue_n, set())
+        if "fleet:queued" not in issue_labs:
+            continue
+        # Same claimless test R2 uses — no FS claim, claim-label, or reservation.
+        if (any(l.startswith("fleet:claim-") for l in issue_labs)
+                or (repo, issue_n) in fs_by_task
+                or str(issue_n) in reserved_tasks):
+            continue
+        for pr in prlist:
+            labs = pr["labels"]
+            if "fleet:wip" not in labs:
+                continue
+            if "fleet:design-blocked" in labs or "fleet:design-unblocked" in labs:
+                continue
+            add("R7", repo, pr["number"], "pr", ["pr", "label"],
+                "stranded wip PR for #%d: no claim + neither design label on a "
+                "fleet:queued issue (half-executed design-unblock); re-add "
+                "fleet:design-unblocked (persistence-gated)" % issue_n,
+                "queued issue, wip PR, no claim, neither design label",
+                apply={"type": "heal_design_unblock", "pr": pr["number"],
+                       "repo": repo, "issue": issue_n})
+
 for f in findings:
     print(json.dumps(f))
 PYEOF
@@ -2190,8 +2230,20 @@ PYEOF
                     gh_release_label "$p_repo" "$p_issue" "fleet:in-progress" || true
                     echo "  reconcile --apply: R4b removed stale fleet:in-progress on $p_repo #$p_issue"
                     ;;
+                # heal_design_unblock (R7) is deliberately NOT applied here — it
+                # is persistence-gated, handled by reconcile_heal_design_unblock
+                # below so a freshly-opened WIP PR is never healed prematurely.
             esac
         done < "$findings"
+    fi
+
+    # ---- persistence-gated auto-heal of half-executed design-unblock (#1516) --
+    # R7 marks a stranded fleet:wip PR (claimless, neither design label, queued
+    # backing issue). reconcile_heal_design_unblock re-adds fleet:design-unblocked
+    # only once the state has survived the same tick threshold R2 escalation uses,
+    # so a fresh WIP PR mid-claim-propagation is never touched. --apply only.
+    if [[ $do_apply -eq 1 ]]; then
+        reconcile_heal_design_unblock "$findings" "$state_dir" "${FLEET_RECONCILE_DRIFT_TICKS:-3}"
     fi
 
     # ---- persistence-gated, deduped escalation of unfixable drift (C2) ----
@@ -2410,6 +2462,105 @@ PYEOF
         fi
     fi
     rm -f "$body_file"
+}
+
+# reconcile_heal_design_unblock <findings-jsonl> <state-dir> <threshold>
+#   Persistence-gated auto-heal for the half-executed-design-unblock state
+#   (#1516). Consumes R7 findings (apply.type == heal_design_unblock): a
+#   fleet:wip PR that is claimless and carries NEITHER design label, on a
+#   fleet:queued backing issue — the exact state left when an architect unblock
+#   removed fleet:design-blocked but never added fleet:design-unblocked,
+#   stranding the PR (no resume signal, and the duplicate-claim guard refuses
+#   the queued issue). Mirrors reconcile_escalate_drift's persistence gating: a
+#   per-key counter in <state-dir>/design-unblock-heal-persistence.json bumps
+#   each --apply tick a finding recurs and resets when it does not, so a
+#   freshly-opened WIP PR still propagating its claim is never acted on. When a
+#   finding crosses <threshold> ticks, re-add fleet:design-unblocked so the
+#   opus-worker resume loop adopts the PR (the worker — never reconcile — makes
+#   the resume-or-close call). Idempotent: once the label is back the finding
+#   stops reproducing, so its counter resets and the heal does not repeat. A
+#   failed re-add simply recurs on the next tick (the counter is already past
+#   threshold). Mutates local state + a GH label, so cmd_reconcile only calls
+#   it on --apply.
+reconcile_heal_design_unblock() {
+    local findings="$1" state_dir="$2" threshold="$3"
+    local persist_file="$state_dir/design-unblock-heal-persistence.json"
+    local now
+    now=$(date +%s)
+
+    # Advance persistence and emit "repo<TAB>pr<TAB>issue" for every finding
+    # that has crossed <threshold> ticks this run. Keys absent this run reset.
+    local healable
+    healable=$(NOW="$now" THRESHOLD="$threshold" PERSIST="$persist_file" \
+        python3 - "$findings" <<'PYEOF'
+import sys, os, json
+findings_path = sys.argv[1]
+now = int(os.environ["NOW"])
+threshold = int(os.environ["THRESHOLD"])
+persist_path = os.environ["PERSIST"]
+
+def load(p, default):
+    try:
+        return json.load(open(p))
+    except Exception:
+        return default
+
+findings = []
+try:
+    for line in open(findings_path):
+        line = line.strip()
+        if line:
+            findings.append(json.loads(line))
+except Exception:
+    findings = []
+
+heal = [f for f in findings
+        if (f.get("apply") or {}).get("type") == "heal_design_unblock"]
+
+def key(f):
+    a = f["apply"]
+    return "%s:%s" % (a["repo"], a["pr"])
+
+state = load(persist_path, {})
+if not isinstance(state, dict):
+    state = {}
+
+seen = {}
+for f in heal:
+    k = key(f)
+    prev = state.get(k) if isinstance(state.get(k), dict) else {}
+    a = f["apply"]
+    seen[k] = {
+        "count": int(prev.get("count", 0)) + 1,
+        "first_seen": int(prev.get("first_seen", now)),
+        "last_seen": now,
+        "repo": a["repo"], "pr": a["pr"], "issue": a["issue"],
+    }
+
+# Only this run's keys survive — a finding absent this run resets to zero so a
+# transient one-tick blip (or a PR that just got claimed) never heals.
+with open(persist_path, "w") as fh:
+    json.dump(seen, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+
+for v in sorted(seen.values(), key=lambda v: (v["repo"], str(v["pr"]))):
+    if v["count"] >= threshold:
+        print("%s\t%s\t%s" % (v["repo"], v["pr"], v["issue"]))
+PYEOF
+)
+
+    [[ -z "$healable" ]] && return 0
+
+    local repo pr issue
+    while IFS=$'\t' read -r repo pr issue; do
+        [[ -z "$repo" || -z "$pr" ]] && continue
+        if gh issue edit "$pr" --repo "$repo" \
+            --add-label "fleet:design-unblocked" >/dev/null 2>&1; then
+            echo "  reconcile --apply: R7 healed half-executed design-unblock — re-added fleet:design-unblocked on $repo #$pr (issue #$issue)"
+        else
+            echo "  reconcile --apply: R7 failed to re-add fleet:design-unblocked on $repo #$pr (retries next tick)" >&2
+        fi
+    done <<< "$healable"
 }
 
 cmd_stack() {

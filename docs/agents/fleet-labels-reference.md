@@ -332,9 +332,13 @@ reports drift the single-surface sweeps (`cleanup --gh`,
 `check-stale`, `reset-sweep-host-claims`) can't see. Report-only by
 default; `--apply` performs only the conservative host-local,
 TTL/corroboration-gated repairs (R1 stale claim, R3 reservation
-mismatch, R4 contradictory/orphaned labels) and leaves ambiguous drift
-(R2/R6) flag-only. It runs at **boot** (`fleet-up`, before the
-dispatcher launches) and **periodically** — the scout backgrounds a
+mismatch, R4 contradictory/orphaned labels) plus the persistence-gated
+R7 auto-heal (re-adds `fleet:design-unblocked` to a half-executed
+design-unblock — a stranded `fleet:wip` PR carrying neither design
+label on a `fleet:queued` issue — after `FLEET_RECONCILE_DRIFT_TICKS`
+ticks), and leaves ambiguous drift (R2/R6) flag-only. It runs at
+**boot** (`fleet-up`, before the dispatcher launches) and
+**periodically** — the scout backgrounds a
 single multi-repo `reconcile --apply` alongside `cleanup --gh` on every
 queue-manager projection change, never inside its synchronous tick.
 
