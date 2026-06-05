@@ -2266,6 +2266,10 @@ import sys, os, json
 findings = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
 do_apply = os.environ["DO_APPLY"] == "1"
 for f in findings:
+    # "applied" means apply-mode was active, NOT that the rule's action ran.
+    # R7 (heal_design_unblock) gates on a persistence counter and may skip
+    # even on --apply ticks; readers should not infer the label was mutated
+    # from applied=True alone.
     f["applied"] = bool(do_apply) if f.get("apply") else None
 summary = {}
 for f in findings:
@@ -2554,7 +2558,7 @@ PYEOF
     local repo pr issue
     while IFS=$'\t' read -r repo pr issue; do
         [[ -z "$repo" || -z "$pr" ]] && continue
-        if gh issue edit "$pr" --repo "$repo" \
+        if gh pr edit "$pr" --repo "$repo" \
             --add-label "fleet:design-unblocked" >/dev/null 2>&1; then
             echo "  reconcile --apply: R7 healed half-executed design-unblock — re-added fleet:design-unblocked on $repo #$pr (issue #$issue)"
         else
