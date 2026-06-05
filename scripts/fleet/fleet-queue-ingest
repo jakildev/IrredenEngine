@@ -327,7 +327,7 @@ for issue in pending:
         model_label = 'fleet:opus'
         print(f'WARN issue {repo}#{n}: **Model:** field missing or unrecognized; defaulting to fleet:opus', file=sys.stderr)
 
-    if not BLOCKED_RE.search(body) and not _has_header_blocker(body):
+    if not BLOCKED_RE.search(body) and not _has_header_blocker(body) and not BLOCKED_INLINE_RE.search(body):
         print(f'WARN issue {repo}#{n}: **Blocked by:** field missing; scout will treat as unblocked', file=sys.stderr)
 
     add_labels = ['fleet:queued']
