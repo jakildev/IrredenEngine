@@ -407,7 +407,7 @@ When working a `fleet:design-blocked` PR:
    ```
    fleet-transition design-unblock <N>          # see #1510
    ```
-   Until `fleet-transition` lands, do the swap as a **single** `gh pr edit`
+   Until `fleet-transition design-unblock` is confirmed stable, do the swap as a **single** `gh pr edit`
    invocation carrying both flags — never two separate edits:
    ```
    gh pr edit <N> --remove-label "fleet:design-blocked" --add-label "fleet:design-unblocked"
