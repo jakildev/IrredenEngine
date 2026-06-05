@@ -207,6 +207,7 @@ agent-facing doc, link to the canonical home rather than restating.
 | Feedback-label handling (AMEND / ESCALATE / labels) | `docs/agents/FLEET-FEEDBACK-HANDLING.md` |
 | Per-iteration runtime (heartbeat / exit / shutdown) | `docs/agents/FLEET-RUNTIME.md` |
 | Reviewer protocols (stack gating · label-swap · claim · nits) | `docs/agents/REVIEWER-PROTOCOL.md` |
+| Architect protocol (startup · loop · filing · planning · design-blocked handling) | `docs/agents/architect-protocol.md` |
 | Shared fleet state cache | `docs/agents/FLEET-CACHE.md` |
 | ECS smell diagnostics (machine-checkable) | `.claude/rules/cpp-ecs-smells.md` |
 | Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
