@@ -169,6 +169,54 @@ class SkipLabelsRemovedFromProjection(unittest.TestCase):
         self.assertEqual(_hash(empty), _hash(deferred))
 
 
+class HumanOwesFixLabelsDropped(unittest.TestCase):
+    """An approved PR that also carries a human-owes-a-fix label must drop
+    out of the projection so the merger isn't woken every scout tick to
+    find nothing to do. These labels mirror role-merger.md step 3's skip
+    list, keeping the projection consistent with the merge gate (#1533;
+    observed live on game #144: fleet:approved + human:needs-fix projected
+    merge-ready forever)."""
+
+    def _dropped(self, *extra_labels, mergeable="MERGEABLE"):
+        empty = _state([])
+        flagged = _state([_pr(101, labels=[
+            "fleet:approved", *extra_labels,
+        ], mergeable=mergeable)])
+        self.assertEqual(_hash(empty), _hash(flagged))
+        self.assertEqual(project_merger(flagged), [])
+
+    def test_human_needs_fix_dropped(self):
+        self._dropped("human:needs-fix")
+
+    def test_human_needs_fix_conflicting_dropped(self):
+        # Even CONFLICTING: the human owes a fix, so the merger must not
+        # try to resolve — the author will force-push when addressing it,
+        # invalidating any rebase the merger does now.
+        self._dropped("human:needs-fix", mergeable="CONFLICTING")
+
+    def test_human_blocker_dropped(self):
+        self._dropped("human:blocker")
+
+    def test_fleet_needs_fix_dropped(self):
+        self._dropped("fleet:needs-fix")
+
+    def test_human_re_review_dropped(self):
+        self._dropped("human:re-review")
+
+    def test_repo_agnostic_game_human_needs_fix_dropped(self):
+        # The projection loops both repos; the skip must hold for game too
+        # (game #144 was the live offender).
+        empty = _state_eng_game(engine_prs=[], game_prs=[])
+        flagged = _state_eng_game(
+            engine_prs=[],
+            game_prs=[_pr(144, labels=[
+                "fleet:approved", "human:needs-fix",
+            ])],
+        )
+        self.assertEqual(_hash(empty), _hash(flagged))
+        self.assertEqual(project_merger(flagged), [])
+
+
 class SignalSemantics(unittest.TestCase):
     """Verify the action signal categorization matches the role doc."""
 
@@ -176,6 +224,14 @@ class SignalSemantics(unittest.TestCase):
         items = project_merger(_state([_pr(101, labels=["fleet:approved"])]))
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["signal"], "merge-ready")
+
+    def test_approved_needs_fix_not_merge_ready(self):
+        # Acceptance criterion #1533: fleet:approved + human:needs-fix must
+        # yield no signal (not merge-ready) so it drops out of the merger.
+        items = project_merger(_state([_pr(101, labels=[
+            "fleet:approved", "human:needs-fix",
+        ])]))
+        self.assertEqual(items, [])
 
     def test_approved_conflicting_is_needs_resolve(self):
         items = project_merger(_state([_pr(101, labels=["fleet:approved"],

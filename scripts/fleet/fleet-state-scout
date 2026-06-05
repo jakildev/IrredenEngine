@@ -1196,6 +1196,19 @@ def _merger_action_signal(labels, mergeable, base_ref):
     issue; only the human decides (close-as-superseded / replace /
     reconcile). Re-dispatching the merger just re-triggers the
     opus-worker thrash cycle (observed game #101, three passes).
+
+    The human-owes-a-fix labels — `human:needs-fix`, `human:blocker`,
+    `fleet:needs-fix`, `human:re-review` — are skipped to keep the
+    projection consistent with the merge gate. `role-merger.md` step 3
+    already skips these (the human/reviewer owes a change; the merger
+    must not loop on the PR), but the projection omitted them, so an
+    approved-then-needs-fix PR (e.g. game #144) was projected
+    `merge-ready` and woke the merger every scout tick to find nothing
+    to do. No merge hazard today — the fleet doesn't auto-merge — but the
+    wasted wakes are real and the projection/gate disagreement is a
+    latent footgun. These are durable reviewer/human labels, not
+    merger-set transients, so skipping them preserves the self-trigger
+    invariant above.
     """
     skip = labels & {
         "fleet:wip", "human:wip", "fleet:blocker",
@@ -1203,6 +1216,13 @@ def _merger_action_signal(labels, mergeable, base_ref):
         "fleet:needs-info", "fleet:needs-linux-smoke",
         "fleet:needs-macos-smoke",
         "fleet:human-deferred",
+        # Human-owes-a-fix labels — mirror role-merger.md step 3. NOT
+        # `FEEDBACK_LABELS`: that set carries `fleet:has-nits` (an
+        # approved+has-nits PR is still merge-ready, so the merger must
+        # see it) and omits `human:re-review` (a reviewer concern that
+        # IS the merger's cue to skip). Hand-list the four deliberately.
+        "human:needs-fix", "human:blocker",
+        "fleet:needs-fix", "human:re-review",
     }
     if skip:
         return None
