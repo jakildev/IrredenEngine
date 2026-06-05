@@ -130,6 +130,49 @@ Concretely:
    indirect draw args, shrinking the instance count to ≈ visible faces. Recorded
    here so the optimization is scoped, not silent.
 
+#### Conservative coverage — the scatter quad must be dilated to ≥ a pixel (#1494)
+
+The forward-scatter draws **one quad per non-empty cell**. Each cell stores a
+face at its two in-plane integer coords (pitch-1, face-local), and the quad
+spans exactly one in-plane unit, so its `iso∘R` projection lands its `+e_u`
+corner on the neighbour cell's origin: in **continuous** space the per-cell
+rhombi tile the face gap-free, at any residual, because a *linear* map of a
+gap-free unit-cell tiling is gap-free. **That guarantee does not survive
+finite-resolution rasterization.** At off-snap residual poses a face can be
+foreshortened so its per-cell rhombus collapses to a **sub-pixel-thin sliver**;
+under pixel-center coverage the slivers slip between fragment centers and drop
+out, leaving regularly-spaced gaps — the "thin vertical sliver"/waffle of #1494
+(and the same latent bug on the camera-yaw world scatter, where it is usually
+hidden sub-pixel on the much larger world canvas). It is **size-dependent**
+(larger on-screen faces tile solid; small / foreshortened ones gap) — the tell
+that it is a coverage artifact, **not** a placement-scale error (the
+canvas-normalized and direct-iso placements are algebraically equal — the
+`axes.size_` factor cancels) and **not** a store-pitch / parity gap (the store
+is dense pitch-1, recovery is exact). A blunt `cornerSel × 2` model-space span
+*does* fill it but over-draws (wrong silhouette, scales with size, breaks at
+`subdivisions > 1`) and is **rejected**.
+
+**Contract:** the scatter vertex shader grows each quad by a fixed
+**screen-space** margin (`kScatterDilateMarginPx`, ~0.85 framebuffer px) outward
+along **both** of its two screen edge normals (`scatterConservativeDilation` in
+`ir_iso_common.{glsl,metal}`), so the thin dimension always spans a fragment
+center. Because the margin is a fixed *pixel* amount it is negligible at large
+on-screen size (silhouette unchanged) and is independent of subdivision density
+(screen-space, not model-space) — the two properties the `×2` span lacks. The
+shader needs the framebuffer extent the ortho `mpMatrix` maps into to convert
+the pixel margin to NDC; it is uploaded in `FrameDataTrixelToFramebuffer::
+scatterFbResolution_`. Both scatter paths — camera-yaw (`v_peraxis_scatter`) and
+detached SO(3) (`v_peraxis_scatter_detached`) — share the one helper and the one
+contract so they cannot diverge. Identity / at-snap is untouched: the per-axis
+canvases are released at a snap, so the scatter (and its dilation) never run on
+the byte-identical fast path.
+
+> **Known residual (follow-up):** the dilation closes the intra-face sliver
+> waffle but a sparse line of isolated single-pixel holes can remain at **face
+> boundaries** on some poses — a distinct, pre-existing structural gap (a few
+> cells at the shared edge of two faces do not abut in screen space), not the
+> sub-pixel coverage this contract addresses. Tracked separately.
+
 #### Status — landed in #1310 (this PR) vs deferred
 
 **Landed + validated (Metal, `--spin-yaw`/`--yaw` sweeps on `IRShapeDebug`):**

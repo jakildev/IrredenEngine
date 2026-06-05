@@ -120,6 +120,14 @@ struct FrameDataTrixelToFramebuffer {
     /// C_CanvasLocalRotation by ENTITY_CANVAS_TO_FRAMEBUFFER.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
+    /// Framebuffer resolution (.xy) the scatter renders into; .zw pad. Lets the
+    /// per-axis scatter vertex shaders convert a screen-space conservative-
+    /// coverage margin (in framebuffer pixels) into clip/NDC so a sub-pixel-thin
+    /// deformed face rhombus still covers a fragment center (#1494). std140-
+    /// appended after detachedDepthAxis_ so the gather + world/detached scatter
+    /// blocks that stop earlier stay byte-identical; only the scatter shaders
+    /// that dilate read it.
+    vec4 scatterFbResolution_{0.0f, 0.0f, 0.0f, 0.0f};
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -129,19 +137,20 @@ static_assert(
 );
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, detachedResidual_) == 144 &&
-        offsetof(FrameDataTrixelToFramebuffer, detachedDepthAxis_) == 160,
+        offsetof(FrameDataTrixelToFramebuffer, detachedDepthAxis_) == 160 &&
+        offsetof(FrameDataTrixelToFramebuffer, scatterFbResolution_) == 176,
     "Detached scatter fields (P3b / #1475) must std140-append after "
     "visibleFaceIds_ (ends at 144): detachedResidual_ 144 / detachedDepthAxis_ "
-    "160. Read only by v_peraxis_scatter_detached; the world scatter + gather "
-    "blocks stop at visibleFaceIds_, so they stay byte-identical"
+    "160 / scatterFbResolution_ 176. Read only by the scatter shaders; the "
+    "gather block stops at visibleFaceIds_, so it stays byte-identical"
 );
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 176,
+    sizeof(FrameDataTrixelToFramebuffer) == 192,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "scatter shaders (v_/f_peraxis_scatter[_detached]) read the appended "
-    "perAxisBase_ / visualYaw_ / visibleFaceIds_ and the P3b detachedResidual_ "
-    "/ detachedDepthAxis_ fields; a silent reorder or resize would corrupt the "
-    "scatter UBO with no compile-time diagnostic"
+    "perAxisBase_ / visualYaw_ / visibleFaceIds_, the P3b detachedResidual_ "
+    "/ detachedDepthAxis_, and the #1494 scatterFbResolution_ fields; a silent "
+    "reorder or resize would corrupt the scatter UBO with no compile diagnostic"
 );
 
 struct FrameDataVoxelToCanvas {

@@ -43,6 +43,11 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     float visualYaw;         // continuous camera Z-yaw (radians)
     int _scatterPad;
     ivec4 visibleFaceIds;    // per-slot world FaceId (0..5); .w pad
+    // P3b detached fields (unused on the camera path) — declared only to reach
+    // scatterFbResolution at the shared std140 offset 176 (#1494).
+    vec4 _detachedResidualPad;
+    vec4 _detachedDepthAxisPad;
+    vec4 scatterFbResolution; // framebuffer .xy for the conservative dilation (#1494)
 };
 
 flat out vec4 vColor;
@@ -109,7 +114,26 @@ void main() {
     vec2 quadPos;
     quadPos.x = cornerIso.x / float(canvasSize.x) - 0.5;
     quadPos.y = 0.5 - cornerIso.y / float(canvasSize.y);
-    gl_Position = mpMatrix * vec4(quadPos, 1.0, 1.0);
+    vec4 clipCorner = mpMatrix * vec4(quadPos, 1.0, 1.0);
+    // Conservative screen-space coverage (#1494): grow the quad outward along its
+    // two screen edge normals so a sub-pixel-thin deformed rhombus still covers a
+    // fragment center. Same shared bug as the detached scatter — on the large
+    // world canvas the gaps are usually sub-pixel, but they surface on small
+    // foreshortened faces. The face's in-plane unit axes map (linearly) through
+    // the same canvas-normalize -> mpMatrix chain as the corner above.
+    const vec2 fbRes = max(scatterFbResolution.xy, vec2(1.0));
+    const vec2 ndcPerPx = vec2(2.0) / fbRes;
+    const vec2 pxPerNdc = fbRes * 0.5;
+    vec3 eu, ev;
+    faceInPlaneUnitAxes(axis, eu, ev);
+    vec2 isoEu = pos3DtoPos2DIsoYawed(eu, visualYaw);
+    vec2 isoEv = pos3DtoPos2DIsoYawed(ev, visualYaw);
+    vec2 quadEu = vec2(isoEu.x / float(canvasSize.x), -isoEu.y / float(canvasSize.y));
+    vec2 quadEv = vec2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
+    vec2 su = (mpMatrix * vec4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
+    vec2 sv = (mpMatrix * vec4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
+    clipCorner.xy += scatterConservativeDilation(su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
+    gl_Position = clipCorner;
 
     vColor = color;
     // Yaw-consistent composite depth (#1370). The stored `rawDepth` (= un-yawed
