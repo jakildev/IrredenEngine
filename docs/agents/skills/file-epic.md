@@ -114,7 +114,7 @@ rm -f .file-epic-body.md
 **Model:** <opus|sonnet>
 **Part of epic:** #<umbrella>
 **Plan file:** `<plans-dir>/issue-<umbrella>.md` (full epic plan)
-**Blocked by:** #<prior-child-number> (if applicable)
+**Blocked by:** (none)
 
 ## Scope
 <one paragraph>
@@ -134,6 +134,17 @@ rm -f .file-epic-body.md
 ## References
 <links to related design sections, prior PRs>
 ```
+
+> **`Blocked by:` MUST be machine-parseable — this is not stylistic.** Write
+> it as literally `(none)` for an unblocked head ticket, or as one or more
+> same-repo `#N` refs (`**Blocked by:** #1487, #1490`) for a dependent one.
+> The scout, `fleet-claim`, and `fleet-queue-ingest` recognize only `(none)`
+> and `#N` (plus merged-PR URLs). Free-text like `none — first unblocked` is
+> read as an unresolved *prose* blocker, so the ticket is held out of the
+> queue forever and every child that chains off it stalls too. Cross-repo
+> dependencies are NOT auto-gated yet (the gate checks only the issue's own
+> repo): keep `Blocked by:` to same-repo `#N`/`(none)` and record any
+> cross-repo dependency as prose under `## Dependencies`.
 
 Then file:
 
@@ -161,7 +172,7 @@ the tracker-assigned number):
 - **Model:** <opus|sonnet>
 - **Date:** <YYYY-MM-DD>
 - **Epic:** #<umbrella> — see `<plans-dir>/issue-<umbrella>.md` for full context
-- **Blocked by:** #<prior> (if applicable)
+- **Blocked by:** (none)   <!-- or same-repo `#<prior>[, #<other>]`; same exact form as the issue body -->
 
 ## Scope
 <focused subset of the umbrella plan that applies to THIS ticket>
