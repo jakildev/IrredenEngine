@@ -21,7 +21,11 @@ in the `UPDATE` pipeline unless explicitly noted.
   input-driven, not time-driven — a creation updates `input_` each frame from
   a CC, slider, or any [0,1] signal, and the entity holds the last mapped
   angle when the input is unchanged. Owns the entity's local rotation (writes
-  it absolutely); don't pair with `C_AutoSpin` on the same entity.
+  it absolutely); don't pair with `C_AutoSpin` on the same entity. Lua-bindable
+  via `component_rotation_target_lua.hpp` — the scalar fields (`input_`,
+  `minAngle_`/`maxAngle_`, `inputMin_`/`inputMax_`) are read-write member
+  pointers, so a Lua automation lane drives `input_` straight through the
+  column view; `axis_` + easing stay constructor-only config.
 
 ## Key systems (all UPDATE pipeline)
 
