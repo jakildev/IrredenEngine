@@ -119,7 +119,14 @@ void main() {
     faceInPlaneUnitAxes(axis, eu, ev);
     vec2 su = (mpMatrix * vec4(pos3DtoPos2DIsoRotated(eu, detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
     vec2 sv = (mpMatrix * vec4(pos3DtoPos2DIsoRotated(ev, detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
-    clipCorner.xy += scatterConservativeDilation(su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
+    // Pitch-proportional margin (#1538): the detached seam gap scales with the
+    // on-screen cell pitch, so floor the fixed margin against a fraction of the
+    // larger projected edge. Closes the seam on large cubes without blobbing
+    // small ones (a fixed bump big enough for large cubes over-grows small).
+    // One sqrt of the larger squared edge — not two length() calls.
+    float pitchPx = sqrt(max(dot(su, su), dot(sv, sv)));
+    float detachedMargin = max(kScatterDilateMarginPx, kScatterDetachedPitchFraction * pitchPx);
+    clipCorner.xy += scatterConservativeDilation(su, sv, sign(aPos), detachedMargin, ndcPerPx);
     gl_Position = clipCorner;
 
     vColor = color;
