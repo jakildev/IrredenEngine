@@ -3,7 +3,7 @@
 - **Issue:** #1557
 - **Model:** opus
 - **Date:** 2026-06-06
-- **Epic:** #1553 — see `~/.fleet/plans/issue-1553.md`
+- **Epic:** #1553 — see `.fleet/plans/issue-1553.md`
 - **Blocked by:** #1556
 
 ## Scope
