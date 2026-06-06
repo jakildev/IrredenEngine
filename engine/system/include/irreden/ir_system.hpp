@@ -157,10 +157,12 @@ constexpr SystemId createSystem(
     constexpr SystemAccess accessDescriptor = []() {
         SystemAccess a = deriveAccessFromSignature<FunctionTick, TickComponents...>();
         if constexpr (sizeof...(TickRelationComponents) > 0) {
-            if constexpr (std::is_invocable_v<
-                              FunctionTick,
-                              std::remove_cvref_t<TickComponents> &...,
-                              std::optional<TickRelationComponents *>...>) {
+            if constexpr (
+                std::is_invocable_v<
+                    FunctionTick,
+                    std::remove_cvref_t<TickComponents> &...,
+                    std::optional<TickRelationComponents *>...>
+            ) {
                 a.isRelationForm_ = true;
             }
         }
@@ -218,12 +220,14 @@ template <typename T, typename... Cs> struct MakeMemberTickFn<T, TypeList<Cs...>
             return [p](Cs &...cs) { p->tick(cs...); };
         } else if constexpr (requires(T &s, EntityId id, Cs &...cs) { s.tick(id, cs...); }) {
             return [p](EntityId id, Cs &...cs) { p->tick(id, cs...); };
-        } else if constexpr (requires(
-                                 T &s,
-                                 const Archetype &a,
-                                 std::vector<EntityId> &ids,
-                                 std::vector<Cs> &...cols
-                             ) { s.tick(a, ids, cols...); }) {
+        } else if constexpr (
+            requires(
+                T &s,
+                const Archetype &a,
+                std::vector<EntityId> &ids,
+                std::vector<Cs> &...cols
+            ) { s.tick(a, ids, cols...); }
+        ) {
             return [p](const Archetype &a, std::vector<EntityId> &ids, std::vector<Cs> &...cols) {
                 p->tick(a, ids, cols...);
             };
@@ -438,6 +442,23 @@ void registerPipeline(IRTime::Events systemType, std::list<SystemId> pipeline);
 ///         { lifetime },                  // group 2: serial
 ///     });
 void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
+
+/// #1540: append a single system to the end of `event`'s already-
+/// registered pipeline as its own serial group, without disturbing the
+/// systems already registered for `event`. Unlike `registerPipeline` /
+/// `registerPipelineGroups` (which *replace* the event's whole system
+/// list), this composes onto a live pipeline — the supported path for a
+/// creation whose C++ `initSystems()` ran before a Lua script wants to
+/// add an UPDATE / RENDER system. See `engine/system/CLAUDE.md`
+/// "Appending to a live pipeline".
+void appendToPipeline(IRTime::Events event, SystemId system);
+
+/// #1540: insert a single system as its own serial group immediately
+/// before / after the group containing `anchor` in `event`'s pipeline.
+/// The position-aware sibling of `appendToPipeline` for when ordering
+/// relative to an existing system matters.
+void insertIntoPipelineBefore(IRTime::Events event, SystemId system, SystemId anchor);
+void insertIntoPipelineAfter(IRTime::Events event, SystemId system, SystemId anchor);
 
 /// T-224: run the cross-system access-conflict validator across every
 /// registered pipeline group. FATALs on the first conflict, naming

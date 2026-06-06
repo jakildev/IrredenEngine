@@ -731,6 +731,24 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
   missing C++ registration if the name was never wired up.
 - **`IRSystem.registerPipeline(event, ids)`** — accepts any mix of prefab
   ids (from `systemId`) and Lua-defined ids (from `registerSystem`).
+  **Replaces** `event`'s whole system list (so does
+  `registerPipelineGroups`).
+- **`IRSystem.appendSystem(event, sysId)`** (#1540) — adds one system to
+  the END of `event`'s **already-registered** pipeline as its own serial
+  group, WITHOUT replacing the systems already there. The supported path
+  when the C++ pipeline is built before the script runs (e.g. the midi
+  runtime's `initSystems()` runs before `main.lua`) and Lua wants to add
+  one UPDATE / RENDER system — `registerPipeline` would wipe the C++
+  systems; `appendSystem` composes. Asserts in debug if the system is
+  already in the pipeline (double-add → ticks twice in release).
+- **`IRSystem.insertSystemBefore(event, sysId, anchor)`** /
+  **`IRSystem.insertSystemAfter(event, sysId, anchor)`** (#1540) — the
+  position-aware variants; insert `sysId` as its own serial group
+  immediately before / after `anchor` (a SystemId already in `event`'s
+  pipeline). Asserts in debug if `anchor` isn't in the pipeline; in
+  release a bad anchor silently front-inserts.
+  Underlying semantics: `engine/system/CLAUDE.md` "Appending to a live
+  pipeline".
 - **Game-side enums** (e.g. `IRGameSystem.GameSystemName`) extend the
   same pattern — bind the game's own enum table at game-side init via
   `LuaScript::registerEnum<...>()` plus `registerPrefabSystemId` for each

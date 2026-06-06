@@ -195,6 +195,28 @@ class SystemManager {
     /// registration for `event`.
     void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
 
+    /// #1540: append `system` to the END of `event`'s pipeline as its
+    /// own singleton (serial) group, leaving every previously-registered
+    /// group untouched. This is the composition primitive for a runtime
+    /// where the C++ pipeline is built before a script runs (e.g. the
+    /// midi runtime's `initSystems()` runs before `main.lua`): a Lua-
+    /// authored system can join the live UPDATE/RENDER pipeline without
+    /// re-listing — and double-creating — the existing C++ systems that
+    /// `registerPipeline` / `registerPipelineGroups` would otherwise
+    /// REPLACE. Creates the event's first group if none was registered
+    /// yet. Asserts if `system` already appears in `event`'s pipeline (a
+    /// second add would tick it twice per frame).
+    void appendToPipeline(IRTime::Events event, SystemId system);
+
+    /// #1540: insert `system` as its own singleton group immediately
+    /// before / after the group that contains `anchor` in `event`'s
+    /// pipeline. The position-aware sibling of `appendToPipeline` for
+    /// when ordering relative to an existing system matters. Asserts if
+    /// no pipeline is registered for `event`, `anchor` is absent, or
+    /// `system` is already present.
+    void insertIntoPipelineBefore(IRTime::Events event, SystemId system, SystemId anchor);
+    void insertIntoPipelineAfter(IRTime::Events event, SystemId system, SystemId anchor);
+
     /// T-224: validate every registered pipeline group against the
     /// cross-system access rules in `system_access.hpp`. Call once
     /// after all systems and pipelines are registered, before the
@@ -278,6 +300,13 @@ class SystemManager {
 
     void refreshFlattenedPipelines() const;
 
+    /// Shared impl for `insertIntoPipelineBefore` / `insertIntoPipelineAfter`.
+    /// `after == false` inserts the new singleton group at the anchor's
+    /// group index; `after == true` inserts immediately past it.
+    void insertSingletonGroupRelativeTo(
+        IRTime::Events event, SystemId system, SystemId anchor, bool after
+    );
+
     bool m_timingEnabled = false;
     std::vector<TimingAccum> m_timingAccum;
 
@@ -352,12 +381,14 @@ class SystemManager {
                     paramTuple
                 );
             };
-            m_ticks.emplace_back(C_SystemEvent<TICK>{
-                std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
-                std::function<std::function<void(int, int)>(ArchetypeNode *)>{},
-                getArchetype<Components...>(),
-                std::move(excludeArchetype)
-            });
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
+                    std::function<std::function<void(int, int)>(ArchetypeNode *)>{},
+                    getArchetype<Components...>(),
+                    std::move(excludeArchetype)
+                }
+            );
             return;
         } else {
 
@@ -375,8 +406,8 @@ class SystemManager {
             // an `else` so the unsupported-signature static_assert below
             // only fires when the batch-form branch above has NOT
             // discarded this code.
-            auto prepareRangedTick = [functionTick, extraParams](ArchetypeNode *node
-                                     ) -> std::function<void(int, int)> {
+            auto prepareRangedTick =
+                [functionTick, extraParams](ArchetypeNode *node) -> std::function<void(int, int)> {
                 if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
                     auto componentsTuple = std::make_tuple(
                         std::ref(node->entities_),
@@ -405,10 +436,12 @@ class SystemManager {
                             );
                         }
                     };
-                } else if constexpr (std::is_invocable_v<
-                                         FunctionTick,
-                                         Components &...,
-                                         std::optional<RelationComponents *>...>) {
+                } else if constexpr (
+                    std::is_invocable_v<
+                        FunctionTick,
+                        Components &...,
+                        std::optional<RelationComponents *>...>
+                ) {
                     // Relation form: the validator (T-334 scope) rejects
                     // PARALLEL_FOR + relation, so this binder runs only
                     // on the main thread. Resolve component vectors AND
@@ -427,9 +460,11 @@ class SystemManager {
                             std::apply(
                                 [&functionTick](auto &&...args) { functionTick(args...); },
                                 std::tuple_cat(
-                                    std::make_tuple(std::ref(
-                                        std::get<std::vector<Components> &>(componentsTuple)[i]
-                                    )...),
+                                    std::make_tuple(
+                                        std::ref(
+                                            std::get<std::vector<Components> &>(componentsTuple)[i]
+                                        )...
+                                    ),
                                     relationComponentTuple
                                 )
                             );
@@ -439,12 +474,14 @@ class SystemManager {
                     static_assert(false, "Unsupported tick function signature.");
                 }
             };
-            m_ticks.emplace_back(C_SystemEvent<TICK>{
-                std::function<void(ArchetypeNode *)>{},
-                C_SystemEvent<TICK>::PrepareRangedTickFn{std::move(prepareRangedTick)},
-                getArchetype<Components...>(),
-                std::move(excludeArchetype)
-            });
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    std::function<void(ArchetypeNode *)>{},
+                    C_SystemEvent<TICK>::PrepareRangedTickFn{std::move(prepareRangedTick)},
+                    getArchetype<Components...>(),
+                    std::move(excludeArchetype)
+                }
+            );
         }
     }
 
@@ -468,8 +505,11 @@ class SystemManager {
             m_relationTicks.emplace_back(
                 C_SystemEvent<RELATION_TICK>{[functionRelationTick](EntityRecord entityRecord) {
                     auto componentsTuple = std::make_tuple(
-                        std::ref(getComponentData<RelationComponents>(entityRecord.archetypeNode
-                        )[entityRecord.row])...
+                        std::ref(
+                            getComponentData<RelationComponents>(
+                                entityRecord.archetypeNode
+                            )[entityRecord.row]
+                        )...
                     );
                     std::apply(
                         [functionRelationTick](auto &&...components) {
