@@ -41,11 +41,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         const C_TriangleCanvasTextures *textures_;
     };
 
-    static std::vector<CanvasInstance> &getInstances() {
-        static std::vector<CanvasInstance> instances;
-        return instances;
-    }
-
     // Detached SO(3) smooth-rotation forward-scatter instances (P3b / #1475).
     // One per visible detached entity whose canvas has per-axis trixel canvases
     // allocated (rotating off an octahedral snap). Drawn after the gather pass
@@ -58,9 +53,292 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         const C_PerAxisTrixelCanvases *axes_;
     };
 
-    static std::vector<ScatterInstance> &getScatterInstances() {
-        static std::vector<ScatterInstance> instances;
-        return instances;
+    // Per-frame instance lists, gathered in tick and consumed in endTick.
+    // System-owned state lives on System<N> (registerSystem member form), not
+    // in function-local statics (#1520).
+    std::vector<CanvasInstance> instances_;
+    std::vector<ScatterInstance> scatterInstances_;
+
+    // Frame constants snapshotted once in beginTick (#1520). They were
+    // re-queried per visible detached entity in the old per-entity tick even
+    // though they are constant across the frame; the tick now reads them from
+    // `this`. fbRes_ comes from the "mainFramebuffer" named entity, fetched
+    // non-optionally in beginTick (the named entity is stood up at pipeline
+    // init and never destroyed during the render loop — the same precondition
+    // the former per-entity getComponent carried).
+    vec2 fbRes_{};
+    vec2 mainCanvasSize_{};
+    vec2 cameraIso_{};
+    vec2 cameraZoom_{};
+    float visualYaw_ = 0.0f;
+    // Game-pixel half of the anti-vibration decomposition — see
+    // IRMath::cameraSubPixelOffsets. Matches the TRIXEL_TO_FRAMEBUFFER call
+    // site so detached canvases composite onto the same sub-pixel-snapped grid
+    // as the main canvas. Derived from cameraIso_ / cameraZoom_.
+    vec2 isoPixelOffset_{};
+    // Detached SO(3) scatter recovery constants. subdivisionScale_ is the
+    // CAPPED per-axis density (#1431) the face-local store wrote with;
+    // storeCameraIso_ is the effective camera iso the store keyed on, shared so
+    // faceOriginFromInPlane recovers the exact stored model origin.
+    int subdivisionScale_ = 1;
+    vec2 storeCameraIso_{};
+
+    void beginTick() {
+        instances_.clear();
+        instances_.reserve(kMaxEntityCanvasInstances);
+        scatterInstances_.clear();
+        scatterInstances_.reserve(kMaxEntityCanvasInstances);
+
+        // Hoist the frame constants out of the per-entity tick (#1520). The
+        // "mainFramebuffer" named entity is stood up at pipeline init and never
+        // destroyed during the render loop, so the non-optional getComponent
+        // carries the same precondition the per-entity read did.
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        fbRes_ = vec2(framebuffer.getResolutionPlusBuffer());
+        mainCanvasSize_ = IRRender::getMainCanvasSizeTrixels();
+        cameraIso_ = IRRender::getCameraPosition2DIso();
+        cameraZoom_ = IRRender::getCameraZoom();
+        visualYaw_ = IRPrefab::Camera::getYaw();
+
+        const IRMath::CameraSubPixelOffsets subPixelOffsets =
+            IRMath::cameraSubPixelOffsets(cameraIso_, cameraZoom_, ivec2(1));
+        isoPixelOffset_ = vec2(subPixelOffsets.framebufferGamePxOffset_);
+
+        subdivisionScale_ = IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
+                                ? IRPrefab::PerAxisCanvas::subdivisionDensity()
+                                : 1;
+        storeCameraIso_ = IRRender::getEffectiveCameraIso();
+    }
+
+    void tick(const C_EntityCanvas &entityCanvas, const C_WorldTransform &worldTransform) {
+        if (!entityCanvas.visible_ || entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
+            static_cast<int>(instances_.size()) >= kMaxEntityCanvasInstances) {
+            return;
+        }
+
+        auto texOpt =
+            IREntity::getComponentOptional<C_TriangleCanvasTextures>(entityCanvas.canvasEntity_);
+        if (!texOpt.has_value())
+            return;
+        auto *canvasTextures = texOpt.value();
+
+        // The detached canvas texture is rasterized camera-yaw-zeroed in
+        // the entity's own model space (buildVoxelFrameData's detached
+        // branch), so its de-tile gather phase is keyed to the entity's
+        // FIXED world iso position — constant under camera yaw, reused
+        // below as `-entityIso` for the gather's `cameraTrixelOffset_`
+        // parity (unchanged, so no new #1256-class stripe risk). The
+        // screen PLACEMENT, by contrast, must orbit with the rotating
+        // world: project the world position under the camera's continuous
+        // Z-yaw (#1500), exactly as the world / SDF content does
+        // (system_shapes_to_trixel via pos3DtoPos2DIsoYawed). The two
+        // coincide at yaw == 0, so cardinal frames stay byte-identical.
+        vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
+        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_);
+
+        ivec2 mainCanvasSizeI = ivec2(mainCanvasSize_);
+        vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
+        vec2 entityOnMainCanvas = canvasOriginZ1 + IRMath::floor(cameraIso_) + entityIsoPlacement;
+        vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize_;
+
+        vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
+        vec2 entityFbCenter = vec2(
+            fbRes_.x * 0.5f + isoPixelOffset_.x + entityAPos.x * fbRes_.x * cameraZoom_.x,
+            fbRes_.y * 0.5f + isoPixelOffset_.y + entityAPos.y * fbRes_.y * cameraZoom_.y
+        );
+
+        vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize_;
+        // Placement only: the composite places each detached canvas
+        // texture at the entity's iso position, axis-aligned. A
+        // DETACHED entity's full SO(3) rotation is baked into the
+        // canvas texture itself by the voxel emit (T-295, via
+        // PROPAGATE_CANVAS_ROTATION → C_CanvasLocalRotation →
+        // VOXEL_TO_TRIXEL_STAGE_1), so the composite TRS no longer
+        // applies any rotation.
+        mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
+        model = scale(
+            model,
+            vec3(
+                fbRes_.x * cameraZoom_.x * entityScale.x,
+                fbRes_.y * cameraZoom_.y * entityScale.y,
+                1.0f
+            )
+        );
+
+        FrameDataTrixelToFramebuffer fd{};
+        fd.mpMatrix_ = calcProjectionMatrix(fbRes_) * model;
+        fd.canvasZoomLevel_ = cameraZoom_;
+        fd.cameraTrixelOffset_ = -entityIso;
+        fd.textureOffset_ = vec2(0.0f);
+        fd.distanceOffset_ = 0;
+        fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
+        fd.effectiveSubdivisionsForHover_ = vec2(1.0f);
+        fd.showHoverHighlight_ = 0.0f;
+
+        CanvasInstance inst{};
+        inst.frameData_ = fd;
+        inst.textures_ = canvasTextures;
+        instances_.push_back(inst);
+
+        // Detached SO(3) smooth rotation (P3b / #1475). If this canvas
+        // has per-axis trixel canvases ALLOCATED, the entity is rotating
+        // off an octahedral snap: VOXEL_TO_TRIXEL_STAGE_1 skipped its
+        // single-canvas voxel emit and routed the visible model faces
+        // into the three per-axis canvases instead. Forward-scatter those
+        // straight to the framebuffer (bypassing the single-parity de-tile
+        // gather, which cannot resolve the smooth mixed-parity centers —
+        // the #1256 stripe class). The gather instance pushed above still
+        // composites any SDF / text the single canvas holds; the scatter
+        // adds the smooth voxels by depth. At a snap nothing is allocated
+        // → no scatter, the single-canvas blit renders byte-identically.
+        // The cheap !isAllocated early-out keeps static entities off the
+        // C_CanvasLocalRotation lookup.
+        auto perAxisOpt =
+            IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(entityCanvas.canvasEntity_);
+        if (!perAxisOpt.has_value() || !(*perAxisOpt.value()).isAllocated() ||
+            static_cast<int>(scatterInstances_.size()) >= kMaxEntityCanvasInstances) {
+            return;
+        }
+        auto rotationOpt =
+            IREntity::getComponentOptional<C_CanvasLocalRotation>(entityCanvas.canvasEntity_);
+        if (!rotationOpt.has_value() || !(*rotationOpt.value()).isDetached()) {
+            return;
+        }
+        const C_PerAxisTrixelCanvases &axes = *perAxisOpt.value();
+        const vec4 fullRotation = (*rotationOpt.value()).rotation_;
+        const vec4 residual = IRMath::octahedralSnapResidual(fullRotation);
+
+        // perAxisBase mirrors P3a's store trixelFrameOffset for this
+        // entity's axis canvases — the identical formula
+        // system_trixel_to_framebuffer's world scatter uses — so
+        // faceOriginFromInPlane recovers the exact stored model origin
+        // (the camera-iso term cancels in the recovery). subdivisionScale_
+        // / storeCameraIso_ are snapshotted in beginTick.
+        const ivec2 perAxisBase =
+            trixelOriginOffsetZ1(axes.size_) +
+            ivec2(IRMath::floor(storeCameraIso_ * static_cast<float>(subdivisionScale_)));
+
+        // Placement: map one capped-lattice iso unit (the recovered
+        // origin's units) straight to framebuffer px around the entity's
+        // screen center. One WORLD iso unit = fbRes*cameraZoom /
+        // mainCanvasSize fb px (the detached single-canvas trixel scale,
+        // matched so there is no size jump across the snap deadband);
+        // lattice = world * subdivisionScale, so divide. iso-y is
+        // screen-down and framebuffer y is up → negate the y scale. The
+        // entity's iso position + sub-pixel snap are already folded into
+        // entityFbCenter, so the scatter reuses the gather's placement.
+        const vec2 pixelsPerLattice =
+            fbRes_ * cameraZoom_ / mainCanvasSize_ / static_cast<float>(subdivisionScale_);
+        mat4 scatterModel = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
+        scatterModel = scale(scatterModel, vec3(pixelsPerLattice.x, -pixelsPerLattice.y, 1.0f));
+
+        FrameDataTrixelToFramebuffer sfd{};
+        sfd.mpMatrix_ = calcProjectionMatrix(fbRes_) * scatterModel;
+        sfd.distanceOffset_ = 0;
+        sfd.perAxisBase_ = perAxisBase;
+        // Per-slot model FaceId triplet — MUST be the identical array
+        // P3a's store wrote (buildVoxelFrameData), since the store
+        // encodes the workgroup SLOT into rawDist & 3 and the scatter
+        // recovers each face via visibleFaceIds[slot] (#1525). Keyed on
+        // the RESIDUAL, not the full rotation: this scatter only runs
+        // off a snap (per-axis canvases allocated) and repositions every
+        // corner by the residual below (pos3DtoPos2DIsoRotated(corner,
+        // residual)), so the camera-visible set is visibleTriplet(residual)
+        // — the store's off-snap branch keys on the same residual. Using
+        // the full rotation picked faces front-facing under the full
+        // orientation whose iso view axis differs from the residual's,
+        // dropping a back-facing face to background (the #1537 chevron).
+        // Camera-path twin: drawPerAxisScatter in
+        // system_trixel_to_framebuffer.hpp.
+        const std::array<IRMath::FaceId, 3> visibleFaces = IRMath::visibleTriplet(residual);
+        sfd.visibleFaceIds_ = ivec4(
+            static_cast<int>(visibleFaces[0]),
+            static_cast<int>(visibleFaces[1]),
+            static_cast<int>(visibleFaces[2]),
+            0
+        );
+        sfd.detachedResidual_ = residual;
+        sfd.detachedDepthAxis_ = vec4(IRMath::isoDepthAxisModel(residual), 0.0f);
+        // Conservative-coverage dilation needs the framebuffer extent the
+        // ortho mpMatrix maps into, to convert a pixel margin to NDC (#1494).
+        sfd.scatterFbResolution_ = vec4(fbRes_, 0.0f, 0.0f);
+
+        ScatterInstance sinst{};
+        sinst.frameData_ = sfd;
+        sinst.axes_ = &axes;
+        scatterInstances_.push_back(sinst);
+    }
+
+    void endTick() {
+        if (instances_.empty() && scatterInstances_.empty())
+            return;
+
+        auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
+        framebuffer.bindFramebuffer();
+
+        auto *frameDataBuffer = IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
+        IRRender::getNamedResource<VAO>("QuadVAO")->bind();
+        IRRender::device()->setPolygonMode(PolygonMode::FILL);
+
+        // Gather pass: blit each detached canvas (octahedral-snap voxels +
+        // any SDF / text) via the single-parity de-tile gather.
+        if (!instances_.empty()) {
+            IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
+            for (auto &inst : instances_) {
+                frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
+                inst.textures_->bind(0, 1, 2);
+                IRRender::device()->drawElements(
+                    DrawMode::TRIANGLES,
+                    IRShapes2D::kQuadIndicesLength,
+                    IndexType::UNSIGNED_SHORT
+                );
+            }
+        }
+
+        // Scatter pass (P3b / #1475): forward-scatter each rotating
+        // detached entity's three per-axis canvases straight to the
+        // framebuffer. Instanced over the canvas grid (one instance per
+        // cell), three axes per entity; the framebuffer GL_LESS depth test
+        // composites them against the gather content above and against
+        // each other. Mirrors system_trixel_to_framebuffer's world
+        // drawPerAxisScatter, retargeted at the entity's own canvases.
+        //
+        // Backend parity (P4 / #1465): the Metal mirror
+        // (metal/peraxis_scatter_detached.metal — vertex; fragment reuses
+        // f_peraxis_scatter) is a faithful port of v_peraxis_scatter_detached.glsl
+        // and was hardware-verified rendering correct smooth SO(3) detached
+        // solids on macOS/Metal (IRCanvasStress, off-octahedral-snap poses).
+        // The shared FrameDataTrixelToFramebuffer std140/MSL layout is pinned
+        // by the static_asserts in ir_render_types.hpp.
+        //
+        // UNLIT by design (today): the scatter binds only colors_/distances_
+        // per axis — NOT the per-axis ao_/sunShadow_ textures — so detached
+        // entities composite raw voxel color while rotating. Receiving world
+        // AO / sun-shadow on the resolved composite (the trixel-level per-axis
+        // design in docs/design/per-axis-trixel-canvas-rotation.md §"Lighting /
+        // AO placement") is tracked by #1375 (receive) / #1376 (cast); it is
+        // NOT wired here yet. A missing highlight on a spinning detached cube
+        // is that pending work, not a regression.
+        if (!scatterInstances_.empty()) {
+            IRRender::getNamedResource<ShaderProgram>("PerAxisScatterDetachedProgram")->use();
+            for (auto &inst : scatterInstances_) {
+                frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
+                const int instanceCount = inst.axes_->size_.x * inst.axes_->size_.y;
+                for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+                    const C_PerAxisTrixelCanvases::AxisTextures &tex = inst.axes_->axes_[axis];
+                    tex.colors_.second->bind(0);
+                    tex.distances_.second->bind(1);
+                    IRRender::device()->drawElementsInstanced(
+                        DrawMode::TRIANGLES,
+                        IRShapes2D::kQuadIndicesLength,
+                        IndexType::UNSIGNED_SHORT,
+                        instanceCount
+                    );
+                }
+            }
+        }
+
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 
     static SystemId create() {
@@ -78,278 +356,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             }
         );
 
-        SystemId s = createSystem<C_EntityCanvas, C_WorldTransform>(
-            "EntityCanvasToFramebuffer",
-            [](IREntity::EntityId entityId,
-               const C_EntityCanvas &entityCanvas,
-               const C_WorldTransform &worldTransform) {
-                if (!entityCanvas.visible_ || entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
-                    static_cast<int>(getInstances().size()) >= kMaxEntityCanvasInstances) {
-                    return;
-                }
-
-                auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
-                    entityCanvas.canvasEntity_
-                );
-                if (!texOpt.has_value())
-                    return;
-                auto *canvasTextures = texOpt.value();
-
-                auto &framebuffer =
-                    IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-                vec2 fbRes = vec2(framebuffer.getResolutionPlusBuffer());
-                vec2 mainCanvasSize = IRRender::getMainCanvasSizeTrixels();
-                vec2 cameraIso = IRRender::getCameraPosition2DIso();
-                vec2 cameraZoom = IRRender::getCameraZoom();
-
-                // The detached canvas texture is rasterized camera-yaw-zeroed in
-                // the entity's own model space (buildVoxelFrameData's detached
-                // branch), so its de-tile gather phase is keyed to the entity's
-                // FIXED world iso position — constant under camera yaw, reused
-                // below as `-entityIso` for the gather's `cameraTrixelOffset_`
-                // parity (unchanged, so no new #1256-class stripe risk). The
-                // screen PLACEMENT, by contrast, must orbit with the rotating
-                // world: project the world position under the camera's continuous
-                // Z-yaw (#1500), exactly as the world / SDF content does
-                // (system_shapes_to_trixel via pos3DtoPos2DIsoYawed). The two
-                // coincide at yaw == 0, so cardinal frames stay byte-identical.
-                const float visualYaw = IRPrefab::Camera::getYaw();
-                vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
-                vec2 entityIsoPlacement =
-                    pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw);
-
-                ivec2 mainCanvasSizeI = ivec2(mainCanvasSize);
-                vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
-                vec2 entityOnMainCanvas =
-                    canvasOriginZ1 + IRMath::floor(cameraIso) + entityIsoPlacement;
-                vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize;
-
-                // Game-pixel half of the anti-vibration decomposition —
-                // see `IRMath::cameraSubPixelOffsets`. Matches the
-                // `TRIXEL_TO_FRAMEBUFFER` call site so detached canvases
-                // composite onto the same sub-pixel-snapped grid as the
-                // main canvas.
-                const IRMath::CameraSubPixelOffsets subPixelOffsets =
-                    IRMath::cameraSubPixelOffsets(cameraIso, cameraZoom, ivec2(1));
-                vec2 isoPixelOffset = vec2(subPixelOffsets.framebufferGamePxOffset_);
-
-                vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
-                vec2 entityFbCenter = vec2(
-                    fbRes.x * 0.5f + isoPixelOffset.x + entityAPos.x * fbRes.x * cameraZoom.x,
-                    fbRes.y * 0.5f + isoPixelOffset.y + entityAPos.y * fbRes.y * cameraZoom.y
-                );
-
-                vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize;
-                // Placement only: the composite places each detached canvas
-                // texture at the entity's iso position, axis-aligned. A
-                // DETACHED entity's full SO(3) rotation is baked into the
-                // canvas texture itself by the voxel emit (T-295, via
-                // PROPAGATE_CANVAS_ROTATION → C_CanvasLocalRotation →
-                // VOXEL_TO_TRIXEL_STAGE_1), so the composite TRS no longer
-                // applies any rotation.
-                mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
-                model = scale(
-                    model,
-                    vec3(
-                        fbRes.x * cameraZoom.x * entityScale.x,
-                        fbRes.y * cameraZoom.y * entityScale.y,
-                        1.0f
-                    )
-                );
-
-                FrameDataTrixelToFramebuffer fd{};
-                fd.mpMatrix_ = calcProjectionMatrix(fbRes) * model;
-                fd.canvasZoomLevel_ = cameraZoom;
-                fd.cameraTrixelOffset_ = -entityIso;
-                fd.textureOffset_ = vec2(0.0f);
-                fd.distanceOffset_ = 0;
-                fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
-                fd.effectiveSubdivisionsForHover_ = vec2(1.0f);
-                fd.showHoverHighlight_ = 0.0f;
-
-                CanvasInstance inst{};
-                inst.frameData_ = fd;
-                inst.textures_ = canvasTextures;
-                getInstances().push_back(inst);
-
-                // Detached SO(3) smooth rotation (P3b / #1475). If this canvas
-                // has per-axis trixel canvases ALLOCATED, the entity is rotating
-                // off an octahedral snap: VOXEL_TO_TRIXEL_STAGE_1 skipped its
-                // single-canvas voxel emit and routed the visible model faces
-                // into the three per-axis canvases instead. Forward-scatter those
-                // straight to the framebuffer (bypassing the single-parity de-tile
-                // gather, which cannot resolve the smooth mixed-parity centers —
-                // the #1256 stripe class). The gather instance pushed above still
-                // composites any SDF / text the single canvas holds; the scatter
-                // adds the smooth voxels by depth. At a snap nothing is allocated
-                // → no scatter, the single-canvas blit renders byte-identically.
-                // The cheap !isAllocated early-out keeps static entities off the
-                // C_CanvasLocalRotation lookup.
-                auto perAxisOpt = IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(
-                    entityCanvas.canvasEntity_
-                );
-                if (!perAxisOpt.has_value() || !(*perAxisOpt.value()).isAllocated() ||
-                    static_cast<int>(getScatterInstances().size()) >= kMaxEntityCanvasInstances) {
-                    return;
-                }
-                auto rotationOpt = IREntity::getComponentOptional<C_CanvasLocalRotation>(
-                    entityCanvas.canvasEntity_
-                );
-                if (!rotationOpt.has_value() || !(*rotationOpt.value()).isDetached()) {
-                    return;
-                }
-                const C_PerAxisTrixelCanvases &axes = *perAxisOpt.value();
-                const vec4 fullRotation = (*rotationOpt.value()).rotation_;
-                const vec4 residual = IRMath::octahedralSnapResidual(fullRotation);
-
-                // perAxisBase mirrors P3a's store trixelFrameOffset for this
-                // entity's axis canvases — the identical formula
-                // system_trixel_to_framebuffer's world scatter uses — so
-                // faceOriginFromInPlane recovers the exact stored model origin
-                // (the camera-iso term cancels in the recovery).
-                const int subdivisionScale =
-                    IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
-                        ? IRPrefab::PerAxisCanvas::subdivisionDensity()
-                        : 1;
-                const vec2 storeCameraIso = IRRender::getEffectiveCameraIso();
-                const ivec2 perAxisBase =
-                    trixelOriginOffsetZ1(axes.size_) +
-                    ivec2(IRMath::floor(storeCameraIso * static_cast<float>(subdivisionScale)));
-
-                // Placement: map one capped-lattice iso unit (the recovered
-                // origin's units) straight to framebuffer px around the entity's
-                // screen center. One WORLD iso unit = fbRes*cameraZoom /
-                // mainCanvasSize fb px (the detached single-canvas trixel scale,
-                // matched so there is no size jump across the snap deadband);
-                // lattice = world * subdivisionScale, so divide. iso-y is
-                // screen-down and framebuffer y is up → negate the y scale. The
-                // entity's iso position + sub-pixel snap are already folded into
-                // entityFbCenter, so the scatter reuses the gather's placement.
-                const vec2 pixelsPerLattice =
-                    fbRes * cameraZoom / mainCanvasSize / static_cast<float>(subdivisionScale);
-                mat4 scatterModel = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
-                scatterModel =
-                    scale(scatterModel, vec3(pixelsPerLattice.x, -pixelsPerLattice.y, 1.0f));
-
-                FrameDataTrixelToFramebuffer sfd{};
-                sfd.mpMatrix_ = calcProjectionMatrix(fbRes) * scatterModel;
-                sfd.distanceOffset_ = 0;
-                sfd.perAxisBase_ = perAxisBase;
-                // Per-slot model FaceId triplet — MUST be the identical array
-                // P3a's store wrote (buildVoxelFrameData), since the store
-                // encodes the workgroup SLOT into rawDist & 3 and the scatter
-                // recovers each face via visibleFaceIds[slot] (#1525). Keyed on
-                // the RESIDUAL, not the full rotation: this scatter only runs
-                // off a snap (per-axis canvases allocated) and repositions every
-                // corner by the residual below (pos3DtoPos2DIsoRotated(corner,
-                // residual)), so the camera-visible set is visibleTriplet(residual)
-                // — the store's off-snap branch keys on the same residual. Using
-                // the full rotation picked faces front-facing under the full
-                // orientation whose iso view axis differs from the residual's,
-                // dropping a back-facing face to background (the #1537 chevron).
-                // Camera-path twin: drawPerAxisScatter in
-                // system_trixel_to_framebuffer.hpp.
-                const std::array<IRMath::FaceId, 3> visibleFaces = IRMath::visibleTriplet(residual);
-                sfd.visibleFaceIds_ = ivec4(
-                    static_cast<int>(visibleFaces[0]),
-                    static_cast<int>(visibleFaces[1]),
-                    static_cast<int>(visibleFaces[2]),
-                    0
-                );
-                sfd.detachedResidual_ = residual;
-                sfd.detachedDepthAxis_ = vec4(IRMath::isoDepthAxisModel(residual), 0.0f);
-                // Conservative-coverage dilation needs the framebuffer extent the
-                // ortho mpMatrix maps into, to convert a pixel margin to NDC (#1494).
-                sfd.scatterFbResolution_ = vec4(fbRes, 0.0f, 0.0f);
-
-                ScatterInstance sinst{};
-                sinst.frameData_ = sfd;
-                sinst.axes_ = &axes;
-                getScatterInstances().push_back(sinst);
-            },
-            []() {
-                getInstances().clear();
-                getScatterInstances().clear();
-            },
-            []() {
-                auto &allInstances = getInstances();
-                auto &scatterInstances = getScatterInstances();
-                if (allInstances.empty() && scatterInstances.empty())
-                    return;
-
-                auto &framebuffer =
-                    IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-                framebuffer.bindFramebuffer();
-
-                auto *frameDataBuffer =
-                    IRRender::getNamedResource<Buffer>("TrixelToFramebufferFrameData");
-                IRRender::getNamedResource<VAO>("QuadVAO")->bind();
-                IRRender::device()->setPolygonMode(PolygonMode::FILL);
-
-                // Gather pass: blit each detached canvas (octahedral-snap voxels +
-                // any SDF / text) via the single-parity de-tile gather.
-                if (!allInstances.empty()) {
-                    IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
-                    for (auto &inst : allInstances) {
-                        frameDataBuffer
-                            ->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
-                        inst.textures_->bind(0, 1, 2);
-                        IRRender::device()->drawElements(
-                            DrawMode::TRIANGLES,
-                            IRShapes2D::kQuadIndicesLength,
-                            IndexType::UNSIGNED_SHORT
-                        );
-                    }
-                }
-
-                // Scatter pass (P3b / #1475): forward-scatter each rotating
-                // detached entity's three per-axis canvases straight to the
-                // framebuffer. Instanced over the canvas grid (one instance per
-                // cell), three axes per entity; the framebuffer GL_LESS depth test
-                // composites them against the gather content above and against
-                // each other. Mirrors system_trixel_to_framebuffer's world
-                // drawPerAxisScatter, retargeted at the entity's own canvases.
-                //
-                // Backend parity (P4 / #1465): the Metal mirror
-                // (metal/peraxis_scatter_detached.metal — vertex; fragment reuses
-                // f_peraxis_scatter) is a faithful port of v_peraxis_scatter_detached.glsl
-                // and was hardware-verified rendering correct smooth SO(3) detached
-                // solids on macOS/Metal (IRCanvasStress, off-octahedral-snap poses).
-                // The shared FrameDataTrixelToFramebuffer std140/MSL layout is pinned
-                // by the static_asserts in ir_render_types.hpp.
-                //
-                // UNLIT by design (today): the scatter binds only colors_/distances_
-                // per axis — NOT the per-axis ao_/sunShadow_ textures — so detached
-                // entities composite raw voxel color while rotating. Receiving world
-                // AO / sun-shadow on the resolved composite (the trixel-level per-axis
-                // design in docs/design/per-axis-trixel-canvas-rotation.md §"Lighting /
-                // AO placement") is tracked by #1375 (receive) / #1376 (cast); it is
-                // NOT wired here yet. A missing highlight on a spinning detached cube
-                // is that pending work, not a regression.
-                if (!scatterInstances.empty()) {
-                    IRRender::getNamedResource<ShaderProgram>("PerAxisScatterDetachedProgram")
-                        ->use();
-                    for (auto &inst : scatterInstances) {
-                        frameDataBuffer
-                            ->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
-                        const int instanceCount = inst.axes_->size_.x * inst.axes_->size_.y;
-                        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
-                            const C_PerAxisTrixelCanvases::AxisTextures &tex =
-                                inst.axes_->axes_[axis];
-                            tex.colors_.second->bind(0);
-                            tex.distances_.second->bind(1);
-                            IRRender::device()->drawElementsInstanced(
-                                DrawMode::TRIANGLES,
-                                IRShapes2D::kQuadIndicesLength,
-                                IndexType::UNSIGNED_SHORT,
-                                instanceCount
-                            );
-                        }
-                    }
-                }
-
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-            }
+        SystemId s = registerSystem<ENTITY_CANVAS_TO_FRAMEBUFFER, C_EntityCanvas, C_WorldTransform>(
+            "EntityCanvasToFramebuffer"
         );
         IRRender::tagGpuStage(s, "entityCanvasToFb");
         return s;
