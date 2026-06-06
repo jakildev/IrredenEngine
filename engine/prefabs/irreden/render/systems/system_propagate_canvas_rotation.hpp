@@ -51,7 +51,14 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
         const IRComponents::C_RotationMode &rotationMode,
         const IRComponents::C_EntityCanvas &entityCanvas
     ) {
-        if (rotationMode.mode_ != IRComponents::RotationMode::DETACHED) {
+        // Both detached strategies need the camera-composed rotation on the
+        // canvas: DETACHED bakes it as a per-face SO(3) deform, DETACHED_REVOXELIZE
+        // bakes it into the private pool's cell positions
+        // (SYSTEM_REBUILD_DETACHED_VOXELS). GRID is skipped (the camera basis
+        // reaches it through the rasterYaw / faceDeform residual path).
+        const bool reVoxelize =
+            rotationMode.mode_ == IRComponents::RotationMode::DETACHED_REVOXELIZE;
+        if (rotationMode.mode_ != IRComponents::RotationMode::DETACHED && !reVoxelize) {
             return;
         }
         auto canvasRotation = IREntity::getComponentOptional<IRComponents::C_CanvasLocalRotation>(
@@ -65,6 +72,9 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             // camera-space — DETACHED entities track the world like GRID does.
             canvasRotation.value()->rotation_ =
                 IRMath::quatMul(cameraRotationInverse_, localTransform.rotation_);
+            // Route the canvas to the re-voxelize render path (cardinal frame
+            // data + SYSTEM_REBUILD_DETACHED_VOXELS) vs the forward-scatter deform.
+            canvasRotation.value()->reVoxelize_ = reVoxelize;
         }
     }
 

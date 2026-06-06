@@ -90,6 +90,21 @@ for single voxels and particles.
   the pipeline. Creations that spawn entities with `C_RotationMode::GRID`
   must register `REBUILD_GRID_VOXELS` in their UPDATE pipeline after
   `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces silent no-ops.
+- `REBUILD_DETACHED_VOXELS` (UPDATE pipeline, #1553 P1 / #1555) — the
+  detached analogue of `REBUILD_GRID_VOXELS`. For a
+  `RotationMode::DETACHED_REVOXELIZE` entity it re-rasterizes the canvas's
+  **private** per-entity pool into the entity's full-rotation cell positions
+  each frame, so VOXEL_TO_TRIXEL_STAGE_1 can render that pool through CARDINAL
+  frame data (rotation lives in cells, not a 2D deform). Ticks the CANVAS
+  entity `(C_VoxelPool, C_CanvasLocalRotation)` — it owns both the pool and the
+  camera-composed rotation written by `PROPAGATE_CANVAS_ROTATION`; gates on
+  `C_CanvasLocalRotation::reVoxelize_`. Reuses
+  `IRPrefab::GridRotation::worldCellForGridVoxel` but rotates about the pool
+  ORIGIN (translation-free — the demo authors solids centered, the composite
+  owns screen placement) and has no frustum-cull gate (the world cull viewport
+  doesn't apply to a canvas-local private pool). Register AFTER
+  `PROPAGATE_CANVAS_ROTATION` and `UPDATE_VOXEL_SET_CHILDREN`. Round-to-cell
+  aliasing is accepted at P1 (refined in epic P3).
 - `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**

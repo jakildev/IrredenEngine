@@ -32,6 +32,18 @@ struct C_CanvasLocalRotation {
 
     IRMath::vec4 rotation_ = kSentinelNoRotation;
 
+    // Rotation-strategy flag (NOT a dirty flag — a persistent per-canvas mode
+    // bit, set by PROPAGATE_CANVAS_ROTATION from the owner's C_RotationMode and
+    // read every frame, analogous to C_RotationMode::mode_). When true the
+    // detached entity rotates by RE-VOXELIZING its private pool
+    // (RotationMode::DETACHED_REVOXELIZE): SYSTEM_REBUILD_DETACHED_VOXELS fills
+    // the pool at `rotation_`'s full-rotation cell positions and
+    // VOXEL_TO_TRIXEL_STAGE_1 rasterizes it through CARDINAL frame data (no SO(3)
+    // face deform — applying the rotation twice would re-introduce the 2D warp,
+    // #1551). When false the canvas takes the octahedral-snap forward-scatter /
+    // per-face-deform path. Inert on the main world canvas (sentinel rotation).
+    bool reVoxelize_ = false;
+
     C_CanvasLocalRotation() = default;
     explicit C_CanvasLocalRotation(IRMath::vec4 rotation)
         : rotation_{rotation} {}

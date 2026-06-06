@@ -97,6 +97,35 @@ inline void buildVoxelFrameData(
     // per-face deformation for the entity's rotation (T-295).
     const bool detachedCanvas = canvasRotation.isDetached();
     frameData.isDetachedCanvas_ = detachedCanvas ? 1.0f : 0.0f;
+    if (detachedCanvas && canvasRotation.reVoxelize_) {
+        // Re-voxelize detached canvas (#1553): the entity's full rotation is
+        // baked into the private pool's CELL positions by
+        // SYSTEM_REBUILD_DETACHED_VOXELS, so this canvas rasterizes its pool with
+        // CARDINAL/static frame data — no camera yaw, no per-face SO(3) skew
+        // (applying the rotation a second time as a deform would re-introduce the
+        // 2D warp #1551 traced). Mirrors the main world canvas at yaw 0;
+        // isDetachedCanvas_ stays 1.0 so the emit keeps the screen-locked
+        // (no camera-pan-offset) path, and voxelDepthAxis_ keeps the (1,1,1)
+        // default set above.
+        frameData.visualYaw_ = 0.0f;
+        frameData.rasterYaw_ = 0.0f;
+        frameData.residualYaw_ = 0.0f;
+        const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
+        const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
+        frameData.visibleFaceIds_ = ivec4(
+            static_cast<int>(visibleFaces[0]),
+            static_cast<int>(visibleFaces[1]),
+            static_cast<int>(visibleFaces[2]),
+            0
+        );
+        const mat2 fd0 = IRMath::faceDeformationMatrix(visibleFaces[0], 0.0f);
+        const mat2 fd1 = IRMath::faceDeformationMatrix(visibleFaces[1], 0.0f);
+        const mat2 fd2 = IRMath::faceDeformationMatrix(visibleFaces[2], 0.0f);
+        frameData.faceDeform_[0] = vec4(fd0[0], fd0[1]);
+        frameData.faceDeform_[1] = vec4(fd1[0], fd1[1]);
+        frameData.faceDeform_[2] = vec4(fd2[0], fd2[1]);
+        return;
+    }
     if (detachedCanvas) {
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
