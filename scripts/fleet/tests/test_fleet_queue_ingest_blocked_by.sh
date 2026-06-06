@@ -37,13 +37,18 @@ mkdir -p "$HOME/.fleet/state/projections" "$HOME/.fleet/logs"
 PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # Add path: a stacked epic. #730 = head (no blocker), #731 = blocked by an OPEN
 # predecessor (#719), #732 = blocked by a CLOSED predecessor (#718).
+# Cross-repo (#1522): #735 = engine task blocked by a CLOSED game ref
+# (jakildev/irreden#777) → routed to game, not blocked; #736 = engine task
+# blocked by an OPEN game ref (jakildev/irreden#778) → blocked.
 # Remove path: #733 = queued+fleet:blocked, blocker #717 now CLOSED (unblock);
 #              #734 = queued+fleet:blocked, blocker #719 still OPEN (stay).
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":730,"repo":"engine"},
   {"number":731,"repo":"engine"},
-  {"number":732,"repo":"engine"}
+  {"number":732,"repo":"engine"},
+  {"number":735,"repo":"engine"},
+  {"number":736,"repo":"engine"}
 ],"unblock_issues":[
   {"number":733,"repo":"engine"},
   {"number":734,"repo":"engine"}
@@ -63,10 +68,24 @@ case "$1" in
                 # Blocker-state probes pass `--jq .state`; the body/labels fetch
                 # asks for `--json body,labels`. Dispatch on which one this is.
                 if [[ "$*" == *"--jq"* ]]; then
+                    # Capture the --repo value so cross-repo refs (#1522) resolve
+                    # against the referenced repo, not the issue's own.
+                    bref_repo=""; bprev=""
+                    for ba in "$@"; do
+                        [[ "$bprev" == "--repo" ]] && bref_repo="$ba"; bprev="$ba"
+                    done
                     case "$3" in
                         717) echo "CLOSED" ;;   # #733's predecessor — satisfied
                         718) echo "CLOSED" ;;   # #732's predecessor — satisfied
                         719) echo "OPEN" ;;     # #731/#734's predecessor — open
+                        777)
+                            # #1522: CLOSED only when routed to game (the
+                            # referenced repo); OPEN if mis-routed to engine.
+                            case "$bref_repo" in
+                                jakildev/irreden) echo "CLOSED" ;;
+                                *)                 echo "OPEN" ;;
+                            esac ;;
+                        778) echo "OPEN" ;;     # cross-repo game ref, still open
                         *)   echo "OPEN" ;;
                     esac
                     exit 0
@@ -77,6 +96,8 @@ case "$1" in
                     732) echo '{"body":"**Model:** opus\n**Blocked by:** #718","labels":[{"name":"human:approved"}]}' ;;
                     733) echo '{"body":"**Blocked by:** #717","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
                     734) echo '{"body":"**Blocked by:** #719","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
+                    735) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#777","labels":[{"name":"human:approved"}]}' ;;
+                    736) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#778","labels":[{"name":"human:approved"}]}' ;;
                     *)   echo '{"body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;
@@ -129,6 +150,24 @@ else
     bad "#731 not queued-with-marker as expected: '$l731'"
 fi
 
+# --- Cross-repo routing (#1522) -------------------------------------------
+# #735 (cross-repo blocker game#777 CLOSED) → routed to game → NO fleet:blocked.
+# If the gate mis-routed to engine, #777 would read OPEN and stamp fleet:blocked.
+l735=$(edit_line 735)
+if [[ -n "$l735" && "$l735" == *"fleet:queued"* && "$l735" != *"fleet:blocked"* ]]; then
+    ok "#735 cross-repo blocker (game#777 CLOSED) routed to game → no fleet:blocked"
+else
+    bad "#735 cross-repo routing wrong (expected queued, no marker): '$l735'"
+fi
+
+# #736 (cross-repo blocker game#778 OPEN) → routed to game → fleet:blocked.
+l736=$(edit_line 736)
+if [[ -n "$l736" && "$l736" == *"fleet:queued"* && "$l736" == *"fleet:blocked"* ]]; then
+    ok "#736 cross-repo blocker (game#778 OPEN) → fleet:queued + fleet:blocked"
+else
+    bad "#736 cross-repo open blocker not marked: '$l736'"
+fi
+
 # --- Remove path ----------------------------------------------------------
 # #733 (blocker #717 now CLOSED) → fleet:blocked removed.
 l733=$(edit_line 733)
@@ -147,11 +186,12 @@ else
 fi
 
 # --- Read-only blocker invariant -----------------------------------------
-# The blocker issues themselves must never be edited (we only read their state).
-if grep -qE '(^| )edit (717|718|719)( |$)' "$EDIT_LOG"; then
-    bad "a blocker issue (#717/#718/#719) was edited — must only READ blocker state"
+# The blocker issues themselves must never be edited (we only read their state),
+# including the cross-repo blockers #777/#778 (#1522).
+if grep -qE '(^| )edit (717|718|719|777|778)( |$)' "$EDIT_LOG"; then
+    bad "a blocker issue (#717/#718/#719/#777/#778) was edited — must only READ blocker state"
 else
-    ok "blocker issues #717/#718/#719 were never edited (read-only state probe)"
+    ok "blocker issues #717/#718/#719/#777/#778 were never edited (read-only state probe)"
 fi
 
 echo

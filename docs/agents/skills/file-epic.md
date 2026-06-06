@@ -141,10 +141,12 @@ rm -f .file-epic-body.md
 > The scout, `fleet-claim`, and `fleet-queue-ingest` recognize only `(none)`
 > and `#N` (plus merged-PR URLs). Free-text like `none — first unblocked` is
 > read as an unresolved *prose* blocker, so the ticket is held out of the
-> queue forever and every child that chains off it stalls too. Cross-repo
-> dependencies are NOT auto-gated yet (the gate checks only the issue's own
-> repo): keep `Blocked by:` to same-repo `#N`/`(none)` and record any
-> cross-repo dependency as prose under `## Dependencies`.
+> queue forever and every child that chains off it stalls too. A cross-repo
+> dependency is machine-gated too — qualify the ref with its repo:
+> `**Blocked by:** jakildev/IrredenEngine#1476` (the bare `IrredenEngine#1476`
+> or `irreden#125` form also works). All three tools route the qualified ref's
+> state check to the *referenced* repo (#1522); a bare `#N` still resolves
+> against the issue's own repo.
 
 Then file:
 

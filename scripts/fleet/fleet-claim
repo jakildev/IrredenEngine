@@ -545,29 +545,47 @@ if field_value is None:
 if field_value.lower().startswith("(none"):
     sys.exit(0)
 
-# Extract referenced issue numbers (#N) and PR URLs.
-issue_refs = re.findall(r"#(\d+)", field_value)
+# Extract referenced issue numbers and PR URLs. A `#N` may carry an optional
+# `[owner/]Repo#N` qualifier — route its live state check to the *referenced*
+# repo so a cross-repo dependency resolves against the right repo, not the
+# issue's own (#1522). Bare / unrecognized refs default to this issue's repo.
+_REF_NAME_TO_SLUG = {"irredenengine": "jakildev/IrredenEngine",
+                     "irreden": "jakildev/irreden"}
+
+
+def _ref_repo(name):
+    if name:
+        return _REF_NAME_TO_SLUG.get(name.lower(), repo)
+    return repo
+
+
+qual_ref_re = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
+issue_refs = [(_ref_repo(m.group(1)), m.group(2))
+              for m in qual_ref_re.finditer(field_value)]
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", field_value)
 
 failed = []
 
-for ref in issue_refs:
-    if ref in skip_ids:
+for ref_repo_slug, ref in issue_refs:
+    # skip_ids are intra-stack issue numbers in *this* repo — only satisfy a
+    # same-repo ref, never a cross-repo number collision.
+    if ref_repo_slug == repo and ref in skip_ids:
         continue
-    if not repo:
+    if not ref_repo_slug:
         continue
+    disp = f"#{ref}" if ref_repo_slug == repo else f"{ref_repo_slug}#{ref}"
     try:
         r = subprocess.run(
-            ["gh", "issue", "view", ref, "--repo", repo,
+            ["gh", "issue", "view", ref, "--repo", ref_repo_slug,
              "--json", "state", "--jq", ".state"],
             capture_output=True, text=True, timeout=10,
         )
     except (subprocess.SubprocessError, OSError) as e:
-        failed.append(f"#{ref} (check failed: {e})")
+        failed.append(f"{disp} (check failed: {e})")
         continue
     state = (r.stdout or "").strip()
     if state not in ("CLOSED", "MERGED"):
-        failed.append(f"#{ref} (state: {state or 'unknown'}, need: CLOSED or MERGED)")
+        failed.append(f"{disp} (state: {state or 'unknown'}, need: CLOSED or MERGED)")
 
 for url in pr_urls:
     try:

@@ -209,7 +209,28 @@ BLOCKED_INLINE_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\s+(.+?)\*\*', 
 # don't warn "treat as unblocked" for an issue whose blocker lives only in a
 # header (#1326). Only count prose that names a #N or PR reference.
 BLOCKED_ON_RE = re.compile(r'(?im)^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$')
-REF_RE = re.compile(r'#(\d+)')
+# A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
+# another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
+# repo name (None/empty for a bare same-repo ref); group(2) is the number.
+# Kept consistent with fleet-state-scout._parse_blocker_refs and fleet-claim's
+# check_blockers. (#1522)
+REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
+# Repo-name qualifier (case-insensitive, owner stripped) → GitHub slug.
+_REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
+                     'irreden': 'jakildev/irreden'}
+
+
+def _ref_slug(name, default_repo):
+    if name:
+        return _REF_NAME_TO_SLUG.get(name.lower(), default_repo)
+    return default_repo
+
+
+def _qual_refs(text, default_repo):
+    """(slug, number) pairs for every #N in text, routing each cross-repo ref
+    to the slug named by its `[owner/]Repo#N` qualifier (#1522)."""
+    return [(_ref_slug(m.group(1), default_repo), m.group(2))
+            for m in REF_RE.finditer(text or '')]
 
 
 def _has_header_blocker(text):
@@ -220,24 +241,27 @@ def _has_header_blocker(text):
     return False
 
 
-def _blocker_refs(body):
-    """All `#N` predecessor refs from canonical `**Blocked by:** #N` lines, the
-    inline-bold `**Blocked by: #N**` form, and `Blocked on` header prose.
-    Mirrors fleet-state-scout._parse_blocked_by so the gate reads the same refs
-    the scout and fleet-claim do. `(none)` values contribute nothing."""
+def _blocker_refs(body, default_repo):
+    """(slug, number) pairs for every `#N` predecessor — from canonical
+    `**Blocked by:** #N` lines, the inline-bold `**Blocked by: #N**` form, and
+    `Blocked on` header prose. Each ref is routed to the repo named by an
+    optional `[owner/]Repo#N` qualifier, defaulting to default_repo (the
+    child's own repo). Mirrors fleet-state-scout._parse_blocked_by so the gate
+    reads the same refs the scout and fleet-claim do. `(none)` values
+    contribute nothing."""
     vals = [m.group(1) for m in BLOCKED_RE.finditer(body)]
     vals += BLOCKED_INLINE_RE.findall(body)
     real = [v.strip() for v in vals if not v.strip().lower().startswith('(none')]
     refs = []
     for v in real:
-        refs.extend(REF_RE.findall(v))
+        refs.extend(_qual_refs(v, default_repo))
     if refs:
         return refs
     # No canonical/inline #N refs → fall back to a `Blocked on …` header.
     for m in BLOCKED_ON_RE.finditer(body):
         cand = m.group(1).strip().strip('*').strip()
         if cand and ('#' in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
-            refs.extend(REF_RE.findall(cand))
+            refs.extend(_qual_refs(cand, default_repo))
     return refs
 
 
@@ -312,8 +336,8 @@ for issue in pending:
     # yet" signal that the unblock pass below removes once the last blocker
     # closes. The live re-check is authoritative — it's the only blocker gate
     # when ingest runs against a hand-built projection (tests, manual run).
-    open_blockers = [ref for ref in _blocker_refs(body)
-                     if _blocker_open(repo, ref, blocker_cache)]
+    open_blockers = [(slug, ref) for slug, ref in _blocker_refs(body, repo)
+                     if _blocker_open(slug, ref, blocker_cache)]
 
     # Parse model from body. Default to fleet:opus on ambiguity — mirrors
     # the safer default when model intent is unclear.
@@ -335,7 +359,8 @@ for issue in pending:
         add_labels.append(model_label)
     if open_blockers and 'fleet:blocked' not in labels:
         add_labels.append('fleet:blocked')
-        joined = ', '.join(f'#{r}' for r in open_blockers)
+        joined = ', '.join((f'#{ref}' if slug == repo else f'{slug}#{ref}')
+                           for slug, ref in open_blockers)
         print(f'INFO issue {repo}#{n}: queuing with fleet:blocked '
               f'(blocked by open {joined})', file=sys.stderr)
 
@@ -381,8 +406,8 @@ for issue in data.get('unblock_issues', []):
     if 'fleet:blocked' not in labels:
         continue
     body = view.get('body', '') or ''
-    open_blockers = [ref for ref in _blocker_refs(body)
-                     if _blocker_open(repo, ref, blocker_cache)]
+    open_blockers = [(slug, ref) for slug, ref in _blocker_refs(body, repo)
+                     if _blocker_open(slug, ref, blocker_cache)]
     if open_blockers:
         unblock_still += 1
         continue  # still genuinely blocked — leave the marker

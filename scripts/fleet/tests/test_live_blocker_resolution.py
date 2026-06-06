@@ -221,5 +221,56 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
         self.assertNotIn("stackable_blocker_pr", state["repos"]["engine"]["tasks"]["open"][0])
 
 
+# ---------------------------------------------------------------------------
+# Part (c) — cross-repo blocker refs (#1522)
+# ---------------------------------------------------------------------------
+
+class TestCrossRepoBlocker(unittest.TestCase):
+    """#1522: a blocker in a *different* repo can't be resolved from this
+    repo's scout window, so resolve_blocked_by() defers it (treats it as
+    non-blocking). fleet-claim's check_blockers, routed to the referenced
+    repo, is the authoritative pickup gate. Mirrors the real game#125 →
+    IrredenEngine#1476 case, repo-flipped to the engine-only test state."""
+
+    def test_cross_repo_owner_qualified_ref_deferred(self):
+        # Even though the cross-repo ref reads OPEN, the scout never queries it
+        # (no gh routed here) and must not block on it.
+        tasks = [_task("#200", "jakildev/irreden#125")]
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"125": "OPEN"})):
+            state = _state(engine_tasks=tasks)
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "(none)")
+
+    def test_cross_repo_bare_repo_qualifier_deferred(self):
+        # `irreden#N` (no owner prefix) routes to game too.
+        tasks = [_task("#200", "irreden#125")]
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"125": "OPEN"})):
+            state = _state(engine_tasks=tasks)
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "(none)")
+
+    def test_cross_repo_plus_open_same_repo_keeps_same_repo(self):
+        tasks = [_task("#200", "#101, jakildev/irreden#125")]
+        with patch.object(_mod.subprocess, "run",
+                          _gh_state_stub({"101": "OPEN", "125": "OPEN"})):
+            state = _state(engine_tasks=tasks)
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "#101")
+
+    def test_same_repo_qualifier_resolves_in_repo(self):
+        # `IrredenEngine#N` on an engine task is a self-ref → in-memory resolve.
+        tasks = [_task("#200", "IrredenEngine#100")]
+        state = _state(engine_tasks=tasks, closed=[_closed_issue(100)])
+        resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "(none)")
+
+    def test_same_repo_qualifier_open_stays_blocked(self):
+        tasks = [_task("#200", "IrredenEngine#101")]
+        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+            state = _state(engine_tasks=tasks)
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "#101")
+
+
 if __name__ == "__main__":
     unittest.main()
