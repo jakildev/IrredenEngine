@@ -448,6 +448,35 @@ TEST_F(LuaPipelineRegisterTest, InsertSystemBeforeViaLuaPlacesGroup) {
     EXPECT_EQ(groups[1][0], lifetime);
 }
 
+TEST_F(LuaPipelineRegisterTest, InsertSystemAfterViaLuaPlacesGroup) {
+    const IRSystem::SystemId lifetime = m_lua.registerPrefabSystem<IRSystem::LIFETIME>();
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        IRSystem.registerPipeline(IRTime.UPDATE, {
+            IRSystem.systemId(IRSystem.SystemName.LIFETIME),
+        })
+        local Marker = IRComponent.register("InsertAfterMarker", { dummy = 0 })
+        local luaSys = IRSystem.registerSystem({
+            name = "InsertedAfterLuaSys",
+            components = { Marker },
+            tick = function(arch) end,
+        })
+        IRSystem.insertSystemAfter(IRTime.UPDATE, luaSys,
+            IRSystem.systemId(IRSystem.SystemName.LIFETIME))
+        return luaSys
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    const auto luaSys = static_cast<IRSystem::SystemId>(result.get<lua_Integer>());
+
+    const auto &groups = m_system_manager.getPipelineGroups(IRTime::Events::UPDATE);
+    ASSERT_EQ(groups.size(), 2u);
+    EXPECT_EQ(groups[0][0], lifetime); // prefab system before the inserted one
+    EXPECT_EQ(groups[1][0], luaSys);   // inserted after the prefab system
+}
+
 TEST_F(LuaPipelineRegisterTest, AppendSystemRejectsInvalidEvent) {
     auto &lua = m_lua.lua();
     auto result = lua.safe_script("IRSystem.appendSystem(999, 0)", sol::script_pass_on_error);
