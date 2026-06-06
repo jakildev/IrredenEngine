@@ -51,6 +51,12 @@
       "description": "Model-affinity tag set by fleet-queue-ingest; sonnet-author picks tasks with this label"
     },
     {
+      "name": "fleet:blocked",
+      "scope": "issue",
+      "color": "c5def5",
+      "description": "Queued task whose **Blocked by:** predecessor is still open; not plainly claimable (fleet-claim refuses a plain claim; --stackable-on works). Stamped/cleared by fleet-queue-ingest as blockers close"
+    },
+    {
       "name": "fleet:needs-info",
       "scope": "issue",
       "color": "fbca04",

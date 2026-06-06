@@ -105,15 +105,21 @@ coordination mechanisms prevent duplicate work:
   re-check immediately before each `gh issue edit` so two hosts that
   observe the same `human:approved` issue converge without duplicate
   label additions.
-- **Blocked-by gating (#1476):** ingest stamps `fleet:queued` only when
-  every `**Blocked by:** #N` predecessor is closed. A freshly-filed
-  stacked epic therefore shows only its head queued; each child is queued
-  as its blocker closes. The scout's ingest projection keeps blocked
-  children out of the pending set (so the trigger re-fires when a blocker
-  closes), and `fleet-queue-ingest` does an authoritative live
-  `gh issue view <ref> --json state` re-check before it stamps. This makes
-  the label honest — `fleet-claim` already enforced Blocked-by at claim
-  time, but the label previously showed every child queued at once.
+- **Queue-all / mark-blocked (#1527, supersedes #1476's queue-one-at-a-time):**
+  ingest stamps `fleet:queued` + a model label on *every* approved, non-skip
+  task — including ones whose `**Blocked by:** #N` predecessor is still open,
+  which additionally get a `fleet:blocked` marker. The whole approved queue is
+  visible up front (`fleet-queue-list`, `tasks.open[].blocked`) instead of one
+  child at a time. Claimability is unchanged: `fleet-claim` still refuses a
+  plain claim on a blocked task via its own Blocked-by gate, and a
+  `--stackable-on` claim against the blocker's open PR still works. When the
+  last blocker closes, the next ingest pass removes `fleet:blocked` (driven off
+  the scout's tasks.open unblock projection); `fleet-queue-ingest` does an
+  authoritative live `gh issue view <ref> --json state` re-check before it
+  stamps or clears the marker. See
+  [`docs/design/fleet-queue-stacking.md`](../design/fleet-queue-stacking.md)
+  for the full model (claimability rule, stacking lifecycle, per-repo merger
+  requirement).
 
 **Review claiming:**
 - Review claims use `fleet:reviewing-<host>-<agent>` labels on PRs via

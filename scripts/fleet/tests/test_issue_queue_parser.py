@@ -234,6 +234,24 @@ class FetchTaskQueueDispatch(unittest.TestCase):
         }])
         self.assertEqual(out["open"][0]["blocked_by"], "#1300")
 
+    def test_blocked_flag_set_from_label(self):
+        # #1527: the fleet:blocked label surfaces as task["blocked"] so workers
+        # see the state directly and the unblock projection can act on it.
+        out = self._run([{
+            "number": 100, "title": "b",
+            "labels": [{"name": "fleet:queued"}, {"name": "fleet:blocked"}],
+            "body": "**Blocked by:** #50",
+        }])
+        self.assertTrue(out["open"][0]["blocked"])
+
+    def test_blocked_flag_false_without_label(self):
+        out = self._run([{
+            "number": 100, "title": "b",
+            "labels": [{"name": "fleet:queued"}],
+            "body": "**Blocked by:** (none)",
+        }])
+        self.assertFalse(out["open"][0]["blocked"])
+
     def test_empty_gh_output_returns_empty_sections(self):
         out = self._run([])
         self.assertEqual(out["open"], [])

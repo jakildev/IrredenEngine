@@ -442,6 +442,12 @@ def fetch_task_queue(repo_slug):
             "owner": owner,
             "area": area,
             "blocked_by": blocked_by,
+            # #1527: `fleet:blocked` is the visible "queued but a predecessor is
+            # still open" marker stamped by fleet-queue-ingest. Surface it on the
+            # task so workers see the blocked state directly and the ingest
+            # projection can drive fleet:blocked removal once the blocker closes
+            # (see _ingest_unblock_candidates).
+            "blocked": "fleet:blocked" in labels,
             "issue": task_id,
         }
 
@@ -960,22 +966,20 @@ def resolve_human_approved_blockers(state):
     """Annotate each human:approved issue with `blocked` — True when one or
     more of its `**Blocked by:**` predecessors is still open.
 
-    The queue-manager-ingest projector/slicer treat a blocked issue like a
-    skip-label issue: it stays OUT of the actionable set, so a freshly-filed
-    stacked epic contributes only its workable head to the trigger hash and
-    the ingest pass. The moment the last blocker closes (and lands in this
-    repo's closed_fleet_queued / recent_merged_prs window) `blocked` flips
-    False, the issue ENTERS the set, the hash flips, and the scout spawns
-    fleet-queue-ingest to queue the now-workable child — the "queue one at a
-    time / queue the next child when a blocker closes" behavior (#1476).
+    Since #1527 the ingest queues EVERY approved, non-skip task regardless of
+    blocked state (a blocked one gets `fleet:queued` + a `fleet:blocked`
+    marker), so this flag no longer gates the queue-manager-ingest projection.
+    It is kept for state.json visibility — `repos.*.human_approved[].blocked`
+    tells an operator at a glance which not-yet-queued approved issues will be
+    stamped blocked on the next ingest. The fleet:blocked label round-trip
+    (add on queue-while-blocked, remove when the last blocker closes) is driven
+    off the live `gh issue view` recheck in fleet-queue-ingest plus the
+    tasks.open-sourced _ingest_unblock_candidates, not off this flag.
 
     Resolution is in-memory only (closed_fleet_queued + merged `claude/<N>-*`
     heads), mirroring resolve_blocked_by()'s cheap path — NO live gh here, so
-    the per-tick projection stays fast. fleet-queue-ingest does the
-    authoritative live `gh issue view` re-check before it actually stamps
-    fleet:queued, so this flag only decides *when the trigger fires*, never
-    whether the label is applied. `body` is popped after parsing so it never
-    bloats state.json or the per-role slices.
+    the per-tick projection stays fast. `body` is popped after parsing so it
+    never bloats state.json or the per-role slices.
     """
     for repo_key, repo_state in state["repos"].items():
         closed_nums = {
@@ -1233,40 +1237,64 @@ def project_merger(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _ingest_unblock_candidates(repo_state):
+    """Queued tasks carrying `fleet:blocked` whose blockers have all closed —
+    the remove-half of the fleet:blocked round-trip (#1527).
+
+    resolve_blocked_by() has already reduced each open task's `blocked_by` to
+    only its still-open refs, so a task that carries the `fleet:blocked` label
+    but now resolves to `(none)` is newly unblocked and needs the label
+    stripped. These re-enter the ingest set from `tasks.open` — NOT
+    human_approved, which excludes `fleet:queued`, so a queued-blocked issue
+    has already left that surface — which makes the removal edge-triggered the
+    same way the add is: the candidate appears the tick its last blocker
+    closes (hash flips → ingest fires → label removed), then disappears the
+    tick after (hash flips → ingest re-fires → no-op → quiescent). Returns a
+    list of issue numbers (ints)."""
+    out = []
+    for task in repo_state.get("tasks", {}).get("open", []):
+        if not task.get("blocked"):
+            continue
+        raw = (task.get("blocked_by") or "").strip().lower()
+        if raw and not raw.startswith("(none"):
+            continue
+        try:
+            out.append(int((task.get("issue") or "").lstrip("#")))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def project_queue_manager_ingest(state):
     """Hash-input projection for the queue-manager-ingest auto-fire.
 
-    Tracks the SET of actionable `human:approved` issues — i.e., issues the
-    human has approved but the queue hasn't yet stamped `fleet:queued` onto,
-    and that are not in a skip category (epic, needs-plan, needs-info,
-    queued). The hash flips when this set CHANGES:
+    Tracks the SET of ingest-actionable issues. The hash flips when this set
+    CHANGES, and each change spawns fleet-queue-ingest:
 
-    - Operator adds `human:approved` to issue #N: #N enters the set,
-      hash flips, scout spawns fleet-queue-ingest, which stamps
-      `fleet:queued` (plus a model-affinity label) onto #N.
-    - After ingestion, #N has `fleet:queued` so it drops from the
-      set; hash flips again. fleet-queue-ingest re-fires, finds the
-      set is empty, exits in <1s. One wasted iteration per ingestion
-      cycle, acceptable cost.
+    - **Add path** — every `human:approved` issue not yet stamped
+      `fleet:queued` and not in a skip category (epic, needs-plan, needs-info,
+      needs-human, scope-shipped). Since #1527 a `**Blocked by:**`-blocked
+      issue is NO LONGER excluded: it enters the set, ingest stamps
+      `fleet:queued` + a model label + `fleet:blocked`, and it drops out
+      (now carrying fleet:queued). The whole queue is visible immediately
+      rather than one child at a time.
+    - **Remove path** — a queued task carrying `fleet:blocked` whose last
+      blocker just closed (`_ingest_unblock_candidates`, sourced from
+      tasks.open since the issue has left human_approved). It enters the set,
+      ingest removes `fleet:blocked`, and it drops out (label gone).
 
     `human_approved` already excludes `fleet:queued` via fetch_human_approved;
     _INGEST_SKIP_LABELS mirrors the role-doc Step 5 filter so epics and
     un-planned issues don't hold the hash non-zero indefinitely.
-
-    `blocked` issues (set by resolve_human_approved_blockers — a `**Blocked
-    by:**` predecessor is still open) are excluded too, so a stacked epic
-    contributes only its workable head to the hash. When the last blocker
-    closes the child's `blocked` flips False, it re-enters the set, the hash
-    flips, and ingest re-fires to queue it (#1476).
     """
     items = []
     for repo, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
             if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
                 continue
-            if issue.get("blocked"):
-                continue
             items.append({"repo": repo, "issue": issue["number"]})
+        for num in _ingest_unblock_candidates(repo_state):
+            items.append({"repo": repo, "issue": num, "op": "unblock"})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -1419,21 +1447,26 @@ def slice_queue_manager(state):
 
 
 def slice_queue_manager_ingest(state):
-    """Slice for fleet-queue-ingest. Mirrors the projector — list of
-    actionable issues the human has approved but the queue hasn't filed yet.
-    Applies _INGEST_SKIP_LABELS so the LLM slice never includes epics or
-    un-planned issues that the role-doc skips at Step 5, and skips `blocked`
-    issues (an open `**Blocked by:**` predecessor) so fleet-queue-ingest's
-    pending set only carries workable issues — the head of a stacked epic,
-    then each child as its blocker closes (#1476)."""
-    out = {"pending_issues": []}
+    """Slice for fleet-queue-ingest. Mirrors the projector:
+
+    - `pending_issues` — approved issues the queue hasn't filed yet, applying
+      _INGEST_SKIP_LABELS so the set never includes epics or un-planned issues
+      the role-doc skips at Step 5. Since #1527 this INCLUDES blocked issues:
+      fleet-queue-ingest stamps a blocked one `fleet:queued` + model +
+      `fleet:blocked` in one pass (the whole queue is queued up front, not one
+      child at a time).
+    - `unblock_issues` — queued tasks carrying `fleet:blocked` whose last
+      blocker just closed (`_ingest_unblock_candidates`). fleet-queue-ingest
+      drops `fleet:blocked` from each. Minimal `{number, repo}` records — the
+      ingest does its own live recheck before removing the label."""
+    out = {"pending_issues": [], "unblock_issues": []}
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
             if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
                 continue
-            if issue.get("blocked"):
-                continue
             out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
+        for num in _ingest_unblock_candidates(repo_state):
+            out["unblock_issues"].append({"number": num, "repo": repo_key})
     return out
 
 

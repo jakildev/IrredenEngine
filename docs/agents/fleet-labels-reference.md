@@ -78,6 +78,18 @@ Specifically, **never pass these via `--label` when filing**:
   classifies the issue (or left unset for the human to add manually
   on edge cases). Workers filter pickup by their model label;
   `fleet-queue-list` groups by these.
+- `fleet:blocked` — owned by **`fleet-queue-ingest`**. Since #1527 the
+  ingest queues *every* approved, non-skip task up front (full queue
+  visibility) instead of one child at a time; a task whose
+  `**Blocked by:**` predecessor is still open is stamped `fleet:queued` +
+  model + `fleet:blocked` in one pass. The marker means "queued but a
+  predecessor is still open": claimability is unchanged (`fleet-claim`
+  refuses a plain claim via its own Blocked-by gate; a `--stackable-on`
+  claim against the blocker's open PR still works). The ingest removes it
+  on the next pass after the last blocker closes (driven off the
+  tasks.open unblock projection). Surfaced on `tasks.open[].blocked`.
+  Don't add manually. See [`fleet-queue-stacking.md`](../design/fleet-queue-stacking.md)
+  for the full model.
 - `fleet:approved` / `fleet:needs-fix` / `fleet:has-nits` /
   `fleet:blocker` — owned by the **reviewer agents** as PR verdicts.
 - `fleet:needs-opus-recheck` — owned by the **sonnet-reviewer**.

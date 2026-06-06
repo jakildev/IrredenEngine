@@ -27,18 +27,20 @@ slice_queue_manager = _mod.slice_queue_manager
 project_queue_manager_ingest = _mod.project_queue_manager_ingest
 slice_queue_manager_ingest = _mod.slice_queue_manager_ingest
 resolve_human_approved_blockers = _mod.resolve_human_approved_blockers
+_ingest_unblock_candidates = _mod._ingest_unblock_candidates
 stable_hash = _mod.stable_hash
 
 
 def _state(*, engine_merged=None, engine_done=None, engine_human_approved=None,
-           engine_closed=None):
+           engine_closed=None, engine_tasks_open=None):
     """Build a minimal scout-state dict with the fields the projection reads."""
     return {
         "repos": {
             "engine": {
                 "needs_plan": [],
                 "human_approved": engine_human_approved or [],
-                "tasks": {"open": [], "in_progress": [], "done": engine_done or []},
+                "tasks": {"open": engine_tasks_open or [],
+                          "in_progress": [], "done": engine_done or []},
                 "closed_fleet_queued": engine_closed or [],
                 "recent_merged_prs": engine_merged or [],
             },
@@ -211,9 +213,11 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
 
 class IngestHonorsBlockedBy(unittest.TestCase):
     """resolve_human_approved_blockers() flags issues whose `**Blocked by:**`
-    predecessors are still open; the ingest projector + slicer then exclude
-    them, so a freshly-filed stacked epic only queues its head until each
-    blocker closes (#1476)."""
+    predecessors are still open. Since #1527 that flag is informational only:
+    the ingest projector + slicer no longer exclude blocked issues — they are
+    queued up front (with a fleet:blocked marker). These tests cover both the
+    flag computation (still used for state.json visibility) and the new
+    include-blocked projection behavior."""
 
     def _resolved(self, *, human_approved, closed=None, merged=None):
         st = _state(engine_human_approved=human_approved,
@@ -272,7 +276,10 @@ class IngestHonorsBlockedBy(unittest.TestCase):
         ])
         self.assertTrue(st["repos"]["engine"]["human_approved"][0]["blocked"])
 
-    def test_blocked_child_excluded_from_projection_and_slice(self):
+    def test_blocked_child_included_in_projection_and_slice(self):
+        # #1527: blocked children are now ingestion targets — they get queued
+        # up front (fleet:queued + model + fleet:blocked), so both head AND
+        # child contribute to the hash and appear in pending_issues.
         st = self._resolved(human_approved=[
             {"number": 810, "title": "head", "labels": ["human:approved"],
              "body": "**Blocked by:** (none)"},
@@ -281,24 +288,75 @@ class IngestHonorsBlockedBy(unittest.TestCase):
         ])
         proj_nums = [i["issue"] for i in project_queue_manager_ingest(st)]
         self.assertIn(810, proj_nums, "workable head must contribute to the hash")
-        self.assertNotIn(811, proj_nums, "blocked child must not contribute to the hash")
+        self.assertIn(811, proj_nums,
+                      "blocked child is now an ingest target (#1527)")
         slice_nums = [i["number"] for i in slice_queue_manager_ingest(st)["pending_issues"]]
         self.assertIn(810, slice_nums)
-        self.assertNotIn(811, slice_nums)
+        self.assertIn(811, slice_nums)
 
-    def test_unblock_flips_hash(self):
-        # The crux of #1476: when the head closes, the child becomes workable,
-        # re-enters the ingest set, and the trigger hash flips so the scout
-        # re-fires fleet-queue-ingest to queue it.
-        child = {"number": 811, "title": "child", "labels": ["human:approved"],
-                 "body": "**Blocked by:** #810"}
-        blocked = self._resolved(human_approved=[dict(child)])
-        unblocked = self._resolved(human_approved=[dict(child)],
-                                   closed=[{"number": 810, "title": "head"}])
+    def test_skip_label_still_excluded_when_blocked(self):
+        # _INGEST_SKIP_LABELS still wins over the include-blocked change: a
+        # blocked epic/needs-plan/needs-info issue stays out of the set.
+        st = self._resolved(human_approved=[
+            {"number": 812, "title": "epic", "labels": ["human:approved", "fleet:epic"],
+             "body": "**Blocked by:** #810"},
+        ])
+        self.assertEqual(project_queue_manager_ingest(st), [],
+                         "skip-labeled issue stays out even when blocked")
+        self.assertEqual(slice_queue_manager_ingest(st)["pending_issues"], [])
+
+
+class IngestUnblockRemovePath(unittest.TestCase):
+    """#1527 remove-half: a queued task carrying fleet:blocked whose last
+    blocker has closed becomes an unblock-candidate sourced from tasks.open (it
+    has already left human_approved by carrying fleet:queued). The candidate
+    flips the ingest hash so fleet-queue-ingest re-fires and strips the marker,
+    then disappears the next tick once the label is gone."""
+
+    def _task(self, *, num, blocked, blocked_by):
+        return {"id": f"#{num}", "issue": f"#{num}", "title": f"#{num}",
+                "summary": "t", "status": " ", "owner": "free", "model": "opus",
+                "area": None, "blocked": blocked, "blocked_by": blocked_by}
+
+    def _st(self, tasks_open):
+        return _state(engine_tasks_open=tasks_open)
+
+    def test_unblocked_marked_task_is_candidate(self):
+        st = self._st([self._task(num=811, blocked=True, blocked_by="(none)")])
+        self.assertEqual(_ingest_unblock_candidates(st["repos"]["engine"]), [811])
+
+    def test_still_blocked_marked_task_is_not_candidate(self):
+        st = self._st([self._task(num=811, blocked=True, blocked_by="#810")])
+        self.assertEqual(_ingest_unblock_candidates(st["repos"]["engine"]), [])
+
+    def test_unmarked_task_is_not_candidate(self):
+        # No fleet:blocked label (blocked=False) → never an unblock candidate,
+        # even when blocked_by resolves to (none).
+        st = self._st([self._task(num=811, blocked=False, blocked_by="(none)")])
+        self.assertEqual(_ingest_unblock_candidates(st["repos"]["engine"]), [])
+
+    def test_candidate_in_projection_and_slice(self):
+        st = self._st([self._task(num=811, blocked=True, blocked_by="(none)")])
+        self.assertIn({"repo": "engine", "issue": 811, "op": "unblock"},
+                      project_queue_manager_ingest(st))
+        self.assertEqual(slice_queue_manager_ingest(st)["unblock_issues"],
+                         [{"number": 811, "repo": "engine"}])
+
+    def test_unblock_transition_flips_hash(self):
+        still_blocked = self._st([self._task(num=811, blocked=True, blocked_by="#810")])
+        now_unblocked = self._st([self._task(num=811, blocked=True, blocked_by="(none)")])
         self.assertNotEqual(
-            stable_hash(project_queue_manager_ingest(blocked)),
+            stable_hash(project_queue_manager_ingest(still_blocked)),
+            stable_hash(project_queue_manager_ingest(now_unblocked)),
+            "blocker closing must flip the ingest hash so fleet:blocked is removed")
+
+    def test_marker_cleared_settles_hash(self):
+        unblocked = self._st([self._task(num=811, blocked=True, blocked_by="(none)")])
+        cleared = self._st([self._task(num=811, blocked=False, blocked_by="(none)")])
+        self.assertNotEqual(
             stable_hash(project_queue_manager_ingest(unblocked)),
-            "closing the blocker must flip the ingest hash so ingest re-fires")
+            stable_hash(project_queue_manager_ingest(cleared)),
+            "clearing the marker flips the hash once more, then the set quiesces")
 
 
 if __name__ == "__main__":
