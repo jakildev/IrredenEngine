@@ -649,10 +649,12 @@ heuristic) + deadband path-switch alignment. The decision rests on a verified
 **consumer-reality** check: the only detached *rotating* content in the engine
 + creations today is **cubes** (`canvas_stress`, 10³); any asymmetric detached
 entity present in current content is **static** (no auto-spin component). The
-true-3D-asymmetric criterion has **no current consumer** — building for it now
-would be a foundation ahead of demand.
+true-3D-asymmetric criterion had **no current consumer** at decision time —
+which is why #1551 itself is cube-only. (The capability is nonetheless being
+built proactively as epic #1553 below; #1551 ships clean cubes sooner as the
+interim path and is superseded when the epic retires the forward-scatter.)
 
-### The true-3D path (deferred — detached GPU re-voxelize)
+### The true-3D path (detached GPU re-voxelize — committed as epic #1553)
 
 True-3D detached rotation requires **re-rasterizing the rotated solid in 3D**,
 the detached analogue of the attached **GRID re-voxelize** model
@@ -667,11 +669,16 @@ per-voxel-identity-preserving rotation — generalized from attached to detached
 It is **multi-PR** (re-voxelize dispatch into the private grid → screen-locked
 placement of the re-voxelized canvas → per-voxel depth/occlusion → AO/sun/light
 integration → Metal parity → render-verify baselines) and would **retire the
-detached forward-scatter** on completion. It is **NOT** built (`#1396`'s GPU
-prepass transforms positions of *existing* voxels; it does not fill cells), and
-it is **deferred — gated on an actual asymmetric detached rotating consumer.**
-Tracking: **#1553** (unlabeled backlog; needs a consumer + an architect design
-pass before it is queue-ready — do not hand a worker a queued build task for it).
+detached forward-scatter** on completion. It is **NOT** built yet (`#1396`'s GPU
+prepass transforms positions of *existing* voxels; it does not fill cells). It
+is now a **committed, decomposed epic: #1553** — children #1555–#1560 (P1 CPU
+model proof + asymmetric demo solid → P2 GPU scatter → P3 occlusion/aliasing →
+P4 lighting → P5 Metal parity → P6 render-verify + retire the forward-scatter).
+P1 adds the asymmetric detached rotating test solid that current content lacks,
+so the criterion is exercisable. The two load-bearing design calls — **the
+rotation lives in cell positions, not a deform** (re-voxelize canvases render
+through *cardinal* frame data, like attached GRID) and **CPU-first to prove the
+model, then GPU** — are in `~/.fleet/plans/issue-1553.md`.
 
 > **Do not band-aid past cube-clean.** Once #1551's cube-coverage/seam fixes
 > land, the forward-scatter path is **done** — further "make the asymmetric
