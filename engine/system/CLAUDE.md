@@ -317,6 +317,37 @@ thread (main-thread assert, deadlock risk under full-pool saturation).
 In release builds where the validator is a no-op, `executeSystem` falls
 back to serial dispatch as a safety net.
 
+### Appending to a live pipeline (#1540)
+
+`registerPipeline` / `registerPipelineGroups` **replace** the event's
+whole system list. That's wrong for a runtime whose C++ pipeline is
+built before a script runs — the midi runtime calls `initSystems()`
+(knob CC driver, `ROTATION_TARGET_LOCAL_TRANSFORM`, render stages)
+before `runScript("main.lua")`, so a second `registerPipeline` from
+Lua would wipe those C++ systems (and re-listing them double-creates
+named GPU resources). The composition primitives add one system onto
+the existing pipeline instead:
+
+```cpp
+IRSystem::appendToPipeline(IRTime::Events::UPDATE, sysId);              // end
+IRSystem::insertIntoPipelineBefore(IRTime::Events::UPDATE, sysId, anchor);
+IRSystem::insertIntoPipelineAfter(IRTime::Events::UPDATE, sysId, anchor);
+```
+
+- Each adds `sysId` as its **own singleton (serial) group**, so it
+  never co-executes with a neighbor and needs no cross-system
+  validation (the validator skips size-1 groups).
+- `appendToPipeline` creates the event's first group if none exists
+  yet; the insert forms require the anchor's pipeline to already be
+  registered.
+- All three assert (debug; no-op in release) if `sysId` is already in
+  the event's pipeline (a double-add would tick it twice), and the
+  insert forms assert if `anchor` isn't found.
+- Lua surface: `IRSystem.appendSystem(event, sysId)`,
+  `IRSystem.insertSystemBefore(event, sysId, anchor)`,
+  `IRSystem.insertSystemAfter(event, sysId, anchor)` — see
+  `engine/script/CLAUDE.md` "Pipeline composition".
+
 ## SystemAccess derivation (T-221)
 
 `engine/system/include/irreden/system/system_access.hpp` defines

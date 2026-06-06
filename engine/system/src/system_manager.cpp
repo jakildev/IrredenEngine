@@ -56,11 +56,13 @@ SystemId SystemManager::createSystemDynamic(
     SystemId newSystemId = m_nextSystemId++;
 
     m_beginTicks.emplace_back(C_SystemEvent<BEGIN_TICK>{[]() {}});
-    m_ticks.emplace_back(C_SystemEvent<TICK>{
-        std::move(body),
-        std::move(includeArchetype),
-        std::move(excludeArchetype),
-    });
+    m_ticks.emplace_back(
+        C_SystemEvent<TICK>{
+            std::move(body),
+            std::move(includeArchetype),
+            std::move(excludeArchetype),
+        }
+    );
     m_endTicks.emplace_back(C_SystemEvent<END_TICK>{[]() {}});
     m_relationTicks.emplace_back(C_SystemEvent<RELATION_TICK>{[](EntityRecord) {}});
 
@@ -119,6 +121,90 @@ void SystemManager::registerPipelineGroups(
     IRTime::Events event, std::vector<std::vector<SystemId>> groups
 ) {
     m_systemPipelineGroups[event] = std::move(groups);
+    m_flattenedPipelinesDirty = true;
+}
+
+namespace {
+// True if `system` appears in any group of `groups`. Used to reject a
+// double-add: appending / inserting a system already in the pipeline
+// would tick it twice per frame.
+bool pipelineGroupsContain(const std::vector<std::vector<SystemId>> &groups, SystemId system) {
+    for (const auto &group : groups) {
+        for (SystemId id : group) {
+            if (id == system) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+} // namespace
+
+void SystemManager::appendToPipeline(IRTime::Events event, SystemId system) {
+    // operator[] default-constructs an empty group sequence when the
+    // event has no pipeline yet, so the first append becomes its sole
+    // singleton group.
+    auto &groups = m_systemPipelineGroups[event];
+    IR_ASSERT(
+        !pipelineGroupsContain(groups, system),
+        "appendToPipeline: system '{}' is already registered for this event — "
+        "a second append would tick it twice. Append each system once.",
+        getSystemName(system)
+    );
+    groups.push_back({system});
+    m_flattenedPipelinesDirty = true;
+}
+
+void SystemManager::insertIntoPipelineBefore(
+    IRTime::Events event, SystemId system, SystemId anchor
+) {
+    insertSingletonGroupRelativeTo(event, system, anchor, /*after=*/false);
+}
+
+void SystemManager::insertIntoPipelineAfter(
+    IRTime::Events event, SystemId system, SystemId anchor
+) {
+    insertSingletonGroupRelativeTo(event, system, anchor, /*after=*/true);
+}
+
+void SystemManager::insertSingletonGroupRelativeTo(
+    IRTime::Events event, SystemId system, SystemId anchor, bool after
+) {
+    auto it = m_systemPipelineGroups.find(event);
+    IR_ASSERT(
+        it != m_systemPipelineGroups.end(),
+        "insertIntoPipeline{}: no pipeline registered for this event — register "
+        "the anchor's pipeline (registerPipeline / registerPipelineGroups) or use "
+        "appendToPipeline first.",
+        after ? "After" : "Before"
+    );
+    auto &groups = it->second;
+    IR_ASSERT(
+        !pipelineGroupsContain(groups, system),
+        "insertIntoPipeline{}: system '{}' is already registered for this event — "
+        "a second insert would tick it twice.",
+        after ? "After" : "Before",
+        getSystemName(system)
+    );
+    std::size_t anchorGroup = 0;
+    bool found = false;
+    for (std::size_t gi = 0; gi < groups.size() && !found; ++gi) {
+        for (SystemId id : groups[gi]) {
+            if (id == anchor) {
+                anchorGroup = gi;
+                found = true;
+                break;
+            }
+        }
+    }
+    IR_ASSERT(
+        found,
+        "insertIntoPipeline{}: anchor system '{}' is not in this event's pipeline.",
+        after ? "After" : "Before",
+        getSystemName(anchor)
+    );
+    const std::size_t pos = after ? anchorGroup + 1 : anchorGroup;
+    groups.insert(groups.begin() + static_cast<std::ptrdiff_t>(pos), std::vector<SystemId>{system});
     m_flattenedPipelinesDirty = true;
 }
 

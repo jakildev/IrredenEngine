@@ -254,4 +254,99 @@ TEST_F(PipelineGroupsValidatorTest, RegisterPipelineProducesSingletonGroups) {
     EXPECT_EQ(groups[1][0], sysB);
 }
 
+// ----------------------------------------------------------------------
+// #1540 — appendToPipeline / insertIntoPipeline (compose onto a live
+// pipeline without replacing it)
+// ----------------------------------------------------------------------
+
+TEST_F(PipelineGroupsValidatorTest, AppendToPipelineAddsSingletonGroupAtEnd) {
+    auto preBuilt = IRSystem::createSystem<C_VelA>("PreBuiltA", [](C_VelA &) {});
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {preBuilt});
+    auto appended = IRSystem::createSystem<C_VelB>("AppendedB", [](C_VelB &) {});
+    m_system_manager.appendToPipeline(IRTime::Events::UPDATE, appended);
+
+    const auto &groups = m_system_manager.getPipelineGroups(IRTime::Events::UPDATE);
+    ASSERT_EQ(groups.size(), 2u);
+    ASSERT_EQ(groups[0].size(), 1u);
+    ASSERT_EQ(groups[1].size(), 1u);
+    EXPECT_EQ(groups[0][0], preBuilt); // pre-built system preserved, not replaced
+    EXPECT_EQ(groups[1][0], appended); // new system at the end
+}
+
+TEST_F(PipelineGroupsValidatorTest, AppendToEmptyEventCreatesFirstGroup) {
+    auto sys = IRSystem::createSystem<C_VelA>("LoneAppend", [](C_VelA &) {});
+    m_system_manager.appendToPipeline(IRTime::Events::UPDATE, sys);
+    const auto &groups = m_system_manager.getPipelineGroups(IRTime::Events::UPDATE);
+    ASSERT_EQ(groups.size(), 1u);
+    ASSERT_EQ(groups[0].size(), 1u);
+    EXPECT_EQ(groups[0][0], sys);
+}
+
+TEST_F(PipelineGroupsValidatorTest, AppendedSystemRunsAlongsidePreBuiltPipeline) {
+    // The #1540 acceptance case: a "pre-built" pipeline (the analog of a
+    // C++ initSystems()) plus a system appended afterward — both must
+    // tick. Proves append does NOT wipe the existing systems the way
+    // registerPipeline would.
+    auto preBuilt = IRSystem::createSystem<C_VelA>("Pre", [](C_VelA &v) { v.n_ += 1; });
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {preBuilt});
+    auto appended = IRSystem::createSystem<C_VelB>("Post", [](C_VelB &v) { v.m_ += 1; });
+    m_system_manager.appendToPipeline(IRTime::Events::UPDATE, appended);
+
+    const auto entity = IREntity::createEntity(C_VelA{0}, C_VelB{0});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_EQ(IREntity::getComponent<C_VelA>(entity).n_, 1); // pre-built ran
+    EXPECT_EQ(IREntity::getComponent<C_VelB>(entity).m_, 1); // appended ran
+}
+
+TEST_F(PipelineGroupsValidatorTest, AppendDuplicateSystemAsserts) {
+    auto sys = IRSystem::createSystem<C_VelA>("DupA", [](C_VelA &) {});
+    m_system_manager.appendToPipeline(IRTime::Events::UPDATE, sys);
+    // A second append would tick the same system twice per frame.
+    EXPECT_THROW(
+        m_system_manager.appendToPipeline(IRTime::Events::UPDATE, sys),
+        std::runtime_error
+    );
+}
+
+TEST_F(PipelineGroupsValidatorTest, InsertBeforeAndAfterPlaceSingletonGroups) {
+    auto a = IRSystem::createSystem<C_VelA>("InsA", [](C_VelA &) {});
+    auto b = IRSystem::createSystem<C_VelB>("InsB", [](C_VelB &) {});
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {a, b});
+
+    auto before = IRSystem::createSystem<C_VelA>("InsBefore", [](C_VelA &) {});
+    m_system_manager.insertIntoPipelineBefore(IRTime::Events::UPDATE, before, b);
+    auto after = IRSystem::createSystem<C_VelB>("InsAfter", [](C_VelB &) {});
+    m_system_manager.insertIntoPipelineAfter(IRTime::Events::UPDATE, after, b);
+
+    // Resulting order: a, before, b, after.
+    const auto &groups = m_system_manager.getPipelineGroups(IRTime::Events::UPDATE);
+    ASSERT_EQ(groups.size(), 4u);
+    EXPECT_EQ(groups[0][0], a);
+    EXPECT_EQ(groups[1][0], before);
+    EXPECT_EQ(groups[2][0], b);
+    EXPECT_EQ(groups[3][0], after);
+}
+
+TEST_F(PipelineGroupsValidatorTest, InsertWithMissingAnchorAsserts) {
+    auto a = IRSystem::createSystem<C_VelA>("AnchorA", [](C_VelA &) {});
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {a});
+    auto orphan = IRSystem::createSystem<C_VelB>("Orphan", [](C_VelB &) {});
+    auto notInPipeline = IRSystem::createSystem<C_VelB>("Ghost", [](C_VelB &) {});
+    EXPECT_THROW(
+        m_system_manager.insertIntoPipelineBefore(IRTime::Events::UPDATE, orphan, notInPipeline),
+        std::runtime_error
+    );
+}
+
+TEST_F(PipelineGroupsValidatorTest, InsertWithNoPipelineForEventAsserts) {
+    auto sys = IRSystem::createSystem<C_VelA>("NoPipeSys", [](C_VelA &) {});
+    auto anchor = IRSystem::createSystem<C_VelB>("NoPipeAnchor", [](C_VelB &) {});
+    // RENDER never had a pipeline registered in this fixture.
+    EXPECT_THROW(
+        m_system_manager.insertIntoPipelineAfter(IRTime::Events::RENDER, sys, anchor),
+        std::runtime_error
+    );
+}
+
 } // namespace

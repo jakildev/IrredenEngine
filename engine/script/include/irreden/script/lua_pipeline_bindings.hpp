@@ -40,6 +40,21 @@
 
 namespace IRScript::detail {
 
+// Shared range-check for the pipeline-composition bindings — every one
+// takes an `event` integer that must name a valid `IRTime::Events`.
+// Raises a Lua-visible error (forwarded via lua_error under
+// SOL_EXCEPTIONS_ALWAYS_UNSAFE) naming the binding so the diagnostic
+// points at the caller. `fn` is the Lua-facing function name.
+inline void requireValidPipelineEvent(const char *fn, lua_Integer event) {
+    if (event < static_cast<lua_Integer>(IRTime::UPDATE) ||
+        event > static_cast<lua_Integer>(IRTime::END)) {
+        throw sol::error{
+            std::string{fn} + ": invalid event " + std::to_string(event) +
+            " — must be IRTime.UPDATE / RENDER / INPUT / START / END"
+        };
+    }
+}
+
 // Bind `IRTime.UPDATE / RENDER / INPUT / START / END` as integer table
 // entries. The underlying `IRTime::Events` enum is C-style; `IR_BIND_TIME`
 // derives each key from the enum name via stringization (same pattern as
@@ -217,13 +232,7 @@ inline void bindRegisterPipelineAndSystemId(
     };
 
     lua["IRSystem"]["registerPipeline"] = [](lua_Integer event, sol::table ids) {
-        if (event < static_cast<lua_Integer>(IRTime::UPDATE) ||
-            event > static_cast<lua_Integer>(IRTime::END)) {
-            throw sol::error{
-                "IRSystem.registerPipeline: invalid event " + std::to_string(event) +
-                " — must be IRTime.UPDATE / RENDER / INPUT / START / END"
-            };
-        }
+        requireValidPipelineEvent("IRSystem.registerPipeline", event);
         std::list<IRSystem::SystemId> pipeline;
         for (auto &kv : ids) {
             sol::optional<lua_Integer> id = kv.second.as<sol::optional<lua_Integer>>();
@@ -250,13 +259,7 @@ inline void bindRegisterPipelineAndSystemId(
     //         { sysC },         -- serial
     //     })
     lua["IRSystem"]["registerPipelineGroups"] = [](lua_Integer event, sol::table groups) {
-        if (event < static_cast<lua_Integer>(IRTime::UPDATE) ||
-            event > static_cast<lua_Integer>(IRTime::END)) {
-            throw sol::error{
-                "IRSystem.registerPipelineGroups: invalid event " + std::to_string(event) +
-                " — must be IRTime.UPDATE / RENDER / INPUT / START / END"
-            };
-        }
+        requireValidPipelineEvent("IRSystem.registerPipelineGroups", event);
         std::vector<std::vector<IRSystem::SystemId>> built;
         built.reserve(groups.size());
         for (auto &outerKv : groups) {
@@ -281,6 +284,52 @@ inline void bindRegisterPipelineAndSystemId(
         }
         IRSystem::registerPipelineGroups(static_cast<IRTime::Events>(event), std::move(built));
     };
+
+    // #1540: append a single system onto an ALREADY-REGISTERED event
+    // pipeline as its own serial group, WITHOUT replacing the systems
+    // already there. registerPipeline / registerPipelineGroups replace
+    // the event's whole list; this composes. The supported path when the
+    // C++ pipeline is built before the script runs (e.g. the midi
+    // runtime's initSystems() runs before main.lua) and Lua wants to add
+    // one UPDATE / RENDER system.
+    //
+    //     IRSystem.appendSystem(IRTime.UPDATE, luaSysId)
+    lua["IRSystem"]["appendSystem"] = [](lua_Integer event, lua_Integer sysId) {
+        requireValidPipelineEvent("IRSystem.appendSystem", event);
+        IRSystem::appendToPipeline(
+            static_cast<IRTime::Events>(event),
+            static_cast<IRSystem::SystemId>(sysId)
+        );
+    };
+
+    // #1540: position-aware variants — insert `sysId` as its own serial
+    // group immediately before / after `anchorId` (a SystemId already in
+    // `event`'s pipeline). Same single-system, own-group semantics as
+    // appendSystem; raises a Lua error if the anchor isn't in the
+    // pipeline or the system is already present.
+    //
+    //     local anchor = IRSystem.systemId(IRSystem.SystemName.LIFETIME)
+    //     IRSystem.insertSystemBefore(IRTime.UPDATE, luaSysId, anchor)
+    //     IRSystem.insertSystemAfter(IRTime.UPDATE, luaSysId, anchor)
+    lua["IRSystem"]["insertSystemBefore"] =
+        [](lua_Integer event, lua_Integer sysId, lua_Integer anchorId) {
+            requireValidPipelineEvent("IRSystem.insertSystemBefore", event);
+            IRSystem::insertIntoPipelineBefore(
+                static_cast<IRTime::Events>(event),
+                static_cast<IRSystem::SystemId>(sysId),
+                static_cast<IRSystem::SystemId>(anchorId)
+            );
+        };
+
+    lua["IRSystem"]["insertSystemAfter"] =
+        [](lua_Integer event, lua_Integer sysId, lua_Integer anchorId) {
+            requireValidPipelineEvent("IRSystem.insertSystemAfter", event);
+            IRSystem::insertIntoPipelineAfter(
+                static_cast<IRTime::Events>(event),
+                static_cast<IRSystem::SystemId>(sysId),
+                static_cast<IRSystem::SystemId>(anchorId)
+            );
+        };
 }
 
 } // namespace IRScript::detail
