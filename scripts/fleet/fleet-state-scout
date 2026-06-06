@@ -884,11 +884,31 @@ def _blocker_pr_files(repo_key, pr_number):
 # collect_state() and updates each task's blocked_by in place to only
 # contain references that are still genuinely unresolved.
 
-_BLOCKER_REF_RE = re.compile(r"#(\d+)")
+# A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
+# another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
+# repo name (None / empty for a bare same-repo `#N`); group(2) is the number.
+# Kept consistent with fleet-claim's check_blockers and
+# fleet-queue-ingest._blocker_refs parsers. (#1522)
+_BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
 _REPO_SLUG_MAP = {
     "engine": "jakildev/IrredenEngine",
     "game": "jakildev/irreden",
 }
+# Repo-name qualifier (case-insensitive, owner stripped) → canonical repo key.
+_REPO_NAME_TO_KEY = {"irredenengine": "engine", "irreden": "game"}
+
+
+def _parse_blocker_refs(raw, default_key):
+    """(repo_key, number) for every #N in a raw **Blocked by:** value, routing
+    each ref to the repo named by its optional `[owner/]Repo#N` qualifier. A
+    bare ref or an unrecognized qualifier falls back to default_key — the
+    issue's own repo. (#1522)"""
+    refs = []
+    for m in _BLOCKER_REF_RE.finditer(raw or ""):
+        name = m.group(1)
+        key = _REPO_NAME_TO_KEY.get(name.lower(), default_key) if name else default_key
+        refs.append((key, m.group(2)))
+    return refs
 
 
 def _resolve_ref_satisfied(repo_slug, ref_str, cache):
@@ -940,12 +960,18 @@ def resolve_blocked_by(state):
             raw = (task.get("blocked_by") or "").strip()
             if not raw or raw.lower().startswith("(none"):
                 continue
-            refs = _BLOCKER_REF_RE.findall(raw)
+            refs = _parse_blocker_refs(raw, repo_key)
             if not refs:
                 continue  # free-text or PR-URL form — leave unchanged
 
             unresolved = []
-            for ref in refs:
+            for ref_key, ref in refs:
+                if ref_key != repo_key:
+                    # Cross-repo blocker — the scout's window only covers this
+                    # repo, so it can't resolve the ref here. Don't surface it
+                    # as blocked; fleet-claim's check_blockers (routed to the
+                    # referenced repo) is the authoritative pickup gate. (#1522)
+                    continue
                 if ref in closed_nums:
                     continue
                 if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
@@ -998,14 +1024,19 @@ def resolve_human_approved_blockers(state):
             raw = _parse_blocked_by(body)
             if not raw:
                 continue
-            refs = _BLOCKER_REF_RE.findall(raw)
+            refs = _parse_blocker_refs(raw, repo_key)
             if not refs:
                 # Blocker named only as prose / a PR URL with no resolvable #N
                 # (e.g. "Blocked on the redesign"). Hold the child out of the
                 # trigger set — matches resolve_blocked_by leaving it blocked.
                 issue["blocked"] = True
                 continue
-            for ref in refs:
+            for ref_key, ref in refs:
+                if ref_key != repo_key:
+                    # Cross-repo blocker: unresolvable from this repo's window.
+                    # Defer to fleet-queue-ingest's live cross-repo check rather
+                    # than blocking forever (this froze game #125 out — #1522).
+                    continue
                 if ref in closed_nums:
                     continue
                 if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):

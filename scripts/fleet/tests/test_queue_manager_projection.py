@@ -276,6 +276,38 @@ class IngestHonorsBlockedBy(unittest.TestCase):
         ])
         self.assertTrue(st["repos"]["engine"]["human_approved"][0]["blocked"])
 
+    def test_cross_repo_blocker_does_not_block(self):
+        # #1522: a blocker in a *different* repo is unresolvable from this
+        # repo's window — the scout must defer (treat as non-blocking) rather
+        # than block forever. Mirrors game#125 → IrredenEngine#1476, flipped.
+        st = self._resolved(human_approved=[
+            {"number": 820, "title": "child", "labels": ["human:approved"],
+             "body": "**Model:** opus\n**Blocked by:** jakildev/irreden#125"},
+        ])
+        self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"],
+                         "cross-repo blocker must defer to ingest, not block")
+
+    def test_same_repo_qualified_blocker_still_blocks(self):
+        # `IrredenEngine#N` on an engine child names the issue's *own* repo —
+        # the qualifier must resolve via the in-memory same-repo path, so an
+        # open predecessor still blocks (#1522 must not turn self-refs into
+        # defers).
+        st = self._resolved(human_approved=[
+            {"number": 821, "title": "child", "labels": ["human:approved"],
+             "body": "**Blocked by:** IrredenEngine#800"},
+        ])
+        self.assertTrue(st["repos"]["engine"]["human_approved"][0]["blocked"])
+
+    def test_same_repo_qualified_blocker_clears_when_closed(self):
+        st = self._resolved(
+            human_approved=[
+                {"number": 822, "title": "child", "labels": ["human:approved"],
+                 "body": "**Blocked by:** IrredenEngine#800"},
+            ],
+            closed=[{"number": 800, "title": "head"}],
+        )
+        self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"])
+
     def test_blocked_child_included_in_projection_and_slice(self):
         # #1527: blocked children are now ingestion targets — they get queued
         # up front (fleet:queued + model + fleet:blocked), so both head AND

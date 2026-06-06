@@ -29,6 +29,9 @@
 #     form, which accepts MERGED only — if abandoned-PR refs ever need to
 #     fail the gate, the `#N` branch in fleet-claim.check_blockers needs
 #     to differentiate PR-state CLOSED from issue-state CLOSED.)
+#   - cross-repo ref `[owner/]Repo#N`, CLOSED in the referenced repo → pass;
+#     still OPEN in the referenced repo → fail (#1522 — the gate routes the
+#     state probe to the referenced repo, not the issue's own).
 
 set -euo pipefail
 
@@ -92,14 +95,18 @@ cat >"$STUB_DIR/gh" <<'GHSTUB'
 has_jq=0
 issue_num=""
 pr_url=""
+repo=""        # captured from `--repo R` so cross-repo refs (#1522) can be
+prev=""        # routed-checked: the same #N resolves differently per repo.
 for arg in "$@"; do
     [[ "$arg" == "--jq" ]] && has_jq=1
+    [[ "$prev" == "--repo" ]] && repo="$arg"
     if [[ -z "$issue_num" && "$arg" =~ ^[0-9]+$ ]]; then
         issue_num="$arg"
     fi
     if [[ -z "$pr_url" && "$arg" == https://github.com/*/pull/* ]]; then
         pr_url="$arg"
     fi
+    prev="$arg"
 done
 
 case "$1 $2" in
@@ -112,6 +119,15 @@ case "$1 $2" in
                 200) echo "MERGED" ;;   # PR, merged
                 201) echo "OPEN" ;;     # PR, still open
                 202) echo "CLOSED" ;;   # PR, abandoned (closed without merge)
+                125)
+                    # #1522 cross-repo routing probe: CLOSED only when the check
+                    # is routed to the *game* repo (the referenced repo); OPEN
+                    # if it's mis-routed to the issue's own (engine) repo.
+                    case "$repo" in
+                        jakildev/irreden) echo "CLOSED" ;;
+                        *)                 echo "OPEN" ;;
+                    esac ;;
+                126) echo "OPEN" ;;     # cross-repo (game) ref, still open
                 *)   echo "OPEN" ;;
             esac
             exit 0
@@ -185,6 +201,16 @@ case "$1 $2" in
             2016)
                 # #1423: inline-bold form with no #N/PR ref — must not gate.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Part of epic:** #104 · **Blocked by: the redesign**\n"}'
+                ;;
+            2017)
+                # #1522: cross-repo blocker in another repo (owner-qualified),
+                # CLOSED there → claim succeeds once routed to the right repo.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** jakildev/irreden#125\n"}'
+                ;;
+            2018)
+                # #1522: cross-repo blocker (bare repo qualifier), still OPEN in
+                # the referenced repo → claim fails.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** irreden#126\n"}'
                 ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
@@ -340,6 +366,20 @@ echo "T16: inline-bold 'Blocked by: the redesign' (no ref) → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2016 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "inline-bold no-ref bypasses gate → exit 0"
 release_quiet 2016
+
+# --- T17: cross-repo blocker, CLOSED in the referenced repo → succeeds (#1522)
+# The same #125 reads OPEN in engine but CLOSED in game; the gate must route
+# `jakildev/irreden#125` to game (where it's CLOSED) and let the claim through.
+# Before #1522 it checked engine (OPEN) and froze the task out forever.
+echo "T17: cross-repo 'jakildev/irreden#125' CLOSED in game → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2017 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "cross-repo game#125 CLOSED → exit 0 (routed to game, not engine)"
+release_quiet 2017
+
+# --- T18: cross-repo blocker, still OPEN in the referenced repo → fails (#1522)
+echo "T18: cross-repo 'irreden#126' OPEN in game → claim fails"
+actual=0; "$FLEET_CLAIM" claim 2018 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "cross-repo game#126 OPEN → exit 1"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
