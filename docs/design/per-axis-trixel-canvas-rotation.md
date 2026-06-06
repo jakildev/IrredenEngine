@@ -636,23 +636,22 @@ solid:**
   is wrong by construction**, because the path warps stored 2D faces and never
   re-rasterizes the rotated solid.
 
-### #1551 scope decision
+### The cube case + #1551 (closed — folded into epic #1553)
 
 `#1551`'s discriminating DoD test — *"an asymmetric detached solid at ~45°
-reads as a true 3D-rotated solid (voxel centers reorganized)"* — is therefore
-**unreachable on this path** and is **dropped from #1551**. #1551 is re-scoped
-to the **cube-only, consumer-backed** goal: a clean, cohesive 3-face cube at
-**every** residual pose + no temporal pop through snap intervals (absorbs
-`#1539`), via a guaranteed-coverage forward-scatter (deterministic per-cell
-supersampling sized to the destination stretch, retiring the `#1494` dilation
-heuristic) + deadband path-switch alignment. The decision rests on a verified
-**consumer-reality** check: the only detached *rotating* content in the engine
-+ creations today is **cubes** (`canvas_stress`, 10³); any asymmetric detached
-entity present in current content is **static** (no auto-spin component). The
-true-3D-asymmetric criterion had **no current consumer** at decision time —
-which is why #1551 itself is cube-only. (The capability is nonetheless being
-built proactively as epic #1553 below; #1551 ships clean cubes sooner as the
-interim path and is superseded when the epic retires the forward-scatter.)
+reads as a true 3D-rotated solid (voxel centers reorganized)"* — is
+**unreachable on the forward-scatter path** by construction. The cube is the
+snap-silhouette-invariant exception: its residual defects are a coverage/seam
+class, not the 2D-warp wrongness. At design-block time a **consumer-reality**
+check found the only detached *rotating* content is **cubes** (`canvas_stress`,
+10³) — any asymmetric detached entity in current content is **static** (no
+auto-spin) — so the true-3D criterion had no consumer, and #1551 was initially
+re-scoped to a cube-only stopgap.
+
+The team then chose to build the true-3D capability proactively: **#1551 / PR
+#1552 were closed as superseded by epic #1553**, and the cube goal is **folded
+into the epic's P1** — clean detached cubes come from re-voxelize (a cube
+re-voxelizes cleanly), not from a separate forward-scatter band-aid.
 
 ### The true-3D path (detached GPU re-voxelize — committed as epic #1553)
 
@@ -680,10 +679,12 @@ rotation lives in cell positions, not a deform** (re-voxelize canvases render
 through *cardinal* frame data, like attached GRID) and **CPU-first to prove the
 model, then GPU** — are in `~/.fleet/plans/issue-1553.md`.
 
-> **Do not band-aid past cube-clean.** Once #1551's cube-coverage/seam fixes
-> land, the forward-scatter path is **done** — further "make the asymmetric
-> case work" effort on it is wasted by construction. The next step for
-> asymmetric is the re-voxelize epic above, not another scatter heuristic.
+> **Do not band-aid the forward-scatter.** Effort to "make the asymmetric case
+> work" on this path is wasted by construction, and even the cube case is now
+> being moved to re-voxelize (epic #1553, P1) rather than fixed with more
+> scatter heuristics. The forward-scatter is on a retirement path (epic P6);
+> the next step for any detached SO(3) quality is re-voxelize, not another
+> scatter tweak.
 
 ## Open decisions (resolve during implementation)
 
