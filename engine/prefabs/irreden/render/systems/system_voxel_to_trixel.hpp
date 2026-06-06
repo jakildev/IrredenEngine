@@ -65,7 +65,8 @@ inline void buildVoxelFrameData(
     FrameDataVoxelToCanvas &frameData,
     const C_TriangleCanvasTextures &canvas,
     int liveVoxelCount,
-    const C_CanvasLocalRotation &canvasRotation
+    const C_CanvasLocalRotation &canvasRotation,
+    bool perAxisActive
 ) {
     // The single-canvas raster always uploads perAxisRoute_ == 0 (byte-
     // identical to master). The smooth-Z-yaw per-axis pass flips it to 1/2/3
@@ -100,38 +101,58 @@ inline void buildVoxelFrameData(
         frameData.visualYaw_ = 0.0f;
         frameData.rasterYaw_ = 0.0f;
         frameData.residualYaw_ = 0.0f;
-        // Per-entity SO(3) visible triplet: the three faces the camera
-        // actually sees for this entity's orientation (one per axis, in
-        // X/Y/Z slot order). Previously hardcoded to {X_NEG, Y_NEG, Z_NEG}
-        // regardless of rotation, so the snap+residual deform below ran on
-        // back-facing faces and entities glitched instead of rotating
-        // (#1386). At identity the resolver returns the same legacy triplet,
-        // so non-rotating entities stay byte-identical. The resolver is
-        // reused verbatim by the main-canvas per-entity path (#1299).
+        // Snap to the nearest of the 24 cube orientations; the residual is the
+        // continuous leftover the per-face deform (single-canvas) and the
+        // per-axis forward-scatter (off-snap) act on. A cube is invariant under
+        // the snap, so this keeps the per-face skew small enough to stay clean
+        // (T-295).
+        const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation.rotation_);
+        // Face-selection + occlusion-depth FRAME. The off-snap per-axis scatter
+        // repositions every voxel corner by the RESIDUAL alone
+        // (pos3DtoPos2DIsoRotated(corner, residual) in
+        // v_peraxis_scatter_detached.glsl), so the camera-visible set there is
+        // visibleTriplet(RESIDUAL). Selecting on the full rotation (#1525's
+        // cohesion handshake) instead picks the faces front-facing under the
+        // full orientation — whose iso view axis R_snap⁻¹·(1,1,1) differs from
+        // the residual's wherever the snap doesn't fix (1,1,1) — so a selected
+        // face renders back-facing and drops to background (the #1537 chevron).
+        // The single-canvas (at-snap / per-axis-overflow) emit instead keeps
+        // voxels at their model iso position and only skews face SHAPE by the
+        // residual, so its visible set is the full orientation's. `perAxisActive`
+        // is the caller's ground-truth allocation state (off-snap AND within the
+        // kMaxDetachedRotatingCanvases budget), so the store and the
+        // ENTITY_CANVAS_TO_FRAMEBUFFER scatter always pick the same frame.
+        const vec4 selectionRotation = perAxisActive ? residual : canvasRotation.rotation_;
+        // Per-entity SO(3) visible triplet: the three faces the camera actually
+        // sees, one per axis in X/Y/Z slot order. Previously hardcoded to
+        // {X_NEG, Y_NEG, Z_NEG} regardless of rotation, so the deform below ran
+        // on back-facing faces and entities glitched instead of rotating
+        // (#1386). At identity the resolver returns the same legacy triplet, so
+        // non-rotating entities stay byte-identical. The scatter recovers each
+        // cell's face via visibleFaceIds[slot] (#1525), so it MUST key its
+        // visibleTriplet on the identical `selectionRotation`.
         const std::array<IRMath::FaceId, 3> visibleFaces =
-            IRMath::visibleTriplet(canvasRotation.rotation_);
+            IRMath::visibleTriplet(selectionRotation);
         frameData.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
             static_cast<int>(visibleFaces[1]),
             static_cast<int>(visibleFaces[2]),
             0
         );
-        // Per-voxel occlusion depth projects onto the entity-rotated iso axis
-        // `R⁻¹·(1,1,1)` (#1462) — the same model-frame axis `visibleTriplet`
-        // selects faces from, so face visibility and occlusion order stay on
-        // one per-entity frame. Identity entity → (1,1,1) → byte-identical.
-        frameData.voxelDepthAxis_ = vec4(IRMath::isoDepthAxisModel(canvasRotation.rotation_), 0.0f);
-        // Snap to the nearest of the 24 cube orientations and deform by the
-        // residual only: a cube is invariant under the snap, so this keeps
-        // the per-face skew small enough to stay clean (T-295).
-        const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation.rotation_);
+        // Per-voxel occlusion depth projects onto the SAME frame's iso axis
+        // `R⁻¹·(1,1,1)` (#1462), so face visibility and occlusion order stay on
+        // one frame. Identity entity → (1,1,1) → byte-identical. Read only by
+        // the single-canvas emit; the off-snap per-axis store keys depth on the
+        // raw x+y+z origin-recovery metric, so this is inert there but kept on
+        // the matching frame for clarity.
+        frameData.voxelDepthAxis_ = vec4(IRMath::isoDepthAxisModel(selectionRotation), 0.0f);
+        // Per-slot deform upload: slot 0 / 1 / 2 carries the X / Y / Z axis face
+        // matrix. `visibleTriplet` returns faces in axis order, so each slot's
+        // axis is fixed regardless of polarity — the deform is axis-only (X_NEG
+        // and X_POS share the X matrix), so it is unchanged.
         const mat2 fdX = IRMath::faceDeformationMatrixSO3(IRMath::kXFace, residual);
         const mat2 fdY = IRMath::faceDeformationMatrixSO3(IRMath::kYFace, residual);
         const mat2 fdZ = IRMath::faceDeformationMatrixSO3(IRMath::kZFace, residual);
-        // Per-slot upload: slot 0 / 1 / 2 carries the X / Y / Z axis face
-        // matrix. `visibleTriplet` returns faces in axis order, so each
-        // slot's axis is fixed regardless of polarity — the deform is
-        // axis-only (X_NEG and X_POS share the X matrix), so it is unchanged.
         frameData.faceDeform_[0] = vec4(fdX[0], fdX[1]);
         frameData.faceDeform_[1] = vec4(fdY[0], fdY[1]);
         frameData.faceDeform_[2] = vec4(fdZ[0], fdZ[1]);
@@ -483,11 +504,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             triangleCanvasTextures.size_
         );
 
+        // Detached entity with allocated per-axis canvases (rotating off an
+        // octahedral snap) → its smooth voxels are forward-scattered to the
+        // framebuffer by ENTITY_CANVAS_TO_FRAMEBUFFER (P3b / #1475). Resolve the
+        // lookup once, up front: it tells buildVoxelFrameData which frame to
+        // select faces in (residual when the scatter renders this entity, #1537),
+        // and gates BOTH the single-canvas skip and the per-axis store dispatch
+        // later in this tick. Null for the main canvas (not detached) and for
+        // at-snap / per-axis-overflow detached entities (no allocation).
+        C_PerAxisTrixelCanvases *detachedAxes =
+            canvasLocalRotation.isDetached() ? lookupDetachedPerAxis(entity) : nullptr;
+
         buildVoxelFrameData(
             frameData_,
             triangleCanvasTextures,
             liveVoxelCount,
-            canvasLocalRotation
+            canvasLocalRotation,
+            detachedAxes != nullptr
         );
 
         const int renderMode = frameData_.voxelRenderOptions_.x;
@@ -603,14 +636,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
-        // Detached entity with allocated per-axis canvases (rotating off an
-        // octahedral snap) → its smooth voxels are forward-scattered to the
-        // framebuffer by ENTITY_CANVAS_TO_FRAMEBUFFER (P3b / #1475). Resolve the
-        // lookup once: it gates BOTH the single-canvas skip just below and the
-        // per-axis store dispatch later in this tick. Null for the main canvas
-        // (not detached) and for at-snap detached entities (no allocation).
-        C_PerAxisTrixelCanvases *detachedAxes =
-            canvasLocalRotation.isDetached() ? lookupDetachedPerAxis(entity) : nullptr;
+        // `detachedAxes` was resolved up front (before buildVoxelFrameData) so
+        // the store could pick the matching face-selection frame; reuse it here.
 
         // Smooth camera Z-yaw (T3 / #1310) + detached SO(3) (P3b / #1475): while
         // the per-axis canvases are active, SKIP the single-canvas voxel

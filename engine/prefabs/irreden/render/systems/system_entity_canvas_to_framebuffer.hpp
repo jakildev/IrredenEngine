@@ -236,18 +236,20 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 sfd.distanceOffset_ = 0;
                 sfd.perAxisBase_ = perAxisBase;
                 // Per-slot model FaceId triplet — MUST be the identical array
-                // P3a's store wrote (buildVoxelFrameData: visibleTriplet on the
-                // FULL rotation, not the residual). The store encodes the
-                // workgroup SLOT into rawDist & 3, so the scatter recovers each
-                // face via visibleFaceIds[slot]. Left unset it defaulted to
-                // {0,0,0,0} — every slot resolved to X_NEG / axis 0, so the
-                // Y- and Z-axis canvases recovered with the wrong in-plane axis
-                // (faceOriginFromInPlane) and spanned the wrong face plane
-                // (faceSpanCorner), flinging those faces off the cube silhouette
-                // instead of meeting at shared edges (#1525). Camera-path twin:
-                // drawPerAxisScatter in system_trixel_to_framebuffer.hpp.
-                const std::array<IRMath::FaceId, 3> visibleFaces =
-                    IRMath::visibleTriplet(fullRotation);
+                // P3a's store wrote (buildVoxelFrameData), since the store
+                // encodes the workgroup SLOT into rawDist & 3 and the scatter
+                // recovers each face via visibleFaceIds[slot] (#1525). Keyed on
+                // the RESIDUAL, not the full rotation: this scatter only runs
+                // off a snap (per-axis canvases allocated) and repositions every
+                // corner by the residual below (pos3DtoPos2DIsoRotated(corner,
+                // residual)), so the camera-visible set is visibleTriplet(residual)
+                // — the store's off-snap branch keys on the same residual. Using
+                // the full rotation picked faces front-facing under the full
+                // orientation whose iso view axis differs from the residual's,
+                // dropping a back-facing face to background (the #1537 chevron).
+                // Camera-path twin: drawPerAxisScatter in
+                // system_trixel_to_framebuffer.hpp.
+                const std::array<IRMath::FaceId, 3> visibleFaces = IRMath::visibleTriplet(residual);
                 sfd.visibleFaceIds_ = ivec4(
                     static_cast<int>(visibleFaces[0]),
                     static_cast<int>(visibleFaces[1]),
