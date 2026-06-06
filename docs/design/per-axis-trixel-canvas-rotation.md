@@ -593,6 +593,91 @@ under `--auto-screenshot`, so the smooth-rotation visual is verified at P5 /
 > assumption — exactly as the camera path's T3 decision (`## Implementation
 > decision` above) established.
 
+## Detached forward-scatter is terminal for asymmetric solids (#1551, architect 2026-06-06)
+
+The detached forward-scatter (P3b) is **a 2D image-warp of stored faces, not a
+3D re-rasterization of the rotated solid** — and that is a *structural* limit,
+not a tuning problem. This section is the source of truth for what the path can
+and cannot do, so a future worker does not re-derive it or sink another
+band-aid into it. Decided resolving #1551 (epic #1444's re-opened headline);
+the firsthand root-cause is PR #1552, the mechanism citations below are
+verified against current `master`.
+
+**The mechanism (verified):** the store
+(`c_voxel_to_trixel_stage_1.glsl:209-221`) writes the entity's three visible
+faces in **undeformed face-local model-space**, keyed by the un-rotated
+`x+y+z`. The scatter (`v_peraxis_scatter_detached.glsl`) recovers each face's
+exact model origin and forward-maps its corners by
+`pos3DtoPos2DIsoRotated(corner, residual) = iso(R_residual·corner)`. Because
+that map is **linear**, the whole off-snap composite is a per-face **affine 2D
+skew** of the octahedral-snap orientation's stored faces — it never moves a
+voxel center in 3D. The store's own rationale states the load-bearing premise
+(`system_voxel_to_trixel.hpp:104-108`): *"A cube is invariant under the snap,
+so this keeps the per-face skew small enough to stay clean."*
+
+**That premise holds only for the cube — and is false for any asymmetric
+solid:**
+
+- **Cube (silhouette-invariant under the octahedral snap):** the skew is a
+  genuine view of the rotated cube, so the path is *correct*. Its residual-pose
+  defects are a **rasterization-coverage / depth-seam** class — sparse
+  forward-map coverage under magnification (the `#1494` dilation, `#1538`
+  speckle, `#1499` sliver, `#1544/#1545` jagged-edge fixes all patch exactly
+  this) and face-seam mis-sort in the 3-canvas GL_LESS composite. These are
+  *closable on this path* — the cube silhouette is the same shape the skew
+  produces.
+- **Asymmetric solid (not snap-invariant):** the skewed snap-orientation faces
+  are the **wrong faces** — at mid-residual the actually-visible face *set* and
+  the voxel-center layout differ from the snapped orientation's, and an affine
+  skew of stored 2D faces cannot reproduce either. The result reads as a
+  2D-skewed cardinal arrangement, never a true 3D-rotated solid. **No
+  forward-scatter improvement (better dilation, guaranteed-coverage
+  supersampling, full-rotation reposition without the snap) can close this — it
+  is wrong by construction**, because the path warps stored 2D faces and never
+  re-rasterizes the rotated solid.
+
+### #1551 scope decision
+
+`#1551`'s discriminating DoD test — *"an asymmetric detached solid at ~45°
+reads as a true 3D-rotated solid (voxel centers reorganized)"* — is therefore
+**unreachable on this path** and is **dropped from #1551**. #1551 is re-scoped
+to the **cube-only, consumer-backed** goal: a clean, cohesive 3-face cube at
+**every** residual pose + no temporal pop through snap intervals (absorbs
+`#1539`), via a guaranteed-coverage forward-scatter (deterministic per-cell
+supersampling sized to the destination stretch, retiring the `#1494` dilation
+heuristic) + deadband path-switch alignment. The decision rests on a verified
+**consumer-reality** check: the only detached *rotating* content in the engine
++ creations today is **cubes** (`canvas_stress`, 10³); any asymmetric detached
+entity present in current content is **static** (no auto-spin component). The
+true-3D-asymmetric criterion has **no current consumer** — building for it now
+would be a foundation ahead of demand.
+
+### The true-3D path (deferred — detached GPU re-voxelize)
+
+True-3D detached rotation requires **re-rasterizing the rotated solid in 3D**,
+the detached analogue of the attached **GRID re-voxelize** model
+([`voxel-face-rasterization.md`](voxel-face-rasterization.md) §"Per-entity
+SO(3) on the main canvas — RETIRED (#1443)"): fill a **private per-entity voxel
+grid** under the **full** rotation on the GPU, run the ordinary
+voxel→trixel→canvas pipeline on it so the **camera** (not a per-entity skew)
+drives face selection + deform, then composite that canvas at the entity's
+**screen-locked** placement. This is the "GPU re-voxelize (fill cells under the
+full rotation)" that `voxel-face-rasterization.md` names as the path for
+per-voxel-identity-preserving rotation — generalized from attached to detached.
+It is **multi-PR** (re-voxelize dispatch into the private grid → screen-locked
+placement of the re-voxelized canvas → per-voxel depth/occlusion → AO/sun/light
+integration → Metal parity → render-verify baselines) and would **retire the
+detached forward-scatter** on completion. It is **NOT** built (`#1396`'s GPU
+prepass transforms positions of *existing* voxels; it does not fill cells), and
+it is **deferred — gated on an actual asymmetric detached rotating consumer.**
+Tracking: **#1553** (unlabeled backlog; needs a consumer + an architect design
+pass before it is queue-ready — do not hand a worker a queued build task for it).
+
+> **Do not band-aid past cube-clean.** Once #1551's cube-coverage/seam fixes
+> land, the forward-scatter path is **done** — further "make the asymmetric
+> case work" effort on it is wasted by construction. The next step for
+> asymmetric is the re-voxelize epic above, not another scatter heuristic.
+
 ## Open decisions (resolve during implementation)
 
 - **Lighting / AO placement. — RESOLVED (T4 / #1311): trixel-level per-axis.**
