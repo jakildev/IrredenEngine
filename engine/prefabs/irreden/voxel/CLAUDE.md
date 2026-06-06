@@ -104,7 +104,13 @@ for single voxels and particles.
   owns screen placement) and has no frustum-cull gate (the world cull viewport
   doesn't apply to a canvas-local private pool). Register AFTER
   `PROPAGATE_CANVAS_ROTATION` and `UPDATE_VOXEL_SET_CHILDREN`. Round-to-cell
-  aliasing is accepted at P1 (refined in epic P3).
+  aliasing is accepted at P1 (refined in epic P3). **Invariant: one centered
+  voxel set per private pool** — because it ticks the canvas and rewrites the
+  whole pool with the single `C_CanvasLocalRotation.rotation_` about the pool
+  origin (not per voxel-set with each set's own transform like the GRID
+  sibling), a second set on the same detached canvas would be rotated about the
+  canvas origin and ignore its own local transform. A future multi-set detached
+  canvas must rotate per set about each set's pivot.
 - `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**

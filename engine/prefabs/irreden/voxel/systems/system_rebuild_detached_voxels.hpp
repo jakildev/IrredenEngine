@@ -29,6 +29,16 @@
 //    detached canvas's private pool lives in canvas-local space, so the GRID
 //    gate would mis-cull it. Detached pools are small and always re-filled.
 //
+// INVARIANT: one centered voxel set per private pool. Unlike the GRID sibling
+// (which ticks per voxel-SET and rewrites only that set's span with its own
+// C_WorldTransform), this ticks the CANVAS and rewrites the WHOLE pool
+// [0, safeCount) with the single C_CanvasLocalRotation.rotation_ about the pool
+// origin. A second set added to the same detached canvas would therefore be
+// rotated about the canvas origin and ignore its own local transform. The
+// current consumer (one createWithVoxelPool solid) is correct; a future
+// multi-set detached canvas must rotate per set about each set's pivot. See
+// voxel/CLAUDE.md.
+//
 // Skipped (early returns):
 //  - `C_CanvasLocalRotation::reVoxelize_ == false` — the main world canvas
 //    (sentinel rotation) and forward-scatter DETACHED canvases.
