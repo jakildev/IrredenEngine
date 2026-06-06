@@ -85,7 +85,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
 
     void beginTick() {
         instances_.clear();
+        instances_.reserve(kMaxEntityCanvasInstances);
         scatterInstances_.clear();
+        scatterInstances_.reserve(kMaxEntityCanvasInstances);
 
         // Hoist the frame constants out of the per-entity tick (#1520). The
         // "mainFramebuffer" named entity is stood up at pipeline init and never
