@@ -739,13 +739,14 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
   when the C++ pipeline is built before the script runs (e.g. the midi
   runtime's `initSystems()` runs before `main.lua`) and Lua wants to add
   one UPDATE / RENDER system — `registerPipeline` would wipe the C++
-  systems; `appendSystem` composes. Raises a Lua error if the system is
-  already in the pipeline (double-add → ticks twice).
+  systems; `appendSystem` composes. Asserts in debug if the system is
+  already in the pipeline (double-add → ticks twice in release).
 - **`IRSystem.insertSystemBefore(event, sysId, anchor)`** /
   **`IRSystem.insertSystemAfter(event, sysId, anchor)`** (#1540) — the
   position-aware variants; insert `sysId` as its own serial group
   immediately before / after `anchor` (a SystemId already in `event`'s
-  pipeline). Raises a Lua error if `anchor` isn't in the pipeline.
+  pipeline). Asserts in debug if `anchor` isn't in the pipeline; in
+  release a bad anchor silently front-inserts.
   Underlying semantics: `engine/system/CLAUDE.md` "Appending to a live
   pipeline".
 - **Game-side enums** (e.g. `IRGameSystem.GameSystemName`) extend the

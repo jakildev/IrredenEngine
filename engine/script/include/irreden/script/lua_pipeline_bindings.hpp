@@ -305,8 +305,9 @@ inline void bindRegisterPipelineAndSystemId(
     // #1540: position-aware variants — insert `sysId` as its own serial
     // group immediately before / after `anchorId` (a SystemId already in
     // `event`'s pipeline). Same single-system, own-group semantics as
-    // appendSystem; raises a Lua error if the anchor isn't in the
-    // pipeline or the system is already present.
+    // appendSystem; asserts in debug if the anchor isn't in the pipeline
+    // or the system is already present (release: bad anchor front-inserts,
+    // duplicate ticks twice).
     //
     //     local anchor = IRSystem.systemId(IRSystem.SystemName.LIFETIME)
     //     IRSystem.insertSystemBefore(IRTime.UPDATE, luaSysId, anchor)
