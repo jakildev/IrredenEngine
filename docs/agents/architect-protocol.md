@@ -272,7 +272,10 @@ conversation), follow the shared
 [`docs/agents/PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) — read the full
 thread, post the structured plan comment (including the **cross-system audit**
 when planning a deletion/migration of a shared resource), save
-`~/.fleet/plans/issue-<N>.md`, and remove `fleet:needs-plan` (leaving
+`~/.fleet/plans/issue-<N>.md` **and commit it into the repo at
+`.fleet/plans/issue-<N>.md`** (a small docs PR — workers read the plan from the
+repo copy synced from master; `~/.fleet/plans/` is same-host staging only, and
+there is no automatic copy), and remove `fleet:needs-plan` (leaving
 `human:approved`). If you disagree with the issue's direction, comment but
 leave `fleet:needs-plan` on. If the work decomposes into a multi-issue stack,
 file it via `file-epic` per Filing tasks above.
@@ -329,8 +332,16 @@ When working a `fleet:design-blocked` PR:
    3a. **Plan file** (always): update `~/.fleet/plans/issue-<N>.md` (where
    `<N>` is the issue number referenced in the PR body via `Closes #<N>`). Add
    a revision-history entry at the bottom and update scope / acceptance
-   criteria in place. The worker reads the updated plan when it picks the PR
-   back up. If the PR has no backing issue (rare), skip the plan-file update
+   criteria in place. **Then commit it into the repo at
+   `<repo-root>/.fleet/plans/issue-<N>.md`** — `~/.fleet/plans/` is local
+   staging visible only on this host, but the fleet runs across hosts and a
+   worker reads the plan from the **repo copy, synced from master** (per the
+   worker role docs). There is no automatic queue-manager copy; if you skip the
+   commit, a cross-host worker that resumes the PR finds no plan and falls back
+   to the issue body, losing your direction. The commit is docs-only — fold it
+   into the design-doc PR (step 3b) when there is one, else a small standalone
+   docs PR; filenames stay `issue-<N>.md` (the obsolete `T-<NNN>` rename is
+   retired). If the PR has no backing issue (rare), skip the plan-file update
    and put the full direction inline in the PR comment in step 4. For an
    engine-level decision, keep the plan file short and **point at the design
    doc** rather than duplicating it — the doc is canonical, the plan file is
