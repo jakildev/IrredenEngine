@@ -104,7 +104,13 @@ vertex VertexOut v_peraxis_scatter_detached(
     faceInPlaneUnitAxes(axis, eu, ev);
     float2 su = (frameData.mpMatrix * float4(pos3DtoPos2DIsoRotated(eu, frameData.detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
     float2 sv = (frameData.mpMatrix * float4(pos3DtoPos2DIsoRotated(ev, frameData.detachedResidual), 0.0, 0.0)).xy * pxPerNdc;
-    clipCorner.xy += scatterConservativeDilation(su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx);
+    // Pitch-proportional margin (#1538) — mirror of the GLSL twin: floor the fixed
+    // margin against a fraction of the on-screen cell pitch so the detached seam
+    // gap (which scales with pitch) closes at every scale without blobbing small cubes.
+    // One sqrt of the larger squared edge — not two length() calls.
+    const float pitchPx = sqrt(max(dot(su, su), dot(sv, sv)));
+    const float detachedMargin = max(kScatterDilateMarginPx, kScatterDetachedPitchFraction * pitchPx);
+    clipCorner.xy += scatterConservativeDilation(su, sv, sign(in.position), detachedMargin, ndcPerPx);
     clipCorner.y = -clipCorner.y;
     out.position = clipCorner;
 

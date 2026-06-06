@@ -646,22 +646,55 @@ void faceInPlaneUnitAxes(int axis, out vec3 eu, out vec3 ev) {
 // silhouette/over-fill within a fraction of a pixel.
 const float kScatterDilateMarginPx = 0.85;
 
-// Conservative screen-space coverage for the per-axis forward-scatter (#1494).
-// Each non-empty cell scatters one deformed face rhombus; at off-snap residual
-// poses the rhombus can collapse to a sub-pixel-thin sliver that slips between
-// fragment centers and drops out under pixel-center rasterization — the visible
-// "thin vertical sliver"/waffle (#1494). A linear iso-of-rotation map of the
-// gap-free unit-cell tiling is gap-free in CONTINUOUS space, but that guarantee
-// does not survive finite-resolution rasterization of a sub-pixel polygon.
+// Miter limit for the conservative dilation below (#1538): caps how far a sharp
+// (acute) sliver corner is allowed to extend, in multiples of marginPx. Bounds
+// the over-fill so a foreshortened cell's tip can't shoot off into a blob while
+// still letting every corner move outward enough to close the inter-cell cracks.
+const float kScatterMiterLimit = 2.0;
+
+// Pitch-proportional coverage fraction for the DETACHED forward-scatter (#1538).
+// The detached cubes leave black seams between adjacent cells / where the
+// visible faces meet under an off-snap residual — a real gap (measured 2-6px on
+// a ~5-8px-pitch cube) that scales with the on-screen cell PITCH (the projected
+// unit-axis length), not a fixed sub-pixel crack. Closing it with a fixed margin
+// needs a few px, which over-grows SMALL on-screen cubes into blobs (observed).
+// A margin set to this fraction of the cell pitch instead tracks the gap at
+// every scale — it closes the seam on a large cube where the gap is widest and
+// shrinks to a sliver on a tiny cube where the fixed kScatterDilateMarginPx
+// floor takes over, so small cubes never blob. Used as a floor against
+// kScatterDilateMarginPx in the detached scatter only (camera-path scatter keeps
+// the fixed margin — its world canvas isn't the small-cube regime this
+// addresses). CPU has no mirror (shader-only).
+const float kScatterDetachedPitchFraction = 0.5;
+
+// Conservative screen-space coverage for the per-axis forward-scatter (#1494,
+// #1538). Each non-empty cell scatters one deformed face rhombus; at off-snap
+// residual poses the rhombus foreshortens toward a sub-pixel-thin sliver that
+// slips between fragment centers and drops out under pixel-center rasterization.
+// A linear iso-of-rotation map of the gap-free unit-cell tiling is gap-free in
+// CONTINUOUS space, but that guarantee does not survive finite-resolution
+// rasterization of a sub-pixel polygon, so each quad is grown outward.
 //
-// Grow each quad ~`marginPx` framebuffer pixels outward along BOTH of its screen
-// edge normals so the thin dimension always spans a fragment center. `su`/`sv`
-// are the face's two in-plane unit axes projected to framebuffer pixels; the
-// margin is a fixed pixel amount, so it is negligible at large on-screen size
-// (silhouette unchanged) and is screen-space (independent of subdivision
-// density / zoom) — unlike the rejected model-space ×2 quad span, which scales
-// with size and over-fills. Returns the clip-space (NDC) offset to add to the
-// corner; `cornerSign` is sign(aPos) (cornerSign.x -> e_u edge, .y -> e_v edge).
+// `su`/`sv` are the face's two in-plane unit axes projected to framebuffer
+// pixels; the margin is a fixed pixel amount, so it is negligible at large
+// on-screen size (silhouette unchanged) and is screen-space (independent of
+// subdivision density / zoom) — unlike the rejected model-space ×2 quad span,
+// which scales with size and over-fills. `cornerSign` is sign(aPos)
+// (cornerSign.x -> e_u edge, .y -> e_v edge). Returns the clip-space (NDC)
+// offset to add to the corner.
+//
+// MITER, not additive sum (#1538). The naive `marginPx*(e1+e2)` of the two edge
+// normals CANCELS at a sliver's acute corner — there e1,e2 turn antiparallel, so
+// the sum collapses to ~0 and the sharp tip is left un-grown. Those un-grown
+// tips line up along the foreshortened lattice and leak: lattice-aligned black
+// cracks + interior speckle on detached cubes (#1538). The miter
+// marginPx*(e1+e2)/(1+dot(e1,e2)) is the displacement that moves BOTH edges out
+// by marginPx (|δ| = marginPx/cos(halfAngle)); it equals the additive sum at a
+// square corner (no change there) but keeps the acute tip moving outward instead
+// of cancelling. Clamp |δ| to kScatterMiterLimit*marginPx so the sharpening
+// 1/cos(halfAngle) can't blow a sliver tip into a blob (the failure mode of just
+// raising marginPx). This is geometric: the fix is WHERE the margin lands per
+// corner, not a bigger blunt margin.
 vec2 scatterConservativeDilation(
     vec2 su, vec2 sv, vec2 cornerSign, float marginPx, vec2 ndcPerPx
 ) {
@@ -669,10 +702,24 @@ vec2 scatterConservativeDilation(
     // to it (so a thin sliver is grown across its thin dimension, not along it).
     vec2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8));
     vec2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8));
-    vec2 push = vec2(0.0);
-    if (dot(nu, nu) > 1e-10) push += cornerSign.y * normalize(nu) * marginPx;
-    if (dot(nv, nv) > 1e-10) push += cornerSign.x * normalize(nv) * marginPx;
-    return push * ndcPerPx;
+    bool hasU = dot(nu, nu) > 1e-10;
+    bool hasV = dot(nv, nv) > 1e-10;
+    if (!hasU && !hasV) return vec2(0.0);
+    // Outward normal of each of the two edges meeting at this corner.
+    vec2 e1 = hasU ? cornerSign.y * normalize(nu) : vec2(0.0); // e_u edge normal
+    vec2 e2 = hasV ? cornerSign.x * normalize(nv) : vec2(0.0); // e_v edge normal
+    if (!hasU) return e2 * marginPx * ndcPerPx;                // only one edge -> plain push
+    if (!hasV) return e1 * marginPx * ndcPerPx;
+    vec2 sum = e1 + e2;
+    float sumLen = length(sum);
+    // Exactly-antiparallel (180deg, degenerate flat corner): no bisector — push
+    // along the shared thin direction (perpendicular to the edges), clamped.
+    if (sumLen < 1e-4) {
+        return vec2(-e1.y, e1.x) * (marginPx * kScatterMiterLimit) * ndcPerPx;
+    }
+    vec2 miterDir = sum / sumLen;
+    float cosHalf = max(dot(miterDir, e1), 1.0 / kScatterMiterLimit); // clamp the miter
+    return miterDir * (marginPx / cosHalf) * ndcPerPx;
 }
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion

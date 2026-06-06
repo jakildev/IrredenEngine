@@ -580,26 +580,52 @@ inline void faceInPlaneUnitAxes(int axis, thread float3& eu, thread float3& ev) 
 // Mirror of the GLSL constant in ir_iso_common.glsl.
 constant float kScatterDilateMarginPx = 0.85;
 
-// Conservative screen-space coverage for the per-axis forward-scatter (#1494) —
-// mirror of scatterConservativeDilation in ir_iso_common.glsl. At off-snap
-// residual poses a per-cell deformed rhombus can collapse to a sub-pixel-thin
-// sliver that slips between fragment centers and drops out under pixel-center
-// rasterization (the visible "thin vertical sliver"/waffle). Grow each quad
-// ~`marginPx` framebuffer pixels outward along BOTH screen edge normals so the
-// thin dimension always spans a fragment center; the margin is a fixed pixel
-// amount (negligible at large size -> silhouette unchanged; screen-space ->
-// independent of subdivision density), unlike the rejected model-space ×2 span.
-// `su`/`sv` are the face in-plane unit axes projected to framebuffer pixels;
-// `cornerSign` is sign(aPos). Returns the clip-space (NDC) offset to add.
+// Miter limit for the conservative dilation below (#1538). Mirror of the GLSL
+// constant in ir_iso_common.glsl.
+constant float kScatterMiterLimit = 2.0;
+
+// Pitch-proportional coverage fraction for the DETACHED forward-scatter (#1538).
+// Mirror of the GLSL constant in ir_iso_common.glsl — a margin floor set to this
+// fraction of the on-screen cell pitch closes the detached seam gap at every
+// scale without blobbing small cubes.
+constant float kScatterDetachedPitchFraction = 0.5;
+
+// Conservative screen-space coverage for the per-axis forward-scatter (#1494,
+// #1538) — mirror of scatterConservativeDilation in ir_iso_common.glsl. At
+// off-snap residual poses a per-cell deformed rhombus foreshortens toward a
+// sub-pixel-thin sliver that slips between fragment centers and drops out under
+// pixel-center rasterization. Grow each quad outward; `su`/`sv` are the face
+// in-plane unit axes projected to framebuffer pixels, `cornerSign` is
+// sign(position). Returns the clip-space (NDC) offset to add.
+//
+// MITER, not additive sum (#1538): the naive marginPx*(e1+e2) of the two edge
+// normals cancels at a sliver's acute corner (e1,e2 antiparallel -> sum ~0),
+// leaving the sharp tip un-grown — those tips line up along the foreshortened
+// lattice and leak (lattice-aligned cracks + interior speckle on detached
+// cubes). The miter marginPx*(e1+e2)/(1+dot(e1,e2)) moves BOTH edges out by
+// marginPx, equals the additive sum at a square corner, and keeps the acute tip
+// moving outward; clamp |δ| to kScatterMiterLimit*marginPx so a sliver tip can't
+// blow into a blob (the failure mode of just raising marginPx).
 inline float2 scatterConservativeDilation(
     float2 su, float2 sv, float2 cornerSign, float marginPx, float2 ndcPerPx
 ) {
     float2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8f));
     float2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8f));
-    float2 push = float2(0.0);
-    if (dot(nu, nu) > 1e-10f) push += cornerSign.y * normalize(nu) * marginPx;
-    if (dot(nv, nv) > 1e-10f) push += cornerSign.x * normalize(nv) * marginPx;
-    return push * ndcPerPx;
+    bool hasU = dot(nu, nu) > 1e-10f;
+    bool hasV = dot(nv, nv) > 1e-10f;
+    if (!hasU && !hasV) return float2(0.0);
+    float2 e1 = hasU ? cornerSign.y * normalize(nu) : float2(0.0); // e_u edge normal
+    float2 e2 = hasV ? cornerSign.x * normalize(nv) : float2(0.0); // e_v edge normal
+    if (!hasU) return e2 * marginPx * ndcPerPx;
+    if (!hasV) return e1 * marginPx * ndcPerPx;
+    float2 sum = e1 + e2;
+    float sumLen = length(sum);
+    if (sumLen < 1e-4f) {
+        return float2(-e1.y, e1.x) * (marginPx * kScatterMiterLimit) * ndcPerPx;
+    }
+    float2 miterDir = sum / sumLen;
+    float cosHalf = max(dot(miterDir, e1), 1.0f / kScatterMiterLimit);
+    return miterDir * (marginPx / cosHalf) * ndcPerPx;
 }
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion
