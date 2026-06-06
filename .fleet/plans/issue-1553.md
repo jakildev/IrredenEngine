@@ -59,7 +59,14 @@ needed → GPU re-voxelize" path) and **retires the detached forward-scatter**.
    cheaply; P2 replaces the fill with a GPU scatter for O(visible)-on-GPU
    cost. P1 is a shippable correctness baseline (same cost model as attached
    GRID, an accepted tradeoff), not a throwaway spike.
-3. **Both cubes and asymmetric solids go through re-voxelize.** Once the path
+3. **Per-pool resident GPU locals (P2 resource model — decided on PR #1562).**
+   Each re-voxelize pool owns a resident SSBO of its authored locals (GPU-RAII
+   on `C_VoxelPool`), seeded once; per frame only the canvas quat uploads
+   (O(entities)). The compute writes binding 5 per-canvas in place of
+   `flushStaticPositionRanges`. This supersedes the original "reuse #1396
+   binding-17/18" note — those are single-instance and break the demo's
+   two-canvas case. See `.fleet/plans/issue-1556.md`.
+4. **Both cubes and asymmetric solids go through re-voxelize.** Once the path
    exists, all detached SO(3) content uses it; the forward-scatter is retired
    wholesale (P6).
 
