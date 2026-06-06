@@ -146,7 +146,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // a per-entity canvas via `IRPrefab::EntityCanvas::create` so the C3
     // composite pass can thread `C_LocalTransform` through the per-canvas
     // TRS without re-rasterizing voxels per frame. The schema accepts the
-    // `IRComponent.RotationMode.{GRID,DETACHED}` enum value (an integer),
+    // `IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE}` enum value (an integer),
     // not a string — string-name lookups are deliberately avoided so the
     // Lua surface stays in lockstep with the C++ enum.
     IRComponents::RotationMode rotationMode = IRComponents::RotationMode::GRID;
@@ -156,7 +156,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             return makeError(
                 idStr,
                 path,
-                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED} "
+                "rotation_mode must be an "
+                "IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE} "
                 "value; string names are not accepted"
             );
         }
@@ -164,7 +165,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             return makeError(
                 idStr,
                 path,
-                "rotation_mode must be an IRComponent.RotationMode.{GRID,DETACHED} value"
+                "rotation_mode must be an "
+                "IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE} value"
             );
         }
         const lua_Integer raw = modeObj.as<lua_Integer>();
@@ -174,7 +176,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 idStr,
                 path,
                 "rotation_mode=" + std::to_string(raw) +
-                    " not recognized (expected IRComponent.RotationMode.GRID or .DETACHED)"
+                    " not recognized (expected IRComponent.RotationMode.GRID, .DETACHED, or "
+                    ".DETACHED_REVOXELIZE)"
             );
         }
         rotationMode = static_cast<IRComponents::RotationMode>(raw);
@@ -184,7 +187,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     if (sol::optional<bool> unboundedOpt = prefab["unbounded"]; unboundedOpt) {
         unbounded = *unboundedOpt;
     }
-    if (unbounded && rotationMode != IRComponents::RotationMode::DETACHED) {
+    if (unbounded && rotationMode != IRComponents::RotationMode::DETACHED &&
+        rotationMode != IRComponents::RotationMode::DETACHED_REVOXELIZE) {
         IRE_LOG_WARN(
             "Prefab.spawn('{}'): unbounded=true has no effect with "
             "rotation_mode=IRComponent.RotationMode.GRID.",
@@ -194,13 +198,15 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
 
     IRMath::ivec2 canvasSize{0};
     std::string canvasName;
-    if (rotationMode == IRComponents::RotationMode::DETACHED) {
+    if (rotationMode == IRComponents::RotationMode::DETACHED ||
+        rotationMode == IRComponents::RotationMode::DETACHED_REVOXELIZE) {
         sol::optional<sol::table> sizeOpt = prefab["canvas_size"];
         if (!sizeOpt) {
             return makeError(
                 idStr,
                 path,
-                "rotation_mode=IRComponent.RotationMode.DETACHED requires canvas_size = { x, y }"
+                "rotation_mode=IRComponent.RotationMode.DETACHED (or DETACHED_REVOXELIZE) requires "
+                "canvas_size = { x, y }"
             );
         }
         sol::optional<int> wOpt = (*sizeOpt)["x"];
@@ -273,7 +279,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // tear it down — the canvas is parented to mainFramebuffer (not the
     // spawned root), so destroying the root leaves it stranded otherwise.
     IREntity::EntityId detachedCanvasEntity = IREntity::kNullEntity;
-    if (rotationMode == IRComponents::RotationMode::DETACHED) {
+    if (rotationMode == IRComponents::RotationMode::DETACHED ||
+        rotationMode == IRComponents::RotationMode::DETACHED_REVOXELIZE) {
         if (IRRender::g_renderManager != nullptr) {
             IRComponents::C_EntityCanvas wrapper =
                 IRPrefab::EntityCanvas::create(canvasName, canvasSize);
@@ -281,12 +288,13 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             IREntity::setComponent(entity, wrapper);
         } else {
             // Headless context (unit tests, asset-only tooling). The entity
-            // stays tagged DETACHED so a later
-            // `IRPrefab::RotationMode::setMode(entity, DETACHED, ...)` call
+            // stays tagged DETACHED/DETACHED_REVOXELIZE so a later
+            // `IRPrefab::RotationMode::setMode(entity, ...)` call
             // — invoked once a RenderManager exists — picks the canvas up.
             IRE_LOG_WARN(
                 "Prefab.spawn('{}'): rotation_mode=IRComponent.RotationMode.DETACHED "
-                "requested without an active RenderManager; skipping canvas allocation.",
+                "(or DETACHED_REVOXELIZE) requested without an active RenderManager; "
+                "skipping canvas allocation.",
                 idStr.c_str()
             );
         }
