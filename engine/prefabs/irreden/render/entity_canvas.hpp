@@ -58,6 +58,17 @@ createWithVoxelPool(std::string canvasName, IRMath::ivec2 canvasSize, IRMath::iv
         canvasSize
     );
     IREntity::setComponent(canvas, IRComponents::C_DetachedCanvas{});
+    // #1375 (lighting-receive) — DESIGN-BLOCKED, do not wire here yet. A detached
+    // canvas renders in entity-LOCAL (model) space on both its render paths
+    // (per-axis scatter off-snap #1475, single-canvas faceDeformationMatrixSO3
+    // blit at-snap), so the existing world-frame lighting reconstruction
+    // (perAxisCellToWorld3D / trixelCanvasPixelToWorld3D) would sample the shared
+    // world sun-map + light volume at the wrong place. Attaching
+    // C_CanvasAOTexture / C_CanvasSunShadow / C_CanvasLightVolume here without the
+    // model->world reconstruction would regress the path (wrong shading) and
+    // C_CanvasLightVolume is a per-canvas 128^3 (~8MB) — see the NEEDS-DESIGN note
+    // on the #1375 PR for the open architecture questions (shared-vs-owned light
+    // volume, lighting both model-frame paths, GLSL+Metal reconstruction).
     return IRComponents::C_EntityCanvas{canvas, canvasSize};
 }
 
