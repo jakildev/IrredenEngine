@@ -313,6 +313,110 @@ void spawnDetachedReVoxelizeSolid(
     );
 }
 
+// Orbit ring (#1259 follow-on): a wider second ring of MORE shape variety that
+// tumbles around the existing center cluster. Each entry carves a distinct
+// silhouette out of a centered voxel box and spins it, cycling the three
+// rotation modes so one ring exercises the main world canvas (GRID) AND both
+// detached-canvas paths (forward-scatter DETACHED + DETACHED_REVOXELIZE) side by
+// side. Colors are uniform per shape so the silhouette reads cleanly; the
+// multi-color re-voxelize L-prism above stays the dedicated exposed-mask canary.
+enum class OrbitShape { CUBE, SPHERE, OCTAHEDRON, PYRAMID, CROSS, FRAME };
+
+// Carve `shape` out of a centered-around-origin voxel set by deactivating the
+// voxels outside the silhouette, then resync the active mask + face-occlusion.
+void carveOrbitShape(C_VoxelSetNew &vs, OrbitShape shape) {
+    const vec3 half = vec3(vs.size_) * 0.5f;
+    const float r = IRMath::min(half.x, IRMath::min(half.y, half.z));
+    for (int i = 0; i < vs.numVoxels_; ++i) {
+        const vec3 p = vs.positions_[i].pos_;
+        const float ax = IRMath::abs(p.x);
+        const float ay = IRMath::abs(p.y);
+        const float az = IRMath::abs(p.z);
+        bool keep = true;
+        switch (shape) {
+        case OrbitShape::SPHERE:
+            keep = IRMath::length(p) <= r;
+            break;
+        case OrbitShape::OCTAHEDRON:
+            keep = (ax + ay + az) <= r * 1.35f;
+            break;
+        case OrbitShape::PYRAMID: {
+            const float t = (p.z + half.z) / IRMath::max(2.0f * half.z, 1.0f); // 0 base, 1 apex
+            const float span = r * (1.0f - IRMath::clamp(t, 0.0f, 1.0f));
+            keep = ax <= span && ay <= span;
+            break;
+        }
+        case OrbitShape::CROSS: {
+            const float arm = r * 0.52f; // thicker bars read cleanly under spin
+
+            const int onAxis = static_cast<int>(ax <= arm) + static_cast<int>(ay <= arm) +
+                               static_cast<int>(az <= arm);
+            keep = onAxis >= 2; // near 2+ axes -> the three bars of a 3D plus
+            break;
+        }
+        case OrbitShape::FRAME: {
+            constexpr float edge = 1.5f;
+            const int onEdge = static_cast<int>(ax >= half.x - edge) +
+                               static_cast<int>(ay >= half.y - edge) +
+                               static_cast<int>(az >= half.z - edge);
+            keep = onEdge >= 2; // near 2+ faces -> the 12 cube edges (wireframe)
+            break;
+        }
+        case OrbitShape::CUBE:
+        default:
+            keep = true;
+            break;
+        }
+        if (!keep) {
+            vs.voxels_[i].deactivate();
+        }
+    }
+    vs.syncActiveMask();
+    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, vs.size_);
+}
+
+// Spawn one orbit-ring shape at `worldPos`, carved to `shape`, spinning about
+// `spinAxis` at `spinRate`. `mode` selects the render path: GRID rasterizes into
+// the shared world pool; DETACHED / DETACHED_REVOXELIZE each get a private canvas
+// + pool composited by ENTITY_CANVAS_TO_FRAMEBUFFER.
+void spawnOrbitShape(
+    int index, vec3 worldPos, OrbitShape shape, RotationMode mode, int extent,
+    vec3 spinAxis, float spinRate, vec4 initialRotation, Color color
+) {
+    const ivec3 shapeSize{extent, extent, extent};
+    if (mode == RotationMode::GRID) {
+        const EntityId e = IREntity::createEntity(
+            C_LocalTransform{worldPos, initialRotation},
+            C_RotationMode{RotationMode::GRID},
+            C_AutoSpin{spinAxis, spinRate},
+            C_VoxelSetNew{shapeSize, color, true}
+        );
+        carveOrbitShape(IREntity::getComponent<C_VoxelSetNew>(e), shape);
+        return;
+    }
+    // Detached: private canvas + pool scale with the shape so large and small
+    // orbiters composite at proportional on-screen size. The pool spans the
+    // rotated AABB (extent x sqrt(3)); the canvas footprint (≈ 12 px/voxel, like
+    // the forward-scatter cubes) sets the composite scale.
+    const int poolDim = static_cast<int>(IRMath::ceil(static_cast<float>(extent) * 1.85f));
+    const ivec2 canvasSize{extent * 12, extent * 12};
+    const ivec3 poolSize{poolDim, poolDim, poolDim};
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "orbit_canvas_" + std::to_string(index), canvasSize, poolSize
+    );
+    const EntityId solid = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{shapeSize, color, true, canvas.canvasEntity_}
+    );
+    carveOrbitShape(IREntity::getComponent<C_VoxelSetNew>(solid), shape);
+    IREntity::createEntity(
+        C_LocalTransform{worldPos, initialRotation},
+        C_RotationMode{mode},
+        C_AutoSpin{spinAxis, spinRate},
+        canvas
+    );
+}
+
 Color gridColor(int x, int y, int gridSize) {
     const float denom = static_cast<float>(IRMath::max(gridSize - 1, 1));
     return Color{
@@ -476,6 +580,9 @@ void initSystems() {
         // clearly as true-3D solids (voxel centers reorganized), the headline
         // #1555 criterion. Round-to-cell speckle is the expected P1 aliasing.
         g_allShots.push_back({2.2f, vec2(0.0f), 0.0f, "revoxelize_solids_zoom"});
+        // Wide pull-back framing the full orbit ring (radius 200) around the
+        // center cluster, so the added shape variety reads as one tumbling orbit.
+        g_allShots.push_back({0.32f, vec2(0.0f), 0.0f, "orbit_overview"});
 
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
@@ -648,13 +755,84 @@ void initEntities() {
         /*carveAsymmetric=*/false
     );
 
+    // Orbit ring: a wider second ring of varied silhouettes that tumbles around
+    // the center cluster. Cycles shape kind, rotation mode (GRID / DETACHED /
+    // DETACHED_REVOXELIZE), and spin axis so the same shape variety appears on
+    // both the world canvas and the detached canvases. Radius sits well outside
+    // the detached grid so it reads as a distinct orbit at the wide framing shots.
+    constexpr int kOrbitCount = 12;
+    constexpr float kOrbitRadius = 200.0f;
+    // Shape↔mode pairing is by robustness. Both CELL-REBAKING paths — GRID (main
+    // world canvas) and DETACHED_REVOXELIZE (detached) — now re-derive the
+    // exposed mask against the rotated cells (#1570 detached + its GRID parity),
+    // so they render detailed SOLID shapes (sphere / octahedron) cleanly, not
+    // just cubes. What still aliases on those paths is THIN geometry (round-to-
+    // cell leaves gaps in wireframes / arms), so the frame + cross go to the
+    // forward-scatter DETACHED path, which deforms face SHAPES instead of moving
+    // cells and renders thin detail crisply. Spheres appear on all three paths
+    // for a side-by-side of the techniques.
+    constexpr OrbitShape kOrbitShapes[kOrbitCount]{
+        OrbitShape::SPHERE,     OrbitShape::FRAME, OrbitShape::SPHERE,
+        OrbitShape::OCTAHEDRON, OrbitShape::CROSS, OrbitShape::OCTAHEDRON,
+        OrbitShape::CUBE,       OrbitShape::FRAME, OrbitShape::PYRAMID,
+        OrbitShape::PYRAMID,    OrbitShape::SPHERE, OrbitShape::CUBE,
+    };
+    constexpr RotationMode kOrbitModes[kOrbitCount]{
+        RotationMode::GRID,                RotationMode::DETACHED,
+        RotationMode::DETACHED_REVOXELIZE, RotationMode::GRID,
+        RotationMode::DETACHED,            RotationMode::DETACHED_REVOXELIZE,
+        RotationMode::GRID,                RotationMode::DETACHED,
+        RotationMode::DETACHED_REVOXELIZE, RotationMode::GRID,
+        RotationMode::DETACHED,            RotationMode::DETACHED_REVOXELIZE,
+    };
+    constexpr vec3 kOrbitAxes[]{
+        {0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 1.0f},
+    };
+    constexpr Color kOrbitColors[kOrbitCount]{
+        {240, 80, 80, 255},  {245, 150, 60, 255},  {240, 215, 70, 255},
+        {130, 220, 70, 255}, {70, 210, 130, 255},  {70, 200, 220, 255},
+        {80, 130, 235, 255}, {150, 90, 235, 255},  {220, 80, 220, 255},
+        {235, 90, 160, 255}, {120, 235, 200, 255}, {200, 200, 210, 255},
+    };
+    // Per-shape base extent in voxels — a mix of large and small orbiters, with
+    // a large + a small in every rotation mode so the size range shows on the
+    // world canvas and both detached paths.
+    constexpr int kOrbitExtents[kOrbitCount]{
+        16, 14, 13, 10, 16, 15,
+        12, 14, 16, 11, 13, 12,
+    };
+    for (int i = 0; i < kOrbitCount; ++i) {
+        const float angle =
+            IRMath::kTwoPi * static_cast<float>(i) / static_cast<float>(kOrbitCount);
+        const vec3 worldPos{
+            kOrbitRadius * IRMath::cos(angle), kOrbitRadius * IRMath::sin(angle), 0.0f
+        };
+        const vec3 axis = kOrbitAxes[i % 4];
+        // Off-cardinal seed pose so even shot 0 reads as a true-3D solid; the
+        // per-entity rate de-syncs neighbours across the capture window.
+        const vec4 initialRotation =
+            IRMath::quatAxisAngle(IRMath::normalize(axis), IRMath::kQuarterPi);
+        const float spinRate =
+            g_settings.noSpin_ ? 0.0f
+                               : kDetachedSpinBaseRadPerFrame *
+                                     (1.0f + 0.25f * static_cast<float>(i % 4));
+        spawnOrbitShape(
+            i, worldPos, kOrbitShapes[i], kOrbitModes[i], kOrbitExtents[i], axis,
+            spinRate, initialRotation, kOrbitColors[i]
+        );
+    }
+
     IR_LOG_INFO(
         "canvas_stress: main grid {}x{} ({} cubes), {} GRID-spin cubes, {} detached "
-        "canvases, 2 detached re-voxelize solids (L + cube)",
+        "canvases, 2 detached re-voxelize solids (L + cube), {} orbit-ring shapes",
         n,
         n,
         n * n,
         kGridSpinCount,
-        detached
+        detached,
+        kOrbitCount
     );
 }
