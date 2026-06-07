@@ -122,7 +122,7 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         };
         cellsScratch_.resize(static_cast<std::size_t>(safeCount));
         for (int i = 0; i < safeCount; ++i) {
-            cellsScratch_[i] = IRMath::roundVec3ToIVec3(
+            cellsScratch_[i] = IRMath::roundVec3HalfUp(
                 IRPrefab::GridRotation::worldCellForGridVoxel(
                     localPositions[i].pos_,
                     localOffsets[i],
