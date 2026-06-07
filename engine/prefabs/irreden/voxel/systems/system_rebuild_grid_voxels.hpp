@@ -73,6 +73,7 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     // for the exposed-mask recompute below. A member so it keeps capacity across
     // frames (no per-tick allocation, per cpp-ecs.md "Allocations in hot paths").
     std::vector<std::int64_t> cellKeys_;
+    std::vector<ivec3> cellRoundedPositions_; // per-slot rounded positions, built with cellKeys_ to skip double-rounding; capacity retained
 
     // Pack an integer world cell into one sortable key. The ±2^20 bias keeps
     // coordinates positive across the engine's working volume; a voxel further
@@ -185,20 +186,21 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             return;
         }
         cellKeys_.clear();
+        cellRoundedPositions_.resize(static_cast<size_t>(safeCount));
         for (int i = 0; i < safeCount; ++i) {
             if (poolColors[baseIdx + i].color_.alpha_ == 0) {
                 continue; // inactive voxel — not part of the rotated solid
             }
-            cellKeys_.push_back(
-                packCell(IRMath::roundVec3HalfUp(poolGlobals[baseIdx + i].pos_))
-            );
+            const ivec3 rounded = IRMath::roundVec3HalfUp(poolGlobals[baseIdx + i].pos_);
+            cellRoundedPositions_[i] = rounded;
+            cellKeys_.push_back(packCell(rounded));
         }
         std::sort(cellKeys_.begin(), cellKeys_.end());
         for (int i = 0; i < safeCount; ++i) {
             C_Voxel &voxel = poolColors[baseIdx + i];
             std::uint8_t face = 0u;
             if (voxel.color_.alpha_ > 0) {
-                const ivec3 cell = IRMath::roundVec3HalfUp(poolGlobals[baseIdx + i].pos_);
+                const ivec3 &cell = cellRoundedPositions_[i];
                 if (cellOccupied(cell + ivec3(-1, 0, 0)))
                     face |= VoxelFlags::kFaceOccludedNegX;
                 if (cellOccupied(cell + ivec3(1, 0, 0)))
