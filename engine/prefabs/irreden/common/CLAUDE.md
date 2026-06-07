@@ -23,11 +23,17 @@ in `update/`.
   `C_RotationMode::DETACHED` (GRID-mode entities snap to world cells
   regardless).
 - `C_RotationMode` (Epic C C2) — `enum class RotationMode { GRID,
-  DETACHED }`. GRID (default) puts the entity in the shared world
-  voxel pool with grid-quantized rotation; DETACHED lives in a
+  DETACHED, DETACHED_REVOXELIZE }`. GRID (default) puts the entity in the
+  shared world voxel pool with grid-quantized rotation; DETACHED lives in a
   per-entity `C_EntityCanvas` whose voxel emit bakes the entity's full
   SO(3) rotation directly (T-295, via `PROPAGATE_CANVAS_ROTATION` →
   `C_CanvasLocalRotation`) — the composite stage just places the canvas.
+  DETACHED_REVOXELIZE (#1553 epic, P1 #1555) is like DETACHED but the
+  per-entity private pool is re-filled at the full-rotation CELL positions
+  each frame (`SYSTEM_REBUILD_DETACHED_VOXELS`) and rasterized through
+  CARDINAL frame data — the rotation lives in the cells, not a 2D deform,
+  so an asymmetric solid reads as a true 3D-rotated solid (the model the
+  forward-scatter deform cannot represent, #1551).
   Attached by
   `IRPrefab::Prefab::spawnPrefab` (default GRID, or
   `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab

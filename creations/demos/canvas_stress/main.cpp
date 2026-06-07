@@ -20,6 +20,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/face_occupancy.hpp>
 
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -39,6 +40,7 @@
 #include <irreden/update/systems/system_auto_spin_local_transform.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
@@ -53,6 +55,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 // canvas_stress exercises the detached-canvas voxel path: many entities,
 // each owning its own per-entity canvas + voxel pool, are composited over a
@@ -114,6 +117,32 @@ constexpr float kDetachedSpinBaseRadPerFrame = IRMath::kPi / 450.0f;
 // a strobe. ~0.25° / frame → full revolution in ~1440 frames (~24 s).
 constexpr float kGridSpinRadPerFrame = IRMath::kPi / 720.0f;
 
+// Detached RE-VOXELIZE test solids (#1553 P1 / #1555). Distinct from the
+// forward-scatter DETACHED cubes above: these rotate by re-filling their
+// private pool at the full-rotation CELL positions (the rotation lives in the
+// cells, not a 2D deform), so an asymmetric solid reads as a true 3D-rotated
+// solid. Canvas + pool are larger than the forward-scatter cubes because a
+// re-voxelized solid spans its FULL rotated AABB (≈ base extent × √3), not the
+// static footprint.
+// Canvas sized like the forward-scatter cubes (so the composite shows them at a
+// comparable scale, not shrunk) but with headroom for the rotated AABB; the pool
+// 3D bounds span that AABB (base extent × √3). A denser base box keeps the
+// round-to-cell surface readable (P1 tolerates aliasing; P3 refines it).
+constexpr ivec2 kReVoxCanvasSize{140, 140};
+constexpr ivec3 kReVoxPoolSize{22, 22, 22};
+constexpr ivec3 kReVoxSolidSize{12, 12, 12}; // base box; the L is carved from it
+// Detached canvases rasterize their canvas-local pool against the MAIN camera's
+// world cull viewport, so they only render while the camera sits near world
+// origin (a pan moves the viewport off the canvas-local pool and culls every
+// detached canvas). The framing shots therefore stay at camera (0,0); these
+// entities are placed on the screen-center column (separated in Z so iso-Y
+// stacks them vertically) where they read large and unobstructed at zoom ~1.
+constexpr vec3 kReVoxAsymWorld{0.0f, 0.0f, 42.0f};
+constexpr vec3 kReVoxCubeWorld{0.0f, 0.0f, -42.0f};
+// ~0.5° / frame — full revolution in ~720 frames; slow enough to read as a
+// smooth true-3D tumble, not a strobe.
+constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
+
 // Sun / lighting tuned for the canvas_stress layout — flat ground plane
 // of GRID cubes plus floating DETACHED canvases. Slightly steeper than
 // the standard lighting demo so detached cube tops and main-grid tops
@@ -124,6 +153,12 @@ constexpr float kSunAmbient = 0.45f;
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
+
+// Combined shot table (base SO(3) suite + the re-voxelize framing shots),
+// built at runtime in initSystems because the re-voxelize shots' camera-iso
+// positions are derived from world positions. File-scope so it outlives the
+// game loop, per the AutoScreenshotConfig lifetime contract.
+std::vector<IRVideo::AutoScreenshotShot> g_allShots;
 
 // SO(3) detached-canvas regression suite (#1444).
 //
@@ -184,6 +219,61 @@ void spawnDetachedVoxelObject(
     IREntity::createEntity(
         C_LocalTransform{worldPos},
         C_RotationMode{RotationMode::DETACHED},
+        C_AutoSpin{spinAxis, spinRate},
+        canvas
+    );
+}
+
+// One detached RE-VOXELIZE object (#1555). Same canvas + private-pool shape as
+// the forward-scatter cube above, but RotationMode::DETACHED_REVOXELIZE routes
+// it through SYSTEM_REBUILD_DETACHED_VOXELS (cells re-filled at the full
+// rotation) + the cardinal raster path. When `carveAsymmetric`, an +x/+y
+// quadrant column is carved out of the centered box to make an L-prism — the
+// asymmetric solid whose true-3D rotation a 2D forward-scatter skew cannot
+// represent (the headline #1551 discriminator). `initialRotation` seeds a clear
+// off-cardinal pose so even shot 0 reads as true-3D.
+void spawnDetachedReVoxelizeSolid(
+    int index,
+    vec3 worldPos,
+    vec4 initialRotation,
+    vec3 spinAxis,
+    float spinRate,
+    Color color,
+    bool carveAsymmetric
+) {
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "revox_canvas_" + std::to_string(index),
+        kReVoxCanvasSize,
+        kReVoxPoolSize
+    );
+
+    // Centered around origin so SYSTEM_REBUILD_DETACHED_VOXELS can rotate the
+    // cells about the pool origin (translation-free) and keep the solid centered
+    // on its canvas as it tumbles.
+    EntityId solid = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{kReVoxSolidSize, color, true, canvas.canvasEntity_}
+    );
+
+    if (carveAsymmetric) {
+        C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(solid);
+        for (int i = 0; i < voxelSet.numVoxels_; ++i) {
+            const vec3 pos = voxelSet.positions_[i].pos_;
+            if (pos.x > 0.0f && pos.y > 0.0f) {
+                voxelSet.voxels_[i].deactivate();
+            }
+        }
+        voxelSet.syncActiveMask();
+        // Re-derive face-occlusion bits so the faces newly exposed by the carve
+        // (previously interior, marked occluded) actually emit — otherwise the
+        // notch reads as background holes. (Per-cell round-to-cell aliasing under
+        // rotation is still P3's job; this only fixes the model-space carve.)
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxelSet.voxels_, voxelSet.size_);
+    }
+
+    IREntity::createEntity(
+        C_LocalTransform{worldPos, initialRotation},
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
         C_AutoSpin{spinAxis, spinRate},
         canvas
     );
@@ -273,6 +363,11 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
+         // Detached re-voxelize (#1555): fills each DETACHED_REVOXELIZE canvas's
+         // private pool at the full-rotation cell positions. Must run AFTER
+         // PROPAGATE_CANVAS_ROTATION (needs the camera-composed rotation) and
+         // UPDATE_VOXEL_SET_CHILDREN (overwrites its translate-only baseline).
+         IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
     IRSystem::registerPipeline(
@@ -334,13 +429,27 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
     if (g_autoWarmupFrames > 0) {
+        // Base SO(3) suite + dedicated re-voxelize framing shots. Detached
+        // canvases rasterize their canvas-local pool against the MAIN camera's
+        // world cull viewport, so a camera PAN moves the viewport off the pool
+        // and culls every detached canvas — the framing shots must stay at
+        // camera (0,0). The re-voxelize solids sit on the screen-center column
+        // (z-separated) and read large there; the solids' own auto-spin supplies
+        // the rotation. Zoom 1 frames both; the wide shot gives full context.
+        g_allShots.assign(kShots, kShots + sizeof(kShots) / sizeof(kShots[0]));
+        g_allShots.push_back({1.0f, vec2(0.0f), 0.0f, "revoxelize_solids"});
+        // Zoomed in on the screen-center column so the re-voxelized cube + L read
+        // clearly as true-3D solids (voxel centers reorganized), the headline
+        // #1555 criterion. Round-to-cell speckle is the expected P1 aliasing.
+        g_allShots.push_back({2.2f, vec2(0.0f), 0.0f, "revoxelize_solids_zoom"});
+
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         // 60 settle frames between shots: entities advance ~24° at base spin rate,
         // giving clearly distinct rotation states per shot for the SO(3) suite.
         cfg.settleFrames_ = 60;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        cfg.shots_ = g_allShots.data();
+        cfg.numShots_ = static_cast<int>(g_allShots.size());
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
@@ -476,8 +585,34 @@ void initEntities() {
         spawnDetachedVoxelObject(i, worldPos, kAxes[i % 4], spinRate, kDetachedColors[i % 6]);
     }
 
+    // Detached RE-VOXELIZE proof solids (#1555): an asymmetric L-prism (the
+    // headline true-3D discriminator) and a cube (validates the cube case the
+    // epic uses to supersede #1551). Seeded at a clear off-cardinal tilt so the
+    // first shot already reads as a true 3D-rotated solid; a slow auto-spin then
+    // sweeps the full SO(3) range to prove smoothness (no pop).
+    const float reVoxSpin = g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame;
+    spawnDetachedReVoxelizeSolid(
+        0,
+        kReVoxAsymWorld,
+        IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f, 0.6f, 0.3f)), IRMath::kPi / 4.5f),
+        vec3(1.0f, 1.0f, 0.4f),
+        reVoxSpin,
+        Color{255, 150, 60, 255},
+        /*carveAsymmetric=*/true
+    );
+    spawnDetachedReVoxelizeSolid(
+        1,
+        kReVoxCubeWorld,
+        IRMath::quatAxisAngle(IRMath::normalize(vec3(0.3f, 1.0f, 0.5f)), IRMath::kPi / 5.0f),
+        vec3(0.4f, 1.0f, 0.6f),
+        reVoxSpin,
+        Color{70, 210, 210, 255},
+        /*carveAsymmetric=*/false
+    );
+
     IR_LOG_INFO(
-        "canvas_stress: main grid {}x{} ({} cubes), {} GRID-spin cubes, {} detached canvases",
+        "canvas_stress: main grid {}x{} ({} cubes), {} GRID-spin cubes, {} detached "
+        "canvases, 2 detached re-voxelize solids (L + cube)",
         n,
         n,
         n * n,

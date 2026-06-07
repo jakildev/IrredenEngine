@@ -137,7 +137,9 @@ inline int subdivisionDensity() {
         return effSub;
     }
     const int cap = IRMath::perAxisSubdivisionCap(
-        (*cardinal.value()).size_, IRRender::getCameraZoom(), kMinOnScreenTrixelSizePx
+        (*cardinal.value()).size_,
+        IRRender::getCameraZoom(),
+        kMinOnScreenTrixelSizePx
     );
     return IRMath::clamp(effSub, 1, cap);
 }
@@ -209,6 +211,13 @@ inline void syncAllocationToDetachedEntities(
             // The main world canvas (sentinel rotation) is not detached — leave
             // it to syncAllocationToCameraYaw().
             if (!rotations[i].isDetached()) {
+                continue;
+            }
+            // Re-voxelize detached canvases (#1553) bake the rotation into their
+            // pool cells and render through the single-canvas cardinal path — they
+            // never use per-axis forward-scatter, so they must not allocate (and
+            // must not consume the kMaxDetachedRotatingCanvases budget).
+            if (rotations[i].reVoxelize_) {
                 continue;
             }
             IRComponents::C_PerAxisTrixelCanvases &axes = axesColumn[i];

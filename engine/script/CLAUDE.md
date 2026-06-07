@@ -855,10 +855,11 @@ return {
     voxel_ref      = "creations/...vxs", -- OPTIONAL, loaded via loadVoxelSet
     rig_ref        = "creations/...rig", -- OPTIONAL, loaded via loadRig
     rotation_mode  = IRComponent.RotationMode.GRID
-                  | IRComponent.RotationMode.DETACHED,
+                  | IRComponent.RotationMode.DETACHED
+                  | IRComponent.RotationMode.DETACHED_REVOXELIZE,
                                          -- OPTIONAL, default GRID
     unbounded      = true | false,       -- OPTIONAL, default false
-    canvas_size    = { x = 64, y = 64 }, -- REQUIRED when DETACHED
+    canvas_size    = { x = 64, y = 64 }, -- REQUIRED when DETACHED or DETACHED_REVOXELIZE
     setup          = function(entity)    -- OPTIONAL, user-provided
         IREntity.setComponent(entity, ...)
     end,
@@ -870,12 +871,15 @@ root. GRID (default) renders into the world voxel pool with grid-
 quantized rotation; DETACHED allocates a per-entity `C_EntityCanvas`
 via `IRPrefab::EntityCanvas::create()` so a future C3 composite pass
 threads the entity's `C_LocalTransform` through the per-canvas TRS
-without per-voxel rebake. `canvas_size = { x, y }` is required for
-DETACHED — sized in trixels — and is ignored for GRID. `unbounded =
+without per-voxel rebake; DETACHED_REVOXELIZE extends DETACHED by
+re-filling the canvas pool at full-rotation cell positions each frame
+so asymmetric solids read as true 3D-rotated (not 2D-warped) shapes.
+`canvas_size = { x, y }` is required for DETACHED and DETACHED_REVOXELIZE
+— sized in trixels — and is ignored for GRID. `unbounded =
 true` sets `C_LocalTransform::unbounded_` for sub-trixel positioning;
-only meaningful with DETACHED.
+meaningful with DETACHED and DETACHED_REVOXELIZE.
 
-**The schema accepts the `IRComponent.RotationMode.{GRID,DETACHED}`
+**The schema accepts the `IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE}`
 enum value (an integer), not a string.** String-name lookups —
 `rotation_mode = 'GRID'` — surface a schema error with the
 `IRComponent.RotationMode.X` spelling in the diagnostic. This keeps

@@ -17,6 +17,10 @@
 //   `C_LocalTransform::unbounded_ = true` to opt into sub-trixel
 //   positioning (only meaningful when DETACHED — GRID quantizes
 //   regardless).
+// - DETACHED_REVOXELIZE: like DETACHED, but the private pool is re-filled
+//   at the full-rotation cell positions each frame (SYSTEM_REBUILD_DETACHED_VOXELS)
+//   and rasterized through cardinal frame data — the rotation lives in the
+//   cells, not a 2D deform, so asymmetric solids read as true-3D (#1553).
 //
 // Entities without `C_RotationMode` are implicitly GRID — consumers
 // default to GRID when the component is absent so non-prefab entities
@@ -44,6 +48,16 @@ namespace IRComponents {
 enum class RotationMode : std::uint8_t {
     GRID = 0,
     DETACHED = 1,
+    // Detached re-voxelize (#1553 epic, P1 #1555): the entity lives on its own
+    // `C_EntityCanvas` like DETACHED, but instead of baking the rotation as a
+    // per-face octahedral-snap residual deform (the forward-scatter path), its
+    // private voxel pool is RE-FILLED each frame at the full-rotation cell
+    // positions (`SYSTEM_REBUILD_DETACHED_VOXELS`, the detached analogue of
+    // `SYSTEM_REBUILD_GRID_VOXELS`) and the canvas rasterizes that pool through
+    // CARDINAL/static frame data. The rotation lives in the cells, not a deform
+    // — so an asymmetric solid reads as a true 3D-rotated solid, which the 2D
+    // forward-scatter skew cannot represent (#1551 root cause).
+    DETACHED_REVOXELIZE = 2,
     // Attached main-canvas SO(3) rotation is the GRID re-voxelize model
     // (`SYSTEM_REBUILD_GRID_VOXELS`), where the camera alone drives trixel
     // deformation and the entity's rotation only changes which cells are
@@ -54,7 +68,7 @@ enum class RotationMode : std::uint8_t {
     // invariant, so per-entity trixel deformation lives on DETACHED canvases.
 
     kFirst = GRID,
-    kLast = DETACHED,
+    kLast = DETACHED_REVOXELIZE,
 };
 
 struct C_RotationMode {
