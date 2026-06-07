@@ -575,6 +575,21 @@ inline void faceInPlaneUnitAxes(int axis, thread float3& eu, thread float3& ev) 
     ev = (axis == 2) ? float3(0.0, 1.0, 0.0) : float3(0.0, 0.0, 1.0);
 }
 
+// In-plane iso-pixel unit steps (su, sv) for a face's two in-plane world axes —
+// the iso directions along which a re-voxelized cell's in-plane neighbour cells
+// sit on screen. Mirror of the GLSL twin in ir_iso_common.glsl (#1557): the
+// detached re-voxelize raster dilates each surface face's footprint by ±su / ±sv
+// so the sub-cell gaps round-to-cell leaves between adjacent rotated cells fill
+// with the nearest (occlusion-winning, correct-colour) surface face. Normalised
+// to ~1px so the silhouette grows by at most a pixel along the surface, never
+// across a concave notch.
+inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
+    float3 eu, ev;
+    faceInPlaneUnitAxes(faceId >> 1, eu, ev);
+    su = roundHalfUp(normalize(float2(pos3DtoPos2DIso(int3(eu)))));
+    sv = roundHalfUp(normalize(float2(pos3DtoPos2DIso(int3(ev)))));
+}
+
 // Default conservative-coverage margin (framebuffer pixels) the per-axis
 // forward-scatter grows each quad by along each screen edge normal (#1494).
 // Mirror of the GLSL constant in ir_iso_common.glsl.

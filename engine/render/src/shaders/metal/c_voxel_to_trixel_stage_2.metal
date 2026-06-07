@@ -56,6 +56,8 @@ inline void emitDeformedFace(
     uint2 packedEntityId,
     uint2 localId,
     bool isDetached,
+    int faceId,
+    bool reVoxelize,
     int2 canvasSize,
     device const atomic_int* distanceScratch,
     texture2d<float, access::write> triangleCanvasColors,
@@ -65,20 +67,45 @@ inline void emitDeformedFace(
     const int maxN = isDetached ? 6 : 1;
     const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     const float inv = 1.0 / float(n);
+    // Conservative coverage (#1557 Option B) — mirror of stage 1's footprint
+    // dilation so the colour/entity tap reaches the same gap pixels the distance
+    // tap claimed; writeColorTap's depth re-test paints only the occlusion winner.
+    int2 su = int2(0);
+    int2 sv = int2(0);
+    if (reVoxelize) {
+        faceInPlaneIsoSteps(faceId, su, sv);
+    }
     for (int sy = 0; sy < n; ++sy) {
         for (int sx = 0; sx < n; ++sx) {
             const float2 src = float2(localId) + float2(float(sx), float(sy)) * inv;
+            const int2 p = base + roundHalfUp(D * src);
             writeColorTap(
-                base + roundHalfUp(D * src),
-                voxelDistance,
-                voxelColor,
-                packedEntityId,
-                canvasSize,
-                distanceScratch,
-                triangleCanvasColors,
-                triangleCanvasDistances,
+                p, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                distanceScratch, triangleCanvasColors, triangleCanvasDistances,
                 triangleCanvasEntityIds
             );
+            if (reVoxelize) {
+                writeColorTap(
+                    p + su, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+                writeColorTap(
+                    p - su, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+                writeColorTap(
+                    p + sv, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+                writeColorTap(
+                    p - sv, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+            }
         }
     }
 }
@@ -125,9 +152,15 @@ kernel void c_voxel_to_trixel_stage_2(
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];
 
-    // Stage 2 mirrors stage 1's exposed-face gate (#1278).
+    // Stage 2 mirrors stage 1's exposed-face gate (#1278) — including the
+    // re-voxelize marker (frameData.visibleFaceIds.w != 0, #1557). writeColorTap's
+    // depth re-test still keeps only the occlusion winner among the emitted faces.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
     if (!faceIsExposed(flagsByte, faceId)) return;
+    // Re-voxelize canvases (frameData.visibleFaceIds.w != 0, #1557) keep the
+    // exposed-mask gate; the marker drives the conservative-coverage dilation in
+    // emitDeformedFace — mirror of stage 1.
+    const bool reVoxelize = frameData.visibleFaceIds.w != 0;
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(
@@ -213,6 +246,8 @@ kernel void c_voxel_to_trixel_stage_2(
             packedEntityId,
             localId,
             frameData.isDetachedCanvas > 0.5f,
+            faceId,
+            reVoxelize,
             canvasSize,
             distanceScratch,
             triangleCanvasColors,
@@ -255,6 +290,8 @@ kernel void c_voxel_to_trixel_stage_2(
         packedEntityId,
         localId,
         frameData.isDetachedCanvas > 0.5f,
+        faceId,
+        reVoxelize,
         canvasSize,
         distanceScratch,
         triangleCanvasColors,

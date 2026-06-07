@@ -45,18 +45,35 @@ inline void emitDeformedFace(
     int voxelDistance,
     uint2 localId,
     bool isDetached,
+    int faceId,
+    bool reVoxelize,
     device atomic_int* distanceScratch,
     int2 canvasSize
 ) {
     const int maxN = isDetached ? 6 : 2;
     const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     const float inv = 1.0 / float(n);
+    // Conservative coverage (#1557 Option B) — mirror of the GLSL twin. A
+    // re-voxelize canvas bakes the rotation into integer CELL positions, so
+    // round-to-cell leaves sub-cell gaps; dilate each surface face ±1px along its
+    // in-plane iso axes so the gaps fill with the nearest face (atomicMin keeps
+    // the occlusion winner; stage 2's depth re-test paints the matching colour).
+    int2 su = int2(0);
+    int2 sv = int2(0);
+    if (reVoxelize) {
+        faceInPlaneIsoSteps(faceId, su, sv);
+    }
     for (int sy = 0; sy < n; ++sy) {
         for (int sx = 0; sx < n; ++sx) {
             const float2 src = float2(localId) + float2(float(sx), float(sy)) * inv;
-            writeDistanceTap(
-                base + roundHalfUp(D * src), voxelDistance, distanceScratch, canvasSize
-            );
+            const int2 p = base + roundHalfUp(D * src);
+            writeDistanceTap(p, voxelDistance, distanceScratch, canvasSize);
+            if (reVoxelize) {
+                writeDistanceTap(p + su, voxelDistance, distanceScratch, canvasSize);
+                writeDistanceTap(p - su, voxelDistance, distanceScratch, canvasSize);
+                writeDistanceTap(p + sv, voxelDistance, distanceScratch, canvasSize);
+                writeDistanceTap(p - sv, voxelDistance, distanceScratch, canvasSize);
+            }
         }
     }
 }
@@ -99,9 +116,12 @@ kernel void c_voxel_to_trixel_stage_1(
 
     const int2 canvasSize = frameData.canvasSizePixels;
 
-    // Exposed-face gate (#1278) — see GLSL stage 1 for the rationale.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
     if (!faceIsExposed(flagsByte, faceId)) return;
+    // Re-voxelize canvases (frameData.visibleFaceIds.w != 0, #1557) keep the
+    // exposed-mask gate (recomputed on the rotated cells each frame); the marker
+    // drives the conservative-coverage dilation in emitDeformedFace — see GLSL.
+    const bool reVoxelize = frameData.visibleFaceIds.w != 0;
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(
@@ -186,7 +206,7 @@ kernel void c_voxel_to_trixel_stage_1(
                 frameData.voxelRenderOptions
             ) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, distanceScratch, canvasSize);
+        emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, faceId, reVoxelize, distanceScratch, canvasSize);
         return;
     }
 
@@ -218,5 +238,5 @@ kernel void c_voxel_to_trixel_stage_1(
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, distanceScratch, canvasSize);
+    emitDeformedFace(base, D, voxelDistance, localId, frameData.isDetachedCanvas > 0.5f, faceId, reVoxelize, distanceScratch, canvasSize);
 }
