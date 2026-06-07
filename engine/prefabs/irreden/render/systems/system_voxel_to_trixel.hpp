@@ -114,16 +114,19 @@ inline void buildVoxelFrameData(
         frameData.residualYaw_ = 0.0f;
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        // Re-voxelize canvases keep the standard visible-triplet × exposed-mask
-        // gate AND mark `.w = 1` (#1557 Option B). SYSTEM_REBUILD_DETACHED_VOXELS
-        // recomputes the per-voxel `flags_` exposed mask against the ROTATED
-        // destination cells each frame, so the gate is current for the baked-in
-        // rotation — emit exactly the rotated solid's surface faces (correct
-        // colours, no over-emit). The `.w` marker then drives the conservative-
-        // coverage dilation in `c_voxel_to_trixel_stage_{1,2}` (each surface face
-        // grown ±1px along its in-plane iso axes) that closes the round-to-cell
-        // sub-cell gaps the correct mask alone would leave. Other canvases keep
-        // `.w = 0` (exact footprint, byte-identical to master).
+        // Re-voxelize canvases mark `.w = 1` (#1557 Option B / #1570). The marker
+        // tells `c_voxel_to_trixel_stage_{1,2}` to (a) BYPASS the per-voxel
+        // exposed-mask gate and emit all three visible-triplet cardinal faces,
+        // letting the depth re-test keep the front-most surface, and (b) dilate
+        // each emitted face ±1px along its in-plane iso axes to close the
+        // round-to-cell sub-cell gaps. The bypass is required because the GPU
+        // scatter (c_revoxelize_detached) bakes the entity rotation into the CELL
+        // positions but the per-voxel `flags_` mask stays in the UNROTATED
+        // authoring frame — P2 (#1556) dropped P1's per-frame mask recompute and
+        // never moved it to the GPU, so gating rotated-frame faces against that
+        // stale mask dropped / mis-coloured whole faces as the solid spun (#1570).
+        // Other canvases keep `.w = 0` (exact footprint + real exposed-mask gate,
+        // byte-identical to master).
         frameData.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
             static_cast<int>(visibleFaces[1]),

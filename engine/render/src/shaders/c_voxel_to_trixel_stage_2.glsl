@@ -138,15 +138,17 @@ void main() {
 
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
-    // Stage 2 mirrors stage 1's exposed-face gate so it doesn't waste an
-    // `imageLoad` + depth compare on faces stage 1 already skipped.
-    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
-    // Re-voxelize canvases (visibleFaceIds.w != 0, #1557) keep the exposed-mask
-    // gate above (the mask is recomputed on the rotated cells each frame); the
-    // marker drives the conservative-coverage dilation in emitDeformedFace —
-    // mirror of stage 1.
+    // Re-voxelize marker — mirror of stage 1.
     const bool reVoxelize = visibleFaceIds.w != 0;
+
+    // Stage 2 mirrors stage 1's exposed-face gate so it doesn't waste an
+    // `imageLoad` + depth compare on faces stage 1 already skipped — and is
+    // BYPASSED for re-voxelize for the same reason (#1570): its `flags_` mask is
+    // in the unrotated authoring frame, not the baked-in rotated cell frame (see
+    // c_voxel_to_trixel_stage_1.glsl). Stage 1 emitted all three cardinal faces
+    // for re-voxelize, so stage 2 must paint them too or the colour tap is lost.
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);

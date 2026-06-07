@@ -283,10 +283,12 @@ void spawnDetachedReVoxelizeSolid(
             }
         }
         voxelSet.syncActiveMask();
-        // Seed the model-space face-occlusion bits for the carved shape. P3
-        // (SYSTEM_REBUILD_DETACHED_VOXELS) re-derives this mask against the
-        // rotated destination cells every frame (#1557), so this is just the
-        // pre-first-tick initial state for the carve notch.
+        // Seed the model-space face-occlusion bits for the carved shape. The
+        // re-voxelize raster no longer consults this mask: it is in the unrotated
+        // authoring frame, so gating the rotated cells against it dropped /
+        // mis-coloured faces, and `c_voxel_to_trixel_stage_{1,2}` now bypass it
+        // for re-voxelize (#1570). The seed is vestigial today, kept as the
+        // correct initial state for a future GPU rotated-cell mask recompute.
         IRPrefab::Voxel::recomputeFaceOccupancy(voxelSet.voxels_, voxelSet.size_);
     }
 
