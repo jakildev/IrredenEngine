@@ -155,6 +155,15 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // shared setTexture slot space, so all three slots must be
         // unique across both kinds.
         paletteLUT_->bind(3);
+        // Metal requires every setTexture slot to be populated (it does not
+        // default-bind a null slot). `shadow` is the per-canvas component when
+        // present, else the main canvas's as an inert placeholder — the main canvas
+        // always carries C_CanvasSunShadow when LIGHTING_TO_TRIXEL is registered.
+        IR_ASSERT(
+            shadow != nullptr,
+            "Metal requires slot 4 bound — main canvas must carry C_CanvasSunShadow "
+            "when LIGHTING_TO_TRIXEL iterates"
+        );
         if (shadow != nullptr) {
             shadow->getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
         }
