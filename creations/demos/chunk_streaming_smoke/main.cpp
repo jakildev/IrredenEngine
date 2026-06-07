@@ -1,4 +1,4 @@
-// Chunk streaming smoke test — exercises the ChunkDiskPersistence +
+// Chunk streaming smoke test — exercises the ChunkVoxelDiskPersistence +
 // ChunkResidencyManager round-trip against a real voxel pool allocation.
 // Run with --auto-screenshot <N> for fleet-standard screenshot capture.
 
@@ -137,7 +137,7 @@ void initCommands() {
     IRCommand::registerCaptureCommands();
 }
 
-// Exercises ChunkDiskPersistence + ChunkResidencyManager against the real
+// Exercises ChunkVoxelDiskPersistence + ChunkResidencyManager against the real
 // voxel pool. Two test cases:
 //   1. Color round-trip: write → evict (saves) → reload → verify colors.
 //   2. Clean (never-dirtied) chunk must not produce a file on evict.
@@ -146,7 +146,7 @@ void runChunkSmokeTest() {
         IRConstants::kChunkSize.x * IRConstants::kChunkSize.y * IRConstants::kChunkSize.z;
     const std::string saveRoot = "save_files/chunk_smoke";
 
-    IRWorld::ChunkDiskPersistence persistence(saveRoot);
+    IRWorld::ChunkVoxelDiskPersistence persistence(saveRoot);
 
     IRWorld::ChunkResidencyManager::Config cfg{};
     cfg.voxelsPerChunk_ = kVolumeSize;
