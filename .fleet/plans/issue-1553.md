@@ -66,7 +66,15 @@ needed → GPU re-voxelize" path) and **retires the detached forward-scatter**.
    `flushStaticPositionRanges`. This supersedes the original "reuse #1396
    binding-17/18" note — those are single-instance and break the demo's
    two-canvas case. See `.fleet/plans/issue-1556.md`.
-4. **Both cubes and asymmetric solids go through re-voxelize.** Once the path
+4. **Every shader-adding phase ships BOTH backends (no deferred-Metal phase).**
+   The Metal backend eager-compiles each shader's `.metal` mirror and
+   asserts-aborts on a missing one (`metal_pipeline.cpp:163-171`), so a
+   GLSL-only intermediate that lands on master breaks macOS — and both
+   autonomous opus-workers are on macOS. Therefore P2/P3/P4 each ship their
+   GLSL + `.metal` together (use `backend-parity`); the original standalone
+   "Metal parity" P5 (#1559) is repurposed to a final cross-backend audit.
+   This corrects the initial CPU-first/GLSL-first/Metal-last phasing.
+5. **Both cubes and asymmetric solids go through re-voxelize.** Once the path
    exists, all detached SO(3) content uses it; the forward-scatter is retired
    wholesale (P6).
 
