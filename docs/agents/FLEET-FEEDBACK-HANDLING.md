@@ -443,11 +443,14 @@ branch itself if no new feedback PR is waiting.
 
 ## Game-side feedback work
 
-`role-opus-worker.md` covers both repos; `role-sonnet-author.md` is
-engine-only.
+This protocol is **symmetric across both author roles and both repos**:
+`role-opus-worker.md` **and** `role-sonnet-author.md` each cover engine
+**and** game feedback (each within its own model tier — opus-worker the
+`[opus]` PRs, sonnet-author the `[sonnet]` PRs). There is no engine-only
+carve-out for either role.
 
-For game-side feedback (opus-worker only), **cd into the game
-opus-worker worktree** before any git/gh ops:
+For game-side feedback, **cd into your role's game worktree** before any
+git/gh ops:
 
 ```
 cd ~/src/IrredenEngine/creations/game/.claude/worktrees/<your-worktree-name>

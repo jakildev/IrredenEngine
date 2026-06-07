@@ -130,7 +130,8 @@ Each iteration:
 
 1. **Check for feedback labels on open PRs.** Re-Read
    `~/.fleet/state/state.json` if its contents are no longer in your
-   conversation context. From `repos.engine.prs[]`, pick PRs whose
+   conversation context. From `repos.engine.prs[]` **and**
+   `repos.game.prs[]`, pick PRs whose
    `labels` array contains any of `human:needs-fix`,
    `human:blocker`, `fleet:needs-fix`, `fleet:has-nits` — but **skip
    any PR already carrying a `fleet:amending-*` label** (another
@@ -141,13 +142,18 @@ Each iteration:
    it owns the priority order, the detached-HEAD checkout flow,
    AMEND-vs-ESCALATE decision, the AMEND-path step sequence (a–h),
    label cycles, and the `fleet-pr-clear-feedback-labels` wrapper.
-   Sonnet-author is
-   engine-only and does NOT handle `fleet:design-unblocked` (only
-   opus-worker originates design escalations). Sonnet-author also
-   does NOT handle `fleet:semantic-conflict` — that label is
-   opus-worker's lane via its step 1c rebase flow. Reserve the
-   worktree on the `human:needs-fix` / `human:blocker` AMEND paths
-   via the author-only `fleet-claim reserve` step.
+   Sonnet-author handles feedback in **both** repos (engine + game),
+   mirroring its task coverage — for a **game** feedback PR, `cd` into
+   the game worktree and add `--repo jakildev/irreden` to every gh/git
+   op (and `--repo game` to `fleet-claim`), the same pattern as game
+   task pickup above (`fleet-pr-claim-feedback <N> <wt> --repo jakildev/irreden`).
+   Sonnet-author does NOT handle `fleet:design-unblocked` (only
+   opus-worker originates design escalations) nor
+   `fleet:semantic-conflict` (opus-worker's lane via its step 1c
+   rebase flow) — those are **role-tier** restrictions, not repo
+   restrictions. Reserve the worktree on the `human:needs-fix` /
+   `human:blocker` AMEND paths via the author-only `fleet-claim
+   reserve` step.
 
    Address all flagged PRs before picking new work.
 
@@ -191,6 +197,12 @@ Each iteration:
    `sonnet` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
+   - **Not `fleet:blocked`** — the entry's `blocked` flag is `false`.
+     A `blocked: true` task was queued with an unresolved blocker under
+     the queue-all model (#1527); it is **not** a normal-tier pick — it
+     belongs to the stackable fallback tier (which stacks it on the
+     blocker's open PR). Skipping it here avoids a plain claim on a task
+     that has no mergeable base yet.
    - **Issue is NOT referenced in any open PR's title or branch name**
      (cross-check against `repos.engine.prs[]` from the cache)
 
