@@ -309,6 +309,19 @@ struct GPUUpdateParams {
     int padding_[3] = {};
 };
 
+/// Per-frame params for the detached re-voxelize GPU scatter compute
+/// (`c_revoxelize_detached`, #1556). Carries the detached canvas's composed
+/// rotation quaternion (the ONLY per-frame upload — O(entities), the whole point
+/// of the GPU path over P1's CPU re-rasterize) and the pool's live voxel count.
+/// std140 UBO at `kBufferIndex_RevoxelizeDetachedParams`: the `vec4` lands at
+/// offset 0, the `int` at 16, padded to 32 B. Quaternion layout matches
+/// `C_LocalTransform`/`IRMath` — `vec4(qx, qy, qz, qw)`, identity `(0,0,0,1)`.
+struct RevoxelizeDetachedParams {
+    vec4 canvasRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    int voxelCount_ = 0;
+    int padding_[3] = {};
+};
+
 /// SDF primitive type dispatched to the shapes→trixel compute shader.
 /// Canonical definition lives in @ref IRMath::SDF::ShapeType so the math-side
 /// SDF helpers (`IRMath::SDF::evaluate`, `boundingHalf`, …) and the renderer
@@ -521,6 +534,11 @@ constexpr std::uint32_t kBufferIndex_GlyphDrawCommands = 12;
 constexpr std::uint32_t kBufferIndex_VoxelEntityIds = 13;
 constexpr std::uint32_t kBufferIndex_HoveredEntityId = 14;
 constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
+// Per-frame params (canvas quat + voxel count) for the detached re-voxelize GPU
+// scatter compute (`c_revoxelize_detached`, #1556). Slot 16 was the only free
+// index in the Metal 0–30 range; the compute reuses slot 17 (LocalVoxelPositions)
+// for its per-pool resident locals SSBO, bound per-canvas before dispatch.
+constexpr std::uint32_t kBufferIndex_RevoxelizeDetachedParams = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;

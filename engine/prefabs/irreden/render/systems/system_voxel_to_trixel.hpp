@@ -21,8 +21,10 @@
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/detached_revoxelize.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -348,6 +350,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
+    // Detached re-voxelize GPU scatter (#1556): fills binding 5 for a
+    // DETACHED_REVOXELIZE pool from its resident locals + the canvas quat, in
+    // place of the CPU flushStaticPositionRanges.
+    ShaderProgram *revoxelizeProgram_ = nullptr;
+    Buffer *revoxelizeParamsBuf_ = nullptr;
     Buffer *frameDataBuf_ = nullptr;
     Buffer *voxelPosBuf_ = nullptr;
     Buffer *voxelColorBuf_ = nullptr;
@@ -408,6 +415,55 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
         }
         return nullptr;
+    }
+
+    // Every DETACHED_REVOXELIZE canvas's resident locals buffer, resolved once
+    // per frame in beginTick by IRPrefab::DetachedRevoxelize::syncResidentBuffers
+    // and consumed by the per-entity tick (#1556). Same key-by-canvas-entity +
+    // linear-scan shape as detachedPerAxisAllocated_, and for the same reason: the
+    // iterated canvas isn't in the system's template params, and a re-voxelize
+    // canvas's C_DetachedRevoxelizeBuffer can't be added to the archetype filter
+    // without dropping every other voxel-pool canvas. The pointers are column
+    // addresses valid only within this frame's ticks.
+    std::vector<std::pair<IREntity::EntityId, C_DetachedRevoxelizeBuffer *>>
+        detachedRevoxelizeBuffers_;
+
+    C_DetachedRevoxelizeBuffer *lookupDetachedRevoxelizeBuffer(IREntity::EntityId entity) const {
+        for (const auto &[id, buffer] : detachedRevoxelizeBuffers_) {
+            if (id == entity) {
+                return buffer;
+            }
+        }
+        return nullptr;
+    }
+
+    // Fill binding 5 for a DETACHED_REVOXELIZE pool on the GPU: bind this pool's
+    // resident locals + upload the one per-frame quat, then dispatch one thread
+    // per live voxel to rotate+round each cell. Replaces the CPU
+    // flushStaticPositionRanges for re-voxelize canvases — the per-frame cost is
+    // O(entities) (one quat), not O(authored voxels). The SHADER_STORAGE barrier
+    // makes the writes visible to the compact + stage-1 reads later in this tick.
+    void dispatchReVoxelize(
+        C_DetachedRevoxelizeBuffer &buffer,
+        const C_CanvasLocalRotation &canvasRotation,
+        int liveVoxelCount
+    ) {
+        RevoxelizeDetachedParams params{};
+        params.canvasRotation_ = canvasRotation.rotation_;
+        params.voxelCount_ = liveVoxelCount;
+        revoxelizeParamsBuf_->subData(0, sizeof(RevoxelizeDetachedParams), &params);
+
+        revoxelizeProgram_->use();
+        voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
+        buffer.residentLocals_.second->bindBase(
+            BufferTarget::SHADER_STORAGE, kBufferIndex_LocalVoxelPositions
+        );
+        revoxelizeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+
+        constexpr int kLocalSize = 64;
+        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(liveVoxelCount, kLocalSize));
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }
 
     // Route the visible voxel faces into the three per-axis trixel canvases for
@@ -607,7 +663,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // would clobber the prepass output with translation-only data.
         {
             IR_PROFILE_SCOPE("vs1_pos");
-            if (lastUploadedCanvas_ != entity) {
+            C_DetachedRevoxelizeBuffer *revoxBuffer =
+                canvasLocalRotation.reVoxelize_ ? lookupDetachedRevoxelizeBuffer(entity) : nullptr;
+            if (revoxBuffer != nullptr && revoxBuffer->isAllocated()) {
+                // Detached re-voxelize (#1556): the GPU compute owns binding 5 for
+                // this pool — fill it from the resident locals + this frame's quat
+                // (in place of flushStaticPositionRanges). Every frame, since the
+                // quat changes. Mark this canvas as the last uploader so a later
+                // switch to a CPU-owned canvas re-seeds binding 5 from its mirror,
+                // and drop any (empty) pending ranges the pool may carry.
+                dispatchReVoxelize(*revoxBuffer, canvasLocalRotation, liveVoxelCount);
+                voxelPool.clearPendingPositionRanges();
+                lastUploadedCanvas_ = entity;
+            } else if (lastUploadedCanvas_ != entity) {
                 // Re-seed only static-transform voxel runs so the GPU-prepass
                 // output (UPDATE_VOXEL_POSITIONS_GPU, binding 5) is preserved
                 // for GPU-transformed slots across canvas switches.
@@ -775,6 +843,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // is cleared (capacity kept) inside the call. No per-entity getComponent.
         IRPrefab::PerAxisCanvas::syncAllocationToDetachedEntities(&detachedPerAxisAllocated_);
 
+        // Same lazy lifecycle for DETACHED_REVOXELIZE pools' resident GPU locals
+        // (#1556): allocate + seed each pool's rigid locals once, and report the
+        // live {canvas, &buffer} set the per-entity tick dispatches against (in
+        // place of the CPU position flush). No-op for a scene with no re-voxelize
+        // canvas — the list comes back empty.
+        IRPrefab::DetachedRevoxelize::syncResidentBuffers(&detachedRevoxelizeBuffers_);
+
         // Resolve the main canvas's per-axis trixel canvases once per frame for
         // the per-entity tick to consume without a getComponent on its own
         // iterating canvas (#1309). Re-resolved every frame; never held across
@@ -803,6 +878,22 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxel2",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
+        );
+        // Detached re-voxelize GPU scatter compute + its per-frame params UBO
+        // (#1556). The resident locals SSBO is owned per-canvas by
+        // C_DetachedRevoxelizeBuffer (allocated lazily), so only the program and
+        // the single-instance params buffer live here.
+        IRRender::createNamedResource<ShaderProgram>(
+            "RevoxelizeDetachedProgram",
+            std::vector{ShaderStage{IRRender::kFileCompRevoxelizeDetached, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<Buffer>(
+            "RevoxelizeDetachedParamsBuffer",
+            nullptr,
+            sizeof(RevoxelizeDetachedParams),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
+            kBufferIndex_RevoxelizeDetachedParams
         );
         IRRender::createNamedResource<Buffer>(
             "SingleVoxelFrameData",
@@ -882,6 +973,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
         p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
+        p->revoxelizeProgram_ = IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");
+        p->revoxelizeParamsBuf_ =
+            IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->voxelPosBuf_ = IRRender::getNamedResource<Buffer>("VoxelPositionBuffer");
         p->voxelColorBuf_ = IRRender::getNamedResource<Buffer>("VoxelColorBuffer");

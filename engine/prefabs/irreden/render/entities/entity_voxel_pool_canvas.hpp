@@ -6,6 +6,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
@@ -33,6 +34,11 @@ template <> struct Prefab<PrefabTypes::kVoxelPoolCanvas> {
             // Default-constructed = (0,0) size + null handles, so a static /
             // cardinal canvas pays only the component slot, no GPU memory.
             C_PerAxisTrixelCanvases{},
+            // Resident GPU locals buffer for the detached re-voxelize scatter
+            // (#1556). Inert until allocated lazily by
+            // syncResidentBuffers() for a DETACHED_REVOXELIZE canvas; a static /
+            // non-re-voxelize canvas pays only the component slot, no GPU memory.
+            C_DetachedRevoxelizeBuffer{},
             C_Name{canvasName}
         );
         if (framebuffer == kNullEntity) {
