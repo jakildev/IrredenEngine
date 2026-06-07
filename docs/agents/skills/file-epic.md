@@ -3,9 +3,9 @@
 The canonical `file-epic` flow: take an approved architect plan that covers
 a multi-ticket epic and file it as a fleet expects — an umbrella issue
 labelled with the repo's **epic label**, one child per phase labelled with
-the **task label**, per-ticket plan files in the **plans dir** so the
-queue-manager copies them into the repo on ingest, and post-filing stack
-validation.
+the **task label**, per-ticket plan files **committed into the repo** at the
+**repo-side plan path** so a worker on any host reads them from master, and
+post-filing stack validation.
 
 Every repo that runs a fleet keeps its
 `.claude/skills/file-epic/SKILL.md` as a thin wrapper that points here and
@@ -23,8 +23,8 @@ mechanism.
 | **epic label** | Marks the umbrella so the queue-manager skips it. | `fleet:epic` |
 | **task label** | Marks each child as a queue-ingestable task. | `fleet:task` |
 | **architect plans dir** | Where the approved architect draft lives. | `~/.claude/plans/<slug>.md` |
-| **plans dir** | Worker-facing plan store the queue-manager reads. | `~/.fleet/plans/issue-<N>.md` |
-| **repo-side plan path** | Final repo-side plan after ingest rename. | `<repo>/.fleet/plans/T-<NNN>.md` |
+| **plans dir** | Local staging for the plan, pre-commit. | `~/.fleet/plans/issue-<N>.md` |
+| **repo-side plan path** | Committed, authoritative plan workers read from master. | `<repo>/.fleet/plans/issue-<N>.md` |
 | **validate-stack command** | Asserts every child carries the structured fields. | `fleet-validate-stack` |
 | **title area vocabulary** | `<area>` tokens for child titles. | `engine`, `render`, `game`, module names |
 
@@ -79,9 +79,9 @@ report — don't double-file.
 cp <architect-plans-dir>/<slug>.md <plans-dir>/issue-<N>.md
 ```
 
-This is the worker-facing reference. The queue-manager copies per-ticket
-files into the repo as the **repo-side plan path** at ingest; the umbrella
-plan itself stays at the `issue-<N>` filename for the umbrella's lifetime.
+This stages the umbrella plan locally; step 6.5 commits it (and every
+per-ticket plan) into the repo at the **repo-side plan path**. The umbrella
+plan keeps the `issue-<N>` filename for the umbrella's lifetime.
 
 ### 3. Apply the epic label to the umbrella
 
@@ -94,9 +94,9 @@ ingest individually) and to auto-close the umbrella when all children close.
 
 ### 4. Parse the plan's child-ticket sections
 
-For each child section extract: the descriptive title (drop the architect's
-internal `T-XXX` slug — the tracker assigns its own number and the
-queue-manager assigns the canonical `T-NNN` at ingest); model tag; scope,
+For each child section extract: the descriptive title (drop any architect
+`T-XXX`/`P<n>` slug if you prefer — the tracker assigns the canonical issue
+number, which is what every downstream reference uses); model tag; scope,
 approach, acceptance criteria, dependencies, gotchas.
 
 ### 5. File children sequentially (NOT in parallel)
@@ -152,15 +152,17 @@ Then file:
 
 ```bash
 gh issue create --repo <repo> --label "<task-label>" \
-  --title "<area>: <descriptive title> (T-<slug>)" \
+  --title "<area>: <descriptive title> (<phase-slug>)" \
   --body-file .file-epic-body.md
 rm -f .file-epic-body.md
 ```
 
-Title convention: `<area>: <descriptive title> (T-<slug>)` using one of the
-repo's **title area vocabulary** tokens. The `(T-<slug>)` suffix preserves
-the architect's internal numbering; the queue-manager assigns the canonical
-`T-NNN` separately. Capture the issue number the tracker returns.
+Title convention: `<area>: <descriptive title> (<phase-slug>)` using one of the
+repo's **title area vocabulary** tokens. An optional `(<phase-slug>)` suffix
+(e.g. `(P1)`) preserves the architect's phase numbering for readability; the
+tracker's **issue number** is the canonical identifier every downstream
+reference (plan filename, `Blocked by:`, claim) uses. Capture the issue number
+the tracker returns.
 
 ### 6. Write per-ticket plan file
 
@@ -198,6 +200,35 @@ the tracker-assigned number):
 The per-ticket plan adds **implementation detail beyond the issue body**.
 Don't duplicate — point at the umbrella plan for arch context, then add file
 paths, code-level approach, and verification.
+
+### 6.5. Commit the plan files into the repo (REQUIRED — workers read from master)
+
+The **plans dir** (`~/.fleet/plans/`) is **local staging only** — it is
+visible solely on the host that filed the epic. The fleet runs across hosts
+(Linux/WSL + macOS), so a worker that claims a child on a *different* host
+reads its plan from the **repo-side plan path** (`<repo>/.fleet/plans/issue-<N>.md`,
+"synced from master" per the worker role docs). If the plan never lands in the
+repo, that worker finds nothing and falls back to the issue body — the
+per-ticket detail you just wrote is lost. So the producer (this skill) must
+commit the plans; there is **no** automatic queue-manager copy.
+
+Copy the umbrella plan **and** every per-ticket plan into the repo and open a
+small docs PR (never commit to the default branch directly):
+
+```bash
+mkdir -p <repo-root>/.fleet/plans
+cp <plans-dir>/issue-<umbrella>.md <repo-root>/.fleet/plans/issue-<umbrella>.md
+for N in <child-1> <child-2> ...; do
+    cp <plans-dir>/issue-$N.md <repo-root>/.fleet/plans/issue-$N.md
+done
+# branch + commit + PR via the commit-and-push skill (filenames keep the
+# issue-<N>.md form — there is NO T-<NNN> rename).
+```
+
+The PR is docs-only (reviews fast). It does **not** need to merge before the
+head child is claimable — same-host workers read local staging — but a
+cross-host worker needs it merged, so land it promptly. Naming stays
+`issue-<N>.md`; the obsolete `T-<NNN>` rename is retired.
 
 ### 7. Post the umbrella summary comment
 
@@ -271,8 +302,8 @@ auto-approve).
 | Location | Purpose | Lifecycle |
 |---|---|---|
 | **architect plans dir** (`<slug>.md`) | Architect's draft, approved by user. | Session-local; archive after the epic ships. |
-| **plans dir** (`issue-<N>.md`) | Worker-facing plan (umbrella or per-ticket). | Persists. Queue-manager copies per-ticket files into the repo at ingest. |
-| **repo-side plan path** (`T-<NNN>.md`) | Final repo-side plan, renamed at ingest. | Lives in the repo until the ticket closes. |
+| **plans dir** (`issue-<N>.md`) | Local staging, pre-commit (same-host only). | Written in step 6; copied into the repo in step 6.5. |
+| **repo-side plan path** (`issue-<N>.md`) | Committed, authoritative plan workers read from master. | Committed via the step-6.5 docs PR; lives in the repo until the ticket closes. |
 
 ## When the architect plan is rough
 

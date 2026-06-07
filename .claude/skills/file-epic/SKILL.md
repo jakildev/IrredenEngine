@@ -28,7 +28,7 @@ for why.
 | **task label** | `fleet:task` |
 | **architect plans dir** | `~/.claude/plans/<slug>.md` |
 | **plans dir** | `~/.fleet/plans/issue-<N>.md` |
-| **repo-side plan path** | `<repo>/.fleet/plans/T-<NNN>.md` |
+| **repo-side plan path** | `<repo>/.fleet/plans/issue-<N>.md` (committed via the step-6.5 docs PR; no `T-<NNN>` rename) |
 | **validate-stack command** | `fleet-validate-stack <umbrella>` (add `--repo game` for the game repo) |
 | **title area vocabulary** | `engine`, `render`, `engine/voxel`, `game`, etc. (the same scope vocabulary `commit-and-push` uses) |
 
