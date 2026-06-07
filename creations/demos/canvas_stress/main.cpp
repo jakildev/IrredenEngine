@@ -52,6 +52,7 @@
 // Command suites
 #include <irreden/common/command_suite_capture.hpp>
 
+#include <cstdint>
 #include <cstring>
 #include <cstdlib>
 #include <string>
@@ -224,14 +225,31 @@ void spawnDetachedVoxelObject(
     );
 }
 
+// Color a re-voxelize verification voxel by its model position so a stale
+// exposed-mask defect (#1557) reads as a color break (a wrong / buried face) or
+// a black gap (a hole) instead of being hidden by a uniform fill. Each model
+// axis drives one RGB channel, so every visible face shows a distinct gradient.
+Color reVoxelizeVerifyColor(vec3 modelPos, ivec3 size) {
+    const vec3 half = vec3(size) * 0.5f;
+    auto chan = [](float v, float ext) -> std::uint8_t {
+        const float t = IRMath::clamp((v + ext) / IRMath::max(2.0f * ext, 1.0f), 0.0f, 1.0f);
+        return static_cast<std::uint8_t>(40.0f + 200.0f * t);
+    };
+    return Color{chan(modelPos.x, half.x), chan(modelPos.y, half.y), chan(modelPos.z, half.z), 255};
+}
+
 // One detached RE-VOXELIZE object (#1555). Same canvas + private-pool shape as
 // the forward-scatter cube above, but RotationMode::DETACHED_REVOXELIZE routes
-// it through SYSTEM_REBUILD_DETACHED_VOXELS (cells re-filled at the full
-// rotation) + the cardinal raster path. When `carveAsymmetric`, an +x/+y
-// quadrant column is carved out of the centered box to make an L-prism — the
-// asymmetric solid whose true-3D rotation a 2D forward-scatter skew cannot
-// represent (the headline #1551 discriminator). `initialRotation` seeds a clear
-// off-cardinal pose so even shot 0 reads as true-3D.
+// it through the GPU scatter (cells re-filled at the full rotation) + the
+// cardinal raster path. When `carveAsymmetric`, an +x/+y quadrant column is
+// carved out of the centered box to make an L-prism — the asymmetric solid whose
+// true-3D rotation a 2D forward-scatter skew cannot represent (the headline
+// #1551 discriminator). When `multiColor`, each voxel is tinted by its model
+// position — the P3 verification vehicle (#1557): a dense uniform solid hides the
+// stale exposed-mask defect (the distance buffer fills gated holes, uniform color
+// masks wrong faces), so the discriminating solid must be multi-color (and the
+// carve makes it sparse/concave so rotation changes which faces are exposed).
+// `initialRotation` seeds a clear off-cardinal pose so even shot 0 reads as true-3D.
 void spawnDetachedReVoxelizeSolid(
     int index,
     vec3 worldPos,
@@ -239,7 +257,8 @@ void spawnDetachedReVoxelizeSolid(
     vec3 spinAxis,
     float spinRate,
     Color color,
-    bool carveAsymmetric
+    bool carveAsymmetric,
+    bool multiColor = false
 ) {
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "revox_canvas_" + std::to_string(index),
@@ -264,11 +283,24 @@ void spawnDetachedReVoxelizeSolid(
             }
         }
         voxelSet.syncActiveMask();
-        // Re-derive face-occlusion bits so the faces newly exposed by the carve
-        // (previously interior, marked occluded) actually emit — otherwise the
-        // notch reads as background holes. (Per-cell round-to-cell aliasing under
-        // rotation is still P3's job; this only fixes the model-space carve.)
+        // Seed the model-space face-occlusion bits for the carved shape. P3
+        // (SYSTEM_REBUILD_DETACHED_VOXELS) re-derives this mask against the
+        // rotated destination cells every frame (#1557), so this is just the
+        // pre-first-tick initial state for the carve notch.
         IRPrefab::Voxel::recomputeFaceOccupancy(voxelSet.voxels_, voxelSet.size_);
+    }
+
+    if (multiColor) {
+        C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(solid);
+        for (int i = 0; i < voxelSet.numVoxels_; ++i) {
+            if (voxelSet.voxels_[i].color_.alpha_ == 0) {
+                continue; // skip carved-away voxels
+            }
+            voxelSet.voxels_[i].color_ =
+                reVoxelizeVerifyColor(voxelSet.positions_[i].pos_, voxelSet.size_);
+        }
+        // RGBA written through the raw pool span (no alpha change) — the active
+        // mask is unaffected, and STAGE_1 re-uploads the colors each frame.
     }
 
     IREntity::createEntity(
@@ -585,11 +617,14 @@ void initEntities() {
         spawnDetachedVoxelObject(i, worldPos, kAxes[i % 4], spinRate, kDetachedColors[i % 6]);
     }
 
-    // Detached RE-VOXELIZE proof solids (#1555): an asymmetric L-prism (the
-    // headline true-3D discriminator) and a cube (validates the cube case the
-    // epic uses to supersede #1551). Seeded at a clear off-cardinal tilt so the
-    // first shot already reads as a true 3D-rotated solid; a slow auto-spin then
-    // sweeps the full SO(3) range to prove smoothness (no pop).
+    // Detached RE-VOXELIZE proof solids (#1555): a MULTI-COLOR asymmetric L-prism
+    // (the headline true-3D discriminator, doubling as the #1557 P3 stale-mask
+    // verification vehicle — multi-color + carved so a mis-gated face reads as a
+    // color break / hole) and a dense uniform cube (validates the cube case the
+    // epic uses to supersede #1551, and the dense-uniform control the defect
+    // hides on). Seeded at a clear off-cardinal tilt so the first shot already
+    // reads as a true 3D-rotated solid; a slow auto-spin then sweeps the full
+    // SO(3) range to prove smoothness (no pop) and parade every residual pose.
     const float reVoxSpin = g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame;
     spawnDetachedReVoxelizeSolid(
         0,
@@ -598,7 +633,8 @@ void initEntities() {
         vec3(1.0f, 1.0f, 0.4f),
         reVoxSpin,
         Color{255, 150, 60, 255},
-        /*carveAsymmetric=*/true
+        /*carveAsymmetric=*/true,
+        /*multiColor=*/true
     );
     spawnDetachedReVoxelizeSolid(
         1,

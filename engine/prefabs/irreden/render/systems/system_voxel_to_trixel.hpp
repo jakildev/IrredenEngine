@@ -114,6 +114,12 @@ inline void buildVoxelFrameData(
         frameData.residualYaw_ = 0.0f;
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
+        // Re-voxelize canvases keep the standard visible-triplet × exposed-mask
+        // gate (`.w == 0`): SYSTEM_REBUILD_DETACHED_VOXELS recomputes the per-voxel
+        // `flags_` exposed mask against the ROTATED destination cells each frame
+        // (#1557), so the mask is current for the baked-in rotation and emits
+        // exactly the rotated solid's surface faces — no stale-mask holes or
+        // wrong-colored faces, and no over-emit of interior faces.
         frameData.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
             static_cast<int>(visibleFaces[1]),

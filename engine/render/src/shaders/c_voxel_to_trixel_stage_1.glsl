@@ -153,7 +153,17 @@ void main() {
     // arise because the interior copy was never emitted. Bit position
     // matches `IRComponents::VoxelFlags::kFaceOccluded(faceId)`.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
+    // Detached re-voxelize canvases (visibleFaceIds.w != 0, #1557) bake the
+    // entity rotation into the CELL positions and raster at cardinal 0, so the
+    // per-voxel flags_ mask — model-space adjacency, never recomputed on the
+    // rotated grid — is stale: it skips faces the rotation newly exposed (holes)
+    // and passes faces the rotation buried (flag trixels). Drop the gate for
+    // re-voxelize and let imageAtomicMin on the distance buffer resolve
+    // occlusion — the pre-#1256 cardinal-0-correct behavior (only the
+    // -X/-Y/-Z triplet emits at cardinal 0, so the #1256 depth-tie class cannot
+    // arise). Every other canvas keeps the visible-triplet x exposed-mask model.
+    const bool reVoxelize = visibleFaceIds.w != 0;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or

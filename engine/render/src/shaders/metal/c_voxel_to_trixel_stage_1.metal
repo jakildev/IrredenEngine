@@ -99,9 +99,14 @@ kernel void c_voxel_to_trixel_stage_1(
 
     const int2 canvasSize = frameData.canvasSizePixels;
 
-    // Exposed-face gate (#1278) — see GLSL stage 1 for the rationale.
+    // Exposed-face gate (#1278) — see GLSL stage 1 for the rationale. Detached
+    // re-voxelize canvases (frameData.visibleFaceIds.w != 0, #1557) bake the
+    // rotation into CELL positions and raster at cardinal 0, so their model-space
+    // flags_ mask is stale; drop the gate and let imageAtomicMin resolve
+    // occlusion (the pre-#1256 cardinal-0-correct behavior).
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
+    const bool reVoxelize = frameData.visibleFaceIds.w != 0;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(

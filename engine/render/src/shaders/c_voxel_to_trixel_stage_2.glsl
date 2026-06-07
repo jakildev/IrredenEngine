@@ -123,7 +123,13 @@ void main() {
     // Stage 2 mirrors stage 1's exposed-face gate so it doesn't waste an
     // `imageLoad` + depth compare on faces stage 1 already skipped.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
+    // Re-voxelize canvases (visibleFaceIds.w != 0, #1557) drop the stale
+    // model-space exposed-mask gate — see stage 1 for the rationale. Stage 2
+    // mirrors the skip so the color/entity tap survives for every face stage 1
+    // wrote distance for; writeColorTap's depth re-test still keeps only the
+    // occlusion winner.
+    const bool reVoxelize = visibleFaceIds.w != 0;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
