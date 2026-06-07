@@ -32,6 +32,10 @@
 //  - `numVoxels_ <= 0` — headless / pre-canvas staging.
 //  - The voxel set's pool chunks are all outside the cull viewport.
 
+#include <algorithm>
+#include <cstdint>
+#include <vector>
+
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/ir_math.hpp>
@@ -40,6 +44,7 @@
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/voxel_pool_allocation.hpp>
+#include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
@@ -63,6 +68,26 @@ template <> struct System<REBUILD_GRID_VOXELS> {
     // cull viewport) — the gate then treats every set as visible.
     IsoBounds2D chunkVp_{};
     bool cullValid_ = false;
+
+    // Reused per-set occupancy of the ROTATED world cells (sorted packed keys),
+    // for the exposed-mask recompute below. A member so it keeps capacity across
+    // frames (no per-tick allocation, per cpp-ecs.md "Allocations in hot paths").
+    std::vector<std::int64_t> cellKeys_;
+    std::vector<ivec3> cellRoundedPositions_; // per-slot rounded positions, built with cellKeys_ to skip double-rounding; capacity retained
+
+    // Pack an integer world cell into one sortable key. The ±2^20 bias keeps
+    // coordinates positive across the engine's working volume; a voxel further
+    // than 2^20 cells from origin would alias (far outside any real scene).
+    static std::int64_t packCell(const ivec3 &c) {
+        constexpr std::int64_t kBias = 1 << 20;
+        constexpr std::int64_t kSpan = 1 << 21;
+        return (static_cast<std::int64_t>(c.x) + kBias) +
+               (static_cast<std::int64_t>(c.y) + kBias) * kSpan +
+               (static_cast<std::int64_t>(c.z) + kBias) * kSpan * kSpan;
+    }
+    bool cellOccupied(const ivec3 &c) const {
+        return std::binary_search(cellKeys_.begin(), cellKeys_.end(), packCell(c));
+    }
 
     void beginTick() {
         lastCanvas_ = IREntity::kNullEntity;
@@ -143,6 +168,56 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             // the continuous-yaw cull would project a stale (pre-rotation) box
             // and could drop this set's chunks (#1439).
             pool.markChunkWorldBoundsDirty();
+        }
+
+        // Recompute the exposed-face mask against the ROTATED world cells (#1570
+        // GRID parity). The authored `C_Voxel.flags_` mask is in the entity's
+        // MODEL frame, but the cells above now live in WORLD space, so the
+        // world-canvas raster (`c_voxel_to_trixel_stage_{1,2}` faceIsExposed)
+        // would gate rotated-frame faces against an unrotated mask and drop /
+        // mis-colour whole faces as the entity spins — the same defect #1570
+        // fixed for detached re-voxelize. Detached re-voxelize bypasses the gate
+        // per-canvas; the world canvas mixes this entity with static voxels, so
+        // instead re-derive the mask here, the off-grid generalization of
+        // IRPrefab::Voxel::recomputeFaceOccupancy. STAGE_1 re-uploads pool colours
+        // (which carry flags_) every frame, so the rewrite reaches the GPU.
+        std::vector<C_Voxel> &poolColors = pool.getColors();
+        if (poolColors.size() < baseIdx + static_cast<size_t>(safeCount)) {
+            return;
+        }
+        cellKeys_.clear();
+        cellRoundedPositions_.resize(static_cast<size_t>(safeCount));
+        for (int i = 0; i < safeCount; ++i) {
+            if (poolColors[baseIdx + i].color_.alpha_ == 0) {
+                continue; // inactive voxel — not part of the rotated solid
+            }
+            const ivec3 rounded = IRMath::roundVec3HalfUp(poolGlobals[baseIdx + i].pos_);
+            cellRoundedPositions_[i] = rounded;
+            cellKeys_.push_back(packCell(rounded));
+        }
+        std::sort(cellKeys_.begin(), cellKeys_.end());
+        for (int i = 0; i < safeCount; ++i) {
+            C_Voxel &voxel = poolColors[baseIdx + i];
+            std::uint8_t face = 0u;
+            if (voxel.color_.alpha_ > 0) {
+                const ivec3 &cell = cellRoundedPositions_[i];
+                if (cellOccupied(cell + ivec3(-1, 0, 0)))
+                    face |= VoxelFlags::kFaceOccludedNegX;
+                if (cellOccupied(cell + ivec3(1, 0, 0)))
+                    face |= VoxelFlags::kFaceOccludedPosX;
+                if (cellOccupied(cell + ivec3(0, -1, 0)))
+                    face |= VoxelFlags::kFaceOccludedNegY;
+                if (cellOccupied(cell + ivec3(0, 1, 0)))
+                    face |= VoxelFlags::kFaceOccludedPosY;
+                if (cellOccupied(cell + ivec3(0, 0, -1)))
+                    face |= VoxelFlags::kFaceOccludedNegZ;
+                if (cellOccupied(cell + ivec3(0, 0, 1)))
+                    face |= VoxelFlags::kFaceOccludedPosZ;
+            }
+            voxel.flags_ = static_cast<std::uint8_t>(
+                               voxel.flags_ & ~VoxelFlags::kFaceOccludedMask
+                           ) |
+                           face;
         }
     }
 
