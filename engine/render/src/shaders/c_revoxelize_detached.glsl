@@ -52,9 +52,8 @@ void main() {
     vec3 composed = residentLocals[voxelId].xyz;
     vec3 cell;
     if (canvasRotation_ == vec4(0.0, 0.0, 0.0, 1.0)) {
-        // Identity fast-path: worldCellForGridVoxel returns the composed local
-        // unrounded (no scale, no translation), so the cardinal cells are
-        // untouched.
+        // Identity fast-path: safe to skip roundHalfUp — authored locals are
+        // integer-valued, so roundHalfUp would be a no-op here anyway.
         cell = composed;
     } else {
         cell = vec3(roundHalfUp(rotateByQuat(composed, canvasRotation_)));

@@ -37,6 +37,11 @@ inline void
 seedResidentLocals(IRComponents::C_DetachedRevoxelizeBuffer &buffer, IRComponents::C_VoxelPool &pool, int liveCount) {
     const std::vector<IRRender::VoxelGpuPosition> &locals = pool.getPositions();
     const std::vector<IRMath::vec3> &offsets = pool.getPositionOffsets();
+    IR_ASSERT(
+        static_cast<int>(locals.size()) >= liveCount &&
+        static_cast<int>(offsets.size()) >= liveCount,
+        "DetachedRevoxelize: pool locals/offsets smaller than liveCount — pool corruption?"
+    );
     const int n = IRMath::min(
         liveCount,
         static_cast<int>(IRMath::min(locals.size(), offsets.size()))
