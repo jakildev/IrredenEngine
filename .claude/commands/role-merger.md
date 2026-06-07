@@ -43,12 +43,13 @@ loop* for `repos.game.prs[]` — see "## Game-repo pass" after step 5.
 The 2-candidate-per-iteration cap is **shared** across both passes, so
 you rebase at most 2 PRs total per iteration regardless of repo.
 
-**Stacked-PR machinery is engine-only and that is correct, not a gap.**
-Steps 2.5, 2.6, a.5, and a.6 (stacked-base re-targeting, cascade
-rebase, fork detection) do not run in the game pass: game-side worker
-pickup skips stackable blockers (see FLEET.md "Cross-author stacking"),
-so game PRs are never stacked. The game pass is the plain conflict loop
-only.
+**Stacked-PR machinery runs in both passes.** Steps 2.5, 2.6, a.5, and
+a.6 (stacked-base re-targeting, cascade rebase, fork detection) run in
+the game pass too — game-side worker pickup now claims stackable
+blockers (see FLEET.md "Cross-author stacking"), so game PRs can be
+stacked and need the same maintenance as engine stacks. The game pass
+runs them over `repos.game.prs[]` with the game deltas (`--repo
+jakildev/irreden`, game merger worktree).
 
 You are conservative. The auto-resolution scope is intentionally narrow:
 
@@ -828,8 +829,18 @@ worktree, and `gh` target change.
 2g. **Gather + filter candidates** — same candidate rule and skip-label
     set as step 3 (CONFLICTING, or UNKNOWN updated >5m ago), over
     `repos.game.prs[]`.
+2.5g. **Reconcile + cascade-rebase stacked game PRs** — run steps 2.5
+    (reconcile stacked PRs whose base merged or closed — re-target to
+    `master` + `fleet:stacked`→`fleet:stacked-rebase`) and 2.6
+    (cascade-rebase stacked children whose still-open base force-pushed)
+    over `repos.game.prs[]`, exactly as the engine pass, with the game
+    deltas: cwd = game merger worktree, every `gh` call carries `--repo
+    jakildev/irreden`, and re-target/rebase run against the game
+    `origin`. Force-push rebases done here count toward the shared
+    ≤2-rebase budget.
 3g. **Resolve each candidate (within the shared cap)** — run step 5's
-    core resolution: **a** (detached checkout in the game worktree),
+    core resolution: **a** (detached checkout in the game worktree,
+    **including a.5 stacked-PR check and a.6 fork detection**),
     **b** (rebase guard pre-capture), **c** (`git rebase origin/master`),
     **d** (clean → push + comment + `fleet:merger-cooldown`;
     whitespace-only → resolve + push; semantic → `git rebase --abort`,
@@ -837,11 +848,11 @@ worktree, and `gh` target change.
     `fleet:merger-cooldown`, comment), **e** (post-rebase hunk check),
     **f** (reset the game worktree to scratch).
 
-    **Skip the stacked-PR steps entirely** — 2.5, 2.6, a.5 (stacked
-    re-target / cascade) and a.6 (fork detection). Game PRs are never
-    stacked (worker pickup skips game stackables), so `baseRefName` is
-    always `master` on game PRs; treat any game PR as the step-a.5
-    "base is `master`, proceed to step b" case without the lookup.
+    **Run the stacked-PR steps too** — game PRs can now be stacked
+    (`baseRefName != "master"`), so a.5's three sub-cases (base OPEN /
+    MERGED / CLOSED) and a.6's fork-of-other-PR check apply identically;
+    read `baseRefName` from `repos.game.prs[]` and do the base lookup
+    with `--repo jakildev/irreden`.
 
 Semantic game conflicts get `fleet:semantic-conflict` exactly like
 engine — **opus-worker covers game** (it has its own game worktree),
