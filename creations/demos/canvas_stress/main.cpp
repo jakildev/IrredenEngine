@@ -266,6 +266,20 @@ void spawnDetachedReVoxelizeSolid(
         kReVoxPoolSize
     );
 
+    // Light the re-voxelize solid (#1558): AO + directional sun + sky. Attached
+    // HERE — on the re-voxelize canvas only — not on the shared kVoxelPoolCanvas
+    // builder, which also builds the main canvas (double-allocating its AO and
+    // lighting the forward-scatter cubes, breaking the byte-identical guarantee).
+    // C_TrixelCanvasRenderBehavior's default useCameraPositionIso_ lets the AO /
+    // lighting passes run over this canvas; COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL
+    // author its own (cardinal) voxel frame before each dispatch. Sun-shadow +
+    // light-volume stay off for detached (deferred to P4b / #1576), so no
+    // C_CanvasSunShadow / C_CanvasLightVolume here.
+    if (!g_settings.noLighting_) {
+        IREntity::setComponent(canvas.canvasEntity_, C_TrixelCanvasRenderBehavior{});
+        IREntity::setComponent(canvas.canvasEntity_, C_CanvasAOTexture{kReVoxCanvasSize});
+    }
+
     // Centered around origin so SYSTEM_REBUILD_DETACHED_VOXELS can rotate the
     // cells about the pool origin (translation-free) and keep the solid centered
     // on its canvas as it tumbles.
