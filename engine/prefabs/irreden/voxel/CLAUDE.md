@@ -112,7 +112,18 @@ for single voxels and particles.
   Detached pools are frustum-cull-exempt for the rotation (the conservative bound
   is rotation-independent), but a canvas-local pool still culls when the camera
   pans off the canvas origin — frame detached entities centered (#1555).
-  Round-to-cell aliasing is accepted at P1/P2 (refined in epic P3).
+  Round-to-cell aliasing is accepted at P1/P2 (the spatial speckle was refined in
+  epic P3 by the `.w=1` conservative dilation). **Temporal spin flicker is an
+  accepted limitation** (#1570 D1): every frame re-voxelizes the rotated solid
+  onto the integer cell grid via `roundHalfUp`, so the occupied-cell SET — and
+  thus the emitted face set — flips discontinuously whenever a voxel crosses a
+  half-integer boundary as the entity spins. This is the same round-to-cell
+  source as the GRID stance above, manifesting temporally. It is **not** fixed
+  with per-cell hysteresis / sticky cell keys: caching last-frame cell state to
+  suppress flips is a snapshot-compare-and-early-return, which the no-dirty-flags
+  rule forbids (`.claude/rules/cpp-ecs.md`). Supersampling the re-voxelize grid
+  (scatter at Nx density, downsample) would trade flicker for fill cost + memory
+  but is not justified at present — revisit only if it becomes a shipping blocker.
 - `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**
