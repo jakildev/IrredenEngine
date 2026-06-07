@@ -275,9 +275,10 @@ Do the work, then exit cleanly:
 
     For a game PR, `cd` into the game worktree before any git/gh op (the
     bash cwd persists across calls in the iteration), and reset *that*
-    worktree to scratch in step k. Game stacked-PRs don't exist (game
-    worker pickup skips stackables), so the stack-aware filter above is a
-    no-op for game.
+    worktree to scratch in step k. For a game PR, the stack-aware filter
+    applies identically: if the candidate's `baseRefName != master` and its
+    base also has `fleet:semantic-conflict`, skip the child and resolve the
+    base first (use `--repo jakildev/irreden` for the base PR lookup).
 
     If the filtered list is empty, skip to step 2. Otherwise pick
     the oldest (smallest `number`) and:
@@ -488,14 +489,16 @@ Do the work, then exit cleanly:
    **If no unblocked tasks are available on either repo, try the
    fallback tier.**
 
-   **Fallback: stackable-blocked tasks (engine only, v1).** Look in
-   `repos.engine.tasks.open[]` for entries where `owner == "free"` (or
-   your worktree name), `model` contains `opus`, AND the entry has a
-   `stackable_blocker_pr` field. Only single-blocker tasks have this
-   field — the scout does not set it for tasks with multiple `Blocked by:`
-   entries (Q3 decision: multi-blocker not eligible in v1). Skip game-side
-   tasks — game stackable pickup is deferred to v2; engine only in
-   this tier. Pick the oldest eligible engine task by task ID.
+   **Fallback: stackable-blocked tasks (engine + game).** Look in
+   `repos.engine.tasks.open[]` AND `repos.game.tasks.open[]` for entries
+   where `owner == "free"` (or your worktree name), `model` contains
+   `opus`, AND the entry has a `stackable_blocker_pr` field. Only
+   single-blocker tasks have this field — the scout does not set it for
+   tasks with multiple `Blocked by:` entries (Q3 decision: multi-blocker
+   not eligible in v1). Pick the oldest eligible task by task ID. **For a
+   `repo == "game"` task, `cd` into your game worktree and prefix the
+   claim with `--repo game`** — the merger's game pass now cascade-
+   rebases stacked game PRs, so the stack is maintained.
 
    If a stackable-blocked task is found, claim it with `--stackable-on`:
    `fleet-claim claim "<task-id>" <your-worktree-name> --stackable-on <stackable_blocker_pr.number>`

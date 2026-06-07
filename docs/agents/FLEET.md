@@ -553,14 +553,17 @@ Two stacking modes exist in this fleet:
   from multiple blockers is a design call the v1 merger machinery
   does not handle.
 
+Engine **and** game tasks are both stackable: the scout enriches
+blocked tasks in both repos, worker pickup claims `--stackable-on` in
+either (game with `--repo game`), and the merger's game pass runs the
+same stacked-base re-target / cascade-rebase / fork-detection (steps
+2.5/2.6/a.5/a.6) as the engine pass.
+
 **v1 limitations:**
 
-- Engine tasks only — the merger's game pass handles plain conflicts
-  but intentionally omits the stacked-PR cascade-rebase machinery
-  (steps 2.5/2.6/a.5/a.6), so a game stack would have no actor for the
-  cascade step. The scout may populate `stackable_blocker_pr` for game
-  tasks for visibility, but worker pickup skips them.
-- Single-blocker tasks only (see Q3).
+- Single-blocker tasks only (see Q3). A task blocked by 2+ open PRs is
+  never eligible for the fallback tier — the scout does not enrich it
+  with `stackable_blocker_pr`.
 
 For role-specific framing (when to stack, role-specific edge cases),
 see `role-sonnet-author.md` and `role-opus-worker.md`. For the

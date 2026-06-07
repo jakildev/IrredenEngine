@@ -101,11 +101,11 @@ the stackable tier and claims `--stackable-on <PR>`. This is the autonomous
 "feed stacking" half: the queue surfaces a blocked task *and* the PR it can
 stack on, in one record.
 
-Per-repo note: worker pickup honors `stackable_blocker_pr` for **engine** tasks
-only in v1 — the merger's cascade-rebase processes engine stacked PRs but the
-game pass does not yet. Game tasks are enriched in state but not picked up
-stackably (the gating lives in the role doc). Multi-blocker tasks are not
-eligible for stacking in v1 (`_single_blocker_issue` returns nothing for them).
+Per-repo note: worker pickup honors `stackable_blocker_pr` for tasks in **all
+repos** (engine and game) — the merger's cascade-rebase processes stacked PRs in
+both the engine pass and the game pass. A `repo == game` stackable task is
+claimed with `--repo game`. Multi-blocker tasks are not eligible for stacking in
+v1 (`_single_blocker_issue` returns nothing for them).
 
 ## Why reconcile leaves these alone
 
