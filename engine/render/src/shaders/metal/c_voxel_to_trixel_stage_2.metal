@@ -153,7 +153,7 @@ kernel void c_voxel_to_trixel_stage_2(
     const uint2 packedEntityId = entityIds[voxelIndex];
 
     // Stage 2 mirrors stage 1's exposed-face gate (#1278) — including the
-    // re-voxelize skip (frameData.visibleFaceIds.w != 0, #1557). writeColorTap's
+    // re-voxelize marker (frameData.visibleFaceIds.w != 0, #1557). writeColorTap's
     // depth re-test still keeps only the occlusion winner among the emitted faces.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
     if (!faceIsExposed(flagsByte, faceId)) return;

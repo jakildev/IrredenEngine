@@ -18,8 +18,9 @@ inline bool voxelIsActive(const IRComponents::C_Voxel &voxel) {
 }
 
 // Pack an integer voxel cell into one 64-bit key for hash-set membership.
-// 21 bits per axis with a +2^20 bias spans ±2^20 cells — far beyond any
-// detached re-voxelize pool's rotated AABB — so distinct cells never collide.
+// 21 bits per axis with a +2^20 bias spans ±2^20 = ±1,048,576 cells — far
+// beyond any detached re-voxelize pool's rotated AABB (demo pool ~10 cells)
+// — so distinct cells never collide.
 inline std::int64_t packCellKey(IRMath::ivec3 cell) {
     constexpr std::int64_t kBias = std::int64_t{1} << 20;
     constexpr std::int64_t kMask = (std::int64_t{1} << 21) - 1;
