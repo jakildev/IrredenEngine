@@ -451,6 +451,12 @@ Do the work, then exit cleanly:
    containing `opus` whose:
    - **Owner** is `free` (or your worktree name)
    - **Blocked by** is empty (or only references already-merged work)
+   - **Not `fleet:blocked`** — the entry's `blocked` flag is `false`.
+     A `blocked: true` task was queued with an unresolved blocker under
+     the queue-all model (#1527); it is **not** a normal-tier pick — it
+     belongs to the stackable fallback tier below (which stacks it on the
+     blocker's open PR). Skipping it here avoids a plain claim on a task
+     that has no mergeable base yet.
    - **Issue is NOT referenced in any open PR's title or branch name**
      in **the same repo** (cross-check against the same repo's
      `prs[]` array from the cache)
