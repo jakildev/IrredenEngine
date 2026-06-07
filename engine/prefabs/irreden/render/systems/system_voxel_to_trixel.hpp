@@ -115,16 +115,20 @@ inline void buildVoxelFrameData(
         const auto cardinalIndex = IRMath::rasterYawCardinalIndex(0.0f);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
         // Re-voxelize canvases keep the standard visible-triplet × exposed-mask
-        // gate (`.w == 0`): SYSTEM_REBUILD_DETACHED_VOXELS recomputes the per-voxel
-        // `flags_` exposed mask against the ROTATED destination cells each frame
-        // (#1557), so the mask is current for the baked-in rotation and emits
-        // exactly the rotated solid's surface faces — no stale-mask holes or
-        // wrong-colored faces, and no over-emit of interior faces.
+        // gate AND mark `.w = 1` (#1557 Option B). SYSTEM_REBUILD_DETACHED_VOXELS
+        // recomputes the per-voxel `flags_` exposed mask against the ROTATED
+        // destination cells each frame, so the gate is current for the baked-in
+        // rotation — emit exactly the rotated solid's surface faces (correct
+        // colours, no over-emit). The `.w` marker then drives the conservative-
+        // coverage dilation in `c_voxel_to_trixel_stage_{1,2}` (each surface face
+        // grown ±1px along its in-plane iso axes) that closes the round-to-cell
+        // sub-cell gaps the correct mask alone would leave. Other canvases keep
+        // `.w = 0` (exact footprint, byte-identical to master).
         frameData.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
             static_cast<int>(visibleFaces[1]),
             static_cast<int>(visibleFaces[2]),
-            0
+            1
         );
         const mat2 fd0 = IRMath::faceDeformationMatrix(visibleFaces[0], 0.0f);
         const mat2 fd1 = IRMath::faceDeformationMatrix(visibleFaces[1], 0.0f);
@@ -462,9 +466,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         revoxelizeProgram_->use();
         voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
         buffer.residentLocals_.second->bindBase(
-            BufferTarget::SHADER_STORAGE, kBufferIndex_LocalVoxelPositions
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_LocalVoxelPositions
         );
-        revoxelizeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
+        revoxelizeParamsBuf_->bindBase(
+            BufferTarget::UNIFORM,
+            kBufferIndex_RevoxelizeDetachedParams
+        );
 
         constexpr int kLocalSize = 64;
         const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(liveVoxelCount, kLocalSize));
@@ -979,7 +987,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
         p->stage1Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxelProgram1");
         p->stage2Program_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2");
-        p->revoxelizeProgram_ = IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");
+        p->revoxelizeProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");
         p->revoxelizeParamsBuf_ =
             IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");

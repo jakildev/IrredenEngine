@@ -210,20 +210,24 @@ struct FrameDataVoxelToCanvas {
     // Z_NEG / Z_POS) — the three camera-visible faces resolved from the
     // camera quaternion via `IRMath::visibleFaceTripletCardinal` (#1278).
     // Indexed by visible-triplet slot 0/1/2; `.w` (std140 ivec3 rounds up to
-    // ivec4 stride anyway) doubles as the detached re-voxelize marker (#1557):
-    // 0 = an ordinary canvas (world, identity, single-canvas / per-axis
-    // detached) that keeps the visible-triplet × exposed-mask gate; non-zero =
-    // a DETACHED_REVOXELIZE canvas whose voxels carry the rotation in their
-    // CELL positions and raster at cardinal 0, so `c_voxel_to_trixel_stage_{1,2}`
-    // drop the (now model-space-stale) exposed-mask gate and let the distance
-    // buffer resolve occlusion. `.w` was formerly written by
-    // VOXEL_TO_TRIXEL_STAGE_1 as the MAIN_CANVAS_SO3 canvas flag; that write was
-    // removed in #1443 when MAIN_CANVAS_SO3 was retired. AO / lighting only ever
-    // index slots 0..2 (AO's `& 3` neighbour decode is guarded behind a
-    // non-empty, per-axis test), so the marker is invisible to them. Defaults to
-    // {X_NEG, Y_NEG, Z_NEG, 0} = the historical lower-coordinate-faces set, so a
-    // UBO that hasn't been populated by the new path renders identically to
-    // pre-#1278 master at cardinal 0.
+    // ivec4 stride anyway) doubles as the detached re-voxelize coverage marker
+    // (#1557 Option B): 0 = an ordinary canvas (world, identity, single-canvas /
+    // per-axis detached) that emits the exact face footprint; non-zero = a
+    // DETACHED_REVOXELIZE canvas whose voxels carry the rotation in their CELL
+    // positions and raster at cardinal 0. Such a canvas KEEPS the visible-triplet
+    // × exposed-mask gate (SYSTEM_REBUILD_DETACHED_VOXELS recomputes the mask on
+    // the rotated cells each frame, so it is correct), and the marker instead
+    // tells `c_voxel_to_trixel_stage_{1,2}` to apply conservative-coverage
+    // dilation — each surface face grown ±1px along its in-plane iso axes — that
+    // closes the sub-cell gaps round-to-cell leaves between adjacent rotated
+    // cells. `.w` was formerly written by VOXEL_TO_TRIXEL_STAGE_1 as the
+    // MAIN_CANVAS_SO3 canvas flag; that write was removed in #1443 when
+    // MAIN_CANVAS_SO3 was retired. AO / lighting only ever index slots 0..2 (the
+    // `& 3` neighbour decode is guarded behind a non-empty, per-axis test, and
+    // re-voxelize is not a per-axis route), so the marker is invisible to them.
+    // Defaults to {X_NEG, Y_NEG, Z_NEG, 0} = the historical lower-coordinate-faces
+    // set, so a UBO that hasn't been populated by the new path renders identically
+    // to pre-#1278 master at cardinal 0.
     //
     // Consumed by raster (`c_voxel_to_trixel_stage_{1,2}` — exposed-mask
     // check + per-face micro-position) AND by `c_compute_voxel_ao` /

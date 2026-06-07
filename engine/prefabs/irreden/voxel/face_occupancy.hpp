@@ -134,8 +134,7 @@ inline void recomputeFaceOccupancyOnCells(
     int count,
     std::unordered_set<std::int64_t> &occupancy
 ) {
-    const int n =
-        IRMath::min(count, static_cast<int>(IRMath::min(cells.size(), voxels.size())));
+    const int n = IRMath::min(count, static_cast<int>(IRMath::min(cells.size(), voxels.size())));
     if (n <= 0) {
         return;
     }
@@ -174,10 +173,9 @@ inline void recomputeFaceOccupancyOnCells(
                 face |= IRComponents::VoxelFlags::kFaceOccludedPosZ;
             }
         }
-        voxel.flags_ = static_cast<std::uint8_t>(
-                           voxel.flags_ & ~IRComponents::VoxelFlags::kFaceOccludedMask
-                       ) |
-                       face;
+        voxel.flags_ =
+            static_cast<std::uint8_t>(voxel.flags_ & ~IRComponents::VoxelFlags::kFaceOccludedMask) |
+            face;
     }
 }
 

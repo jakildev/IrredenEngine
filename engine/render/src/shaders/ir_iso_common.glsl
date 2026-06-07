@@ -640,6 +640,23 @@ void faceInPlaneUnitAxes(int axis, out vec3 eu, out vec3 ev) {
     ev = (axis == 2) ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
 }
 
+// In-plane iso-pixel unit steps (su, sv) for a face's two in-plane world axes —
+// the iso directions along which a re-voxelized cell's in-plane neighbour cells
+// sit on screen. The detached re-voxelize raster (#1557) dilates each surface
+// face's footprint by ±su / ±sv so the sub-cell gaps round-to-cell leaves
+// between adjacent rotated cells fill with the nearest (occlusion-winning,
+// correct-colour) surface face — conservative coverage à la the per-axis scatter
+// (#1494), adapted to the cardinal-0 compute emit. The two in-plane axes project
+// to (±1, ∓1) and (0, ±2) iso pixels; normalising to ~1px keeps the dilation one
+// pixel per side, so the silhouette grows by at most a pixel ALONG the surface
+// and never across a concave notch (that direction is the face normal, untouched).
+void faceInPlaneIsoSteps(int faceId, out ivec2 su, out ivec2 sv) {
+    vec3 eu, ev;
+    faceInPlaneUnitAxes(faceId >> 1, eu, ev);
+    su = roundHalfUp(normalize(vec2(pos3DtoPos2DIso(ivec3(eu)))));
+    sv = roundHalfUp(normalize(vec2(pos3DtoPos2DIso(ivec3(ev)))));
+}
+
 // Default conservative-coverage margin (framebuffer pixels) the per-axis
 // forward-scatter grows each quad by along each screen edge normal (#1494).
 // ~0.85px reliably closes the sub-pixel thin-sliver waffle while keeping the

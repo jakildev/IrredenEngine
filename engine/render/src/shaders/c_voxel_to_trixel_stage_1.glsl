@@ -116,14 +116,37 @@ void writeDistanceTap(const ivec2 canvasPixel, const int voxelDistance) {
 // column lengths ≤ √3, since |col0|² = 3 - 2(c±s) ≤ 3 for X/Y faces);
 // detached canvases cap at n=6 for full SO(3).
 // At residualYaw==0 on any canvas the identity D collapses n to 1.
-void emitDeformedFace(const ivec2 base, const mat2 D, const int voxelDistance) {
+void emitDeformedFace(
+    const ivec2 base, const mat2 D, const int voxelDistance, const int faceId,
+    const bool reVoxelize
+) {
     int maxN = isDetachedCanvas > 0.5 ? 6 : 2;
     int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     float inv = 1.0 / float(n);
+    // Conservative coverage (#1557 Option B): a re-voxelize canvas bakes the
+    // entity rotation into integer CELL positions, so round-to-cell leaves
+    // sub-cell gaps between adjacent rotated cells once projected to iso. Dilate
+    // each emitted surface face by ±1px along its two in-plane iso axes so the
+    // gap pixels fill with the nearest face (imageAtomicMin keeps the occlusion
+    // winner; stage 2's depth re-test paints the matching colour). Every other
+    // canvas (world, per-axis, detached forward-scatter) emits the exact
+    // footprint — byte-identical to master.
+    ivec2 su = ivec2(0);
+    ivec2 sv = ivec2(0);
+    if (reVoxelize) {
+        faceInPlaneIsoSteps(faceId, su, sv);
+    }
     for (int sy = 0; sy < n; ++sy) {
         for (int sx = 0; sx < n; ++sx) {
             vec2 src = vec2(gl_LocalInvocationID.xy) + vec2(float(sx), float(sy)) * inv;
-            writeDistanceTap(base + roundHalfUp(D * src), voxelDistance);
+            ivec2 p = base + roundHalfUp(D * src);
+            writeDistanceTap(p, voxelDistance);
+            if (reVoxelize) {
+                writeDistanceTap(p + su, voxelDistance);
+                writeDistanceTap(p - su, voxelDistance);
+                writeDistanceTap(p + sv, voxelDistance);
+                writeDistanceTap(p - sv, voxelDistance);
+            }
         }
     }
 }
@@ -153,17 +176,16 @@ void main() {
     // arise because the interior copy was never emitted. Bit position
     // matches `IRComponents::VoxelFlags::kFaceOccluded(faceId)`.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!faceIsExposed(flagsByte, faceId)) return;
     // Detached re-voxelize canvases (visibleFaceIds.w != 0, #1557) bake the
-    // entity rotation into the CELL positions and raster at cardinal 0, so the
-    // per-voxel flags_ mask — model-space adjacency, never recomputed on the
-    // rotated grid — is stale: it skips faces the rotation newly exposed (holes)
-    // and passes faces the rotation buried (flag trixels). Drop the gate for
-    // re-voxelize and let imageAtomicMin on the distance buffer resolve
-    // occlusion — the pre-#1256 cardinal-0-correct behavior (only the
-    // -X/-Y/-Z triplet emits at cardinal 0, so the #1256 depth-tie class cannot
-    // arise). Every other canvas keeps the visible-triplet x exposed-mask model.
+    // entity rotation into the CELL positions and raster at cardinal 0.
+    // SYSTEM_REBUILD_DETACHED_VOXELS recomputes the per-voxel flags_ exposed mask
+    // against the ROTATED destination cells each frame, so the gate above is
+    // CORRECT for the baked-in rotation — emit exactly the rotated solid's
+    // surface faces (no stale-mask holes/flag trixels, no interior over-emit).
+    // The marker instead drives the conservative-coverage dilation in
+    // emitDeformedFace that closes the round-to-cell sub-cell gaps (Option B).
     const bool reVoxelize = visibleFaceIds.w != 0;
-    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
@@ -273,7 +295,7 @@ void main() {
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance);
+        emitDeformedFace(base, D, voxelDistance, faceId, reVoxelize);
         return;
     }
 
@@ -306,5 +328,5 @@ void main() {
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance);
+    emitDeformedFace(base, D, voxelDistance, faceId, reVoxelize);
 }

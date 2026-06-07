@@ -94,15 +94,33 @@ void emitDeformedFace(
     const mat2 D,
     const int voxelDistance,
     const vec4 voxelColor,
-    const uint voxelIndex
+    const uint voxelIndex,
+    const int faceId,
+    const bool reVoxelize
 ) {
     int maxN = isDetachedCanvas > 0.5 ? 6 : 1;
     int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
     float inv = 1.0 / float(n);
+    // Conservative coverage (#1557 Option B): mirror stage 1's re-voxelize
+    // footprint dilation so the colour/entity tap reaches the same gap pixels
+    // the distance tap claimed. writeColorTap's depth re-test then paints only
+    // the occlusion-winning face per pixel, so gaps get the correct colour.
+    ivec2 su = ivec2(0);
+    ivec2 sv = ivec2(0);
+    if (reVoxelize) {
+        faceInPlaneIsoSteps(faceId, su, sv);
+    }
     for (int sy = 0; sy < n; ++sy) {
         for (int sx = 0; sx < n; ++sx) {
             vec2 src = vec2(gl_LocalInvocationID.xy) + vec2(float(sx), float(sy)) * inv;
-            writeColorTap(base + roundHalfUp(D * src), voxelDistance, voxelColor, voxelIndex);
+            ivec2 p = base + roundHalfUp(D * src);
+            writeColorTap(p, voxelDistance, voxelColor, voxelIndex);
+            if (reVoxelize) {
+                writeColorTap(p + su, voxelDistance, voxelColor, voxelIndex);
+                writeColorTap(p - su, voxelDistance, voxelColor, voxelIndex);
+                writeColorTap(p + sv, voxelDistance, voxelColor, voxelIndex);
+                writeColorTap(p - sv, voxelDistance, voxelColor, voxelIndex);
+            }
         }
     }
 }
@@ -123,13 +141,12 @@ void main() {
     // Stage 2 mirrors stage 1's exposed-face gate so it doesn't waste an
     // `imageLoad` + depth compare on faces stage 1 already skipped.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    // Re-voxelize canvases (visibleFaceIds.w != 0, #1557) drop the stale
-    // model-space exposed-mask gate — see stage 1 for the rationale. Stage 2
-    // mirrors the skip so the color/entity tap survives for every face stage 1
-    // wrote distance for; writeColorTap's depth re-test still keeps only the
-    // occlusion winner.
+    if (!faceIsExposed(flagsByte, faceId)) return;
+    // Re-voxelize canvases (visibleFaceIds.w != 0, #1557) keep the exposed-mask
+    // gate above (the mask is recomputed on the rotated cells each frame); the
+    // marker drives the conservative-coverage dilation in emitDeformedFace —
+    // mirror of stage 1.
     const bool reVoxelize = visibleFaceIds.w != 0;
-    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);
@@ -197,7 +214,7 @@ void main() {
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex, faceId, reVoxelize);
         return;
     }
 
@@ -225,5 +242,5 @@ void main() {
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex);
+    emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex, faceId, reVoxelize);
 }

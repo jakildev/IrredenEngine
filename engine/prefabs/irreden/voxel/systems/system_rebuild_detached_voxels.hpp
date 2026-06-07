@@ -84,9 +84,9 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         std::vector<IRComponents::C_Voxel> &colors = pool.getColors();
         const int safeCount = IRMath::min(
             liveCount,
-            static_cast<int>(IRMath::min(
-                IRMath::min(localPositions.size(), localOffsets.size()), colors.size()
-            ))
+            static_cast<int>(
+                IRMath::min(IRMath::min(localPositions.size(), localOffsets.size()), colors.size())
+            )
         );
         if (safeCount <= 0) {
             return;
@@ -116,23 +116,26 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         // is built on match the cells the raster reads byte-for-byte. The fresh
         // flags_ reach the GPU on STAGE_1's per-frame color upload.
         const IRComponents::C_WorldTransform rotationOnly{
-            IRMath::vec3(0.0f), canvasRotation.rotation_, IRMath::vec3(1.0f)
+            IRMath::vec3(0.0f),
+            canvasRotation.rotation_,
+            IRMath::vec3(1.0f)
         };
         cellsScratch_.resize(static_cast<std::size_t>(safeCount));
         for (int i = 0; i < safeCount; ++i) {
             cellsScratch_[i] = IRMath::roundVec3ToIVec3(
                 IRPrefab::GridRotation::worldCellForGridVoxel(
-                    localPositions[i].pos_, localOffsets[i], rotationOnly
+                    localPositions[i].pos_,
+                    localOffsets[i],
+                    rotationOnly
                 )
             );
         }
         IRPrefab::Voxel::recomputeFaceOccupancyOnCells(
             std::span<const IRMath::ivec3>(
-                cellsScratch_.data(), static_cast<std::size_t>(safeCount)
+                cellsScratch_.data(),
+                static_cast<std::size_t>(safeCount)
             ),
-            std::span<IRComponents::C_Voxel>(
-                colors.data(), static_cast<std::size_t>(safeCount)
-            ),
+            std::span<IRComponents::C_Voxel>(colors.data(), static_cast<std::size_t>(safeCount)),
             safeCount,
             occupancyScratch_
         );
