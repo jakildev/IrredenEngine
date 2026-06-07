@@ -17,6 +17,16 @@
 //   parent_translation, then round each component to the nearest integer
 //   cell. Aliasing (multiple authored voxels collapsing into the same world
 //   cell) is accepted by design.
+//
+// Rounding uses `IRMath::roundVec3HalfUp` (floor(x + 0.5)), NOT `IRMath::round`
+// (glm round-half-away-from-zero). This is the engine's CPU↔GPU coordinate
+// handshake convention (`ir_math.hpp` roundHalfUp doc): the detached re-voxelize
+// GPU mirror `c_revoxelize_detached.{glsl,metal}` calls the shared `roundHalfUp`
+// helper, so CPU and GPU classify negative half-integers identically (#1556).
+// GRID re-voxelize (`REBUILD_GRID_VOXELS`) shares this helper; the rounding
+// switch only changes cells at exact negative half-integer post-rotation
+// coordinates (float-measure-zero) and aligns it with the same convention the
+// SDF lattice walk already uses.
 
 #include <irreden/ir_math.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -45,7 +55,9 @@ inline IRMath::vec3 worldCellForGridVoxel(
     const IRMath::vec3 scaled = wt.scale_ * composed;
     const IRMath::vec3 rotated = IRMath::rotateVectorByQuat(scaled, wt.rotation_);
     const IRMath::vec3 world = wt.translation_ + rotated;
-    return IRMath::vec3(IRMath::round(world.x), IRMath::round(world.y), IRMath::round(world.z));
+    // roundHalfUp (not glm round) so the GPU mirror agrees byte-for-byte; see
+    // the header note above.
+    return IRMath::vec3(IRMath::roundVec3HalfUp(world));
 }
 
 } // namespace IRPrefab::GridRotation

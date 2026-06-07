@@ -286,6 +286,27 @@ struct C_VoxelPool {
         bool useContinuousYaw = false,
         float visualYaw = 0.0f
     ) {
+        // Detached re-voxelize pool (#1556): the GPU scatter compute owns
+        // binding 5, so the CPU global mirror no longer follows the per-frame
+        // rotation. Drive the chunk-visibility gate from the conservative
+        // origin-centered world-AABB seeded once at allocation (a sphere that
+        // bounds the solid under EVERY rotation) instead of the now-stale mirror.
+        // The pool is small and re-rasterized whole, so every chunk gets the same
+        // projected iso bound — a per-chunk bound would buy nothing. Bypasses the
+        // cardinal cache: the bound is rotation-independent, so it never drifts.
+        if (m_staticReVoxelizeBound.has_value()) {
+            const int chunkCount = getChunkCount();
+            m_chunkBounds.assign(chunkCount, ChunkBounds{});
+            const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
+                m_staticReVoxelizeBound->worldMin_, m_staticReVoxelizeBound->worldMax_, visualYaw
+            );
+            for (ChunkBounds &cb : m_chunkBounds) {
+                cb.isoMin_ = iso.min_;
+                cb.isoMax_ = iso.max_;
+            }
+            return;
+        }
+
         if (!useContinuousYaw && !m_chunkBoundsDirty && cardinalIndex == m_lastBoundsCardinalIndex)
             return;
 
@@ -352,6 +373,25 @@ struct C_VoxelPool {
 
     void markChunkBoundsDirty() {
         m_chunkBoundsDirty = true;
+    }
+
+    // Seed the conservative origin-centered world-AABB used by the detached
+    // re-voxelize cull path (#1556). @p halfExtents are the authored solid's
+    // per-axis half-extents about the pool origin; the bound is the cube
+    // [-r, r]^3 with r = |halfExtents| (the farthest corner's distance from the
+    // origin), which contains the solid under any rotation. Seeded ONCE at pool
+    // allocation by SYSTEM_REBUILD_DETACHED_VOXELS — it never changes per frame,
+    // so the GPU compute that rewrites binding 5 doesn't need a CPU mirror for
+    // the cull. Setting this switches rebuildChunkBounds onto the static-bound
+    // branch above; leaving it unset (every non-re-voxelize pool) is
+    // byte-identical.
+    void setStaticReVoxelizeBound(vec3 halfExtents) {
+        const float r = IRMath::length(halfExtents);
+        m_staticReVoxelizeBound = ChunkWorldBounds{vec3(-r), vec3(r)};
+    }
+
+    bool hasStaticReVoxelizeBound() const {
+        return m_staticReVoxelizeBound.has_value();
     }
 
     // Cull query: true if any chunk overlapping the pool slot range
@@ -575,6 +615,11 @@ struct C_VoxelPool {
     // per-voxel re-projection entirely.
     std::vector<ChunkWorldBounds> m_chunkWorldBounds;
     bool m_chunkWorldBoundsDirty = true;
+    // Conservative origin-centered world-AABB for a detached re-voxelize pool
+    // (#1556). Set once by setStaticReVoxelizeBound; when present, rebuildChunkBounds
+    // ignores the (GPU-owned, CPU-stale) per-voxel globals and projects this
+    // instead. nullopt for every other pool → byte-identical cull.
+    std::optional<ChunkWorldBounds> m_staticReVoxelizeBound;
     // Per-frame queue of position-global slices whose CPU contents were
     // rewritten since the last GPU flush. Drained + coalesced by
     // VOXEL_TO_TRIXEL_STAGE_1; capacity is preserved across frames so

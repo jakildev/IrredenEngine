@@ -32,6 +32,7 @@ const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stag
 const char *const kFileCompTrixelToTrixel = "shaders/c_trixel_to_trixel.glsl";
 const char *const kFileCompTextToTrixel = "shaders/c_text_to_trixel.glsl";
 const char *const kFileCompUpdateVoxelPositions = "shaders/c_update_voxel_positions.glsl";
+const char *const kFileCompRevoxelizeDetached = "shaders/c_revoxelize_detached.glsl";
 const char *const kFileCompShapesToTrixel = "shaders/c_shapes_to_trixel.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
