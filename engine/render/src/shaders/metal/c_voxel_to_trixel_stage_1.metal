@@ -116,12 +116,20 @@ kernel void c_voxel_to_trixel_stage_1(
 
     const int2 canvasSize = frameData.canvasSizePixels;
 
-    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
-    // Re-voxelize canvases (frameData.visibleFaceIds.w != 0, #1557) keep the
-    // exposed-mask gate (recomputed on the rotated cells each frame); the marker
-    // drives the conservative-coverage dilation in emitDeformedFace — see GLSL.
+    // Re-voxelize marker (frameData.visibleFaceIds.w != 0, #1557) — see GLSL.
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;
+
+    // Exposed-face gate (#1278), BYPASSED for re-voxelize (#1570). The GPU
+    // scatter (c_revoxelize_detached) rewrites only cell POSITIONS; the per-voxel
+    // exposed mask in `flags_` is computed once at authoring time in the
+    // UNROTATED model frame and is never recomputed against the rotated cells
+    // (P1's per-frame CPU recompute was removed in P2 / #1556), so gating
+    // rotated-frame faces against it drops whole camera-visible faces as the
+    // solid spins. Re-voxelize emits all three visible-triplet cardinal faces and
+    // lets the depth re-test keep the front-most surface — see the GLSL twin for
+    // the full rationale.
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(

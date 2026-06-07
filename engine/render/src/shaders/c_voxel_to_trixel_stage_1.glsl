@@ -167,6 +167,10 @@ void main() {
     const int faceId = visibleFaceIds[slot];
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
+    // Re-voxelize marker: detached canvases (visibleFaceIds.w != 0, #1557) bake
+    // the entity rotation into the CELL positions and raster at cardinal 0.
+    const bool reVoxelize = visibleFaceIds.w != 0;
+
     // Exposed-face gate (#1278): emit only when the world face this slot
     // renders is BOTH camera-visible (the slot-to-faceId resolution above
     // already guarantees this) AND exposed (neighbor cell empty). Interior
@@ -175,17 +179,22 @@ void main() {
     // copies that produced the pre-#1278 stripe artifact (#1256) cannot
     // arise because the interior copy was never emitted. Bit position
     // matches `IRComponents::VoxelFlags::kFaceOccluded(faceId)`.
+    //
+    // BYPASSED for re-voxelize (#1570). The GPU scatter (c_revoxelize_detached)
+    // rewrites only the cell POSITIONS; the per-voxel exposed mask in `flags_`
+    // is computed ONCE at authoring time (IRPrefab::Voxel::recomputeFaceOccupancy)
+    // in the UNROTATED model frame and is never recomputed against the rotated
+    // cells — P1's per-frame CPU recompute was removed in P2 (#1556) and never
+    // moved to the GPU. Gating rotated-frame faces against that unrotated mask
+    // systematically drops whole camera-visible faces as the solid spins away
+    // from identity. So re-voxelize emits all three visible-triplet cardinal
+    // faces (X_NEG/Y_NEG/Z_NEG) for every cell and lets the depth re-test
+    // (imageAtomicMin) keep the front-most surface: a convex/centred solid shows
+    // exactly its three iso faces with no holes, and interior cells lose the
+    // depth tie. (A later optimisation can recompute the mask against the rotated
+    // cells on the GPU to cut interior overdraw.)
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
-    // Detached re-voxelize canvases (visibleFaceIds.w != 0, #1557) bake the
-    // entity rotation into the CELL positions and raster at cardinal 0.
-    // SYSTEM_REBUILD_DETACHED_VOXELS recomputes the per-voxel flags_ exposed mask
-    // against the ROTATED destination cells each frame, so the gate above is
-    // CORRECT for the baked-in rotation — emit exactly the rotated solid's
-    // surface faces (no stale-mask holes/flag trixels, no interior over-emit).
-    // The marker instead drives the conservative-coverage dilation in
-    // emitDeformedFace that closes the round-to-cell sub-cell gaps (Option B).
-    const bool reVoxelize = visibleFaceIds.w != 0;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or

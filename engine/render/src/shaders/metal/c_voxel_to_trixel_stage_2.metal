@@ -152,15 +152,18 @@ kernel void c_voxel_to_trixel_stage_2(
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];
 
-    // Stage 2 mirrors stage 1's exposed-face gate (#1278) — including the
-    // re-voxelize marker (frameData.visibleFaceIds.w != 0, #1557). writeColorTap's
-    // depth re-test still keeps only the occlusion winner among the emitted faces.
-    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!faceIsExposed(flagsByte, faceId)) return;
-    // Re-voxelize canvases (frameData.visibleFaceIds.w != 0, #1557) keep the
-    // exposed-mask gate; the marker drives the conservative-coverage dilation in
-    // emitDeformedFace — mirror of stage 1.
+    // Re-voxelize marker — mirror of stage 1.
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;
+
+    // Stage 2 mirrors stage 1's exposed-face gate (#1278) so it doesn't waste a
+    // depth compare on faces stage 1 skipped — and is BYPASSED for re-voxelize
+    // (#1570) for the same reason (its `flags_` mask is in the unrotated
+    // authoring frame, not the baked-in rotated cell frame; see the GLSL twin).
+    // Stage 1 emitted all three cardinal faces for re-voxelize, so stage 2 must
+    // paint them too or the colour tap is lost. writeColorTap's depth re-test
+    // still keeps only the occlusion winner among the emitted faces.
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(
