@@ -127,26 +127,25 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // VOXEL_TO_TRIXEL_STAGE_1), so the composite TRS no longer
         // applies any rotation.
         //
-        // SCREEN-LOCKED OVERLAY CONTRACT (#1582 decision, Option B).
-        // The model Z is a constant 0 and `distanceOffset_` (below) is 0,
-        // so every detached canvas — DETACHED and DETACHED_REVOXELIZE
-        // alike — composites at the SAME fixed framebuffer depth,
-        // regardless of the entity's world iso depth (x+y+z). This is
-        // intentional, the epic #1553 decision-1 contract: detached
-        // canvases render camera-yaw-zeroed at the camera origin and
-        // composite as a cheap 2D overlay at the iso screen position, so
-        // they pay no per-frame world re-rasterization. The deliberate
-        // cost: detached entities do NOT depth-sort against, cast shadows
-        // onto, or receive shadows from world geometry (they never write
-        // world `trixelDistances` at their world depth). GRID mode is the
-        // vehicle for world-integrated rotating solids — its voxels live
-        // in the world pool and sort/cast/receive correctly. World-depth
-        // composite for detached canvases (depth-sort + cast/receive) is
-        // tracked by P4b (#1576), which world-places the detached pool for
-        // the sun-shadow map / light-volume; depth-composite falls out of
-        // that same placement. Do not add a per-entity world-depth Z here
-        // in isolation — it must land with the #1576 world-placement so
-        // the depth convention matches the GRID `trixelDistances` write.
+        // SCREEN-LOCKED OVERLAY (default) vs WORLD-PLACED (opt-in) — #1582 / #1576.
+        // The model Z is a constant 0; `distanceOffset_` (below) is 0 by DEFAULT,
+        // so by default every detached canvas — DETACHED and DETACHED_REVOXELIZE
+        // alike — composites at the SAME fixed framebuffer depth regardless of the
+        // entity's world iso depth (x+y+z): a cheap 2D overlay at the iso screen
+        // position, camera-yaw-zeroed at the camera origin, paying no per-frame
+        // world re-rasterization (the epic #1553 decision-1 / #1582 Option B
+        // contract). The deliberate cost of the default: detached entities do NOT
+        // depth-sort against, cast shadows onto, or receive shadows from world
+        // geometry — they never write world `trixelDistances` at their world depth.
+        // GRID mode is the always-world-integrated alternative (its voxels live in
+        // the world pool and sort/cast/receive correctly). P4b (#1576) adds an
+        // OPT-IN — `C_EntityCanvas::worldPlaced_` — that world-places a detached
+        // re-voxelize solid: P4b-1 (below) sets `distanceOffset_` to the entity's
+        // world iso depth so it depth-sorts against world geometry on the shared
+        // GRID convention; P4b-2/P4b-3 extend it to receive/cast world sun-shadow
+        // + light-volume. With the flag off the composite is byte-identical to the
+        // overlay contract above — so do not move world-depth onto the DEFAULT
+        // path; it belongs behind the opt-in.
         mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
         model = scale(
             model,
@@ -162,7 +161,20 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         fd.canvasZoomLevel_ = cameraZoom_;
         fd.cameraTrixelOffset_ = -entityIso;
         fd.textureOffset_ = vec2(0.0f);
-        fd.distanceOffset_ = 0; // fixed depth — screen-locked overlay (see contract above; #1582 / #1576)
+        // Composite depth (#1576 P4b-1). With worldPlaced_ off this stays 0 (the
+        // screen-locked overlay above). On opt-in, add the entity's WORLD iso
+        // depth so `model rawDist + distanceOffset` reproduces the shared world
+        // trixelDistances value: the detached canvas rasters its pool in the
+        // pool-centered MODEL frame, so its rawDist is model-relative;
+        // pos3DtoDistance is linear, so for an integer world translation the sum
+        // equals pos3DtoDistance(world cell) exactly — the GRID-equivalence the
+        // composite depth-sorts on (see detached_world_depth_test). roundVec3HalfUp
+        // is the per-axis cell rounding GRID re-voxelize uses
+        // (IRPrefab::GridRotation::worldCellForGridVoxel), so CPU and the world
+        // voxel rasterizer classify the entity cell identically.
+        fd.distanceOffset_ = entityCanvas.worldPlaced_
+                                 ? pos3DtoDistance(roundVec3HalfUp(worldTransform.translation_))
+                                 : 0;
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
         fd.effectiveSubdivisionsForHover_ = vec2(1.0f);
         fd.showHoverHighlight_ = 0.0f;

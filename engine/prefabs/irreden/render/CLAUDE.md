@@ -398,28 +398,37 @@ lighting. This is a deliberate split, not an asymmetry to "fix" (#1582 decision)
 - **`DETACHED` / `DETACHED_REVOXELIZE`** — the rotated solid renders on a
   **private canvas** (camera-yaw-zeroed, at the camera origin) which
   `ENTITY_CANVAS_TO_FRAMEBUFFER` (`system_entity_canvas_to_framebuffer.hpp`)
-  composites as a cheap **2D overlay at the iso screen position, at a FIXED
-  framebuffer depth** (`model` Z = 0, `distanceOffset_` = 0). This is the epic
-  #1553 decision-1 contract: cheap per-frame rotation with no world
-  re-rasterization. The deliberate cost: detached entities **do NOT** depth-sort
-  against, cast shadows onto, or receive shadows from world geometry — they never
-  write world `trixelDistances` at their world depth. `DETACHED_REVOXELIZE` only
-  changes *how* the private canvas is filled (GPU scatter bakes rotation into
-  integer cells, removing per-frame spin flicker); it is **still a screen-locked
-  overlay** — re-voxelize ≠ world-integrated.
+  composites **by default** as a cheap **2D overlay at the iso screen position, at
+  a FIXED framebuffer depth** (`model` Z = 0, `distanceOffset_` = 0). This is the
+  epic #1553 decision-1 contract: cheap per-frame rotation with no world
+  re-rasterization. The deliberate cost of the default: detached entities **do
+  NOT** depth-sort against, cast shadows onto, or receive shadows from world
+  geometry — they never write world `trixelDistances` at their world depth.
+  `DETACHED_REVOXELIZE` only changes *how* the private canvas is filled (GPU
+  scatter bakes rotation into integer cells, removing per-frame spin flicker); by
+  default it is **still a screen-locked overlay**. The **opt-in**
+  `C_EntityCanvas::worldPlaced_` (P4b / #1576) world-integrates a re-voxelize
+  solid — see "World-integration" below.
 
 **Picking a mode:** need a rotating solid that casts/receives world shadows and
 sorts against world geometry (e.g. a grounded scene with a shadow floor) → use
 `GRID`. Need cheap, isolated rotation where world depth/shadow don't matter (HUD
 props, floating showcases) → use a `DETACHED` mode.
 
-**World-integrating detached canvases** (world-depth composite so detached
-entities depth-sort + cast/receive) is real future work, tracked by **P4b
-(#1576)** — it world-places the detached pool into the sun-shadow map / 128³
-light volume, and depth-composite falls out of that same placement. Do **not**
-bolt a per-entity world-depth Z onto the composite in isolation: it must land
-with the #1576 world-placement so the depth convention matches the GRID
-`trixelDistances` write.
+**World-integration (opt-in, P4b / #1576).** A detached re-voxelize solid can
+opt into world participation via `C_EntityCanvas::worldPlaced_` (default off):
+
+- **P4b-1 (landed):** the composite sets `distanceOffset_` to the entity's world
+  iso depth (`pos3DtoDistance(roundVec3HalfUp(translation))`), so the solid
+  depth-sorts against world geometry on the shared GRID `trixelDistances`
+  convention. `worldPlaced_` off stays byte-identical to the overlay contract.
+- **P4b-2 (#1576) / P4b-3 (#1596), pending:** sample the shared world sun-shadow
+  map + 128³ light-volume at the recovered world pos (receive), then a second
+  bake dispatch (cast) — both gated on the same flag.
+
+Keep world-depth behind the opt-in — do not move it onto the default path — and
+match the GRID `trixelDistances` convention so an opt-in cell and the same GRID
+cell composite to the same depth (the `detached_world_depth_test` equivalence).
 
 ## Gotchas
 
@@ -440,3 +449,8 @@ with the #1576 world-placement so the depth convention matches the GRID
 - **Render-behavior flags are the knobs.** Changing pipeline behavior
   for a canvas (disable zoom tracking, turn off hover) is done via
   `C_TrixelCanvasRenderBehavior`, not by branching in the systems.
+- **Detached world-placement is on `C_EntityCanvas`, not the render behavior.**
+  The `worldPlaced_` opt-in (see "World-integration" above) lives on
+  `C_EntityCanvas` — which `ENTITY_CANVAS_TO_FRAMEBUFFER` already iterates — not on
+  `C_TrixelCanvasRenderBehavior` (the child canvas entity), so the composite reads
+  it with no per-tick foreign getComponent.

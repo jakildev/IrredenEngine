@@ -102,6 +102,12 @@ struct CanvasStressSettings {
     bool fullRotate_ = false;
     bool noSpin_ = false;
     bool noLighting_ = false;
+    // #1576 P4b-1 debug toggle. OFF by default so the auto-screenshot suite (and
+    // its committed references) stays byte-identical to the screen-locked overlay
+    // default. When set, the two center re-voxelize solids opt into world-
+    // placement (C_EntityCanvas::worldPlaced_) so they depth-sort against the
+    // world grid instead of compositing on top — the runnable P4b-1 demonstration.
+    bool worldPlaceReVox_ = false;
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -317,13 +323,17 @@ void spawnDetachedReVoxelizeSolid(
     float spinRate,
     Color color,
     bool carveAsymmetric,
-    bool multiColor = false
+    bool multiColor = false,
+    bool worldPlaced = false
 ) {
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "revox_canvas_" + std::to_string(index),
         kReVoxCanvasSize,
         kReVoxPoolSize
     );
+    // #1576 P4b-1: opt this detached canvas into world-depth compositing so it
+    // depth-sorts against the world grid (off by default → screen-locked overlay).
+    canvas.worldPlaced_ = worldPlaced;
 
     // Light the re-voxelize solid (#1558): AO + directional sun + sky. Attached
     // HERE — on the re-voxelize canvas only — not on the shared kVoxelPoolCanvas
@@ -538,6 +548,8 @@ void parseArgs(int argc, char **argv) {
             g_settings.noSpin_ = true;
         } else if (std::strcmp(argv[i], "--no-lighting") == 0) {
             g_settings.noLighting_ = true;
+        } else if (std::strcmp(argv[i], "--world-place-revox") == 0) {
+            g_settings.worldPlaceReVox_ = true;
         }
     }
 }
@@ -838,7 +850,8 @@ void initEntities() {
         reVoxSpin,
         Color{255, 150, 60, 255},
         /*carveAsymmetric=*/true,
-        /*multiColor=*/true
+        /*multiColor=*/true,
+        /*worldPlaced=*/g_settings.worldPlaceReVox_
     );
     spawnDetachedReVoxelizeSolid(
         1,
@@ -847,7 +860,9 @@ void initEntities() {
         vec3(0.4f, 1.0f, 0.6f),
         reVoxSpin,
         Color{70, 210, 210, 255},
-        /*carveAsymmetric=*/false
+        /*carveAsymmetric=*/false,
+        /*multiColor=*/false,
+        /*worldPlaced=*/g_settings.worldPlaceReVox_
     );
 
     // Orbit ring: a wider second ring of varied silhouettes that tumbles around

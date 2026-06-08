@@ -164,11 +164,18 @@ lands in world range. Coupled to Q1 (only applies on the world-placed path).
 Each phase is its own PR, stacks on the previous, and is independently verifiable.
 **P4b-1 stacks on #1583** (which establishes the documented default contract).
 
-1. **P4b-1 — opt-in flag + world-depth composite (Q1 + Q4). The keystone.**
+1. **P4b-1 — opt-in flag + world-depth composite (Q1 + Q4). The keystone.** ✅ **Implemented.**
    Add the per-entity opt-in flag (default off → #1583's screen-locked default is
    byte-identical). On opt-in, set `distanceOffset_` = world iso depth + assert the
    GRID-equivalence check. Opt-in detached solids now depth-sort against world
    geometry, the floor, and each other. (Resolves the "floats vs floor" half of #1582.)
+   *Landed as:* `C_EntityCanvas::worldPlaced_` (default off); `ENTITY_CANVAS_TO_FRAMEBUFFER`
+   sets `distanceOffset_ = pos3DtoDistance(roundVec3HalfUp(translation))` when the flag is
+   set (else 0). Because re-voxelize keeps `voxelDepthAxis = (1,1,1)` (the rotation lives in
+   the cells) and `pos3DtoDistance` is linear, the composite depth is **exact** against GRID
+   at any rotation for integer entity translations — proved by the CPU↔GPU GRID-equivalence
+   gtest `test/render/detached_world_depth_test.cpp`. Runnable demo: `canvas_stress
+   --world-place-revox` (off by default so the auto-screenshot references stay byte-identical).
 2. **P4b-2 — receive (Q3a).** Plumb the world transform into the detached lighting
    voxel-frame; flip the `isDetachedCanvas` shadow/light-volume branch to sample the
    shared maps at world pos, gated on the opt-in flag. GL + Metal. Opt-in solids now
