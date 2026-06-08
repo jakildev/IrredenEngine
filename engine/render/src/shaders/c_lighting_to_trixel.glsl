@@ -45,7 +45,11 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float visualYaw;
     uniform float rasterYaw;
     uniform float residualYaw;
-    uniform float _yawPadding;            // isDetachedCanvas in the full UBO
+    // 1.0 for a detached entity canvas (re-voxelize solid), 0.0 for the world
+    // canvas. A detached re-voxelize canvas carries no sun-shadow map / light
+    // volume (#1558) — the branch below forces shadow = 1.0 and disables the
+    // light-volume term so slots 4/5 (inert placeholders) are never sampled.
+    uniform float isDetachedCanvas;
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
     // Per-slot world FaceId (0..5) — see c_voxel_to_trixel_stage_1.glsl + #1278.
     // Lighting maps the decoded depth slot → world FaceId for the
@@ -137,11 +141,18 @@ void main() {
         return;
     }
 
+    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun +
+    // sky only: it has no per-canvas sun-shadow map or light volume (slots 4/5
+    // are inert placeholders). World cast/receive shadow + light-volume bleed
+    // for detached solids are deferred to P4b (#1576).
+    const bool detachedCanvas = isDetachedCanvas != 0.0;
+
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
     const float ao     = imageLoad(canvasAO, pixel).r;
     // Shadow factor is 1.0 for lit pixels and kShadowDarken (0.45) for
-    // pixels whose sun ray hit an occluder in COMPUTE_SUN_SHADOW.
-    const float shadow = imageLoad(canvasSunShadow, pixel).r;
+    // pixels whose sun ray hit an occluder in COMPUTE_SUN_SHADOW; forced to
+    // 1.0 (fully lit) for the detached canvas, which has no shadow map.
+    const float shadow = detachedCanvas ? 1.0 : imageLoad(canvasSunShadow, pixel).r;
     const vec4  src    = imageLoad(trixelColors, pixel);
 
     // Debug overlay short-circuits artistic shading and paints a false-
@@ -186,7 +197,7 @@ void main() {
         baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
     }
 
-    if (lightVolumeEnabled != 0) {
+    if (lightVolumeEnabled != 0 && !detachedCanvas) {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.glsl.
         // Subdivision-aware canvasOffset matches c_compute_voxel_ao.glsl.

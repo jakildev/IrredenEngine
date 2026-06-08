@@ -99,8 +99,14 @@ kernel void c_lighting_to_trixel(
         return;
     }
 
+    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun +
+    // sky only: no per-canvas sun-shadow map or light volume (slots 4/5 are
+    // inert placeholders). World cast/receive + light-volume bleed for detached
+    // solids are deferred to P4b (#1576). Mirrors c_lighting_to_trixel.glsl.
+    const bool detachedCanvas = voxelFrameData.isDetachedCanvas != 0.0f;
+
     const float  ao     = canvasAO.read(uint2(pixel)).r;
-    const float  shadow = canvasSunShadow.read(uint2(pixel)).r;
+    const float  shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;
     const float4 src    = trixelColors.read(uint2(pixel));
 
     if (frameData.debugOverlayMode != 0) {
@@ -140,7 +146,7 @@ kernel void c_lighting_to_trixel(
         baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
     }
 
-    if (frameData.lightVolumeEnabled != 0) {
+    if (frameData.lightVolumeEnabled != 0 && !detachedCanvas) {
         // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
         // face-locally; the single canvas uses the cardinal-snap reconstruction.
         // The shared world light volume is sampled the same way for both. Mirrors GLSL.

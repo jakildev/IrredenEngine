@@ -19,7 +19,10 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -50,6 +53,20 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // Per-pass voxel-frame author/restore for multi-lit-canvas scenes
+    // (re-voxelize P4 / #1558). The shared voxel UBO (binding 7) is authored
+    // per canvas by VOXEL_TO_TRIXEL_STAGE_1, but only the LAST canvas it
+    // processes stays resident — so a second lit canvas (a detached re-voxelize
+    // solid) would read the main canvas's visible-triplet / detached flag and
+    // mis-shade at non-zero camera yaw. AO re-authors the iterating canvas's
+    // frame before its dispatch and restores the main canvas's at endTick so
+    // BAKE / COMPUTE_SUN_SHADOW downstream keep reading the world frame.
+    // Resolved once per frame in beginTick; never held across frames.
+    FrameDataVoxelToCanvas scratchVoxelFrame_{};
+    const C_TriangleCanvasTextures *mainCanvasTextures_ = nullptr;
+    const C_VoxelPool *mainVoxelPool_ = nullptr;
+    const C_CanvasLocalRotation *mainCanvasRotation_ = nullptr;
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -61,6 +78,22 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         if (!behavior.useCameraPositionIso_)
             return;
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
+
+        // Author THIS canvas's voxel frame data so AO shades it with its own
+        // visible-triplet / detached state (#1558). No-op for a canvas with no
+        // voxel pool (a pure-SDF lit canvas keeps the resident frame, unchanged).
+        // getComponentOptional on the iterating canvas is the canvas-iteration
+        // pattern (few canvases; cf. system_trixel_to_framebuffer.hpp:63), not
+        // the per-voxel ECS footgun.
+        const bool perAxisActive = entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
+                                   perAxisCanvases_->isAllocated();
+        authorIteratingCanvasVoxelFrame(
+            scratchVoxelFrame_,
+            voxelFrameDataBuf_,
+            entity,
+            canvasTextures,
+            perAxisActive
+        );
 
         canvasTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
@@ -166,6 +199,32 @@ template <> struct System<COMPUTE_VOXEL_AO> {
                 perAxisCanvases_ = perAxis.value();
             }
         }
+        // Cache the main canvas's voxel-frame inputs for the endTick restore
+        // (#1558).
+        resolveMainCanvasVoxelFrameInputs(
+            perAxisCanvasEntity_,
+            &mainCanvasTextures_,
+            &mainVoxelPool_,
+            &mainCanvasRotation_
+        );
+    }
+
+    // Restore the main world canvas's voxel frame data so BAKE_SUN_SHADOW_MAP /
+    // COMPUTE_SUN_SHADOW (which run after AO and read the shared voxel UBO) see
+    // the world frame even when a detached re-voxelize canvas authored its own
+    // above (#1558). Byte-identical render output for single-lit-canvas scenes
+    // (cullIso, the only field buildVoxelFrameData omits, is unused downstream).
+    void endTick() {
+        const bool mainPerAxisActive =
+            perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated();
+        restoreMainCanvasVoxelFrame(
+            scratchVoxelFrame_,
+            voxelFrameDataBuf_,
+            mainCanvasTextures_,
+            mainVoxelPool_,
+            mainCanvasRotation_,
+            mainPerAxisActive
+        );
     }
 
     static SystemId create() {
