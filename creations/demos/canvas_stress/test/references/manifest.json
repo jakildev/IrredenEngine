@@ -8,7 +8,8 @@
     "so3_offsnap_disc",
     "so3_wide_parity",
     "so3_grid_cross",
-    "so3_offsnap_wide"
+    "so3_offsnap_wide",
+    "revoxelize_solids"
   ],
   "thresholds": {
     "per_pixel_tol": 8,
@@ -16,5 +17,5 @@
     "max_delta": 64,
     "psnr_db": 35.0
   },
-  "notes": "Detached SO(3) regression suite (#1444 P5). Five shots cover the five checks from the P5 plan: (1) so3_smooth_sweep — primary smooth-deformation at cardinal yaw; (2) so3_offsnap_disc — per-voxel depth ordering at 45° off-cardinal yaw; (3) so3_wide_parity — full-scene cross-host GL/Metal parity; (4) so3_grid_cross — GRID-mode entities unaffected by DETACHED changes; (5) so3_offsnap_wide — second cross-host parity angle at 30°. warmup=120 matches the P4 Metal verification screenshot warmup (#1465). Identity fast-path (zero-rotation) is validated separately: run with --no-spin to verify the no-rotation path is byte-identical to master. Shot order mirrors kShots[] in main.cpp — the Nth entry maps to the Nth full-frame screenshot_NNNNNN.png. Reference PNGs live in sibling subdirs per CMake preset (macos-debug/, linux-debug/) since Metal and OpenGL produce pixel-different output."
+  "notes": "Detached SO(3) + re-voxelize regression suite. Shots 1-5 are the detached SO(3) checks (#1444 P5): (1) so3_smooth_sweep — primary smooth-deformation at cardinal yaw; (2) so3_offsnap_disc — per-voxel depth ordering at 45° off-cardinal yaw; (3) so3_wide_parity — full-scene cross-host GL/Metal parity; (4) so3_grid_cross — GRID-mode entities unaffected by DETACHED changes; (5) so3_offsnap_wide — second cross-host parity angle at 30°. Shot 6 is the detached re-voxelize path (epic #1553, baselined at P5 #1559): (6) revoxelize_solids — the asymmetric L-prism + cube re-voxelize proof solids at zoom 1 (headline 'reads as true-3D' criterion, #1555). The demo also emits a 7th shot, revoxelize_solids_zoom (zoom 2.2), which is intentionally EXCLUDED from this regression manifest: the 2.2x magnification amplifies the documented round-to-cell aliasing speckle (sub-cell CPU<->GPU float divergence on the aliased solid, expected per P1/P3) past the 99.9% match gate run-to-run (max_delta stays ~17, well under threshold), so it is non-deterministic by construction. It remains a manual/attach-screenshots inspection aid, not an automated check. The macos-debug baselines were regenerated at P5 to include the P4 AO/sun/light integration (#1558) that lights the re-voxelize detached canvases — the central cubes are lit; the peripheral forward-scatter ring is unchanged. warmup=120 matches the P4 Metal verification screenshot warmup (#1465). Identity fast-path (zero-rotation) is validated separately: run with --no-spin to verify the no-rotation path is byte-identical to master. Shot order mirrors g_allShots in main.cpp (kShots[] then the two appended re-voxelize shots) — the Nth entry maps to the Nth full-frame screenshot_NNNNNN.png. Reference PNGs live in sibling subdirs per CMake preset (macos-debug/, linux-debug/) since Metal and OpenGL produce pixel-different output; linux-debug/ is captured on a Linux/OpenGL host (fleet:needs-linux-smoke)."
 }
