@@ -17,8 +17,10 @@
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
 
@@ -34,7 +36,9 @@
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
+#include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
+#include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/update/systems/system_auto_spin_local_transform.hpp>
@@ -148,9 +152,23 @@ constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
 // of GRID cubes plus floating DETACHED canvases. Slightly steeper than
 // the standard lighting demo so detached cube tops and main-grid tops
 // both get lambert above ambient at neutral camera yaw.
-constexpr vec3 kSunDirection = vec3(-0.35f, -0.25f, -0.90f);
+// `setSunDirection` points world→sun and asserts z <= 0 (+Z is down, sun is up).
+// Grazing (small |z|) so the GRID casters throw long, readable shadows down
+// (+z) onto the floor, offset well toward +x/+y beside them. Lower ambient than
+// before so the cast shadows read as distinct dark patches rather than washing
+// out against the lit floor.
+constexpr vec3 kSunDirection = vec3(-0.66f, -0.56f, -0.50f);
 constexpr float kSunIntensity = 1.0f;
-constexpr float kSunAmbient = 0.45f;
+constexpr float kSunAmbient = 0.30f;
+
+// Shadow floor: a wide, thin SDF box below the scene so the GRID-mode shadow
+// casters drop visible sun shadows onto a surface. SDF (free at any size) rather
+// than a voxel slab so it spans the full orbit without burning the world pool.
+// kFloorZ is tuned empirically against the sun-shadow projection so the floor
+// sits on the shadowed side of the casters.
+constexpr float kFloorZ = 16.0f;
+constexpr float kFloorSpan = 560.0f; // covers the radius-200 orbit + margin
+constexpr Color kFloorColor{92, 96, 112, 255};
 
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
@@ -510,7 +528,10 @@ int main(int argc, char **argv) {
 void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>(),
+        {// LOD_UPDATE writes the C_ActiveLodLevel singleton that SHAPES_TO_TRIXEL
+         // reads at beginTick (the floor SDF box renders through that pass).
+         IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+         IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
@@ -569,6 +590,10 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>());
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>());
+    // SDF floor pass — runs after the voxel raster and before the lighting/
+    // shadow passes so the floor is in `trixelDistances` when BAKE_SUN_SHADOW_MAP
+    // projects the GRID casters' shadows onto it.
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
     if (!g_settings.noLighting_) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>());
@@ -635,6 +660,21 @@ void initEntities() {
         IRRender::setSunAmbient(kSunAmbient);
         IRRender::setSunShadowsEnabled(true);
         IRRender::setAOEnabled(true);
+
+        // Shadow floor (SDF box) spanning the whole scene, below the entities.
+        // Receives sun shadow + AO. The GRID-mode casters (spin cluster + GRID
+        // orbit shapes) cast onto it; the DETACHED entities (re-voxelize solids,
+        // forward-scatter cubes) do NOT — they composite after the shadow bake,
+        // which is the P4 / P4b detached-lighting work (#1558 / #1576).
+        const EntityId floor = IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                vec4(kFloorSpan, kFloorSpan, 4.0f, 0.0f),
+                kFloorColor
+            }
+        );
+        IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
     }
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
