@@ -19,14 +19,6 @@ const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffe
 const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
 
-// Detached-entity SO(3) forward-scatter composite (P3b / #1475): the
-// per-DETACHED-entity analog of the camera-yaw scatter above. Same instanced
-// per-axis-cell draw, but projects each cell under the entity's octahedral-snap
-// residual quaternion (pos3DtoPos2DIsoRotated) and places it at the entity's
-// iso screen position. Reuses f_peraxis_scatter for the fragment stage (Metal
-// mirror in metal/peraxis_scatter_detached.metal).
-const char *const kFileVertPerAxisScatterDetached = "shaders/v_peraxis_scatter_detached.glsl";
-
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";
 const char *const kFileCompTrixelToTrixel = "shaders/c_trixel_to_trixel.glsl";

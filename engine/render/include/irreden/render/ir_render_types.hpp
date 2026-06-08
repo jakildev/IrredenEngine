@@ -107,17 +107,16 @@ struct FrameDataTrixelToFramebuffer {
     float visualYaw_ = 0.0f;
     int scatterPad_ = 0;
     ivec4 visibleFaceIds_{0, 0, 0, 0};
-    /// Detached-entity SO(3) forward-scatter composite (P3b / #1475). Consumed
-    /// ONLY by v_peraxis_scatter_detached (the per-DETACHED-entity analog of the
-    /// camera-yaw scatter above), another std140 append so the world scatter +
-    /// gather shaders — which stop their UBO block at `visibleFaceIds_` — stay
-    /// byte-identical. The detached scatter projects each face corner under the
-    /// octahedral-snap RESIDUAL quaternion via `pos3DtoPos2DIsoRotated` (instead
-    /// of the camera path's scalar `visualYaw_`) and co-sorts the composite by
-    /// `isoDepthAlongAxis(origin, detachedDepthAxis_.xyz)`. `detachedResidual_`
-    /// is that residual quat (qx,qy,qz,qw); `detachedDepthAxis_.xyz` =
-    /// isoDepthAxisModel(residual). Both are computed CPU-side from the canvas's
-    /// C_CanvasLocalRotation by ENTITY_CANVAS_TO_FRAMEBUFFER.
+    /// Reserved std140 slots at offsets 144 / 160. These formerly carried the
+    /// detached-entity SO(3) forward-scatter residual quat + iso depth axis
+    /// (P3b / #1475), consumed only by v_peraxis_scatter_detached. That detached
+    /// forward-scatter path was retired in #1560 — detached SO(3) now renders
+    /// through the re-voxelize path (#1555–#1559) — but the two slots are kept
+    /// (never written, never read) so `scatterFbResolution_` stays at the shared
+    /// std140 offset 176 the CAMERA scatter shader reads. `v_peraxis_scatter.glsl`
+    /// already declares these as `_detachedResidualPad` / `_detachedDepthAxisPad`
+    /// padding, so the camera path is byte-identical. Do NOT reorder or drop
+    /// these without also reflowing the camera scatter shader's UBO block.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
     /// Framebuffer resolution (.xy) the scatter renders into; .zw pad. Lets the
@@ -139,18 +138,20 @@ static_assert(
     offsetof(FrameDataTrixelToFramebuffer, detachedResidual_) == 144 &&
         offsetof(FrameDataTrixelToFramebuffer, detachedDepthAxis_) == 160 &&
         offsetof(FrameDataTrixelToFramebuffer, scatterFbResolution_) == 176,
-    "Detached scatter fields (P3b / #1475) must std140-append after "
-    "visibleFaceIds_ (ends at 144): detachedResidual_ 144 / detachedDepthAxis_ "
-    "160 / scatterFbResolution_ 176. Read only by the scatter shaders; the "
-    "gather block stops at visibleFaceIds_, so it stays byte-identical"
+    "Scatter UBO tail must std140-append after visibleFaceIds_ (ends at 144): "
+    "detachedResidual_ 144 / detachedDepthAxis_ 160 / scatterFbResolution_ 176. "
+    "The first two are now reserved padding (detached forward-scatter retired "
+    "#1560) holding scatterFbResolution_ at offset 176 for the camera scatter "
+    "shader; the gather block stops at visibleFaceIds_, so it stays byte-identical"
 );
 static_assert(
     sizeof(FrameDataTrixelToFramebuffer) == 192,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
-    "scatter shaders (v_/f_peraxis_scatter[_detached]) read the appended "
-    "perAxisBase_ / visualYaw_ / visibleFaceIds_, the P3b detachedResidual_ "
-    "/ detachedDepthAxis_, and the #1494 scatterFbResolution_ fields; a silent "
-    "reorder or resize would corrupt the scatter UBO with no compile diagnostic"
+    "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
+    "perAxisBase_ / visualYaw_ / visibleFaceIds_ and the #1494 scatterFbResolution_ "
+    "at offset 176; detachedResidual_ / detachedDepthAxis_ are reserved padding "
+    "holding that offset; a silent reorder or resize would corrupt the scatter "
+    "UBO with no compile diagnostic"
 );
 
 struct FrameDataVoxelToCanvas {

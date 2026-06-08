@@ -7,8 +7,8 @@
 // pool's resident SSBO, report the live set — lives here in a prefab-scoped
 // namespace (engine/prefabs/CLAUDE.md Pattern B) so C_DetachedRevoxelizeBuffer
 // stays a trivial GPU-RAII holder and VOXEL_TO_TRIXEL_STAGE_1 reaches the buffers
-// without a per-entity getComponent (it consumes the reported list, exactly like
-// syncAllocationToDetachedEntities feeds the per-axis store).
+// without a per-entity getComponent (it consumes the reported list, the same
+// canvas-keyed-list pattern syncAllocationToCameraYaw uses for the main canvas).
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -77,12 +77,11 @@ inline void syncResidentBuffers(
 
     // Dense per-archetype-column iteration (no per-entity getComponent): the
     // three components arrive as parallel column vectors indexed by row.
-    const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
-        IREntity::getArchetype<
-            IRComponents::C_CanvasLocalRotation,
-            IRComponents::C_VoxelPool,
-            IRComponents::C_DetachedRevoxelizeBuffer>()
-    );
+    const std::vector<IREntity::ArchetypeNode *> nodes =
+        IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<
+                                            IRComponents::C_CanvasLocalRotation,
+                                            IRComponents::C_VoxelPool,
+                                            IRComponents::C_DetachedRevoxelizeBuffer>());
 
     for (IREntity::ArchetypeNode *node : nodes) {
         std::vector<IRComponents::C_CanvasLocalRotation> &rotations =
