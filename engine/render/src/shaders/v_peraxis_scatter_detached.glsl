@@ -125,6 +125,19 @@ void main() {
     // small ones (a fixed bump big enough for large cubes over-grows small).
     // One sqrt of the larger squared edge — not two length() calls.
     float pitchPx = sqrt(max(dot(su, su), dot(sv, sv)));
+    // Degenerate-projection guard (#1584 D). A single forward-scattered face cell
+    // can never legitimately project wider than the framebuffer; at a rare
+    // residual / placement pose `pitchPx` (and the conservative-dilation margin
+    // it drives) can explode and smear this quad across the whole screen for a
+    // frame, or `clipCorner` can come out non-finite. Drop the instance instead
+    // — same off-screen degenerate the empty-cell branch uses.
+    if (!(pitchPx < max(fbRes.x, fbRes.y)) ||
+        any(isnan(clipCorner)) || any(isinf(clipCorner))) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        vColor = vec4(0.0);
+        vDepth = 1.0;
+        return;
+    }
     float detachedMargin = max(kScatterDilateMarginPx, kScatterDetachedPitchFraction * pitchPx);
     clipCorner.xy += scatterConservativeDilation(su, sv, sign(aPos), detachedMargin, ndcPerPx);
     gl_Position = clipCorner;

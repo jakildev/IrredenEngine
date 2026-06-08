@@ -109,6 +109,16 @@ vertex VertexOut v_peraxis_scatter_detached(
     // gap (which scales with pitch) closes at every scale without blobbing small cubes.
     // One sqrt of the larger squared edge — not two length() calls.
     const float pitchPx = sqrt(max(dot(su, su), dot(sv, sv)));
+    // Degenerate-projection guard (#1584 D) — see the GLSL twin. A rare residual
+    // / placement pose can explode pitchPx (and the dilation margin it drives)
+    // into a screen-filling smear for a frame, or make clipCorner non-finite.
+    if (!(pitchPx < max(fbRes.x, fbRes.y)) ||
+        any(isnan(clipCorner)) || any(isinf(clipCorner))) {
+        out.position = float4(2.0, 2.0, 2.0, 1.0);
+        out.color = float4(0.0);
+        out.depth = 1.0;
+        return out;
+    }
     const float detachedMargin = max(kScatterDilateMarginPx, kScatterDetachedPitchFraction * pitchPx);
     clipCorner.xy += scatterConservativeDilation(su, sv, sign(in.position), detachedMargin, ndcPerPx);
     clipCorner.y = -clipCorner.y;
