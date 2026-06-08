@@ -33,30 +33,26 @@ namespace detail {
 // compute reads. Runs once per (re)seed — the locals are rigid, so this is the
 // "GPU owns ongoing state, CPU mirror is a one-shot seed" pattern
 // (.claude/rules/cpp-ecs.md), NOT a per-frame upload.
-inline void
-seedResidentLocals(IRComponents::C_DetachedRevoxelizeBuffer &buffer, IRComponents::C_VoxelPool &pool, int liveCount) {
+inline void seedResidentLocals(
+    IRComponents::C_DetachedRevoxelizeBuffer &buffer, IRComponents::C_VoxelPool &pool, int liveCount
+) {
     const std::vector<IRRender::VoxelGpuPosition> &locals = pool.getPositions();
     const std::vector<IRMath::vec3> &offsets = pool.getPositionOffsets();
     IR_ASSERT(
         static_cast<int>(locals.size()) >= liveCount &&
-        static_cast<int>(offsets.size()) >= liveCount,
+            static_cast<int>(offsets.size()) >= liveCount,
         "DetachedRevoxelize: pool locals/offsets smaller than liveCount — pool corruption?"
     );
-    const int n = IRMath::min(
-        liveCount,
-        static_cast<int>(IRMath::min(locals.size(), offsets.size()))
-    );
+    const int n =
+        IRMath::min(liveCount, static_cast<int>(IRMath::min(locals.size(), offsets.size())));
 
     std::vector<IRMath::vec4> staging(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i) {
         const IRMath::vec3 composed = locals[i].pos_ + offsets[i];
         staging[i] = IRMath::vec4(composed, 0.0f);
     }
-    buffer.residentLocals_.second->subData(
-        0,
-        static_cast<std::size_t>(n) * sizeof(IRMath::vec4),
-        staging.data()
-    );
+    buffer.residentLocals_.second
+        ->subData(0, static_cast<std::size_t>(n) * sizeof(IRMath::vec4), staging.data());
     buffer.seededVoxelCount_ = liveCount;
 }
 
@@ -136,6 +132,40 @@ inline void syncResidentBuffers(
             }
         }
     }
+}
+
+// Cap the re-voxelize single-canvas subdivision density (`voxelRenderOptions.y`)
+// so the model-space lattice stays inside the entity's fixed trixel canvas
+// (#1570 D2 — the single-canvas analogue of the per-axis #1431 cap in
+// IRPrefab::PerAxisCanvas::subdivisionDensity). A re-voxelize canvas rasters its
+// pool in model space (camera yaw + pan zeroed) and is sized once to the pool's
+// rotated-AABB iso footprint at base resolution — it does NOT scale with effSub.
+// effSub folds in camera zoom (`clamp(m_vrs × round(zoom), 1, 16)`), so at
+// zoom > 1 the iso footprint × effSub overflows the fixed canvas and
+// `isInsideCanvas` silently drops the on-screen cells (the bottom/edge clip in
+// #1570). Unlike the per-axis cap — whose on-screen extent is the camera
+// viewport / zoom — the detached model-space footprint is zoom-independent, so
+// the cap is a pure function of canvas size + pool 3D bounds.
+//
+// The capped value is read by the compact pass (it sizes the indirect dispatch's
+// Z count = subdivisions²) AND by `c_voxel_to_trixel_stage_{1,2}`, so the caller
+// must apply it BEFORE the per-canvas UBO upload + compact dispatch — then all
+// three read the same value and no surplus-invocation skip guard is needed (the
+// per-axis path needs one only because it caps AFTER the compact already sized
+// the dispatch from the uncapped effSub). Returns ≥ 1.
+inline int subdivisionCap(IRMath::ivec2 canvasSize, IRMath::ivec3 poolSize3D) {
+    // iso-pixel spread of the pool's 3D bounds at effSub == 1. The spread is
+    // translation-invariant, so the pool origin is irrelevant — only the extent
+    // matters, and the rotated solid lives inside this axis-aligned box.
+    const IRMath::IsoBounds2D iso = IRMath::entityIsoBounds(IRMath::vec3(0.0f), poolSize3D);
+    const IRMath::vec2 footprint = iso.max_ - iso.min_;
+    const int capX = static_cast<int>(
+        IRMath::floor(static_cast<float>(canvasSize.x) / IRMath::max(footprint.x, 1.0f))
+    );
+    const int capY = static_cast<int>(
+        IRMath::floor(static_cast<float>(canvasSize.y) / IRMath::max(footprint.y, 1.0f))
+    );
+    return IRMath::max(IRMath::min(capX, capY), 1);
 }
 
 } // namespace IRPrefab::DetachedRevoxelize

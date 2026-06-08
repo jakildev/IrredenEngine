@@ -625,6 +625,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             detachedAxes != nullptr
         );
 
+        // Re-voxelize zoom-clip cap (#1570 D2). A re-voxelize detached canvas
+        // rasters its pool in model space into a fixed-size canvas, but effSub
+        // folds in camera zoom, so a zoom-scaled lattice overflows the canvas and
+        // on-screen faces clip to background. Clamp the density to what the canvas
+        // holds (the single-canvas analogue of the per-axis #1431 cap). Applied
+        // here — before the UBO upload + compact dispatch below — so the compact
+        // pass sizes the indirect Z count from the capped value too (no skip guard
+        // needed). Gated on re-voxelize so the main world canvas and the
+        // forward-scatter detached canvases stay byte-identical.
+        if (canvasLocalRotation.isDetached() && canvasLocalRotation.reVoxelize_) {
+            const int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
+                triangleCanvasTextures.size_,
+                voxelPool.getVoxelPoolSize3D()
+            );
+            frameData_.voxelRenderOptions_.y =
+                IRMath::clamp(frameData_.voxelRenderOptions_.y, 1, cap);
+        }
+
         const int renderMode = frameData_.voxelRenderOptions_.x;
         const int effectiveSub = frameData_.voxelRenderOptions_.y;
         if (renderMode != previousRenderMode_ || effectiveSub != previousEffectiveSubdivisions_) {
