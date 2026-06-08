@@ -664,8 +664,12 @@ constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
 /// Caller rounds the continuous result with @ref roundHalfUp at the canvas-cell
 /// write, exactly as the yaw path does. GPU mirror: `pos3DtoPos2DIsoRotated` in
 /// `shaders/ir_iso_common.glsl` / `.metal` — `rotateByQuat` then the same iso
-/// columns, so CPU and GPU agree bit-for-bit. Consumed by the detached SO(3)
-/// forward-scatter composite (#1463 P2 → #1464 P3).
+/// columns, so CPU and GPU agree bit-for-bit. Originally the reposition for the
+/// detached SO(3) forward-scatter composite (#1463 P2 → #1464 P3); that consumer
+/// was **retired in #1560** when re-voxelize became the sole detached SO(3) path,
+/// so this helper currently has no production caller (math tests only). Retained
+/// as the SO(3) iso-projection primitive (the full-rotation companion to
+/// @ref pos3DtoPos2DIsoYawed).
 ///
 /// The iso columns `(-x + y, -x - y + 2z)` are inlined (matching the sibling
 /// @ref pos3DtoPos2DIsoYawed and the GPU mirror) rather than calling
@@ -1036,10 +1040,7 @@ constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYa
         return isoDelta;
     const float dx = isoDelta.x;
     const float dy = isoDelta.y;
-    return vec2(
-        ((c + 2.0f) * dx - s * dy) / det,
-        3.0f * (s * dx + c * dy) / det
-    );
+    return vec2(((c + 2.0f) * dx - s * dy) / det, 3.0f * (s * dx + c * dy) / det);
 }
 
 /// Projects @p position to screen space by scaling the iso result by
