@@ -171,7 +171,7 @@ constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
 // (mirroring shape_debug's shadows-onto-empty-floor framing). Grazing (moderate
 // |z|) keeps the shadows long enough to be obvious. Lower ambient than the
 // standard demo so the cast shadows read as dark patches, not washed out.
-constexpr vec3 kSunDirection = vec3(-0.42f, -0.60f, -0.55f);
+constexpr vec3 kSunDirection = vec3(-0.42f, -0.60f, -0.55f);  // setSunDirection normalizes
 constexpr float kSunIntensity = 1.0f;
 constexpr float kSunAmbient = 0.30f;
 
@@ -631,11 +631,11 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>());
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>());
-    // SDF floor pass — runs after the voxel raster and before the lighting/
-    // shadow passes so the floor is in `trixelDistances` when BAKE_SUN_SHADOW_MAP
-    // projects the GRID casters' shadows onto it.
-    renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
     if (!g_settings.noLighting_) {
+        // SDF floor pass — runs after the voxel raster and before the lighting/
+        // shadow passes so the floor is in `trixelDistances` when BAKE_SUN_SHADOW_MAP
+        // projects the GRID casters' shadows onto it.
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
