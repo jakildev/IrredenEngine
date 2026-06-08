@@ -664,7 +664,7 @@ void initEntities() {
     // path). Sits above the main grid so the re-rasterized cells are
     // clearly visible against the flat ground.
     constexpr int kGridSpinCount = 4;
-    constexpr ivec3 kGridSpinCubeSize{5, 5, 5};
+    constexpr ivec3 kGridSpinCubeSize{12, 12, 12};
     constexpr float kGridSpinSpacing = 16.0f;
     constexpr vec3 kGridSpinAxes[kGridSpinCount]{
         {0.0f, 0.0f, 1.0f},
