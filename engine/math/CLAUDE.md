@@ -38,11 +38,14 @@ Helpers:
 - `IRMath::pos3DtoPos2DIsoYawed(worldPos, visualYaw)` /
   `IRMath::pos3DtoPos2DIsoRotated(modelPos, rotation)` — continuous-rotation
   iso reposition. The first is `iso(R_z(−yaw)·world)` (1-DOF, smooth camera
-  Z-yaw, #1308); the second is its SO(3) companion `iso(R·model)` for a
-  detached entity's octahedral-snap residual (#1463). At identity / zero yaw
-  both collapse to `pos3DtoPos2DIso`, and a pure-Z quaternion `qZ(θ)` makes the
-  rotated form equal `pos3DtoPos2DIsoYawed(·, −θ)`. GPU mirrors of both in
-  `ir_iso_common.{glsl,metal}`, kept CPU↔GPU bit-identical. See
+  Z-yaw, #1308) — **live**; the second is its SO(3) companion `iso(R·model)`,
+  originally for a detached entity's octahedral-snap residual (#1463). That
+  forward-scatter consumer was **retired in #1560** (re-voxelize is now the sole
+  detached SO(3) path), so `pos3DtoPos2DIsoRotated` has no production caller
+  today — retained as the SO(3) iso primitive (math tests only). At identity /
+  zero yaw both collapse to `pos3DtoPos2DIso`, and a pure-Z quaternion `qZ(θ)`
+  makes the rotated form equal `pos3DtoPos2DIsoYawed(·, −θ)`. GPU mirrors of both
+  in `ir_iso_common.{glsl,metal}`, kept CPU↔GPU bit-identical. See
   [`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
 
 **Never inline these equations in system code.** Always call the helpers
