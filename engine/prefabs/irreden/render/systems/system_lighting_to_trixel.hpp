@@ -119,14 +119,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // its own visible-triplet world normals and isDetachedCanvas flag, not
         // whatever canvas STAGE_1 left resident (#1558). No-op for a pure-SDF
         // canvas with no voxel pool.
-        const bool perAxisActive = entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
-                                   perAxisCanvases_->isAllocated();
         authorIteratingCanvasVoxelFrame(
             scratchVoxelFrame_,
             voxelFrameDataBuf_,
             entity,
-            canvasTextures,
-            perAxisActive
+            canvasTextures
         );
 
         // Relaxed archetype (#1558): sun-shadow + light-volume are optional, so
@@ -307,15 +304,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // scenes (cullIso, the only field buildVoxelFrameData omits, is unused
     // downstream).
     void endTick() {
-        const bool mainPerAxisActive =
-            perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated();
         restoreMainCanvasVoxelFrame(
             scratchVoxelFrame_,
             voxelFrameDataBuf_,
             mainCanvasTextures_,
             mainVoxelPool_,
-            mainCanvasRotation_,
-            mainPerAxisActive
+            mainCanvasRotation_
         );
     }
 

@@ -13,13 +13,10 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/render/camera.hpp>
-#include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <cstddef>
-#include <utility>
-#include <vector>
 
 namespace IRPrefab::PerAxisCanvas {
 
@@ -36,32 +33,12 @@ inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
 // deadband avoids allocate/release churn from float noise right at a cardinal.
 inline constexpr float kResidualYawDeadband = 1e-4f;
 
-// Memory bound for the per-DETACHED-entity per-axis trixel canvases (#1463). At
-// most this many detached entities hold their textures allocated at once — each
-// allocation is 3 axis canvases x 5 textures (color / distance / entity-id /
-// AO / sun-shadow) sized to that entity's worst-case trixel canvas, so the peak
-// GPU cost of the smooth-detached-rotation path scales with this cap, not with
-// however many entities spin at once. Entities past the cap keep rendering
-// through the single-canvas octahedral-snap + faceDeformationMatrixSO3 path
-// (graceful degradation — blockier off-snap deform, never a crash or a leak).
-inline constexpr int kMaxDetachedRotatingCanvases = 8;
-
-// Residual-rotation deadband for the detached allocation gate, expressed as the
-// octahedral-snap residual quaternion's vector-part magnitude (= sin(half the
-// residual angle), 0 at a snap). At or below this the entity sits on one of the
-// 24 octahedral orientations where the single-canvas face-deform is already
-// exact, so its per-axis textures stay released and the detached raster stays
-// byte-identical. The small deadband avoids allocate/release churn from float
-// noise right at a snap — the SO(3) analogue of kResidualYawDeadband.
-inline constexpr float kDetachedResidualDeadband = 1e-4f;
-
 namespace detail {
 // Allocate a canvas's three per-axis texture sets at the worst-case size for
 // its cardinal trixel canvas, plus the screen-space resolve-depth texture at
-// the cardinal size (#1453). Shared by the camera-yaw (main canvas) and
-// per-entity SO(3) (detached) allocation gates so both size the per-axis
-// textures identically. No-op if already allocated (C_PerAxisTrixelCanvases::
-// allocate guards it).
+// the cardinal size (#1453). Used by the camera-yaw (main canvas) allocation
+// gate to size the per-axis textures. No-op if already allocated
+// (C_PerAxisTrixelCanvases::allocate guards it).
 inline void allocatePerAxisForCanvas(
     IRComponents::C_PerAxisTrixelCanvases &axes,
     const IRComponents::C_TriangleCanvasTextures &cardinal
@@ -157,100 +134,6 @@ inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density
         sizeof(int),
         &density
     );
-}
-
-// Allocate per-axis trixel textures for DETACHED entities currently rotating
-// off an octahedral snap, releasing them at a snap. Idempotent and once-per-
-// frame; only transitions on rotation start/stop. Bounded by
-// kMaxDetachedRotatingCanvases — entities encountered first in archetype-
-// iteration order win the budget; the overflow keeps the single-canvas
-// octahedral-snap path. Skips non-detached canvases: the main world canvas
-// matches this archetype too (every voxel-pool canvas now carries
-// C_PerAxisTrixelCanvases) but keeps the C_CanvasLocalRotation sentinel, so
-// isDetached() is false and it stays owned by syncAllocationToCameraYaw().
-//
-// When @p allocatedOut is non-null, it is filled (cleared first) with one
-// {canvasEntity, &axes} pair per detached canvas left ALLOCATED this frame —
-// the set the P3 forward-scatter store (#1464) routes into. Folding the
-// collection into this same scan keeps the per-frame archetype walk single-pass:
-// the consumer (VOXEL_TO_TRIXEL_STAGE_1) reuses the result by canvas entity in
-// its per-entity tick instead of re-querying the same archetype. The pointers
-// are column addresses, valid only for the rest of this pipeline pass (no
-// structural change runs before the per-entity ticks consume them).
-//
-// (#1463) stood the textures up as infrastructure; (#1464, P3a) is the first
-// consumer — the detached per-axis face-local store. Called once per frame from
-// VOXEL_TO_TRIXEL_STAGE_1::beginTick.
-inline void syncAllocationToDetachedEntities(
-    std::vector<std::pair<IREntity::EntityId, IRComponents::C_PerAxisTrixelCanvases *>>
-        *allocatedOut = nullptr
-) {
-    if (allocatedOut != nullptr) {
-        allocatedOut->clear();
-    }
-
-    // Dense per-archetype-column iteration (no per-entity getComponent): the
-    // three components arrive as parallel column vectors indexed by row.
-    const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
-        IREntity::getArchetype<
-            IRComponents::C_CanvasLocalRotation,
-            IRComponents::C_PerAxisTrixelCanvases,
-            IRComponents::C_TriangleCanvasTextures>()
-    );
-
-    int allocatedRotating = 0;
-    for (IREntity::ArchetypeNode *node : nodes) {
-        std::vector<IRComponents::C_CanvasLocalRotation> &rotations =
-            IREntity::getComponentData<IRComponents::C_CanvasLocalRotation>(node);
-        std::vector<IRComponents::C_PerAxisTrixelCanvases> &axesColumn =
-            IREntity::getComponentData<IRComponents::C_PerAxisTrixelCanvases>(node);
-        std::vector<IRComponents::C_TriangleCanvasTextures> &cardinals =
-            IREntity::getComponentData<IRComponents::C_TriangleCanvasTextures>(node);
-
-        for (int i = 0; i < node->length_; ++i) {
-            // The main world canvas (sentinel rotation) is not detached — leave
-            // it to syncAllocationToCameraYaw().
-            if (!rotations[i].isDetached()) {
-                continue;
-            }
-            // Re-voxelize detached canvases (#1553) bake the rotation into their
-            // pool cells and render through the single-canvas cardinal path — they
-            // never use per-axis forward-scatter, so they must not allocate (and
-            // must not consume the kMaxDetachedRotatingCanvases budget).
-            if (rotations[i].reVoxelize_) {
-                continue;
-            }
-            IRComponents::C_PerAxisTrixelCanvases &axes = axesColumn[i];
-
-            // Off-snap iff the octahedral-snap residual has a non-trivial
-            // rotation: its vector-part magnitude is sin(residualAngle/2), zero
-            // at a snap.
-            const IRMath::vec4 residual = IRMath::octahedralSnapResidual(rotations[i].rotation_);
-            const float residualMagnitude =
-                IRMath::length(IRMath::vec3(residual.x, residual.y, residual.z));
-            const bool wantAllocated = residualMagnitude > kDetachedResidualDeadband &&
-                                       allocatedRotating < kMaxDetachedRotatingCanvases;
-            if (wantAllocated) {
-                ++allocatedRotating; // counts whether kept from last frame or newly allocated
-                // wantAllocated == the post-sync allocation state (the block
-                // below only transitions a row that isn't already there), so
-                // collect here — before the already-in-state early-out — to
-                // catch rows kept allocated from the prior frame too.
-                if (allocatedOut != nullptr) {
-                    allocatedOut->emplace_back(node->entities_[i], &axes);
-                }
-            }
-
-            if (wantAllocated == axes.isAllocated()) {
-                continue; // already in the desired allocation state
-            }
-            if (wantAllocated) {
-                detail::allocatePerAxisForCanvas(axes, cardinals[i]);
-            } else {
-                axes.release();
-            }
-        }
-    }
 }
 
 } // namespace IRPrefab::PerAxisCanvas

@@ -37,8 +37,7 @@ inline void buildVoxelFrameData(
     FrameDataVoxelToCanvas &frameData,
     const C_TriangleCanvasTextures &canvas,
     int liveVoxelCount,
-    const C_CanvasLocalRotation &canvasRotation,
-    bool perAxisActive
+    const C_CanvasLocalRotation &canvasRotation
 ) {
     // The single-canvas raster always uploads perAxisRoute_ == 0 (byte-
     // identical to master). The smooth-Z-yaw per-axis pass flips it to 1/2/3
@@ -121,30 +120,20 @@ inline void buildVoxelFrameData(
         // the snap, so this keeps the per-face skew small enough to stay clean
         // (T-295).
         const vec4 residual = IRMath::octahedralSnapResidual(canvasRotation.rotation_);
-        // Face-selection + occlusion-depth FRAME. The off-snap per-axis scatter
-        // repositions every voxel corner by the RESIDUAL alone
-        // (pos3DtoPos2DIsoRotated(corner, residual) in
-        // v_peraxis_scatter_detached.glsl), so the camera-visible set there is
-        // visibleTriplet(RESIDUAL). Selecting on the full rotation (#1525's
-        // cohesion handshake) instead picks the faces front-facing under the
-        // full orientation — whose iso view axis R_snap⁻¹·(1,1,1) differs from
-        // the residual's wherever the snap doesn't fix (1,1,1) — so a selected
-        // face renders back-facing and drops to background (the #1537 chevron).
-        // The single-canvas (at-snap / per-axis-overflow) emit instead keeps
-        // voxels at their model iso position and only skews face SHAPE by the
-        // residual, so its visible set is the full orientation's. `perAxisActive`
-        // is the caller's ground-truth allocation state (off-snap AND within the
-        // kMaxDetachedRotatingCanvases budget), so the store and the
-        // ENTITY_CANVAS_TO_FRAMEBUFFER scatter always pick the same frame.
-        const vec4 selectionRotation = perAxisActive ? residual : canvasRotation.rotation_;
+        // Face-selection + occlusion-depth FRAME for the single-canvas detached
+        // emit: keep each voxel at its model iso position and only skew face
+        // SHAPE by the residual (faceDeformationMatrixSO3 below), so the visible
+        // set is the FULL orientation's front faces. (The retired per-axis
+        // forward-scatter, #1560, instead repositioned every corner by the
+        // residual alone and keyed on visibleTriplet(residual); detached SO(3)
+        // now renders through the re-voxelize branch above, not this deform.)
+        const vec4 selectionRotation = canvasRotation.rotation_;
         // Per-entity SO(3) visible triplet: the three faces the camera actually
         // sees, one per axis in X/Y/Z slot order. Previously hardcoded to
         // {X_NEG, Y_NEG, Z_NEG} regardless of rotation, so the deform below ran
         // on back-facing faces and entities glitched instead of rotating
         // (#1386). At identity the resolver returns the same legacy triplet, so
-        // non-rotating entities stay byte-identical. The scatter recovers each
-        // cell's face via visibleFaceIds[slot] (#1525), so it MUST key its
-        // visibleTriplet on the identical `selectionRotation`.
+        // non-rotating entities stay byte-identical.
         const std::array<IRMath::FaceId, 3> visibleFaces =
             IRMath::visibleTriplet(selectionRotation);
         frameData.visibleFaceIds_ = ivec4(
@@ -217,8 +206,7 @@ inline void authorIteratingCanvasVoxelFrame(
     FrameDataVoxelToCanvas &scratch,
     Buffer *voxelFrameDataBuf,
     IREntity::EntityId entity,
-    const C_TriangleCanvasTextures &canvasTextures,
-    bool perAxisActive
+    const C_TriangleCanvasTextures &canvasTextures
 ) {
     auto pool = IREntity::getComponentOptional<C_VoxelPool>(entity);
     auto rotation = IREntity::getComponentOptional<C_CanvasLocalRotation>(entity);
@@ -229,8 +217,7 @@ inline void authorIteratingCanvasVoxelFrame(
         scratch,
         canvasTextures,
         (*pool.value()).getLiveVoxelCount(),
-        *rotation.value(),
-        perAxisActive
+        *rotation.value()
     );
     voxelFrameDataBuf->subData(0, sizeof(FrameDataVoxelToCanvas), &scratch);
 }
@@ -276,19 +263,12 @@ inline void restoreMainCanvasVoxelFrame(
     Buffer *voxelFrameDataBuf,
     const C_TriangleCanvasTextures *mainTextures,
     const C_VoxelPool *mainPool,
-    const C_CanvasLocalRotation *mainRotation,
-    bool perAxisActive
+    const C_CanvasLocalRotation *mainRotation
 ) {
     if (mainTextures == nullptr || mainPool == nullptr || mainRotation == nullptr) {
         return;
     }
-    buildVoxelFrameData(
-        scratch,
-        *mainTextures,
-        mainPool->getLiveVoxelCount(),
-        *mainRotation,
-        perAxisActive
-    );
+    buildVoxelFrameData(scratch, *mainTextures, mainPool->getLiveVoxelCount(), *mainRotation);
     voxelFrameDataBuf->subData(0, sizeof(FrameDataVoxelToCanvas), &scratch);
 }
 

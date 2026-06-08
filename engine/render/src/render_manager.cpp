@@ -165,13 +165,13 @@ RenderManager::RenderManager(
     m_activeCanvas = m_mainCanvas;
 
     // The main world canvas's per-axis trixel canvases (smooth camera Z-yaw,
-    // #1308; docs/design/per-axis-trixel-canvas-rotation.md) are now bundled on
-    // every voxel-pool canvas by Prefab<kVoxelPoolCanvas> (so detached entities
-    // also carry them for per-entity SO(3), #1463). Their GPU textures stay
-    // allocated lazily — the main canvas's only while the camera sits at a
-    // non-cardinal residual yaw (syncAllocationToCameraYaw), a detached entity's
-    // only while it rotates off an octahedral snap (syncAllocationToDetachedEntities)
-    // — so a static / cardinal scene pays nothing (the byte-identical fast path).
+    // #1308; docs/design/per-axis-trixel-canvas-rotation.md) are bundled on
+    // every voxel-pool canvas by Prefab<kVoxelPoolCanvas>. Their GPU textures
+    // stay allocated lazily — the main canvas's only while the camera sits at a
+    // non-cardinal residual yaw (syncAllocationToCameraYaw) — so a static /
+    // cardinal scene pays nothing (the byte-identical fast path). Detached
+    // entities no longer use the per-axis machinery: detached SO(3) renders
+    // through the re-voxelize path (#1555–#1560), not per-axis forward-scatter.
 
     initRenderingResources();
     initRenderingSystems();
@@ -454,12 +454,10 @@ void RenderManager::printRenderInfo() {
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
         return IRMath::max(
-            ivec2(
-                IRMath::min(
-                    IRMath::floor(m_viewport.x / m_gameResolution.x),
-                    IRMath::floor(m_viewport.y / m_gameResolution.y)
-                )
-            ),
+            ivec2(IRMath::min(
+                IRMath::floor(m_viewport.x / m_gameResolution.x),
+                IRMath::floor(m_viewport.y / m_gameResolution.y)
+            )),
             ivec2(1)
         );
     }

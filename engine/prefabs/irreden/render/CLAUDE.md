@@ -16,23 +16,17 @@ the ECS surface.
   for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
   Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
   **lazily**. Bundled on **every** voxel-pool canvas by
-  `Prefab<kVoxelPoolCanvas>` (default-constructed inert), and two once-per-frame
-  gates in `VOXEL_TO_TRIXEL_STAGE_1::beginTick` stand the textures up only while
+  `Prefab<kVoxelPoolCanvas>` (default-constructed inert). A single once-per-frame
+  gate in `VOXEL_TO_TRIXEL_STAGE_1::beginTick` stands the textures up only while
   there is rotation to smooth: `syncAllocationToCameraYaw()` allocates the
   **main canvas's** while the camera sits at a non-cardinal residual yaw, and
-  `syncAllocationToDetachedEntities()` allocates a **rotating detached entity's**
-  while it sits off an octahedral snap (#1463), bounded by
-  `kMaxDetachedRotatingCanvases` (overflow falls back to the single-canvas
-  `faceDeformationMatrixSO3` path). Both free at the snap/cardinal so a static
-  scene is byte-identical (fast path). A rotating detached entity's visible
-  faces are written into its own per-axis canvases by the model-space
-  face-local store (#1464, P3a). P3b (#1475) is the consumer:
-  `ENTITY_CANVAS_TO_FRAMEBUFFER` forward-scatters those per-axis canvases to the
-  framebuffer (`PerAxisScatterDetachedProgram`, GL_LESS) under the entity's
-  octahedral-snap residual (`pos3DtoPos2DIsoRotated`), the SO(3) analog of the
-  camera path's `drawPerAxisScatter`; `VOXEL_TO_TRIXEL_STAGE_1` retires the
-  off-snap octahedral single-canvas emit for those entities (no double-draw),
-  keeping the at-snap emit + blit byte-identical. For the **main world canvas**, T2
+  frees them at the cardinal so a static scene is byte-identical (fast path).
+  This machinery is now **camera-only**: the detached per-axis forward-scatter
+  (P3a/P3b, #1463–#1475) was **retired in #1560**. A rotating **detached** entity
+  no longer uses per-axis canvases at all — its SO(3) renders through the
+  **re-voxelize** path (#1555–#1560), which rotates+rounds the entity's voxel
+  CELLS into a private pool that rasterizes through the normal single-canvas
+  cardinal path + blit. For the **main world canvas**, T2
   (#1309) routes each visible voxel face into its axis canvas with continuous
   (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; T3
   (#1310) composites the three by depth-tested forward scatter at the

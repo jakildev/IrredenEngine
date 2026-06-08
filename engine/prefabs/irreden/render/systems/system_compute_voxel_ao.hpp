@@ -85,14 +85,11 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         // getComponentOptional on the iterating canvas is the canvas-iteration
         // pattern (few canvases; cf. system_trixel_to_framebuffer.hpp:63), not
         // the per-voxel ECS footgun.
-        const bool perAxisActive = entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
-                                   perAxisCanvases_->isAllocated();
         authorIteratingCanvasVoxelFrame(
             scratchVoxelFrame_,
             voxelFrameDataBuf_,
             entity,
-            canvasTextures,
-            perAxisActive
+            canvasTextures
         );
 
         canvasTextures.getTextureDistances()
@@ -215,15 +212,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     // above (#1558). Byte-identical render output for single-lit-canvas scenes
     // (cullIso, the only field buildVoxelFrameData omits, is unused downstream).
     void endTick() {
-        const bool mainPerAxisActive =
-            perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated();
         restoreMainCanvasVoxelFrame(
             scratchVoxelFrame_,
             voxelFrameDataBuf_,
             mainCanvasTextures_,
             mainVoxelPool_,
-            mainCanvasRotation_,
-            mainPerAxisActive
+            mainCanvasRotation_
         );
     }
 

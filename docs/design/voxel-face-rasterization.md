@@ -171,6 +171,15 @@ depth at the framebuffer. See
 - **#1265** (merged) — camera pitch via quaternion; the visible-triplet resolver
   reads that quaternion, so pitch shifts the triplet for free on detached
   canvases.
+- **#1553 / #1560** (shipped) — **detached** SO(3) is now **GPU re-voxelize**
+  too, the detached analogue of the attached GRID re-voxelize above: the
+  entity's rotation is rounded into its private pool's voxel cells
+  (`c_revoxelize_detached`), which rasterize through the normal single-canvas
+  cardinal path. #1560 retired the interim **detached per-axis forward-scatter**
+  (`v_peraxis_scatter_detached`, P3a/P3b of epic #1444); the camera/main-canvas
+  per-axis path in
+  [`per-axis-trixel-canvas-rotation.md`](per-axis-trixel-canvas-rotation.md) is
+  untouched.
 
 ## What to verify when implementing
 
@@ -185,8 +194,9 @@ depth at the framebuffer. See
    cardinal.
 4. **Throughput.** Interior voxels emit nothing; measure that a solid cube's
    emit count scales with surface area, not volume.
-5. **Attached rotation (GRID).** A rotated entity on the main canvas renders
-   via GRID re-voxelize (`SYSTEM_REBUILD_GRID_VOXELS`) — the camera drives the
-   faces; the entity's rotation only changes which cells fill. Per-entity
-   trixel deformation is DETACHED-only (the MAIN_CANVAS_SO3 path was retired in
-   #1443).
+5. **Attached + detached rotation (re-voxelize).** A rotated entity renders via
+   re-voxelize — attached on the main canvas (`SYSTEM_REBUILD_GRID_VOXELS`),
+   detached in a private pool (`c_revoxelize_detached`, #1553/#1560). In both,
+   the camera drives the faces and the entity's rotation only changes which
+   cells fill. The MAIN_CANVAS_SO3 per-entity trixel-deformation path was retired
+   in #1443, and the DETACHED per-axis forward-scatter in #1560.

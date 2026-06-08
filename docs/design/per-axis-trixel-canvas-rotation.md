@@ -503,6 +503,19 @@ split.
 
 ## Detached per-entity SO(3) reuses this machinery (epic #1444)
 
+> **RETIRED (#1560).** The detached per-axis forward-scatter described in this
+> section (P1–P4, #1463–#1475) **shipped and was then superseded**. Detached
+> SO(3) now renders through the **re-voxelize** path (epic #1553, #1555–#1560):
+> the entity's rotation is baked into its private pool's voxel CELLS, which then
+> rasterize through the normal single-canvas cardinal path + blit — no per-axis
+> canvases, no forward-scatter, for detached entities. #1560 deleted the detached
+> consumer (`v_peraxis_scatter_detached.{glsl,metal}`,
+> `PerAxisScatterDetachedProgram`, `syncAllocationToDetachedEntities`,
+> `kMaxDetachedRotatingCanvases`); the **camera / main-canvas** per-axis path
+> (T2–T4, below) is untouched. The rest of this section is kept as the design
+> record of the retired approach. See the "true-3D path" note under "Detached
+> forward-scatter is terminal" below for the shipped re-voxelize model.
+
 The per-entity smooth-rotation mechanism the section above defers to —
 **detached canvases** — is itself generalized onto this same three-per-axis
 split by epic #1444 (`~/.fleet/plans/issue-1444.md`). Where the camera path has
@@ -652,7 +665,17 @@ entity present in current content is **static** (no auto-spin component). The
 true-3D-asymmetric criterion has **no current consumer** — building for it now
 would be a foundation ahead of demand.
 
-### The true-3D path (deferred — detached GPU re-voxelize)
+### The true-3D path (SHIPPED — detached GPU re-voxelize, epic #1553)
+
+> **Status: shipped (#1555–#1560).** What this section described as the deferred
+> "true-3D path" is now the **sole** detached SO(3) renderer. Epic #1553 built
+> the GPU re-voxelize dispatch (P1/P2), round-to-cell occlusion + aliasing (P3),
+> AO/sun/light integration (P4), cross-backend parity audit (P5), and **#1560
+> retired the detached forward-scatter** (P6) — deleting
+> `v_peraxis_scatter_detached.{glsl,metal}`, `PerAxisScatterDetachedProgram`,
+> `syncAllocationToDetachedEntities`, and `kMaxDetachedRotatingCanvases`. The
+> per-axis machinery the camera/main-canvas path uses is untouched. The
+> remaining text is the original design rationale, now realized.
 
 True-3D detached rotation requires **re-rasterizing the rotated solid in 3D**,
 the detached analogue of the attached **GRID re-voxelize** model
@@ -664,14 +687,13 @@ drives face selection + deform, then composite that canvas at the entity's
 **screen-locked** placement. This is the "GPU re-voxelize (fill cells under the
 full rotation)" that `voxel-face-rasterization.md` names as the path for
 per-voxel-identity-preserving rotation — generalized from attached to detached.
-It is **multi-PR** (re-voxelize dispatch into the private grid → screen-locked
+It was **multi-PR** (re-voxelize dispatch into the private grid → screen-locked
 placement of the re-voxelized canvas → per-voxel depth/occlusion → AO/sun/light
-integration → Metal parity → render-verify baselines) and would **retire the
-detached forward-scatter** on completion. It is **NOT** built (`#1396`'s GPU
-prepass transforms positions of *existing* voxels; it does not fill cells), and
-it is **deferred — gated on an actual asymmetric detached rotating consumer.**
-Tracking: **#1553** (unlabeled backlog; needs a consumer + an architect design
-pass before it is queue-ready — do not hand a worker a queued build task for it).
+integration → Metal parity → render-verify baselines) and **retired the
+detached forward-scatter** on completion (#1560). It shipped as epic **#1553**
+(`#1396`'s GPU prepass transforms positions of *existing* voxels; the re-voxelize
+scatter `c_revoxelize_detached.{glsl,metal}` fills the private pool's cells under
+the full rotation, which is the part #1396 did not do).
 
 > **Do not band-aid past cube-clean.** Once #1551's cube-coverage/seam fixes
 > land, the forward-scatter path is **done** — further "make the asymmetric

@@ -242,36 +242,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
-    // Every rotating DETACHED entity's allocated per-axis canvases, resolved once
-    // per frame in beginTick and consumed by the per-entity tick (#1464). The
-    // canvas the system iterates is NOT in its template params (the main-canvas-
-    // only `perAxisCanvases_` is resolved by a single beginTick getComponent), and
-    // a voxel canvas built via `EntityCanvas::addVoxelPool` may lack
-    // C_PerAxisTrixelCanvases — so adding it to the archetype filter would silently
-    // drop such a canvas. We instead key the allocated set by canvas entity here and
-    // linear-scan it in the tick (bounded by kMaxDetachedRotatingCanvases, so a tiny
-    // list). The stored pointers are column addresses valid only within this frame's
-    // ticks — no structural change runs between beginTick and the per-entity ticks of
-    // the same pipeline pass, same contract as `perAxisCanvases_`.
-    std::vector<std::pair<IREntity::EntityId, C_PerAxisTrixelCanvases *>> detachedPerAxisAllocated_;
-
-    C_PerAxisTrixelCanvases *lookupDetachedPerAxis(IREntity::EntityId entity) const {
-        for (const auto &[id, axes] : detachedPerAxisAllocated_) {
-            if (id == entity) {
-                return axes;
-            }
-        }
-        return nullptr;
-    }
-
     // Every DETACHED_REVOXELIZE canvas's resident locals buffer, resolved once
     // per frame in beginTick by IRPrefab::DetachedRevoxelize::syncResidentBuffers
-    // and consumed by the per-entity tick (#1556). Same key-by-canvas-entity +
-    // linear-scan shape as detachedPerAxisAllocated_, and for the same reason: the
-    // iterated canvas isn't in the system's template params, and a re-voxelize
-    // canvas's C_DetachedRevoxelizeBuffer can't be added to the archetype filter
-    // without dropping every other voxel-pool canvas. The pointers are column
-    // addresses valid only within this frame's ticks.
+    // and consumed by the per-entity tick (#1556). Keyed by canvas entity +
+    // linear-scanned in the tick because the iterated canvas isn't in the system's
+    // template params, and a re-voxelize canvas's C_DetachedRevoxelizeBuffer can't
+    // be added to the archetype filter without dropping every other voxel-pool
+    // canvas. The pointers are column addresses valid only within this frame's
+    // ticks.
     std::vector<std::pair<IREntity::EntityId, C_DetachedRevoxelizeBuffer *>>
         detachedRevoxelizeBuffers_;
 
@@ -440,23 +418,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             triangleCanvasTextures.size_
         );
 
-        // Detached entity with allocated per-axis canvases (rotating off an
-        // octahedral snap) → its smooth voxels are forward-scattered to the
-        // framebuffer by ENTITY_CANVAS_TO_FRAMEBUFFER (P3b / #1475). Resolve the
-        // lookup once, up front: it tells buildVoxelFrameData which frame to
-        // select faces in (residual when the scatter renders this entity, #1537),
-        // and gates BOTH the single-canvas skip and the per-axis store dispatch
-        // later in this tick. Null for the main canvas (not detached) and for
-        // at-snap / per-axis-overflow detached entities (no allocation).
-        C_PerAxisTrixelCanvases *detachedAxes =
-            canvasLocalRotation.isDetached() ? lookupDetachedPerAxis(entity) : nullptr;
-
         buildVoxelFrameData(
             frameData_,
             triangleCanvasTextures,
             liveVoxelCount,
-            canvasLocalRotation,
-            detachedAxes != nullptr
+            canvasLocalRotation
         );
 
         // Re-voxelize zoom-clip cap (#1570 D2). A re-voxelize detached canvas
@@ -602,26 +568,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
-        // `detachedAxes` was resolved up front (before buildVoxelFrameData) so
-        // the store could pick the matching face-selection frame; reuse it here.
-
-        // Smooth camera Z-yaw (T3 / #1310) + detached SO(3) (P3b / #1475): while
-        // the per-axis canvases are active, SKIP the single-canvas voxel
-        // rasterization. The per-axis dispatch below writes the voxels (smooth),
-        // and the framebuffer scatter composites them; rasterizing the snapped
-        // voxels into the single canvas too would double-draw them (the single
-        // canvas is composited for its SDF / overlay content, which sits at the
-        // SAME depth as the smooth copies → snapped ghosts). Skipping leaves the
-        // single canvas holding only SHAPES_TO_TRIXEL / text / overlay content,
-        // which the composite draws alongside the smooth voxels. The compact pass
-        // above still runs (the per-axis dispatch reuses its compacted list). For
-        // a detached entity, skipping retires its off-snap octahedral
-        // single-canvas emit (P3a left it ADDITIVE); the at-snap path
-        // (detachedAxes == nullptr) still emits + blits, byte-identical to master.
-        const bool skipSingleCanvasVoxels =
-            (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
-             perAxisCanvases_->isAllocated()) ||
-            detachedAxes != nullptr;
+        // Smooth camera Z-yaw (T3 / #1310): while the MAIN canvas's per-axis
+        // canvases are active, SKIP the single-canvas voxel rasterization. The
+        // per-axis dispatch below writes the voxels (smooth), and the framebuffer
+        // scatter composites them; rasterizing the snapped voxels into the single
+        // canvas too would double-draw them (the single canvas is composited for
+        // its SDF / overlay content, which sits at the SAME depth as the smooth
+        // copies → snapped ghosts). Skipping leaves the single canvas holding only
+        // SHAPES_TO_TRIXEL / text / overlay content, which the composite draws
+        // alongside the smooth voxels. The compact pass above still runs (the
+        // per-axis dispatch reuses its compacted list). Detached entities (incl.
+        // re-voxelize SO(3)) always take the single-canvas emit + blit, so this is
+        // false for them, byte-identical to master.
+        const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
+                                            perAxisCanvases_ != nullptr &&
+                                            perAxisCanvases_->isAllocated();
         if (!skipSingleCanvasVoxels) {
             stage1Program_->use();
             triangleCanvasTextures.getTextureDistances()
@@ -659,24 +620,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
             dispatchPerAxisCanvases(*perAxisCanvases_);
-        } else if (detachedAxes != nullptr) {
-            // Detached entity SO(3) per-axis store (P3a / #1464) → consumed by
-            // the P3b (#1475) framebuffer forward-scatter. Route this entity's
-            // visible model-space faces into its OWN per-axis canvases — the
-            // SO(3) generalization of the camera-yaw store above. The store path
-            // is shared (perAxisRoute != 0 in the shaders): the detached frame
-            // data buildVoxelFrameData set this tick (model-frame visibleFaceIds_
-            // from visibleTriplet, isDetachedCanvas_, the model iso depth axis)
-            // flows through unchanged, so each face is stored in its model-axis
-            // face-local lattice keyed on pos3DtoDistance — the exact
-            // origin-recovery key faceOriginFromInPlane consumes at scatter time.
-            // The single-canvas octahedral emit was skipped above
-            // (skipSingleCanvasVoxels), so these per-axis textures are now the
-            // sole render path for this off-snap entity (no double-draw). Only
-            // fires off an octahedral snap (textures allocated in beginTick by
-            // syncAllocationToDetachedEntities); at a snap / identity detachedAxes
-            // is null → single-canvas emit + blit, byte-identical to master.
-            dispatchPerAxisCanvases(*detachedAxes);
         }
     }
 
@@ -701,16 +644,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // never alters the rendered output — it just stands up the storage that
         // T2 (#1309) routing will write into.
         IRPrefab::PerAxisCanvas::syncAllocationToCameraYaw();
-
-        // Same lazy lifecycle for DETACHED entities rotating off an octahedral
-        // snap (per-entity SO(3), #1463), bounded by kMaxDetachedRotatingCanvases.
-        // Pass detachedPerAxisAllocated_ so the single allocation scan also reports
-        // the {canvas, &axes} pairs it left allocated — the per-entity tick reuses
-        // that by canvas entity (#1464) instead of re-walking the same archetype.
-        // The column pointers stay valid for the rest of this pipeline pass (no
-        // structural change before the per-entity ticks consume them); the vector
-        // is cleared (capacity kept) inside the call. No per-entity getComponent.
-        IRPrefab::PerAxisCanvas::syncAllocationToDetachedEntities(&detachedPerAxisAllocated_);
 
         // Same lazy lifecycle for DETACHED_REVOXELIZE pools' resident GPU locals
         // (#1556): allocate + seed each pool's rigid locals once, and report the
