@@ -126,6 +126,27 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // PROPAGATE_CANVAS_ROTATION → C_CanvasLocalRotation →
         // VOXEL_TO_TRIXEL_STAGE_1), so the composite TRS no longer
         // applies any rotation.
+        //
+        // SCREEN-LOCKED OVERLAY CONTRACT (#1582 decision, Option B).
+        // The model Z is a constant 0 and `distanceOffset_` (below) is 0,
+        // so every detached canvas — DETACHED and DETACHED_REVOXELIZE
+        // alike — composites at the SAME fixed framebuffer depth,
+        // regardless of the entity's world iso depth (x+y+z). This is
+        // intentional, the epic #1553 decision-1 contract: detached
+        // canvases render camera-yaw-zeroed at the camera origin and
+        // composite as a cheap 2D overlay at the iso screen position, so
+        // they pay no per-frame world re-rasterization. The deliberate
+        // cost: detached entities do NOT depth-sort against, cast shadows
+        // onto, or receive shadows from world geometry (they never write
+        // world `trixelDistances` at their world depth). GRID mode is the
+        // vehicle for world-integrated rotating solids — its voxels live
+        // in the world pool and sort/cast/receive correctly. World-depth
+        // composite for detached canvases (depth-sort + cast/receive) is
+        // tracked by P4b (#1576), which world-places the detached pool for
+        // the sun-shadow map / light-volume; depth-composite falls out of
+        // that same placement. Do not add a per-entity world-depth Z here
+        // in isolation — it must land with the #1576 world-placement so
+        // the depth convention matches the GRID `trixelDistances` write.
         mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
         model = scale(
             model,
@@ -141,7 +162,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         fd.canvasZoomLevel_ = cameraZoom_;
         fd.cameraTrixelOffset_ = -entityIso;
         fd.textureOffset_ = vec2(0.0f);
-        fd.distanceOffset_ = 0;
+        fd.distanceOffset_ = 0; // fixed depth — screen-locked overlay (see contract above; #1582 / #1576)
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
         fd.effectiveSubdivisionsForHover_ = vec2(1.0f);
         fd.showHoverHighlight_ = 0.0f;

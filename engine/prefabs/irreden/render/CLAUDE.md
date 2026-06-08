@@ -382,6 +382,45 @@ when extending or composing widgets:
   scrollable content by reading `scrollPos_` itself; it does not
   reparent into the scroll widget.
 
+## Rotation modes: GRID is world-integrated, DETACHED is a screen-locked overlay
+
+A rotating solid reaches the framebuffer through one of two `C_RotationMode`
+paths, and the choice determines whether it participates in world depth and
+lighting. This is a deliberate split, not an asymmetry to "fix" (#1582 decision):
+
+- **`GRID`** (the default) — `REBUILD_GRID_VOXELS` re-rasterizes the entity's
+  rotated voxels into the **shared world pool** every frame, so they write world
+  `trixelDistances` at their true iso depth (`x+y+z`). Consequence: GRID solids
+  **depth-sort against, cast shadows onto, and receive shadows from** world
+  geometry — they are fully world-integrated. Cost: per-frame world
+  re-rasterization + the documented round-to-cell aliasing (`voxel/CLAUDE.md`).
+
+- **`DETACHED` / `DETACHED_REVOXELIZE`** — the rotated solid renders on a
+  **private canvas** (camera-yaw-zeroed, at the camera origin) which
+  `ENTITY_CANVAS_TO_FRAMEBUFFER` (`system_entity_canvas_to_framebuffer.hpp`)
+  composites as a cheap **2D overlay at the iso screen position, at a FIXED
+  framebuffer depth** (`model` Z = 0, `distanceOffset_` = 0). This is the epic
+  #1553 decision-1 contract: cheap per-frame rotation with no world
+  re-rasterization. The deliberate cost: detached entities **do NOT** depth-sort
+  against, cast shadows onto, or receive shadows from world geometry — they never
+  write world `trixelDistances` at their world depth. `DETACHED_REVOXELIZE` only
+  changes *how* the private canvas is filled (GPU scatter bakes rotation into
+  integer cells, removing per-frame spin flicker); it is **still a screen-locked
+  overlay** — re-voxelize ≠ world-integrated.
+
+**Picking a mode:** need a rotating solid that casts/receives world shadows and
+sorts against world geometry (e.g. a grounded scene with a shadow floor) → use
+`GRID`. Need cheap, isolated rotation where world depth/shadow don't matter (HUD
+props, floating showcases) → use a `DETACHED` mode.
+
+**World-integrating detached canvases** (world-depth composite so detached
+entities depth-sort + cast/receive) is real future work, tracked by **P4b
+(#1576)** — it world-places the detached pool into the sun-shadow map / 128³
+light volume, and depth-composite falls out of that same placement. Do **not**
+bolt a per-entity world-depth Z onto the composite in isolation: it must land
+with the #1576 world-placement so the depth convention matches the GRID
+`trixelDistances` write.
+
 ## Gotchas
 
 - **SQT transition complete (T-299/T-300/T-301a/T-302).** All render-side, update-side, and voxel-side readers/writers use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation` components and `SYSTEM_GLOBAL_POSITION_3D` were deleted in T-302; consumers read `C_WorldTransform.translation_` and the SQT quat directly.
