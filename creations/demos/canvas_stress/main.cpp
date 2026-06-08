@@ -60,12 +60,14 @@
 
 // canvas_stress exercises the detached-canvas voxel path: many entities,
 // each owning its own per-entity canvas + voxel pool, are composited over a
-// main-canvas GRID grid by ENTITY_CANVAS_TO_FRAMEBUFFER. It is the first
-// demo to spawn RotationMode::DETACHED entities — the permanent visual
-// regression canary for detached canvases and inter-trixel rendering.
+// main-canvas GRID grid by ENTITY_CANVAS_TO_FRAMEBUFFER. It is the permanent
+// visual regression canary for detached canvases and inter-trixel rendering.
+// The SO(3) canary cubes ride RotationMode::DETACHED_REVOXELIZE (the sole
+// shipped detached SO(3) renderer, #1581/#1589); the orbit ring still spans
+// all three rotation modes for a side-by-side of the techniques.
 //
 // Per #1259 the demo also serves as the rotation-visualization showcase:
-// camera yaw auto-rotates by default, DETACHED canvases spin continuously
+// camera yaw auto-rotates by default, detached canvases spin continuously
 // at per-entity rates around their assigned axes (full SO(3) bake), a
 // small cluster of GRID-mode cubes re-rasterizes via REBUILD_GRID_VOXELS
 // each frame, and the standard lighting pipeline (AO + sun + shadows)
@@ -186,17 +188,24 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.65f, vec2(0, 0), IRMath::kPi / 6.0f, "so3_offsnap_wide"},
 };
 
-// One detached object: a per-entity canvas (textures + voxel pool), a voxel
-// cube allocated into that pool, and a world entity carrying C_EntityCanvas
-// + RotationMode::DETACHED that ENTITY_CANVAS_TO_FRAMEBUFFER composites.
+// One detached SO(3) CANARY cube (#1259 / #1589): a per-entity canvas (textures
+// + voxel pool), a voxel cube allocated into that pool, and a world entity
+// carrying C_EntityCanvas + RotationMode::DETACHED_REVOXELIZE that
+// ENTITY_CANVAS_TO_FRAMEBUFFER composites. Rides re-voxelize — the sole shipped
+// detached SO(3) renderer (#1581), where SYSTEM_REBUILD_DETACHED_VOXELS re-fills
+// the private pool at the full rotation's cell positions each frame — not plain
+// DETACHED's single-canvas faceDeformationMatrixSO3 deform, whose off-snap
+// degradation produced #1584's B/C artifacts. Reads cleanly at every pose.
 
 void spawnDetachedVoxelObject(
     int index, vec3 worldPos, vec3 spinAxis, float spinRate, Color color
 ) {
-    // A higher-resolution canvas + cube keeps the per-face SO(3) deformation's
-    // forward-mapping gaps sub-pixel once the composite magnifies the canvas.
+    // The pool MUST span the cube's ROTATED AABB or the rotated cells clip at the
+    // pool bound: a 10³ cube reaches 5√3 ≈ 8.66 cells from the centered pool
+    // origin under rotation, so a 20³ pool (half-extent 10) clears it with margin
+    // — the same base×√3 rule kReVoxPoolSize follows for the 12³ proof solids.
     constexpr ivec2 kCanvasSize{128, 128};
-    constexpr ivec3 kPoolSize{16, 16, 16};
+    constexpr ivec3 kPoolSize{20, 20, 20};
     constexpr ivec3 kCubeSize{10, 10, 10};
 
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
@@ -205,21 +214,21 @@ void spawnDetachedVoxelObject(
         kPoolSize
     );
 
-    // The voxel cube lives inside the detached canvas's pool. Its position is
-    // canvas-local (centered at the canvas origin), not the world position.
+    // The voxel cube lives centered in the detached canvas's pool so
+    // SYSTEM_REBUILD_DETACHED_VOXELS rotates its cells about the pool origin
+    // (translation-free) and keeps the cube centered on its canvas as it tumbles.
     IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{kCubeSize, color, true, canvas.canvasEntity_}
     );
 
-    // The world entity carries the canvas wrapper + DETACHED rotation mode +
-    // continuous spin. PROPAGATE_CANVAS_ROTATION copies C_LocalTransform's
-    // SO(3) quaternion onto the canvas; VOXEL_TO_TRIXEL_STAGE_1 bakes it
-    // into the voxel emit (T-295). AUTO_SPIN_LOCAL_TRANSFORM advances the
-    // quaternion each UPDATE tick before PROPAGATE_TRANSFORM runs.
+    // The world entity carries the canvas wrapper + re-voxelize rotation mode +
+    // continuous spin. AUTO_SPIN_LOCAL_TRANSFORM advances C_LocalTransform's SO(3)
+    // quaternion each UPDATE tick; PROPAGATE_CANVAS_ROTATION threads it onto the
+    // canvas, and REBUILD_DETACHED_VOXELS re-rasterizes the cells at that rotation.
     IREntity::createEntity(
         C_LocalTransform{worldPos},
-        C_RotationMode{RotationMode::DETACHED},
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
         C_AutoSpin{spinAxis, spinRate},
         canvas
     );
@@ -238,9 +247,10 @@ Color reVoxelizeVerifyColor(vec3 modelPos, ivec3 size) {
     return Color{chan(modelPos.x, half.x), chan(modelPos.y, half.y), chan(modelPos.z, half.z), 255};
 }
 
-// One detached RE-VOXELIZE object (#1555). Same canvas + private-pool shape as
-// the forward-scatter cube above, but RotationMode::DETACHED_REVOXELIZE routes
-// it through the GPU scatter (cells re-filled at the full rotation) + the
+// One detached RE-VOXELIZE proof solid (#1555). Same canvas + private-pool shape
+// as the canary cubes above (also RotationMode::DETACHED_REVOXELIZE since #1589),
+// but carries the carve / multi-color verification machinery: RotationMode::DETACHED_REVOXELIZE
+// routes it through the GPU scatter (cells re-filled at the full rotation) + the
 // cardinal raster path. When `carveAsymmetric`, an +x/+y quadrant column is
 // carved out of the centered box to make an L-prism — the asymmetric solid whose
 // true-3D rotation a 2D forward-scatter skew cannot represent (the headline
@@ -694,10 +704,10 @@ void initEntities() {
         );
     }
 
-    // Detached entities: a grid of per-entity canvases, each at a distinct
-    // SO(3) rotation. The world spacing must exceed the detached canvas
+    // Detached re-voxelize CANARY cubes: a grid of per-entity canvases, each at a
+    // distinct SO(3) rotation. The world spacing must exceed the detached canvas
     // footprint (composited at canvasSize / mainCanvasSize of the framebuffer)
-    // or the canvases overlap — kDetachedSpacing is sized for the 64-trixel canvas.
+    // or the canvases overlap — kDetachedSpacing is sized for the 128-px canvas.
     const int detached = IRMath::max(0, g_settings.detachedCount_);
     constexpr float kDetachedSpacing = 160.0f;
     const int cols = IRMath::max(
@@ -708,7 +718,7 @@ void initEntities() {
     const float colCenter = (static_cast<float>(cols) - 1.0f) * 0.5f;
     const float rowCenter = (static_cast<float>(IRMath::max(rows, 1)) - 1.0f) * 0.5f;
     // Rotation axes cycled per entity so the grid shows yaw, pitch, roll, and
-    // a mixed diagonal — full SO(3) baked into each canvas by T-295.
+    // a mixed diagonal — full SO(3) re-voxelized into each canvas's private pool.
     constexpr vec3 kAxes[]{
         {0.0f, 0.0f, 1.0f}, // yaw
         {1.0f, 0.0f, 0.0f}, // pitch
