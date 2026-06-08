@@ -70,6 +70,16 @@
 // small cluster of GRID-mode cubes re-rasterizes via REBUILD_GRID_VOXELS
 // each frame, and the standard lighting pipeline (AO + sun + shadows)
 // runs so face orientation is visually perceptible.
+//
+// Rotation-mode contract (#1582): the DETACHED + DETACHED_REVOXELIZE
+// entities here (the orbit ring + the re-voxelize column) are SCREEN-LOCKED
+// overlays — ENTITY_CANVAS_TO_FRAMEBUFFER composites them at a fixed
+// framebuffer depth, so they do NOT cast shadows onto, receive shadows from,
+// or depth-sort against world geometry. Only the GRID-mode cubes are
+// world-integrated (they write world trixelDistances). So a world shadow
+// floor (#1587) reads shadows from the GRID cubes ONLY; the detached casters
+// not dropping shadows is by design, not a bug. World-integrating detached
+// canvases is tracked by P4b (#1576). See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
 using namespace IREntity;
