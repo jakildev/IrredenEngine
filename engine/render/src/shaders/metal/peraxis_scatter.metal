@@ -45,7 +45,15 @@ struct FrameDataIsoTriangles {
 struct VertexOut {
     float4 position [[position]];
     float4 color [[flat]];
-    float depth [[flat]];
+    // Per-fragment composite depth (#1457): the yawed iso depth interpolates
+    // SMOOTHLY across the face (default perspective interpolation, == linear
+    // here since w==1) and the fragment rounds it per-pixel, then folds in the
+    // *4 + slot SDF co-sort via the flat bias/scale. Mirror of v_/f_peraxis
+    // _scatter.glsl. The old flat per-face depth scrambled interleaved voxel
+    // faces (#1370 residual).
+    float yawedDepth;          // continuous yawed iso depth across the face
+    float depthBias [[flat]];  // slot + distanceOffset - kMin
+    float depthScale [[flat]]; // 1 / (kMax - kMin)
 };
 
 struct FragmentOut {
@@ -81,7 +89,9 @@ vertex VertexOut v_peraxis_scatter(
     if (color.a < 0.1f) {
         out.position = float4(2.0, 2.0, 2.0, 1.0);
         out.color = float4(0.0);
-        out.depth = 1.0;
+        out.yawedDepth = 0.0;
+        out.depthBias = 0.0;
+        out.depthScale = 0.0;
         return out;
     }
 
@@ -127,18 +137,22 @@ vertex VertexOut v_peraxis_scatter(
     out.position = clipCorner;
 
     out.color = color;
-    // Yaw-consistent composite depth (#1370) — mirror of v_peraxis_scatter.glsl.
-    // `rawDepth` is the origin-recovery key (unchanged); re-derive the composite
-    // depth from the recovered origin rotated by R_z(-visualYaw) so it matches
-    // the YAWED screen projection and co-sorts with the SDF. Keeps the *4 + slot
-    // encoding. Per-axis is residual-only -> cardinal fast path byte-identical.
+    // Per-fragment composite depth (#1370, #1457) — mirror of
+    // v_peraxis_scatter.glsl. `rawDepth` is the origin-recovery key (unchanged).
+    // Derive the yawed depth at THIS corner (worldCorner) and emit it SMOOTH so
+    // the fragment rounds it per-pixel (matching the SDF path) instead of one
+    // flat per-face value (the #1370 residual that scrambled interleaved voxel
+    // faces). The *4 + slot co-sort stays integer because the fragment rounds
+    // before the *4 (a continuous depth + a 0..3 slot offset would invert
+    // across the band boundary). Per-axis is residual-only -> cardinal fast
+    // path byte-identical.
     const float yc = cos(frameData.visualYaw);
     const float ys = sin(frameData.visualYaw);
-    const float dvx = origin.x * yc + origin.y * ys;
-    const float dvy = -origin.x * ys + origin.y * yc;
-    const int yawedDist = roundHalfUp(dvx + dvy + origin.z) * 4 + slot;
-    out.depth = float(yawedDist + frameData.distanceOffset - globals.kMinTriangleDistance) /
-                float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
+    const float dvx = worldCorner.x * yc + worldCorner.y * ys;
+    const float dvy = -worldCorner.x * ys + worldCorner.y * yc;
+    out.yawedDepth = dvx + dvy + worldCorner.z;
+    out.depthBias = float(slot + frameData.distanceOffset - globals.kMinTriangleDistance);
+    out.depthScale = 1.0f / float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     return out;
 }
 
@@ -148,6 +162,10 @@ fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
         discard_fragment();
     }
     out.color = in.color;
-    out.depth = in.depth;
+    // Per-fragment composite depth (#1457): round the interpolated yawed depth
+    // to its integer iso band per-pixel (matching the SDF path), fold in the
+    // *4 + slot co-sort, normalize into framebuffer depth. floor(x + 0.5) is
+    // the inlined roundHalfUp (ties up, matching CPU/SDF).
+    out.depth = (floor(in.yawedDepth + 0.5f) * 4.0f + in.depthBias) * in.depthScale;
     return out;
 }

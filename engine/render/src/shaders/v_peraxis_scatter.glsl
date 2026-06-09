@@ -51,7 +51,16 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
 };
 
 flat out vec4 vColor;
-flat out float vDepth;
+// Per-fragment composite depth (#1457). The yawed iso depth is interpolated
+// SMOOTHLY across the face (vYawedDepth) and the fragment shader rounds it
+// per-pixel, then folds in the *4 + slot SDF co-sort via the flat bias/scale.
+// The old flat per-face value (#1370) gave the whole face quad ONE quantized
+// depth, so interleaved faces of adjacent voxels collided in the roundHalfUp
+// bands -> scrambled front/back blocks; the SDF path is clean precisely
+// because it rounds depth per-pixel (c_shapes_to_trixel smoothYaw).
+smooth out float vYawedDepth;  // continuous yawed iso depth across the face
+flat   out float vDepthBias;   // slot + distanceOffset - kMin (the *4+slot co-sort offset)
+flat   out float vDepthScale;  // 1 / (kMax - kMin), normalize into framebuffer depth
 
 // In-plane corner of a face whose `origin` ALREADY sits at the face plane on
 // the fixed axis. The store (c_voxel_to_trixel_stage_{1,2}) bakes the polarity
@@ -79,7 +88,9 @@ void main() {
     if (color.a < 0.1) {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         vColor = vec4(0.0);
-        vDepth = 1.0;
+        vYawedDepth = 0.0;
+        vDepthBias = 0.0;
+        vDepthScale = 0.0;
         return;
     }
 
@@ -136,22 +147,30 @@ void main() {
     gl_Position = clipCorner;
 
     vColor = color;
-    // Yaw-consistent composite depth (#1370). The stored `rawDepth` (= un-yawed
-    // world x+y+z) is the face-local origin-recovery KEY and must not change.
-    // But the framebuffer depth test must order by the depth that matches the
-    // YAWED screen projection above (iso of R_z(-visualYaw)*world), not the
-    // un-yawed metric — otherwise the ordering diverges from the on-screen
-    // placement as residual yaw grows and a low/back surface (the ground
-    // platform) wins the depth test against geometry above it near +/-45 deg.
-    // Re-derive the composite depth from the recovered origin, rotated by
-    // R_z(-visualYaw); keep the *4 + slot encoding so it co-sorts with the SDF
-    // (c_shapes_to_trixel smoothYaw applies the identical transform). Per-axis
-    // is residual-only, so the cardinal fast path is untouched (byte-identical).
+    // Yaw-consistent composite depth (#1370, #1457). The stored `rawDepth`
+    // (= un-yawed world x+y+z) is the face-local origin-recovery KEY and must
+    // not change. The framebuffer depth test must order by the depth that
+    // matches the YAWED screen projection above (iso of R_z(-visualYaw)*world),
+    // not the un-yawed metric — otherwise the ordering diverges from the
+    // on-screen placement as residual yaw grows and a low/back surface (the
+    // ground platform) wins the depth test against geometry above it near
+    // +/-45 deg.
+    //
+    // #1457: derive the yawed depth at THIS corner (worldCorner, already
+    // computed for the position) and emit it as a SMOOTH varying so the
+    // fragment depth interpolates across the face. The fragment then rounds it
+    // per-pixel (roundHalfUp) and applies the *4 + slot co-sort — matching the
+    // SDF path's per-pixel rounding (c_shapes_to_trixel smoothYaw applies the
+    // identical R_z(-visualYaw) transform). Rounding must stay in the fragment
+    // (before the *4): a continuous depth plus a 0..3 slot offset would invert
+    // across the *4 band boundary, so the integer encoding is preserved by
+    // quantizing first. Per-axis is residual-only, so the cardinal fast path is
+    // untouched (byte-identical).
     float yc = cos(visualYaw);
     float ys = sin(visualYaw);
-    float dvx = origin.x * yc + origin.y * ys;
-    float dvy = -origin.x * ys + origin.y * yc;
-    int yawedDist = roundHalfUp(dvx + dvy + origin.z) * 4 + slot;
-    vDepth = float(yawedDist + distanceOffset - kMinTriangleDistance) /
-             float(kMaxTriangleDistance - kMinTriangleDistance);
+    float dvx = worldCorner.x * yc + worldCorner.y * ys;
+    float dvy = -worldCorner.x * ys + worldCorner.y * yc;
+    vYawedDepth = dvx + dvy + worldCorner.z;
+    vDepthBias = float(slot + distanceOffset - kMinTriangleDistance);
+    vDepthScale = 1.0 / float(kMaxTriangleDistance - kMinTriangleDistance);
 }
