@@ -7,6 +7,7 @@
 #include <irreden/render/camera.hpp>
 
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
@@ -48,6 +49,7 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
 
     void tick(
         const IRComponents::C_LocalTransform &localTransform,
+        const IRComponents::C_WorldTransform &worldTransform,
         const IRComponents::C_RotationMode &rotationMode,
         const IRComponents::C_EntityCanvas &entityCanvas
     ) {
@@ -75,6 +77,17 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             // Route the canvas to the re-voxelize render path (cardinal frame
             // data + SYSTEM_REBUILD_DETACHED_VOXELS) vs the forward-scatter deform.
             canvasRotation.value()->reVoxelize_ = reVoxelize;
+            // World-placement opt-in (#1576 P4b-2). Mirror the owner's
+            // C_EntityCanvas::worldPlaced_ + its world cell origin onto the canvas
+            // so the screen-space lighting passes (which iterate the canvas, not
+            // the owner) can recover each detached voxel's WORLD position and
+            // sample the shared world sun-shadow map + light volume. The rounding
+            // matches P4b-1's composite depth offset
+            // (pos3DtoDistance(roundVec3HalfUp(translation))) so depth and
+            // receive stay on one convention. Off → byte-identical overlay.
+            canvasRotation.value()->worldPlaced_ = entityCanvas.worldPlaced_;
+            canvasRotation.value()->worldCellOffset_ =
+                IRMath::vec3(IRMath::roundVec3HalfUp(worldTransform.translation_));
         }
     }
 
@@ -82,6 +95,7 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
         return registerSystem<
             PROPAGATE_CANVAS_ROTATION,
             IRComponents::C_LocalTransform,
+            IRComponents::C_WorldTransform,
             IRComponents::C_RotationMode,
             IRComponents::C_EntityCanvas>("PropagateCanvasRotation");
     }

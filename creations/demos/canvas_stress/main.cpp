@@ -77,15 +77,18 @@
 // each frame, and the standard lighting pipeline (AO + sun + shadows)
 // runs so face orientation is visually perceptible.
 //
-// Rotation-mode contract (#1582): the DETACHED + DETACHED_REVOXELIZE
+// Rotation-mode contract (#1582): BY DEFAULT the DETACHED + DETACHED_REVOXELIZE
 // entities here (the orbit ring + the re-voxelize column) are SCREEN-LOCKED
 // overlays — ENTITY_CANVAS_TO_FRAMEBUFFER composites them at a fixed
 // framebuffer depth, so they do NOT cast shadows onto, receive shadows from,
 // or depth-sort against world geometry. Only the GRID-mode cubes are
 // world-integrated (they write world trixelDistances). So a world shadow
 // floor (#1587) reads shadows from the GRID cubes ONLY; the detached casters
-// not dropping shadows is by design, not a bug. World-integrating detached
-// canvases is tracked by P4b (#1576). See render/CLAUDE.md "Rotation modes".
+// not dropping shadows is by design, not a bug. The OPT-IN
+// `--world-place-revox` flag (P4b / #1576) world-places the two center
+// re-voxelize solids: P4b-1 depth-sorts them against world geometry, P4b-2
+// (this change) has them RECEIVE world sun-shadow + light-volume at their world
+// pos. (Cast — P4b-3 — is still pending.) See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
 using namespace IREntity;
@@ -177,7 +180,7 @@ constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
 // (mirroring shape_debug's shadows-onto-empty-floor framing). Grazing (moderate
 // |z|) keeps the shadows long enough to be obvious. Lower ambient than the
 // standard demo so the cast shadows read as dark patches, not washed out.
-constexpr vec3 kSunDirection = vec3(-0.42f, -0.60f, -0.55f);  // setSunDirection normalizes
+constexpr vec3 kSunDirection = vec3(-0.42f, -0.60f, -0.55f); // setSunDirection normalizes
 constexpr float kSunIntensity = 1.0f;
 constexpr float kSunAmbient = 0.30f;
 
@@ -341,9 +344,11 @@ void spawnDetachedReVoxelizeSolid(
     // lighting the forward-scatter cubes, breaking the byte-identical guarantee).
     // C_TrixelCanvasRenderBehavior's default useCameraPositionIso_ lets the AO /
     // lighting passes run over this canvas; COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL
-    // author its own (cardinal) voxel frame before each dispatch. Sun-shadow +
-    // light-volume stay off for detached (deferred to P4b / #1576), so no
-    // C_CanvasSunShadow / C_CanvasLightVolume here.
+    // author its own (cardinal) voxel frame before each dispatch. No
+    // C_CanvasSunShadow / C_CanvasLightVolume here even on the opt-in world path:
+    // a world-placed solid RECEIVES the SHARED world sun-shadow map + 128³ light
+    // volume at its recovered world pos directly in LIGHTING_TO_TRIXEL (#1576
+    // P4b-2), not via a per-canvas texture.
     if (!g_settings.noLighting_) {
         IREntity::setComponent(canvas.canvasEntity_, C_TrixelCanvasRenderBehavior{});
         IREntity::setComponent(canvas.canvasEntity_, C_CanvasAOTexture{kReVoxCanvasSize});
@@ -463,8 +468,15 @@ void carveOrbitShape(C_VoxelSetNew &vs, OrbitShape shape) {
 // the shared world pool; DETACHED / DETACHED_REVOXELIZE each get a private canvas
 // + pool composited by ENTITY_CANVAS_TO_FRAMEBUFFER.
 void spawnOrbitShape(
-    int index, vec3 worldPos, OrbitShape shape, RotationMode mode, int extent,
-    vec3 spinAxis, float spinRate, vec4 initialRotation, Color color
+    int index,
+    vec3 worldPos,
+    OrbitShape shape,
+    RotationMode mode,
+    int extent,
+    vec3 spinAxis,
+    float spinRate,
+    vec4 initialRotation,
+    Color color
 ) {
     const ivec3 shapeSize{extent, extent, extent};
     if (mode == RotationMode::GRID) {
@@ -485,7 +497,9 @@ void spawnOrbitShape(
     const ivec2 canvasSize{extent * 12, extent * 12};
     const ivec3 poolSize{poolDim, poolDim, poolDim};
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
-        "orbit_canvas_" + std::to_string(index), canvasSize, poolSize
+        "orbit_canvas_" + std::to_string(index),
+        canvasSize,
+        poolSize
     );
     const EntityId solid = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
@@ -594,7 +608,8 @@ void initSystems() {
          // PROPAGATE_CANVAS_ROTATION (needs the camera-composed rotation) and
          // UPDATE_VOXEL_SET_CHILDREN (overwrites its translate-only baseline).
          IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>(),
-         IRSystem::createSystem<IRSystem::LIFETIME>()}
+         IRSystem::createSystem<IRSystem::LIFETIME>()
+        }
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
@@ -882,18 +897,32 @@ void initEntities() {
     // cells and renders thin detail crisply. Spheres appear on all three paths
     // for a side-by-side of the techniques.
     constexpr OrbitShape kOrbitShapes[kOrbitCount]{
-        OrbitShape::SPHERE,     OrbitShape::FRAME, OrbitShape::SPHERE,
-        OrbitShape::OCTAHEDRON, OrbitShape::CROSS, OrbitShape::OCTAHEDRON,
-        OrbitShape::CUBE,       OrbitShape::FRAME, OrbitShape::PYRAMID,
-        OrbitShape::PYRAMID,    OrbitShape::SPHERE, OrbitShape::CUBE,
+        OrbitShape::SPHERE,
+        OrbitShape::FRAME,
+        OrbitShape::SPHERE,
+        OrbitShape::OCTAHEDRON,
+        OrbitShape::CROSS,
+        OrbitShape::OCTAHEDRON,
+        OrbitShape::CUBE,
+        OrbitShape::FRAME,
+        OrbitShape::PYRAMID,
+        OrbitShape::PYRAMID,
+        OrbitShape::SPHERE,
+        OrbitShape::CUBE,
     };
     constexpr RotationMode kOrbitModes[kOrbitCount]{
-        RotationMode::GRID,                RotationMode::DETACHED,
-        RotationMode::DETACHED_REVOXELIZE, RotationMode::GRID,
-        RotationMode::DETACHED,            RotationMode::DETACHED_REVOXELIZE,
-        RotationMode::GRID,                RotationMode::DETACHED,
-        RotationMode::DETACHED_REVOXELIZE, RotationMode::GRID,
-        RotationMode::DETACHED,            RotationMode::DETACHED_REVOXELIZE,
+        RotationMode::GRID,
+        RotationMode::DETACHED,
+        RotationMode::DETACHED_REVOXELIZE,
+        RotationMode::GRID,
+        RotationMode::DETACHED,
+        RotationMode::DETACHED_REVOXELIZE,
+        RotationMode::GRID,
+        RotationMode::DETACHED,
+        RotationMode::DETACHED_REVOXELIZE,
+        RotationMode::GRID,
+        RotationMode::DETACHED,
+        RotationMode::DETACHED_REVOXELIZE,
     };
     constexpr vec3 kOrbitAxes[]{
         {0.0f, 0.0f, 1.0f},
@@ -902,36 +931,62 @@ void initEntities() {
         {1.0f, 1.0f, 1.0f},
     };
     constexpr Color kOrbitColors[kOrbitCount]{
-        {240, 80, 80, 255},  {245, 150, 60, 255},  {240, 215, 70, 255},
-        {130, 220, 70, 255}, {70, 210, 130, 255},  {70, 200, 220, 255},
-        {80, 130, 235, 255}, {150, 90, 235, 255},  {220, 80, 220, 255},
-        {235, 90, 160, 255}, {120, 235, 200, 255}, {200, 200, 210, 255},
+        {240, 80, 80, 255},
+        {245, 150, 60, 255},
+        {240, 215, 70, 255},
+        {130, 220, 70, 255},
+        {70, 210, 130, 255},
+        {70, 200, 220, 255},
+        {80, 130, 235, 255},
+        {150, 90, 235, 255},
+        {220, 80, 220, 255},
+        {235, 90, 160, 255},
+        {120, 235, 200, 255},
+        {200, 200, 210, 255},
     };
     // Per-shape base extent in voxels — a mix of large and small orbiters, with
     // a large + a small in every rotation mode so the size range shows on the
     // world canvas and both detached paths.
     constexpr int kOrbitExtents[kOrbitCount]{
-        16, 14, 13, 10, 16, 15,
-        12, 14, 16, 11, 13, 12,
+        16,
+        14,
+        13,
+        10,
+        16,
+        15,
+        12,
+        14,
+        16,
+        11,
+        13,
+        12,
     };
     for (int i = 0; i < kOrbitCount; ++i) {
         const float angle =
             IRMath::kTwoPi * static_cast<float>(i) / static_cast<float>(kOrbitCount);
         const vec3 worldPos{
-            kOrbitRadius * IRMath::cos(angle), kOrbitRadius * IRMath::sin(angle), 0.0f
+            kOrbitRadius * IRMath::cos(angle),
+            kOrbitRadius * IRMath::sin(angle),
+            0.0f
         };
         const vec3 axis = kOrbitAxes[i % 4];
         // Off-cardinal seed pose so even shot 0 reads as a true-3D solid; the
         // per-entity rate de-syncs neighbours across the capture window.
         const vec4 initialRotation =
             IRMath::quatAxisAngle(IRMath::normalize(axis), IRMath::kQuarterPi);
-        const float spinRate =
-            g_settings.noSpin_ ? 0.0f
-                               : kDetachedSpinBaseRadPerFrame *
-                                     (1.0f + 0.25f * static_cast<float>(i % 4));
+        const float spinRate = g_settings.noSpin_ ? 0.0f
+                                                  : kDetachedSpinBaseRadPerFrame *
+                                                        (1.0f + 0.25f * static_cast<float>(i % 4));
         spawnOrbitShape(
-            i, worldPos, kOrbitShapes[i], kOrbitModes[i], kOrbitExtents[i], axis,
-            spinRate, initialRotation, kOrbitColors[i]
+            i,
+            worldPos,
+            kOrbitShapes[i],
+            kOrbitModes[i],
+            kOrbitExtents[i],
+            axis,
+            spinRate,
+            initialRotation,
+            kOrbitColors[i]
         );
     }
 

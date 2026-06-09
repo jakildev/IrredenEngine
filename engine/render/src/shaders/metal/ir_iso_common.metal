@@ -723,6 +723,14 @@ struct FrameDataVoxelToTrixel {
     // and FrameDataVoxelToCanvas::voxelDepthAxis_. Other kernels that bind
     // this struct never read it.
     float4 voxelDepthAxis;
+    // World-receive offset for an opt-in world-placed detached re-voxelize solid
+    // (#1576 P4b-2). .xyz = the entity world cell origin
+    // (roundVec3HalfUp(translation)); .w = 1.0 when worldPlaced_, else 0.0.
+    // c_lighting_to_trixel recovers world pos as modelPos + .xyz and samples the
+    // shared world sun-shadow map + light volume there; .w == 0 keeps the default
+    // screen-locked path byte-identical. Mirrors
+    // FrameDataVoxelToCanvas::detachedWorldReceive_. Other kernels never read it.
+    float4 detachedWorldReceive;
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

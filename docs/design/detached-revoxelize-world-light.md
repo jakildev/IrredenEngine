@@ -8,7 +8,8 @@ blocks) and the work is decomposed into the 3-PR stack in
 per-entity world-placement (screen-locked overlay stays the default; #1576
 **stacks on** #1583), **shared** world maps for receive, **second bake dispatch**
 for cast (phased last), depth offset = world iso depth on the GRID
-`trixelDistances` convention. Ready to implement P4b-1.
+`trixelDistances` convention. **P4b-1 (depth composite) + P4b-2 (receive) landed;
+P4b-3 (cast) is the remaining phase.**
 
 ## Goal
 
@@ -176,10 +177,27 @@ Each phase is its own PR, stacks on the previous, and is independently verifiabl
    at any rotation for integer entity translations — proved by the CPU↔GPU GRID-equivalence
    gtest `test/render/detached_world_depth_test.cpp`. Runnable demo: `canvas_stress
    --world-place-revox` (off by default so the auto-screenshot references stay byte-identical).
-2. **P4b-2 — receive (Q3a).** Plumb the world transform into the detached lighting
-   voxel-frame; flip the `isDetachedCanvas` shadow/light-volume branch to sample the
-   shared maps at world pos, gated on the opt-in flag. GL + Metal. Opt-in solids now
-   darken in world shadow and pick up light-volume bleed.
+2. **P4b-2 — receive (Q3a). ✅ Implemented.** Plumb the world transform into the
+   detached lighting voxel-frame; flip the `isDetachedCanvas` shadow/light-volume
+   branch to sample the shared maps at world pos, gated on the opt-in flag. GL + Metal.
+   Opt-in solids now darken in world shadow and pick up light-volume bleed.
+   *Landed as:* PROPAGATE_CANVAS_ROTATION propagates `worldPlaced_` +
+   `worldCellOffset_ = roundVec3HalfUp(translation)` onto `C_CanvasLocalRotation`;
+   `buildVoxelFrameData` publishes them as `FrameDataVoxelToCanvas::detachedWorldReceive_`
+   (`.xyz` offset, `.w` enable). `c_lighting_to_trixel` (GL + Metal) recovers
+   `worldPos = trixelCanvasPixelToWorld3D(...) + .xyz` and, when `.w != 0`, samples the
+   shared 128³ light volume there AND re-runs the sun-shadow cascade lookup at that pos
+   via the new shared `ir_sun_shadow_sample.{glsl,metal}` include (extracted from
+   COMPUTE_SUN_SHADOW so both passes share one cascade sampler + FrameDataSun layout;
+   the lighting system binds the sun-depth SSBO at slot 28). With the flag off the
+   shader takes the identical pre-#1576 branch, so the default screen-locked references
+   stay byte-identical (verified: the only default-path drift is the pre-existing
+   CPU↔GPU sub-cell speckle that master exhibits run-to-run). Receive correctness was
+   confirmed with a forced-shadow-factor isolation pass (the world-placed solid darkens
+   on the opt-in path; the path + plumbing reach the shader). Note: a *camera-visible*
+   cast-shadow-on-a-detached-solid is awkward to frame in `canvas_stress` because its
+   sun direction ≈ the iso camera direction, so cast shadows fall away from the camera;
+   the end-to-end visual lands naturally with P4b-3 on the #1587 shadow floor.
 3. **P4b-3 — cast (Q2a).** Second bake dispatch per opt-in detached canvas into the
    shared sun-shadow map (world-depth offset + translation recovery, per the per-axis
    resolve-bake precedent). GL + Metal. Opt-in solids now cast onto the floor + world.

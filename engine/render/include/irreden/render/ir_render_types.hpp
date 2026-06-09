@@ -247,6 +247,22 @@ struct FrameDataVoxelToCanvas {
     // path — is unchanged; the gather shaders that read only the prefix
     // (AO, lighting) are unaffected and need no declaration update.
     vec4 voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    // World-receive offset for an opt-in world-placed detached re-voxelize solid
+    // (#1576 P4b-2). `.xyz` = the entity's world cell origin
+    // (`roundVec3HalfUp(C_WorldTransform::translation_)`, the SAME rounding P4b-1's
+    // composite depth offset uses); `.w` = 1.0 when the solid opts into world
+    // placement (`C_EntityCanvas::worldPlaced_`), else 0.0. The detached
+    // re-voxelize canvas rasters its pool in the pool-centered MODEL frame, so the
+    // lighting / sun-shadow passes recover each voxel's WORLD pos as
+    // `modelPos + .xyz` and then sample the SHARED world sun-shadow map + 128³
+    // light volume there (receive), equivalently to an attached GRID solid. `.w`
+    // gates the whole path: 0.0 keeps the default screen-locked overlay
+    // byte-identical (no shadow received, light volume disabled). Default
+    // (0,0,0,0) so the world canvas + any non-opt-in canvas is unchanged.
+    // std140-appended after voxelDepthAxis_ (offset 160), so every prior field
+    // offset is unchanged and shaders that read only the prefix need no update;
+    // only c_lighting_to_trixel declares it.
+    vec4 detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -451,9 +467,15 @@ static_assert(
     "every existing offset — and the world/GRID fast path — stays unchanged"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 160,
+    offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_) == 160,
+    "FrameDataVoxelToCanvas::detachedWorldReceive_ must land at offset 160 "
+    "(voxelDepthAxis_ at 144 + 16 B). Appended after the prior last field so "
+    "every existing offset — and the default screen-locked path — stays unchanged"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 176,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(voxelDepthAxis_ vec4 append: 144 + 16 = 160)"
+    "(detachedWorldReceive_ vec4 append: 160 + 16 = 176)"
 );
 
 struct FrameDataSun {

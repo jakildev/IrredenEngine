@@ -60,6 +60,11 @@ inline void buildVoxelFrameData(
     // axis. frameData_ is a reused member, so this must be reset every frame so
     // a prior detached canvas's axis can't leak into a world frame.
     frameData.voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    // World-receive opt-in (#1576 P4b-2). Default OFF (.w == 0) — only the
+    // re-voxelize branch below sets it when the owner opts in. Reset every frame
+    // (reused member) so a prior world-placed detached canvas can't leak its
+    // offset into a world / non-opt-in frame and corrupt its lighting.
+    frameData.detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 
     // A non-zero `canvasRotation` marks a detached entity canvas (the main
     // world canvas keeps the all-zero `C_CanvasLocalRotation::kSentinelNoRotation`
@@ -108,6 +113,17 @@ inline void buildVoxelFrameData(
         frameData.faceDeform_[0] = vec4(fd0[0], fd0[1]);
         frameData.faceDeform_[1] = vec4(fd1[0], fd1[1]);
         frameData.faceDeform_[2] = vec4(fd2[0], fd2[1]);
+        // World-receive opt-in (#1576 P4b-2). When the owner world-places this
+        // re-voxelize solid (C_EntityCanvas::worldPlaced_, propagated onto
+        // canvasRotation), publish its world cell origin + the enable flag so
+        // COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL recover each voxel's WORLD pos as
+        // (model pos + .xyz) and sample the shared world sun-shadow map + light
+        // volume there. Off → the default screen-locked overlay (.w == 0) stays
+        // byte-identical. Only the re-voxelize path carries this — the
+        // octahedral-snap / per-face-deform DETACHED branch below recovers pos
+        // differently (residual face skew), so it is not world-receive-capable.
+        frameData.detachedWorldReceive_ =
+            vec4(canvasRotation.worldCellOffset_, canvasRotation.worldPlaced_ ? 1.0f : 0.0f);
         return;
     }
     if (detachedCanvas) {

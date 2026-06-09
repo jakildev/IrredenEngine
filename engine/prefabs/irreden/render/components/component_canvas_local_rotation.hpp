@@ -44,6 +44,26 @@ struct C_CanvasLocalRotation {
     // per-face-deform path. Inert on the main world canvas (sentinel rotation).
     bool reVoxelize_ = false;
 
+    // World-placement opt-in mirror (#1576 P4b-2), propagated from the owner's
+    // C_EntityCanvas::worldPlaced_ by PROPAGATE_CANVAS_ROTATION each tick (same
+    // parent→canvas channel as rotation_/reVoxelize_, NOT a dirty flag). When
+    // true, the screen-space lighting passes recover each detached voxel's WORLD
+    // position (model pos + worldCellOffset_) and sample the SHARED world
+    // sun-shadow map + 128³ light volume there, so an opt-in re-voxelize solid
+    // receives world shadow + light-volume bleed like an attached GRID solid.
+    // The canvas (child) entity is what the lighting passes iterate; the
+    // worldPlaced_ flag + the world translation live on the parent's
+    // C_EntityCanvas / C_WorldTransform, so they must be propagated onto the
+    // canvas to reach those passes without a per-voxel foreign getComponent.
+    // Inert (false) on the main world canvas (sentinel rotation, never written).
+    bool worldPlaced_ = false;
+    // The owner entity's world cell origin = roundVec3HalfUp(C_WorldTransform::
+    // translation_) — the SAME rounding P4b-1's composite depth offset uses
+    // (pos3DtoDistance(roundVec3HalfUp(translation))), so the recovered world
+    // position stays consistent with the world depth the canvas composites at.
+    // Only meaningful when worldPlaced_ is true.
+    IRMath::vec3 worldCellOffset_{0.0f};
+
     C_CanvasLocalRotation() = default;
     explicit C_CanvasLocalRotation(IRMath::vec4 rotation)
         : rotation_{rotation} {}
