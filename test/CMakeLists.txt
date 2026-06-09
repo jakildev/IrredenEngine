@@ -41,7 +41,6 @@ add_executable(IrredenEngineTest
   math/ir_math_yaw_deformation_test.cpp
   math/sdf_test.cpp
   render/camera_yaw_test.cpp
-  render/detached_world_depth_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/per_canvas_light_scope_test.cpp
@@ -67,6 +66,11 @@ add_executable(IrredenEngineTest
   system/register_system_test.cpp
   system/system_access_test.cpp
   system/system_concurrency_test.cpp
+  time/sim_clock_test.cpp
+  time/cycle_test.cpp
+  time/timer_test.cpp
+  time/stopwatch_test.cpp
+  time/lua_sim_test.cpp
   job/ir_job_test.cpp
   utility/ir_utility_test.cpp
   world/chunk_coord_test.cpp

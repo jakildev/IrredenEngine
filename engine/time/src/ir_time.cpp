@@ -24,6 +24,10 @@ bool shouldUpdate() {
     return getTimeManager().shouldUpdate();
 }
 
+std::uint64_t tick() {
+    return getTimeManager().fixedStepCount();
+}
+
 double renderFps() {
     return getTimeManager().fps<RENDER>();
 }

@@ -3,6 +3,8 @@
 
 #include <irreden/time/ir_time_types.hpp>
 
+#include <cstdint>
+
 namespace IRTime {
 
 /// Global pointer to the active `TimeManager`; managed by the engine runtime.
@@ -22,6 +24,15 @@ double deltaTime(Events eventType);
 /// Returns `true` when the UPDATE accumulator has buffered at least one frame period
 /// (1 / @ref IRConstants::kFPS).  Call in a `while` loop to drain catch-up ticks.
 bool shouldUpdate();
+
+/// Raw engine UPDATE tick count: total fixed-step UPDATE ticks executed since
+/// startup, always advancing one-per-UPDATE regardless of sim pause/scale. This
+/// is the wall-clock-aligned "engine tick" half of the two-clock model; the
+/// pausable/scalable "sim tick" lives in `IRSim::tick()`
+/// (`engine/prefabs/irreden/common/sim_clock.hpp`). Asserts if the TimeManager
+/// is not initialised — engine-tick has no meaning without the running loop,
+/// unlike the sim clock, which is an ECS singleton usable in isolation.
+std::uint64_t tick();
 
 /// 1-second rolling average of RENDER ticks per second.
 double renderFps();

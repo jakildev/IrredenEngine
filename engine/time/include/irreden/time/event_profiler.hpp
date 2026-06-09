@@ -104,6 +104,15 @@ template <> class EventProfiler<UPDATE> {
         return m_deltaTimeFixed;
     }
 
+    /// Total fixed-step UPDATE ticks executed since startup. Monotonic,
+    /// advances exactly once per UPDATE pipeline run (even while the sim
+    /// clock is paused), so it stays wall-clock-aligned. Backs
+    /// `IRTime::tick()`. Widened to 64 bits at the public boundary so the
+    /// engine-tick counter never wraps over a long-running session.
+    std::uint64_t fixedStepCount() const {
+        return m_fixedStepCount;
+    }
+
     double fps() const {
         if (m_fpsCount == 0)
             return 0.0;

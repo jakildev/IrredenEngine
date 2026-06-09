@@ -862,6 +862,45 @@ IRModifier.resolvedQuat(entity, fieldNameOrId, fallback) -- read quat slot
   engine assertion in debug and silently no-op in release. The compose
   pass normalizes the final resolved quat once at the end.
 
+## Sim clock (`IRSim.*`)
+
+`bindLuaDrivenEcs()` exposes the sim-clock / cycle / timer / stopwatch
+service (engine #200, `engine/prefabs/irreden/common/sim_clock.hpp`) as the
+`IRSim` table. The **sim tick** is pausable and scalable (distinct from the
+always-advancing engine tick); a creation composes `SIM_CLOCK_ADVANCE` /
+`CYCLE_BOUNDARY_DETECT` / `TIMER_FIRE` into its UPDATE pipeline C++-side.
+
+```lua
+IRSim.setTimeScale(0.5)            -- 0 = paused, N = fast, 1/N = slow
+IRSim.tick()                       -- current sim tick
+IRSim.pause(); IRSim.resume(); IRSim.isPaused()
+
+IRSim.createCycle("day", 24000)    -- name, periodTicks[, phaseOffset]
+local t = IRSim.cycleFraction("day")          -- [0,1) — drive sun/colour on this
+IRSim.cycleNumber("day"); IRSim.cycleTickWithin("day")
+IRSim.cycleBoundaryCrossed("day")             -- true the tick a boundary crossed
+
+IRSim.createTimer("reload", 50)    -- name, targetTick[, intervalTicks] (0 = one-shot)
+IRSim.timerFired("reload"); IRSim.timerActive("reload")
+IRSim.timerTicksRemaining("reload"); IRSim.timerFraction("reload")
+
+IRSim.createStopwatch("run")
+IRSim.stopwatchElapsed("run")
+IRSim.stopwatchPause("run"); IRSim.stopwatchResume("run"); IRSim.stopwatchReset("run")
+```
+
+- **Discrete events are polled, not callbacks.** `cycleBoundaryCrossed` /
+  `timerFired` read the embedded event flag (true only on the firing tick)
+  the same tick the C++ detector raised it — the events-as-components
+  model. A registered-callback (`onCycleBoundary`) form is a follow-up if a
+  real consumer needs it.
+- **Names are registry keys**, not enums — string lookups here are allowed
+  (cf. modifier `fieldNameOrId`); a handful of cycles/timers per world makes
+  the linear name scan a query convenience, not a hot path.
+- Service surface only — the advance systems are not exposed for Lua
+  pipeline assembly (same as most prefab systems). Coverage:
+  `test/time/lua_sim_test.cpp`.
+
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
 `bindLuaDrivenEcs()` also exposes the `Prefab` Lua table — the runtime
