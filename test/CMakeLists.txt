@@ -41,6 +41,7 @@ add_executable(IrredenEngineTest
   math/ir_math_yaw_deformation_test.cpp
   math/sdf_test.cpp
   render/camera_yaw_test.cpp
+  render/detached_world_depth_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/per_canvas_light_scope_test.cpp
