@@ -111,7 +111,12 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
             recycledSlots_.pop_back();
             return slot;
         }
-        if (nextFreeSlot_ < static_cast<std::uint32_t>(kMaxGpuVoxelTransforms)) {
+        // Stop at kJointTransformSlotBase, not kMaxGpuVoxelTransforms: the
+        // reserved high region [kJointTransformSlotBase, kMaxGpuVoxelTransforms)
+        // belongs to UPDATE_JOINT_MATRICES (#1603). Partitioning the shared
+        // binding-18 budget keeps this system's contiguous `[0, maxSlotUsed_]`
+        // re-upload from ever clobbering a joint slot.
+        if (nextFreeSlot_ < static_cast<std::uint32_t>(kJointTransformSlotBase)) {
             return nextFreeSlot_++;
         }
         return kVoxelTransformStatic; // budget exhausted — caller stays CPU-direct

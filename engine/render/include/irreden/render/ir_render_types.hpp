@@ -320,6 +320,20 @@ constexpr std::uint32_t kVoxelTransformStatic = 0xFFFFFFFFu;
 /// Matches the `GpuVoxelTransform` array size allocated by `UPDATE_VOXEL_POSITIONS_GPU`.
 constexpr int kMaxGpuVoxelTransforms = 4096;
 
+/// Skeletal joint transforms (#605 Phase 2.2 / #1603) share the same binding-18
+/// `EntityTransformBuffer`, NOT a second buffer — the #1396 prepass that consumes
+/// per-voxel transform slots is the same operation a per-bone skin matrix needs.
+/// The 4096-slot budget is partitioned so the two allocators can't collide and
+/// the prepass's contiguous `[0, maxSlotUsed_]` re-upload can never clobber a
+/// joint slot: dynamic voxel-set slots grow UP from 0 and stop at
+/// `kJointTransformSlotBase`; `UPDATE_JOINT_MATRICES` carves contiguous joint
+/// blocks DOWN from `kMaxGpuVoxelTransforms`. The reserved high region holds
+/// `kMaxGpuJointTransforms` slots — e.g. ~34 thirty-joint skeletons, or 1024
+/// single-joint rigs — leaving the low region for voxel-set transforms.
+constexpr int kMaxGpuJointTransforms = 1024;
+/// First slot of the reserved joint region; voxel-set transforms use `[0, this)`.
+constexpr int kJointTransformSlotBase = kMaxGpuVoxelTransforms - kMaxGpuJointTransforms;
+
 /// One per GPU-transformed voxel-set, indexed by `C_VoxelSetNew::gpuTransformSlot_`
 /// (and by each owned voxel's per-voxel transform index). The compute prepass
 /// computes `world = modelToWorld_ * vec4(localPos, 1)`, so this carries the full

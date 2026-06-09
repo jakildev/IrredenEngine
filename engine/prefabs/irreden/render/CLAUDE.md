@@ -105,6 +105,24 @@ the ECS surface.
   Shared substrate for per-entity SO(3) (#1272/#1299) and skeletal voxels
   (#605). The transform slot is bit-packed into the local-position `.w`
   lane (Metal has no free buffer index past 30).
+- `UPDATE_JOINT_MATRICES` — per-frame skeletal joint skin-matrix upload (#605
+  Phase 2.2 / #1603). For each `C_Skeleton` it writes every joint's
+  `IRPrefab::Skeleton::skinMatrix` (`jointWorld × bindInverse`) into a
+  contiguous block of the **same** binding-18 `EntityTransformBuffer` the
+  prepass consumes — no second buffer (binding-21 is retired for the voxel
+  path in Phase 2.4). Phase 2.3 then sets a skinned voxel's `.w` to
+  `slotBase + bone_id` so the existing `c_update_voxel_positions` prepass skins
+  it with no new shader. Iterates the `<C_Joint, C_WorldTransform>` archetype
+  (world transform via dense iteration, no per-joint `getComponent`); the rest
+  pose + target slot per joint are gathered once in `beginTick` from each
+  skeleton's own `bindPose_`. **The 4096-slot binding-18 budget is partitioned**
+  so the prepass's contiguous `[0, maxSlotUsed_]` re-upload can never clobber a
+  joint slot: dynamic voxel-set slots grow up from 0 (capped at
+  `kJointTransformSlotBase`); joint blocks are carved down from
+  `kMaxGpuVoxelTransforms` (the reserved `kMaxGpuJointTransforms`-slot high
+  region). Register **after** `PROPAGATE_TRANSFORM` and **before**
+  `UPDATE_VOXEL_POSITIONS_GPU`; a creation that authors skeletons must register
+  the prepass too (this system reuses its buffer).
 - `VOXEL_TO_TRIXEL_STAGE_1` — compute-shader voxel rasterization to the
   3 canvas textures. Runs compact + stage-1 + stage-2 dispatches in one
   per-canvas tick (the former separate `VOXEL_TO_TRIXEL_STAGE_2` system
