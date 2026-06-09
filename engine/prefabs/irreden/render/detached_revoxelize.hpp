@@ -116,10 +116,17 @@ inline void seedResidentLocals(
     // preserves length, so the farthest authored corner (maxRadius) bounds every
     // rotated coordinate; the cube [-center, +center]³ holds them all. This is
     // rotation-independent — computed once, valid for every spin pose.
+    // Clamped to maxSingleVoxels: the shared SSBOs (pos/color/activeMask) are all
+    // allocated to that size, so destCount_ > maxSingleVoxels would let GPU threads
+    // write beyond the buffer bounds (the shader guard `slot >= dest_.x` bounds
+    // against destCount_, not the buffer allocation).
     const int center = (n > 0) ? static_cast<int>(IRMath::ceil(maxRadius)) : 0;
     buffer.destCenter_ = center;
     buffer.destSide_ = 2 * center + 1;
-    buffer.destCount_ = buffer.destSide_ * buffer.destSide_ * buffer.destSide_;
+    buffer.destCount_ = IRMath::min(
+        buffer.destSide_ * buffer.destSide_ * buffer.destSide_,
+        IRRender::VoxelPoolConfig::getTotalSize()
+    );
 
     buffer.seededVoxelCount_ = liveCount;
 }

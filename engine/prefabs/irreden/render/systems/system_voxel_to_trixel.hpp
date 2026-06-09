@@ -286,16 +286,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     int dispatchReVoxelize(
         C_DetachedRevoxelizeBuffer &buffer,
         const C_CanvasLocalRotation &canvasRotation,
-        int liveVoxelCount
+        int liveVoxelCount,
+        bool isInverse
     ) {
-        const bool inverse = buffer.sourceGrid_.second != nullptr && buffer.destCount_ > 0 &&
-                             canvasRotation.rotation_ != vec4(0.0f, 0.0f, 0.0f, 1.0f);
-
         RevoxelizeDetachedParams params{};
         params.canvasRotation_ = canvasRotation.rotation_;
         constexpr int kLocalSize = 64;
 
-        if (!inverse) {
+        if (!isInverse) {
             params.dest_ = ivec4(liveVoxelCount, 0, 0, 0);
             revoxelizeParamsBuf_->subData(0, sizeof(RevoxelizeDetachedParams), &params);
 
@@ -596,7 +594,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // Every frame, since the quat changes. Mark this canvas as the last
                 // uploader so a later switch to a CPU-owned canvas re-seeds binding
                 // 5 from its mirror, and drop any (empty) pending ranges.
-                dispatchReVoxelize(*revoxBuffer, canvasLocalRotation, liveVoxelCount);
+                dispatchReVoxelize(*revoxBuffer, canvasLocalRotation, liveVoxelCount, revoxInverse);
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
             } else if (lastUploadedCanvas_ != entity) {
