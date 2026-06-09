@@ -74,10 +74,10 @@ inline bool isPaused() {
     return clock().timeScale_ == 0.0f;
 }
 
-/// Sets the sim time scale. Negative values are clamped to 0 (paused); the
-/// SYSTEM_SIM_CLOCK_ADVANCE fast path keys on an exact 1.0.
+/// Sets the sim time scale. Negative values and NaN are clamped to 0 (paused);
+/// the SYSTEM_SIM_CLOCK_ADVANCE fast path keys on an exact 1.0.
 inline void setTimeScale(float scale) {
-    clock().timeScale_ = scale < 0.0f ? 0.0f : scale;
+    clock().timeScale_ = !(scale > 0.0f) ? 0.0f : scale;
 }
 
 inline void pause() {

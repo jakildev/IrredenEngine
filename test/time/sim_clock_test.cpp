@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
@@ -82,6 +83,13 @@ TEST_F(SimClockTest, FastForwardDoubleRate) {
 
 TEST_F(SimClockTest, NegativeScaleClampsToPaused) {
     IRSim::setTimeScale(-3.0f);
+    EXPECT_TRUE(IRSim::isPaused());
+    advance(50);
+    EXPECT_EQ(IRSim::tick(), 0u);
+}
+
+TEST_F(SimClockTest, NaNScaleClampsToPaused) {
+    IRSim::setTimeScale(std::numeric_limits<float>::quiet_NaN());
     EXPECT_TRUE(IRSim::isPaused());
     advance(50);
     EXPECT_EQ(IRSim::tick(), 0u);
