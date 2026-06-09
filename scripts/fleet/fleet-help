@@ -190,6 +190,11 @@ Parallel-agent fleet (tmux + Claude)
   fleet-up [dry-run | live | review-only] [--no-attach]
   fleet-down [--force] [--keep-claims] [--wait] [--summary]
   fleet-babysit …                (normally launched by fleet-up; architects only)
+  solo-architect [engine|game] [--fresh] [--no-scout] [--dry-run]
+                                 run one architect interactively WITHOUT the
+                                 fleet (no workers/reviewers/merger/scout) —
+                                 design partner + sub-agent direction; resumes
+                                 a persisted session like the fleet's arch pane
   fleet-claim …                  task claims under ~/.fleet/claims/
   fleet-queue-list [--repo …] [--json]
                                  human-readable task queue from GitHub Issues

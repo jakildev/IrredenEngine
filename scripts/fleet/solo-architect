@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+#
+# solo-architect — run just the Irreden architect as an interactive
+# design / build partner, WITHOUT bringing up the fleet.
+#
+# This is the architect pane fleet-up would launch (same model, effort,
+# worktree, and persisted-session-id resume behaviour as
+# `fleet-babysit ... opus-architect` -> launch_architect_first), minus the
+# worker / reviewer / merger / scout panes and the babysit relaunch loop.
+#
+# You get the full architect role — planning, epic filing, and especially
+# sub-agent direction (the Agent/Workflow tools work in any session) — as a
+# one-off interactive conversation you drive yourself.
+#
+# The only thing the architect's startup protocol needs from the fleet is the
+# scout cache (~/.fleet/state/state.json); if it's stale/missing the role
+# prints "run fleet-up" and exits. We neutralize that two ways: an optional
+# single scout tick (fleet-state-scout --once) to populate the cache, and an
+# appended system prompt telling the role to proceed in solo mode instead of
+# bailing.
+#
+# Usage:
+#   solo-architect [engine|game] [--fresh] [--no-scout] [--dry-run] [-- <claude args...>]
+#
+#     engine (default)  /role-opus-architect   (jakildev/IrredenEngine)
+#     game              /role-game-architect    (jakildev/irreden, under creations/game)
+#
+#     --fresh     ignore the saved session and start a new conversation
+#                 (default resumes the last solo conversation for this role)
+#     --no-scout  skip the one-off scout tick (rely only on the solo-mode prompt)
+#     --dry-run   pass mode=dry-run to the role (startup + stand by, don't work)
+#     -- ...      everything after `--` is forwarded verbatim to `claude`
+#
+set -euo pipefail
+
+ENGINE="$HOME/src/IrredenEngine"
+GAME="$ENGINE/creations/game"
+# Keep in sync with fleet-up's OPUS_MODEL (the fleet's single source of truth)
+# and the opus xhigh default in fleet-babysit — a model/effort bump there must
+# be mirrored here.
+MODEL="claude-opus-4-8[1m]"
+EFFORT="xhigh"
+
+ROLE="opus-architect"
+WORKTREE="$ENGINE/.claude/worktrees/opus-architect"
+MODE="live"
+FRESH=0
+RUN_SCOUT=1
+PASSTHRU=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    engine|opus|opus-architect)
+      ROLE="opus-architect"; WORKTREE="$ENGINE/.claude/worktrees/opus-architect"; shift ;;
+    game|game-architect)
+      ROLE="game-architect";  WORKTREE="$GAME/.claude/worktrees/game-architect";  shift ;;
+    --fresh)    FRESH=1; shift ;;
+    --no-scout) RUN_SCOUT=0; shift ;;
+    --dry-run)  MODE="dry-run"; shift ;;
+    --)         shift; PASSTHRU+=("$@"); break ;;
+    -h|--help)  sed -n '3,33p' "$0"; exit 0 ;;
+    *) echo "solo-architect: unknown argument '$1'" >&2; exit 2 ;;
+  esac
+done
+
+# cwd must be the role's worktree so its startup sync + the repo-local
+# /role-*-architect slash command and CLAUDE.md set resolve correctly.
+if [[ ! -d "$WORKTREE" ]]; then
+  echo "solo-architect: worktree not found: $WORKTREE" >&2
+  echo "  (run 'fleet-up' once to create it, or point this at an existing checkout)" >&2
+  exit 1
+fi
+cd "$WORKTREE"
+
+# Optional single scout tick so the architect's startup cache step sees a
+# fresh ~/.fleet/state/state.json. Writes the cache only; this is NOT
+# "starting the fleet" — no panes, no workers, no babysit loop.
+if [[ "$RUN_SCOUT" -eq 1 ]] && command -v fleet-state-scout >/dev/null 2>&1; then
+  echo "solo-architect: priming scout cache (one tick)..." >&2
+  fleet-state-scout --once || echo "solo-architect: scout tick failed — continuing in solo mode" >&2
+fi
+
+# Always append a solo-mode override so the role never exits on a
+# stale/missing scout cache when the fleet is down.
+SOLO_PROMPT="You are running as a SOLO architect, outside the fleet — no workers, \
+reviewers, merger, or scout daemon are running. If your startup protocol's \
+scout-cache step finds ~/.fleet/state/state.json missing or stale, do NOT print \
+'run fleet-up' and exit; instead skip the queue-surfacing startup steps and \
+continue as an interactive design/build partner. You may still spawn sub-agents \
+and do heavy core work directly in this session. Any fleet:task/epic you file \
+will simply wait in the queue until I bring the fleet up."
+
+SESSION_DIR="$HOME/.fleet/solo"
+mkdir -p "$SESSION_DIR"
+SESSION_FILE="$SESSION_DIR/$ROLE.session"
+
+if [[ -s "$SESSION_FILE" && "$FRESH" -eq 0 ]]; then
+  SID="$(cat "$SESSION_FILE")"
+  echo "solo-architect: resuming $ROLE session $SID (cwd $WORKTREE)" >&2
+  echo "  (if the session can't be resumed, re-run with --fresh)" >&2
+  exec claude --model "$MODEL" --effort "$EFFORT" \
+    --append-system-prompt "$SOLO_PROMPT" \
+    --resume "$SID" "${PASSTHRU[@]+"${PASSTHRU[@]}"}" \
+    "resuming our solo session — you don't need to re-run the full startup banner. tell me what we were last working on so we can continue."
+else
+  SID="$(uuidgen | tr 'A-Z' 'a-z')"
+  echo "$SID" > "$SESSION_FILE"
+  echo "solo-architect: starting $ROLE session $SID (cwd $WORKTREE)" >&2
+  exec claude --model "$MODEL" --effort "$EFFORT" \
+    --append-system-prompt "$SOLO_PROMPT" \
+    --session-id "$SID" "${PASSTHRU[@]+"${PASSTHRU[@]}"}" \
+    "/role-$ROLE $MODE"
+fi
