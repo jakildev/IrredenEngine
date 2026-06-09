@@ -59,7 +59,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // Lighting maps the decoded depth slot → world FaceId for the
     // six-face outward normal used by Lambert + the HDR sky-term.
     uniform ivec4 visibleFaceIds;
-    uniform vec4 _voxelDepthAxisPadding;  // voxelDepthAxis_ in the full UBO (unused here)
+    uniform vec4 _voxelDepthAxisUnused;   // voxelDepthAxis_ in the full UBO (unused here)
     // World-receive offset (#1576 P4b-2). `.xyz` = the opt-in world-placed
     // detached re-voxelize entity's world cell origin; `.w` = 1.0 when the solid
     // opts into world placement, else 0.0. Recovers each detached voxel's world
@@ -223,8 +223,8 @@ void main() {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.glsl.
         // Subdivision-aware canvasOffset matches c_compute_voxel_ao.glsl.
-        // At cardinalIndex==0 the path collapses to master so yaw=0 stays
-        // byte-identical; non-zero cardinal yaw composes R(-rasterYaw)
+        // At rasterYaw==0 the path collapses to master so yaw=0 stays
+        // byte-identical; non-zero rasterYaw composes R(-rasterYaw)
         // afterward to recover world coordinates.
         // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
         // face-locally, so recover world-pos via faceOriginFromInPlane; the single
