@@ -93,6 +93,15 @@ kernel void c_bake_sun_shadow_map(
               frameData.rasterYaw
           );
 
+    // World-cast for an opt-in world-placed detached re-voxelize solid (#1576
+    // P4b-3): its distance texture is in the pool-centered MODEL frame, so lift
+    // each caster voxel into world space (model pos + the entity world cell
+    // origin) before projecting into the sun map. Off (.w == 0) → no-op, so the
+    // main + per-axis bakes stay byte-identical. Mirrors c_bake_sun_shadow_map.glsl.
+    if (frameData.detachedWorldReceive.w != 0.0f) {
+        pos3D += frameData.detachedWorldReceive.xyz;
+    }
+
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;
     float3 vHat = sunFrameData.sunBasisV.xyz;

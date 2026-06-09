@@ -46,6 +46,15 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
     // Per-slot world FaceId (0..5); used only on the per-axis path (#1311).
     uniform ivec4 visibleFaceIds;
+    uniform vec4 _voxelDepthAxisUnused;   // voxelDepthAxis_ in the full UBO (unused here)
+    // World-cast offset (#1576 P4b-3). `.xyz` = the opt-in world-placed detached
+    // re-voxelize entity's world cell origin; `.w` = 1.0 when the solid opts into
+    // world placement, else 0.0. On the second bake dispatch per opt-in detached
+    // canvas, recovers each caster voxel's WORLD pos as (model pos + .xyz) so it
+    // projects into the SHARED sun map at its true world position (mirrors the
+    // receive recovery in c_lighting_to_trixel.glsl). The main + per-axis bakes
+    // keep `.w == 0` → byte-identical (the offset is a no-op).
+    uniform vec4 detachedWorldReceive;
 };
 
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -105,6 +114,15 @@ void main() {
         : trixelCanvasPixelToWorld3D(
               pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
           );
+
+    // World-cast for an opt-in world-placed detached re-voxelize solid (#1576
+    // P4b-3): its distance texture is in the pool-centered MODEL frame, so lift
+    // each caster voxel into world space (model pos + the entity world cell
+    // origin) before projecting into the sun map. Off (`.w == 0`) → no-op, so the
+    // main + per-axis bakes stay byte-identical.
+    if (detachedWorldReceive.w != 0.0) {
+        pos3D += detachedWorldReceive.xyz;
+    }
 
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;

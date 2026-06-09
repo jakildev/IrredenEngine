@@ -31,9 +31,17 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 
+// World sun-shadow CAST for opt-in world-placed detached re-voxelize solids
+// (#1576 P4b-3): the second-bake driver reuses the per-canvas voxel-frame
+// authoring + main-frame restore helpers, and gathers the opt-in detached
+// canvases off C_EntityCanvas (the same component the composite iterates).
+#include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/voxel_frame_data.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -113,6 +121,23 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // World sun-shadow CAST (#1576 P4b-3). Opt-in world-placed detached
+    // re-voxelize solids gathered once per frame in beginTick (off C_EntityCanvas,
+    // the same component the composite iterates); cast via a second bake dispatch
+    // each from the main canvas's tick. Empty unless a scene opts in → the default
+    // path is byte-identical. The scratch frame-data + resolved main-canvas inputs
+    // re-author the detached frame and restore the world frame after, mirroring
+    // COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL's per-canvas authoring (#1558).
+    struct WorldPlacedCaster {
+        IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
+        const C_TriangleCanvasTextures *textures_ = nullptr;
+    };
+    std::vector<WorldPlacedCaster> worldPlacedCasters_;
+    FrameDataVoxelToCanvas voxelFrameScratch_{};
+    const C_TriangleCanvasTextures *mainTextures_ = nullptr;
+    const C_VoxelPool *mainPool_ = nullptr;
+    const C_CanvasLocalRotation *mainRotation_ = nullptr;
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -184,6 +209,99 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             canvasTextures.getTextureDistances()
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         }
+
+        // World sun-shadow CAST for opt-in world-placed detached re-voxelize
+        // solids (#1576 P4b-3). Each carries its OWN model-frame distance texture
+        // and is NOT in this system's archetype (it has no C_CanvasSunShadow), so
+        // — exactly like the per-axis resolve bake above — drive a SECOND bake
+        // dispatch per opt-in canvas from the main canvas's tick. authorIterating-
+        // CanvasVoxelFrame publishes the detached canvas's frame, including
+        // detachedWorldReceive_ (world cell origin + enable), into the shared UBO
+        // so the bake shader lifts each caster voxel to its WORLD pos before
+        // projecting into the SHARED sun map; receive (P4b-2) recovers the same
+        // world pos, so cast and receive agree. Empty list (no opt-in canvas) →
+        // byte-identical to master.
+        if (!worldPlacedCasters_.empty()) {
+            for (const auto &caster : worldPlacedCasters_) {
+                authorIteratingCanvasVoxelFrame(
+                    voxelFrameScratch_,
+                    voxelFrameDataBuf_,
+                    caster.canvasEntity_,
+                    *caster.textures_
+                );
+                // Re-bind the FULL set per caster. On Metal the subData author
+                // orphans voxelFrameDataBuf_ to a fresh allocation and breaks the
+                // encoder's binding table, so the buffers AND the image must be
+                // re-bound for this dispatch (matching the main bake's bind set
+                // above) — otherwise the dispatch reads the stale main frame and an
+                // empty distance image (no detached cast). Image bound last.
+                sunShadowDepthMap_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_SunShadowDepthMap
+                );
+                voxelFrameDataBuf_->bindBase(
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataVoxelToCanvas
+                );
+                sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+                caster.textures_->getTextureDistances()
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                const int casterGroupsX =
+                    IRMath::divCeil(caster.textures_->size_.x, kBakeSunShadowGroupSize);
+                const int casterGroupsY =
+                    IRMath::divCeil(caster.textures_->size_.y, kBakeSunShadowGroupSize);
+                IRRender::device()->dispatchCompute(casterGroupsX, casterGroupsY, 1);
+                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            }
+            // Restore the MAIN canvas's voxel frame so COMPUTE_SUN_SHADOW (and the
+            // downstream world stages) recover world pos from the world frame, not
+            // the last caster's; rebind the buffer (same Metal-orphan reason) and
+            // the main distance image so the persistent Metal image-binding table
+            // doesn't dangle when a caster texture is freed (mirrors the per-axis
+            // restore above).
+            restoreMainCanvasVoxelFrame(
+                voxelFrameScratch_,
+                voxelFrameDataBuf_,
+                mainTextures_,
+                mainPool_,
+                mainRotation_
+            );
+            voxelFrameDataBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataVoxelToCanvas
+            );
+            canvasTextures.getTextureDistances()
+                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        }
+    }
+
+    // Collect opt-in world-placed detached re-voxelize solids for the cast bake
+    // (#1576 P4b-3). Iterates C_EntityCanvas — the same component the composite
+    // (ENTITY_CANVAS_TO_FRAMEBUFFER) reads worldPlaced_ off — and captures each
+    // opt-in canvas's child distance-texture component. Once per frame in
+    // beginTick (few canvases), so the per-canvas getComponentOptional is canvas
+    // iteration, not the per-voxel ECS footgun.
+    void gatherWorldPlacedCasters() {
+        worldPlacedCasters_.clear();
+        const auto include = IREntity::getArchetype<C_EntityCanvas>();
+        auto nodes = IREntity::queryArchetypeNodesSimple(include);
+        for (auto *node : nodes) {
+            auto &canvases = IREntity::getComponentData<C_EntityCanvas>(node);
+            for (int i = 0; i < node->length_; ++i) {
+                const C_EntityCanvas &entityCanvas = canvases[i];
+                if (!entityCanvas.worldPlaced_ || !entityCanvas.visible_ ||
+                    entityCanvas.canvasEntity_ == IREntity::kNullEntity) {
+                    continue;
+                }
+                auto textures = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
+                    entityCanvas.canvasEntity_
+                );
+                if (!textures.has_value()) {
+                    continue;
+                }
+                worldPlacedCasters_.push_back({entityCanvas.canvasEntity_, textures.value()});
+            }
+        }
     }
 
     void beginTick() {
@@ -203,6 +321,21 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 perAxisCanvases_ = perAxis.value();
             }
         }
+
+        // World sun-shadow CAST (#1576 P4b-3): gather opt-in world-placed detached
+        // re-voxelize solids + resolve the main canvas's voxel-frame inputs (for
+        // the post-cast restore). Done before the shadowsEnabled early-return so
+        // the list is always fresh (tick won't cast when shadows are off anyway).
+        // The query + per-canvas getComponentOptional are once-per-frame canvas
+        // iteration (few canvases), not the per-voxel ECS footgun — same pattern
+        // as resolveSun() above and resolveMainCanvasVoxelFrameInputs.
+        gatherWorldPlacedCasters();
+        resolveMainCanvasVoxelFrameInputs(
+            perAxisCanvasEntity_,
+            &mainTextures_,
+            &mainPool_,
+            &mainRotation_
+        );
 
         const detail::ResolvedSun sun = detail::resolveSun();
         vec3 sunDir = sun.direction_;
