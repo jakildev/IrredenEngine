@@ -922,6 +922,62 @@ inline mat4 sqtToMat4(const vec3 &scaleVec, const vec4 &rotationQuat, const vec3
     return mat4(vec4(col0, 0.0f), vec4(col1, 0.0f), vec4(col2, 0.0f), vec4(translation, 1.0f));
 }
 
+/// Scale–Quaternion–Translation transform value. Mirrors the field layout of
+/// `C_LocalTransform` / `C_WorldTransform`, which live in the prefab layer and
+/// so can't be named from `engine/math/`; this is the math-layer value type
+/// those components and the skeletal-skinning helpers (`IRPrefab::Skeleton`)
+/// share. Quaternion layout is the engine canon `vec4(qx, qy, qz, qw)`,
+/// identity `(0, 0, 0, 1)`.
+struct SQT {
+    vec3 scale_{1.0f, 1.0f, 1.0f};
+    vec4 rotation_{0.0f, 0.0f, 0.0f, 1.0f};
+    vec3 translation_{0.0f, 0.0f, 0.0f};
+};
+
+/// SQT overload of @ref sqtToMat4 — same `T · R · S` ordering.
+inline mat4 sqtToMat4(const SQT &transform) {
+    return sqtToMat4(transform.scale_, transform.rotation_, transform.translation_);
+}
+
+/// Composes `parent ∘ child`, reproducing `SYSTEM_PROPAGATE_TRANSFORM`'s
+/// modifier-free composition so a chain folded here matches the
+/// `C_WorldTransform` the propagation system writes for the same locals:
+///
+///     scale       = parent.scale * child.scale
+///     rotation    = quatMul(parent.rotation, child.rotation)
+///     translation = parent.translation
+///                 + rotateVectorByQuat(parent.scale * child.translation,
+///                                      parent.rotation)
+///
+/// Matrix-exact (`sqtToMat4(compose) == sqtToMat4(parent) * sqtToMat4(child)`)
+/// for uniform scale; non-uniform scale isn't closed under TRS composition
+/// (the exact product needs shear). Joints and bind poses are rigid, so the
+/// rig path is exact.
+inline SQT sqtCompose(const SQT &parent, const SQT &child) {
+    SQT out;
+    out.scale_ = parent.scale_ * child.scale_;
+    out.rotation_ = quatMul(parent.rotation_, child.rotation_);
+    out.translation_ = parent.translation_ +
+                       rotateVectorByQuat(parent.scale_ * child.translation_, parent.rotation_);
+    return out;
+}
+
+/// Analytic inverse: the SQT whose matrix is `inverse(sqtToMat4(t))`. Exact
+/// for rigid / uniform-scale transforms — the skinning path inverts the
+/// constant bind SQT here rather than numerically inverting its 4×4, which
+/// keeps the result clean (the rotation inverse is the conjugate, not a
+/// general matrix solve). Non-uniform scale is not representable as a single
+/// inverse SQT; the rotation reorders relative to the per-axis scale. Pass
+/// uniform (or unit) scale, which every bind pose satisfies.
+inline SQT sqtInverse(const SQT &transform) {
+    SQT inv;
+    inv.scale_ =
+        vec3(1.0f / transform.scale_.x, 1.0f / transform.scale_.y, 1.0f / transform.scale_.z);
+    inv.rotation_ = quatInverse(transform.rotation_);
+    inv.translation_ = inv.scale_ * rotateVectorByQuat(-transform.translation_, inv.rotation_);
+    return inv;
+}
+
 /// Applies an SRT (or any affine) matrix @p transform to an integer voxel
 /// grid cell @p cell, returning the destination integer cell with half-up
 /// rounding. Use when GRID-mode rotation needs to re-rasterize a set of

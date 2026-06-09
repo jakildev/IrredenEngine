@@ -25,6 +25,7 @@ add_executable(IrredenEngineTest
   ecs/sort_archetype_relational_test.cpp
   ecs/parallel_spawn_test.cpp
   ecs/skeleton_components_test.cpp
+  ecs/skeleton_skinning_test.cpp
   ecs/spatial_grid_test.cpp
   ecs/system_exclude_test.cpp
   ecs/voxel_set_target_canvas_test.cpp

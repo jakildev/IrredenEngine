@@ -1,7 +1,8 @@
 #ifndef IR_PREFAB_VOXEL_RIG_BRIDGE_H
 #define IR_PREFAB_VOXEL_RIG_BRIDGE_H
 
-// IRAsset::Rig ↔ IRComponents::C_JointHierarchy bridge — keeps engine/asset/ free of prefab dependencies.
+// IRAsset::Rig ↔ IRComponents::C_JointHierarchy bridge — keeps engine/asset/ free of prefab
+// dependencies.
 
 #include <irreden/asset/rig_format.hpp>
 
@@ -16,6 +17,36 @@
 #include <vector>
 
 namespace IRPrefab::Rig {
+
+namespace detail {
+
+// Fills `chainOut` (cleared first) with the joint indices from `start` up to
+// the root, leaf-first / root-last. The (parent == current || parent >=
+// jointCount) sentinel stops a malformed chain instead of looping. `parentOf`
+// returns joint i's parentIndex_; the two callers hold different joint
+// containers (IRAsset::Rig vs C_JointHierarchy), so the accessor is a template
+// parameter rather than a fixed type. Caller-owned buffer so a per-joint loop
+// (bindPose) reuses one allocation across the whole skeleton.
+template <typename ParentOf>
+inline void collectJointChainToRoot(
+    std::uint32_t start,
+    std::size_t jointCount,
+    ParentOf parentOf,
+    std::vector<std::uint32_t> &chainOut
+) {
+    chainOut.clear();
+    std::uint32_t current = start;
+    for (std::size_t step = 0; step < jointCount; ++step) {
+        chainOut.push_back(current);
+        const std::uint32_t parent = parentOf(current);
+        if (parent == current || parent >= jointCount) {
+            break;
+        }
+        current = parent;
+    }
+}
+
+} // namespace detail
 
 inline IRComponents::C_JointHierarchy toComponent(const IRAsset::Rig &rig) {
     IRComponents::C_JointHierarchy hierarchy;
@@ -68,16 +99,12 @@ inline BindPointWorldTransform worldTransformForBindPoint(
 
     std::vector<std::uint32_t> chain;
     chain.reserve(hierarchy.joints_.size());
-    std::uint32_t current = point.boneId_;
-    const std::size_t maxDepth = hierarchy.joints_.size();
-    for (std::size_t step = 0; step < maxDepth; ++step) {
-        chain.push_back(current);
-        const std::uint32_t parent = hierarchy.joints_[current].parentIndex_;
-        if (parent == current || parent >= hierarchy.joints_.size()) {
-            break;
-        }
-        current = parent;
-    }
+    detail::collectJointChainToRoot(
+        point.boneId_,
+        hierarchy.joints_.size(),
+        [&](std::uint32_t i) { return hierarchy.joints_[i].parentIndex_; },
+        chain
+    );
 
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         const auto &joint = hierarchy.joints_[*it];
@@ -95,6 +122,48 @@ inline BindPointWorldTransform worldTransformForBindPoint(
     world.offset_ = chainTranslation + IRMath::rotateVectorByQuat(point.offset_, chainRotation);
     world.rotation_ = IRMath::quatMul(chainRotation, point.rotation_);
     return world;
+}
+
+// Per-joint bind (rest) pose in rig-root-local space — one IRMath::SQT per
+// joint, in `joints_` order — exactly what populates C_Skeleton.bindPose_.
+// Each entry is joint i's JNTS local rest transform composed up its parent
+// chain with sqtCompose (the PROPAGATE_TRANSFORM convention), so a joint left
+// at rest has C_WorldTransform == bindPose[i] and IRPrefab::Skeleton::skinMatrix
+// returns identity at the bind pose.
+//
+// Source is the JNTS chunk, NOT the `.rig` BIND chunk: BIND stores named
+// attachment points (toBindPoints / C_BindPoints), a separate concept from the
+// per-joint skinning bind pose despite the chunk name. Shares the
+// detail::collectJointChainToRoot walk with worldTransformForBindPoint.
+inline std::vector<IRMath::SQT> bindPose(const IRAsset::Rig &rig) {
+    const std::size_t jointCount = rig.joints_.size();
+    std::vector<IRMath::SQT> pose(jointCount);
+
+    std::vector<std::uint32_t> chain;
+    chain.reserve(jointCount);
+    for (std::size_t j = 0; j < jointCount; ++j) {
+        detail::collectJointChainToRoot(
+            static_cast<std::uint32_t>(j),
+            jointCount,
+            [&](std::uint32_t i) { return rig.joints_[i].parentIndex_; },
+            chain
+        );
+
+        IRMath::SQT world; // identity
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            const auto &assetJoint = rig.joints_[*it];
+            IRMath::SQT local;
+            local.rotation_ = assetJoint.rotation_;
+            local.translation_ = IRMath::vec3(
+                assetJoint.translation_.x,
+                assetJoint.translation_.y,
+                assetJoint.translation_.z
+            );
+            world = IRMath::sqtCompose(world, local);
+        }
+        pose[j] = world;
+    }
+    return pose;
 }
 
 inline IRAsset::Rig fromComponent(

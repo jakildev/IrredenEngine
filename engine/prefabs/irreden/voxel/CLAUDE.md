@@ -247,11 +247,18 @@ target. File a follow-up ticket when `#605` Phase 2 unblocks.
 ### Bind pose
 
 Skinning math needs the bind-pose inverse to recover skinning matrices.
-`C_Skeleton` does **not** carry a `bindPose_` field yet — `IRMath::SQT` is
-available since `#731` Phase 1 landed (PR #749); a follow-up (#605 Phase 2)
-adds `std::vector<IRMath::SQT> bindPose_;` to `C_Skeleton` parallel to
-`joints_`. Until then, callers that need a bind pose load it from the `.rig`
-asset's BIND chunk via `IRPrefab::Rig::bindPose(rigRoot)`.
+`C_Skeleton.bindPose_` (`std::vector<IRMath::SQT>`, parallel to `joints_` —
+added in #605 Phase 2 / #1602) holds each joint's rest transform in
+rig-root-local space. Populate it from a `.rig` via
+`IRPrefab::Rig::bindPose(rig)` (`rig_bridge.hpp`), which folds the JNTS rest
+chain with `IRMath::sqtCompose` — **not** the `.rig` BIND chunk, which stores
+named attachment points (`C_BindPoints`), a separate concept despite the chunk
+name. `IRPrefab::Skeleton::skinMatrix(jointWorld, bindPose_[i])`
+(`skeleton.hpp`) returns `jointWorld × bindInverse`: identity at the bind pose,
+the joint's posed deformation otherwise. The bind SQT is inverted analytically
+(`IRMath::sqtInverse`) rather than via a 4×4 inverse. Under #605 Phase 2.3 the
+per-joint skin matrix feeds the binding-18 transform buffer the
+`c_update_voxel_positions` prepass already consumes.
 
 ### Optional follow-up: C_JointName
 
