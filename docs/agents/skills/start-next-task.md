@@ -93,6 +93,30 @@ gh pr list --head <old-branch-name> --state open --json number,url,title
   says what to do — un-PR'd work would be lost.
 - **Multiple PRs** → unusual. Note all of them and continue.
 
+### 2b. Task-boundary closeout (before the reset)
+
+Before switching branches, distill the task you just finished into a compact,
+high-signal handoff — so the next task starts lean but not amnesiac. Write it to
+`~/.fleet/handoff/<role-name>.md` (per-role, overwritten each boundary; shared
+`~/.fleet/` infra parameterized by your role name — it survives a `/clear` and is
+readable cross-host) AND keep a tight in-context copy. Four buckets:
+
+- **Shipped** — the PR(s) opened/merged this task, one-line outcome each.
+- **In flight / owed** — open PRs, follow-up issues filed, anything blocked-on.
+- **Durable decisions / lessons** — anything that should outlive the task, each
+  with a **pointer** to its durable home (a `docs/design/` doc, the feedback
+  file, or `~/.fleet/plans/issue-<N>.md`) — never duplicated inline.
+- **Drop list** — the prior context now safe to forget (tool dumps, resolved
+  escalations, superseded drafts).
+
+This **complements** the harness's automatic summarization, it does not replace
+it: the closeout is the agent-authored distillation the harness can't produce (it
+can't tell durable from droppable) and a re-hydration source the harness summary
+is not (re-read on the next task / after a `/clear` — see the role startup's
+"read your handoff file" step). Keep it lightweight by default and scale depth
+with context size — a long multi-task session warrants a fuller closeout, a quick
+two-task hop a one-liner. Always emit; scale the size, never skip.
+
 ### 3. Fetch latest remote default branch
 
 ```bash
