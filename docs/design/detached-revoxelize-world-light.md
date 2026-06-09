@@ -176,7 +176,7 @@ Each phase is its own PR, stacks on the previous, and is independently verifiabl
    the cells) and `pos3DtoDistance` is linear, the composite depth is **exact** against GRID
    at any rotation for integer entity translations — proved by the CPU↔GPU GRID-equivalence
    gtest `test/render/detached_world_depth_test.cpp`. Runnable demo: `canvas_stress
-   --world-place-revox` (off by default so the auto-screenshot references stay byte-identical).
+   --screen-lock-revox` to revert to screen-locked overlays).
 2. **P4b-2 — receive (Q3a). ✅ Implemented.** Plumb the world transform into the
    detached lighting voxel-frame; flip the `isDetachedCanvas` shadow/light-volume
    branch to sample the shared maps at world pos, gated on the opt-in flag. GL + Metal.

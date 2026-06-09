@@ -77,18 +77,16 @@
 // each frame, and the standard lighting pipeline (AO + sun + shadows)
 // runs so face orientation is visually perceptible.
 //
-// Rotation-mode contract (#1582): BY DEFAULT the DETACHED + DETACHED_REVOXELIZE
-// entities here (the orbit ring + the re-voxelize column) are SCREEN-LOCKED
-// overlays — ENTITY_CANVAS_TO_FRAMEBUFFER composites them at a fixed
-// framebuffer depth, so they do NOT cast shadows onto, receive shadows from,
-// or depth-sort against world geometry. Only the GRID-mode cubes are
-// world-integrated (they write world trixelDistances). So a world shadow
-// floor (#1587) reads shadows from the GRID cubes ONLY; the detached casters
-// not dropping shadows is by design, not a bug. The OPT-IN
-// `--world-place-revox` flag (P4b / #1576) world-places the two center
-// re-voxelize solids: P4b-1 depth-sorts them against world geometry, P4b-2
-// (this change) has them RECEIVE world sun-shadow + light-volume at their world
-// pos. (Cast — P4b-3 — is still pending.) See render/CLAUDE.md "Rotation modes".
+// Rotation-mode contract (#1582 / #1620): the orbit-ring DETACHED/
+// DETACHED_REVOXELIZE entities remain SCREEN-LOCKED overlays. The two center
+// re-voxelize proof solids are WORLD-PLACED by default (C_EntityCanvas::
+// worldPlaced_ = true, P4b-1/#1592 + P4b-2/#1617) so they depth-sort against
+// the SDF floor and receive world sun-shadow + light-volume at their world pos.
+// Run with --screen-lock-revox to revert to screen-locked overlays (the
+// detached-canvas canary path). Only GRID-mode cubes cast world shadows; the
+// detached orbit ring and canary cubes cast none by design (#1582 Option B).
+// Cast for world-placed detached solids is P4b-3 (#1596, still pending).
+// See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
 using namespace IREntity;
@@ -105,12 +103,12 @@ struct CanvasStressSettings {
     bool fullRotate_ = false;
     bool noSpin_ = false;
     bool noLighting_ = false;
-    // #1576 P4b-1 debug toggle. OFF by default so the auto-screenshot suite (and
-    // its committed references) stays byte-identical to the screen-locked overlay
-    // default. When set, the two center re-voxelize solids opt into world-
-    // placement (C_EntityCanvas::worldPlaced_) so they depth-sort against the
-    // world grid instead of compositing on top — the runnable P4b-1 demonstration.
-    bool worldPlaceReVox_ = false;
+    // ON by default: the two center re-voxelize solids opt into world-placement
+    // (C_EntityCanvas::worldPlaced_) so they depth-sort against the SDF floor
+    // spawned unconditionally by #1587. Pass --screen-lock-revox to revert to
+    // the screen-locked overlay path (the detached-canvas regression canary, and
+    // the behavior the committed references were captured against).
+    bool worldPlaceReVox_ = true;
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -562,8 +560,8 @@ void parseArgs(int argc, char **argv) {
             g_settings.noSpin_ = true;
         } else if (std::strcmp(argv[i], "--no-lighting") == 0) {
             g_settings.noLighting_ = true;
-        } else if (std::strcmp(argv[i], "--world-place-revox") == 0) {
-            g_settings.worldPlaceReVox_ = true;
+        } else if (std::strcmp(argv[i], "--screen-lock-revox") == 0) {
+            g_settings.worldPlaceReVox_ = false;
         }
     }
 }
