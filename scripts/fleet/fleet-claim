@@ -102,8 +102,23 @@ done
 # Directory of this script, so inline `python3` blocks can import the shared
 # branch<->issue matcher (fleet_branch_match.py) regardless of cwd. Exported
 # so it survives the subshells/pipes those blocks run in. See #1425.
-FLEET_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve through any symlink chain (e.g. ~/bin/fleet-claim -> <repo>/scripts/fleet/fleet-claim)
+# before computing the dir, using the same pattern as fleet-run and fleet-build. Without this
+# BASH_SOURCE[0] is the symlink's path (~/bin), which doesn't contain fleet_branch_match.py. (#1578)
+_fleet_claim_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_claim_self" ]]; do _fleet_claim_self="$(readlink "$_fleet_claim_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_fleet_claim_self")" && pwd)"
 export FLEET_LIB_DIR
+unset _fleet_claim_self
+
+# Defensive check: catch a mis-resolved lib dir before any subcommand runs, so the
+# failure is visible (a clear stderr message) rather than a silent exit 1 from
+# python3's ModuleNotFoundError propagating through a pipefail command substitution.
+if [[ ! -f "$FLEET_LIB_DIR/fleet_branch_match.py" ]]; then
+    echo "fleet-claim: fleet_branch_match.py not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
+    echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
+    exit 1
+fi
 
 # --- input validation -----------------------------------------------------
 
