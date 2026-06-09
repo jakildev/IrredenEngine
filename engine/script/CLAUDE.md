@@ -1187,6 +1187,58 @@ bindings (`registerMidiNoteCommand` / `registerMidiCCCommand`),
 gamepad-axis-to-value bindings, IRInput query helpers
 (`checkKeyMouseButton` etc.).
 
+## Render glue + GUI draw (`IRRender.*`, `IRGui.*`)
+
+`bindLuaDrivenEcs()` exposes a shared render-glue surface (engine #1615) so
+creations on the Lua-first authoring path drive lighting and HUD visuals
+without re-declaring per-creation pass-throughs. The binding block lives in
+`engine/script/include/irreden/script/lua_render_bindings.hpp`
+(`detail::bindRenderGlue`).
+
+```lua
+-- Lighting (thin pass-throughs to the existing IRRender:: setters):
+IRRender.setSunDirection(x, y, z)  -- forwards to IRRender::setSunDirection;
+                                   -- the engine-side `z <= 0` assert + normalize
+                                   -- on write are preserved
+IRRender.setSunIntensity(f)
+IRRender.setSunAmbient(f)
+IRRender.setSkyColor(r, g, b)      -- sky-hemisphere term (0..1 floats)
+IRRender.setSkyIntensity(f)
+
+-- GUI-canvas shape draw (screen-space trixel coords on the "gui" canvas):
+IRGui.drawDisc(x, y, radius, { 255, 64, 64 })          -- filled disc
+IRGui.drawLine(x0, y0, x1, y1, { r = 0, g = 255, b = 0 }) -- 1-trixel line
+```
+
+- **No clear/background-color setter exists engine-side** — `setSkyColor`
+  (the additive sky-hemisphere term consumed by the HDR composite) is the
+  closest color knob. If a true clear-color setter lands on `IRRender::`,
+  expose it here as a follow-up.
+- **Color argument** — an `IRMath::Color` userdata or a `{ r, g, b[, a] }` /
+  `{ 1, 2, 3[, 4] }` table (0-255 components, keyed or indexed; missing
+  channels default to 255). Parsed by `IRScript::colorFromLua` (see the
+  helper table below).
+- **The shape draws forward to the `IRRender::drawGuiDisc` / `drawGuiLine`
+  entry points**, which own the "gui"-canvas resolution and rasterize via the
+  same `subImage2D` path the C++ widget render systems use
+  (`engine/render/include/irreden/render/trixel_rect.hpp` `fillDisc` /
+  `drawLine`). They are IMMEDIATE-MODE: the GUI canvas is cleared every frame
+  by `TEXT_TO_TRIXEL`, so a draw persists on screen ONLY if re-issued each
+  frame from a RENDER-phase Lua system positioned after that clear — the same
+  contract the widget render systems follow. A one-shot draw at script-load
+  time is wiped on the next frame that clears the canvas. (Writing via
+  `subImage2D` keeps the draw correctly ordered against the clear in
+  command-buffer order on Metal — see `engine/render/CLAUDE.md` "CPU texture
+  writes order via the command buffer on Metal".)
+- `IRRender` / `IRGui` tables are created with the
+  `if (!valid())` guard, so a creation that also populates its own `IRRender`
+  table (e.g. the default demo's `getGuiScale` / `measureText`) keeps those
+  entries — the glue extends, never replaces.
+
+Coverage: `test/script/lua_render_bindings_test.cpp` asserts table/function
+presence + the `colorFromLua` parse cases headless; the runtime draw + sun
+path is exercised visually by `creations/demos/lua_pipeline_demo`.
+
 ## C++ ↔ Lua math type helpers
 
 When a binding accepts a math type that Lua callers may pass as either a
@@ -1197,6 +1249,7 @@ ad-hoc extraction lambdas per binding:
 | Task | Helper |
 |------|--------|
 | `sol::object` → `IRMath::vec3` | `IRScript::vec3FromLua(obj)` |
+| `sol::object` → `IRMath::Color` | `IRScript::colorFromLua(obj)` |
 
 `vec3FromLua` accepts an `IRMath::vec3` userdata **or** a `{x,y,z}` / `{1,2,3}`
 table. Returns `{0,0,0}` for nil/none. Validate the type at the callsite and

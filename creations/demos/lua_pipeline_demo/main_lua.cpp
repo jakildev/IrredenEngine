@@ -23,6 +23,7 @@
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 
 namespace {
 
@@ -47,6 +48,7 @@ void registerLuaBindings() {
             IRSystem::INPUT_KEY_MOUSE,
             IRSystem::LIFETIME,
             IRSystem::PROPAGATE_TRANSFORM,
+            IRSystem::TRIXEL_TO_FRAMEBUFFER,
             IRSystem::FRAMEBUFFER_TO_SCREEN>();
 
         // Modifier resolver pipeline. `registerResolverPipeline()` does
@@ -99,9 +101,12 @@ int main(int argc, char **argv) {
         cfg.settleFrames_ = 3;
         cfg.shots_ = kShots;
         cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
-        IRSystem::registerPipeline(
+        // Append (don't replace) so the Lua-composed RENDER pipeline — the
+        // HUD draw + canvas composite — still runs; the screenshot captures
+        // the final composited frame.
+        IRSystem::appendToPipeline(
             IRTime::Events::RENDER,
-            {IRVideo::createAutoScreenshotSystem(cfg)}
+            IRVideo::createAutoScreenshotSystem(cfg)
         );
     }
 
