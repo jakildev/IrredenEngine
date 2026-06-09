@@ -1108,7 +1108,7 @@ struct Emitter {
 
     // #1616: engine-binding headers required by whitelisted side-effecting
     // intrinsics emitted in this body (e.g. ir_render.hpp for IRRender.*).
-    // Drained by emitSystem into the generated header's #include block.
+    // Merged into outRequiredIncludes by emitSystem.
     std::set<std::string> requiredIncludes_;
 
     Emitter(const std::string &file, const std::vector<ComponentSchema> &registry)
