@@ -39,7 +39,8 @@ namespace IRComponents {
 struct C_DetachedRevoxelizeBuffer {
     // Resident SSBO of composed authored locals (local + per-voxel offset),
     // one vec4 per pool slot (.xyz = composed, .w unused). Seeded once, re-seeded
-    // only on pool mutation. {0, nullptr} while unallocated.
+    // only on pool mutation. Drives the IDENTITY fast-path fill (slot == source
+    // voxel). {0, nullptr} while unallocated.
     std::pair<ResourceId, Buffer *> residentLocals_{0, nullptr};
     // Voxel count last seeded into residentLocals_. -1 = never seeded; a change
     // (pool mutation) triggers a re-seed. NOT a per-frame dirty flag — the locals
@@ -49,8 +50,30 @@ struct C_DetachedRevoxelizeBuffer {
     // pool's full capacity once, so a re-seed never reallocates.
     int capacity_ = 0;
 
+    // Source occupancy+color grid for the INVERSE-resample fill (#1619). Dense
+    // 3D grid keyed by integer source-local cell, two uints per cell
+    // ({colorPacked, materialFlagBone}); occupied iff the alpha byte of
+    // colorPacked != 0. Seeded with residentLocals_ (rigid). {0, nullptr} while
+    // unallocated. The grid is the position→color/occupancy structure the
+    // dest-cell inverse lookup needs (forward-scatter's source-indexed locals
+    // can't answer "is there a source voxel at p?" in O(1)).
+    std::pair<ResourceId, Buffer *> sourceGrid_{0, nullptr};
+    IRMath::ivec3 sourceGridMin_{0, 0, 0};  // grid cell (0,0,0) maps to this source cell
+    IRMath::ivec3 sourceGridDims_{0, 0, 0}; // per-axis cell count of the grid
+    int sourceGridCellCapacity_ = 0;        // allocated grid cells (sized once to high-water)
+
+    // Dest-AABB cube for the inverse resample. The rotated solid is bounded by
+    // the origin-centered sphere of radius = farthest authored corner; the dest
+    // domain is the enclosing cube [-destCenter_, +destCenter_]³ (rotation-
+    // independent, so it never changes per spin pose). destCount_ = destSide_³
+    // is the dispatch count + the `voxelCount` the shared compact pass walks.
+    int destSide_ = 0;
+    int destCenter_ = 0;
+    int destCount_ = 0;
+
     // Allocation state is the handle itself — no separate bool to drift
-    // (.claude/rules/cpp-ecs.md "No dirty flags").
+    // (.claude/rules/cpp-ecs.md "No dirty flags"). Both buffers are allocated
+    // together, so the resident-locals handle gates them both.
     bool isAllocated() const {
         return residentLocals_.second != nullptr;
     }
@@ -60,8 +83,18 @@ struct C_DetachedRevoxelizeBuffer {
             IRRender::destroyResource<Buffer>(residentLocals_.first);
             residentLocals_ = {0, nullptr};
         }
+        if (sourceGrid_.second != nullptr) {
+            IRRender::destroyResource<Buffer>(sourceGrid_.first);
+            sourceGrid_ = {0, nullptr};
+        }
         seededVoxelCount_ = -1;
         capacity_ = 0;
+        sourceGridMin_ = IRMath::ivec3(0, 0, 0);
+        sourceGridDims_ = IRMath::ivec3(0, 0, 0);
+        sourceGridCellCapacity_ = 0;
+        destSide_ = 0;
+        destCenter_ = 0;
+        destCount_ = 0;
     }
 };
 

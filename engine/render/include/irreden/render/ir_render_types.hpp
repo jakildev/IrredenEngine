@@ -337,17 +337,40 @@ struct GPUUpdateParams {
 };
 
 /// Per-frame params for the detached re-voxelize GPU scatter compute
-/// (`c_revoxelize_detached`, #1556). Carries the detached canvas's composed
-/// rotation quaternion (the ONLY per-frame upload — O(entities), the whole point
-/// of the GPU path over P1's CPU re-rasterize) and the pool's live voxel count.
-/// std140 UBO at `kBufferIndex_RevoxelizeDetachedParams`: the `vec4` lands at
-/// offset 0, the `int` at 16, padded to 32 B. Quaternion layout matches
-/// `C_LocalTransform`/`IRMath` — `vec4(qx, qy, qz, qw)`, identity `(0,0,0,1)`.
+/// (`c_revoxelize_detached`, #1556 + #1619). Carries the detached canvas's
+/// composed rotation quaternion (the ONLY per-frame upload — O(entities), the
+/// whole point of the GPU path over P1's CPU re-rasterize) and the dispatch
+/// domain descriptor. Quaternion layout matches `C_LocalTransform`/`IRMath` —
+/// `vec4(qx, qy, qz, qw)`, identity `(0,0,0,1)`.
+///
+/// Two dispatch modes (`dest_.w`):
+///   0 — IDENTITY / source path (#1556, byte-identical to pre-#1619). One thread
+///       per LIVE SOURCE voxel; the thread writes `position[slot]` from its
+///       resident composed local. The CPU still uploads color + active for these
+///       source-indexed slots, so only binding 5 is authored here.
+///   1 — INVERSE-RESAMPLE path (#1619). One thread per DEST cell of the
+///       rotated-AABB cube (`dest_.y³` cells, center `dest_.z`). Each thread
+///       inverse-maps its dest cell `roundHalfUp(R⁻¹·c)` into the per-pool source
+///       occupancy+color grid (`srcGridMin_`/`srcGridDims_`); on a hit it authors
+///       `position`/`color`/`active` for that dest slot. Surjective over the dest
+///       lattice → hole-free (the forward scatter was not). The CPU skips the
+///       color + active uploads in this mode (the GPU fill owns them).
+///
+/// std140 UBO at `kBufferIndex_RevoxelizeDetachedParams`: four 16 B vectors, 64 B.
 struct RevoxelizeDetachedParams {
     vec4 canvasRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    int voxelCount_ = 0;
-    int padding_[3] = {};
+    // x = dispatch count (dest-cell count D in mode 1, live source count in mode 0)
+    // y = dest cube side (cells per axis); z = dest cube center; w = inverse mode (0/1)
+    ivec4 dest_ = ivec4(0, 0, 0, 0);
+    ivec4 srcGridMin_ = ivec4(0, 0, 0, 0);  // xyz = source occupancy grid min cell
+    ivec4 srcGridDims_ = ivec4(0, 0, 0, 0); // xyz = source occupancy grid dims
 };
+static_assert(
+    sizeof(RevoxelizeDetachedParams) == 64,
+    "RevoxelizeDetachedParams must mirror its std140 GLSL/Metal UBO block: four "
+    "16 B vec4/ivec4 = 64 B. A silent reorder or resize would corrupt the "
+    "re-voxelize fill's dispatch descriptor with no compile diagnostic."
+);
 
 /// SDF primitive type dispatched to the shapes→trixel compute shader.
 /// Canonical definition lives in @ref IRMath::SDF::ShapeType so the math-side
@@ -573,6 +596,15 @@ constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
 // for its per-pool resident locals SSBO, bound per-canvas before dispatch.
 constexpr std::uint32_t kBufferIndex_RevoxelizeDetachedParams = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
+// Per-pool source occupancy+color grid for the detached re-voxelize INVERSE
+// resample (#1619). Dense 3D grid keyed by integer source-local cell; two uints
+// per cell ({colorPacked, materialFlagBone}, occupied iff the alpha byte of
+// colorPacked != 0). The inverse-resample fill (`c_revoxelize_detached` mode 1)
+// binds it here to answer `srcColor(roundHalfUp(R⁻¹·destCell))`. Aliases slot 9
+// (the legacy, unused VoxelSetUnlockedColors slot) to stay inside Metal's 0–30
+// binding cap; the fill is a standalone dispatch, so nothing else reads slot 9
+// while it runs.
+constexpr std::uint32_t kBufferIndex_RevoxelizeSourceGrid = kBufferIndex_VoxelSetUnlockedColors;
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
 constexpr std::uint32_t kBufferIndex_ShapeDescriptors = 20;
