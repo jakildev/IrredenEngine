@@ -177,3 +177,22 @@ IRSystem.registerSystem({
         end
     end,
 })
+
+-- #1616: whitelisted side-effecting engine binding in a CODEGEN tick body.
+-- `IRRender.setSunIntensity(x)` is a void render-glue setter — allowed as a
+-- bare statement (NOT inside an expression) and lowered to the C++ free
+-- function `IRRender::setSunIntensity(...)`. The generated header compiling +
+-- linking against the real symbol is the proof the bare-call lowering is valid
+-- C++; the sibling test registers the system but does not execute its tick
+-- against a matching entity (the render setter asserts on an absent
+-- RenderManager in the headless test harness, engine/render/src/ir_render.cpp).
+IRSystem.registerSystem({
+    name = 'CodegenRenderGlue',
+    components = { 'CodegenSysPos' },
+    tick = function(arch)
+        for i = 0, arch.length - 1 do
+            local pos = arch.CodegenSysPos:at(i)
+            IRRender.setSunIntensity(pos.x)
+        end
+    end,
+})

@@ -356,7 +356,23 @@ so creations / tests can register every codegen'd system in one call.
   `cmake/lua_codegen/system_dsl.cpp`'s `kIntrinsicRegistry`. Adding an
   entry is one line: Lua name, C++ expression head, arity. `math.*`
   routes to `IRMath::*` (the engine's math wrapper layer — the
-  CODEGEN-emitted code never calls `std::sin` etc. directly).
+  CODEGEN-emitted code never calls `std::sin` etc. directly). These are
+  value-returning — use them inside an expression (a `local`, a column
+  setter, a branch cond); a bare call statement is rejected.
+- Whitelisted **side-effecting engine bindings** (#1616) — a curated set
+  of void pass-through engine setters callable as a **bare statement**
+  (not inside an expression), e.g. `IRRender.setSunIntensity(x)` lowers
+  to `IRRender::setSunIntensity(...)`. The current set is the
+  `IRRender.*` render-glue setters (`setSunIntensity`, `setSunAmbient`,
+  `setExposure`, `setSkyIntensity`, `setCameraZoom`), marked
+  `isStatement_ = true` in `kIntrinsicRegistry`. This lets a system that
+  *computes* a render parameter under CODEGEN also *apply* it inline,
+  instead of stranding the application layer in EVAL or a C++ bridge.
+  Each statement-binding entry carries the engine header that declares
+  its C++ function (`requiredInclude_`); the codegen tool emits that
+  `#include` in the generated header only when a body actually uses the
+  binding. Adding a setter is one registry line + (if a new namespace)
+  its header. Scalar args only — each arg lowers as a numeric expression.
 
 **Forbidden in CODEGEN bodies (build-time error pointing at file:line):**
 
@@ -366,8 +382,16 @@ so creations / tests can register every codegen'd system in one call.
   to Lua.
 - Closures capturing external upvalues, metatables, dynamic dispatch
   (`arch.foo[name](...)`), `require`, table constructors beyond
-  `Comp.new`, varargs, `nil`, `_` length operator, side-effecting
-  bare expression statements.
+  `Comp.new`, varargs, `nil`, `_` length operator. A bare call
+  statement is rejected **unless** it targets a whitelisted
+  side-effecting binding (above); a bare value-returning intrinsic
+  (`math.sin(x)` as a statement) is still an error — it's a dropped
+  assignment.
+- **String formatting is not yet supported** — `string.format` / `..`
+  concatenation in a CODEGEN tick body is rejected. The string-building
+  half of #1616 is deferred; keep label/HUD systems that format strings
+  in EVAL (`mode = "eval"`) for now. (Sibling gap: the IREnum-in-tick
+  literal-folding limitation above.)
 
 **`excludes = { 'Tag' }`** at registration time materialises as
 `IRSystem::Exclude<C_Tag>` in the generated `IRSystem::createSystem<...>`
