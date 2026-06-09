@@ -35,6 +35,9 @@ set -euo pipefail
 
 ENGINE="$HOME/src/IrredenEngine"
 GAME="$ENGINE/creations/game"
+# Keep in sync with fleet-up's OPUS_MODEL (the fleet's single source of truth)
+# and the opus xhigh default in fleet-babysit — a model/effort bump there must
+# be mirrored here.
 MODEL="claude-opus-4-8[1m]"
 EFFORT="xhigh"
 
@@ -55,7 +58,7 @@ while [[ $# -gt 0 ]]; do
     --no-scout) RUN_SCOUT=0; shift ;;
     --dry-run)  MODE="dry-run"; shift ;;
     --)         shift; PASSTHRU+=("$@"); break ;;
-    -h|--help)  sed -n '3,35p' "$0"; exit 0 ;;
+    -h|--help)  sed -n '3,33p' "$0"; exit 0 ;;
     *) echo "solo-architect: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -94,9 +97,10 @@ SESSION_FILE="$SESSION_DIR/$ROLE.session"
 if [[ -s "$SESSION_FILE" && "$FRESH" -eq 0 ]]; then
   SID="$(cat "$SESSION_FILE")"
   echo "solo-architect: resuming $ROLE session $SID (cwd $WORKTREE)" >&2
+  echo "  (if the session can't be resumed, re-run with --fresh)" >&2
   exec claude --model "$MODEL" --effort "$EFFORT" \
     --append-system-prompt "$SOLO_PROMPT" \
-    --resume "$SID" "${PASSTHRU[@]}" \
+    --resume "$SID" "${PASSTHRU[@]+"${PASSTHRU[@]}"}" \
     "resuming our solo session — you don't need to re-run the full startup banner. tell me what we were last working on so we can continue."
 else
   SID="$(uuidgen | tr 'A-Z' 'a-z')"
@@ -104,6 +108,6 @@ else
   echo "solo-architect: starting $ROLE session $SID (cwd $WORKTREE)" >&2
   exec claude --model "$MODEL" --effort "$EFFORT" \
     --append-system-prompt "$SOLO_PROMPT" \
-    --session-id "$SID" "${PASSTHRU[@]}" \
+    --session-id "$SID" "${PASSTHRU[@]+"${PASSTHRU[@]}"}" \
     "/role-$ROLE $MODE"
 fi
