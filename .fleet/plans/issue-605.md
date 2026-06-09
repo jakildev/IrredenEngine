@@ -89,60 +89,60 @@ Add `std::vector<IRMath::SQT> bindPose_` to `C_Skeleton` (parallel to
 = `jointWorld × bindInverse`. Unit-test the skinning math on a 3-bone chain.
 **Blocked by:** (none).
 
-### 2.2 — render: SYSTEM_UPDATE_JOINT_MATRICES → binding-18 transform buffer [opus]
+### 2.2 — render: SYSTEM_UPDATE_JOINT_MATRICES → binding-18 transform buffer [opus] (#1603)
 New render system: each frame, per `C_Skeleton`, acquire a contiguous block
 of transform slots (one per joint), compute each joint's skin matrix (2.1),
 write into the **existing** binding-18 `EntityTransformBuffer`. Runs before
 the voxel-position prepass. Reuses the #1396 slot allocator; document the
 shared 4096-slot budget. **Blocked by:** 2.1.
 
-### 2.3 — render: per-voxel skinning via bone→slot in the binding-17 seed path [opus]
+### 2.3 — render: per-voxel skinning via bone→slot in the binding-17 seed path [opus] (#1605)
 The crux of the unification. When seeding a skeletal voxel set's binding-17
 local positions, set each voxel's `.w = slotBase + bone_id` instead of the
 entity slot. Unrigged voxels resolve to an identity slot. No stage-1 shader
 change. Verify byte-identical output to the CPU path at bind pose.
 **Blocked by:** 2.2.
 
-### 2.4 — render: retire/contain binding-21 JointTransformBuffer for the voxel path [sonnet]
+### 2.4 — render: retire/contain binding-21 JointTransformBuffer for the voxel path [sonnet] (#1606)
 Once 2.3 proves the unified path, remove the unused binding-21 allocation
 from the voxel pipeline (keep only if SDF-shape skinning still needs it; if
 so, document it as shapes-only). Update `component_skeleton.hpp`'s binding-21
 reference. **Blocked by:** 2.3.
 
-### 2.5 — editor: joint authoring (spawn C_Joint, CHILD_OF parenting, gizmo placement) [opus]
+### 2.5 — editor: joint authoring (spawn C_Joint, CHILD_OF parenting, gizmo placement) [opus] (#1604)
 In the voxel editor, spawn `C_Joint` entities in the viewport, parent them
 via `CHILD_OF` (rig root or parent joint), position with the
 already-interactive translate gizmo, and maintain `C_Skeleton.joints_` +
 bind pose. **Blocked by:** 2.1.
 
-### 2.6 — editor: skeleton tree panel (joint list, select, rename, reparent) [sonnet]
+### 2.6 — editor: skeleton tree panel (joint list, select, rename, reparent) [sonnet] (#1607)
 Widget-list panel driven by `C_Skeleton.joints_` (O(joints), no children
 scan). Select highlights the joint marker gizmo; rename writes `C_JointName`;
 reparent rewrites `CHILD_OF`. **Blocked by:** 2.5.
 
-### 2.7 — editor: bone_id painting (bone selector + paint, tint by bone) [sonnet]
+### 2.7 — editor: bone_id painting (bone selector + paint, tint by bone) [sonnet] (#1608)
 Bone selector (palette-like) + paint `bone_id` onto voxels, reusing the
 place/erase modal and the existing `C_Voxel.bone_id_`. Tint voxels by bone in
 the viewport for authoring feedback. **Blocked by:** 2.5.
 
-### 2.8 — editor: FK pose editing (rotate-gizmo → live deform + bind capture) [opus]
+### 2.8 — editor: FK pose editing (rotate-gizmo → live deform + bind capture) [opus] (#1610)
 Rotate a selected joint's `C_LocalTransform` via the rotate gizmo;
 propagation composes the chain; the skinning substrate (2.1–2.3) deforms
 voxels live. "Set current pose as bind" captures bind pose.
 **Blocked by:** 2.3, 2.5.
 
-### 2.9 — editor: .rig save/load (C_Skeleton + joints + bindPose via BIND/JNTS) [sonnet]
+### 2.9 — editor: .rig save/load (C_Skeleton + joints + bindPose via BIND/JNTS) [sonnet] (#1609)
 Persist/restore the rig through the `.rig` format (#666): joints (JNTS),
 bind pose (BIND), and the `C_Skeleton.joints_` ordering.
 **Blocked by:** 2.5.
 
-### 2.10 — demos: skeletal demo entities (30-joint snake + desk + 2 more) [sonnet]
+### 2.10 — demos: skeletal demo entities (30-joint snake + desk + 2 more) [sonnet] (#1611)
 Author demo-appropriate (not game-specific) assets: the **30-joint snake**
 (skeletal acceptance), a **desk** (static authoring showcase), and 2 more
 generic demo creatures (e.g. articulated lamp, simple quadruped). Doubles as
 #604's F-1.6 sample-entity deliverable. **Blocked by:** 2.8, 2.9.
 
-### 2.11 — test: render-verify + CPU↔GPU skinning consistency for rigged demos [sonnet]
+### 2.11 — test: render-verify + CPU↔GPU skinning consistency for rigged demos [sonnet] (#1612)
 render-verify reference shots for the rigged demos; a consistency check that
 CPU-computed skin positions match the GPU prepass under identical input.
 **Blocked by:** 2.10.
@@ -160,6 +160,6 @@ rig round-trips through `.rig` save/load. render-verify is green.
        │                  └─ #1610 ─┐
        └─ #1604 ─┬─ #1607           ├─ #1611 ── #1612
                  ├─ #1608           │
-                 ├─ #1610 ──────────┘
-                 └─ #1609 ── #1611
+                 ├─ #1610 ──────────┤
+                 └─ #1609 ──────────┘
 ```
