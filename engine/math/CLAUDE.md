@@ -126,6 +126,10 @@ equivalent and produces byte-identical results to the pre-yaw path.
 
 Stored as `vec4(qx, qy, qz, qw)` — `.w` is the scalar (identity: `(0,0,0,1)`). `quatMul(a, b)` applies `b` then `a` — in joint chains: `quatMul(parentWorld, local)`. `rotateVectorByQuat(v, q)` is equivalent to `glm::rotate(quat, vec3)`.
 
+## SQT transforms
+
+`IRMath::SQT` (scale / quat-rotation / translation) is the math-layer value type mirroring the prefab `C_LocalTransform` / `C_WorldTransform` layout (which `engine/math/` can't name). `sqtToMat4(sqt)` builds `T·R·S`; `sqtCompose(parent, child)` reproduces `SYSTEM_PROPAGATE_TRANSFORM`'s composition so a chain folded in math matches the propagated `C_WorldTransform`; `sqtInverse(sqt)` is the analytic inverse (exact for uniform/rigid scale — the bind-pose domain). Used by `IRPrefab::Skeleton::skinMatrix`. **`sqtCompose`/`sqtInverse` are matrix-exact only for uniform scale** — non-uniform scale isn't closed under TRS; reach for `mat4` directly there.
+
 ## Random
 
 `randomBool/Int/Float` and `randomVec<T>/randomColor` route through a
