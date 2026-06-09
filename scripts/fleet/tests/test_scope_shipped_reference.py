@@ -114,6 +114,50 @@ class PrReferencesIssue(unittest.TestCase):
                      "closes #1300", "Fixes #1300"):
             self.assertTrue(pr_references_issue("", body, 1300), body)
 
+    # --- range-endpoint refs (#1602 / #1612 <- #1614 epic-planning PR) ---
+
+    _FILE_CHILDREN_TITLE = (
+        "docs: re-plan entity-editor Phase 2 (#605) — file children #1602-#1612")
+
+    def test_title_range_start_endpoint_rejected(self):
+        # #1602 is the range START in "#1602-#1612": filed by #1614, not shipped.
+        self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 1602))
+
+    def test_title_range_end_endpoint_rejected(self):
+        # #1612 is the range END (the dash sits directly before it).
+        self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 1612))
+
+    def test_title_range_middle_child_never_matched(self):
+        # #1607 is inside the span but not literally written with a '#'.
+        self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 1607))
+
+    def test_title_range_hashless_second_endpoint_still_rejects_start(self):
+        # "#1602-1612" (second endpoint has no '#') still rejects the start.
+        self.assertFalse(pr_references_issue("file children #1602-1612", "", 1602))
+
+    def test_title_en_dash_range_rejected(self):
+        self.assertFalse(pr_references_issue("file #1602–#1612", "", 1602))
+
+    def test_title_em_dash_range_rejected(self):
+        self.assertFalse(pr_references_issue("file #1602—#1612", "", 1612))
+
+    def test_title_epic_ref_outside_range_still_trusted(self):
+        # The epic (#605) precedes the range and is not itself a range endpoint.
+        self.assertTrue(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 605))
+
+    def test_plain_title_ref_unaffected_by_range_guard(self):
+        # Regression: the normal "#N: <desc>" convention still counts.
+        self.assertTrue(pr_references_issue("#1602: bind-pose on C_Skeleton", "", 1602))
+
+    def test_em_dash_then_word_is_not_a_range(self):
+        # "(#605) — phase 2": a dash followed by a WORD (no digit) is not a range.
+        self.assertTrue(pr_references_issue("re-plan (#605) — phase 2", "", 605))
+
+    def test_body_range_endpoint_rejected_even_with_verb(self):
+        # Conservative: "Closes #1602-#1612" closes a span, not #1602's individual
+        # scope. Reject — a scope-shipped false negative just leaves it queued.
+        self.assertFalse(pr_references_issue("title", "Closes #1602-#1612", 1602))
+
 
 class SelectShippedPr(unittest.TestCase):
     def test_empty_candidates(self):
@@ -151,6 +195,14 @@ class SelectShippedPr(unittest.TestCase):
                  "Closes #1258. The one failure is the pre-existing #1269.")
         self.assertEqual(select_shipped_pr([pr], 1258)["number"], 1265)
         self.assertIsNone(select_shipped_pr([pr], 1269))
+
+    def test_real_world_1614_files_children_ships_none(self):
+        # #1614 FILES the P2 children as a title range; it ships none of them.
+        pr = _pr(1614,
+                 "docs: re-plan entity-editor Phase 2 (#605) — file children #1602-#1612",
+                 "Files the P2 child tickets #1602-#1612 under epic #605.")
+        for child in (1602, 1607, 1612):
+            self.assertIsNone(select_shipped_pr([pr], child), child)
 
 
 if __name__ == "__main__":
