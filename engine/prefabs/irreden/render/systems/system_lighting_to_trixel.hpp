@@ -82,6 +82,14 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // know the volume's world origin to map a pixel's world voxel
     // back into the volume texel.
     Buffer *lightVolumeParamsBuf_ = nullptr;
+    // Baked sun-aligned depth map (slot 28), created by BAKE_SUN_SHADOW_MAP.
+    // The opt-in detached world-receive path (#1576 P4b-2) re-runs the cascade
+    // lookup against it at a world-placed voxel's pos. Resolved lazily (it exists
+    // by the time the pipeline runs); the shader declares the SSBO unconditionally
+    // (Metal kernel arg), so it must be bound every tick — the default path just
+    // never reads it. Whenever LIGHTING_TO_TRIXEL runs the main canvas carries
+    // C_CanvasSunShadow (asserted below), so BAKE ran and the map exists.
+    Buffer *sunShadowDepthMap_ = nullptr;
     Texture2D *paletteLUT_ = nullptr;
     FrameDataLightingToTrixel frameData_{};
 
@@ -174,6 +182,17 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+        // Sun-depth map (slot 28) for the opt-in detached world-receive path
+        // (#1576 P4b-2). Bound every tick — the shader declares the SSBO
+        // unconditionally (Metal kernel arg); only a world-placed detached solid
+        // reads it. Persists across the per-axis lighting dispatches below (they
+        // only rebind the colour/dist/AO/sun-shadow images).
+        if (sunShadowDepthMap_ != nullptr) {
+            sunShadowDepthMap_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_SunShadowDepthMap
+            );
+        }
 
         const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
@@ -255,6 +274,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
 
     void beginTick() {
         program_->use();
+        // Resolve the baked sun-depth map once (created by BAKE_SUN_SHADOW_MAP,
+        // registered ahead of LIGHTING_TO_TRIXEL). Lazy single-init: the resolve
+        // is deferred to beginTick so BAKE_SUN_SHADOW_MAP has already registered
+        // the resource by the time LIGHTING_TO_TRIXEL first runs. getNamedResource
+        // asserts on a missing key — a pipeline without the bake is a config error,
+        // not a graceful fallback (all 13 registered pipelines co-register both
+        // systems under the same !noLighting_ guard).
+        if (sunShadowDepthMap_ == nullptr) {
+            sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+        }
         frameData_.lightingEnabled_ = 1;
         frameData_.lightVolumeEnabled_ = 1;
         frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());

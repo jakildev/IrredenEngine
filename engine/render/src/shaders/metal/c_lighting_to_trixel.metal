@@ -1,5 +1,9 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
+// FrameDataSun + the sun-depth buffer cascade lookup (worldSunShadowFactor) —
+// for the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared
+// with c_compute_sun_shadow; replaces this kernel's former local FrameDataSun.
+#include "ir_sun_shadow_sample.metal"
 
 // Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
 // application pass — modulates trixelColors.rgb by (AO × sun-shadow),
@@ -20,26 +24,6 @@ struct FrameDataLightingToTrixel {
     float exposure;
     float skyIntensity;
     float4 skyColor;
-};
-
-struct FrameDataSun {
-    float4 sunDirection;
-    float sunIntensity;
-    float sunAmbient;
-    int shadowsEnabled;
-    int aoEnabled;
-    float4 sunBasisU;
-    float4 sunBasisV;
-    float2 sunBufferOriginUV;
-    float2 sunBufferTexelSize;
-    float2 cascadeOriginUV_0;
-    float2 cascadeTexelSize_0;
-    float2 cascadeOriginUV_1;
-    float2 cascadeTexelSize_1;
-    float cascadeSplitDepth;
-    int cascadeCount;
-    float _cascadePad0;
-    float _cascadePad1;
 };
 
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
@@ -71,6 +55,9 @@ kernel void c_lighting_to_trixel(
     constant FrameDataVoxelToTrixel& voxelFrameData [[buffer(7)]],
     constant FrameDataSun& sunFrameData [[buffer(29)]],
     constant LightVolumeParams& lightVolumeParams [[buffer(23)]],
+    // Baked sun-aligned depth map — read by the detached world-receive path
+    // (#1576 P4b-2) to re-run the cascade lookup at a world-placed voxel's pos.
+    device const uint* sunDepthBuf [[buffer(28)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasAO [[texture(2)]],
@@ -99,14 +86,53 @@ kernel void c_lighting_to_trixel(
         return;
     }
 
-    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun +
-    // sky only: no per-canvas sun-shadow map or light volume (slots 4/5 are
-    // inert placeholders). World cast/receive + light-volume bleed for detached
-    // solids are deferred to P4b (#1576). Mirrors c_lighting_to_trixel.glsl.
+    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun + sky
+    // only by DEFAULT; the opt-in world-placed path (#1576 P4b-2,
+    // detachedWorldReceive.w != 0) instead has it RECEIVE world sun-shadow + 128³
+    // light-volume bleed at its recovered world pos, like a GRID solid. Default
+    // path stays byte-identical. Mirrors c_lighting_to_trixel.glsl.
     const bool detachedCanvas = voxelFrameData.isDetachedCanvas != 0.0f;
+    const bool worldReceive = detachedCanvas && voxelFrameData.detachedWorldReceive.w != 0.0f;
+
+    const int rawDepth = encoded >> 2;
+    // Decode the visible-triplet slot (#1278) → world FaceId → world-frame
+    // six-face outward normal. Used by Lambert, the sky-term, and the
+    // world-receive sun-shadow normal — hoisted above the shadow read.
+    const int slot = encoded & 3;
+    const int faceId = voxelFrameData.visibleFaceIds[slot];
+    float3 worldNormal = faceOutwardNormal6(faceId);
+
+    // Recover this voxel's WORLD position once for an opt-in world-placed
+    // detached solid (model pos + the entity's world cell origin); shared by the
+    // sun-shadow receive and the light-volume sample. Mirrors GLSL.
+    float3 worldReceivePos = float3(0.0f);
+    if (worldReceive) {
+        worldReceivePos = trixelCanvasPixelToWorld3D(
+            pixel, rawDepth, voxelFrameData.trixelCanvasOffsetZ1,
+            voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions,
+            voxelFrameData.rasterYaw
+        ) + voxelFrameData.detachedWorldReceive.xyz;
+    }
 
     const float  ao     = canvasAO.read(uint2(pixel)).r;
-    const float  shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;
+    // Shadow factor: the world canvas reads its COMPUTE_SUN_SHADOW result; an
+    // opt-in world-placed detached solid re-runs that cascade lookup at its world
+    // pos (world iso depth = model rawDepth + the offset's iso depth picks the
+    // cascade); a default detached overlay stays forced fully lit.
+    float shadow;
+    if (worldReceive) {
+        shadow = sunFrameData.shadowsEnabled != 0
+            ? worldSunShadowFactor(
+                  worldReceivePos, worldNormal,
+                  float(rawDepth) + voxelFrameData.detachedWorldReceive.x +
+                      voxelFrameData.detachedWorldReceive.y +
+                      voxelFrameData.detachedWorldReceive.z,
+                  sunFrameData, sunDepthBuf
+              )
+            : 1.0f;
+    } else {
+        shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;
+    }
     const float4 src    = trixelColors.read(uint2(pixel));
 
     if (frameData.debugOverlayMode != 0) {
@@ -123,15 +149,8 @@ kernel void c_lighting_to_trixel(
         return;
     }
 
-    const int rawDepth = encoded >> 2;
-    // Decode the visible-triplet slot (0/1/2) and resolve to the world
-    // FaceId via `visibleFaceIds[slot]` (#1278). Six-face outward normal
-    // is in the world frame; sun direction is world frame; Lambert is a
-    // plain dot product without rotation. Mirrors GLSL.
-    const int slot = encoded & 3;
-    const int faceId = voxelFrameData.visibleFaceIds[slot];
-    int cardinalIndex = rasterYawCardinalIndex(voxelFrameData.rasterYaw);
-    float3 worldNormal = faceOutwardNormal6(faceId);
+    // Sun direction is world frame; worldNormal (decoded above) is the matching
+    // world-frame surface normal; Lambert is a plain dot product. Mirrors GLSL.
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =
         mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;
@@ -146,23 +165,30 @@ kernel void c_lighting_to_trixel(
         baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
     }
 
-    if (frameData.lightVolumeEnabled != 0 && !detachedCanvas) {
+    // Light-volume bleed: the world / per-axis camera canvases sample the shared
+    // 128³ volume; an opt-in world-placed detached solid samples it too, at its
+    // recovered world pos (#1576 P4b-2). A default detached overlay stays
+    // excluded — byte-identical. Mirrors GLSL.
+    if (frameData.lightVolumeEnabled != 0 && (!detachedCanvas || worldReceive)) {
         // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
         // face-locally; the single canvas uses the cardinal-snap reconstruction.
-        // The shared world light volume is sampled the same way for both. Mirrors GLSL.
-        float3 pos3D = voxelFrameData.perAxisRoute != 0
-            ? perAxisCellToWorld3D(
-                  pixel, rawDepth, faceId, size,
-                  voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
-              )
-            : trixelCanvasPixelToWorld3D(
-                  pixel,
-                  rawDepth,
-                  voxelFrameData.trixelCanvasOffsetZ1,
-                  voxelFrameData.frameCanvasOffset,
-                  voxelFrameData.voxelRenderOptions,
-                  voxelFrameData.rasterYaw
-              );
+        // The shared world light volume is sampled the same way for both. The
+        // world-placed detached solid reuses worldReceivePos (model + offset).
+        float3 pos3D = worldReceive
+            ? worldReceivePos
+            : (voxelFrameData.perAxisRoute != 0
+                ? perAxisCellToWorld3D(
+                      pixel, rawDepth, faceId, size,
+                      voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
+                  )
+                : trixelCanvasPixelToWorld3D(
+                      pixel,
+                      rawDepth,
+                      voxelFrameData.trixelCanvasOffsetZ1,
+                      voxelFrameData.frameCanvasOffset,
+                      voxelFrameData.voxelRenderOptions,
+                      voxelFrameData.rasterYaw
+                  ));
 
         constexpr sampler volumeSampler(
             filter::nearest, address::clamp_to_edge

@@ -16,6 +16,10 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+// FrameDataSun UBO (29), sun-depth SSBO (28), and worldSunShadowFactor() — for
+// the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared with
+// c_compute_sun_shadow; replaces this pass's former local FrameDataSun block.
+#include "ir_sun_shadow_sample.glsl"
 
 layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     uniform int   lightingEnabled;
@@ -55,26 +59,12 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // Lighting maps the decoded depth slot → world FaceId for the
     // six-face outward normal used by Lambert + the HDR sky-term.
     uniform ivec4 visibleFaceIds;
-};
-
-layout(std140, binding = 29) uniform FrameDataSun {
-    uniform vec4 sunDirection;
-    uniform float sunIntensity;
-    uniform float sunAmbient;
-    uniform int shadowsEnabled;
-    uniform int aoEnabled;
-    uniform vec4 sunBasisU;
-    uniform vec4 sunBasisV;
-    uniform vec2 sunBufferOriginUV;
-    uniform vec2 sunBufferTexelSize;
-    uniform vec2 cascadeOriginUV_0;
-    uniform vec2 cascadeTexelSize_0;
-    uniform vec2 cascadeOriginUV_1;
-    uniform vec2 cascadeTexelSize_1;
-    uniform float cascadeSplitDepth;
-    uniform int cascadeCount;
-    uniform float _cascadePad0;
-    uniform float _cascadePad1;
+    uniform vec4 _voxelDepthAxisUnused;   // voxelDepthAxis_ in the full UBO (unused here)
+    // World-receive offset (#1576 P4b-2). `.xyz` = the opt-in world-placed
+    // detached re-voxelize entity's world cell origin; `.w` = 1.0 when the solid
+    // opts into world placement, else 0.0. Recovers each detached voxel's world
+    // pos as (model pos + .xyz) for the shared sun-shadow + light-volume sample.
+    uniform vec4 detachedWorldReceive;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
@@ -141,18 +131,53 @@ void main() {
         return;
     }
 
-    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun +
-    // sky only: it has no per-canvas sun-shadow map or light volume (slots 4/5
-    // are inert placeholders). World cast/receive shadow + light-volume bleed
-    // for detached solids are deferred to P4b (#1576).
+    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun + sky
+    // only by DEFAULT (its slots 4/5 are inert placeholders). The opt-in
+    // world-placed path (#1576 P4b-2, detachedWorldReceive.w != 0) instead has it
+    // RECEIVE world sun-shadow + 128³ light-volume bleed at its recovered world
+    // pos, like an attached GRID solid. The default path stays byte-identical.
     const bool detachedCanvas = isDetachedCanvas != 0.0;
+    const bool worldReceive = detachedCanvas && detachedWorldReceive.w != 0.0;
+
+    const int rawDepth = encoded >> 2;
+    // Decode the visible-triplet slot (#1278) → world FaceId → world-frame
+    // six-face outward normal. Used by Lambert, the HDR sky-term, and the
+    // world-receive sun-shadow normal — so hoist it above the shadow read.
+    const int slot = encoded & 3;
+    const int faceId = visibleFaceIds[slot];
+    vec3 worldNormal = faceOutwardNormal6(faceId);
+
+    // Recover this voxel's WORLD position once for an opt-in world-placed
+    // detached solid (model pos + the entity's world cell origin); shared by the
+    // sun-shadow receive below and the light-volume sample. The detached
+    // re-voxelize canvas rasters cardinal (rasterYaw == 0, perAxisRoute == 0), so
+    // trixelCanvasPixelToWorld3D recovers its pool-centered MODEL pos.
+    vec3 worldReceivePos = vec3(0.0);
+    if (worldReceive) {
+        worldReceivePos = trixelCanvasPixelToWorld3D(
+            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+        ) + detachedWorldReceive.xyz;
+    }
 
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
     const float ao     = imageLoad(canvasAO, pixel).r;
-    // Shadow factor is 1.0 for lit pixels and kShadowDarken (0.45) for
-    // pixels whose sun ray hit an occluder in COMPUTE_SUN_SHADOW; forced to
-    // 1.0 (fully lit) for the detached canvas, which has no shadow map.
-    const float shadow = detachedCanvas ? 1.0 : imageLoad(canvasSunShadow, pixel).r;
+    // Shadow factor: the world canvas reads its per-pixel COMPUTE_SUN_SHADOW
+    // result; an opt-in world-placed detached solid re-runs that same cascade
+    // lookup at its recovered world pos (receive — world iso depth = model
+    // rawDepth + the offset's iso depth picks the cascade); a default detached
+    // overlay stays forced fully lit (no shadow map).
+    float shadow;
+    if (worldReceive) {
+        shadow = shadowsEnabled != 0
+            ? worldSunShadowFactor(
+                  worldReceivePos, worldNormal,
+                  float(rawDepth) + detachedWorldReceive.x +
+                      detachedWorldReceive.y + detachedWorldReceive.z
+              )
+            : 1.0;
+    } else {
+        shadow = detachedCanvas ? 1.0 : imageLoad(canvasSunShadow, pixel).r;
+    }
     const vec4  src    = imageLoad(trixelColors, pixel);
 
     // Debug overlay short-circuits artistic shading and paints a false-
@@ -171,15 +196,8 @@ void main() {
         return;
     }
 
-    const int rawDepth = encoded >> 2;
-    // Decode the visible-triplet slot the rasterizer wrote (#1278) and
-    // resolve the world FaceId via `visibleFaceIds[slot]`. Sun direction
-    // lives in the world frame; the six-face `faceOutwardNormal6` gives
-    // the matching world-frame surface normal.
-    const int slot = encoded & 3;
-    const int faceId = visibleFaceIds[slot];
-    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
-    vec3 worldNormal = faceOutwardNormal6(faceId);
+    // Sun direction lives in the world frame; the six-face `faceOutwardNormal6`
+    // (decoded above into worldNormal) gives the matching world-frame normal.
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
     const float faceFactor = mix(sunAmbient, 1.0, lambert) * sunIntensity;
 
@@ -197,23 +215,30 @@ void main() {
         baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
     }
 
-    if (lightVolumeEnabled != 0 && !detachedCanvas) {
+    // Light-volume bleed: the world canvas (and per-axis camera canvases) sample
+    // the shared 128³ volume; an opt-in world-placed detached solid samples it
+    // too, at its recovered world pos (#1576 P4b-2). A default detached overlay
+    // stays excluded (placeholder volume never sampled) — byte-identical.
+    if (lightVolumeEnabled != 0 && (!detachedCanvas || worldReceive)) {
         // Recover the world voxel position of this pixel from the encoded
         // depth + iso offset, mirroring the math in c_compute_voxel_ao.glsl.
         // Subdivision-aware canvasOffset matches c_compute_voxel_ao.glsl.
-        // At cardinalIndex==0 the path collapses to master so yaw=0 stays
-        // byte-identical; non-zero cardinal yaw composes R(-rasterYaw)
+        // At rasterYaw==0 the path collapses to master so yaw=0 stays
+        // byte-identical; non-zero rasterYaw composes R(-rasterYaw)
         // afterward to recover world coordinates.
         // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
         // face-locally, so recover world-pos via faceOriginFromInPlane; the single
         // canvas uses the cardinal-snap reconstruction. The shared world light
         // volume is then sampled the same way for both (per-axis canvases are only
         // allocated while rotating, so the cardinal fast path is byte-identical).
-        vec3 pos3D = perAxisRoute != 0
-            ? perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions)
-            : trixelCanvasPixelToWorld3D(
-                  pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-              );
+        // The world-placed detached solid reuses worldReceivePos (model + offset).
+        vec3 pos3D = worldReceive
+            ? worldReceivePos
+            : (perAxisRoute != 0
+                ? perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions)
+                : trixelCanvasPixelToWorld3D(
+                      pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+                  ));
 
         // Sample the light volume at the surface voxel. CLAMP_TO_EDGE
         // means out-of-volume samples read zero light (the border texels

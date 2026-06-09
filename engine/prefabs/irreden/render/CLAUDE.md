@@ -422,9 +422,17 @@ opt into world participation via `C_EntityCanvas::worldPlaced_` (default off):
   iso depth (`pos3DtoDistance(roundVec3HalfUp(translation))`), so the solid
   depth-sorts against world geometry on the shared GRID `trixelDistances`
   convention. `worldPlaced_` off stays byte-identical to the overlay contract.
-- **P4b-2 (#1576) / P4b-3 (#1596), pending:** sample the shared world sun-shadow
-  map + 128³ light-volume at the recovered world pos (receive), then a second
-  bake dispatch (cast) — both gated on the same flag.
+- **P4b-2 (landed, #1576):** receive. The entity world cell origin is propagated
+  onto `C_CanvasLocalRotation` (`worldPlaced_` + `worldCellOffset_`) by
+  PROPAGATE_CANVAS_ROTATION and published into the shared voxel-frame UBO as
+  `detachedWorldReceive_`. When set, `LIGHTING_TO_TRIXEL` recovers each detached
+  voxel's WORLD pos (model pos + the offset) and samples the SHARED world
+  sun-shadow map (re-running the cascade lookup — shared `ir_sun_shadow_sample`
+  with COMPUTE_SUN_SHADOW) + 128³ light volume there, so the solid darkens in
+  world shadow and picks up light bleed like a GRID solid. Gated on the flag →
+  the default overlay path is byte-identical (no per-canvas sun-shadow texture).
+- **P4b-3 (#1596), pending:** cast — a second sun-shadow bake dispatch per opt-in
+  detached canvas, gated on the same flag.
 
 Keep world-depth behind the opt-in — do not move it onto the default path — and
 match the GRID `trixelDistances` convention so an opt-in cell and the same GRID
