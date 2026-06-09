@@ -198,6 +198,7 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
     EXPECT_NE(ids.CodegenDamage, ids.CodegenParallelInc);
     EXPECT_NE(ids.CodegenParallelInc, ids.CodegenReadAfterWrite);
     EXPECT_NE(ids.CodegenReadAfterWrite, ids.CodegenForNumericBackEdge);
+    EXPECT_NE(ids.CodegenForNumericBackEdge, ids.CodegenRenderGlue);
 }
 
 // ---- PARALLEL_FOR registers without FATAL and updates every row --------
@@ -269,6 +270,26 @@ TEST_F(LuaSystemCodegenTest, ForNumericBackEdgeKeepsCopySemantics) {
     // Copy semantics: each of the 3 iterations reads the original a.x (1.0)
     // and writes 1.0 + 1.0 = 2.0. An alias would accumulate to 4.0.
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 2.0f);
+}
+
+// ---- #1616: whitelisted side-effecting engine binding as a bare statement --
+//
+// `CodegenRenderGlue`'s tick body calls `IRRender.setSunIntensity(pos.x)` as a
+// bare statement — a void render-glue setter that the DSL now lowers to
+// `IRRender::setSunIntensity(...)`. The strongest assertion is structural and
+// already paid: for this test to COMPILE and LINK, the generated
+// `createSystem_CodegenRenderGlue()` must contain valid C++ that resolves the
+// real `IRRender::setSunIntensity` symbol (the generated header `#include`s
+// `<irreden/ir_render.hpp>`). Here we confirm the system registers cleanly.
+//
+// We deliberately do NOT execute the tick against a matching entity: the
+// render-glue setter calls `getRenderManager()`, which IR_ASSERTs on the
+// absent RenderManager in this headless harness (engine/render/src/ir_render.cpp).
+// The lowering + link is the regression surface this test pins.
+TEST_F(LuaSystemCodegenTest, RenderGlueSideEffectLowersAndRegisters) {
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenRenderGlue();
+    EXPECT_LT(sys, m_system_manager.getSystemCount());
+    EXPECT_STREQ(m_system_manager.getSystemName(sys).c_str(), "CodegenRenderGlue");
 }
 
 } // namespace

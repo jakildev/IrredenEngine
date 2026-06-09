@@ -37,6 +37,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -676,6 +677,46 @@ void writeOutput(
         os << "//   " << s.sourceFile_ << " (system " << s.name_ << ")\n";
     }
     os << "#pragma once\n\n";
+
+    // #1616: pre-emit the CODEGEN system bodies into a buffer first, so we can
+    // collect the set of engine-binding headers their whitelisted
+    // side-effecting calls (e.g. `IRRender.setSunIntensity`) require and emit
+    // those #includes alongside the static core set below. The buffer is
+    // flushed into the IRScript::CodegenRegistry namespace further down, in its
+    // original position — only the parse/emit timing moves, not the output
+    // order.
+    std::string systemsBuf;
+    std::set<std::string> extraIncludes;
+    const bool hasCodegenSystems = std::any_of(
+        cap.systems_.begin(), cap.systems_.end(),
+        [](const IRLuaCodegen::SystemRecord &r) {
+            return r.mode_ == IRLuaCodegen::SystemMode::CODEGEN;
+        }
+    );
+    if (hasCodegenSystems) {
+        const auto componentRegistry = toComponentSchemas(cap.components_);
+        for (auto &rec : cap.systems_) {
+            if (rec.mode_ != IRLuaCodegen::SystemMode::CODEGEN) {
+                continue;
+            }
+            int bodyStartLine = 0;
+            try {
+                rec.bodySource_ = IRLuaCodegen::sliceFunctionBody(
+                    rec.sourceFile_, rec.linedefined_, rec.lastlinedefined_, bodyStartLine
+                );
+                rec.bodyStartLine_ = bodyStartLine;
+                IRLuaCodegen::ParsedBody body = IRLuaCodegen::parseSystemBody(
+                    rec.sourceFile_, rec.bodyStartLine_, rec.bodySource_
+                );
+                IRLuaCodegen::emitSystem(systemsBuf, rec, body, componentRegistry, extraIncludes);
+            } catch (const IRLuaCodegen::ParseError &err) {
+                std::cerr << "lua_codegen: error in system '" << rec.name_ << "' at "
+                          << err.file_ << ":" << err.line_ << ": " << err.message_ << "\n";
+                std::exit(1);
+            }
+        }
+    }
+
     os << "#include <cstdint>\n";
     os << "#include <string>\n";
     os << "#include <vector>\n\n";
@@ -684,7 +725,14 @@ void writeOutput(
     os << "#include <irreden/ir_system.hpp>\n";
     os << "#include <irreden/script/lua_binding_traits.hpp>\n";
     os << "#include <irreden/script/lua_script.hpp>\n";
-    os << "#include <irreden/system/ir_system_types.hpp>\n\n";
+    os << "#include <irreden/system/ir_system_types.hpp>\n";
+    // #1616: engine-binding headers required by whitelisted side-effecting
+    // intrinsics used in this run's CODEGEN tick bodies (std::set → sorted,
+    // deduped). Empty unless a body calls an IRRender.* (or future) binding.
+    for (const auto &inc : extraIncludes) {
+        os << "#include <" << inc << ">\n";
+    }
+    os << "\n";
 
     os << "namespace IRComponents {\n\n";
     for (const auto &c : cap.components_) {
@@ -769,42 +817,18 @@ void writeOutput(
     // `inline IRSystem::SystemId createSystem_<NAME>()` that wraps a
     // typed `IRSystem::createSystem<...>` invocation with the translated
     // tick body. Component validation, intrinsic-whitelist enforcement, and
-    // strict DSL-violation errors all happen here — any reject surfaces as a
-    // codegen-time error pointing at file:line:feature.
+    // strict DSL-violation errors all happen in that emit pass — any reject
+    // surfaces as a codegen-time error pointing at file:line:feature.
     //
     // Systems with `mode = "eval"` are deliberately skipped here. Their
     // names are captured in `kEvalSystemNames` below as a prepared hook for
     // a future runtime verification loop — not yet consumed.
-    const bool hasCodegenSystems = std::any_of(
-        cap.systems_.begin(), cap.systems_.end(),
-        [](const IRLuaCodegen::SystemRecord &r) {
-            return r.mode_ == IRLuaCodegen::SystemMode::CODEGEN;
-        }
-    );
+    //
+    // #1616: the parse/emit pass ran earlier (so its required #includes could
+    // be hoisted into the include block above); `systemsBuf` already holds the
+    // emitted create-functions. Flush it here in its original output position.
     if (hasCodegenSystems) {
-        const auto componentRegistry = toComponentSchemas(cap.components_);
         os << "namespace IRScript::CodegenRegistry {\n\n";
-        std::string systemsBuf;
-        for (auto &rec : cap.systems_) {
-            if (rec.mode_ != IRLuaCodegen::SystemMode::CODEGEN) {
-                continue;
-            }
-            int bodyStartLine = 0;
-            try {
-                rec.bodySource_ = IRLuaCodegen::sliceFunctionBody(
-                    rec.sourceFile_, rec.linedefined_, rec.lastlinedefined_, bodyStartLine
-                );
-                rec.bodyStartLine_ = bodyStartLine;
-                IRLuaCodegen::ParsedBody body = IRLuaCodegen::parseSystemBody(
-                    rec.sourceFile_, rec.bodyStartLine_, rec.bodySource_
-                );
-                IRLuaCodegen::emitSystem(systemsBuf, rec, body, componentRegistry);
-            } catch (const IRLuaCodegen::ParseError &err) {
-                std::cerr << "lua_codegen: error in system '" << rec.name_ << "' at "
-                          << err.file_ << ":" << err.line_ << ": " << err.message_ << "\n";
-                std::exit(1);
-            }
-        }
         os << systemsBuf;
         os << "} // namespace IRScript::CodegenRegistry\n\n";
     }

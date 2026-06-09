@@ -6,6 +6,7 @@
 
 #include <cctype>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -35,6 +36,21 @@ const std::vector<Intrinsic> kIntrinsicRegistry = {
     {"math", "max",   "IRMath::max",   2},
     // --- IRMath.* ---
     {"IRMath", "clamp", "IRMath::clamp", 3},
+    // --- IRRender.* render-glue setters (#1616) ----------------------------
+    //
+    // Whitelisted side-effecting (void) engine bindings: allowed as a bare
+    // statement in a CODEGEN tick body (`IRRender.setSunIntensity(x)`), lowered
+    // to the C++ free function. These are pure pass-throughs to RenderManager —
+    // no new engine surface — so a system that *computes* a render parameter
+    // under CODEGEN can also *apply* it without falling back to EVAL / a C++
+    // bridge. Scalar args only (the DSL lowers each arg as a numeric
+    // expression). `true` marks statement-position-only; the trailing header
+    // is emitted as an #include in the generated header so the call compiles.
+    {"IRRender", "setSunIntensity", "IRRender::setSunIntensity", 1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setSunAmbient",   "IRRender::setSunAmbient",   1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setExposure",     "IRRender::setExposure",     1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setSkyIntensity", "IRRender::setSkyIntensity", 1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setCameraZoom",   "IRRender::setCameraZoom",   1, true, "irreden/ir_render.hpp"},
 };
 
 [[noreturn]] void fail(const std::string &file, int line, const std::string &msg) {
@@ -537,11 +553,16 @@ struct Parser {
             return stmt;
         }
 
-        // Anything else: parse the expression and reject it. Either:
-        //   - `var.field = ...` (unsupported assignment target — point at the actual
-        //     supported targets), or
-        //   - a bare expression statement like `pos.x` or `math.sin(0)` (no side
-        //     effect; almost certainly a typo).
+        // Anything else: parse the expression. It's accepted only as a bare
+        // call to a whitelisted side-effecting binding (#1616); otherwise
+        // reject it. Either:
+        //   - `var.field = ...` (unsupported assignment target — point at the
+        //     actual supported targets), or
+        //   - a bare INTRINSIC_CALL like `IRRender.setSunIntensity(x)` → an
+        //     expression statement (emission validates it's a statement-allowed
+        //     void binding; a value-returning one like `math.sin(0)` is rejected
+        //     there), or
+        //   - any other bare expression like `pos.x` (no side effect; a typo).
         ExprPtr e = parseExpr();
         if (check(TokenKind::ASSIGN)) {
             fail(file_, line,
@@ -549,9 +570,17 @@ struct Parser {
                  "bare locals (`x = expr`), column rows (`arch.Comp:setAt(i, val)`), "
                  "and column fields (`arch.Comp:setField(i, \"f\", val)`)");
         }
+        if (e->kind_ == ExprKind::INTRINSIC_CALL) {
+            auto stmt = std::make_unique<Stmt>();
+            stmt->kind_ = StmtKind::EXPR_STMT;
+            stmt->line_ = line;
+            stmt->exprStmt_ = std::move(e);
+            return stmt;
+        }
         fail(file_, line,
              "bare expression statements are not supported in CODEGEN bodies; valid "
-             "statements are `local`, assignment, `if`, `for`, and column-write calls");
+             "statements are `local`, assignment, `if`, `for`, column-write calls, and "
+             "whitelisted side-effecting engine bindings (e.g. `IRRender.setSunIntensity(x)`)");
     }
 
     // Precedence climbing for binary expressions. Lower number = lower precedence.
@@ -1077,10 +1106,46 @@ struct Emitter {
     // error — per-row form has no column vector to scatter-index into.
     std::string loopVarName_;
 
+    // #1616: engine-binding headers required by whitelisted side-effecting
+    // intrinsics emitted in this body (e.g. ir_render.hpp for IRRender.*).
+    // Merged into outRequiredIncludes by emitSystem.
+    std::set<std::string> requiredIncludes_;
+
     Emitter(const std::string &file, const std::vector<ComponentSchema> &registry)
         : file_(file), registry_(registry) {}
 
     void writeIndent() { for (int i = 0; i < indent_; ++i) out_ << "    "; }
+
+    // #1616: resolve an INTRINSIC_CALL against the whitelist + arity. Fails
+    // (codegen error) on an unknown name or arity mismatch. Shared by
+    // expression-position (emitExpr) and statement-position (EXPR_STMT)
+    // lowering so the two paths agree on the diagnostic.
+    const Intrinsic &resolveIntrinsic(const Expr &e) const {
+        const Intrinsic *intr = findIntrinsic(e.intrinsicNamespace_, e.intrinsicName_);
+        if (!intr) {
+            fail(file_, e.line_,
+                 "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                     "` is not in the CODEGEN whitelist (see cmake/lua_codegen/system_dsl.cpp)");
+        }
+        if (intr->arity_ >= 0 && static_cast<int>(e.args_.size()) != intr->arity_) {
+            fail(file_, e.line_,
+                 "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                     "` expects " + std::to_string(intr->arity_) + " argument(s), got " +
+                     std::to_string(e.args_.size()));
+        }
+        return *intr;
+    }
+
+    // #1616: emit `cppExpression_(arg0, arg1, ...)` with no trailing
+    // punctuation. Shared by both intrinsic-call positions.
+    void emitIntrinsicCall(const Expr &e, const Intrinsic &intr) {
+        out_ << intr.cppExpression_ << "(";
+        for (size_t i = 0; i < e.args_.size(); ++i) {
+            if (i) out_ << ", ";
+            emitExpr(*e.args_[i]);
+        }
+        out_ << ")";
+    }
 
     // True when this expression is exactly the per-row loop variable
     // reference (used to validate column-op index args in per-row mode).
@@ -1284,30 +1349,18 @@ struct Emitter {
                 return fieldTypeToExprType(field->type_);
             }
             case ExprKind::INTRINSIC_CALL: {
-                const auto *intr = findIntrinsic(e.intrinsicNamespace_, e.intrinsicName_);
-                if (!intr) {
+                const Intrinsic &intr = resolveIntrinsic(e);
+                if (intr.isStatement_) {
+                    // #1616: a void side-effecting binding has no value to use.
                     fail(file_, e.line_,
-                         "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
-                             "` is not in the CODEGEN whitelist (see cmake/lua_codegen/system_dsl.cpp)");
+                         "binding `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                             "` returns void (side-effecting render-glue) and may only be used "
+                             "as a bare statement, not inside an expression");
                 }
-                if (intr->arity_ >= 0 && static_cast<int>(e.args_.size()) != intr->arity_) {
-                    fail(file_, e.line_,
-                         "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
-                             "` expects " + std::to_string(intr->arity_) + " argument(s), got " +
-                             std::to_string(e.args_.size()));
-                }
-                out_ << intr->cppExpression_ << "(";
-                for (size_t i = 0; i < e.args_.size(); ++i) {
-                    if (i) out_ << ", ";
-                    emitExpr(*e.args_[i]);
-                }
-                out_ << ")";
-                // For now treat intrinsic results as float (the listed set returns
-                // float/int but we generally need to multiply with other floats).
-                if (e.intrinsicName_ == "min" || e.intrinsicName_ == "max" ||
-                    e.intrinsicName_ == "abs" || e.intrinsicName_ == "clamp") {
-                    return ExprType::FLOAT;     // generic — the actual arity respects template deduction
-                }
+                emitIntrinsicCall(e, intr);
+                // Treat value-returning intrinsic results as float (the listed
+                // set returns float/int; C++ template deduction handles the
+                // rest where we feed the result into further float math).
                 return ExprType::FLOAT;
             }
             case ExprKind::COLUMN_AT: {
@@ -1588,8 +1641,25 @@ struct Emitter {
                 return;
             }
             case StmtKind::EXPR_STMT: {
+                // #1616: the parser only builds EXPR_STMT for a bare
+                // INTRINSIC_CALL. Statement position is reserved for
+                // whitelisted side-effecting (void) bindings — a bare
+                // value-returning intrinsic is almost always a dropped
+                // assignment, so reject it with a pointed message.
+                const Expr &e = *s.exprStmt_;
+                const Intrinsic &intr = resolveIntrinsic(e);
+                if (!intr.isStatement_) {
+                    fail(file_, e.line_,
+                         "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                             "` returns a value; a bare call statement is only valid for a "
+                             "whitelisted side-effecting binding (assign the result to a "
+                             "`local` or a column field instead)");
+                }
+                if (intr.requiredInclude_) {
+                    requiredIncludes_.insert(intr.requiredInclude_);
+                }
                 writeIndent();
-                emitExpr(*s.exprStmt_);
+                emitIntrinsicCall(e, intr);
                 out_ << ";\n";
                 return;
             }
@@ -1673,7 +1743,8 @@ void emitSystem(
     std::string &out,
     const SystemRecord &record,
     const ParsedBody &body,
-    const std::vector<ComponentSchema> &componentRegistry
+    const std::vector<ComponentSchema> &componentRegistry,
+    std::set<std::string> &outRequiredIncludes
 ) {
     // Validate components.
     for (const auto &compName : record.components_) {
@@ -1769,6 +1840,11 @@ void emitSystem(
     // copying it, before emitting the body.
     collectRefSafeColumnAtDecls(perRowLoop->forBody_, emitter.refSafeColumnAtDecls_);
     for (const auto &s : perRowLoop->forBody_) emitter.emitStmt(*s);
+
+    // #1616: surface the engine-binding headers this body's whitelisted
+    // side-effecting calls need, so main.cpp can #include them.
+    outRequiredIncludes.insert(emitter.requiredIncludes_.begin(),
+                               emitter.requiredIncludes_.end());
 
     out += emitter.str();
     out += "        }\n";
