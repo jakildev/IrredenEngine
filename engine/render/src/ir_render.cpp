@@ -9,6 +9,8 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/trixel_rect.hpp>
+#include <irreden/render/trixel_text.hpp>
 
 #include <cstring>
 
@@ -326,6 +328,38 @@ void setSkyColor(vec3 color) {
 
 vec3 getSkyColor() {
     return getRenderManager().getSkyColor();
+}
+
+namespace {
+// Resolve the engine-default "gui" trixel canvas, or nullptr when none exists
+// (headless / pre-render contexts). Shared by the GUI shape-draw entry points
+// so the canvas lookup lives in one place.
+IRComponents::C_TriangleCanvasTextures *guiCanvasTexturesOrNull() {
+    const IREntity::EntityId guiCanvas = getCanvas("gui");
+    if (guiCanvas == IREntity::kNullEntity) {
+        return nullptr;
+    }
+    return &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+}
+} // namespace
+
+void drawGuiDisc(ivec2 center, int radius, Color color) {
+    IRComponents::C_TriangleCanvasTextures *canvas = guiCanvasTexturesOrNull();
+    if (canvas == nullptr) {
+        return;
+    }
+    // Reused across calls so the per-scanline span buffers amortize; the render
+    // path is single-threaded, so a function-local scratch is safe.
+    static RectFillScratch scratch;
+    fillDisc(*canvas, center, radius, color, kGuiTextDistance, scratch);
+}
+
+void drawGuiLine(ivec2 from, ivec2 to, Color color) {
+    IRComponents::C_TriangleCanvasTextures *canvas = guiCanvasTexturesOrNull();
+    if (canvas == nullptr) {
+        return;
+    }
+    drawLine(*canvas, from, to, color, kGuiTextDistance);
 }
 
 } // namespace IRRender

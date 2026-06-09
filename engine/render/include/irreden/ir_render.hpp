@@ -150,6 +150,19 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 /// @}
 
 /// @{
+/// @name GUI-canvas immediate shape draw
+/// Rasterize a filled disc / line onto the engine-default "gui" trixel canvas
+/// (the same canvas @c IRText draws to), in screen-space trixel coordinates.
+/// Immediate-mode: the GUI canvas is cleared every frame by @c TEXT_TO_TRIXEL,
+/// so re-issue these each frame from a RENDER-phase system to keep the shape on
+/// screen — the same contract the widget render systems follow. No-op when no
+/// "gui" canvas exists. Exposed to Lua as @c IRGui.drawDisc / @c IRGui.drawLine
+/// (engine #1615).
+void drawGuiDisc(ivec2 center, int radius, Color color);
+void drawGuiLine(ivec2 from, ivec2 to, Color color);
+/// @}
+
+/// @{
 /// @name Camera and viewport queries
 /// Camera position and zoom are read by the voxel→trixel shaders every frame.
 /// Viewport and scale-factor queries are needed when mapping pixel coordinates
