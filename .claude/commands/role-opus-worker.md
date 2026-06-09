@@ -127,6 +127,14 @@ fleet-claim --repo game claim 45 opus-worker-1
    steps below (game-side feedback, game-side needs-plan, game task
    pickup) and proceed with engine tasks only — do not abort the
    iteration.
+
+   **Then re-hydrate from your handoff file.** Each iteration runs in a fresh
+   context — if `~/.fleet/handoff/<your-agent-name>.md` exists and is newer than
+   your last iteration, read it: it is the previous task's closeout (shipped /
+   in-flight / durable decisions + pointers / drop-list) written by
+   `start-next-task`'s task-boundary closeout step. The fetch above restores the
+   *refs*; this restores the *context* (decisions just made, PRs in flight) the
+   fresh context dropped.
 3. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. One Read replaces what used to be
    six `gh` / `git` calls here:
