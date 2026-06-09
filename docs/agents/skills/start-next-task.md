@@ -96,10 +96,12 @@ gh pr list --head <old-branch-name> --state open --json number,url,title
 ### 2b. Task-boundary closeout (before the reset)
 
 Before switching branches, distill the task you just finished into a compact,
-high-signal handoff — so the next task starts lean but not amnesiac. Write it to
-`~/.fleet/handoff/<role-name>.md` (per-role, overwritten each boundary; shared
-`~/.fleet/` infra parameterized by your role name — it survives a `/clear` and is
-readable cross-host) AND keep a tight in-context copy. Four buckets:
+high-signal handoff — so the next task starts lean but not amnesiac. Run
+`mkdir -p ~/.fleet/handoff/` first (other fleet steps create `~/.fleet/`
+subdirs explicitly; do the same here). Write the handoff to
+`~/.fleet/handoff/<role-name>.md` (per-role, overwritten each boundary;
+`~/.fleet/` survives a `/clear` on this host — and cross-host too if your
+`~/.fleet/` is synced) AND keep a tight in-context copy. Four buckets:
 
 - **Shipped** — the PR(s) opened/merged this task, one-line outcome each.
 - **In flight / owed** — open PRs, follow-up issues filed, anything blocked-on.

@@ -101,11 +101,11 @@ prompt suggests:
    commit the last session left, which may be many merges behind.
 
    **Then re-hydrate from your handoff file.** If `~/.fleet/handoff/<role-name>.md`
-   exists and is newer than your last engagement, read it — it is the previous
-   task's closeout (shipped / in-flight / durable decisions + pointers / drop-list)
-   written by `start-next-task`'s task-boundary closeout step. The worktree sync
-   above restores the *code*; this restores the *context* a `/clear` dropped, so
-   you don't re-derive or contradict decisions just made or forget PRs in flight.
+   exists, read it — it is the previous task's closeout (shipped / in-flight /
+   durable decisions + pointers / drop-list) written by `start-next-task`'s
+   task-boundary closeout step. The worktree sync above restores the *code*; this
+   restores the *context* a `/clear` dropped, so you don't re-derive or contradict
+   decisions just made or forget PRs in flight.
 2. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. Covers open PRs, the `fleet:design-blocked`
    filter, the feedback-label filter, and the issue-queue snapshot (open /
