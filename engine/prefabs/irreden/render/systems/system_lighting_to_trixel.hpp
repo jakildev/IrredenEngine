@@ -275,9 +275,12 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     void beginTick() {
         program_->use();
         // Resolve the baked sun-depth map once (created by BAKE_SUN_SHADOW_MAP,
-        // registered ahead of LIGHTING_TO_TRIXEL). Lazy so this links even if a
-        // scene never registers the bake — then the map is null and the bind is
-        // skipped (no world-placed detached solids exist without sun shadows).
+        // registered ahead of LIGHTING_TO_TRIXEL). Lazy single-init: the resolve
+        // is deferred to beginTick so BAKE_SUN_SHADOW_MAP has already registered
+        // the resource by the time LIGHTING_TO_TRIXEL first runs. getNamedResource
+        // asserts on a missing key — a pipeline without the bake is a config error,
+        // not a graceful fallback (all 13 registered pipelines co-register both
+        // systems under the same !noLighting_ guard).
         if (sunShadowDepthMap_ == nullptr) {
             sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         }
