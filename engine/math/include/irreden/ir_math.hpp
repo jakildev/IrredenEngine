@@ -1553,25 +1553,36 @@ inline ivec2 perAxisTrixelCanvasWorstCaseSize(
 ///     subPerAxisCapped = min(effSub, floor( canvasHalf / maxOnScreenWorldDisp ))
 ///
 /// `maxOnScreenWorldDisp` is the largest in-plane world displacement of an
-/// on-screen voxel from the camera-tracked anchor: the visible cardinal-iso
-/// half-extent (`cardinalExtent / 2·zoom`) inverted to world on the depth-0
-/// plane (the `isoPixelToPos3D` closed form: `|wx|,|wy| ≤ isoHalf.x/2 +
-/// isoHalf.y/6`, `|wz| ≤ isoHalf.y/3`), grown by the √2 residual-yaw rotation
-/// footprint the canvas was sized for (@ref kSqrt2). The cap MUST be computed
-/// CPU-side: `effSub = clamp(m_vrs × round(zoom), 1, 16)` conflates subdivision
-/// and zoom, so a shader given only `effSub` + `canvasSize` cannot recover the
-/// zoom-dependent on-screen extent — the host knows `zoom` and feeds the capped
-/// value through `voxelRenderOptions.y` so the store, the framebuffer scatter,
-/// and the per-axis AO/lighting recovery all share one consistent world↔cell
-/// scale. Pass the same @p minOnScreenTrixelPx used to allocate the canvas
+/// on-screen voxel from the camera-tracked anchor. It has two terms:
+///   • the visible cardinal-iso half-extent (`cardinalExtent / 2·zoom`)
+///     inverted to world on the depth-0 plane (the `isoPixelToPos3D` closed
+///     form: `|wx|,|wy| ≤ isoHalf.x/2 + isoHalf.y/6`, `|wz| ≤ isoHalf.y/3`);
+///   • the depth-range term (#1469): a visible voxel at iso depth d = x+y+z
+///     sits at `world0(iso) + (d/3)·(1,1,1)`, which adds `d/3` to BOTH canvas
+///     axes of every face. d is scene-dependent and unbounded, so it is bounded
+///     here by the canvas-storable depth at the uncapped @p effSub —
+///     `canvasHalf.y / (√2·effSub)` — rather than read back from the depth
+///     texture; deeper cells clip to background harmlessly. See the body.
+/// Both terms are grown by the √2 residual-yaw rotation footprint the canvas was
+/// sized for (@ref kSqrt2). The cap MUST be computed CPU-side: `effSub =
+/// clamp(m_vrs × round(zoom), 1, 16)` conflates subdivision and zoom, so a
+/// shader given only `effSub` + `canvasSize` cannot recover the zoom-dependent
+/// on-screen extent — the host knows `zoom` and feeds the capped value through
+/// `voxelRenderOptions.y` so the store, the framebuffer scatter, and the
+/// per-axis AO/lighting recovery all share one consistent world↔cell scale.
+/// Pass the uncapped @p effSub (the requested density before this cap) and the
+/// same @p minOnScreenTrixelPx used to allocate the canvas
 /// (e.g. `kMinOnScreenTrixelSizePx`) so the cap is sized against the actual
 /// allocated canvas rather than the default. Returns ≥ 1.
 inline int perAxisSubdivisionCap(
-    const ivec2 cardinalExtent, const vec2 zoom, const float minOnScreenTrixelPx = 1.0f
+    const ivec2 cardinalExtent, const vec2 zoom, const int effSub,
+    const float minOnScreenTrixelPx = 1.0f
 ) {
     const float W = static_cast<float>(cardinalExtent.x);
     const float H = static_cast<float>(cardinalExtent.y);
     const ivec2 canvasSize = perAxisTrixelCanvasWorstCaseSize(cardinalExtent, minOnScreenTrixelPx);
+    const float canvasHalfX = 0.5f * static_cast<float>(canvasSize.x);
+    const float canvasHalfY = 0.5f * static_cast<float>(canvasSize.y);
     // Smaller zoom ⇒ larger visible extent ⇒ tighter cap; clamp away from 0.
     const float isoHalfX = W / (2.0f * max(zoom.x, 1e-3f));
     const float isoHalfY = H / (2.0f * max(zoom.y, 1e-3f));
@@ -1581,10 +1592,28 @@ inline int perAxisSubdivisionCap(
     // At depth=0 (x+y+z=0): iso.y=-x-y+2z=3z → z=iso.y/3, y=iso.x/2-iso.y/6.
     const float maxInPlaneXY = 0.5f * isoHalfX + isoHalfY / 6.0f;
     const float maxInPlaneZ = isoHalfY / 3.0f;
-    const float maxDispX = maxInPlaneXY;
-    const float maxDispY = max(maxInPlaneZ, maxInPlaneXY);
-    const float capX = (0.5f * static_cast<float>(canvasSize.x)) / (kSqrt2 * maxDispX);
-    const float capY = (0.5f * static_cast<float>(canvasSize.y)) / (kSqrt2 * maxDispY);
+    // Depth-range term (#1469). An on-screen voxel at iso depth d = x+y+z does
+    // NOT lie on the depth-0 plane: isoPixelToPos3D(iso, d) = world0(iso) +
+    // (d/3)·(1,1,1). faceInPlaneCoords selects two of three components, and the
+    // (1,1,1) shift has all-equal components, so it adds exactly d/3 to BOTH
+    // canvas axes of every face — an additive term the depth-0 spread above
+    // misses, so deep scenes still clip at non-cardinal yaw. d is scene-
+    // dependent and unbounded, and this cap is CPU-side with no depth read, so
+    // bound the depth contribution (world units) by the deepest cell the canvas
+    // can store at the uncapped effSub on the z→canvas-Y axis:
+    //   depthAllowance = canvasHalfY / (√2·effSub).
+    // Capping subPerAxis against (isoTerm + depthAllowance) makes exactly that
+    // depth band — d/3 ≤ depthAllowance — fit; cells deeper than depthAllowance·3
+    // still drop to background (isInsideCanvas — no corruption), the documented
+    // residual trade. As effSub grows the allowance shrinks, converging to the
+    // depth-0 cap. The tighter cap costs sub-voxel rotating detail; restoring
+    // that detail (fractional micro-offset, base-resolution lattice) is the
+    // separate end-state tracked by #1458 — #1469 only stops the clip.
+    const float depthAllowance = canvasHalfY / (kSqrt2 * static_cast<float>(max(effSub, 1)));
+    const float maxDispX = maxInPlaneXY + depthAllowance;
+    const float maxDispY = max(maxInPlaneZ, maxInPlaneXY) + depthAllowance;
+    const float capX = canvasHalfX / (kSqrt2 * maxDispX);
+    const float capY = canvasHalfY / (kSqrt2 * maxDispY);
     return max(static_cast<int>(floor(min(capX, capY))), 1);
 }
 

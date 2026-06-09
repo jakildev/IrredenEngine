@@ -44,6 +44,12 @@ the ECS surface.
   store and the lighting/scatter recovery share that one scale through
   `voxelRenderOptions.y` so cells map back to world consistently. A new
   per-axis pass (e.g. the SDF-per-axis follow-up) must cap the same way.
+  The cap also folds in the **depth-range term (#1469):** a visible voxel at
+  iso depth `d = x+y+z` sits at `world0(iso) + (d/3)·(1,1,1)`, adding `d/3` to
+  both canvas axes, so deep scenes clip past the iso-rect spread; the cap bounds
+  that contribution by the canvas-storable depth at `effSub` (no depth readback).
+  The tighter cap costs sub-voxel rotating detail — restoring it (base-resolution
+  lattice + fractional micro-offset) is the separate end-state tracked by #1458.
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also

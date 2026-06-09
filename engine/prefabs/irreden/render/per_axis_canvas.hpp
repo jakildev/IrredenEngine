@@ -116,6 +116,7 @@ inline int subdivisionDensity() {
     const int cap = IRMath::perAxisSubdivisionCap(
         (*cardinal.value()).size_,
         IRRender::getCameraZoom(),
+        effSub,
         kMinOnScreenTrixelSizePx
     );
     return IRMath::clamp(effSub, 1, cap);
