@@ -58,6 +58,20 @@ Specifically, **never pass these via `--label` when filing**:
   `human:approved` used to be the only way to defeat that re-stamp —
   this label replaces that workaround). Clears when the human applies
   the change (the ingest then re-queues the issue) or closes it.
+- `fleet:coding-improvement` — owned by the **author worker**, applied by the
+  `assess-coding-improvement` skill at the end of a feedback AMEND. When a fix
+  reveals a *generalizable* convention or footgun (not a one-off), the worker
+  files a tracking issue proposing where to add or better-surface the rule
+  (style guide, `.claude/rules/cpp-*.md`, a `simplify` check, the `review-pr`
+  checklist, worker direction) so the same class of mistake is caught at
+  authoring time. This is the only label the filer applies — a deliberate
+  **exception** to the "file issues with no labels" rule below: it's a
+  *classification* tag, not a queue/verdict signal. The worker does **not**
+  add `human:approved` or `fleet:queued`, so the ticket stays out of the
+  pickup queue until the human triages it (most targets are gated self-config
+  the fleet can't auto-edit anyway). The skill dedups first — if an open
+  `fleet:coding-improvement` issue already targets the same artifact it
+  comments a new occurrence instead of filing a duplicate.
 - `fleet:queued` / `fleet:task` — owned by **`fleet-queue-ingest`**,
   set after `human:approved` has been observed. Adding it at filing
   time excludes the issue from the ingest search (which looks for
@@ -363,7 +377,11 @@ up. `fleet-queue-ingest` will add `fleet:queued` (and optionally a
 **Exception:** if you're operating in a role's own lane (e.g. you
 ARE a reviewer and you've just verdict'd a PR), then setting your
 role's labels is correct. The rule above is about ad-hoc issue/PR
-filing from human conversations.
+filing from human conversations. The `assess-coding-improvement`
+skill is another in-lane case: it files with exactly one
+*classification* label, `fleet:coding-improvement`, and deliberately
+withholds `human:approved` / `fleet:queued` so the ticket stays
+un-queued for human triage.
 
 ---
 
