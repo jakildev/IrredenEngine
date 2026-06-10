@@ -62,12 +62,19 @@ def branch_matches_issue(head_ref, issue, repo):
     return any(head.startswith(p) for p in issue_branch_prefixes(repo, issue))
 
 
-# A PR carrying either of these is *parked*: a worker hit a design wall and
+# A PR carrying any of these is *parked*: a worker hit a design wall and
 # released its claim so ANY worker can resume once the architect responds.
 # Such a PR is NOT active work even though it is open and `fleet:wip` — its
 # lingering issue-side `fleet:claim-*` / `fleet:in-progress` labels would
 # otherwise wedge the issue as "in progress" and block re-claim (#1488).
-PARKED_PR_LABELS = frozenset({"fleet:design-blocked", "fleet:design-unblocked"})
+# `fleet:design-proposed` parks the same way: the epic-steward released its
+# claim and the PR waits on a STEWARD PROPOSAL answer on the umbrella issue;
+# re-adoption is gated on the steward's distribution pass (#1663).
+PARKED_PR_LABELS = frozenset({
+    "fleet:design-blocked",
+    "fleet:design-unblocked",
+    "fleet:design-proposed",
+})
 
 
 def issue_pr_state(prs, issue, repo):
