@@ -783,6 +783,7 @@ struct JointToolState {
     IREntity::EntityId rigRoot_ = IREntity::kNullEntity;
     int activeJointIdx_ = -1;    // index into joints_ (-1 = rig root)
     std::vector<int> parentIdx_; // parallel to joints_; -1 = rig root
+    bool bindPoseRecaptured_ = false; // cleared each beginTick; prevents O(joints×archetypes) redundant recompute
 };
 JointToolState g_jointTool;
 
@@ -806,6 +807,8 @@ void recomputeJointBindPose() {
     if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
         return;
     auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+    IR_ASSERT(g_jointTool.parentIdx_.size() == skeleton.joints_.size(),
+              "parentIdx_ / joints_ size mismatch");
     const std::size_t count = skeleton.joints_.size();
     skeleton.bindPose_.assign(count, IRMath::SQT{});
     for (std::size_t i = 0; i < count; ++i) {
@@ -1535,12 +1538,16 @@ void initSystems() {
     auto jointBindSyncSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorJointBindSync",
         [](const C_GuiElement &) {},
-        []() {},
+        []() { IRVoxelEditor::g_jointTool.bindPoseRecaptured_ = false; },
         []() {
             if (!IRVoxelEditor::g_jointTool.active_)
                 return;
-            if (IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED))
+            if (IRVoxelEditor::g_jointTool.bindPoseRecaptured_)
+                return;
+            if (IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED)) {
                 IRVoxelEditor::recomputeJointBindPose();
+                IRVoxelEditor::g_jointTool.bindPoseRecaptured_ = true;
+            }
         }
     );
 
