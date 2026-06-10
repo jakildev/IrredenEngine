@@ -190,6 +190,24 @@ ensure_label_for_repo() {
         local rest="${entry#*|}"
         local color="${rest%%|*}"
         local desc="${rest#*|}"
+        # GitHub's label API caps descriptions at 100 characters and 422s
+        # anything longer ("description is too long"). A rejected create
+        # falls through to the "failed to create" branch below, so every
+        # over-long catalog entry silently fails to sync on each run. The
+        # catalog keeps the full text as documentation (--check compares
+        # names only); trim a copy down to the limit before sending it.
+        # When the cut lands mid-word, back up to the previous space and
+        # append an ellipsis so the GitHub tooltip still reads cleanly —
+        # but only when a boundary is reasonably close, else hard-cut.
+        if (( ${#desc} > 100 )); then
+            local clipped="${desc:0:99}"        # room for a 1-char ellipsis
+            local at_boundary="${clipped% *}"   # drop the partial trailing word
+            if [[ "$at_boundary" != "$clipped" && ${#at_boundary} -ge 80 ]]; then
+                desc="${at_boundary}…"
+            else
+                desc="${desc:0:100}"            # no nearby space — hard cut
+            fi
+        fi
         if echo "$existing" | grep -qx "$name"; then
             existed=$((existed + 1))
             continue
