@@ -57,6 +57,8 @@
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
 #include <irreden/render/systems/system_gizmo_drag.hpp>
+#include <irreden/render/systems/system_update_joint_matrices.hpp>
+#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
@@ -79,6 +81,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <list>
 #include <memory>
@@ -792,17 +795,25 @@ void switchToFrame(int frameIndex) {
     );
 }
 
-// --- F-2.5 (#1604) skeletal joint authoring ---------------------------------
+// --- F-2.5 (#1604) skeletal joint authoring + FK posing (#1610) -------------
 //
 // One rig per editor session: a rig-root entity carrying C_Skeleton, with
 // joint entities parented under it via CHILD_OF. Each joint carries C_Joint
 // and the engine's C_LocalTransform; an orange JOINT_MARKER sphere
-// (IRPrefab::Gizmo::createJointMarker) and a translate gizmo anchored to the
-// joint itself handle visibility + placement. The index of a joint in
-// C_Skeleton.joints_ IS its bone_id; bindPose_ is kept parallel and in sync.
+// (IRPrefab::Gizmo::createJointMarker), a translate gizmo for placement, and
+// a rotate gizmo for FK posing — all anchored to the joint itself. The index
+// of a joint in C_Skeleton.joints_ IS its bone_id; bindPose_ is kept parallel.
 // The "active" joint is the parent for the next add (B); R starts a fresh
 // chain off the rig root. Joint selection / reparent-to-any-joint / tree
-// panel land in #1607; FK posing + explicit bind recapture in #1610.
+// panel land in #1607.
+//
+// Placement vs posing (#1610): a TRANSLATE_ARROW drag on a joint is
+// authoring — bindPose_ recaptures at gesture end so the bind tracks the
+// authored rest. A ROTATE_RING drag is FK posing — GIZMO_DRAG writes the
+// joint's C_LocalTransform.rotation_, PROPAGATE_TRANSFORM composes the
+// chain, and UPDATE_JOINT_MATRICES skins the rig's voxels live; the bind is
+// deliberately NOT recaptured, so the deformation stays visible. T captures
+// the current pose as the new bind explicitly (skin matrices → identity).
 
 // Local offset of each newly-added joint from its parent (refined by drag).
 // Clears the 8-unit translate arrows (shaft 6 + head 2) so one joint's +X
@@ -822,6 +833,9 @@ struct JointToolState {
     std::vector<int> parentIdx_; // parallel to joints_; -1 = rig root
     bool bindPoseRecaptured_ =
         false; // cleared each beginTick; prevents O(joints×archetypes) redundant recompute
+    // GIZMO_DRAG's dragHandle_ as of last frame — the bind-sync system
+    // edge-detects the drag release (handle → kNullEntity) against this.
+    IREntity::EntityId lastDragHandle_ = IREntity::kNullEntity;
 };
 JointToolState g_jointTool;
 
@@ -860,6 +874,25 @@ void recomputeJointBindPose() {
     }
 }
 
+// True when `entity` is one of the session rig's joints (the drag anchor of
+// a per-joint gizmo handle). O(joints) scan — called once per drag release.
+bool isRigJoint(IREntity::EntityId entity) {
+    if (entity == IREntity::kNullEntity || g_jointTool.rigRoot_ == IREntity::kNullEntity)
+        return false;
+    const auto &joints = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_).joints_;
+    return std::find(joints.begin(), joints.end(), entity) != joints.end();
+}
+
+// "Set current pose as bind" (#1610): capture every joint's live local
+// transform chain into bindPose_. The posed shape becomes the new rest —
+// skin matrices return to identity and the rig's voxels relax in place.
+void setCurrentPoseAsBind() {
+    if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
+        return;
+    recomputeJointBindPose();
+    IR_LOG_INFO("Bind pose captured from the current pose (skin matrices -> identity).");
+}
+
 // Spawns one joint parented to the active joint (or the rig root when none /
 // after R), appends it to C_Skeleton.joints_ (its index is the bone_id),
 // refreshes the parallel bind pose, and makes it the new active joint. The
@@ -878,10 +911,12 @@ IREntity::EntityId addJointAuthored() {
         IREntity::createEntity(C_LocalTransform{kJointSpawnLocalOffset}, C_Joint{});
     IREntity::setParent(joint, parentEntity);
     // Orange JOINT_MARKER sphere (hover-highlight + xray silhouette + the
-    // screen-space size pass) and per-joint translate arrows whose drag
-    // mutates the joint's own C_LocalTransform.
+    // screen-space size pass), per-joint translate arrows for placement, and
+    // per-joint rotate rings for FK posing (#1610) — every drag mutates the
+    // joint's own C_LocalTransform (translation vs rotation by handle kind).
     IRPrefab::Gizmo::createJointMarker(joint);
     IRPrefab::Gizmo::createTranslateGizmoForAnchor(joint);
+    IRPrefab::Gizmo::createRotateGizmoForAnchor(joint);
 
     auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
     skeleton.joints_.push_back(joint);
@@ -902,12 +937,55 @@ void resetJointChain() {
 
 // Author a short starter chain so the feature is visible on launch and in
 // auto-screenshots, mirroring the perimeter gizmo references in initEntities.
+//
+// #1610 also rigs the chain with a skinned voxel bar (the FK verification
+// vehicle): a 31×3×3 bar on the rig root, painted one bone per third by
+// nearest joint. UPDATE_JOINT_MATRICES allocates the skeleton's slot block on
+// its first tick and auto-seeds the per-voxel bone→slot indices (#1605), so
+// dragging a rotate ring on a mid-chain joint visibly bends the bar live.
 void seedDemoSkeleton() {
-    ensureRigRoot();
+    const IREntity::EntityId rigRoot = ensureRigRoot();
     g_jointTool.activeJointIdx_ = -1;
     addJointAuthored();
     addJointAuthored();
     addJointAuthored();
+
+    // Center the chain in the bar's 3×3 cross-section: the bar's local
+    // coords span y,z ∈ [0..2], so lift the first joint to (10,1,1) and the
+    // chained joints (+10 x each) follow on the y=1,z=1 line through the
+    // bar. Re-capture the bind so the lifted chain is the rest pose.
+    {
+        auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
+        auto &firstLocal = IREntity::getComponent<C_LocalTransform>(skeleton.joints_[0]);
+        firstLocal.translation_ = vec3(10.0f, 1.0f, 1.0f);
+        recomputeJointBindPose();
+    }
+
+    // The skinned bar: local x ∈ [0..30] spans the joints at x = 10/20/30.
+    // Painted per-segment colors make each bone's span legible while posing.
+    IREntity::setComponent(rigRoot, C_VoxelSetNew{ivec3(31, 3, 3), Color{210, 160, 110, 255}});
+    auto &voxelSet = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
+    const auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
+    constexpr Color kBoneSegmentColors[] = {
+        Color{220, 130, 110, 255},
+        Color{130, 200, 120, 255},
+        Color{120, 150, 220, 255},
+    };
+    for (std::size_t i = 0; i < voxelSet.voxels_.size(); ++i) {
+        // Nearest joint along the chain axis owns the voxel.
+        const float x = voxelSet.positions_[i].pos_.x;
+        std::uint8_t bone = 0;
+        float best = IRMath::abs(x - skeleton.bindPose_[0].translation_.x);
+        for (std::uint8_t j = 1; j < skeleton.joints_.size(); ++j) {
+            const float d = IRMath::abs(x - skeleton.bindPose_[j].translation_.x);
+            if (d < best) {
+                best = d;
+                bone = j;
+            }
+        }
+        voxelSet.voxels_[i].bone_id_ = bone;
+        voxelSet.voxels_[i].color_ = kBoneSegmentColors[bone];
+    }
 }
 
 } // namespace
@@ -939,6 +1017,8 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  F: toggle loft mode (paint XZ+YZ profiles)  Enter: stamp  C: clear masks");
     IR_LOG_INFO("  J: toggle joint authoring  B: add joint to chain  R: start new chain");
     IR_LOG_INFO("  N: toggle bone-paint mode (click swatch in BONE panel to pick bone)");
+    IR_LOG_INFO("  Joint arrows place (re-binds at release); rings FK-pose (live deform)");
+    IR_LOG_INFO("  T: set current pose as bind (joint mode)");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -1618,24 +1698,33 @@ void initSystems() {
         }
     );
 
-    // Joint-authoring bind-pose sync (#1604). GIZMO_DRAG mutates a dragged
-    // joint's C_LocalTransform every held frame; recapture the bind pose once
-    // at gesture end (left release) so bindPose_ always reflects the authored
-    // rest pose. In F-2.5 every drag in joint mode IS bind authoring — FK
-    // posing (#1610) separates "pose" drags from explicit bind capture.
+    // Joint-authoring bind-pose sync (#1604, placement-vs-posing split in
+    // #1610). A TRANSLATE_ARROW drag on a rig joint is authoring: recapture
+    // the bind pose once at gesture end so bindPose_ tracks the authored
+    // rest. A ROTATE_RING drag is FK posing and must NOT recapture — the
+    // pose deforms the skinned voxels away from the bind by design (T
+    // captures explicitly). Release is edge-detected against GIZMO_DRAG's
+    // own state (handle → kNullEntity) so a plain scene click — or a drag
+    // of a non-rig showcase gizmo — never touches the rig.
+    const IRSystem::SystemId gizmoDragId = IRSystem::createSystem<IRSystem::GIZMO_DRAG>();
     auto jointBindSyncSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorJointBindSync",
         [](const C_GuiElement &) {},
-        []() { IRVoxelEditor::g_jointTool.bindPoseRecaptured_ = false; },
-        []() {
-            if (!IRVoxelEditor::g_jointTool.active_)
+        []() {},
+        [gizmoDragId]() {
+            const auto *drag =
+                IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(gizmoDragId);
+            const bool releasedThisFrame =
+                IRVoxelEditor::g_jointTool.lastDragHandle_ != IREntity::kNullEntity &&
+                drag->dragHandle_ == IREntity::kNullEntity;
+            IRVoxelEditor::g_jointTool.lastDragHandle_ = drag->dragHandle_;
+            if (!releasedThisFrame)
                 return;
-            if (IRVoxelEditor::g_jointTool.bindPoseRecaptured_)
-                return;
-            if (IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED)) {
-                IRVoxelEditor::recomputeJointBindPose();
-                IRVoxelEditor::g_jointTool.bindPoseRecaptured_ = true;
-            }
+            if (drag->dragKind_ != IRComponents::GizmoKind::TRANSLATE_ARROW)
+                return; // rotate rings are FK posing (#1610), not bind authoring
+            if (!IRVoxelEditor::isRigJoint(drag->dragAnchor_))
+                return; // showcase / non-rig gizmos don't touch the rig
+            IRVoxelEditor::recomputeJointBindPose();
         }
     );
 
@@ -1656,9 +1745,25 @@ void initSystems() {
          placeEraseSystem,
          IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
-         IRSystem::createSystem<IRSystem::GIZMO_DRAG>(),
+         gizmoDragId,
          jointBindSyncSystem}
     );
+
+    // GPU voxel-position prepass (#1396) + joint skin-matrix upload (#1603) +
+    // per-voxel bone→slot seeding (#1605) — the FK live-deform substrate
+    // (#1610). UPDATE_JOINT_MATRICES must run AFTER PROPAGATE_TRANSFORM
+    // (UPDATE pipeline, earlier this frame) and BEFORE
+    // UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices when
+    // the prepass dispatches. Both are no-ops until a voxel set opts in via
+    // gpuTransformSlot_ (the seeded rig does), so an unrigged scene renders
+    // byte-identically. Created up-front so their SystemIds can wire the
+    // slot-allocator handles.
+    const IRSystem::SystemId updateVoxelPositionsId =
+        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
+    IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
+    const IRSystem::SystemId updateJointMatricesId =
+        IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
+    IRPrefab::JointTransform::setSystem(updateJointMatricesId);
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
     renderPipeline.push_front(animPlaybackSystem);
@@ -1668,6 +1773,8 @@ void initSystems() {
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            updateJointMatricesId,
+            updateVoxelPositionsId,
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
@@ -2173,6 +2280,20 @@ void initCommands() {
                 IRVoxelEditor::g_bonePaint.active_ ? "ON" : "OFF",
                 IRVoxelEditor::g_bonePaint.activeBoneIdx_
             );
+        }
+    );
+
+    // T — set current pose as bind (#1610): the posed joint chain becomes
+    // the new rest, skin matrices return to identity, and the rig's voxels
+    // relax in place. No-op outside joint mode.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonT,
+        []() {
+            if (!IRVoxelEditor::g_jointTool.active_)
+                return;
+            IRVoxelEditor::setCurrentPoseAsBind();
         }
     );
 

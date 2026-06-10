@@ -22,10 +22,11 @@ namespace IRSystem {
 // updated until the mouse button releases.
 //
 // Pipeline: INPUT, after GIZMO_HOVER. Mutates anchor
-// `C_LocalTransform::translation_`
-// (translate) and accumulates rotate / scale state on the system params
-// — render-side application of rotate/scale is a follow-up once a
-// canonical rotation/scale component lands.
+// `C_LocalTransform::translation_` (translate) and
+// `C_LocalTransform::rotation_` (rotate, #1610 — FK pose editing reads
+// this through PROPAGATE_TRANSFORM + the skeletal skinning substrate);
+// scale still only accumulates on the system params — render-side
+// application is a follow-up once a canonical scale component lands.
 //
 // Drag math (translate):
 //   - At press, capture (a) the anchor's local position, (b) the
@@ -43,6 +44,12 @@ namespace IRSystem {
 //     refinement can project the ring plane into screen and use a
 //     true axis-perpendicular angle.
 //   - Shift held → angle snaps to `kRotateSnapStep` (π/12 = 15°).
+//   - anchor.rotation_ = pressRotation ∘ quatAxisAngle(ringAxis, delta):
+//     post-multiplying rotates about the anchor's LOCAL axis — the rings
+//     are children of the anchor, so the grabbed ring's color always
+//     names the local axis the user sees. Composed fresh from the
+//     press-time rotation each frame (not incrementally), so a long
+//     drag accumulates no quat drift.
 //
 // Drag math (scale):
 //   - SCALE_CENTER: cursor screen-distance from press point → uniform
@@ -58,6 +65,7 @@ template <> struct System<GIZMO_DRAG> {
 
     // Press-time captures.
     IRMath::vec3 dragStartAnchorPos_ = IRMath::vec3(0.0f);
+    IRMath::vec4 dragStartAnchorRot_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     IRMath::vec3 dragStartCursorWorld_ = IRMath::vec3(0.0f);
     float dragPlaneIsoDepth_ = 0.0f;
     IRMath::vec2 dragStartCursorScreen_ = IRMath::vec2(0.0f);
@@ -190,6 +198,7 @@ template <> struct System<GIZMO_DRAG> {
         const IRMath::vec3 anchorWorld = anchorWorldTransform.translation_;
 
         dragStartAnchorPos_ = anchorLocal.translation_;
+        dragStartAnchorRot_ = anchorLocal.rotation_;
         dragPlaneIsoDepth_ = canvasIsoDepthOfAnchor(anchorWorld);
         dragStartCursorWorld_ = IRRender::mouseWorldPos3DAtIsoDepth(dragPlaneIsoDepth_);
         dragStartCursorScreen_ = mouseScreen_;
@@ -228,6 +237,13 @@ template <> struct System<GIZMO_DRAG> {
                 delta = IRMath::round(delta / kRotateSnapStep) * kRotateSnapStep;
             }
             accumRotateAngle_ = delta;
+            // Post-multiply = rotation about the anchor's LOCAL ring axis;
+            // composed fresh from the press-time rotation so the drag
+            // accumulates no quat drift (see the header drag-math note).
+            anchorLocal.rotation_ = IRMath::quatMul(
+                dragStartAnchorRot_,
+                IRMath::quatAxisAngle(axisToUnit(dragAxis_), delta)
+            );
             break;
         }
         case IRComponents::GizmoKind::SCALE_STICK: {
