@@ -176,6 +176,9 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
                         releaseJointBlock(block.base_, block.count_);
                     }
                     block.base_ = acquireJointBlock(jointCount);
+                    // count_ = 0 on exhaustion so next-frame's count_ != jointCount
+                    // branch fires again and re-attempts the acquire. This is
+                    // intentional: exhaustion is exceptional and cheap to retry.
                     block.count_ = (block.base_ == kVoxelTransformStatic) ? 0 : jointCount;
                 }
                 if (block.base_ == kVoxelTransformStatic) {
