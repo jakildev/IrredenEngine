@@ -15,6 +15,7 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
+#include <irreden/voxel/components/component_joint_name.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
@@ -66,8 +67,10 @@
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_list.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
+#include <irreden/render/systems/system_widget_apply_text_input.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
 #include <irreden/render/systems/system_widget_render_list.hpp>
+#include <irreden/render/systems/system_widget_render_text_input.hpp>
 #include <irreden/render/systems/system_widget_render_checkbox.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 
@@ -314,6 +317,14 @@ IREntity::EntityId g_bakeShapeList = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam1Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam2Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeButton = IREntity::kNullEntity;
+
+// Skeleton tree panel widget entity IDs (#1607).
+IREntity::EntityId g_skeletonPanel = IREntity::kNullEntity;
+IREntity::EntityId g_skeletonList = IREntity::kNullEntity;
+IREntity::EntityId g_jointRenameInput = IREntity::kNullEntity;
+IREntity::EntityId g_jointRenameBtn = IREntity::kNullEntity;
+IREntity::EntityId g_jointReparentInput = IREntity::kNullEntity;
+IREntity::EntityId g_jointReparentBtn = IREntity::kNullEntity;
 
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
@@ -1275,7 +1286,8 @@ void initSystems() {
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_);
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -1728,6 +1740,115 @@ void initSystems() {
         }
     );
 
+    // Skeleton tree panel sync (#1607). Runs after WIDGET_APPLY_LIST so
+    // list.selectedIndex_ already reflects any click from this frame.
+    // Rebuilds list items from C_Skeleton.joints_ (names from C_JointName or
+    // "bone_N" default), mirrors activeJointIdx_ <-> list selection, handles
+    // rename button (writes C_JointName), and reparent button (rewrites
+    // CHILD_OF + updates parentIdx_ + refreshes bindPose_).
+    auto jointTreeSyncSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorJointTreeSync",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_skeletonList == IREntity::kNullEntity)
+                return;
+
+            auto &list = IREntity::getComponent<C_WidgetList>(g_skeletonList);
+
+            if (g_jointTool.rigRoot_ != IREntity::kNullEntity) {
+                const auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                const int count = static_cast<int>(skeleton.joints_.size());
+                if (static_cast<int>(list.items_.size()) != count)
+                    list.items_.resize(static_cast<std::size_t>(count));
+                for (int i = 0; i < count; ++i) {
+                    const IREntity::EntityId joint = skeleton.joints_[static_cast<std::size_t>(i)];
+                    auto nameOpt = IREntity::getComponentOptional<C_JointName>(joint);
+                    const std::string label = (nameOpt.has_value() && !(*nameOpt)->name_.empty())
+                                                  ? std::to_string(i) + " " + (*nameOpt)->name_
+                                                  : "bone_" + std::to_string(i);
+                    if (list.items_[static_cast<std::size_t>(i)] != label)
+                        list.items_[static_cast<std::size_t>(i)] = label;
+                }
+
+                // Mirror activeJointIdx_ → list selection.
+                if (list.selectedIndex_ != g_jointTool.activeJointIdx_)
+                    IRPrefab::Widget::setListSelectedIndex(
+                        g_skeletonList,
+                        g_jointTool.activeJointIdx_
+                    );
+            } else {
+                list.items_.clear();
+                list.selectedIndex_ = -1;
+            }
+
+            // List click → update activeJointIdx_ and pre-fill rename input.
+            if (IRPrefab::Widget::wasClicked(g_skeletonList)) {
+                g_jointTool.activeJointIdx_ = list.selectedIndex_;
+                if (g_jointRenameInput != IREntity::kNullEntity &&
+                    g_jointTool.rigRoot_ != IREntity::kNullEntity && list.selectedIndex_ >= 0) {
+                    const auto &sk = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                    const int idx = list.selectedIndex_;
+                    if (idx < static_cast<int>(sk.joints_.size())) {
+                        auto nameOpt = IREntity::getComponentOptional<C_JointName>(
+                            sk.joints_[static_cast<std::size_t>(idx)]
+                        );
+                        IRPrefab::Widget::setTextInputValue(
+                            g_jointRenameInput,
+                            (nameOpt.has_value() && !(*nameOpt)->name_.empty()) ? (*nameOpt)->name_
+                                                                                : ""
+                        );
+                    }
+                }
+            }
+
+            // Rename button → write C_JointName on the active joint.
+            if (g_jointRenameBtn != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_jointRenameBtn) &&
+                g_jointTool.rigRoot_ != IREntity::kNullEntity && g_jointTool.activeJointIdx_ >= 0) {
+                const auto &sk = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                const int idx = g_jointTool.activeJointIdx_;
+                if (idx < static_cast<int>(sk.joints_.size())) {
+                    const std::string &newName =
+                        IRPrefab::Widget::textInputValue(g_jointRenameInput);
+                    IREntity::setComponent(
+                        sk.joints_[static_cast<std::size_t>(idx)],
+                        C_JointName{newName}
+                    );
+                }
+            }
+
+            // Reparent button → rewrite CHILD_OF for the active joint.
+            if (g_jointReparentBtn != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_jointReparentBtn) &&
+                g_jointTool.rigRoot_ != IREntity::kNullEntity && g_jointTool.activeJointIdx_ >= 0) {
+                const auto &sk = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                const int idx = g_jointTool.activeJointIdx_;
+                const int count = static_cast<int>(sk.joints_.size());
+                if (idx < count) {
+                    int newParentIdx = -1;
+                    try {
+                        newParentIdx =
+                            std::stoi(IRPrefab::Widget::textInputValue(g_jointReparentInput));
+                    } catch (...) {
+                        newParentIdx = -1;
+                    }
+                    const IREntity::EntityId joint = sk.joints_[static_cast<std::size_t>(idx)];
+                    // Guard: can't parent to self or out-of-range bone.
+                    if (newParentIdx != idx && (newParentIdx < 0 || newParentIdx < count)) {
+                        const IREntity::EntityId newParentEntity =
+                            (newParentIdx < 0) ? g_jointTool.rigRoot_
+                                               : sk.joints_[static_cast<std::size_t>(newParentIdx)];
+                        IREntity::setParent(joint, newParentEntity);
+                        g_jointTool.parentIdx_[static_cast<std::size_t>(idx)] = newParentIdx;
+                        recomputeJointBindPose();
+                    }
+                }
+            }
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
@@ -1735,6 +1856,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
+         IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          scrubberSystem,
          layerSyncSystem,
@@ -1746,7 +1868,8 @@ void initSystems() {
          IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
          gizmoDragId,
-         jointBindSyncSystem}
+         jointBindSyncSystem,
+         jointTreeSyncSystem}
     );
 
     // GPU voxel-position prepass (#1396) + joint skin-matrix upload (#1603) +
@@ -1796,6 +1919,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
@@ -2821,8 +2945,9 @@ void initEntities() {
     // Bone selector panel (F-2.7 / #1608). kBoneSwatchCount swatches in a 2×4
     // grid; index 0 = identity (gray), indices 1..7 cycle through distinct hues.
     // Clicking a swatch sets g_bonePaint.activeBoneIdx_; N enables bone-paint mode.
-    // Third column alongside LAYERS/BAKE so the panel stays on-screen (y<450).
-    constexpr ivec2 kBonePanelPos{260, 240};
+    // Third column (x=256) atop the SKELETON panel — mirrors the LAYERS/BAKE
+    // stack in column two so both bone panels stay on-screen.
+    constexpr ivec2 kBonePanelPos{256, 240};
     constexpr ivec2 kBonePanelSize{120, 96};
     constexpr int kBoneSwatchSize = 20;
     constexpr int kBoneSwatchGap = 4;
@@ -2855,6 +2980,53 @@ void initEntities() {
             )
         );
     }
+
+    // Skeleton tree panel (F-2.6, #1607). Sits below the BONE selector in the
+    // third column (mirrors LAYERS→BAKE in column two), so the swatch grid and
+    // the joint tree coexist without overlapping.
+    // Shows the live joint list from C_Skeleton.joints_; clicking a row
+    // selects that joint as the active bone (for B-chaining). The rename
+    // row writes C_JointName; the reparent row rewrites the CHILD_OF
+    // relation and updates parentIdx_ + bindPose_.
+    constexpr ivec2 kSkeletonPanelPos{256, 342};
+    constexpr ivec2 kSkeletonPanelSize{120, 114};
+    IRVoxelEditor::g_skeletonPanel =
+        IRPrefab::Widget::makePanel(kSkeletonPanelPos, kSkeletonPanelSize, "SKELETON");
+    IREntity::setComponent(
+        IRVoxelEditor::g_skeletonPanel,
+        IRComponents::C_HitBox2DGui{kSkeletonPanelSize}
+    );
+    IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_skeletonPanel).zOrder_ = -1;
+
+    IRVoxelEditor::g_skeletonList = IRPrefab::Widget::makeList(
+        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 18),
+        ivec2(112, 52),
+        {},
+        -1,
+        13
+    );
+    IRVoxelEditor::g_jointRenameInput = IRPrefab::Widget::makeTextInput(
+        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 74),
+        ivec2(82, 14),
+        "",
+        24
+    );
+    IRVoxelEditor::g_jointRenameBtn = IRPrefab::Widget::makeButton(
+        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 74),
+        ivec2(26, 14),
+        "REN"
+    );
+    IRVoxelEditor::g_jointReparentInput = IRPrefab::Widget::makeTextInput(
+        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 92),
+        ivec2(82, 14),
+        "-1",
+        4
+    );
+    IRVoxelEditor::g_jointReparentBtn = IRPrefab::Widget::makeButton(
+        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 92),
+        ivec2(26, 14),
+        "PAR"
+    );
 
     // Ghost preview entity for drag-fill. Invisible until
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
