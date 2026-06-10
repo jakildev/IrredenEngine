@@ -241,4 +241,15 @@ TEST_F(CycleTest, BreakpointDuplicateIgnored) {
     }
 }
 
+TEST_F(CycleTest, BreakpointAtZeroFractionIgnored) {
+    // fraction == 0.0 maps to offset 0, which duplicates the implicit wrap
+    // boundary — addBreakpoint must reject it so segment 0 stays reachable.
+    auto id = IRSim::createCycle("zero", 100);
+    IRSim::cycleAddBreakpoint("zero", 0.0f);
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_EQ(c.numBreakpoints_, 0u);
+    }
+}
+
 } // namespace

@@ -15,7 +15,7 @@
 // system needed). For continuous time-driven values (sun angle, color temp),
 // read IRSim::cycleFraction(name) instead of waiting for the discrete boundary.
 //
-// Multi-breakpoint support: call addBreakpoint(fraction) (fraction in [0,1)) to
+// Multi-breakpoint support: call addBreakpoint(fraction) (fraction in (0,1)) to
 // divide each period into segments. With breakpoints at {0.25, 0.5, 0.75} the
 // period has four segments (0..3) and the boundary event fires on EVERY crossing,
 // not just the period wrap. Empty breakpoints = single period-wrap boundary (the
@@ -86,13 +86,15 @@ struct C_Cycle {
         return seg;
     }
 
-    // Add a breakpoint at a fraction of the period (fraction in [0, 1)).
+    // Add a breakpoint at a fraction of the period (fraction in (0, 1)).
     // The breakpoint is stored as an absolute tick offset within the period and
     // inserted in sorted order. Call before the cycle enters the pipeline — changing
     // breakpoints after priming leaves `lastSegmentIndex_` stale for one tick.
-    // Silently no-ops when: fraction is outside [0,1), periodTicks_ == 0, the
+    // Silently no-ops when: fraction is outside (0,1), periodTicks_ == 0, the
     // array is full (kMaxBreakpoints reached), or the fraction maps to a tick
-    // offset already present (duplicate).
+    // offset already present (duplicate). fraction == 0.0 is rejected because
+    // offset 0 duplicates the implicit wrap boundary — segment 0 would become
+    // unreachable (every withinTick is >= 0).
     void addBreakpoint(float fraction) {
         if (numBreakpoints_ >= kMaxBreakpoints || periodTicks_ == 0) {
             return;
@@ -102,6 +104,9 @@ struct C_Cycle {
         }
         const std::uint64_t offset =
             static_cast<std::uint64_t>(fraction * static_cast<float>(periodTicks_));
+        if (offset == 0) {
+            return;
+        }
         std::uint8_t i = numBreakpoints_;
         while (i > 0 && breakpoints_[i - 1] > offset) {
             breakpoints_[i] = breakpoints_[i - 1];
