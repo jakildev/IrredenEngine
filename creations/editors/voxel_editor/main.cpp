@@ -134,6 +134,21 @@ constexpr Color kPaletteColors[kPaletteCount] = {
     Color{240, 240, 240, 255},
 };
 
+// Per-bone display colors for the bone selector panel (F-2.7 / #1608).
+// Index 0 = identity / unrigged (neutral gray). Indices 1..7 cycle through
+// distinct hues so painted bone assignments read clearly against each other.
+constexpr int kBoneSwatchCount = 8;
+constexpr Color kBoneColors[kBoneSwatchCount] = {
+    Color{180, 180, 180, 255}, // identity/unrigged
+    Color{220, 80, 80, 255},
+    Color{80, 200, 80, 255},
+    Color{80, 120, 220, 255},
+    Color{220, 200, 60, 255},
+    Color{220, 120, 60, 255},
+    Color{200, 80, 220, 255},
+    Color{60, 200, 220, 255},
+};
+
 // Per-stroke undo record. One record per click; per-voxel drag-paint
 // is a follow-up — v1 commits one record per single-voxel place/erase
 // event. The "stroke" abstraction is still per-architect (D3) so a
@@ -194,6 +209,18 @@ struct EditorState {
 };
 
 EditorState g_editor;
+
+// Bone-paint mode state (F-2.7 / #1608). N toggles the mode; while active,
+// left-click writes activeBoneIdx_ to C_Voxel.bone_id_ and tints the voxel
+// with kBoneColors[activeBoneIdx_] so the assignment is immediately visible.
+// boneSwatches_ / bonePanel_ are created in initEntities once per session.
+struct BonePaintState {
+    bool active_ = false;
+    int activeBoneIdx_ = 0;
+    std::vector<IREntity::EntityId> boneSwatches_;
+    IREntity::EntityId bonePanel_ = IREntity::kNullEntity;
+};
+BonePaintState g_bonePaint;
 
 // Frame-based animation state (T-214, F-1.4). Each VoxelFrame snapshots
 // the editable target's voxel pool span; switchToFrame swaps the live
@@ -317,18 +344,22 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
 // the prior state to the in-flight stroke buffer. Skips the edit when
 // the target index is out of bounds for the set. `flat` is the linear
 // pool index so the per-voxel mutation reuses the precomputed offset.
+// `boneId` defaults to 0 (identity) for normal color-paint; pass the
+// active bone index when in bone-paint mode (#1608).
 void applyEdit(
     IREntity::EntityId voxelSetEntity,
     C_VoxelSetNew &set,
     ivec3 localIdx,
     std::size_t flat,
     bool place,
-    Color placeColor
+    Color placeColor,
+    std::uint8_t boneId = 0
 ) {
     UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat]};
     g_editor.pendingStroke_.edits_.push_back(edit);
     if (place) {
         set.voxels_[flat].color_ = placeColor;
+        set.voxels_[flat].bone_id_ = boneId;
         set.voxels_[flat].layer_id_ = g_layerManager.activeLayerId();
         // Keep hidden when placed onto a currently-hidden layer.
         if (g_layerManager.isVisible(set.voxels_[flat].layer_id_))
@@ -429,7 +460,8 @@ void applyFillAABB(
     ivec3 worldA,
     ivec3 worldB,
     bool place,
-    Color color
+    Color color,
+    std::uint8_t boneId = 0
 ) {
     const ivec3 lo{
         IRMath::min(worldA.x, worldB.x),
@@ -445,7 +477,7 @@ void applyFillAABB(
         ivec3 local{};
         std::size_t flat = 0;
         if (worldVoxelToLocal(set, gpos, {x, y, z}, local, flat))
-            applyEdit(entity, set, local, flat, place, color);
+            applyEdit(entity, set, local, flat, place, color, boneId);
     });
 }
 
@@ -457,7 +489,8 @@ void applyFillLine(
     ivec3 worldA,
     ivec3 worldB,
     bool place,
-    Color color
+    Color color,
+    std::uint8_t boneId = 0
 ) {
     const ivec3 delta = worldB - worldA;
     const int dx = IRMath::abs(delta.x);
@@ -487,7 +520,7 @@ void applyFillLine(
         ivec3 local{};
         std::size_t flat = 0;
         if (worldVoxelToLocal(set, gpos, pos, local, flat))
-            applyEdit(entity, set, local, flat, place, color);
+            applyEdit(entity, set, local, flat, place, color, boneId);
     }
 }
 
@@ -500,7 +533,8 @@ void applyFillFace(
     ivec3 worldHit,
     ivec3 faceNormal,
     bool place,
-    Color color
+    Color color,
+    std::uint8_t boneId = 0
 ) {
     int fixedAxis = -1;
     if (faceNormal.x != 0)
@@ -542,7 +576,7 @@ void applyFillFace(
         const int flat = IRMath::index3DtoIndex1D(cur, set.size_);
         if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
             continue;
-        applyEdit(entity, set, cur, static_cast<std::size_t>(flat), place, color);
+        applyEdit(entity, set, cur, static_cast<std::size_t>(flat), place, color, boneId);
         for (const auto &step : neighborSteps) {
             const ivec3 nb = cur + step;
             if (nb.x < 0 || nb.x >= set.size_.x || nb.y < 0 || nb.y >= set.size_.y || nb.z < 0 ||
@@ -783,7 +817,8 @@ struct JointToolState {
     IREntity::EntityId rigRoot_ = IREntity::kNullEntity;
     int activeJointIdx_ = -1;    // index into joints_ (-1 = rig root)
     std::vector<int> parentIdx_; // parallel to joints_; -1 = rig root
-    bool bindPoseRecaptured_ = false; // cleared each beginTick; prevents O(joints×archetypes) redundant recompute
+    bool bindPoseRecaptured_ =
+        false; // cleared each beginTick; prevents O(joints×archetypes) redundant recompute
 };
 JointToolState g_jointTool;
 
@@ -807,8 +842,10 @@ void recomputeJointBindPose() {
     if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
         return;
     auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
-    IR_ASSERT(g_jointTool.parentIdx_.size() == skeleton.joints_.size(),
-              "parentIdx_ / joints_ size mismatch");
+    IR_ASSERT(
+        g_jointTool.parentIdx_.size() == skeleton.joints_.size(),
+        "parentIdx_ / joints_ size mismatch"
+    );
     const std::size_t count = skeleton.joints_.size();
     skeleton.bindPose_.assign(count, IRMath::SQT{});
     for (std::size_t i = 0; i < count; ++i) {
@@ -898,12 +935,26 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  L: toggle loop mode (LOOP / PING-PONG)");
     IR_LOG_INFO("  F: toggle loft mode (paint XZ+YZ profiles)  Enter: stamp  C: clear masks");
     IR_LOG_INFO("  J: toggle joint authoring  B: add joint to chain  R: start new chain");
+    IR_LOG_INFO("  N: toggle bone-paint mode (click swatch in BONE panel to pick bone)");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
     initEntities();
     IREngine::gameLoop();
     return 0;
+}
+
+static void updateSwatchSelection(const std::vector<IREntity::EntityId> &swatches, int &activeIdx) {
+    const int n = static_cast<int>(swatches.size());
+    for (int i = 0; i < n; ++i) {
+        if (IRPrefab::Widget::wasClicked(swatches[i])) {
+            activeIdx = i;
+            break;
+        }
+    }
+    for (int i = 0; i < n; ++i) {
+        IRPrefab::Widget::setColorSwatchSelected(swatches[i], i == activeIdx);
+    }
 }
 
 void initSystems() {
@@ -1078,22 +1129,23 @@ void initSystems() {
         "EditorPaletteUpdate",
         [](const C_GuiElement &) {},
         []() {
-            // Resolve the swatch the user clicked this frame, if any.
-            const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
-            for (int i = 0; i < n; ++i) {
-                if (IRPrefab::Widget::wasClicked(IRVoxelEditor::g_editor.paletteSwatches_[i])) {
-                    IRVoxelEditor::g_editor.activeSwatchIdx_ = i;
-                    break;
-                }
-            }
-            // Always reconcile the selected-bit so the renderer reflects
-            // whatever the active index is now (cheap: 16 boolean writes).
-            for (int i = 0; i < n; ++i) {
-                IRPrefab::Widget::setColorSwatchSelected(
-                    IRVoxelEditor::g_editor.paletteSwatches_[i],
-                    i == IRVoxelEditor::g_editor.activeSwatchIdx_
-                );
-            }
+            updateSwatchSelection(
+                IRVoxelEditor::g_editor.paletteSwatches_,
+                IRVoxelEditor::g_editor.activeSwatchIdx_
+            );
+        }
+    );
+
+    // Bone-paint selector (F-2.7 / #1608). Clicking a swatch sets activeBoneIdx_
+    // and reconciles the selected-bit so the renderer highlights the active bone.
+    auto bonePaintUpdateSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorBonePaintUpdate",
+        [](const C_GuiElement &) {},
+        []() {
+            updateSwatchSelection(
+                IRVoxelEditor::g_bonePaint.boneSwatches_,
+                IRVoxelEditor::g_bonePaint.activeBoneIdx_
+            );
         }
     );
 
@@ -1114,9 +1166,16 @@ void initSystems() {
                 return;
 
             if (IRVoxelEditor::g_fillModeLabel != IREntity::kNullEntity) {
-                const bool shiftNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
-                const bool ctrlNow = IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
-                std::string status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
+                std::string status;
+                if (IRVoxelEditor::g_bonePaint.active_) {
+                    status = "BONE";
+                } else {
+                    const bool shiftNow =
+                        IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                    const bool ctrlNow =
+                        IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
+                    status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
+                }
                 const auto &sym = IRVoxelEditor::g_symmetry;
                 if (sym.enableX_ || sym.enableY_ || sym.enableZ_) {
                     status += " |";
@@ -1132,7 +1191,8 @@ void initSystems() {
 
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel);
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -1142,11 +1202,26 @@ void initSystems() {
                     }
                 }
             }
+            if (!overWidget) {
+                const int n = static_cast<int>(IRVoxelEditor::g_bonePaint.boneSwatches_.size());
+                for (int i = 0; i < n; ++i) {
+                    if (IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.boneSwatches_[i])) {
+                        overWidget = true;
+                        break;
+                    }
+                }
+            }
 
+            const bool inBoneMode = IRVoxelEditor::g_bonePaint.active_;
+            const std::uint8_t placeBoneId =
+                inBoneMode ? static_cast<std::uint8_t>(IRVoxelEditor::g_bonePaint.activeBoneIdx_)
+                           : std::uint8_t{0};
             const Color placeColor =
-                IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
+                inBoneMode
+                    ? IRVoxelEditor::kBoneColors[IRVoxelEditor::g_bonePaint.activeBoneIdx_]
+                    : IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
 
-            // Right-click: single-voxel erase (unchanged).
+            // Right-click: single-voxel erase (bone mode suppressed).
             if (!overWidget &&
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED)) {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
@@ -1178,7 +1253,8 @@ void initSystems() {
                         hit->voxelPos_ + hit->faceNormal_,
                         hit->faceNormal_,
                         true,
-                        placeColor
+                        placeColor,
+                        placeBoneId
                     );
                     IRVoxelEditor::commitStroke();
                 }
@@ -1239,7 +1315,15 @@ void initSystems() {
                     ivec3 local{};
                     std::size_t flat = 0;
                     if (IRVoxelEditor::worldVoxelToLocal(set, gpos, startPos, local, flat))
-                        IRVoxelEditor::applyEdit(targetEntity, set, local, flat, true, placeColor);
+                        IRVoxelEditor::applyEdit(
+                            targetEntity,
+                            set,
+                            local,
+                            flat,
+                            true,
+                            placeColor,
+                            placeBoneId
+                        );
                 } else if (shiftHeld) {
                     IRVoxelEditor::applyFillLine(
                         targetEntity,
@@ -1248,7 +1332,8 @@ void initSystems() {
                         startPos,
                         endPos,
                         true,
-                        placeColor
+                        placeColor,
+                        placeBoneId
                     );
                 } else {
                     IRVoxelEditor::applyFillAABB(
@@ -1258,7 +1343,8 @@ void initSystems() {
                         startPos,
                         endPos,
                         true,
-                        placeColor
+                        placeColor,
+                        placeBoneId
                     );
                 }
                 IRVoxelEditor::commitStroke();
@@ -1564,6 +1650,7 @@ void initSystems() {
          loftInputSystem,
          bakeSystem,
          paletteUpdateSystem,
+         bonePaintUpdateSystem,
          placeEraseSystem,
          IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
@@ -2071,6 +2158,23 @@ void initCommands() {
         }
     );
 
+    // N — toggle bone-paint mode (#1608). While on, left-click writes
+    // bone_id_ to the hit voxel and tints it with the selected bone's
+    // display color. The bone selector swatch panel drives activeBoneIdx_.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonN,
+        []() {
+            IRVoxelEditor::g_bonePaint.active_ = !IRVoxelEditor::g_bonePaint.active_;
+            IR_LOG_INFO(
+                "Bone paint mode: {}  (active bone: {})",
+                IRVoxelEditor::g_bonePaint.active_ ? "ON" : "OFF",
+                IRVoxelEditor::g_bonePaint.activeBoneIdx_
+            );
+        }
+    );
+
     // H: toggle active layer visibility. Iterates C_VoxelSetNew and updates
     // voxel alpha so hidden layers vanish from the viewport immediately.
     IRCommand::createCommand(
@@ -2450,6 +2554,44 @@ void initEntities() {
         ivec2(112, 12),
         "BAKE"
     );
+
+    // Bone selector panel (F-2.7 / #1608). kBoneSwatchCount swatches in a 2×4
+    // grid; index 0 = identity (gray), indices 1..7 cycle through distinct hues.
+    // Clicking a swatch sets g_bonePaint.activeBoneIdx_; N enables bone-paint mode.
+    // Third column alongside LAYERS/BAKE so the panel stays on-screen (y<450).
+    constexpr ivec2 kBonePanelPos{260, 240};
+    constexpr ivec2 kBonePanelSize{120, 96};
+    constexpr int kBoneSwatchSize = 20;
+    constexpr int kBoneSwatchGap = 4;
+    constexpr int kBoneSwatchOriginX = kBonePanelPos.x + 8;
+    constexpr int kBoneSwatchOriginY = kBonePanelPos.y + 36;
+    constexpr int kBoneGridCols = 4;
+
+    IRVoxelEditor::g_bonePaint.bonePanel_ =
+        IRPrefab::Widget::makePanel(kBonePanelPos, kBonePanelSize, "BONE");
+    IREntity::setComponent(
+        IRVoxelEditor::g_bonePaint.bonePanel_,
+        IRComponents::C_HitBox2DGui{kBonePanelSize}
+    );
+    IRPrefab::Widget::makeLabel(ivec2(kBonePanelPos.x + 8, kBonePanelPos.y + 22), "N:ON/OFF");
+
+    IRVoxelEditor::g_bonePaint.boneSwatches_.reserve(IRVoxelEditor::kBoneSwatchCount);
+    for (int i = 0; i < IRVoxelEditor::kBoneSwatchCount; ++i) {
+        const int row = i / kBoneGridCols;
+        const int col = i % kBoneGridCols;
+        const ivec2 pos(
+            kBoneSwatchOriginX + col * (kBoneSwatchSize + kBoneSwatchGap),
+            kBoneSwatchOriginY + row * (kBoneSwatchSize + kBoneSwatchGap)
+        );
+        IRVoxelEditor::g_bonePaint.boneSwatches_.push_back(
+            IRPrefab::Widget::makeColorSwatch(
+                pos,
+                ivec2(kBoneSwatchSize, kBoneSwatchSize),
+                IRVoxelEditor::kBoneColors[i],
+                i == 0
+            )
+        );
+    }
 
     // Ghost preview entity for drag-fill. Invisible until
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
