@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""fleet-validate-roles — lint the role-sharing contract.
+
+Checks that every ``docs/agents/*-protocol.md`` declaring
+``## Repo deltas this flow needs`` has a matching wrapper in each fleet-enabled
+repo root, and that every wrapper's ``## Deltas`` table answers all delta keys
+the protocol requires.
+
+    fleet-validate-roles                          # engine + game (if present)
+    fleet-validate-roles --repo-root /path/to/r  # explicit root(s)
+    fleet-validate-roles --json                   # machine-readable output
+    fleet-validate-roles --strict                 # warns become errors
+
+Exits 0 if no errors (warnings alone don't fail). With --strict, any warning
+also causes non-zero exit.
+
+Source of truth: scripts/fleet/fleet-validate-roles in the engine repo.
+Installed to ~/bin/fleet-validate-roles by scripts/fleet/install.sh.
+"""
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from fleet_validate_roles import validate_roles, DELTA_KEY_ALIASES  # noqa: E402
+
+SCRIPT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
+REPO_ROOT = SCRIPT_DIR.parent.parent
+
+DEFAULT_GAME_ROOT = REPO_ROOT / "creations" / "game"
+
+
+def _default_repo_roots():
+    roots = [(str(REPO_ROOT), "engine")]
+    if DEFAULT_GAME_ROOT.is_dir():
+        roots.append((str(DEFAULT_GAME_ROOT), "game"))
+    return roots
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Lint the role-sharing contract across fleet-enabled repos.")
+    parser.add_argument(
+        "--repo-root", action="append", metavar="PATH",
+        help="Repo root to check (repeatable). Default: engine + game if present. "
+             "First root is canonical (where docs/agents/ lives).")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="Machine-readable JSON output.")
+    parser.add_argument(
+        "--strict", action="store_true",
+        help="Treat warnings as errors.")
+    args = parser.parse_args()
+
+    if args.repo_root:
+        repo_roots = [(os.path.abspath(p), Path(p).name) for p in args.repo_root]
+    else:
+        repo_roots = _default_repo_roots()
+
+    result = validate_roles(repo_roots, aliases=DELTA_KEY_ALIASES)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        if result["empty"]:
+            return 0
+        if result["n_errors"] > 0:
+            return 1
+        if args.strict and result["n_warnings"] > 0:
+            return 1
+        return 0
+
+    print("fleet-validate-roles")
+    print()
+
+    if result["empty"]:
+        print("No *-protocol.md files declare `## Repo deltas this flow needs` — "
+              "nothing to validate.")
+        print()
+        print("This is expected on a tree where no protocol has opt-ed in yet.")
+        return 0
+
+    root_labels = [label for _, label in repo_roots if Path(_).is_dir()]
+
+    for proto in result["protocols"]:
+        keys_str = ", ".join("**%s**" % k for k in proto["keys"])
+        print("Protocol: %s  (%d key%s: %s)"
+              % (proto["name"], len(proto["keys"]),
+                 "" if len(proto["keys"]) == 1 else "s", keys_str))
+
+        for repo_info in proto["repos"]:
+            label = repo_info["label"]
+            if repo_info["no_wrapper"]:
+                for f in repo_info["findings"]:
+                    tag = "WARN" if f["severity"] == "warn" else "FAIL"
+                    print("  %-4s  [%s] %s" % (tag, label, f["msg"]))
+            else:
+                for wr in repo_info["wrappers"]:
+                    wp_name = Path(wr["path"]).name
+                    if wr["n_errors"] == 0 and wr["n_warnings"] == 0:
+                        print("  PASS  [%s] %s" % (label, wp_name))
+                    elif wr["n_errors"] > 0:
+                        print("  FAIL  [%s] %s" % (label, wp_name))
+                    else:
+                        print("  WARN  [%s] %s" % (label, wp_name))
+                    for f in wr["findings"]:
+                        tag = "WARN" if f["severity"] == "warn" else "ERR "
+                        print("          - [%s] %s" % (tag, f["msg"]))
+        print()
+
+    n_proto = len(result["protocols"])
+    n_err = result["n_errors"]
+    n_warn = result["n_warnings"]
+
+    blocking_warns = args.strict and n_warn > 0
+    if n_err == 0 and not blocking_warns:
+        msg = "OK: %d protocol%s checked across %d repo%s." % (
+            n_proto, "" if n_proto == 1 else "s",
+            len(root_labels), "" if len(root_labels) == 1 else "s")
+        if n_warn:
+            msg += " (%d warning%s — review above.)" % (
+                n_warn, "" if n_warn == 1 else "s")
+        print(msg)
+        return 0
+
+    print("FAILED: %d error%s, %d warning%s across %d protocol%s." % (
+        n_err, "" if n_err == 1 else "s",
+        n_warn, "" if n_warn == 1 else "s",
+        n_proto, "" if n_proto == 1 else "s"))
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
