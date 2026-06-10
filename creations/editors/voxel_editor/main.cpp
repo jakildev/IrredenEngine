@@ -1221,7 +1221,7 @@ void initSystems() {
                     ? IRVoxelEditor::kBoneColors[IRVoxelEditor::g_bonePaint.activeBoneIdx_]
                     : IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
 
-            // Right-click: single-voxel erase (bone mode suppressed).
+            // Right-click: single-voxel erase (bone_id_ unaffected — erase only).
             if (!overWidget &&
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED)) {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
