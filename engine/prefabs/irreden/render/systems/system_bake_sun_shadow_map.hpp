@@ -288,8 +288,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // indirection and reads empty in a second in-tick bake dispatch (the
         // rejected first mechanism; backend gap tracked in #1640). Requires a
         // voxel main canvas (the frame restore below re-authors its UBO state).
-        if (!worldPlacedCasters_.empty() && mainTextures_ != nullptr && mainPool_ != nullptr &&
-            mainRotation_ != nullptr) {
+        if (entity == perAxisCanvasEntity_ && !worldPlacedCasters_.empty() &&
+            mainTextures_ != nullptr && mainPool_ != nullptr && mainRotation_ != nullptr) {
             ensureWorldPlacedResolve(canvasTextures.size_);
 
             // Author the MAIN frame fresh so the scatter's output projection
