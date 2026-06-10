@@ -599,6 +599,18 @@ struct C_VoxelPool {
             indices.size(),
             m_voxelTransformIndices.size()
         );
+        // Caller guarantees every index satisfies kVoxelTransformStatic || < kMaxGpuVoxelTransforms.
+        // The loop assert below enforces the same invariant as setTransformIndexForRange in debug builds.
+        for (std::size_t i = 0; i < indices.size(); ++i) {
+            IR_ASSERT(
+                indices[i] == IRRender::kVoxelTransformStatic ||
+                    indices[i] < static_cast<std::uint32_t>(IRRender::kMaxGpuVoxelTransforms),
+                "setTransformIndicesForRange: indices[{}]={} out of range (kMaxGpuVoxelTransforms={})",
+                i,
+                indices[i],
+                IRRender::kMaxGpuVoxelTransforms
+            );
+        }
         std::copy(indices.begin(), indices.end(), m_voxelTransformIndices.begin() + startIdx);
         if (m_pendingTransformIndexRanges.size() < kMaxPendingPositionRanges) {
             m_pendingTransformIndexRanges.emplace_back(startIdx, indices.size());
