@@ -222,14 +222,32 @@ Each phase is its own PR, stacks on the previous, and is independently verifiabl
    cast-shadow-on-a-detached-solid is awkward to frame in `canvas_stress` because its
    sun direction ≈ the iso camera direction, so cast shadows fall away from the camera;
    the end-to-end visual lands naturally with P4b-3 on the #1587 shadow floor.
-3. **P4b-3 — cast (Q2a′, revised — see the Q2 REVISED decision above).** Resolve opt-in
-   detached canvases' distances (model frame + `worldCellOffset`) into a main-canvas-layout
-   screen-space depth source, then bake that through the proven main-bake path (the faithful
-   mirror of the per-axis resolve-bake precedent). GL + Metal. Opt-in solids now cast onto
-   the floor + world. **Natural visual verification target: the #1587 shadow floor** — an
-   opt-in detached solid dropping a shadow on it is the end-to-end proof; that visible
-   shadow on both backends IS the definition of done (task pointer:
+3. **P4b-3 — cast (Q2a′, revised — see the Q2 REVISED decision above). ✅ Implemented.**
+   Resolve opt-in detached canvases' distances (model frame + `worldCellOffset`) into a
+   main-canvas-layout screen-space depth source, then bake that through the proven main-bake
+   path (the faithful mirror of the per-axis resolve-bake precedent). GL + Metal. Opt-in
+   solids now cast onto the floor + world. **Natural visual verification target: the #1587
+   shadow floor** — an opt-in detached solid dropping a shadow on it is the end-to-end proof;
+   that visible shadow on both backends IS the definition of done (task pointer:
    `.fleet/plans/issue-1596.md`, resume on PR #1626).
+   *Landed as (PR #1626):* `BAKE_SUN_SHADOW_MAP` gathers opt-in casters in `beginTick` (off
+   `C_EntityCanvas`, world cell origin from the propagated `C_CanvasLocalRotation`) and, in
+   the main canvas's tick, scatters every caster's model-frame distances into ONE shared
+   main-canvas-layout scratch SSBO (`c_resolve_world_placed_depth.{glsl,metal}`, per-caster
+   dispatch + atomicMin, only the 16-byte `detachedWorldReceive_` lift patched per caster),
+   blits to a bake-owned R32I resolve texture (reusing the per-axis blit kernel), then runs
+   ONE extra bake dispatch through the unchanged cardinal recovery. The resolve texture is
+   imageStore-written (real texture memory), which is exactly why the bake's read works on
+   Metal where the rejected foreign-texture read (image-atomic-scratch-resident) returned
+   empty (backend gap tracked as #1640). Reuse check: P4b-1's depth composite
+   (`ENTITY_CANVAS_TO_FRAMEBUFFER`) writes framebuffer `gl_FragDepth` AFTER the bake stage,
+   so no main-layout detached depth texture exists at BAKE time — the dedicated resolve is
+   required. Cast keys on the cardinal raster (like the main bake); the cast and the P4b-2
+   receive recover the same world position by construction. Proof scene: a grounded
+   world-placed re-voxelize cube in line with the GRID spin-cube row in `canvas_stress`
+   (the z=±42 column solids sit ~84 sun-Z voxels from the floor, past the
+   `kMaxShadowDepthRange = 24` receive cutoff, so they can never demonstrate cast — the
+   #1591 lesson applied to detached casters).
 
 Each PR carries its own render-verify references (GL + Metal). Default-path
 (screen-locked) references must stay byte-identical through all three phases —

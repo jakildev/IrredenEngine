@@ -83,9 +83,9 @@
 // worldPlaced_ = true, P4b-1/#1592 + P4b-2/#1617) so they depth-sort against
 // the SDF floor and receive world sun-shadow + light-volume at their world pos.
 // Run with --screen-lock-revox to revert to screen-locked overlays (the
-// detached-canvas canary path). Only GRID-mode cubes cast world shadows; the
-// detached orbit ring and canary cubes cast none by design (#1582 Option B).
-// Cast for world-placed detached solids is P4b-3 (#1596, still pending).
+// detached-canvas canary path). GRID-mode cubes and world-placed re-voxelize
+// solids cast world shadows (P4b-3 / #1596); the detached orbit ring and
+// canary cubes cast none by design (#1582 Option B).
 // See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
@@ -170,6 +170,10 @@ constexpr ivec3 kReVoxSolidSize{12, 12, 12}; // base box; the L is carved from i
 // stacks them vertically) where they read large and unobstructed at zoom ~1.
 constexpr vec3 kReVoxAsymWorld{0.0f, 0.0f, 42.0f};
 constexpr vec3 kReVoxCubeWorld{0.0f, 0.0f, -42.0f};
+// Grounded cast-proof solid (#1576 P4b-3): in line with the GRID spin-cube row
+// (y≈28, z=-6 → bottoms at z=0, floor 4 below) and offset +x past its end, so
+// its world sun shadow falls onto the open #1587 floor beside the GRID cubes'.
+constexpr vec3 kReVoxGroundedWorld{40.0f, 24.0f, -6.0f};
 // ~0.5° / frame — full revolution in ~720 frames; slow enough to read as a
 // smooth true-3D tumble, not a strobe.
 constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
@@ -204,11 +208,12 @@ constexpr float kSunAmbient = 0.30f;
 // sized to the cluster — NOT out to the orbit radius (200) — so it doesn't
 // intersect the orbit shapes or the z=+-42 re-voxelize column.
 //
-// The DETACHED casters (orbit ring + re-voxelize solids) intentionally cast NO
-// world shadow: detached canvases composite as screen-locked overlays at fixed
-// depth and never write world trixelDistances (#1582 resolved Option B; world
-// sun-shadow for detached solids is the separate P4b track, #1576). So this
-// stage showcases GRID cast shadows only, by design.
+// Screen-locked DETACHED casters (orbit ring, canary cubes) intentionally cast
+// NO world shadow: they composite as overlays at fixed depth and never write
+// world trixelDistances (#1582 resolved Option B). WORLD-PLACED re-voxelize
+// solids DO cast (P4b-3 / #1596): the bake resolves their model-frame depth to
+// the world frame, so the grounded proof solid drops a shadow here beside the
+// GRID cubes'.
 constexpr float kFloorZ = 4.0f;      // a few u below the spin-cube bottoms (z=0)
 constexpr float kFloorSpan = 120.0f; // covers the cluster + grid, short of orbit
 constexpr float kFloorThickness = 4.0f;
@@ -736,10 +741,11 @@ void initEntities() {
         IRRender::setAOEnabled(true);
 
         // Shadow floor (SDF box) just below the center GRID spin cluster.
-        // Receives sun shadow + AO. The GRID-mode spin cubes cast onto it; the
-        // DETACHED entities (re-voxelize solids, forward-scatter cubes, orbit
-        // ring) do NOT — they composite as screen-locked overlays after the
-        // shadow bake and never write world depth (#1582 Option B / P4b #1576).
+        // Receives sun shadow + AO. The GRID-mode spin cubes and the grounded
+        // WORLD-PLACED re-voxelize solid cast onto it (P4b-3 / #1596);
+        // screen-locked DETACHED entities (orbit ring, canary cubes) do NOT —
+        // they composite as overlays after the shadow bake and never write
+        // world depth (#1582 Option B).
         if (!g_settings.soloRevox_) {
             const EntityId floor = IREntity::createEntity(
                 C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
@@ -896,6 +902,26 @@ void initEntities() {
         IR_LOG_INFO("canvas_stress: --solo-revox — single rotated DETACHED_REVOXELIZE L-prism");
         return;
     }
+
+    // Grounded world-placed CAST proof (#1576 P4b-3): a third re-voxelize cube
+    // in line with the GRID spin-cube row — same 12³ size, same z (bottoms at
+    // z=0, floor 4 below) — so its sun shadow lands on the #1587 floor right
+    // beside the GRID cubes' shadows, a direct GRID-vs-re-voxelize cast
+    // comparison. The z=±42 column solids above sit ~84 sun-Z voxels from the
+    // floor, past the kMaxShadowDepthRange=24 receive cutoff, so they can never
+    // demonstrate cast (the #1591 lesson); this one mirrors the proven GRID
+    // caster→floor geometry instead. Follows --screen-lock-revox like the rest.
+    spawnDetachedReVoxelizeSolid(
+        2,
+        kReVoxGroundedWorld,
+        IRMath::quatAxisAngle(IRMath::normalize(vec3(0.5f, 1.0f, 0.2f)), IRMath::kPi / 4.2f),
+        vec3(0.7f, 0.3f, 1.0f),
+        reVoxSpin,
+        Color{210, 120, 255, 255},
+        /*carveAsymmetric=*/false,
+        /*multiColor=*/false,
+        /*worldPlaced=*/g_settings.worldPlaceReVox_
+    );
 
     // Orbit ring: a wider second ring of varied silhouettes that tumbles around
     // the center cluster. Cycles shape kind, rotation mode (GRID / DETACHED /

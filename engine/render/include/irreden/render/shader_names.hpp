@@ -38,6 +38,13 @@ const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
 const char *const kFileCompResolvePerAxisScreenDepth =
     "shaders/c_resolve_per_axis_screen_depth.glsl";
 const char *const kFileCompResolvePerAxisBlit = "shaders/c_resolve_per_axis_blit.glsl";
+// World-placed detached re-voxelize sun-shadow cast (#1576 P4b-3): scatter
+// pass re-projecting an opt-in detached canvas's model-frame distances into
+// the same screen-space scratch layout as the per-axis resolve; reuses
+// kFileCompResolvePerAxisBlit for the scratch→texture blit. Metal mirror in
+// metal/c_resolve_world_placed_depth.metal.
+const char *const kFileCompResolveWorldPlacedDepth =
+    "shaders/c_resolve_world_placed_depth.glsl";
 const char *const kFileCompClearSunShadowMap = "shaders/c_clear_sun_shadow_map.glsl";
 const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.glsl";
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
