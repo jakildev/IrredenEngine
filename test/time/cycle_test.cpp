@@ -76,7 +76,7 @@ TEST_F(CycleTest, FractionProgressesAndWraps) {
     EXPECT_EQ(IRSim::cycleNumber("day"), 0u);
     EXPECT_EQ(IRSim::cycleTickWithin("day"), 25u);
 
-    advance(75); // now at sim tick 100
+    advance(75);                                           // now at sim tick 100
     EXPECT_NEAR(IRSim::cycleFraction("day"), 0.0f, 1e-5f); // wraps
     EXPECT_EQ(IRSim::cycleNumber("day"), 1u);
     EXPECT_EQ(IRSim::cycleTickWithin("day"), 0u);
@@ -217,6 +217,28 @@ TEST_F(CycleTest, CycleSegmentQueryMatchesComponent) {
 
     advance(1); // tick 100: wrap
     EXPECT_EQ(IRSim::cycleSegment("phase"), 0u);
+}
+
+TEST_F(CycleTest, BreakpointDuplicateIgnored) {
+    // Adding the same breakpoint fraction twice must insert only one entry.
+    auto id = IRSim::createCycle("dup", 100);
+    IRSim::cycleAddBreakpoint("dup", 0.5f); // offset 50
+    IRSim::cycleAddBreakpoint("dup", 0.5f); // duplicate — no-op
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_EQ(c.numBreakpoints_, 1u);
+        EXPECT_EQ(c.breakpoints_[0], 50u);
+    }
+    // Behavioral: exactly one boundary fires at tick 50 (segment 0 → 1).
+    m_system_manager.executePipeline(IRTime::Events::UPDATE); // prime, tick 1
+    advance(49);                                              // tick 50: segment crossing
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_TRUE(c.boundaryCrossed_);
+        EXPECT_EQ(c.segmentIndex_, 1u);
+        EXPECT_EQ(c.fromSegment_, 0u);
+        EXPECT_EQ(c.toSegment_, 1u);
+    }
 }
 
 } // namespace

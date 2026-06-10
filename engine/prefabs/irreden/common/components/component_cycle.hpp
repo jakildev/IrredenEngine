@@ -43,8 +43,8 @@ struct C_Cycle {
     static constexpr std::uint8_t kMaxBreakpoints = 7;
 
     std::string name_;
-    std::uint64_t periodTicks_ = 1;   // length of one cycle in sim ticks (>= 1)
-    std::uint64_t phaseOffset_ = 0;   // shifts where the cycle boundary lands
+    std::uint64_t periodTicks_ = 1; // length of one cycle in sim ticks (>= 1)
+    std::uint64_t phaseOffset_ = 0; // shifts where the cycle boundary lands
 
     // Intra-period breakpoints: sorted tick offsets in [0, periodTicks_).
     // Empty = single period-wrap boundary only.
@@ -90,8 +90,9 @@ struct C_Cycle {
     // The breakpoint is stored as an absolute tick offset within the period and
     // inserted in sorted order. Call before the cycle enters the pipeline — changing
     // breakpoints after priming leaves `lastSegmentIndex_` stale for one tick.
-    // Silently no-ops when: fraction is outside [0,1), periodTicks_ == 0, or the
-    // array is full (kMaxBreakpoints reached).
+    // Silently no-ops when: fraction is outside [0,1), periodTicks_ == 0, the
+    // array is full (kMaxBreakpoints reached), or the fraction maps to a tick
+    // offset already present (duplicate).
     void addBreakpoint(float fraction) {
         if (numBreakpoints_ >= kMaxBreakpoints || periodTicks_ == 0) {
             return;
@@ -105,6 +106,9 @@ struct C_Cycle {
         while (i > 0 && breakpoints_[i - 1] > offset) {
             breakpoints_[i] = breakpoints_[i - 1];
             --i;
+        }
+        if (i > 0 && breakpoints_[i - 1] == offset) {
+            return;
         }
         breakpoints_[i] = offset;
         ++numBreakpoints_;
