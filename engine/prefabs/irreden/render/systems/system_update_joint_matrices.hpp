@@ -210,8 +210,22 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
             }
         );
 
-        // Sort by joint id so tick can binary-search (one O(N log N) pass here
-        // beats a per-joint hash map's per-frame node churn).
+        // Sort by joint entity id so tick can binary-search (O(N log N) once per
+        // frame, O(log N) per joint in tick). Chosen over an unordered_map because
+        // clear() keeps the vector's capacity, so the rebuild allocates nothing
+        // after warmup; a map would churn one heap node per joint per frame.
+        //
+        // Scalability: for large rigs (hundreds of joints across many skeletons)
+        // the sort cost is proportional to total joint count and the binary search
+        // is O(log N_total). If this becomes a bottleneck, the sort + search can be
+        // eliminated by adding (skeletonEntity_, boneIndex_) to C_Joint — tick
+        // would then compute the slot directly (skeletonBlocks_[skeletonEntity_].base_
+        // + boneIndex_) in O(1) per joint with a single unordered_map lookup.
+        //
+        // Hierarchy (topological) ordering: processing joints in parent-before-child
+        // order is not required here because PROPAGATE_TRANSFORM has already composed
+        // each joint's C_WorldTransform before this system runs. Sorting by entity id
+        // is a data-layout choice only, not a correctness constraint.
         std::sort(
             jointTargets_.begin(),
             jointTargets_.end(),
@@ -230,6 +244,8 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
     }
 
     void tick(IREntity::EntityId joint, C_Joint &, const C_WorldTransform &world) {
+        // O(log N_total) lookup into the sorted jointTargets_ built each beginTick.
+        // See the sort comment above for the trade-off analysis and the upgrade path.
         const auto target = std::lower_bound(
             jointTargets_.begin(),
             jointTargets_.end(),
