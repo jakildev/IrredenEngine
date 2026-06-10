@@ -33,7 +33,7 @@ struct FrameDataIsoTriangles {
     int distanceOffset;
     int2 perAxisBase;
     float visualYaw;
-    int _scatterPad;
+    int scatterDebugMode; // raw DebugOverlayMode; 4/5 = composite instrumentation (#1457)
     int4 visibleFaceIds;
     // P3b detached fields (unused on the camera path) — declared only to reach
     // scatterFbResolution at the shared std140 offset 176 (#1494).
@@ -53,7 +53,17 @@ struct FrameDataIsoTriangles {
 struct VertexOut {
     float4 position [[position]];
     float4 color [[flat]];
-    float depth [[flat]];
+    // Per-fragment PLANAR composite depth + margin classification (#1457) —
+    // mirror of v_/f_peraxis_scatter.glsl. depth is the face plane's exact
+    // depth linearly interpolated (no-perspective, w==1) from per-corner
+    // planar keys; quadParam spans the exact footprint on [0,1]^2 with
+    // dilated corners landing outside, so the fragment stage can make
+    // conservative-dilation margins yield by marginBias instead of letting
+    // draw order decide same-plane overlaps (the #1457 wrong-voxel-color
+    // bands).
+    float depth [[center_no_perspective]];
+    float2 quadParam [[center_no_perspective]];
+    float marginBias [[flat]];
     // Face-center iso-depth for depth-color (#1697). Flat (constant across the
     // quad) — origin is the same for all 4 corners of a face instance so
     // interpolation is a no-op; flat avoids rasterization divergence.
@@ -61,6 +71,27 @@ struct VertexOut {
     int depthColorMode [[flat]];
     float depthColorExtent [[flat]];
 };
+
+// Composite-instrumentation overlay modes (#1457) — raw DebugOverlayMode
+// values (ir_render_enums.hpp). Both modes recolor the scattered quad and
+// leave depth untouched, so the per-pixel depth-test winner is exactly the
+// real composite's winner. Mirror of v_peraxis_scatter.glsl.
+constant int kOverlayPerAxisId = 4;     // winner identity: X=red, Y=green, Z=blue
+constant int kOverlayPerAxisOrigin = 5; // recovered-origin field: hue wheel of rawDepth
+
+// Long-period hue wheel for the recovered-origin overlay — mirror of
+// v_peraxis_scatter.glsl. 96 ≈ 12 voxels per revolution at density 8, so a
+// clean face reads as a smooth hue progression and a wrong-cell winner as a
+// hue discontinuity (no power-of-two aliasing against the micro lattice).
+constant float kOriginHuePeriod = 96.0;
+static inline float3 hueWheel(float t) {
+    t = fract(t);
+    return clamp(
+        float3(abs(t * 6.0 - 3.0) - 1.0, 2.0 - abs(t * 6.0 - 2.0), 2.0 - abs(t * 6.0 - 4.0)),
+        0.0,
+        1.0
+    );
+}
 
 struct FragmentOut {
     float4 color [[color(0)]];
@@ -99,6 +130,8 @@ vertex VertexOut v_peraxis_scatter(
         out.isoDepth = 0.0;
         out.depthColorMode = 0;
         out.depthColorExtent = 0.0;
+        out.quadParam = float2(0.5);
+        out.marginBias = 0.0;
         return out;
     }
 
@@ -139,27 +172,59 @@ vertex VertexOut v_peraxis_scatter(
     float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    clipCorner.xy += scatterConservativeDilation(su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx);
+    const float2 dilNdc = scatterConservativeDilation(
+        su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
+    );
+    clipCorner.xy += dilNdc;
     clipCorner.y = -clipCorner.y;
     out.position = clipCorner;
 
     out.color = color;
-    // Face-center depth (= origin; constant across the quad). See GLSL comment.
+    // Face-center iso-depth for depth-color (#1697). Flat (constant across the
+    // quad) — origin is the same for all 4 corners of a face instance so
+    // interpolation is a no-op; flat avoids rasterization divergence.
     out.isoDepth = origin.x + origin.y + origin.z;
     out.depthColorMode = frameData.depthColorMode;
     out.depthColorExtent = frameData.depthColorExtent;
-    // Yaw-consistent composite depth (#1370) — mirror of v_peraxis_scatter.glsl.
-    // `rawDepth` is the origin-recovery key (unchanged); re-derive the composite
-    // depth from the recovered origin rotated by R_z(-visualYaw) so it matches
-    // the YAWED screen projection and co-sorts with the SDF. Keeps the *4 + slot
-    // encoding. Per-axis is residual-only -> cardinal fast path byte-identical.
-    const float yc = cos(frameData.visualYaw);
-    const float ys = sin(frameData.visualYaw);
-    const float dvx = origin.x * yc + origin.y * ys;
-    const float dvy = -origin.x * ys + origin.y * yc;
-    const int yawedDist = roundHalfUp(dvx + dvy + origin.z) * 4 + slot;
-    out.depth = float(yawedDist + frameData.distanceOffset - globals.kMinTriangleDistance) /
-                float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
+    if (frameData.scatterDebugMode == kOverlayPerAxisId) {
+        out.color = float4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
+    } else if (frameData.scatterDebugMode == kOverlayPerAxisOrigin) {
+        // Cell-parity brightness modulation — mirror of v_peraxis_scatter.glsl.
+        const float cellParity = float((ij.x + ij.y) & 1u) * 0.45f + 0.55f;
+        out.color = float4(hueWheel(float(rawDepth) / kOriginHuePeriod) * cellParity, 1.0);
+    }
+
+    // Express the dilation offset in the face's in-plane (su, sv) basis so the
+    // dilated corner's quad-param coords and its planar depth stay EXACT
+    // (#1457) — mirror of v_peraxis_scatter.glsl. Degenerate basis (edge-on
+    // face) -> treat the corner as exact; such a sliver's pixels are covered
+    // by the other two visible faces.
+    const float2 dilPx = dilNdc * pxPerNdc;
+    const float det = su.x * sv.y - su.y * sv.x;
+    float2 dilParam = float2(0.0);
+    if (abs(det) > 1e-6f) {
+        dilParam =
+            float2(dilPx.x * sv.y - dilPx.y * sv.x, su.x * dilPx.y - su.y * dilPx.x) / det;
+    }
+    out.quadParam = cornerSel + dilParam;
+
+    // Yaw-consistent composite depth (#1370), per-fragment PLANAR + exact
+    // (#1457) — mirror of v_peraxis_scatter.glsl (see that file for the full
+    // rationale). `rawDepth` stays the origin-recovery key; each corner emits
+    // the continuous yawed depth of its own (dilated) corner point via the
+    // shared scatterCompositeDepthKey helper (ir_iso_common.metal), so linear
+    // interpolation reproduces the face plane's affine depth field per
+    // fragment. Per-axis is residual-only -> cardinal fast path
+    // byte-identical.
+    const float kU = scatterCompositeDepthKey(eu, frameData.visualYaw, 0);
+    const float kV = scatterCompositeDepthKey(ev, frameData.visualYaw, 0);
+    const float cornerKey = scatterCompositeDepthKey(worldCorner, frameData.visualYaw, slot) +
+                            dilParam.x * kU + dilParam.y * kV;
+    const float depthRange =
+        float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
+    out.depth =
+        (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
+    out.marginBias = kScatterMarginDepthBiasKey / depthRange;
     return out;
 }
 
@@ -184,6 +249,10 @@ fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     } else {
         out.color = in.color;
     }
-    out.depth = in.depth;
+    // Margin-yield (#1457): fragments outside the exact [0,1]^2 footprint are
+    // conservative-dilation margin and only fill pixels no exact footprint
+    // claims — mirror of f_peraxis_scatter.glsl.
+    const bool inMargin = any(in.quadParam < float2(0.0)) || any(in.quadParam > float2(1.0));
+    out.depth = in.depth + (inMargin ? in.marginBias : 0.0f);
     return out;
 }

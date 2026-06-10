@@ -367,12 +367,14 @@ vec3 getSkyColor();
 /// @}
 
 /// @{
-/// @name Lighting debug overlay
-/// Replaces the artistic composite in @c LIGHTING_TO_TRIXEL with a false-
-/// color visualization of the underlying lighting buffers. See
-/// @c DebugOverlayMode for the per-mode color encoding. Upstream lighting
-/// passes (@c COMPUTE_VOXEL_AO, @c COMPUTE_SUN_SHADOW) keep running so the
-/// values rendered are exactly what the artistic path would consume.
+/// @name Rendering debug overlay
+/// Replaces a pass's color output with a false-color visualization. Lighting
+/// modes (AO / LIGHT_LEVEL / SHADOW) swap the artistic composite in
+/// @c LIGHTING_TO_TRIXEL; the per-axis modes (PER_AXIS_ID / PER_AXIS_ORIGIN)
+/// recolor the per-axis forward-scatter composite (#1457) and are inert at
+/// cardinal yaw. See @c DebugOverlayMode for the per-mode color encoding.
+/// Upstream passes keep running so the values rendered are exactly what the
+/// normal path would consume.
 void setDebugOverlay(DebugOverlayMode mode);
 DebugOverlayMode getDebugOverlay();
 /// @}

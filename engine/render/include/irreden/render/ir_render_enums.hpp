@@ -87,22 +87,49 @@ enum class PolygonMode : std::uint8_t { FILL, LINE, POINT };
 /// Primitive topology for a draw call.
 enum class DrawMode : std::uint8_t { TRIANGLES, LINES };
 
-/// False-color visualization of lighting buffers, applied during the
-/// @c LIGHTING_TO_TRIXEL pass. When set to anything other than @c NONE the
-/// final composite color is replaced by the selected debug visualization;
-/// upstream lighting passes (AO, sun shadow) still run unchanged so the
-/// values being visualized are exactly what the artistic path consumes.
-/// - @c NONE        — no overlay; normal artistic lighting/composite.
-/// - @c AO          — ambient-occlusion factor as red→green
-///                    (red = fully occluded, green = fully unoccluded).
-/// - @c LIGHT_LEVEL — combined AO × sun-shadow scalar painted as
-///                    blue→white (blue = dark, white = bright).
-/// - @c SHADOW      — directional sun-shadow occupancy (black = lit,
-///                    magenta = shadowed).
-enum class DebugOverlayMode : std::uint8_t { NONE = 0, AO = 1, LIGHT_LEVEL = 2, SHADOW = 3 };
+/// False-color visualization of lighting / composite buffers. Modes 1–3 are
+/// applied during the @c LIGHTING_TO_TRIXEL pass; modes 4–5 are applied by the
+/// per-axis forward-scatter composite (v_/f_peraxis_scatter) and are inert at
+/// cardinal yaw (the scatter only runs at a non-cardinal residual). When set to
+/// anything other than @c NONE the affected pass replaces its color output with
+/// the selected debug visualization; upstream passes still run unchanged so the
+/// values being visualized are exactly what the normal path consumes.
+/// - @c NONE            — no overlay; normal artistic lighting/composite.
+/// - @c AO              — ambient-occlusion factor as red→green
+///                        (red = fully occluded, green = fully unoccluded).
+/// - @c LIGHT_LEVEL     — combined AO × sun-shadow scalar painted as
+///                        blue→white (blue = dark, white = bright).
+/// - @c SHADOW          — directional sun-shadow occupancy (black = lit,
+///                        magenta = shadowed).
+/// - @c PER_AXIS_ID     — per-axis scatter winner identity: each framebuffer
+///                        pixel colored by WHICH axis canvas won the composite
+///                        depth test (X = red, Y = green, Z = blue). Depth is
+///                        untouched, so the winner is exactly the real
+///                        composite's winner (#1457 instrumentation).
+/// - @c PER_AXIS_ORIGIN — per-axis scatter recovered-origin field: scattered
+///                        face color encodes the recovered un-yawed depth key
+///                        (@c rawDepth = x+y+z from @c faceOriginFromInPlane)
+///                        on a long-period hue wheel, so a clean face reads as
+///                        a smooth hue progression and a wrong-cell winner as
+///                        a hue discontinuity (#1457 instrumentation).
+/// - @c UNLIT           — disable the lighting modulation entirely
+///                        (@c LIGHTING_TO_TRIXEL passes canvas colors through
+///                        unchanged), exposing the raw rasterized colors on
+///                        every path. Isolates color-content faults from
+///                        lighting faults (#1457 instrumentation).
+enum class DebugOverlayMode : std::uint8_t {
+    NONE = 0,
+    AO = 1,
+    LIGHT_LEVEL = 2,
+    SHADOW = 3,
+    PER_AXIS_ID = 4,
+    PER_AXIS_ORIGIN = 5,
+    UNLIT = 6
+};
 
 /// Parse a string to @c DebugOverlayMode. Accepts "none", "ao",
-/// "light_level", "shadow". Returns @c NONE for unrecognized input.
+/// "light_level", "shadow", "peraxis_id", "peraxis_origin", "unlit".
+/// Returns @c NONE for unrecognized input.
 inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
     if (std::strcmp(s, "ao") == 0)
         return DebugOverlayMode::AO;
@@ -110,6 +137,12 @@ inline DebugOverlayMode debugOverlayModeFromString(const char *s) {
         return DebugOverlayMode::LIGHT_LEVEL;
     if (std::strcmp(s, "shadow") == 0)
         return DebugOverlayMode::SHADOW;
+    if (std::strcmp(s, "peraxis_id") == 0)
+        return DebugOverlayMode::PER_AXIS_ID;
+    if (std::strcmp(s, "peraxis_origin") == 0)
+        return DebugOverlayMode::PER_AXIS_ORIGIN;
+    if (std::strcmp(s, "unlit") == 0)
+        return DebugOverlayMode::UNLIT;
     return DebugOverlayMode::NONE; // covers "none" and unrecognized input
 }
 

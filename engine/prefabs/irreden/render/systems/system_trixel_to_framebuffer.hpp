@@ -246,6 +246,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.depthColorMode_ =
             IRRender::getDepthColorDebugMode() ? 1 : 0;
         frameData.frameData_.depthColorExtent_ = IRRender::getDepthColorDebugExtent();
+        // Composite instrumentation (#1457): the scatter shaders false-color by
+        // winning axis canvas / recovered origin when the matching overlay mode
+        // is active. Depth is untouched, so the visualized winner per pixel is
+        // exactly the real composite's winner.
+        frameData.frameData_.scatterDebugMode_ = static_cast<int>(IRRender::getDebugOverlay());
         frameData.updateFrameData(frameDataBuf_);
 
         scatterProgram_->use();
