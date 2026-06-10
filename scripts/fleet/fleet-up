@@ -1099,7 +1099,7 @@ def smoke_worker_actionable(p):
     return bool(p.get("smoke_pending_prs"))
 
 def epic_steward_actionable(p):
-    return bool(p.get("items"))
+    return bool(p.get("triggers"))
 
 for role, predicate in [
     ("merger", merger_actionable),
