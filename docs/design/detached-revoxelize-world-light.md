@@ -112,6 +112,30 @@ How do model-frame detached voxels enter the world sun-shadow bake?
 > depth-sort + receive but cast no shadow — an honest, documented intermediate
 > state, not a regression (today they do none of the three).
 
+> **Decision REVISED (architect, 2026-06-09): (a) → (a′) resolve-then-bake.**
+> PR #1626 implemented (a) literally — binding each detached canvas's own
+> model-frame R32I distance texture as the source of a second in-tick bake
+> dispatch — and it does not work on Metal: the image-atomic scratch-buffer
+> indirection does not deliver a non-main canvas's distance data to a second
+> in-tick compute dispatch (the read returns the clear value). On inspection
+> the per-axis precedent never did a foreign-texture bake read either — it
+> **resolves** the per-axis canvases into a main-canvas-sized, main-layout
+> screen-space depth texture first, then bakes THAT through the proven main
+> path. (a′) mirrors that precedent faithfully: resolve opt-in detached
+> canvases' distances (model frame + `worldCellOffset`) into a main-layout
+> screen-space depth source, then bake via the main-bake path. **Invariant:
+> the sun-shadow bake only ever reads main-canvas-layout depth sources; a
+> foreign model-frame canvas texture is never a bake input.** Implementation
+> notes: reuse before adding — if a main-layout texture carrying detached
+> caster depth already exists at BAKE time (P4b-1's depth composite), bake
+> that; otherwise ONE shared resolve accumulating all opt-in casters
+> (min-depth) + ONE extra bake — N casters must not mean N bakes. This also
+> moots backend divergence (even if GL tolerates the foreign read, split
+> cast paths are rejected). The Metal scratch-delivery gap is tracked as its
+> own backend issue; the feature does not block on it. The screen-space
+> caveat (casts only from camera-visible surfaces) is the engine's existing
+> sun-bake model, inherited consistently.
+
 ### Q3 — Receive mechanism
 - **(a) Sample the SHARED world sun-shadow map + 128³ light volume** directly at
   each detached voxel's recovered **world** position. Requires plumbing the
@@ -198,11 +222,14 @@ Each phase is its own PR, stacks on the previous, and is independently verifiabl
    cast-shadow-on-a-detached-solid is awkward to frame in `canvas_stress` because its
    sun direction ≈ the iso camera direction, so cast shadows fall away from the camera;
    the end-to-end visual lands naturally with P4b-3 on the #1587 shadow floor.
-3. **P4b-3 — cast (Q2a).** Second bake dispatch per opt-in detached canvas into the
-   shared sun-shadow map (world-depth offset + translation recovery, per the per-axis
-   resolve-bake precedent). GL + Metal. Opt-in solids now cast onto the floor + world.
-   **Natural visual verification target: the #1587 shadow floor** — an opt-in detached
-   solid dropping a shadow on it is the end-to-end proof.
+3. **P4b-3 — cast (Q2a′, revised — see the Q2 REVISED decision above).** Resolve opt-in
+   detached canvases' distances (model frame + `worldCellOffset`) into a main-canvas-layout
+   screen-space depth source, then bake that through the proven main-bake path (the faithful
+   mirror of the per-axis resolve-bake precedent). GL + Metal. Opt-in solids now cast onto
+   the floor + world. **Natural visual verification target: the #1587 shadow floor** — an
+   opt-in detached solid dropping a shadow on it is the end-to-end proof; that visible
+   shadow on both backends IS the definition of done (task pointer:
+   `.fleet/plans/issue-1596.md`, resume on PR #1626).
 
 Each PR carries its own render-verify references (GL + Metal). Default-path
 (screen-locked) references must stay byte-identical through all three phases —
