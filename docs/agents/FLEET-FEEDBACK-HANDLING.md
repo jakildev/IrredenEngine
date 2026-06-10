@@ -145,9 +145,14 @@ fleet-pr comments <N>
 ```
 
 One wrapper call surfaces the timeline, review summaries, and
-inline comments. Address every comment — conversation-level,
-review summaries, and inline line-level comments are all in the
-output.
+inline comments. Build an explicit checklist with **one item per
+output line** — every `[comment …]`, `[review …]` summary, and
+`[path:line]` inline comment is a separate item. The human (or
+reviewer) may post several comments and several inline threads
+before tagging; ALL appear in this one output and none may be
+dropped. Address every item, then confirm in the step-e summary
+comment that each was covered. (Coverage is re-checked after the
+fix in Step i.)
 
 - **For `fleet:has-nits`**: focus on the latest review's `### Nits`
   section. Treat it like a checklist. Address every nit unless
@@ -434,6 +439,26 @@ safe to run unconditionally:
 ```
 fleet-claim release-worktree <your-worktree-basename>
 ```
+
+### Step i — reflect: assess for a coding-improvement
+
+Run on **every AMEND path that changed code** (`human:needs-fix` /
+`human:blocker`, `fleet:needs-fix`, `fleet:has-nits`):
+
+```
+Skill: assess-coding-improvement
+```
+
+It re-reads the PR comments, confirms every one was covered, then decides
+whether the fix reveals a **generalizable** improvement to the fleet's dev
+procedures — and, importantly, whether a rule *already exists* but wasn't
+surfaced where you'd have caught it at authoring time. If so it files (or
+appends to) a `fleet:coding-improvement` ticket, left un-queued for human
+triage. One-off domain fixes produce no ticket — the skill gates that.
+
+This is a read-only reflection — it never touches this PR's code, labels, or
+claim, so it's safe to run after the releases above. (On the ESCALATE path,
+run it only if the deferred concern is itself a recurring convention.)
 
 Then exit. Do NOT call `start-next-task` from the feedback path —
 the next dispatcher iteration will pick a fresh task and reset the
