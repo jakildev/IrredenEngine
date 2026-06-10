@@ -107,4 +107,116 @@ TEST_F(CycleTest, MidSimCreationDoesNotFireSpuriousBoundary) {
     EXPECT_EQ(boundaries, 1); // only the real tick-200 crossing
 }
 
+TEST_F(CycleTest, BreakpointsFireOnSegmentTransition) {
+    // Period of 100 ticks, breakpoints at 25% and 75%: 3 segments.
+    // Segment 0: [0,25), segment 1: [25,75), segment 2: [75,100).
+    auto id = IRSim::createCycle("day", 100);
+    IRSim::cycleAddBreakpoint("day", 0.25f); // offset 25
+    IRSim::cycleAddBreakpoint("day", 0.75f); // offset 75
+
+    // Tick 1: primes silently (segment 0, cycle 0).
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+    EXPECT_FALSE(IREntity::getComponent<C_Cycle>(id).boundaryCrossed_);
+    EXPECT_EQ(IREntity::getComponent<C_Cycle>(id).segmentIndex_, 0u);
+
+    advance(24); // sim tick 25 — crosses into segment 1
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_TRUE(c.boundaryCrossed_);
+        EXPECT_EQ(c.fromSegment_, 0u);
+        EXPECT_EQ(c.toSegment_, 1u);
+        EXPECT_EQ(c.segmentIndex_, 1u);
+        EXPECT_EQ(c.fromCycle_, 0u);
+        EXPECT_EQ(c.toCycle_, 0u); // same cycle number, different segment
+    }
+
+    advance(50); // sim tick 75 — crosses into segment 2
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_TRUE(c.boundaryCrossed_);
+        EXPECT_EQ(c.fromSegment_, 1u);
+        EXPECT_EQ(c.toSegment_, 2u);
+        EXPECT_EQ(c.segmentIndex_, 2u);
+    }
+
+    advance(25); // sim tick 100 — period wrap, back to segment 0
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_TRUE(c.boundaryCrossed_);
+        EXPECT_EQ(c.fromSegment_, 2u);
+        EXPECT_EQ(c.toSegment_, 0u);
+        EXPECT_EQ(c.segmentIndex_, 0u);
+        EXPECT_EQ(c.fromCycle_, 0u);
+        EXPECT_EQ(c.toCycle_, 1u);
+    }
+}
+
+TEST_F(CycleTest, BreakpointNoBoundaryMidSegment) {
+    // Confirm no spurious boundary fires while staying inside one segment.
+    auto id = IRSim::createCycle("boss", 100);
+    IRSim::cycleAddBreakpoint("boss", 0.5f); // segment boundary at tick 50
+
+    m_system_manager.executePipeline(IRTime::Events::UPDATE); // prime at tick 1
+    advance(23); // ticks 2..24: still in segment 0 (withinTick 2..24, breakpoint at 50)
+    EXPECT_FALSE(IREntity::getComponent<C_Cycle>(id).boundaryCrossed_);
+    EXPECT_EQ(IREntity::getComponent<C_Cycle>(id).segmentIndex_, 0u);
+}
+
+TEST_F(CycleTest, MidSimCreationWithBreakpointsNoBogusEvent) {
+    advance(60); // sim tick 60, in the middle of a hypothetical period
+    auto id = IRSim::createCycle("wave", 100);
+    IRSim::cycleAddBreakpoint("wave", 0.5f); // segment boundary at tick 50 within period
+
+    // First detect: tick 61 puts us within the period at position 61 % 100 = 61 → segment 1.
+    // Should prime silently to segment 1, not fire.
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+    EXPECT_FALSE(IREntity::getComponent<C_Cycle>(id).boundaryCrossed_);
+    EXPECT_EQ(IREntity::getComponent<C_Cycle>(id).segmentIndex_, 1u);
+
+    // Advance to tick 100: period wraps to segment 0.
+    advance(39); // ticks 62..100
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_TRUE(c.boundaryCrossed_);
+        EXPECT_EQ(c.segmentIndex_, 0u);
+    }
+}
+
+TEST_F(CycleTest, NoBreakpointsSegmentAlwaysZero) {
+    // Without breakpoints the existing period-wrap event still fires and
+    // segment stays 0 throughout.
+    auto id = IRSim::createCycle("plain", 50);
+    m_system_manager.executePipeline(IRTime::Events::UPDATE); // prime
+
+    advance(49); // tick 50: period wrap
+    {
+        const C_Cycle &c = IREntity::getComponent<C_Cycle>(id);
+        EXPECT_TRUE(c.boundaryCrossed_);
+        EXPECT_EQ(c.segmentIndex_, 0u);
+        EXPECT_EQ(c.fromSegment_, 0u);
+        EXPECT_EQ(c.toSegment_, 0u);
+    }
+}
+
+TEST_F(CycleTest, CycleSegmentQueryMatchesComponent) {
+    IRSim::createCycle("phase", 100);
+    IRSim::cycleAddBreakpoint("phase", 0.25f);
+    IRSim::cycleAddBreakpoint("phase", 0.75f);
+
+    m_system_manager.executePipeline(IRTime::Events::UPDATE); // prime, tick 1
+    EXPECT_EQ(IRSim::cycleSegment("phase"), 0u);
+
+    advance(24); // tick 25
+    EXPECT_EQ(IRSim::cycleSegment("phase"), 1u);
+
+    advance(50); // tick 75
+    EXPECT_EQ(IRSim::cycleSegment("phase"), 2u);
+
+    advance(24); // tick 99
+    EXPECT_EQ(IRSim::cycleSegment("phase"), 2u);
+
+    advance(1); // tick 100: wrap
+    EXPECT_EQ(IRSim::cycleSegment("phase"), 0u);
+}
+
 } // namespace

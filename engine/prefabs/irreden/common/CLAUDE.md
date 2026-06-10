@@ -69,12 +69,20 @@ scales so gameplay timers freeze on pause.
   slow), `subTickAccum_` (sub-integer remainder for fractional scale).
   `SYSTEM_SIM_CLOCK_ADVANCE` advances it once per UPDATE tick.
 - `C_Cycle` — a tick-aligned recurring period (`"day"`, `"boss_phase"`,
-  …). `SYSTEM_CYCLE_BOUNDARY_DETECT` recomputes the cycle index each tick
-  and raises the **embedded** boundary event (`boundaryCrossed_` +
-  `fromCycle_`/`toCycle_`) on the crossing tick — the
+  …). `SYSTEM_CYCLE_BOUNDARY_DETECT` recomputes the cycle index and
+  intra-period segment each tick and raises the **embedded** boundary
+  event (`boundaryCrossed_` + `fromCycle_`/`toCycle_` +
+  `fromSegment_`/`toSegment_`/`segmentIndex_`) on the crossing tick — the
   events-as-components pattern (cf. `C_ContactEvent`), self-clearing, no
   separate clear system. `lastCycleNum_` defaults to a sentinel so a
   cycle created mid-sim primes silently (no spurious boundary).
+  **Multi-breakpoint support:** call `C_Cycle::addBreakpoint(fraction)` or
+  `IRSim::cycleAddBreakpoint(name, fraction)` to divide each period into
+  segments — the boundary event then fires on EVERY segment crossing, not
+  just the period wrap. Empty breakpoints = single period-wrap boundary
+  only (original behavior). `segmentIndex_` is updated every tick and
+  always reflects the current segment; query it via
+  `IRSim::cycleSegment(name)` by name.
 - `C_Timer` — fires `fired_` when the sim reaches `targetTick_`. One-shot
   (`intervalTicks_ == 0`, deactivates) or recurring (re-arms past every
   crossed interval). `SYSTEM_TIMER_FIRE` drives it.
@@ -85,11 +93,13 @@ scales so gameplay timers freeze on pause.
 `IRSim::` service ([`sim_clock.hpp`](sim_clock.hpp), header-only): clock
 control (`tick`, `timeScale`, `setTimeScale`, `pause`, `resume`,
 `isPaused`), name-keyed cycle/timer/stopwatch create + query
-(`cycleFraction`/`cycleNumber`/`cycleBoundaryCrossed`,
+(`cycleFraction`/`cycleNumber`/`cycleBoundaryCrossed`/`cycleSegment`,
 `timerFraction`/`timerTicksRemaining`/`timerFired`/`timerActive`,
-`stopwatchElapsed`/`stopwatchRunning`/…), and `createCycle`/`createTimer`/
-`createStopwatch`. `cycleFraction("day")` is the load-bearing continuous
-primitive for time-driven values (sun angle, color temp). The service
+`stopwatchElapsed`/`stopwatchRunning`/…), factory + breakpoint helpers
+(`createCycle`/`cycleAddBreakpoint`/`createTimer`/`createStopwatch`).
+`cycleFraction("day")` is the load-bearing continuous primitive for
+time-driven values (sun angle, color temp); `cycleSegment("day")` returns
+the current segment index (0 = before the first breakpoint). The service
 lives in `common/` (not `engine/time/`) because it reads ECS components,
 which `engine/time` must not depend on. Lua surface: the `IRSim` table
 (`engine/script/CLAUDE.md`). A consumer registers the three systems in

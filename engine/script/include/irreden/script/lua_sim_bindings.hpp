@@ -60,6 +60,12 @@ inline void bindSimApi(LuaScript &script) {
     sim["cycleBoundaryCrossed"] = [](const std::string &name) -> bool {
         return IRSim::cycleBoundaryCrossed(name);
     };
+    sim["cycleSegment"] = [](const std::string &name) -> lua_Integer {
+        return static_cast<lua_Integer>(IRSim::cycleSegment(name));
+    };
+    sim["cycleAddBreakpoint"] = [](const std::string &name, double fraction) {
+        IRSim::cycleAddBreakpoint(name, static_cast<float>(fraction));
+    };
 
     // Timers.
     sim["createTimer"] =

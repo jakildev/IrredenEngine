@@ -73,6 +73,30 @@ TEST_F(LuaSimTest, CreateCycleAndReadFraction) {
     EXPECT_EQ(m_lua.lua().script("return IRSim.cycleNumber('day')").get<int>(), 1);
 }
 
+TEST_F(LuaSimTest, CycleBreakpointsAndSegmentFromLua) {
+    // Create a 100-tick cycle with two breakpoints (at 25% and 75%) from Lua.
+    m_lua.lua().script(R"(
+        IRSim.createCycle('phase', 100)
+        IRSim.cycleAddBreakpoint('phase', 0.25)
+        IRSim.cycleAddBreakpoint('phase', 0.75)
+    )");
+    // Prime silently.
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+    EXPECT_EQ(m_lua.lua().script("return IRSim.cycleSegment('phase')").get<int>(), 0);
+    EXPECT_FALSE(m_lua.lua().script("return IRSim.cycleBoundaryCrossed('phase')").get<bool>());
+
+    advance(24); // sim tick 25: crosses into segment 1
+    EXPECT_EQ(m_lua.lua().script("return IRSim.cycleSegment('phase')").get<int>(), 1);
+    EXPECT_TRUE(m_lua.lua().script("return IRSim.cycleBoundaryCrossed('phase')").get<bool>());
+
+    advance(50); // sim tick 75: crosses into segment 2
+    EXPECT_EQ(m_lua.lua().script("return IRSim.cycleSegment('phase')").get<int>(), 2);
+
+    advance(25); // sim tick 100: period wrap, back to segment 0
+    EXPECT_EQ(m_lua.lua().script("return IRSim.cycleSegment('phase')").get<int>(), 0);
+    EXPECT_TRUE(m_lua.lua().script("return IRSim.cycleBoundaryCrossed('phase')").get<bool>());
+}
+
 TEST_F(LuaSimTest, TimerCreateAndPollFromLua) {
     m_lua.lua().script("IRSim.createTimer('reload', 50)");
     EXPECT_TRUE(m_lua.lua().script("return IRSim.timerActive('reload')").get<bool>());

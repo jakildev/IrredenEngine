@@ -123,13 +123,37 @@ inline float cycleFraction(std::string_view name) {
     return static_cast<float>(within) / static_cast<float>(c->periodTicks_);
 }
 
-/// True only on the tick SYSTEM_CYCLE_BOUNDARY_DETECT crossed a period boundary
-/// for this cycle. The poll form of the discrete boundary event (Lua polls it
-/// here in lieu of a callback; a C++ consumer ordered after the detector can
-/// read the same flag off the C_Cycle column directly).
+/// True only on the tick SYSTEM_CYCLE_BOUNDARY_DETECT crossed any segment or
+/// period boundary for this cycle. The poll form of the discrete boundary event
+/// (Lua polls it here; a C++ consumer ordered after the detector can read the
+/// same flag off the C_Cycle column directly).
 inline bool cycleBoundaryCrossed(std::string_view name) {
     const IRComponents::C_Cycle *c = detail::findByName<IRComponents::C_Cycle>(name);
     return c != nullptr && c->boundaryCrossed_;
+}
+
+/// Current intra-period segment index (0 = before the first breakpoint, i = after
+/// the i-th breakpoint). Returns 0 for cycles with no breakpoints. Computes from
+/// the live sim tick — same logic as SYSTEM_CYCLE_BOUNDARY_DETECT, safe to call
+/// between pipeline ticks.
+inline std::uint8_t cycleSegment(std::string_view name) {
+    const IRComponents::C_Cycle *c = detail::findByName<IRComponents::C_Cycle>(name);
+    if (c == nullptr || c->periodTicks_ == 0) {
+        return 0;
+    }
+    const std::uint64_t withinTick = (tick() + c->phaseOffset_) % c->periodTicks_;
+    return c->computeSegment(withinTick);
+}
+
+/// Add a breakpoint at a fraction of the period to the named cycle. See
+/// C_Cycle::addBreakpoint for the full contract (fraction in [0,1), sorted
+/// insertion, ignored when the array is full). Call after createCycle and before
+/// the pipeline starts advancing sim ticks.
+inline void cycleAddBreakpoint(std::string_view name, float fraction) {
+    IRComponents::C_Cycle *c = detail::findByName<IRComponents::C_Cycle>(name);
+    if (c != nullptr) {
+        c->addBreakpoint(fraction);
+    }
 }
 
 // ---- Timers (C_Timer, by name) ----------------------------------------------
