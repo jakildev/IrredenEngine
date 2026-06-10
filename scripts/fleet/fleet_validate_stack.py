@@ -29,7 +29,10 @@ sibling + later follow-ons), and the body alone cannot distinguish them.
 ``--strict`` in the CLI promotes that warning to an error for known linear
 chains.
 """
+import json
 import re
+import subprocess
+import sys
 
 # A child belongs to umbrella N if a body line *starts* with either the
 # canonical ``**Part of epic:**`` field or the condensed ``**Epic:**`` header
@@ -193,3 +196,43 @@ def validate_stack(children, umbrella):
         "n_warnings": n_warnings,
         "children": results,
     }
+
+
+def _run_gh_json(args):
+    """Run a gh command expecting JSON on stdout; return parsed value or None."""
+    proc = subprocess.run(args, capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("fleet_validate_stack: gh failed: %s" % (proc.stderr or "").strip(),
+              file=sys.stderr)
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        print("fleet_validate_stack: could not parse gh output: %s" % e, file=sys.stderr)
+        return None
+
+
+def discover_children(slug, umbrella, state="open"):
+    """Find children of ``umbrella`` via coarse search + precise membership filter.
+
+    Coarse search via ``gh issue list`` with ``--search "in:body #<N>"`` to get
+    candidate issues, then filters to genuine children via ``is_epic_child``.
+
+    This is the single-source child-discovery implementation; both
+    ``fleet-validate-stack`` and ``fleet-epic-status`` import this function so
+    discovery logic cannot diverge between tools.
+
+    ``state`` is passed directly to ``gh issue list --state``; pass ``"all"``
+    to include closed children (needed for full epic-health dashboards).
+    Returns a list of dicts with ``number``, ``title``, ``body``, ``state``,
+    ``labels`` keys as returned by ``gh issue list --json``.
+    """
+    candidates = _run_gh_json([
+        "gh", "issue", "list", "--repo", slug,
+        "--search", "in:body #%d" % int(umbrella), "--state", state,
+        "--limit", "200",
+        "--json", "number,title,body,state,labels",
+    ])
+    if candidates is None:
+        return []
+    return [c for c in candidates if is_epic_child(c.get("body", ""), umbrella)]

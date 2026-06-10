@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""fleet-epic-status — epic health dashboard with drift rows.
+
+Given an umbrella (epic) issue number, shows the full health of the epic:
+umbrella state and labels, per-child queue/PR/plan state, checklist-vs-discovered
+drift, and an embedded validate_stack() result.
+
+Primary consumer is the steward role (via --json); also serves as a human
+dashboard.
+
+    fleet-epic-status 1661                  human-readable table
+    fleet-epic-status 1661 --repo game      game repo
+    fleet-epic-status 1661 --json           machine-readable JSON (stable schema)
+    fleet-epic-status 1661 --state all      include closed children
+
+Data sources:
+  - Scout cache (~/.fleet/state/state.json) for PR metadata when fresh
+    (< CACHE_MAX_AGE_S seconds old); live gh fallback otherwise
+  - Live gh for issue state (always, since the cache doesn't carry issue state)
+  - Plan files at .fleet/plans/issue-<N>.md (repo-side path)
+
+Child discovery uses the same is_epic_child() / discover_children() logic as
+fleet-validate-stack — single-sourced to prevent drift.
+
+Source: scripts/fleet/fleet-epic-status
+Installed to ~/bin/fleet-epic-status by scripts/fleet/install.sh.
+"""
+import argparse
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from fleet_validate_stack import discover_children, validate_stack  # noqa: E402
+
+STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")
+STATE_JSON = os.path.join(STATE_DIR, "state.json")
+REPOS_CACHE = os.path.join(STATE_DIR, "repos.json")
+DEFAULT_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+PLAN_PATH_TMPL = ".fleet/plans/issue-{n}.md"
+CACHE_MAX_AGE_S = 300
+
+STEWARD_PREFIX = "fleet:stewarding-"
+
+DESIGN_LABEL_PREFIXES = ("fleet:design", "fleet:needs-opus", "fleet:needs-plan",
+                         "fleet:blocked", "human:")
+FEEDBACK_LABELS = frozenset(["human:needs-fix", "fleet:needs-fix", "fleet:has-nits",
+                              "human:blocker", "fleet:blocker"])
+
+
+def warn(msg):
+    print("fleet-epic-status: %s" % msg, file=sys.stderr)
+
+
+def repo_slug(repo_key):
+    try:
+        with open(REPOS_CACHE) as f:
+            repos = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        repos = {}
+    return repos.get(repo_key) or DEFAULT_SLUGS.get(repo_key)
+
+
+def _gh_json(args):
+    proc = subprocess.run(args, capture_output=True, text=True)
+    if proc.returncode != 0:
+        warn("gh failed: %s" % (proc.stderr or "").strip())
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        warn("could not parse gh output: %s" % e)
+        return None
+
+
+def load_state_cache():
+    """Return (data, is_fresh). is_fresh=True when mtime < CACHE_MAX_AGE_S."""
+    try:
+        p = pathlib.Path(STATE_JSON)
+        mtime = p.stat().st_mtime
+        data = json.loads(p.read_text())
+        return data, (time.time() - mtime) < CACHE_MAX_AGE_S
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None, False
+
+
+def fetch_issue(slug, number):
+    return _gh_json([
+        "gh", "issue", "view", str(number), "--repo", slug,
+        "--json", "number,title,body,state,labels",
+    ])
+
+
+def label_names(labels):
+    result = []
+    for la in (labels or []):
+        if isinstance(la, dict):
+            result.append(la.get("name", ""))
+        else:
+            result.append(str(la))
+    return [n for n in result if n]
+
+
+def steward_holder(labels):
+    for la in labels:
+        if la.startswith(STEWARD_PREFIX):
+            return la[len(STEWARD_PREFIX):]
+    return None
+
+
+def model_label(labels):
+    for la in labels:
+        if la in ("fleet:sonnet", "fleet:opus"):
+            return la.replace("fleet:", "")
+    return None
+
+
+def design_labels(labels):
+    result = []
+    for la in labels:
+        if any(la.startswith(p) for p in DESIGN_LABEL_PREFIXES):
+            result.append(la)
+        elif la in FEEDBACK_LABELS:
+            result.append(la)
+    return result
+
+
+def blocked_by_nums(body):
+    nums = []
+    for m in re.finditer(r"^\*\*Blocked by:\*\*\s*(.+)$", body or "", re.MULTILINE):
+        val = m.group(1).strip()
+        if not val.lower().startswith("(none"):
+            for ref in re.findall(r"#(\d+)\b", val):
+                nums.append(int(ref))
+    return nums
+
+
+def prs_for_child_cached(state_data, repo_key, child_number):
+    prs = state_data.get("repos", {}).get(repo_key, {}).get("prs", [])
+    matches = []
+    for pr in prs:
+        branch = pr.get("headRefName", "")
+        title = pr.get("title", "")
+        if re.search(r"\b%d\b" % child_number, branch) or \
+           re.search(r"#%d\b" % child_number, title):
+            matches.append(pr)
+    return matches
+
+
+def prs_for_child_live(slug, number):
+    result = _gh_json([
+        "gh", "pr", "list", "--repo", slug,
+        "--search", "in:title #%d" % number,
+        "--state", "open",
+        "--json", "number,title,headRefName,labels,url",
+    ])
+    return result or []
+
+
+def plan_file_exists(repo_root, number):
+    if not repo_root:
+        return False
+    p = pathlib.Path(repo_root) / PLAN_PATH_TMPL.format(n=number)
+    return p.exists()
+
+
+def find_repo_root():
+    script_dir = pathlib.Path(os.path.realpath(__file__)).parent
+    root = script_dir.parent.parent
+    if (root / ".git").exists() or (root / ".git").is_file():
+        return str(root)
+    return None
+
+
+def parse_checklist(body):
+    items = []
+    for line in (body or "").splitlines():
+        m = re.match(r"^\s*-\s*\[([ xX])\]\s*(.*)", line)
+        if m:
+            checked = m.group(1).strip().lower() == "x"
+            text = m.group(2).strip()
+            num_m = re.match(r"#(\d+)\b", text)
+            items.append({
+                "checked": checked,
+                "num": int(num_m.group(1)) if num_m else None,
+                "text": text,
+            })
+    return items
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Epic health dashboard with drift rows.")
+    parser.add_argument("umbrella", type=int,
+                        help="umbrella (epic) issue number")
+    parser.add_argument("--repo", default="engine", choices=["engine", "game"],
+                        help="which repo the epic lives in (default: engine)")
+    parser.add_argument("--json", action="store_true", dest="emit_json",
+                        help="machine-readable JSON output (stable schema)")
+    parser.add_argument("--state", default="all",
+                        choices=["open", "closed", "all"],
+                        help="issue state filter for child discovery (default: all)")
+    args = parser.parse_args()
+
+    slug = repo_slug(args.repo)
+    if slug is None:
+        warn("unknown repo key: %s" % args.repo)
+        return 2
+
+    repo_root = find_repo_root()
+    state_data, cache_fresh = load_state_cache()
+    repo_key = args.repo  # "engine" or "game"
+
+    umbrella_data = fetch_issue(slug, args.umbrella)
+    if umbrella_data is None:
+        warn("could not fetch umbrella issue #%d" % args.umbrella)
+        return 1
+
+    u_labels = label_names(umbrella_data.get("labels", []))
+    u_steward = steward_holder(u_labels)
+    u_has_plan = plan_file_exists(repo_root, args.umbrella)
+
+    children_raw = discover_children(slug, args.umbrella, args.state)
+
+    children_detail = []
+    for c in children_raw:
+        c_num = c["number"]
+        c_labels = label_names(c.get("labels", []))
+
+        if cache_fresh and state_data:
+            prs = prs_for_child_cached(state_data, repo_key, c_num)
+        else:
+            prs = prs_for_child_live(slug, c_num)
+
+        pr_rows = []
+        for p in prs:
+            pr_rows.append({
+                "number": p.get("number"),
+                "title": p.get("title", ""),
+                "branch": p.get("headRefName", ""),
+                "url": p.get("url", ""),
+                "labels": label_names(p.get("labels", [])),
+            })
+
+        children_detail.append({
+            "number": c_num,
+            "title": c.get("title", ""),
+            "state": (c.get("state") or "OPEN").upper(),
+            "labels": c_labels,
+            "model": model_label(c_labels),
+            "blocked_by": blocked_by_nums(c.get("body", "")),
+            "open_prs": pr_rows,
+            "design_labels": design_labels(c_labels),
+            "has_plan": plan_file_exists(repo_root, c_num),
+        })
+
+    children_detail.sort(key=lambda x: x["number"])
+
+    checklist = parse_checklist(umbrella_data.get("body", ""))
+    checklist_nums = {item["num"] for item in checklist if item["num"] is not None}
+    child_nums = {c["number"] for c in children_detail}
+    child_state_map = {c["number"]: c["state"] for c in children_detail}
+
+    missing_from_checklist = sorted(child_nums - checklist_nums)
+    checked_but_open = []
+    unchecked_but_closed = []
+    for item in checklist:
+        n = item["num"]
+        if n is None or n not in child_state_map:
+            continue
+        if item["checked"] and child_state_map[n] == "OPEN":
+            checked_but_open.append(n)
+        elif not item["checked"] and child_state_map[n] == "CLOSED":
+            unchecked_but_closed.append(n)
+
+    validation = validate_stack(
+        [{"number": c["number"], "title": c["title"], "body": raw.get("body", "")}
+         for c, raw in zip(children_detail, children_raw)],
+        args.umbrella,
+    )
+
+    result = {
+        "umbrella": {
+            "number": args.umbrella,
+            "title": umbrella_data.get("title", ""),
+            "state": (umbrella_data.get("state") or "OPEN").upper(),
+            "labels": u_labels,
+            "steward_holder": u_steward,
+            "has_plan": u_has_plan,
+        },
+        "children": children_detail,
+        "drift": {
+            "missing_from_checklist": missing_from_checklist,
+            "checked_but_open": checked_but_open,
+            "unchecked_but_closed": unchecked_but_closed,
+        },
+        "validation": {
+            "ok": validation["ok"],
+            "n_errors": validation["n_errors"],
+            "n_warnings": validation["n_warnings"],
+            "children": [
+                {
+                    "number": vc["number"],
+                    "ok": vc["ok"],
+                    "n_errors": vc["n_errors"],
+                    "n_warnings": vc["n_warnings"],
+                    "findings": vc["findings"],
+                }
+                for vc in validation.get("children", [])
+            ],
+        },
+        "cache_fresh": cache_fresh,
+    }
+
+    if args.emit_json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
+    # Human-readable output
+    u = result["umbrella"]
+    print("=== Epic #%d: %s ===" % (u["number"], u["title"]))
+    print("  State:   %s" % u["state"])
+    print("  Labels:  %s" % (", ".join(u["labels"]) or "(none)"))
+    if u["steward_holder"]:
+        print("  Steward: %s" % u["steward_holder"])
+    print("  Plan:    %s" % ("present" if u["has_plan"] else "absent"))
+    print()
+
+    n_children = len(children_detail)
+    if n_children == 0:
+        print("No children found (auto-discovery via 'Part of epic: #%d')." % args.umbrella)
+        print()
+    else:
+        print("Children (%d):" % n_children)
+        col = "  %-7s  %-6s  %-8s  %-10s  %-5s  %-4s  %s"
+        print(col % ("Issue", "State", "Model", "PR(s)", "Plan", "Err", "Design labels"))
+        print("  " + "-" * 74)
+        vc_map = {vc["number"]: vc for vc in validation.get("children", [])}
+        for c in children_detail:
+            pr_str = ", ".join("#%d" % p["number"] for p in c["open_prs"]) or "-"
+            vc = vc_map.get(c["number"])
+            err_str = str(vc["n_errors"]) if vc else "?"
+            dl_str = ", ".join(c["design_labels"]) if c["design_labels"] else "-"
+            print(col % (
+                "#%d" % c["number"],
+                c["state"][:6],
+                (c["model"] or "?")[:8],
+                pr_str[:10],
+                "Y" if c["has_plan"] else "N",
+                err_str,
+                dl_str[:38],
+            ))
+        print()
+
+    drift = result["drift"]
+    has_drift = any(drift[k] for k in drift)
+    if has_drift:
+        print("Checklist drift:")
+        if drift["missing_from_checklist"]:
+            nums = ", ".join("#%d" % n for n in drift["missing_from_checklist"])
+            print("  missing-from-checklist:  %s" % nums)
+        if drift["checked_but_open"]:
+            nums = ", ".join("#%d" % n for n in drift["checked_but_open"])
+            print("  checked-but-open:        %s" % nums)
+        if drift["unchecked_but_closed"]:
+            nums = ", ".join("#%d" % n for n in drift["unchecked_but_closed"])
+            print("  unchecked-but-closed:    %s" % nums)
+    else:
+        print("Checklist drift: none")
+    print()
+
+    v = result["validation"]
+    if v["ok"]:
+        val_str = "OK"
+        if v["n_warnings"]:
+            val_str += " (%d warning(s))" % v["n_warnings"]
+    else:
+        val_str = "FAILED (%d error(s), %d warning(s))" % (v["n_errors"], v["n_warnings"])
+    print("Validation: %s" % val_str)
+
+    if not cache_fresh:
+        print()
+        print("Note: scout cache stale or absent — PR state fetched live via gh.")
+
+    return 0 if v["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
