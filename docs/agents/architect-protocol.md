@@ -300,6 +300,22 @@ posting a `## NEEDS-DESIGN` comment. Those PRs sit there until you respond —
 the human will direct your attention to them, but you should also list them on
 startup so you know what's queued for you.
 
+**Steward-first for epic children.** When the blocked PR's backing issue
+belongs to an epic (`**Part of epic:** #U` in the issue body, or the
+umbrella's `## Children` checklist lists it), the **epic-steward** triages
+it first: questions derivable from the umbrella's plan / decision log get a
+steward unblock, and novel ones reach you as an aggregated
+`## STEWARD PROPOSAL` comment on the umbrella (which then carries
+`fleet:steward-proposal`). Engage with an epic child's design block directly
+only when (a) the umbrella carries a proposal package — answer each question
+inline on the umbrella thread and **remove `fleet:steward-proposal`** (its
+removal re-fires the steward's distribution; you don't flip the PR labels
+yourself), or (b) the human directs you to it. Before manually unblocking an
+epic-child PR, check the umbrella for a steward claim
+(`fleet:stewarding-*`) so you don't race the steward's distribution pass.
+Non-epic design blocks remain yours alone. See
+[`epic-steward-protocol.md`](epic-steward-protocol.md).
+
 On startup (step 4), surface `fleet:design-blocked` PRs from the cache: filter
 `repos.<repo>.prs[]` for entries whose `labels` array contains
 `fleet:design-blocked` and format `#{number} {title} (by {author})`. If any
