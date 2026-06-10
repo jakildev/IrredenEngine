@@ -229,6 +229,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
     }
 
 
+
     void beginTick() {
         if (jointStaging_.size() != static_cast<std::size_t>(kMaxGpuJointTransforms)) {
             jointStaging_.assign(kMaxGpuJointTransforms, GpuVoxelTransform{});
