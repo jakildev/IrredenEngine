@@ -30,8 +30,8 @@ struct ChunkBounds {
     vec2 isoMax_ = vec2(std::numeric_limits<float>::lowest());
 
     void expand(vec2 isoPos) {
-        isoMin_ = glm::min(isoMin_, isoPos);
-        isoMax_ = glm::max(isoMax_, isoPos);
+        isoMin_ = IRMath::min(isoMin_, isoPos);
+        isoMax_ = IRMath::max(isoMax_, isoPos);
     }
 
     void reset() {
