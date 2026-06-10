@@ -398,6 +398,13 @@ ensure_worktree "$ENGINE" .claude/worktrees/merger               fleet/merger
 if [[ "${FLEET_SMOKE_WORKER:-0}" == "1" ]]; then
     ensure_worktree "$ENGINE" .claude/worktrees/smoke-worker fleet/smoke-worker
 fi
+# epic-steward worktree is optional — only created when FLEET_EPIC_STEWARD=1.
+# The epic-steward is the fleet's epic bookkeeper (umbrella checklists, design-
+# block triage, proposal aggregation, close-out). Enable for active multi-epic
+# queues; omit when the queue is mostly single-task work.
+if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
+    ensure_worktree "$ENGINE" .claude/worktrees/epic-steward fleet/epic-steward
+fi
 
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
@@ -419,6 +426,11 @@ if [[ -d "$GAME/.git" ]]; then
     # rebases game PRs; the engine pass uses .claude/worktrees/merger under
     # the engine root above. Same dual-worktree model as the opus-workers.
     ensure_worktree "$GAME" .claude/worktrees/merger          fleet/game-merger
+    # epic-steward game worktree — only when FLEET_EPIC_STEWARD=1. Same
+    # dual-worktree model as opus-workers: engine pane cds here for game epics.
+    if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
+        ensure_worktree "$GAME" .claude/worktrees/epic-steward fleet/game-epic-steward
+    fi
 else
     echo "fleet-up: game repo not found at $GAME — skipping game panes"
 fi
@@ -667,6 +679,7 @@ reset_worktree "$ENGINE/.claude/worktrees/queue-manager"        claude/queue-man
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager-ingest" claude/queue-manager-ingest-scratch
 reset_worktree "$ENGINE/.claude/worktrees/merger"               claude/merger-scratch
 reset_worktree "$ENGINE/.claude/worktrees/smoke-worker"         claude/smoke-worker-scratch
+reset_worktree "$ENGINE/.claude/worktrees/epic-steward"         claude/epic-steward-scratch
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
@@ -682,6 +695,9 @@ if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-1" ]]; then
 fi
 if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-2" ]]; then
     reset_worktree "$GAME/.claude/worktrees/sonnet-fleet-2" claude/game-sonnet-fleet-2-scratch
+fi
+if [[ -d "$GAME/.claude/worktrees/epic-steward" ]]; then
+    reset_worktree "$GAME/.claude/worktrees/epic-steward" claude/game-epic-steward-scratch
 fi
 
 # ----------------------------------------------------------------------
@@ -845,6 +861,9 @@ done
 if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
     write_worktree_settings "$ENGINE/.claude/worktrees/smoke-worker" "$ENGINE"
 fi
+if [[ -d "$ENGINE/.claude/worktrees/epic-steward" ]]; then
+    write_worktree_settings "$ENGINE/.claude/worktrees/epic-steward" "$ENGINE"
+fi
 
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
@@ -866,6 +885,11 @@ if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-1" ]]; then
 fi
 if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-2" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/sonnet-fleet-2" "$ENGINE"
+fi
+# Game-side epic-steward worktree — allow access to both game tree and engine
+# helpers (same pattern as the game-side opus-worker and sonnet-fleet worktrees).
+if [[ -d "$GAME/.claude/worktrees/epic-steward" ]]; then
+    write_worktree_settings "$GAME/.claude/worktrees/epic-steward" "$ENGINE"
 fi
 
 # ----------------------------------------------------------------------
@@ -1074,6 +1098,9 @@ def opus_reviewer_actionable(p):
 def smoke_worker_actionable(p):
     return bool(p.get("smoke_pending_prs"))
 
+def epic_steward_actionable(p):
+    return bool(p.get("items"))
+
 for role, predicate in [
     ("merger", merger_actionable),
     ("sonnet-author", author_worker_actionable),
@@ -1081,6 +1108,7 @@ for role, predicate in [
     ("sonnet-reviewer", sonnet_reviewer_actionable),
     ("opus-reviewer", opus_reviewer_actionable),
     ("smoke-worker", smoke_worker_actionable),
+    ("epic-steward", epic_steward_actionable),
 ]:
     proj = proj_dir / f"{role}.json"
     if not proj.is_file():
@@ -1425,6 +1453,21 @@ if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
     pane_stagger
 fi
 
+# Optional epic-steward pane — only launched when the worktree exists
+# (i.e. FLEET_EPIC_STEWARD=1 was set during ensure_worktree above).
+# Placed after the smoke-worker pane in the right column of the ops window;
+# if smoke-worker is absent, splits directly from the merger pane.
+if [[ -d "$ENGINE/.claude/worktrees/epic-steward" ]]; then
+    _epic_base="${OPS_SMOKE:-$OPS_TR}"
+    OPS_EPIC=$(tmux split-window -v -t "$_epic_base" -l 50% -P -F "#{pane_id}" \
+        -c "$ENGINE/.claude/worktrees/epic-steward" \
+        "$TRANSIENT_PANE_CMD")
+    label_pane_id "$OPS_EPIC" "epic-steward [$HEAVY_TAG]"
+    set_fleet_role "$OPS_EPIC" "epic-steward"
+    pane_stagger
+    unset _epic_base
+fi
+
 # Enable pane border labels using @role (immune to program overrides).
 # Apply at session level so it covers both windows.
 tmux set-option -t "$SESSION" pane-border-status top
@@ -1463,7 +1506,7 @@ layout (two windows):
 
 effort levels (per-role; override with FLEET_EFFORT_<ROLE> in env or
 ~/.fleet/fleet-up.conf, or FLEET_EFFORT=<level> to force all panes):
-  xhigh — opus-architect, game-architect, opus-worker
+  xhigh — opus-architect, game-architect, opus-worker, epic-steward
   high  — opus-reviewer, merger, sonnet-author, sonnet-reviewer, smoke-worker
 
 permission mode: auto (model decides when to ask vs proceed)

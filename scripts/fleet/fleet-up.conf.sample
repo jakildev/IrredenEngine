@@ -71,6 +71,7 @@
 # FLEET_CONCURRENCY_QUEUE_MANAGER=1
 # FLEET_CONCURRENCY_MERGER=1
 # FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker pane
+# FLEET_CONCURRENCY_EPIC_STEWARD=1   # concurrent cap for the epic-steward pane
 
 # --- Build parallelism (ir-build CPU budget) --------------------------------
 #
@@ -113,6 +114,7 @@
 # FLEET_EFFORT_SONNET_AUTHOR=high
 # FLEET_EFFORT_SONNET_REVIEWER=high
 # FLEET_EFFORT_SMOKE_WORKER=high
+# FLEET_EFFORT_EPIC_STEWARD=xhigh
 
 # --- Usage gate (per-rate-limit-type thresholds) ----------------------------
 #
@@ -219,3 +221,25 @@
 # secondary responsibility — this flag is opt-in extra dedicated capacity.
 
 # FLEET_SMOKE_WORKER=0
+
+# --- Epic-steward (umbrella bookkeeper) ------------------------------------
+#
+# FLEET_EPIC_STEWARD=1 tells fleet-up to create and launch a dedicated
+# epic-steward pane. The epic-steward is the fleet's epic bookkeeper: a
+# transient, dispatcher-driven role that maintains `fleet:epic` umbrella
+# `## Children` checklists, triages design-blocked epic children, aggregates
+# proposal packages for the architect, and drives epic close-out. It writes
+# only docs artifacts (plan files, umbrella comments, labels) — never pushes
+# code. Two worktrees are created: one under the engine clone and one under
+# the game clone (the pane's cwd is the engine worktree; it cds for game epics).
+#
+# When unset or 0, no epic-steward worktree or pane is created. The role's
+# epic-bookkeeping work simply doesn't run; umbrella issues accumulate until
+# the flag is enabled or the human triages them manually.
+#
+# Recommended: enable during active multi-epic queues; disable when the queue
+# is mostly single-task work to conserve credit budget.
+
+# FLEET_EPIC_STEWARD=0
+# FLEET_CONCURRENCY_EPIC_STEWARD=1  # matches the single pane
+# FLEET_EFFORT_EPIC_STEWARD=xhigh   # umbrella triage needs heavier reasoning

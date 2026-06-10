@@ -100,6 +100,7 @@ _env_opus_reviewer="${FLEET_CONCURRENCY_OPUS_REVIEWER:-}"
 _env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
 _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
 _env_smoke_worker="${FLEET_CONCURRENCY_SMOKE_WORKER:-}"
+_env_epic_steward="${FLEET_CONCURRENCY_EPIC_STEWARD:-}"
 # Same capture-before-source guard for per-role effort (FLEET_EFFORT_<ROLE>),
 # consumed by the ROLE_EFFORT map further down. Caller env wins over conf.
 _env_effort_opus_worker="${FLEET_EFFORT_OPUS_WORKER:-}"
@@ -116,6 +117,7 @@ _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
+_env_effort_epic_steward="${FLEET_EFFORT_EPIC_STEWARD:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
@@ -139,9 +141,11 @@ declare -A ROLE_CONCURRENCY=(
     ["queue-manager"]="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
     ["merger"]="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
     ["smoke-worker"]="${_env_smoke_worker:-${FLEET_CONCURRENCY_SMOKE_WORKER:-1}}"
+    ["epic-steward"]="${_env_epic_steward:-${FLEET_CONCURRENCY_EPIC_STEWARD:-1}}"
 )
 unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
-      _env_opus_reviewer _env_queue_manager _env_merger _env_smoke_worker
+      _env_opus_reviewer _env_queue_manager _env_merger _env_smoke_worker \
+      _env_epic_steward
 
 # Tracks per-role "deferred-by-cap" log throttling so the at-cap message
 # doesn't spam every 10s tick while the cap is held. Cleared whenever a
@@ -318,6 +322,7 @@ DISPATCHED_ROLES=(
     "opus-reviewer"
     "merger"
     "smoke-worker"
+    "epic-steward"
 )
 # queue-manager is no longer LLM-dispatched. Maintenance (derived-field
 # rendering via fleet-queue-tick) was eliminated in #1229 — the queue is
@@ -362,6 +367,7 @@ declare -A ROLE_MODEL=(
     ["opus-reviewer"]="${FLEET_MODEL_OPUS_REVIEWER:-$OPUS_MODEL}"
     ["merger"]="${FLEET_MODEL_MERGER:-$SONNET_MODEL}"
     ["smoke-worker"]="$SONNET_MODEL"
+    ["epic-steward"]="$HEAVY_MODEL"
 )
 # Worker lanes that resolve a per-task class from their projection slice,
 # mapped to the class assumed when a task carries no model tag.
@@ -385,10 +391,12 @@ declare -A ROLE_EFFORT=(
     ["opus-reviewer"]="${_env_effort_opus_reviewer:-${FLEET_EFFORT_OPUS_REVIEWER:-${FLEET_EFFORT:-high}}}"
     ["merger"]="${_env_effort_merger:-${FLEET_EFFORT_MERGER:-${FLEET_EFFORT:-high}}}"
     ["smoke-worker"]="${_env_effort_smoke_worker:-${FLEET_EFFORT_SMOKE_WORKER:-${FLEET_EFFORT:-high}}}"
+    ["epic-steward"]="${_env_effort_epic_steward:-${FLEET_EFFORT_EPIC_STEWARD:-${FLEET_EFFORT:-xhigh}}}"
 )
 unset _env_effort_opus_worker _env_effort_sonnet_author \
       _env_effort_sonnet_reviewer _env_effort_opus_reviewer \
-      _env_effort_merger _env_effort_smoke_worker
+      _env_effort_merger _env_effort_smoke_worker \
+      _env_effort_epic_steward
 
 # Tracks which panes have already had their cooldown logged this cycle so
 # the "in rate-limit cooldown" message fires once per pane per cooldown
