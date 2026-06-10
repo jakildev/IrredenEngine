@@ -136,6 +136,9 @@ def main():
             child_numbers = [c["number"] for c in children]
             checklist_drift = check_checklist(umbrella_detail.get("body", ""),
                                               child_numbers)
+        else:
+            warn("could not fetch umbrella #%d body — checklist drift not "
+                 "validated" % args.umbrella)
 
     print("Epic #%d (%s) — %d child issue(s)"
           % (args.umbrella, slug, len(result["children"])))

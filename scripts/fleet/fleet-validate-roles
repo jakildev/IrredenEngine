@@ -81,7 +81,7 @@ def main():
         print("This is expected on a tree where no protocol has opt-ed in yet.")
         return 0
 
-    root_labels = [label for _, label in repo_roots if Path(_).is_dir()]
+    root_labels = [label for root, label in repo_roots if Path(root).is_dir()]
 
     for proto in result["protocols"]:
         keys_str = ", ".join("**%s**" % k for k in proto["keys"])
