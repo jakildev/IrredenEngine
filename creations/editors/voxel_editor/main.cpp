@@ -16,6 +16,7 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
+#include <irreden/voxel/rig_bridge.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -90,6 +91,8 @@
 
 // Scene save/load
 #include "scene_io.hpp"
+// Rig save/load (joint entities ↔ .rig asset)
+#include "rig_scene_io.hpp"
 
 // Loft-tool mask rendering (trixel_rect fillRect, trixel_text renderText,
 // mask_grid_painter drawMaskGridOntoCanvas + hitTestGridCell,
@@ -783,7 +786,8 @@ struct JointToolState {
     IREntity::EntityId rigRoot_ = IREntity::kNullEntity;
     int activeJointIdx_ = -1;    // index into joints_ (-1 = rig root)
     std::vector<int> parentIdx_; // parallel to joints_; -1 = rig root
-    bool bindPoseRecaptured_ = false; // cleared each beginTick; prevents O(joints×archetypes) redundant recompute
+    bool bindPoseRecaptured_ =
+        false; // cleared each beginTick; prevents O(joints×archetypes) redundant recompute
 };
 JointToolState g_jointTool;
 
@@ -807,8 +811,10 @@ void recomputeJointBindPose() {
     if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
         return;
     auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
-    IR_ASSERT(g_jointTool.parentIdx_.size() == skeleton.joints_.size(),
-              "parentIdx_ / joints_ size mismatch");
+    IR_ASSERT(
+        g_jointTool.parentIdx_.size() == skeleton.joints_.size(),
+        "parentIdx_ / joints_ size mismatch"
+    );
     const std::size_t count = skeleton.joints_.size();
     skeleton.bindPose_.assign(count, IRMath::SQT{});
     for (std::size_t i = 0; i < count; ++i) {
@@ -1221,8 +1227,7 @@ void initSystems() {
             if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -1932,8 +1937,7 @@ void initCommands() {
             if (IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -2092,7 +2096,10 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u))
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl,
+                    IRInput::kModifierShift
+                ))
                 return;
             auto &anim = IRVoxelEditor::g_anim;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
@@ -2120,13 +2127,48 @@ void initCommands() {
         }
     );
 
+    // Ctrl+Shift+S — save skeleton to {kSceneSaveDir}/{kSceneBaseName}.rig.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonS,
+        []() {
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl | IRInput::kModifierShift,
+                    0u
+                ))
+                return;
+            if (IRVoxelEditor::g_jointTool.rigRoot_ == IREntity::kNullEntity) {
+                IR_LOG_WARN("No rig to save — author joints with J + B first.");
+                return;
+            }
+            auto res = IRVoxelEditor::saveRigScene(
+                std::string(IRVoxelEditor::kSceneSaveDir),
+                std::string(IRVoxelEditor::kSceneBaseName),
+                IRVoxelEditor::g_jointTool.rigRoot_,
+                IRVoxelEditor::g_jointTool.parentIdx_
+            );
+            if (res.ok_)
+                IR_LOG_INFO(
+                    "Rig saved to {}/{}",
+                    IRVoxelEditor::kSceneSaveDir,
+                    IRVoxelEditor::kSceneBaseName
+                );
+            else
+                IR_LOG_ERROR("Rig save failed: {}", res.errorMsg_);
+        }
+    );
+
     // Ctrl+O — load scene from disk, replacing all frames and layer state.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u))
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl,
+                    IRInput::kModifierShift
+                ))
                 return;
             auto loaded = IRVoxelEditor::loadEditorScene(
                 std::string(IRVoxelEditor::kSceneSaveDir),
@@ -2176,6 +2218,109 @@ void initCommands() {
                 IRVoxelEditor::kSceneSaveDir,
                 IRVoxelEditor::kSceneBaseName,
                 anim.frameCount()
+            );
+        }
+    );
+
+    // Ctrl+Shift+O — load skeleton from {kSceneSaveDir}/{kSceneBaseName}.rig.
+    // Destroys existing joint entities and their gizmo children, then
+    // reconstructs the skeleton from the saved .rig file.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonO,
+        []() {
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl | IRInput::kModifierShift,
+                    0u
+                ))
+                return;
+
+            auto loaded = IRVoxelEditor::loadRigScene(
+                std::string(IRVoxelEditor::kSceneSaveDir),
+                std::string(IRVoxelEditor::kSceneBaseName)
+            );
+            if (!loaded.ok_) {
+                IR_LOG_ERROR("Rig load failed: {}", loaded.errorMsg_);
+                return;
+            }
+
+            // Collect existing joint ids.
+            std::vector<IREntity::EntityId> oldJointIds;
+            IREntity::forEachComponent<IRComponents::C_Joint>(
+                [&](IREntity::EntityId id, IRComponents::C_Joint &) { oldJointIds.push_back(id); }
+            );
+
+            // Collect gizmo handles anchored to those joints, then destroy
+            // gizmos first so no child tries to read a destroyed parent.
+            {
+                std::vector<IREntity::EntityId> oldGizmoIds;
+                IREntity::forEachComponent<IRComponents::C_GizmoHandle>(
+                    [&](IREntity::EntityId id, IRComponents::C_GizmoHandle &h) {
+                        for (const auto jid : oldJointIds) {
+                            if (h.anchorEntity_ == jid) {
+                                oldGizmoIds.push_back(id);
+                                break;
+                            }
+                        }
+                    }
+                );
+                for (const auto id : oldGizmoIds)
+                    IREntity::destroyEntity(id);
+            }
+            for (const auto id : oldJointIds)
+                IREntity::destroyEntity(id);
+
+            // Reset skeleton and authoring tool state.
+            const IREntity::EntityId rigRoot = IRVoxelEditor::ensureRigRoot();
+            {
+                auto &skeleton = IREntity::getComponent<IRComponents::C_Skeleton>(rigRoot);
+                skeleton.joints_.clear();
+                skeleton.bindPose_.clear();
+            }
+            IRVoxelEditor::g_jointTool.parentIdx_.clear();
+            IRVoxelEditor::g_jointTool.activeJointIdx_ = -1;
+            IRVoxelEditor::g_jointTool.bindPoseRecaptured_ = false;
+
+            // Reconstruct joint entities from the loaded rig.
+            const auto &rig = loaded.rig_;
+            const std::size_t count = rig.joints_.size();
+            std::vector<IREntity::EntityId> newJoints;
+            newJoints.reserve(count);
+
+            for (std::size_t i = 0; i < count; ++i) {
+                const auto &j = rig.joints_[i];
+                const IRMath::vec3 t{j.translation_.x, j.translation_.y, j.translation_.z};
+                const IREntity::EntityId joint = IREntity::createEntity(
+                    IRComponents::C_LocalTransform{t, j.rotation_},
+                    IRComponents::C_Joint{}
+                );
+                const bool atRigRoot = j.parentIndex_ == static_cast<std::uint32_t>(i) ||
+                                       j.parentIndex_ >= static_cast<std::uint32_t>(count);
+                const IREntity::EntityId parentEntity =
+                    atRigRoot ? rigRoot : newJoints[j.parentIndex_];
+                IREntity::setParent(joint, parentEntity);
+                IRPrefab::Gizmo::createJointMarker(joint);
+                IRPrefab::Gizmo::createTranslateGizmoForAnchor(joint);
+                newJoints.push_back(joint);
+                IRVoxelEditor::g_jointTool.parentIdx_.push_back(
+                    atRigRoot ? -1 : static_cast<int>(j.parentIndex_)
+                );
+            }
+
+            // Re-fetch skeleton after all createEntity calls to avoid
+            // stale references, then populate joints and bind pose.
+            {
+                auto &skeleton = IREntity::getComponent<IRComponents::C_Skeleton>(rigRoot);
+                skeleton.joints_.insert(skeleton.joints_.end(), newJoints.begin(), newJoints.end());
+                skeleton.bindPose_ = IRPrefab::Rig::bindPose(rig);
+            }
+
+            IR_LOG_INFO(
+                "Rig loaded: {} joints from {}/{}",
+                count,
+                IRVoxelEditor::kSceneSaveDir,
+                IRVoxelEditor::kSceneBaseName
             );
         }
     );
@@ -2343,14 +2488,12 @@ void initEntities() {
             kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
             kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
         );
-        g_editor.paletteSwatches_.push_back(
-            IRPrefab::Widget::makeColorSwatch(
-                pos,
-                ivec2(kSwatchSize, kSwatchSize),
-                IRVoxelEditor::kPaletteColors[i],
-                i == 0
-            )
-        );
+        g_editor.paletteSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
+            pos,
+            ivec2(kSwatchSize, kSwatchSize),
+            IRVoxelEditor::kPaletteColors[i],
+            i == 0
+        ));
     }
 
     // Animation controls panel (T-214, F-1.4) — sits below the palette
