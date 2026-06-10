@@ -96,10 +96,18 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
     }
 
     // Image atomic scratch buffer (mirrors the canvas distance R32I texture).
-    // See metal_runtime.hpp for the rationale; binding slot is fixed.
+    // See metal_runtime.hpp for the rationale; binding slot is fixed. Bound
+    // ONLY for kernels registered as scratch consumers: the scratch pointer is
+    // sticky (set by every R32I bindAsImage, never cleared), and slot 16
+    // doubles as kBufferIndex_RevoxelizeDetachedParams — an unconditional bind
+    // clobbered c_revoxelize_detached's params UBO on every encode after the
+    // first distance-image bind of the app's lifetime (#1619).
     if (MTL::Buffer *scratch = currentImageAtomicScratch(); scratch != nullptr) {
-        encoder->setBuffer(scratch, 0, kMetalImageAtomicScratchSlot);
-        markMetalBufferEncoded(scratch);
+        const MetalPipelineStateProvider *pipeline = activeMetalPipeline();
+        if (pipeline != nullptr && pipeline->usesImageAtomicScratch()) {
+            encoder->setBuffer(scratch, 0, kMetalImageAtomicScratchSlot);
+            markMetalBufferEncoded(scratch);
+        }
     }
 }
 

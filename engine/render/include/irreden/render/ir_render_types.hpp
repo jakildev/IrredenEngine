@@ -594,6 +594,11 @@ constexpr std::uint32_t kBufferIndex_DebugOverlayData = 15;
 // scatter compute (`c_revoxelize_detached`, #1556). Slot 16 was the only free
 // index in the Metal 0–30 range; the compute reuses slot 17 (LocalVoxelPositions)
 // for its per-pool resident locals SSBO, bound per-canvas before dispatch.
+// On Metal, slot 16 ALSO carries the R32I image-atomic scratch
+// (kMetalImageAtomicScratchSlot) for the raster kernels that declare it. The
+// two never meet in one kernel: the scratch is bound per-kernel via
+// metal_pipeline.cpp's functionUsesImageAtomicScratch (#1619 — the sticky
+// unconditional scratch bind used to clobber this UBO for the fill dispatch).
 constexpr std::uint32_t kBufferIndex_RevoxelizeDetachedParams = 16;
 constexpr std::uint32_t kBufferIndex_LocalVoxelPositions = 17;
 // Per-pool source occupancy+color grid for the detached re-voxelize INVERSE
