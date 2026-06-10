@@ -39,6 +39,11 @@ fleet-build — forwards to cmake --build with auto -j and worktree build/.
   fleet-build --target IRShapeDebug
   fleet-build --target IrredenEngineTest -- --clean-first   # extra cmake args
 
+Downstream-creation worktrees (creations/<name>/.claude/worktrees/<agent>/)
+are auto-configured against the enclosing engine via IRREDEN_USER_PROJECTS
+into <engine>/build-<creation>-<agent>/ — see docs/agents/BUILD.md
+"Downstream-creation worktree builds".
+
 No --help flag. List CMake targets:
   cmake --build <build-dir> --target help
 Or (curated demo names):

@@ -24,12 +24,13 @@ _IR_HELPERS_LOADED=1
 # Path resolution
 # ---------------------------------------------------------------------------
 
-# Engine root: walk up from this file. Same approach as scripts/fleet/fleet-common.sh.
-_ir_helpers_resolve_engine_root() {
-    local here
-    here="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
-    # bin/ scripts source this from lib/; lib/ is at $engine/engine/tools/lib/.
-    # Walk up to find the marker file CMakeLists.txt at engine root.
+# ir_enclosing_engine_root <dir> — nearest ancestor (including <dir>) that
+# looks like an engine checkout (CMakePresets.json + engine/). Returns 1
+# when no ancestor matches.
+ir_enclosing_engine_root() {
+    local here="$1"
+    [[ -d "$here" ]] || return 1
+    here="$(cd "$here" && pwd)"
     while [[ "$here" != "/" ]]; do
         if [[ -f "$here/CMakePresets.json" && -d "$here/engine" ]]; then
             echo "$here"
@@ -37,11 +38,15 @@ _ir_helpers_resolve_engine_root() {
         fi
         here="$(dirname "$here")"
     done
-    echo "ir-tools: cannot resolve engine root from $(dirname "${BASH_SOURCE[1]}")" >&2
     return 1
 }
 
-IR_ENGINE_ROOT="$(_ir_helpers_resolve_engine_root)"
+# Engine root: walk up from this file (lib/ is at $engine/engine/tools/lib/).
+# Same approach as scripts/fleet/fleet-common.sh.
+IR_ENGINE_ROOT="$(ir_enclosing_engine_root "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")" || {
+    echo "ir-tools: cannot resolve engine root from ${BASH_SOURCE[0]}" >&2
+    return 1
+}
 IR_TOOLS_DIR="$IR_ENGINE_ROOT/engine/tools"
 IR_DEFAULTS_TOML="$IR_TOOLS_DIR/concurrency.toml"
 IR_HOST_TOML="${IR_HOST_TOML:-$HOME/.config/irreden/host.toml}"
@@ -66,6 +71,48 @@ ir_worktree_root() {
         fi
     fi
     echo "$root"
+}
+
+# ir_creation_worktree_engine_root <worktree-root> — when <worktree-root>
+# is a downstream-creation checkout nested under an engine root at
+# creations/<name>/... (the fleet layout puts agent worktrees at
+# creations/<name>/.claude/worktrees/<agent>/), echo the enclosing engine
+# root and return 0. Returns 1 for engine checkouts (they carry their own
+# CMakePresets.json) and for repos outside an engine tree.
+#
+# Note ir_worktree_root resolves a creation's MAIN checkout
+# (creations/<name>/, two levels below the engine root) to the engine
+# root via its ../../ walk-up, so only nested *worktrees* reach this
+# detection — the main checkout keeps building through <engine>/build.
+ir_creation_worktree_engine_root() {
+    local root="$1"
+    [[ -f "$root/CMakePresets.json" ]] && return 1
+    local eng
+    eng="$(ir_enclosing_engine_root "$root")" || return 1
+    case "$root" in
+        "$eng"/creations/*) echo "$eng"; return 0 ;;
+    esac
+    return 1
+}
+
+# ir_default_build_dir <worktree-root> — the build tree ir-build/ir-run
+# use when IRREDEN_BUILD_DIR is not set. Engine checkouts build in-tree
+# (<root>/build, the preset binaryDir). A downstream-creation worktree
+# has no presets of its own — its targets compile through the enclosing
+# engine with the worktree added as a user project — so it gets a
+# dedicated dir at <engine>/build-<creation>-<agent>/ (covered by the
+# engine .gitignore's build-*/ pattern), keeping build output out of the
+# creation repo and away from the engine's own build trees.
+ir_default_build_dir() {
+    local root="$1"
+    local eng
+    if eng="$(ir_creation_worktree_engine_root "$root")"; then
+        local rel="${root#"$eng"/creations/}"
+        local creation="${rel%%/*}"
+        echo "$eng/build-$creation-$(basename "$root")"
+    else
+        echo "$root/build"
+    fi
 }
 
 # Lock dir lives in a runtime-temp location so it survives across shells but
