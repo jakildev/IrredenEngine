@@ -67,10 +67,12 @@ LOOP_INTERVAL="${4:-}"
 # is set by fleet-up (architects) and fleet-dispatcher (dispatched roles),
 # which export FLEET_EFFORT_<ROLE>; the model-derived default below only
 # fires when babysit is run by hand without those exports in the env.
-# Opus defaults to xhigh — the architects babysit launches do the heavy
-# design / render reasoning, which is where xhigh earns its budget; sonnet
-# defaults to high (diminishing returns past that on its task mix).
+# Heavy-tier models (Fable, with Opus as its fallback) default to xhigh —
+# the architects babysit launches do the heavy design / render reasoning,
+# which is where xhigh earns its budget; sonnet defaults to high
+# (diminishing returns past that on its task mix).
 case "$MODEL" in
+    fable|claude-fable*) _effort_default="xhigh" ;;
     opus|claude-opus*) _effort_default="xhigh" ;;
     sonnet|claude-sonnet*) _effort_default="high" ;;
     *) _effort_default="high" ;;
@@ -371,15 +373,31 @@ stream_claude() {
     # reading like a fatal error even though claude actually exited 0.
     # The formatter recognizes a small allowlist of these and annotates
     # them as `⚠ [claude-warn]` instead of leaving them as raw red text.
+    #
+    # Heavy-tier runs (Fable, or Opus when pinned) carry the fallback
+    # chain fleet-up seeded into the tmux server env, so a print-mode
+    # iteration survives the primary model being overloaded or dropping
+    # off the plan. Gated to heavy model strings: handing the chain to a
+    # sonnet run would silently upgrade the light tier to a heavy model.
+    # (--fallback-model is print-only; the interactive architect launches
+    # below can't take it and rely on fleet-up's boot-time resolution.)
+    local _fallback_args=()
+    case "$MODEL" in
+        fable|claude-fable*|opus|claude-opus*)
+            if [[ -n "${HEAVY_MODEL_FALLBACK:-}" && "$HEAVY_MODEL_FALLBACK" != "$MODEL" ]]; then
+                _fallback_args=(--fallback-model "$HEAVY_MODEL_FALLBACK")
+            fi
+            ;;
+    esac
     if [[ -n "$STREAM_FORMATTER" ]]; then
-        claude --model "$MODEL" --effort "$EFFORT" \
+        claude --model "$MODEL" --effort "$EFFORT" ${_fallback_args[@]+"${_fallback_args[@]}"} \
             --output-format stream-json --include-partial-messages --verbose \
             "$@" 2>&1 | "$STREAM_FORMATTER"
     else
         # Fallback: plain claude with whatever the caller passed.
         # `--print` from the caller stays put, so worker exit semantics
         # are unchanged; only the live-pane visibility regresses.
-        claude --model "$MODEL" --effort "$EFFORT" "$@"
+        claude --model "$MODEL" --effort "$EFFORT" ${_fallback_args[@]+"${_fallback_args[@]}"} "$@"
     fi
 }
 

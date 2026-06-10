@@ -35,11 +35,22 @@ set -euo pipefail
 
 ENGINE="$HOME/src/IrredenEngine"
 GAME="$ENGINE/creations/game"
-# Keep in sync with fleet-up's OPUS_MODEL (the fleet's single source of truth)
-# and the opus xhigh default in fleet-babysit — a model/effort bump there must
-# be mirrored here.
-MODEL="claude-opus-4-8[1m]"
-EFFORT="xhigh"
+# Keep in sync with fleet-up's heavy-tier ladder (HEAVY_MODEL_CANDIDATES —
+# the fleet's single source of truth) and the heavy xhigh default in
+# fleet-babysit — a model/effort bump there must be mirrored here.
+# FLEET_HEAVY_MODEL (env or ~/.fleet/fleet-up.conf) pins the model, same
+# knob fleet-up honors. No availability probe here — this is an
+# interactive launch, so an unavailable model fails loudly on the first
+# turn; pin FLEET_HEAVY_MODEL="claude-opus-4-8[1m]" once the plan loses
+# Fable access.
+if [[ -z "${FLEET_HEAVY_MODEL:-}" && -f "$HOME/.fleet/fleet-up.conf" ]]; then
+  # shellcheck disable=SC1091
+  source "$HOME/.fleet/fleet-up.conf"
+fi
+MODEL="${FLEET_HEAVY_MODEL:-claude-fable-5[1m]}"
+# Global FLEET_EFFORT (env or conf) lowers solo sessions too; default
+# stays xhigh — heavy design work is where that budget earns its keep.
+EFFORT="${FLEET_EFFORT:-xhigh}"
 
 ROLE="opus-architect"
 WORKTREE="$ENGINE/.claude/worktrees/opus-architect"

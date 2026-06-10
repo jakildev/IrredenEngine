@@ -12,8 +12,8 @@
 # prints the resolved effort and exits before any claude launch.
 #
 # Covers:
-#   - model-derived defaults (opus -> xhigh, sonnet -> high) for manual runs
-#   - the full 1m model name still hits the opus glob
+#   - model-derived defaults (fable/opus -> xhigh, sonnet -> high) for manual runs
+#   - the full 1m model names still hit the heavy globs
 #   - per-role FLEET_EFFORT_<ROLE> override
 #   - role->varname mapping for a hyphenated role (game-architect)
 #   - global FLEET_EFFORT fallback when no per-role value is set
@@ -58,15 +58,18 @@ effort_for() {
 
 # --- Test 1: model-derived defaults (manual run, no env) -------------------
 echo "T1: model-derived defaults"
+assert_eq "$(effort_for fable opus-architect)"  "xhigh" "fable model -> xhigh default"
 assert_eq "$(effort_for opus opus-architect)"   "xhigh" "opus model -> xhigh default"
 assert_eq "$(effort_for sonnet sonnet-author)"  "high"  "sonnet model -> high default"
 # Manual run of a dispatched role keys on the model, not the dispatcher's
-# per-role policy — opus -> xhigh even for opus-reviewer (documented; the
-# real fleet launches reviewers via the dispatcher, not babysit).
+# per-role policy — heavy models -> xhigh even for opus-reviewer
+# (documented; the real fleet launches reviewers via the dispatcher, not
+# babysit).
 assert_eq "$(effort_for opus opus-reviewer)"    "xhigh" "manual opus opus-reviewer -> xhigh (model-derived)"
 
-# --- Test 2: full 1m model name still hits the opus glob -------------------
-echo "T2: full model name hits opus glob"
+# --- Test 2: full 1m model names still hit the heavy globs -----------------
+echo "T2: full model name hits heavy globs"
+assert_eq "$(effort_for 'claude-fable-5[1m]' opus-architect)"  "xhigh" "claude-fable-5[1m] -> xhigh"
 assert_eq "$(effort_for 'claude-opus-4-8[1m]' opus-architect)" "xhigh" "claude-opus-4-8[1m] -> xhigh"
 
 # --- Test 3: per-role override ---------------------------------------------

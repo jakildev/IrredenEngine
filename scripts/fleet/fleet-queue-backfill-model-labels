@@ -63,9 +63,11 @@ for issue in issues:
         skipped += 1
         continue
 
-    m = re.search(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(opus|sonnet)', body, re.IGNORECASE)
+    # 'fable' aliases to the heavy tier: fleet:opus is a tier label, not a
+    # literal model pin (mirrors fleet-queue-ingest).
+    m = re.search(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(opus|sonnet|fable)', body, re.IGNORECASE)
     model = m.group(1).lower() if m else "opus"
-    label = f"fleet:{model}"
+    label = f"fleet:{'opus' if model == 'fable' else model}"
 
     if dry_run:
         print(f"  would add {label} to #{num}")
