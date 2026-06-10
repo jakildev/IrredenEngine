@@ -210,8 +210,9 @@ drag math.
   point projected onto a fixed iso-depth plane through the anchor,
   and the cursor's canvas-iso angle around the anchor. Each frame the
   mouse is down, applies kind-specific math to the anchor's
-  `C_LocalTransform` (translate) or to per-anchor accumulators on the
-  system (rotate / scale): TRANSLATE_ARROW projects cursor world
+  `C_LocalTransform` (translate → `translation_`; rotate →
+  `rotation_`, #1610) or to per-anchor accumulators on the
+  system (scale): TRANSLATE_ARROW projects cursor world
   delta onto the handle's unit axis; ROTATE_RING tracks the canvas-
   iso angle change with Shift snapping to 15° (π/12); SCALE_STICK
   projects onto the axis with reference distance `kScaleStickRefWorld`
@@ -229,10 +230,12 @@ gizmo as a unit. For `createJointMarker` / `createIKMarker` called
 with a real anchor parent, drag would move that parent — passing
 `kNullEntity` (Phase 1's default in `voxel_editor/main.cpp`) makes
 those handles still hoverable but no-op on drag.
-`createTranslateGizmoForAnchor(anchor)` (#1604) uses the parent-as-anchor
-routing deliberately: the arrows are parented to an existing entity and
-drag mutates that entity's own `C_LocalTransform` — the per-joint
-placement handle in the voxel editor. No group entity is created.
+`createTranslateGizmoForAnchor(anchor)` (#1604) and
+`createRotateGizmoForAnchor(anchor)` (#1610) use the parent-as-anchor
+routing deliberately: the handles are parented to an existing entity and
+drag mutates that entity's own `C_LocalTransform` (translation vs
+rotation by handle kind) — the per-joint placement and FK-posing handles
+in the voxel editor. No group entity is created.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
 
