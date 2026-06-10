@@ -37,9 +37,11 @@
 //
 // ITERATION: iterates joints via the <C_Joint, C_WorldTransform> archetype, so a
 //   joint's world transform arrives by dense-column iteration with NO per-entity
-//   getComponent. The per-skeleton rest pose (bindPose_) and target slot are
-//   gathered once per frame in beginTick (reading C_Skeleton's own fields, also
-//   no foreign getComponent) into a joint -> (bind, slot) map the tick looks up.
+//   getComponent in tick. The per-skeleton rest pose (bindPose_) and target slot are
+//   gathered once per frame in beginTick (reading C_Skeleton's own fields).
+//   seedVoxelBoneSlots (called from beginTick, block-realloc-only) looks up
+//   C_VoxelSetNew and C_VoxelPool via getComponentOptional/getComponent — compliant:
+//   rare, beginTick-only, no iterator-invalidation risk.
 //
 // DEPENDENCIES: C_Skeleton (+ bindPose_), C_Joint, C_WorldTransform,
 //   IRPrefab::Skeleton::skinMatrix (#1602), GpuVoxelTransform / binding-18 slot
