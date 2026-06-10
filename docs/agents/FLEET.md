@@ -314,15 +314,26 @@ is in `role-opus-worker.md` (escalate + resume) and the shared
 ("Handling `fleet:design-blocked` PRs"), which `role-opus-architect.md`
 wraps.
 
-### Model split: Opus for core, Sonnet for the fleet
+### Model split: heavy tier for core, Sonnet for the fleet
 
-The user has much more Sonnet budget than Opus budget. Spend each where it
-pays off. Both tiers run the 1M-token context variant; the exact model
-versions are pinned in `scripts/fleet/fleet-up` (`OPUS_MODEL` /
-`SONNET_MODEL`), not here — bump there when moving the fleet to a new
-release.
+The user has much more light-tier budget than heavy-tier budget. Spend
+each where it pays off.
 
-**Opus 4.8** — use for:
+The tier *names* are historical: role slugs (`opus-worker`), labels
+(`fleet:opus` / `fleet:sonnet`), and issue `Model:` fields say "opus" /
+"sonnet" but mean **heavy tier** / **light tier** — they don't pin the
+literal model. The heavy tier currently runs **Fable 5**; `fleet-up`
+resolves it at boot from a candidate ladder (`HEAVY_MODEL_CANDIDATES`:
+Fable 5 [1m] → Fable 5 → Opus 4.8 [1m]) so the fleet falls back to Opus
+automatically once the plan no longer covers Fable. Dispatched heavy
+iterations also carry `--fallback-model` for mid-session resilience.
+The heavy tier runs the 1M-token context variant; exact strings live in
+`scripts/fleet/fleet-up`, not here — bump there when moving the fleet
+to a new release, or pin with `FLEET_HEAVY_MODEL` in
+`~/.fleet/fleet-up.conf`. When writing `Model:` fields in issues, keep
+using `opus` (the tier name); `fable` is accepted as an alias.
+
+**Heavy tier (Fable 5 → Opus 4.8 fallback)** — use for:
 
 - Core engine architecture. ECS design, ownership and lifetime rules,
   render pipeline decisions.
@@ -334,7 +345,7 @@ release.
 - **Final review** on any PR that touches core-engine invariants, even after
   a Sonnet first pass.
 
-**Sonnet 4.6** — use for:
+**Light tier (Sonnet 4.6)** — use for:
 
 - Writing unit tests against a clear spec (test generation is pattern-heavy
   and the compiler/tests are the oracle).
@@ -350,12 +361,12 @@ release.
 
 When labeling issues, apply `fleet:opus` or `fleet:sonnet`. If a
 Sonnet agent picks up an issue and it turns out to be subtler than
-expected, stop and escalate — the cost of running out your Opus
+expected, stop and escalate — the cost of running out your heavy-tier
 budget on routine work is much higher than the cost of one handoff.
 
 Two-tier review is legitimate and encouraged: Sonnet catches the obvious
-stuff cheaply, Opus looks at what's left. Don't skip the Opus second pass
-for anything in the "Opus" list above.
+stuff cheaply, the heavy tier looks at what's left. Don't skip the heavy
+second pass for anything in the heavy-tier list above.
 
 ### Cross-platform parity (OpenGL ↔ Metal)
 

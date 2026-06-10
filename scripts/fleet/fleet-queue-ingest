@@ -340,10 +340,13 @@ for issue in pending:
                      if _blocker_open(slug, ref, blocker_cache)]
 
     # Parse model from body. Default to fleet:opus on ambiguity — mirrors
-    # the safer default when model intent is unclear.
+    # the safer default when model intent is unclear. fleet:opus is the
+    # heavy-tier label, not a literal model pin — 'fable' is an accepted
+    # alias since Fable serves that tier now (see fleet-up's model-tier
+    # comment).
     model_match = MODEL_RE.search(body)
     model_text = (model_match.group(1).strip().lower() if model_match else '')
-    if 'opus' in model_text:
+    if 'opus' in model_text or 'fable' in model_text:
         model_label = 'fleet:opus'
     elif 'sonnet' in model_text:
         model_label = 'fleet:sonnet'

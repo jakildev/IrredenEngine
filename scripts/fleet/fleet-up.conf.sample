@@ -8,6 +8,35 @@
 # Bash-sourceable. Comments start with `#`. Values without quotes work
 # for integers; quote any value containing spaces.
 
+# --- Model tiers -------------------------------------------------------------
+#
+# The fleet runs two model tiers. Role slugs and queue labels keep the
+# historical names ("opus" = heavy tier, "sonnet" = light tier); the model
+# that actually serves the heavy tier is resolved by fleet-up at boot from
+# a candidate ladder — claude-fable-5[1m] -> claude-fable-5 ->
+# claude-opus-4-8[1m] — by probing each with a one-token claude call (a few
+# cents, ~5-15 s per rung) and taking the first that answers. When the plan
+# loses Fable access, re-running fleet-up automatically lands the fleet on
+# the Opus floor.
+#
+# FLEET_HEAVY_MODEL pins the heavy tier verbatim and skips the probe.
+# FLEET_HEAVY_MODEL="claude-opus-4-8[1m]"
+#
+# FLEET_HEAVY_MODEL_FALLBACK is handed to dispatched (print-mode) heavy
+# iterations as `claude --fallback-model`, so a single iteration survives
+# the primary model being overloaded or dropping off the plan mid-session.
+# Comma-separated chain accepted; set to "" to disable. Interactive
+# architect panes can't take the flag (print-only) — they rely on the
+# boot-time resolution above. Sonnet dispatches never get a fallback.
+# FLEET_HEAVY_MODEL_FALLBACK="claude-opus-4-8[1m]"
+#
+# FLEET_MODEL_PROBE=0 skips the availability probe (offline / tests);
+# the first ladder candidate is used unprobed.
+# FLEET_MODEL_PROBE=1
+#
+# FLEET_MODEL_PROBE_TIMEOUT caps each probe call in seconds. Default 90.
+# FLEET_MODEL_PROBE_TIMEOUT=90
+
 # --- Per-role concurrency caps ----------------------------------------------
 #
 # Soft cap on simultaneous iterations per role. The dispatcher counts

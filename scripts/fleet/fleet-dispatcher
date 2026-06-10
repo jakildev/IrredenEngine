@@ -296,21 +296,31 @@ DISPATCHED_ROLES=(
 # scout-driven trigger when human:approved-not-yet-queued issues appear.
 
 # Per-role default claude model. Inherited from fleet-up's exported
-# OPUS_MODEL / SONNET_MODEL (the single source of truth — bump there).
-# The fallbacks apply only when the dispatcher is run standalone (e.g.
-# for debugging) without fleet-up in the environment; keep them in sync
-# with fleet-up. The "[1m]" suffix selects the 1M-token context variant:
-# kept for Opus, dropped for Sonnet — sonnet[1m] errors "Usage credits
-# required for 1M context" on this plan (see fleet-up's OPUS_MODEL /
-# SONNET_MODEL comment for the full rationale).
-OPUS_MODEL="${OPUS_MODEL:-claude-opus-4-8[1m]}"
+# HEAVY_MODEL / SONNET_MODEL (the single source of truth — fleet-up
+# resolves the heavy tier at boot: Fable 5 preferred, Opus 4.8 floor;
+# OPUS_MODEL is the back-compat name for the same value). "opus" in the
+# role slugs below is the historical heavy-tier name, not a model pin.
+# The env-var defaults apply only when the dispatcher is run standalone
+# (e.g. for debugging) without fleet-up in the environment; keep them in
+# sync with fleet-up. Standalone defaults to Fable unprobed — safe
+# because every heavy dispatch carries --fallback-model (see
+# build_dispatch_command), so a plan without Fable degrades to the
+# fallback chain per-iteration. The "[1m]" suffix selects the 1M-token
+# context variant: kept for the heavy tier, dropped for Sonnet —
+# sonnet[1m] errors "Usage credits required for 1M context" on this plan
+# (see fleet-up's model-tier comment for the full rationale).
+HEAVY_MODEL="${HEAVY_MODEL:-${OPUS_MODEL:-claude-fable-5[1m]}}"
 SONNET_MODEL="${SONNET_MODEL:-sonnet}"
+HEAVY_MODEL_FALLBACK="${HEAVY_MODEL_FALLBACK-claude-opus-4-8[1m]}"
+if [[ "$HEAVY_MODEL_FALLBACK" == "$HEAVY_MODEL" ]]; then
+    HEAVY_MODEL_FALLBACK=""
+fi
 declare -A ROLE_MODEL=(
     ["sonnet-author"]="$SONNET_MODEL"
-    ["opus-worker"]="$OPUS_MODEL"
+    ["opus-worker"]="$HEAVY_MODEL"
     ["sonnet-reviewer"]="$SONNET_MODEL"
-    ["opus-reviewer"]="$OPUS_MODEL"
-    ["merger"]="$OPUS_MODEL"
+    ["opus-reviewer"]="$HEAVY_MODEL"
+    ["merger"]="$HEAVY_MODEL"
     ["smoke-worker"]="$SONNET_MODEL"
 )
 
@@ -846,7 +856,17 @@ build_dispatch_command() {
     local role="$1" pane_key="$2"
     local model="${ROLE_MODEL[$role]:-sonnet}"
     local effort="${ROLE_EFFORT[$role]:-high}"
-    printf ' fleet-dispatch-wrap %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role"
+    # Heavy-tier dispatches carry the fallback chain so claude degrades
+    # per-iteration (--fallback-model, print-mode only) if the resolved
+    # model stops being available mid-session — e.g. the plan loses
+    # Fable access. Sonnet dispatches get no fallback: silently
+    # upgrading the light tier to a heavy model would invert the budget
+    # split.
+    local fallback=""
+    if [[ "$model" == "$HEAVY_MODEL" ]]; then
+        fallback="$HEAVY_MODEL_FALLBACK"
+    fi
+    printf ' fleet-dispatch-wrap %q %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role" "$fallback"
 }
 
 dispatch_role() {

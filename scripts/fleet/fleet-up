@@ -22,24 +22,44 @@ ENGINE="$HOME/src/IrredenEngine"
 GAME="$ENGINE/creations/game"
 SESSION="fleet"
 
-# Model versions — change these when bumping the fleet to a new release.
-# This is the single source of truth: they're exported below so the
-# nohup'd fleet-dispatcher inherits them for its transient roles (workers,
-# reviewers, merger, smoke), and launch_cmd threads OPUS_MODEL into the
-# architect panes via fleet-babysit. Bump here and every role moves.
+# Model tiers — change these when bumping the fleet to a new release.
 #
-# The "[1m]" suffix selects the 1M-token context variant. On this Max plan the
-# 1M-context beta is covered for Opus but NOT for Sonnet: a sonnet[1m] dispatch
-# dies instantly with "API Error: Usage credits required for 1M context" (turn
-# 1, $0.00). So Opus keeps [1m] (real headroom for long architect/worker
-# iterations); Sonnet uses the standard 200K alias, which its bounded
-# review/author iterations fit fine. (If you ever want sonnet[1m], enable usage
-# credits at claude.ai/settings/usage and re-add the suffix.) Opus is pinned to
-# a full version (the bare "opus" alias would silently upgrade); sonnet stays an
-# alias since its budget is cheap.
-OPUS_MODEL="claude-opus-4-8[1m]"
+# The queue's tier vocabulary is historical: role slugs (opus-worker),
+# labels (fleet:opus / fleet:sonnet), and issue `Model:` fields say
+# "opus" / "sonnet" but mean HEAVY tier / LIGHT tier — they no longer
+# pin the literal model. HEAVY_MODEL is whatever serves the heavy tier
+# today (Fable 5 while the plan covers it, Opus 4.8 once it doesn't);
+# SONNET_MODEL serves the light tier and really is Sonnet.
+#
+# The candidate ladder below is probed in order at fleet boot (see
+# resolve_heavy_model further down, after the session-exists early exit)
+# and the first available model wins. The last entry is the floor and is
+# accepted unprobed. Pin a specific model with FLEET_HEAVY_MODEL (env or
+# ~/.fleet/fleet-up.conf) to skip the probe entirely.
+#
+# This is the single source of truth: the resolved HEAVY_MODEL is
+# exported below so the nohup'd fleet-dispatcher inherits it for its
+# transient roles (workers, reviewers, merger, smoke), and launch_cmd
+# threads it into the architect panes via fleet-babysit. Bump here and
+# every role moves.
+#
+# The "[1m]" suffix selects the 1M-token context variant. On this Max plan
+# the 1M-context beta is covered for the heavy tier but NOT for Sonnet: a
+# sonnet[1m] dispatch dies instantly with "API Error: Usage credits
+# required for 1M context" (turn 1, $0.00). So the heavy tier keeps [1m]
+# (real headroom for long architect/worker iterations); Sonnet uses the
+# standard 200K alias, which its bounded review/author iterations fit
+# fine. (If you ever want sonnet[1m], enable usage credits at
+# claude.ai/settings/usage and re-add the suffix.) Heavy candidates are
+# pinned to full versions (a bare "fable"/"opus" alias would silently
+# upgrade); sonnet stays an alias since its budget is cheap.
+HEAVY_MODEL_CANDIDATES=(
+    "claude-fable-5[1m]"
+    "claude-fable-5"
+    "claude-opus-4-8[1m]"
+)
 SONNET_MODEL="sonnet"
-export OPUS_MODEL SONNET_MODEL
+export SONNET_MODEL
 
 # Minimum seconds between opus-reviewer relaunches (cooldown floor).
 # fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
@@ -120,6 +140,13 @@ _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
 # the conf itself.
 _env_effort_opus_architect="${FLEET_EFFORT_OPUS_ARCHITECT:-}"
 _env_effort_game_architect="${FLEET_EFFORT_GAME_ARCHITECT:-}"
+# Same guard for the model knobs (FLEET_HEAVY_MODEL pins the heavy tier
+# and skips the probe; FLEET_HEAVY_MODEL_FALLBACK feeds --fallback-model
+# on dispatched print-mode iterations). The fallback capture uses `-`
+# (not `:-`) so an operator can disable the fallback chain entirely with
+# an explicit empty FLEET_HEAVY_MODEL_FALLBACK="".
+_env_heavy_model="${FLEET_HEAVY_MODEL:-}"
+_env_heavy_model_fallback="${FLEET_HEAVY_MODEL_FALLBACK-__unset__}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
@@ -134,9 +161,14 @@ FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
 # the resolved value; it does not read the conf itself.
 FLEET_EFFORT_OPUS_ARCHITECT="${_env_effort_opus_architect:-${FLEET_EFFORT_OPUS_ARCHITECT:-${FLEET_EFFORT:-xhigh}}}"
 FLEET_EFFORT_GAME_ARCHITECT="${_env_effort_game_architect:-${FLEET_EFFORT_GAME_ARCHITECT:-${FLEET_EFFORT:-xhigh}}}"
+FLEET_HEAVY_MODEL="${_env_heavy_model:-${FLEET_HEAVY_MODEL:-}}"
+if [[ "$_env_heavy_model_fallback" != "__unset__" ]]; then
+    FLEET_HEAVY_MODEL_FALLBACK="$_env_heavy_model_fallback"
+fi
 unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_merger \
-      _env_effort_opus_architect _env_effort_game_architect
+      _env_effort_opus_architect _env_effort_game_architect \
+      _env_heavy_model _env_heavy_model_fallback
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
 export FLEET_CONCURRENCY_MERGER
@@ -213,6 +245,90 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "(kill with \`tmux kill-session -t $SESSION\` first if you want a fresh layout)"
     exit 0
 fi
+
+# ----------------------------------------------------------------------
+# Step 0: resolve the heavy-tier model
+# ----------------------------------------------------------------------
+#
+# Sits after the session-exists early exit so re-running fleet-up
+# against a live fleet never pays a probe call.
+
+# True when a minimal print-mode call to $1 succeeds. Costs one tiny
+# request (~a cent, ~5-15 s). Portable timeout: stock macOS has no
+# coreutils `timeout`, so background the probe and watchdog-kill it.
+probe_model() {
+    local model="$1" pid watchdog rc=1
+    claude --model "$model" -p 'Reply with exactly: ok' >/dev/null 2>&1 &
+    pid=$!
+    ( sleep "${FLEET_MODEL_PROBE_TIMEOUT:-90}"; kill "$pid" 2>/dev/null ) &
+    watchdog=$!
+    if wait "$pid"; then rc=0; fi
+    kill "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+    return "$rc"
+}
+
+# Walk HEAVY_MODEL_CANDIDATES; first model that answers wins. The probe
+# is what makes the Fable->Opus failover automatic when the plan loses
+# Fable access: re-run fleet-up and the fleet lands on the next rung.
+# Dispatched (print-mode) iterations additionally carry --fallback-model,
+# so a mid-session loss degrades per-iteration without a fleet-up rerun;
+# interactive architect panes can't take that flag (it's --print-only)
+# and rely on this launch-time resolution alone.
+HEAVY_MODEL=""
+if [[ -n "$FLEET_HEAVY_MODEL" ]]; then
+    HEAVY_MODEL="$FLEET_HEAVY_MODEL"
+    echo "fleet-up: heavy tier pinned via FLEET_HEAVY_MODEL -> $HEAVY_MODEL"
+elif [[ "${FLEET_MODEL_PROBE:-1}" == "0" ]]; then
+    HEAVY_MODEL="${HEAVY_MODEL_CANDIDATES[0]}"
+    echo "fleet-up: FLEET_MODEL_PROBE=0 -> $HEAVY_MODEL (unprobed)"
+else
+    _last_candidate="${HEAVY_MODEL_CANDIDATES[${#HEAVY_MODEL_CANDIDATES[@]}-1]}"
+    for _candidate in "${HEAVY_MODEL_CANDIDATES[@]}"; do
+        if [[ "$_candidate" == "$_last_candidate" ]]; then
+            HEAVY_MODEL="$_candidate"
+            echo "fleet-up: heavy tier -> $HEAVY_MODEL (fallback floor, unprobed)"
+            break
+        fi
+        printf 'fleet-up: probing %s ... ' "$_candidate"
+        if probe_model "$_candidate"; then
+            HEAVY_MODEL="$_candidate"
+            echo "ok — heavy tier -> $HEAVY_MODEL"
+            break
+        fi
+        echo "unavailable"
+    done
+    unset _candidate _last_candidate
+fi
+
+# Fallback chain for dispatched heavy iterations (claude --fallback-model;
+# comma-separated list accepted). Cleared when it would just repeat the
+# resolved model. FLEET_HEAVY_MODEL_FALLBACK="" disables it.
+HEAVY_MODEL_FALLBACK="${FLEET_HEAVY_MODEL_FALLBACK-claude-opus-4-8[1m]}"
+if [[ "$HEAVY_MODEL_FALLBACK" == "$HEAVY_MODEL" ]]; then
+    HEAVY_MODEL_FALLBACK=""
+fi
+
+# Back-compat: OPUS_MODEL is the pre-Fable name for the heavy-tier model.
+# fleet-dispatcher reads HEAVY_MODEL with an OPUS_MODEL fallthrough;
+# export both so older tooling and operator muscle memory keep working.
+OPUS_MODEL="$HEAVY_MODEL"
+export HEAVY_MODEL HEAVY_MODEL_FALLBACK OPUS_MODEL
+
+# Short human-readable tag for a model string, shown in pane labels next
+# to the role slug (e.g. "opus-worker-1 [fable 1m]"). Role slugs keep the
+# historical tier names; the bracket tag is what tells you which model
+# the tier is actually running this session.
+model_tag() {
+    local tag="$1"
+    tag="${tag/claude-fable-5/fable}"
+    tag="${tag/claude-opus-4-8/opus 4.8}"
+    tag="${tag/claude-sonnet-4-6/sonnet 4.6}"
+    tag="${tag/\[1m\]/ 1m}"
+    printf '%s' "$tag"
+}
+HEAVY_TAG="$(model_tag "$HEAVY_MODEL")"
+SONNET_TAG="$(model_tag "$SONNET_MODEL")"
 
 # ----------------------------------------------------------------------
 # Step 1: ensure all worktrees exist
@@ -1068,7 +1184,8 @@ pane_stagger() {
 }
 
 launch_cmd() {
-    # $1 = model alias (opus|sonnet), $2 = role slug (without role- prefix)
+    # $1 = model string (e.g. "$HEAVY_MODEL" / "$SONNET_MODEL"),
+    #      $2 = role slug (without role- prefix)
     # $3 = loop interval (optional — for polling roles like reviewers/queue-mgr)
     local model="$1"
     local role="$2"
@@ -1155,23 +1272,26 @@ tmux new-session -d -s "$SESSION" -n fleet \
 # can predate this process). Panes feed it to ir-build -> ir-acquire for
 # correct per-build CPU sizing.
 tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
+# Same treatment for the heavy-tier fallback chain: fleet-babysit panes
+# read it to pass --fallback-model on print-mode (worker) iterations.
+tmux set-environment -g HEAVY_MODEL_FALLBACK "$HEAVY_MODEL_FALLBACK"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
-label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [sonnet]"
+label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [$SONNET_TAG]"
 set_fleet_role "$TOP_LEFT" "sonnet-author"
 pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
 MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
-    "$(launch_cmd "$OPUS_MODEL" opus-architect)")
-label_pane_id "$MID_LEFT" "opus-architect [opus 4.8]"
+    "$(launch_cmd "$HEAVY_MODEL" opus-architect)")
+label_pane_id "$MID_LEFT" "opus-architect [$HEAVY_TAG]"
 pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-1" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_LEFT" "opus-worker-1 [opus 4.8]"
+label_pane_id "$BOT_LEFT" "opus-worker-1 [$HEAVY_TAG]"
 set_fleet_role "$BOT_LEFT" "opus-worker"
 pane_stagger
 
@@ -1182,14 +1302,14 @@ pane_stagger
 TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$TOP_MID" "sonnet-fleet-2 [sonnet]"
+label_pane_id "$TOP_MID" "sonnet-fleet-2 [$SONNET_TAG]"
 set_fleet_role "$TOP_MID" "sonnet-author"
 pane_stagger
 
 TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/sonnet-reviewer" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$TOP_RIGHT" "sonnet-reviewer [sonnet]"
+label_pane_id "$TOP_RIGHT" "sonnet-reviewer [$SONNET_TAG]"
 set_fleet_role "$TOP_RIGHT" "sonnet-reviewer"
 pane_stagger
 
@@ -1199,8 +1319,8 @@ pane_stagger
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
         -c "$GAME/.claude/worktrees/game-architect" \
-        "$(launch_cmd "$OPUS_MODEL" game-architect)")
-    label_pane_id "$MID_RIGHT" "game-architect [opus 4.8]"
+        "$(launch_cmd "$HEAVY_MODEL" game-architect)")
+    label_pane_id "$MID_RIGHT" "game-architect [$HEAVY_TAG]"
     pane_stagger
 fi
 
@@ -1210,14 +1330,14 @@ fi
 BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_MID" "opus-worker-2 [opus 4.8]"
+label_pane_id "$BOT_MID" "opus-worker-2 [$HEAVY_TAG]"
 set_fleet_role "$BOT_MID" "opus-worker"
 pane_stagger
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_RIGHT" "opus-reviewer [opus 4.8]"
+label_pane_id "$BOT_RIGHT" "opus-reviewer [$HEAVY_TAG]"
 set_fleet_role "$BOT_RIGHT" "opus-reviewer"
 pane_stagger
 
@@ -1244,7 +1364,7 @@ pane_stagger
 OPS_TR=$(tmux split-window -h -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/merger" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$OPS_TR" "merger [opus 4.8]"
+label_pane_id "$OPS_TR" "merger [$HEAVY_TAG]"
 set_fleet_role "$OPS_TR" "merger"
 
 OPS_BL=$(tmux split-window -v -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
@@ -1263,7 +1383,7 @@ if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
     OPS_SMOKE=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
         -c "$ENGINE/.claude/worktrees/smoke-worker" \
         "$TRANSIENT_PANE_CMD")
-    label_pane_id "$OPS_SMOKE" "smoke-worker [sonnet]"
+    label_pane_id "$OPS_SMOKE" "smoke-worker [$SONNET_TAG]"
     set_fleet_role "$OPS_SMOKE" "smoke-worker"
     pane_stagger
 fi
@@ -1283,6 +1403,13 @@ cat <<EOF
 
 fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
+
+model tiers (resolved this run — tier names in role slugs/labels are
+historical; "opus" means the heavy tier, whatever model serves it):
+  heavy — ${HEAVY_MODEL}  (architects, opus-worker, opus-reviewer, merger)
+          dispatched-iteration fallback: ${HEAVY_MODEL_FALLBACK:-none}
+  light — ${SONNET_MODEL}  (sonnet-author, sonnet-reviewer, smoke-worker)
+  pin with FLEET_HEAVY_MODEL in ~/.fleet/fleet-up.conf to skip the probe.
 
 layout (two windows):
   window 1 "fleet" (3x3 grid, ~33% per row):
