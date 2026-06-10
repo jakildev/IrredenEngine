@@ -157,10 +157,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     ivec2 worldPlacedResolveSize_ = ivec2(0, 0);
 
     // (Re)allocate the scratch SSBO + resolve texture to @p mainSize. Runs only
-    // on first use and on a canvas resize, not per frame. The scratch is seeded
-    // to the empty sentinel once (the blit keeps it reset thereafter); the
-    // texture needs no seed because the bake dispatch only runs in frames where
-    // the blit has just written every texel.
+    // on first use and on a canvas resize, not per frame. One seed dispatch of
+    // the blit kernel resets every scratch slot to the empty sentinel without a
+    // canvas-sized CPU staging upload (the per-frame blit keeps it reset
+    // thereafter). The texture texels that seed dispatch writes are garbage but
+    // never observable: the extra bake only runs in frames where the per-frame
+    // blit has just rewritten every texel.
     void ensureWorldPlacedResolve(ivec2 mainSize) {
         if (worldPlacedScratch_ != nullptr && worldPlacedResolveSize_ == mainSize) {
             return;
@@ -183,11 +185,23 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         worldPlacedScratchId_ = created.first;
         worldPlacedScratch_ = created.second;
         worldPlacedResolveSize_ = mainSize;
-        std::vector<std::int32_t> seed(
-            count, static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance)
-        );
-        worldPlacedScratch_->subData(0, count * sizeof(std::int32_t), seed.data());
         worldPlacedResolveDepth_ = IRComponents::detail::makeCanvasDistanceTexture(mainSize);
+
+        worldPlacedBlitProgram_->use();
+        worldPlacedScratch_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
+        worldPlacedResolveDepth_.second
+            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+        IRRender::device()->dispatchCompute(
+            IRMath::divCeil(mainSize.x, kBakeSunShadowGroupSize),
+            IRMath::divCeil(mainSize.y, kBakeSunShadowGroupSize),
+            1
+        );
+        // ALL, not SHADER_STORAGE: the seed also image-writes the resolve
+        // texture, which the per-frame blit image-writes again this tick.
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
     }
 
     void tick(
@@ -283,7 +297,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // regardless of which canvas STAGE_1 left resident. Byte-identical
             // content to what the main bake above already read.
             restoreMainCanvasVoxelFrame(
-                voxelFrameScratch_, voxelFrameDataBuf_, mainTextures_, mainPool_, mainRotation_
+                voxelFrameScratch_,
+                voxelFrameDataBuf_,
+                mainTextures_,
+                mainPool_,
+                mainRotation_
             );
 
             // Pass 1 — scatter each caster into the shared scratch (front-most
@@ -293,15 +311,19 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // buffer and breaks the encoder's binding table.
             worldPlacedScatterProgram_->use();
             worldPlacedScratch_->bindBase(
-                BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisResolveScratch
             );
             for (const auto &caster : worldPlacedCasters_) {
                 const vec4 lift = vec4(caster.worldCellOffset_, 1.0f);
                 voxelFrameDataBuf_->subData(
-                    offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_), sizeof(vec4), &lift
+                    offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_),
+                    sizeof(vec4),
+                    &lift
                 );
                 voxelFrameDataBuf_->bindBase(
-                    BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataVoxelToCanvas
                 );
                 caster.textures_->getTextureDistances()
                     ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
@@ -317,21 +339,24 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // restore baseline) sees the world frame with the opt-in off.
             const vec4 liftOff = vec4(0.0f);
             voxelFrameDataBuf_->subData(
-                offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_), sizeof(vec4), &liftOff
+                offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_),
+                sizeof(vec4),
+                &liftOff
             );
             voxelFrameDataBuf_->bindBase(
-                BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataVoxelToCanvas
             );
 
             // Pass 2 — blit the scratch into the resolve texture (and self-reset
             // the scratch for next frame). Shares the per-axis blit kernel.
             worldPlacedBlitProgram_->use();
             worldPlacedScratch_->bindBase(
-                BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisResolveScratch
             );
-            worldPlacedResolveDepth_.second->bindAsImage(
-                1, TextureAccess::WRITE_ONLY, TextureFormat::R32I
-            );
+            worldPlacedResolveDepth_.second
+                ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
             IRRender::device()->memoryBarrier(BarrierType::ALL);
 
@@ -341,15 +366,16 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // scratch aliased slot 28 and the UBO was orphaned by the subData.
             bakeProgram_->use();
             sunShadowDepthMap_->bindBase(
-                BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_SunShadowDepthMap
             );
             voxelFrameDataBuf_->bindBase(
-                BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataVoxelToCanvas
             );
             sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
-            worldPlacedResolveDepth_.second->bindAsImage(
-                0, TextureAccess::READ_ONLY, TextureFormat::R32I
-            );
+            worldPlacedResolveDepth_.second
+                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             // Restore the main-canvas distance image so the persistent Metal
@@ -549,7 +575,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // not depend on RESOLVE_PER_AXIS_SCREEN_DEPTH being registered.
         IRRender::createNamedResource<ShaderProgram>(
             "ResolveWorldPlacedDepthProgram",
-            std::vector{ShaderStage{IRRender::kFileCompResolveWorldPlacedDepth, ShaderType::COMPUTE}}
+            std::vector{
+                ShaderStage{IRRender::kFileCompResolveWorldPlacedDepth, ShaderType::COMPUTE}
+            }
         );
         IRRender::createNamedResource<ShaderProgram>(
             "WorldPlacedDepthBlitProgram",
@@ -578,6 +606,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             IRRender::getNamedResource<ShaderProgram>("ResolveWorldPlacedDepthProgram");
         p->worldPlacedBlitProgram_ =
             IRRender::getNamedResource<ShaderProgram>("WorldPlacedDepthBlitProgram");
+        p->worldPlacedCasters_.reserve(8);
         p->sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         IRRender::tagGpuStage(systemId, "bakeSunShadowMap");
