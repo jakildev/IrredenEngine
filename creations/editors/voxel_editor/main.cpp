@@ -2297,6 +2297,8 @@ void initCommands() {
                 );
                 const bool atRigRoot = j.parentIndex_ == static_cast<std::uint32_t>(i) ||
                                        j.parentIndex_ >= static_cast<std::uint32_t>(count);
+                IR_ASSERT(atRigRoot || j.parentIndex_ < i,
+                    ".rig parentIndex forward-reference — not supported by linear reconstruction");
                 const IREntity::EntityId parentEntity =
                     atRigRoot ? rigRoot : newJoints[j.parentIndex_];
                 IREntity::setParent(joint, parentEntity);

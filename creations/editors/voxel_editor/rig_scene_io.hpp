@@ -48,6 +48,7 @@ inline IRAsset::Rig skeletonToRig(
     const auto &skeleton =
         IREntity::getComponent<IRComponents::C_Skeleton>(rigRoot);
     const std::size_t count = skeleton.joints_.size();
+    IR_ASSERT(parentIdx.size() == count, "parentIdx / skeleton.joints_ size mismatch in skeletonToRig");
 
     IRAsset::Rig rig;
     rig.joints_.reserve(count);
