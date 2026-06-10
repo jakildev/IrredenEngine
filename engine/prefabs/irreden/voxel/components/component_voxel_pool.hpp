@@ -7,6 +7,7 @@
 
 #include <irreden/voxel/components/component_voxel.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <span>
 #include <optional>
@@ -298,7 +299,9 @@ struct C_VoxelPool {
             const int chunkCount = getChunkCount();
             m_chunkBounds.assign(chunkCount, ChunkBounds{});
             const IsoBounds2D iso = IRMath::isoAABBOfWorldAABBUnderYaw(
-                m_staticReVoxelizeBound->worldMin_, m_staticReVoxelizeBound->worldMax_, visualYaw
+                m_staticReVoxelizeBound->worldMin_,
+                m_staticReVoxelizeBound->worldMax_,
+                visualYaw
             );
             for (ChunkBounds &cb : m_chunkBounds) {
                 cb.isoMin_ = iso.min_;
@@ -578,6 +581,27 @@ struct C_VoxelPool {
         );
         if (m_pendingTransformIndexRanges.size() < kMaxPendingPositionRanges) {
             m_pendingTransformIndexRanges.emplace_back(startIdx, count);
+        }
+    }
+
+    // Per-voxel variant of `setTransformIndexForRange` for skeletal bone→slot
+    // seeding (#605 Phase 2.3 / #1605): voxel `startIdx + i` points at
+    // `indices[i]`, so each voxel of one set can follow a different joint slot.
+    // Queues the same pending-range flush.
+    void setTransformIndicesForRange(size_t startIdx, std::span<const std::uint32_t> indices) {
+        if (indices.empty()) {
+            return;
+        }
+        IR_ASSERT(
+            startIdx + indices.size() <= m_voxelTransformIndices.size(),
+            "setTransformIndicesForRange out of bounds: startIdx={}, count={}, poolSize={}",
+            startIdx,
+            indices.size(),
+            m_voxelTransformIndices.size()
+        );
+        std::copy(indices.begin(), indices.end(), m_voxelTransformIndices.begin() + startIdx);
+        if (m_pendingTransformIndexRanges.size() < kMaxPendingPositionRanges) {
+            m_pendingTransformIndexRanges.emplace_back(startIdx, indices.size());
         }
     }
 
