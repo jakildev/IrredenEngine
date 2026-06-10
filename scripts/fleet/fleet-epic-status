@@ -96,6 +96,8 @@ def fetch_issue(slug, number):
 
 
 def label_names(labels):
+    # GitHub API dicts ({name: ...}) come from the scout cache; plain strings
+    # come from pre-normalised call sites (e.g. validate_stack module).
     result = []
     for la in (labels or []):
         if isinstance(la, dict):
@@ -336,9 +338,9 @@ def main():
         print()
     else:
         print("Children (%d):" % n_children)
-        col = "  %-7s  %-6s  %-8s  %-10s  %-5s  %-4s  %s"
+        col = "  %-7s  %-6s  %-8s  %-16s  %-5s  %-4s  %s"
         print(col % ("Issue", "State", "Model", "PR(s)", "Plan", "Err", "Design labels"))
-        print("  " + "-" * 74)
+        print("  " + "-" * 80)
         vc_map = {vc["number"]: vc for vc in validation.get("children", [])}
         for c in children_detail:
             pr_str = ", ".join("#%d" % p["number"] for p in c["open_prs"]) or "-"
@@ -349,7 +351,7 @@ def main():
                 "#%d" % c["number"],
                 c["state"][:6],
                 (c["model"] or "?")[:8],
-                pr_str[:10],
+                pr_str[:16],
                 "Y" if c["has_plan"] else "N",
                 err_str,
                 dl_str[:38],
