@@ -197,7 +197,9 @@ After all children are filed and every issue number is known:
 
 **a. Insert child rows into the `### Children` table** in the `## Steward
 ledger` section of `<plans-dir>/issue-<N>.md` — one row per filed child,
-state `open`:
+state `open`. Use the Write tool to update `<plans-dir>/issue-<N>.md`:
+locate the empty table separator row (the `|---|---|---|---|---|` line under
+`### Children`) and append one row per child below it.
 
 ```
 | #<child-N> | open | — | plan | <YYYY-MM-DD> |
