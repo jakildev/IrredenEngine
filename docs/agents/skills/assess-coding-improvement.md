@@ -146,12 +146,14 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state open \
   prioritizing.
 
 - **No match** → file a new ticket, tagging **only** `fleet:coding-improvement`
-  (write the body to a temp file and pass `--body-file` to avoid
-  command-substitution hazards, mirroring `file-epic`):
+  (write the body to a worktree-local file and pass `--body-file` to avoid
+  command-substitution hazards, mirroring `file-epic`; use
+  `.coding-improvement-body.md` in the worktree root — NOT `/tmp/` — Claude
+  Code's sandbox blocks writes outside the worktree):
   ```
   gh issue create --repo <repo> --label "fleet:coding-improvement" \
     --title "<area>: <short rule> (coding-improvement)" \
-    --body-file <tmp>
+    --body-file .coding-improvement-body.md
   ```
   Body shape:
   ```markdown

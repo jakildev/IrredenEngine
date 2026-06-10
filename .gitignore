@@ -33,6 +33,7 @@ Thumbs.db
 .review-body-*.md
 .pr-body.md
 .merger-body.md
+.coding-improvement-body.md
 __pycache__/
 
 # creations: keep demos, voxel editor scaffold, and top-level CLAUDE.md; ignore private tools
