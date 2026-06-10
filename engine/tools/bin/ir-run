@@ -93,7 +93,9 @@ while [[ $# -gt 0 ]]; do
             WORKTREE_ROOT="$(ir_worktree_root)"
             HELPER_ROOT="$WORKTREE_ROOT"
             if [[ ! -x "$HELPER_ROOT/scripts/fleet/fleet-run-targets" ]]; then
-                HELPER_ROOT="$(ir_creation_worktree_engine_root "$WORKTREE_ROOT" || true)"
+                if _eng_root="$(ir_creation_worktree_engine_root "$WORKTREE_ROOT")"; then
+                    HELPER_ROOT="$_eng_root"
+                fi
             fi
             HELPER="$HELPER_ROOT/scripts/fleet/fleet-run-targets"
             if [[ -z "$HELPER_ROOT" || ! -x "$HELPER" ]]; then
