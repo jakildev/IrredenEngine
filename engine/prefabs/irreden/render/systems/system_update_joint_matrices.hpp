@@ -204,6 +204,30 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
             .setTransformIndicesForRange(voxelSet.voxelStartIdx_, boneSlotStaging_);
     }
 
+    // Re-stamp a rig root's voxel set to rigid follow (entity slot) when the
+    // skeleton's joint block was NOT allocated (exhaustion) or is being released
+    // (skeleton disappeared). Without this, stale per-bone `.w` stamps from the
+    // prior block persist and may alias a recycled foreign block's joints —
+    // delivering the "renders unskinned rather than aliasing" promise from
+    // acquireJointBlock's doc comment.
+    void resetVoxelBoneSlotsToRigid(IREntity::EntityId rigRoot) {
+        const auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(rigRoot);
+        if (!voxelSetOpt.has_value()) {
+            return;
+        }
+        C_VoxelSetNew &voxelSet = *voxelSetOpt.value();
+        if (voxelSet.numVoxels_ == 0 || voxelSet.canvasEntity_ == IREntity::kNullEntity ||
+            voxelSet.gpuTransformSlot_ == kVoxelTransformStatic) {
+            return; // never seeded — nothing to reset
+        }
+        IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_)
+            .setTransformIndexForRange(
+                voxelSet.voxelStartIdx_,
+                voxelSet.voxels_.size(),
+                voxelSet.gpuTransformSlot_
+            );
+    }
+
     void beginTick() {
         if (jointStaging_.size() != static_cast<std::size_t>(kMaxGpuJointTransforms)) {
             jointStaging_.assign(kMaxGpuJointTransforms, GpuVoxelTransform{});
@@ -240,6 +264,10 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
                     // re-stamp the rig's voxel set so binding 17 re-seeds
                     // this frame (Phase 2.3, #1605).
                     seedVoxelBoneSlots(rigRoot);
+                } else {
+                    // Exhaustion: re-stamp voxels to rigid follow so stale
+                    // per-bone `.w` stamps don't alias a recycled block.
+                    resetVoxelBoneSlotsToRigid(rigRoot);
                 }
             }
             if (block.base_ == kVoxelTransformStatic) {
@@ -293,6 +321,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         // Release blocks for skeletons that disappeared since last frame.
         for (auto it = skeletonBlocks_.begin(); it != skeletonBlocks_.end();) {
             if (seenSkeletons_.count(it->first) == 0) {
+                resetVoxelBoneSlotsToRigid(it->first);
                 releaseJointBlock(it->second.base_, it->second.count_);
                 it = skeletonBlocks_.erase(it);
             } else {
