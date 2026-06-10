@@ -5,9 +5,10 @@
 //   For every C_Skeleton, computes each joint's skin matrix
 //   (jointWorld × bindInverse, IRPrefab::Skeleton::skinMatrix) and writes it into
 //   the existing binding-18 EntityTransformBuffer that UPDATE_VOXEL_POSITIONS_GPU
-//   (#1396) already consumes. Cost is O(joints), not O(voxels). Phase 2.3 (#1605)
-//   then seeds each skinned voxel's transform slot (`.w`) to `slotBase + bone_id`
-//   so the existing c_update_voxel_positions prepass skins it with no new shader.
+//   (#1396) already consumes. Cost is O(joints), not O(voxels). Phase 2.3 (#1605,
+//   `seedVoxelBoneSlots` below) seeds each skinned voxel's transform slot (`.w`)
+//   to `slotBase + bone_id` so the existing c_update_voxel_positions prepass
+//   skins it with no new shader.
 //
 // WHY NO NEW BUFFER: the architect's #605 re-plan unifies skeletal skinning onto
 //   the #1396 prepass — a per-bone skin matrix is exactly the per-voxel transform
@@ -50,8 +51,11 @@
 #include <irreden/ir_math.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/skeleton.hpp>
 
 #include <algorithm>
@@ -150,6 +154,54 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         return static_cast<int>(absoluteSlot) - kJointTransformSlotBase;
     }
 
+    // Reused scratch for seedVoxelBoneSlots' per-voxel slot array (rare calls,
+    // but the capacity persists so repeated re-rigs don't churn).
+    std::vector<std::uint32_t> boneSlotStaging_;
+
+    // Phase 2.3 (#1605): point each voxel of the rig root's voxel set at its
+    // bone's binding-18 slot (`block.base_ + bone_id`) so the existing
+    // c_update_voxel_positions prepass skins it — no new shader, no stage-1
+    // change. A bone_id outside the joint list falls back to the SET's entity
+    // slot (rigid follow of the rig root), which is also what the whole set
+    // resolves to at bind pose (skinMatrix == rig world there). Lazily opts the
+    // set into the prepass via `IRPrefab::VoxelTransform::acquireSlot`; when no
+    // entity slot is available (allocator unwired / budget exhausted) the set
+    // stays CPU-direct — unrigged content pays nothing and renders unchanged.
+    //
+    // Called automatically from beginTick whenever the skeleton's slot block is
+    // (re)allocated (first rig, joint count change). After re-painting
+    // C_Voxel::bone_id_ without changing the joint list, call
+    // `IRPrefab::JointTransform::seedVoxelBoneSlots(rigRoot)` to re-stamp.
+    void seedVoxelBoneSlots(IREntity::EntityId rigRoot) {
+        const auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(rigRoot);
+        if (!voxelSetOpt.has_value()) {
+            return; // skeleton without a voxel set (pure rig) — nothing to seed
+        }
+        C_VoxelSetNew &voxelSet = *voxelSetOpt.value();
+        if (voxelSet.numVoxels_ == 0 || voxelSet.canvasEntity_ == IREntity::kNullEntity) {
+            return; // headless / staged set — seeded when it lands in a pool
+        }
+        const auto blockIt = skeletonBlocks_.find(rigRoot);
+        if (blockIt == skeletonBlocks_.end() || blockIt->second.count_ == 0) {
+            return; // no joint block — skeleton renders unskinned
+        }
+        if (voxelSet.gpuTransformSlot_ == kVoxelTransformStatic) {
+            voxelSet.gpuTransformSlot_ = IRPrefab::VoxelTransform::acquireSlot();
+            if (voxelSet.gpuTransformSlot_ == kVoxelTransformStatic) {
+                return; // no entity slot available — set stays CPU-direct
+            }
+        }
+        const SlotBlock &block = blockIt->second;
+        boneSlotStaging_.resize(voxelSet.voxels_.size());
+        for (std::size_t i = 0; i < voxelSet.voxels_.size(); ++i) {
+            const std::uint32_t boneId = voxelSet.voxels_[i].bone_id_;
+            boneSlotStaging_[i] =
+                (boneId < block.count_) ? block.base_ + boneId : voxelSet.gpuTransformSlot_;
+        }
+        IREntity::getComponent<C_VoxelPool>(voxelSet.canvasEntity_)
+            .setTransformIndicesForRange(voxelSet.voxelStartIdx_, boneSlotStaging_);
+    }
+
     void beginTick() {
         if (jointStaging_.size() != static_cast<std::size_t>(kMaxGpuJointTransforms)) {
             jointStaging_.assign(kMaxGpuJointTransforms, GpuVoxelTransform{});
@@ -159,56 +211,60 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         usedLo_ = -1;
         usedHi_ = -1;
 
-        IREntity::forEachComponent<C_Skeleton>(
-            [this](IREntity::EntityId rigRoot, C_Skeleton &skeleton) {
-                const std::uint32_t jointCount =
-                    static_cast<std::uint32_t>(skeleton.joints_.size());
-                if (jointCount == 0) {
-                    return; // not yet rigged — nothing to upload
-                }
-                seenSkeletons_.insert(rigRoot);
+        IREntity::forEachComponent<C_Skeleton>([this](
+                                                   IREntity::EntityId rigRoot,
+                                                   C_Skeleton &skeleton
+                                               ) {
+            const std::uint32_t jointCount = static_cast<std::uint32_t>(skeleton.joints_.size());
+            if (jointCount == 0) {
+                return; // not yet rigged — nothing to upload
+            }
+            seenSkeletons_.insert(rigRoot);
 
-                // Reuse the skeleton's existing block; (re)allocate when it is
-                // new or its joint count changed (release-then-acquire).
-                SlotBlock &block = skeletonBlocks_[rigRoot];
-                if (block.count_ != jointCount) {
-                    if (block.count_ != 0) {
-                        releaseJointBlock(block.base_, block.count_);
-                    }
-                    block.base_ = acquireJointBlock(jointCount);
-                    // count_ = 0 on exhaustion so next-frame's count_ != jointCount
-                    // branch fires again and re-attempts the acquire. This is
-                    // intentional: exhaustion is exceptional and cheap to retry.
-                    block.count_ = (block.base_ == kVoxelTransformStatic) ? 0 : jointCount;
+            // Reuse the skeleton's existing block; (re)allocate when it is
+            // new or its joint count changed (release-then-acquire).
+            SlotBlock &block = skeletonBlocks_[rigRoot];
+            if (block.count_ != jointCount) {
+                if (block.count_ != 0) {
+                    releaseJointBlock(block.base_, block.count_);
                 }
-                if (block.base_ == kVoxelTransformStatic) {
-                    return; // out of joint-slot budget — skeleton stays unskinned
-                }
-
-                const int loLocal = localSlot(block.base_);
-                const int hiLocal = loLocal + static_cast<int>(jointCount);
-                // Identity-fill the block so severance holes (kNullEntity) and
-                // not-yet-bind-posed joints upload identity (no deformation).
-                for (int s = loLocal; s < hiLocal; ++s) {
-                    jointStaging_[s].modelToWorld_ = IRMath::mat4(1.0f);
-                }
-                usedLo_ = (usedLo_ < 0) ? loLocal : IRMath::min(usedLo_, loLocal);
-                usedHi_ = IRMath::max(usedHi_, hiLocal);
-
-                // bindPose_ parallels joints_; a joint with no bind entry stays
-                // identity (handled by the fill above + the skip here).
-                const std::size_t bindCount = skeleton.bindPose_.size();
-                for (std::uint32_t i = 0; i < jointCount; ++i) {
-                    const IREntity::EntityId joint = skeleton.joints_[i];
-                    if (joint == IREntity::kNullEntity ||
-                        i >= static_cast<std::uint32_t>(bindCount)) {
-                        continue;
-                    }
-                    jointTargets_.push_back(
-                        JointTarget{joint, skeleton.bindPose_[i], block.base_ + i});
+                block.base_ = acquireJointBlock(jointCount);
+                // count_ = 0 on exhaustion so next-frame's count_ != jointCount
+                // branch fires again and re-attempts the acquire. This is
+                // intentional: exhaustion is exceptional and cheap to retry.
+                block.count_ = (block.base_ == kVoxelTransformStatic) ? 0 : jointCount;
+                if (block.count_ != 0) {
+                    // The bone→slot mapping was just established or moved —
+                    // re-stamp the rig's voxel set so binding 17 re-seeds
+                    // this frame (Phase 2.3, #1605).
+                    seedVoxelBoneSlots(rigRoot);
                 }
             }
-        );
+            if (block.base_ == kVoxelTransformStatic) {
+                return; // out of joint-slot budget — skeleton stays unskinned
+            }
+
+            const int loLocal = localSlot(block.base_);
+            const int hiLocal = loLocal + static_cast<int>(jointCount);
+            // Identity-fill the block so severance holes (kNullEntity) and
+            // not-yet-bind-posed joints upload identity (no deformation).
+            for (int s = loLocal; s < hiLocal; ++s) {
+                jointStaging_[s].modelToWorld_ = IRMath::mat4(1.0f);
+            }
+            usedLo_ = (usedLo_ < 0) ? loLocal : IRMath::min(usedLo_, loLocal);
+            usedHi_ = IRMath::max(usedHi_, hiLocal);
+
+            // bindPose_ parallels joints_; a joint with no bind entry stays
+            // identity (handled by the fill above + the skip here).
+            const std::size_t bindCount = skeleton.bindPose_.size();
+            for (std::uint32_t i = 0; i < jointCount; ++i) {
+                const IREntity::EntityId joint = skeleton.joints_[i];
+                if (joint == IREntity::kNullEntity || i >= static_cast<std::uint32_t>(bindCount)) {
+                    continue;
+                }
+                jointTargets_.push_back(JointTarget{joint, skeleton.bindPose_[i], block.base_ + i});
+            }
+        });
 
         // Sort by joint entity id so tick can binary-search (O(N log N) once per
         // frame, O(log N) per joint in tick). Chosen over an unordered_map because
@@ -255,11 +311,10 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         if (target == jointTargets_.end() || target->joint_ != joint) {
             return; // not a bind-posed joint of any current skeleton
         }
-        jointStaging_[localSlot(target->slot_)].modelToWorld_ =
-            IRPrefab::Skeleton::skinMatrix(
-                IRMath::SQT{world.scale_, world.rotation_, world.translation_},
-                target->bind_
-            );
+        jointStaging_[localSlot(target->slot_)].modelToWorld_ = IRPrefab::Skeleton::skinMatrix(
+            IRMath::SQT{world.scale_, world.rotation_, world.translation_},
+            target->bind_
+        );
     }
 
     void endTick() {
@@ -293,5 +348,56 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
 };
 
 } // namespace IRSystem
+
+namespace IRPrefab::JointTransform {
+
+// Wire-once-at-init handle to the UPDATE_JOINT_MATRICES skeleton slot blocks —
+// the same shape as `IRPrefab::VoxelTransform` (the entity-slot half of the
+// shared binding-18 budget). A creation that rigs voxel sets calls
+// `setSystem(systemId)` once, right after
+// `System<UPDATE_JOINT_MATRICES>::create()`.
+inline IRSystem::SystemId g_jointMatrixSystem = IREntity::kNullEntity;
+
+inline void setSystem(IRSystem::SystemId systemId) {
+    g_jointMatrixSystem = systemId;
+}
+
+inline IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES> *system() {
+    if (g_jointMatrixSystem == IREntity::kNullEntity) {
+        return nullptr;
+    }
+    return IRSystem::getSystemParams<IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES>>(
+        g_jointMatrixSystem
+    );
+}
+
+// Absolute binding-18 slot of joint 0 in `rigRoot`'s skeleton block —
+// per-voxel skinning slots are `slotBase + bone_id` (#605 Phase 2.3). Returns
+// `IRRender::kVoxelTransformStatic` when the system is unwired, the skeleton
+// has no block yet (first UPDATE_JOINT_MATRICES tick hasn't run), or the
+// joint region is exhausted.
+inline std::uint32_t slotBase(IREntity::EntityId rigRoot) {
+    auto *p = system();
+    if (p == nullptr) {
+        return IRRender::kVoxelTransformStatic;
+    }
+    const auto blockIt = p->skeletonBlocks_.find(rigRoot);
+    if (blockIt == p->skeletonBlocks_.end() || blockIt->second.count_ == 0) {
+        return IRRender::kVoxelTransformStatic;
+    }
+    return blockIt->second.base_;
+}
+
+// Re-stamp the per-voxel bone→slot indices of `rigRoot`'s voxel set (see the
+// member doc on `System<UPDATE_JOINT_MATRICES>::seedVoxelBoneSlots`). Call
+// after painting `C_Voxel::bone_id_` on an already-rigged set; rig/joint-count
+// changes re-stamp automatically. No-op when the system is unwired.
+inline void seedVoxelBoneSlots(IREntity::EntityId rigRoot) {
+    if (auto *p = system()) {
+        p->seedVoxelBoneSlots(rigRoot);
+    }
+}
+
+} // namespace IRPrefab::JointTransform
 
 #endif /* SYSTEM_UPDATE_JOINT_MATRICES_H */

@@ -29,6 +29,7 @@ add_executable(IrredenEngineTest
   ecs/skeleton_skinning_test.cpp
   ecs/spatial_grid_test.cpp
   ecs/system_exclude_test.cpp
+  ecs/voxel_bone_slot_seed_test.cpp
   ecs/voxel_set_target_canvas_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
