@@ -201,6 +201,10 @@ gizmo as a unit. For `createJointMarker` / `createIKMarker` called
 with a real anchor parent, drag would move that parent — passing
 `kNullEntity` (Phase 1's default in `voxel_editor/main.cpp`) makes
 those handles still hoverable but no-op on drag.
+`createTranslateGizmoForAnchor(anchor)` (#1604) uses the parent-as-anchor
+routing deliberately: the arrows are parented to an existing entity and
+drag mutates that entity's own `C_LocalTransform` — the per-joint
+placement handle in the voxel editor. No group entity is created.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
 

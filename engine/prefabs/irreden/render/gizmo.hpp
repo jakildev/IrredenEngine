@@ -146,6 +146,39 @@ inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name)
     return group;
 }
 
+// Shared by createTranslateGizmo / createTranslateGizmoForAnchor: the three
+// axis arrows (CYLINDER shaft + CONE head per axis), parented to — and
+// anchored at — `parent`.
+inline void
+spawnTranslateArrows(IREntity::EntityId parent, const char *shaftName, const char *headName) {
+    constexpr float shaftCenter = kArrowShaftLength * 0.5f;
+    constexpr float headCenter = kArrowShaftLength + kArrowHeadLength * 0.5f;
+
+    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
+        const Color color = axisColor(axis);
+        spawnHandle(
+            parent,
+            GizmoKind::TRANSLATE_ARROW,
+            axis,
+            axisOffset(axis, shaftCenter),
+            IRRender::ShapeType::CYLINDER,
+            vec4(kArrowShaftRadius, 0.0f, kArrowShaftLength, 0.0f),
+            color,
+            shaftName
+        );
+        spawnHandle(
+            parent,
+            GizmoKind::TRANSLATE_ARROW,
+            axis,
+            axisOffset(axis, headCenter),
+            IRRender::ShapeType::CONE,
+            vec4(kArrowHeadRadius, 0.0f, kArrowHeadLength, 0.0f),
+            color,
+            headName
+        );
+    }
+}
+
 } // namespace detail
 
 /// Translate gizmo — three axis arrows (CYLINDER shaft + CONE head).
@@ -153,34 +186,24 @@ inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name)
 inline IREntity::EntityId createTranslateGizmo(IREntity::EntityId parent = IREntity::kNullEntity) {
     using namespace detail;
     IREntity::EntityId group = makeGroup(parent, "GizmoTranslate");
-
-    constexpr float shaftCenter = kArrowShaftLength * 0.5f;
-    constexpr float headCenter = kArrowShaftLength + kArrowHeadLength * 0.5f;
-
-    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
-        const Color color = axisColor(axis);
-        spawnHandle(
-            group,
-            GizmoKind::TRANSLATE_ARROW,
-            axis,
-            axisOffset(axis, shaftCenter),
-            IRRender::ShapeType::CYLINDER,
-            vec4(kArrowShaftRadius, 0.0f, kArrowShaftLength, 0.0f),
-            color,
-            "GizmoTranslateShaft"
-        );
-        spawnHandle(
-            group,
-            GizmoKind::TRANSLATE_ARROW,
-            axis,
-            axisOffset(axis, headCenter),
-            IRRender::ShapeType::CONE,
-            vec4(kArrowHeadRadius, 0.0f, kArrowHeadLength, 0.0f),
-            color,
-            "GizmoTranslateHead"
-        );
-    }
+    spawnTranslateArrows(group, "GizmoTranslateShaft", "GizmoTranslateHead");
     return group;
+}
+
+/// Translate gizmo whose three axis arrows drag the given `anchor`
+/// entity's own `C_LocalTransform` (rather than a separate gizmo group).
+/// Each arrow is parented to `anchor` so it tracks the anchor as it
+/// moves, and its `C_GizmoHandle::anchorEntity_` points at `anchor` so a
+/// `GIZMO_DRAG` mutates the anchor directly. Use for per-target placement
+/// handles where the moved entity IS the visual anchor — e.g. a skeletal
+/// joint authored in the voxel editor (#1604). No group entity is
+/// created; the returned id is `anchor` itself. (`createTranslateGizmo`,
+/// by contrast, anchors its arrows to the group it returns, so dragging
+/// moves the gizmo as a free-standing unit.)
+inline IREntity::EntityId createTranslateGizmoForAnchor(IREntity::EntityId anchor) {
+    using namespace detail;
+    spawnTranslateArrows(anchor, "GizmoAnchorTranslateShaft", "GizmoAnchorTranslateHead");
+    return anchor;
 }
 
 /// Rotate gizmo — three axis rings (TORUS per axis).

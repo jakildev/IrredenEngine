@@ -14,6 +14,8 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/components/component_joint.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -753,6 +755,118 @@ void switchToFrame(int frameIndex) {
     );
 }
 
+// --- F-2.5 (#1604) skeletal joint authoring ---------------------------------
+//
+// One rig per editor session: a rig-root entity carrying C_Skeleton, with
+// joint entities parented under it via CHILD_OF. Each joint carries C_Joint
+// and the engine's C_LocalTransform; an orange JOINT_MARKER sphere
+// (IRPrefab::Gizmo::createJointMarker) and a translate gizmo anchored to the
+// joint itself handle visibility + placement. The index of a joint in
+// C_Skeleton.joints_ IS its bone_id; bindPose_ is kept parallel and in sync.
+// The "active" joint is the parent for the next add (B); R starts a fresh
+// chain off the rig root. Joint selection / reparent-to-any-joint / tree
+// panel land in #1607; FK posing + explicit bind recapture in #1610.
+
+// Local offset of each newly-added joint from its parent (refined by drag).
+// Clears the 8-unit translate arrows (shaft 6 + head 2) so one joint's +X
+// handle doesn't pierce the next joint in a default-spawned chain.
+constexpr vec3 kJointSpawnLocalOffset{10.0f, 0.0f, 0.0f};
+// Where a freshly-created rig root sits — clear of the editable scene
+// (x,y ∈ [-8,8]) AND the perimeter gizmo-reference row (y = ±12) so the
+// starter chain's handles don't overlap the showcase gizmos' hover targets,
+// while staying inside the lit band around the scene (further out the
+// sun-shadow / light volume coverage ends and markers read near-black).
+constexpr vec3 kJointRigOrigin{-12.0f, 16.0f, -4.0f};
+
+struct JointToolState {
+    bool active_ = false; // J toggles authoring mode
+    IREntity::EntityId rigRoot_ = IREntity::kNullEntity;
+    int activeJointIdx_ = -1;    // index into joints_ (-1 = rig root)
+    std::vector<int> parentIdx_; // parallel to joints_; -1 = rig root
+};
+JointToolState g_jointTool;
+
+// Ensures the session's rig-root entity (the C_Skeleton owner) exists,
+// creating it at kJointRigOrigin on first use. Joints parent under it.
+IREntity::EntityId ensureRigRoot() {
+    if (g_jointTool.rigRoot_ == IREntity::kNullEntity) {
+        g_jointTool.rigRoot_ =
+            IREntity::createEntity(C_LocalTransform{kJointRigOrigin}, C_Skeleton{});
+    }
+    return g_jointTool.rigRoot_;
+}
+
+// Recomputes C_Skeleton.bindPose_ from each joint's live C_LocalTransform,
+// folding the parent chain with the same sqtCompose convention
+// SYSTEM_PROPAGATE_TRANSFORM uses — so a joint left at rest has
+// C_WorldTransform == bindPose_[i] and IRPrefab::Skeleton::skinMatrix returns
+// identity at the bind pose. joints_ is in creation order, so a parent's bind
+// slot is always resolved before its children's.
+void recomputeJointBindPose() {
+    if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
+        return;
+    auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+    const std::size_t count = skeleton.joints_.size();
+    skeleton.bindPose_.assign(count, IRMath::SQT{});
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto &local = IREntity::getComponent<C_LocalTransform>(skeleton.joints_[i]);
+        const IRMath::SQT localSqt{local.scale_, local.rotation_, local.translation_};
+        const int parent = g_jointTool.parentIdx_[i];
+        skeleton.bindPose_[i] =
+            (parent < 0) ? localSqt : IRMath::sqtCompose(skeleton.bindPose_[parent], localSqt);
+    }
+}
+
+// Spawns one joint parented to the active joint (or the rig root when none /
+// after R), appends it to C_Skeleton.joints_ (its index is the bone_id),
+// refreshes the parallel bind pose, and makes it the new active joint. The
+// joint renders as an orange sphere and carries a translate gizmo anchored to
+// itself for placement.
+IREntity::EntityId addJointAuthored() {
+    const IREntity::EntityId rigRoot = ensureRigRoot();
+    const int parentIdx = g_jointTool.activeJointIdx_;
+    const IREntity::EntityId parentEntity =
+        (parentIdx < 0) ? rigRoot : IREntity::getComponent<C_Skeleton>(rigRoot).joints_[parentIdx];
+
+    // Structural changes — spawn the joint and its marker/gizmo children
+    // first, then re-fetch C_Skeleton so the stored reference can't dangle if
+    // any createEntity reshuffled the rig root's archetype storage.
+    const IREntity::EntityId joint =
+        IREntity::createEntity(C_LocalTransform{kJointSpawnLocalOffset}, C_Joint{});
+    IREntity::setParent(joint, parentEntity);
+    // Orange JOINT_MARKER sphere (hover-highlight + xray silhouette + the
+    // screen-space size pass) and per-joint translate arrows whose drag
+    // mutates the joint's own C_LocalTransform.
+    IRPrefab::Gizmo::createJointMarker(joint);
+    IRPrefab::Gizmo::createTranslateGizmoForAnchor(joint);
+
+    auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
+    skeleton.joints_.push_back(joint);
+    g_jointTool.parentIdx_.push_back(parentIdx);
+    g_jointTool.activeJointIdx_ = static_cast<int>(skeleton.joints_.size()) - 1;
+    recomputeJointBindPose();
+
+    IR_LOG_INFO("Joint added: bone {} (parent bone {})", g_jointTool.activeJointIdx_, parentIdx);
+    return joint;
+}
+
+// Starts a fresh bone chain: the next B-add parents to the rig root rather
+// than chaining off the last-added joint. (Reparent-to-any-joint is #1607.)
+void resetJointChain() {
+    g_jointTool.activeJointIdx_ = -1;
+    IR_LOG_INFO("Joint chain reset — next joint parents to the rig root.");
+}
+
+// Author a short starter chain so the feature is visible on launch and in
+// auto-screenshots, mirroring the perimeter gizmo references in initEntities.
+void seedDemoSkeleton() {
+    ensureRigRoot();
+    g_jointTool.activeJointIdx_ = -1;
+    addJointAuthored();
+    addJointAuthored();
+    addJointAuthored();
+}
+
 } // namespace
 
 } // namespace IRVoxelEditor
@@ -780,6 +894,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  P: play/pause  A: add blank frame  D: duplicate  Backspace: delete frame");
     IR_LOG_INFO("  L: toggle loop mode (LOOP / PING-PONG)");
     IR_LOG_INFO("  F: toggle loft mode (paint XZ+YZ profiles)  Enter: stamp  C: clear masks");
+    IR_LOG_INFO("  J: toggle joint authoring  B: add joint to chain  R: start new chain");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -1412,6 +1527,23 @@ void initSystems() {
         }
     );
 
+    // Joint-authoring bind-pose sync (#1604). GIZMO_DRAG mutates a dragged
+    // joint's C_LocalTransform every held frame; recapture the bind pose once
+    // at gesture end (left release) so bindPose_ always reflects the authored
+    // rest pose. In F-2.5 every drag in joint mode IS bind authoring — FK
+    // posing (#1610) separates "pose" drags from explicit bind capture.
+    auto jointBindSyncSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorJointBindSync",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            if (!IRVoxelEditor::g_jointTool.active_)
+                return;
+            if (IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED))
+                IRVoxelEditor::recomputeJointBindPose();
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
@@ -1428,7 +1560,8 @@ void initSystems() {
          placeEraseSystem,
          IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
-         IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
+         IRSystem::createSystem<IRSystem::GIZMO_DRAG>(),
+         jointBindSyncSystem}
     );
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
@@ -1893,6 +2026,44 @@ void initCommands() {
         }
     );
 
+    // J — toggle skeletal joint-authoring mode (#1604). While on, B adds a
+    // joint and R starts a fresh chain off the rig root.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonJ,
+        []() {
+            IRVoxelEditor::g_jointTool.active_ = !IRVoxelEditor::g_jointTool.active_;
+            IR_LOG_INFO("Joint authoring: {}", IRVoxelEditor::g_jointTool.active_ ? "ON" : "OFF");
+        }
+    );
+
+    // B — add a joint, chained to the active joint (or the rig root). No-op
+    // outside joint mode so the key stays free for other tools.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonB,
+        []() {
+            if (!IRVoxelEditor::g_jointTool.active_)
+                return;
+            IRVoxelEditor::addJointAuthored();
+        }
+    );
+
+    // R — start a new bone chain: the next B parents to the rig root rather
+    // than the last-added joint. No-op outside joint mode.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonR,
+        []() {
+            if (!IRVoxelEditor::g_jointTool.active_)
+                return;
+            IRVoxelEditor::resetJointChain();
+        }
+    );
+
     // H: toggle active layer visibility. Iterates C_VoxelSetNew and updates
     // voxel alpha so hidden layers vanish from the viewport immediately.
     IRCommand::createCommand(
@@ -2080,6 +2251,12 @@ void initEntities() {
         IREntity::getComponent<C_LocalTransform>(ikMarker).translation_ =
             vec3(16.0f, -12.0f, -3.0f);
     }
+
+    // F-2.5 (#1604) joint-authoring starter rig — a short bone chain so the
+    // feature is visible on launch and in auto-screenshots (same spirit as the
+    // perimeter gizmo references above). Author more with J (toggle mode) + B
+    // (add joint); R starts a new chain off the rig root.
+    IRVoxelEditor::seedDemoSkeleton();
 
     // Editable voxel set — the place/erase target. Allocated empty
     // (default color, alpha=255 so cells are active at start) then
