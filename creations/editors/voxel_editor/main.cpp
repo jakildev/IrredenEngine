@@ -1765,11 +1765,13 @@ void initSystems() {
                 for (int i = 0; i < count; ++i) {
                     const IREntity::EntityId joint = skeleton.joints_[static_cast<std::size_t>(i)];
                     auto nameOpt = IREntity::getComponentOptional<C_JointName>(joint);
-                    const std::string label = (nameOpt.has_value() && !(*nameOpt)->name_.empty())
-                                                  ? std::to_string(i) + " " + (*nameOpt)->name_
-                                                  : "bone_" + std::to_string(i);
+                    // Label is rebuilt each frame; a mutation counter on C_Skeleton
+                    // could skip this for unchanged rigs (deferred — benign at ≤10 joints).
+                    std::string label = (nameOpt.has_value() && !(*nameOpt)->name_.empty())
+                                            ? std::to_string(i) + " " + (*nameOpt)->name_
+                                            : "bone_" + std::to_string(i);
                     if (list.items_[static_cast<std::size_t>(i)] != label)
-                        list.items_[static_cast<std::size_t>(i)] = label;
+                        list.items_[static_cast<std::size_t>(i)] = std::move(label);
                 }
 
                 // Mirror activeJointIdx_ → list selection.
@@ -1836,6 +1838,8 @@ void initSystems() {
                     }
                     const IREntity::EntityId joint = sk.joints_[static_cast<std::size_t>(idx)];
                     // Guard: can't parent to self or out-of-range bone.
+                    // No cycle detection — A→B→A passes this guard and produces a stale
+                    // bindPose_ from recomputeJointBindPose (bounded loop, no crash).
                     if (newParentIdx != idx && (newParentIdx < 0 || newParentIdx < count)) {
                         const IREntity::EntityId newParentEntity =
                             (newParentIdx < 0) ? g_jointTool.rigRoot_
