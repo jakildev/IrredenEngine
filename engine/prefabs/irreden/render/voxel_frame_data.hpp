@@ -46,7 +46,13 @@ inline void buildVoxelFrameData(
 
     const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
-    const ivec2 dispatchGrid = voxelDispatchGridForCount(liveVoxelCount);
+    // Clamp to 1: voxelDispatchGridForCount divides by the count, and the
+    // lighting passes author frame data for canvases whose pool is EMPTY
+    // (authorIteratingCanvasVoxelFrame / restoreMainCanvasVoxelFrame have no
+    // liveVoxelCount gate — observed as a SIGFPE on a lit scene whose main
+    // canvas holds zero voxels, #1619 step-0 harness). voxelCount_ below still
+    // carries the honest 0, which gates all shader-side work.
+    const ivec2 dispatchGrid = voxelDispatchGridForCount(IRMath::max(liveVoxelCount, 1));
 
     frameData.cameraTrixelOffset_ = IRRender::getEffectiveCameraIso();
     frameData.trixelCanvasOffsetZ1_ = IRMath::trixelOriginOffsetZ1(canvas.size_);

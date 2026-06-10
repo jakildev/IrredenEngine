@@ -119,14 +119,14 @@ inline void seedResidentLocals(
     const int center = (n > 0) ? static_cast<int>(IRMath::ceil(maxRadius)) : 0;
     buffer.destCenter_ = center;
     buffer.destSide_ = 2 * center + 1;
-    const int rawDestCount =
-        (n > 0) ? (buffer.destSide_ * buffer.destSide_ * buffer.destSide_) : 0;
+    const int rawDestCount = (n > 0) ? (buffer.destSide_ * buffer.destSide_ * buffer.destSide_) : 0;
     const int maxAllocSize = IRRender::VoxelPoolConfig::getMaxAllocationSizeTotal();
     IR_ASSERT(
         rawDestCount <= maxAllocSize,
         "re-voxelize dest cube {} exceeds shared voxel buffer capacity {} — "
         "a private worst-case-sized pool is needed (see #1619 architect note)",
-        rawDestCount, maxAllocSize
+        rawDestCount,
+        maxAllocSize
     );
     buffer.destCount_ = rawDestCount;
 
@@ -154,12 +154,11 @@ inline void syncResidentBuffers(
 
     // Dense per-archetype-column iteration (no per-entity getComponent): the
     // three components arrive as parallel column vectors indexed by row.
-    const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
-        IREntity::getArchetype<
-            IRComponents::C_CanvasLocalRotation,
-            IRComponents::C_VoxelPool,
-            IRComponents::C_DetachedRevoxelizeBuffer>()
-    );
+    const std::vector<IREntity::ArchetypeNode *> nodes =
+        IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<
+                                            IRComponents::C_CanvasLocalRotation,
+                                            IRComponents::C_VoxelPool,
+                                            IRComponents::C_DetachedRevoxelizeBuffer>());
 
     for (IREntity::ArchetypeNode *node : nodes) {
         std::vector<IRComponents::C_CanvasLocalRotation> &rotations =

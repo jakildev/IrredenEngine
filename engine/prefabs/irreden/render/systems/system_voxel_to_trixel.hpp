@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -260,6 +261,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // visible (the model-space re-voxelize canvas shows the whole solid).
     std::vector<std::uint32_t> activeMaskClearScratch_;
     std::vector<std::uint32_t> allVisibleChunkScratch_;
+    // #1619 step-0 diagnostic budget (remove when #1619 closes) — see the
+    // readback block after the compact dispatch in tick().
+    int revoxDebugBudget_ = 4;
 
     C_DetachedRevoxelizeBuffer *lookupDetachedRevoxelizeBuffer(IREntity::EntityId entity) const {
         for (const auto &[id, buffer] : detachedRevoxelizeBuffers_) {
@@ -664,6 +668,45 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::device()->dispatchCompute(compactGrid.x, compactGrid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+
+        // #1619 step-0 diagnostic (remove when #1619 closes): fill/compact health
+        // for the inverse path — active-bit population vs dest domain vs compact
+        // survivor count, logged for the first few inverse frames. On Linux/GL
+        // this reads live=1728 activeBits=1299 visibleCount=1299 for the solo
+        // L-prism (fill + compact healthy); running the same build on
+        // macOS/Metal localizes the Metal dropout to fill, compact, or raster
+        // in one run.
+        if (revoxInverse && revoxDebugBudget_ > 0) {
+            --revoxDebugBudget_;
+            VoxelIndirectDispatchParams after{};
+            indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &after);
+            const int maskWords =
+                IRMath::divCeil(effectiveVoxelCount, static_cast<int>(kVoxelActiveMaskBits));
+            std::vector<std::uint32_t> maskMirror(static_cast<std::size_t>(maskWords));
+            voxelActiveMaskBuf_->getSubData(
+                0,
+                static_cast<std::size_t>(maskWords) * sizeof(std::uint32_t),
+                maskMirror.data()
+            );
+            int activeBits = 0;
+            for (std::uint32_t wordValue : maskMirror) {
+                activeBits += std::popcount(wordValue);
+            }
+            IRE_LOG_INFO(
+                "revox dbg entity={}: live={} destSide={} destCount={} activeBits={} "
+                "visibleCount={} cull=({},{})..({},{})",
+                entity,
+                liveVoxelCount,
+                revoxBuffer->destSide_,
+                effectiveVoxelCount,
+                activeBits,
+                after.visibleCount,
+                frameData_.cullIsoMin_.x,
+                frameData_.cullIsoMin_.y,
+                frameData_.cullIsoMax_.x,
+                frameData_.cullIsoMax_.y
+            );
+        }
 
         // Smooth camera Z-yaw (T3 / #1310): while the MAIN canvas's per-axis
         // canvases are active, SKIP the single-canvas voxel rasterization. The

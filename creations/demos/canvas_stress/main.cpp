@@ -103,6 +103,13 @@ struct CanvasStressSettings {
     bool fullRotate_ = false;
     bool noSpin_ = false;
     bool noLighting_ = false;
+    // #1619 step-0 isolation harness (architect-mandated). Spawns exactly ONE
+    // rotated DETACHED_REVOXELIZE solid — the multi-color L-prism at its
+    // off-cardinal initialRotation — and nothing else (no floor, no main grid,
+    // no GRID spin cubes, no canary cubes, no second proof solid, no orbit
+    // ring). Discriminates cross-canvas clobber (renders alone, breaks with
+    // neighbours) from a single-canvas mode-1 chain defect (breaks alone too).
+    bool soloRevox_ = false;
     // ON by default: the two center re-voxelize solids opt into world-placement
     // (C_EntityCanvas::worldPlaced_) so they depth-sort against the SDF floor
     // spawned unconditionally by #1587. Pass --screen-lock-revox to revert to
@@ -562,6 +569,13 @@ void parseArgs(int argc, char **argv) {
             g_settings.noLighting_ = true;
         } else if (std::strcmp(argv[i], "--screen-lock-revox") == 0) {
             g_settings.worldPlaceReVox_ = false;
+        } else if (std::strcmp(argv[i], "--solo-revox") == 0) {
+            g_settings.soloRevox_ = true;
+            // The solo harness spawns no floor to depth-sort against, and the
+            // #1619 step-0 GL evidence (committed crops) was captured on the
+            // screen-locked overlay path — keep the lone L-prism screen-locked
+            // rather than inheriting the #1621 world-place default.
+            g_settings.worldPlaceReVox_ = false;
         }
     }
 }
@@ -618,9 +632,8 @@ void initSystems() {
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
 
     if (g_settings.autoRotate_) {
-        renderPipeline.push_back(
-            IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame)
-        );
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame
+        ));
     }
 
     if (g_settings.fullRotate_) {
@@ -629,27 +642,22 @@ void initSystems() {
         // anchors the singleton tick; GRID canvases see only the Z-component
         // (via IRPrefab::Camera::getYaw); DETACHED canvases pick up the full
         // quat through PROPAGATE_CANVAS_ROTATION.
-        renderPipeline.push_back(
-            IRSystem::createSystem<C_Camera>(
-                "AutoFullRotate",
-                [](C_Camera &) {},
-                []() {
-                    const vec4 delta = IRMath::quatMul(
-                        IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), kFullRotateYawPerFrame),
-                        IRMath::quatMul(
-                            IRMath::quatAxisAngle(
-                                vec3(0.0f, 1.0f, 0.0f),
-                                kFullRotatePitchYPerFrame
-                            ),
-                            IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), kFullRotatePitchPerFrame)
-                        )
-                    );
-                    IRPrefab::Camera::setRotationQuat(
-                        IRMath::quatMul(delta, IRPrefab::Camera::getRotationQuat())
-                    );
-                }
-            )
-        );
+        renderPipeline.push_back(IRSystem::createSystem<C_Camera>(
+            "AutoFullRotate",
+            [](C_Camera &) {},
+            []() {
+                const vec4 delta = IRMath::quatMul(
+                    IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), kFullRotateYawPerFrame),
+                    IRMath::quatMul(
+                        IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), kFullRotatePitchYPerFrame),
+                        IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), kFullRotatePitchPerFrame)
+                    )
+                );
+                IRPrefab::Camera::setRotationQuat(
+                    IRMath::quatMul(delta, IRPrefab::Camera::getRotationQuat())
+                );
+            }
+        ));
     }
 
     if (!g_settings.noLighting_) {
@@ -732,20 +740,22 @@ void initEntities() {
         // DETACHED entities (re-voxelize solids, forward-scatter cubes, orbit
         // ring) do NOT — they composite as screen-locked overlays after the
         // shadow bake and never write world depth (#1582 Option B / P4b #1576).
-        const EntityId floor = IREntity::createEntity(
-            C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
-            C_ShapeDescriptor{
-                IRRender::ShapeType::BOX,
-                vec4(kFloorSpan, kFloorSpan, kFloorThickness, 0.0f),
-                kFloorColor
-            }
-        );
-        IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+        if (!g_settings.soloRevox_) {
+            const EntityId floor = IREntity::createEntity(
+                C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
+                C_ShapeDescriptor{
+                    IRRender::ShapeType::BOX,
+                    vec4(kFloorSpan, kFloorSpan, kFloorThickness, 0.0f),
+                    kFloorColor
+                }
+            );
+            IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+        }
     }
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
     // T-293 inter-trixel deformation on the world canvas under camera yaw.
-    const int n = IRMath::max(0, g_settings.mainGridSize_);
+    const int n = g_settings.soloRevox_ ? 0 : IRMath::max(0, g_settings.mainGridSize_);
     constexpr float kGridSpacing = 7.0f;
     const float gridCenter = (static_cast<float>(IRMath::max(n, 1)) - 1.0f) * 0.5f;
     for (int y = 0; y < n; ++y) {
@@ -786,7 +796,8 @@ void initEntities() {
     };
     const float gridSpinCenter = (static_cast<float>(kGridSpinCount) - 1.0f) * 0.5f;
     const float gridSpinY = (static_cast<float>(n) * 0.5f + 1.5f) * kGridSpacing;
-    for (int i = 0; i < kGridSpinCount; ++i) {
+    const int gridSpinCount = g_settings.soloRevox_ ? 0 : kGridSpinCount;
+    for (int i = 0; i < gridSpinCount; ++i) {
         const vec3 pos{
             (static_cast<float>(i) - gridSpinCenter) * kGridSpinSpacing,
             gridSpinY,
@@ -804,7 +815,7 @@ void initEntities() {
     // distinct SO(3) rotation. The world spacing must exceed the detached canvas
     // footprint (composited at canvasSize / mainCanvasSize of the framebuffer)
     // or the canvases overlap — kDetachedSpacing is sized for the 128-px canvas.
-    const int detached = IRMath::max(0, g_settings.detachedCount_);
+    const int detached = g_settings.soloRevox_ ? 0 : IRMath::max(0, g_settings.detachedCount_);
     constexpr float kDetachedSpacing = 160.0f;
     const int cols = IRMath::max(
         1,
@@ -866,17 +877,25 @@ void initEntities() {
         /*multiColor=*/true,
         /*worldPlaced=*/g_settings.worldPlaceReVox_
     );
-    spawnDetachedReVoxelizeSolid(
-        1,
-        kReVoxCubeWorld,
-        IRMath::quatAxisAngle(IRMath::normalize(vec3(0.3f, 1.0f, 0.5f)), IRMath::kPi / 5.0f),
-        vec3(0.4f, 1.0f, 0.6f),
-        reVoxSpin,
-        Color{70, 210, 210, 255},
-        /*carveAsymmetric=*/false,
-        /*multiColor=*/false,
-        /*worldPlaced=*/g_settings.worldPlaceReVox_
-    );
+    if (!g_settings.soloRevox_) {
+        spawnDetachedReVoxelizeSolid(
+            1,
+            kReVoxCubeWorld,
+            IRMath::quatAxisAngle(IRMath::normalize(vec3(0.3f, 1.0f, 0.5f)), IRMath::kPi / 5.0f),
+            vec3(0.4f, 1.0f, 0.6f),
+            reVoxSpin,
+            Color{70, 210, 210, 255},
+            /*carveAsymmetric=*/false,
+            /*multiColor=*/false,
+            /*worldPlaced=*/g_settings.worldPlaceReVox_
+        );
+    }
+
+    // #1619 step-0 isolation: the L-prism above is the entire scene.
+    if (g_settings.soloRevox_) {
+        IR_LOG_INFO("canvas_stress: --solo-revox — single rotated DETACHED_REVOXELIZE L-prism");
+        return;
+    }
 
     // Orbit ring: a wider second ring of varied silhouettes that tumbles around
     // the center cluster. Cycles shape kind, rotation mode (GRID / DETACHED /
