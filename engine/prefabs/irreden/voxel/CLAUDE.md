@@ -40,8 +40,11 @@ for single voxels and particles.
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint
-  EntityIds. The position in the vector IS the bone_id used by
-  `C_Voxel.bone_id_` and indexed by the per-frame GPU joint-matrix SSBO.
+  EntityIds. The position in the vector IS the bone_id stored in
+  `C_Voxel.bone_id_`. At skinning time `UPDATE_JOINT_MATRICES` maps each
+  bone_id to `slotBase + bone_id` in `EntityTransformBuffer` (binding 18)
+  via per-voxel slots in `LocalVoxelPositions` (binding 17) — binding 21
+  (`kBufferIndex_JointTransforms`) is SDF-shapes scaffolding only.
   See "Entity-based joints" below.
 - `C_Joint` — tag marking an entity as a skeletal joint. Paired with the
   engine's canonical local-transform component and a `CHILD_OF` relation
@@ -203,9 +206,12 @@ single component on the rig root. Three pieces:
 
 - **`C_Skeleton`** on the rig root. Holds `std::vector<EntityId> joints_`
   — the canonical, ordered list of joint entities. The index of an entry
-  in `joints_` IS the `bone_id` used by `C_Voxel.bone_id_` and indexed by
-  the per-frame GPU joint-matrix SSBO at `kBufferIndex_JointTransforms`
-  (defined in `engine/render/include/irreden/render/ir_render_types.hpp`).
+  in `joints_` IS the `bone_id` stored in `C_Voxel.bone_id_`. At skinning
+  time `UPDATE_JOINT_MATRICES` maps each bone_id to `slotBase + bone_id` in
+  `EntityTransformBuffer` (binding `kBufferIndex_EntityTransforms`, slot 18)
+  via per-voxel slots in `LocalVoxelPositions` (binding 17). Binding 21
+  (`kBufferIndex_JointTransforms`) is SDF-shapes scaffolding only — not
+  used by the voxel skinning path.
 - **`C_Joint`** tag on each joint entity. Drives joint-only archetype
   queries like `<C_Joint, C_LocalTransform>` so IK solvers and the GPU
   joint-matrix uploader iterate joints without seeing rig roots or
