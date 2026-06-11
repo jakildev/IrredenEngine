@@ -454,7 +454,9 @@ whether the fix reveals a **generalizable** improvement to the fleet's dev
 procedures — and, importantly, whether a rule *already exists* but wasn't
 surfaced where you'd have caught it at authoring time. If so it files (or
 appends to) a `fleet:coding-improvement` ticket, left un-queued for human
-triage. One-off domain fixes produce no ticket — the skill gates that.
+triage (the human drains that backlog in batches via the
+`triage-coding-improvements` skill). One-off domain fixes produce no
+ticket — the skill gates that.
 
 This is a read-only reflection — it never touches this PR's code, labels, or
 claim, so it's safe to run after the releases above. (On the ESCALATE path,

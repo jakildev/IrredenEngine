@@ -13,6 +13,11 @@ This is invoked at the **end of a feedback AMEND** (see
 **reflection** pass, not a code change — the fix already landed. It never
 touches the PR's code, labels, or claim.
 
+This skill is the **filing side** of the channel; the backlog it produces is
+drained in human-cued batches by
+[`triage-coding-improvements.md`](triage-coding-improvements.md), the
+consumption side.
+
 Every repo that runs a fleet keeps its
 `.claude/skills/assess-coding-improvement/SKILL.md` as a thin wrapper that
 points here and supplies only its **deltas** — most importantly its
