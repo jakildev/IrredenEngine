@@ -1462,7 +1462,7 @@ if [[ -d "$ENGINE/.claude/worktrees/epic-steward" ]]; then
     OPS_EPIC=$(tmux split-window -v -t "$_epic_base" -l 50% -P -F "#{pane_id}" \
         -c "$ENGINE/.claude/worktrees/epic-steward" \
         "$TRANSIENT_PANE_CMD")
-    label_pane_id "$OPS_EPIC" "epic-steward [$HEAVY_TAG]"
+    label_pane_id "$OPS_EPIC" "epic-steward [$OPUS_TAG]"
     set_fleet_role "$OPS_EPIC" "epic-steward"
     pane_stagger
     unset _epic_base
