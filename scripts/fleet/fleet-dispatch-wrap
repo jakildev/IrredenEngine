@@ -107,8 +107,11 @@ rm -f "$FLEET_THROTTLE_FLAG"
 # worktree and an active reservation, the session likely dropped the
 # commit-and-push flow mid-way (e.g. end_turn after simplify). Write a
 # trigger so the dispatcher re-fires the worker on the next tick; the
-# reservation gate at step 0.5 will resume the same task.
-if [[ "$rc" == "0" && ("$ROLE" == "opus-worker" || "$ROLE" == "sonnet-author") ]]; then
+# reservation gate at step 0.5 will resume the same task. `worker` is the
+# unified P2 lane; the legacy `opus-worker` / `sonnet-author` names are
+# kept so a still-running pre-P2 dispatcher mid-transition is handled too
+# (the new dispatcher folds triggers/<legacy> into triggers/worker).
+if [[ "$rc" == "0" && ("$ROLE" == "worker" || "$ROLE" == "opus-worker" || "$ROLE" == "sonnet-author") ]]; then
     worktree_name=$(basename "$PWD")
     reservation_issue=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
     if [[ -n "$reservation_issue" ]]; then

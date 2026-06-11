@@ -8,10 +8,15 @@
 #   - dedup when a worktree has both a dispatch record and a reservation
 #   - reservation on an idle pane does NOT count (resume-after-crash)
 #   - reservation on a busy pane DOES count (live iteration)
-#   - cap defaults (preserve current behavior at 2 for multi-pane roles)
+#   - cap defaults (unified worker lane = 4; deprecated per-lane caps sum)
 #   - env var override
 #   - conf file override
 #   - conf override beat by env var
+#
+# count-active queries the unified `worker` lane while the dispatch
+# records, pane tags, and reservations still carry the legacy
+# `opus-worker` strings — exercising pane_role_matches_lane's coexistence
+# aliasing (panes aren't renamed until P2-2).
 
 set -euo pipefail
 
@@ -89,26 +94,31 @@ chmod +x "$TMPROOT/bin/gh"
 ln -s "$FLEET_CLAIM" "$TMPROOT/bin/fleet-claim"
 export PATH="$TMPROOT/bin:$PATH"
 
+# The dispatch records and pane tags below deliberately use the legacy
+# `opus-worker` role string: P2-2 has not renamed the panes yet, so the
+# unified `worker` lane must count work that still carries the old tag
+# (pane_role_matches_lane). This is the coexistence path.
+
 # --- Test 1: no records, no reservations -----------------------------------
 echo "T1: empty state — count is 0"
-n=$("$DISPATCHER" --count-active opus-worker)
-assert_eq "$n" "0" "opus-worker count is 0 with empty state"
+n=$("$DISPATCHER" --count-active worker)
+assert_eq "$n" "0" "worker count is 0 with empty state"
 
 # --- Test 2: in-flight only ------------------------------------------------
-echo "T2: one in-flight dispatch record for opus-worker"
+echo "T2: one in-flight dispatch record (legacy opus-worker tag)"
 cat >"$FLEET_STATE_DIR/dispatch/pane-3.json" <<'JSON'
 {"role":"opus-worker","pane":"%3","dispatched_at":"2026-05-08T00:00:00Z"}
 JSON
-n=$("$DISPATCHER" --count-active opus-worker)
-assert_eq "$n" "1" "opus-worker count is 1 with one in-flight"
-n=$("$DISPATCHER" --count-active sonnet-author)
-assert_eq "$n" "0" "sonnet-author count is 0 (in-flight is opus-worker)"
+n=$("$DISPATCHER" --count-active worker)
+assert_eq "$n" "1" "worker count is 1 with one in-flight (legacy tag aliased)"
+n=$("$DISPATCHER" --count-active merger)
+assert_eq "$n" "0" "merger count is 0 (in-flight is a worker-lane record)"
 
 # --- Test 3: reservation only ----------------------------------------------
 echo "T3: a reservation for an opus task on a different worktree"
 "$FLEET_CLAIM" reserve 901 opus-worker-2 claude/901-something >/dev/null
-n=$("$DISPATCHER" --count-active opus-worker)
-assert_eq "$n" "2" "opus-worker count is 2 (1 in-flight + 1 reserved on different worktree)"
+n=$("$DISPATCHER" --count-active worker)
+assert_eq "$n" "2" "worker count is 2 (1 in-flight + 1 reserved on different worktree)"
 
 # --- Test 4: dedup when same worktree has both ------------------------------
 echo "T4: add second in-flight whose worktree matches the reservation"
@@ -166,8 +176,8 @@ JSON
 # With tmux stub: pane %3 → opus-worker-1, pane %5 → opus-worker-2,
 # both busy. Reservation is on opus-worker-2 → dedup with pane %5's
 # record. Total unique = 2 (opus-worker-1, opus-worker-2).
-PATH="$TMPROOT/bin-tmux:$PATH" n=$("$DISPATCHER" --count-active opus-worker)
-assert_eq "$n" "2" "opus-worker count dedups same-worktree dispatch+reservation"
+PATH="$TMPROOT/bin-tmux:$PATH" n=$("$DISPATCHER" --count-active worker)
+assert_eq "$n" "2" "worker count dedups same-worktree dispatch+reservation"
 
 # --- Test 4b: reservation on IDLE pane (resume case) does NOT count --------
 echo "T4b: reservation on idle pane does NOT count (resume case)"
@@ -224,7 +234,7 @@ exit 1
 PGREPEOF
 chmod +x "$TMPROOT/bin-tmux-idle/pgrep"
 
-n=$(PATH="$TMPROOT/bin-tmux-idle:$PATH" "$DISPATCHER" --count-active opus-worker)
+n=$(PATH="$TMPROOT/bin-tmux-idle:$PATH" "$DISPATCHER" --count-active worker)
 assert_eq "$n" "0" "reservation on idle pane is the resume signal — does not pin the cap"
 
 # --- Test 4c: reservation on BUSY pane DOES count --------------------------
@@ -262,43 +272,51 @@ esac
 TMUXEOF
 chmod +x "$TMPROOT/bin-tmux-busy/tmux"
 
-n=$(PATH="$TMPROOT/bin-tmux-busy:$PATH" "$DISPATCHER" --count-active opus-worker)
+n=$(PATH="$TMPROOT/bin-tmux-busy:$PATH" "$DISPATCHER" --count-active worker)
 assert_eq "$n" "1" "reservation on busy pane counts (live iteration)"
 
 # --- Test 5: cap defaults --------------------------------------------------
 echo "T5: cap defaults (no conf, no env)"
-unset FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR \
+unset FLEET_CONCURRENCY_WORKER FLEET_CONCURRENCY_OPUS_WORKER \
+      FLEET_CONCURRENCY_SONNET_AUTHOR \
       FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER \
       FLEET_CONCURRENCY_QUEUE_MANAGER FLEET_CONCURRENCY_MERGER
 rm -f "$FLEET_CONF"
-cap=$("$DISPATCHER" --print-cap opus-worker)
-assert_eq "$cap" "2" "default cap for opus-worker is 2"
-cap=$("$DISPATCHER" --print-cap sonnet-author)
-assert_eq "$cap" "2" "default cap for sonnet-author is 2"
+cap=$("$DISPATCHER" --print-cap worker)
+assert_eq "$cap" "4" "default cap for the worker lane is 4"
 cap=$("$DISPATCHER" --print-cap merger)
 assert_eq "$cap" "1" "default cap for merger is 1"
 
+# --- Test 5b: deprecated per-lane caps sum into the worker cap -------------
+echo "T5b: deprecated OPUS_WORKER + SONNET_AUTHOR sum when WORKER unset"
+cap=$(FLEET_CONCURRENCY_OPUS_WORKER=3 FLEET_CONCURRENCY_SONNET_AUTHOR=2 \
+    "$DISPATCHER" --print-cap worker)
+assert_eq "$cap" "5" "worker cap = deprecated OPUS_WORKER(3) + SONNET_AUTHOR(2)"
+cap=$(FLEET_CONCURRENCY_WORKER=6 FLEET_CONCURRENCY_OPUS_WORKER=3 \
+    FLEET_CONCURRENCY_SONNET_AUTHOR=2 "$DISPATCHER" --print-cap worker)
+assert_eq "$cap" "6" "FLEET_CONCURRENCY_WORKER wins over the deprecated sum"
+
 # --- Test 6: env var override ---------------------------------------------
 echo "T6: env var overrides default"
-cap=$(FLEET_CONCURRENCY_OPUS_WORKER=5 "$DISPATCHER" --print-cap opus-worker)
+cap=$(FLEET_CONCURRENCY_WORKER=5 "$DISPATCHER" --print-cap worker)
 assert_eq "$cap" "5" "env var overrides default cap"
 
 # --- Test 7: conf file override --------------------------------------------
 echo "T7: conf file overrides default"
 cat >"$FLEET_CONF" <<'CONFEOF'
-FLEET_CONCURRENCY_OPUS_WORKER=4
+FLEET_CONCURRENCY_WORKER=4
 FLEET_CONCURRENCY_MERGER=3
 CONFEOF
-cap=$("$DISPATCHER" --print-cap opus-worker)
-assert_eq "$cap" "4" "conf file sets opus-worker cap to 4"
+cap=$("$DISPATCHER" --print-cap worker)
+assert_eq "$cap" "4" "conf file sets worker cap to 4"
 cap=$("$DISPATCHER" --print-cap merger)
 assert_eq "$cap" "3" "conf file sets merger cap to 3"
-cap=$("$DISPATCHER" --print-cap sonnet-author)
-assert_eq "$cap" "2" "untouched roles keep their default"
+cap=$("$DISPATCHER" --print-cap sonnet-reviewer)
+assert_eq "$cap" "1" "untouched roles keep their default"
 
 # --- Test 8: env var beats conf --------------------------------------------
 echo "T8: env var has higher priority than conf"
-cap=$(FLEET_CONCURRENCY_OPUS_WORKER=7 "$DISPATCHER" --print-cap opus-worker)
+cap=$(FLEET_CONCURRENCY_WORKER=7 "$DISPATCHER" --print-cap worker)
 assert_eq "$cap" "7" "env var beats conf file"
 
 # --- Test 9: boot fan-out trigger retention --------------------------------
@@ -308,23 +326,23 @@ assert_eq "$cap" "7" "env var beats conf file"
 # (so the next tick can dispatch into a pane whose @fleet-role tag landed
 # late at fleet-up). Outside the window, the legacy consume-on-success
 # behavior applies regardless of cap headroom.
-# Clear the conf override so opus-worker is back at default cap=2 for T9+.
+# Clear the conf override so the worker lane is back at default cap=4 for T9+.
 rm -f "$FLEET_CONF"
 
 echo "T9: boot fan-out — active < cap inside window → retain"
 out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
-    "$DISPATCHER" --retain-trigger-check opus-worker 1)
-assert_eq "$out" "retain" "active=1 < cap=2 inside window → retain"
+    "$DISPATCHER" --retain-trigger-check worker 1)
+assert_eq "$out" "retain" "active=1 < cap=4 inside window → retain"
 
 echo "T10: boot fan-out — active == cap inside window → consume"
 out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
-    "$DISPATCHER" --retain-trigger-check opus-worker 2)
-assert_eq "$out" "consume" "active=2 == cap=2 inside window → consume"
+    "$DISPATCHER" --retain-trigger-check worker 4)
+assert_eq "$out" "consume" "active=4 == cap=4 inside window → consume"
 
 echo "T11: boot fan-out — window expired → consume even if under cap"
 out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=0 \
-    "$DISPATCHER" --retain-trigger-check opus-worker 1)
-assert_eq "$out" "consume" "active=1 < cap=2 but window expired → consume"
+    "$DISPATCHER" --retain-trigger-check worker 1)
+assert_eq "$out" "consume" "active=1 < cap=4 but window expired → consume"
 
 echo "T12: boot fan-out — single-pane role saturated → consume"
 # Merger has cap=1; in the real dispatch flow, a successful dispatch
@@ -336,14 +354,14 @@ assert_eq "$out" "consume" "merger cap=1 with active=1 → consume (cap saturate
 
 echo "T13: boot fan-out — cap=0 (unconfigured role) → consume"
 out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
-    FLEET_CONCURRENCY_OPUS_WORKER=0 \
-    "$DISPATCHER" --retain-trigger-check opus-worker 0)
+    FLEET_CONCURRENCY_WORKER=0 \
+    "$DISPATCHER" --retain-trigger-check worker 0)
 assert_eq "$out" "consume" "cap=0 short-circuits the retention check"
 
 # --- Test 14: numeric guard on --retain-trigger-check active arg -----------
 echo "T14: non-numeric active arg → usage error, no daemon crash"
 if FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS=9999 \
-    "$DISPATCHER" --retain-trigger-check opus-worker notanumber >/dev/null 2>&1; then
+    "$DISPATCHER" --retain-trigger-check worker notanumber >/dev/null 2>&1; then
     rc=0
 else
     rc=$?
@@ -356,7 +374,7 @@ echo "T15: non-numeric BOOT_FANOUT_WINDOW_SECONDS clamps to 60s default"
 # If the validate-and-clamp at startup fails, the bash arithmetic would either
 # emit a stderr error (silent flip to consume) or trip set -u (rc=1).
 out=$(FLEET_DISPATCHER_BOOT_FANOUT_WINDOW_SECONDS="9999s" \
-    "$DISPATCHER" --retain-trigger-check opus-worker 1 2>/dev/null)
+    "$DISPATCHER" --retain-trigger-check worker 1 2>/dev/null)
 assert_eq "$out" "retain" "non-numeric env override clamps to 60s → in-window retain"
 
 echo ""

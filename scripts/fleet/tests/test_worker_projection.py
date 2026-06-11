@@ -1,9 +1,9 @@
-"""Tests for project_sonnet_author / project_opus_worker / project_opus_reviewer
+"""Tests for project_worker / project_opus_reviewer / project_sonnet_reviewer
 in fleet-state-scout.
 
-The author/worker/reviewer hash-input projections MUST be stable across
-labels their role's decision logic does NOT key on (merger-toggled labels
-like fleet:merger-cooldown, smoke-gate labels like fleet:needs-linux-smoke,
+The worker / reviewer hash-input projections MUST be stable across labels
+their role's decision logic does NOT key on (merger-toggled labels like
+fleet:merger-cooldown, smoke-gate labels like fleet:needs-linux-smoke,
 authoring-host markers like fleet:authored-on-macos, recheck-cycle
 fleet:changes-made on a still-flagged PR, etc.). Without this invariant,
 every label flip on a PR that happens to also have a feedback label
@@ -14,7 +14,12 @@ sonnet-author + opus-worker four times in 5 minutes while reviewers and
 the merger flipped labels around the PR, with each iteration exiting clean.
 
 Mirrors test_merger_projection.py — the merger's projection was already
-hardened against this; the author/worker/reviewer projections were not.
+hardened against this; the worker/reviewer projections were not.
+
+P2: the per-class project_sonnet_author / project_opus_worker pair was
+unified into a single project_worker (every task class + needs_plan +
+feedback/design-resume PRs), so the worker invariants below are tested
+against that one projector.
 """
 import importlib.machinery
 import importlib.util
@@ -26,8 +31,7 @@ _loader = importlib.machinery.SourceFileLoader("fleet_state_scout", str(_SCRIPT)
 _spec = importlib.util.spec_from_loader("fleet_state_scout", _loader)
 _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
-project_sonnet_author = _mod.project_sonnet_author
-project_opus_worker = _mod.project_opus_worker
+project_worker = _mod.project_worker
 project_opus_reviewer = _mod.project_opus_reviewer
 project_sonnet_reviewer = _mod.project_sonnet_reviewer
 stable_hash = _mod.stable_hash
@@ -58,12 +62,16 @@ def _pr(num, *, labels=None, head="claude/feat", is_draft=False):
     }
 
 
-class SonnetAuthorStableAcrossIrrelevantLabels(unittest.TestCase):
-    """Labels the author's decision logic does NOT key on must not flip
+def _task(tid, *, model, owner="free", blocked_by="(none)"):
+    return {"id": tid, "model": model, "owner": owner, "blocked_by": blocked_by}
+
+
+class WorkerStableAcrossIrrelevantLabels(unittest.TestCase):
+    """Labels the worker's decision logic does NOT key on must not flip
     the projection hash on a PR that's already in the projection."""
 
     def _hash(self, prs):
-        return stable_hash(project_sonnet_author(_state(prs)))
+        return stable_hash(project_worker(_state(prs)))
 
     def test_merger_cooldown_does_not_flip_hash(self):
         before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
@@ -71,12 +79,12 @@ class SonnetAuthorStableAcrossIrrelevantLabels(unittest.TestCase):
             "fleet:needs-fix", "fleet:merger-cooldown",
         ])])
         self.assertEqual(before, after,
-                         "merger-cooldown toggle must not re-fire sonnet-author")
+                         "merger-cooldown toggle must not re-fire the worker")
 
     def test_semantic_conflict_does_not_flip_hash(self):
-        # Sonnet-author explicitly does NOT handle semantic-conflict
-        # (that's opus-worker's lane), so flipping this label on a PR
-        # that's in the projection for some other reason should be a no-op.
+        # The worker handles semantic-conflict (step 1c), but the projector
+        # includes a PR via FEEDBACK_LABELS, not semantic-conflict. Flipping
+        # that label while the feedback label is unchanged must not re-fire.
         before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
         after = self._hash([_pr(101, labels=[
             "fleet:needs-fix", "fleet:semantic-conflict",
@@ -109,11 +117,13 @@ class SonnetAuthorStableAcrossIrrelevantLabels(unittest.TestCase):
         self.assertEqual(before, after)
 
 
-class SonnetAuthorActionableTransitionsFlipHash(unittest.TestCase):
-    """Real changes the author should react to must still re-fire."""
+class WorkerActionableTransitionsFlipHash(unittest.TestCase):
+    """Real changes the worker should react to must still re-fire. The
+    unified lane keys on FEEDBACK_LABELS, DESIGN_RESUME_LABELS, every task
+    class, and needs_plan issues."""
 
-    def _hash(self, prs):
-        return stable_hash(project_sonnet_author(_state(prs)))
+    def _hash(self, prs, tasks=None, needs_plan=None):
+        return stable_hash(project_worker(_state(prs, tasks, needs_plan)))
 
     def test_needs_fix_appears_flips_hash(self):
         before = self._hash([_pr(101, labels=[])])
@@ -137,83 +147,53 @@ class SonnetAuthorActionableTransitionsFlipHash(unittest.TestCase):
         after = self._hash([_pr(101, labels=["fleet:has-nits"])])
         self.assertNotEqual(before, after)
 
-
-class SonnetAuthorSkipLabelsDropPR(unittest.TestCase):
-    """human:wip excludes a PR from the projection entirely."""
-
-    def _hash(self, prs):
-        return stable_hash(project_sonnet_author(_state(prs)))
-
-    def test_human_wip_drops_pr(self):
-        empty = self._hash([])
-        with_wip = self._hash([_pr(101, labels=["fleet:needs-fix", "human:wip"])])
-        self.assertEqual(empty, with_wip)
-
-
-class OpusWorkerStableAcrossIrrelevantLabels(unittest.TestCase):
-    """Same invariant as sonnet-author. opus-worker also keys on
-    fleet:design-unblocked (DESIGN_RESUME_LABELS) — that label IS
-    relevant and must flip the hash."""
-
-    def _hash(self, prs):
-        return stable_hash(project_opus_worker(_state(prs)))
-
-    def test_merger_cooldown_does_not_flip_hash(self):
-        before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
-        after = self._hash([_pr(101, labels=[
-            "fleet:needs-fix", "fleet:merger-cooldown",
-        ])])
-        self.assertEqual(before, after)
-
-    def test_semantic_conflict_does_not_flip_hash_on_flagged_pr(self):
-        # Opus-worker step 1c handles semantic-conflict, but the
-        # current projector includes a PR via FEEDBACK_LABELS, not
-        # semantic-conflict. The semantic-conflict label flipping
-        # while the feedback label is unchanged should not re-fire
-        # the worker — the relevant trigger set hasn't changed.
-        before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
-        after = self._hash([_pr(101, labels=[
-            "fleet:needs-fix", "fleet:semantic-conflict",
-        ])])
-        self.assertEqual(before, after)
-
-    def test_needs_linux_smoke_does_not_flip_hash(self):
-        before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
-        after = self._hash([_pr(101, labels=[
-            "fleet:needs-fix", "fleet:needs-linux-smoke",
-        ])])
-        self.assertEqual(before, after)
-
-    def test_changes_made_on_still_flagged_pr_does_not_flip(self):
-        before = self._hash([_pr(101, labels=["fleet:needs-fix"])])
-        after = self._hash([_pr(101, labels=[
-            "fleet:needs-fix", "fleet:changes-made",
-        ])])
-        self.assertEqual(before, after)
-
-
-class OpusWorkerActionableTransitionsFlipHash(unittest.TestCase):
-    """Real changes must still re-fire opus-worker."""
-
-    def _hash(self, prs):
-        return stable_hash(project_opus_worker(_state(prs)))
-
     def test_design_unblocked_appears_flips_hash(self):
         before = self._hash([_pr(101, labels=[])])
         after = self._hash([_pr(101, labels=["fleet:design-unblocked"])])
         self.assertNotEqual(before, after)
 
-    def test_needs_fix_appears_flips_hash(self):
-        before = self._hash([_pr(101, labels=[])])
-        after = self._hash([_pr(101, labels=["fleet:needs-fix"])])
+    def test_needs_plan_issue_appears_flips_hash(self):
+        before = self._hash([])
+        after = self._hash([], needs_plan=[{"number": 222}])
         self.assertNotEqual(before, after)
 
-    def test_needs_plan_issue_appears_flips_hash(self):
-        before = stable_hash(project_opus_worker(_state([])))
-        after = stable_hash(project_opus_worker(
-            _state([], needs_plan=[{"number": 222}])
-        ))
-        self.assertNotEqual(before, after)
+
+class WorkerCoversEveryTaskClass(unittest.TestCase):
+    """The unified lane is the union of the old per-class lanes — a task of
+    any class (fable / opus / sonnet) appears in the projection, and a new
+    task flips the hash regardless of its class."""
+
+    def _hash(self, tasks):
+        return stable_hash(project_worker(_state([], tasks=tasks)))
+
+    def test_each_class_appears(self):
+        empty = self._hash({"open": []})
+        for cls in ("fable", "opus", "sonnet"):
+            with_task = self._hash({"open": [_task(f"#{cls}", model=cls)]})
+            self.assertNotEqual(empty, with_task,
+                                f"a {cls}-class task must enter the worker projection")
+
+    def test_class_retag_does_not_flip_hash(self):
+        # The projection item keys on task identity (id + blocked_by), not
+        # model class — the same as the pre-P2 projectors. A re-tag
+        # (sonnet->opus) doesn't change which lane must act (one unified
+        # lane) and the dispatcher re-resolves the class per dispatch from
+        # the slice, so it must NOT re-fire the worker.
+        opus = self._hash({"open": [_task("#10", model="opus")]})
+        sonnet = self._hash({"open": [_task("#10", model="sonnet")]})
+        self.assertEqual(opus, sonnet)
+
+
+class WorkerSkipLabelsDropPR(unittest.TestCase):
+    """human:wip excludes a PR from the projection entirely."""
+
+    def _hash(self, prs):
+        return stable_hash(project_worker(_state(prs)))
+
+    def test_human_wip_drops_pr(self):
+        empty = self._hash([])
+        with_wip = self._hash([_pr(101, labels=["fleet:needs-fix", "human:wip"])])
+        self.assertEqual(empty, with_wip)
 
 
 class OpusReviewerStableAcrossIrrelevantLabels(unittest.TestCase):
