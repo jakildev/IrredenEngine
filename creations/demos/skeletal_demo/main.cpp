@@ -166,7 +166,7 @@ static void verifyRigRoundTrip(
         IRAsset::RigJoint j;
         j.translation_ = vec4(skeleton.bindPose_[i].translation_, 0.0f);
         j.rotation_ = skeleton.bindPose_[i].rotation_;
-        j.parentIndex_ = (i == 0) ? 0u : static_cast<std::uint32_t>(i - 1);
+        j.parentIndex_ = (i == 0) ? 0u : static_cast<std::uint32_t>(i - 1); // linear chain; hierarchy not round-tripped
         rig.joints_.push_back(j);
     }
     IRAsset::MemoryBinaryWriter w;
@@ -244,8 +244,9 @@ static void createSnake(vec3 worldPos) {
         });
         prevJoint = joint;
     }
+    const int snakeVoxels = vs.numVoxels_;
     IREntity::setComponent(rigRoot, skeleton);
-    IR_LOG_INFO("Snake: entity={} joints={} voxels={}", rigRoot, kNumJoints, vs.numVoxels_);
+    IR_LOG_INFO("Snake: entity={} joints={} voxels={}", rigRoot, kNumJoints, snakeVoxels);
     verifyRigRoundTrip(skeleton, "snake", kNumJoints);
 }
 
@@ -335,8 +336,9 @@ static void createLamp(vec3 worldPos) {
         });
         prevJoint = joint;
     }
+    const int lampVoxels = vs.numVoxels_;
     IREntity::setComponent(rigRoot, skeleton);
-    IR_LOG_INFO("Lamp: entity={} joints={} voxels={}", rigRoot, kNumJoints, vs.numVoxels_);
+    IR_LOG_INFO("Lamp: entity={} joints={} voxels={}", rigRoot, kNumJoints, lampVoxels);
     verifyRigRoundTrip(skeleton, "lamp", kNumJoints);
 }
 
@@ -448,8 +450,9 @@ static void createCross(vec3 worldPos) {
             IRMath::SQT{vec3(1.0f), kIdentity, defs[i].bindPos_}
         );
     }
+    const int crossVoxels = vs.numVoxels_;
     IREntity::setComponent(rigRoot, skeleton);
-    IR_LOG_INFO("Cross: entity={} joints=9 voxels={}", rigRoot, vs.numVoxels_);
+    IR_LOG_INFO("Cross: entity={} joints=9 voxels={}", rigRoot, crossVoxels);
     verifyRigRoundTrip(skeleton, "cross", 9);
 }
 
