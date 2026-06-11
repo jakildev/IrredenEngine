@@ -1029,8 +1029,8 @@ fi
 #
 # Polls GitHub + git every 30s and writes `~/.fleet/state/state.json`
 # plus per-role trigger files under `~/.fleet/state/triggers/`. Roles
-# (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
-# queue-manager, merger) read state.json instead of running their own
+# (worker, sonnet-reviewer, opus-reviewer, queue-manager, merger)
+# read state.json instead of running their own
 # `gh pr list` / `git show` calls — see each role's "Shared fleet
 # state cache" section. The trigger files are emitted and consumed by
 # babysit — trigger-aware back-off is live (T-040 / PR #300).
@@ -1302,9 +1302,9 @@ launch_cmd() {
 # Two windows:
 #
 # Window 1 ("fleet") — three equal rows, 8 panes total (with game-arch):
-#   Top    (~33%): sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
-#   Middle (~33%): opus-architect            [game-architect]
-#   Bottom (~33%): opus-worker-1   opus-worker-2   opus-reviewer
+#   Top    (~33%): worker-1  worker-2  sonnet-reviewer
+#   Middle (~33%): opus-architect      [game-architect]
+#   Bottom (~33%): worker-3  worker-4  opus-reviewer
 #
 # Window 2 ("ops") — 2x2 grid, 4 panes:
 #   queue-manager  merger
@@ -1315,10 +1315,10 @@ launch_cmd() {
 # middle row at full width — that's where interactive design work
 # happens.
 #
-# Worker mix: 2× sonnet + 2× opus. Sonnet covers tests, docs, and
-# mechanical refactors (most of the queue). Opus covers core/perf-
-# sensitive engine work and plans needs-plan issues. Each tier has
-# its own dedicated reviewer.
+# Workers are model-class-agnostic: the dispatcher routes each task to
+# the first idle worker pane and passes the model class as an argument.
+# All four worker panes are equivalent; task routing by model/effort
+# happens at dispatch time, not at pane-creation time.
 #
 # The "ops" window holds the meta panes — queue-manager (intake +
 # maintenance), merger (auto-rebase), witness (heartbeat monitor),
