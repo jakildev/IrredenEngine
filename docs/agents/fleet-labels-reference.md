@@ -73,7 +73,10 @@ Specifically, **never pass these via `--label` when filing**:
   pickup queue until the human triages it (most targets are gated self-config
   the fleet can't auto-edit anyway). The skill dedups first — if an open
   `fleet:coding-improvement` issue already targets the same artifact it
-  comments a new occurrence instead of filing a duplicate.
+  comments a new occurrence instead of filing a duplicate. The backlog is
+  drained in batches by the human-cued `triage-coding-improvements` skill,
+  which triages each ticket with the human and bundles the accepted
+  convention changes into one PR per run.
 - `fleet:queued` / `fleet:task` — owned by **`fleet-queue-ingest`**,
   set after `human:approved` has been observed. Adding it at filing
   time excludes the issue from the ingest search (which looks for
