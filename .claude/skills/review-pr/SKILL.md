@@ -161,6 +161,13 @@ gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" 
 `fleet:has-nits` rides on top of `fleet:approved` and tells the author
 "approved, clean up the nits before this lands" — author roles poll for it.
 
+**Feedback-fix model class:** the dispatcher routes the fix iteration from
+your labels — nits-only feedback runs on sonnet, `fleet:needs-fix` /
+`fleet:blocker` runs on the opus class. If your findings indicate the
+*approach itself* is wrong (not fixable with scoped edits), additionally
+`--add-label "fleet:fable"` so the fix dispatches on the fable class — or
+escalate `fleet:design-blocked` if it needs an architect decision.
+
 ## Engine notes
 
 - Step 1's metadata fetch uses `gh api repos/jakildev/IrredenEngine/pulls/<N>/comments`
