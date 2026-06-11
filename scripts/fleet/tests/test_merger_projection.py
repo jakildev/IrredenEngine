@@ -27,6 +27,7 @@ _spec = importlib.util.spec_from_loader("fleet_state_scout", _loader)
 _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 project_merger = _mod.project_merger
+project_opus_worker = _mod.project_opus_worker
 slice_merger = _mod.slice_merger
 stable_hash = _mod.stable_hash
 
@@ -256,6 +257,70 @@ class SignalSemantics(unittest.TestCase):
             "fleet:approved", "fleet:human-deferred",
         ], mergeable="CONFLICTING")]))
         self.assertEqual(items, [])
+
+
+class FailThenSucceedStackedRebase(unittest.TestCase):
+    """After a stacked-rebase retry that succeeds (#1654), the failed first
+    pass's fleet:semantic-conflict label may still be present if the success
+    path hasn't cleaned it up yet.
+
+    Invariants the fix relies on:
+    1. A stale fleet:semantic-conflict on an otherwise-MERGEABLE PR must still
+       project as merge-ready, not needs-resolve — the merger must NOT loop
+       back into conflict-resolution mode for an already-clean PR.
+    2. Removing the stale label (once the success path cleans it up) must NOT
+       retrigger the merger — fleet:semantic-conflict is intentionally excluded
+       from the projection hash.
+    3. The stale label must NOT surface in the opus-worker projection, which
+       would trigger a false step-1c resolution pass on an already-clean PR.
+    """
+
+    def test_stale_semantic_conflict_on_mergeable_projects_merge_ready(self):
+        # fail-then-succeed: PR has fleet:stacked-rebase (set by the successful
+        # second pass) but also stale fleet:semantic-conflict (set by the failed
+        # first pass, not yet cleared). The merger must still classify it as
+        # merge-ready — NOT as needs-resolve.
+        pr = _pr(101, labels=[
+            "fleet:approved", "fleet:semantic-conflict",
+            "fleet:stacked-rebase", "fleet:merger-cooldown",
+        ], mergeable="MERGEABLE", base="master")
+        items = project_merger(_state([pr]))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["signal"], "merge-ready",
+                         "stale fleet:semantic-conflict must not push a MERGEABLE "
+                         "PR from merge-ready to needs-resolve")
+
+    def test_removing_stale_semantic_conflict_does_not_flip_hash(self):
+        # Once the merger's success path removes the stale label (per #1654
+        # fix), the merger must NOT re-dispatch — removing fleet:semantic-conflict
+        # from an otherwise-stable PR must not change the projection hash.
+        with_stale = _state([_pr(101, labels=[
+            "fleet:approved", "fleet:stacked-rebase", "fleet:semantic-conflict",
+        ])])
+        without_stale = _state([_pr(101, labels=[
+            "fleet:approved", "fleet:stacked-rebase",
+        ])])
+        self.assertEqual(
+            _hash(with_stale), _hash(without_stale),
+            "removing stale fleet:semantic-conflict must not retrigger the merger",
+        )
+
+    def test_stale_semantic_conflict_not_flagged_to_opus_worker(self):
+        # A stale fleet:semantic-conflict on a clean MERGEABLE PR must not
+        # surface in the opus-worker projection — opus-worker step 1c looks
+        # for fleet:semantic-conflict PRs to resolve, but this one has no
+        # real conflict. The label is NOT in _OPUS_WORKER_RELEVANT_LABELS so
+        # this is a structural guarantee, not just current behavior.
+        pr = _pr(101, labels=[
+            "fleet:approved", "fleet:semantic-conflict", "fleet:stacked-rebase",
+        ], mergeable="MERGEABLE", base="master")
+        state = _state([pr])
+        items = project_opus_worker(state)
+        pr_items = [i for i in items if i.get("kind") == "pr"]
+        self.assertEqual(pr_items, [],
+                         "stale fleet:semantic-conflict must not appear in "
+                         "opus-worker projection (would trigger false step-1c "
+                         "resolution pass on an already-clean PR)")
 
 
 class MergerCoversBothRepos(unittest.TestCase):
