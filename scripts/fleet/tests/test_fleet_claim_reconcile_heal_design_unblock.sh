@@ -52,18 +52,25 @@ HEALPERSIST="$FLEET_STATE_DIR/design-unblock-heal-persistence.json"
 # --- canned label/PR surfaces ---------------------------------------------
 # #800: fleet:queued, no claim label. PR #850 (claude/800-*) is the stranded
 # wip PR: fleet:wip, no claim, NEITHER design label → the R7 target state.
+# #900/#950: same claimless-wip-on-queued-issue shape, but PR #950 carries
+# fleet:design-proposed — an epic-steward proposal park (#1663). It must be
+# INVISIBLE to both R7 (healing it would un-park the proposal) and R2 (its
+# no-claim state is protocol-correct), across every phase below.
 export ISSUES_JSON="$TMPROOT/issues.json"
 export PRS_JSON="$TMPROOT/prs.json"
 cat > "$ISSUES_JSON" <<'JSON'
 [
-  {"number":800,"state":"OPEN","labels":[{"name":"fleet:queued"}]}
+  {"number":800,"state":"OPEN","labels":[{"name":"fleet:queued"}]},
+  {"number":900,"state":"OPEN","labels":[{"name":"fleet:queued"}]}
 ]
 JSON
 wip_only_prs() {
     cat > "$PRS_JSON" <<'JSON'
 [
   {"number":850,"headRefName":"claude/800-stranded-wip","body":"Closes #800",
-   "labels":[{"name":"fleet:wip"}]}
+   "labels":[{"name":"fleet:wip"}]},
+  {"number":950,"headRefName":"claude/900-steward-proposed","body":"Closes #900",
+   "labels":[{"name":"fleet:wip"},{"name":"fleet:design-proposed"}]}
 ]
 JSON
 }
@@ -71,7 +78,9 @@ healed_prs() {
     cat > "$PRS_JSON" <<'JSON'
 [
   {"number":850,"headRefName":"claude/800-stranded-wip","body":"Closes #800",
-   "labels":[{"name":"fleet:wip"},{"name":"fleet:design-unblocked"}]}
+   "labels":[{"name":"fleet:wip"},{"name":"fleet:design-unblocked"}]},
+  {"number":950,"headRefName":"claude/900-steward-proposed","body":"Closes #900",
+   "labels":[{"name":"fleet:wip"},{"name":"fleet:design-proposed"}]}
 ]
 JSON
 }
@@ -170,6 +179,12 @@ assert all(f.get("apply") is None for f in r2), "R2 must remain flag-only"
 PY
 if [[ ! -f "$HEALPERSIST" ]]; then ok "report-only wrote no heal-persistence state"; else bad "report-only advanced heal persistence"; fi
 c=$(du_add_count); [[ "$c" == "0" ]] && ok "report-only added no design-unblocked label" || bad "report-only healed (add count=$c)"
+python3 - "$REPORT" <<'PY' && ok "design-proposed PR #950 invisible to R7 AND R2 (steward park respected)" || bad "R7/R2 fired on the design-proposed PR #950"
+import sys, json
+r = json.load(open(sys.argv[1]))
+hits = [f for f in r["findings"] if f["target"] == 950 and f["rule"] in ("R2", "R7")]
+assert not hits, f"design-proposed PR must be exempt, got: {hits}"
+PY
 
 echo "=== Phase 2: --apply ticks accrue; freshly-opened PR NOT healed below threshold ==="
 run_reconcile --apply
@@ -209,6 +224,23 @@ c=$(du_add_count); [[ "$c" == "1" ]] && ok "re-accrual below threshold does not 
 run_reconcile --apply   # count 3 == threshold → re-heal
 c=$(heal_count); [[ "$c" == "3" ]] && ok "re-stranded reaches threshold again (count 3)" || bad "re-accrual count=$c (want 3)"
 c=$(du_add_count); [[ "$c" == "2" ]] && ok "recurring stranded state heals again after threshold" || bad "no re-heal after recurrence (add count=$c)"
+
+echo "=== Phase 6: design-proposed PR #950 never healed across any apply tick ==="
+if grep -q '950' "$EDIT_LOG"; then
+    bad "an apply pass edited the design-proposed PR #950: $(grep '950' "$EDIT_LOG")"
+else
+    ok "no apply pass ever edited PR #950"
+fi
+c=$(python3 - "$HEALPERSIST" <<'PY'
+import sys, json
+try:
+    s = json.load(open(sys.argv[1]))
+except Exception:
+    print(0); raise SystemExit
+print(sum(1 for k in (s if isinstance(s, dict) else {}) if k.endswith(":950")))
+PY
+)
+[[ "$c" == "0" ]] && ok "no heal-persistence key accrued for PR #950" || bad "heal persistence tracked the design-proposed PR (#950 keys=$c)"
 
 echo
 echo "================================"

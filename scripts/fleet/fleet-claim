@@ -1195,15 +1195,17 @@ cmd_release() {
     fi
 }
 
-# _cmd_pr_label_claim <prefix> <cmd-name> <pr-num> <agent>
-#   Shared implementation for review-claim, resolving-claim, and
-#   amending-claim. All use the same lex-min tie-break logic with
-#   different label prefixes; extract here to avoid 100% structural
-#   duplication.
+# _cmd_pr_label_claim <prefix> <cmd-name> <pr-num> <agent> [target-word]
+#   Shared implementation for review-claim, resolving-claim,
+#   amending-claim, and steward-claim. All use the same lex-min
+#   tie-break logic with different label prefixes; extract here to
+#   avoid 100% structural duplication. PRs and issues share GitHub's
+#   labels endpoint, so the target may be either; <target-word>
+#   (default "PR") only adjusts the messages.
 _cmd_pr_label_claim() {
-    local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}"
+    local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}" target_word="${5:-PR}"
     if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
-        echo "fleet-claim ${cmd_name}: PR must be a number, got '$pr'" >&2
+        echo "fleet-claim ${cmd_name}: ${target_word} must be a number, got '$pr'" >&2
         return 2
     fi
     local host label repo
@@ -1224,17 +1226,17 @@ _cmd_pr_label_claim() {
         return 1
     fi
 
-    echo "${cmd_name} acquired: $repo PR#$pr ($agent)"
+    echo "${cmd_name} acquired: $repo ${target_word}#$pr ($agent)"
     return 0
 }
 
-# _cmd_pr_label_release <prefix> <cmd-name> <pr-num> <agent>
-#   Shared implementation for review-release, resolving-release, and
-#   amending-release.
+# _cmd_pr_label_release <prefix> <cmd-name> <pr-num> <agent> [target-word]
+#   Shared implementation for review-release, resolving-release,
+#   amending-release, and steward-release.
 _cmd_pr_label_release() {
-    local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}"
+    local prefix="$1" cmd_name="$2" pr="$3" agent="${4:-unknown}" target_word="${5:-PR}"
     if [[ ! "$pr" =~ ^[0-9]+$ ]]; then
-        echo "fleet-claim ${cmd_name}: PR must be a number, got '$pr'" >&2
+        echo "fleet-claim ${cmd_name}: ${target_word} must be a number, got '$pr'" >&2
         return 2
     fi
     local host label repo
@@ -1255,6 +1257,14 @@ cmd_resolving_claim()   { _cmd_pr_label_claim   "fleet:resolving-" "resolving-cl
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
 cmd_amending_claim()   { _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"; }
 cmd_amending_release() { _cmd_pr_label_release "fleet:amending-" "amending-release" "$@"; }
+# Steward claims target the umbrella ISSUE, not a PR — same labels endpoint,
+# same sole-holder tie-break. Per-epic mutex for the epic-steward role; no FS
+# lock needed (the role runs one pane per host and the label is what the
+# other host sees). NOT fleet:claim-*: that class has issue-lifecycle
+# semantics (retained as audit trail, blocker/model gating in cmd_claim)
+# that mismatch a transient stewardship session (#1663).
+cmd_steward_claim()   { _cmd_pr_label_claim   "fleet:stewarding-" "steward-claim"   "${1:-}" "${2:-unknown}" "issue"; }
+cmd_steward_release() { _cmd_pr_label_release "fleet:stewarding-" "steward-release" "${1:-}" "${2:-unknown}" "issue"; }
 
 cmd_check() {
     # Exit 0 = free, exit 1 = claimed.
@@ -1338,8 +1348,9 @@ cmd_cleanup() {
     # merged "Closes #N" PR). Accepts zero or more --repo flags; defaults
     # to jakildev/IrredenEngine. With --gh, ALSO sweeps stale
     # fleet:reviewing-* / fleet:resolving-* / fleet:amending-* labels off
-    # open PRs and abandoned fleet:claim-* labels off OPEN issues (no matching
-    # claude/<N>-* PR + TTL). Claim labels on CLOSED issues are kept
+    # open PRs, abandoned fleet:claim-* labels off OPEN issues (no matching
+    # claude/<N>-* PR + TTL), and stale fleet:stewarding-* labels off open
+    # fleet:epic issues. Claim labels on CLOSED issues are kept
     # as a historical record.
     mkdir -p "$CLAIMS_DIR"
 
@@ -1437,24 +1448,8 @@ for pr in prs:
         while IFS=$'\t' read -r pr_num label_name; do
             [[ -z "$pr_num" || -z "$label_name" ]] && continue
 
-            local added_at
-            added_at=$(gh api "repos/${repo}/issues/${pr_num}/events" \
-                --paginate \
-                --jq '.[] | select(.event=="labeled" and .label.name=="'"$label_name"'") | .created_at' \
-                2>/dev/null | tail -n1 || true)
-
-            [[ -z "$added_at" ]] && continue
-
             local added_epoch
-            added_epoch=$(python3 -c "
-import sys, datetime
-try:
-    dt = datetime.datetime.strptime('$added_at', '%Y-%m-%dT%H:%M:%SZ')
-    print(int(dt.replace(tzinfo=datetime.timezone.utc).timestamp()))
-except Exception:
-    print(0)
-" 2>/dev/null || echo 0)
-
+            added_epoch=$(label_added_epoch "$repo" "$pr_num" "$label_name")
             [[ "$added_epoch" -eq 0 ]] && continue
 
             local age=$(( now - added_epoch ))
@@ -1512,22 +1507,8 @@ for issue in issues:
         while IFS=$'\t' read -r issue_num label_name; do
             [[ -z "$issue_num" || -z "$label_name" ]] && continue
 
-            local added_at
-            added_at=$(gh api "repos/${repo}/issues/${issue_num}/events" \
-                --paginate \
-                --jq '.[] | select(.event=="labeled" and .label.name=="'"$label_name"'") | .created_at' \
-                2>/dev/null | tail -n1 || true)
-            [[ -z "$added_at" ]] && continue
-
             local added_epoch
-            added_epoch=$(python3 -c "
-import datetime
-try:
-    dt = datetime.datetime.strptime('$added_at', '%Y-%m-%dT%H:%M:%SZ')
-    print(int(dt.replace(tzinfo=datetime.timezone.utc).timestamp()))
-except Exception:
-    print(0)
-" 2>/dev/null || echo 0)
+            added_epoch=$(label_added_epoch "$repo" "$issue_num" "$label_name")
             [[ "$added_epoch" -eq 0 ]] && continue
 
             local age=$(( now - added_epoch ))
@@ -1555,6 +1536,55 @@ except Exception:
                     "cleanup --gh: open-issue claim remove-label failed"
             fi
         done <<< "$open_claim_plan"
+    done
+
+    # Third pass: sweep stale `fleet:stewarding-*` labels off open
+    # fleet:epic issues. A stewardship session is one transient
+    # epic-steward iteration; the TTL is looser than the PR-label sweep
+    # because an iteration may end by opening a docs PR (#1663). This is
+    # a separate pass — the first pass scans open PRs only and umbrella
+    # claims live on issues.
+    local steward_stale_secs="${FLEET_CLAIM_STALE_SECS_STEWARD:-3600}"
+    for repo in "${repos[@]}"; do
+        local steward_plan
+        steward_plan=$(gh issue list --repo "$repo" --state open \
+            --label "fleet:epic" \
+            --json number,labels --limit 200 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+for issue in issues:
+    n = issue.get("number")
+    for l in (issue.get("labels") or []):
+        name = (l or {}).get("name", "") if isinstance(l, dict) else ""
+        if name.startswith("fleet:stewarding-"):
+            print(f"{n}\t{name}")
+' 2>/dev/null || echo "")
+
+        [[ -z "$steward_plan" ]] && continue
+
+        while IFS=$'\t' read -r issue_num label_name; do
+            [[ -z "$issue_num" || -z "$label_name" ]] && continue
+
+            local added_epoch
+            added_epoch=$(label_added_epoch "$repo" "$issue_num" "$label_name")
+            [[ "$added_epoch" -eq 0 ]] && continue
+
+            local age=$(( now - added_epoch ))
+            [[ $age -lt $steward_stale_secs ]] && continue
+
+            if gh issue edit "$issue_num" --repo "$repo" \
+                    --remove-label "$label_name" >/dev/null 2>&1; then
+                echo "cleanup --gh: removed stale '$label_name' on $repo issue#$issue_num (age: $((age / 60))m)"
+                total_removed=$((total_removed + 1))
+            else
+                write_orphan_sentinel "$repo" "$issue_num" "$label_name" \
+                    "cleanup --gh: steward remove-label failed"
+            fi
+        done <<< "$steward_plan"
     done
 
     if [[ $total_removed -eq 0 ]]; then
@@ -2065,6 +2095,11 @@ for r in reservations:
         apply={"type": "drop_reservation", "worktree": wt, "issue": issue})
 
 # ---- R4a: design-blocked + design-unblocked contradiction ----
+# fleet:design-proposed coexisting with either design sibling is also a
+# contradiction (a botched steward swap), but flag-only: the proposal
+# lifecycle is steward/human-owned and "keep most-recently-applied" could
+# silently un-park a proposal, so reconcile never auto-resolves it.
+DESIGN_SIBLINGS = {"fleet:design-blocked", "fleet:design-unblocked"}
 for repo in repos:
     d = repo_data[repo]
     for n, labs in d["issue_labels"].items():
@@ -2073,6 +2108,12 @@ for repo in repos:
                 "contradictory design-blocked + design-unblocked; keep "
                 "most-recently-applied, remove older", "both labels present",
                 apply={"type": "resolve_design_contradiction", "target": n, "repo": repo})
+        if "fleet:design-proposed" in labs and labs & DESIGN_SIBLINGS:
+            add("R4a", repo, n, "issue", ["label"],
+                "fleet:design-proposed coexists with a design sibling; "
+                "steward/human resolves which state wins (flag-only — "
+                "never auto-strip a steward signal)",
+                "flag-only (R4a)")
     for pr in d["prs"]:
         labs = labelset(pr)
         if "fleet:design-blocked" in labs and "fleet:design-unblocked" in labs:
@@ -2081,6 +2122,12 @@ for repo in repos:
                 "most-recently-applied, remove older", "both labels present",
                 apply={"type": "resolve_design_contradiction",
                        "target": pr.get("number"), "repo": repo})
+        if "fleet:design-proposed" in labs and labs & DESIGN_SIBLINGS:
+            add("R4a", repo, pr.get("number"), "pr", ["label"],
+                "fleet:design-proposed coexists with a design sibling; "
+                "steward/human resolves which state wins (flag-only — "
+                "never auto-strip a steward signal)",
+                "flag-only (R4a)")
 
 # ---- R4b: queued + in-progress, no claim (any host), no PR ----
 for repo in repos:
@@ -2131,8 +2178,11 @@ for repo in repos:
             # So "no claim / reservation / claim-label" here is the correct
             # parked state. (fleet:design-unblocked stays flaggable — it IS in
             # FEEDBACK above — because an unclaimed unblocked PR genuinely is
-            # awaiting re-adoption.)
-            if "fleet:design-blocked" in labs:
+            # awaiting re-adoption.) fleet:design-proposed parks the same way:
+            # the steward released its claim and re-adoption is gated on the
+            # umbrella's STEWARD PROPOSAL being answered, not a free pickup
+            # decision (#1663).
+            if "fleet:design-blocked" in labs or "fleet:design-proposed" in labs:
                 continue
             issue_labs = d["issue_labels"].get(issue_n, set())
             if (any(l.startswith("fleet:claim-") for l in issue_labs)
@@ -2175,7 +2225,13 @@ for repo in repos:
             labs = pr["labels"]
             if "fleet:wip" not in labs:
                 continue
-            if "fleet:design-blocked" in labs or "fleet:design-unblocked" in labs:
+            # fleet:design-proposed exempts the PR: it IS a routing signal
+            # (steward distribution, not worker resume) — healing it to
+            # design-unblocked would un-park every steward proposal within
+            # a few drift ticks (#1663).
+            if ("fleet:design-blocked" in labs
+                    or "fleet:design-unblocked" in labs
+                    or "fleet:design-proposed" in labs):
                 continue
             add("R7", repo, pr["number"], "pr", ["pr", "label"],
                 "stranded wip PR for #%d: no claim + neither design label on a "
@@ -2594,10 +2650,13 @@ PYEOF
 
     [[ -z "$healable" ]] && return 0
 
+    # PRs share the issues labels endpoint; `gh issue edit` on a PR number is
+    # the file-wide convention for PR label edits (gh_release_label, the
+    # cleanup --gh PR sweep).
     local repo pr issue
     while IFS=$'\t' read -r repo pr issue; do
         [[ -z "$repo" || -z "$pr" ]] && continue
-        if gh pr edit "$pr" --repo "$repo" \
+        if gh issue edit "$pr" --repo "$repo" \
             --add-label "fleet:design-unblocked" >/dev/null 2>&1; then
             echo "  reconcile --apply: R7 healed half-executed design-unblock — re-added fleet:design-unblocked on $repo #$pr (issue #$issue)"
         else
@@ -3561,8 +3620,9 @@ case "${1:-}" in
         ;;
     host)
         # Print this machine's canonical host key (mac|linux|windows), the
-        # token behind every fleet:claim-*/reviewing-*/resolving-*/amending-*
-        # label. With an explicit `uname -s` string as $2, map that instead —
+        # token behind every fleet:claim-*/reviewing-*/resolving-*/amending-*/
+        # stewarding-* label. With an explicit `uname -s` string as $2, map
+        # that instead —
         # the seam test_derive_host.sh uses to pin each mapping portably.
         if [[ -n "${2:-}" ]]; then
             host_from_uname "$2"
@@ -3658,6 +3718,20 @@ case "${1:-}" in
             exit 2
         fi
         cmd_amending_release "$2" "$3"
+        ;;
+    steward-claim)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] steward-claim <umbrella-issue> <agent>" >&2
+            exit 2
+        fi
+        cmd_steward_claim "$2" "$3"
+        ;;
+    steward-release)
+        if [[ -z "${3:-}" ]]; then
+            echo "usage: fleet-claim [--repo <ns>] steward-release <umbrella-issue> <agent>" >&2
+            exit 2
+        fi
+        cmd_steward_release "$2" "$3"
         ;;
     clear-all)
         cmd_clear_all
@@ -3801,9 +3875,10 @@ commands:
                                 retained through the PR's review/merge
                                 lifecycle — EXCEPT when the issue's
                                 matching open PR is parked
-                                (fleet:design-blocked/-unblocked), in
-                                which case they are cleared so any
-                                worker can re-claim after the architect
+                                (fleet:design-blocked/-unblocked/
+                                -proposed), in which case they are
+                                cleared so any worker can re-claim
+                                after the architect (or steward)
                                 unblocks (#1488). The abandoned-claim
                                 sweep in `cleanup --gh` is the TTL
                                 safety net.
@@ -3829,7 +3904,7 @@ commands:
                                 (default: 7200).
   cleanup [--repo o/r] [--gh] ...
                                 Remove claims whose linked issue is
-                                CLOSED. With --gh also runs two
+                                CLOSED. With --gh also runs three
                                 GitHub sweeps:
                                 (1) stale fleet:reviewing-*,
                                     fleet:resolving-*, and
@@ -3840,10 +3915,15 @@ commands:
                                     abandoned — age > TTL (default
                                     7200s) AND no *active* matching PR
                                     exists. A matching PR that is parked
-                                    (fleet:design-blocked/-unblocked)
-                                    counts as abandoned, not active
-                                    (#1488). `fleet:in-progress` is
-                                    removed alongside the claim label.
+                                    (fleet:design-blocked/-unblocked/
+                                    -proposed) counts as abandoned, not
+                                    active (#1488). `fleet:in-progress`
+                                    is removed alongside the claim
+                                    label,
+                                (3) stale fleet:stewarding-* labels off
+                                    open fleet:epic issues (age >
+                                    FLEET_CLAIM_STALE_SECS_STEWARD,
+                                    default 3600s).
                                 `fleet:claim-*` labels on CLOSED
                                 issues are preserved as a historical
                                 "who worked on this" record.
@@ -3861,6 +3941,15 @@ commands:
                                 (reviewers skip the PR while held).
   amending-release <pr> <agent>
                                 release an amendment claim.
+  steward-claim <umbrella-issue> <agent>
+                                atomically claim an epic UMBRELLA ISSUE
+                                for a stewardship session via a
+                                fleet:stewarding-<host>-<agent> label
+                                (per-epic mutex for the epic-steward
+                                role; swept by cleanup --gh after
+                                FLEET_CLAIM_STALE_SECS_STEWARD).
+  steward-release <umbrella-issue> <agent>
+                                release a stewardship claim.
   clear-all                     wipe all claims (used by fleet-up on
                                 restart).
   reset-sweep-host-claims       unconditionally remove this host's
@@ -3889,9 +3978,10 @@ commands:
                                         (any host) + no open PR → remove the
                                         stale fleet:in-progress.
                                 R2 (orphaned WIP/feedback PR with no claim;
-                                fleet:design-blocked PRs exempt — their
-                                no-claim state is protocol-correct) is
-                                report-only. Cross-host is flag-only by
+                                fleet:design-blocked / fleet:design-proposed
+                                PRs exempt — their no-claim state is
+                                protocol-correct) is report-only. Cross-host
+                                is flag-only by
                                 construction — never auto-releases another
                                 host's FS state or claim label. Defaults to
                                 engine + game (when reachable); --repo
