@@ -121,6 +121,21 @@ inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac
     return (rawDepth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
 }
 
+// Maps fracInCell to 4-bit sub-cell offsets (0..15, 8 = cell centre) for the
+// given axis, following the uv assignment of faceInPlaneUnitAxes.
+inline void fracToFrac4(int axis, float3 fracInCell, thread int& uFrac4, thread int& vFrac4) {
+    if (axis == 0) {
+        uFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+    } else if (axis == 1) {
+        uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+    } else {
+        uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
+    }
+}
+
 // Outward unit normal for the visible side of each iso-rendered face. The
 // iso projection has view direction (1,1,1), so a camera at
 // (-large,-large,-large) sees the faces whose outward normals point

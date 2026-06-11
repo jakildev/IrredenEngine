@@ -272,16 +272,7 @@ void main() {
         const ivec3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
         const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
         int uFrac4, vFrac4;
-        if (axis == 0) {
-            uFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
-            vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
-        } else if (axis == 1) {
-            uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
-            vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
-        } else {
-            uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
-            vFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
-        }
+        fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
         const int voxelDistance =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, uFrac4, vFrac4);
         writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos_sub), voxelDistance);

@@ -190,16 +190,7 @@ void main() {
         const ivec3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
         const vec3 fracInCell_s2 = worldAligned_s2 - vec3(worldPos_s2);
         int uFrac4_s2, vFrac4_s2;
-        if (axis == 0) {
-            uFrac4_s2 = clamp(int(fracInCell_s2.y * 16.0) + 8, 0, 15);
-            vFrac4_s2 = clamp(int(fracInCell_s2.z * 16.0) + 8, 0, 15);
-        } else if (axis == 1) {
-            uFrac4_s2 = clamp(int(fracInCell_s2.x * 16.0) + 8, 0, 15);
-            vFrac4_s2 = clamp(int(fracInCell_s2.z * 16.0) + 8, 0, 15);
-        } else {
-            uFrac4_s2 = clamp(int(fracInCell_s2.x * 16.0) + 8, 0, 15);
-            vFrac4_s2 = clamp(int(fracInCell_s2.y * 16.0) + 8, 0, 15);
-        }
+        fracToFrac4(axis, fracInCell_s2, uFrac4_s2, vFrac4_s2);
         const int voxelDistance_s2 =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, uFrac4_s2, vFrac4_s2);
         writeColorTap(
