@@ -93,10 +93,19 @@ for single voxels and particles.
 - `REBUILD_DETACHED_VOXELS` (UPDATE pipeline, #1553 P1 / #1555, **repurposed P2
   / #1556**) — P1 re-rasterized a `RotationMode::DETACHED_REVOXELIZE` entity's
   **private** pool into full-rotation cell positions on the CPU every frame. P2
-  moved that fill to the GPU scatter compute (`c_revoxelize_detached`, dispatched
+  moved that fill to the GPU compute (`c_revoxelize_detached`, dispatched
   from `VOXEL_TO_TRIXEL_STAGE_1` in place of `flushStaticPositionRanges`): the
   GPU now owns binding 5 on both backends, the only per-frame upload is the canvas
-  quat (O(entities)), and this system's per-frame CPU rewrite is **gone**. Its
+  quat (O(entities)), and this system's per-frame CPU rewrite is **gone**. The fill
+  has two modes (`RevoxelizeDetachedParams.dest_.w`): at identity it forward-writes
+  one cell per source voxel (byte-identical to #1556); while ROTATING it
+  **inverse-resamples** (#1619) — one thread per DEST cell of the rotated-AABB cube
+  inverse-maps `roundHalfUp(R⁻¹·c)` into a per-pool source occupancy+color grid
+  (`C_DetachedRevoxelizeBuffer::sourceGrid_`) and authors position+color+active for
+  hits. Forward scatter is not surjective onto the rotated lattice (covered dest
+  cells got no source voxel → coverage holes / missing faces); inverse resampling
+  is surjective → hole-free at every size. The shared compact/stage1/stage2 raster
+  is untouched (slot `i` is now "dest cell i" not "source voxel i"). Its
   remaining job is to seed — ONCE — the conservative origin-centered world-AABB
   (`C_VoxelPool::setStaticReVoxelizeBound`, radius = farthest authored corner from
   the pool origin) that `rebuildChunkBounds` projects for the STAGE_1

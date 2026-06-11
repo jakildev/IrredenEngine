@@ -253,6 +253,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     std::vector<std::pair<IREntity::EntityId, C_DetachedRevoxelizeBuffer *>>
         detachedRevoxelizeBuffers_;
 
+    // Zero / all-ones scratch for the inverse-resample re-voxelize path (#1619),
+    // grown to a high-water mark and reused (cpp-ecs.md "no allocation in hot
+    // ticks"). activeMaskClearScratch_ pre-clears the active-mask window the GPU
+    // fill atomic-ORs onto; allVisibleChunkScratch_ marks every dest-slot chunk
+    // visible (the model-space re-voxelize canvas shows the whole solid).
+    std::vector<std::uint32_t> activeMaskClearScratch_;
+    std::vector<std::uint32_t> allVisibleChunkScratch_;
     C_DetachedRevoxelizeBuffer *lookupDetachedRevoxelizeBuffer(IREntity::EntityId entity) const {
         for (const auto &[id, buffer] : detachedRevoxelizeBuffers_) {
             if (id == entity) {
@@ -262,37 +269,87 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         return nullptr;
     }
 
-    // Fill binding 5 for a DETACHED_REVOXELIZE pool on the GPU: bind this pool's
-    // resident locals + upload the one per-frame quat, then dispatch one thread
-    // per live voxel to rotate+round each cell. Replaces the CPU
-    // flushStaticPositionRanges for re-voxelize canvases — the per-frame cost is
-    // O(entities) (one quat), not O(authored voxels). The SHADER_STORAGE barrier
-    // makes the writes visible to the compact + stage-1 reads later in this tick.
-    void dispatchReVoxelize(
+    // Fill the GPU buffers for a DETACHED_REVOXELIZE pool, replacing the CPU
+    // flushStaticPositionRanges. Two modes (see RevoxelizeDetachedParams):
+    //   IDENTITY / source path (#1556) — one thread per live voxel rotates+rounds
+    //     its resident local into binding 5; the CPU still uploads color + active.
+    //   INVERSE resample (#1619, rotating) — one thread per DEST cell of the
+    //     rotated-AABB cube inverse-looks-up the source grid and authors
+    //     position + color + active for occupied dest slots (hole-free). The
+    //     active-mask window is pre-cleared here so the fill's atomic-OR starts
+    //     from zero; the CPU color/active uploads are skipped by the caller.
+    // The SHADER_STORAGE barrier makes the writes visible to the compact +
+    // stage-1 reads later in this tick. Returns the dispatch domain size (D dest
+    // cells when inverse, else the live source count) so the caller drives the
+    // shared compact + frame `voxelCount` from the right slot range.
+    int dispatchReVoxelize(
         C_DetachedRevoxelizeBuffer &buffer,
         const C_CanvasLocalRotation &canvasRotation,
-        int liveVoxelCount
+        int liveVoxelCount,
+        bool isInverse
     ) {
         RevoxelizeDetachedParams params{};
         params.canvasRotation_ = canvasRotation.rotation_;
-        params.voxelCount_ = liveVoxelCount;
+        constexpr int kLocalSize = 64;
+
+        if (!isInverse) {
+            params.dest_ = ivec4(liveVoxelCount, 0, 0, 0);
+            revoxelizeParamsBuf_->subData(0, sizeof(RevoxelizeDetachedParams), &params);
+
+            revoxelizeProgram_->use();
+            voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
+            buffer.residentLocals_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_LocalVoxelPositions
+            );
+            revoxelizeParamsBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_RevoxelizeDetachedParams
+            );
+
+            const ivec2 grid =
+                voxelDispatchGridForCount(IRMath::divCeil(liveVoxelCount, kLocalSize));
+            IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            return liveVoxelCount;
+        }
+
+        const int destCount = buffer.destCount_;
+        params.dest_ = ivec4(destCount, buffer.destSide_, buffer.destCenter_, 1);
+        params.srcGridMin_ = ivec4(buffer.sourceGridMin_, 0);
+        params.srcGridDims_ = ivec4(buffer.sourceGridDims_, 0);
         revoxelizeParamsBuf_->subData(0, sizeof(RevoxelizeDetachedParams), &params);
+
+        // Pre-clear the active-mask window the fill atomic-ORs onto (empty dest
+        // cells must read back inactive). The upload precedes the dispatch in the
+        // command stream, so the clear lands before the fill's atomic writes.
+        const int activeWords = IRMath::divCeil(destCount, static_cast<int>(kVoxelActiveMaskBits));
+        if (static_cast<int>(activeMaskClearScratch_.size()) < activeWords) {
+            activeMaskClearScratch_.resize(activeWords, 0u);
+        }
+        voxelActiveMaskBuf_->subData(
+            0,
+            static_cast<std::size_t>(activeWords) * sizeof(std::uint32_t),
+            activeMaskClearScratch_.data()
+        );
 
         revoxelizeProgram_->use();
         voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
-        buffer.residentLocals_.second->bindBase(
+        voxelColorBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelColors);
+        voxelActiveMaskBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
+        buffer.sourceGrid_.second->bindBase(
             BufferTarget::SHADER_STORAGE,
-            kBufferIndex_LocalVoxelPositions
+            kBufferIndex_RevoxelizeSourceGrid
         );
         revoxelizeParamsBuf_->bindBase(
             BufferTarget::UNIFORM,
             kBufferIndex_RevoxelizeDetachedParams
         );
 
-        constexpr int kLocalSize = 64;
-        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(liveVoxelCount, kLocalSize));
+        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(destCount, kLocalSize));
         IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+        return destCount;
     }
 
     // Route the visible voxel faces into the three per-axis trixel canvases for
@@ -443,6 +500,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRMath::clamp(frameData_.voxelRenderOptions_.y, 1, cap);
         }
 
+        // Detached re-voxelize fill mode (#1556 / #1619). The INVERSE path (#1619,
+        // rotating) dispatches over the dest-cell cube and the GPU authors
+        // position + color + active for those slots, so the shared compact + frame
+        // `voxelCount` walk D dest slots (not the source count) and the CPU
+        // color/active uploads below are skipped. At identity the source path runs
+        // and everything stays byte-identical to #1556.
+        C_DetachedRevoxelizeBuffer *revoxBuffer =
+            canvasLocalRotation.reVoxelize_ ? lookupDetachedRevoxelizeBuffer(entity) : nullptr;
+        const bool revoxInverse = revoxBuffer != nullptr && revoxBuffer->isAllocated() &&
+                                  revoxBuffer->destCount_ > 0 &&
+                                  canvasLocalRotation.rotation_ != vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        const int effectiveVoxelCount = revoxInverse ? revoxBuffer->destCount_ : liveVoxelCount;
+        frameData_.voxelCount_ = effectiveVoxelCount;
+
         const int renderMode = frameData_.voxelRenderOptions_.x;
         const int effectiveSub = frameData_.voxelRenderOptions_.y;
         if (renderMode != previousRenderMode_ || effectiveSub != previousEffectiveSubdivisions_) {
@@ -471,14 +542,31 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // off-center chunks aren't dropped by the cardinal snap. residual == 0
         // keeps the byte-identical cardinal path.
         const bool rotating = frameData_.residualYaw_ != 0.0f;
-        const auto &uploadMask = buildChunkVisibilityMask(
-            voxelPool,
-            chunkVp,
-            chunkCardinal,
-            rotating,
-            frameData_.visualYaw_
-        );
-        chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
+        if (revoxInverse) {
+            // Dest-cell domain (#1619): the rotated solid rasters in its own
+            // model-space canvas (camera pan/yaw zeroed), so the whole solid is
+            // on-canvas — mark every dest-slot chunk visible. rebuildChunkBounds
+            // keys chunks by SOURCE slot, which no longer matches the dest-slot
+            // domain the compact walks.
+            const int chunkWords = IRMath::divCeil(effectiveVoxelCount, IRRender::kVoxelChunkSize);
+            if (static_cast<int>(allVisibleChunkScratch_.size()) < chunkWords) {
+                allVisibleChunkScratch_.resize(chunkWords, 1u);
+            }
+            chunkVisBuf_->subData(
+                0,
+                static_cast<std::size_t>(chunkWords) * sizeof(std::uint32_t),
+                allVisibleChunkScratch_.data()
+            );
+        } else {
+            const auto &uploadMask = buildChunkVisibilityMask(
+                voxelPool,
+                chunkVp,
+                chunkCardinal,
+                rotating,
+                frameData_.visualYaw_
+            );
+            chunkVisBuf_->subData(0, uploadMask.size() * sizeof(std::uint32_t), uploadMask.data());
+        }
 
         constexpr int kGpuMargin = 4;
         const IsoBounds2D gpuVp =
@@ -498,16 +586,14 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // would clobber the prepass output with translation-only data.
         {
             IR_PROFILE_SCOPE("vs1_pos");
-            C_DetachedRevoxelizeBuffer *revoxBuffer =
-                canvasLocalRotation.reVoxelize_ ? lookupDetachedRevoxelizeBuffer(entity) : nullptr;
             if (revoxBuffer != nullptr && revoxBuffer->isAllocated()) {
-                // Detached re-voxelize (#1556): the GPU compute owns binding 5 for
-                // this pool — fill it from the resident locals + this frame's quat
-                // (in place of flushStaticPositionRanges). Every frame, since the
-                // quat changes. Mark this canvas as the last uploader so a later
-                // switch to a CPU-owned canvas re-seeds binding 5 from its mirror,
-                // and drop any (empty) pending ranges the pool may carry.
-                dispatchReVoxelize(*revoxBuffer, canvasLocalRotation, liveVoxelCount);
+                // Detached re-voxelize (#1556 / #1619): the GPU compute owns binding
+                // 5 (and, in the inverse path, color + active) for this pool — fill
+                // it from this frame's quat in place of flushStaticPositionRanges.
+                // Every frame, since the quat changes. Mark this canvas as the last
+                // uploader so a later switch to a CPU-owned canvas re-seeds binding
+                // 5 from its mirror, and drop any (empty) pending ranges.
+                dispatchReVoxelize(*revoxBuffer, canvasLocalRotation, liveVoxelCount, revoxInverse);
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
             } else if (lastUploadedCanvas_ != entity) {
@@ -521,20 +607,27 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 flushPendingPositionRanges(voxelPool, voxelPosBuf_);
             }
         }
-        voxelColorBuf_->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
-        // Active-mask covers the live prefix; upload the matching whole-word
-        // window (`divCeil(liveVoxelCount, kVoxelActiveMaskBits)` words) so
-        // the GPU compact shader sees an up-to-date mirror of CPU alpha.
-        const std::size_t activeMaskWords = IRMath::divCeil(
-            static_cast<int>(liveVoxelCount),
-            static_cast<int>(kVoxelActiveMaskBits)
-        );
-        if (activeMaskWords > 0) {
-            voxelActiveMaskBuf_->subData(
-                0,
-                activeMaskWords * sizeof(std::uint32_t),
-                voxelPool.getActiveMask().data()
+        // Color + active uploads are source-indexed (slot == source voxel). The
+        // inverse-resample path (#1619) authors both on the GPU per DEST slot
+        // instead, so skip the CPU uploads there — they would clobber the GPU's
+        // dest-cell color and the atomic-OR'd active bits with source-indexed data.
+        if (!revoxInverse) {
+            voxelColorBuf_
+                ->subData(0, liveVoxelCount * sizeof(C_Voxel), voxelPool.getColors().data());
+            // Active-mask covers the live prefix; upload the matching whole-word
+            // window (`divCeil(liveVoxelCount, kVoxelActiveMaskBits)` words) so
+            // the GPU compact shader sees an up-to-date mirror of CPU alpha.
+            const std::size_t activeMaskWords = IRMath::divCeil(
+                static_cast<int>(liveVoxelCount),
+                static_cast<int>(kVoxelActiveMaskBits)
             );
+            if (activeMaskWords > 0) {
+                voxelActiveMaskBuf_->subData(
+                    0,
+                    activeMaskWords * sizeof(std::uint32_t),
+                    voxelPool.getActiveMask().data()
+                );
+            }
         }
         syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
 
@@ -550,10 +643,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             VoxelIndirectDispatchParams previous{};
             indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);
             gpuStageTiming().visibleVoxelCount_ = previous.visibleCount;
-            gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(liveVoxelCount);
+            gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(effectiveVoxelCount);
             voxelCullAccumulator().record(
                 previous.visibleCount,
-                static_cast<std::uint32_t>(liveVoxelCount)
+                static_cast<std::uint32_t>(effectiveVoxelCount)
             );
         }
 
@@ -562,7 +655,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         compactProgram_->use();
         constexpr int kCompactLocalSize = 64;
-        const int compactGroups = IRMath::divCeil(liveVoxelCount, kCompactLocalSize);
+        // Inverse-resample walks the D dest slots; the source path walks the live
+        // source count. frameData_.voxelCount_ (the compact's per-slot guard) was
+        // set to the same effectiveVoxelCount above.
+        const int compactGroups = IRMath::divCeil(effectiveVoxelCount, kCompactLocalSize);
         const ivec2 compactGrid = voxelDispatchGridForCount(compactGroups);
         IRRender::device()->dispatchCompute(compactGrid.x, compactGrid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);

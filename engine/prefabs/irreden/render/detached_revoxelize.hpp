@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -26,18 +27,25 @@ namespace IRPrefab::DetachedRevoxelize {
 
 namespace detail {
 
-// Seed (or re-seed) the resident locals SSBO from the pool's RIGID authored
-// locals + per-voxel offsets, composed exactly as the CPU worldCellForGridVoxel
-// does before it rotates (`composed = local + offset`). One vec4 per voxel
-// (.xyz = composed, .w unused) to match the std430 `vec4 residentLocals[]` the
-// compute reads. Runs once per (re)seed — the locals are rigid, so this is the
-// "GPU owns ongoing state, CPU mirror is a one-shot seed" pattern
-// (.claude/rules/cpp-ecs.md), NOT a per-frame upload.
+// Seed (or re-seed) the per-pool GPU buffers the re-voxelize fill reads, from
+// the pool's RIGID authored locals + per-voxel offsets, composed exactly as the
+// CPU worldCellForGridVoxel does before it rotates (`composed = local + offset`).
+// Runs once per (re)seed — the locals are rigid, so this is the "GPU owns ongoing
+// state, CPU mirror is a one-shot seed" pattern (.claude/rules/cpp-ecs.md), NOT a
+// per-frame upload. Seeds three things:
+//   1. residentLocals_ — one vec4 per voxel (.xyz = composed) for the IDENTITY
+//      fast-path fill (slot == source voxel), unchanged from #1556.
+//   2. sourceGrid_ — the dense 3D occupancy+color grid the INVERSE resample
+//      (#1619) inverse-looks-up: two uints per source cell ({colorPacked,
+//      materialFlagBone}), keyed by `roundHalfUp(composed) - gridMin`.
+//   3. the rotation-independent dest-AABB cube bound (destSide_/destCenter_/
+//      destCount_) the inverse fill dispatches + the shared compact walks.
 inline void seedResidentLocals(
     IRComponents::C_DetachedRevoxelizeBuffer &buffer, IRComponents::C_VoxelPool &pool, int liveCount
 ) {
     const std::vector<IRRender::VoxelGpuPosition> &locals = pool.getPositions();
     const std::vector<IRMath::vec3> &offsets = pool.getPositionOffsets();
+    const std::vector<IRComponents::C_Voxel> &colors = pool.getColors();
     IR_ASSERT(
         static_cast<int>(locals.size()) >= liveCount &&
             static_cast<int>(offsets.size()) >= liveCount,
@@ -46,13 +54,82 @@ inline void seedResidentLocals(
     const int n =
         IRMath::min(liveCount, static_cast<int>(IRMath::min(locals.size(), offsets.size())));
 
+    // Resident composed locals (identity fast-path) + per-voxel integer cell and
+    // origin-centered bound scan for the inverse grid / dest cube.
     std::vector<IRMath::vec4> staging(static_cast<std::size_t>(n));
+    std::vector<IRMath::ivec3> cells(static_cast<std::size_t>(n));
+    constexpr int kBig = 1 << 30;
+    IRMath::ivec3 gridMin(kBig, kBig, kBig);
+    IRMath::ivec3 gridMax(-kBig, -kBig, -kBig);
+    float maxRadius = 0.0f;
     for (int i = 0; i < n; ++i) {
         const IRMath::vec3 composed = locals[i].pos_ + offsets[i];
         staging[i] = IRMath::vec4(composed, 0.0f);
+        const IRMath::ivec3 cell = IRMath::ivec3(IRMath::roundVec3HalfUp(composed));
+        cells[i] = cell;
+        gridMin = IRMath::min(gridMin, cell);
+        gridMax = IRMath::max(gridMax, cell);
+        maxRadius = IRMath::max(maxRadius, IRMath::length(composed));
     }
     buffer.residentLocals_.second
         ->subData(0, static_cast<std::size_t>(n) * sizeof(IRMath::vec4), staging.data());
+
+    // Source occupancy+color grid (inverse resample). Dims = source local AABB;
+    // two uints per cell, zero = empty (alpha byte 0). (Re)allocate only when the
+    // cell count grows past the high-water capacity so a re-seed never shrinks.
+    const IRMath::ivec3 dims =
+        (n > 0) ? (gridMax - gridMin + IRMath::ivec3(1, 1, 1)) : IRMath::ivec3(0, 0, 0);
+    const int cellCount = (n > 0) ? dims.x * dims.y * dims.z : 0;
+    if (cellCount > buffer.sourceGridCellCapacity_) {
+        if (buffer.sourceGrid_.second != nullptr) {
+            IRRender::destroyResource<IRRender::Buffer>(buffer.sourceGrid_.first);
+        }
+        buffer.sourceGrid_ = IRRender::createResource<IRRender::Buffer>(
+            nullptr,
+            static_cast<std::size_t>(cellCount) * 2 * sizeof(std::uint32_t),
+            IRRender::BUFFER_STORAGE_DYNAMIC,
+            IRRender::BufferTarget::SHADER_STORAGE,
+            IRRender::kBufferIndex_RevoxelizeSourceGrid
+        );
+        buffer.sourceGridCellCapacity_ = cellCount;
+    }
+    std::vector<std::uint32_t> grid(static_cast<std::size_t>(cellCount) * 2, 0u);
+    const int m = IRMath::min(n, static_cast<int>(colors.size()));
+    for (int i = 0; i < m; ++i) {
+        const IRMath::ivec3 g = cells[i] - gridMin;
+        const int li = g.x + dims.x * (g.y + dims.y * g.z);
+        const IRComponents::C_Voxel &v = colors[i];
+        grid[static_cast<std::size_t>(li) * 2] = v.color_.toPackedRGBA();
+        grid[static_cast<std::size_t>(li) * 2 + 1] =
+            static_cast<std::uint32_t>(v.material_id_) |
+            (static_cast<std::uint32_t>(v.flags_) << 8) |
+            (static_cast<std::uint32_t>(v.bone_id_) << 16) |
+            (static_cast<std::uint32_t>(v.layer_id_) << 24);
+    }
+    if (cellCount > 0) {
+        buffer.sourceGrid_.second->subData(0, grid.size() * sizeof(std::uint32_t), grid.data());
+    }
+    buffer.sourceGridMin_ = gridMin;
+    buffer.sourceGridDims_ = dims;
+
+    // Dest-AABB cube: enclose the rotated solid under ANY rotation. Rotation
+    // preserves length, so the farthest authored corner (maxRadius) bounds every
+    // rotated coordinate; the cube [-center, +center]³ holds them all. This is
+    // rotation-independent — computed once, valid for every spin pose.
+    const int center = (n > 0) ? static_cast<int>(IRMath::ceil(maxRadius)) : 0;
+    buffer.destCenter_ = center;
+    buffer.destSide_ = 2 * center + 1;
+    const int rawDestCount = (n > 0) ? (buffer.destSide_ * buffer.destSide_ * buffer.destSide_) : 0;
+    const int maxAllocSize = IRRender::VoxelPoolConfig::getMaxAllocationSizeTotal();
+    IR_ASSERT(
+        rawDestCount <= maxAllocSize,
+        "re-voxelize dest cube {} exceeds shared voxel buffer capacity {} — "
+        "a private worst-case-sized pool is needed (see #1619 architect note)",
+        rawDestCount,
+        maxAllocSize
+    );
+    buffer.destCount_ = rawDestCount;
+
     buffer.seededVoxelCount_ = liveCount;
 }
 
