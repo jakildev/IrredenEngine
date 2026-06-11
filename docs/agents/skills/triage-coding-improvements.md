@@ -67,6 +67,10 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state closed \
   --limit 50 --json number,title,body,stateReason
 ```
 
+(The `comments` field returns full comment objects — `body` included — not a
+count, so the `Recurred:` entries Step 2 needs are already in this output; no
+per-issue `gh issue view` pass is required.)
+
 Each open ticket should carry (per the `assess-coding-improvement` body
 shape): a **Class** (A: missing rule / B: exists but didn't fire), a **target
 artifact** path, a one-line **proposed change**, and an **Occurrences** list.
