@@ -830,9 +830,9 @@ FEEDBACK_LABELS = frozenset({
     "human:needs-fix", "human:blocker", "fleet:needs-fix", "fleet:has-nits",
 })
 # Worker-only resume signal — a PR the worker escalated for architectural
-# input that the architect has now answered. Surfaced in project_opus_worker
+# input that the architect has now answered. Surfaced in project_worker
 # (and only there) so the worker iteration picks it up like any other
-# feedback PR; reviewers and authors do not act on it.
+# feedback PR; reviewers do not act on it.
 DESIGN_RESUME_LABELS = frozenset({"fleet:design-unblocked"})
 REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:blocker", "fleet:has-nits",
@@ -1249,35 +1249,21 @@ def enrich_stackable_blocker_prs(state):
 # fleet:needs-linux-smoke), waking the role to find nothing actionable.
 # Same anti-pattern project_merger already documents and avoids — keep
 # only the labels each role's own decision logic actually keys on.
-_SONNET_AUTHOR_RELEVANT_LABELS = FEEDBACK_LABELS
-_OPUS_WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
+_WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 
 
-def project_sonnet_author(state):
+def project_worker(state):
+    # Single generic-worker lane (P2): the per-class opus-worker /
+    # sonnet-author split was vestigial once model class became a
+    # property of the task (#1691), so this projector is the union of
+    # the two — every open task regardless of class, every needs-plan
+    # issue, and every feedback/design-resume PR. The dispatcher picks
+    # the concrete model per dispatch from the slice (resolve_worker_class
+    # / fleet_task_class.py); the lane no longer pins a model.
     items = []
     for repo, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
-            if "sonnet" in model_tags(task):
-                items.append({"kind": "task", "repo": repo, "id": task["id"],
-                              "blocked_by": task["blocked_by"]})
-        for pr in repo_state.get("prs", []):
-            labels = set(pr["labels"])
-            if "human:wip" in labels:
-                continue
-            if labels & _SONNET_AUTHOR_RELEVANT_LABELS:
-                items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
-                              "labels": sorted(labels & _SONNET_AUTHOR_RELEVANT_LABELS)})
-    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
-
-
-def project_opus_worker(state):
-    items = []
-    for repo, repo_state in state["repos"].items():
-        for task in repo_state.get("tasks", {}).get("open", []):
-            # The opus-worker lane is the heavy lane: it serves both the
-            # opus and fable classes (the dispatcher picks the concrete
-            # model per dispatch from the slice).
-            if model_tags(task) & {"opus", "fable"}:
+            if model_tags(task) & {"opus", "fable", "sonnet"}:
                 items.append({"kind": "task", "repo": repo, "id": task["id"],
                               "blocked_by": task["blocked_by"]})
         for issue in repo_state.get("needs_plan", []):
@@ -1287,9 +1273,9 @@ def project_opus_worker(state):
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
-            if labels & _OPUS_WORKER_RELEVANT_LABELS:
+            if labels & _WORKER_RELEVANT_LABELS:
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
-                              "labels": sorted(labels & _OPUS_WORKER_RELEVANT_LABELS)})
+                              "labels": sorted(labels & _WORKER_RELEVANT_LABELS)})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -1666,8 +1652,7 @@ def project_epic_steward(state):
 
 
 PROJECTORS = {
-    "sonnet-author": project_sonnet_author,
-    "opus-worker": project_opus_worker,
+    "worker": project_worker,
     "sonnet-reviewer": project_sonnet_reviewer,
     "opus-reviewer": project_opus_reviewer,
     "queue-manager": project_queue_manager,
@@ -1706,28 +1691,16 @@ def _slice_issue_with_repo(repo_key, issue):
     return out
 
 
-def slice_sonnet_author(state):
-    out = {"tasks_open": [], "feedback_prs": []}
-    for repo_key, repo_state in state["repos"].items():
-        for task in repo_state.get("tasks", {}).get("open", []):
-            if "sonnet" in model_tags(task):
-                out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
-        for pr in repo_state.get("prs", []):
-            labels = set(pr["labels"])
-            if "human:wip" in labels:
-                continue
-            if labels & FEEDBACK_LABELS:
-                out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
-    return out
-
-
-def slice_opus_worker(state):
+def slice_worker(state):
+    # Unified worker slice (P2): all open tasks of every class, all
+    # needs-plan issues, and all feedback/design-resume PRs. The
+    # dispatcher's per-task class resolution (fleet_task_class.py)
+    # already handles a mixed-class tasks_open list, so a single slice
+    # serves fable / opus / sonnet work.
     out = {"tasks_open": [], "needs_plan": [], "feedback_prs": []}
     for repo_key, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
-            # Heavy lane serves both opus- and fable-class tasks; see
-            # project_opus_worker.
-            if model_tags(task) & {"opus", "fable"}:
+            if model_tags(task) & {"opus", "fable", "sonnet"}:
                 out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
         for issue in repo_state.get("needs_plan", []):
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
@@ -1884,8 +1857,7 @@ def slice_epic_steward(state):
 
 
 SLICERS = {
-    "sonnet-author": slice_sonnet_author,
-    "opus-worker": slice_opus_worker,
+    "worker": slice_worker,
     "sonnet-reviewer": slice_sonnet_reviewer,
     "opus-reviewer": slice_opus_reviewer,
     "queue-manager": slice_queue_manager,
@@ -2132,6 +2104,30 @@ def cleanup_pid_file():
         pass
 
 
+# Lane names retired by the P2 worker-lane unification. The scout used to
+# write a projection slice, seen-hash, and trigger file per lane; with the
+# keys gone the old files would linger forever — a stale
+# projections/opus-worker.json reads as live to anything that still globs
+# the directory, and a leftover trigger could mis-fire. Sweep them on boot.
+_RETIRED_LANE_ROLES = ("opus-worker", "sonnet-author")
+
+
+def clean_retired_lane_artifacts():
+    for role in _RETIRED_LANE_ROLES:
+        for path in (
+            PROJECTIONS_DIR / f"{role}.json",
+            SEEN_DIR / role,
+            TRIGGERS_DIR / role,
+        ):
+            try:
+                path.unlink()
+                log(f"removed stale {role} artifact: {path.name}")
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                log(f"could not remove stale {role} artifact {path}: {e}")
+
+
 def signal_handler(signum, _frame):
     log(f"received signal {signum}; shutting down")
     TERMINATE.set()
@@ -2157,6 +2153,8 @@ def main():
     if not ENGINE.exists():
         log(f"engine repo not found at {ENGINE}; aborting")
         sys.exit(1)
+
+    clean_retired_lane_artifacts()
 
     if args.once:
         tick_once()

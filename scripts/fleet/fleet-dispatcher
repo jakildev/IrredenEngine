@@ -93,6 +93,10 @@ unset _fleet_dispatcher_self
 FLEET_CONF="${FLEET_CONF:-$HOME/.fleet/fleet-up.conf}"
 # Capture env-set values before sourcing the conf, so a `FLEET_CONCURRENCY_X`
 # in the caller's environment still wins over a value set inside conf.
+_env_worker="${FLEET_CONCURRENCY_WORKER:-}"
+# Deprecated per-lane caps (pre-P2). Summed into the unified worker cap
+# when FLEET_CONCURRENCY_WORKER is unset, so an operator's existing conf
+# keeps working through the transition. Drop once no conf sets them.
 _env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
 _env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
 _env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
@@ -103,6 +107,8 @@ _env_smoke_worker="${FLEET_CONCURRENCY_SMOKE_WORKER:-}"
 _env_epic_steward="${FLEET_CONCURRENCY_EPIC_STEWARD:-}"
 # Same capture-before-source guard for per-role effort (FLEET_EFFORT_<ROLE>),
 # consumed by the ROLE_EFFORT map further down. Caller env wins over conf.
+_env_effort_worker="${FLEET_EFFORT_WORKER:-}"
+# Deprecated per-lane effort (pre-P2); fallthrough for the worker lane.
 _env_effort_opus_worker="${FLEET_EFFORT_OPUS_WORKER:-}"
 _env_effort_sonnet_author="${FLEET_EFFORT_SONNET_AUTHOR:-}"
 _env_effort_sonnet_reviewer="${FLEET_EFFORT_SONNET_REVIEWER:-}"
@@ -135,9 +141,22 @@ FLEET_MODEL_EPIC_STEWARD="${_env_model_epic_steward:-${FLEET_MODEL_EPIC_STEWARD:
 FABLE_CONCURRENCY_CAP="${_env_fable_cap:-${FLEET_CONCURRENCY_MODEL_FABLE:-1}}"
 unset _env_model_fable _env_model_opus _env_model_sonnet \
       _env_model_merger _env_model_opus_reviewer _env_model_epic_steward _env_fable_cap
+# Unified worker cap (P2). FLEET_CONCURRENCY_WORKER wins (env > conf); when
+# it's unset, sum the deprecated per-lane caps if an operator set either
+# (so a pre-P2 conf with OPUS_WORKER=2 + SONNET_AUTHOR=2 keeps a cap of 4);
+# otherwise default 4 (the four worker panes the unified layout runs).
+_worker_cap="${_env_worker:-${FLEET_CONCURRENCY_WORKER:-}}"
+if [[ -z "$_worker_cap" ]]; then
+    _dep_opus="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-}}"
+    _dep_sonnet="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-}}"
+    if [[ -n "$_dep_opus" || -n "$_dep_sonnet" ]]; then
+        _worker_cap=$(( ${_dep_opus:-0} + ${_dep_sonnet:-0} ))
+    else
+        _worker_cap=4
+    fi
+fi
 declare -A ROLE_CONCURRENCY=(
-    ["opus-worker"]="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
-    ["sonnet-author"]="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
+    ["worker"]="$_worker_cap"
     ["sonnet-reviewer"]="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
     ["opus-reviewer"]="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
     ["queue-manager"]="${_env_queue_manager:-${FLEET_CONCURRENCY_QUEUE_MANAGER:-1}}"
@@ -145,7 +164,8 @@ declare -A ROLE_CONCURRENCY=(
     ["smoke-worker"]="${_env_smoke_worker:-${FLEET_CONCURRENCY_SMOKE_WORKER:-1}}"
     ["epic-steward"]="${_env_epic_steward:-${FLEET_CONCURRENCY_EPIC_STEWARD:-1}}"
 )
-unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
+unset _env_worker _worker_cap _dep_opus _dep_sonnet \
+      _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_queue_manager _env_merger _env_smoke_worker \
       _env_epic_steward
 
@@ -318,8 +338,7 @@ fi
 # (kept on fleet-babysit). Aligned with the worker / reviewer /
 # queue-mgr / merger roles in fleet-up.
 DISPATCHED_ROLES=(
-    "sonnet-author"
-    "opus-worker"
+    "worker"
     "sonnet-reviewer"
     "opus-reviewer"
     "merger"
@@ -356,46 +375,45 @@ declare -A CLASS_MODEL=(
     ["opus"]="$OPUS_MODEL"
     ["sonnet"]="$SONNET_MODEL"
 )
-# Per-role models. Worker lanes route per-task: the ROLE_MODEL entry is
-# only the lane default when the projection slice has nothing
-# class-routable (see resolve_worker_class). "opus" in the role slugs is
-# the historical lane name, not a model pin. Merger runs sonnet — its LLM
-# pass only fires for conflicts fleet-rebase couldn't clear mechanically;
-# the final reviewer runs the opus class (reasoning bounded by the diff).
+# Per-role models. The worker lane routes per-task: its ROLE_MODEL entry is
+# only the fallthrough default when the projection slice has nothing
+# class-routable (see resolve_worker_class) — the opus model, since the
+# lane defaults to the opus class. Merger runs sonnet — its LLM pass only
+# fires for conflicts fleet-rebase couldn't clear mechanically; the final
+# reviewer runs the opus class (reasoning bounded by the diff).
 declare -A ROLE_MODEL=(
-    ["sonnet-author"]="$SONNET_MODEL"
-    ["opus-worker"]="$OPUS_MODEL"
+    ["worker"]="$OPUS_MODEL"
     ["sonnet-reviewer"]="$SONNET_MODEL"
     ["opus-reviewer"]="${FLEET_MODEL_OPUS_REVIEWER:-$OPUS_MODEL}"
     ["merger"]="${FLEET_MODEL_MERGER:-$SONNET_MODEL}"
     ["smoke-worker"]="$SONNET_MODEL"
     ["epic-steward"]="${FLEET_MODEL_EPIC_STEWARD:-$OPUS_MODEL}"
 )
-# Worker lanes that resolve a per-task class from their projection slice,
+# The worker lane resolves a per-task class from its projection slice,
 # mapped to the class assumed when a task carries no model tag.
 declare -A WORKER_LANE_DEFAULT_CLASS=(
-    ["opus-worker"]="opus"
-    ["sonnet-author"]="sonnet"
+    ["worker"]="opus"
 )
 
 # Per-role effort level. Override priority mirrors ROLE_CONCURRENCY:
 # caller env FLEET_EFFORT_<ROLE> > conf FLEET_EFFORT_<ROLE> > global
-# FLEET_EFFORT > built-in default. Defaults: the heavy-reasoning roles —
-# the opus-worker here, plus the architects (launched by fleet-babysit,
-# not dispatched) — run xhigh; everything else runs high. opus-reviewer
-# and merger run high (not xhigh): their reasoning is bounded by the diff
-# in front of them, so the extra budget buys little. Retune a default
-# here, or set FLEET_EFFORT_<ROLE> in ~/.fleet/fleet-up.conf.
+# FLEET_EFFORT > built-in default. The effort here is only the lane
+# fallthrough — per-task Effort: and class resolution override it in
+# resolve_worker_class. Defaults: the heavy-reasoning worker lane (plus
+# the architects, launched by fleet-babysit, not dispatched) runs xhigh;
+# everything else runs high. opus-reviewer and merger run high (not
+# xhigh): their reasoning is bounded by the diff in front of them, so the
+# extra budget buys little. The deprecated FLEET_EFFORT_OPUS_WORKER is
+# honored as a fallthrough so a pre-P2 conf still tunes the lane.
 declare -A ROLE_EFFORT=(
-    ["sonnet-author"]="${_env_effort_sonnet_author:-${FLEET_EFFORT_SONNET_AUTHOR:-${FLEET_EFFORT:-high}}}"
-    ["opus-worker"]="${_env_effort_opus_worker:-${FLEET_EFFORT_OPUS_WORKER:-${FLEET_EFFORT:-xhigh}}}"
+    ["worker"]="${_env_effort_worker:-${FLEET_EFFORT_WORKER:-${_env_effort_opus_worker:-${FLEET_EFFORT_OPUS_WORKER:-${FLEET_EFFORT:-xhigh}}}}}"
     ["sonnet-reviewer"]="${_env_effort_sonnet_reviewer:-${FLEET_EFFORT_SONNET_REVIEWER:-${FLEET_EFFORT:-high}}}"
     ["opus-reviewer"]="${_env_effort_opus_reviewer:-${FLEET_EFFORT_OPUS_REVIEWER:-${FLEET_EFFORT:-high}}}"
     ["merger"]="${_env_effort_merger:-${FLEET_EFFORT_MERGER:-${FLEET_EFFORT:-high}}}"
     ["smoke-worker"]="${_env_effort_smoke_worker:-${FLEET_EFFORT_SMOKE_WORKER:-${FLEET_EFFORT:-high}}}"
     ["epic-steward"]="${_env_effort_epic_steward:-${FLEET_EFFORT_EPIC_STEWARD:-${FLEET_EFFORT:-xhigh}}}"
 )
-unset _env_effort_opus_worker _env_effort_sonnet_author \
+unset _env_effort_worker _env_effort_opus_worker _env_effort_sonnet_author \
       _env_effort_sonnet_reviewer _env_effort_opus_reviewer \
       _env_effort_merger _env_effort_smoke_worker \
       _env_effort_epic_steward
@@ -466,11 +484,12 @@ list_pane_state() {
 # (empty output if no idle panes for the role).
 #
 # Plural so dispatch_role can fan out a single trigger across every
-# idle pane that's tagged with this role — that's how a role with
-# more than one pane (opus-worker has -1 and -2) gets concurrent
-# iterations. The previous singular form picked the first idle pane
-# and dropped the rest, which silently single-flighted multi-pane
-# roles.
+# idle pane that belongs to this lane (see pane_role_matches_lane) —
+# that's how a multi-pane lane gets concurrent iterations. The worker
+# lane spans every legacy opus-worker-* / sonnet-author-* pane until
+# P2-2 renames them, so it can fan out across all of them. The previous
+# singular form picked the first idle pane and dropped the rest, which
+# silently single-flighted multi-pane roles.
 # Returns 0 (true) when a fleet-dispatch-wrap is currently running as a
 # direct child of the pane's shell. Used to disambiguate tmux's
 # pane_current_command, which reports "bash" while fleet-dispatch-wrap
@@ -492,10 +511,29 @@ pane_has_running_wrapper() {
     pgrep -P "$pane_pid" -f fleet-dispatch-wrap >/dev/null 2>&1
 }
 
+# Whether a pane's @fleet-role tag (or a dispatch-record / reservation
+# role string) belongs to the given dispatcher lane. Normally an exact
+# match. The P2 unification renamed the two worker lanes into one `worker`
+# lane, but pane renames are a later phase (P2-2) and fleet-claim's
+# reservation-role still reports the pre-P2 lane names — so the `worker`
+# lane also claims the legacy `opus-worker` / `sonnet-author` tags. This is
+# what lets the unified lane find, count, and dispatch into panes that
+# still carry their old tags during the transition.
+pane_role_matches_lane() {
+    local pane_role="$1" lane="$2"
+    [[ "$pane_role" == "$lane" ]] && return 0
+    if [[ "$lane" == "worker" ]]; then
+        case "$pane_role" in
+            opus-worker|sonnet-author) return 0 ;;
+        esac
+    fi
+    return 1
+}
+
 find_idle_panes_for_role() {
     local role="$1"
     list_pane_state | while IFS='|' read -r pane_id pane_role pane_cmd; do
-        if [[ "$pane_role" != "$role" ]]; then
+        if ! pane_role_matches_lane "$pane_role" "$role"; then
             continue
         fi
         case "$pane_cmd" in
@@ -861,7 +899,7 @@ count_active_for_role() {
         have_tmux=1
         local pane_id pane_role pane_cmd wt_path wt_name
         while IFS='|' read -r pane_id pane_role pane_cmd; do
-            [[ "$pane_role" == "$role" ]] || continue
+            pane_role_matches_lane "$pane_role" "$role" || continue
             wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
             [[ -n "$wt_path" ]] || continue
             wt_name=$(basename "$wt_path")
@@ -887,7 +925,7 @@ count_active_for_role() {
         for f in "$DISPATCH_DIR"/*.json; do
             [[ -e "$f" ]] || continue
             r=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
-            [[ "$r" == "$role" ]] || continue
+            pane_role_matches_lane "$r" "$role" || continue
             p=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
             [[ -n "$p" ]] || continue
             wt_path=""
@@ -909,7 +947,7 @@ count_active_for_role() {
             [[ -e "$rfile" ]] || continue
             wt_name=$(basename "$rfile" .json)
             rrole=$(fleet-claim reservation-role "$wt_name" 2>/dev/null || true)
-            [[ "$rrole" == "$role" ]] || continue
+            pane_role_matches_lane "$rrole" "$role" || continue
             # With tmux available, only count the reservation when its
             # worktree's pane is actually busy. An idle pane with a
             # leftover reservation is the resume-after-crash case and
@@ -1345,7 +1383,7 @@ PY
     # only fires when the fleet has work it forgot to dispatch — work
     # the fleet should be doing anyway. No idle-fleet token burn.
     local _role _active
-    for _role in "opus-worker" "sonnet-author"; do
+    for _role in "worker"; do
         # Skip if a trigger is already pending — scout's normal path
         # is doing its job and the dispatcher will fire on next tick.
         if [[ -f "$TRIGGERS_DIR/$_role" ]]; then
@@ -1369,10 +1407,10 @@ trig_dir = pathlib.Path(os.environ["TRIGGERS_DIR"])
 state_dir = pathlib.Path(os.environ["STATE_DIR"])
 role = os.environ["ROLE"]
 
-# Classes each lane serves — the heavy lane covers fable AND opus (a
-# fable-only backlog must still re-arm it; keep in sync with the scout's
-# slice filters and WORKER_LANE_DEFAULT_CLASS).
-ROLE_MODELS = {"opus-worker": {"opus", "fable"}, "sonnet-author": {"sonnet"}}
+# Classes the lane serves — the unified worker lane covers every class
+# (a fable-only or sonnet-only backlog must still re-arm it; keep in sync
+# with the scout's slice filters and WORKER_LANE_DEFAULT_CLASS).
+ROLE_MODELS = {"worker": {"opus", "fable", "sonnet"}}
 models = ROLE_MODELS.get(role)
 if not models:
     raise SystemExit(0)
@@ -1402,6 +1440,22 @@ if any(is_actionable(t) for t in (proj.get("tasks_open") or [])):
         trig.touch()
         print(f"worker-rearm: re-armed {role} (projection has actionable free work, no active iteration)")
 PY
+    done
+}
+
+# Fold any legacy per-lane trigger into the unified worker trigger. A
+# stale scout or fleet-dispatch-wrap (one still running pre-P2 code during
+# a partial restart, or an operator touching the old path) can drop a
+# triggers/opus-worker or triggers/sonnet-author file the new dispatcher no
+# longer reads — rename it to triggers/worker so the work isn't stranded.
+rename_legacy_lane_triggers() {
+    local legacy
+    for legacy in "opus-worker" "sonnet-author"; do
+        if [[ -f "$TRIGGERS_DIR/$legacy" ]]; then
+            mv -f "$TRIGGERS_DIR/$legacy" "$TRIGGERS_DIR/worker" 2>/dev/null || \
+                rm -f "$TRIGGERS_DIR/$legacy"
+            log "folded legacy $legacy trigger into worker"
+        fi
     done
 }
 
@@ -1436,6 +1490,7 @@ main() {
         fi
 
         cleanup_stale_dispatches
+        rename_legacy_lane_triggers
 
         # Scout-watchdog safety net + periodic worker safety rearm.
         # Runs first so any rearm-written triggers are picked up by

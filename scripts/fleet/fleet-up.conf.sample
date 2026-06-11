@@ -59,19 +59,24 @@
 # pane wakes up alongside a normal dispatch to a free pane.
 #
 # Defaults match each role's current pane count under stock fleet-up
-# layout (2x opus-worker, 2x sonnet-author, 1 each of the rest), so under
-# default values no role hits its cap during normal operation. Tune up to
-# allow more parallelism (requires adding panes); tune down to throttle a
-# role that's burning too much credit budget.
+# layout (the unified worker lane fans out across all worker panes, 1 each
+# of the rest), so under default values no role hits its cap during normal
+# operation. Tune up to allow more parallelism (requires adding panes);
+# tune down to throttle a role that's burning too much credit budget.
 
-# FLEET_CONCURRENCY_OPUS_WORKER=2
-# FLEET_CONCURRENCY_SONNET_AUTHOR=2
+# FLEET_CONCURRENCY_WORKER=4         # unified worker lane (any model class)
 # FLEET_CONCURRENCY_SONNET_REVIEWER=1
 # FLEET_CONCURRENCY_OPUS_REVIEWER=1
 # FLEET_CONCURRENCY_QUEUE_MANAGER=1
 # FLEET_CONCURRENCY_MERGER=1
 # FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker pane
 # FLEET_CONCURRENCY_EPIC_STEWARD=1   # concurrent cap for the epic-steward pane
+#
+# Deprecated (pre-P2 per-lane caps). Still honored: when
+# FLEET_CONCURRENCY_WORKER is unset, the worker cap is the sum of these
+# two. Remove once your conf sets FLEET_CONCURRENCY_WORKER directly.
+# FLEET_CONCURRENCY_OPUS_WORKER=2
+# FLEET_CONCURRENCY_SONNET_AUTHOR=2
 
 # --- Build parallelism (ir-build CPU budget) --------------------------------
 #
@@ -97,24 +102,27 @@
 #
 # Built-in defaults — the heavy design / render-reasoning roles run xhigh,
 # the rest run high (their work is bounded by the diff / task in front of
-# them, so xhigh buys little):
+# them, so xhigh buys little). The worker lane's value here is only the
+# fallthrough — per-task Effort: and model-class resolution override it:
 #   opus-architect   xhigh        opus-reviewer    high
 #   game-architect   xhigh        merger           high
-#   opus-worker      xhigh        sonnet-author    high
-#                                 sonnet-reviewer  high
+#   worker           xhigh        sonnet-reviewer  high
 #                                 smoke-worker     high
 #
 # Set FLEET_EFFORT (no role suffix) to force one level on every pane.
 
 # FLEET_EFFORT_OPUS_ARCHITECT=xhigh
 # FLEET_EFFORT_GAME_ARCHITECT=xhigh
-# FLEET_EFFORT_OPUS_WORKER=xhigh
+# FLEET_EFFORT_WORKER=xhigh
 # FLEET_EFFORT_OPUS_REVIEWER=high
 # FLEET_EFFORT_MERGER=high
-# FLEET_EFFORT_SONNET_AUTHOR=high
 # FLEET_EFFORT_SONNET_REVIEWER=high
 # FLEET_EFFORT_SMOKE_WORKER=high
 # FLEET_EFFORT_EPIC_STEWARD=xhigh
+#
+# Deprecated (pre-P2): FLEET_EFFORT_OPUS_WORKER is still honored as a
+# fallthrough for the worker lane when FLEET_EFFORT_WORKER is unset.
+# FLEET_EFFORT_OPUS_WORKER=xhigh
 
 # --- Usage gate (per-rate-limit-type thresholds) ----------------------------
 #
