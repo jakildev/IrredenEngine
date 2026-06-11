@@ -356,7 +356,7 @@ export FLEET_MODEL_MERGER FLEET_MODEL_OPUS_REVIEWER FLEET_FABLE_FALLBACK
 export OPUS_MODEL SONNET_MODEL
 
 # Short human-readable tag for a model string, shown in pane labels next
-# to the role slug (e.g. "opus-worker-1 [fable 1m]"). Role slugs keep the
+# to the role slug (e.g. "worker-1 [fable 1m]"). Role slugs keep the
 # historical tier names; the bracket tag is what tells you which model
 # the tier is actually running this session.
 model_tag() {
@@ -479,7 +479,7 @@ if [[ -d "$GAME/.git" ]]; then
     # the engine root above. Same dual-worktree model as the workers.
     ensure_worktree "$GAME" .claude/worktrees/merger          fleet/game-merger
     # epic-steward game worktree — only when FLEET_EPIC_STEWARD=1. Same
-    # dual-worktree model as opus-workers: engine pane cds here for game epics.
+    # dual-worktree model as the workers: engine pane cds here for game epics.
     if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
         ensure_worktree "$GAME" .claude/worktrees/epic-steward fleet/game-epic-steward
     fi
@@ -954,7 +954,7 @@ else
     echo "          (run scripts/fleet/install.sh to install it)"
 fi
 
-# Ensure the plans directory exists for opus-worker and architect to write to.
+# Ensure the plans directory exists for worker panes and architect to write to.
 mkdir -p "$HOME/.fleet/plans"
 
 # Ensure witness directories exist before the witness pane starts.
