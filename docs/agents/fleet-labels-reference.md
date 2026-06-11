@@ -92,11 +92,15 @@ Specifically, **never pass these via `--label` when filing**:
   plan is required before a worker can begin. Cleared once the human (or
   opus-architect via the `file-epic` skill) attaches a plan. Workers skip
   issues carrying this label. Don't add manually.
-- `fleet:opus` / `fleet:sonnet` — owned by **`fleet-queue-ingest`** as
-  a model-affinity hint. Applied alongside `fleet:queued` when ingest
-  classifies the issue (or left unset for the human to add manually
-  on edge cases). Workers filter pickup by their model label;
-  `fleet-queue-list` groups by these.
+- `fleet:fable` / `fleet:opus` / `fleet:sonnet` — owned by
+  **`fleet-queue-ingest`** as a model-class tag, parsed from the issue's
+  `**Model:**` field. Classes are literal (fable is opt-in for the
+  genuinely hard work; opus is the default when the field is missing);
+  the dispatcher launches each worker iteration with its task's class
+  and the fleet-claim gate exact-matches it. A reviewer may also add
+  `fleet:fable` to a PR to route an approach-is-wrong feedback fix onto
+  the fable class. `fleet-queue-list` groups by these; see FLEET.md
+  "Model split".
 - `fleet:blocked` — owned by **`fleet-queue-ingest`**. Since #1527 the
   ingest queues *every* approved, non-skip task up front (full queue
   visibility) instead of one child at a time; a task whose
