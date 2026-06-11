@@ -200,6 +200,19 @@ def fetch_needs_plan(repo):
     return fetch_issues_by_label(repo, "fleet:needs-plan")
 
 
+def fetch_epics(repo):
+    # Open fleet:epic umbrellas for the epic-steward role (#1664). The body's
+    # `## Children` checklist is the steward's membership source of truth —
+    # parse it into `checklist` and pop the body before the state write (epic
+    # bodies are large; the per-issue detail cache keeps the full body for the
+    # role's drill-in).
+    epics = fetch_issues_by_label(repo, "fleet:epic", with_body=True)
+    for epic in epics:
+        body = epic.pop("body", "") or ""
+        epic["checklist"] = _parse_epic_checklist(body)
+    return epics
+
+
 def fetch_human_approved(repo):
     # Exclude already-ingested issues to avoid re-triggering queue-manager.
     # with_body=True so resolve_human_approved_blockers can parse the
@@ -292,6 +305,26 @@ def _parse_issue_field(body, field):
         return ""
     m = re.search(rf'\*\*(?:Suggested\s+)?{re.escape(field)}:\*\*\s*(.+?)(?:\n|$)', body)
     return m.group(1).strip() if m else ""
+
+
+# Umbrella-body `## Children` checklist rows: `- [ ] #N` / `- [x] #N`. The
+# first `#N` on a checkbox line is the child ref, so bold-wrapped forms like
+# `- [x] **#1527 — mechanism**` resolve to 1527 and later refs in the same
+# row's prose are ignored. `[ \t]` (not `\s`) after the box keeps the match on
+# one line — `\s` would let a ref-less checkbox row swallow a `#N` from the
+# next line. Non-checkbox `#N` lines never match.
+_EPIC_CHECKLIST_RE = re.compile(
+    r'^[ \t]*-[ \t]*\[( |x|X)\][ \t].*?#(\d+)', re.MULTILINE)
+
+
+def _parse_epic_checklist(body):
+    """[{number, checked}] for every `- [ ] #N` / `- [x] #N` row in an
+    umbrella body, in document order. Indented sub-bullets count; lines
+    without a checkbox or without a `#N` ref do not."""
+    return [
+        {"number": int(m.group(2)), "checked": m.group(1) in "xX"}
+        for m in _EPIC_CHECKLIST_RE.finditer(body or "")
+    ]
 
 
 # A dependency may be declared two ways: the canonical `**Blocked by:** #N`
@@ -464,6 +497,10 @@ def fetch_task_queue(repo_slug):
             # (see _ingest_unblock_candidates).
             "blocked": "fleet:blocked" in labels,
             "issue": task_id,
+            # `**Part of epic:** #U` back-ref (raw field value, e.g. "#1661").
+            # The epic-steward adoption projection joins this against open
+            # umbrellas' checklists (#1664).
+            "epic": _parse_issue_field(body, "Part of epic") or None,
         }
 
         if status == "~":
@@ -717,6 +754,8 @@ def refresh_all_details(state):
             jobs.append(("issue", repo_key, issue))
         for issue in repo_state.get("human_approved", []):
             jobs.append(("issue", repo_key, issue))
+        for issue in repo_state.get("epics", []):
+            jobs.append(("issue", repo_key, issue))
 
     pr_refreshed = 0
     diff_refreshed = 0
@@ -767,7 +806,9 @@ def refresh_all_details(state):
         gc_pr_caches(repo_key, pr_numbers, head_oids)
         issue_numbers = {
             i["number"]
-            for i in repo_state.get("needs_plan", []) + repo_state.get("human_approved", [])
+            for i in (repo_state.get("needs_plan", [])
+                      + repo_state.get("human_approved", [])
+                      + repo_state.get("epics", []))
         }
         gc_issue_caches(repo_key, issue_numbers)
 
@@ -801,6 +842,10 @@ REVIEW_SKIP_LABELS = frozenset({
     # the reviewer sees is in flux. Re-evaluate once fleet:changes-made
     # appears (which RECHECK_LABELS picks up).
     "fleet:human-amending",
+    # Parked in an epic-steward proposal package — the PR's open design
+    # question is queued on the umbrella for the human/architect; reviewing
+    # the in-flux diff is wasted work until design-unblock clears it (#1664).
+    "fleet:design-proposed",
 })
 # Dynamic per-host claim prefixes that also bar reviewer pickup. A worker
 # amending a fleet:needs-fix PR holds fleet:amending-<host>-<agent> (minted
@@ -866,7 +911,12 @@ def model_tags(task):
     return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
 
 
-_DESIGN_BLOCK_LABELS = frozenset({"fleet:design-blocked", "fleet:design-escalated"})
+_DESIGN_BLOCK_LABELS = frozenset({
+    "fleet:design-blocked", "fleet:design-escalated",
+    # Steward-parked design question (proposal pending on the umbrella) —
+    # stacking on such a PR has the same hazard as a design-blocked one (#1664).
+    "fleet:design-proposed",
+})
 
 
 def _area_prefixes(area_str):
@@ -950,6 +1000,17 @@ def _resolve_ref_satisfied(repo_slug, ref_str, cache):
     return result
 
 
+def _closed_issue_numbers(repo_state):
+    """Issue numbers (as strings) known closed from the already-fetched
+    closed_fleet_queued window — the shared in-memory closed-set every
+    resolve_* pass checks before its live fallback."""
+    return {
+        str(i.get("number", ""))
+        for i in repo_state.get("closed_fleet_queued", [])
+        if i.get("number")
+    }
+
+
 def resolve_blocked_by(state):
     """Resolve blocked_by fields for all open tasks.
 
@@ -964,11 +1025,7 @@ def resolve_blocked_by(state):
         if not repo_slug:
             continue
 
-        closed_nums = {
-            str(i.get("number", ""))
-            for i in repo_state.get("closed_fleet_queued", [])
-            if i.get("number")
-        }
+        closed_nums = _closed_issue_numbers(repo_state)
         merged_heads = [
             pr.get("headRefName", "") or ""
             for pr in repo_state.get("recent_merged_prs", [])
@@ -1026,11 +1083,7 @@ def resolve_human_approved_blockers(state):
     never bloats state.json or the per-role slices.
     """
     for repo_key, repo_state in state["repos"].items():
-        closed_nums = {
-            str(i.get("number", ""))
-            for i in repo_state.get("closed_fleet_queued", [])
-            if i.get("number")
-        }
+        closed_nums = _closed_issue_numbers(repo_state)
         merged_heads = [
             pr.get("headRefName", "") or ""
             for pr in repo_state.get("recent_merged_prs", [])
@@ -1038,6 +1091,9 @@ def resolve_human_approved_blockers(state):
 
         for issue in repo_state.get("human_approved", []):
             body = issue.pop("body", "") or ""
+            # Same `Part of epic` back-ref the task records carry (#1664) —
+            # parsed here because this is where the body already flows.
+            issue["epic"] = _parse_issue_field(body, "Part of epic") or None
             issue["blocked"] = False
             raw = _parse_blocked_by(body)
             if not raw:
@@ -1061,6 +1117,70 @@ def resolve_human_approved_blockers(state):
                     continue
                 issue["blocked"] = True
                 break
+
+
+def resolve_epic_children(state):
+    """Annotate each epic for the steward projection (#1664). Mutates state
+    in place before the state write, mirroring resolve_blocked_by, so both
+    project_epic_steward and slice_epic_steward stay pure functions of the
+    annotated state (no live gh inside a projector).
+
+    Per epic: `plan_path` (repo-relative) and `plan_exists` (cheap local
+    Path.exists() against the repo checkout — staleness only delays the
+    normalize bootstrap by one pull; never add git fetches here). Per
+    checklist entry: `closed`, resolved from the already-fetched open/closed
+    sets:
+
+    - visible-open union (tasks open/in_progress, human_approved, needs_plan,
+      epics) → open
+    - closed_fleet_queued → closed
+    - already-checked entries → closed without the live fallback. The steward
+      only ticks a box after verifying closure (and flow d re-verifies live
+      before close-out), so trusting the tick avoids a per-tick gh call for
+      every checked child that has aged out of the closed_fleet_queued
+      window. A reopened child re-enters the visible-open union via its
+      surviving fleet:queued label, which takes precedence above.
+    - else the rare _resolve_ref_satisfied live fallback (per-tick cached) —
+      only unchecked children invisible to every list fetch land here (e.g.
+      filed but not yet approved/queued).
+    """
+    per_tick_cache: dict = {}
+    for repo_key, repo_state in state["repos"].items():
+        repo_slug = _REPO_SLUG_MAP.get(repo_key)
+        epics = repo_state.get("epics", [])
+        if not repo_slug or not epics:
+            continue
+
+        tasks = repo_state.get("tasks", {})
+        visible_open = set()
+        for section in ("open", "in_progress"):
+            for task in tasks.get(section, []):
+                num = (task.get("issue") or "").lstrip("#")
+                if num:
+                    visible_open.add(num)
+        for issue in (repo_state.get("human_approved", [])
+                      + repo_state.get("needs_plan", []) + epics):
+            if issue.get("number"):
+                visible_open.add(str(issue["number"]))
+        closed_nums = _closed_issue_numbers(repo_state)
+
+        repo_path = repo_state.get("path", "")
+        for epic in epics:
+            number = epic.get("number")
+            plan_rel = f".fleet/plans/issue-{number}.md"
+            epic["plan_path"] = plan_rel
+            epic["plan_exists"] = bool(
+                repo_path and (Path(repo_path) / plan_rel).exists()
+            )
+            for entry in epic.get("checklist", []):
+                child = str(entry.get("number", ""))
+                if child in visible_open:
+                    entry["closed"] = False
+                elif child in closed_nums or entry.get("checked"):
+                    entry["closed"] = True
+                else:
+                    entry["closed"] = _resolve_ref_satisfied(
+                        repo_slug, child, per_tick_cache)
 
 
 def enrich_stackable_blocker_prs(state):
@@ -1269,6 +1389,10 @@ def _merger_action_signal(labels, mergeable, base_ref):
     skip = labels & {
         "fleet:wip", "human:wip", "fleet:blocker",
         "fleet:fork-of-other-pr", "fleet:design-blocked",
+        # Parked by the epic-steward pending a proposal answer on the
+        # umbrella — same not-the-merger's-business semantics as
+        # design-blocked; design-unblock re-surfaces it (#1664).
+        "fleet:design-proposed",
         "fleet:needs-info", "fleet:needs-linux-smoke",
         "fleet:needs-macos-smoke",
         "fleet:human-deferred",
@@ -1397,6 +1521,142 @@ def project_smoke_worker(state):
     return sorted(items, key=lambda x: x["pr"])
 
 
+def _epic_design_prs(repo_key, repo_state):
+    """(pr, umbrella_number, child_number, op) for every open PR carrying a
+    design label that branch-matches a checklist child of an open epic.
+
+    op is "triage" for fleet:design-blocked, "distribute" for a
+    fleet:design-proposed PR whose umbrella no longer carries
+    fleet:steward-proposal (the proposal was answered — the label's removal
+    is the re-fire edge), and None for a design-proposed PR whose proposal
+    is still pending (visible in the slice, absent from the hash). A design
+    PR matching no checklist child is the architect's lane — not emitted.
+    """
+    epics = repo_state.get("epics", [])
+    if not epics:
+        return []
+    epics_by_number = {e.get("number"): e for e in epics}
+    child_to_umbrella = {}
+    for epic in epics:
+        for entry in epic.get("checklist", []):
+            child_to_umbrella.setdefault(
+                str(entry.get("number", "")), epic.get("number"))
+    out = []
+    for pr in repo_state.get("prs", []):
+        labels = set(pr.get("labels", []))
+        blocked = "fleet:design-blocked" in labels
+        proposed = "fleet:design-proposed" in labels
+        if not (blocked or proposed):
+            continue
+        head = pr.get("headRefName", "")
+        match = next(
+            ((child, umbrella) for child, umbrella in child_to_umbrella.items()
+             if branch_matches_issue(head, child, repo_key)),
+            None,
+        )
+        if match is None:
+            continue
+        child, umbrella = match
+        if blocked:
+            op = "triage"
+        elif "fleet:steward-proposal" not in set(
+                epics_by_number.get(umbrella, {}).get("labels", [])):
+            op = "distribute"
+        else:
+            op = None
+        out.append((pr, umbrella, int(child), op))
+    return out
+
+
+def _epic_adopt_candidates(repo_state):
+    """[{issue, epic, title}] for visible open issues (tasks open/in_progress
+    + human_approved) declaring `**Part of epic:** #U` where U is an open
+    epic whose checklist lacks them. A ref to a closed or non-epic umbrella
+    emits nothing — there is no checklist to adopt into."""
+    epics = repo_state.get("epics", [])
+    if not epics:
+        return []
+    member_sets = {
+        e.get("number"): {entry.get("number") for entry in e.get("checklist", [])}
+        for e in epics
+    }
+    candidates = []
+    tasks = repo_state.get("tasks", {})
+    for task in tasks.get("open", []) + tasks.get("in_progress", []):
+        candidates.append((task.get("epic"),
+                           (task.get("issue") or "").lstrip("#"),
+                           task.get("summary", "")))
+    for issue in repo_state.get("human_approved", []):
+        candidates.append((issue.get("epic"),
+                           str(issue.get("number", "")),
+                           issue.get("title", "")))
+    out = []
+    for epic_ref, num_str, title in candidates:
+        m = re.search(r"#(\d+)", epic_ref or "")
+        if not m or not num_str.isdigit():
+            continue
+        umbrella = int(m.group(1))
+        if umbrella not in member_sets or int(num_str) in member_sets[umbrella]:
+            continue
+        out.append({"issue": int(num_str), "epic": umbrella, "title": title})
+    return out
+
+
+def project_epic_steward(state):
+    """Hash-input projection for the epic-steward role (#1664).
+
+    Every op is edge-triggered by the steward's own writes — items carry
+    only stable fields (no label lists, no timestamps; the project_merger
+    lesson), and each disappears as a direct consequence of the steward
+    acting on it:
+
+    - normalize  — managed epic (repo-side plan file exists) with no body
+                   checklist; gone when the steward heals the checklist in.
+                   Legacy checklist-less epics without plan files emit
+                   nothing (no perma-trigger).
+    - rollup     — unchecked checklist child that is closed; gone when the
+                   steward ticks the box.
+    - adopt      — visible open issue declaring `Part of epic: #U` absent
+                   from that umbrella's checklist; gone when appended.
+    - design     — op=triage: fleet:design-blocked PR branch-matched to a
+                   checklist child; gone on design-unblock/design-propose.
+                   op=distribute: fleet:design-proposed PR whose umbrella
+                   dropped fleet:steward-proposal; gone on design-unblock.
+    - closeout   — checklist non-empty and every child closed, umbrella
+                   open; gone when the umbrella closes.
+    """
+    items = []
+    for repo, repo_state in state["repos"].items():
+        epics = repo_state.get("epics", [])
+        if not epics:
+            continue
+        for epic in epics:
+            number = epic.get("number")
+            checklist = epic.get("checklist", [])
+            if not checklist:
+                if epic.get("plan_exists"):
+                    items.append({"kind": "normalize", "repo": repo,
+                                  "epic": number})
+                continue
+            for entry in checklist:
+                if entry.get("closed") and not entry.get("checked"):
+                    items.append({"kind": "rollup", "repo": repo,
+                                  "epic": number,
+                                  "child": entry.get("number")})
+            if all(entry.get("closed") for entry in checklist):
+                items.append({"kind": "closeout", "repo": repo,
+                              "epic": number})
+        for cand in _epic_adopt_candidates(repo_state):
+            items.append({"kind": "adopt", "repo": repo,
+                          "epic": cand["epic"], "issue": cand["issue"]})
+        for pr, umbrella, _child, op in _epic_design_prs(repo, repo_state):
+            if op is None:
+                continue
+            items.append({"kind": "design", "op": op, "repo": repo,
+                          "epic": umbrella, "pr": pr["number"]})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
 PROJECTORS = {
     "sonnet-author": project_sonnet_author,
     "opus-worker": project_opus_worker,
@@ -1406,6 +1666,7 @@ PROJECTORS = {
     "queue-manager-ingest": project_queue_manager_ingest,
     "merger": project_merger,
     "smoke-worker": project_smoke_worker,
+    "epic-steward": project_epic_steward,
 }
 
 
@@ -1582,6 +1843,38 @@ def slice_smoke_worker(state):
     return out
 
 
+def slice_epic_steward(state):
+    """Full-record slice for the epic-steward role (#1664).
+
+    - `epics` — every open umbrella, repo-tagged, with its parsed checklist
+      (per-child `closed` from resolve_epic_children) and the umbrella plan
+      path/presence.
+    - `design_prs` — design-blocked / design-proposed PRs branch-matched to a
+      checklist child, repo-tagged, annotated with `epic`, `child`, and `op`
+      (`triage` / `distribute` / null while the proposal is still pending).
+    - `adoptable` — visible open issues declaring a `Part of epic` umbrella
+      whose checklist lacks them.
+    - `triggers` — the projector's items verbatim, so the role's startup
+      reads pending work by flow without recomputing the hash inputs.
+    """
+    out = {"epics": [], "design_prs": [], "adoptable": []}
+    for repo_key, repo_state in state["repos"].items():
+        for epic in repo_state.get("epics", []):
+            out["epics"].append(_slice_issue_with_repo(repo_key, epic))
+        for pr, umbrella, child, op in _epic_design_prs(repo_key, repo_state):
+            record = _slice_pr_with_repo(repo_key, pr)
+            record["epic"] = umbrella
+            record["child"] = child
+            record["op"] = op
+            out["design_prs"].append(record)
+        for cand in _epic_adopt_candidates(repo_state):
+            record = dict(cand)
+            record["repo"] = repo_key
+            out["adoptable"].append(record)
+    out["triggers"] = project_epic_steward(state)
+    return out
+
+
 SLICERS = {
     "sonnet-author": slice_sonnet_author,
     "opus-worker": slice_opus_worker,
@@ -1591,6 +1884,7 @@ SLICERS = {
     "queue-manager-ingest": slice_queue_manager_ingest,
     "smoke-worker": slice_smoke_worker,
     "merger": slice_merger,
+    "epic-steward": slice_epic_steward,
 }
 
 
@@ -1628,6 +1922,7 @@ def collect_state():
             ("engine", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
             ("engine", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
             ("engine", "tasks", lambda: fetch_task_queue("jakildev/IrredenEngine")),
+            ("engine", "epics", lambda: fetch_epics("jakildev/IrredenEngine")),
         ]
     if "game" in repos:
         fetch_specs += [
@@ -1637,6 +1932,7 @@ def collect_state():
             ("game", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/irreden")),
             ("game", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/irreden")),
             ("game", "tasks", lambda: fetch_task_queue("jakildev/irreden")),
+            ("game", "epics", lambda: fetch_epics("jakildev/irreden")),
         ]
 
     with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
@@ -1674,6 +1970,7 @@ def tick_once():
     _populate_done_tasks(state)
     resolve_blocked_by(state)
     resolve_human_approved_blockers(state)
+    resolve_epic_children(state)
     enrich_stackable_blocker_prs(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
