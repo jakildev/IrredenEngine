@@ -80,7 +80,7 @@ rearm_llm() {
 # smoke verification would be invalidated by a rebase; fork-of-other-pr
 # is coordinated manually.
 #
-# `fleet:human-deferred` is intentionally NOT skipped (re-scoped, #1643).
+# `fleet:human-deferred` is intentionally NOT skipped (re-scoped, #1712).
 # A deferred PR is approved and idle — its *review feedback* is parked in
 # a follow-up issue, but its branch is no one's active edit. A mechanical
 # rebase keeps it mergeable instead of letting it accumulate conflicts as

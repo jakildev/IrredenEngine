@@ -228,7 +228,7 @@ class SignalSemantics(unittest.TestCase):
         self.assertEqual(items, [])
 
     def test_human_deferred_conflicting_is_needs_resolve(self):
-        # Re-scoped (PR #1643): fleet:human-deferred marks a deferred
+        # Re-scoped (PR #1712): fleet:human-deferred marks a deferred
         # *review concern* tracked in a follow-up issue, NOT a conflict
         # handoff. A conflicting deferred PR is flagged like any approved
         # PR; the opus-worker resolves it and drops the label (new commits

@@ -19,9 +19,9 @@
 #
 # Note: fleet:human-deferred is NOT in the default set — it is an
 # ESCALATE-path outcome, not a feedback trigger. It is cleared
-# separately via --labels "fleet:human-deferred" only on the
-# human:needs-fix / human:blocker ESCALATE→AMEND path in
-# FLEET-FEEDBACK-HANDLING.md step b.
+# separately via --labels "fleet:human-deferred" on two paths:
+#   1. human:needs-fix / human:blocker ESCALATE→AMEND (FLEET-FEEDBACK-HANDLING.md step b)
+#   2. opus-worker step 1c.i (semantic-conflict resolution invalidates the prior deferral)
 #
 # Usage:
 #   fleet-pr-clear-feedback-labels <N> [--repo <slug>] [--labels <csv>]
