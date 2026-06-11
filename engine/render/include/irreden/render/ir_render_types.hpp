@@ -127,6 +127,18 @@ struct FrameDataTrixelToFramebuffer {
     /// blocks that stop earlier stay byte-identical; only the scatter shaders
     /// that dilate read it.
     vec4 scatterFbResolution_{0.0f, 0.0f, 0.0f, 0.0f};
+    /// Depth-color debug mode for the per-axis scatter path (#1697). When
+    /// depthColorMode_ != 0, the scatter fragment shader evaluates hue from the
+    /// interpolated face-corner world depth (smooth continuous gradient, no moiré)
+    /// instead of using the pre-baked per-voxel vColor. Matches the SDF twin's
+    /// per-pixel evaluation in c_shapes_to_trixel. depthColorExtent_ is the
+    /// bounding half-sum (= dColor in applyDepthColor) used to normalize [0,1].
+    /// std140-appended at offset 192 — only the scatter shaders read it; the
+    /// gather fast path stays byte-identical.
+    int depthColorMode_ = 0;
+    float depthColorExtent_ = 0.0f;
+    float _depthColorPad0_ = 0.0f;
+    float _depthColorPad1_ = 0.0f;
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -145,13 +157,18 @@ static_assert(
     "shader; the gather block stops at visibleFaceIds_, so it stays byte-identical"
 );
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 192,
+    offsetof(FrameDataTrixelToFramebuffer, depthColorMode_) == 192,
+    "depthColorMode_ must land at offset 192 (scatterFbResolution_ ends at 192); "
+    "std140 int is 4-byte aligned, so it follows directly"
+);
+static_assert(
+    sizeof(FrameDataTrixelToFramebuffer) == 208,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and the #1494 scatterFbResolution_ "
-    "at offset 176; detachedResidual_ / detachedDepthAxis_ are reserved padding "
-    "holding that offset; a silent reorder or resize would corrupt the scatter "
-    "UBO with no compile diagnostic"
+    "at offset 176; depthColorMode_ / depthColorExtent_ at offset 192 carry the "
+    "per-pixel depth-color mode for the scatter path (#1697); a silent reorder "
+    "or resize would corrupt the scatter UBO with no compile diagnostic"
 );
 
 struct FrameDataVoxelToCanvas {

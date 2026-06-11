@@ -240,6 +240,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // Conservative-coverage dilation needs the framebuffer extent the ortho
         // mpMatrix maps into, to convert a pixel margin to NDC (#1494).
         frameData.frameData_.scatterFbResolution_ = vec4(framebufferResolution, 0.0f, 0.0f);
+        // Per-pixel depth-color debug (#1697): evaluate hue from interpolated
+        // face-corner world depth in the fragment shader instead of pre-baked
+        // per-voxel vColor, eliminating the 4/3-band moiré at non-cardinal yaw.
+        frameData.frameData_.depthColorMode_ =
+            IRRender::getDepthColorDebugMode() ? 1 : 0;
+        frameData.frameData_.depthColorExtent_ = IRRender::getDepthColorDebugExtent();
         frameData.updateFrameData(frameDataBuf_);
 
         scatterProgram_->use();

@@ -48,10 +48,25 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec4 _detachedResidualPad;
     vec4 _detachedDepthAxisPad;
     vec4 scatterFbResolution; // framebuffer .xy for the conservative dilation (#1494)
+    // Per-pixel depth-color debug mode (#1697). When depthColorMode != 0 the
+    // fragment shader evaluates hue from the interpolated vIsoDepth instead of
+    // vColor. depthColorExtent is the bounding half-sum used to normalize [0,1].
+    // std140-appended at offset 192; only the scatter shaders read it.
+    int depthColorMode;
+    float depthColorExtent;
+    float _depthColorPad0;
+    float _depthColorPad1;
 };
 
 flat out vec4 vColor;
 flat out float vDepth;
+// Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
+// the quad) — origin is the same for all 4 corners of a face instance, so
+// interpolation would be a no-op anyway and flat avoids shader-pipeline
+// divergence from adding a smooth varying.
+flat out float vIsoDepth;
+flat out int vDepthColorMode;
+flat out float vDepthColorExtent;
 
 // In-plane corner of a face whose `origin` ALREADY sits at the face plane on
 // the fixed axis. The store (c_voxel_to_trixel_stage_{1,2}) bakes the polarity
@@ -80,6 +95,9 @@ void main() {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
         vColor = vec4(0.0);
         vDepth = 1.0;
+        vIsoDepth = 0.0;    // unused (discarded in fragment)
+        vDepthColorMode = 0;
+        vDepthColorExtent = 0.0;
         return;
     }
 
@@ -136,6 +154,13 @@ void main() {
     gl_Position = clipCorner;
 
     vColor = color;
+    // Use face-center depth (= origin) rather than corner depth: all 4 vertices
+    // of this face instance share the same origin, so the value is constant
+    // across the quad — flat is correct, and using origin avoids provoking-vertex
+    // ambiguity that would arise from per-corner worldCorner values.
+    vIsoDepth = origin.x + origin.y + origin.z;
+    vDepthColorMode = depthColorMode;
+    vDepthColorExtent = depthColorExtent;
     // Yaw-consistent composite depth (#1370). The stored `rawDepth` (= un-yawed
     // world x+y+z) is the face-local origin-recovery KEY and must not change.
     // But the framebuffer depth test must order by the depth that matches the
