@@ -627,6 +627,10 @@ constexpr std::uint32_t kBufferIndex_RevoxelizeSourceGrid = kBufferIndex_VoxelSe
 constexpr std::uint32_t kBufferIndex_EntityTransforms = 18;
 constexpr std::uint32_t kBufferIndex_UpdateParams = 19;
 constexpr std::uint32_t kBufferIndex_ShapeDescriptors = 20;
+// SDF-shapes-path scaffolding for future joint deformation (c_shapes_to_trixel.glsl,
+// slot 21). Not used by the voxel skinning path — voxels use slot 18
+// (kBufferIndex_EntityTransforms) for skin matrices and slot 17
+// (kBufferIndex_LocalVoxelPositions) for per-voxel bone-slot indices.
 constexpr std::uint32_t kBufferIndex_JointTransforms = 21;
 constexpr std::uint32_t kBufferIndex_AnimationParams = 22;
 // Slot 23 was previously unused; reused for the GPU light-volume

@@ -364,6 +364,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             BufferTarget::UNIFORM,
             kBufferIndex_ShapesFrameData
         );
+        // Scaffolding for future SDF-shape joint deformation (binding 21,
+        // c_shapes_to_trixel.glsl). jointData[] is declared in the shader but not
+        // yet indexed — all shapes set jointIndex = 0. Not used by the voxel
+        // skinning path (which uses EntityTransformBuffer at binding 18 and
+        // per-voxel bone-slot indices at binding 17 via seedVoxelBoneSlots).
         IRRender::createNamedResource<Buffer>(
             "JointTransformBuffer",
             nullptr,
