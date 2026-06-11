@@ -128,12 +128,12 @@ def fetch_prs(repo):
         "isDraft,reviews,updatedAt",
     ])
     if out is None:
-        return []
+        return None
     try:
         prs = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh pr list {repo}: bad JSON: {e}")
-        return []
+        return None
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
@@ -182,12 +182,12 @@ def fetch_issues_by_label(repo, filter_label, exclude_labels=None, with_body=Fal
         "--json", fields,
     ])
     if out is None:
-        return []
+        return None
     try:
         issues = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh issue list {repo} --label {filter_label}: bad JSON: {e}")
-        return []
+        return None
     for issue in issues:
         issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
     if exclude_labels:
@@ -207,6 +207,8 @@ def fetch_epics(repo):
     # bodies are large; the per-issue detail cache keeps the full body for the
     # role's drill-in).
     epics = fetch_issues_by_label(repo, "fleet:epic", with_body=True)
+    if epics is None:
+        return None
     for epic in epics:
         body = epic.pop("body", "") or ""
         epic["checklist"] = _parse_epic_checklist(body)
@@ -235,12 +237,12 @@ def fetch_closed_fleet_queued(repo, limit=100):
         "--json", "number,title,labels,updatedAt",
     ])
     if out is None:
-        return []
+        return None
     try:
         issues = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh issue list {repo} --label fleet:queued --state closed: bad JSON: {e}")
-        return []
+        return None
     for issue in issues:
         issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
     issues.sort(key=lambda issue: issue.get("number", 0))
@@ -275,12 +277,12 @@ def fetch_recent_merged_prs(repo, limit=30):
         "--json", "number,title,headRefName,baseRefName,mergedAt",
     ])
     if out is None:
-        return []
+        return None
     try:
         prs = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh pr list {repo} --state merged: bad JSON: {e}")
-        return []
+        return None
     prs.sort(key=lambda pr: pr.get("number", 0))
     return prs
 
@@ -410,13 +412,13 @@ def fetch_task_queue(repo_slug):
     ])
 
     if not issues_out:
-        return {"open": [], "in_progress": [], "done": []}
+        return None
 
     try:
         issues = json.loads(issues_out)
     except json.JSONDecodeError as e:
         log(f"fetch_task_queue {repo_slug}: bad JSON: {e}")
-        return {"open": [], "in_progress": [], "done": []}
+        return None
 
     sections = {"open": [], "in_progress": [], "done": []}
 
@@ -1909,6 +1911,14 @@ def update_role_trigger(role: str, projection) -> bool:
 
 
 def collect_state():
+    # Load previous state so degraded fetches can fall back to last-known-good
+    # data instead of writing empty arrays into a fresh-timestamped snapshot.
+    _prev_repos = {}
+    try:
+        _prev_repos = json.loads(STATE_FILE.read_text()).get("repos", {})
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
     repos = {"engine": {"path": str(ENGINE)}}
     if (GAME / ".git").exists():
         repos["game"] = {"path": str(GAME)}
@@ -1935,6 +1945,7 @@ def collect_state():
             ("game", "epics", lambda: fetch_epics("jakildev/irreden")),
         ]
 
+    _degraded = []
     with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
         futures = {}
         for i, (repo_key, field, fn) in enumerate(fetch_specs):
@@ -1944,18 +1955,31 @@ def collect_state():
         for fut in as_completed(futures):
             repo_key, field = futures[fut]
             try:
-                repos[repo_key][field] = fut.result()
+                result = fut.result()
             except Exception as e:
                 log(f"fetch {repo_key}/{field} failed: {e}")
-                repos[repo_key][field] = (
-                    {"open": [], "in_progress": [], "done": []}
-                    if field == "tasks" else []
-                )
+                result = None
+            if result is None:
+                prev_value = _prev_repos.get(repo_key, {}).get(field)
+                if prev_value is not None:
+                    log(f"degraded: preserving last-known-good for {repo_key}.{field}")
+                    repos[repo_key][field] = prev_value
+                else:
+                    repos[repo_key][field] = (
+                        {"open": [], "in_progress": [], "done": []}
+                        if field == "tasks" else []
+                    )
+                _degraded.append(f"{repo_key}.{field}")
+            else:
+                repos[repo_key][field] = result
 
-    return {
+    state = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "repos": repos,
     }
+    if _degraded:
+        state["degraded"] = sorted(_degraded)
+    return state
 
 
 def _populate_done_tasks(state):
@@ -1967,6 +1991,8 @@ def _populate_done_tasks(state):
 
 def tick_once():
     state = collect_state()
+    if state.get("degraded"):
+        log(f"state degraded: {state['degraded']} — reconcile disabled this tick")
     _populate_done_tasks(state)
     resolve_blocked_by(state)
     resolve_human_approved_blockers(state)
@@ -1997,6 +2023,13 @@ def tick_once():
                 old_hash = ""
             if new_hash != old_hash:
                 write_atomic(seen_file, new_hash + "\n")
+                if state.get("degraded"):
+                    # Skip reconcile/cleanup when fetch data is stale — comparing
+                    # live claims against a potentially incomplete issue list would
+                    # produce false-positive drift reports or unsafe auto-fixes.
+                    log("queue-manager: skipping reconcile+cleanup (state degraded)")
+                    triggers_fired.append("queue-manager(skipped-degraded)")
+                    continue
                 sweep_cmds = [
                     ["fleet-claim", "cleanup", "--gh",
                      "--repo", "jakildev/IrredenEngine"],
@@ -2041,6 +2074,10 @@ def tick_once():
                 old_hash = ""
             if new_hash != old_hash:
                 write_atomic(seen_file, new_hash + "\n")
+                if state.get("degraded"):
+                    log("queue-manager-ingest: skipping fleet-queue-ingest (state degraded)")
+                    triggers_fired.append("queue-manager-ingest(skipped-degraded)")
+                    continue
                 try:
                     ingest_cmd = subprocess.run(
                         ["which", "fleet-queue-ingest"],
