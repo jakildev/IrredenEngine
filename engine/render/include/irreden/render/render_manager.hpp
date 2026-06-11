@@ -79,6 +79,10 @@ class RenderManager {
     void setDebugOverlay(DebugOverlayMode mode);
     DebugOverlayMode getDebugOverlay() const;
 
+    void setDepthColorDebug(bool on, float extent);
+    bool getDepthColorDebugMode() const;
+    float getDepthColorDebugExtent() const;
+
     void setHDREnabled(bool enabled);
     bool getHDREnabled() const;
     void setExposure(float exposure);
@@ -156,6 +160,8 @@ class RenderManager {
     bool m_sunShadowsEnabled = true;
     bool m_aoEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
+    bool m_depthColorDebugOn = false;
+    float m_depthColorDebugExtent = 0.0f;
     bool m_hdrEnabled = false;
     float m_hdrExposure = 1.0f;
     float m_skyIntensity = 0.0f;

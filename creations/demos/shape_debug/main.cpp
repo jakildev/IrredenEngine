@@ -646,6 +646,10 @@ EntityId createVoxelPoolShape(
     // visual regression tests.
     if (g_depthColor) {
         applyDepthColor(vs, type, sdfParams);
+        // Set the scatter path's per-pixel depth-color mode so non-cardinal
+        // yaw evaluates hue continuously in the fragment shader (#1697).
+        vec3 bh = IRMath::SDF::boundingHalf(sdfType, sdfParams);
+        IRRender::setDepthColorDebug(true, bh.x + bh.y + bh.z);
     } else if (g_checkerboard) {
         applyCheckerboard(vs, color);
     }

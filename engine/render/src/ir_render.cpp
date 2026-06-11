@@ -298,6 +298,18 @@ DebugOverlayMode getDebugOverlay() {
     return getRenderManager().getDebugOverlay();
 }
 
+void setDepthColorDebug(bool on, float extent) {
+    getRenderManager().setDepthColorDebug(on, extent);
+}
+
+bool getDepthColorDebugMode() {
+    return getRenderManager().getDepthColorDebugMode();
+}
+
+float getDepthColorDebugExtent() {
+    return getRenderManager().getDepthColorDebugExtent();
+}
+
 void setHDREnabled(bool enabled) {
     getRenderManager().setHDREnabled(enabled);
 }

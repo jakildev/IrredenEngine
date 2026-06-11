@@ -578,6 +578,19 @@ DebugOverlayMode RenderManager::getDebugOverlay() const {
     return m_debugOverlayMode;
 }
 
+void RenderManager::setDepthColorDebug(bool on, float extent) {
+    m_depthColorDebugOn = on;
+    m_depthColorDebugExtent = extent;
+}
+
+bool RenderManager::getDepthColorDebugMode() const {
+    return m_depthColorDebugOn;
+}
+
+float RenderManager::getDepthColorDebugExtent() const {
+    return m_depthColorDebugExtent;
+}
+
 void RenderManager::setHDREnabled(bool enabled) {
     m_hdrEnabled = enabled;
 }

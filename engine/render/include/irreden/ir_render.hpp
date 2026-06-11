@@ -377,6 +377,17 @@ void setDebugOverlay(DebugOverlayMode mode);
 DebugOverlayMode getDebugOverlay();
 /// @}
 
+/// @name Depth-color debug mode (scatter path)
+/// When on, the per-axis scatter fragment shader evaluates hue from the
+/// interpolated face-corner world depth rather than the pre-baked vColor,
+/// producing a smooth continuous gradient that matches the SDF twin (#1697).
+/// @c extent is the bounding half-sum (x+y+z) of the shape being diagnosed;
+/// pass it once at setup time (e.g. after creating the voxel-pool shape).
+void setDepthColorDebug(bool on, float extent);
+bool getDepthColorDebugMode();
+float getDepthColorDebugExtent();
+/// @}
+
 } // namespace IRRender
 
 #endif /* IR_RENDER_H */
