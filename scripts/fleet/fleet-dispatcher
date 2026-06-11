@@ -519,6 +519,7 @@ pane_has_running_wrapper() {
 # lane also claims the legacy `opus-worker` / `sonnet-author` tags. This is
 # what lets the unified lane find, count, and dispatch into panes that
 # still carry their old tags during the transition.
+# Remove once P2-2 / P2-3 land (epic #1692).
 pane_role_matches_lane() {
     local pane_role="$1" lane="$2"
     [[ "$pane_role" == "$lane" ]] && return 0
@@ -1448,6 +1449,7 @@ PY
 # a partial restart, or an operator touching the old path) can drop a
 # triggers/opus-worker or triggers/sonnet-author file the new dispatcher no
 # longer reads — rename it to triggers/worker so the work isn't stranded.
+# Remove once P2-2 / P2-3 land (epic #1692).
 rename_legacy_lane_triggers() {
     local legacy
     for legacy in "opus-worker" "sonnet-author"; do

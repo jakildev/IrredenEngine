@@ -2109,9 +2109,11 @@ def cleanup_pid_file():
 # keys gone the old files would linger forever — a stale
 # projections/opus-worker.json reads as live to anything that still globs
 # the directory, and a leftover trigger could mis-fire. Sweep them on boot.
+# Remove once P2-2 / P2-3 land (epic #1692).
 _RETIRED_LANE_ROLES = ("opus-worker", "sonnet-author")
 
 
+# Remove once P2-2 / P2-3 land (epic #1692).
 def clean_retired_lane_artifacts():
     for role in _RETIRED_LANE_ROLES:
         for path in (
