@@ -31,9 +31,19 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 
+// World sun-shadow CAST for opt-in world-placed detached re-voxelize solids
+// (#1576 P4b-3): the resolve-then-bake driver reuses the main-frame restore
+// helpers and gathers the opt-in detached canvases off C_EntityCanvas (the
+// same component the composite iterates).
+#include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/voxel_frame_data.hpp>
+
+#include <utility>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -113,6 +123,87 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // World sun-shadow CAST (#1576 P4b-3, Q2 mechanism a′ — resolve-then-bake).
+    // Opt-in world-placed detached re-voxelize solids gathered once per frame in
+    // beginTick (off C_EntityCanvas, the same component the composite iterates).
+    // The cast mirrors the per-axis resolve precedent above faithfully: scatter
+    // every caster's model-frame distances (+ its world cell origin) into ONE
+    // shared main-canvas-layout scratch, blit to the resolve texture, then ONE
+    // extra bake dispatch through the unchanged cardinal recovery. Invariant
+    // (docs/design/detached-revoxelize-world-light.md, Q2 REVISED): the bake
+    // only ever reads main-canvas-layout depth sources — a foreign model-frame
+    // canvas texture is never a bake input (the direct read returns empty
+    // through Metal's image-atomic scratch indirection; that was PR #1626's
+    // first, rejected mechanism). Empty caster list → byte-identical to master.
+    struct WorldPlacedCaster {
+        const C_TriangleCanvasTextures *textures_ = nullptr;
+        vec3 worldCellOffset_{0.0f};
+    };
+    std::vector<WorldPlacedCaster> worldPlacedCasters_;
+    FrameDataVoxelToCanvas voxelFrameScratch_{};
+    const C_TriangleCanvasTextures *mainTextures_ = nullptr;
+    const C_VoxelPool *mainPool_ = nullptr;
+    const C_CanvasLocalRotation *mainRotation_ = nullptr;
+
+    ShaderProgram *worldPlacedScatterProgram_ = nullptr;
+    ShaderProgram *worldPlacedBlitProgram_ = nullptr;
+    // Main-canvas-sized front-most iso-depth scratch + the resolve texture the
+    // extra bake dispatch reads. Same buffer-not-texture rationale as the
+    // per-axis resolve (Metal has no portable image-atomic syntax); the blit
+    // self-resets the scratch each frame. (Re)allocated on canvas resize only.
+    ResourceId worldPlacedScratchId_ = 0;
+    Buffer *worldPlacedScratch_ = nullptr;
+    std::pair<ResourceId, Texture2D *> worldPlacedResolveDepth_{0, nullptr};
+    ivec2 worldPlacedResolveSize_ = ivec2(0, 0);
+
+    // (Re)allocate the scratch SSBO + resolve texture to @p mainSize. Runs only
+    // on first use and on a canvas resize, not per frame. One seed dispatch of
+    // the blit kernel resets every scratch slot to the empty sentinel without a
+    // canvas-sized CPU staging upload (the per-frame blit keeps it reset
+    // thereafter). The texture texels that seed dispatch writes are garbage but
+    // never observable: the extra bake only runs in frames where the per-frame
+    // blit has just rewritten every texel.
+    void ensureWorldPlacedResolve(ivec2 mainSize) {
+        if (worldPlacedScratch_ != nullptr && worldPlacedResolveSize_ == mainSize) {
+            return;
+        }
+        if (worldPlacedScratch_ != nullptr) {
+            IRRender::destroyResource<Buffer>(worldPlacedScratchId_);
+            worldPlacedScratch_ = nullptr;
+            IRRender::destroyResource<Texture2D>(worldPlacedResolveDepth_.first);
+            worldPlacedResolveDepth_ = {0, nullptr};
+        }
+        const std::size_t count =
+            static_cast<std::size_t>(mainSize.x) * static_cast<std::size_t>(mainSize.y);
+        auto created = IRRender::createResource<Buffer>(
+            nullptr,
+            count * sizeof(std::int32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
+        worldPlacedScratchId_ = created.first;
+        worldPlacedScratch_ = created.second;
+        worldPlacedResolveSize_ = mainSize;
+        worldPlacedResolveDepth_ = IRComponents::detail::makeCanvasDistanceTexture(mainSize);
+
+        worldPlacedBlitProgram_->use();
+        worldPlacedScratch_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_PerAxisResolveScratch
+        );
+        worldPlacedResolveDepth_.second
+            ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+        IRRender::device()->dispatchCompute(
+            IRMath::divCeil(mainSize.x, kBakeSunShadowGroupSize),
+            IRMath::divCeil(mainSize.y, kBakeSunShadowGroupSize),
+            1
+        );
+        // ALL, not SHADER_STORAGE: the seed also image-writes the resolve
+        // texture, which the per-frame blit image-writes again this tick.
+        IRRender::device()->memoryBarrier(BarrierType::ALL);
+    }
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -184,6 +275,156 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             canvasTextures.getTextureDistances()
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         }
+
+        // World sun-shadow CAST for opt-in world-placed detached re-voxelize
+        // solids (#1576 P4b-3, Q2 mechanism a′ — resolve-then-bake). Mirrors the
+        // per-axis resolve precedent above: scatter every caster's model-frame
+        // distances into ONE shared main-canvas-layout scratch (lifted to world
+        // by its cell origin), blit to the resolve texture, then ONE extra bake
+        // dispatch through the same cardinal recovery as the main canvas. The
+        // resolve texture is imageStore-written (real texture memory), so the
+        // bake's read works on Metal — unlike the canvases' own imageAtomicMin
+        // distance textures, whose data lives behind the image-atomic scratch
+        // indirection and reads empty in a second in-tick bake dispatch (the
+        // rejected first mechanism; backend gap tracked in #1640). Requires a
+        // voxel main canvas (the frame restore below re-authors its UBO state).
+        if (entity == perAxisCanvasEntity_ && !worldPlacedCasters_.empty() &&
+            mainTextures_ != nullptr && mainPool_ != nullptr && mainRotation_ != nullptr) {
+            ensureWorldPlacedResolve(canvasTextures.size_);
+
+            // Author the MAIN frame fresh so the scatter's output projection
+            // (main canvas size, camera raster yaw, camera pan) is known-good
+            // regardless of which canvas STAGE_1 left resident. Byte-identical
+            // content to what the main bake above already read.
+            restoreMainCanvasVoxelFrame(
+                voxelFrameScratch_,
+                voxelFrameDataBuf_,
+                mainTextures_,
+                mainPool_,
+                mainRotation_
+            );
+
+            // Pass 1 — scatter each caster into the shared scratch (front-most
+            // per screen pixel via atomicMin). Only the 16-byte
+            // detachedWorldReceive_ lift is patched per caster; the UBO is
+            // re-bound after each subData because the Metal author orphans the
+            // buffer and breaks the encoder's binding table.
+            worldPlacedScatterProgram_->use();
+            worldPlacedScratch_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisResolveScratch
+            );
+            for (const auto &caster : worldPlacedCasters_) {
+                const vec4 lift = vec4(caster.worldCellOffset_, 1.0f);
+                voxelFrameDataBuf_->subData(
+                    offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_),
+                    sizeof(vec4),
+                    &lift
+                );
+                voxelFrameDataBuf_->bindBase(
+                    BufferTarget::UNIFORM,
+                    kBufferIndex_FrameDataVoxelToCanvas
+                );
+                caster.textures_->getTextureDistances()
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+                IRRender::device()->dispatchCompute(
+                    IRMath::divCeil(caster.textures_->size_.x, kBakeSunShadowGroupSize),
+                    IRMath::divCeil(caster.textures_->size_.y, kBakeSunShadowGroupSize),
+                    1
+                );
+            }
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            // Reset the lift so every later consumer of the main frame (this
+            // tick's resolve bake, COMPUTE_SUN_SHADOW, LIGHTING_TO_TRIXEL's
+            // restore baseline) sees the world frame with the opt-in off.
+            const vec4 liftOff = vec4(0.0f);
+            voxelFrameDataBuf_->subData(
+                offsetof(FrameDataVoxelToCanvas, detachedWorldReceive_),
+                sizeof(vec4),
+                &liftOff
+            );
+            voxelFrameDataBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataVoxelToCanvas
+            );
+
+            // Pass 2 — blit the scratch into the resolve texture (and self-reset
+            // the scratch for next frame). Shares the per-axis blit kernel.
+            worldPlacedBlitProgram_->use();
+            worldPlacedScratch_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_PerAxisResolveScratch
+            );
+            worldPlacedResolveDepth_.second
+                ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            IRRender::device()->memoryBarrier(BarrierType::ALL);
+
+            // Pass 3 — ONE extra bake of the main-layout resolve texture through
+            // the unchanged cardinal recovery (the per-axis resolveDepth_ bake
+            // above is the in-file precedent). Re-bind the bake's full set: the
+            // scratch aliased slot 28 and the UBO was orphaned by the subData.
+            bakeProgram_->use();
+            sunShadowDepthMap_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_SunShadowDepthMap
+            );
+            voxelFrameDataBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_FrameDataVoxelToCanvas
+            );
+            sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+            worldPlacedResolveDepth_.second
+                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            // Restore the main-canvas distance image so the persistent Metal
+            // image-binding table doesn't dangle (mirrors the per-axis restore).
+            canvasTextures.getTextureDistances()
+                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        }
+    }
+
+    // Collect opt-in world-placed detached re-voxelize solids for the cast
+    // resolve (#1576 P4b-3). Iterates C_EntityCanvas — the same component the
+    // composite (ENTITY_CANVAS_TO_FRAMEBUFFER) reads worldPlaced_ off — and
+    // captures each opt-in canvas's distance texture + the world cell origin
+    // PROPAGATE_CANVAS_ROTATION stamped on its C_CanvasLocalRotation (the same
+    // propagated values the P4b-2 receive consumes, so cast and receive share
+    // one world origin per frame). Once per frame in beginTick (few canvases),
+    // so the per-canvas getComponentOptional is canvas iteration, not the
+    // per-voxel ECS footgun.
+    void gatherWorldPlacedCasters() {
+        worldPlacedCasters_.clear();
+        const auto include = IREntity::getArchetype<C_EntityCanvas>();
+        auto nodes = IREntity::queryArchetypeNodesSimple(include);
+        for (auto *node : nodes) {
+            auto &canvases = IREntity::getComponentData<C_EntityCanvas>(node);
+            for (int i = 0; i < node->length_; ++i) {
+                const C_EntityCanvas &entityCanvas = canvases[i];
+                if (!entityCanvas.worldPlaced_ || !entityCanvas.visible_ ||
+                    entityCanvas.canvasEntity_ == IREntity::kNullEntity) {
+                    continue;
+                }
+                auto textures = IREntity::getComponentOptional<C_TriangleCanvasTextures>(
+                    entityCanvas.canvasEntity_
+                );
+                auto rotation = IREntity::getComponentOptional<C_CanvasLocalRotation>(
+                    entityCanvas.canvasEntity_
+                );
+                if (!textures.has_value() || !rotation.has_value()) {
+                    continue;
+                }
+                // Only the re-voxelize path is world-placeable (the octahedral-
+                // snap deform recovers pos differently — see buildVoxelFrameData);
+                // skip canvases whose propagation hasn't run yet this frame.
+                const C_CanvasLocalRotation &rot = *rotation.value();
+                if (!rot.worldPlaced_ || !rot.reVoxelize_ || !rot.isDetached()) {
+                    continue;
+                }
+                worldPlacedCasters_.push_back({textures.value(), rot.worldCellOffset_});
+            }
+        }
     }
 
     void beginTick() {
@@ -203,6 +444,21 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 perAxisCanvases_ = perAxis.value();
             }
         }
+
+        // World sun-shadow CAST (#1576 P4b-3): gather opt-in world-placed detached
+        // re-voxelize solids + resolve the main canvas's voxel-frame inputs (for
+        // the pre-scatter main-frame author). Done before the shadowsEnabled
+        // early-return so the list is always fresh (tick won't cast when shadows
+        // are off anyway). The query + per-canvas getComponentOptional are
+        // once-per-frame canvas iteration (few canvases), not the per-voxel ECS
+        // footgun — same pattern as resolveSun() above.
+        gatherWorldPlacedCasters();
+        resolveMainCanvasVoxelFrameInputs(
+            perAxisCanvasEntity_,
+            &mainTextures_,
+            &mainPool_,
+            &mainRotation_
+        );
 
         const detail::ResolvedSun sun = detail::resolveSun();
         vec3 sunDir = sun.direction_;
@@ -314,6 +570,19 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             "BakeSunShadowMapProgram",
             std::vector{ShaderStage{IRRender::kFileCompBakeSunShadowMap, ShaderType::COMPUTE}}
         );
+        // World-placed detached cast resolve (#1576 P4b-3). The blit reuses the
+        // per-axis kernel FILE under a bake-owned program name so the cast does
+        // not depend on RESOLVE_PER_AXIS_SCREEN_DEPTH being registered.
+        IRRender::createNamedResource<ShaderProgram>(
+            "ResolveWorldPlacedDepthProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompResolveWorldPlacedDepth, ShaderType::COMPUTE}
+            }
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "WorldPlacedDepthBlitProgram",
+            std::vector{ShaderStage{IRRender::kFileCompResolvePerAxisBlit, ShaderType::COMPUTE}}
+        );
         IRRender::createNamedResource<Buffer>(
             "SunShadowDepthMap",
             nullptr,
@@ -333,6 +602,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         auto *p = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(systemId);
         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearSunShadowMapProgram");
         p->bakeProgram_ = IRRender::getNamedResource<ShaderProgram>("BakeSunShadowMapProgram");
+        p->worldPlacedScatterProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ResolveWorldPlacedDepthProgram");
+        p->worldPlacedBlitProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("WorldPlacedDepthBlitProgram");
+        p->worldPlacedCasters_.reserve(8);
         p->sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         IRRender::tagGpuStage(systemId, "bakeSunShadowMap");

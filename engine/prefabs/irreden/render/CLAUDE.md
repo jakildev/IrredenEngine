@@ -453,8 +453,15 @@ opt into world participation via `C_EntityCanvas::worldPlaced_` (default off):
   with COMPUTE_SUN_SHADOW) + 128³ light volume there, so the solid darkens in
   world shadow and picks up light bleed like a GRID solid. Gated on the flag →
   the default overlay path is byte-identical (no per-canvas sun-shadow texture).
-- **P4b-3 (#1596), pending:** cast — a second sun-shadow bake dispatch per opt-in
-  detached canvas, gated on the same flag.
+- **P4b-3 (landed, #1596):** cast. `BAKE_SUN_SHADOW_MAP` scatters every opt-in
+  canvas's model-frame distances (+ its world cell origin) into one shared
+  main-canvas-layout scratch (`c_resolve_world_placed_depth`), blits to a
+  bake-owned R32I resolve texture, and bakes that through the unchanged cardinal
+  recovery — ONE extra bake regardless of caster count, mirroring the per-axis
+  resolve precedent. Invariant: the sun-shadow bake only ever reads
+  main-canvas-layout depth sources; a foreign model-frame canvas texture is
+  never a bake input (the direct read returns empty through Metal's
+  image-atomic scratch indirection — #1640 tracks the backend gap).
 
 Keep world-depth behind the opt-in — do not move it onto the default path — and
 match the GRID `trixelDistances` convention so an opt-in cell and the same GRID
