@@ -52,6 +52,15 @@ In all three cases:
 - `CMAKE_CXX_STANDARD` is **23**; your compiler must support it.
   (gcc ≥ 13 on Linux/WSL, gcc ≥ 13 via MSYS2 on Windows.)
 
+**Convention for doc snippets that cite a preset** (here and in any doc,
+including downstream creation/game repos): if the recipe's expected CWD is
+not the engine root, the snippet must pass `-S <engine-root>` explicitly —
+`cmake --preset macos-debug` alone fails anywhere without a
+`CMakePresets.json`. And a snippet that names one platform's preset should
+carry a hint comment (`# or linux-debug / windows-debug for your platform`)
+so a reader on another host doesn't hit "preset not found" following it
+literally.
+
 ### Downstream-creation worktree builds
 
 Downstream creations (gitignored repos nested under `creations/<name>/`)

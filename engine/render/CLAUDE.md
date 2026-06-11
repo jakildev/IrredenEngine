@@ -213,6 +213,16 @@ If the PR intentionally changes silhouettes / lighting / shading
 model, call out the intentional drift in the description so reviewers
 know the new crop is the new baseline rather than a regression.
 
+**Occlusion diagnostics for rotated voxel content: use `--checkerboard`,
+not `--depth-color`.** `--depth-color` quantizes hue in 4/3-world-unit
+bands; at any non-cardinal yaw the bands beat against the 1-unit voxel
+lattice as staircase moiré that reads as front/back scramble — while an
+SDF twin (continuous per-pixel palette) looks smooth, making the
+side-by-side structurally misleading. `--depth-color` is only sound at
+cardinal poses or against a voxel (not SDF) reference; `--checkerboard`
+(alternating per-voxel colors) shows true geometry/occlusion in one
+capture. Three fix rounds on #1457 chased this artifact.
+
 The skill drives any creation that supports `--auto-screenshot`
 (today: `shape_debug`; reference implementation is
 `creations/demos/shape_debug/main.cpp`) and carries topic-indexed

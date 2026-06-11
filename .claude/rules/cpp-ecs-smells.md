@@ -32,6 +32,13 @@ In any system `tick` function:
   insertion. Fix: pre-size in `beginTick` (or at component construction for
   member buffers) and reuse across frames.
 
+- **Tick block scoped to one specific entity without an entity guard.** In a
+  system that iterates multiple entities, a block meant for only one of them
+  (a particular canvas, a singleton-ish entity) must carry
+  `entity == specificMember_ &&` in its condition -- a comment saying
+  "requires entity X" is not a guard. Mirror the guard the sibling blocks in
+  the same tick already use.
+
 ## System registration
 
 - **New prefab system not added to `SystemName`** in

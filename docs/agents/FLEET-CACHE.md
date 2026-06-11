@@ -112,3 +112,15 @@ missing or older than 5 minutes:
 `fleet-babysit` will relaunch the role on its normal cadence; if
 the scout is genuinely down, the human can `fleet-up` to restart
 it.
+
+## Degraded fetches must be marked — never silent-empty
+
+Any fleet script that fetches GitHub data (the scout, `fleet-validate-stack`,
+ad-hoc `gh` wrappers) must surface a failed or degraded fetch: warn on
+stderr at minimum, and write an explicit error marker (e.g. a `"degraded":
+true` field) into any artifact it emits. Emitting empty results on failure
+is forbidden — an all-empty `state.json` with a fresh `generated_at` is
+indistinguishable from "no work anywhere", and every role treats a fresh
+cache as authoritative. This fired live during a GraphQL rate-limit
+exhaustion: the scout wrote an empty-but-fresh cache while 27 PRs were
+open, and the whole fleet would have idled on it.

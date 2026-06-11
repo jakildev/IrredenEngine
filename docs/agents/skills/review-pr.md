@@ -163,6 +163,21 @@ Keep a running list ranked by severity. The boundary between **blocker** and
 - **Nit** — style, naming, minor simplification, docs. Truly optional.
 - **Praise** — a non-obvious good decision worth reinforcing.
 
+Two cross-cutting rules for the findings themselves:
+
+- **Verify cited precedents/APIs before asserting them as the fix
+  pattern.** A finding of the shape "X does this via Y; align with it"
+  requires checking the tree first — grep for the named API, read the
+  cited precedent. A miscited precedent is worse than a vague nit: an
+  author who trusts it implements against a phantom API or propagates the
+  misattribution into comments. If unverified, phrase the nit as a
+  question, not an assertion.
+- **Cross-check "remove when #X" annotations against the PR's `Closes`
+  list.** Grep the diff for `remove when #`, `TODO`, `FIXME` markers
+  referencing an issue this PR's body closes — those blocks must be gone
+  before merge, or they ship to the default branch as dead code. (The
+  author side has the same check at PR-open time; this is the backstop.)
+
 ### 4. Apply the repo's review checklist
 
 Go through the **review checklist** (in the wrapper) explicitly. For every
