@@ -1256,7 +1256,12 @@ cmd_review_release() { _cmd_pr_label_release "fleet:reviewing-" "review-release"
 cmd_resolving_claim()   { _cmd_pr_label_claim   "fleet:resolving-" "resolving-claim"   "$@"; }
 cmd_resolving_release() { _cmd_pr_label_release "fleet:resolving-" "resolving-release" "$@"; }
 cmd_amending_claim()   { _cmd_pr_label_claim   "fleet:amending-" "amending-claim"   "$@"; }
-cmd_amending_release() { _cmd_pr_label_release "fleet:amending-" "amending-release" "$@"; }
+cmd_amending_release() {
+    # Remove the local amend-snapshot sidecar written by fleet-pr-claim-feedback
+    # so R7's grace-period guard resets on clean release (#1650).
+    rm -f "$HOME/.fleet/amend-snapshots/${1:-0}.json" 2>/dev/null || true
+    _cmd_pr_label_release "fleet:amending-" "amending-release" "$@"
+}
 # Steward claims target the umbrella ISSUE, not a PR — same labels endpoint,
 # same sole-holder tie-break. Per-epic mutex for the epic-steward role; no FS
 # lock needed (the role runs one pane per host and the label is what the
@@ -1455,6 +1460,34 @@ for pr in prs:
             local age=$(( now - added_epoch ))
             if [[ $age -lt $stale_secs ]]; then
                 continue
+            fi
+
+            # For amending claims: skip the sweep when the claiming agent's
+            # heartbeat is still fresh — an active heartbeat means the worker
+            # is alive and TTL-sweeping its claim would cause duplicate dispatch
+            # by triggering the R7 heal (#1650).
+            if [[ "$label_name" == fleet:amending-* ]]; then
+                local _after_pfx="${label_name#fleet:amending-}"
+                local _claim_agent=""
+                for _host_pfx in "mac-" "linux-" "windows-"; do
+                    if [[ "$_after_pfx" == "${_host_pfx}"* ]]; then
+                        _claim_agent="${_after_pfx#${_host_pfx}}"
+                        break
+                    fi
+                done
+                if [[ -n "$_claim_agent" ]]; then
+                    local _hb_file="$HOME/.fleet/heartbeats/$_claim_agent"
+                    if [[ -f "$_hb_file" ]]; then
+                        local _hb_mtime
+                        _hb_mtime=$(python3 -c \
+                            "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" \
+                            "$_hb_file" 2>/dev/null || echo 0)
+                        if [[ "$_hb_mtime" -gt 0 && $(( now - _hb_mtime )) -lt $stale_secs ]]; then
+                            echo "cleanup --gh: skipping '$label_name' on $repo PR#$pr_num — agent '$_claim_agent' heartbeat fresh ($(( now - _hb_mtime ))s ago)"
+                            continue
+                        fi
+                    fi
+                fi
             fi
 
             if gh issue edit "$pr_num" --repo "$repo" \
@@ -2210,6 +2243,15 @@ for repo in repos:
 # heal is persistence-gated in reconcile_heal_design_unblock (it carries an
 # apply action so reconcile_escalate_drift's flag-only accrual skips it), so a
 # freshly-opened WIP PR still propagating its claim is never touched.
+#
+# Amend-snapshot guard (#1650): fleet-pr-claim-feedback writes a sidecar at
+# ~/.fleet/amend-snapshots/<pr>.json when an amending claim is acquired; the
+# sidecar is written at claim-acquisition time and deleted when the claim is
+# cleanly released. If a sidecar exists and its mtime is within 2×TTL,
+# the PR was recently under active amendment work — skip R7 to avoid re-arming
+# fleet:design-unblocked under a TTL-swept-but-alive claim.
+_amend_snap_dir = os.path.expanduser("~/.fleet/amend-snapshots")
+
 for repo in repos:
     d = repo_data[repo]
     for issue_n, prlist in d["pr_by_issue"].items():
@@ -2233,6 +2275,18 @@ for repo in repos:
                     or "fleet:design-unblocked" in labs
                     or "fleet:design-proposed" in labs):
                 continue
+            # Amend-snapshot guard: if a local sidecar exists and is fresh
+            # (written within 2×TTL), the PR was recently claimed for amend
+            # work whose amending label may have been TTL-swept while the
+            # agent was still active. Defer healing until the sidecar expires
+            # or is removed by a clean amending-release (#1650).
+            snap_path = os.path.join(_amend_snap_dir, "%s.json" % pr["number"])
+            if os.path.isfile(snap_path):
+                try:
+                    if now - os.path.getmtime(snap_path) < ttl * 2:
+                        continue
+                except Exception:
+                    pass
             add("R7", repo, pr["number"], "pr", ["pr", "label"],
                 "stranded wip PR for #%d: no claim + neither design label on a "
                 "fleet:queued issue (half-executed design-unblock); re-add "
@@ -3909,7 +3963,8 @@ commands:
                                 (1) stale fleet:reviewing-*,
                                     fleet:resolving-*, and
                                     fleet:amending-* labels off open
-                                    PRs (>30 min age),
+                                    PRs (>30 min age; amending labels
+                                    skipped if agent heartbeat fresh),
                                 (2) fleet:claim-* labels off open
                                     issues where the claim is
                                     abandoned — age > TTL (default

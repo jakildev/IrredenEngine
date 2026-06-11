@@ -159,3 +159,12 @@ if ! fleet-pr-checkout-detached "$pr_number" "${checkout_repo_args[@]}"; then
 fi
 
 echo "fleet-pr-claim-feedback: claimed + checked out PR #$pr_number ($agent). Proceed with feedback handling (Step b onward)."
+
+# Write a local amend-snapshot so the reconcile R7 healer can detect
+# in-flight amend claims whose amending label may have been TTL-swept
+# while the agent is still active (#1650). Cleaned up by amending-release.
+_amend_snap_dir="$HOME/.fleet/amend-snapshots"
+mkdir -p "$_amend_snap_dir"
+printf '{"pr":%s,"agent":"%s","acquired_epoch":%s}\n' \
+    "$pr_number" "$agent" "$(date +%s)" \
+    > "$_amend_snap_dir/${pr_number}.json" 2>/dev/null || true
