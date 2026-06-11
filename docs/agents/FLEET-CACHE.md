@@ -113,14 +113,48 @@ missing or older than 5 minutes:
 the scout is genuinely down, the human can `fleet-up` to restart
 it.
 
-## Degraded fetches must be marked — never silent-empty
+## Degraded fetches — `degraded` field in state.json
+
+When a `gh` fetch fails (network error, auth failure, rate-limit exhaustion),
+the scout preserves the **previous snapshot's data** for that section instead
+of writing an empty array. The state is still written with a fresh
+`generated_at` (so staleness checks pass), but a top-level `"degraded"` list
+is added:
+
+```json
+{
+  "generated_at": "2026-06-11T20:00:00Z",
+  "degraded": ["engine.prs", "engine.tasks"],
+  "repos": { ... }
+}
+```
+
+Each entry names a section that fell back to last-known-good data. When no
+previous snapshot exists for a failed section, the empty fallback is used and
+the section is still listed in `degraded`.
+
+**What roles should do when they see `degraded`:**
+
+- Treat listed sections as potentially stale (data is from the prior tick).
+- For **task pickup**, stale `prs[]` means the in-flight cross-check may miss
+  very recently opened PRs — rely on `fleet-claim`'s live duplicate-PR
+  backstop as usual.
+- For **feedback scans**, a degraded `prs[]` may cause flagged PRs to be
+  missed this tick; they will surface on the next successful tick.
+- **Do not** treat a `degraded`-marked snapshot as "no work" and exit — the
+  preserved data is still the best available picture of the world.
+
+The scout already suppresses `reconcile --apply` and `fleet-queue-ingest`
+auto-fires during degraded ticks to avoid comparing live claims against
+potentially incomplete issue lists.
+
+### Convention: degrade, never silent-empty
 
 Any fleet script that fetches GitHub data (the scout, `fleet-validate-stack`,
 ad-hoc `gh` wrappers) must surface a failed or degraded fetch: warn on
-stderr at minimum, and write an explicit error marker (e.g. a `"degraded":
-true` field) into any artifact it emits. Emitting empty results on failure
-is forbidden — an all-empty `state.json` with a fresh `generated_at` is
-indistinguishable from "no work anywhere", and every role treats a fresh
-cache as authoritative. This fired live during a GraphQL rate-limit
-exhaustion: the scout wrote an empty-but-fresh cache while 27 PRs were
-open, and the whole fleet would have idled on it.
+stderr at minimum, and write an explicit error marker into any artifact it
+emits. Emitting empty results on failure is forbidden — an all-empty
+`state.json` with a fresh `generated_at` is indistinguishable from "no work
+anywhere". This fired live during a GraphQL rate-limit exhaustion: the scout
+wrote an empty-but-fresh cache while 27 PRs were open, and the whole fleet
+would have idled on it.
