@@ -1,0 +1,403 @@
+#!/usr/bin/env bash
+# fleet-rebase — tier-0 of the merger ladder: the zero-token mechanical pass.
+#
+# Reads the merger projection slice (~/.fleet/state/projections/merger.json,
+# written every scout tick) and attempts a plain `git rebase` for each
+# eligible PR in a detached scratch worktree. A clean rebase is verified
+# (same changed-file set before and after) and force-with-lease pushed to
+# the PR branch — no claude process anywhere. Anything that conflicts, or
+# any merger-actionable state this script doesn't handle, re-arms the
+# merger trigger with content "llm" so fleet-dispatcher runs the normal
+# (sonnet) merger iteration. The LLM pass is therefore only ever spent on
+# work that actually needs judgment.
+#
+# Eligibility (deliberately conservative — tier-0 must never fight an
+# agent or human for a branch):
+#   - PR carries fleet:approved and none of the skip labels below.
+#   - Stacked PRs (base != master): rebase onto the updated base branch;
+#     when the base branch is verifiably gone AND a merged PR with that
+#     head exists, retarget the PR to master and rebase onto it.
+#   - Conflicting PRs on master: attempt the rebase anyway — it's free;
+#     an actual conflict aborts cleanly and goes to the LLM pass.
+#
+# Trigger protocol (shared with fleet-dispatcher's merger interception):
+#   empty trigger  -> dispatcher spawns this script and consumes the trigger
+#   content "llm"  -> dispatcher runs the LLM merger pass
+#
+# Usage:
+#   fleet-rebase --auto [--rearm-trigger] [--dry-run]
+#
+# Source of truth: scripts/fleet/fleet-rebase in the engine repo.
+# Installed to ~/bin/fleet-rebase by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+ENGINE="$HOME/src/IrredenEngine"
+GAME="$ENGINE/creations/game"
+STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
+SLICE="$STATE_DIR/projections/merger.json"
+TRIGGERS_DIR="$STATE_DIR/triggers"
+SCRATCH_ROOT="${FLEET_REBASE_SCRATCH:-$HOME/.fleet/rebase-scratch}"
+
+DRY_RUN=0
+REARM=0
+AUTO=0
+for arg in "$@"; do
+    case "$arg" in
+        --auto)          AUTO=1 ;;
+        --rearm-trigger) REARM=1 ;;
+        --dry-run)       DRY_RUN=1 ;;
+        -h|--help)       sed -n '2,31p' "$0"; exit 0 ;;
+        *) echo "fleet-rebase: unknown argument '$arg'" >&2; exit 2 ;;
+    esac
+done
+if (( ! AUTO )); then
+    echo "fleet-rebase: only --auto mode is implemented; see --help" >&2
+    exit 2
+fi
+
+# Logs go to stderr so command substitutions (ensure_scratch) stay clean;
+# the dispatcher's nohup redirects both streams into fleet-rebase.log.
+log() {
+    printf '[%s fleet-rebase] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
+}
+
+rearm_llm() {
+    if (( REARM )); then
+        mkdir -p "$TRIGGERS_DIR"
+        printf 'llm\n' > "$TRIGGERS_DIR/merger"
+        log "re-armed merger trigger for the LLM pass"
+    fi
+}
+
+# Labels that park a PR away from tier-0 entirely (no rebase, no LLM
+# re-arm on their account — another agent or the human owns the next
+# move). Mirrors role-merger.md step 3's skip set: semantic conflicts /
+# human-deferred / needs-info belong to other agents or the human;
+# wip/amending branches are being actively rewritten by their author; the
+# needs-fix/blocker family means a review owes a change and a surprise
+# force-push mid-fix is hostile; design-blocked PRs are parked under an
+# architect; a pending smoke verification would be invalidated by a
+# rebase; fork-of-other-pr is coordinated manually. Single source: the
+# python triage below reads this via FLEET_REBASE_SKIP_RE and the
+# pre-push re-verify greps it directly.
+SKIP_LABEL_RE='fleet:semantic-conflict|fleet:human-deferred|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-linux-smoke|fleet:needs-macos-smoke'
+export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
+
+# Serialization: a second fleet-rebase against the same scratch worktree
+# would corrupt an in-flight rebase. mkdir is the atomic lock; the pid
+# file lets us break a stale lock left by a SIGKILL/host crash (which
+# skips the EXIT trap) — without the break, a dead lock would silently
+# eat every future merger trigger.
+LOCK_DIR="$STATE_DIR/fleet-rebase.lock.d"
+acquire_lock() {
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo $$ > "$LOCK_DIR/pid"
+        return 0
+    fi
+    local holder
+    holder=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [[ -z "$holder" ]] || ! kill -0 "$holder" 2>/dev/null; then
+        log "breaking stale lock (holder pid '${holder:-unknown}' not running)"
+        rm -rf "$LOCK_DIR"
+        if mkdir "$LOCK_DIR" 2>/dev/null; then
+            echo $$ > "$LOCK_DIR/pid"
+            return 0
+        fi
+    fi
+    return 1
+}
+if ! acquire_lock; then
+    # A live concurrent run owns the pass. Hand this trigger's work to
+    # the LLM pass rather than dropping it — the trigger was already
+    # consumed by the dispatcher before we were spawned.
+    log "another fleet-rebase run holds $LOCK_DIR; deferring to the LLM pass"
+    rearm_llm
+    exit 0
+fi
+trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
+
+repo_path_for() {
+    case "$1" in
+        engine) echo "$ENGINE" ;;
+        game)   echo "$GAME" ;;
+        *)      echo "" ;;
+    esac
+}
+
+repo_slug_for() {
+    case "$1" in
+        engine) echo "jakildev/IrredenEngine" ;;
+        game)   echo "jakildev/irreden" ;;
+        *)      echo "" ;;
+    esac
+}
+
+# Ensure a detached scratch worktree exists for the repo; echo its path.
+ensure_scratch() {
+    local repo_key="$1" repo_path wt
+    repo_path=$(repo_path_for "$repo_key")
+    if [[ -z "$repo_path" || ! -e "$repo_path/.git" ]]; then
+        log "$repo_key: unknown repo key or missing checkout; skipping"
+        return 1
+    fi
+    wt="$SCRATCH_ROOT/$repo_key"
+    if [[ ! -d "$wt" ]]; then
+        mkdir -p "$SCRATCH_ROOT"
+        # A registered-but-deleted scratch path makes `worktree add` fail
+        # until pruned.
+        git -C "$repo_path" worktree prune 2>/dev/null || true
+        git -C "$repo_path" worktree add --detach "$wt" >/dev/null 2>&1 || {
+            log "$repo_key: failed to create scratch worktree at $wt"
+            return 1
+        }
+    fi
+    echo "$wt"
+}
+
+# Live re-verify immediately before a force-push: the slice is one scout
+# tick old, and labels/state can change in that window (approval revoked,
+# fleet:wip added, PR closed). Refuses unless the PR is still OPEN, still
+# based where we rebased onto, and still skip-label-free.
+preflight_pr() {
+    local repo_slug="$1" pr="$2" expected_base="$3"
+    local tsv state base labels
+    tsv=$(gh pr view "$pr" --repo "$repo_slug" \
+        --json state,baseRefName,labels \
+        --jq '[.state, .baseRefName, ([.labels[].name] | join(","))] | @tsv' \
+        2>/dev/null) || return 1
+    IFS=$'\t' read -r state base labels <<< "$tsv"
+    [[ "$state" == "OPEN" ]] || return 1
+    [[ "$base" == "$expected_base" ]] || return 1
+    if printf '%s' "$labels" | grep -qE "$SKIP_LABEL_RE"; then
+        return 1
+    fi
+    return 0
+}
+
+# Attempt one PR. Returns 0 = cleanly rebased+pushed (or nothing to do),
+# 1 = needs the LLM pass.
+attempt_pr() {
+    local repo_key="$1" pr="$2" head="$3" base="$4"
+    local repo_slug wt
+    repo_slug=$(repo_slug_for "$repo_key")
+
+    # Hard safety: never operate on the default branch itself.
+    if [[ "$head" == "master" || "$head" == "main" || -z "$head" ]]; then
+        log "$repo_key#$pr: refusing — head is '$head'"
+        return 1
+    fi
+
+    wt=$(ensure_scratch "$repo_key") || return 1
+
+    # Abort any rebase a crashed prior run left behind, then sync refs.
+    # Forced refspecs: the scratch worktree shares refs/remotes with the
+    # parent clone and its sibling worktrees, whose own fetches and the
+    # PR author's force-pushes can leave the tracking ref unable to
+    # fast-forward — a non-forced fetch would then spuriously fail for
+    # exactly the most common merger case (amended branches).
+    git -C "$wt" rebase --abort >/dev/null 2>&1 || true
+    if ! git -C "$wt" fetch origin "+refs/heads/$head:refs/remotes/origin/$head" 2>/dev/null; then
+        log "$repo_key#$pr: head branch origin/$head not fetchable; leaving for LLM"
+        return 1
+    fi
+
+    # Resolve the rebase target. A stacked PR retargets to master ONLY
+    # when the base is verifiably gone (not a transient fetch failure)
+    # AND a merged PR with that head exists — a parent closed WITHOUT
+    # merging is a human handoff (role-merger.md case iii), and folding
+    # its diff into the child via retarget would be wrong.
+    local target="$base"
+    if [[ "$base" != "master" ]]; then
+        if ! git -C "$wt" fetch origin "+refs/heads/$base:refs/remotes/origin/$base" 2>/dev/null; then
+            if git -C "$wt" ls-remote --exit-code origin "refs/heads/$base" >/dev/null 2>&1; then
+                log "$repo_key#$pr: base '$base' exists but fetch failed (transient?); leaving for LLM"
+                return 1
+            fi
+            # Distinguish branch-gone from remote-unreachable: probe a
+            # ref that must exist.
+            if ! git -C "$wt" ls-remote --exit-code origin refs/heads/master >/dev/null 2>&1; then
+                log "$repo_key#$pr: remote unreachable; leaving for LLM"
+                return 1
+            fi
+            local merged_count
+            merged_count=$(gh pr list --repo "$repo_slug" --head "$base" \
+                --state merged --json number --jq 'length' 2>/dev/null) || merged_count=0
+            if [[ "$merged_count" == "0" ]]; then
+                log "$repo_key#$pr: base '$base' gone but no merged PR has that head (closed-unmerged parent?); leaving for LLM"
+                return 1
+            fi
+            log "$repo_key#$pr: base '$base' merged+deleted — retargeting PR to master"
+            if (( ! DRY_RUN )); then
+                gh pr edit "$pr" --repo "$repo_slug" --base master >/dev/null 2>&1 || {
+                    log "$repo_key#$pr: gh pr edit --base master failed; leaving for LLM"
+                    return 1
+                }
+            fi
+            target="master"
+            git -C "$wt" fetch origin "+refs/heads/master:refs/remotes/origin/master" 2>/dev/null || {
+                log "$repo_key#$pr: master fetch failed after retarget; leaving for LLM"
+                return 1
+            }
+        fi
+    else
+        git -C "$wt" fetch origin "+refs/heads/master:refs/remotes/origin/master" 2>/dev/null || {
+            log "$repo_key#$pr: master fetch failed; leaving for LLM"
+            return 1
+        }
+    fi
+
+    # Already up to date? Nothing to do.
+    if git -C "$wt" merge-base --is-ancestor "origin/$target" "origin/$head" 2>/dev/null; then
+        log "$repo_key#$pr: already based on origin/$target; nothing to do"
+        return 0
+    fi
+
+    # Anchor everything to the SHA we just fetched. The remote-tracking
+    # ref is shared with every other worktree of the parent clone and can
+    # be refreshed by their fetches at any moment — a bare
+    # --force-with-lease=<ref> would then lease against a NEWER author
+    # push and silently clobber it. Leasing against this exact SHA means
+    # any concurrent push refuses ours instead.
+    local head_sha
+    head_sha=$(git -C "$wt" rev-parse "refs/remotes/origin/$head" 2>/dev/null) || {
+        log "$repo_key#$pr: cannot resolve fetched head SHA; leaving for LLM"
+        return 1
+    }
+    git -C "$wt" checkout --detach "$head_sha" >/dev/null 2>&1 || {
+        log "$repo_key#$pr: checkout failed; leaving for LLM"
+        return 1
+    }
+
+    # Changed-file-set snapshot: the PR's own files vs its target, before
+    # and after. A clean rebase that changes WHICH files the PR touches
+    # is not mechanical — bail to the LLM pass. (Residual risk: a 3-way
+    # auto-merge can still mis-combine hunks WITHIN a file without
+    # conflicting; that class of error is invisible to any mechanical
+    # rebaser — including the LLM merger, which runs the same git rebase —
+    # and is caught by the build/CI gate before the human merges.)
+    local pre_files post_files
+    pre_files=$(git -C "$wt" diff --name-only "origin/$target...$head_sha" | sort)
+
+    if ! git -C "$wt" rebase "origin/$target" >/dev/null 2>&1; then
+        git -C "$wt" rebase --abort >/dev/null 2>&1 || true
+        log "$repo_key#$pr: rebase onto origin/$target conflicts; leaving for LLM"
+        return 1
+    fi
+
+    post_files=$(git -C "$wt" diff --name-only "origin/$target..HEAD" | sort)
+    if [[ "$pre_files" != "$post_files" ]]; then
+        log "$repo_key#$pr: changed-file set drifted across rebase; leaving for LLM"
+        return 1
+    fi
+
+    if (( DRY_RUN )); then
+        log "$repo_key#$pr: clean rebase onto origin/$target (dry-run; not pushed)"
+        return 0
+    fi
+
+    if ! preflight_pr "$repo_slug" "$pr" "$target"; then
+        log "$repo_key#$pr: pre-push re-verify failed (state/base/labels changed since the scout tick); leaving for LLM"
+        return 1
+    fi
+
+    if git -C "$wt" push origin "HEAD:refs/heads/$head" \
+            --force-with-lease="refs/heads/$head:$head_sha" >/dev/null 2>&1; then
+        log "$repo_key#$pr: rebased onto origin/$target and pushed (zero tokens)"
+        return 0
+    fi
+    log "$repo_key#$pr: push refused (branch moved underneath us); leaving for LLM"
+    return 1
+}
+
+if [[ ! -f "$SLICE" ]]; then
+    log "no merger slice at $SLICE; nothing to do"
+    exit 0
+fi
+
+# Triage the slice. One line per PR:
+#   <repo> <number> <head> <base> <verdict>
+# verdict: attempt | skip-labels | llm-other
+# - attempt: approved, no skip labels, and either stacked (base!=master)
+#   or not cleanly MERGEABLE — tier-0 tries the rebase.
+# - skip-labels: parked with another agent/human; neither tier touches it.
+# - llm-other: any other merger-actionable state this script doesn't
+#   handle (merge-ready label upkeep, stack-coordination transients,
+#   malformed/duplicate records) — preserved for the LLM pass.
+mapfile -t PR_LINES < <(python3 - "$SLICE" <<'PYEOF'
+import json, os, re, sys
+
+skip_re = re.compile(os.environ["FLEET_REBASE_SKIP_RE"])
+
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(0)
+
+seen_heads = set()
+for pr in data.get("prs", []):
+    labels = pr.get("labels", []) or []
+    repo = pr.get("repo", "") or ""
+    number = pr.get("number", "")
+    head = pr.get("headRefName", "") or ""
+    base = pr.get("baseRefName", "") or "master"
+    mergeable = pr.get("mergeable", "")
+    # Malformed record: a missing or whitespace-bearing field would shift
+    # the space-separated columns downstream — leave it for the LLM pass.
+    if (not repo or number in ("", None) or not head
+            or any(c.isspace() for c in f"{head}{base}")):
+        print(f"{repo or 'engine'} {number or 0} - - llm-other")
+        continue
+    # Two PRs sharing one head branch (same head, different bases) would
+    # make tier-0 flip-flop the branch — attempt the first record only.
+    key = (repo, head)
+    if key in seen_heads:
+        print(f"{repo} {number} {head} {base} llm-other")
+        continue
+    seen_heads.add(key)
+    approved = "fleet:approved" in labels
+    if any(skip_re.search(l) for l in labels):
+        verdict = "skip-labels"
+    elif {"fleet:needs-base-update", "fleet:awaiting-base"} & set(labels):
+        # Merger-set stack-coordination transients — the LLM pass owns
+        # these sequences; tier-0 must not push into the middle of one.
+        verdict = "llm-other"
+    elif approved and (base != "master" or mergeable not in ("MERGEABLE", "UNKNOWN", "", None)):
+        verdict = "attempt"
+    else:
+        verdict = "llm-other"
+    print(f"{repo} {number} {head} {base} {verdict}")
+PYEOF
+)
+
+ATTEMPTED=0
+CLEARED=0
+LLM_REMAINING=0
+for line in "${PR_LINES[@]:-}"; do
+    [[ -n "$line" ]] || continue
+    read -r repo_key pr head base verdict <<< "$line"
+    case "$verdict" in
+        attempt)
+            ATTEMPTED=$((ATTEMPTED + 1))
+            if attempt_pr "$repo_key" "$pr" "$head" "$base"; then
+                CLEARED=$((CLEARED + 1))
+            else
+                LLM_REMAINING=$((LLM_REMAINING + 1))
+            fi
+            ;;
+        skip-labels)
+            # Parked with another agent/human — neither tier-0 nor the
+            # LLM merger should touch it.
+            ;;
+        llm-other)
+            LLM_REMAINING=$((LLM_REMAINING + 1))
+            ;;
+    esac
+done
+
+log "done: attempted=$ATTEMPTED cleared=$CLEARED llm_remaining=$LLM_REMAINING"
+
+if (( LLM_REMAINING > 0 )); then
+    rearm_llm
+fi

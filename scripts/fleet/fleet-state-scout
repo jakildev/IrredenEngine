@@ -398,12 +398,26 @@ def fetch_task_queue(repo_slug):
         number = issue.get("number", 0)
         task_id = f"#{number}"
 
-        if "fleet:opus" in labels:
+        if "fleet:fable" in labels:
+            model = "fable"
+        elif "fleet:opus" in labels:
             model = "opus"
         elif "fleet:sonnet" in labels:
             model = "sonnet"
         else:
             model = _parse_issue_field(body, "Model") or None
+
+        # Optional per-task effort override (low|medium|high|xhigh|max).
+        # Not a claim-routing class — just a launch parameter the
+        # dispatcher reads from the slice; anything unrecognized is
+        # treated as unset and the class default applies. First token
+        # only: the field line may carry a trailing comment (the
+        # file-epic template ships one), and fleet-validate-stack
+        # blesses exactly that shape.
+        effort_tokens = (_parse_issue_field(body, "Effort") or "").lower().split()
+        effort = effort_tokens[0] if effort_tokens else None
+        if effort not in EFFORT_LEVELS:
+            effort = None
 
         # Claim labels are `fleet:claim-<host>-<agent>`; agent half is what
         # roles see in `fleet-claim list`.
@@ -439,6 +453,7 @@ def fetch_task_queue(repo_slug):
             "summary": title,
             "id": task_id,
             "model": model,
+            "effort": effort,
             "owner": owner,
             "area": area,
             "blocked_by": blocked_by,
@@ -830,7 +845,10 @@ _SMOKE_SKIP_LABELS = frozenset({
     "fleet:merger-cooldown", "human:needs-fix",
 })
 
-MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
+MODEL_TOKEN_RE = re.compile(r"\b(fable|opus|sonnet)\b")
+
+# Valid values for the optional per-task `**Effort:**` field.
+EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 # Eligible when blocked_by references exactly one issue. The epic decomposer
 # emits prose suffixes (e.g. "#1308 (T1 must land first)") that the old strict
@@ -1134,7 +1152,10 @@ def project_opus_worker(state):
     items = []
     for repo, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
-            if "opus" in model_tags(task):
+            # The opus-worker lane is the heavy lane: it serves both the
+            # opus and fable classes (the dispatcher picks the concrete
+            # model per dispatch from the slice).
+            if model_tags(task) & {"opus", "fable"}:
                 items.append({"kind": "task", "repo": repo, "id": task["id"],
                               "blocked_by": task["blocked_by"]})
         for issue in repo_state.get("needs_plan", []):
@@ -1435,7 +1456,9 @@ def slice_opus_worker(state):
     out = {"tasks_open": [], "needs_plan": [], "feedback_prs": []}
     for repo_key, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
-            if "opus" in model_tags(task):
+            # Heavy lane serves both opus- and fable-class tasks; see
+            # project_opus_worker.
+            if model_tags(task) & {"opus", "fable"}:
                 out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
         for issue in repo_state.get("needs_plan", []):
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))

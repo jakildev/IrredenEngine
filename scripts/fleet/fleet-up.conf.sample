@@ -8,27 +8,39 @@
 # Bash-sourceable. Comments start with `#`. Values without quotes work
 # for integers; quote any value containing spaces.
 
-# --- Model tiers -------------------------------------------------------------
+# --- Model classes -----------------------------------------------------------
 #
-# The fleet runs two model tiers. Role slugs and queue labels keep the
-# historical names ("opus" = heavy tier, "sonnet" = light tier); the model
-# that actually serves the heavy tier is resolved by fleet-up at boot from
-# a candidate ladder — claude-fable-5[1m] -> claude-fable-5 ->
-# claude-opus-4-8[1m] — by probing each with a one-token claude call (a few
-# cents, ~5-15 s per rung) and taking the first that answers. When the plan
-# loses Fable access, re-running fleet-up automatically lands the fleet on
-# the Opus floor.
+# Work routes by model class — fable | opus | sonnet — carried on each task
+# (fleet:<class> label / **Model:** body field; optional **Effort:** line).
+# The dispatcher launches each worker iteration with its task's class;
+# architects run fable; the final reviewer runs opus; first-pass review,
+# smoke, and the merger LLM pass run sonnet. See FLEET.md "Model split".
 #
-# FLEET_HEAVY_MODEL pins the heavy tier verbatim and skips the probe.
-# FLEET_HEAVY_MODEL="claude-opus-4-8[1m]"
+# The fable class resolves at boot from a probed ladder —
+# claude-fable-5[1m] -> claude-fable-5 -> claude-opus-4-8[1m] — one-token
+# claude call per rung (a few cents, ~5-15 s). When the plan loses Fable
+# access, re-running fleet-up lands the class on the Opus floor.
 #
-# FLEET_HEAVY_MODEL_FALLBACK is handed to dispatched (print-mode) heavy
+# Pin a class verbatim (pinning fable skips the probe):
+# FLEET_MODEL_FABLE="claude-fable-5[1m]"
+# FLEET_MODEL_OPUS="claude-opus-4-8[1m]"
+# FLEET_MODEL_SONNET="sonnet"
+#
+# Per-role dispatch models for the bounded fixed-model roles:
+# FLEET_MODEL_MERGER="sonnet"
+# FLEET_MODEL_OPUS_REVIEWER="claude-opus-4-8[1m]"
+#
+# FLEET_MODEL_FABLE_FALLBACK is handed to dispatched (print-mode) fable
 # iterations as `claude --fallback-model`, so a single iteration survives
-# the primary model being overloaded or dropping off the plan mid-session.
+# Fable being overloaded or dropping off the plan mid-session.
 # Comma-separated chain accepted; set to "" to disable. Interactive
 # architect panes can't take the flag (print-only) — they rely on the
-# boot-time resolution above. Sonnet dispatches never get a fallback.
-# FLEET_HEAVY_MODEL_FALLBACK="claude-opus-4-8[1m]"
+# boot-time resolution above. opus/sonnet dispatches never get a fallback.
+# FLEET_MODEL_FABLE_FALLBACK="claude-opus-4-8[1m]"
+#
+# Fleet-wide cap on concurrent fable-class iterations (the budget
+# throttle; counted across all panes, 0 disables fable dispatch):
+# FLEET_CONCURRENCY_MODEL_FABLE=1
 #
 # FLEET_MODEL_PROBE=0 skips the availability probe (offline / tests);
 # the first ladder candidate is used unprobed.

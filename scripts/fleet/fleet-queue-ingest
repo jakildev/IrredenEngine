@@ -339,14 +339,15 @@ for issue in pending:
     open_blockers = [(slug, ref) for slug, ref in _blocker_refs(body, repo)
                      if _blocker_open(slug, ref, blocker_cache)]
 
-    # Parse model from body. Default to fleet:opus on ambiguity — mirrors
-    # the safer default when model intent is unclear. fleet:opus is the
-    # heavy-tier label, not a literal model pin — 'fable' is an accepted
-    # alias since Fable serves that tier now (see fleet-up's model-tier
-    # comment).
+    # Parse model from body. Classes are literal — fable | opus | sonnet —
+    # and each maps to its own label. fable is opt-in for the genuinely
+    # hard work (see FLEET.md "Model split"); the missing/unrecognized
+    # default is fleet:opus, the workhorse class.
     model_match = MODEL_RE.search(body)
     model_text = (model_match.group(1).strip().lower() if model_match else '')
-    if 'opus' in model_text or 'fable' in model_text:
+    if 'fable' in model_text:
+        model_label = 'fleet:fable'
+    elif 'opus' in model_text:
         model_label = 'fleet:opus'
     elif 'sonnet' in model_text:
         model_label = 'fleet:sonnet'

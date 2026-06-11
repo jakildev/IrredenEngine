@@ -205,6 +205,11 @@ Parallel-agent fleet (tmux + Claude)
                                  human-readable task queue from GitHub Issues
   fleet-state-scout              background GitHub/git poll → ~/.fleet/state/
   fleet-dispatcher               transient-claude dispatcher (worker panes)
+  fleet-rebase --auto [--dry-run]
+                                 tier-0 merger: mechanical rebases of approved
+                                 stacked/conflicting PRs for zero tokens;
+                                 conflicts or unhandled merger states re-arm
+                                 the LLM merger pass
   fleet-gate-status [--json]     show usage gate + per-pane cooldown state
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
