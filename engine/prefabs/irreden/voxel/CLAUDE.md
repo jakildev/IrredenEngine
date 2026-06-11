@@ -275,13 +275,13 @@ the joint's posed deformation otherwise. The bind SQT is inverted analytically
 per-joint skin matrix feeds the binding-18 transform buffer the
 `c_update_voxel_positions` prepass already consumes.
 
-### Optional follow-up: C_JointName
+### C_JointName
 
-The design also calls for an optional `C_JointName` tag carrying the
-bone name string for editor / animation reference. Filed as a separate
-follow-up rather than baked in here — `C_Skeleton.joints_[i]` is the
-authoritative reference; bone names are a UX convenience for editors and
-animation clips that want to address joints by string.
+Optional tag on joint entities carrying the bone name string for editor
+/ animation reference (`component_joint_name.hpp`). Shipped in #1607.
+`C_Skeleton.joints_[i]` remains the authoritative index; bone names are
+a UX convenience for editors and animation clips that address joints by
+string.
 
 ## Gotchas
 
