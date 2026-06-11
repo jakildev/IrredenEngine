@@ -11,7 +11,7 @@
 # instead of its assigned worktree, it silently contaminates that shared
 # checkout: committing on a branch another agent owns, or stranding /
 # clobbering work in the wrong tree. Observed 5x in two days across
-# opus-worker-1 and opus-worker-2 (engine #1325).
+# worker panes (engine #1325).
 #
 # The structural invariant the fleet relies on: every agent operates
 # inside `<clone>/.claude/worktrees/<name>`. The main-clone toplevels
@@ -29,7 +29,7 @@
 #   fleet-assert-worktree [expected-worktree-basename]
 #
 # With no argument it asserts only "cwd is some fleet worktree". Pass the
-# agent's worktree basename (e.g. opus-worker-2) to additionally assert
+# agent's worktree basename (e.g. worker-2) to additionally assert
 # the cwd worktree IS that one — callers that know their own identity
 # (role docs) get the stronger cross-agent guard for free.
 #
@@ -51,7 +51,7 @@ case "${1:-}" in
 fleet-assert-worktree — refuse to run a mutating flow in the shared main clone.
 
   fleet-assert-worktree                       # assert cwd is some worktree
-  fleet-assert-worktree opus-worker-2         # also assert it is THIS worktree
+  fleet-assert-worktree worker-2              # also assert it is THIS worktree
 
 Exit 0 = ok, 1 = main clone / wrong worktree, 2 = usage / not in a git tree.
 Human override for a deliberate main-clone session: FLEET_ALLOW_MAIN_CLONE=1.

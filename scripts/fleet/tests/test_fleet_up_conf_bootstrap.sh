@@ -134,6 +134,23 @@ else
     echo "  FAIL: conf was created despite missing sample ($CONF4)"
 fi
 
+# --- Test 5: sample contains FLEET_CONCURRENCY_WORKER (P2.2 acceptance) ----
+echo "T5: sample documents FLEET_CONCURRENCY_WORKER"
+if grep -q "FLEET_CONCURRENCY_WORKER" "$FLEET_UP_SAMPLE"; then
+    PASS=$((PASS + 1))
+    echo "  ok: FLEET_CONCURRENCY_WORKER present in sample"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: FLEET_CONCURRENCY_WORKER not found in sample"
+fi
+if grep -q "FLEET_CONCURRENCY_OPUS_WORKER" "$FLEET_UP_SAMPLE"; then
+    PASS=$((PASS + 1))
+    echo "  ok: deprecated FLEET_CONCURRENCY_OPUS_WORKER still documented"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: deprecated FLEET_CONCURRENCY_OPUS_WORKER missing from sample"
+fi
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 if (( FAIL > 0 )); then

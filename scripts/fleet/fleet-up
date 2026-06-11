@@ -86,16 +86,19 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # fresh dispatch to a free pane doesn't push the role above its budget).
 #
 # Override priority (highest first):
-#   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_OPUS_WORKER=3)
+#   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_WORKER=4)
 #   2. ~/.fleet/fleet-up.conf (bash-sourceable; same variable names)
 #   3. Built-in default (defined in fleet-dispatcher)
 #
 # Sample conf (write to ~/.fleet/fleet-up.conf):
-#   FLEET_CONCURRENCY_OPUS_WORKER=2
-#   FLEET_CONCURRENCY_SONNET_AUTHOR=2
+#   FLEET_CONCURRENCY_WORKER=4          # unified worker lane (any model class)
 #   FLEET_CONCURRENCY_SONNET_REVIEWER=1
 #   FLEET_CONCURRENCY_OPUS_REVIEWER=1
 #   FLEET_CONCURRENCY_MERGER=1
+#
+# Deprecated (pre-P2 per-lane caps; summed into FLEET_CONCURRENCY_WORKER when
+# FLEET_CONCURRENCY_WORKER is unset): FLEET_CONCURRENCY_OPUS_WORKER,
+# FLEET_CONCURRENCY_SONNET_AUTHOR.
 #
 # queue-manager is no longer LLM-dispatched; omit from cap config.
 #
@@ -130,6 +133,7 @@ if [[ ! -e "$FLEET_CONF" ]]; then
     unset _fleet_up_self _fleet_up_sample
 fi
 # Capture env-set values before sourcing the conf so caller env still wins.
+_env_worker="${FLEET_CONCURRENCY_WORKER:-}"
 _env_opus_worker="${FLEET_CONCURRENCY_OPUS_WORKER:-}"
 _env_sonnet_author="${FLEET_CONCURRENCY_SONNET_AUTHOR:-}"
 _env_sonnet_reviewer="${FLEET_CONCURRENCY_SONNET_REVIEWER:-}"
@@ -164,6 +168,16 @@ FLEET_CONCURRENCY_SONNET_AUTHOR="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNE
 FLEET_CONCURRENCY_SONNET_REVIEWER="${_env_sonnet_reviewer:-${FLEET_CONCURRENCY_SONNET_REVIEWER:-1}}"
 FLEET_CONCURRENCY_OPUS_REVIEWER="${_env_opus_reviewer:-${FLEET_CONCURRENCY_OPUS_REVIEWER:-1}}"
 FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
+# FLEET_CONCURRENCY_WORKER: unified worker cap (any model class per task).
+# Deprecated-alias path: if caller set old per-class vars but not the new one,
+# derive from their sum so old fleet-up.conf files keep working.
+if [[ -n "$_env_worker" ]]; then
+    FLEET_CONCURRENCY_WORKER="$_env_worker"
+elif [[ -n "$_env_opus_worker" || -n "$_env_sonnet_author" ]]; then
+    FLEET_CONCURRENCY_WORKER=$(( FLEET_CONCURRENCY_OPUS_WORKER + FLEET_CONCURRENCY_SONNET_AUTHOR ))
+else
+    FLEET_CONCURRENCY_WORKER="${FLEET_CONCURRENCY_WORKER:-4}"
+fi
 # Architect effort: env > conf > global FLEET_EFFORT > built-in xhigh.
 # Exported so fleet-babysit (which launches the architect panes) inherits
 # the resolved value; it does not read the conf itself.
@@ -177,12 +191,13 @@ FLEET_MODEL_OPUS_REVIEWER="${_env_model_opus_reviewer:-${FLEET_MODEL_OPUS_REVIEW
 if [[ "$_env_model_fable_fallback" != "__unset__" ]]; then
     FLEET_MODEL_FABLE_FALLBACK="$_env_model_fable_fallback"
 fi
-unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
+unset _env_worker _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_merger \
       _env_effort_opus_architect _env_effort_game_architect \
       _env_model_fable _env_model_opus _env_model_sonnet \
       _env_model_merger _env_model_opus_reviewer _env_model_fable_fallback
-export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR
+export FLEET_CONCURRENCY_WORKER
+export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR  # deprecated
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
 export FLEET_CONCURRENCY_MERGER
 export FLEET_EFFORT_OPUS_ARCHITECT FLEET_EFFORT_GAME_ARCHITECT
@@ -192,9 +207,9 @@ if [[ -n "${FLEET_EFFORT:-}" ]]; then export FLEET_EFFORT; fi
 
 # --- Build-parallelism budget for ir-build's CPU semaphore -----------------
 # ir-build reads $IR_FLEET_WORKERS; it was never exported so workers fell
-# back to 1 and every fleet build grabbed all cores. Default: OPUS_WORKER +
-# SONNET_AUTHOR panes. Override order: IR_FLEET_WORKERS > FLEET_BUILD_WORKERS.
-FLEET_BUILD_WORKERS="${FLEET_BUILD_WORKERS:-$(( FLEET_CONCURRENCY_OPUS_WORKER + FLEET_CONCURRENCY_SONNET_AUTHOR ))}"
+# back to 1 and every fleet build grabbed all cores. Default: FLEET_CONCURRENCY_WORKER
+# panes. Override order: IR_FLEET_WORKERS > FLEET_BUILD_WORKERS.
+FLEET_BUILD_WORKERS="${FLEET_BUILD_WORKERS:-${FLEET_CONCURRENCY_WORKER}}"
 if (( FLEET_BUILD_WORKERS < 1 )); then FLEET_BUILD_WORKERS=1; fi
 export IR_FLEET_WORKERS="${IR_FLEET_WORKERS:-$FLEET_BUILD_WORKERS}"
 
@@ -378,14 +393,54 @@ ensure_worktree() {
         || git worktree add "$wt" "$branch")
 }
 
+# migrate_legacy_worker_worktrees — one-time migration from the pre-P2.2
+# per-class layout (opus-worker-1/2, sonnet-fleet-1/2) to the unified
+# worker-1..4 names. Safe to run on every fleet-up: skips any pair where
+# the old dir is absent or the new dir already exists. Refuses to migrate
+# a dirty worktree or one with a live fleet-claim reservation (warns and
+# keeps the old name; the fleet boots cleanly with the old worktree).
+# Expected to be a no-op on most runs after the first boot post-P2.2.
+migrate_legacy_worker_worktrees() {
+    local repo="$1"
+    local -a OLD_NAMES=(opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2)
+    local -a NEW_NAMES=(worker-1 worker-2 worker-3 worker-4)
+    local i old new old_wt new_wt dirty
+
+    for (( i = 0; i < ${#OLD_NAMES[@]}; i++ )); do
+        old="${OLD_NAMES[$i]}"
+        new="${NEW_NAMES[$i]}"
+        old_wt="$repo/.claude/worktrees/$old"
+        new_wt="$repo/.claude/worktrees/$new"
+
+        [[ -d "$old_wt" ]] || continue
+        [[ -d "$new_wt" ]] && continue
+
+        dirty="$(cd "$old_wt" && git status --porcelain 2>/dev/null || echo SKIP)"
+        if [[ -n "$dirty" && "$dirty" != "SKIP" ]]; then
+            echo "fleet-up: migrate: $old_wt has uncommitted changes — keeping (commit/stash first)"
+            continue
+        fi
+
+        if fleet-claim reservation-of "$old" 2>/dev/null | grep -q .; then
+            echo "fleet-up: migrate: $old has a live reservation — keeping"
+            continue
+        fi
+
+        echo "fleet-up: migrating worktree $old → $new"
+        (cd "$repo" && git worktree move ".claude/worktrees/$old" ".claude/worktrees/$new") || {
+            echo "fleet-up: migrate: git worktree move failed for $old — keeping" >&2; }
+    done
+}
+
 (cd "$ENGINE" && git fetch origin --quiet) || {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
-ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-1     fleet/opus-worker-1
-ensure_worktree "$ENGINE" .claude/worktrees/opus-worker-2     fleet/opus-worker-2
-ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-1    fleet/sonnet-fleet-1
-ensure_worktree "$ENGINE" .claude/worktrees/sonnet-fleet-2    fleet/sonnet-fleet-2
+migrate_legacy_worker_worktrees "$ENGINE"
+ensure_worktree "$ENGINE" .claude/worktrees/worker-1  fleet/worker-1
+ensure_worktree "$ENGINE" .claude/worktrees/worker-2  fleet/worker-2
+ensure_worktree "$ENGINE" .claude/worktrees/worker-3  fleet/worker-3
+ensure_worktree "$ENGINE" .claude/worktrees/worker-4  fleet/worker-4
 ensure_worktree "$ENGINE" .claude/worktrees/sonnet-reviewer   fleet/sonnet-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/opus-reviewer     fleet/opus-reviewer
 ensure_worktree "$ENGINE" .claude/worktrees/queue-manager        fleet/queue-manager
@@ -410,21 +465,18 @@ if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
-    # Engine opus-workers also pick up game-side `Model: opus` tasks.
-    # Each opus-worker pane has its own game worktree so it can `cd` over
-    # for game tasks and use commit-and-push there cleanly. The pane's
+    # Worker panes cover both engine and game queues; each of the four
+    # worker panes gets its own game worktree to cd into for game tasks.
     # cwd at launch is the engine worktree; the agent cd's per task.
-    ensure_worktree "$GAME" .claude/worktrees/opus-worker-1   fleet/game-opus-worker-1
-    ensure_worktree "$GAME" .claude/worktrees/opus-worker-2   fleet/game-opus-worker-2
-    # Sonnet authors likewise cover the game `[sonnet]` queue (docs / skills /
-    # content / light code); each sonnet-fleet pane gets its own game worktree to `cd` into,
-    # same dual-worktree model as the opus-workers above.
-    ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-1  fleet/game-sonnet-fleet-1
-    ensure_worktree "$GAME" .claude/worktrees/sonnet-fleet-2  fleet/game-sonnet-fleet-2
+    migrate_legacy_worker_worktrees "$GAME"
+    ensure_worktree "$GAME" .claude/worktrees/worker-1  fleet/game-worker-1
+    ensure_worktree "$GAME" .claude/worktrees/worker-2  fleet/game-worker-2
+    ensure_worktree "$GAME" .claude/worktrees/worker-3  fleet/game-worker-3
+    ensure_worktree "$GAME" .claude/worktrees/worker-4  fleet/game-worker-4
     # The single merger pane covers both repos (one dispatcher role, two
     # passes per iteration). This game worktree is where it checks out and
     # rebases game PRs; the engine pass uses .claude/worktrees/merger under
-    # the engine root above. Same dual-worktree model as the opus-workers.
+    # the engine root above. Same dual-worktree model as the workers.
     ensure_worktree "$GAME" .claude/worktrees/merger          fleet/game-merger
     # epic-steward game worktree — only when FLEET_EPIC_STEWARD=1. Same
     # dual-worktree model as opus-workers: engine pane cds here for game epics.
@@ -669,10 +721,10 @@ reset_worktree() {
 }
 
 reset_worktree "$ENGINE/.claude/worktrees/opus-architect"  claude/opus-arch-scratch
-reset_worktree "$ENGINE/.claude/worktrees/opus-worker-1"   claude/opus-worker-1-scratch
-reset_worktree "$ENGINE/.claude/worktrees/opus-worker-2"   claude/opus-worker-2-scratch
-reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-1"  claude/sonnet-1-scratch
-reset_worktree "$ENGINE/.claude/worktrees/sonnet-fleet-2"  claude/sonnet-2-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worker-1"  claude/worker-1-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worker-2"  claude/worker-2-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worker-3"  claude/worker-3-scratch
+reset_worktree "$ENGINE/.claude/worktrees/worker-4"  claude/worker-4-scratch
 reset_worktree "$ENGINE/.claude/worktrees/sonnet-reviewer" claude/sonnet-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/opus-reviewer"   claude/opus-reviewer-scratch
 reset_worktree "$ENGINE/.claude/worktrees/queue-manager"        claude/queue-manager-scratch
@@ -684,18 +736,12 @@ reset_worktree "$ENGINE/.claude/worktrees/epic-steward"         claude/epic-stew
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     reset_worktree "$GAME/.claude/worktrees/game-architect" claude/game-arch-scratch
 fi
-if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/opus-worker-1" claude/game-opus-worker-1-scratch
-fi
-if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/opus-worker-2" claude/game-opus-worker-2-scratch
-fi
-if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-1" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/sonnet-fleet-1" claude/game-sonnet-fleet-1-scratch
-fi
-if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-2" ]]; then
-    reset_worktree "$GAME/.claude/worktrees/sonnet-fleet-2" claude/game-sonnet-fleet-2-scratch
-fi
+for _n in 1 2 3 4; do
+    if [[ -d "$GAME/.claude/worktrees/worker-$_n" ]]; then
+        reset_worktree "$GAME/.claude/worktrees/worker-$_n" "claude/game-worker-$_n-scratch"
+    fi
+done
+unset _n
 if [[ -d "$GAME/.claude/worktrees/epic-steward" ]]; then
     reset_worktree "$GAME/.claude/worktrees/epic-steward" claude/game-epic-steward-scratch
 fi
@@ -770,9 +816,9 @@ baseline = [
     # fleet-iteration-summary stalls at a permission prompt that no human
     # is around to answer; observed: queue-manager iteration paused for
     # ~25 minutes on `fleet-issue view 428`. fleet-worktree-busy-branches
-    # is the fast-path filter sonnet-author / opus-worker run on every
-    # task-pickup pass. fleet-labels is the GitHub-label sync wrapper
-    # invoked by fleet-up itself but also occasionally by roles for
+    # is the fast-path filter workers run on every task-pickup pass.
+    # fleet-labels is the GitHub-label sync wrapper invoked by fleet-up
+    # itself but also occasionally by roles for
     # ad-hoc relabel passes.
     "Bash(fleet-issue:*)",
     "Bash(fleet-pr:*)",
@@ -855,7 +901,7 @@ with open(settings_file, "w") as f:
 PYEOF
 }
 
-for wt in opus-architect opus-worker-1 opus-worker-2 sonnet-fleet-1 sonnet-fleet-2 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger; do
+for wt in opus-architect worker-1 worker-2 worker-3 worker-4 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger; do
     write_worktree_settings "$ENGINE/.claude/worktrees/$wt" "$ENGINE"
 done
 if [[ -d "$ENGINE/.claude/worktrees/smoke-worker" ]]; then
@@ -868,26 +914,17 @@ fi
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/game-architect" "$GAME"
 fi
-# Game-side opus-worker worktrees (used by engine opus-worker panes when
-# they cd over for game tasks). Allow access to BOTH the game tree (the
-# worktree's own scope) and the engine tree (so engine helper scripts +
-# CLAUDE.md are reachable from a game cd).
-if [[ -d "$GAME/.claude/worktrees/opus-worker-1" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-1" "$ENGINE"
-fi
-if [[ -d "$GAME/.claude/worktrees/opus-worker-2" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/opus-worker-2" "$ENGINE"
-fi
-# Game-side sonnet-fleet worktrees (used by sonnet-author panes when they cd
-# over for game `[sonnet]` tasks) — same engine+game access as the opus ones.
-if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-1" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/sonnet-fleet-1" "$ENGINE"
-fi
-if [[ -d "$GAME/.claude/worktrees/sonnet-fleet-2" ]]; then
-    write_worktree_settings "$GAME/.claude/worktrees/sonnet-fleet-2" "$ENGINE"
-fi
+# Game-side worker worktrees (used by worker panes when they cd over for game
+# tasks). Allow access to BOTH the game tree (the worktree's own scope) and the
+# engine tree (so engine helper scripts + CLAUDE.md are reachable from a game cd).
+for _n in 1 2 3 4; do
+    if [[ -d "$GAME/.claude/worktrees/worker-$_n" ]]; then
+        write_worktree_settings "$GAME/.claude/worktrees/worker-$_n" "$ENGINE"
+    fi
+done
+unset _n
 # Game-side epic-steward worktree — allow access to both game tree and engine
-# helpers (same pattern as the game-side opus-worker and sonnet-fleet worktrees).
+# helpers (same pattern as the game-side worker worktrees).
 if [[ -d "$GAME/.claude/worktrees/epic-steward" ]]; then
     write_worktree_settings "$GAME/.claude/worktrees/epic-steward" "$ENGINE"
 fi
@@ -1083,11 +1120,9 @@ def merger_actionable(p):
 # queue-manager is no longer LLM-dispatched; fleet-state-scout invokes
 # fleet-queue-tick directly on projection change. No bootstrap trigger needed.
 
-def author_worker_actionable(p):
-    return bool(p.get("tasks_open")) or bool(p.get("feedback_prs"))
-
-def opus_worker_actionable(p):
-    return author_worker_actionable(p) or bool(p.get("needs_plan"))
+def worker_actionable(p):
+    return (bool(p.get("tasks_open")) or bool(p.get("feedback_prs"))
+            or bool(p.get("needs_plan")))
 
 def sonnet_reviewer_actionable(p):
     return bool(p.get("candidate_prs"))
@@ -1103,8 +1138,7 @@ def epic_steward_actionable(p):
 
 for role, predicate in [
     ("merger", merger_actionable),
-    ("sonnet-author", author_worker_actionable),
-    ("opus-worker", opus_worker_actionable),
+    ("worker", worker_actionable),
     ("sonnet-reviewer", sonnet_reviewer_actionable),
     ("opus-reviewer", opus_reviewer_actionable),
     ("smoke-worker", smoke_worker_actionable),
@@ -1327,7 +1361,7 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 # print the new pane's ID so we can target it for the next split.
 
 tmux new-session -d -s "$SESSION" -n fleet \
-    -c "$ENGINE/.claude/worktrees/sonnet-fleet-1" \
+    -c "$ENGINE/.claude/worktrees/worker-1" \
     "$TRANSIENT_PANE_CMD"
 # Seed IR_FLEET_WORKERS into the tmux server env so the split-window panes
 # below inherit it even when this fleet-up attached to a pre-existing tmux
@@ -1341,8 +1375,8 @@ tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
 # argument and don't read this.
 tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
-label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [$SONNET_TAG]"
-set_fleet_role "$TOP_LEFT" "sonnet-author"
+label_pane_id "$TOP_LEFT" "worker-1 [$OPUS_TAG]"
+set_fleet_role "$TOP_LEFT" "worker"
 pane_stagger
 
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
@@ -1354,21 +1388,21 @@ pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/opus-worker-1" \
+    -c "$ENGINE/.claude/worktrees/worker-3" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_LEFT" "opus-worker-1 [$OPUS_TAG]"
-set_fleet_role "$BOT_LEFT" "opus-worker"
+label_pane_id "$BOT_LEFT" "worker-3 [$OPUS_TAG]"
+set_fleet_role "$BOT_LEFT" "worker"
 pane_stagger
 
-# Top row: split TOP_LEFT horizontally to add sonnet-fleet-2 and
-# sonnet-reviewer. -l 67% gives the new pane 67% of the original
-# TOP_LEFT region (TOP_LEFT shrinks to 33%); the second split halves
-# what's left, giving three equal columns.
+# Top row: split TOP_LEFT horizontally for worker-2 and sonnet-reviewer.
+# -l 67% gives the new pane 67% of the original TOP_LEFT region (TOP_LEFT
+# shrinks to 33%); the second split halves what's left, giving three equal
+# columns.
 TOP_MID=$(tmux split-window -h -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/sonnet-fleet-2" \
+    -c "$ENGINE/.claude/worktrees/worker-2" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$TOP_MID" "sonnet-fleet-2 [$SONNET_TAG]"
-set_fleet_role "$TOP_MID" "sonnet-author"
+label_pane_id "$TOP_MID" "worker-2 [$OPUS_TAG]"
+set_fleet_role "$TOP_MID" "worker"
 pane_stagger
 
 TOP_RIGHT=$(tmux split-window -h -t "$TOP_MID" -l 50% -P -F "#{pane_id}" \
@@ -1389,14 +1423,13 @@ if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     pane_stagger
 fi
 
-# Bottom row: split BOT_LEFT horizontally for opus-worker-2 and
-# opus-reviewer. Same 67/50 pattern as the top row to get three
-# equal columns.
+# Bottom row: split BOT_LEFT horizontally for worker-4 and opus-reviewer.
+# Same 67/50 pattern as the top row to get three equal columns.
 BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -l 67% -P -F "#{pane_id}" \
-    -c "$ENGINE/.claude/worktrees/opus-worker-2" \
+    -c "$ENGINE/.claude/worktrees/worker-4" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_MID" "opus-worker-2 [$OPUS_TAG]"
-set_fleet_role "$BOT_MID" "opus-worker"
+label_pane_id "$BOT_MID" "worker-4 [$OPUS_TAG]"
+set_fleet_role "$BOT_MID" "worker"
 pane_stagger
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -l 50% -P -F "#{pane_id}" \
@@ -1497,17 +1530,19 @@ the dispatcher launches each worker iteration with its task's class):
 
 layout (two windows):
   window 1 "fleet" (3x3 grid, ~33% per row):
-    top    — sonnet-fleet-1  sonnet-fleet-2  sonnet-reviewer
-    middle — opus-architect            [game-architect]
-    bottom — opus-worker-1   opus-worker-2   opus-reviewer
+    top    — worker-1  worker-2  sonnet-reviewer
+    middle — opus-architect      [game-architect]
+    bottom — worker-3  worker-4  opus-reviewer
   window 2 "ops" (2x2 grid):
     top    — queue-manager  merger
     bottom — witness        terminal (\$HOME, free-form shell)
+  worker panes run any model class (opus/sonnet/fable) per task;
+  initial label shows opus (lane default); per-dispatch re-tag takes over.
 
 effort levels (per-role; override with FLEET_EFFORT_<ROLE> in env or
 ~/.fleet/fleet-up.conf, or FLEET_EFFORT=<level> to force all panes):
-  xhigh — opus-architect, game-architect, opus-worker, epic-steward
-  high  — opus-reviewer, merger, sonnet-author, sonnet-reviewer, smoke-worker
+  xhigh — opus-architect, game-architect, worker, epic-steward
+  high  — opus-reviewer, merger, sonnet-reviewer, smoke-worker
 
 permission mode: auto (model decides when to ask vs proceed)
 
@@ -1544,9 +1579,8 @@ scheduling (live mode): each worker iteration is a fresh \`claude\` process
   (no context carry-over between tasks). babysit relaunches per role's
   configured interval:
   sonnet-reviewer    — every ~3m     opus-reviewer — every ~30m
-  opus-worker-1/2    — every ~20m    queue-manager — every ~5m
-  merger             — every ~10m
-  sonnet-fleet-1/2   — back-to-back (60s pause between iterations)
+  worker-1..4        — dispatcher-routed (opus/sonnet/fable class per task)
+  merger             — every ~10m    queue-manager — every ~5m
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)
 
