@@ -9,7 +9,8 @@
 // has no portable image-atomic syntax — same pattern as
 // c_voxel_to_trixel_stage_1.metal's distance scratch.
 
-constant int kEmptyDistanceEncoded = 65535;
+// Per-axis-only shader; canvas clears to INT_MAX per #1458 encoding.
+constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
 kernel void c_resolve_per_axis_screen_depth(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
@@ -28,7 +29,8 @@ kernel void c_resolve_per_axis_screen_depth(
     if (rawDist >= kEmptyDistanceEncoded) {
         return; // empty per-axis cell
     }
-    const int rawDepth = rawDist >> 2;
+    // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
+    const int rawDepth = rawDist >> 10;
     const int slot = rawDist & 3;
     const int faceId = frameData.visibleFaceIds[slot];
     const int axis = faceId >> 1;
@@ -50,11 +52,14 @@ kernel void c_resolve_per_axis_screen_depth(
     // the per-axis RECEIVE (perAxisCellToWorld3D) by construction.
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
+    // origin is in world units (#1458); scale up to subdivision units for the
+    // main-canvas layout so BAKE's trixelCanvasPixelToWorld3D recovers correctly.
     int3 viewPos = origin;
     if (cardinalIndex != 0) {
         viewPos = rotateCardinalZ(origin, cardinalIndex);
-        viewPos += cardinalLowerCornerShift(cardinalIndex) * scale;
+        viewPos += cardinalLowerCornerShift(cardinalIndex);  // world units
     }
+    viewPos *= scale;  // convert to subdivision units
     const int encoded = encodeDepthWithFace(pos3DtoDistance(viewPos), slot);
 
     const int2 canvasSize = frameData.canvasSizePixels; // MAIN canvas size

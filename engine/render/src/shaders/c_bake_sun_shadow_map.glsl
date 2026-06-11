@@ -88,10 +88,12 @@ void main() {
     }
 
     int encoded = imageLoad(trixelDistances, pixel).x;
-    if (encoded >= kEmptyDistanceEncoded) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         return;
     }
-    int rawDepth = encoded >> 2;
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    int rawDepth = (perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
 
     // Smooth camera Z-yaw (#1311): the per-axis voxel canvases bake into the same
     // shared sun depth map as the main canvas (SDF/text) so voxels and shapes

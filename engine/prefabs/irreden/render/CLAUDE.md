@@ -34,16 +34,18 @@ the ECS surface.
   light-volume + Lambert) at trixel resolution before the scatter, adding
   per-axis `ao_` / `sunShadow_` textures with the same rotation-only
   lifecycle (the world sun-shadow map + 128³ light volume stay shared).
-  **Per-axis subdivision-density cap (#1431):** the face-local store is a
-  `world × subPerAxis` integer lattice, but the canvas is sized to the
-  base-resolution footprint and does NOT scale with the subdivision factor —
-  a large `effSub` (high `voxel_render_subdivisions` or zoom) overflows the
-  canvas and on-screen faces clip to background. Every per-axis pass (store,
-  AO, sun-shadow, lighting, the framebuffer scatter) MUST therefore use the
-  CAPPED density from `IRPrefab::PerAxisCanvas::subdivisionDensity()` — the
-  store and the lighting/scatter recovery share that one scale through
-  `voxelRenderOptions.y` so cells map back to world consistently. A new
-  per-axis pass (e.g. the SDF-per-axis follow-up) must cap the same way.
+  **Per-axis base-resolution encoding (#1458):** the per-axis store writes at
+  BASE (world-unit) resolution — one cell per voxel face, regardless of the
+  active subdivision factor. The fractional sub-cell offset (where the voxel
+  lands within its world cell) is packed into bits `[9:2]` of the distance
+  encoding so the forward scatter can sub-pixel-shift each face quad and
+  recover smooth detail without overflowing the base-resolution canvas.
+  The canvas IS still sized at base-resolution (not `world × subPerAxis`);
+  the per-axis dispatch still uses the capped density from
+  `IRPrefab::PerAxisCanvas::subdivisionDensity()` for how many work-groups
+  to launch, but z-slices ≥ 1 return early — only the z=0 invocation writes.
+  AO, sun-shadow, lighting, and scatter all decode `rawDepth` directly as
+  world units (`rawDist >> 10` for the per-axis path).
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also

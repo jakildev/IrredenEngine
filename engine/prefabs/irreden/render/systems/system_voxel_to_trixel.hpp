@@ -365,8 +365,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // unaffected.
     void dispatchPerAxisCanvases(C_PerAxisTrixelCanvases &axes) {
         IR_PROFILE_SCOPE("vs1_per_axis");
+        // Per-axis canvas uses the fractional-offset encoding (#1458); valid
+        // values exceed kTrixelDistanceMaxDistance, so INT_MAX is the sentinel.
         static constexpr std::int32_t kDistanceClear =
-            static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
+            static_cast<std::int32_t>(IRConstants::kPerAxisTrixelDistanceEmpty);
         const u8vec4 kColorClear{0, 0, 0, 0};
         const uvec2 kEntityIdClear{0u, 0u};
 

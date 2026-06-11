@@ -124,6 +124,13 @@ int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
 }
 
+// Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
+// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders by depth first.
+// Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid encoding overwrites the sentinel.
+int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4) {
+    return (rawDepth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
+}
+
 // Outward unit normal for the visible side of each iso-rendered face. The
 // iso projection has view direction (1,1,1), so at cardinal 0 the three
 // faces a camera at (-large, -large, -large) sees are the ones whose

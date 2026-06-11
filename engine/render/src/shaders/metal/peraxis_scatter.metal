@@ -136,18 +136,25 @@ vertex VertexOut v_peraxis_scatter(
     }
 
     const int rawDist = triangleDistances.read(ij).r;
-    const int rawDepth = rawDist >> 2;
+    // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
     const int slot = rawDist & 3;
+    const int vFrac4 = (rawDist >> 2) & 15;
+    const int uFrac4 = (rawDist >> 6) & 15;
+    const int rawDepth = rawDist >> 10;      // pos3DtoDistance of the face origin (world units)
     const int faceId = frameData.visibleFaceIds[slot];
     const int axis = faceId >> 1;
 
+    // Hoist in-plane axes before origin so fractional offset and dilation block share them.
+    float3 eu, ev;
+    faceInPlaneUnitAxes(axis, eu, ev);
     // Exact face-local recovery (#1310 fix) — mirror of v_peraxis_scatter.glsl.
-    // The cell's in-plane coords + iso depth give the origin by one integer
-    // subtraction: no 2cos(yaw)+1 inverse (which dropped compressed-axis faces
-    // and went singular at +/-120 deg). anchor matches the stage 1/2 store.
     const int3 anchor = faceLocalAnchor(frameData.perAxisBase, canvasSize);
     const int2 inPlane = int2(ij) - faceLocalBase(axis, anchor, canvasSize);
-    const float3 origin = float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    const float3 baseOrigin = float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    // Apply sub-cell offset packed in the encoding (#1458).
+    const float3 origin = baseOrigin
+        + eu * (float(uFrac4) / 16.0f - 0.5f)
+        + ev * (float(vFrac4) / 16.0f - 0.5f);
 
     const float2 cornerSel = in.position + float2(0.5);
     const float3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
@@ -164,8 +171,6 @@ vertex VertexOut v_peraxis_scatter(
     const float2 fbRes = max(frameData.scatterFbResolution.xy, float2(1.0));
     const float2 ndcPerPx = float2(2.0) / fbRes;
     const float2 pxPerNdc = fbRes * 0.5;
-    float3 eu, ev;
-    faceInPlaneUnitAxes(axis, eu, ev);
     float2 isoEu = pos3DtoPos2DIsoYawed(eu, frameData.visualYaw);
     float2 isoEv = pos3DtoPos2DIsoYawed(ev, frameData.visualYaw);
     float2 quadEu = float2(isoEu.x / float(canvasSize.x), -isoEu.y / float(canvasSize.y));

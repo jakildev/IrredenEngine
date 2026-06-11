@@ -23,7 +23,8 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 
-const int kEmptyDistanceEncoded = 65535;
+// Per-axis-only shader; canvas clears to INT_MAX per #1458 encoding.
+const int kEmptyDistanceEncoded = 0x7FFFFFFF;
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -64,7 +65,8 @@ void main() {
     if (rawDist >= kEmptyDistanceEncoded) {
         return; // empty per-axis cell
     }
-    const int rawDepth = rawDist >> 2;
+    // Per-axis encoding (#1458): rawDepth in world units at bits [31:10].
+    const int rawDepth = rawDist >> 10;
     const int slot = rawDist & 3;
     const int faceId = visibleFaceIds[slot];
     const int axis = faceId >> 1;
@@ -90,11 +92,14 @@ void main() {
     // by construction — cast and receive agree.
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    // origin is in world units (#1458); scale up to subdivision units for the
+    // main-canvas layout so BAKE's trixelCanvasPixelToWorld3D recovers correctly.
     ivec3 viewPos = origin;
     if (cardinalIndex != 0) {
         viewPos = rotateCardinalZ(origin, cardinalIndex);
-        viewPos += cardinalLowerCornerShift(cardinalIndex) * scale;
+        viewPos += cardinalLowerCornerShift(cardinalIndex);  // world units
     }
+    viewPos *= scale;  // convert to subdivision units
     const int encoded = encodeDepthWithFace(pos3DtoDistance(viewPos), slot);
 
     const ivec2 mainBase = trixelFrameOffset(

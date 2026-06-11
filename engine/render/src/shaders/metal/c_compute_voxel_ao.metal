@@ -57,7 +57,9 @@ kernel void c_compute_voxel_ao(
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    if (encoded >= kEmptyDistanceEncoded) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    const int kEmpty = (frameData.perAxisRoute != 0) ? 0x7FFFFFFF : kEmptyDistanceEncoded;
+    if (encoded >= kEmpty) {
         canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }
@@ -71,7 +73,8 @@ kernel void c_compute_voxel_ao(
     // source of face metadata shared with the raster.
     int slot = encoded & 3;
     int faceId = frameData.visibleFaceIds[slot];
-    int rawDepth = encoded >> 2;
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    int rawDepth = (frameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
     // face-locally (perAxisRoute != 0), recovered via faceOriginFromInPlane; the
@@ -115,11 +118,9 @@ kernel void c_compute_voxel_ao(
     int2 deltaT1;
     int2 deltaT2;
     if (perAxis) {
-        // Face-local in-plane lattice: a +/-1 cell step along each canvas axis is
-        // the +/-1 in-plane world-tangent neighbour. Step `scale` cells per world
-        // voxel under subdivision. No iso projection / cardinal rotation.
-        deltaT1 = int2(scale, 0);
-        deltaT2 = int2(0, scale);
+        // Per-axis canvas is BASE-RESOLUTION (#1458): 1 cell = 1 world voxel.
+        deltaT1 = int2(1, 0);
+        deltaT2 = int2(0, 1);
     } else {
         int3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
         int3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
@@ -139,9 +140,9 @@ kernel void c_compute_voxel_ao(
             samplePixel.y < 0 || samplePixel.y >= size.y) continue;
 
         int neighbourEncoded = trixelDistances.read(uint2(samplePixel)).x;
-        if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
+        if (neighbourEncoded >= kEmpty) continue;
 
-        int neighbourRawDepth = neighbourEncoded >> 2;
+        int neighbourRawDepth = (frameData.perAxisRoute != 0) ? (neighbourEncoded >> 10) : (neighbourEncoded >> 2);
         float3 neighbourPos3D;
         if (perAxis) {
             int neighbourFaceId = frameData.visibleFaceIds[neighbourEncoded & 3];

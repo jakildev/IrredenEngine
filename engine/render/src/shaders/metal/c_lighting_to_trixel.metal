@@ -82,7 +82,8 @@ kernel void c_lighting_to_trixel(
     }
 
     const int encoded = trixelDistances.read(uint2(pixel)).x;
-    if (encoded >= 65535) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    if (encoded >= (voxelFrameData.perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
         return;
     }
 
@@ -94,7 +95,8 @@ kernel void c_lighting_to_trixel(
     const bool detachedCanvas = voxelFrameData.isDetachedCanvas != 0.0f;
     const bool worldReceive = detachedCanvas && voxelFrameData.detachedWorldReceive.w != 0.0f;
 
-    const int rawDepth = encoded >> 2;
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    const int rawDepth = (voxelFrameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     // Decode the visible-triplet slot (#1278) → world FaceId → world-frame
     // six-face outward normal. Used by Lambert, the sky-term, and the
     // world-receive sun-shadow normal — hoisted above the shadow read.
