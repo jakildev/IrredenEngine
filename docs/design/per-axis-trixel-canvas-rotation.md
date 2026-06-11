@@ -903,3 +903,56 @@ limiter — confirmed above).
 9. **Cull coverage.** Off-center geometry that the rotated √2 footprint reaches
    is not culled from the cardinal-snapped viewport (all on-screen objects
    composite during rotation, not just the screen-center ones).
+
+## Per-axis store occlusion model — engine invariant (established #1457, 2026-06-10)
+
+### Store is collision-free
+
+The per-axis stage-1 `atomicMin` has exactly **one camera-visible exposed
+face-voxel per cell**, keyed by its two in-plane world coordinates. The winner
+is uncontested — any store-time sort key (un-yawed `x+y+z`, yawed axis depth,
+or exact recovered-origin depth) is a no-op at voxel-pool granularity. This
+was verified empirically via three independent fix rounds (#1601 per-fragment
+composite depth, #1625 repacked yawed sort key, and #1625 v3 exact planar
+depth) each measured byte-identical to master at worst-case yaw 67.5°.
+
+**Invariant:** do not add per-axis store logic aimed at resolving occlusion
+between competing face-voxels at the same cell — no such competition exists.
+
+### Occlusion is decided at the cross-axis composite
+
+The three per-axis canvases (X/Y/Z visible surfaces) forward-scatter their face
+quads and depth-test against each other per screen pixel via `vDepth`. If a
+depth defect is observed under camera yaw, the locus is the cross-axis
+composite, not the per-axis store. Diagnose with `--debug-overlay axis_id`
+(pixel colored by winning axis canvas: X=red, Y=green, Z=blue) to confirm or
+rule out cross-axis interleave before attempting any fix.
+
+### Canonical occlusion diagnostic for rotated voxel content: `--checkerboard`
+
+`--checkerboard` (per-voxel alternating authored colors, geometry-only) is the
+**only reliable** occlusion/geometry diagnostic for the per-axis voxel path at
+non-cardinal yaw. A clean checkerboard at worst-case pose (e.g. yaw 67.5°)
+with zero scramble constitutes ground truth: no placement, store, recovery,
+composite, or lighting defect is present.
+
+**`--depth-color` is structurally misleading at non-cardinal yaw** and must
+NOT be used as occlusion evidence on the voxel path. The diagnostic quantizes
+hue into 4/3-world-unit bands while voxels step 1 unit per lattice step; at
+any non-cardinal yaw the band boundaries (straight skewed lines in world space)
+beat against the voxel lattice at near-maximal spatial frequency, and the
+per-voxel-constant palette renders that interference as blocky staircase
+alternation that reads as front/back confusion — even when geometry is
+provably correct. The SDF twin evaluates the same palette **per pixel**
+(continuous) and cannot produce this artifact, so SDF-vs-voxel depth-color
+side-by-sides are **not** evidence of a voxel-path defect. This was the root
+cause of the three-investigation chain #1414 → #1451 → #1457 (see PR #1625).
+
+The `--debug-overlay` flag added in PR #1625 provides the reliable
+instrumentation modes for this surface:
+- `axis_id` — each pixel colored by the winning axis canvas (X/Y/Z). Coherent
+  single-axis regions rule out cross-axis composite interleave.
+- `origin` — each winning cell colored by its recovered-origin depth field.
+  Smooth output rules out per-axis store or recovery corruption.
+- `unlit` — raw stage-2 colors with lighting disabled. Rules out
+  AO/light/shadow as the source of any visual artifact.
