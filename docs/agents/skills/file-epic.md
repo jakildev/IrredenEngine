@@ -90,7 +90,10 @@ gh issue edit <N> --repo <repo> --add-label "<epic-label>"
 ```
 
 The **epic label** tells the queue-manager to skip the umbrella (children
-ingest individually) and to auto-close the umbrella when all children close.
+ingest individually) and hands the umbrella to the epic-steward, which
+maintains its checklist and closes it via the close-out flow once every
+child is verified closed (see
+[`epic-steward-protocol.md`](../epic-steward-protocol.md)).
 
 ### 4. Parse the plan's child-ticket sections
 

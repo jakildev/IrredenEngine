@@ -36,7 +36,7 @@
       "name": "fleet:epic",
       "scope": "issue",
       "color": "cc317c",
-      "description": "Parent issue tracking a set of child issues; queue-manager auto-closes when all children close"
+      "description": "Parent issue tracking a set of child issues; the epic-steward maintains its Children checklist and closes it via the close-out flow once every child is verified closed"
     },
     {
       "name": "fleet:queued",
@@ -151,6 +151,18 @@
       "scope": "pr",
       "color": "c5def5",
       "description": "Architect responded; worker resumes per the architect comment + updated plan file"
+    },
+    {
+      "name": "fleet:design-proposed",
+      "scope": "pr",
+      "color": "fbca04",
+      "description": "Epic-steward parked this design-blocked epic-child PR; its novel question(s) ride a STEWARD PROPOSAL on the umbrella; reviewer/merger/reconcile skip until the proposal is answered"
+    },
+    {
+      "name": "fleet:steward-proposal",
+      "scope": "issue",
+      "color": "fbca04",
+      "description": "Umbrella issue carries a pending STEWARD PROPOSAL package; human/architect answers inline on the thread and removes this label — removal re-fires the steward's distribution pass"
     },
     {
       "name": "fleet:needs-linux-smoke",
@@ -383,24 +395,39 @@
       "scope": "pr",
       "owner": "opus-worker",
       "remove": [
-        "fleet:design-unblocked"
+        "fleet:design-unblocked",
+        "fleet:design-proposed"
       ],
       "add": [
         "fleet:design-blocked"
       ],
-      "note": "Worker escalates for architectural input mid-task. Keeps fleet:wip (qualifier). role-opus-worker.md step 8c."
+      "note": "Worker escalates for architectural input mid-task. Keeps fleet:wip (qualifier). Also clears a stale steward parking marker on re-escalation. role-opus-worker.md step 8c."
     },
     {
       "name": "design-unblock",
       "scope": "pr",
       "owner": "architect",
       "remove": [
-        "fleet:design-blocked"
+        "fleet:design-blocked",
+        "fleet:design-proposed"
       ],
       "add": [
         "fleet:design-unblocked"
       ],
-      "note": "Architect responded; worker resumes. role-opus-architect.md design-unblock swap."
+      "note": "Architect (or epic-steward, for epic children) responded; worker resumes. Doubles as proposal-accept: the fleet:design-proposed remove is a no-op on plain unblocks — no separate accept edge. role-opus-architect.md design-unblock swap; epic-steward-protocol.md flow (a)."
+    },
+    {
+      "name": "design-propose",
+      "scope": "pr",
+      "owner": "epic-steward",
+      "remove": [
+        "fleet:design-blocked",
+        "fleet:design-unblocked"
+      ],
+      "add": [
+        "fleet:design-proposed"
+      ],
+      "note": "Epic-steward parks a design-blocked epic-child PR whose question(s) are novel; they ride an aggregated STEWARD PROPOSAL on the umbrella. epic-steward-protocol.md flow (a)."
     },
     {
       "name": "smoke-verify-linux",

@@ -299,6 +299,20 @@ the question to the architect and resume cleanly:
    addresses the direction, removes the label, pushes via
    `commit-and-push`. PR re-enters normal review flow.
 
+**Epic children route steward-first.** When the blocked PR's backing
+issue is part of an epic (`**Part of epic:** #U`), the **epic-steward**
+— not the architect — does step 2's triage: questions derivable from
+the umbrella plan / decision log get a `## Steward direction` comment
+plus the same `design-unblock` swap; novel questions move the PR to
+`fleet:design-proposed` (the `design-propose` transition) and aggregate
+into one `## STEWARD PROPOSAL` comment on the umbrella, which carries
+`fleet:steward-proposal` until the human/architect answers inline and
+removes it — that removal re-fires the steward, which distributes the
+answers and unblocks the parked PRs. The worker-side resume (step 3) is
+unchanged: the resume signal is `fleet:design-unblocked` either way.
+Non-epic blocks keep the plain architect flow above. See
+[`docs/agents/epic-steward-protocol.md`](epic-steward-protocol.md).
+
 If at step 3 the worker finds the architect's direction surfaces a
 *further* design decision it can't make, it **re-escalates**: it must
 swap `fleet:design-unblocked` back to `fleet:design-blocked` (not leave

@@ -25,16 +25,18 @@ Specifically, **never pass these via `--label` when filing**:
 - `human:approved` — owned by the **human**. The human's "yes, work on
   this" gate. `fleet-queue-ingest` keys ingestion off it.
 - `fleet:epic` — owned by the **human**. Marks an issue as a parent
-  that bundles multiple child issues (listed as a markdown task list
-  `- [ ] #N` in the body). The ingest pipeline:
-  (1) skips epics (they're meta, not work),
-  (2) auto-closes the epic once ALL referenced children are closed
-      (handled by `fleet-state-scout` on projection-change ticks),
-  (3) re-reads the body LIVE each tick — so adding a new `- [ ] #M`
-      after the original children close keeps the epic open until
-      #M also closes ("done done").
-  The CHILDREN go through the normal `human:approved` ingestion
-  flow individually; the epic itself is just visible bookkeeping.
+  that bundles multiple child issues, listed as a markdown task list
+  `- [ ] #N` under a `## Children` heading in the body. The ingest
+  pipeline skips epics (they're meta, not work); the CHILDREN go
+  through the normal `human:approved` ingestion flow individually.
+  After filing, the **epic-steward** owns the umbrella: the body
+  checklist is the steward-maintained membership ledger (it ticks
+  `- [x] #N` as children close, adopts mid-epic issues filed with
+  `**Part of epic:** #N`, and appends a `## Steward ledger` to the
+  umbrella's plan file), and **closure is the steward's close-out
+  flow** — every child verified closed with evidence, a closure
+  summary comment, then the umbrella closes. There is no automatic
+  close. See [`epic-steward-protocol.md`](epic-steward-protocol.md).
 - `fleet:scope-shipped` — owned by **`fleet-queue-ingest`** as a
   pre-flight check. Set when a merged PR is found that references the
   issue number (#N), indicating the scope landed under a different
@@ -310,6 +312,31 @@ Specifically, **never pass these via `--label` when filing**:
   (which may include "no code change, just doc update"). Reviewer
   agents skip `fleet:design-blocked` PRs (the scout's
   `REVIEW_SKIP_LABELS` excludes them).
+- `fleet:design-proposed` / `fleet:steward-proposal` — the
+  **epic-steward**'s proposal pair, extending the design-escalation
+  cycle for epic children (see
+  [`epic-steward-protocol.md`](epic-steward-protocol.md) flow (a)).
+  - `fleet:design-proposed` (PR) — set by the steward via the
+    `design-propose` transition when a design-blocked epic-child PR
+    carries a question that is NOVEL (not derivable from the umbrella's
+    plan / decision log / linked design docs). Replaces
+    `fleet:design-blocked` and parks the PR: reviewer and merger agents
+    skip it, and reconcile excludes it from orphan-WIP / design-heal
+    findings (without the exclusion, reconcile's R7 heal would re-arm
+    every proposal within a few ticks). Cleared by the steward's
+    distribution pass via the shared `design-unblock` edge once the
+    proposal is answered — the edge's `fleet:design-proposed` remove is
+    a no-op on plain unblocks, so there is **no separate accept edge**
+    — or swapped back by `design-block` on re-escalation.
+  - `fleet:steward-proposal` (umbrella **issue**) — set by the steward
+    when it posts the aggregated `## STEWARD PROPOSAL` comment on the
+    umbrella. This is the human/architect-facing queue: answer each
+    question inline on the umbrella thread, then **remove the label** —
+    its removal is the edge that re-fires the steward's distribution
+    (the answers make the parked questions derivable). The two labels
+    are deliberately split: the PR-side label gives the projection a
+    clean off-edge and the skip-lists a stable marker; the issue-side
+    label is the pending-answer queue whose removal drives the cycle.
 - `human:owned` — a human de-queue marker on an **issue**. A human
   stamps it to take an issue out of fleet rotation; `fleet-queue-ingest`
   then never re-stamps `fleet:queued` onto it (even though it keeps
