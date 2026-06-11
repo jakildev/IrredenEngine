@@ -114,9 +114,13 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    diff is mid-rewrite and re-enters with `fleet:changes-made` when
    released) — those are
    either in-progress, human-owned, under active author fixes
-   (`fleet:human-amending` / `fleet:amending-*`), in DEFER mode where
-   the human decides to merge as-is or re-flag (`fleet:human-deferred`
-   — do NOT re-apply `fleet:needs-fix` for deferred concerns), queued
+   (`fleet:human-amending` / `fleet:amending-*`), in DEFER mode
+   (`fleet:human-deferred` — which parks the deferred concern on the
+   diff at defer time, NOT a merge-gate: skip only while that diff is
+   unchanged and never re-apply `fleet:needs-fix` for the deferred
+   concern; if new commits landed after the defer — the label was
+   dropped, `human:re-review` is set, or a conflict-resolution comment
+   is present — review the new diff, honoring the linked issue), queued
    for conflict resolution (diff against master is meaningless until
    the rebase lands), or forked from another open PR (diff includes
    inherited commits that don't belong to this PR's scope — skip

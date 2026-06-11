@@ -147,28 +147,6 @@ class SkipLabelsRemovedFromProjection(unittest.TestCase):
         ])])
         self.assertEqual(_hash(empty), _hash(with_blocker))
 
-    def test_human_deferred_conflicting_dropped(self):
-        # A fleet:human-deferred + CONFLICTING PR is at a terminal
-        # "human owns this decision" state. The merger re-applying
-        # fleet:semantic-conflict causes an opus-worker thrash loop
-        # (observed game #101, three identical passes). The projection
-        # must treat it as invisible so the merger is never dispatched.
-        empty = _state([])
-        deferred = _state([_pr(101, labels=[
-            "fleet:approved", "fleet:human-deferred",
-        ], mergeable="CONFLICTING")])
-        self.assertEqual(_hash(empty), _hash(deferred),
-                         "human-deferred PRs must be invisible to merger")
-
-    def test_human_deferred_mergeable_dropped(self):
-        # Even a MERGEABLE human-deferred PR is not the merger's business —
-        # the deferral label means a human decides the fate.
-        empty = _state([])
-        deferred = _state([_pr(101, labels=[
-            "fleet:approved", "fleet:human-deferred",
-        ], mergeable="MERGEABLE")])
-        self.assertEqual(_hash(empty), _hash(deferred))
-
 
 class HumanOwesFixLabelsDropped(unittest.TestCase):
     """An approved PR that also carries a human-owes-a-fix label must drop
@@ -249,14 +227,25 @@ class SignalSemantics(unittest.TestCase):
         items = project_merger(_state([_pr(101, labels=[])]))
         self.assertEqual(items, [])
 
-    def test_human_deferred_conflicting_not_needs_resolve(self):
-        # fleet:human-deferred marks a terminal handoff state; the merger
-        # must not classify it as needs-resolve and re-apply
-        # fleet:semantic-conflict (game #101 thrash).
+    def test_human_deferred_conflicting_is_needs_resolve(self):
+        # Re-scoped (PR #1643): fleet:human-deferred marks a deferred
+        # *review concern* tracked in a follow-up issue, NOT a conflict
+        # handoff. A conflicting deferred PR is flagged like any approved
+        # PR; the opus-worker resolves it and drops the label (new commits
+        # invalidate the deferral). The old "invisible to merger" behavior
+        # stranded the PR's conflict from resolution.
         items = project_merger(_state([_pr(101, labels=[
             "fleet:approved", "fleet:human-deferred",
         ], mergeable="CONFLICTING")]))
-        self.assertEqual(items, [])
+        self.assertEqual(items[0]["signal"], "needs-resolve")
+
+    def test_human_deferred_mergeable_is_merge_ready(self):
+        # A MERGEABLE deferred PR is just an approved PR awaiting the
+        # human's merge/re-flag decision — treated like any approved PR.
+        items = project_merger(_state([_pr(101, labels=[
+            "fleet:approved", "fleet:human-deferred",
+        ], mergeable="MERGEABLE")]))
+        self.assertEqual(items[0]["signal"], "merge-ready")
 
 
 class FailThenSucceedStackedRebase(unittest.TestCase):
