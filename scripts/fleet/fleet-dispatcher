@@ -117,6 +117,7 @@ _env_model_opus="${FLEET_MODEL_OPUS:-}"
 _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
+_env_model_epic_steward="${FLEET_MODEL_EPIC_STEWARD:-}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
@@ -127,12 +128,13 @@ FLEET_MODEL_OPUS="${_env_model_opus:-${FLEET_MODEL_OPUS:-}}"
 FLEET_MODEL_SONNET="${_env_model_sonnet:-${FLEET_MODEL_SONNET:-}}"
 FLEET_MODEL_MERGER="${_env_model_merger:-${FLEET_MODEL_MERGER:-}}"
 FLEET_MODEL_OPUS_REVIEWER="${_env_model_opus_reviewer:-${FLEET_MODEL_OPUS_REVIEWER:-}}"
+FLEET_MODEL_EPIC_STEWARD="${_env_model_epic_steward:-${FLEET_MODEL_EPIC_STEWARD:-}}"
 # Fleet-wide cap on concurrent fable-class iterations — the direct
 # budget throttle. Counted across all panes via dispatch records, not
 # per role. 0 disables fable dispatch entirely.
 FABLE_CONCURRENCY_CAP="${_env_fable_cap:-${FLEET_CONCURRENCY_MODEL_FABLE:-1}}"
 unset _env_model_fable _env_model_opus _env_model_sonnet \
-      _env_model_merger _env_model_opus_reviewer _env_fable_cap
+      _env_model_merger _env_model_opus_reviewer _env_model_epic_steward _env_fable_cap
 declare -A ROLE_CONCURRENCY=(
     ["opus-worker"]="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
     ["sonnet-author"]="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
