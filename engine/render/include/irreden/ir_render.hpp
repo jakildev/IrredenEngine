@@ -381,8 +381,11 @@ DebugOverlayMode getDebugOverlay();
 /// When on, the per-axis scatter fragment shader evaluates hue from the
 /// interpolated face-corner world depth rather than the pre-baked vColor,
 /// producing a smooth continuous gradient that matches the SDF twin (#1697).
-/// @c extent is the bounding half-sum (x+y+z) of the shape being diagnosed;
-/// pass it once at setup time (e.g. after creating the voxel-pool shape).
+/// @c extent is the bounding half-sum (x+y+z) used to normalize depth to
+/// [0,1] across the whole pass. The extent is a single global value on
+/// RenderManager — in multi-shape scenes the last setDepthColorDebug call
+/// wins and the gradient scale matches only that shape. Intended for
+/// single-shape inspection.
 void setDepthColorDebug(bool on, float extent);
 bool getDepthColorDebugMode();
 float getDepthColorDebugExtent();
