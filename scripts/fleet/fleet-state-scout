@@ -1369,11 +1369,18 @@ def _merger_action_signal(labels, mergeable, base_ref):
     a smoke-runner clears them. Including them as merger candidates
     just makes the merger fire repeatedly to find nothing to do.
 
-    `fleet:human-deferred` is a terminal handoff label — an opus-worker
-    diagnosed the conflict as not-agent-resolvable and filed a follow-up
-    issue; only the human decides (close-as-superseded / replace /
-    reconcile). Re-dispatching the merger just re-triggers the
-    opus-worker thrash cycle (observed game #101, three passes).
+    `fleet:human-deferred` is intentionally NOT skipped. It marks a PR
+    whose *human-review feedback* was deferred to a follow-up issue
+    (approved, internally OK) — NOT a conflict handoff (a failed
+    conflict resolution uses `human:needs-fix`, role-opus-worker.md
+    step j). So the merger treats it like any approved PR: a MERGEABLE
+    one projects merge-ready, a CONFLICTING one projects needs-resolve
+    and the opus-worker resolves it — and drops `fleet:human-deferred`,
+    since new commits invalidate the deferral (role-opus-worker.md step
+    1c.i). The old code skipped it on the theory that re-flagging caused
+    opus-worker thrash (game #101); the real fix is the worker dropping
+    the label on resolution, which breaks that loop without stranding
+    the PR's conflict from the merger.
 
     The human-owes-a-fix labels — `human:needs-fix`, `human:blocker`,
     `fleet:needs-fix`, `human:re-review` — are skipped to keep the
@@ -1397,7 +1404,6 @@ def _merger_action_signal(labels, mergeable, base_ref):
         "fleet:design-proposed",
         "fleet:needs-info", "fleet:needs-linux-smoke",
         "fleet:needs-macos-smoke",
-        "fleet:human-deferred",
         # Human-owes-a-fix labels — mirror role-merger.md step 3. NOT
         # `FEEDBACK_LABELS`: that set carries `fleet:has-nits` (an
         # approved+has-nits PR is still merge-ready, so the merger must

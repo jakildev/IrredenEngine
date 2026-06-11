@@ -233,10 +233,13 @@ that needs justification in the linked issue.
      --add-label "fleet:changes-made"
    ```
 3. **Keep `fleet:approved`** — the PR is internally consistent;
-   the prior reviewer approval stands. `fleet:human-deferred`
-   signals: "agent acknowledged the concerns, linked issue tracks
-   them, human decides whether to merge as-is or re-add
-   `human:needs-fix` to force AMEND mode."
+   the prior reviewer approval stands. `fleet:human-deferred` parks
+   re-review of the deferred concern on the diff as it stands now —
+   it is NOT a merge-gate (every PR is human-merged). It holds only
+   while the diff is unchanged: if later commits land (a conflict
+   resolution, a human push), whoever pushes drops the label and the
+   PR re-enters normal review, which honors the linked issue and does
+   not re-raise the deferred concern.
 4. Comment on the PR linking the issue:
    ```
    gh pr comment <N> --body "Escalated — filed issue #<M> for the \
@@ -246,7 +249,8 @@ that needs justification in the linked issue.
    ```
 5. Release the step-a claim (the label swap above is complete, so the
    PR is in its terminal ESCALATE state — `fleet:human-deferred` keeps
-   reviewers off it independently):
+   reviewers off the now-static diff independently, until new commits
+   land and the pusher drops it):
    ```
    fleet-claim amending-release <N> <your-worktree-basename>
    ```
@@ -516,6 +520,10 @@ signals layered on top of it, not concurrency guards.
   KEEPS `fleet:approved`, then releases the claim. Human reviews the
   linked issue and either accepts the deferral (PR ready to merge) or
   re-adds `human:needs-fix` to force AMEND mode on the next iteration.
+  `fleet:human-deferred` parks the deferred concern on the diff at
+  defer time, not the PR forever — it is NOT a merge-gate. If new
+  commits land (e.g. a conflict resolution), the pusher drops the
+  label and review resumes on the new diff, honoring the linked issue.
 
 Human can add multiple comments before re-tagging; ALL are picked
 up when the tag appears.

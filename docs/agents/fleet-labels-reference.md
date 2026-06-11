@@ -294,15 +294,29 @@ Specifically, **never pass these via `--label` when filing**:
     a follow-up issue rather than amending this PR. Set atomically
     with `fleet:changes-made` when the worker removes `human:needs-fix`
     (both in one `gh pr edit` call to prevent a labeless gap where
-    the reviewer could re-apply `fleet:needs-fix`). **Kept** until
-    the human either accepts the deferral (PR merges with this label)
-    or re-adds `human:needs-fix` to force AMEND mode on the next
-    iteration. `fleet:approved` is kept (PR is internally OK).
-    **Reviewer agents skip PRs with this label** — the human is the
-    decision-maker; do NOT re-apply `fleet:needs-fix` for deferred
-    concerns.
-    **Read as: "agent acknowledged your concerns, linked issue
-    tracks them, you decide whether to merge as-is or re-flag."**
+    the reviewer could re-apply `fleet:needs-fix`). `fleet:approved`
+    is kept (PR is internally OK).
+    **Scope: it parks re-review of the deferred concern on the diff
+    as it stood at defer time. It is NOT a merge-gate.** Every PR is
+    human-merged, so "the human decides whether to merge" is true of
+    every approved PR and is *not* what this label is for. While the
+    diff is unchanged, reviewer agents leave it alone and never
+    re-apply `fleet:needs-fix` for the deferred concern — the human is
+    the decision-maker on it.
+    **New commits invalidate the deferral's scope.** If a semantic-
+    conflict resolution, a rebase, or a human/agent push lands after
+    the defer, whoever pushes drops `fleet:human-deferred` (a human can
+    instead set `human:re-review`) and the PR re-enters normal review.
+    On that pass the reviewer reviews the NEW diff but honors the
+    linked issue — it does not re-raise the deferred concern. Without
+    this, deferring one concern would strand unrelated new code
+    (e.g. a conflict fix) from review indefinitely.
+    Cleared when the human accepts the deferral and merges, re-adds
+    `human:needs-fix` to force AMEND, or a pusher drops it on new
+    commits.
+    **Read as: "agent acknowledged your concerns, linked issue tracks
+    them; the deferral covers the diff at defer time, not the PR
+    forever."**
 - `fleet:design-blocked` / `fleet:design-unblocked` — paired
   state qualifiers for the mid-task design-escalation cycle (see
   [`FLEET.md`](FLEET.md) "Design-escalation flow"). `design-blocked` is set by the

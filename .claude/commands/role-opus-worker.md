@@ -377,6 +377,14 @@ Do the work, then exit cleanly:
        this PR matched the filter):
        `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "fleet:changes-made"`
        `gh pr comment <N> --repo jakildev/IrredenEngine --body "Resolved semantic conflict: <one-line summary of what you reconciled>. Build clean. Reviewer please re-evaluate the rebased diff. — opus-worker"`
+       **If the PR also carries `fleet:human-deferred`, drop it.** Your
+       push added new commits, so the deferral — which covered the diff
+       as it stood at defer time — no longer holds. Dropping it re-enters
+       the PR into normal review (which honors the linked issue and does
+       NOT re-raise the deferred concern); leaving it on would strand
+       your conflict resolution from review. The label may be absent, so
+       use the idempotent wrapper rather than a combined `--remove-label`:
+       `fleet-pr-clear-feedback-labels <N> --labels "fleet:human-deferred"`
        Also clear the merger's cooldown label if still present — prevents
        one unnecessary iteration delay before the PR can be re-evaluated
        (the merger clears it anyway on next tick, but this makes it

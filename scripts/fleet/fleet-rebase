@@ -75,15 +75,24 @@ rearm_llm() {
 # Labels that park a PR away from tier-0 entirely (no rebase, no LLM
 # re-arm on their account — another agent or the human owns the next
 # move). Mirrors role-merger.md step 3's skip set: semantic conflicts /
-# human-deferred / needs-info belong to other agents or the human;
-# wip/amending branches are being actively rewritten by their author; the
-# needs-fix/blocker family means a review owes a change and a surprise
-# force-push mid-fix is hostile; design-blocked PRs are parked under an
-# architect; a pending smoke verification would be invalidated by a
-# rebase; fork-of-other-pr is coordinated manually. Single source: the
-# python triage below reads this via FLEET_REBASE_SKIP_RE and the
-# pre-push re-verify greps it directly.
-SKIP_LABEL_RE='fleet:semantic-conflict|fleet:human-deferred|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-linux-smoke|fleet:needs-macos-smoke'
+# needs-info belong to other agents or the human; wip/amending branches
+# are being actively rewritten by their author; the needs-fix/blocker
+# family means a review owes a change and a surprise force-push mid-fix
+# is hostile; design-blocked PRs are parked under an architect; a pending
+# smoke verification would be invalidated by a rebase; fork-of-other-pr
+# is coordinated manually.
+#
+# `fleet:human-deferred` is intentionally NOT skipped (re-scoped, #1712).
+# A deferred PR is approved and idle — its *review feedback* is parked in
+# a follow-up issue, but its branch is no one's active edit. A mechanical
+# rebase keeps it mergeable instead of letting it accumulate conflicts as
+# master advances (the exact stranding that motivated this change); a
+# CONFLICTING one re-arms the LLM merger pass to resolve, and the
+# opus-worker drops the label on resolution.
+#
+# Single source: the python triage below reads this via
+# FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.
+SKIP_LABEL_RE='fleet:semantic-conflict|fleet:wip|human:wip|fleet:needs-fix|human:needs-fix|human:blocker|human:re-review|fleet:design-blocked|fleet:amending-|fleet:blocker|fleet:needs-info|fleet:fork-of-other-pr|fleet:needs-linux-smoke|fleet:needs-macos-smoke'
 export FLEET_REBASE_SKIP_RE="$SKIP_LABEL_RE"
 
 # Serialization: a second fleet-rebase against the same scratch worktree

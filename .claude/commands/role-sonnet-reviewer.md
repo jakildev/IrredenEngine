@@ -94,9 +94,14 @@ treat it as a hard rule for this role.
      projection already excludes these, so you should never see one.
      Re-enters with `fleet:changes-made` when the claim releases.
    - `fleet:human-deferred` — author chose DEFER mode: acknowledged
-     concerns, filed a follow-up issue, and the human decides to
-     merge as-is or re-add `human:needs-fix` to force inline fixes.
-     Do NOT re-apply `fleet:needs-fix` for deferred concerns.
+     concerns, filed a follow-up issue. This parks the deferred
+     concern on the diff as it stood at defer time — it is NOT a
+     merge-gate. Skip *while the diff is unchanged*, and never
+     re-apply `fleet:needs-fix` for the deferred concern. But if new
+     commits landed after the defer (the label was dropped, or
+     `human:re-review` is set, or a conflict-resolution comment is
+     present), review the NEW diff on its merits — just don't re-raise
+     the deferred concern (the linked issue tracks it).
    - `fleet:semantic-conflict` — merger detected a non-mechanical
      rebase conflict; the opus-worker is queued to attempt
      resolution. The PR's diff against master is meaningless until
@@ -129,7 +134,9 @@ iteration of polling, reviewing, and exiting cleanly:
    - `fleet:human-amending` — author actively addressing human feedback
    - `fleet:amending-*` — author holds an amend claim on a `fleet:needs-fix`
      fix; scout already excludes these (re-enters with `fleet:changes-made`)
-   - `fleet:human-deferred` — DEFER mode; human decides to merge or re-flag
+   - `fleet:human-deferred` — DEFER mode: parks the deferred concern on
+     the unchanged diff (not a merge-gate). Skip only while unchanged;
+     review post-defer commits, honoring the linked issue
    - `fleet:semantic-conflict` — merger conflict pending resolution
    - `fleet:fork-of-other-pr` — inherited commits; skip until `rebase --onto`
    - any label starting with `fleet:reviewing-` — another reviewer
