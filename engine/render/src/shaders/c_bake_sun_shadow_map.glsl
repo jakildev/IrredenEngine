@@ -99,14 +99,28 @@ void main() {
     // shared sun depth map as the main canvas (SDF/text) so voxels and shapes
     // shadow each other under rotation. A per-axis canvas stores the world frame
     // face-locally; the single canvas stores the cardinal-snapped iso pixel.
-    vec3 pos3D = perAxisRoute != 0
-        ? perAxisCellToWorld3D(
-              pixel, rawDepth, visibleFaceIds[encoded & 3], size,
-              frameCanvasOffset, voxelRenderOptions
-          )
-        : trixelCanvasPixelToWorld3D(
-              pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-          );
+    vec3 pos3D;
+    if (perAxisRoute != 0) {
+        pos3D = perAxisCellToWorld3D(
+            pixel, rawDepth, visibleFaceIds[encoded & 3], size,
+            frameCanvasOffset, voxelRenderOptions
+        );
+    } else if (residualYaw != 0.0) {
+        // Smooth-yaw cast (#1719). While rotating, the single canvas's
+        // remaining SDF/text content is stored at the FULL visualYaw with
+        // view-frame depth (#1345/#1370) — recover with the matching smooth
+        // inverse so those casters bake at their true world positions. The
+        // CARDINAL-layout resolve textures (per-axis #1435 + world-placed
+        // P4b-3) bake with residualYaw zeroed by the C++ driver, so they keep
+        // the cardinal recovery below.
+        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
+        );
+    } else {
+        pos3D = trixelCanvasPixelToWorld3D(
+            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+        );
+    }
 
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;

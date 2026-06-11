@@ -38,6 +38,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
+#include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
@@ -776,6 +777,12 @@ void initSystems() {
         // projects the GRID casters' shadows onto it.
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>());
+        // Collapses the per-axis voxel canvases into the cardinal-layout
+        // resolve texture BAKE_SUN_SHADOW_MAP casts (#1435). Without it the
+        // voxel cubes cast NO shadow at any non-cardinal camera yaw — the
+        // per-axis canvases gracefully degrade to an empty resolve — which is
+        // most of this demo's runtime under the default --auto-rotate (#1719).
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());

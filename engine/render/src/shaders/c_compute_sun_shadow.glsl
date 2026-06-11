@@ -76,6 +76,20 @@ void main() {
         int faceId = visibleFaceIds[face];
         pos3D = perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions);
         normal = faceOutwardNormal6(faceId);
+    } else if (residualYaw != 0.0) {
+        // Smooth-yaw receive (#1719). While rotating, voxels leave the single
+        // canvas (per-axis scatter) and its remaining SDF/text content is
+        // stored at the FULL visualYaw with view-frame depth (#1345/#1370) —
+        // recover with the matching smooth inverse. The cardinal recovery
+        // returns a residual-rotated world pos here, so receivers sampled the
+        // sun map off the true surface: the floor shadow froze against the
+        // screen, mis-scaled against the deforming floor, and slid off the
+        // caster footprint entirely as |residual| grew. residualYaw == 0
+        // keeps the byte-identical cardinal path below.
+        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
+        );
+        normal = rotateYawZInv(faceOutwardNormal(face), visualYaw);
     } else {
         pos3D = trixelCanvasPixelToWorld3D(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw

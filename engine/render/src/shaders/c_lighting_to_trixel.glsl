@@ -232,13 +232,25 @@ void main() {
         // volume is then sampled the same way for both (per-axis canvases are only
         // allocated while rotating, so the cardinal fast path is byte-identical).
         // The world-placed detached solid reuses worldReceivePos (model + offset).
+        // Smooth-yaw single-canvas recovery (#1719): while rotating, the main
+        // canvas's remaining SDF/text content stores at the FULL visualYaw with
+        // view-frame depth, so the light-volume sample position must use the
+        // smooth inverse or the glow drifts off the surface as |residual| grows.
+        // residualYaw == 0 (and every detached canvas, whose frame carries zero
+        // yaw) keeps the byte-identical cardinal recovery.
         vec3 pos3D = worldReceive
             ? worldReceivePos
             : (perAxisRoute != 0
                 ? perAxisCellToWorld3D(pixel, rawDepth, faceId, size, frameCanvasOffset, voxelRenderOptions)
-                : trixelCanvasPixelToWorld3D(
-                      pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
-                  ));
+                : (residualYaw != 0.0
+                    ? trixelCanvasPixelToWorld3DSmoothYaw(
+                          pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
+                          voxelRenderOptions, visualYaw
+                      )
+                    : trixelCanvasPixelToWorld3D(
+                          pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
+                          voxelRenderOptions, rasterYaw
+                      )));
 
         // Sample the light volume at the surface voxel. CLAMP_TO_EDGE
         // means out-of-volume samples read zero light (the border texels

@@ -55,6 +55,23 @@ kernel void c_compute_sun_shadow(
             frameData.frameCanvasOffset, frameData.voxelRenderOptions
         );
         normal = faceOutwardNormal6(faceId);
+    } else if (frameData.residualYaw != 0.0) {
+        // Smooth-yaw receive (#1719). While rotating, voxels leave the single
+        // canvas (per-axis scatter) and its remaining SDF/text content is
+        // stored at the FULL visualYaw with view-frame depth (#1345/#1370) —
+        // recover with the matching smooth inverse. The cardinal recovery
+        // returns a residual-rotated world pos here, so receivers sampled the
+        // sun map off the true surface (frozen / vanishing floor shadows).
+        // residualYaw == 0 keeps the byte-identical cardinal path. Mirrors GLSL.
+        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.visualYaw
+        );
+        normal = rotateYawZInv(faceOutwardNormal(face), frameData.visualYaw);
     } else {
         pos3D = trixelCanvasPixelToWorld3D(
             pixel,
