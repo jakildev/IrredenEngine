@@ -236,3 +236,58 @@ def discover_children(slug, umbrella, state="open"):
     if candidates is None:
         return []
     return [c for c in candidates if is_epic_child(c.get("body", ""), umbrella)]
+
+
+# ---------------------------------------------------------------------------
+# Checklist helpers (--check-checklist extension, #1667)
+# ---------------------------------------------------------------------------
+
+_CHECKLIST_ITEM_RE = re.compile(r"^\s*-\s*\[([ xX])\]\s*#(\d+)", re.MULTILINE)
+
+
+def parse_checklist(body):
+    """Return ``{number: checked}`` from an umbrella body checklist.
+
+    Matches ``- [ ] #N`` and ``- [x] #N`` (case-insensitive) anywhere in the
+    body so it works regardless of which Markdown section the checklist lives
+    under (``## Children``, the top-level list, etc.).
+    """
+    result = {}
+    for m in _CHECKLIST_ITEM_RE.finditer(_norm(body or "")):
+        checked = m.group(1).lower() == "x"
+        number = int(m.group(2))
+        result[number] = checked
+    return result
+
+
+def check_checklist(umbrella_body, child_numbers):
+    """Compare umbrella body checklist against discovered child issue numbers.
+
+    ``child_numbers`` is an iterable of ints from the stack discovery pass
+    (children whose bodies carry ``**Part of epic:** #<umbrella>``).
+
+    Returns a list of drift dicts::
+
+        [{"kind": str, "number": int}, ...]
+
+    Kinds:
+
+    ``missing-from-checklist``
+        A discovered child is not mentioned in the umbrella checklist at all.
+        The steward / file-epic should add it.
+
+    ``in-checklist-not-discovered``
+        The checklist references an issue number that no discovered child body
+        claims (``**Part of epic:** #<umbrella>`` absent or the issue was
+        deleted / renumbered).  Informational; may be intentional for closed
+        children whose issues are no longer open.
+    """
+    checklist = parse_checklist(umbrella_body)
+    child_set = set(child_numbers)
+
+    drift = []
+    for n in sorted(child_set - set(checklist.keys())):
+        drift.append({"kind": "missing-from-checklist", "number": n})
+    for n in sorted(set(checklist.keys()) - child_set):
+        drift.append({"kind": "in-checklist-not-discovered", "number": n})
+    return drift

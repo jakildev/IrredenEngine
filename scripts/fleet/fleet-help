@@ -236,10 +236,20 @@ Parallel-agent fleet (tmux + Claude)
   fleet-issue view <N> [--repo engine|game]
                                  read scout's per-issue cache + gh fallback
   fleet-validate-stack <umbrella> [--repo engine|game] [--children N…] [--strict]
+                                 [--check-checklist]
                                  pre-approval check that an epic's child issues
                                  carry standalone **Model:** / **Part of epic:**
                                  / **Blocked by:** lines (the scout + fleet-claim
-                                 parsers can't read prose / multi-ref forms)
+                                 parsers can't read prose / multi-ref forms);
+                                 --check-checklist also warns on umbrella
+                                 checklist ↔ discovered-children drift
+  fleet-validate-roles [--repo-root PATH…] [--json] [--strict]
+                                 lint the role-sharing contract: every
+                                 docs/agents/*-protocol.md with
+                                 ## Repo deltas this flow needs must have a
+                                 matching .claude/commands/role-*.md wrapper
+                                 in each fleet-enabled repo root, with all
+                                 declared delta keys answered
   fleet-epic-status <N> [--repo engine|game] [--json] [--state open|closed|all]
                                  epic health dashboard: umbrella state, per-child
                                  queue/PR/plan state, checklist-vs-discovered

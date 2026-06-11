@@ -39,7 +39,9 @@ import sys
 # scripts/fleet/ dir so the sibling pure-logic module imports regardless of
 # cwd — same idiom fleet-queue-ingest uses for fleet_scope_shipped.
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from fleet_validate_stack import discover_children, is_epic_child, validate_stack  # noqa: E402
+from fleet_validate_stack import (  # noqa: E402
+    discover_children, is_epic_child, validate_stack, check_checklist,
+)
 
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")
 REPOS_CACHE = os.path.join(STATE_DIR, "repos.json")
@@ -105,6 +107,11 @@ def main():
         help="treat a missing `**Blocked by:**` line (a warning by default) as "
              "an error — use for a known linear chain where every non-head "
              "child must chain on the prior")
+    parser.add_argument(
+        "--check-checklist", action="store_true",
+        help="also fetch the umbrella body and warn about checklist ↔ "
+             "discovered-children drift (missing-from-checklist / "
+             "in-checklist-not-discovered)")
     args = parser.parse_args()
 
     slug = repo_slug(args.repo)
@@ -118,6 +125,20 @@ def main():
         children = discover_children(slug, args.umbrella, args.state)
 
     result = validate_stack(children, args.umbrella)
+
+    checklist_drift = []
+    if args.check_checklist:
+        umbrella_detail = _gh_json([
+            "gh", "issue", "view", str(args.umbrella), "--repo", slug,
+            "--json", "body",
+        ])
+        if umbrella_detail:
+            child_numbers = [c["number"] for c in children]
+            checklist_drift = check_checklist(umbrella_detail.get("body", ""),
+                                              child_numbers)
+        else:
+            warn("could not fetch umbrella #%d body — checklist drift not "
+                 "validated" % args.umbrella)
 
     print("Epic #%d (%s) — %d child issue(s)"
           % (args.umbrella, slug, len(result["children"])))
@@ -152,14 +173,25 @@ def main():
         for f in c["findings"]:
             print("          - [%s] %s" % (f["severity"], f["msg"]))
 
+    if checklist_drift:
+        print()
+        print("Checklist drift (--check-checklist):")
+        for d in checklist_drift:
+            print("  WARN  #%d — %s" % (d["number"], d["kind"]))
+
     print()
     n = len(result["children"])
     blocking_warns = args.strict and result["n_warnings"] > 0
+    checklist_warn_count = len(checklist_drift)
     if result["n_errors"] == 0 and not blocking_warns:
         msg = "OK: all %d child issue(s) carry the required structured fields." % n
+        extra = []
         if result["n_warnings"]:
-            msg += " (%d warning(s) — review the ambiguous ones above.)" % \
-                result["n_warnings"]
+            extra.append("%d warning(s)" % result["n_warnings"])
+        if checklist_warn_count:
+            extra.append("%d checklist drift item(s)" % checklist_warn_count)
+        if extra:
+            msg += " (%s — review above.)" % "; ".join(extra)
         print(msg)
         return 0
     print("FAILED: %d of %d child issue(s) malformed (%d error(s), %d "
