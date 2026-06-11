@@ -12,7 +12,19 @@
 #version 450 core
 
 flat in vec4 vColor;
-flat in float vDepth;
+// Per-fragment planar depth + margin-yield classification (#1457): vDepth is
+// the face plane's exact depth at this fragment (linear interpolation of
+// per-corner planar keys); fragments outside the exact [0,1]^2 footprint are
+// conservative-dilation margin and yield by vMarginDepthBias, so a margin
+// only fills pixels no exact footprint claims (the #1494 sub-pixel sliver
+// gaps) and never beats a same-plane owner via draw order.
+noperspective in float vDepth;
+noperspective in vec2 vQuadParam;
+flat in float vMarginDepthBias;
+// Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
+// the quad) — origin is the same for all 4 corners of a face instance, so
+// interpolation would be a no-op anyway and flat avoids shader-pipeline
+// divergence from adding a smooth varying.
 flat in float vIsoDepth;
 flat in int vDepthColorMode;
 flat in float vDepthColorExtent;
@@ -39,5 +51,7 @@ void main() {
     } else {
         FragColor = vColor;
     }
-    gl_FragDepth = vDepth;
+    const bool inMargin = any(lessThan(vQuadParam, vec2(0.0))) ||
+                          any(greaterThan(vQuadParam, vec2(1.0)));
+    gl_FragDepth = vDepth + (inMargin ? vMarginDepthBias : 0.0);
 }

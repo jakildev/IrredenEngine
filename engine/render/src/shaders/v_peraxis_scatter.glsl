@@ -41,7 +41,7 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int distanceOffset;
     ivec2 perAxisBase;       // canvas-pixel origin of this axis canvas (#1310)
     float visualYaw;         // continuous camera Z-yaw (radians)
-    int _scatterPad;
+    int scatterDebugMode;    // raw DebugOverlayMode; 4/5 = composite instrumentation (#1457)
     ivec4 visibleFaceIds;    // per-slot world FaceId (0..5); .w pad
     // P3b detached fields (unused on the camera path) — declared only to reach
     // scatterFbResolution at the shared std140 offset 176 (#1494).
@@ -59,7 +59,24 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
 };
 
 flat out vec4 vColor;
-flat out float vDepth;
+// Per-fragment PLANAR composite depth (#1457): linear (no-perspective, w==1)
+// interpolation of the exact yawed plane depth sampled at each (dilated)
+// corner reproduces the face plane's affine depth field at every fragment —
+// including the conservative-dilation margin, which extrapolates the same
+// plane. Two cells of the SAME face plane then carry identical depth per
+// pixel, so the margin-yield bias below (not draw order) decides their
+// overlap. A flat per-quad key cannot do this: adjacent same-plane cells get
+// different flat keys, and the nearer cell's dilation margin then beats the
+// true owner's interior along every cell boundary on the sign-flip side of a
+// bracket — the #1457 wrong-voxel-color bands.
+noperspective out float vDepth;
+// Quad-parameter coords of this corner in the face's in-plane basis: the
+// EXACT footprint spans [0,1]^2; dilated corners land outside it. The
+// fragment shader classifies margin fragments by this and adds
+// vMarginDepthBias so a dilation margin only fills pixels no exact footprint
+// claims (the #1494 sub-pixel sliver gaps), never beats a same-plane owner.
+noperspective out vec2 vQuadParam;
+flat out float vMarginDepthBias;
 // Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
 // the quad) — origin is the same for all 4 corners of a face instance, so
 // interpolation would be a no-op anyway and flat avoids shader-pipeline
@@ -67,6 +84,28 @@ flat out float vDepth;
 flat out float vIsoDepth;
 flat out int vDepthColorMode;
 flat out float vDepthColorExtent;
+
+// Composite-instrumentation overlay modes (#1457) — raw DebugOverlayMode
+// values (ir_render_enums.hpp). Both modes recolor the scattered quad and
+// leave vDepth untouched, so the per-pixel depth-test winner is exactly the
+// real composite's winner.
+const int kOverlayPerAxisId = 4;     // winner identity: X=red, Y=green, Z=blue
+const int kOverlayPerAxisOrigin = 5; // recovered-origin field: hue wheel of rawDepth
+
+// Long-period hue wheel for the recovered-origin overlay. rawDepth steps by
+// the subdivision density per voxel, so a short or power-of-two period would
+// alias against the lattice; 96 gives ~12 voxels per revolution at density 8 —
+// adjacent voxels are clearly distinct hues while a clean face reads as a
+// smooth progression and a wrong-cell winner as a hue discontinuity.
+const float kOriginHuePeriod = 96.0;
+vec3 hueWheel(float t) {
+    t = fract(t);
+    return clamp(
+        vec3(abs(t * 6.0 - 3.0) - 1.0, 2.0 - abs(t * 6.0 - 2.0), 2.0 - abs(t * 6.0 - 4.0)),
+        0.0,
+        1.0
+    );
+}
 
 // In-plane corner of a face whose `origin` ALREADY sits at the face plane on
 // the fixed axis. The store (c_voxel_to_trixel_stage_{1,2}) bakes the polarity
@@ -98,6 +137,8 @@ void main() {
         vIsoDepth = 0.0;    // unused (discarded in fragment)
         vDepthColorMode = 0;
         vDepthColorExtent = 0.0;
+        vQuadParam = vec2(0.5);
+        vMarginDepthBias = 0.0;
         return;
     }
 
@@ -150,33 +191,61 @@ void main() {
     vec2 quadEv = vec2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     vec2 su = (mpMatrix * vec4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     vec2 sv = (mpMatrix * vec4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    clipCorner.xy += scatterConservativeDilation(su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
+    const vec2 dilNdc =
+        scatterConservativeDilation(su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
+    clipCorner.xy += dilNdc;
     gl_Position = clipCorner;
 
     vColor = color;
-    // Use face-center depth (= origin) rather than corner depth: all 4 vertices
-    // of this face instance share the same origin, so the value is constant
-    // across the quad — flat is correct, and using origin avoids provoking-vertex
-    // ambiguity that would arise from per-corner worldCorner values.
+    // Face-center iso-depth for depth-color (#1697). Flat (constant across the
+    // quad) — origin is the same for all 4 corners of a face instance, so
+    // interpolation would be a no-op anyway and flat avoids shader-pipeline
+    // divergence from adding a smooth varying.
     vIsoDepth = origin.x + origin.y + origin.z;
     vDepthColorMode = depthColorMode;
     vDepthColorExtent = depthColorExtent;
-    // Yaw-consistent composite depth (#1370). The stored `rawDepth` (= un-yawed
-    // world x+y+z) is the face-local origin-recovery KEY and must not change.
-    // But the framebuffer depth test must order by the depth that matches the
-    // YAWED screen projection above (iso of R_z(-visualYaw)*world), not the
-    // un-yawed metric — otherwise the ordering diverges from the on-screen
-    // placement as residual yaw grows and a low/back surface (the ground
-    // platform) wins the depth test against geometry above it near +/-45 deg.
-    // Re-derive the composite depth from the recovered origin, rotated by
-    // R_z(-visualYaw); keep the *4 + slot encoding so it co-sorts with the SDF
-    // (c_shapes_to_trixel smoothYaw applies the identical transform). Per-axis
-    // is residual-only, so the cardinal fast path is untouched (byte-identical).
-    float yc = cos(visualYaw);
-    float ys = sin(visualYaw);
-    float dvx = origin.x * yc + origin.y * ys;
-    float dvy = -origin.x * ys + origin.y * yc;
-    int yawedDist = roundHalfUp(dvx + dvy + origin.z) * 4 + slot;
-    vDepth = float(yawedDist + distanceOffset - kMinTriangleDistance) /
-             float(kMaxTriangleDistance - kMinTriangleDistance);
+    if (scatterDebugMode == kOverlayPerAxisId) {
+        vColor = vec4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
+    } else if (scatterDebugMode == kOverlayPerAxisOrigin) {
+        // Cell-parity brightness modulation: distinguishes WHICH cell's quad
+        // covers a pixel (adjacent cells alternate brightness) on top of the
+        // recovered-depth hue.
+        float cellParity = float((ij.x + ij.y) & 1) * 0.45 + 0.55;
+        vColor = vec4(hueWheel(float(rawDepth) / kOriginHuePeriod) * cellParity, 1.0);
+    }
+
+    // Express the dilation offset in the face's in-plane (su, sv) basis so the
+    // dilated corner's quad-param coords and its planar depth stay EXACT
+    // (#1457). Degenerate basis (edge-on face) -> treat the corner as exact;
+    // such a sliver's pixels are covered by the other two visible faces.
+    const vec2 dilPx = dilNdc * pxPerNdc;
+    const float det = su.x * sv.y - su.y * sv.x;
+    vec2 dilParam = vec2(0.0);
+    if (abs(det) > 1e-6) {
+        dilParam = vec2(dilPx.x * sv.y - dilPx.y * sv.x, su.x * dilPx.y - su.y * dilPx.x) / det;
+    }
+    vQuadParam = cornerSel + dilParam;
+
+    // Yaw-consistent composite depth (#1370), per-fragment PLANAR + exact
+    // (#1457). The stored `rawDepth` (= un-yawed world x+y+z) is the
+    // face-local origin-recovery KEY and must not change. Each corner emits
+    // the continuous yawed camera-space depth of its own (dilated) corner
+    // point via the shared scatterCompositeDepthKey helper
+    // (ir_iso_common.glsl) — *4 + slot scale, so it co-sorts with the SDF
+    // (c_shapes_to_trixel smoothYaw). Linear interpolation then reproduces
+    // the face plane's affine depth field at every fragment. The flat
+    // per-quad ROUNDED key this replaces had two failure modes at off-snap
+    // residuals: integer quantization tied distinct planes (draw order picked
+    // the farther quad on the sign-flip side of the bracket), and same-plane
+    // neighbor cells carried different flat keys (the nearer cell's dilation
+    // margin beat the true owner's interior along every cell boundary) — the
+    // #1457 wrong-voxel-color bands. Per-axis is residual-only, so the
+    // cardinal fast path is untouched (byte-identical).
+    const float kU = scatterCompositeDepthKey(eu, visualYaw, 0);  // gradient only — slot term cancels
+    const float kV = scatterCompositeDepthKey(ev, visualYaw, 0);  // gradient only — slot term cancels
+    const float cornerKey = scatterCompositeDepthKey(worldCorner, visualYaw, slot) +
+                            dilParam.x * kU + dilParam.y * kV;
+    const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
+    vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
+    vMarginDepthBias = kScatterMarginDepthBiasKey / depthRange;
 }

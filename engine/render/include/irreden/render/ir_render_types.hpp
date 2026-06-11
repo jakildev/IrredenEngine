@@ -105,7 +105,11 @@ struct FrameDataTrixelToFramebuffer {
     /// FrameDataVoxelToCanvas (per-slot world FaceId, .w pad).
     ivec2 perAxisBase_{0, 0};
     float visualYaw_ = 0.0f;
-    int scatterPad_ = 0;
+    /// Raw @c IRRender::DebugOverlayMode value for the per-axis scatter's
+    /// instrumentation modes (PER_AXIS_ID / PER_AXIS_ORIGIN, #1457); 0 or any
+    /// lighting-pass mode renders the normal composite. Occupies the std140
+    /// pad slot at offset 124, so existing offsets are unchanged.
+    int scatterDebugMode_ = 0;
     ivec4 visibleFaceIds_{0, 0, 0, 0};
     /// Reserved std140 slots at offsets 144 / 160. These formerly carried the
     /// detached-entity SO(3) forward-scatter residual quat + iso depth axis
@@ -144,7 +148,7 @@ static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
     "FrameDataTrixelToFramebuffer::visibleFaceIds_ must land at offset 128 "
     "(distanceOffset_ ends at 112 → perAxisBase_ 112 / visualYaw_ 120 / "
-    "scatterPad_ 124, then std140 ivec4 alignment rounds to 128)"
+    "scatterDebugMode_ 124, then std140 ivec4 alignment rounds to 128)"
 );
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, detachedResidual_) == 144 &&

@@ -466,6 +466,20 @@ inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
     return float2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
 }
 
+// Exact (unquantized) composite depth key for a forward-scattered face —
+// mirror of scatterCompositeDepthKey in ir_iso_common.glsl; see that file for
+// the full rationale (the rounded key it replaces tied adjacent micro-cells on
+// a foreshortened axis and let draw order pick the farther quad on the
+// sign-flip side of a bracket — the #1457 wrong-voxel-color bands). Keeps the
+// cardinal encodeDepthWithFace scale (x4 + slot) so it co-sorts with the SDF
+// smooth-yaw path. Shared by every forward-scatter composite writer.
+inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) {
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
+    const float yawedSum = origin.x * (c - s) + origin.y * (s + c) + origin.z;
+    return yawedSum * 4.0f + float(slot);
+}
+
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
 // (cosYaw, sinYaw): each in-plane axis grows to |c|*hX + |s|*hY, Z unchanged.
 // CPU mirror: IRMath::yawGrownIsoHalfExtent; GLSL mirror in ir_iso_common.glsl.
@@ -596,6 +610,12 @@ inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
 // forward-scatter grows each quad by along each screen edge normal (#1494).
 // Mirror of the GLSL constant in ir_iso_common.glsl.
 constant float kScatterDilateMarginPx = 0.85;
+
+// Depth penalty (x4+slot key scale) a scatter fragment in the conservative-
+// dilation MARGIN adds — mirror of kScatterMarginDepthBiasKey in
+// ir_iso_common.glsl; see that file for the #1457 rationale (margins only
+// fill pixels no exact footprint claims; never beat a same-plane owner).
+constant float kScatterMarginDepthBiasKey = 0.25;
 
 // Miter limit for the conservative dilation below (#1538). Mirror of the GLSL
 // constant in ir_iso_common.glsl.

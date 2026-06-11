@@ -284,9 +284,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         if (sunShadowDepthMap_ == nullptr) {
             sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         }
-        frameData_.lightingEnabled_ = 1;
+        // Modes above SHADOW (PER_AXIS_ID / PER_AXIS_ORIGIN / UNLIT) belong to
+        // other passes — the lighting shader's overlay fallback would otherwise
+        // misread them as SHADOW. UNLIT additionally disables the modulation
+        // itself so raw rasterized colors flow through (#1457 instrumentation).
+        const int overlayMode = static_cast<int>(IRRender::getDebugOverlay());
+        frameData_.lightingEnabled_ =
+            overlayMode == static_cast<int>(IRRender::DebugOverlayMode::UNLIT) ? 0 : 1;
         frameData_.lightVolumeEnabled_ = 1;
-        frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
+        frameData_.debugOverlayMode_ =
+            overlayMode <= static_cast<int>(IRRender::DebugOverlayMode::SHADOW) ? overlayMode : 0;
         frameData_.hdrEnabled_ = IRRender::getHDREnabled() ? 1 : 0;
         frameData_.exposure_ = IRRender::getExposure();
         frameData_.skyIntensity_ = IRRender::getSkyIntensity();

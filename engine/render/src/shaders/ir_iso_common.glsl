@@ -494,6 +494,27 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
     return vec2(-vx + vy, -vx - vy + 2.0 * worldPos.z);
 }
 
+// Exact (unquantized) composite depth key for a forward-scattered face: the
+// true yawed camera-space iso depth of the recovered face origin, kept in the
+// cardinal encodeDepthWithFace scale (x4 + slot) so it stays comparable with
+// the quantized integer keys other composite writers (the SDF smooth-yaw path)
+// emit. The quantization this replaces (roundHalfUp of the yawed sum) made
+// adjacent micro-cells along a foreshortened in-plane axis TIE on integer
+// depth whenever |cos-sin| or |sin+cos| < 1, and GL_LESS resolves an
+// equal-depth overlap by draw order — which runs AGAINST the depth gradient
+// on the sign-flip side of a bracket (e.g. yaw > 45 deg, cos-sin < 0), so the
+// farther quad won its dilation overlap band: the #1457 wrong-voxel-color
+// bands at voxel boundaries. A continuous key makes geometric ties
+// measure-zero, so the depth test orders every overlap correctly at every
+// residual. Shared by every forward-scatter composite writer — do not inline
+// per-shader copies.
+float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {
+    float c = cos(visualYaw);
+    float s = sin(visualYaw);
+    float yawedSum = origin.x * (c - s) + origin.y * (s + c) + origin.z;
+    return yawedSum * 4.0 + float(slot);
+}
+
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
 // (cosYaw, sinYaw): each in-plane axis grows to |c|*hX + |s|*hY, Z unchanged.
 // CPU mirror: IRMath::yawGrownIsoHalfExtent. Keeps the SDF/voxel iso-cull
@@ -664,6 +685,16 @@ void faceInPlaneIsoSteps(int faceId, out ivec2 su, out ivec2 sv) {
 // ~0.85px reliably closes the sub-pixel thin-sliver waffle while keeping the
 // silhouette/over-fill within a fraction of a pixel.
 const float kScatterDilateMarginPx = 0.85;
+
+// Depth penalty (in the x4+slot composite-key scale) a scatter fragment in the
+// conservative-dilation MARGIN adds, so a margin only fills pixels no exact
+// footprint claims (#1457). Two cells of the same face plane carry identical
+// per-fragment planar depth, so without the bias their margin-vs-interior
+// overlap is an exact tie decided by draw order — wrong-voxel-color bands on
+// the sign-flip side of a bracket. 0.25 key units = 1/16 world unit: beats
+// exact ties, far below any off-knife-edge separation between distinct planes
+// (>= 4*|cos-sin| key units), so genuine occlusion is never reordered.
+const float kScatterMarginDepthBiasKey = 0.25;
 
 // Miter limit for the conservative dilation below (#1538): caps how far a sharp
 // (acute) sliver corner is allowed to extend, in multiples of marginPx. Bounds
