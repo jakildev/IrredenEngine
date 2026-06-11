@@ -116,11 +116,40 @@ struct CanvasStressSettings {
     // the screen-locked overlay path (the detached-canvas regression canary, and
     // the behavior the committed references were captured against).
     bool worldPlaceReVox_ = true;
+    // #1721 diagnosis harness. `--only <group>[,<group>...]` spawns only the
+    // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
+    // 0 means no filter (default run, byte-identical). The sweep flags replace
+    // the base auto-screenshot suite with a focused capture run and force
+    // --no-auto-rotate so the swept variable is the only one moving:
+    // `--sweep-yaw <from> <to> <n>` interpolates camera yaw (radians) across n
+    // shots (brackets a rebracket threshold, e.g. 0.6→0.95 across π/4);
+    // `--sweep-frames <n> <settle>` captures n identical-camera shots `settle`
+    // frames apart so entity self-spin phase is the swept variable (octahedral
+    // corner-threshold capture).
+    std::uint32_t onlyGroups_ = 0;
+    float sweepYawFrom_ = 0.0f;
+    float sweepYawTo_ = 0.0f;
+    int sweepYawCount_ = 0;
+    int sweepFramesCount_ = 0;
+    int sweepFramesSettle_ = 0;
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
     // supplies the default when the flag is absent (CLI overrides config).
     bool autoRotateSetByCli_ = false;
+};
+
+// #1721 spawn groups for --only isolation. Group placement stays derived from
+// the CONFIGURED scene (e.g. the GRID spin row's y comes from the configured
+// main-grid size even when maingrid is filtered out) so isolated captures stay
+// positionally comparable to the default run.
+enum SpawnGroup : std::uint32_t {
+    kGroupMainGrid = 1u << 0,
+    kGroupGridSpin = 1u << 1,
+    kGroupCanary = 1u << 2,
+    kGroupReVox = 1u << 3,
+    kGroupOrbit = 1u << 4,
+    kGroupFloor = 1u << 5,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -225,11 +254,58 @@ constexpr Color kFloorColor{150, 152, 160, 255};
 CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
 
+bool groupEnabled(std::uint32_t group) {
+    return g_settings.onlyGroups_ == 0u || (g_settings.onlyGroups_ & group) != 0u;
+}
+
+std::uint32_t parseSpawnGroups(const char *arg) {
+    struct GroupName {
+        const char *name_;
+        std::uint32_t bit_;
+    };
+    constexpr GroupName kGroupNames[]{
+        {"maingrid", kGroupMainGrid},
+        {"gridspin", kGroupGridSpin},
+        {"canary", kGroupCanary},
+        {"revox", kGroupReVox},
+        {"orbit", kGroupOrbit},
+        {"floor", kGroupFloor},
+    };
+    std::uint32_t bits = 0u;
+    const std::string list{arg};
+    std::size_t start = 0;
+    while (start <= list.size()) {
+        std::size_t end = list.find(',', start);
+        if (end == std::string::npos) {
+            end = list.size();
+        }
+        const std::string token = list.substr(start, end - start);
+        bool matched = false;
+        for (const auto &group : kGroupNames) {
+            if (token == group.name_) {
+                bits |= group.bit_;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched && !token.empty()) {
+            IR_LOG_WARN("canvas_stress: unknown --only group '{}'", token);
+        }
+        start = end + 1;
+    }
+    return bits;
+}
+
 // Combined shot table (base SO(3) suite + the re-voxelize framing shots),
 // built at runtime in initSystems because the re-voxelize shots' camera-iso
 // positions are derived from world positions. File-scope so it outlives the
 // game loop, per the AutoScreenshotConfig lifetime contract.
 std::vector<IRVideo::AutoScreenshotShot> g_allShots;
+
+// Generated sweep-shot labels (#1721) need stable storage for the
+// AutoScreenshotShot `const char *label_` lifetime contract. Reserved to its
+// final size before any push so c_str() pointers never move.
+std::vector<std::string> g_sweepShotLabels;
 
 // SO(3) detached-canvas regression suite (#1444).
 //
@@ -581,7 +657,26 @@ void parseArgs(int argc, char **argv) {
             // screen-locked overlay path — keep the lone L-prism screen-locked
             // rather than inheriting the #1621 world-place default.
             g_settings.worldPlaceReVox_ = false;
+        } else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) {
+            g_settings.onlyGroups_ |= parseSpawnGroups(argv[i + 1]);
+            ++i;
+        } else if (std::strcmp(argv[i], "--sweep-yaw") == 0 && i + 3 < argc) {
+            g_settings.sweepYawFrom_ = static_cast<float>(std::atof(argv[i + 1]));
+            g_settings.sweepYawTo_ = static_cast<float>(std::atof(argv[i + 2]));
+            g_settings.sweepYawCount_ = std::atoi(argv[i + 3]);
+            i += 3;
+        } else if (std::strcmp(argv[i], "--sweep-frames") == 0 && i + 2 < argc) {
+            g_settings.sweepFramesCount_ = std::atoi(argv[i + 1]);
+            g_settings.sweepFramesSettle_ = std::atoi(argv[i + 2]);
+            i += 2;
         }
+    }
+    if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
+        // Sweep captures isolate one moving variable; continuous camera
+        // auto-yaw would otherwise drift the pose during the settle frames and
+        // confound both sweep kinds.
+        g_settings.autoRotate_ = false;
+        g_settings.autoRotateSetByCli_ = true;
     }
 }
 
@@ -637,8 +732,9 @@ void initSystems() {
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
 
     if (g_settings.autoRotate_) {
-        renderPipeline.push_back(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame
-        ));
+        renderPipeline.push_back(
+            IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(kYawDeltaPerFrame)
+        );
     }
 
     if (g_settings.fullRotate_) {
@@ -647,22 +743,27 @@ void initSystems() {
         // anchors the singleton tick; GRID canvases see only the Z-component
         // (via IRPrefab::Camera::getYaw); DETACHED canvases pick up the full
         // quat through PROPAGATE_CANVAS_ROTATION.
-        renderPipeline.push_back(IRSystem::createSystem<C_Camera>(
-            "AutoFullRotate",
-            [](C_Camera &) {},
-            []() {
-                const vec4 delta = IRMath::quatMul(
-                    IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), kFullRotateYawPerFrame),
-                    IRMath::quatMul(
-                        IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), kFullRotatePitchYPerFrame),
-                        IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), kFullRotatePitchPerFrame)
-                    )
-                );
-                IRPrefab::Camera::setRotationQuat(
-                    IRMath::quatMul(delta, IRPrefab::Camera::getRotationQuat())
-                );
-            }
-        ));
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "AutoFullRotate",
+                [](C_Camera &) {},
+                []() {
+                    const vec4 delta = IRMath::quatMul(
+                        IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), kFullRotateYawPerFrame),
+                        IRMath::quatMul(
+                            IRMath::quatAxisAngle(
+                                vec3(0.0f, 1.0f, 0.0f),
+                                kFullRotatePitchYPerFrame
+                            ),
+                            IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), kFullRotatePitchPerFrame)
+                        )
+                    );
+                    IRPrefab::Camera::setRotationQuat(
+                        IRMath::quatMul(delta, IRPrefab::Camera::getRotationQuat())
+                    );
+                }
+            )
+        );
     }
 
     if (!g_settings.noLighting_) {
@@ -685,28 +786,59 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
     if (g_autoWarmupFrames > 0) {
-        // Base SO(3) suite + dedicated re-voxelize framing shots. Detached
-        // canvases rasterize their canvas-local pool against the MAIN camera's
-        // world cull viewport, so a camera PAN moves the viewport off the pool
-        // and culls every detached canvas — the framing shots must stay at
-        // camera (0,0). The re-voxelize solids sit on the screen-center column
-        // (z-separated) and read large there; the solids' own auto-spin supplies
-        // the rotation. Zoom 1 frames both; the wide shot gives full context.
-        g_allShots.assign(kShots, kShots + sizeof(kShots) / sizeof(kShots[0]));
-        g_allShots.push_back({1.0f, vec2(0.0f), 0.0f, "revoxelize_solids"});
-        // Zoomed in on the screen-center column so the re-voxelized cube + L read
-        // clearly as true-3D solids (voxel centers reorganized), the headline
-        // #1555 criterion. Round-to-cell speckle is the expected P1 aliasing.
-        g_allShots.push_back({2.2f, vec2(0.0f), 0.0f, "revoxelize_solids_zoom"});
-        // Wide pull-back framing the full orbit ring (radius 200) around the
-        // center cluster, so the added shape variety reads as one tumbling orbit.
-        g_allShots.push_back({0.32f, vec2(0.0f), 0.0f, "orbit_overview"});
+        int settleFrames = 60;
+        if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
+            // #1721 sweep mode: a focused diagnostic capture REPLACES the base
+            // suite — the swept variable (camera yaw, or entity spin phase via
+            // inter-shot settle frames) should be the only thing changing.
+            const int totalSweepShots = IRMath::max(g_settings.sweepYawCount_, 0) +
+                                        IRMath::max(g_settings.sweepFramesCount_, 0);
+            g_sweepShotLabels.reserve(totalSweepShots);
+            for (int i = 0; i < g_settings.sweepYawCount_; ++i) {
+                const float t =
+                    g_settings.sweepYawCount_ > 1
+                        ? static_cast<float>(i) / static_cast<float>(g_settings.sweepYawCount_ - 1)
+                        : 0.0f;
+                const float yaw = g_settings.sweepYawFrom_ +
+                                  t * (g_settings.sweepYawTo_ - g_settings.sweepYawFrom_);
+                g_sweepShotLabels.push_back("sweep_yaw_" + std::to_string(i));
+                g_allShots.push_back({1.0f, vec2(0.0f), yaw, g_sweepShotLabels.back().c_str()});
+            }
+            for (int i = 0; i < g_settings.sweepFramesCount_; ++i) {
+                g_sweepShotLabels.push_back("sweep_frame_" + std::to_string(i));
+                g_allShots.push_back(
+                    {1.0f, vec2(0.0f), g_settings.cameraYaw_, g_sweepShotLabels.back().c_str()}
+                );
+            }
+            if (g_settings.sweepFramesSettle_ > 0) {
+                settleFrames = g_settings.sweepFramesSettle_;
+            }
+        } else {
+            // Base SO(3) suite + dedicated re-voxelize framing shots. Detached
+            // canvases rasterize their canvas-local pool against the MAIN camera's
+            // world cull viewport, so a camera PAN moves the viewport off the pool
+            // and culls every detached canvas — the framing shots must stay at
+            // camera (0,0). The re-voxelize solids sit on the screen-center column
+            // (z-separated) and read large there; the solids' own auto-spin supplies
+            // the rotation. Zoom 1 frames both; the wide shot gives full context.
+            g_allShots.assign(kShots, kShots + sizeof(kShots) / sizeof(kShots[0]));
+            g_allShots.push_back({1.0f, vec2(0.0f), 0.0f, "revoxelize_solids"});
+            // Zoomed in on the screen-center column so the re-voxelized cube + L read
+            // clearly as true-3D solids (voxel centers reorganized), the headline
+            // #1555 criterion. Round-to-cell speckle is the expected P1 aliasing.
+            g_allShots.push_back({2.2f, vec2(0.0f), 0.0f, "revoxelize_solids_zoom"});
+            // Wide pull-back framing the full orbit ring (radius 200) around the
+            // center cluster, so the added shape variety reads as one tumbling orbit.
+            g_allShots.push_back({0.32f, vec2(0.0f), 0.0f, "orbit_overview"});
+        }
 
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
-        // 60 settle frames between shots: entities advance ~24° at base spin rate,
-        // giving clearly distinct rotation states per shot for the SO(3) suite.
-        cfg.settleFrames_ = 60;
+        // Base suite: 60 settle frames between shots — entities advance ~24° at
+        // base spin rate, giving clearly distinct rotation states per shot.
+        // Sweep mode: --sweep-frames' settle overrides so spin phase advances
+        // by a controlled amount between captures.
+        cfg.settleFrames_ = settleFrames;
         cfg.shots_ = g_allShots.data();
         cfg.numShots_ = static_cast<int>(g_allShots.size());
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
@@ -746,7 +878,7 @@ void initEntities() {
         // screen-locked DETACHED entities (orbit ring, canary cubes) do NOT —
         // they composite as overlays after the shadow bake and never write
         // world depth (#1582 Option B).
-        if (!g_settings.soloRevox_) {
+        if (!g_settings.soloRevox_ && groupEnabled(kGroupFloor)) {
             const EntityId floor = IREntity::createEntity(
                 C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
                 C_ShapeDescriptor{
@@ -761,7 +893,10 @@ void initEntities() {
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
     // T-293 inter-trixel deformation on the world canvas under camera yaw.
-    const int n = g_settings.soloRevox_ ? 0 : IRMath::max(0, g_settings.mainGridSize_);
+    // nConfigured keeps dependent placement (the GRID spin row's y) stable
+    // when the group is filtered out by --only (#1721).
+    const int nConfigured = IRMath::max(0, g_settings.mainGridSize_);
+    const int n = (g_settings.soloRevox_ || !groupEnabled(kGroupMainGrid)) ? 0 : nConfigured;
     constexpr float kGridSpacing = 7.0f;
     const float gridCenter = (static_cast<float>(IRMath::max(n, 1)) - 1.0f) * 0.5f;
     for (int y = 0; y < n; ++y) {
@@ -801,8 +936,9 @@ void initEntities() {
         {255, 220, 120, 255},
     };
     const float gridSpinCenter = (static_cast<float>(kGridSpinCount) - 1.0f) * 0.5f;
-    const float gridSpinY = (static_cast<float>(n) * 0.5f + 1.5f) * kGridSpacing;
-    const int gridSpinCount = g_settings.soloRevox_ ? 0 : kGridSpinCount;
+    const float gridSpinY = (static_cast<float>(nConfigured) * 0.5f + 1.5f) * kGridSpacing;
+    const int gridSpinCount =
+        (g_settings.soloRevox_ || !groupEnabled(kGroupGridSpin)) ? 0 : kGridSpinCount;
     for (int i = 0; i < gridSpinCount; ++i) {
         const vec3 pos{
             (static_cast<float>(i) - gridSpinCenter) * kGridSpinSpacing,
@@ -821,7 +957,9 @@ void initEntities() {
     // distinct SO(3) rotation. The world spacing must exceed the detached canvas
     // footprint (composited at canvasSize / mainCanvasSize of the framebuffer)
     // or the canvases overlap — kDetachedSpacing is sized for the 128-px canvas.
-    const int detached = g_settings.soloRevox_ ? 0 : IRMath::max(0, g_settings.detachedCount_);
+    const int detached = (g_settings.soloRevox_ || !groupEnabled(kGroupCanary))
+                             ? 0
+                             : IRMath::max(0, g_settings.detachedCount_);
     constexpr float kDetachedSpacing = 160.0f;
     const int cols = IRMath::max(
         1,
@@ -872,18 +1010,20 @@ void initEntities() {
     // reads as a true 3D-rotated solid; a slow auto-spin then sweeps the full
     // SO(3) range to prove smoothness (no pop) and parade every residual pose.
     const float reVoxSpin = g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame;
-    spawnDetachedReVoxelizeSolid(
-        0,
-        kReVoxAsymWorld,
-        IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f, 0.6f, 0.3f)), IRMath::kPi / 4.5f),
-        vec3(1.0f, 1.0f, 0.4f),
-        reVoxSpin,
-        Color{255, 150, 60, 255},
-        /*carveAsymmetric=*/true,
-        /*multiColor=*/true,
-        /*worldPlaced=*/g_settings.worldPlaceReVox_
-    );
-    if (!g_settings.soloRevox_) {
+    if (g_settings.soloRevox_ || groupEnabled(kGroupReVox)) {
+        spawnDetachedReVoxelizeSolid(
+            0,
+            kReVoxAsymWorld,
+            IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f, 0.6f, 0.3f)), IRMath::kPi / 4.5f),
+            vec3(1.0f, 1.0f, 0.4f),
+            reVoxSpin,
+            Color{255, 150, 60, 255},
+            /*carveAsymmetric=*/true,
+            /*multiColor=*/true,
+            /*worldPlaced=*/g_settings.worldPlaceReVox_
+        );
+    }
+    if (!g_settings.soloRevox_ && groupEnabled(kGroupReVox)) {
         spawnDetachedReVoxelizeSolid(
             1,
             kReVoxCubeWorld,
@@ -911,17 +1051,19 @@ void initEntities() {
     // floor, past the kMaxShadowDepthRange=24 receive cutoff, so they can never
     // demonstrate cast (the #1591 lesson); this one mirrors the proven GRID
     // caster→floor geometry instead. Follows --screen-lock-revox like the rest.
-    spawnDetachedReVoxelizeSolid(
-        2,
-        kReVoxGroundedWorld,
-        IRMath::quatAxisAngle(IRMath::normalize(vec3(0.5f, 1.0f, 0.2f)), IRMath::kPi / 4.2f),
-        vec3(0.7f, 0.3f, 1.0f),
-        reVoxSpin,
-        Color{210, 120, 255, 255},
-        /*carveAsymmetric=*/false,
-        /*multiColor=*/false,
-        /*worldPlaced=*/g_settings.worldPlaceReVox_
-    );
+    if (groupEnabled(kGroupReVox)) {
+        spawnDetachedReVoxelizeSolid(
+            2,
+            kReVoxGroundedWorld,
+            IRMath::quatAxisAngle(IRMath::normalize(vec3(0.5f, 1.0f, 0.2f)), IRMath::kPi / 4.2f),
+            vec3(0.7f, 0.3f, 1.0f),
+            reVoxSpin,
+            Color{210, 120, 255, 255},
+            /*carveAsymmetric=*/false,
+            /*multiColor=*/false,
+            /*worldPlaced=*/g_settings.worldPlaceReVox_
+        );
+    }
 
     // Orbit ring: a wider second ring of varied silhouettes that tumbles around
     // the center cluster. Cycles shape kind, rotation mode (GRID / DETACHED /
@@ -1004,7 +1146,8 @@ void initEntities() {
         13,
         12,
     };
-    for (int i = 0; i < kOrbitCount; ++i) {
+    const int orbitCount = groupEnabled(kGroupOrbit) ? kOrbitCount : 0;
+    for (int i = 0; i < orbitCount; ++i) {
         const float angle =
             IRMath::kTwoPi * static_cast<float>(i) / static_cast<float>(kOrbitCount);
         const vec3 worldPos{
@@ -1039,8 +1182,8 @@ void initEntities() {
         n,
         n,
         n * n,
-        kGridSpinCount,
+        gridSpinCount,
         detached,
-        kOrbitCount
+        orbitCount
     );
 }
