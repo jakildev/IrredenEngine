@@ -48,7 +48,7 @@ gh` line on stderr so misses are visible in pane logs):
 | `fleet-pr view <N> [--repo engine\|game]` | `gh pr view <N> --comments` |
 | `fleet-pr diff <N> [--repo engine\|game]` | `gh pr diff <N>` |
 | `fleet-pr comments <N> [--repo engine\|game]` | `gh pr view <N> --comments` + `gh api repos/.../pulls/<N>/comments` + `gh api repos/.../pulls/<N>/reviews` (merged) |
-| `fleet-issue view <N> [--repo engine\|game]` | `gh issue view <N> --comments` |
+| `fleet-issue view <N> [--repo engine\|game]` | `gh issue view <N> --repo <slug> --json number,title,state,labels,body,comments` |
 
 ### What stays direct
 
