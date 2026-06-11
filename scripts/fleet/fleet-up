@@ -22,44 +22,46 @@ ENGINE="$HOME/src/IrredenEngine"
 GAME="$ENGINE/creations/game"
 SESSION="fleet"
 
-# Model tiers — change these when bumping the fleet to a new release.
+# Model classes — change these when bumping the fleet to a new release.
 #
-# The queue's tier vocabulary is historical: role slugs (opus-worker),
-# labels (fleet:opus / fleet:sonnet), and issue `Model:` fields say
-# "opus" / "sonnet" but mean HEAVY tier / LIGHT tier — they no longer
-# pin the literal model. HEAVY_MODEL is whatever serves the heavy tier
-# today (Fable 5 while the plan covers it, Opus 4.8 once it doesn't);
-# SONNET_MODEL serves the light tier and really is Sonnet.
+# The queue routes work by model CLASS: fable | opus | sonnet. Tasks carry
+# a class (`fleet:fable` / `fleet:opus` / `fleet:sonnet` label, `Model:`
+# body field), the dispatcher launches each worker iteration with the
+# class of the task it's serving, and the table below maps each class to
+# a concrete model string. Class names are the stable queue vocabulary;
+# the strings bump per release. fable is opt-in for the genuinely hard
+# work (see FLEET.md "Model split"); opus is the workhorse class.
 #
-# The candidate ladder below is probed in order at fleet boot (see
-# resolve_heavy_model further down, after the session-exists early exit)
-# and the first available model wins. The last entry is the floor and is
-# accepted unprobed. Pin a specific model with FLEET_HEAVY_MODEL (env or
-# ~/.fleet/fleet-up.conf) to skip the probe entirely.
+# The fable ladder below is probed in order at fleet boot (Step 0, after
+# the session-exists early exit) and the first available model wins —
+# when the plan stops covering Fable, the fable class degrades to the
+# Opus floor automatically and fleet:fable tasks keep running. The last
+# entry is the floor and is accepted unprobed. Pin any class with
+# FLEET_MODEL_FABLE / FLEET_MODEL_OPUS / FLEET_MODEL_SONNET (env or
+# ~/.fleet/fleet-up.conf); pinning fable skips the probe.
 #
-# This is the single source of truth: the resolved HEAVY_MODEL is
+# This is the single source of truth: the resolved class table is
 # exported below so the nohup'd fleet-dispatcher inherits it for its
 # transient roles (workers, reviewers, merger, smoke), and launch_cmd
-# threads it into the architect panes via fleet-babysit. Bump here and
-# every role moves.
+# threads the fable class into the architect panes via fleet-babysit.
 #
 # The "[1m]" suffix selects the 1M-token context variant. On this Max plan
-# the 1M-context beta is covered for the heavy tier but NOT for Sonnet: a
-# sonnet[1m] dispatch dies instantly with "API Error: Usage credits
-# required for 1M context" (turn 1, $0.00). So the heavy tier keeps [1m]
-# (real headroom for long architect/worker iterations); Sonnet uses the
-# standard 200K alias, which its bounded review/author iterations fit
+# the 1M-context beta is covered for the fable/opus classes but NOT for
+# Sonnet: a sonnet[1m] dispatch dies instantly with "API Error: Usage
+# credits required for 1M context" (turn 1, $0.00). So fable/opus keep
+# [1m] (real headroom for long architect/worker iterations); Sonnet uses
+# the standard 200K alias, which its bounded review/author iterations fit
 # fine. (If you ever want sonnet[1m], enable usage credits at
-# claude.ai/settings/usage and re-add the suffix.) Heavy candidates are
+# claude.ai/settings/usage and re-add the suffix.) fable/opus strings are
 # pinned to full versions (a bare "fable"/"opus" alias would silently
 # upgrade); sonnet stays an alias since its budget is cheap.
-HEAVY_MODEL_CANDIDATES=(
+FABLE_MODEL_CANDIDATES=(
     "claude-fable-5[1m]"
     "claude-fable-5"
     "claude-opus-4-8[1m]"
 )
-SONNET_MODEL="sonnet"
-export SONNET_MODEL
+OPUS_CLASS_DEFAULT="claude-opus-4-8[1m]"
+SONNET_CLASS_DEFAULT="sonnet"
 
 # Minimum seconds between opus-reviewer relaunches (cooldown floor).
 # fleet-babysit reads this via FLEET_MIN_BACKOFF; keep the two in sync.
@@ -140,13 +142,19 @@ _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
 # the conf itself.
 _env_effort_opus_architect="${FLEET_EFFORT_OPUS_ARCHITECT:-}"
 _env_effort_game_architect="${FLEET_EFFORT_GAME_ARCHITECT:-}"
-# Same guard for the model knobs (FLEET_HEAVY_MODEL pins the heavy tier
-# and skips the probe; FLEET_HEAVY_MODEL_FALLBACK feeds --fallback-model
-# on dispatched print-mode iterations). The fallback capture uses `-`
-# (not `:-`) so an operator can disable the fallback chain entirely with
-# an explicit empty FLEET_HEAVY_MODEL_FALLBACK="".
-_env_heavy_model="${FLEET_HEAVY_MODEL:-}"
-_env_heavy_model_fallback="${FLEET_HEAVY_MODEL_FALLBACK-__unset__}"
+# Same guard for the model knobs. FLEET_MODEL_FABLE pins the fable class
+# and skips the probe; FLEET_MODEL_OPUS / FLEET_MODEL_SONNET pin the other
+# classes; FLEET_MODEL_MERGER / FLEET_MODEL_OPUS_REVIEWER override those
+# roles' dispatch models; FLEET_MODEL_FABLE_FALLBACK feeds
+# --fallback-model on dispatched fable-class iterations. The fallback
+# capture uses `-` (not `:-`) so an operator can disable the chain
+# entirely with an explicit empty FLEET_MODEL_FABLE_FALLBACK="".
+_env_model_fable="${FLEET_MODEL_FABLE:-}"
+_env_model_opus="${FLEET_MODEL_OPUS:-}"
+_env_model_sonnet="${FLEET_MODEL_SONNET:-}"
+_env_model_merger="${FLEET_MODEL_MERGER:-}"
+_env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
+_env_model_fable_fallback="${FLEET_MODEL_FABLE_FALLBACK-__unset__}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
@@ -161,14 +169,19 @@ FLEET_CONCURRENCY_MERGER="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
 # the resolved value; it does not read the conf itself.
 FLEET_EFFORT_OPUS_ARCHITECT="${_env_effort_opus_architect:-${FLEET_EFFORT_OPUS_ARCHITECT:-${FLEET_EFFORT:-xhigh}}}"
 FLEET_EFFORT_GAME_ARCHITECT="${_env_effort_game_architect:-${FLEET_EFFORT_GAME_ARCHITECT:-${FLEET_EFFORT:-xhigh}}}"
-FLEET_HEAVY_MODEL="${_env_heavy_model:-${FLEET_HEAVY_MODEL:-}}"
-if [[ "$_env_heavy_model_fallback" != "__unset__" ]]; then
-    FLEET_HEAVY_MODEL_FALLBACK="$_env_heavy_model_fallback"
+FLEET_MODEL_FABLE="${_env_model_fable:-${FLEET_MODEL_FABLE:-}}"
+FLEET_MODEL_OPUS="${_env_model_opus:-${FLEET_MODEL_OPUS:-}}"
+FLEET_MODEL_SONNET="${_env_model_sonnet:-${FLEET_MODEL_SONNET:-}}"
+FLEET_MODEL_MERGER="${_env_model_merger:-${FLEET_MODEL_MERGER:-}}"
+FLEET_MODEL_OPUS_REVIEWER="${_env_model_opus_reviewer:-${FLEET_MODEL_OPUS_REVIEWER:-}}"
+if [[ "$_env_model_fable_fallback" != "__unset__" ]]; then
+    FLEET_MODEL_FABLE_FALLBACK="$_env_model_fable_fallback"
 fi
 unset _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_merger \
       _env_effort_opus_architect _env_effort_game_architect \
-      _env_heavy_model _env_heavy_model_fallback
+      _env_model_fable _env_model_opus _env_model_sonnet \
+      _env_model_merger _env_model_opus_reviewer _env_model_fable_fallback
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
 export FLEET_CONCURRENCY_MERGER
@@ -247,7 +260,7 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
 fi
 
 # ----------------------------------------------------------------------
-# Step 0: resolve the heavy-tier model
+# Step 0: resolve the model classes
 # ----------------------------------------------------------------------
 #
 # Sits after the session-exists early exit so re-running fleet-up
@@ -268,32 +281,30 @@ probe_model() {
     return "$rc"
 }
 
-# Walk HEAVY_MODEL_CANDIDATES; first model that answers wins. The probe
+# Walk FABLE_MODEL_CANDIDATES; first model that answers wins. The probe
 # is what makes the Fable->Opus failover automatic when the plan loses
-# Fable access: re-run fleet-up and the fleet lands on the next rung.
-# Dispatched (print-mode) iterations additionally carry --fallback-model,
-# so a mid-session loss degrades per-iteration without a fleet-up rerun;
-# interactive architect panes can't take that flag (it's --print-only)
-# and rely on this launch-time resolution alone.
-HEAVY_MODEL=""
-if [[ -n "$FLEET_HEAVY_MODEL" ]]; then
-    HEAVY_MODEL="$FLEET_HEAVY_MODEL"
-    echo "fleet-up: heavy tier pinned via FLEET_HEAVY_MODEL -> $HEAVY_MODEL"
+# Fable access: re-run fleet-up and the fable class lands on the next
+# rung. Dispatched (print-mode) fable iterations additionally carry
+# --fallback-model, so a mid-session loss degrades per-iteration without
+# a fleet-up rerun; interactive architect panes can't take that flag
+# (it's --print-only) and rely on this launch-time resolution alone.
+if [[ -n "$FLEET_MODEL_FABLE" ]]; then
+    echo "fleet-up: fable class pinned via FLEET_MODEL_FABLE -> $FLEET_MODEL_FABLE"
 elif [[ "${FLEET_MODEL_PROBE:-1}" == "0" ]]; then
-    HEAVY_MODEL="${HEAVY_MODEL_CANDIDATES[0]}"
-    echo "fleet-up: FLEET_MODEL_PROBE=0 -> $HEAVY_MODEL (unprobed)"
+    FLEET_MODEL_FABLE="${FABLE_MODEL_CANDIDATES[0]}"
+    echo "fleet-up: FLEET_MODEL_PROBE=0 -> $FLEET_MODEL_FABLE (unprobed)"
 else
-    _last_candidate="${HEAVY_MODEL_CANDIDATES[${#HEAVY_MODEL_CANDIDATES[@]}-1]}"
-    for _candidate in "${HEAVY_MODEL_CANDIDATES[@]}"; do
+    _last_candidate="${FABLE_MODEL_CANDIDATES[${#FABLE_MODEL_CANDIDATES[@]}-1]}"
+    for _candidate in "${FABLE_MODEL_CANDIDATES[@]}"; do
         if [[ "$_candidate" == "$_last_candidate" ]]; then
-            HEAVY_MODEL="$_candidate"
-            echo "fleet-up: heavy tier -> $HEAVY_MODEL (fallback floor, unprobed)"
+            FLEET_MODEL_FABLE="$_candidate"
+            echo "fleet-up: fable class -> $FLEET_MODEL_FABLE (fallback floor, unprobed)"
             break
         fi
         printf 'fleet-up: probing %s ... ' "$_candidate"
         if probe_model "$_candidate"; then
-            HEAVY_MODEL="$_candidate"
-            echo "ok — heavy tier -> $HEAVY_MODEL"
+            FLEET_MODEL_FABLE="$_candidate"
+            echo "ok — fable class -> $FLEET_MODEL_FABLE"
             break
         fi
         echo "unavailable"
@@ -301,19 +312,33 @@ else
     unset _candidate _last_candidate
 fi
 
-# Fallback chain for dispatched heavy iterations (claude --fallback-model;
-# comma-separated list accepted). Cleared when it would just repeat the
-# resolved model. FLEET_HEAVY_MODEL_FALLBACK="" disables it.
-HEAVY_MODEL_FALLBACK="${FLEET_HEAVY_MODEL_FALLBACK-claude-opus-4-8[1m]}"
-if [[ "$HEAVY_MODEL_FALLBACK" == "$HEAVY_MODEL" ]]; then
-    HEAVY_MODEL_FALLBACK=""
+FLEET_MODEL_OPUS="${FLEET_MODEL_OPUS:-$OPUS_CLASS_DEFAULT}"
+FLEET_MODEL_SONNET="${FLEET_MODEL_SONNET:-$SONNET_CLASS_DEFAULT}"
+
+# Dispatch models for the bounded fixed-model roles. Merger work is
+# mechanical-first (fleet-rebase clears clean rebases for zero tokens;
+# the LLM pass only untangles conflicts), so it runs sonnet. The final
+# reviewer's reasoning is bounded by the diff in front of it, so it runs
+# the opus class — fable buys nothing there.
+FLEET_MODEL_MERGER="${FLEET_MODEL_MERGER:-$FLEET_MODEL_SONNET}"
+FLEET_MODEL_OPUS_REVIEWER="${FLEET_MODEL_OPUS_REVIEWER:-$FLEET_MODEL_OPUS}"
+
+# Fallback chain for dispatched fable-class iterations (claude
+# --fallback-model; comma-separated list accepted). Cleared when it would
+# just repeat the resolved model (fable already resolved to the opus
+# floor). FLEET_MODEL_FABLE_FALLBACK="" disables it.
+FLEET_FABLE_FALLBACK="${FLEET_MODEL_FABLE_FALLBACK-$FLEET_MODEL_OPUS}"
+if [[ "$FLEET_FABLE_FALLBACK" == "$FLEET_MODEL_FABLE" ]]; then
+    FLEET_FABLE_FALLBACK=""
 fi
 
-# Back-compat: OPUS_MODEL is the pre-Fable name for the heavy-tier model.
-# fleet-dispatcher reads HEAVY_MODEL with an OPUS_MODEL fallthrough;
-# export both so older tooling and operator muscle memory keep working.
-OPUS_MODEL="$HEAVY_MODEL"
-export HEAVY_MODEL HEAVY_MODEL_FALLBACK OPUS_MODEL
+# Legacy names: OPUS_MODEL / SONNET_MODEL predate the class table; a
+# standalone dispatcher run still reads them as fallthroughs.
+OPUS_MODEL="$FLEET_MODEL_OPUS"
+SONNET_MODEL="$FLEET_MODEL_SONNET"
+export FLEET_MODEL_FABLE FLEET_MODEL_OPUS FLEET_MODEL_SONNET
+export FLEET_MODEL_MERGER FLEET_MODEL_OPUS_REVIEWER FLEET_FABLE_FALLBACK
+export OPUS_MODEL SONNET_MODEL
 
 # Short human-readable tag for a model string, shown in pane labels next
 # to the role slug (e.g. "opus-worker-1 [fable 1m]"). Role slugs keep the
@@ -327,8 +352,11 @@ model_tag() {
     tag="${tag/\[1m\]/ 1m}"
     printf '%s' "$tag"
 }
-HEAVY_TAG="$(model_tag "$HEAVY_MODEL")"
-SONNET_TAG="$(model_tag "$SONNET_MODEL")"
+FABLE_TAG="$(model_tag "$FLEET_MODEL_FABLE")"
+OPUS_TAG="$(model_tag "$FLEET_MODEL_OPUS")"
+SONNET_TAG="$(model_tag "$FLEET_MODEL_SONNET")"
+MERGER_TAG="$(model_tag "$FLEET_MODEL_MERGER")"
+OPUS_REVIEWER_TAG="$(model_tag "$FLEET_MODEL_OPUS_REVIEWER")"
 
 # ----------------------------------------------------------------------
 # Step 1: ensure all worktrees exist
@@ -1191,7 +1219,7 @@ pane_stagger() {
 }
 
 launch_cmd() {
-    # $1 = model string (e.g. "$HEAVY_MODEL" / "$SONNET_MODEL"),
+    # $1 = model string (e.g. "$FLEET_MODEL_FABLE" / "$FLEET_MODEL_SONNET"),
     #      $2 = role slug (without role- prefix)
     # $3 = loop interval (optional — for polling roles like reviewers/queue-mgr)
     local model="$1"
@@ -1279,9 +1307,9 @@ tmux new-session -d -s "$SESSION" -n fleet \
 # can predate this process). Panes feed it to ir-build -> ir-acquire for
 # correct per-build CPU sizing.
 tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
-# Same treatment for the heavy-tier fallback chain: fleet-babysit panes
+# Same treatment for the fable-class fallback chain: fleet-babysit panes
 # read it to pass --fallback-model on print-mode (worker) iterations.
-tmux set-environment -g HEAVY_MODEL_FALLBACK "$HEAVY_MODEL_FALLBACK"
+tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
 label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [$SONNET_TAG]"
 set_fleet_role "$TOP_LEFT" "sonnet-author"
@@ -1290,15 +1318,15 @@ pane_stagger
 # Split bottom 2/3 off — that becomes the middle row's leftmost pane.
 MID_LEFT=$(tmux split-window -v -t "$TOP_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-architect" \
-    "$(launch_cmd "$HEAVY_MODEL" opus-architect)")
-label_pane_id "$MID_LEFT" "opus-architect [$HEAVY_TAG]"
+    "$(launch_cmd "$FLEET_MODEL_FABLE" opus-architect)")
+label_pane_id "$MID_LEFT" "opus-architect [$FABLE_TAG]"
 pane_stagger
 
 # Split bottom 1/2 of the middle off — that becomes bottom row leftmost.
 BOT_LEFT=$(tmux split-window -v -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-1" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_LEFT" "opus-worker-1 [$HEAVY_TAG]"
+label_pane_id "$BOT_LEFT" "opus-worker-1 [$OPUS_TAG]"
 set_fleet_role "$BOT_LEFT" "opus-worker"
 pane_stagger
 
@@ -1326,8 +1354,8 @@ pane_stagger
 if [[ -d "$GAME/.claude/worktrees/game-architect" ]]; then
     MID_RIGHT=$(tmux split-window -h -t "$MID_LEFT" -l 50% -P -F "#{pane_id}" \
         -c "$GAME/.claude/worktrees/game-architect" \
-        "$(launch_cmd "$HEAVY_MODEL" game-architect)")
-    label_pane_id "$MID_RIGHT" "game-architect [$HEAVY_TAG]"
+        "$(launch_cmd "$FLEET_MODEL_FABLE" game-architect)")
+    label_pane_id "$MID_RIGHT" "game-architect [$FABLE_TAG]"
     pane_stagger
 fi
 
@@ -1337,14 +1365,14 @@ fi
 BOT_MID=$(tmux split-window -h -t "$BOT_LEFT" -l 67% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-worker-2" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_MID" "opus-worker-2 [$HEAVY_TAG]"
+label_pane_id "$BOT_MID" "opus-worker-2 [$OPUS_TAG]"
 set_fleet_role "$BOT_MID" "opus-worker"
 pane_stagger
 
 BOT_RIGHT=$(tmux split-window -h -t "$BOT_MID" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/opus-reviewer" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$BOT_RIGHT" "opus-reviewer [$HEAVY_TAG]"
+label_pane_id "$BOT_RIGHT" "opus-reviewer [$OPUS_REVIEWER_TAG]"
 set_fleet_role "$BOT_RIGHT" "opus-reviewer"
 pane_stagger
 
@@ -1371,7 +1399,7 @@ pane_stagger
 OPS_TR=$(tmux split-window -h -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/merger" \
     "$TRANSIENT_PANE_CMD")
-label_pane_id "$OPS_TR" "merger [$HEAVY_TAG]"
+label_pane_id "$OPS_TR" "merger [$MERGER_TAG]"
 set_fleet_role "$OPS_TR" "merger"
 
 OPS_BL=$(tmux split-window -v -t "$OPS_TL" -l 50% -P -F "#{pane_id}" \
@@ -1411,12 +1439,16 @@ cat <<EOF
 fleet session created — mode: ${MODE}.
 attach with:  tmux attach -t ${SESSION}
 
-model tiers (resolved this run — tier names in role slugs/labels are
-historical; "opus" means the heavy tier, whatever model serves it):
-  heavy — ${HEAVY_MODEL}  (architects, opus-worker, opus-reviewer, merger)
-          dispatched-iteration fallback: ${HEAVY_MODEL_FALLBACK:-none}
-  light — ${SONNET_MODEL}  (sonnet-author, sonnet-reviewer, smoke-worker)
-  pin with FLEET_HEAVY_MODEL in ~/.fleet/fleet-up.conf to skip the probe.
+model classes (resolved this run — tasks route by class via the
+fleet:fable / fleet:opus / fleet:sonnet labels and Model:/Effort: fields;
+the dispatcher launches each worker iteration with its task's class):
+  fable  — ${FLEET_MODEL_FABLE}  (architects; fleet:fable tasks — opt-in hard work)
+           dispatched-iteration fallback: ${FLEET_FABLE_FALLBACK:-none}
+  opus   — ${FLEET_MODEL_OPUS}  (default task class; final reviewer)
+  sonnet — ${FLEET_MODEL_SONNET}  (sonnet tasks, first-pass review, smoke, merger)
+  pin classes with FLEET_MODEL_FABLE / _OPUS / _SONNET in
+  ~/.fleet/fleet-up.conf (pinning fable skips the probe); cap concurrent
+  fable iterations with FLEET_CONCURRENCY_MODEL_FABLE (default 1).
 
 layout (two windows):
   window 1 "fleet" (3x3 grid, ~33% per row):

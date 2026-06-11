@@ -328,59 +328,73 @@ is in `role-opus-worker.md` (escalate + resume) and the shared
 ("Handling `fleet:design-blocked` PRs"), which `role-opus-architect.md`
 wraps.
 
-### Model split: heavy tier for core, Sonnet for the fleet
+### Model split: three classes, routed per task
 
-The user has much more light-tier budget than heavy-tier budget. Spend
-each where it pays off.
+Work routes by **model class** — `fable` | `opus` | `sonnet` — carried on
+each task (`fleet:fable` / `fleet:opus` / `fleet:sonnet` label, set by
+ingest from the `**Model:**` body field). The dispatcher launches each
+worker iteration with the class of the task it's serving, so one worker
+lane runs different models on different tasks. Tasks may also carry an
+optional `**Effort:** low|medium|high|xhigh|max` line; when absent the
+class default applies (fable/opus → xhigh, sonnet → high).
 
-The tier *names* are historical: role slugs (`opus-worker`), labels
-(`fleet:opus` / `fleet:sonnet`), and issue `Model:` fields say "opus" /
-"sonnet" but mean **heavy tier** / **light tier** — they don't pin the
-literal model. The heavy tier currently runs **Fable 5**; `fleet-up`
-resolves it at boot from a candidate ladder (`HEAVY_MODEL_CANDIDATES`:
-Fable 5 [1m] → Fable 5 → Opus 4.8 [1m]) so the fleet falls back to Opus
-automatically once the plan no longer covers Fable. Dispatched heavy
+Class names are the stable queue vocabulary; the concrete model strings
+live in `scripts/fleet/fleet-up`'s class table, not here. The fable
+class resolves at boot from a probed ladder (Fable 5 [1m] → Fable 5 →
+Opus 4.8 [1m]), so when the plan stops covering Fable, `fleet:fable`
+tasks degrade to the Opus floor automatically; dispatched fable
 iterations also carry `--fallback-model` for mid-session resilience.
-The heavy tier runs the 1M-token context variant; exact strings live in
-`scripts/fleet/fleet-up`, not here — bump there when moving the fleet
-to a new release, or pin with `FLEET_HEAVY_MODEL` in
-`~/.fleet/fleet-up.conf`. When writing `Model:` fields in issues, keep
-using `opus` (the tier name); `fable` is accepted as an alias.
+Pin classes with `FLEET_MODEL_FABLE` / `FLEET_MODEL_OPUS` /
+`FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`. Role slugs
+(`opus-worker`) are historical lane names, not model pins.
 
-**Heavy tier (Fable 5 → Opus 4.8 fallback)** — use for:
+**fable — opt-in, for the genuinely hard work.** Budget is the scarce
+resource; `FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps concurrent
+fable iterations fleet-wide. Tag `Model: fable` only for:
 
-- Core engine architecture. ECS design, ownership and lifetime rules,
-  render pipeline decisions.
-- `engine/render/`, `engine/entity/`, `engine/system/`, `engine/world/`,
-  `engine/audio/`, `engine/video/`, `engine/math/` optimization work.
-- FFmpeg integration, GPU-buffer lifetime, anything concurrency-sensitive.
-- "Why is this frame 4 ms slower" debugging and long-range reasoning about
-  invariants.
-- **Final review** on any PR that touches core-engine invariants, even after
-  a Sonnet first pass.
+- Hard rendering/algorithmic problems — the kind that have burned
+  multiple opus/sonnet attempts or need novel algorithm design.
+- Epic decomposition and design-blocked resolutions (architect panes run
+  fable for the same reason).
+- Gnarly cross-cutting refactors where long-range invariant reasoning is
+  the whole job.
+- Feedback fixes where review found the *approach* wrong — the reviewer
+  adds `fleet:fable` to the PR (or escalates `fleet:design-blocked`).
 
-**Light tier (Sonnet 4.6)** — use for:
+**opus — the default class.** Tasks with no `Model:` field land here.
 
-- Writing unit tests against a clear spec (test generation is pattern-heavy
-  and the compiler/tests are the oracle).
-- Documentation passes: header doc comments, README sections, per-file
-  summaries.
-- Mechanical refactors: rename-across-codebase, extract-header, convert-
-  to-smart-pointer, add-logging.
-- **First-pass code review.** Style, obvious bugs, missing null checks,
-  naming inconsistencies, untested branches.
-- Clearly-scoped issues from the fleet queue that have already been
-  thought through by Opus or the user.
+- Core engine implementation against an existing plan: ECS, ownership
+  and lifetime rules, render pipeline work, `engine/render/`,
+  `engine/entity/`, `engine/system/`, `engine/world/`, `engine/audio/`,
+  `engine/video/`, `engine/math/` optimization.
+- FFmpeg integration, GPU-buffer lifetime, concurrency-sensitive work.
+- "Why is this frame 4 ms slower" debugging.
+- **Final review** (the opus-reviewer recheck) — reasoning is bounded by
+  the diff, so fable buys nothing there.
+- Blocking-feedback fixes (`fleet:needs-fix` / `human:needs-fix`).
+
+**sonnet — bounded work.**
+
+- Unit tests against a clear spec, documentation passes, mechanical
+  refactors (rename-across-codebase, extract-header, add-logging).
+- **First-pass code review.** Style, obvious bugs, missing null checks.
+- Clearly-scoped queue tasks already thought through upstream.
 - Gameplay / creation-level work where mistakes are cheap to catch.
+- Nits-only feedback fixes (`fleet:has-nits`).
+- The **merger LLM pass** — and most merger wakes never reach an LLM at
+  all: `fleet-rebase` (tier-0) clears clean rebases of approved stacked
+  or behind PRs mechanically for zero tokens, and only re-arms the
+  sonnet pass when conflicts or unhandled states remain. The
+  `fleet:semantic-conflict` handoff to opus-worker/human is unchanged.
 
-When labeling issues, apply `fleet:opus` or `fleet:sonnet`. If a
-Sonnet agent picks up an issue and it turns out to be subtler than
-expected, stop and escalate — the cost of running out your heavy-tier
-budget on routine work is much higher than the cost of one handoff.
+If an agent finds its task subtler than its class, stop and escalate —
+re-tag one class up and release rather than grinding. The cost of
+burning fable budget on routine work is much higher than one handoff;
+so is the cost of sonnet grinding on a problem it can't land.
 
 Two-tier review is legitimate and encouraged: Sonnet catches the obvious
-stuff cheaply, the heavy tier looks at what's left. Don't skip the heavy
-second pass for anything in the heavy-tier list above.
+stuff cheaply, the opus recheck looks at what's left. Don't skip the
+final recheck for anything in the opus/fable lists above.
 
 ### Cross-platform parity (OpenGL ↔ Metal)
 

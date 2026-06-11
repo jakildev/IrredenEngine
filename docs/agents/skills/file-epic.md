@@ -114,7 +114,8 @@ command-substitution and backtick hazards):
 ```
 rm -f .file-epic-body.md
 [Write tool → .file-epic-body.md → content:]
-**Model:** <opus|sonnet>
+**Model:** <fable|opus|sonnet>
+**Effort:** <low|medium|high|xhigh|max>   <!-- optional; omit for the class default -->
 **Part of epic:** #<umbrella>
 **Plan file:** `<plans-dir>/issue-<umbrella>.md` (full epic plan)
 **Blocked by:** (none)
@@ -176,7 +177,7 @@ the tracker-assigned number):
 # Plan: <ticket title>
 
 - **Issue:** #<N>
-- **Model:** <opus|sonnet>
+- **Model:** <fable|opus|sonnet>
 - **Date:** <YYYY-MM-DD>
 - **Epic:** #<umbrella> — see `<plans-dir>/issue-<umbrella>.md` for full context
 - **Blocked by:** (none)   <!-- or same-repo `#<prior>[, #<other>]`; same exact form as the issue body -->
@@ -250,9 +251,11 @@ and any shape changes from the original phasing.
 ### 7.5. Validate filed bodies (STOP on failure)
 
 Before reporting success, assert every child carries the structured fields
-the queue machinery reads — a standalone `**Model:** opus|sonnet` line, a
-standalone `**Part of epic:** #<umbrella>` line, and (for every non-head
-child) a standalone `**Blocked by:** #N` line. The **validate-stack
+the queue machinery reads — a standalone `**Model:** fable|opus|sonnet`
+line (fable is opt-in for genuinely hard work; see FLEET.md "Model
+split"), a standalone `**Part of epic:** #<umbrella>` line, and (for every
+non-head child) a standalone `**Blocked by:** #N` line. An optional
+`**Effort:**` line, when present, must be low|medium|high|xhigh|max. The **validate-stack
 command** checks exactly this, auto-discovers the children, and fails
 loudly:
 

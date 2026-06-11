@@ -59,15 +59,15 @@ for issue in issues:
     labels = [l["name"] for l in issue.get("labels", [])]
     body = issue.get("body", "") or ""
 
-    if "fleet:opus" in labels or "fleet:sonnet" in labels:
+    if "fleet:fable" in labels or "fleet:opus" in labels or "fleet:sonnet" in labels:
         skipped += 1
         continue
 
-    # 'fable' aliases to the heavy tier: fleet:opus is a tier label, not a
-    # literal model pin (mirrors fleet-queue-ingest).
+    # Classes are literal (fable | opus | sonnet), each with its own label;
+    # mirrors fleet-queue-ingest.
     m = re.search(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(opus|sonnet|fable)', body, re.IGNORECASE)
     model = m.group(1).lower() if m else "opus"
-    label = f"fleet:{'opus' if model == 'fable' else model}"
+    label = f"fleet:{model}"
 
     if dry_run:
         print(f"  would add {label} to #{num}")

@@ -42,7 +42,11 @@ _EPIC_MEMBERSHIP_TMPL = r"^\*\*(?:Part of epic|Epic):\*\*\s+#{n}(?!\d)"
 _PART_OF_EPIC_TMPL = r"^\*\*Part of epic:\*\*\s+#{n}(?!\d)"
 _EPIC_HEADER_TMPL = r"^\*\*Epic:\*\*\s+#{n}(?!\d)"
 
-_MODEL_RE = re.compile(r"^\*\*Model:\*\* (opus|sonnet)\b", re.MULTILINE)
+_MODEL_RE = re.compile(r"^\*\*Model:\*\* (fable|opus|sonnet)\b", re.MULTILINE)
+# Optional per-task effort override; when the line is present its value
+# must be one the dispatcher understands (scout drops invalid values).
+_EFFORT_LINE_RE = re.compile(r"^\*\*Effort:\*\*\s*(\S+)", re.MULTILINE)
+_EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
 _BLOCKED_BY_LINE_RE = re.compile(r"^\*\*Blocked by:\*\*.*$", re.MULTILINE)
 _HASH_REF_RE = re.compile(r"#(\d+)\b")
 # Multiple blockers are supported as of #1296 (see validate_child): a line may
@@ -101,7 +105,13 @@ def validate_child(body, umbrella, is_head):
         findings.append({"severity": WARN, "msg": msg})
 
     if not _MODEL_RE.search(b):
-        err("missing standalone `**Model:** opus|sonnet` line")
+        err("missing standalone `**Model:** fable|opus|sonnet` line")
+
+    effort_m = _EFFORT_LINE_RE.search(b)
+    if effort_m and effort_m.group(1).lower() not in _EFFORT_LEVELS:
+        err("`**Effort:**` value %r is not one of low|medium|high|xhigh|max "
+            "(the scout will ignore it and the class default will apply)"
+            % effort_m.group(1))
 
     if not re.search(_PART_OF_EPIC_TMPL.format(n=n), b, re.MULTILINE):
         if re.search(_EPIC_HEADER_TMPL.format(n=n), b, re.MULTILINE):

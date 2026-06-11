@@ -374,18 +374,18 @@ stream_claude() {
     # The formatter recognizes a small allowlist of these and annotates
     # them as `⚠ [claude-warn]` instead of leaving them as raw red text.
     #
-    # Heavy-tier runs (Fable, or Opus when pinned) carry the fallback
-    # chain fleet-up seeded into the tmux server env, so a print-mode
-    # iteration survives the primary model being overloaded or dropping
-    # off the plan. Gated to heavy model strings: handing the chain to a
-    # sonnet run would silently upgrade the light tier to a heavy model.
-    # (--fallback-model is print-only; the interactive architect launches
-    # below can't take it and rely on fleet-up's boot-time resolution.)
+    # Fable-class runs carry the fallback chain fleet-up seeded into the
+    # tmux server env, so a print-mode iteration survives Fable being
+    # overloaded or dropping off the plan. Gated to fable model strings
+    # only: handing the chain to an opus or sonnet run would silently
+    # reroute a cheaper class. (--fallback-model is print-only; the
+    # interactive architect launches below can't take it and rely on
+    # fleet-up's boot-time resolution.)
     local _fallback_args=()
     case "$MODEL" in
-        fable|claude-fable*|opus|claude-opus*)
-            if [[ -n "${HEAVY_MODEL_FALLBACK:-}" && "$HEAVY_MODEL_FALLBACK" != "$MODEL" ]]; then
-                _fallback_args=(--fallback-model "$HEAVY_MODEL_FALLBACK")
+        fable|claude-fable*)
+            if [[ -n "${FLEET_FABLE_FALLBACK:-}" && "$FLEET_FABLE_FALLBACK" != "$MODEL" ]]; then
+                _fallback_args=(--fallback-model "$FLEET_FABLE_FALLBACK")
             fi
             ;;
     esac

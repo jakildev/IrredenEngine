@@ -628,10 +628,11 @@ PYEOF
 # --- model-tag gate -------------------------------------------------------
 
 check_model_tag() {
-    # Refuse the claim if the calling role's model doesn't match the
-    # issue's model affinity. Resolution order:
-    #   1. `fleet:opus` or `fleet:sonnet` label on the issue (primary)
-    #   2. `**Model:** opus|sonnet` field in the issue body (fallback)
+    # Refuse the claim if the calling role's model class doesn't match the
+    # issue's model affinity. Classes are fable | opus | sonnet (literal —
+    # fable is its own class, not an opus alias). Resolution order:
+    #   1. `fleet:fable` / `fleet:opus` / `fleet:sonnet` label (primary)
+    #   2. `**Model:** fable|opus|sonnet` field in the issue body (fallback)
     #
     # Gate is opt-in: no-op when FLEET_ROLE_MODEL is unset/empty, when the
     # issue has neither label nor body field, or when the issue can't be
@@ -657,6 +658,7 @@ check_model_tag() {
 
     local task_model=""
     case " $labels " in
+        *" fleet:fable "*)  task_model="fable" ;;
         *" fleet:opus "*)   task_model="opus" ;;
         *" fleet:sonnet "*) task_model="sonnet" ;;
     esac
@@ -670,7 +672,7 @@ for line in body.splitlines():
     m = field_re.match(line)
     if m:
         token = m.group(1).strip().lower()
-        m2 = re.match(r"^(opus|sonnet)\b", token)
+        m2 = re.match(r"^(fable|opus|sonnet)\b", token)
         if m2:
             print(m2.group(1))
             sys.exit(0)
@@ -3475,6 +3477,8 @@ try:
 except Exception:
     sys.exit(0)
 labels = [l.get("name", "") for l in d.get("labels", []) if isinstance(l, dict)]
+if "fleet:fable" in labels:
+    print("fable"); sys.exit(0)
 if "fleet:opus" in labels:
     print("opus"); sys.exit(0)
 if "fleet:sonnet" in labels:
@@ -3485,7 +3489,7 @@ for line in body.splitlines():
     m = field_re.match(line)
     if m:
         token = m.group(1).strip().lower()
-        m2 = re.match(r"^(opus|sonnet)\b", token)
+        m2 = re.match(r"^(fable|opus|sonnet)\b", token)
         if m2:
             print(m2.group(1))
             sys.exit(0)

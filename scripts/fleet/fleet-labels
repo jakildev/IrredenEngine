@@ -104,6 +104,7 @@ LABELS=(
     "fleet:task|0366d6|Task from the fleet issue queue"
     "fleet:epic|cc317c|Parent issue tracking a set of child issues; the epic-steward maintains its Children checklist and closes it via the close-out flow once every child is verified closed"
     "fleet:queued|c5def5|Queued for fleet pickup (requires human:approved)"
+    "fleet:fable|1d76db|Model-affinity tag (fable class — opt-in for hard work); heavy lane dispatches it on Fable"
     "fleet:opus|1d76db|Model-affinity tag set by fleet-queue-ingest; opus-worker picks tasks with this label"
     "fleet:sonnet|1d76db|Model-affinity tag set by fleet-queue-ingest; sonnet-author picks tasks with this label"
     "fleet:blocked|c5def5|Queued task whose **Blocked by:** predecessor is still open; not plainly claimable (fleet-claim refuses a plain claim; --stackable-on works). Stamped/cleared by fleet-queue-ingest as blockers close"

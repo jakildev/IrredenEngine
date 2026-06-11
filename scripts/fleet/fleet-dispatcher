@@ -68,6 +68,16 @@ PID_FILE="$STATE_DIR/dispatcher.pid"
 LOCK_DIR="$STATE_DIR/dispatcher.lock.d"
 SHUTDOWN_FLAG="$HOME/.fleet/shutdown-in-progress"
 
+# Directory of this script (symlink-resolved), so the per-task class
+# resolver (fleet_task_class.py) imports regardless of cwd — same idiom
+# as fleet-claim's FLEET_LIB_DIR.
+_fleet_dispatcher_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_dispatcher_self" ]]; do
+    _fleet_dispatcher_self="$(readlink "$_fleet_dispatcher_self")"
+done
+FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)}"
+unset _fleet_dispatcher_self
+
 # --- Per-role concurrency cap config ---------------------------------------
 #
 # Soft cap on simultaneous iterations per role. Counts unique active
@@ -98,10 +108,29 @@ _env_effort_sonnet_reviewer="${FLEET_EFFORT_SONNET_REVIEWER:-}"
 _env_effort_opus_reviewer="${FLEET_EFFORT_OPUS_REVIEWER:-}"
 _env_effort_merger="${FLEET_EFFORT_MERGER:-}"
 _env_effort_smoke_worker="${FLEET_EFFORT_SMOKE_WORKER:-}"
+# Same guard for the model-class knobs (consumed by the class table and
+# ROLE_MODEL map further down) and the fable concurrency cap.
+_env_model_fable="${FLEET_MODEL_FABLE:-}"
+_env_model_opus="${FLEET_MODEL_OPUS:-}"
+_env_model_sonnet="${FLEET_MODEL_SONNET:-}"
+_env_model_merger="${FLEET_MODEL_MERGER:-}"
+_env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
+_env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
 fi
+FLEET_MODEL_FABLE="${_env_model_fable:-${FLEET_MODEL_FABLE:-}}"
+FLEET_MODEL_OPUS="${_env_model_opus:-${FLEET_MODEL_OPUS:-}}"
+FLEET_MODEL_SONNET="${_env_model_sonnet:-${FLEET_MODEL_SONNET:-}}"
+FLEET_MODEL_MERGER="${_env_model_merger:-${FLEET_MODEL_MERGER:-}}"
+FLEET_MODEL_OPUS_REVIEWER="${_env_model_opus_reviewer:-${FLEET_MODEL_OPUS_REVIEWER:-}}"
+# Fleet-wide cap on concurrent fable-class iterations — the direct
+# budget throttle. Counted across all panes via dispatch records, not
+# per role. 0 disables fable dispatch entirely.
+FABLE_CONCURRENCY_CAP="${_env_fable_cap:-${FLEET_CONCURRENCY_MODEL_FABLE:-1}}"
+unset _env_model_fable _env_model_opus _env_model_sonnet \
+      _env_model_merger _env_model_opus_reviewer _env_fable_cap
 declare -A ROLE_CONCURRENCY=(
     ["opus-worker"]="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
     ["sonnet-author"]="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
@@ -295,33 +324,47 @@ DISPATCHED_ROLES=(
 # now issue-based. Ingestion (new issues → queue) fires on its own
 # scout-driven trigger when human:approved-not-yet-queued issues appear.
 
-# Per-role default claude model. Inherited from fleet-up's exported
-# HEAVY_MODEL / SONNET_MODEL (the single source of truth — fleet-up
-# resolves the heavy tier at boot: Fable 5 preferred, Opus 4.8 floor;
-# OPUS_MODEL is the back-compat name for the same value). "opus" in the
-# role slugs below is the historical heavy-tier name, not a model pin.
-# The env-var defaults apply only when the dispatcher is run standalone
-# (e.g. for debugging) without fleet-up in the environment; keep them in
-# sync with fleet-up. Standalone defaults to Fable unprobed — safe
-# because every heavy dispatch carries --fallback-model (see
-# build_dispatch_command), so a plan without Fable degrades to the
-# fallback chain per-iteration. The "[1m]" suffix selects the 1M-token
-# context variant: kept for the heavy tier, dropped for Sonnet —
-# sonnet[1m] errors "Usage credits required for 1M context" on this plan
-# (see fleet-up's model-tier comment for the full rationale).
-HEAVY_MODEL="${HEAVY_MODEL:-${OPUS_MODEL:-claude-fable-5[1m]}}"
-SONNET_MODEL="${SONNET_MODEL:-sonnet}"
-HEAVY_MODEL_FALLBACK="${HEAVY_MODEL_FALLBACK-claude-opus-4-8[1m]}"
-if [[ "$HEAVY_MODEL_FALLBACK" == "$HEAVY_MODEL" ]]; then
-    HEAVY_MODEL_FALLBACK=""
+# Model classes. Inherited from fleet-up's exported, boot-resolved
+# FLEET_MODEL_FABLE / FLEET_MODEL_OPUS / FLEET_MODEL_SONNET table (the
+# single source of truth — fleet-up probes the fable ladder there). The
+# conf knobs of the same names (captured above) and the literal defaults
+# here apply only when the dispatcher runs standalone (e.g. debugging)
+# without fleet-up in the environment; keep them in sync with fleet-up.
+# Standalone fable defaults to Fable unprobed — safe because every
+# fable-class dispatch carries --fallback-model, so a plan without Fable
+# degrades per-iteration. OPUS_MODEL / SONNET_MODEL are the pre-class
+# legacy env names, still honored as fallthroughs.
+FABLE_MODEL="${FLEET_MODEL_FABLE:-claude-fable-5[1m]}"
+OPUS_MODEL="${FLEET_MODEL_OPUS:-${OPUS_MODEL:-claude-opus-4-8[1m]}}"
+SONNET_MODEL="${FLEET_MODEL_SONNET:-${SONNET_MODEL:-sonnet}}"
+FABLE_FALLBACK="${FLEET_FABLE_FALLBACK-$OPUS_MODEL}"
+if [[ "$FABLE_FALLBACK" == "$FABLE_MODEL" ]]; then
+    FABLE_FALLBACK=""
 fi
+declare -A CLASS_MODEL=(
+    ["fable"]="$FABLE_MODEL"
+    ["opus"]="$OPUS_MODEL"
+    ["sonnet"]="$SONNET_MODEL"
+)
+# Per-role models. Worker lanes route per-task: the ROLE_MODEL entry is
+# only the lane default when the projection slice has nothing
+# class-routable (see resolve_worker_class). "opus" in the role slugs is
+# the historical lane name, not a model pin. Merger runs sonnet — its LLM
+# pass only fires for conflicts fleet-rebase couldn't clear mechanically;
+# the final reviewer runs the opus class (reasoning bounded by the diff).
 declare -A ROLE_MODEL=(
     ["sonnet-author"]="$SONNET_MODEL"
-    ["opus-worker"]="$HEAVY_MODEL"
+    ["opus-worker"]="$OPUS_MODEL"
     ["sonnet-reviewer"]="$SONNET_MODEL"
-    ["opus-reviewer"]="$HEAVY_MODEL"
-    ["merger"]="$HEAVY_MODEL"
+    ["opus-reviewer"]="${FLEET_MODEL_OPUS_REVIEWER:-$OPUS_MODEL}"
+    ["merger"]="${FLEET_MODEL_MERGER:-$SONNET_MODEL}"
     ["smoke-worker"]="$SONNET_MODEL"
+)
+# Worker lanes that resolve a per-task class from their projection slice,
+# mapped to the class assumed when a task carries no model tag.
+declare -A WORKER_LANE_DEFAULT_CLASS=(
+    ["opus-worker"]="opus"
+    ["sonnet-author"]="sonnet"
 )
 
 # Per-role effort level. Override priority mirrors ROLE_CONCURRENCY:
@@ -509,12 +552,41 @@ dispatch_record() {
 }
 
 write_dispatch_record() {
-    local role="$1" pane_id="$2"
+    # $3 = model class of the dispatch (fable|opus|sonnet) — counted by
+    # count_active_for_class for the fable concurrency cap.
+    local role="$1" pane_id="$2" class="${3:-}"
     local ts
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     mkdir -p "$DISPATCH_DIR"
-    printf '{"role":"%s","pane":"%s","dispatched_at":"%s"}\n' \
-        "$role" "$pane_id" "$ts" >"$(dispatch_record "$pane_id")"
+    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s"}\n' \
+        "$role" "$pane_id" "$class" "$ts" >"$(dispatch_record "$pane_id")"
+}
+
+# Map a concrete model string back to its class name, for stamping
+# dispatch records when a role ran on its static default model (worker
+# class resolution stamps DISPATCH_CLASS directly).
+class_of_model() {
+    case "$1" in
+        "$FABLE_MODEL")  echo "fable" ;;
+        "$SONNET_MODEL") echo "sonnet" ;;
+        *)               echo "opus" ;;
+    esac
+}
+
+# Count in-flight dispatches of a model class across ALL panes/roles. A
+# dispatch record exists for the lifetime of its iteration (cleaned up
+# when the pane returns to a shell), so live records are the in-flight
+# set. Backing for the fleet-wide fable concurrency cap.
+count_active_for_class() {
+    local class="$1" count=0 record
+    [[ -d "$DISPATCH_DIR" ]] || { echo 0; return; }
+    for record in "$DISPATCH_DIR"/*.json; do
+        [[ -f "$record" ]] || continue
+        if grep -q "\"class\":\"$class\"" "$record" 2>/dev/null; then
+            count=$((count + 1))
+        fi
+    done
+    echo "$count"
 }
 
 cleanup_stale_dispatches() {
@@ -853,20 +925,55 @@ build_dispatch_command() {
     # delivers `leet-…` to readline and the pane loops on
     # `leet-dispatch-wrap: command not found`. Bash ignores leading whitespace
     # on command lines, so the eaten space is harmless.
+    # $3/$4 = optional model/effort overrides from per-task class
+    # resolution (resolve_worker_class); empty -> the role defaults.
     local role="$1" pane_key="$2"
-    local model="${ROLE_MODEL[$role]:-sonnet}"
-    local effort="${ROLE_EFFORT[$role]:-high}"
-    # Heavy-tier dispatches carry the fallback chain so claude degrades
-    # per-iteration (--fallback-model, print-mode only) if the resolved
-    # model stops being available mid-session — e.g. the plan loses
-    # Fable access. Sonnet dispatches get no fallback: silently
-    # upgrading the light tier to a heavy model would invert the budget
-    # split.
+    local model="${3:-${ROLE_MODEL[$role]:-sonnet}}"
+    local effort="${4:-${ROLE_EFFORT[$role]:-high}}"
+    # Fable-class dispatches carry the fallback chain so claude degrades
+    # per-iteration (--fallback-model, print-mode only) if Fable stops
+    # being available mid-session. Other classes get no fallback:
+    # silently upgrading a cheaper class would invert the budget split.
     local fallback=""
-    if [[ "$model" == "$HEAVY_MODEL" ]]; then
-        fallback="$HEAVY_MODEL_FALLBACK"
+    if [[ "$model" == "$FABLE_MODEL" ]]; then
+        fallback="$FABLE_FALLBACK"
     fi
     printf ' fleet-dispatch-wrap %q %q %q %q %q\n' "$pane_key" "$model" "$effort" "$role" "$fallback"
+}
+
+# Resolve the model class for a worker-lane dispatch from the lane's
+# projection slice (~/.fleet/state/projections/<role>.json, written every
+# scout tick). Sets DISPATCH_CLASS / DISPATCH_MODEL / DISPATCH_EFFORT /
+# DISPATCH_MORE / DISPATCH_DEFER. Non-worker roles and an empty
+# resolution leave the DISPATCH_* model/effort empty -> role defaults
+# (that fallthrough covers reservation resumes and missing slices). See
+# fleet_task_class.py for the resolution rules and output protocol.
+resolve_worker_class() {
+    local role="$1"
+    DISPATCH_CLASS="" DISPATCH_MODEL="" DISPATCH_EFFORT=""
+    DISPATCH_MORE=0 DISPATCH_DEFER=0
+    local lane_default="${WORKER_LANE_DEFAULT_CLASS[$role]:-}"
+    [[ -n "$lane_default" ]] || return 0
+    local slice="$STATE_DIR/projections/$role.json"
+    [[ -f "$slice" ]] || return 0
+    local fable_blocked=0
+    if (( $(count_active_for_class fable) >= FABLE_CONCURRENCY_CAP )); then
+        fable_blocked=1
+    fi
+    local out
+    out=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
+        "$slice" "$lane_default" "$fable_blocked" 2>/dev/null) || out=""
+    if [[ "$out" == "defer" ]]; then
+        DISPATCH_DEFER=1
+        return 0
+    fi
+    [[ -n "$out" ]] || return 0
+    local cls effort more
+    read -r cls effort more <<< "$out"
+    DISPATCH_CLASS="$cls"
+    DISPATCH_MODEL="${CLASS_MODEL[$cls]:-}"
+    DISPATCH_EFFORT="$effort"
+    DISPATCH_MORE="${more:-0}"
 }
 
 dispatch_role() {
@@ -875,6 +982,24 @@ dispatch_role() {
 
     if [[ ! -f "$trigger_file" ]]; then
         return
+    fi
+
+    # Tier-0 merger: try the zero-token mechanical pass before any LLM.
+    # The trigger file's content is the tier protocol — empty (a plain
+    # scout touch) means "not yet attempted": consume the trigger and
+    # spawn fleet-rebase, which clears clean rebases itself and re-arms
+    # this trigger with content "llm" when conflicted PRs remain.
+    # Content "llm" falls through to the normal (sonnet) merger dispatch.
+    # No fleet-rebase on PATH -> straight to the LLM pass as before.
+    if [[ "$role" == "merger" ]] && command -v fleet-rebase >/dev/null 2>&1; then
+        if [[ "$(cat "$trigger_file" 2>/dev/null)" != "llm" ]]; then
+            rm -f "$trigger_file"
+            mkdir -p "$HOME/.fleet/logs"
+            nohup fleet-rebase --auto --rearm-trigger \
+                >>"$HOME/.fleet/logs/fleet-rebase.log" 2>&1 &
+            log "merger: spawned tier-0 fleet-rebase (LLM pass only if it re-arms)"
+            return
+        fi
     fi
 
     # Per-role concurrency cap. Defer if (in-flight + reserved) already at
@@ -917,6 +1042,22 @@ dispatch_role() {
         return
     fi
 
+    # Per-task model class for worker lanes (no-op for other roles).
+    # Resolved once per tick, not per pane — same slice, same answer;
+    # multiple panes dispatched this tick race-claim within the class.
+    resolve_worker_class "$role"
+    if (( DISPATCH_DEFER )); then
+        # Only cap-blocked fable work is actionable. Dispatching the lane
+        # default would burn an iteration on gate-refused claims; keep
+        # the trigger and wait for a fable slot to free up.
+        if [[ -z "${CAP_DEFER_LOGGED[$role-fable]+x}" ]]; then
+            log "$role: only fable-class work actionable but fable cap ($FABLE_CONCURRENCY_CAP) is full; deferring trigger"
+            CAP_DEFER_LOGGED["$role-fable"]=1
+        fi
+        return
+    fi
+    unset "CAP_DEFER_LOGGED[$role-fable]"
+
     local dispatched=0
     local gap_blocked=""
     while IFS= read -r pane_id; do
@@ -955,8 +1096,12 @@ dispatch_role() {
             break
         fi
         local cmd
-        cmd=$(build_dispatch_command "$role" "$pane_key")
-        log "dispatching $role -> $pane_id"
+        cmd=$(build_dispatch_command "$role" "$pane_key" "$DISPATCH_MODEL" "$DISPATCH_EFFORT")
+        if [[ -n "$DISPATCH_CLASS" ]]; then
+            log "dispatching $role -> $pane_id [class=$DISPATCH_CLASS effort=$DISPATCH_EFFORT]"
+        else
+            log "dispatching $role -> $pane_id"
+        fi
         # Reset the input line with C-u (kill-line) before sending the
         # dispatch command. Catches any partial input the human may have
         # typed into the idle pane (stray "Ca" from an in-flight tmux
@@ -986,7 +1131,8 @@ dispatch_role() {
             log "send-keys timeout/failed for $role -> $pane_id; trying next idle pane"
             continue
         fi
-        write_dispatch_record "$role" "$pane_id"
+        write_dispatch_record "$role" "$pane_id" \
+            "${DISPATCH_CLASS:-$(class_of_model "${ROLE_MODEL[$role]:-sonnet}")}"
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
     done <<< "$idle_panes"
@@ -1019,6 +1165,15 @@ dispatch_role() {
         if should_retain_trigger_for_fanout_race "$role" "$active"; then
             local cap="${ROLE_CONCURRENCY[$role]:-0}"
             log "$role: dispatched $dispatched, active=$active < cap=$cap within boot fan-out window (${SECONDS}s < ${BOOT_FANOUT_WINDOW_SECONDS}s); keeping trigger for late-tag race"
+            return
+        fi
+        # Multi-class queue: this dispatch served one class but the slice
+        # still holds claimable items of another. Keep the trigger so a
+        # later tick dispatches the other class — a single class-scoped
+        # iteration can't serve them (the claim gate refuses cross-class
+        # claims), and the scout only re-fires on projection *change*.
+        if (( DISPATCH_MORE )); then
+            log "$role: dispatched class=$DISPATCH_CLASS; other classes still queued — trigger kept"
             return
         fi
         # Steady state (or boot window with cap saturated): at least
@@ -1317,6 +1472,19 @@ case "${1:-}" in
             exit 2
         fi
         echo "${ROLE_EFFORT[$2]:-high}"
+        exit 0
+        ;;
+    --resolve-class)
+        # Test/debug: run the per-task class resolution for a worker lane
+        # against the current projection slice and print the verdict:
+        #   "class=<c> model=<m> effort=<e> more=<0|1> defer=<0|1>"
+        # Empty class means the lane-default fallthrough.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --resolve-class <role>" >&2
+            exit 2
+        fi
+        resolve_worker_class "$2"
+        echo "class=$DISPATCH_CLASS model=$DISPATCH_MODEL effort=$DISPATCH_EFFORT more=$DISPATCH_MORE defer=$DISPATCH_DEFER"
         exit 0
         ;;
     --gate-status)

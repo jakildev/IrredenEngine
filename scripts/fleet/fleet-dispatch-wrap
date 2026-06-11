@@ -31,16 +31,28 @@ FALLBACK_MODEL="${5:-}"
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 
-# Expose the role's model tier so fleet-claim can enforce the model-tag gate.
-# fleet-claim refuses claims when FLEET_ROLE_MODEL != the task's Model: field.
-# "opus" is the queue's historical name for the heavy tier — Fable serves
-# that tier now, so a fable model string must map to the opus tag or heavy
-# workers lose access to `Model: opus` tasks (and could claim sonnet ones).
-if [[ "$MODEL" == *opus* || "$MODEL" == *fable* ]]; then
+# Expose the iteration's model class so fleet-claim can enforce the
+# model-tag gate. Classes are literal — fable | opus | sonnet — and the
+# gate exact-matches against the task's fleet:<class> label / Model:
+# field, so a fable iteration can't claim opus tasks and vice versa.
+if [[ "$MODEL" == *fable* ]]; then
+    export FLEET_ROLE_MODEL=fable
+elif [[ "$MODEL" == *opus* ]]; then
     export FLEET_ROLE_MODEL=opus
 else
     export FLEET_ROLE_MODEL=sonnet
 fi
+
+# Re-tag the pane border label with the model this iteration actually
+# runs (worker lanes flex per task), e.g. "opus-worker [fable 1m]".
+# Best-effort: a failure here must never block the dispatch.
+_tag="$MODEL"
+_tag="${_tag/claude-fable-5/fable}"
+_tag="${_tag/claude-opus-4-8/opus 4.8}"
+_tag="${_tag/claude-sonnet-4-6/sonnet 4.6}"
+_tag="${_tag/\[1m\]/ 1m}"
+tmux set-option -p @role "$ROLE [$_tag]" 2>/dev/null || true
+unset _tag
 
 # Short-window 429 detection. fleet-claude-stream touches this flag if it sees
 # the "Server is temporarily limiting requests (not your usage limit)" error in
