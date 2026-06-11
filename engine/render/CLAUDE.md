@@ -610,3 +610,22 @@ parity with voxel-pool primary shapes.
   vanish under the deferred clear (the #1436 invisible-widgets bug). Mixing a
   `subImage2D` write with a same-frame CPU `getBytes` readback of the same
   texture still needs an explicit commit+wait (picking already does this).
+- **Foreign-canvas R32I image reads in a second in-tick compute dispatch
+  return empty on Metal (#1640).** An R32I distance texture whose contents
+  were produced by `imageAtomicMin` (the scratch-buffer path —
+  `VOXEL_TO_TRIXEL_STAGE_1` and the other `functionUsesImageAtomicScratch`
+  kernels; see `metal_runtime.hpp`) is reliably readable on Metal by the
+  canvas's own downstream stages and by later same-frame passes that read it
+  as a sampled / `access::read` texture (e.g. `LIGHTING_TO_TRIXEL`). But
+  binding a **non-main** canvas's distance texture as the read source of a
+  **second** in-tick compute dispatch (the rejected per-caster sun-shadow
+  bake reading a detached canvas's own model-frame distances, PR #1626's
+  literal Q2-(a)) returns the clear value (65535) for every pixel — that
+  canvas's data is not delivered to the read, even though a forced-position
+  write proves the dispatch runs. The sanctioned pattern (mirrored from the
+  per-axis cast precedent) is to **resolve** foreign distances into a
+  main-canvas-layout texture via an `imageStore`-written, real-texture-memory
+  resolve pass first, then read THAT — never bind a foreign model-frame R32I
+  texture as a bake/compute read input. Invariant: the sun-shadow bake only
+  ever reads main-canvas-layout depth sources. The underlying backend gap is
+  tracked as #1640; until it lands, resolve-then-bake is mandatory.
