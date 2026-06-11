@@ -233,6 +233,7 @@ template <typename Component> Component &getComponent(EntityId entity) {
     return getEntityManager().getComponent<Component>(entity);
 }
 
+// Delegates to getEntity — setup-time only, see above.
 template <typename Component> Component &getComponent(const std::string &name) {
     return getEntityManager().getComponent<Component>(getEntity(name));
 }
