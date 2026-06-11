@@ -25,6 +25,8 @@ smart_ComponentData createComponentData(ComponentId type);
 std::string makeComponentString(const Archetype &type);
 EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation);
 EntityId getParentEntityFromArchetype(Archetype type);
+// Setup-time only: at most ~3 named entities ("camera", "mainFramebuffer",
+// "modifierGlobals"). Do not call inside a per-entity tick.
 void setName(EntityId entity, const std::string &name);
 EntityId getEntity(const std::string &name);
 EntityRecord getEntityRecord(EntityId entity);
@@ -231,6 +233,7 @@ template <typename Component> Component &getComponent(EntityId entity) {
     return getEntityManager().getComponent<Component>(entity);
 }
 
+// Delegates to getEntity — setup-time only, see above.
 template <typename Component> Component &getComponent(const std::string &name) {
     return getEntityManager().getComponent<Component>(getEntity(name));
 }
