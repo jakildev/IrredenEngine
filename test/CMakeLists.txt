@@ -16,6 +16,7 @@ add_executable(IrredenEngineTest
   ecs/entity_manager_test.cpp
   ecs/grid_rotation_test.cpp
   ecs/hitbox_2d_gui_test.cpp
+  ecs/joint_matrix_upload_test.cpp
   ecs/modifier_quat_runtime_test.cpp
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp

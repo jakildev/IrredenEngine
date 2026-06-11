@@ -111,14 +111,24 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
             recycledSlots_.pop_back();
             return slot;
         }
-        if (nextFreeSlot_ < static_cast<std::uint32_t>(kMaxGpuVoxelTransforms)) {
+        // Stop at kJointTransformSlotBase, not kMaxGpuVoxelTransforms: the
+        // reserved high region [kJointTransformSlotBase, kMaxGpuVoxelTransforms)
+        // belongs to UPDATE_JOINT_MATRICES (#1603). Partitioning the shared
+        // binding-18 budget keeps this system's contiguous `[0, maxSlotUsed_]`
+        // re-upload from ever clobbering a joint slot.
+        if (nextFreeSlot_ < static_cast<std::uint32_t>(kJointTransformSlotBase)) {
             return nextFreeSlot_++;
         }
         return kVoxelTransformStatic; // budget exhausted — caller stays CPU-direct
     }
 
     void releaseTransformSlot(std::uint32_t slot) {
-        if (slot < static_cast<std::uint32_t>(kMaxGpuVoxelTransforms)) {
+        // Guard at kJointTransformSlotBase: a joint-region slot passed here
+        // (corrupted caller) must not enter the voxel-set recycle stack and
+        // later be re-issued to a voxel set, which would quietly corrupt the
+        // partition. kVoxelTransformStatic (0xFFFFFFFF) is always > this bound
+        // so it is silently dropped as well.
+        if (slot < static_cast<std::uint32_t>(kJointTransformSlotBase)) {
             recycledSlots_.push_back(slot);
         }
     }
@@ -140,8 +150,14 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
             return;
         }
         const std::uint32_t slot = voxelSet.gpuTransformSlot_;
-        if (slot >= static_cast<std::uint32_t>(kMaxGpuVoxelTransforms)) {
-            return; // out of transform-slot budget — set stays CPU-direct
+        // kJointTransformSlotBase, not kMaxGpuVoxelTransforms: a mis-seeded
+        // slot in the joint-reserved region [kJointTransformSlotBase,
+        // kMaxGpuVoxelTransforms) must not write transforms_[slot] here —
+        // that would drag maxSlotUsed_ into the joint region and the
+        // [0, maxSlotUsed_] re-upload would clobber freshly-written joint
+        // matrices from UPDATE_JOINT_MATRICES in the same tick.
+        if (slot >= static_cast<std::uint32_t>(kJointTransformSlotBase)) {
+            return; // sentinel or joint-reserved region — set stays CPU-direct
         }
         // CPU mirror of the GLSL/Metal `transform * localPos`: sqtToMat4 is
         // bit-identical to the shader-side helper, so the same operands classify

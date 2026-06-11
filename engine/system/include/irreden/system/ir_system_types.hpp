@@ -152,6 +152,13 @@ enum SystemName {
     DEBUG_OVERLAY,
     RENDERING_VELOCITY_2D_ISO,
     TEXTURE_SCROLL,
+    // Per-frame skeletal joint skin-matrix upload (#605 Phase 2.2 / #1603).
+    // Writes each C_Skeleton joint's skinMatrix into the binding-18
+    // EntityTransformBuffer (a contiguous block per skeleton, from the shared
+    // #1396 budget). MUST run after PROPAGATE_TRANSFORM (joint world transforms
+    // current) and BEFORE UPDATE_VOXEL_POSITIONS_GPU (so binding 18 is filled
+    // when the prepass skins per-voxel bone slots in #605 Phase 2.3).
+    UPDATE_JOINT_MATRICES,
     UPDATE_VOXEL_POSITIONS_GPU,
     UPDATE_GPU_PARTICLES,
     RENDER_GPU_PARTICLES_TO_TRIXEL,
