@@ -117,6 +117,7 @@ _env_model_opus="${FLEET_MODEL_OPUS:-}"
 _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
+_env_model_epic_steward="${FLEET_MODEL_EPIC_STEWARD:-}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
@@ -127,12 +128,13 @@ FLEET_MODEL_OPUS="${_env_model_opus:-${FLEET_MODEL_OPUS:-}}"
 FLEET_MODEL_SONNET="${_env_model_sonnet:-${FLEET_MODEL_SONNET:-}}"
 FLEET_MODEL_MERGER="${_env_model_merger:-${FLEET_MODEL_MERGER:-}}"
 FLEET_MODEL_OPUS_REVIEWER="${_env_model_opus_reviewer:-${FLEET_MODEL_OPUS_REVIEWER:-}}"
+FLEET_MODEL_EPIC_STEWARD="${_env_model_epic_steward:-${FLEET_MODEL_EPIC_STEWARD:-}}"
 # Fleet-wide cap on concurrent fable-class iterations — the direct
 # budget throttle. Counted across all panes via dispatch records, not
 # per role. 0 disables fable dispatch entirely.
 FABLE_CONCURRENCY_CAP="${_env_fable_cap:-${FLEET_CONCURRENCY_MODEL_FABLE:-1}}"
 unset _env_model_fable _env_model_opus _env_model_sonnet \
-      _env_model_merger _env_model_opus_reviewer _env_fable_cap
+      _env_model_merger _env_model_opus_reviewer _env_model_epic_steward _env_fable_cap
 declare -A ROLE_CONCURRENCY=(
     ["opus-worker"]="${_env_opus_worker:-${FLEET_CONCURRENCY_OPUS_WORKER:-2}}"
     ["sonnet-author"]="${_env_sonnet_author:-${FLEET_CONCURRENCY_SONNET_AUTHOR:-2}}"
@@ -367,7 +369,7 @@ declare -A ROLE_MODEL=(
     ["opus-reviewer"]="${FLEET_MODEL_OPUS_REVIEWER:-$OPUS_MODEL}"
     ["merger"]="${FLEET_MODEL_MERGER:-$SONNET_MODEL}"
     ["smoke-worker"]="$SONNET_MODEL"
-    ["epic-steward"]="$HEAVY_MODEL"
+    ["epic-steward"]="${FLEET_MODEL_EPIC_STEWARD:-$OPUS_MODEL}"
 )
 # Worker lanes that resolve a per-task class from their projection slice,
 # mapped to the class assumed when a task carries no model tag.
@@ -442,13 +444,21 @@ session_exists() {
     tmux has-session -t "$FLEET_SESSION" 2>/dev/null
 }
 
-# Print one line per pane: <pane_id>\t<@fleet-role>\t<pane_current_command>
+# Print one line per pane: <pane_id>|<@fleet-role>|<pane_current_command>
+# Delimiter is "|" (not a tab): tmux 3.4+ sanitizes control characters in
+# `-F` format output to "_", so a literal tab collapses every line into a
+# single field and the IFS-split consumers below read an empty role —
+# silently breaking find_idle_panes_for_role / count_active_for_role. A
+# printable "|" survives every tmux version and never appears in a pane id,
+# @fleet-role slug, or pane_current_command. Keep this in sync with the
+# IFS='|' / awk -F'|' parsers in find_idle_panes_for_role, pane_is_occupied,
+# and count_active_for_role.
 list_pane_state() {
     if ! session_exists; then
         return 0
     fi
     tmux list-panes -s -t "$FLEET_SESSION" \
-        -F "#{pane_id}	#{@fleet-role}	#{pane_current_command}"
+        -F "#{pane_id}|#{@fleet-role}|#{pane_current_command}"
 }
 
 # List all idle panes for a given role. Idle = pane_current_command
@@ -484,7 +494,7 @@ pane_has_running_wrapper() {
 
 find_idle_panes_for_role() {
     local role="$1"
-    list_pane_state | while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
+    list_pane_state | while IFS='|' read -r pane_id pane_role pane_cmd; do
         if [[ "$pane_role" != "$role" ]]; then
             continue
         fi
@@ -524,7 +534,7 @@ dispatch_send_keys() {
 # fleet-dispatch-wrap iteration is mid-flight underneath it.
 pane_is_occupied() {
     local pane_id="$1"
-    if list_pane_state | awk -F'\t' -v target="$pane_id" '
+    if list_pane_state | awk -F'|' -v target="$pane_id" '
         $1 == target {
             cmd = $3
             if (cmd != "bash" && cmd != "zsh" && cmd != "sh" && cmd != "fish")
@@ -850,7 +860,7 @@ count_active_for_role() {
     if session_exists; then
         have_tmux=1
         local pane_id pane_role pane_cmd wt_path wt_name
-        while IFS=$'\t' read -r pane_id pane_role pane_cmd; do
+        while IFS='|' read -r pane_id pane_role pane_cmd; do
             [[ "$pane_role" == "$role" ]] || continue
             wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
             [[ -n "$wt_path" ]] || continue
