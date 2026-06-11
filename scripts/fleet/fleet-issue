@@ -77,8 +77,8 @@ def cmd_view(args):
             return 1
         # gh returns labels as [{name, color, ...}]; normalize to strings
         detail["labels"] = [
-            (l["name"] if isinstance(l, dict) else l)
-            for l in detail.get("labels", [])
+            (la["name"] if isinstance(la, dict) else la)
+            for la in detail.get("labels", [])
         ]
 
     print(f"# Issue #{detail['number']}: {detail.get('title', '')}")
