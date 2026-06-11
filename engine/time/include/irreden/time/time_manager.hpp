@@ -64,6 +64,12 @@ class TimeManager {
     template <Events event> double fps();
     template <Events event> double frameTimeMs();
 
+    /// Raw engine UPDATE tick count — see
+    /// `EventProfiler<UPDATE>::fixedStepCount`. Backs `IRTime::tick()`.
+    std::uint64_t fixedStepCount() const {
+        return m_profilerUpdate.fixedStepCount();
+    }
+
     unsigned int droppedFrames() const {
         return m_profilerRender.droppedFrames();
     }

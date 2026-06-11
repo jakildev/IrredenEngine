@@ -13,6 +13,13 @@ time to run another UPDATE tick, and reads `deltaTime(event)` for dt.
   returns the actual wall-clock duration of the last tick.
 - `renderFps()`, `updateFps()` — 1-second rolling averages.
 - `renderFrameTimeMs()`, `droppedFrames()`, `resetDroppedFrames()`.
+- `tick()` — raw engine UPDATE tick count (`EventProfiler<UPDATE>::
+  m_fixedStepCount`), always advancing one-per-UPDATE. This is the
+  wall-clock-aligned **engine tick**; the pausable/scalable **sim tick**
+  lives in `IRSim::tick()` (`engine/prefabs/irreden/common/sim_clock.hpp`).
+  See the two-clock split there. Asserts if the `TimeManager` isn't
+  initialised (unlike the sim clock, which is an ECS singleton usable in
+  isolation).
 
 ## `Events` enum
 

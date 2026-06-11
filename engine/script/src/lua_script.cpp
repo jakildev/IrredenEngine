@@ -11,6 +11,7 @@
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
+#include <irreden/script/lua_sim_bindings.hpp>
 #include <irreden/script/lua_spatial_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
@@ -637,6 +638,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindPrefabApi(*this);
     detail::bindSpatialApi(*this);
     detail::bindRenderGlue(*this);
+    detail::bindSimApi(*this);
 }
 
 void LuaScript::bindLuaCommands() {

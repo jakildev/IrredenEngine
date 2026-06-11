@@ -67,6 +67,11 @@ add_executable(IrredenEngineTest
   system/register_system_test.cpp
   system/system_access_test.cpp
   system/system_concurrency_test.cpp
+  time/sim_clock_test.cpp
+  time/cycle_test.cpp
+  time/timer_test.cpp
+  time/stopwatch_test.cpp
+  time/lua_sim_test.cpp
   job/ir_job_test.cpp
   utility/ir_utility_test.cpp
   world/chunk_coord_test.cpp
