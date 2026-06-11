@@ -109,6 +109,7 @@ _env_effort_sonnet_reviewer="${FLEET_EFFORT_SONNET_REVIEWER:-}"
 _env_effort_opus_reviewer="${FLEET_EFFORT_OPUS_REVIEWER:-}"
 _env_effort_merger="${FLEET_EFFORT_MERGER:-}"
 _env_effort_smoke_worker="${FLEET_EFFORT_SMOKE_WORKER:-}"
+_env_effort_epic_steward="${FLEET_EFFORT_EPIC_STEWARD:-}"
 # Same guard for the model-class knobs (consumed by the class table and
 # ROLE_MODEL map further down) and the fable concurrency cap.
 _env_model_fable="${FLEET_MODEL_FABLE:-}"
@@ -117,7 +118,6 @@ _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_fable_cap="${FLEET_CONCURRENCY_MODEL_FABLE:-}"
-_env_effort_epic_steward="${FLEET_EFFORT_EPIC_STEWARD:-}"
 if [[ -f "$FLEET_CONF" ]]; then
     # shellcheck disable=SC1090
     source "$FLEET_CONF"
