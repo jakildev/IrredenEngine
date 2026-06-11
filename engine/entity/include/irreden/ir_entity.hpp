@@ -25,6 +25,8 @@ smart_ComponentData createComponentData(ComponentId type);
 std::string makeComponentString(const Archetype &type);
 EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation);
 EntityId getParentEntityFromArchetype(Archetype type);
+// Setup-time only: at most ~3 named entities ("camera", "mainFramebuffer",
+// "modifierGlobals"). Do not call inside a per-entity tick.
 void setName(EntityId entity, const std::string &name);
 EntityId getEntity(const std::string &name);
 EntityRecord getEntityRecord(EntityId entity);

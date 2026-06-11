@@ -90,6 +90,8 @@
 
 namespace IRScript::detail {
 
+// String branch calls findFieldId (O(n) linear scan over ~tens of registered
+// fields). For hot Lua loops, pass a cached FieldBindingId integer instead.
 inline IRComponents::FieldBindingId
 resolveFieldArg(const sol::object &arg, const std::string &caller) {
     if (arg.is<lua_Integer>()) {
