@@ -22,6 +22,7 @@ The original diagnosis surface — applies to anything in the `VOXEL_TO_TRIXEL_S
 | Half the scene clipped at yaw=0 after a render change | Distance-texture device-level clear regressed (#1217). Per-frame `clearTexture` on the distance buffer in `system_voxel_to_trixel.hpp` must run unconditionally; viewport-conditional clears mis-cull voxels at the cull-bounds boundary. |
 | Geometry pops in/out of view as camera yaw changes | Chunk visibility mask not rotation-aware (#1219). Check `system_voxel_chunk_visibility.hpp` AABB sweep uses world-space chunk bounds, not iso-space derived under yaw=0 only. |
 | Face colors swapped at exact 90° / 180° / 270° rotation | Cardinal face-index remapping bug. Check `rotateCardinalZ` permutation and `encodeDepthWithFace` face-priority encoding under non-zero `rasterYaw`. |
+| Front/back "occlusion scramble" at non-cardinal yaw under `--depth-color` | Likely the diagnostic's own artifact, not geometry (#1457 — three fix rounds chased it): the `--depth-color` palette quantizes hue in 4/3-world-unit bands that beat against the 1-unit voxel lattice as staircase moiré, while an SDF twin (continuous palette) looks smooth, making the side-by-side misleading. Re-shoot with `--checkerboard` — the canonical occlusion diagnostic for rotated voxel content; trust `--depth-color` only at cardinal poses or against a voxel (not SDF) reference. |
 
 ## The 2x3 trixel diamond
 

@@ -287,6 +287,18 @@ non-blocking — proceed if the number is intentional (e.g. an umbrella).
 Skip when the body has no `Closes #N` line, or for the queue-manager role
 (its `Closes #` rows mean task IDs, not tracker issues).
 
+**Stale-diagnostic check (same trigger):** for each `Closes #N`, grep the
+branch for annotations that promise removal when that issue closes —
+
+```bash
+git grep -nE "(remove|delete|drop).{0,30}#${closes_n}\b|#${closes_n}\b.{0,30}(remove|delete|drop)" -- ':!docs'
+```
+
+A hit means a diagnostic block annotated "remove when #N closes" is about
+to ship to the default branch as dead code in the very PR that closes #N.
+Remove the block (new commit) before opening the PR; if it must outlive
+this PR, re-point the annotation at a live follow-up issue instead.
+
 ### 8b. Tag the host the PR was authored on
 
 See the **procedures** `host-label.md` for the shell snippet and scope

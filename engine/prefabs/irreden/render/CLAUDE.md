@@ -484,3 +484,11 @@ cell composite to the same depth (the `detached_world_depth_test` equivalence).
   `C_EntityCanvas` — which `ENTITY_CANVAS_TO_FRAMEBUFFER` already iterates — not on
   `C_TrixelCanvasRenderBehavior` (the child canvas entity), so the composite reads
   it with no per-tick foreign getComponent.
+- **Seed GPU-buffer sentinels GPU-side, never via a resource-sized CPU
+  staging vector + `subData`.** Metal's `fillBuffer` writes a repeating
+  single byte, so multi-byte sentinels like `kTrixelDistanceMaxDistance`
+  (`0x0000FFFF`) have no driver-side clear — reuse an already-owned
+  self-resetting kernel (e.g. one dispatch of the resolve blit) or a clear
+  dispatch instead of a multi-MB cold-path staging alloc + upload.
+  Live deviation to migrate when next touched:
+  `system_resolve_per_axis_screen_depth.hpp` seeds its scratch the old way.

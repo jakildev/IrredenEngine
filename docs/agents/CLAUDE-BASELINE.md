@@ -443,7 +443,17 @@ Concrete forms:
   consteval-reachable.
 - **Runtime constraint on a function parameter → `IR_ASSERT(predicate,
   "diagnostic")` at function entry.** Use when the value is
-  user-supplied at runtime.
+  user-supplied at runtime. This includes *unwritten* invariants —
+  parallel containers that must agree in length get
+  `IR_ASSERT(parentIdx.size() == joints.size(), ...)` before iterating
+  both, even when no comment ever stated the constraint.
+- **Shared helper whose precondition violation is UB (div-by-zero, OOB
+  index) → the helper asserts its own precondition.** "Callers guard
+  `count > 0`" in a comment is not a guard, and UB is platform-divergent
+  (x86 traps integer div-by-zero; Apple Silicon silently returns 0). A
+  low-level helper called from many modules *is* a system boundary —
+  "only validate at system boundaries" licenses this check rather than
+  forbidding it.
 - **Hybrid → `if consteval` branch that `static_assert`s, falling
   through to a runtime `IR_ASSERT` at the non-consteval branch.** Use
   for helpers that are sometimes called from `constexpr` contexts and

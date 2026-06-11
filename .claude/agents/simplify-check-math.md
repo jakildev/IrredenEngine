@@ -12,7 +12,15 @@ Authoritative rule: [`.claude/rules/cpp-math.md`](../rules/cpp-math.md) — auto
 
 ## Scope
 
-For each `.hpp`/`.cpp` file in the diff, scan for:
+For each `.hpp`/`.cpp` file in the diff, scan the **entire file content**,
+not just the lines the diff introduced. `cpp-math.md`'s rule is two-sided:
+"don't add new violations; **do migrate when you're already touching one of
+the deviation files**" — a pre-existing `glm::min` in a touched file is a
+finding too, because the touch is the migration moment. Mark hits on lines
+the diff did not introduce with `[pre-existing]` so the parent can
+distinguish cleanup-along-the-way from a regression.
+
+Scan for:
 
 1. **`glm::*` calls** — any identifier in the `glm::` namespace, including types (`glm::vec3`, `glm::mat4`), functions (`glm::min`, `glm::clamp`, `glm::length`), and constants (`glm::pi<float>()`, `glm::half_pi<float>()`).
 
@@ -44,6 +52,7 @@ If the file path matches any of those, skip the file entirely.
 
 ```
 - [needs-fix] <path>:<line> — `<found-call>` — replace with `<IRMath-equivalent>`
+- [needs-fix][pre-existing] <path>:<line> — `<found-call>` — replace with `<IRMath-equivalent>` (predates this diff; file is touched, so migrate)
 ```
 
 All math violations are `needs-fix`. No `blocker` or `nit` from this scanner.

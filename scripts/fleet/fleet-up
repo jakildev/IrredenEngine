@@ -1018,6 +1018,13 @@ proj_dir = pathlib.Path("~/.fleet/state/projections").expanduser()
 trig_dir = pathlib.Path("~/.fleet/state/triggers").expanduser()
 trig_dir.mkdir(parents=True, exist_ok=True)
 
+# Key-coupling invariant: each <role>_actionable(p) reads top-level keys
+# of the projection that the matching slice_<role>() in fleet-state-scout
+# emits. The names must match EXACTLY — p.get("wrong_key") returns None
+# silently, so a mismatch never errors; the role just never
+# bootstrap-triggers on fleet restart. When adding a role, diff the
+# predicate's keys against slice_<role>()'s emitted dict before landing.
+
 def merger_actionable(p):
     return bool(p.get("prs"))
 
