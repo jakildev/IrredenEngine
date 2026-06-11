@@ -48,7 +48,8 @@ void main() {
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     int encoded = imageLoad(trixelDistances, pixel).x;
-    if (encoded >= kEmptyDistanceEncoded) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         imageStore(canvasSunShadow, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
     }
@@ -57,7 +58,8 @@ void main() {
         return;
     }
 
-    int rawDepth = encoded >> 2;
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    int rawDepth = (perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     int face = encoded & 3;
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 

@@ -256,29 +256,24 @@ void main() {
             // faceInPlaneCoords ignores the fixed axis, so the cell is identical
             // to worldPos's; only the recovered fixed-axis plane changes.
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
+            // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
+                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance);
             return;
         }
-        // subPerAxis is the #1431-capped lattice density (uploaded in
-        // voxelRenderOptions.y for the per-axis pass). The compact pass sized
-        // the indirect dispatch's Z count from the UNCAPPED effSub (it runs on
-        // the single-canvas frame data), so gl_WorkGroupID.z ranges over
-        // effSub², not subPerAxis². Skip the surplus invocations whose sub-cell
-        // index overflows the capped grid — without this they would re-emit at
-        // uPerAxis >= subPerAxis, stepping a full voxel past the cell.
-        const int subPerAxis = max(voxelRenderOptions.y, 1);
-        const int uPerAxis = int(gl_WorkGroupID.z) / subPerAxis;
-        const int vPerAxis = int(gl_WorkGroupID.z) % subPerAxis;
-        if (uPerAxis >= subPerAxis) return;
+        // #1458: store at BASE (world-unit) resolution regardless of effSub.
+        // Only the z=0 invocation writes; higher z-slices return early.
+        // The voxel's continuous sub-cell offset is packed into the lower bits
+        // of the encoding so scatter can sub-pixel-shift the face quad.
+        if (gl_WorkGroupID.z != 0) return;
         const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const ivec3 worldFixed = ivec3(round(worldAligned * float(subPerAxis)));
-        const ivec3 microWorld =
-            faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
+        const ivec3 worldPos_sub = ivec3(round(worldAligned));
+        const ivec3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
+        const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
         const int voxelDistance =
-            encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
-        writeDistanceTap(cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance);
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
+        writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos_sub), voxelDistance);
         return;
     }
 

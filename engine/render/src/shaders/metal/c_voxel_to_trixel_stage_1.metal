@@ -164,31 +164,26 @@ kernel void c_voxel_to_trixel_stage_1(
             // fixed axis so the cell is unchanged; the depth now recovers the
             // face plane, which faceSpanCorner spans without re-adding polarity.
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
+            // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
+                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeDistanceTap(
                 cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance,
                 distanceScratch, canvasSize
             );
             return;
         }
-        // subPerAxis is the #1431-capped lattice density (voxelRenderOptions.y).
-        // The compact pass sized the indirect dispatch Z count from the
-        // UNCAPPED effSub, so groupId.z ranges over effSub², not subPerAxis².
-        // Skip surplus sub-cell invocations that overflow the capped grid (they
-        // would step a full voxel past the cell). Mirrors the GLSL guard.
-        const int subPerAxis = max(frameData.voxelRenderOptions.y, 1);
-        const int uPerAxis = int(groupId.z) / subPerAxis;
-        const int vPerAxis = int(groupId.z) % subPerAxis;
-        if (uPerAxis >= subPerAxis) return;
+        // #1458: store at BASE (world-unit) resolution regardless of effSub.
+        // Only the z=0 invocation writes; higher z-slices return early.
+        if (groupId.z != 0) return;
         const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const int3 worldFixed = int3(round(worldAligned * float(subPerAxis)));
-        const int3 microWorld =
-            faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
+        const int3 worldPos_sub = int3(round(worldAligned));
+        const int3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
+        const float3 fracInCell = worldAligned - float3(worldPos_sub);
         const int voxelDistance =
-            encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
         writeDistanceTap(
-            cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance,
+            cellBase + faceInPlaneCoords(faceId, facePos_sub), voxelDistance,
             distanceScratch, canvasSize
         );
         return;

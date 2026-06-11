@@ -95,7 +95,9 @@ void main() {
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     int encoded = imageLoad(trixelDistances, pixel).x;
-    if (encoded >= kEmptyDistanceEncoded) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    const int kEmpty = (perAxisRoute != 0) ? 0x7FFFFFFF : kEmptyDistanceEncoded;
+    if (encoded >= kEmpty) {
         imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
         return;
     }
@@ -112,7 +114,8 @@ void main() {
     // assumption the pre-#1278 path baked in).
     int slot = encoded & 3;
     int faceId = visibleFaceIds[slot];
-    int rawDepth = encoded >> 2;
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    int rawDepth = (perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
     // face-locally (perAxisRoute != 0), so recover world-pos via
@@ -156,12 +159,10 @@ void main() {
     ivec2 deltaT1;
     ivec2 deltaT2;
     if (perAxis) {
-        // The per-axis canvas is a face-local in-plane lattice (X->(y,z),
-        // Y->(x,z), Z->(x,y)), so a +/-1 cell step along each canvas axis IS the
-        // +/-1 in-plane world-tangent neighbour — no iso projection or cardinal
-        // rotation. Step `scale` cells to cover one world voxel under subdivision.
-        deltaT1 = ivec2(scale, 0);
-        deltaT2 = ivec2(0, scale);
+        // Per-axis canvas is BASE-RESOLUTION (#1458): 1 cell = 1 world voxel.
+        // A +/-1 cell step along each canvas axis is the +/-1 in-plane neighbour.
+        deltaT1 = ivec2(1, 0);
+        deltaT2 = ivec2(0, 1);
     } else {
         ivec3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
         ivec3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
@@ -181,9 +182,9 @@ void main() {
             samplePixel.y < 0 || samplePixel.y >= size.y) continue;
 
         int neighbourEncoded = imageLoad(trixelDistances, samplePixel).x;
-        if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
+        if (neighbourEncoded >= kEmpty) continue;
 
-        int neighbourRawDepth = neighbourEncoded >> 2;
+        int neighbourRawDepth = (perAxisRoute != 0) ? (neighbourEncoded >> 10) : (neighbourEncoded >> 2);
         vec3 neighbourPos3D;
         if (perAxis) {
             int neighbourFaceId = visibleFaceIds[neighbourEncoded & 3];

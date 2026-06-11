@@ -193,8 +193,9 @@ kernel void c_voxel_to_trixel_stage_2(
             // Mirror stage 1's face-plane store (#1310 seam fix) so the color
             // tap lands on the same cell + depth the distance tap did.
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
+            // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
+                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeColorTap(
                 cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance, voxelColor,
                 packedEntityId, canvasSize, distanceScratch,
@@ -202,18 +203,16 @@ kernel void c_voxel_to_trixel_stage_2(
             );
             return;
         }
-        const int subPerAxis = max(frameData.voxelRenderOptions.y, 1);
-        const int uPerAxis = int(groupId.z) / subPerAxis;
-        const int vPerAxis = int(groupId.z) % subPerAxis;
-        if (uPerAxis >= subPerAxis) return; // compact dispatch uses effSub², capped store uses cappedSub²
-        const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const int3 worldFixed = int3(round(worldAligned * float(subPerAxis)));
-        const int3 microWorld =
-            faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
-        const int voxelDistance =
-            encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
+        // #1458: mirror stage 1's base-resolution store (z=0 only).
+        if (groupId.z != 0) return;
+        const float3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+        const int3 worldPos_s2 = int3(round(worldAligned_s2));
+        const int3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
+        const float3 fracInCell_s2 = worldAligned_s2 - float3(worldPos_s2);
+        const int voxelDistance_s2 =
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
         writeColorTap(
-            cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance, voxelColor,
+            cellBase + faceInPlaneCoords(faceId, facePos_s2), voxelDistance_s2, voxelColor,
             packedEntityId, canvasSize, distanceScratch,
             triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );

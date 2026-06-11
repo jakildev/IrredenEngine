@@ -114,6 +114,36 @@ inline int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
 }
 
+// Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
+// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders by depth first.
+// Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid encoding overwrites the sentinel.
+// rawDepth must be in world units; depth field is 22 bits so rawDepth must stay < 2^21.
+inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4) {
+    return (rawDepth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
+}
+
+// Maps fracInCell to 4-bit sub-cell offsets (0..15, 8 = cell centre) for the
+// given axis, following the uv assignment of faceInPlaneUnitAxes.
+inline void fracToFrac4(int axis, float3 fracInCell, thread int& uFrac4, thread int& vFrac4) {
+    if (axis == 0) {
+        uFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+    } else if (axis == 1) {
+        uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+    } else {
+        uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
+    }
+}
+
+// Convenience overload: compute uFrac4/vFrac4 from fracInCell and encode in one call.
+inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, float3 fracInCell) {
+    int uFrac4, vFrac4;
+    fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
+    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4);
+}
+
 // Outward unit normal for the visible side of each iso-rendered face. The
 // iso projection has view direction (1,1,1), so a camera at
 // (-large,-large,-large) sees the faces whose outward normals point

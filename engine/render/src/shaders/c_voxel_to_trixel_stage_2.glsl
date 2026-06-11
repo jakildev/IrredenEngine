@@ -174,26 +174,25 @@ void main() {
             // Mirror stage 1's face-plane store (#1310 seam fix) so the color
             // tap lands on the same cell + depth the distance tap did.
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
+            // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
-                encodeDepthWithFace(pos3DtoDistance(facePos), slot);
+                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeColorTap(
                 cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance,
                 voxelColor, voxelIndex
             );
             return;
         }
-        const int subPerAxis = max(voxelRenderOptions.y, 1);
-        const int uPerAxis = int(gl_WorkGroupID.z) / subPerAxis;
-        const int vPerAxis = int(gl_WorkGroupID.z) % subPerAxis;
-        if (uPerAxis >= subPerAxis) return; // compact dispatch uses effSub², capped store uses cappedSub²
-        const vec3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
-        const ivec3 worldFixed = ivec3(round(worldAligned * float(subPerAxis)));
-        const ivec3 microWorld =
-            faceMicroPositionFixed6(faceId, worldFixed, uPerAxis, vPerAxis, subPerAxis);
-        const int voxelDistance =
-            encodeDepthWithFace(microWorld.x + microWorld.y + microWorld.z, slot);
+        // #1458: mirror stage 1's base-resolution store (z=0 only).
+        if (gl_WorkGroupID.z != 0) return;
+        const vec3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+        const ivec3 worldPos_s2 = ivec3(round(worldAligned_s2));
+        const ivec3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
+        const vec3 fracInCell_s2 = worldAligned_s2 - vec3(worldPos_s2);
+        const int voxelDistance_s2 =
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
         writeColorTap(
-            cellBase + faceInPlaneCoords(faceId, microWorld), voxelDistance,
+            cellBase + faceInPlaneCoords(faceId, facePos_s2), voxelDistance_s2,
             voxelColor, voxelIndex
         );
         return;

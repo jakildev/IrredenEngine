@@ -143,8 +143,11 @@ void main() {
     }
 
     const int rawDist = texelFetch(triangleDistances, ij, 0).r;
-    const int rawDepth = rawDist >> 2;       // pos3DtoDistance of the face origin
-    const int slot = rawDist & 3;            // visible-triplet slot
+    // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
+    const int slot = rawDist & 3;
+    const int vFrac4 = (rawDist >> 2) & 15;
+    const int uFrac4 = (rawDist >> 6) & 15;
+    const int rawDepth = rawDist >> 10;      // pos3DtoDistance of the face origin (world units)
     const int faceId = visibleFaceIds[slot];
     const int axis = faceId >> 1;
 
@@ -155,9 +158,17 @@ void main() {
     // dropped compressed-axis faces (cell collisions -> cracks) and went
     // singular at yaw = +/-120 deg (-> a speckled cube). faceLocalAnchor matches
     // stage 1/2's store: same perAxisBase + canvasSize. See ir_iso_common.glsl.
+    // Hoist in-plane axes so the fractional offset below and the coverage
+    // dilation block below both share the same eu/ev without a second call.
+    vec3 eu, ev;
+    faceInPlaneUnitAxes(axis, eu, ev);
     const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
     const ivec2 inPlane = ij - faceLocalBase(axis, anchor, canvasSize);
-    const vec3 origin = vec3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    const vec3 baseOrigin = vec3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    // Apply sub-cell offset packed in the encoding (#1458).
+    const vec3 origin = baseOrigin
+        + eu * (float(uFrac4) / 16.0 - 0.5)
+        + ev * (float(vFrac4) / 16.0 - 0.5);
 
     // Project the selected face corner under the continuous yaw
     // (pos3DtoPos2DIsoYawed is linear, so this IS P(theta)*corner — the true
@@ -183,8 +194,6 @@ void main() {
     const vec2 fbRes = max(scatterFbResolution.xy, vec2(1.0));
     const vec2 ndcPerPx = vec2(2.0) / fbRes;
     const vec2 pxPerNdc = fbRes * 0.5;
-    vec3 eu, ev;
-    faceInPlaneUnitAxes(axis, eu, ev);
     vec2 isoEu = pos3DtoPos2DIsoYawed(eu, visualYaw);
     vec2 isoEv = pos3DtoPos2DIsoYawed(ev, visualYaw);
     vec2 quadEu = vec2(isoEu.x / float(canvasSize.x), -isoEu.y / float(canvasSize.y));

@@ -12,11 +12,8 @@
 #include "ir_iso_common.metal"
 
 // Reconstruct the world-unit surface position of a per-axis trixel canvas cell.
-// See ir_per_axis_lighting.glsl for the full rationale: exact integer inverse of
-// the face-local store (faceOriginFromInPlane, no 2cos(yaw)+1 singularity),
-// divided by the subdivision scale to land in WORLD voxel units (matching the
-// cardinal path's trixelCanvasPixelToWorld3D). `faceId` is the world FaceId; no
-// cardinal rotation — the per-axis store writes the world frame directly.
+// See ir_per_axis_lighting.glsl for the full rationale. rawDepth is in world units
+// (base-resolution encoding, #1458); no subdivision-scale division.
 inline float3 perAxisCellToWorld3D(
     int2 cell, int rawDepth, int faceId,
     int2 canvasSize, float2 frameCanvasOffset, int2 voxelRenderOptions
@@ -26,12 +23,7 @@ inline float3 perAxisCellToWorld3D(
     const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
     const int axis = faceId >> 1;
     const int2 inPlane = cell - faceLocalBase(axis, anchor, canvasSize);
-    float3 pos3D = float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
-    const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
-    if (scale > 1) {
-        pos3D /= float(scale);
-    }
-    return pos3D;
+    return float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
 }
 
 #endif // IR_PER_AXIS_LIGHTING_METAL_INCLUDED

@@ -124,10 +124,9 @@ void main() {
         return;
     }
 
-    // Empty/background pixels carry kTrixelDistanceMaxDistance (65535).
-    // Nothing rasterized here, so nothing to light.
+    // Empty/background pixels: single-canvas uses 65535; per-axis uses INT_MAX (#1458).
     const int encoded = imageLoad(trixelDistances, pixel).x;
-    if (encoded >= 65535) {
+    if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
         return;
     }
 
@@ -139,7 +138,8 @@ void main() {
     const bool detachedCanvas = isDetachedCanvas != 0.0;
     const bool worldReceive = detachedCanvas && detachedWorldReceive.w != 0.0;
 
-    const int rawDepth = encoded >> 2;
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    const int rawDepth = (perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     // Decode the visible-triplet slot (#1278) → world FaceId → world-frame
     // six-face outward normal. Used by Lambert, the HDR sky-term, and the
     // world-receive sun-shadow normal — so hoist it above the shadow read.
