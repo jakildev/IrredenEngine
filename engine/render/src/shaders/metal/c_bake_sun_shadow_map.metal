@@ -79,19 +79,38 @@ kernel void c_bake_sun_shadow_map(
     // shared sun depth map as the main canvas (SDF/text) so voxels and shapes
     // shadow each other under rotation. Per-axis stores the world frame
     // face-locally; the single canvas stores the cardinal-snapped iso pixel.
-    float3 pos3D = frameData.perAxisRoute != 0
-        ? perAxisCellToWorld3D(
-              pixel, rawDepth, frameData.visibleFaceIds[encoded & 3], size,
-              frameData.frameCanvasOffset, frameData.voxelRenderOptions
-          )
-        : trixelCanvasPixelToWorld3D(
-              pixel,
-              rawDepth,
-              frameData.trixelCanvasOffsetZ1,
-              frameData.frameCanvasOffset,
-              frameData.voxelRenderOptions,
-              frameData.rasterYaw
-          );
+    float3 pos3D;
+    if (frameData.perAxisRoute != 0) {
+        pos3D = perAxisCellToWorld3D(
+            pixel, rawDepth, frameData.visibleFaceIds[encoded & 3], size,
+            frameData.frameCanvasOffset, frameData.voxelRenderOptions
+        );
+    } else if (frameData.residualYaw != 0.0) {
+        // Smooth-yaw cast (#1719). While rotating, the single canvas's
+        // remaining SDF/text content is stored at the FULL visualYaw with
+        // view-frame depth (#1345/#1370) — recover with the matching smooth
+        // inverse so those casters bake at their true world positions. The
+        // CARDINAL-layout resolve textures (per-axis #1435 + world-placed
+        // P4b-3) bake with residualYaw zeroed by the C++ driver, so they keep
+        // the cardinal recovery below. Mirrors GLSL.
+        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.visualYaw
+        );
+    } else {
+        pos3D = trixelCanvasPixelToWorld3D(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.rasterYaw
+        );
+    }
 
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;

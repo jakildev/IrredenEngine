@@ -204,6 +204,22 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         IRRender::device()->memoryBarrier(BarrierType::ALL);
     }
 
+    // Patch the resident main frame's yaw split for a CARDINAL-layout bake
+    // input, then restore the camera split afterward (#1719). The resolve
+    // textures (per-axis #1435, world-placed P4b-3) re-projected their content
+    // into the cardinal main-canvas layout, but the resident main frame
+    // carries the camera's residual yaw, which would route the bake shader's
+    // recovery onto the smooth-yaw inverse meant for the #1345 SDF store.
+    // subData orphans the UBO on Metal, so re-bind after patching (the
+    // in-file convention).
+    void patchFrameYawSplit(float visualYaw, float residualYaw) {
+        voxelFrameDataBuf_
+            ->subData(offsetof(FrameDataVoxelToCanvas, visualYaw_), sizeof(float), &visualYaw);
+        voxelFrameDataBuf_
+            ->subData(offsetof(FrameDataVoxelToCanvas, residualYaw_), sizeof(float), &residualYaw);
+        voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
+    }
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -263,12 +279,21 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // rotating, so this branch never runs at a cardinal.
         if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
             perAxisCanvases_->isAllocated()) {
+            // The resolve texture is CARDINAL-layout — zero the resident
+            // frame's residual for this dispatch so the bake shader keeps the
+            // cardinal recovery (#1719), then restore the camera split for
+            // downstream consumers (COMPUTE_SUN_SHADOW's smooth receive).
+            const float cameraVisualYaw = IRPrefab::Camera::getYaw();
+            const auto [cameraRasterYaw, cameraResidualYaw] =
+                IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
+            patchFrameYawSplit(cameraRasterYaw, 0.0f);
             // resolveDepth_ is allocated at the main canvas size, so dispatch
             // over canvasTextures.size_ (same domain as the main bake above).
             perAxisCanvases_->resolveDepth_.second
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            patchFrameYawSplit(cameraVisualYaw, cameraResidualYaw);
             // Restore the main-canvas distance image so the persistent Metal
             // image-binding table doesn't dangle when release() frees the
             // resolve texture (mirrors the COMPUTE_SUN_SHADOW per-axis restore).
@@ -303,6 +328,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 mainPool_,
                 mainRotation_
             );
+            // Passes 1–3 below project / recover through the CARDINAL layout
+            // (the scatter reads rasterYaw only; pass 3's bake recovery must
+            // not take the smooth-yaw branch) — zero the resident residual for
+            // the block and restore the camera split at the end (#1719).
+            const float cameraVisualYaw = IRPrefab::Camera::getYaw();
+            const auto [cameraRasterYaw, cameraResidualYaw] =
+                IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
+            patchFrameYawSplit(cameraRasterYaw, 0.0f);
 
             // Pass 1 — scatter each caster into the shared scratch (front-most
             // per screen pixel via atomicMin). Only the 16-byte
@@ -378,6 +411,10 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            // Restore the camera yaw split zeroed before pass 1 so downstream
+            // consumers (COMPUTE_SUN_SHADOW's smooth receive) see the true
+            // residual (#1719).
+            patchFrameYawSplit(cameraVisualYaw, cameraResidualYaw);
             // Restore the main-canvas distance image so the persistent Metal
             // image-binding table doesn't dangle (mirrors the per-axis restore).
             canvasTextures.getTextureDistances()

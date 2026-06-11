@@ -453,6 +453,40 @@ inline float3 trixelCanvasPixelToWorld3D(
     );
 }
 
+// View frame -> world frame under a continuous camera Z-yaw: R_z(+yaw)·v, the
+// smooth companion to rotateCardinalZInv (pos3DtoPos2DIsoYawed projects the
+// view point R_z(-yaw)·world, so this is its rotation inverse).
+inline float3 rotateYawZInv(float3 v, float yaw) {
+    const float c = cos(yaw);
+    const float s = sin(yaw);
+    return float3(c * v.x - s * v.y, s * v.x + c * v.y, v.z);
+}
+
+// Smooth-camera-yaw inverse (#1719) of the #1345 smooth-yaw SDF store: those
+// pixels are placed at roundHalfUp(pos3DtoPos2DIsoYawed(world, visualYaw))
+// with the VIEW-frame iso depth (#1370), so recover the view-frame point with
+// the cardinal-frame solver and rotate back by the full +visualYaw. No
+// lower-corner shift — the smooth store never applies one. Identical to
+// trixelCanvasPixelToWorld3D at visualYaw == 0 (cos=1/sin=0, cardinal 0 takes
+// the same shift-free path), keeping the cardinal fast path byte-identical.
+inline float3 trixelCanvasPixelToWorld3DSmoothYaw(
+    int2 pixel,
+    int rawDepth,
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions,
+    float visualYaw
+) {
+    const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    const int2 isoRel =
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+    float3 viewPos = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    if (scale > 1) {
+        viewPos /= float(scale);
+    }
+    return rotateYawZInv(viewPos, visualYaw);
+}
+
 // Continuous-yaw + per-face deformation math (T-292; consumed by T-293).
 // Mirrors shaders/ir_iso_common.glsl and IRMath::pos3DtoPos2DIsoYawed /
 // faceDeformationMatrix / deformedTrixelIsoPixel / sqtToMat4 /

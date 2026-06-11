@@ -174,6 +174,12 @@ kernel void c_lighting_to_trixel(
         // face-locally; the single canvas uses the cardinal-snap reconstruction.
         // The shared world light volume is sampled the same way for both. The
         // world-placed detached solid reuses worldReceivePos (model + offset).
+        // Smooth-yaw single-canvas recovery (#1719): while rotating, the main
+        // canvas's remaining SDF/text content stores at the FULL visualYaw
+        // with view-frame depth, so the light-volume sample position must use
+        // the smooth inverse or the glow drifts off the surface as |residual|
+        // grows. residualYaw == 0 (and every detached canvas, whose frame
+        // carries zero yaw) keeps the byte-identical cardinal recovery.
         float3 pos3D = worldReceive
             ? worldReceivePos
             : (voxelFrameData.perAxisRoute != 0
@@ -181,14 +187,23 @@ kernel void c_lighting_to_trixel(
                       pixel, rawDepth, faceId, size,
                       voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
                   )
-                : trixelCanvasPixelToWorld3D(
-                      pixel,
-                      rawDepth,
-                      voxelFrameData.trixelCanvasOffsetZ1,
-                      voxelFrameData.frameCanvasOffset,
-                      voxelFrameData.voxelRenderOptions,
-                      voxelFrameData.rasterYaw
-                  ));
+                : (voxelFrameData.residualYaw != 0.0
+                    ? trixelCanvasPixelToWorld3DSmoothYaw(
+                          pixel,
+                          rawDepth,
+                          voxelFrameData.trixelCanvasOffsetZ1,
+                          voxelFrameData.frameCanvasOffset,
+                          voxelFrameData.voxelRenderOptions,
+                          voxelFrameData.visualYaw
+                      )
+                    : trixelCanvasPixelToWorld3D(
+                          pixel,
+                          rawDepth,
+                          voxelFrameData.trixelCanvasOffsetZ1,
+                          voxelFrameData.frameCanvasOffset,
+                          voxelFrameData.voxelRenderOptions,
+                          voxelFrameData.rasterYaw
+                      )));
 
         constexpr sampler volumeSampler(
             filter::nearest, address::clamp_to_edge
