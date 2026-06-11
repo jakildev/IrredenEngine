@@ -216,8 +216,8 @@ vertex VertexOut v_peraxis_scatter(
     // interpolation reproduces the face plane's affine depth field per
     // fragment. Per-axis is residual-only -> cardinal fast path
     // byte-identical.
-    const float kU = scatterCompositeDepthKey(eu, frameData.visualYaw, 0);
-    const float kV = scatterCompositeDepthKey(ev, frameData.visualYaw, 0);
+    const float kU = scatterCompositeDepthKey(eu, frameData.visualYaw, 0);  // gradient only — slot term cancels
+    const float kV = scatterCompositeDepthKey(ev, frameData.visualYaw, 0);  // gradient only — slot term cancels
     const float cornerKey = scatterCompositeDepthKey(worldCorner, frameData.visualYaw, slot) +
                             dilParam.x * kU + dilParam.y * kV;
     const float depthRange =

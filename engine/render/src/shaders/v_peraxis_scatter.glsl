@@ -241,8 +241,8 @@ void main() {
     // margin beat the true owner's interior along every cell boundary) — the
     // #1457 wrong-voxel-color bands. Per-axis is residual-only, so the
     // cardinal fast path is untouched (byte-identical).
-    const float kU = scatterCompositeDepthKey(eu, visualYaw, 0);
-    const float kV = scatterCompositeDepthKey(ev, visualYaw, 0);
+    const float kU = scatterCompositeDepthKey(eu, visualYaw, 0);  // gradient only — slot term cancels
+    const float kV = scatterCompositeDepthKey(ev, visualYaw, 0);  // gradient only — slot term cancels
     const float cornerKey = scatterCompositeDepthKey(worldCorner, visualYaw, slot) +
                             dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
