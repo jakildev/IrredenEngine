@@ -163,23 +163,12 @@ vertex VertexOut v_peraxis_scatter(
     return out;
 }
 
-// HSV → RGB. Matches hsvToRgb in c_shapes_to_trixel.metal so voxel-scatter
-// depth-color is identical to the SDF twin when mode is on (#1697).
-static inline float3 hsvToRgb(float3 hsv) {
-    float h = hsv.x * 6.0f;
-    float s = hsv.y;
-    float v = hsv.z;
-    int   i = int(h);
-    float f = h - float(i);
-    float p = v * (1.0f - s);
-    float q = v * (1.0f - s * f);
-    float t = v * (1.0f - s * (1.0f - f));
-    if (i == 0) return float3(v, t, p);
-    if (i == 1) return float3(q, v, p);
-    if (i == 2) return float3(p, v, t);
-    if (i == 3) return float3(p, q, v);
-    if (i == 4) return float3(t, p, v);
-               return float3(v, p, q);
+// HSV → RGB. Identical to hsvToRgb in c_shapes_to_trixel.metal — voxel-scatter
+// depth-color is bit-exact with the SDF twin when mode is on (#1697).
+static inline float3 hsvToRgb(float3 c) {
+    const float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    const float3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
 fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
