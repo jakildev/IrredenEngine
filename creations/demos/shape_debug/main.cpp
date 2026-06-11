@@ -22,6 +22,8 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_joint.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -40,6 +42,7 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
+#include <irreden/render/systems/system_update_joint_matrices.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
@@ -154,6 +157,12 @@ bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by def
 // standard scene stays byte-identical; the rotated cube is direct proof the
 // prepass applied modelToWorld (the CPU world-position path is translation-only).
 bool g_gpuVoxelSmoke = false;
+// --skin-smoke (#1605): spawn one 2-bone rigged voxel bar skinned through the
+// binding-17 bone→slot seed path, with the second joint posed off its bind
+// pose. Off by default so the standard scene stays byte-identical; the visible
+// bend at the bar's midpoint is direct proof the per-voxel slots route through
+// the joint skin matrices (a rigid entity transform cannot bend a set).
+bool g_skinSmoke = false;
 int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f; // 0 = use engine default
@@ -223,6 +232,8 @@ int main(int argc, char **argv) {
             g_checkerboard = true;
         } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
             g_gpuVoxelSmoke = true;
+        } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
+            g_skinSmoke = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
             if (i + 1 < argc) {
                 float z = static_cast<float>(std::atof(argv[i + 1]));
@@ -371,11 +382,19 @@ void initSystems() {
     const IRSystem::SystemId updateVoxelPositionsId =
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
     IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
+    // Joint skin-matrix upload (#1603) + per-voxel bone→slot seeding (#1605).
+    // Before UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices
+    // when the prepass dispatches; a no-op (zero skeletons) unless --skin-smoke
+    // rigs a set, so the default scene stays byte-identical.
+    const IRSystem::SystemId updateJointMatricesId =
+        IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
+    IRPrefab::JointTransform::setSystem(updateJointMatricesId);
     renderPipeline.insert(
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            updateJointMatricesId,
             updateVoxelPositionsId,
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
@@ -712,6 +731,60 @@ void createGpuVoxelTransformSmoke() {
     );
 }
 
+// Spawn one 2-bone rigged voxel bar skinned through the per-voxel bone→slot
+// seed path (#1605). The bar spans x ∈ [-8, 8]; voxels left of the midpoint
+// are painted bone 0 (root, at the left end), the rest bone 1 (elbow, at the
+// midpoint, posed 30° off its bind rotation). UPDATE_JOINT_MATRICES allocates
+// the skeleton's slot block on its first tick and auto-seeds binding 17 with
+// `slotBase + bone_id`, so the right half visibly bends about the midpoint —
+// a rigid entity transform cannot produce that, making the bend direct proof
+// the per-voxel slots route through the joint skin matrices. Opt-in
+// (--skin-smoke) so the default scene stays byte-identical.
+void createSkinnedVoxelSmoke() {
+    const vec3 position = vec3(0.0f, 16.0f, -14.0f);
+    const ivec3 size = ivec3(17, 3, 3);
+
+    EntityId rigRoot = IREntity::createEntity(
+        C_LocalTransform{position},
+        C_VoxelSetNew{size, Color{220, 140, 100, 255}, true}
+    );
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
+
+    // Paint bone ids from each voxel's entity-local x: left half follows the
+    // root bone, right half the elbow.
+    for (std::size_t i = 0; i < vs.voxels_.size(); ++i) {
+        vs.voxels_[i].bone_id_ = (vs.positions_[i].pos_.x < 0.0f) ? 0 : 1;
+    }
+
+    // Root joint at the bar's left end; elbow at the midpoint, CHILD_OF the
+    // root with a +8 local offset and posed 30° about +Y away from its rest.
+    // bindPose_ holds the rig-root-local REST chain (no pose rotation), so the
+    // elbow's skin matrix is non-identity and bends the right half.
+    EntityId rootJoint =
+        IREntity::createEntity(C_Joint{}, C_LocalTransform{vec3(-8.0f, 0.0f, 0.0f)});
+    IREntity::setParent(rootJoint, rigRoot);
+    const vec4 elbowPose = IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), IRMath::kPi / 6.0f);
+    EntityId elbowJoint =
+        IREntity::createEntity(C_Joint{}, C_LocalTransform{vec3(8.0f, 0.0f, 0.0f), elbowPose});
+    IREntity::setParent(elbowJoint, rootJoint);
+
+    C_Skeleton skeleton;
+    skeleton.joints_ = {rootJoint, elbowJoint};
+    skeleton.bindPose_ = {
+        IRMath::SQT{vec3(1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(-8.0f, 0.0f, 0.0f)},
+        IRMath::SQT{vec3(1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(0.0f, 0.0f, 0.0f)},
+    };
+    IREntity::setComponent(rigRoot, skeleton);
+
+    IR_LOG_INFO(
+        "Skinned voxel smoke entity={} canvas={} voxels={} joints={}",
+        rigRoot,
+        vs.canvasEntity_,
+        vs.numVoxels_,
+        skeleton.joints_.size()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Shape definitions — each entry produces one voxel-pool entity and one
 // SDF entity, placed side by side for visual comparison.
@@ -1002,5 +1075,10 @@ void initEntities() {
     if (g_gpuVoxelSmoke) {
         IR_LOG_INFO("--- GPU voxel-position prepass smoke (#1396) ---");
         createGpuVoxelTransformSmoke();
+    }
+
+    if (g_skinSmoke) {
+        IR_LOG_INFO("--- Skinned voxel bone->slot smoke (#1605) ---");
+        createSkinnedVoxelSmoke();
     }
 }

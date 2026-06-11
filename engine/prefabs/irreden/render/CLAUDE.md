@@ -110,9 +110,19 @@ the ECS surface.
   `IRPrefab::Skeleton::skinMatrix` (`jointWorld × bindInverse`) into a
   contiguous block of the **same** binding-18 `EntityTransformBuffer` the
   prepass consumes — no second buffer (binding-21 is retired for the voxel
-  path in Phase 2.4). Phase 2.3 then sets a skinned voxel's `.w` to
-  `slotBase + bone_id` so the existing `c_update_voxel_positions` prepass skins
-  it with no new shader. Iterates the `<C_Joint, C_WorldTransform>` archetype
+  path in Phase 2.4). Phase 2.3 (#1605, `seedVoxelBoneSlots`) sets a skinned
+  voxel's `.w` to `slotBase + bone_id` so the existing
+  `c_update_voxel_positions` prepass skins it with no new shader: when a
+  skeleton's slot block is (re)allocated, the system auto-stamps the rig
+  root's `C_VoxelSetNew` per-voxel pool transform indices (lazily acquiring
+  the set's entity slot via `IRPrefab::VoxelTransform::acquireSlot`; bone ids
+  outside the joint list fall back to that entity slot = rigid follow).
+  Editors that re-paint `C_Voxel::bone_id_` without changing the joint list
+  re-stamp via `IRPrefab::JointTransform::seedVoxelBoneSlots(rigRoot)`;
+  `IRPrefab::JointTransform::slotBase(rigRoot)` exposes the block for
+  downstream phases. The association is same-entity: the skeleton and the
+  skinned voxel set live on the same rig-root entity (the DENSE
+  `Prefab.spawn` shape). Iterates the `<C_Joint, C_WorldTransform>` archetype
   (world transform via dense iteration, no per-joint `getComponent`); the rest
   pose + target slot per joint are gathered once in `beginTick` from each
   skeleton's own `bindPose_`. **The 4096-slot binding-18 budget is partitioned**
