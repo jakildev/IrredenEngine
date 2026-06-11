@@ -271,10 +271,8 @@ void main() {
         const ivec3 worldPos_sub = ivec3(round(worldAligned));
         const ivec3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
         const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
-        int uFrac4, vFrac4;
-        fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
         const int voxelDistance =
-            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, uFrac4, vFrac4);
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
         writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos_sub), voxelDistance);
         return;
     }

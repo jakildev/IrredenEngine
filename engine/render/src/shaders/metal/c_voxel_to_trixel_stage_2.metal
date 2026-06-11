@@ -209,10 +209,8 @@ kernel void c_voxel_to_trixel_stage_2(
         const int3 worldPos_s2 = int3(round(worldAligned_s2));
         const int3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
         const float3 fracInCell_s2 = worldAligned_s2 - float3(worldPos_s2);
-        int uFrac4_s2, vFrac4_s2;
-        fracToFrac4(axis, fracInCell_s2, uFrac4_s2, vFrac4_s2);
         const int voxelDistance_s2 =
-            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, uFrac4_s2, vFrac4_s2);
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
         writeColorTap(
             cellBase + faceInPlaneCoords(faceId, facePos_s2), voxelDistance_s2, voxelColor,
             packedEntityId, canvasSize, distanceScratch,

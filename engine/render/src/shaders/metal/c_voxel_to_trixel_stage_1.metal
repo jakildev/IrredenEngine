@@ -180,10 +180,8 @@ kernel void c_voxel_to_trixel_stage_1(
         const int3 worldPos_sub = int3(round(worldAligned));
         const int3 facePos_sub = faceMicroPositionFixed6(faceId, worldPos_sub, 0, 0, 1);
         const float3 fracInCell = worldAligned - float3(worldPos_sub);
-        int uFrac4, vFrac4;
-        fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
         const int voxelDistance =
-            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, uFrac4, vFrac4);
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
         writeDistanceTap(
             cellBase + faceInPlaneCoords(faceId, facePos_sub), voxelDistance,
             distanceScratch, canvasSize
