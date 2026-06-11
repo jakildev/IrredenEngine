@@ -83,6 +83,29 @@ This stages the umbrella plan locally; step 6.5 commits it (and every
 per-ticket plan) into the repo at the **repo-side plan path**. The umbrella
 plan keeps the `issue-<N>` filename for the umbrella's lifetime.
 
+After saving, append the initial `## Steward ledger` section (schema from
+[`epic-steward-protocol.md`](../epic-steward-protocol.md)) to the staged plan.
+Child rows are not yet known — they are seeded in step 5.5 after filing:
+
+```bash
+cat >> <plans-dir>/issue-<N>.md << 'EOF'
+
+## Steward ledger
+
+reconciled-through: <YYYY-MM-DD>
+proposal-pending: none
+
+### Children
+| Child | State | PR | Plan | Last validated |
+|---|---|---|---|---|
+
+### Decisions
+
+### Events
+- <YYYY-MM-DD>: filed via file-epic
+EOF
+```
+
 ### 3. Apply the epic label to the umbrella
 
 ```bash
@@ -168,6 +191,47 @@ tracker's **issue number** is the canonical identifier every downstream
 reference (plan filename, `Blocked by:`, claim) uses. Capture the issue number
 the tracker returns.
 
+### 5.5. Seed the Children checklist and ledger rows (REQUIRED)
+
+After all children are filed and every issue number is known:
+
+**a. Insert child rows into the `### Children` table** in the `## Steward
+ledger` section of `<plans-dir>/issue-<N>.md` — one row per filed child,
+state `open`. Use the Write tool to update `<plans-dir>/issue-<N>.md`:
+locate the empty table separator row (the `|---|---|---|---|---|` line under
+`### Children`) and append one row per child below it.
+
+```
+| #<child-N> | open | — | plan | <YYYY-MM-DD> |
+```
+
+**b. Write the `## Children` checklist** into the umbrella issue body in one
+edit (never one edit per child — the steward's membership merge is based on
+a single coherent checklist section):
+
+```bash
+gh issue view <umbrella> --repo <repo> --json body --jq '.body' > .file-epic-umbrella-body.md
+cat >> .file-epic-umbrella-body.md << 'EOF'
+
+## Children
+
+- [ ] #<N1> — <title of child 1>
+- [ ] #<N2> — <title of child 2>
+EOF
+gh issue edit <umbrella> --repo <repo> --body-file .file-epic-umbrella-body.md
+rm -f .file-epic-umbrella-body.md
+```
+
+> **Checklist format is load-bearing.** The scout's parser and the
+> `--check-checklist` validator (step 7.5) both take the **first** `#N` on
+> each checkbox line. Keep the format plain: `- [ ] #N — title`. No bold
+> refs or extra tokens before the number.
+
+The `## Children` checklist is the steward's **membership source of truth**
+for this epic. Pre-protocol epics get healed on the steward's first claim;
+new filings must be born managed — skip this step and the checklist is
+missing from the start.
+
 ### 6. Write per-ticket plan file
 
 After each child is filed, write `<plans-dir>/issue-<N>.md` (where `<N>` is
@@ -246,7 +310,8 @@ rm -f .file-epic-body.md
 The summary is the single source of truth linking the umbrella to its
 children: a phase/ticket/title/model table for the closing path, an
 independent-follow-on table, an ASCII dependency chain, closing criteria,
-and any shape changes from the original phasing.
+and any shape changes from the original phasing. Include one line pointing
+at the Steward ledger: `Steward ledger: <repo-side-plan-path>/issue-<N>.md §Steward ledger`.
 
 ### 7.5. Validate filed bodies (STOP on failure)
 
@@ -270,6 +335,14 @@ re-run until it passes. Never report success on a stack the validator
 rejects. A prose-only `Blocked on …` header is read only as a *fallback*;
 the canonical standalone `**Blocked by:** #N` line is what the
 `--search "Part of epic: #N"` discovery and the queue parsers rely on.
+
+Once `--check-checklist` is available (tracked in #1667), also validate the
+umbrella's `## Children` checklist:
+
+```bash
+<validate-stack-command> <umbrella> --check-checklist
+<validate-stack-command> <umbrella> --check-checklist --repo game  # game repo
+```
 
 ### 8. Report
 
@@ -302,6 +375,9 @@ auto-approve).
   fits in one PR, file one issue.
 - ❌ Inline-authoring the umbrella plan file. Always copy from the
   **architect plans dir** — the architect plan is the canonical source.
+- ❌ Filing an epic without seeding the `## Children` checklist (step 5.5b)
+  or the `## Steward ledger` (step 2 + step 5.5a) — the steward heals
+  pre-protocol epics, but new filings must be born managed.
 
 ## Plan file lifecycle
 
