@@ -146,6 +146,23 @@ inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name)
     return group;
 }
 
+// Shared by createRotateGizmo / createRotateGizmoForAnchor: the three axis
+// rings (TORUS per axis), parented to — and anchored at — `parent`.
+inline void spawnRotateRings(IREntity::EntityId parent, const char *ringName) {
+    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
+        spawnHandle(
+            parent,
+            GizmoKind::ROTATE_RING,
+            axis,
+            vec3(0.0f),
+            IRRender::ShapeType::TORUS,
+            vec4(kRingMajorRadius, kRingMinorRadius, 0.0f, 0.0f),
+            axisColor(axis),
+            ringName
+        );
+    }
+}
+
 // Shared by createTranslateGizmo / createTranslateGizmoForAnchor: the three
 // axis arrows (CYLINDER shaft + CONE head per axis), parented to — and
 // anchored at — `parent`.
@@ -210,20 +227,22 @@ inline IREntity::EntityId createTranslateGizmoForAnchor(IREntity::EntityId ancho
 inline IREntity::EntityId createRotateGizmo(IREntity::EntityId parent = IREntity::kNullEntity) {
     using namespace detail;
     IREntity::EntityId group = makeGroup(parent, "GizmoRotate");
-
-    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
-        spawnHandle(
-            group,
-            GizmoKind::ROTATE_RING,
-            axis,
-            vec3(0.0f),
-            IRRender::ShapeType::TORUS,
-            vec4(kRingMajorRadius, kRingMinorRadius, 0.0f, 0.0f),
-            axisColor(axis),
-            "GizmoRotateRing"
-        );
-    }
+    spawnRotateRings(group, "GizmoRotateRing");
     return group;
+}
+
+/// Rotate gizmo whose three axis rings rotate the given `anchor` entity's
+/// own `C_LocalTransform::rotation_` (rather than a separate gizmo group).
+/// Each ring is parented to `anchor` so it tracks the anchor as it moves,
+/// and its `C_GizmoHandle::anchorEntity_` points at `anchor` so a
+/// `GIZMO_DRAG` rotation lands on the anchor directly. Use for per-target
+/// posing handles where the rotated entity IS the visual anchor — e.g. FK
+/// pose editing of a skeletal joint in the voxel editor (#1610). No group
+/// entity is created; the returned id is `anchor` itself.
+inline IREntity::EntityId createRotateGizmoForAnchor(IREntity::EntityId anchor) {
+    using namespace detail;
+    spawnRotateRings(anchor, "GizmoAnchorRotateRing");
+    return anchor;
 }
 
 /// Scale gizmo — three axis sticks with terminal caps + a center cube
