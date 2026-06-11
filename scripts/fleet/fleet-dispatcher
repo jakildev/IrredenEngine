@@ -337,6 +337,9 @@ DISPATCHED_ROLES=(
 FABLE_MODEL="${FLEET_MODEL_FABLE:-claude-fable-5[1m]}"
 OPUS_MODEL="${FLEET_MODEL_OPUS:-${OPUS_MODEL:-claude-opus-4-8[1m]}}"
 SONNET_MODEL="${FLEET_MODEL_SONNET:-${SONNET_MODEL:-sonnet}}"
+# Single-dash expansion is deliberate: fleet-up exports an EMPTY
+# FLEET_FABLE_FALLBACK to mean "fallback disabled" (fable resolved to the
+# opus floor), and `:-` would silently re-enable it. Don't "fix" to `:-`.
 FABLE_FALLBACK="${FLEET_FABLE_FALLBACK-$OPUS_MODEL}"
 if [[ "$FABLE_FALLBACK" == "$FABLE_MODEL" ]]; then
     FABLE_FALLBACK=""
@@ -1348,9 +1351,12 @@ trig_dir = pathlib.Path(os.environ["TRIGGERS_DIR"])
 state_dir = pathlib.Path(os.environ["STATE_DIR"])
 role = os.environ["ROLE"]
 
-ROLE_MODEL = {"opus-worker": "opus", "sonnet-author": "sonnet"}
-model = ROLE_MODEL.get(role)
-if not model:
+# Classes each lane serves — the heavy lane covers fable AND opus (a
+# fable-only backlog must still re-arm it; keep in sync with the scout's
+# slice filters and WORKER_LANE_DEFAULT_CLASS).
+ROLE_MODELS = {"opus-worker": {"opus", "fable"}, "sonnet-author": {"sonnet"}}
+models = ROLE_MODELS.get(role)
+if not models:
     raise SystemExit(0)
 
 proj_path = state_dir / "projections" / f"{role}.json"
@@ -1362,7 +1368,7 @@ except (OSError, json.JSONDecodeError):
     raise SystemExit(0)
 
 # Predicate: at least one task that is unowned, unblocked, and matches
-# this role's model tier. The projection's `blocked_by` is rendered as
+# a class this lane serves. The projection's `blocked_by` is rendered as
 # "(none)" (literal) when there are no blockers.
 def is_actionable(task):
     if task.get("owner") != "free":
@@ -1370,7 +1376,7 @@ def is_actionable(task):
     blocked = (task.get("blocked_by") or "").strip()
     if blocked and blocked != "(none)":
         return False
-    return task.get("model") == model
+    return task.get("model") in models
 
 if any(is_actionable(t) for t in (proj.get("tasks_open") or [])):
     trig = trig_dir / role

@@ -80,8 +80,8 @@ write_slice opus-worker '{"tasks_open":[{"issue":"#10","model":"fable","effort":
 printf '{"role":"opus-worker","pane":"%%9","class":"fable","dispatched_at":"x"}\n' \
     > "$FLEET_STATE_DIR/dispatch/pane-9.json"
 assert_eq "$(resolve opus-worker)" \
-    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=1 defer=0" \
-    "capped fable skipped; opus task served; trigger kept for fable (more=1)"
+    "class=opus model=claude-opus-4-8[1m] effort=xhigh more=0 defer=0" \
+    "capped fable skipped; opus task served; cap-blocked fable does NOT hold the trigger (more=0)"
 
 # --- T3: only capped fable work -> defer -------------------------------------
 echo "T3: only cap-blocked fable work defers"

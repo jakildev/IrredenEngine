@@ -65,7 +65,11 @@ def feedback_pr_class(labels):
 
 
 def _candidates(slice_data, lane_default):
-    """Yield (class, effort) for each actionable item, pickup-priority order."""
+    """Yield (class, effort) for each actionable item, pickup-priority order.
+
+    Feedback PRs come first regardless of count — mirrors the worker role
+    docs, which fix review feedback before claiming new queue work.
+    """
     for pr in slice_data.get("feedback_prs", []) or []:
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls]
@@ -87,17 +91,23 @@ def resolve(slice_data, lane_default, fable_blocked):
         lane_default = "opus"
     chosen = None
     skipped_fable = False
-    classes_seen = set()
+    servable_classes = set()
     for cls, effort in _candidates(slice_data, lane_default):
-        classes_seen.add(cls)
+        if cls == "fable" and fable_blocked:
+            # Cap-blocked fable is not currently servable: don't let it
+            # hold the trigger open via `more` (that would re-dispatch
+            # every tick to no effect). When the in-flight fable
+            # iteration finishes, its label changes re-fire the scout
+            # projection, and the periodic worker safety re-arm covers
+            # the quiescent-scout corner.
+            skipped_fable = True
+            continue
+        servable_classes.add(cls)
         if chosen is None:
-            if cls == "fable" and fable_blocked:
-                skipped_fable = True
-                continue
             chosen = (cls, effort)
     if chosen is None:
         return "defer" if skipped_fable else ""
-    more = 1 if classes_seen - {chosen[0]} else 0
+    more = 1 if servable_classes - {chosen[0]} else 0
     return f"{chosen[0]} {chosen[1]} {more}"
 
 

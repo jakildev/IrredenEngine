@@ -410,8 +410,12 @@ def fetch_task_queue(repo_slug):
         # Optional per-task effort override (low|medium|high|xhigh|max).
         # Not a claim-routing class — just a launch parameter the
         # dispatcher reads from the slice; anything unrecognized is
-        # treated as unset and the class default applies.
-        effort = (_parse_issue_field(body, "Effort") or "").strip().lower()
+        # treated as unset and the class default applies. First token
+        # only: the field line may carry a trailing comment (the
+        # file-epic template ships one), and fleet-validate-stack
+        # blesses exactly that shape.
+        effort_tokens = (_parse_issue_field(body, "Effort") or "").lower().split()
+        effort = effort_tokens[0] if effort_tokens else None
         if effort not in EFFORT_LEVELS:
             effort = None
 

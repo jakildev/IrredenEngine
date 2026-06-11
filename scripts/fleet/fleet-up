@@ -273,7 +273,7 @@ probe_model() {
     local model="$1" pid watchdog rc=1
     claude --model "$model" -p 'Reply with exactly: ok' >/dev/null 2>&1 &
     pid=$!
-    ( sleep "${FLEET_MODEL_PROBE_TIMEOUT:-90}"; kill "$pid" 2>/dev/null ) &
+    ( sleep "${FLEET_MODEL_PROBE_TIMEOUT:-90}"; kill "$pid" 2>/dev/null || true ) &
     watchdog=$!
     if wait "$pid"; then rc=0; fi
     kill "$watchdog" 2>/dev/null || true
@@ -1307,8 +1307,10 @@ tmux new-session -d -s "$SESSION" -n fleet \
 # can predate this process). Panes feed it to ir-build -> ir-acquire for
 # correct per-build CPU sizing.
 tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
-# Same treatment for the fable-class fallback chain: fleet-babysit panes
-# read it to pass --fallback-model on print-mode (worker) iterations.
+# Same treatment for the fable-class fallback chain. Consumed by
+# MANUALLY-run fleet-babysit worker iterations (stream_claude); normal
+# dispatched runs get the chain as an explicit fleet-dispatch-wrap
+# argument and don't read this.
 tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
 label_pane_id "$TOP_LEFT" "sonnet-fleet-1 [$SONNET_TAG]"

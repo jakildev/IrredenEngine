@@ -3499,8 +3499,12 @@ for line in body.splitlines():
     done
 
     case "$model" in
-        opus)   echo "opus-worker" ;;
-        sonnet) echo "sonnet-author" ;;
+        # fable tasks dispatch from the heavy (opus-worker) lane until the
+        # phase-2 generic-worker unification — mapping it here keeps
+        # crash-survived fable reservations counted against that lane's
+        # concurrency cap.
+        fable|opus) echo "opus-worker" ;;
+        sonnet)     echo "sonnet-author" ;;
         *) ;;
     esac
     return 0

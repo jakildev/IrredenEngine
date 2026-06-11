@@ -85,10 +85,13 @@ class TaskResolution(unittest.TestCase):
 
 class FableCap(unittest.TestCase):
     def test_cap_skips_fable_to_next_class(self):
+        # more=0: cap-blocked fable is not servable, so it must not hold
+        # the trigger open (the fable iteration finishing re-fires the
+        # scout; the periodic safety re-arm covers the quiescent corner).
         out = resolve({"tasks_open": [_task("#10", "fable"),
                                       _task("#11", "opus")]},
                       "opus", fable_blocked=True)
-        self.assertEqual(out, "opus xhigh 1")
+        self.assertEqual(out, "opus xhigh 0")
 
     def test_only_capped_fable_defers(self):
         out = resolve({"tasks_open": [_task("#10", "fable")]},
