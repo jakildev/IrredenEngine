@@ -27,6 +27,7 @@ add_executable(IrredenEngineTest
   ecs/parallel_spawn_test.cpp
   ecs/skeleton_components_test.cpp
   ecs/skeleton_skinning_test.cpp
+  ecs/skinning_pipeline_consistency_test.cpp
   ecs/spatial_grid_test.cpp
   ecs/system_exclude_test.cpp
   ecs/voxel_bone_slot_seed_test.cpp
