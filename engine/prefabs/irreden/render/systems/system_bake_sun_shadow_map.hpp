@@ -220,6 +220,18 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
     }
 
+    // Scope-guard that restores the shared resident frame's yaw split on
+    // destruction, so an early return or exception between
+    // patchFrameYawSplit(rasterYaw, 0) and the end of a CARDINAL-layout
+    // dispatch block can never leave residualYaw_ = 0 for downstream consumers.
+    struct FrameYawRestoreGuard {
+        System<BAKE_SUN_SHADOW_MAP> &sys_;
+        float visualYaw_, residualYaw_;
+        ~FrameYawRestoreGuard() {
+            sys_.patchFrameYawSplit(visualYaw_, residualYaw_);
+        }
+    };
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -287,13 +299,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             const auto [cameraRasterYaw, cameraResidualYaw] =
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
+            const FrameYawRestoreGuard restoreGuard{*this, cameraVisualYaw, cameraResidualYaw};
             // resolveDepth_ is allocated at the main canvas size, so dispatch
             // over canvasTextures.size_ (same domain as the main bake above).
             perAxisCanvases_->resolveDepth_.second
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-            patchFrameYawSplit(cameraVisualYaw, cameraResidualYaw);
             // Restore the main-canvas distance image so the persistent Metal
             // image-binding table doesn't dangle when release() frees the
             // resolve texture (mirrors the COMPUTE_SUN_SHADOW per-axis restore).
@@ -336,6 +348,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             const auto [cameraRasterYaw, cameraResidualYaw] =
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
+            const FrameYawRestoreGuard restoreGuard{*this, cameraVisualYaw, cameraResidualYaw};
 
             // Pass 1 — scatter each caster into the shared scratch (front-most
             // per screen pixel via atomicMin). Only the 16-byte
@@ -411,10 +424,6 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
-            // Restore the camera yaw split zeroed before pass 1 so downstream
-            // consumers (COMPUTE_SUN_SHADOW's smooth receive) see the true
-            // residual (#1719).
-            patchFrameYawSplit(cameraVisualYaw, cameraResidualYaw);
             // Restore the main-canvas distance image so the persistent Metal
             // image-binding table doesn't dangle (mirrors the per-axis restore).
             canvasTextures.getTextureDistances()
