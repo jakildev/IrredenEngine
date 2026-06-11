@@ -86,17 +86,26 @@ while [[ $# -gt 0 ]]; do
             # the same worktree-root build-dir detection ir-run does, so
             # we hand off cleanly. Resolve from the invoker's worktree
             # (IR_ENGINE_ROOT is the script's source clone, which may be
-            # a different worktree when invoked via ~/bin symlink).
+            # a different worktree when invoked via ~/bin symlink). A
+            # downstream-creation worktree has no scripts/fleet/ — use the
+            # enclosing engine root's copy and point it at the creation's
+            # dedicated build dir.
             WORKTREE_ROOT="$(ir_worktree_root)"
-            HELPER="$WORKTREE_ROOT/scripts/fleet/fleet-run-targets"
-            if [[ ! -x "$HELPER" ]]; then
-                echo "ir-run: missing $HELPER (fleet-run-targets is currently engine-tooling-adjacent; expected under scripts/fleet/)" >&2
+            HELPER_ROOT="$WORKTREE_ROOT"
+            if [[ ! -x "$HELPER_ROOT/scripts/fleet/fleet-run-targets" ]]; then
+                if _eng_root="$(ir_creation_worktree_engine_root "$WORKTREE_ROOT")"; then
+                    HELPER_ROOT="$_eng_root"
+                fi
+            fi
+            HELPER="$HELPER_ROOT/scripts/fleet/fleet-run-targets"
+            if [[ -z "$HELPER_ROOT" || ! -x "$HELPER" ]]; then
+                echo "ir-run: missing $WORKTREE_ROOT/scripts/fleet/fleet-run-targets (fleet-run-targets is currently engine-tooling-adjacent; expected under scripts/fleet/)" >&2
                 exit 1
             fi
-            if [[ -n "$BUILD_DIR" ]]; then
-                exec "$HELPER" --build-dir "$BUILD_DIR" "$@"
+            if [[ -z "$BUILD_DIR" ]]; then
+                BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT")}"
             fi
-            exec "$HELPER" "$@"
+            exec "$HELPER" --build-dir "$BUILD_DIR" "$@"
             ;;
         --help|-h)
             cat <<'USAGE'
@@ -134,6 +143,9 @@ Run mode
   Build directory (when not using --build-dir):
     1. $IRREDEN_BUILD_DIR if set
     2. <git-worktree-root>/build from git rev-parse
+       (downstream-creation worktrees — creations/<name>/.claude/
+       worktrees/<agent>/ — resolve to the dedicated
+       <engine>/build-<creation>-<agent>/ tree instead)
     3. $IR_ENGINE_ROOT/build if not in a git worktree
 
 Target listing mode
@@ -203,9 +215,11 @@ for arg in "$@"; do
 done
 
 # Default build dir: invoker's worktree, not the script-source clone.
+# Downstream-creation worktrees resolve to the dedicated
+# <engine>/build-<creation>-<agent>/ tree ir-build configures for them.
 if [[ -z "$BUILD_DIR" ]]; then
     WORKTREE_ROOT="$(ir_worktree_root)"
-    BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
+    BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT")}"
 fi
 
 if [[ ! -d "$BUILD_DIR" ]]; then
