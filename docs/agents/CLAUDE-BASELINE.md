@@ -51,6 +51,11 @@ Use a lowercase `detail` namespace for header-only helpers under the owning
 namespace (`IRSystem::detail`, `IRRender::detail`). Don't use anonymous
 namespaces in headers; keep them in `.cpp`.
 
+No prototype-phase infixes (`Test`, `New`, `Tmp`) in production (non-test)
+function names — rename an experimental copy before it's wired into the real
+path, or the API keeps signalling "experimental" when it's the production code
+(`Debug` is fine when it names a real debug *feature*, not a leftover prototype).
+
 ---
 
 ## Style
@@ -501,6 +506,12 @@ rule** above. Removal of engine ECS surface (systems, components,
 entities) is forbidden without explicit human sign-off; deprecation
 markers are the slower-moving "this surface is going away eventually"
 signal that applies to any API the human has decided to phase out.
+
+**Transition shims** — code intentionally dead once a known milestone lands
+(compatibility aliases, legacy-artifact cleaners, deprecated-knob
+fallthrough) — carry a `// Remove once <phase> lands (epic #N)` tombstone at
+the declaration so the cleanup pass is self-guided instead of depending on
+whoever remembers which epic the shim was tied to.
 
 ---
 

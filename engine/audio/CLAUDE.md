@@ -76,3 +76,8 @@ functions:
   — check `patches/` before debugging driver-level issues.
 - **Single-thread `tick()` assumption.** `MidiIn::tick()` has no mutex.
   Call it only from the main loop.
+- **Callback log level.** Use `IRE_LOG_DEBUG`, never `IRE_LOG_INFO`, for
+  per-message / per-event logging inside the RtMidi/RtAudio callbacks. They
+  fire on the driver thread hundreds of times per second under a real-time
+  clock (24 pps) or dense CC sweeps — `IRE_LOG_INFO` per message floods the
+  log (and costs frame time) while staying invisible in sparse-traffic dev.
