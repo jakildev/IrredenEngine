@@ -119,9 +119,10 @@ inline void buildVoxelFrameData(
         frameData.faceDeform_[0] = vec4(fd0[0], fd0[1]);
         frameData.faceDeform_[1] = vec4(fd1[0], fd1[1]);
         frameData.faceDeform_[2] = vec4(fd2[0], fd2[1]);
-        // World-receive opt-in (#1576 P4b-2). When the owner world-places this
-        // re-voxelize solid (C_EntityCanvas::worldPlaced_, propagated onto
-        // canvasRotation), publish its world cell origin + the enable flag so
+        // World receive (#1576 P4b-2; the default since #1624 — the owner's
+        // C_EntityCanvas::screenLocked_ opts out, propagated onto
+        // canvasRotation). When world-placed, publish the world cell origin +
+        // the enable flag so
         // COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL recover each voxel's WORLD pos as
         // (model pos + .xyz) and sample the shared world sun-shadow map + light
         // volume there. Off → the default screen-locked overlay (.w == 0) stays

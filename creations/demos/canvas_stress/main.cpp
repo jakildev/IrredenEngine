@@ -78,15 +78,16 @@
 // each frame, and the standard lighting pipeline (AO + sun + shadows)
 // runs so face orientation is visually perceptible.
 //
-// Rotation-mode contract (#1582 / #1620): the orbit-ring DETACHED/
-// DETACHED_REVOXELIZE entities remain SCREEN-LOCKED overlays. The two center
-// re-voxelize proof solids are WORLD-PLACED by default (C_EntityCanvas::
-// worldPlaced_ = true, P4b-1/#1592 + P4b-2/#1617) so they depth-sort against
-// the SDF floor and receive world sun-shadow + light-volume at their world pos.
-// Run with --screen-lock-revox to revert to screen-locked overlays (the
-// detached-canvas canary path). GRID-mode cubes and world-placed re-voxelize
-// solids cast world shadows (P4b-3 / #1596); the detached orbit ring and
-// canary cubes cast none by design (#1582 Option B).
+// Rotation-mode contract (#1624, supersedes #1582/#1620): every detached
+// canvas — canary cubes, orbit ring, re-voxelize proof solids — is
+// WORLD-PLACED by default (C_EntityCanvas::screenLocked_ = false): it
+// depth-sorts against the SDF floor and world geometry, and the re-voxelize
+// solids receive (P4b-2/#1617) + cast (P4b-3/#1596) world sun-shadow at their
+// world pos. Plain-DETACHED orbiters depth-sort only (forward-scatter has no
+// faithful world-pos recovery for lighting). Run with --screen-lock-detached
+// to opt the whole demo back into fixed-depth overlays at the pre-#1624
+// canary layout — byte-identical to the pre-flip default scene, the
+// regression canary for the screenLocked_ opt-out path.
 // See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
@@ -111,12 +112,13 @@ struct CanvasStressSettings {
     // ring). Discriminates cross-canvas clobber (renders alone, breaks with
     // neighbours) from a single-canvas mode-1 chain defect (breaks alone too).
     bool soloRevox_ = false;
-    // ON by default: the two center re-voxelize solids opt into world-placement
-    // (C_EntityCanvas::worldPlaced_) so they depth-sort against the SDF floor
-    // spawned unconditionally by #1587. Pass --screen-lock-revox to revert to
-    // the screen-locked overlay path (the detached-canvas regression canary, and
-    // the behavior the committed references were captured against).
-    bool worldPlaceReVox_ = true;
+    // OFF by default (#1624): every detached canvas in the demo rides the
+    // world-placed engine default and depth-sorts against the #1587 SDF floor.
+    // Pass --screen-lock-detached (legacy alias --screen-lock-revox) to opt
+    // them ALL into C_EntityCanvas::screenLocked_ AND keep the pre-#1624
+    // canary z — reproducing the pre-flip overlay scene byte-for-byte, the
+    // regression canary for the screen-locked opt-out path.
+    bool screenLockDetached_ = false;
     // #1721 diagnosis harness. `--only <group>[,<group>...]` spawns only the
     // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
     // 0 means no filter (default run, byte-identical). The sweep flags replace
@@ -358,6 +360,7 @@ void spawnDetachedVoxelObject(
         kCanvasSize,
         kPoolSize
     );
+    canvas.screenLocked_ = g_settings.screenLockDetached_;
 
     // The voxel cube lives centered in the detached canvas's pool so
     // SYSTEM_REBUILD_DETACHED_VOXELS rotates its cells about the pool origin
@@ -414,16 +417,17 @@ void spawnDetachedReVoxelizeSolid(
     Color color,
     bool carveAsymmetric,
     bool multiColor = false,
-    bool worldPlaced = false
+    bool screenLocked = false
 ) {
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "revox_canvas_" + std::to_string(index),
         kReVoxCanvasSize,
         kReVoxPoolSize
     );
-    // #1576 P4b-1: opt this detached canvas into world-depth compositing so it
-    // depth-sorts against the world grid (off by default → screen-locked overlay).
-    canvas.worldPlaced_ = worldPlaced;
+    // World-depth compositing is the engine default (#1624); `screenLocked`
+    // (--screen-lock-detached / --solo-revox) reverts this solid to the
+    // fixed-depth overlay regression path.
+    canvas.screenLocked_ = screenLocked;
 
     // Light the re-voxelize solid (#1558): AO + directional sun + sky. Attached
     // HERE — on the re-voxelize canvas only — not on the shared kVoxelPoolCanvas
@@ -588,6 +592,7 @@ void spawnOrbitShape(
         canvasSize,
         poolSize
     );
+    canvas.screenLocked_ = g_settings.screenLockDetached_;
     const EntityId solid = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{shapeSize, color, true, canvas.canvasEntity_}
@@ -649,15 +654,18 @@ void parseArgs(int argc, char **argv) {
             g_settings.noSpin_ = true;
         } else if (std::strcmp(argv[i], "--no-lighting") == 0) {
             g_settings.noLighting_ = true;
-        } else if (std::strcmp(argv[i], "--screen-lock-revox") == 0) {
-            g_settings.worldPlaceReVox_ = false;
+        } else if (
+            std::strcmp(argv[i], "--screen-lock-detached") == 0 ||
+            std::strcmp(argv[i], "--screen-lock-revox") == 0
+        ) {
+            g_settings.screenLockDetached_ = true;
         } else if (std::strcmp(argv[i], "--solo-revox") == 0) {
             g_settings.soloRevox_ = true;
             // The solo harness spawns no floor to depth-sort against, and the
             // #1619 step-0 GL evidence (committed crops) was captured on the
             // screen-locked overlay path — keep the lone L-prism screen-locked
-            // rather than inheriting the #1621 world-place default.
-            g_settings.worldPlaceReVox_ = false;
+            // rather than inheriting the world-place default.
+            g_settings.screenLockDetached_ = true;
         } else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) {
             g_settings.onlyGroups_ |= parseSpawnGroups(argv[i + 1]);
             ++i;
@@ -991,13 +999,21 @@ void initEntities() {
         {210, 90, 220, 255},
         {70, 210, 210, 255},
     };
+    // World-placed canaries (#1624) must clear the #1587 floor slab
+    // (z ∈ [kFloorZ ± kFloorThickness/2] = [2, 6]): at the legacy z = 0 a
+    // spinning 10³ cube (rotated half-diagonal 5√3 ≈ 8.66) sweeps into the
+    // band and reads as sunk through the floor. z = -8 keeps the full SO(3)
+    // sweep above the floor top (max extent z ≈ 0.66 < 2). The legacy z is
+    // kept under --screen-lock-detached so the opt-out scene stays
+    // byte-identical to the pre-#1624 default.
+    const float canaryZ = g_settings.screenLockDetached_ ? 0.0f : -8.0f;
     for (int i = 0; i < detached; ++i) {
         const int col = i % cols;
         const int row = i / cols;
         const vec3 worldPos{
             (static_cast<float>(col) - colCenter) * kDetachedSpacing,
             (static_cast<float>(row) - rowCenter) * kDetachedSpacing,
-            0.0f
+            canaryZ
         };
         // Per-entity spin rate: base * (i + 1) so adjacent canvases visibly
         // de-sync within the auto-screenshot capture window (#1259). Spin
@@ -1027,7 +1043,7 @@ void initEntities() {
             Color{255, 150, 60, 255},
             /*carveAsymmetric=*/true,
             /*multiColor=*/true,
-            /*worldPlaced=*/g_settings.worldPlaceReVox_
+            /*screenLocked=*/g_settings.screenLockDetached_
         );
     }
     if (!g_settings.soloRevox_ && groupEnabled(kGroupReVox)) {
@@ -1040,7 +1056,7 @@ void initEntities() {
             Color{70, 210, 210, 255},
             /*carveAsymmetric=*/false,
             /*multiColor=*/false,
-            /*worldPlaced=*/g_settings.worldPlaceReVox_
+            /*screenLocked=*/g_settings.screenLockDetached_
         );
     }
 
@@ -1068,7 +1084,7 @@ void initEntities() {
             Color{210, 120, 255, 255},
             /*carveAsymmetric=*/false,
             /*multiColor=*/false,
-            /*worldPlaced=*/g_settings.worldPlaceReVox_
+            /*screenLocked=*/g_settings.screenLockDetached_
         );
     }
 
