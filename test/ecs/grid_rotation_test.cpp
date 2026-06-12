@@ -11,6 +11,7 @@ namespace {
 
 using IRComponents::C_WorldTransform;
 using IRPrefab::GridRotation::isIdentityTransform;
+using IRPrefab::GridRotation::sourceCellForWorldCell;
 using IRPrefab::GridRotation::worldCellForGridVoxel;
 
 constexpr float kEps = 1e-4f;
@@ -192,6 +193,76 @@ TEST(GridRotationTest, TranslationAppliesAfterRotation) {
     EXPECT_NEAR(cell.x, 100.0f, kEps);
     EXPECT_NEAR(cell.y, 51.0f, kEps);
     EXPECT_NEAR(cell.z, 25.0f, kEps);
+}
+
+TEST(GridRotationTest, SourceCellForWorldCell_RoundTrip_NinetyDegreeZRotation) {
+    // Cardinal-rotation round-trip: sourceCellForWorldCell correctly inverts
+    // worldCellForGridVoxel when the rotation maps integer cells exactly onto
+    // other integer cells (no rounding boundary ambiguity). Pins both the
+    // inverse arithmetic and the roundHalfUp convention used to recover the
+    // authored cell.
+    C_WorldTransform wt;
+    wt.rotation_ = quatRotateZ(IRMath::kPi * 0.5f);
+    const auto inv = IRMath::quatInverse(wt.rotation_);
+
+    const std::vector<IRMath::ivec3> authored = {
+        {1, 0, 0}, {0, 1, 0}, {-1, 0, 0}, {0, -1, 0}, {2, 3, 4}, {-2, -3, 5},
+    };
+    for (const auto &a : authored) {
+        const auto worldVec = worldCellForGridVoxel(IRMath::vec3(a), IRMath::vec3(0.0f), wt);
+        const IRMath::ivec3 worldCell(worldVec);
+        const auto source = sourceCellForWorldCell(worldCell, wt, inv);
+        EXPECT_EQ(IRMath::roundVec3HalfUp(source), a)
+            << "Round-trip failed for authored " << a.x << "," << a.y << "," << a.z;
+    }
+}
+
+TEST(GridRotationTest, SourceCellForWorldCell_RoundTrip_ScaleAndTranslation) {
+    // Full SQT round-trip: 2× uniform scale + 90° Z rotation + translation.
+    // 90° keeps the forward map exact (integer → integer); the scale and
+    // translation test that sourceCellForWorldCell correctly un-applies all
+    // three components of the SQT.
+    C_WorldTransform wt;
+    wt.scale_ = IRMath::vec3(2.0f);
+    wt.rotation_ = quatRotateZ(IRMath::kPi * 0.5f);
+    wt.translation_ = IRMath::vec3(7.0f, -3.0f, 5.0f);
+    const auto inv = IRMath::quatInverse(wt.rotation_);
+
+    const std::vector<IRMath::ivec3> authored = {
+        {1, 0, 0}, {0, 1, 0}, {2, 2, 0}, {1, -1, 3},
+    };
+    for (const auto &a : authored) {
+        const auto worldVec = worldCellForGridVoxel(IRMath::vec3(a), IRMath::vec3(0.0f), wt);
+        const IRMath::ivec3 worldCell(worldVec);
+        const auto source = sourceCellForWorldCell(worldCell, wt, inv);
+        EXPECT_EQ(IRMath::roundVec3HalfUp(source), a)
+            << "Round-trip failed for authored " << a.x << "," << a.y << "," << a.z;
+    }
+}
+
+TEST(GridRotationTest, SourceCellForWorldCell_RoundHalfUpConventionPin) {
+    // Pins the roundHalfUp(-0.5) = 0 convention (CPU twin of the GPU kernel's
+    // `roundHalfUp` helper in c_revoxelize_detached.glsl/.metal, #1619/#1720).
+    // With 90° Z rotation and x-translation of -0.5 the inverse-mapped source
+    // has exactly y = -0.5; roundHalfUp correctly returns 0, while
+    // glm::round / std::round (half-away-from-zero) would return -1, breaking
+    // CPU↔GPU classification agreement.
+    C_WorldTransform wt;
+    wt.rotation_ = quatRotateZ(IRMath::kPi * 0.5f);
+    wt.translation_ = IRMath::vec3(-0.5f, 0.0f, 0.0f);
+    const auto inv = IRMath::quatInverse(wt.rotation_);
+
+    const IRMath::ivec3 authored{0, 0, 0};
+    // Forward: world = (-0.5, 0, 0); roundHalfUp → (0, 0, 0)
+    const IRMath::ivec3 worldCell(
+        worldCellForGridVoxel(IRMath::vec3(authored), IRMath::vec3(0.0f), wt)
+    );
+    EXPECT_EQ(worldCell, IRMath::ivec3(0, 0, 0));
+
+    // Inverse source y = -0.5; roundHalfUp(-0.5) = 0, not -1.
+    const auto source = sourceCellForWorldCell(worldCell, wt, inv);
+    EXPECT_NEAR(source.y, -0.5f, kEps);
+    EXPECT_EQ(IRMath::roundVec3HalfUp(source), authored);
 }
 
 } // namespace
