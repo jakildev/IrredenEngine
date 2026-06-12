@@ -44,16 +44,17 @@ struct C_CanvasLocalRotation {
     // per-face-deform path. Inert on the main world canvas (sentinel rotation).
     bool reVoxelize_ = false;
 
-    // World-placement opt-in mirror (#1576 P4b-2), propagated from the owner's
-    // C_EntityCanvas::worldPlaced_ by PROPAGATE_CANVAS_ROTATION each tick (same
-    // parent→canvas channel as rotation_/reVoxelize_, NOT a dirty flag). When
-    // true, the screen-space lighting passes recover each detached voxel's WORLD
-    // position (model pos + worldCellOffset_) and sample the SHARED world
-    // sun-shadow map + 128³ light volume there, so an opt-in re-voxelize solid
-    // receives world shadow + light-volume bleed like an attached GRID solid.
-    // The canvas (child) entity is what the lighting passes iterate; the
-    // worldPlaced_ flag + the world translation live on the parent's
-    // C_EntityCanvas / C_WorldTransform, so they must be propagated onto the
+    // World-placement mirror (#1576 P4b-2 plumbing; the default since #1624),
+    // propagated as `!C_EntityCanvas::screenLocked_` by
+    // PROPAGATE_CANVAS_ROTATION each tick (same parent→canvas channel as
+    // rotation_/reVoxelize_, NOT a dirty flag). When true, the screen-space
+    // lighting passes recover each detached voxel's WORLD position (model pos
+    // + worldCellOffset_) and sample the SHARED world sun-shadow map + 128³
+    // light volume there, so a world-placed re-voxelize solid receives world
+    // shadow + light-volume bleed like an attached GRID solid. The canvas
+    // (child) entity is what the lighting passes iterate; the screenLocked_
+    // opt-out + the world translation live on the parent's C_EntityCanvas /
+    // C_WorldTransform, so the resolved placement must be propagated onto the
     // canvas to reach those passes without a per-voxel foreign getComponent.
     // Inert (false) on the main world canvas (sentinel rotation, never written).
     bool worldPlaced_ = false;

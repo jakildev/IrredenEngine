@@ -268,18 +268,19 @@ struct FrameDataVoxelToCanvas {
     // path — is unchanged; the gather shaders that read only the prefix
     // (AO, lighting) are unaffected and need no declaration update.
     vec4 voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    // World-receive offset for an opt-in world-placed detached re-voxelize solid
-    // (#1576 P4b-2). `.xyz` = the entity's world cell origin
-    // (`roundVec3HalfUp(C_WorldTransform::translation_)`, the SAME rounding P4b-1's
-    // composite depth offset uses); `.w` = 1.0 when the solid opts into world
-    // placement (`C_EntityCanvas::worldPlaced_`), else 0.0. The detached
+    // World-receive offset for a world-placed detached re-voxelize solid
+    // (#1576 P4b-2; world placement is the default since #1624). `.xyz` = the
+    // entity's world cell origin
+    // (`roundVec3HalfUp(C_WorldTransform::translation_)`, the SAME rounding the
+    // composite depth offset uses); `.w` = 1.0 when the solid is world-placed
+    // (`C_EntityCanvas::screenLocked_` false, the default), else 0.0. The detached
     // re-voxelize canvas rasters its pool in the pool-centered MODEL frame, so the
     // lighting / sun-shadow passes recover each voxel's WORLD pos as
     // `modelPos + .xyz` and then sample the SHARED world sun-shadow map + 128³
     // light volume there (receive), equivalently to an attached GRID solid. `.w`
-    // gates the whole path: 0.0 keeps the default screen-locked overlay
+    // gates the whole path: 0.0 keeps the screen-locked overlay opt-out
     // byte-identical (no shadow received, light volume disabled). Default
-    // (0,0,0,0) so the world canvas + any non-opt-in canvas is unchanged.
+    // (0,0,0,0) so the world canvas + any screen-locked canvas is unchanged.
     // std140-appended after voxelDepthAxis_ (offset 160), so every prior field
     // offset is unchanged and shaders that read only the prefix need no update;
     // only c_lighting_to_trixel declares it.

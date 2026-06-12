@@ -77,15 +77,19 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             // Route the canvas to the re-voxelize render path (cardinal frame
             // data + SYSTEM_REBUILD_DETACHED_VOXELS) vs the forward-scatter deform.
             canvasRotation.value()->reVoxelize_ = reVoxelize;
-            // World-placement opt-in (#1576 P4b-2). Mirror the owner's
-            // C_EntityCanvas::worldPlaced_ + its world cell origin onto the canvas
-            // so the screen-space lighting passes (which iterate the canvas, not
-            // the owner) can recover each detached voxel's WORLD position and
-            // sample the shared world sun-shadow map + light volume. The rounding
-            // matches P4b-1's composite depth offset
+            // World placement (#1576 P4b-2 plumbing; default since #1624 —
+            // the canvas mirror derives from the owner's screenLocked_
+            // opt-out). Mirror the resolved world-placement + the world cell
+            // origin onto the canvas so the screen-space lighting passes
+            // (which iterate the canvas, not the owner) can recover each
+            // detached voxel's WORLD position and sample the shared world
+            // sun-shadow map + light volume (re-voxelize only — the
+            // forward-scatter branch of buildVoxelFrameData never publishes
+            // it). The rounding matches the composite depth offset
             // (pos3DtoDistance(roundVec3HalfUp(translation))) so depth and
-            // receive stay on one convention. Off → byte-identical overlay.
-            canvasRotation.value()->worldPlaced_ = entityCanvas.worldPlaced_;
+            // receive stay on one convention. screenLocked_ → byte-identical
+            // overlay.
+            canvasRotation.value()->worldPlaced_ = !entityCanvas.screenLocked_;
             canvasRotation.value()->worldCellOffset_ =
                 IRMath::vec3(IRMath::roundVec3HalfUp(worldTransform.translation_));
         }

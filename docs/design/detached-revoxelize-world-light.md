@@ -1,5 +1,14 @@
 # Detached re-voxelize — world sun-shadow + light-volume + depth (P4b)
 
+> **Default superseded (#1624, 2026-06-11).** All three P4b phases landed, and
+> with cast complete the opt-in default this doc designed against was flipped:
+> world placement is now the **default** for every detached canvas, and the
+> flag on `C_EntityCanvas` is the inverse opt-OUT `screenLocked_` (the
+> `worldPlaced_` opt-in field no longer exists). The mechanics below (depth
+> offset, shared-map receive, single-resolve cast) are unchanged and current —
+> read "opt-in"/"worldPlaced_" as "default"/"!screenLocked_". See
+> [`detached-canvas-depth-default.md`](detached-canvas-depth-default.md).
+
 **Issue:** #1576 (epic #1553). Subsumes #1582 **Option A** (world-depth composite + cast).
 **Status:** 🟢 **design-unblocked** — the four decisions in
 [§ Open decisions](#open-decisions) are resolved (architect, in-line **Decision**
