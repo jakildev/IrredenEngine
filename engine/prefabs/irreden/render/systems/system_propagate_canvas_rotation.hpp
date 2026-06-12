@@ -78,8 +78,9 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             // data + SYSTEM_REBUILD_DETACHED_VOXELS) vs the forward-scatter deform.
             canvasRotation.value()->reVoxelize_ = reVoxelize;
             // World placement (#1576 P4b-2 plumbing; default since #1624 —
-            // the canvas mirror derives from the owner's screenLocked_
-            // opt-out). Mirror the resolved world-placement + the world cell
+            // the canvas mirror is the inverse of the owner's screenLocked_
+            // opt-out: worldPlaced_ = !screenLocked_, set just below).
+            // Mirror the resolved world-placement + the world cell
             // origin onto the canvas so the screen-space lighting passes
             // (which iterate the canvas, not the owner) can recover each
             // detached voxel's WORLD position and sample the shared world
