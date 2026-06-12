@@ -3,7 +3,7 @@
 
 // Grid-mode rotation math — used by SYSTEM_REBUILD_GRID_VOXELS to map
 // authored local voxel positions through an entity's SQT world transform
-// to integer world-grid cells.
+// to integer world-grid cells, and back (the #1720 inverse resample).
 //
 // Lives outside the system header so unit tests can exercise the math
 // without setting up an EntityManager + canvas + voxel pool.
@@ -17,6 +17,14 @@
 //   parent_translation, then round each component to the nearest integer
 //   cell. Aliasing (multiple authored voxels collapsing into the same world
 //   cell) is accepted by design.
+//
+// The forward map alone is NOT surjective onto the covered world cells —
+// rotating a lattice forward leaves uncovered dest cells (coverage holes,
+// up to ~29% of a solid 12³ mid-rotation). SYSTEM_REBUILD_GRID_VOXELS
+// therefore renders rotating sets by walking DEST cells and inverse-mapping
+// each through `sourceCellForWorldCell` below (#1720, mirroring the detached
+// re-voxelize fix #1619); the forward map remains the identity-path /
+// creation-facing helper.
 //
 // Rounding uses `IRMath::roundVec3HalfUp` (floor(x + 0.5)), NOT `IRMath::round`
 // (glm round-half-away-from-zero). This is the engine's CPU↔GPU coordinate
@@ -58,6 +66,24 @@ inline IRMath::vec3 worldCellForGridVoxel(
     // roundHalfUp (not glm round) so the GPU mirror agrees byte-for-byte; see
     // the header note above.
     return IRMath::vec3(IRMath::roundVec3HalfUp(world));
+}
+
+/// Inverse of @ref worldCellForGridVoxel's non-identity arm: maps an integer
+/// world cell back to the continuous source-frame position (`local + offset`
+/// space). Round the result with `IRMath::roundVec3HalfUp` to land on the
+/// integer source-cell lattice the occupancy grid is keyed by — the same
+/// `roundHalfUp(R⁻¹·c)` convention the detached re-voxelize GPU kernel uses
+/// (#1619), so CPU GRID and GPU detached classify identically.
+/// @p inverseRotation is `IRMath::quatInverse(wt.rotation_)`, hoisted by the
+/// caller so a per-dest-cell loop pays one quat rotate, not an inverse too.
+/// Zero scale components are the caller's responsibility to reject (a
+/// zero-scaled solid has no inverse; the rebuild system skips those sets).
+inline IRMath::vec3 sourceCellForWorldCell(
+    IRMath::ivec3 worldCell, const IRComponents::C_WorldTransform &wt, IRMath::vec4 inverseRotation
+) {
+    const IRMath::vec3 rotated = IRMath::vec3(worldCell) - wt.translation_;
+    const IRMath::vec3 scaled = IRMath::rotateVectorByQuat(rotated, inverseRotation);
+    return scaled / wt.scale_;
 }
 
 } // namespace IRPrefab::GridRotation
