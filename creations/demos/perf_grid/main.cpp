@@ -130,6 +130,18 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     // backing T-275 acceptance: future overlay-breaking diffs (font, layout,
     // CPU/GPU readout) trip the render-verify image compare.
     {0.5f, vec2(0, 0), 0.0f, "profiler_overlay"},
+    // Rotated-zoom regression shots: at a non-cardinal residual yaw the
+    // per-axis scatter path replaces the cardinal gather, and camera zoom
+    // must still scale the on-screen content (not just shrink the cull
+    // viewport). Voxels in zoom4_rot must render 4x larger than zoom1_rot.
+    {1.0f, vec2(0, 0), 0.35f, "zoom1_rot"},
+    {4.0f, vec2(0, 0), 0.35f, "zoom4_rot"},
+    // Rotated-pan regression pair: the same camera offset at the same zoom,
+    // cardinal vs rotated. The world content at screen center must match
+    // (rotation pivots about the focus) — a rotated pan that drifts at the
+    // wrong rate breaks this pairing.
+    {4.0f, vec2(16, 8), 0.0f, "zoom4_pan"},
+    {4.0f, vec2(16, 8), 0.35f, "zoom4_rot_pan"},
 };
 
 PerfGridSettings g_settings{};
