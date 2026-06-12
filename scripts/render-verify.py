@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -121,8 +122,20 @@ def _load_manifest(demo_dir: Path) -> dict[str, Any]:
     return data
 
 
+# Full-frame captures are ``screenshot_<6-digit-index>.png``. ROI crop files
+# share the prefix but append ``_<shotLabel>__crop_<crop>.png`` (see
+# VideoManager::writePendingRoiCrops). A bare ``screenshot_*.png`` glob matches
+# both, and since ``.`` < ``_`` the crops sort *between* full frames — so the
+# first-N slice below would pick 128x128 crops as full shots. Match the
+# index-only form so crops never enter the shot->reference mapping.
+_FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
+
+
 def _collect_shots(shots_dir: Path, num_shots: int) -> list[Path]:
-    shots = sorted(shots_dir.glob("screenshot_*.png"))
+    shots = sorted(
+        p for p in shots_dir.glob("screenshot_*.png")
+        if _FULL_FRAME_RE.fullmatch(p.name)
+    )
     if len(shots) < num_shots:
         raise SystemExit(
             f"expected {num_shots} screenshots in {shots_dir}, got {len(shots)}"
@@ -168,8 +181,9 @@ def main(argv: list[str] | None = None) -> int:
                          "if the mapping doesn't hold).")
     ap.add_argument("--build-dir", default=None,
                     help="CMake build dir (default: <repo>/build).")
-    ap.add_argument("--warmup", type=int, default=10,
-                    help="Warmup frames before the first shot (default: 10).")
+    ap.add_argument("--warmup", type=int, default=None,
+                    help="Warmup frames before the first shot (default: 10, or "
+                         "manifest['warmup'] if set; CLI value always wins).")
     ap.add_argument("--timeout", type=int, default=60,
                     help="Per-run timeout in seconds (default: 60).")
     ap.add_argument("--update-references", action="store_true",
@@ -193,8 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     shot_labels: list[str] = manifest["shots"]
     thresholds = manifest.get("thresholds", {})
     screenshot_subdir = manifest.get("screenshot_subdir", "save_files/screenshots")
+    # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
+    warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
 
-    print(f"[render-verify] target={args.target} demo={demo_name} backend={backend}")
+    print(f"[render-verify] target={args.target} demo={demo_name} backend={backend} warmup={warmup}")
     print(f"[render-verify] {len(shot_labels)} shots: {', '.join(shot_labels)}")
 
     if not args.no_build:
@@ -207,19 +223,27 @@ def main(argv: list[str] | None = None) -> int:
     shots_dir.mkdir(parents=True, exist_ok=True)
 
     run_cmd = ["fleet-run", "--timeout", str(args.timeout), args.target,
-               "--auto-screenshot", str(args.warmup)]
+               "--auto-screenshot", str(warmup)]
     print("+ " + " ".join(run_cmd), flush=True)
     proc = subprocess.run(run_cmd, cwd=str(worktree),
                           capture_output=True, text=True)
+    # In `--auto-screenshot` mode the demo fires `closeWindow()` after the
+    # last shot and exits 0; any non-zero return is a crash (e.g. a Metal
+    # static-destruction segfault that lands AFTER the screenshots are
+    # saved, which the per-shot comparator would otherwise silently
+    # "pass" — T-336). With `--timeout`, ir-run returns 0 on timeout-kill
+    # too, so the only way we see non-zero here is a real early-exit
+    # crash. Surface the tail and let the run_crash flag block a PASS
+    # verdict below even when all shots compare clean.
+    run_crash: tuple[int, str] | None = None
     if proc.returncode != 0:
-        # Expected on timeout; also fires if the demo crashed. Surface the
-        # tail so a crash isn't hidden behind "expected N shots, got M".
         print(f"[render-verify] fleet-run exited {proc.returncode}; "
               f"tail of output follows (screenshot count will be checked "
               f"against manifest below):", file=sys.stderr)
         tail = (proc.stdout + proc.stderr).splitlines()[-40:]
         for line in tail:
             print(f"    {line}", file=sys.stderr)
+        run_crash = (proc.returncode, "\n".join(tail))
 
     captured = _collect_shots(shots_dir, len(shot_labels))
     ref_dir = demo_dir / "test" / "references" / backend
@@ -272,15 +296,22 @@ def main(argv: list[str] | None = None) -> int:
             failures.append((label, result))
 
     print()
-    if all_pass:
+    if all_pass and run_crash is None:
         print(f"[render-verify] all {len(shot_labels)} shots PASS")
         return 0
 
-    print(f"[render-verify] {len(failures)} of {len(shot_labels)} shots FAIL")
-    for label, result in failures:
-        reason = result.get("reason", "mismatch")
-        diff = result.get("diff_path", "(no diff)")
-        print(f"  - {label}: {reason}  diff={diff}")
+    if not all_pass:
+        print(f"[render-verify] {len(failures)} of {len(shot_labels)} shots FAIL")
+        for label, result in failures:
+            reason = result.get("reason", "mismatch")
+            diff = result.get("diff_path", "(no diff)")
+            print(f"  - {label}: {reason}  diff={diff}")
+
+    if run_crash is not None:
+        rc, _ = run_crash
+        print(f"[render-verify] demo crashed at shutdown (fleet-run exit={rc}); "
+              f"failing the verify run even when shots match — see tail above.",
+              file=sys.stderr)
     return 1
 
 

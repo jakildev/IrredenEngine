@@ -8,6 +8,7 @@
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/image_data.hpp>
+#include <irreden/render/async_texture.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/shader_names.hpp>
 #include <irreden/render/vao.hpp>
@@ -149,6 +150,19 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 /// @}
 
 /// @{
+/// @name GUI-canvas immediate shape draw
+/// Rasterize a filled disc / line onto the engine-default "gui" trixel canvas
+/// (the same canvas @c IRText draws to), in screen-space trixel coordinates.
+/// Immediate-mode: the GUI canvas is cleared every frame by @c TEXT_TO_TRIXEL,
+/// so re-issue these each frame from a RENDER-phase system to keep the shape on
+/// screen — the same contract the widget render systems follow. No-op when no
+/// "gui" canvas exists. Exposed to Lua as @c IRGui.drawDisc / @c IRGui.drawLine
+/// (engine #1615).
+void drawGuiDisc(ivec2 center, int radius, Color color);
+void drawGuiLine(ivec2 from, ivec2 to, Color color);
+/// @}
+
+/// @{
 /// @name Camera and viewport queries
 /// Camera position and zoom are read by the voxel→trixel shaders every frame.
 /// Viewport and scale-factor queries are needed when mapping pixel coordinates
@@ -156,6 +170,12 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 
 /// Camera position in isometric 2-D canvas space (trixel units).
 vec2 getCameraPosition2DIso();
+/// Camera iso offset corrected for the active @ref RotationPivotMode. Producers
+/// that position world content relative to the camera should read THIS, not
+/// @ref getCameraPosition2DIso, so Z-yaw pivots about the camera focus rather
+/// than the world origin. In @c ORIGIN mode and at `visualYaw == 0` it returns
+/// exactly @ref getCameraPosition2DIso (the cardinal fast path is byte-identical).
+vec2 getEffectiveCameraIso();
 /// Current zoom factor as a 2-D scale (x and y may differ for anisotropic zoom).
 vec2 getCameraZoom();
 /// Size of one trixel in screen pixels at the current zoom level.
@@ -180,16 +200,23 @@ vec2 getMainCanvasSizeTrixels();
 /// Multiple iso-space mouse position variants are maintained because the render
 /// and update pipelines run at different rates and the camera offset matters.
 ///
-/// All four helpers below invert the @c SCREEN_SPACE_RESIDUAL_ROTATE
-/// composite (`R2D(-residualYaw)` around the framebuffer center) so the
-/// returned coordinates match what the rasterizer wrote — under any
-/// visualYaw, not just yaw=0. The 2D variants stay in the **trixel canvas
-/// frame**: under non-zero rasterYaw the canvas iso position
-/// = `M · R_z(rasterYaw) · world`, not `M · world`. The trixel-index
-/// lookup path (@ref mouseTrixelPositionWorld → GPU comparison) requires
-/// this frame to match the rasterized canvas; for true world-frame
-/// coordinates use @ref mouseWorldPos3DAtIsoDepth, which composes the
-/// additional `R_z(-rasterYaw)` lift.
+/// After T-293 the screen-space bilinear residual composite is gone —
+/// residual yaw is folded into per-face `faceDeform[]` matrices that the
+/// trixel emit shaders apply in 2D iso space (the residual-rotate stage that was
+/// a passthrough since T-293 has been fully retired by T-323).
+/// The picking helpers below therefore no longer apply a `R2D(-residualYaw)`
+/// inverse: the cursor's
+/// framebuffer pixel maps directly into the trixel-canvas frame. The 2D
+/// variants stay in the **trixel canvas frame**: under non-zero rasterYaw
+/// the canvas iso position = `M · R_z(rasterYaw) · world`, not `M · world`.
+/// The trixel-index lookup path (@ref mouseTrixelPositionWorld → GPU
+/// comparison) requires this frame to match the rasterized canvas; for
+/// true world-frame coordinates use @ref mouseWorldPos3DAtIsoDepth, which
+/// composes the additional `R_z(-rasterYaw)` lift.
+///
+/// Iso-space picking accuracy at non-cardinal yaws is bounded by the
+/// geometric trixel deformation (a small per-face offset the picking
+/// math does not reverse-compose today; follow-up).
 
 /// Mouse position in iso canvas coordinates **as seen on screen** — no camera offset.
 /// Use this to align UI overlays to the render output.
@@ -204,8 +231,10 @@ vec2 mousePosition2DIsoWorldRender();
 /// cursor at any visualYaw.
 ivec2 mouseTrixelPositionWorld();
 /// Mouse position lifted to a 3D world point in the **unrotated world frame**
-/// at the given **canvas-frame** iso depth. Composes the full picking inverse
-/// `R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen`.
+/// at the given **canvas-frame** iso depth. Composes the picking inverse
+/// `R_z(-rasterYaw) · isoPixelToPos3D · screen` — after T-293 the screen-
+/// space residual rotation is gone, so the `R2D(-residualYaw)` half of
+/// the chain is no longer needed.
 ///
 /// @p canvasIsoDepth is iso depth in the **rasterYaw-rotated canvas frame**
 /// (= `rotated.x + rotated.y + rotated.z`), NOT in the unrotated world frame
@@ -217,7 +246,7 @@ ivec2 mouseTrixelPositionWorld();
 /// same frame as the iso pixel — the rotated canvas frame.
 ///
 /// To target the iso-depth plane through a known world-frame reference
-/// point (e.g. an entity's `C_PositionGlobal3D`), rotate it into the
+/// point (e.g. an entity's `C_WorldTransform.translation_`), rotate it into the
 /// canvas frame and take its iso depth:
 /// @code
 ///   const ivec3 worldRef = ... ;  // e.g. entity world position
@@ -250,6 +279,18 @@ void setCameraPosition2DIso(vec2 pos);
 /// @see getVoxelRenderEffectiveSubdivisions for the value actually used by shaders.
 void setSubdivisionMode(SubdivisionMode mode);
 SubdivisionMode getSubdivisionMode();
+/// @}
+
+/// @{
+/// @name Rotation pivot mode
+/// @see RotationPivotMode for the ORIGIN / CAMERA_CENTER trade-off.
+/// @see getEffectiveCameraIso for the camera iso offset this setting corrects.
+void setRotationPivotMode(RotationPivotMode mode);
+RotationPivotMode getRotationPivotMode();
+/// @}
+
+/// @{
+/// @name Subdivision count
 /// Set the base subdivision count. In @c FULL mode it is multiplied by zoom;
 /// in @c POSITION_ONLY it is used as-is; in @c NONE it is ignored (always 1).
 void setVoxelRenderSubdivisions(int subdivisions);
@@ -305,14 +346,51 @@ bool getAOEnabled();
 /// @}
 
 /// @{
-/// @name Lighting debug overlay
-/// Replaces the artistic composite in @c LIGHTING_TO_TRIXEL with a false-
-/// color visualization of the underlying lighting buffers. See
-/// @c DebugOverlayMode for the per-mode color encoding. Upstream lighting
-/// passes (@c COMPUTE_VOXEL_AO, @c COMPUTE_SUN_SHADOW) keep running so the
-/// values rendered are exactly what the artistic path would consume.
+/// @name HDR / tonemap / sky term
+/// When enabled, the LIGHTING_TO_TRIXEL pass computes in unclamped float
+/// precision, applies the sky-term contribution, exposure, and ACES Filmic
+/// tonemap before writing back to the canvas. Disabled by default so
+/// existing demos produce identical output; enable per-creation for HDR.
+void setHDREnabled(bool enabled);
+bool getHDREnabled();
+/// Exposure multiplier applied before tonemapping. Default 1.0.
+/// Values >1 brighten; <1 darken.
+void setExposure(float exposure);
+float getExposure();
+/// Additive sky-hemisphere intensity. Upward-facing surfaces receive
+/// @c skyColor * skyIntensity * max(0, normal.z) * ao.
+void setSkyIntensity(float intensity);
+float getSkyIntensity();
+/// RGB color of the sky hemisphere contribution.
+void setSkyColor(vec3 color);
+vec3 getSkyColor();
+/// @}
+
+/// @{
+/// @name Rendering debug overlay
+/// Replaces a pass's color output with a false-color visualization. Lighting
+/// modes (AO / LIGHT_LEVEL / SHADOW) swap the artistic composite in
+/// @c LIGHTING_TO_TRIXEL; the per-axis modes (PER_AXIS_ID / PER_AXIS_ORIGIN)
+/// recolor the per-axis forward-scatter composite (#1457) and are inert at
+/// cardinal yaw. See @c DebugOverlayMode for the per-mode color encoding.
+/// Upstream passes keep running so the values rendered are exactly what the
+/// normal path would consume.
 void setDebugOverlay(DebugOverlayMode mode);
 DebugOverlayMode getDebugOverlay();
+/// @}
+
+/// @name Depth-color debug mode (scatter path)
+/// When on, the per-axis scatter fragment shader evaluates hue from the
+/// interpolated face-corner world depth rather than the pre-baked vColor,
+/// producing a smooth continuous gradient that matches the SDF twin (#1697).
+/// @c extent is the bounding half-sum (x+y+z) used to normalize depth to
+/// [0,1] across the whole pass. The extent is a single global value on
+/// RenderManager — in multi-shape scenes the last setDepthColorDebug call
+/// wins and the gradient scale matches only that shape. Intended for
+/// single-shape inspection.
+void setDepthColorDebug(bool on, float extent);
+bool getDepthColorDebugMode();
+float getDepthColorDebugExtent();
 /// @}
 
 } // namespace IRRender

@@ -5,6 +5,8 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
+#include <irreden/render/camera.hpp>
+#include <irreden/render/cull_viewport_state.hpp>
 
 #include <cstdlib>
 #include <cstring>
@@ -27,23 +29,37 @@ struct CyclingState {
     bool screenshotPending_ = false;
 };
 
+// Set true the first time createAutoScreenshotSystem runs this process, i.e. a
+// headless --auto-screenshot capture is active. Read by World via
+// isAutoCaptureActive() to switch the UPDATE loop to a deterministic fixed
+// step. Process-lifetime flag; capture is one-shot per process.
+bool g_autoCaptureActive = false;
+
 } // namespace
 
 bool parseAutoScreenshotArgv(int argc, char **argv, int *warmupFramesOut) {
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-screenshot") != 0) continue;
+        if (std::strcmp(argv[i], "--auto-screenshot") != 0)
+            continue;
         int warmup = 10;
         if (i + 1 < argc) {
             int parsed = std::atoi(argv[i + 1]);
-            if (parsed > 0) warmup = parsed;
+            if (parsed > 0)
+                warmup = parsed;
         }
-        if (warmupFramesOut != nullptr) *warmupFramesOut = warmup;
+        if (warmupFramesOut != nullptr)
+            *warmupFramesOut = warmup;
         return true;
     }
     return false;
 }
 
+bool isAutoCaptureActive() {
+    return g_autoCaptureActive;
+}
+
 IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config) {
+    g_autoCaptureActive = true;
     auto state = std::make_shared<CyclingState>();
     state->config_ = config;
     state->warmupRemaining_ = config.warmupFrames_;
@@ -66,12 +82,29 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
             if (state->settleCounter_ == 0) {
                 const auto &shot = state->config_.shots_[state->currentShot_];
                 IR_LOG_INFO(
-                    "AutoScreenshot {}/{}: {} (zoom={}, cam=({},{}))",
-                    state->currentShot_ + 1, state->config_.numShots_,
-                    shot.label_, shot.zoom_, shot.cameraIso_.x, shot.cameraIso_.y
+                    "AutoScreenshot {}/{}: {} (zoom={}, cam=({},{}), yaw={}, cull={})",
+                    state->currentShot_ + 1,
+                    state->config_.numShots_,
+                    shot.label_,
+                    shot.zoom_,
+                    shot.cameraIso_.x,
+                    shot.cameraIso_.y,
+                    shot.yawRadians_,
+                    static_cast<int>(shot.cullAction_)
                 );
                 IRRender::setCameraZoom(shot.zoom_);
                 IRRender::setCameraPosition2DIso(shot.cameraIso_);
+                IRPrefab::Camera::setYaw(shot.yawRadians_);
+                // Drive the shared cull-freeze flag while the camera sits at
+                // THIS shot's pose. FREEZE pins the cull here (the snapshot is
+                // taken on the next IRRender::updateCullViewport, within the
+                // settle frames); subsequent shots move the camera with the
+                // cull held. NONE leaves the flag as-is.
+                if (shot.cullAction_ == CullAction::FREEZE) {
+                    IRRender::setCullingFrozen(true);
+                } else if (shot.cullAction_ == CullAction::UNFREEZE) {
+                    IRRender::setCullingFrozen(false);
+                }
                 state->settleCounter_ = state->config_.settleFrames_;
                 state->screenshotPending_ = false;
                 return;
@@ -85,9 +118,7 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
             if (!state->screenshotPending_) {
                 const auto &shot = state->config_.shots_[state->currentShot_];
                 if (shot.numCrops_ > 0 && shot.crops_ != nullptr) {
-                    IRVideo::requestScreenshotWithCrops(
-                        shot.label_, shot.crops_, shot.numCrops_
-                    );
+                    IRVideo::requestScreenshotWithCrops(shot.label_, shot.crops_, shot.numCrops_);
                 } else {
                     IRVideo::requestScreenshot();
                 }

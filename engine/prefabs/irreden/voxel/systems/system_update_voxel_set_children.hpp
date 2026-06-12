@@ -3,8 +3,7 @@
 
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/components/component_player.hpp>
 #include <irreden/ir_render.hpp>
 
@@ -25,7 +24,11 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         lastPool_ = nullptr;
     }
 
-    void tick(IREntity::EntityId &entityId, C_VoxelSetNew &voxelSet, C_PositionGlobal3D &position) {
+    void tick(
+        IREntity::EntityId &entityId,
+        C_VoxelSetNew &voxelSet,
+        const C_WorldTransform &worldTransform
+    ) {
         IREntity::EntityId canvas = voxelSet.canvasEntity_;
         if (canvas == IREntity::kNullEntity) {
             canvas = IRRender::getActiveCanvasEntity();
@@ -35,12 +38,31 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             lastCanvas_ = canvas;
         }
         C_VoxelPool &pool = *lastPool_;
-        voxelSet.updateAsChild(
-            position.pos_,
+        // updateAsChild returns the number of positions written, or 0 if the
+        // parent is unchanged (static voxel scene pays zero bytes/frame on
+        // the GPU side). Using the exact count avoids queuing stale tail
+        // slots if the pool-bounds guard fires (safeCount < numVoxels_).
+        const int writtenCount = voxelSet.updateAsChild(
+            worldTransform.translation_,
             pool.getPositionGlobals(),
             pool.getPositions(),
             pool.getPositionOffsets()
         );
+        if (writtenCount > 0) {
+            // CPU world positions moved in place; evict the chunk world-AABB
+            // cache so the continuous-yaw cull re-derives this set's bounds and
+            // stays a conservative superset of the live voxels (#1439).
+            pool.markChunkWorldBoundsDirty();
+        }
+        // A GPU-transform-indirected set (#1396) has binding 5 written by the
+        // UPDATE_VOXEL_POSITIONS_GPU prepass each frame. We still recompute its
+        // CPU global mirror above (a sane translation-only fallback for the
+        // STAGE_1 canvas-switch re-seed, and for cull/picking), but we must NOT
+        // queue it for the steady-state binding-5 flush — that flush runs after
+        // the prepass in the RENDER pipeline and would clobber the GPU positions.
+        if (writtenCount > 0 && voxelSet.gpuTransformSlot_ == IRRender::kVoxelTransformStatic) {
+            pool.queuePositionRange(voxelSet.voxelStartIdx_, static_cast<size_t>(writtenCount));
+        }
         if (voxelSet.ownerEntityId_ == IREntity::kNullEntity && entityId != IREntity::kNullEntity &&
             voxelSet.numVoxels_ > 0) {
             voxelSet.ownerEntityId_ = entityId;
@@ -53,7 +75,7 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     }
 
     static SystemId create() {
-        return registerSystem<UPDATE_VOXEL_SET_CHILDREN, C_VoxelSetNew, C_PositionGlobal3D>(
+        return registerSystem<UPDATE_VOXEL_SET_CHILDREN, C_VoxelSetNew, C_WorldTransform>(
             "UpdateVoxelSetChildren"
         );
     }

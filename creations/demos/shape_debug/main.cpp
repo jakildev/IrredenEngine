@@ -4,19 +4,26 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/ir_constants.hpp>
 #include <irreden/render/camera.hpp>
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
 
+#include <array>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <numbers>
 #include <string>
+#include <vector>
 // COMPONENTS
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_joint.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -28,15 +35,19 @@
 #include <irreden/render/camera.hpp>
 
 // SYSTEMS
-#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
+#include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
+#include <irreden/render/systems/system_update_joint_matrices.hpp>
+#include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
+#include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
@@ -44,14 +55,15 @@
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
+#include <irreden/render/systems/system_auto_yaw_rotate.hpp>
 
 // COMMAND SUITES
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/commands/command_toggle_culling_freeze.hpp>
 
 namespace {
 
@@ -73,37 +85,128 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "zoom1_origin"},
-    {2.0f, vec2(0, 0), "zoom2_origin"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
     {4.0f,
      vec2(0, 0),
+     0.0f,
      "zoom4_origin",
      kCropsZoom4Origin,
      sizeof(kCropsZoom4Origin) / sizeof(kCropsZoom4Origin[0])},
-    {1.0f, vec2(1, 0), "zoom1_odd_offset"},
+    {1.0f, vec2(1, 0), 0.0f, "zoom1_odd_offset"},
     {8.0f,
      vec2(0, 0),
+     0.0f,
      "zoom8_origin",
      kCropsZoom8Origin,
      sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
-    {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
-    // zoom16_lod_all_visible: active tier LOD_0, LOD_0 (red) tops the co-located stack.
-    {16.0f, vec2(0, 0), "zoom16_lod_all_visible"},
+    {4.0f, vec2(3, 5), 0.0f, "zoom4_offset_3_5"},
+    // LOD swap (#1467): the co-located stack renders exactly ONE variant per
+    // zoom band — cube (zoom 1-3) -> cone (zoom 4-15) -> sphere (zoom >=16) —
+    // never stacked. This whole-scene shot samples the finest (sphere) tier.
+    {16.0f, vec2(0, 0), 0.0f, "zoom16_lod_fine_sphere"},
+
+    // Dedicated LOD swap series (#1467): cameraIso (16,-16) centers the
+    // co-located LOD stack at world (0,-16,0) (= -pos3DtoPos2DIso((0,-16,0))),
+    // with the single-LOD control cylinder beside it. As zoom climbs the stack
+    // visibly swaps silhouette (cube -> cone -> sphere) while the control holds
+    // constant — the unambiguous "LOD is working" read the issue asks for.
+    {1.0f, vec2(16, -16), 0.0f, "lod_swap_zoom1_cube"},
+    {2.0f, vec2(16, -16), 0.0f, "lod_swap_zoom2_cube"},
+    {4.0f, vec2(16, -16), 0.0f, "lod_swap_zoom4_cone"},
+    {8.0f, vec2(16, -16), 0.0f, "lod_swap_zoom8_cone"},
+    {16.0f, vec2(16, -16), 0.0f, "lod_swap_zoom16_sphere"},
+
+    // Rotation coverage (#1261): four cardinals + one inter-cardinal expose
+    // rotation-only regressions (#1256 checkerboard, #1257 inter-cardinal
+    // deformation, future face-normal / shadow-AABB / chunk-mask bugs) that
+    // a yaw=0 shot list cannot catch. zoom8 close-ups make sub-pixel
+    // parity artifacts visible at full pixel scale.
+    {4.0f, vec2(0, 0), IRMath::kHalfPi, "zoom4_yaw90"},
+    {4.0f, vec2(0, 0), IRMath::kPi, "zoom4_yaw180"},
+    {4.0f, vec2(0, 0), 3.0f * IRMath::kHalfPi, "zoom4_yaw270"},
+    {4.0f, vec2(0, 0), IRMath::kQuarterPi, "zoom4_yaw45_inter_cardinal"},
+    {8.0f,
+     vec2(0, 0),
+     IRMath::kPi,
+     "zoom8_yaw180",
+     kCropsZoom8Origin,
+     sizeof(kCropsZoom8Origin) / sizeof(kCropsZoom8Origin[0])},
+
+    // Camera-focus pivot coverage (#1352): the camera is panned off-origin and
+    // then yawed. With RotationPivotMode::CAMERA_CENTER (the new engine default)
+    // the world point under screen center stays pinned across the whole sweep —
+    // the same focused content sits at the same screen pixel in all four shots.
+    // The pre-#1352 ORIGIN pivot (reproducible via --pivot-origin) instead swings
+    // that content in an arc. A shot list with only unpanned-or-yaw0 entries
+    // cannot catch a pivot regression: the CAMERA_CENTER correction is the
+    // identity unless the camera is BOTH panned and rotated, so every existing
+    // shot is byte-identical between the two modes. yaw45 also exercises the
+    // per-axis smooth-yaw scatter base (perAxisBase_) under the pivot.
+    {4.0f, vec2(16, 16), 0.0f, "zoom4_pan16_yaw0_pivot"},
+    {4.0f, vec2(16, 16), IRMath::kHalfPi, "zoom4_pan16_yaw90_pivot"},
+    {4.0f, vec2(16, 16), IRMath::kPi, "zoom4_pan16_yaw180_pivot"},
+    {4.0f, vec2(16, 16), IRMath::kQuarterPi, "zoom4_pan16_yaw45_pivot"},
 };
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 bool g_depthColor = false;
 bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by default
+// --gpu-voxel-smoke (#1396): spawn one voxel cube routed through the GPU
+// voxel-position prepass with a fixed 45° rotation. Off by default so the
+// standard scene stays byte-identical; the rotated cube is direct proof the
+// prepass applied modelToWorld (the CPU world-position path is translation-only).
+bool g_gpuVoxelSmoke = false;
+// --skin-smoke (#1605): spawn one 2-bone rigged voxel bar skinned through the
+// binding-17 bone→slot seed path, with the second joint posed off its bind
+// pose. Off by default so the standard scene stays byte-identical; the visible
+// bend at the bar's midpoint is direct proof the per-voxel slots route through
+// the joint skin matrices (a rigid entity transform cannot bend a set).
+bool g_skinSmoke = false;
 int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f; // 0 = use engine default
 float g_initialYawRadians = 0.0f;
 float g_initialYaw = 0.0f;
 bool g_initialYawSet = false;
+// --pivot-origin (#1352): force RotationPivotMode::ORIGIN (the pre-#1352
+// world-origin pivot) instead of the CAMERA_CENTER engine default. Lets the
+// same panned+rotated shot list be captured in both modes for an A/B compare —
+// CAMERA_CENTER pins the focused content at screen center, ORIGIN swings it in
+// an arc. Off by default so the demo exercises the shipped default.
+bool g_pivotOrigin = false;
 IRRender::DebugOverlayMode g_debugOverlay = IRRender::DebugOverlayMode::NONE;
 // --load-vxs <path>: load a DENSE-mode .vxs and render frame 0 alongside the
 // built-in shape fixtures. Empty = not requested.
 std::string g_loadVxsPath;
+
+// --spin-yaw [deg/sec] (#1271): drive the camera's Z-yaw at a constant
+// rate so the cardinal/residual rebracket can be eyeballed (live) or sampled
+// at N evenly-spaced angles (auto-screenshot). 0 = flag not requested.
+float g_spinYawDegPerSec = 0.0f;
+// In auto-screenshot + spin-yaw mode, --auto-screenshot's value is
+// reinterpreted as "shot count across one rotation"; default 24 → every 15°
+// which hits every cardinal (0/90/180/270°) and every rebracket (45/135/...).
+int g_spinYawShotCount = 24;
+
+// Dynamic shot table populated at startup when --spin-yaw + --auto-screenshot
+// are both set. Lives at namespace scope so the pointer handed to
+// IRVideo::AutoScreenshotConfig outlives the game loop. The label strings
+// are backed by a parallel buffer so each AutoScreenshotShot::label_ pointer
+// remains stable.
+std::vector<IRVideo::AutoScreenshotShot> g_spinYawShots;
+std::vector<std::array<char, 32>> g_spinYawShotLabels;
+
+// --cull-validate (#1438): frozen-cull free-fly validation harness. Requires
+// --auto-screenshot. Builds a paired live/frozen camera sweep — a live
+// (cull-tracking) pass followed by a frozen pass over the SAME poses with the
+// cull pinned at a deliberately wide reference. Pairwise-diffing the on-screen
+// region of cv_live_NNN vs cv_frozen_NNN proves the live cull never drops
+// on-screen content under yaw + camera movement. Same stable-storage discipline
+// as the spin-yaw buffers above.
+bool g_cullValidate = false;
+std::vector<IRVideo::AutoScreenshotShot> g_cullValidateShots;
+std::vector<std::array<char, 40>> g_cullValidateShotLabels;
 
 } // namespace
 
@@ -127,6 +230,10 @@ int main(int argc, char **argv) {
             g_depthColor = true;
         } else if (std::strcmp(argv[i], "--checkerboard") == 0) {
             g_checkerboard = true;
+        } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
+            g_gpuVoxelSmoke = true;
+        } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
+            g_skinSmoke = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
             if (i + 1 < argc) {
                 float z = static_cast<float>(std::atof(argv[i + 1]));
@@ -147,12 +254,39 @@ int main(int argc, char **argv) {
                 g_initialYawSet = true;
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--pivot-origin") == 0) {
+            g_pivotOrigin = true;
+        } else if (std::strcmp(argv[i], "--cull-validate") == 0) {
+            g_cullValidate = true;
         } else if (std::strcmp(argv[i], "--load-vxs") == 0) {
             if (i + 1 < argc) {
                 g_loadVxsPath = argv[i + 1];
                 ++i;
             }
+        } else if (std::strcmp(argv[i], "--spin-yaw") == 0) {
+            g_spinYawDegPerSec = 30.0f; // default rotation rate
+            if (i + 1 < argc) {
+                float v = static_cast<float>(std::atof(argv[i + 1]));
+                if (v > 0.0f) {
+                    g_spinYawDegPerSec = v;
+                    ++i;
+                }
+            }
         }
+    }
+
+    // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as
+    // "shots across one rotation", and use a small internal warmup. This is
+    // the regression-detection mode — N static frames at evenly-spaced yaws
+    // so a render-verify diff can pinpoint the angle a glitch appears at.
+    if (g_spinYawDegPerSec > 0.0f && g_autoWarmupFrames > 0) {
+        g_spinYawShotCount = g_autoWarmupFrames;
+        g_autoWarmupFrames = 10;
+        IR_LOG_INFO(
+            "Spin-yaw: warmup reset to 10 frames (--auto-screenshot value {} reinterpreted as shot "
+            "count)",
+            g_spinYawShotCount
+        );
     }
 
     IR_LOG_INFO("Starting creation: shape_debug");
@@ -187,6 +321,25 @@ int main(int argc, char **argv) {
         IRPrefab::Camera::setYaw(g_initialYaw);
         IR_LOG_INFO("Initial yaw: {} rad", g_initialYaw);
     }
+    if (g_pivotOrigin) {
+        IRRender::setRotationPivotMode(IRRender::RotationPivotMode::ORIGIN);
+        IR_LOG_INFO(
+            "RotationPivotMode: ORIGIN (--pivot-origin) — Z-yaw pivots about the world origin"
+        );
+    }
+    if (g_cullValidate) {
+        // The cull viewport also drives the sun-shadow-feeder AABB
+        // (shadowFeederCullViewport), so a frozen wide cull bakes *different*
+        // shadows than the live cull — a confound that otherwise dominates the
+        // live-vs-frozen diff. Disabling sun shadows leaves the cull's only
+        // on-screen effect as which voxels rasterize, so the diff isolates
+        // voxel retention. (The interactive F10 path keeps shadows.)
+        IRRender::setSunShadowsEnabled(false);
+        IR_LOG_INFO(
+            "Cull-validate: sun shadows disabled to isolate voxel retention from "
+            "shadow-feeder coupling"
+        );
+    }
     IREngine::gameLoop();
     return 0;
 }
@@ -195,32 +348,68 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
+         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>()}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
-        IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    // --spin-yaw live mode: drive the camera each frame. In auto-screenshot
+    // mode the per-shot setYaw() supplies the rotation instead — running both
+    // would double-rotate between shots and break the "evenly-spaced" contract.
+    if (g_spinYawDegPerSec > 0.0f &&
+        g_autoWarmupFrames == 0) { // == 0: no auto-screenshot requested
+        const float radPerFrame =
+            g_spinYawDegPerSec * IRMath::kPi / 180.0f / static_cast<float>(IRConstants::kFPS);
+        renderPipeline.push_front(IRSystem::createSystem<IRSystem::AUTO_YAW_ROTATE>(radPerFrame));
+        IR_LOG_INFO(
+            "Spin-yaw live: {} deg/sec ({} rad/frame at {} fps)",
+            g_spinYawDegPerSec,
+            radPerFrame,
+            IRConstants::kFPS
+        );
+    }
+    // GPU voxel-position prepass (#1396) — writes binding 5 for
+    // GPU-transform-indirected voxel sets before STAGE_1 reads it. A no-op (no
+    // dispatch) unless a voxel set opts in via gpuTransformSlot_, so the default
+    // scene stays byte-identical. Created up-front so its SystemId can wire the
+    // transform-slot allocator; it keeps its pipeline position below (before
+    // STAGE_1).
+    const IRSystem::SystemId updateVoxelPositionsId =
+        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
+    IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
+    // Joint skin-matrix upload (#1603) + per-voxel bone→slot seeding (#1605).
+    // Before UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices
+    // when the prepass dispatches; a no-op (zero skeletons) unless --skin-smoke
+    // rigs a set, so the default scene stays byte-identical.
+    const IRSystem::SystemId updateJointMatricesId =
+        IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
+    IRPrefab::JointTransform::setSystem(updateJointMatricesId);
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            updateJointMatricesId,
+            updateVoxelPositionsId,
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_VoxelSetNew>(
@@ -241,8 +430,118 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        if (g_cullValidate) {
+            // Frozen-cull free-fly validation harness (#1438). Two phases over
+            // the SAME pose list: (1) live cull, (2) cull frozen at a wide
+            // reference. A wide freeze reference (zoom 1 at origin) has an iso
+            // cull viewport that is a superset of every sweep pose, so a frozen
+            // frame is the "cull-effectively-disabled" ground truth — every
+            // voxel geometrically on-screen at that pose is drawn. Pairwise-
+            // diffing the on-screen region of cv_live_NNN against cv_frozen_NNN
+            // proves the live cull never drops on-screen content. Capture order
+            // makes screenshot_i (live i) pair with screenshot_(i + n + 1)
+            // (frozen i); the freeze-ref shot sits between the two phases.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            constexpr int kYawSteps = 8;
+            const vec2 kPanOffsets[] = {vec2(12, 0), vec2(-12, 0), vec2(0, 12), vec2(0, -12)};
+            constexpr int kNumPans = sizeof(kPanOffsets) / sizeof(kPanOffsets[0]);
+            const int posesPerPhase = kYawSteps + kNumPans;
+            // live poses + freeze-ref + frozen poses + unfreeze
+            const int totalShots = posesPerPhase * 2 + 2;
+            g_cullValidateShotLabels.reserve(totalShots);
+            g_cullValidateShots.reserve(totalShots);
+
+            const auto emitShot = [&](float zoom,
+                                      vec2 cam,
+                                      float yaw,
+                                      const char *fmt,
+                                      int idx,
+                                      IRVideo::CullAction action) {
+                auto &label = g_cullValidateShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), fmt, idx);
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = zoom;
+                shot.cameraIso_ = cam;
+                shot.yawRadians_ = yaw;
+                shot.label_ = label.data();
+                shot.cullAction_ = action;
+                g_cullValidateShots.push_back(shot);
+            };
+
+            // The pose list: a full yaw rotation at the focus, then a pan sweep
+            // at a non-cardinal yaw (residual != 0 → per-axis composite active)
+            // so camera *movement* under rotation is exercised, not just
+            // rotation in place.
+            const auto emitPhase = [&](const char *fmt) {
+                for (int i = 0; i < kYawSteps; ++i) {
+                    const float yaw =
+                        (static_cast<float>(i) / static_cast<float>(kYawSteps)) * IRMath::kTwoPi;
+                    emitShot(sweepZoom, vec2(0, 0), yaw, fmt, i, IRVideo::CullAction::NONE);
+                }
+                for (int i = 0; i < kNumPans; ++i) {
+                    emitShot(
+                        sweepZoom,
+                        kPanOffsets[i],
+                        IRMath::kQuarterPi,
+                        fmt,
+                        kYawSteps + i,
+                        IRVideo::CullAction::NONE
+                    );
+                }
+            };
+
+            emitPhase("cv_live_%03d");
+            // Freeze the cull at the wide reference between the two phases.
+            emitShot(1.0f, vec2(0, 0), 0.0f, "cv_freeze_ref_%03d", 0, IRVideo::CullAction::FREEZE);
+            emitPhase("cv_frozen_%03d");
+            // Release the freeze so the harness leaves global state clean.
+            emitShot(
+                sweepZoom,
+                vec2(0, 0),
+                0.0f,
+                "cv_unfreeze_%03d",
+                0,
+                IRVideo::CullAction::UNFREEZE
+            );
+
+            cfg.shots_ = g_cullValidateShots.data();
+            cfg.numShots_ = static_cast<int>(g_cullValidateShots.size());
+            IR_LOG_INFO(
+                "Cull-validate sweep: {} poses/phase, {} total shots (live + frozen) at zoom={}",
+                posesPerPhase,
+                cfg.numShots_,
+                sweepZoom
+            );
+        } else if (g_spinYawDegPerSec > 0.0f) {
+            // Sweep one full rotation at camera=(0,0). Default zoom=4 matches
+            // the rotation-coverage shots (#1261) for scene-scale smoothness;
+            // pass --zoom to sweep at high zoom (e.g. 16), where rotation-only
+            // parity glitches (#1218 black faces, #1256 checkerboard) are
+            // visible at full pixel scale. The regression set baselines both.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            const int n = IRMath::max(2, g_spinYawShotCount);
+            // Reserve up front so push_back never reallocates — moving the
+            // label buffer would invalidate the pointers already in
+            // g_spinYawShots.
+            g_spinYawShotLabels.reserve(n);
+            g_spinYawShots.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                const float yaw = (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
+                auto &label = g_spinYawShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
+                g_spinYawShots.push_back({sweepZoom, vec2(0, 0), yaw, label.data()});
+            }
+            cfg.shots_ = g_spinYawShots.data();
+            cfg.numShots_ = static_cast<int>(g_spinYawShots.size());
+            IR_LOG_INFO(
+                "Spin-yaw sweep: {} shots across one rotation at zoom={}",
+                cfg.numShots_,
+                sweepZoom
+            );
+        } else {
+            cfg.shots_ = kShots;
+            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
@@ -250,8 +549,17 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
+    // Interactive cull-freeze toggle (#1438): freeze the cull viewport at the
+    // current camera pose, then free-fly (WASD pan / mouse drag / scroll zoom,
+    // all from standardControlSystems) to see exactly what the frozen cull
+    // retains as the camera moves. F10 matches the other demos' binding.
+    IRCommand::createCommand<IRCommand::TOGGLE_CULLING_FREEZE>(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonF10
+    );
 }
 
 void applyCheckerboard(C_VoxelSetNew &voxelSet, Color baseColor) {
@@ -316,7 +624,7 @@ EntityId createVoxelPoolShape(
 ) {
     ivec3 size = halfExtent * 2 + ivec3(1);
     EntityId entity =
-        IREntity::createEntity(C_Position3D{position}, C_VoxelSetNew{size, color, true});
+        IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
 
     auto sdfType = static_cast<IRMath::SDF::ShapeType>(type);
@@ -338,6 +646,10 @@ EntityId createVoxelPoolShape(
     // visual regression tests.
     if (g_depthColor) {
         applyDepthColor(vs, type, sdfParams);
+        // Set the scatter path's per-pixel depth-color mode so non-cardinal
+        // yaw evaluates hue continuously in the fragment shader (#1697).
+        vec3 bh = IRMath::SDF::boundingHalf(sdfType, sdfParams);
+        IRRender::setDepthColorDebug(true, bh.x + bh.y + bh.z);
     } else if (g_checkerboard) {
         applyCheckerboard(vs, color);
     }
@@ -370,7 +682,7 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
     } else if (g_checkerboard) {
         desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
     }
-    EntityId entity = IREntity::createEntity(C_Position3D{position}, desc);
+    EntityId entity = IREntity::createEntity(C_LocalTransform{position}, desc);
     auto &sd = IREntity::getComponent<C_ShapeDescriptor>(entity);
     IR_LOG_INFO(
         "SDF shape entity={} canvas={} type={} params=({},{},{},{})",
@@ -383,6 +695,98 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
         params.w
     );
     return entity;
+}
+
+// Spawn one voxel cube routed through the GPU voxel-position prepass (#1396).
+// The fixed 45° SO(3) rotation can only reach the rendered voxels via the
+// prepass — UPDATE_VOXEL_SET_CHILDREN folds in translation only — so a rotated
+// cube on screen is the smoke test that the prepass computed modelToWorld *
+// localPos for every voxel in this set. Opt-in (--gpu-voxel-smoke) so the
+// default scene stays byte-identical.
+void createGpuVoxelTransformSmoke() {
+    const vec3 axis = IRMath::normalize(vec3(0.3f, 0.7f, 0.5f));
+    const vec4 rot = IRMath::quatAxisAngle(axis, IRMath::kQuarterPi);
+    const vec3 position = vec3(0.0f, 0.0f, -14.0f);
+    const ivec3 halfExtent = ivec3(5, 5, 5);
+    const ivec3 size = halfExtent * 2 + ivec3(1);
+
+    EntityId entity = IREntity::createEntity(
+        C_LocalTransform{position, rot},
+        C_VoxelSetNew{size, Color{120, 220, 160, 255}, true}
+    );
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
+
+    // Slot 0 carries this set's SO(3)+translation each frame; every owned voxel
+    // points at slot 0 so the prepass transforms it instead of the CPU path.
+    constexpr std::uint32_t kSmokeSlot = 0u;
+    vs.gpuTransformSlot_ = kSmokeSlot;
+    auto &pool = IREntity::getComponent<C_VoxelPool>(vs.canvasEntity_);
+    pool.setTransformIndexForRange(
+        vs.voxelStartIdx_,
+        static_cast<size_t>(vs.numVoxels_),
+        kSmokeSlot
+    );
+    IR_LOG_INFO(
+        "GPU voxel-transform smoke entity={} canvas={} voxels={} slot={}",
+        entity,
+        vs.canvasEntity_,
+        vs.numVoxels_,
+        kSmokeSlot
+    );
+}
+
+// Spawn one 2-bone rigged voxel bar skinned through the per-voxel bone→slot
+// seed path (#1605). The bar spans x ∈ [-8, 8]; voxels left of the midpoint
+// are painted bone 0 (root, at the left end), the rest bone 1 (elbow, at the
+// midpoint, posed 30° off its bind rotation). UPDATE_JOINT_MATRICES allocates
+// the skeleton's slot block on its first tick and auto-seeds binding 17 with
+// `slotBase + bone_id`, so the right half visibly bends about the midpoint —
+// a rigid entity transform cannot produce that, making the bend direct proof
+// the per-voxel slots route through the joint skin matrices. Opt-in
+// (--skin-smoke) so the default scene stays byte-identical.
+void createSkinnedVoxelSmoke() {
+    const vec3 position = vec3(0.0f, 16.0f, -14.0f);
+    const ivec3 size = ivec3(17, 3, 3);
+
+    EntityId rigRoot = IREntity::createEntity(
+        C_LocalTransform{position},
+        C_VoxelSetNew{size, Color{220, 140, 100, 255}, true}
+    );
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
+
+    // Paint bone ids from each voxel's entity-local x: left half follows the
+    // root bone, right half the elbow.
+    for (std::size_t i = 0; i < vs.voxels_.size(); ++i) {
+        vs.voxels_[i].bone_id_ = (vs.positions_[i].pos_.x < 0.0f) ? 0 : 1;
+    }
+
+    // Root joint at the bar's left end; elbow at the midpoint, CHILD_OF the
+    // root with a +8 local offset and posed 30° about +Y away from its rest.
+    // bindPose_ holds the rig-root-local REST chain (no pose rotation), so the
+    // elbow's skin matrix is non-identity and bends the right half.
+    EntityId rootJoint =
+        IREntity::createEntity(C_Joint{}, C_LocalTransform{vec3(-8.0f, 0.0f, 0.0f)});
+    IREntity::setParent(rootJoint, rigRoot);
+    const vec4 elbowPose = IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), IRMath::kPi / 6.0f);
+    EntityId elbowJoint =
+        IREntity::createEntity(C_Joint{}, C_LocalTransform{vec3(8.0f, 0.0f, 0.0f), elbowPose});
+    IREntity::setParent(elbowJoint, rootJoint);
+
+    C_Skeleton skeleton;
+    skeleton.joints_ = {rootJoint, elbowJoint};
+    skeleton.bindPose_ = {
+        IRMath::SQT{vec3(1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(-8.0f, 0.0f, 0.0f)},
+        IRMath::SQT{vec3(1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(0.0f, 0.0f, 0.0f)},
+    };
+    IREntity::setComponent(rigRoot, skeleton);
+
+    IR_LOG_INFO(
+        "Skinned voxel smoke entity={} canvas={} voxels={} joints={}",
+        rigRoot,
+        vs.canvasEntity_,
+        vs.numVoxels_,
+        skeleton.joints_.size()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -479,27 +883,128 @@ void initEntities() {
         createSDFShape(vec3(xPos, kRowSeparationY, 0.0f), tc.type_, tc.params_, tc.color_);
     }
 
-    // Co-located trio, coarse-first: zoom1=blue(LOD_4 only), zoom4=green(LOD_2) tops,
-    // zoom16=red(LOD_0) tops.
+    // LOD demonstration (#1467). The engine LOD filter is an inclusive band
+    // [lodMax_ .. lodMin_], so co-located variants with DISJOINT bands render
+    // exclusively — exactly one per zoom, swapping in place instead of
+    // stacking. Three variants with deliberately distinct silhouettes
+    // (cube -> cone -> sphere) share one world position; as the camera zooms
+    // in the silhouette visibly changes, the unambiguous "LOD is working"
+    // signal the issue asks for. A single-LOD control shape beside the stack
+    // stays constant at every zoom for comparison.
+    //
+    // Bands vs. zoom (computeLodLevel: zoom<2 -> LOD_4, <4 -> LOD_3, <8 ->
+    // LOD_2, <16 -> LOD_1, >=16 -> LOD_0):
+    //   coarse cube   band [LOD_3 .. LOD_4]  -> zoom 1..3
+    //   mid    cone   band [LOD_1 .. LOD_2]  -> zoom 4..15
+    //   fine   sphere band [LOD_0 .. LOD_0]  -> zoom >=16 (persists at 32/64)
+    // The coarsest variant keeps lodMin_ = LOD_4 (persists at min zoom); the
+    // finest keeps lodMax_ = LOD_0 (persists past its threshold).
     constexpr float kLodFixtureY = -16.0f;
-    constexpr vec4 kLodSphereParams = vec4(3, 3, 3, 0);
-    struct LodFixture {
-        IRRender::LodLevel lodMin_;
+    constexpr float kLodControlX = 14.0f;
+    struct LodVariant {
+        IRRender::ShapeType type_;
+        vec4 params_;
+        IRRender::LodLevel lodMin_; // coarsest tier (largest index) visible
+        IRRender::LodLevel lodMax_; // finest tier (smallest index) visible
         Color color_;
         const char *label_;
     };
-    const LodFixture lodFixtures[] = {
-        {IRRender::LodLevel::LOD_4, Color{80, 130, 240, 255}, "LOD_4 (always visible)"},
-        {IRRender::LodLevel::LOD_2, Color{80, 240, 100, 255}, "LOD_2 (zoom>=4)"},
-        {IRRender::LodLevel::LOD_0, Color{240, 80, 80, 255}, "LOD_0 (zoom>=16 only)"},
+    const LodVariant lodStack[] = {
+        {IRRender::ShapeType::BOX,
+         vec4(8, 8, 8, 0),
+         IRRender::LodLevel::LOD_4,
+         IRRender::LodLevel::LOD_3,
+         Color{80, 130, 240, 255},
+         "coarse cube (zoom 1-3)"},
+        {IRRender::ShapeType::CONE,
+         vec4(5, 5, 11, 0),
+         IRRender::LodLevel::LOD_2,
+         IRRender::LodLevel::LOD_1,
+         Color{80, 240, 100, 255},
+         "mid cone (zoom 4-15)"},
+        {IRRender::ShapeType::SPHERE,
+         vec4(4, 4, 4, 0),
+         IRRender::LodLevel::LOD_0,
+         IRRender::LodLevel::LOD_0,
+         Color{240, 80, 80, 255},
+         "fine sphere (zoom >=16)"},
     };
-    constexpr int kNumLodFixtures = sizeof(lodFixtures) / sizeof(lodFixtures[0]);
-    for (int i = 0; i < kNumLodFixtures; ++i) {
-        const auto &lf = lodFixtures[i];
-        IR_LOG_INFO("--- {} ---", lf.label_);
-        C_ShapeDescriptor desc{IRRender::ShapeType::SPHERE, kLodSphereParams, lf.color_};
-        desc.lodMin_ = lf.lodMin_;
-        IREntity::createEntity(C_Position3D{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
+    for (const auto &v : lodStack) {
+        IR_LOG_INFO("--- LOD variant: {} ---", v.label_);
+        C_ShapeDescriptor desc{v.type_, v.params_, v.color_};
+        desc.lodMin_ = v.lodMin_;
+        desc.lodMax_ = v.lodMax_;
+        IREntity::createEntity(C_LocalTransform{vec3(0.0f, kLodFixtureY, 0.0f)}, desc);
+    }
+
+    // Single-LOD control: default band (always visible), constant across the
+    // whole zoom range so the swapping stack reads against a fixed reference.
+    {
+        IR_LOG_INFO("--- LOD control: constant cylinder (all zooms) ---");
+        C_ShapeDescriptor control{
+            IRRender::ShapeType::CYLINDER,
+            vec4(4, 4, 9, 0),
+            Color{230, 200, 90, 255}
+        };
+        IREntity::createEntity(C_LocalTransform{vec3(kLodControlX, kLodFixtureY, 0.0f)}, control);
+    }
+
+    // Rotation test: SDF shapes with non-identity entity rotation,
+    // paired with unrotated copies for visual comparison.
+    constexpr float kRotFixtureY = -32.0f;
+    constexpr float kRotPairSpacing = 14.0f;
+    struct RotFixture {
+        const char *label_;
+        IRRender::ShapeType type_;
+        vec4 params_;
+        vec3 axis_;
+        float angleDeg_;
+        Color color_;
+    };
+    const RotFixture rotFixtures[] = {
+        {"Box 45° Z",
+         IRRender::ShapeType::BOX,
+         vec4(7, 7, 7, 0),
+         vec3(0, 0, 1),
+         45.0f,
+         Color{100, 200, 220, 255}},
+        {"Cylinder 30° Z",
+         IRRender::ShapeType::CYLINDER,
+         vec4(3, 3, 7, 0),
+         vec3(0, 0, 1),
+         30.0f,
+         Color{100, 220, 140, 255}},
+        {"Ellipsoid 45° Y",
+         IRRender::ShapeType::ELLIPSOID,
+         vec4(8, 6, 4, 0),
+         vec3(0, 1, 0),
+         45.0f,
+         Color{200, 130, 220, 255}},
+        {"Cone 60° X",
+         IRRender::ShapeType::CONE,
+         vec4(4, 4, 8, 0),
+         vec3(1, 0, 0),
+         60.0f,
+         Color{220, 140, 100, 255}},
+    };
+    constexpr int kNumRotFixtures = sizeof(rotFixtures) / sizeof(rotFixtures[0]);
+    for (int i = 0; i < kNumRotFixtures; ++i) {
+        const auto &rf = rotFixtures[i];
+        float xBase = i * (kRotPairSpacing * 2.0f);
+        float angleRad = rf.angleDeg_ * IRMath::kPi / 180.0f;
+        vec4 rot = IRMath::quatAxisAngle(rf.axis_, angleRad);
+
+        createSDFShape(vec3(xBase, kRotFixtureY, 0.0f), rf.type_, rf.params_, rf.color_);
+
+        C_ShapeDescriptor desc{rf.type_, rf.params_, rf.color_};
+        if (g_depthColor)
+            desc.flags_ |= IRRender::SHAPE_FLAG_DEPTH_COLOR;
+        else if (g_checkerboard)
+            desc.flags_ |= IRRender::SHAPE_FLAG_CHECKERBOARD;
+        IREntity::createEntity(
+            C_LocalTransform{vec3(xBase + kRotPairSpacing, kRotFixtureY, 0.0f), rot},
+            desc
+        );
     }
 
     // Floor so AO / sun-shadow lighting has a surface to fall on. +Z is
@@ -538,7 +1043,6 @@ void initEntities() {
     // falloff is visible across both the voxel-pool and SDF copies of the
     // nearby shapes. Cyan reads cleanly against the warm shape palette.
     IREntity::createEntity(
-        C_Position3D{vec3(40.0f, 6.0f, -2.0f)},
         C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );
@@ -560,7 +1064,7 @@ void initEntities() {
         } else {
             auto voxelSet = IRPrefab::DenseVoxel::toComponent(loaded.value_.dense_);
             EntityId vxsEntity = IREntity::createEntity(
-                C_Position3D{vec3(-20.0f, -8.0f, 0.0f)},
+                C_LocalTransform{vec3(-20.0f, -8.0f, 0.0f)},
                 std::move(voxelSet)
             );
             IR_LOG_INFO(
@@ -570,5 +1074,15 @@ void initEntities() {
                 loaded.value_.dense_.voxelCount()
             );
         }
+    }
+
+    if (g_gpuVoxelSmoke) {
+        IR_LOG_INFO("--- GPU voxel-position prepass smoke (#1396) ---");
+        createGpuVoxelTransformSmoke();
+    }
+
+    if (g_skinSmoke) {
+        IR_LOG_INFO("--- Skinned voxel bone->slot smoke (#1605) ---");
+        createSkinnedVoxelSmoke();
     }
 }

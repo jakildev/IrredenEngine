@@ -764,12 +764,20 @@ full content as the upload budget catches up.
 
 ### Dirty tracking + eviction-write
 
-Each `ChunkResidencySlot` carries a `dirty_` bit. The bit is set by:
+Each `ChunkResidencySlot` carries a private dirty bit, set only
+through `ChunkResidencyManager::markChunkDirty(key)` and read via
+`ChunkResidencySlot::isDirty()`. The bit must be set by:
 
 - Any voxel mutation to a voxel owned by the chunk's
   `VoxelPoolAllocation`.
 - Any entity creation, destruction, component change, or migration
   affecting an entity in the chunk's `ownedEntities_`.
+
+The manager's `attachEntity` / `migrateEntity` self-route through
+`markChunkDirty` already; new mutation paths (voxel writes from a
+push-at-mutation upload, future component-write hooks) must do the
+same — there is no other supported way to flip the bit, and a
+missed call drops the save silently.
 
 The bit is consulted at `EVICTING → EVICTED` transition: if dirty,
 schedule a save to disk before deallocating the pool slice. The
@@ -840,10 +848,12 @@ A 4096³-world worst-case would be `~2 M chunk files`. Filesystem
 considerations:
 
 - Two-level directory split: `chunks/<x_div_64>/<y_div_64>/...`.
-  Caps any one directory at `4096` files. Sketched here, decision
-  deferred to the implementation pass (filesystem behavior varies
-  enough that the right answer needs measurement on the target
-  platforms).
+  Landed in T-371. `kDirSplitN=64` gives up to 1024 x-buckets × 1024
+  y-buckets across the int16 chunk-coord range; a typical 4096³-voxel
+  world (128 chunks wide) uses 2×2=4 leaf dirs. On ext4 (dir_index /
+  htree) and NTFS, per-name `open()`/`stat()` are O(log N) and scale
+  well past 500 K entries per directory; the split primarily limits
+  readdir/tool-traversal cost rather than lookup cost.
 
 ---
 

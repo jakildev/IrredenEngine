@@ -2,11 +2,16 @@
 
 #include <irreden/asset/rig_format.hpp>
 #include <irreden/asset/voxel_set_format.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/render/components/component_zoom_level_lua.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_api.hpp>
+#include <irreden/script/prefab_component_factory.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -94,10 +99,12 @@ class PrefabApi : public testing::Test {
             &IRMath::vec4::w
         );
         IRPrefab::Prefab::clearPrefabs();
+        IRPrefab::Prefab::clearComponentFactories();
     }
 
     ~PrefabApi() override {
         IRPrefab::Prefab::clearPrefabs();
+        IRPrefab::Prefab::clearComponentFactories();
     }
 
     IRScript::LuaScript m_lua;
@@ -217,10 +224,10 @@ TEST_F(PrefabApi, SpawnAttachesPosition) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(7.0f, 8.0f, 9.0f));
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
-    const auto &pos = IREntity::getComponent<IRComponents::C_Position3D>(r.entity_);
-    EXPECT_FLOAT_EQ(pos.pos_.x, 7.0f);
-    EXPECT_FLOAT_EQ(pos.pos_.y, 8.0f);
-    EXPECT_FLOAT_EQ(pos.pos_.z, 9.0f);
+    const auto &pos = IREntity::getComponent<IRComponents::C_LocalTransform>(r.entity_);
+    EXPECT_FLOAT_EQ(pos.translation_.x, 7.0f);
+    EXPECT_FLOAT_EQ(pos.translation_.y, 8.0f);
+    EXPECT_FLOAT_EQ(pos.translation_.z, 9.0f);
 }
 
 // ---- voxel_ref load -------------------------------------------------------
@@ -363,22 +370,23 @@ TEST_F(PrefabApi, SpawnAttachesShapesAsChildren) {
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(10.0f, 20.0f, 30.0f));
     ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
 
-    // Collect every C_ShapeDescriptor + C_Position3D entity in the world.
+    // Collect every C_ShapeDescriptor + C_LocalTransform entity in the world.
     // The fixture starts with an empty manager, so these are exactly the
     // SHAPES children attached by spawn (the root entity owns
-    // C_Position3D but no C_ShapeDescriptor).
+    // C_LocalTransform but no C_ShapeDescriptor).
     struct ChildSnapshot {
         IRMath::vec3 offset_;
         IRRender::ShapeType shapeType_;
         IRMath::Color color_;
     };
     std::vector<ChildSnapshot> children;
-    // forEachComponent only supports a single component type; getComponent<C_Position3D> per-entity
-    // is the cleanest option available until the API gains multi-component iteration.
+    // forEachComponent only supports a single component type;
+    // getComponent<C_LocalTransform> per-entity is the cleanest option
+    // available until the API gains multi-component iteration.
     IREntity::forEachComponent<IRComponents::C_ShapeDescriptor>(
         [&](IREntity::EntityId id, IRComponents::C_ShapeDescriptor &desc) {
-            const auto &pos = IREntity::getComponent<IRComponents::C_Position3D>(id);
-            children.push_back({pos.pos_, desc.shapeType_, desc.color_});
+            const auto &pos = IREntity::getComponent<IRComponents::C_LocalTransform>(id);
+            children.push_back({pos.translation_, desc.shapeType_, desc.color_});
         }
     );
 
@@ -470,7 +478,8 @@ TEST_F(PrefabApi, BindPointResolvesWithNonIdentityParentRotation) {
     // Under 90°Y, (1,0,0) → (0,0,-1), so chain translation = (0,0,-1).
     // Bind point "end" on joint 1, offset (1,0,0) → (0,0,-1) under 90°Y.
     // Expected world offset = (0,0,-1) + (0,0,-1) = (0,0,-2).
-    constexpr float kS = 0.70710678118f;  // sqrt(2)/2: sin/cos of 45°, the 90°Y quaternion components
+    constexpr float kS =
+        0.70710678118f; // sqrt(2)/2: sin/cos of 45°, the 90°Y quaternion components
 
     const std::string rigName = "prefab_test_rot_parent";
     const std::string prefabPath = std::string{kTmpDir} + "/prefab_test_rot_parent.prefab.lua";
@@ -478,7 +487,7 @@ TEST_F(PrefabApi, BindPointResolvesWithNonIdentityParentRotation) {
     IRAsset::Rig rig;
     rig.joints_.resize(2);
     rig.joints_[0].translation_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    rig.joints_[0].rotation_ = vec4(0.0f, kS, 0.0f, kS);  // 90° around Y: (qx=0, qy=kS, qz=0, qw=kS)
+    rig.joints_[0].rotation_ = vec4(0.0f, kS, 0.0f, kS); // 90° around Y: (qx=0, qy=kS, qz=0, qw=kS)
     rig.joints_[0].parentIndex_ = 0;
     rig.joints_[0].name_ = "root";
     rig.joints_[1].translation_ = vec4(1.0f, 0.0f, 0.0f, 0.0f);
@@ -690,6 +699,111 @@ TEST_F(PrefabApi, SpawnAttachesHybridShapesAndDenseOnSameEntity) {
     EXPECT_EQ(voxelSet.pendingVoxels_[1].color_.green_, 31);
 }
 
+// ---- declarative components table (#698) ----------------------------------
+
+TEST_F(PrefabApi, ComponentsTableAttachesAndAppliesOverride) {
+    // Binding registers the factory as a side effect; mirrors the wiring
+    // a creation does via `registerTypesFromTraits<C_ZoomLevel>()`.
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_zoom",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = { zoom = 5.0 } },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const auto &z = IREntity::getComponent<IRComponents::C_ZoomLevel>(r.entity_);
+    EXPECT_FLOAT_EQ(z.zoom_.x, 5.0f);
+    EXPECT_FLOAT_EQ(z.zoom_.y, 5.0f);
+}
+
+TEST_F(PrefabApi, ComponentsTableEmptyOverrideUsesDefaults) {
+    // Empty override table → component constructed with its default ctor.
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_defaults",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = {} },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const IRComponents::C_ZoomLevel defaults{};
+    const auto &z = IREntity::getComponent<IRComponents::C_ZoomLevel>(r.entity_);
+    EXPECT_FLOAT_EQ(z.zoom_.x, defaults.zoom_.x);
+    EXPECT_FLOAT_EQ(z.zoom_.y, defaults.zoom_.y);
+}
+
+TEST_F(PrefabApi, ComponentsTableUnknownComponentErrors) {
+    // No factory registered for `C_DoesNotExist`. Spawn fails with a
+    // message naming the missing factory and surfacing the binding-fix
+    // hint; the entity is destroyed so the registry is not left dirty.
+    PrefabFiles f = writeFixtureSet(
+        "components_unknown",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_DoesNotExist = {} },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("no factory registered"), std::string::npos) << r.error_;
+    EXPECT_NE(r.error_.find("C_DoesNotExist"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, ComponentsTableNonTableEntryErrors) {
+    // A non-table value (`components = { C_ZoomLevel = 42 }`) is a
+    // schema error — catches the typo class instead of silently no-op'ing.
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_non_table",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = 42 },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("must be a table"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, ComponentsRunBeforeSetupCallback) {
+    // Verify components attach before setup runs: final zoom is 7.5f and
+    // setup callback executed ('ran' flag set).
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_before_setup",
+        "g_zoom = nil\n"
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_ZoomLevel = { zoom = 7.5 } },\n"
+        "  setup = function(entity)\n"
+        "    g_zoom = 'ran'\n"
+        "  end,\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const auto &z = IREntity::getComponent<IRComponents::C_ZoomLevel>(r.entity_);
+    EXPECT_FLOAT_EQ(z.zoom_.x, 7.5f);
+    EXPECT_EQ(m_lua.lua()["g_zoom"].get<std::string>(), "ran");
+}
+
 // ---- additivity: unknown top-level keys do not break the load -------------
 
 TEST_F(PrefabApi, UnknownTopLevelFieldsIgnored) {
@@ -700,6 +814,118 @@ TEST_F(PrefabApi, UnknownTopLevelFieldsIgnored) {
     IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
     auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
     EXPECT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+}
+
+// ---- rotation_mode + unbounded (Epic C C2) --------------------------------
+
+TEST_F(PrefabApi, SpawnDefaultsToGridRotationMode) {
+    PrefabFiles f = writeFixtureSet("rot_default", "return { prefab_version = 1 }\n");
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto modeOpt = IREntity::getComponentOptional<IRComponents::C_RotationMode>(r.entity_);
+    ASSERT_TRUE(modeOpt.has_value());
+    EXPECT_EQ(modeOpt.value()->mode_, IRComponents::RotationMode::GRID);
+    // unbounded_ defaults to false on the auto-attached C_LocalTransform.
+    const auto &lt = IREntity::getComponent<IRComponents::C_LocalTransform>(r.entity_);
+    EXPECT_FALSE(lt.unbounded_);
+    // GRID does not attach C_EntityCanvas.
+    auto canvasOpt = IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(r.entity_);
+    EXPECT_FALSE(canvasOpt.has_value());
+}
+
+TEST_F(PrefabApi, SpawnRotationModeGridExplicit) {
+    PrefabFiles f = writeFixtureSet(
+        "rot_grid",
+        "return { prefab_version = 1, rotation_mode = IRComponent.RotationMode.GRID }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto modeOpt = IREntity::getComponentOptional<IRComponents::C_RotationMode>(r.entity_);
+    ASSERT_TRUE(modeOpt.has_value());
+    EXPECT_EQ(modeOpt.value()->mode_, IRComponents::RotationMode::GRID);
+}
+
+TEST_F(PrefabApi, SpawnRotationModeDetachedAttachesComponent) {
+    // No active RenderManager in the test fixture, so spawn skips the
+    // GPU-backed canvas allocation (logged as a warning) but still tags
+    // the entity DETACHED for archetype-filtered systems to see. The
+    // runtime mode-change helper (`IRPrefab::RotationMode::setMode`)
+    // picks the canvas up once a RenderManager exists.
+    PrefabFiles f = writeFixtureSet(
+        "rot_detached",
+        "return { prefab_version = 1, rotation_mode = IRComponent.RotationMode.DETACHED, "
+        "canvas_size = { x = 64, y = 64 } }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    auto modeOpt = IREntity::getComponentOptional<IRComponents::C_RotationMode>(r.entity_);
+    ASSERT_TRUE(modeOpt.has_value());
+    EXPECT_EQ(modeOpt.value()->mode_, IRComponents::RotationMode::DETACHED);
+}
+
+TEST_F(PrefabApi, SpawnUnboundedSetsLocalTransformFlag) {
+    PrefabFiles f = writeFixtureSet(
+        "rot_unbounded",
+        "return { prefab_version = 1, rotation_mode = IRComponent.RotationMode.DETACHED, "
+        "unbounded = true, canvas_size = { x = 16, y = 16 } }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const auto &lt = IREntity::getComponent<IRComponents::C_LocalTransform>(r.entity_);
+    EXPECT_TRUE(lt.unbounded_);
+}
+
+TEST_F(PrefabApi, SpawnRejectsOutOfRangeRotationMode) {
+    PrefabFiles f =
+        writeFixtureSet("rot_bogus", "return { prefab_version = 1, rotation_mode = 42 }\n");
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("42"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, SpawnRejectsStringRotationMode) {
+    // The schema accepts the IRComponent.RotationMode.{GRID,DETACHED} enum
+    // value only — string-name lookups are deliberately rejected.
+    PrefabFiles f = writeFixtureSet(
+        "rot_string",
+        "return { prefab_version = 1, rotation_mode = 'DETACHED' }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("string"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, SpawnDetachedRequiresCanvasSize) {
+    PrefabFiles f = writeFixtureSet(
+        "rot_no_canvas_size",
+        "return { prefab_version = 1, rotation_mode = IRComponent.RotationMode.DETACHED }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("canvas_size"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, SpawnRejectsNonPositiveCanvasSize) {
+    PrefabFiles f = writeFixtureSet(
+        "rot_zero_canvas_size",
+        "return { prefab_version = 1, rotation_mode = IRComponent.RotationMode.DETACHED, "
+        "canvas_size = { x = 0, y = 32 } }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("positive"), std::string::npos) << r.error_;
 }
 
 } // namespace

@@ -50,6 +50,14 @@ IREntity::EntityId makeLight(IRMath::vec3 position, IRMath::Color color) {
     );
 }
 
+IREntity::EntityId
+makeLightWithRadius(IRMath::vec3 position, IRMath::Color color, std::uint8_t radius) {
+    return IREntity::createEntity(
+        IRComponents::C_WorldTransform{position, vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)},
+        C_LightSource{LightType::EMISSIVE, color, 1.0f, radius}
+    );
+}
+
 } // namespace
 
 TEST_F(PerCanvasLightScopeTest, WorldScopeLightAppearsInEveryCanvasGather) {
@@ -62,13 +70,14 @@ TEST_F(PerCanvasLightScopeTest, WorldScopeLightAppearsInEveryCanvasGather) {
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 1u);
 
     const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countB, 1u);
 }
 
@@ -85,13 +94,14 @@ TEST_F(PerCanvasLightScopeTest, ChildOfCanvasLightOnlyAppearsForOwnCanvas) {
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 1u);
 
     const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countB, 1u);
 }
 
@@ -110,15 +120,16 @@ TEST_F(PerCanvasLightScopeTest, MixedScopesEachCanvasSeesOwnPlusWorldScope) {
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     // Canvas A: own light + world-scope light = 2.
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 2u);
 
     // Canvas B: own light + world-scope light = 2.
     const std::uint32_t countB =
-        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasB, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countB, 2u);
 }
 
@@ -144,8 +155,41 @@ TEST_F(PerCanvasLightScopeTest, DirectionalLightStillSkippedRegardlessOfParent) 
     std::vector<IRRender::GPULightSource> out;
     out.reserve(IRRender::kLightVolumeMaxSources);
     std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
 
     const std::uint32_t countA =
-        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned);
+        IRSystem::detail::gatherLightSources(out, canvasA, ivec3{0, 0, 0}, warned, maxRadius);
     EXPECT_EQ(countA, 0u);
+    // No gathered lights → max-radius stays at the gather's zero-init default.
+    EXPECT_EQ(maxRadius, 0);
+}
+
+TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusUncappedForSmallRadius) {
+    const IREntity::EntityId canvas = makeCanvasSentinel();
+    makeLightWithRadius(vec3(0.0f), Color{255, 0, 0, 255}, 8);
+
+    std::vector<IRRender::GPULightSource> out;
+    out.reserve(IRRender::kLightVolumeMaxSources);
+    std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
+
+    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0, 0, 0}, warned, maxRadius);
+    // radius=8 is below kLightVolumePropagateIterations (32) — no cap applied.
+    EXPECT_EQ(maxRadius, 8);
+}
+
+TEST_F(PerCanvasLightScopeTest, GatherMaxRadiusCappedAtPropagateIterations) {
+    const IREntity::EntityId canvas = makeCanvasSentinel();
+    // radius=255 exceeds kLightVolumePropagateIterations (32).
+    makeLightWithRadius(vec3(0.0f), Color{255, 0, 0, 255}, 255);
+
+    std::vector<IRRender::GPULightSource> out;
+    out.reserve(IRRender::kLightVolumeMaxSources);
+    std::unordered_set<std::uint64_t> warned;
+    int maxRadius = 0;
+
+    IRSystem::detail::gatherLightSources(out, canvas, ivec3{0, 0, 0}, warned, maxRadius);
+    // radius=255 must be capped to kLightVolumePropagateIterations to prevent
+    // the propagate loop from dispatching more iterations than the budget allows.
+    EXPECT_EQ(maxRadius, IRRender::kLightVolumePropagateIterations);
 }

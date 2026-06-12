@@ -83,6 +83,10 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    ~5 minutes, the scout is down — print
    `scout cache stale or missing — run fleet-up` and exit.
 5. Identify the candidates from both repos. A PR is a candidate if:
+   - Its `labels` contains `fleet:needs-opus-recheck` — the explicit
+     escalation the sonnet-reviewer stamps on an approve-and-escalate
+     first pass. This is the signal the scout projection wakes you on;
+     your verdict label-swap (step 2.g) removes it, OR
    - Its latest review (sort `reviews[]` by `submittedAt`) has a
      `body` containing `Opus recheck required`, OR
    - The PR touches core engine/game invariants (need to read its
@@ -105,13 +109,20 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    `fleet:human-amending`, `fleet:human-deferred`,
    `fleet:semantic-conflict`, `fleet:fork-of-other-pr`, or carrying
    any label starting with `fleet:reviewing-` (another reviewer holds
-   the atomic claim — see step 2 below) — those are
+   the atomic claim — see step 2 below) or `fleet:amending-` (the
+   author holds an atomic claim while fixing `fleet:needs-fix`; the
+   diff is mid-rewrite and re-enters with `fleet:changes-made` when
+   released) — those are
    either in-progress, human-owned, under active author fixes
-   (`fleet:human-amending`), in DEFER mode where the human decides
-   to merge as-is or re-flag (`fleet:human-deferred` — do NOT
-   re-apply `fleet:needs-fix` for deferred concerns), queued for
-   conflict resolution (diff against master is meaningless until the
-   rebase lands), or forked from another open PR (diff includes
+   (`fleet:human-amending` / `fleet:amending-*`), in DEFER mode
+   (`fleet:human-deferred` — which parks the deferred concern on the
+   diff at defer time, NOT a merge-gate: skip only while that diff is
+   unchanged and never re-apply `fleet:needs-fix` for the deferred
+   concern; if new commits landed after the defer — the label was
+   dropped, `human:re-review` is set, or a conflict-resolution comment
+   is present — review the new diff, honoring the linked issue), queued
+   for conflict resolution (diff against master is meaningless until
+   the rebase lands), or forked from another open PR (diff includes
    inherited commits that don't belong to this PR's scope — skip
    until the human runs `rebase --onto` and clears this label).
 
@@ -155,11 +166,13 @@ iteration of polling, reviewing, and exiting cleanly:
       [REVIEWER-PROTOCOL.md § Posting the review body](../../docs/agents/REVIEWER-PROTOCOL.md#posting-the-review-body)
       for the `Write` → `.review-body.md` → `gh pr review --body-file`
       mechanics.
-   g. **Set the verdict label.** Use the canonical 4-command block in
+   g. **Set the verdict label.** Use the split remove + add +
+      retry-and-verify pattern in
       [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands)
       (add `--repo <game-repo>` for game PRs). Your VERY NEXT bash
-      call after `gh pr review` MUST be the `gh pr edit ... --add-label`
-      — a review without a verdict label is invisible to the human's
+      calls after `gh pr review` MUST be the removes (`|| true`),
+      the `--add-label`, and the verify re-query — in that order.
+      A review without a verdict label is invisible to the human's
       merge queue.
    h. **Release the review claim** immediately after the verdict
       label-swap (and on no-verdict skip paths — broken stack, gated
@@ -186,8 +199,8 @@ iteration of polling, reviewing, and exiting cleanly:
    scratch reset already happened in step 3 above. Print
    `[opus-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`
    and exit cleanly.
-5. If you hit a usage-limit error: print the error and exit.
-   `fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
+5. If you hit a usage-limit error, see [docs/agents/FLEET-RUNTIME.md § Usage-limit handling](../../docs/agents/FLEET-RUNTIME.md#usage-limit-handling)
+   — print the error and exit; flag it in your iteration summary.
 
 If Mode above is `dry-run`: review exactly **one** flagged PR
 end-to-end, then stop and wait for human instruction. Do not loop.
@@ -200,51 +213,28 @@ point of review-only mode — keep reviewing PRs as normal.
 - The PR's design implies a follow-up architectural decision.
 - The PR touches an invariant you would want to discuss with the
   author before approving.
-- The PR is correct but the task description in `TASKS.md` was
-  underspecified — note the spec gap so the human can update the
-  queue.
+- The PR is correct but the backing GitHub issue was underspecified —
+  note the spec gap so the human can update the issue body.
 - The PR force-pushed over master or bypassed hooks — hard-reject and
   surface to human.
 
 ## End-of-iteration feedback
 
-If you noticed something this iteration that the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/opus-reviewer.md`. See
-[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar (high — most
-iterations write nothing).
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is `~/.fleet/feedback/opus-reviewer.md`.
 
 ## Hard rules
 
-See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Reviewer-specific additions:
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles)
+and the shared reviewer rules in
+[`docs/agents/REVIEWER-PROTOCOL.md § Reviewer hard rules`](../../docs/agents/REVIEWER-PROTOCOL.md#reviewer-hard-rules)
+(never commit/push/open-PRs from this worktree; never `--approve` /
+`--request-changes`; never post a review without the verdict label;
+never re-apply a verdict without a fresh review — including the live
+timeline check before re-stamping a "missing" verdict).
 
-- **Never commit, push, or open PRs from this worktree.**
-- **Never `gh pr review --approve` or `--request-changes`** — all fleet
-  agents share one GitHub account and GitHub rejects formal review
-  actions on your own PRs. Always use `--comment` with a clear verdict.
-- **Never post a review without setting the verdict label.** A review
-  without a `fleet:approved` / `fleet:needs-fix` / `fleet:blocker`
-  label is invisible to the human's merge queue. After every
-  `gh pr review --comment ...`, your VERY NEXT bash call MUST be
-  `gh pr edit <N> ... --add-label "fleet:..."`. Describing the label
-  change in the review body does NOT set the label — only the gh
-  command does. Verify with `gh pr view <N> --json labels` if unsure.
-- **Never re-apply a verdict label without posting a new review in
-  the same iteration.** A PR with a prior Opus needs-fix verdict in
-  history but no current label is NOT automatically a label-fixup
-  candidate — the label may have been legitimately cleared by the
-  author's `commit-and-push` after a fix push, by an ESCALATE
-  handoff (swap of `fleet:needs-fix` for `fleet:changes-made`), or
-  by a worker mid-claim. Before re-stamping a "missing" verdict
-  label, do one live check for ANY of: (a) a new commit since your
-  last review's `submittedAt`, (b) a new author comment, (c) a
-  recent `fleet:needs-fix` / `fleet:approved` UNLABELED event, (d)
-  presence of `fleet:changes-made`. If any are present, the prior
-  verdict was author-acknowledged — treat the PR as a re-review
-  candidate and post a fresh review rather than re-stamping the
-  stale verdict. Use `gh api repos/jakildev/IrredenEngine/issues/<N>/timeline`
-  to see UNLABELED events.
+Opus-reviewer-specific addition:
+
 - **Do NOT take on first-pass reviews that Sonnet has not yet touched**
   (unless `sonnet-reviewer` is offline AND the PR has been open more
   than 1 hour). The model split exists to conserve Opus budget.

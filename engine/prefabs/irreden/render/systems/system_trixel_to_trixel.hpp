@@ -38,7 +38,7 @@ template <> struct System<TRIXEL_TO_TRIXEL> {
 
     void beginTick() {
         program_->use();
-        vec2 camIso = IRRender::getCameraPosition2DIso();
+        vec2 camIso = IRRender::getEffectiveCameraIso();
         frameData_.cameraTrixelOffset_ = ivec2(
             static_cast<int>(IRMath::floor(camIso.x)),
             static_cast<int>(IRMath::floor(camIso.y))

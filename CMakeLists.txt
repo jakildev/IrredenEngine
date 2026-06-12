@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28.0)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 project(BuildCreation VERSION 0.1.0)
 
-option(IRREDEN_BUILD_CREATIONS "Build engine-owned creations" ${PROJECT_IS_TOP_LEVEL})
+option(IRREDEN_BUILD_CREATIONS "Build creations present in this tree (engine-owned creations/ and nested private checkouts)" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_TESTS "Build engine test targets" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_QUALITY_TARGETS "Build engine quality targets" ${PROJECT_IS_TOP_LEVEL})
 option(IRREDEN_BUILD_TOOLS "Build standalone tools (img_diff, etc.)" ${PROJECT_IS_TOP_LEVEL})
@@ -64,7 +64,10 @@ if(IRREDEN_BUILD_CREATIONS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/creations)
 endif()
 
-if(EXISTS "${PROJECT_SOURCE_DIR}/creations/game/CMakeLists.txt")
+# Gated alongside creations/ so a build that injects a creation worktree
+# via IRREDEN_USER_PROJECTS (-DIRREDEN_BUILD_CREATIONS=OFF) can't collide
+# with the identically-named targets of the nested main checkout.
+if(IRREDEN_BUILD_CREATIONS AND EXISTS "${PROJECT_SOURCE_DIR}/creations/game/CMakeLists.txt")
     add_subdirectory(${PROJECT_SOURCE_DIR}/creations/game)
 endif()
 

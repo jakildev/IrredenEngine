@@ -17,7 +17,7 @@
 // Systems — input
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
@@ -42,7 +42,6 @@
 #include <irreden/render/widget_theme.hpp>
 
 // Commands
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <list>
@@ -51,13 +50,13 @@
 namespace IRDockspaceDemo {
 
 // Zone size constants — no magic numbers in initEntities.
-constexpr int kLeftW   = 240;
-constexpr int kRightW  = 240;
+constexpr int kLeftW = 240;
+constexpr int kRightW = 240;
 constexpr int kBottomH = 160;
 
 namespace {
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "dockspace_idle"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "dockspace_idle"},
 };
 int g_autoWarmupFrames = 0;
 } // namespace
@@ -93,28 +92,29 @@ void initSystems() {
         }
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::LAYOUT_COMPUTE>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SPLITTER>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_DOCK_PREVIEW>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::LAYOUT_COMPUTE>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SPLITTER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DOCK_PREVIEW>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (IRDockspaceDemo::g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = IRDockspaceDemo::g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
         cfg.shots_ = IRDockspaceDemo::kShots;
-        cfg.numShots_ =
-            sizeof(IRDockspaceDemo::kShots) / sizeof(IRDockspaceDemo::kShots[0]);
+        cfg.numShots_ = sizeof(IRDockspaceDemo::kShots) / sizeof(IRDockspaceDemo::kShots[0]);
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
@@ -122,7 +122,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 
@@ -151,37 +151,47 @@ void initEntities() {
     int rootRow = makeRow(-1, {SizeMode::FRACTION, 1.0f}, "root");
 
     // Left panel
-    IREntity::EntityId leftPanel = IRPrefab::Widget::makePanel(
-        ivec2(0, 0), ivec2(kLeftW, canvasSize.y), "SCENE"
-    );
+    IREntity::EntityId leftPanel =
+        IRPrefab::Widget::makePanel(ivec2(0, 0), ivec2(kLeftW, canvasSize.y), "SCENE");
     makeLeaf(rootRow, {SizeMode::FIXED_PX, static_cast<float>(kLeftW), 80, 480}, leftPanel, "left");
 
     // Center + right column
     int centerRightCol = makeColumn(rootRow, {SizeMode::FRACTION, 1.0f}, "center_right_col");
 
     // Center + right row (top part of the column)
-    int topRow = makeRow(centerRightCol,
+    int topRow = makeRow(
+        centerRightCol,
         {SizeMode::FRACTION, 1.0f, kBottomH + kSplitterThickness, 32767},
         "top_row"
     );
 
     IREntity::EntityId centerPanel = IRPrefab::Widget::makePanel(
-        ivec2(0, 0), ivec2(canvasSize.x - kLeftW - kRightW, canvasSize.y - kBottomH), "VIEWPORT"
+        ivec2(0, 0),
+        ivec2(canvasSize.x - kLeftW - kRightW, canvasSize.y - kBottomH),
+        "VIEWPORT"
     );
     makeLeaf(topRow, {SizeMode::FRACTION, 1.0f, 160, 32767}, centerPanel, "center");
 
     IREntity::EntityId rightPanel = IRPrefab::Widget::makePanel(
-        ivec2(0, 0), ivec2(kRightW, canvasSize.y - kBottomH), "PROPERTIES"
+        ivec2(0, 0),
+        ivec2(kRightW, canvasSize.y - kBottomH),
+        "PROPERTIES"
     );
-    makeLeaf(topRow, {SizeMode::FIXED_PX, static_cast<float>(kRightW), 80, 480}, rightPanel, "right");
+    makeLeaf(
+        topRow,
+        {SizeMode::FIXED_PX, static_cast<float>(kRightW), 80, 480},
+        rightPanel,
+        "right"
+    );
 
     // Bottom panel
-    IREntity::EntityId bottomPanel = IRPrefab::Widget::makePanel(
-        ivec2(0, 0), ivec2(canvasSize.x - kLeftW, kBottomH), "CONSOLE"
-    );
-    makeLeaf(centerRightCol,
+    IREntity::EntityId bottomPanel =
+        IRPrefab::Widget::makePanel(ivec2(0, 0), ivec2(canvasSize.x - kLeftW, kBottomH), "CONSOLE");
+    makeLeaf(
+        centerRightCol,
         {SizeMode::FIXED_PX, static_cast<float>(kBottomH), 80, 400},
-        bottomPanel, "bottom"
+        bottomPanel,
+        "bottom"
     );
 
     // Wire splitter entities.

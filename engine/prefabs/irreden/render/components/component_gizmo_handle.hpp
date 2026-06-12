@@ -20,15 +20,16 @@ namespace IRComponents {
 ///   construction-time values written by the Phase 1 builders. The
 ///   `GIZMO_SCREEN_SPACE_SIZE` UPDATE system reads these as the
 ///   unscaled baseline and writes scaled copies back to
-///   `C_ShapeDescriptor::params_` (and the sibling `C_Position3D::pos_`
+///   `C_ShapeDescriptor::params_` (and the sibling
+///   `C_LocalTransform::translation_`
 ///   when `isAnchor_` is false) each tick — so multiple frames of
 ///   scaling don't compound.
 /// - `isAnchor_` distinguishes single-entity gizmo markers (joint, IK)
-///   — whose own `C_Position3D` IS the world-space anchor the caller
+///   — whose own `C_LocalTransform` IS the world-space anchor the caller
 ///   wrote — from child handles inside a group (translate arrows,
-///   rotate rings, scale sticks/center) — whose `C_Position3D` is a
+///   rotate rings, scale sticks/center) — whose `C_LocalTransform` is a
 ///   local offset relative to a group-root parent. Phase 2 scales
-///   `params_` for both forms, but only scales `pos_` for child
+///   `params_` for both forms, but only scales `translation_` for child
 ///   handles, so the anchor's editor-placed world position isn't
 ///   clobbered.
 ///
@@ -42,7 +43,7 @@ namespace IRComponents {
 ///   this back onto `C_ShapeDescriptor::color_` when the handle is not
 ///   hovered, and writes a brightened version when it is. Storing the
 ///   base on the handle keeps the round-trip lossless across frames.
-/// - `anchorEntity_` is the entity whose `C_Position3D` `GIZMO_DRAG`
+/// - `anchorEntity_` is the entity whose `C_LocalTransform` `GIZMO_DRAG`
 ///   mutates while this handle is being dragged. By convention it
 ///   points at the gizmo *group* entity (the parent that owns the
 ///   handle bundle), so all axes of a given gizmo move the same

@@ -35,7 +35,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/ir_render_types.hpp>
 
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -186,7 +186,7 @@ inline void rasterizeShapeBlocker(
     }
 }
 
-/// Iterate every `C_ShapeDescriptor + C_LightBlocker + C_PositionGlobal3D`
+/// Iterate every `C_ShapeDescriptor + C_LightBlocker + C_WorldTransform`
 /// entity and rasterize the opt-in (`blocksLOS_=true`) blockers into the
 /// supplied bitfield. Uses the batched-archetype-query pattern (no
 /// per-entity getComponent in the tick). Returns the number of shapes
@@ -195,17 +195,17 @@ inline void rasterizeShapeBlocker(
 /// `C_LightBlocker{false, ...}` flag level).
 inline std::size_t rasterizeAllBlockers(std::vector<std::uint32_t> &bitfield, const ivec3 &origin) {
     const auto include =
-        IREntity::getArchetype<C_ShapeDescriptor, C_LightBlocker, C_PositionGlobal3D>();
+        IREntity::getArchetype<C_ShapeDescriptor, C_LightBlocker, C_WorldTransform>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
     std::size_t rasterized = 0;
     for (auto *node : nodes) {
         auto &shapes = IREntity::getComponentData<C_ShapeDescriptor>(node);
         auto &blockers = IREntity::getComponentData<C_LightBlocker>(node);
-        auto &positions = IREntity::getComponentData<C_PositionGlobal3D>(node);
+        auto &transforms = IREntity::getComponentData<C_WorldTransform>(node);
         for (int i = 0; i < node->length_; ++i) {
             if (!blockers[i].blocksLOS_)
                 continue;
-            rasterizeShapeBlocker(shapes[i], positions[i].pos_, bitfield, origin);
+            rasterizeShapeBlocker(shapes[i], transforms[i].translation_, bitfield, origin);
             ++rasterized;
         }
     }

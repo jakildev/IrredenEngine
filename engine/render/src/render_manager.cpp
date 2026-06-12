@@ -13,14 +13,13 @@
 #include <irreden/render/components/component_texture_scroll.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/common/components/component_position_2d_iso.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -93,8 +92,7 @@ RenderManager::RenderManager(
                 C_Velocity2DIso{
                     vec2(0.0f, 0.0f)
                 },
-                C_ZoomLevel{1.0f},
-                C_CameraYaw{0.0f}
+                C_ZoomLevel{1.0f}
             )
         }
     ,   m_viewport{0}
@@ -166,6 +164,15 @@ RenderManager::RenderManager(
 
     m_activeCanvas = m_mainCanvas;
 
+    // The main world canvas's per-axis trixel canvases (smooth camera Z-yaw,
+    // #1308; docs/design/per-axis-trixel-canvas-rotation.md) are bundled on
+    // every voxel-pool canvas by Prefab<kVoxelPoolCanvas>. Their GPU textures
+    // stay allocated lazily — the main canvas's only while the camera sits at a
+    // non-cardinal residual yaw (syncAllocationToCameraYaw) — so a static /
+    // cardinal scene pays nothing (the byte-identical fast path). Detached
+    // entities no longer use the per-axis machinery: detached SO(3) renders
+    // through the re-voxelize path (#1555–#1560), not per-axis forward-scatter.
+
     initRenderingResources();
     initRenderingSystems();
     g_renderManager = this;
@@ -232,6 +239,14 @@ void RenderManager::setSubdivisionMode(SubdivisionMode mode) {
 
 SubdivisionMode RenderManager::getSubdivisionMode() const {
     return m_subdivisionMode;
+}
+
+void RenderManager::setRotationPivotMode(RotationPivotMode mode) {
+    m_rotationPivotMode = mode;
+}
+
+RotationPivotMode RenderManager::getRotationPivotMode() const {
+    return m_rotationPivotMode;
 }
 
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {
@@ -439,12 +454,10 @@ void RenderManager::printRenderInfo() {
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
         return IRMath::max(
-            ivec2(
-                IRMath::min(
-                    IRMath::floor(m_viewport.x / m_gameResolution.x),
-                    IRMath::floor(m_viewport.y / m_gameResolution.y)
-                )
-            ),
+            ivec2(IRMath::min(
+                IRMath::floor(m_viewport.x / m_gameResolution.x),
+                IRMath::floor(m_viewport.y / m_gameResolution.y)
+            )),
             ivec2(1)
         );
     }
@@ -563,6 +576,51 @@ void RenderManager::setDebugOverlay(DebugOverlayMode mode) {
 
 DebugOverlayMode RenderManager::getDebugOverlay() const {
     return m_debugOverlayMode;
+}
+
+void RenderManager::setDepthColorDebug(bool on, float extent) {
+    m_depthColorDebugOn = on;
+    m_depthColorDebugExtent = extent;
+}
+
+bool RenderManager::getDepthColorDebugMode() const {
+    return m_depthColorDebugOn;
+}
+
+float RenderManager::getDepthColorDebugExtent() const {
+    return m_depthColorDebugExtent;
+}
+
+void RenderManager::setHDREnabled(bool enabled) {
+    m_hdrEnabled = enabled;
+}
+
+bool RenderManager::getHDREnabled() const {
+    return m_hdrEnabled;
+}
+
+void RenderManager::setExposure(float exposure) {
+    m_hdrExposure = IRMath::max(0.0f, exposure);
+}
+
+float RenderManager::getExposure() const {
+    return m_hdrExposure;
+}
+
+void RenderManager::setSkyIntensity(float intensity) {
+    m_skyIntensity = IRMath::max(0.0f, intensity);
+}
+
+float RenderManager::getSkyIntensity() const {
+    return m_skyIntensity;
+}
+
+void RenderManager::setSkyColor(vec3 color) {
+    m_skyColor = color;
+}
+
+vec3 RenderManager::getSkyColor() const {
+    return m_skyColor;
 }
 
 } // namespace IRRender

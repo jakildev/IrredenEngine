@@ -59,10 +59,27 @@ def cmd_view(args):
         if slug is None:
             warn(f"unknown repo key: {args.repo}")
             return 2
-        return subprocess.run([
-            "gh", "issue", "view", str(args.issue_number),
-            "--repo", slug, "--comments",
-        ]).returncode
+        result = subprocess.run(
+            [
+                "gh", "issue", "view", str(args.issue_number),
+                "--repo", slug,
+                "--json", "number,title,state,labels,body,comments",
+            ],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            sys.stderr.write(result.stderr)
+            return result.returncode
+        try:
+            detail = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            warn(f"gh json output is corrupt: {e}")
+            return 1
+        # gh returns labels as [{name, color, ...}]; normalize to strings
+        detail["labels"] = [
+            (la["name"] if isinstance(la, dict) else la)
+            for la in detail.get("labels", [])
+        ]
 
     print(f"# Issue #{detail['number']}: {detail.get('title', '')}")
     labels = detail.get("labels", [])

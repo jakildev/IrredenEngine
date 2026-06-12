@@ -87,7 +87,8 @@ class ScopedCpuPhaseTimer {
     std::chrono::steady_clock::time_point m_start;
 };
 
-inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &originVoxel) {
+inline GPULightSource
+toGpuLight(const C_LightSource &light, const ivec3 &originVoxel, float intensityScale = 1.0f) {
     GPULightSource gpu{};
     gpu.originAndType_ = vec4(
         static_cast<float>(originVoxel.x),
@@ -99,7 +100,7 @@ inline GPULightSource toGpuLight(const C_LightSource &light, const ivec3 &origin
         static_cast<float>(light.emitColor_.red_) / 255.0f,
         static_cast<float>(light.emitColor_.green_) / 255.0f,
         static_cast<float>(light.emitColor_.blue_) / 255.0f,
-        IRMath::max(0.0f, light.intensity_)
+        IRMath::max(0.0f, light.intensity_ * intensityScale)
     );
     const float radius = static_cast<float>(light.radius_);
     gpu.directionAndRadius_ =
@@ -115,12 +116,13 @@ inline ivec3 roundedLightOrigin(const C_WorldTransform &transform) {
     return IRMath::roundVec3HalfUp(transform.translation_);
 }
 
-inline bool isOriginInLightVolume(const ivec3 &lightOrigin, const ivec3 &volumeOrigin) {
-    constexpr int he = kLightVolumeHalfExtent;
+inline bool isOriginInVolume(const ivec3 &lightOrigin, const ivec3 &volumeOrigin, int halfExtent) {
     const ivec3 local = lightOrigin - volumeOrigin;
-    return local.x >= -he && local.x < he && local.y >= -he && local.y < he && local.z >= -he &&
-           local.z < he;
+    return local.x >= -halfExtent && local.x < halfExtent && local.y >= -halfExtent &&
+           local.y < halfExtent && local.z >= -halfExtent && local.z < halfExtent;
 }
+
+constexpr int kLightVolumeOverflowMargin = 8;
 
 // Pack a signed-int voxel position into a single uint64 so the
 // "already-warned" set can dedupe by exact origin without paying for a
@@ -156,13 +158,26 @@ inline std::uint64_t packOriginKey(const ivec3 &v) {
 // the same misplaced static light is processed every frame; Phase 1c
 // (#360) shrinks the warning surface by panning the window with the
 // camera so most scenes stay in-range without manual intervention.
+//
+// `outMaxRadius` receives the largest `C_LightSource::radius_` across all
+// gathered (non-DIRECTIONAL, in-bounds) lights this frame, capped at
+// `kLightVolumePropagateIterations`. Zero when no lights were gathered
+// (or every gathered light has radius=0). The host uses it as the
+// effective propagate iteration count so a scene full of small-radius
+// lights skips iterations that would only re-propagate the alpha=0 tail.
+// Until Phase 1c per-light step counts land, the global `stepFalloff` is
+// derived from this same max so the visual cutoff matches the propagate
+// budget (all lights inherit the max-radius falloff curve — multi-light
+// scenes with very different radii are the known compromise).
 inline std::uint32_t gatherLightSources(
     std::vector<GPULightSource> &out,
     IREntity::EntityId currentCanvas,
     const ivec3 &volumeOriginVoxel,
-    std::unordered_set<std::uint64_t> &warnedOOBOrigins
+    std::unordered_set<std::uint64_t> &warnedOOBOrigins,
+    int &outMaxRadius
 ) {
     out.clear();
+    outMaxRadius = 0;
     const auto include = IREntity::getArchetype<C_LightSource, C_WorldTransform>();
     const auto nodes = IREntity::queryArchetypeNodesSimple(include);
     auto &entityManager = IREntity::getEntityManager();
@@ -186,10 +201,13 @@ inline std::uint32_t gatherLightSources(
                 continue;
             }
             if (out.size() >= kLightVolumeMaxSources) {
+                if (outMaxRadius > kLightVolumePropagateIterations)
+                    outMaxRadius = kLightVolumePropagateIterations;
                 return static_cast<std::uint32_t>(out.size());
             }
             const ivec3 origin = roundedLightOrigin(transforms[i]);
-            if (!isOriginInLightVolume(origin, volumeOriginVoxel)) {
+            constexpr int kExtendedHalfExtent = kLightVolumeHalfExtent + kLightVolumeOverflowMargin;
+            if (!isOriginInVolume(origin, volumeOriginVoxel, kExtendedHalfExtent)) {
                 if (warnedOOBOrigins.insert(packOriginKey(origin)).second) {
                     IR_LOG_WARN(
                         "C_LightSource at world voxel ({}, {}, {}) is "
@@ -208,8 +226,33 @@ inline std::uint32_t gatherLightSources(
                 }
                 continue;
             }
-            out.push_back(toGpuLight(lights[i], origin));
+            ivec3 seedOrigin = origin;
+            float intensityScale = 1.0f;
+            if (!isOriginInVolume(origin, volumeOriginVoxel, kLightVolumeHalfExtent)) {
+                ivec3 rel = origin - volumeOriginVoxel;
+                for (int axis = 0; axis < 3; ++axis) {
+                    const int overflow = IRMath::abs(rel[axis]) - (kLightVolumeHalfExtent - 1);
+                    if (overflow > 0) {
+                        rel[axis] = (rel[axis] > 0) ? (kLightVolumeHalfExtent - 1)
+                                                    : -(kLightVolumeHalfExtent - 1);
+                        intensityScale = IRMath::min(
+                            intensityScale,
+                            1.0f - static_cast<float>(overflow) /
+                                       static_cast<float>(kLightVolumeOverflowMargin)
+                        );
+                    }
+                }
+                seedOrigin = volumeOriginVoxel + rel;
+            }
+            out.push_back(toGpuLight(lights[i], seedOrigin, intensityScale));
+            const int r = static_cast<int>(lights[i].radius_);
+            if (r > outMaxRadius) {
+                outMaxRadius = r;
+            }
         }
+    }
+    if (outMaxRadius > kLightVolumePropagateIterations) {
+        outMaxRadius = kLightVolumePropagateIterations;
     }
     return static_cast<std::uint32_t>(out.size());
 }
@@ -243,6 +286,12 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
     // about — prevents the per-frame gather from spamming a stable
     // misplaced light. Keyed via `detail::packOriginKey`.
     std::unordered_set<std::uint64_t> warnedOOBOrigins_{};
+    // Adaptive iteration count for the per-frame propagate dilation
+    // chain. Recomputed at upload time from the gathered lights' max
+    // radius. Pre-initialized to the global cap so the propagate
+    // budget defaults to today's behavior if a frame ever dispatches
+    // the loop without first running the upload phase.
+    int propagateIterations_ = kLightVolumePropagateIterations;
 
     void tick(
         IREntity::EntityId canvasEntity,
@@ -273,13 +322,26 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             const ivec3 volumeOrigin = IRRender::detail::cameraAnchorVoxel();
             volume.setWorldOriginVoxel(volumeOrigin);
             params_.worldOriginVoxel_ = ivec4(volumeOrigin.x, volumeOrigin.y, volumeOrigin.z, 0);
+            int maxRadius = 0;
             const std::uint32_t count = detail::gatherLightSources(
                 lightStaging_,
                 canvasEntity,
                 volumeOrigin,
-                warnedOOBOrigins_
+                warnedOOBOrigins_,
+                maxRadius
             );
             params_.lightCount_ = static_cast<int>(count);
+            // Adaptive iter count: lights of radius R only need R Manhattan
+            // steps to fade to alpha=0. Without per-light step counts
+            // (Phase 1c), the global stepFalloff has to match the iter
+            // count so alpha lands cleanly at 0 on the final step — pick
+            // both from the gather's max radius this frame. Falls back to
+            // the global cap when no lights are present (the dispatch
+            // loop below early-outs on lightCount==0 anyway, so the value
+            // is moot in that path).
+            propagateIterations_ =
+                (count > 0 && maxRadius > 0) ? maxRadius : kLightVolumePropagateIterations;
+            params_.stepFalloff_ = 1.0f / static_cast<float>(propagateIterations_);
             if (count > 0) {
                 lightSourceBuf_->subData(0, sizeof(GPULightSource) * count, lightStaging_.data());
             }
@@ -323,10 +385,12 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
-            // Propagate dilation chain. With no lights the
-            // chain still runs but every iteration reads
-            // zeros so the cost is bounded; we elide it for
-            // a tighter early-out.
+            // Propagate dilation chain. Skipped entirely when no lights
+            // gathered for this canvas — the cleared read texture would
+            // propagate zeros and contribute nothing to LIGHTING_TO_TRIXEL.
+            // Iteration count is the adaptive value derived from the
+            // gathered lights' max radius (set above), bounded by the
+            // global `kLightVolumePropagateIterations` cap.
             if (params_.lightCount_ > 0) {
                 propagateProgram_->use();
                 // Light-occlusion SSBO slot 28 also aliases
@@ -346,7 +410,7 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
                 const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
                 const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
-                for (int iter = 0; iter < kLightVolumePropagateIterations; ++iter) {
+                for (int iter = 0; iter < propagateIterations_; ++iter) {
                     volume.getReadTexture()
                         ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
                     volume.getWriteTexture()

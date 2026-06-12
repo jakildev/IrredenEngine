@@ -12,13 +12,37 @@ namespace IRComponents {
 
 /// Per-voxel flag bits. Bit-packed into `C_Voxel::flags_`.
 ///
-/// Reserved bits 3-7 are available for future flags without re-versioning
-/// the 12 B record (the trailing pad bytes also leave room for new fields).
-/// Match the GPU-side constants if shader code starts to consume these.
+/// Layout:
+///   bit 0     — `kAoContrib`.
+///   bit 1     — `kEmissive`.
+///   bits 2..7 — face-occlusion bits (`kFaceOccluded*`). Each bit is set
+///               when the neighbor on that face exists, so the renderer
+///               can skip emitting that face. Default = 0 (all faces
+///               visible). Maintained at edit time by
+///               `IRPrefab::Voxel::recomputeFaceOccupancy` (see
+///               `voxel/face_occupancy.hpp`).
+///
+/// Bits 0..1 keep their pre-B2 positions so .vxs files saved before the
+/// face-occlusion bits existed still round-trip semantically — the old
+/// `kInteractive` bit (formerly bit 2) was never written by engine code
+/// (default ctor set only `kAoContrib`), so reusing bit 2 for the first
+/// face bit is safe for legacy saves.
+///
+/// The GPU mirror reads the same byte at offset 5 of the 12 B record
+/// (`(materialFlagBone >> 8) & 0xFFu` in stage 1). Face-bit indices
+/// match `kFace*` directions in `ir_iso_common.glsl`.
 namespace VoxelFlags {
 constexpr std::uint8_t kAoContrib = 1u << 0;
 constexpr std::uint8_t kEmissive = 1u << 1;
-constexpr std::uint8_t kInteractive = 1u << 2;
+constexpr std::uint8_t kFaceOccludedNegX = 1u << 2;
+constexpr std::uint8_t kFaceOccludedPosX = 1u << 3;
+constexpr std::uint8_t kFaceOccludedNegY = 1u << 4;
+constexpr std::uint8_t kFaceOccludedPosY = 1u << 5;
+constexpr std::uint8_t kFaceOccludedNegZ = 1u << 6;
+constexpr std::uint8_t kFaceOccludedPosZ = 1u << 7;
+constexpr std::uint8_t kFaceOccludedMask = kFaceOccludedNegX | kFaceOccludedPosX |
+                                           kFaceOccludedNegY | kFaceOccludedPosY |
+                                           kFaceOccludedNegZ | kFaceOccludedPosZ;
 } // namespace VoxelFlags
 
 /// Per-voxel record. 12 B std430 layout — matches the v2 entity-editor record
@@ -27,15 +51,16 @@ constexpr std::uint8_t kInteractive = 1u << 2;
 /// Layout (one record per voxel-pool slot, uploaded to SSBO @ slot 6):
 ///   [0:3]  color_         packed RGBA8
 ///   [4]    material_id_   material registry index (0 = default)
-///   [5]    flags_         bit-packed VoxelFlags bits
+///   [5]    flags_         bit-packed VoxelFlags bits (faces + AO + emissive)
 ///   [6]    bone_id_       skeletal-rig joint index (0 = identity)
 ///   [7]    layer_id_      editor layer membership (0 = default layer); keeps
 ///                         the trailing uint32 4-byte aligned
 ///   [8:11] reserved_      reserved for future per-voxel fields
 ///
 /// The compute shaders (`c_voxel_to_trixel_stage_*`) read `color_` from
-/// offset 0; `bone_id_` and `layer_id_` ride along for Phase 2 (#605)
-/// where stage 1 applies the skeletal joint matrix and layer visibility.
+/// offset 0; `flags_` is consumed by stage 1 to skip occluded faces;
+/// `bone_id_` and `layer_id_` ride along for Phase 2 (#605) where stage 1
+/// applies the skeletal joint matrix and layer visibility.
 struct C_Voxel {
     IRMath::Color color_;
     std::uint8_t material_id_;

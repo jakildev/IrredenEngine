@@ -11,12 +11,32 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <random>
+#include <utility>
 #include <vector>
 
 // TODO: The game engine needs transformations for voxel sets
 // rotation in 3D space
 
 namespace IRMath {
+
+/// Per-thread `std::mt19937` used by every `IRMath::random*` call.
+///
+/// Each OS thread holds its own RNG state (`thread_local`), so concurrent
+/// calls from IRJob workers never race. Threads default to a seed of `0`;
+/// `IRJob::JobManager` calls @ref seedThreadRng on the main thread at
+/// construction and on each worker the first time it enters a task body,
+/// so worker N's RNG is deterministically seeded from `N`. Outside the
+/// job system, callers can call @ref seedThreadRng directly (mirrors
+/// `std::srand` but per-thread).
+std::mt19937 &threadRng();
+
+/// Seeds the calling thread's RNG (see @ref threadRng). Idempotent —
+/// the most recent call wins.
+void seedThreadRng(uint32_t seed);
 
 /// Pi to float precision. Mirrors `glm::pi<float>()` but routes through the
 /// IRMath wrapper so callers don't have to reach for `glm::` directly.
@@ -25,6 +45,96 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kHalfPi = 1.57079632679489661923f;
 /// Two pi (2π). Useful for full-revolution math and angle wrap.
 constexpr float kTwoPi = 6.28318530717958647692f;
+/// Quarter pi (π/4). Cardinal-yaw residual bound, diagonal transforms.
+constexpr float kQuarterPi = 0.78539816339744830961f;
+/// √2. Horizontal in-plane growth factor of the Y/X-face deformation at the
+/// residual-yaw bound ±π/4. The full stretched column is (√2, −1), length √3;
+/// √2 is its horizontal component (see perAxisTrixelCanvasWorstCaseSize).
+constexpr float kSqrt2 = 1.41421356237309504880f;
+
+/// Face-index constants for the three visible iso faces. CPU mirror of the
+/// `kXFace`/`kYFace`/`kZFace` integer constants in `shaders/ir_iso_common.glsl`
+/// and `shaders/metal/ir_iso_common.metal`. Distinct from the legacy `FaceType`
+/// enum in `ir_math_types.hpp` (which is 1-indexed with `NONE_FACE` first);
+/// these match the shader convention so any helper that crosses the CPU↔GPU
+/// boundary can use the same integer in both directions.
+///
+/// These three indices are AXIS-only (0 = X-axis face, 1 = Y-axis face,
+/// 2 = Z-axis face), NOT polarity-aware: the X-axis face is whichever of
+/// X_NEG / X_POS the camera is looking at. The six-face polarity-aware
+/// FaceId enum below replaces this for visible-triplet rasterization
+/// (#1278) — `kXFace` etc. are kept for the still-3-face helpers
+/// (`faceDeformationMatrix`, AO tangent selection) since the deformation
+/// matrix is identical for X_NEG / X_POS.
+/// @{
+constexpr int kXFace = 0;
+constexpr int kYFace = 1;
+constexpr int kZFace = 2;
+/// @}
+
+/// Polarity-aware six-face enumeration matching the model in
+/// [`docs/design/voxel-face-rasterization.md`](../../../../docs/design/voxel-face-rasterization.md).
+/// One enum value per cube face — explicitly NOT three axes with a ± sign.
+/// Bit positions intentionally line up with the face-occlusion bits in
+/// `IRComponents::VoxelFlags::kFaceOccluded*`: `bit(FaceId f) = 2 + int(f)`.
+///
+/// CPU mirror: shader-side constants `kFaceXNeg`/.../`kFaceZPos` in
+/// `shaders/ir_iso_common.glsl` and `metal/ir_iso_common.metal`. CPU and
+/// GPU MUST agree on the integer value of each face for the
+/// `visibleFaceIds_` UBO handshake (`FrameDataVoxelToCanvas`).
+enum class FaceId : int {
+    X_NEG = 0,
+    X_POS = 1,
+    Y_NEG = 2,
+    Y_POS = 3,
+    Z_NEG = 4,
+    Z_POS = 5,
+    NONE = 6,
+};
+
+/// Axis index (0/1/2 = X/Y/Z) for a FaceId. The deformation matrix is
+/// per-axis, not per-polarity, so use this when forwarding into the
+/// 3-face `faceDeformationMatrix(int, float)`.
+constexpr int faceAxis(FaceId f) {
+    return static_cast<int>(f) >> 1; // {0,1}→0, {2,3}→1, {4,5}→2
+}
+
+/// True when @p f is the positive-coordinate face of its axis (X_POS,
+/// Y_POS, Z_POS). The matching negative face is `bit(f) ^ 1`.
+constexpr bool faceIsPositive(FaceId f) {
+    return (static_cast<int>(f) & 1) != 0;
+}
+
+/// Bit position within `IRComponents::VoxelFlags::flags_` byte for the
+/// occlusion bit of @p f. Bit set ⟺ neighbor exists ⟺ face occluded.
+/// Inverting (`& ~kFaceOccludedMask` ^ 0x3F) at the shader yields the
+/// exposed-face mask consumed by visible-triplet rasterization.
+constexpr int faceOcclusionBit(FaceId f) {
+    return 2 + static_cast<int>(f);
+}
+
+/// World-frame outward unit normal for @p f. Used by AO neighbor-step
+/// math and Lambert shading. Six-face generalization of the
+/// three-face `faceOutwardNormal(int)` shader helper, which only
+/// returned the X_NEG / Y_NEG / Z_NEG normals.
+constexpr vec3 faceOutwardNormal(FaceId f) {
+    switch (f) {
+    case FaceId::X_NEG:
+        return vec3(-1.0f, 0.0f, 0.0f);
+    case FaceId::X_POS:
+        return vec3(1.0f, 0.0f, 0.0f);
+    case FaceId::Y_NEG:
+        return vec3(0.0f, -1.0f, 0.0f);
+    case FaceId::Y_POS:
+        return vec3(0.0f, 1.0f, 0.0f);
+    case FaceId::Z_NEG:
+        return vec3(0.0f, 0.0f, -1.0f);
+    case FaceId::Z_POS:
+        return vec3(0.0f, 0.0f, 1.0f);
+    default:
+        return vec3(0.0f);
+    }
+}
 
 /// Loads a color palette from a file and returns it as a vector of Colors.
 std::vector<Color> createColorPaletteFromFile(const char *filename);
@@ -128,6 +238,18 @@ template <typename VecType> constexpr VecType cross(const VecType &value1, const
     return glm::cross(value1, value2);
 }
 
+// Duff et al. 2017 — builds an orthonormal basis (outU, outV) perpendicular
+// to unit vector n without branch discontinuities. The denominator (s + n.z)
+// is always non-zero and numerically safe across the full n.z ∈ [-1, 1]
+// range: copysign ensures it avoids the 0 singularity at n.z = 0.
+inline void buildOrthonormalBasis(vec3 n, vec3 &outU, vec3 &outV) {
+    const float s = std::copysign(1.0f, n.z);
+    const float a = -1.0f / (s + n.z);
+    const float b = n.x * n.y * a;
+    outU = vec3(1.0f + s * n.x * n.x * a, s * b, -s * n.x);
+    outV = vec3(b, s + n.y * n.y * a, -n.y);
+}
+
 // Hamilton product: in column-vector convention, rotates b first then a (bone hierarchy:
 // quatMul(parent_world, local)).
 inline vec4 quatMul(const vec4 &a, const vec4 &b) {
@@ -146,6 +268,34 @@ inline vec3 rotateVectorByQuat(const vec3 &v, const vec4 &q) {
     return v + q.w * t + glm::cross(u, t);
 }
 
+// Unit quaternion for a rotation of `angle` radians about a (possibly
+// non-unit) axis. Layout: vec4(qx, qy, qz, qw) — same as C_LocalTransform.
+inline vec4 quatAxisAngle(const vec3 &axis, float angle) {
+    const vec3 a = normalize(axis);
+    const float h = angle * 0.5f;
+    return vec4(a.x * sin(h), a.y * sin(h), a.z * sin(h), cos(h));
+}
+
+// Inverse of a UNIT quaternion — conjugate (negate xyz, keep w). For
+// non-unit input the result is the conjugate, not the true inverse;
+// callers must pass unit quaternions (which is what every IRMath
+// producer — `quatAxisAngle`, identity, `quatMul` of unit operands —
+// returns).
+inline vec4 quatInverse(const vec4 &q) {
+    return vec4(-q.x, -q.y, -q.z, q.w);
+}
+
+// Z-axis Tait-Bryan yaw extracted from a unit quaternion. For a pure-Z
+// rotation `q = quatAxisAngle(vec3(0,0,1), y)` this returns `y` exactly
+// (round-trip identity). For a general SO(3) quaternion this returns the
+// Z-component of the ZYX decomposition — the angle a pure-Z observer would
+// attribute to the orientation. Result lies in (-π, π].
+inline float quatExtractZAngle(const vec4 &q) {
+    const float numer = 2.0f * (q.w * q.z + q.x * q.y);
+    const float denom = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    return glm::atan(numer, denom);
+}
+
 /// Inverse of @ref pos3DtoPos2DIso: reconstructs the unique world position
 /// at iso (x, y) on the depth plane @p depth (= x+y+z). The iso depth axis
 /// is (1,1,1), so a 2D iso point and a depth value pin a single 3D point.
@@ -156,6 +306,20 @@ constexpr vec3 isoPixelToPos3D(int isoX, int isoY, float depth) {
     const float wx = (2.0f * depth - 3.0f * fx - fy) / 6.0f;
     const float wy = wx + fx;
     const float wz = (fy + 2.0f * wx + fx) / 2.0f;
+    return vec3(wx, wy, wz);
+}
+
+/// Float-precise overload of @ref isoPixelToPos3D taking a fractional iso
+/// point (e.g. a sub-trixel camera pan). The int overload requires integer iso
+/// coordinates; this overload accepts fractional values and preserves sub-pixel
+/// precision, so the round-trip
+/// `pos3DtoPos2DIso(isoPixelToPos3D(iso, depth))` is the exact identity for any
+/// real @p iso — required when re-projecting a fractional offset under yaw must
+/// collapse back to the original offset at `yaw == 0`.
+constexpr vec3 isoPixelToPos3D(vec2 iso, float depth) {
+    const float wx = (2.0f * depth - 3.0f * iso.x - iso.y) / 6.0f;
+    const float wy = wx + iso.x;
+    const float wz = (iso.y + 2.0f * wx + iso.x) / 2.0f;
     return vec3(wx, wy, wz);
 }
 
@@ -189,6 +353,11 @@ template <typename T> constexpr auto fract(const T &value) {
     return glm::fract(value);
 }
 
+/// Floating-point remainder: x - y * trunc(x / y). std::fmod equivalent.
+inline float fmod(float x, float y) {
+    return std::fmod(x, y);
+}
+
 /// Fractional part of the absolute value; always in [0, 1). Ignores sign.
 template <typename T> constexpr auto fractAbs(const T &value) {
     return glm::fract(glm::abs(value));
@@ -207,6 +376,16 @@ constexpr float cos(float value) {
 /// Square root of @p value. GLM wrapper.
 constexpr float sqrt(float value) {
     return glm::sqrt(value);
+}
+
+/// Cube root of @p value (float). Wraps std::cbrt.
+inline float cbrt(float value) noexcept {
+    return std::cbrt(value);
+}
+
+/// Cube root of @p value (double). Wraps std::cbrt.
+inline double cbrt(double value) noexcept {
+    return std::cbrt(value);
 }
 
 /// Two-argument arctangent (radians). Result is in (-π, π]; sign matches
@@ -245,6 +424,22 @@ constexpr CardinalIndex rasterYawCardinalIndex(float rasterYaw) {
     return static_cast<CardinalIndex>(((q % 4) + 4) % 4);
 }
 
+/// `(cos, sin)` of the cardinal angle named by @p cardinalIndex — exact
+/// `±1`/`0`, the snapped Z-yaw the `GRID` voxel/SDF rasterizer projects at.
+/// Pairs with @ref rasterYawCardinalIndex to retire the open-coded
+/// `kCardinalCos`/`kCardinalSin` tables callers used to inline.
+///
+/// GPU mirror: `cardinalYawCosSin` in `shaders/ir_iso_common.glsl`.
+constexpr vec2 cardinalYawCosSin(CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return vec2(0.0f, 1.0f);
+    if (cardinalIndex == CardinalIndex::k180)
+        return vec2(-1.0f, 0.0f);
+    if (cardinalIndex == CardinalIndex::k270)
+        return vec2(0.0f, -1.0f);
+    return vec2(1.0f, 0.0f);
+}
+
 /// CPU mirror of `rotateCardinalZ` in `shaders/ir_iso_common.glsl`.
 /// World→view = R_z(-rasterYaw) for the given cardinal snap. The voxel
 /// rasterizer applies this to world positions before iso projection, so
@@ -261,8 +456,8 @@ constexpr ivec3 rotateCardinalZ(const ivec3 v, CardinalIndex cardinalIndex) {
 }
 
 /// @overload Float variant for forward-projecting non-integer world
-/// positions (`C_PositionGlobal3D` with the modifier-driven offset
-/// already folded in) into the rasterYaw-rotated canvas frame. Same
+/// positions (`C_WorldTransform.translation_` with the modifier-driven
+/// offset already folded in) into the rasterYaw-rotated canvas frame. Same
 /// R_z(-rasterYaw) sign convention as the integer overload.
 constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
     if (cardinalIndex == CardinalIndex::k90)
@@ -272,6 +467,139 @@ constexpr vec3 rotateCardinalZ(const vec3 v, CardinalIndex cardinalIndex) {
     if (cardinalIndex == CardinalIndex::k270)
         return vec3(-v.y, v.x, v.z);
     return v;
+}
+
+/// Visible-face triplet (`docs/design/voxel-face-rasterization.md`) for a
+/// Z-yaw-only camera (`GRID` mode) snapped to @p cardinalIndex. Returns
+/// the three world-frame FaceIds whose outward normal dots positive with
+/// the rotated view direction.
+///
+/// Derivation: view direction in world frame =
+/// `rotateCardinalZInv(viewDir, cardinalIndex)` where the unrotated
+/// view direction is `(-1,-1,-1)` (camera at +∞ along (1,1,1) looking
+/// toward origin). The Z-component never flips for Z-yaw, so the Z slot
+/// is always `Z_NEG`. The X/Y axes rotate through the cardinal
+/// permutation; slots 0/1 carry the camera-visible polarity per cardinal.
+///
+/// Slot ordering matches the 2×3 voxel-rasterizer workgroup convention
+/// in `localIDToFace_2x3`: slot 0 = X-axis face (the "right column" of
+/// the diamond at cardinal 0), slot 1 = Y-axis face (left column), slot
+/// 2 = Z-axis face (top row). Per-cardinal slot ↔ FaceId mapping:
+///
+/// - cardinal 0:   {X_NEG, Y_NEG, Z_NEG}
+/// - cardinal 90:  {Y_NEG, X_POS, Z_NEG}
+/// - cardinal 180: {X_POS, Y_POS, Z_NEG}
+/// - cardinal 270: {Y_POS, X_NEG, Z_NEG}
+///
+/// At cardinal 0 the result reduces to the pre-#1278 three-face set the
+/// rasterizer always assumed; at every other cardinal the rasterizer
+/// now picks the actually-visible faces instead of the back-facing ones,
+/// fixing the stripe artifact in #1256.
+///
+/// DETACHED-canvas paths call @ref visibleTriplet (#1386) instead — per-entity
+/// rotation determines which faces the octahedral-snap residual acts on, so
+/// the canvas SO(3) bake (#1075/#1076) alone is not sufficient.
+constexpr std::array<FaceId, 3> visibleFaceTripletCardinal(CardinalIndex cardinalIndex) {
+    switch (cardinalIndex) {
+    case CardinalIndex::k90:
+        return {FaceId::Y_NEG, FaceId::X_POS, FaceId::Z_NEG};
+    case CardinalIndex::k180:
+        return {FaceId::X_POS, FaceId::Y_POS, FaceId::Z_NEG};
+    case CardinalIndex::k270:
+        return {FaceId::Y_POS, FaceId::X_NEG, FaceId::Z_NEG};
+    case CardinalIndex::k0:
+    default:
+        return {FaceId::X_NEG, FaceId::Y_NEG, FaceId::Z_NEG};
+    }
+}
+
+/// Model-frame iso depth axis for a detached entity rotated by @p rotation:
+/// `R⁻¹ · (1,1,1)`. The iso projection's depth axis is the world (1,1,1)
+/// direction (@ref pos3DtoDistance, `depth = x+y+z`); a detached canvas
+/// rasters its voxels in model space (camera yaw zeroed), so the per-voxel
+/// metric that orders them front-to-back under the *rotated* view must
+/// project onto this model-frame axis rather than the fixed (1,1,1).
+/// Symmetric with @ref visibleTriplet's `R⁻¹·viewDir` face selection — one
+/// per-entity frame drives both which faces show and how they occlude. Using
+/// the fixed (1,1,1) instead is correct only when `R` fixes (1,1,1); off that
+/// the snapped order leaks back-face voxels through (the "pitch/roll reveals"
+/// bug, live since #1386/#1398 landed full-SO(3) face selection).
+///
+/// At identity the axis is exactly (1,1,1) — `rotateVectorByQuat` by the
+/// identity quat is the exact identity — so @ref isoDepthAlongAxis collapses
+/// to `x+y+z` and the detached path stays byte-identical to master; the GRID
+/// world canvas keeps the fixed (1,1,1) and is untouched.
+///
+/// CPU-computed and uploaded into `FrameDataVoxelToCanvas::voxelDepthAxis_`;
+/// the shader does only the `roundHalfUp(dot(pos, axis))` projection (GPU
+/// mirror `isoDepthAlongAxis` in ir_iso_common.glsl/.metal). Reused by the
+/// detached SO(3) forward-scatter composite (#1462 P1 → #1464 P3).
+inline vec3 isoDepthAxisModel(const vec4 &rotation) {
+    return rotateVectorByQuat(vec3(1.0f, 1.0f, 1.0f), quatInverse(rotation));
+}
+
+/// Per-voxel iso occlusion depth: model position @p pos projected onto a
+/// (possibly entity-rotated) iso depth @p axis. The SO(3) generalization of
+/// @ref pos3DtoDistance — identical to it when `axis == (1,1,1)`. Rounds via
+/// @ref roundHalfUp so it matches the GPU mirror (`isoDepthAlongAxis` in
+/// ir_iso_common.glsl/.metal) bit-for-bit at half-integer projections.
+inline Distance isoDepthAlongAxis(const ivec3 pos, const vec3 axis) {
+    return roundHalfUp(dot(vec3(pos), axis));
+}
+
+/// The three camera-visible cube faces for an entity rotated by @p rotation —
+/// the SO(3) generalization of @ref visibleFaceTripletCardinal (which only
+/// covers the camera's Z-yaw cardinals). A cube face is visible when its
+/// world-space outward normal opposes the iso view direction: the camera
+/// looks down the +(1,1,1) iso depth axis (see engine/math/CLAUDE.md,
+/// `depth = x + y + z`, higher = further), so model normal `n` is front-facing
+/// iff `(R·n)·viewDir < 0`. Expressed in the entity's model frame that is
+/// `n·(R⁻¹·viewDir) < 0`, so the per-axis sign of `R⁻¹·viewDir` picks the
+/// POS or NEG face of each axis.
+///
+/// Slot ordering matches @ref visibleFaceTripletCardinal and the rasterizer's
+/// `faceDeform_[]` upload: slot 0 = X-axis face, 1 = Y-axis face, 2 = Z-axis
+/// face. Each slot is axis-fixed, so the per-slot `faceDeformationMatrixSO3`
+/// (axis-only) is unchanged by this — only which polarity each slot renders.
+///
+/// At identity rotation `R⁻¹·viewDir = (1,1,1)` (all positive) so the result is
+/// `{X_NEG, Y_NEG, Z_NEG}` — byte-identical to `visibleFaceTripletCardinal(k0)`
+/// and to the legacy hardcoded detached triplet. Within an octahedral cell the
+/// residual (@ref octahedralSnapResidual) stays below the covering radius, so a
+/// face only flips polarity when it is edge-on (its view-space normal ≈ 0) —
+/// where the deformation is near-singular and the face shows no visible area,
+/// making the choice visually inconsequential.
+///
+/// CPU-only by design: the result is uploaded into
+/// `FrameDataVoxelToCanvas::visibleFaceIds_` and consumed shader-side exactly
+/// like the cardinal path (#1278), so there is no GPU-side mirror to keep in
+/// sync. Reused verbatim by per-entity main-canvas SO(3) (#1299).
+inline std::array<FaceId, 3> visibleTriplet(const vec4 &rotation) {
+    // View direction expressed in the entity's model frame (R⁻¹ · viewDir) —
+    // the same axis the per-voxel occlusion depth projects onto (@ref
+    // isoDepthAxisModel). Only the per-axis signs matter here.
+    const vec3 viewInModel = isoDepthAxisModel(rotation);
+    return {
+        viewInModel.x < 0.0f ? FaceId::X_POS : FaceId::X_NEG,
+        viewInModel.y < 0.0f ? FaceId::Y_POS : FaceId::Y_NEG,
+        viewInModel.z < 0.0f ? FaceId::Z_POS : FaceId::Z_NEG,
+    };
+}
+
+/// CPU mirror of `cardinalLowerCornerShift` in `shaders/ir_iso_common.glsl`.
+/// After `rotateCardinalZ`, the unit voxel's view-space AABB lower corner
+/// is offset from the rotated origin because R_z permutes/negates axes.
+/// Adding this shift to the rotated voxel position keeps the rasterizer's
+/// diamond 2x3 emit aligned with the voxel's iso footprint at every
+/// cardinal. Zero at cardinal 0 so the cardinal-snap path is unchanged.
+constexpr ivec3 cardinalLowerCornerShift(CardinalIndex cardinalIndex) {
+    if (cardinalIndex == CardinalIndex::k90)
+        return ivec3(0, -1, 0);
+    if (cardinalIndex == CardinalIndex::k180)
+        return ivec3(-1, -1, 0);
+    if (cardinalIndex == CardinalIndex::k270)
+        return ivec3(-1, 0, 0);
+    return ivec3(0, 0, 0);
 }
 
 /// CPU mirror of `rotateCardinalZInv` in `shaders/ir_iso_common.glsl`.
@@ -298,6 +626,258 @@ constexpr ivec3 rotateCardinalZInvI(const ivec3 v, CardinalIndex cardinalIndex) 
     return v;
 }
 
+/// Iso projection of a world point under a continuous Z-yaw camera.
+///
+/// Equivalent to `pos3DtoPos2DIso(R_z(-yaw) · world)` — applies the world→view
+/// rotation for camera yaw @p visualYaw, then projects to iso. Sign convention
+/// matches `rotateCardinalZ` (world→view = R_z(-yaw)) so this is the smooth
+/// extension of the cardinal-snap projection used by the voxel rasterizer.
+///
+/// Use cases: CPU iso-bounds computation under continuous yaw, picking
+/// pre-image, debug overlay placement. The voxel/SDF rasterizer itself
+/// emits at the cardinal `rasterYaw` and applies `faceDeformationMatrix` for
+/// the leftover `residualYaw`; this helper is the cleaner CPU-side path
+/// when the caller has the full `visualYaw` and doesn't need the split.
+///
+/// GPU mirror: `pos3DtoPos2DIsoYawed` in `shaders/ir_iso_common.glsl`.
+constexpr vec2 pos3DtoPos2DIsoYawed(const vec3 worldPos, float visualYaw) {
+    const float c = glm::cos(visualYaw);
+    const float s = glm::sin(visualYaw);
+    const float vx = worldPos.x * c + worldPos.y * s;
+    const float vy = -worldPos.x * s + worldPos.y * c;
+    return vec2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
+}
+
+/// Iso projection of a detached entity's model-space point under an arbitrary
+/// SO(3) rotation: `iso(R · modelPos)`. The full-rotation companion to the
+/// Z-yaw-only @ref pos3DtoPos2DIsoYawed — where camera yaw is a 1-DOF rotation
+/// about world Z, a detached entity rotates by any axis, so the continuous
+/// reposition rotates the model point by the entity quaternion before
+/// projecting. Feed the octahedral-snap *residual* (@ref octahedralSnapResidual)
+/// as @p rotation: the snap plays the cardinal-snap role and the residual is
+/// the continuous 3D reposition, the SO(3) generalization of the cardinal/
+/// residual yaw split. At identity rotation this is exactly
+/// @ref pos3DtoPos2DIso(modelPos), and for a pure-Z quaternion `qZ(θ)` it
+/// equals `pos3DtoPos2DIsoYawed(modelPos, -θ)` (the entity-rotation sign is
+/// opposite the camera-residual yaw sign, matching @ref faceDeformationMatrixSO3).
+///
+/// Caller rounds the continuous result with @ref roundHalfUp at the canvas-cell
+/// write, exactly as the yaw path does. GPU mirror: `pos3DtoPos2DIsoRotated` in
+/// `shaders/ir_iso_common.glsl` / `.metal` — `rotateByQuat` then the same iso
+/// columns, so CPU and GPU agree bit-for-bit. Originally the reposition for the
+/// detached SO(3) forward-scatter composite (#1463 P2 → #1464 P3); that consumer
+/// was **retired in #1560** when re-voxelize became the sole detached SO(3) path,
+/// so this helper currently has no production caller (math tests only). Retained
+/// as the SO(3) iso-projection primitive (the full-rotation companion to
+/// @ref pos3DtoPos2DIsoYawed).
+///
+/// The iso columns `(-x + y, -x - y + 2z)` are inlined (matching the sibling
+/// @ref pos3DtoPos2DIsoYawed and the GPU mirror) rather than calling
+/// @ref pos3DtoPos2DIso, which is defined later in this header.
+inline vec2 pos3DtoPos2DIsoRotated(const vec3 &modelPos, const vec4 &rotation) {
+    const vec3 r = rotateVectorByQuat(modelPos, rotation);
+    return vec2(-r.x + r.y, -r.x - r.y + 2.0f * r.z);
+}
+
+/// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
+/// `(cosYaw, sinYaw)`: each in-plane axis grows to `|c|·hX + |s|·hY` (the
+/// footprint the rotated box covers, up to the √2 extent at ±45°); Z is
+/// unchanged. Centralizes the iso-cull / GPU-tile-dispatch footprint expansion
+/// the SDF + voxel paths used to inline at each call site, so the CPU cull and
+/// the GPU rasterizer grow their bounds identically.
+///
+/// GPU mirror: `yawGrownIsoHalfExtent` in `shaders/ir_iso_common.glsl`.
+constexpr vec3 yawGrownIsoHalfExtent(const vec3 halfExtent, float cosYaw, float sinYaw) {
+    const float absC = abs(cosYaw);
+    const float absS = abs(sinYaw);
+    return vec3(
+        halfExtent.x * absC + halfExtent.y * absS,
+        halfExtent.x * absS + halfExtent.y * absC,
+        halfExtent.z
+    );
+}
+
+/// 2x2 deformation matrix that maps a face's un-yawed iso-pixel offset to the
+/// offset under residual yaw @p residualYaw (in `[-π/4, π/4]`).
+///
+/// Geometric construction: each face contributes one "u" tangent (in-plane,
+/// rotates with the world's Z-yaw) and one "v" tangent (along world Z, fixed
+/// under Z-yaw). The original iso-projection columns `M_0` map (u, v) → iso;
+/// rotating the world by `R_z(-φ)` produces new columns `M_φ`. The returned
+/// `mat2 D_φ = M_φ · M_0⁻¹` post-multiplies an iso-pixel offset emitted at
+/// the cardinal `rasterYaw` to recover its position at the continuous yaw.
+///
+/// Closed form per face (with `c = cos(φ)`, `s = sin(φ)`):
+/// - X face: `[c-s, 0; 1-(c+s), 1]`
+/// - Y face: `[c+s, 0; c-s-1, 1]`
+/// - Z face: `[c, s; -s, c]` = `R_z(-φ)` in 2D iso space
+///
+/// At `residualYaw == 0` all three are identity, so the cardinal-snap path
+/// is bit-identical to the un-yawed projection. `@p face` uses the shader
+/// convention `kXFace`/`kYFace`/`kZFace` (0/1/2); other values return identity.
+///
+/// GPU mirror: `faceDeformationMatrix` in `shaders/ir_iso_common.glsl`.
+constexpr mat2 faceDeformationMatrix(int face, float residualYaw) {
+    const float c = glm::cos(residualYaw);
+    const float s = glm::sin(residualYaw);
+    if (face == kXFace) {
+        return mat2(c - s, 1.0f - (c + s), 0.0f, 1.0f);
+    }
+    if (face == kYFace) {
+        return mat2(c + s, c - s - 1.0f, 0.0f, 1.0f);
+    }
+    if (face == kZFace) {
+        return mat2(c, -s, s, c);
+    }
+    return mat2(1.0f, 0.0f, 0.0f, 1.0f);
+}
+
+/// FaceId-accepting overload of @ref faceDeformationMatrix. The deformation
+/// matrix is axis-only (X_NEG and X_POS share the X-face matrix, etc.) — a
+/// face's iso footprint shape depends on its tangent plane, which is shared
+/// across the two opposite faces of the axis. Used by the per-slot
+/// `FrameDataVoxelToCanvas::faceDeform_[]` upload in
+/// `system_voxel_to_trixel::buildVoxelFrameData`.
+constexpr mat2 faceDeformationMatrix(FaceId face, float residualYaw) {
+    return faceDeformationMatrix(faceAxis(face), residualYaw);
+}
+
+/// SO(3) generalization of @ref faceDeformationMatrix: the 2x2 matrix that
+/// maps a face's un-rotated iso-pixel offset to its offset after the entity
+/// is rotated by the quaternion @p rotationQuat — any axis, not just world Z.
+///
+/// Each face spans two world tangents (u, v). The un-rotated iso columns
+/// `M_0(face) = [iso(u) | iso(v)]` are constant per face; rotating the entity
+/// gives `M_R(face) = [iso(R·u) | iso(R·v)]`, and the returned
+/// `D = M_R · M_0⁻¹` post-multiplies an iso-pixel offset. At identity rotation
+/// `D` is the identity. A pure-Z quaternion reduces to
+/// `faceDeformationMatrix(face, -yaw)` — the camera-residual sign convention
+/// is opposite the entity-rotation sign.
+///
+/// A face rotated edge-on projects both tangents parallel, so `D` becomes
+/// singular — it flattens that face's offsets onto a line, which is the
+/// correct projection of a face seen edge-on. `D` is always finite (it is
+/// applied directly to offsets, never inverted), so no degeneracy guard is
+/// needed.
+///
+/// CPU-only by design: T-295's `buildVoxelFrameData` bakes the result into the
+/// `faceDeform_` UBO that the voxel-emit shader already applies, so the shader
+/// stays rotation-agnostic — there is no GPU-side mirror to keep in sync.
+inline mat2 faceDeformationMatrixSO3(int face, const vec4 &rotationQuat) {
+    // Per-face world tangents and the constant inverse of the un-rotated iso
+    // basis M_0(face). M_0 columns are iso(u), iso(v); the inverses below are
+    // those 2x2 matrices inverted (column-major, glm `mat2(c0x,c0y,c1x,c1y)`).
+    vec3 u;
+    vec3 v;
+    mat2 m0Inv;
+    if (face == kXFace) {
+        u = vec3(0.0f, 1.0f, 0.0f);
+        v = vec3(0.0f, 0.0f, 1.0f);
+        m0Inv = mat2(1.0f, 0.5f, 0.0f, 0.5f);
+    } else if (face == kYFace) {
+        u = vec3(1.0f, 0.0f, 0.0f);
+        v = vec3(0.0f, 0.0f, 1.0f);
+        m0Inv = mat2(-1.0f, -0.5f, 0.0f, 0.5f);
+    } else if (face == kZFace) {
+        u = vec3(1.0f, 0.0f, 0.0f);
+        v = vec3(0.0f, 1.0f, 0.0f);
+        m0Inv = mat2(-0.5f, 0.5f, -0.5f, -0.5f);
+    } else {
+        return mat2(1.0f, 0.0f, 0.0f, 1.0f);
+    }
+    const vec3 ru = rotateVectorByQuat(u, rotationQuat);
+    const vec3 rv = rotateVectorByQuat(v, rotationQuat);
+    // iso() linear part: (-x + y, -x - y + 2z) — see engine/math/CLAUDE.md.
+    const vec2 colU = vec2(-ru.x + ru.y, -ru.x - ru.y + 2.0f * ru.z);
+    const vec2 colV = vec2(-rv.x + rv.y, -rv.x - rv.y + 2.0f * rv.z);
+    return mat2(colU, colV) * m0Inv;
+}
+
+/// Snap a rotation to the nearest of the 24 cube (chiral octahedral)
+/// orientations and return that orientation as a quaternion (one of the 24
+/// canonical representatives; either sign hemisphere — `q` and `-q` are the
+/// same rotation, so callers that feed the result to a rotation matrix or to
+/// `visibleTriplet` are sign-invariant).
+///
+/// A cube is invariant under all 24 octahedral rotations, so substituting the
+/// snapped orientation for the live rotation leaves a cube's silhouette
+/// unchanged while quantizing its face-visibility to one of 24 discrete states
+/// — the "steps through the 24 octahedral orientations" increment per-entity
+/// main-canvas SO(3) wants (#1299, PR-A): the GPU prepass matrix and the
+/// per-voxel visible triplet both drive off this one snap, so the rotated
+/// geometry and the faces it shows always agree.
+inline vec4 octahedralSnap(const vec4 &rotation) {
+    constexpr float h = 0.5f;
+    constexpr float r = 0.70710678118654752f; // 1 / sqrt(2)
+    static const vec4 kOctahedral[24] = {
+        vec4(0, 0, 0, 1),                                          // identity
+        vec4(1, 0, 0, 0),    vec4(0, 1, 0, 0),  vec4(0, 0, 1, 0),  // 180 face
+        vec4(h, h, h, h),    vec4(h, h, -h, h), vec4(h, -h, h, h), // 120 vertex
+        vec4(h, -h, -h, h),  vec4(-h, h, h, h), vec4(-h, h, -h, h), vec4(-h, -h, h, h),
+        vec4(-h, -h, -h, h), vec4(r, 0, 0, r),  vec4(-r, 0, 0, r),  vec4(0, r, 0, r), // 90 face
+        vec4(0, -r, 0, r),   vec4(0, 0, r, r),  vec4(0, 0, -r, r),  vec4(r, r, 0, 0),
+        vec4(r, -r, 0, 0),   vec4(r, 0, r, 0), // 180 edge
+        vec4(r, 0, -r, 0),   vec4(0, r, r, 0),  vec4(0, r, -r, 0),
+    };
+    int best = 0;
+    float bestDot = -1.0f;
+    for (int i = 0; i < 24; ++i) {
+        // q and -q are the same rotation, so compare on |dot|.
+        const float d = glm::abs(glm::dot(rotation, kOctahedral[i]));
+        if (d > bestDot) {
+            bestDot = d;
+            best = i;
+        }
+    }
+    return kOctahedral[best];
+}
+
+/// Snap a rotation to the nearest of the 24 cube (chiral octahedral)
+/// orientations and return the residual rotation `R_snap⁻¹ · R`, normalized
+/// to the `w >= 0` hemisphere.
+///
+/// A cube is invariant under all 24 octahedral rotations, so the snap is
+/// visually a no-op — but it bounds the residual to the octahedral covering
+/// radius. T-295 deforms a detached canvas's voxel emit by this residual
+/// rather than the full rotation, keeping `faceDeformationMatrixSO3`'s
+/// per-face skew in its clean (small-angle) range so pitch / roll do not
+/// degrade into forward-mapped scanline gaps. (Non-cube voxel objects also
+/// need `R_snap` applied as a coordinate permutation — a separate step.)
+inline vec4 octahedralSnapResidual(const vec4 &rotation) {
+    const vec4 s = octahedralSnap(rotation);
+    const vec4 sConjugate = vec4(-s.x, -s.y, -s.z, s.w);
+    vec4 residual = quatMul(sConjugate, rotation);
+    if (residual.w < 0.0f) {
+        residual = vec4(-residual.x, -residual.y, -residual.z, -residual.w);
+    }
+    return residual;
+}
+
+/// Residual-yaw-deformed trixel iso-pixel offset within the 2x3 face diamond.
+///
+/// CPU mirror of `deformedTrixelIsoPixel` in `shaders/ir_iso_common.glsl`:
+/// takes the un-yawed offset from `faceOffset_2x3(face, subPixel)`, applies
+/// `faceDeformationMatrix(face, residualYaw)`, and rounds back to integer
+/// iso pixels via @ref roundHalfUp. `@p subPixel` is 0 or 1 (selects the
+/// upper or lower trixel of the face's vertical pair); `@p face` uses the
+/// shader convention `kXFace`/`kYFace`/`kZFace`.
+constexpr ivec2 deformedTrixelIsoPixel(int face, int subPixel, float residualYaw) {
+    ivec2 unyawed;
+    if (face == kXFace) {
+        unyawed = ivec2(1, 1 + subPixel);
+    } else if (face == kZFace) {
+        unyawed = ivec2(subPixel, 0);
+    } else {
+        unyawed = ivec2(
+            0,
+            1 + subPixel
+        ); // kYFace + out-of-range; mirrors faceOffset_2x3 GLSL fallthrough
+    }
+    const mat2 D = faceDeformationMatrix(face, residualYaw);
+    const vec2 deformed = D * vec2(unyawed);
+    return ivec2(roundHalfUp(deformed.x), roundHalfUp(deformed.y));
+}
+
 /// Orthographic projection matrix.  Selects the depth range convention
 /// ([0,1] for Metal/Vulkan, [-1,1] for OpenGL) from IRPlatform::kGfx.
 inline mat4 ortho(float left, float right, float bottom, float top, float nearZ, float farZ) {
@@ -316,6 +896,101 @@ inline mat4 translate(const mat4 &matrix, const vec3 &position) {
 /// Scaling matrix that scales @p matrix by @p value. GLM wrapper.
 inline mat4 scale(const mat4 &matrix, const vec3 &value) {
     return glm::scale(matrix, value);
+}
+
+/// Rotation matrix that rotates @p matrix by @p angle radians around @p axis. GLM wrapper.
+inline mat4 rotate(const mat4 &matrix, float angle, const vec3 &axis) {
+    return glm::rotate(matrix, angle, axis);
+}
+
+/// Builds the local→world matrix from an SQT triple (scale, quaternion
+/// rotation, translation). Composition is `T · R · S`: a local point
+/// `p_local` maps to `R · (S · p_local) + t` — the same ordering that
+/// `SYSTEM_PROPAGATE_TRANSFORM` applies when composing parent and child
+/// transforms.
+///
+/// Quaternion layout is the engine canon: `vec4(qx, qy, qz, qw)` with `.w`
+/// the scalar. Implementation rotates the scaled basis vectors via
+/// @ref rotateVectorByQuat so the matrix-form rotation stays bit-identical
+/// to the per-vector quaternion-rotate path used elsewhere in the engine.
+///
+/// GPU mirror: `sqtToMat4` in `shaders/ir_iso_common.glsl`.
+inline mat4 sqtToMat4(const vec3 &scaleVec, const vec4 &rotationQuat, const vec3 &translation) {
+    const vec3 col0 = rotateVectorByQuat(vec3(scaleVec.x, 0.0f, 0.0f), rotationQuat);
+    const vec3 col1 = rotateVectorByQuat(vec3(0.0f, scaleVec.y, 0.0f), rotationQuat);
+    const vec3 col2 = rotateVectorByQuat(vec3(0.0f, 0.0f, scaleVec.z), rotationQuat);
+    return mat4(vec4(col0, 0.0f), vec4(col1, 0.0f), vec4(col2, 0.0f), vec4(translation, 1.0f));
+}
+
+/// Scale–Quaternion–Translation transform value. Mirrors the field layout of
+/// `C_LocalTransform` / `C_WorldTransform`, which live in the prefab layer and
+/// so can't be named from `engine/math/`; this is the math-layer value type
+/// those components and the skeletal-skinning helpers (`IRPrefab::Skeleton`)
+/// share. Quaternion layout is the engine canon `vec4(qx, qy, qz, qw)`,
+/// identity `(0, 0, 0, 1)`.
+struct SQT {
+    vec3 scale_{1.0f, 1.0f, 1.0f};
+    vec4 rotation_{0.0f, 0.0f, 0.0f, 1.0f};
+    vec3 translation_{0.0f, 0.0f, 0.0f};
+};
+
+/// SQT overload of @ref sqtToMat4 — same `T · R · S` ordering.
+inline mat4 sqtToMat4(const SQT &transform) {
+    return sqtToMat4(transform.scale_, transform.rotation_, transform.translation_);
+}
+
+/// Composes `parent ∘ child`, reproducing `SYSTEM_PROPAGATE_TRANSFORM`'s
+/// modifier-free composition so a chain folded here matches the
+/// `C_WorldTransform` the propagation system writes for the same locals:
+///
+///     scale       = parent.scale * child.scale
+///     rotation    = quatMul(parent.rotation, child.rotation)
+///     translation = parent.translation
+///                 + rotateVectorByQuat(parent.scale * child.translation,
+///                                      parent.rotation)
+///
+/// Matrix-exact (`sqtToMat4(compose) == sqtToMat4(parent) * sqtToMat4(child)`)
+/// for uniform scale; non-uniform scale isn't closed under TRS composition
+/// (the exact product needs shear). Joints and bind poses are rigid, so the
+/// rig path is exact.
+inline SQT sqtCompose(const SQT &parent, const SQT &child) {
+    SQT out;
+    out.scale_ = parent.scale_ * child.scale_;
+    out.rotation_ = quatMul(parent.rotation_, child.rotation_);
+    out.translation_ = parent.translation_ +
+                       rotateVectorByQuat(parent.scale_ * child.translation_, parent.rotation_);
+    return out;
+}
+
+/// Analytic inverse: the SQT whose matrix is `inverse(sqtToMat4(t))`. Exact
+/// for rigid / uniform-scale transforms — the skinning path inverts the
+/// constant bind SQT here rather than numerically inverting its 4×4, which
+/// keeps the result clean (the rotation inverse is the conjugate, not a
+/// general matrix solve). Non-uniform scale is not representable as a single
+/// inverse SQT; the rotation reorders relative to the per-axis scale. Pass
+/// uniform (or unit) scale, which every bind pose satisfies.
+inline SQT sqtInverse(const SQT &transform) {
+    SQT inv;
+    inv.scale_ =
+        vec3(1.0f / transform.scale_.x, 1.0f / transform.scale_.y, 1.0f / transform.scale_.z);
+    inv.rotation_ = quatInverse(transform.rotation_);
+    inv.translation_ = inv.scale_ * rotateVectorByQuat(-transform.translation_, inv.rotation_);
+    return inv;
+}
+
+/// Applies an SRT (or any affine) matrix @p transform to an integer voxel
+/// grid cell @p cell, returning the destination integer cell with half-up
+/// rounding. Use when GRID-mode rotation needs to re-rasterize a set of
+/// authored voxels into world-grid cells under a parent or local transform.
+///
+/// Affine matrices keep `w == 1`, so the perspective divide is omitted. The
+/// round goes through @ref roundHalfUp so CPU and GPU agree on the destination
+/// cell at half-integer positions.
+///
+/// GPU mirror: `matrixApplyToVoxelGrid` in `shaders/ir_iso_common.glsl`.
+inline ivec3 matrixApplyToVoxelGrid(const mat4 &transform, const ivec3 &cell) {
+    const vec4 worldPos = transform * vec4(vec3(cell), 1.0f);
+    return roundVec3HalfUp(vec3(worldPos));
 }
 
 /// Sum of all components of @p value.
@@ -385,6 +1060,45 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
     return vec2(-position.x + position.y, -position.x - position.y + (2 * position.z));
 }
 
+/// Returns the `cameraIso` delta that produces an on-screen shift equal to
+/// @p isoDelta when the camera is at `RotationPivotMode::CAMERA_CENTER`.
+///
+/// In `CAMERA_CENTER` mode, applying a delta `Δ` to `cameraIso` shifts
+/// on-screen content by `P(R_z(−yaw)·Pinv(Δ,0))` (where `P` is the iso
+/// projection and `Pinv` is `isoPixelToPos3D`).  This helper solves the
+/// resulting 2×2 linear system for `Δ` such that that expression equals
+/// @p isoDelta — so dragging the camera moves content parallel to the
+/// drag direction on screen at every yaw.
+///
+/// **Precondition — `CAMERA_CENTER` only.**  In `ORIGIN` mode
+/// `getEffectiveCameraIso()` returns `cameraIso` directly, so a delta
+/// `Δ = isoDelta` already produces the correct on-screen shift; the pan
+/// systems must use `isoDelta` unchanged (or pass `visualYaw = 0`) in that
+/// mode.
+///
+/// At `visualYaw == 0` returns @p isoDelta exactly (identity).  At
+/// `yaw = ±2π/3` the iso projection is geometrically degenerate
+/// (`det = 1 + 2·cos(yaw) ≈ 0`); the helper returns @p isoDelta unchanged.
+///
+/// ```cpp
+///   const float panYaw =
+///       IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
+///           ? IRPrefab::Camera::getYaw()
+///           : 0.0f;
+///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(deltaIso, panYaw);
+/// ```
+constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYaw) {
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
+    // det = 1 + 2*cos(yaw); singular at yaw = ±2π/3 (degenerate iso view).
+    const float det = 1.0f + 2.0f * c;
+    if (det > -1e-6f && det < 1e-6f)
+        return isoDelta;
+    const float dx = isoDelta.x;
+    const float dy = isoDelta.y;
+    return vec2(((c + 2.0f) * dx - s * dy) / det, 3.0f * (s * dx + c * dy) / det);
+}
+
 /// Projects @p position to screen space by scaling the iso result by
 /// @p triangleStepSizeScreen and applying the backend-specific Y sign from
 /// IRPlatform::kGfx.
@@ -417,6 +1131,13 @@ struct IsoBounds2D {
     /// Returns true if @p point lies within [min_, max_] (inclusive).
     bool contains(vec2 point) const {
         return point.x >= min_.x && point.x <= max_.x && point.y >= min_.y && point.y <= max_.y;
+    }
+
+    /// Returns true if the axis-aligned box spanning [@p aMin, @p aMax]
+    /// overlaps these bounds (inclusive on every edge); @p aMin / @p aMax are
+    /// the box's min / max iso corners.
+    bool overlapsAABB(vec2 aMin, vec2 aMax) const {
+        return aMax.x >= min_.x && aMin.x <= max_.x && aMax.y >= min_.y && aMin.y <= max_.y;
     }
 
     /// Returns the centre of the bounds.
@@ -491,18 +1212,31 @@ inline vec2 shapeIsoHalfExtent(vec3 voxelSize) {
     return vec2(extentX + extentY, extentX + extentY + 2.0f * extentZ);
 }
 
-/// Returns the tight iso-space axis-aligned bounding box of a rectangular
-/// prism entity at @p worldPos with @p voxelSize dimensions.  Enumerates
-/// all 8 corners for an exact result (prefer shapeIsoHalfExtent when a
-/// conservative approximation is acceptable).
-inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
+/// Returns the iso-space AABB of the world-space box [@p worldMin, @p worldMax]
+/// projected under a continuous camera Z-yaw of @p visualYaw. Enumerates the 8
+/// world corners through @ref pos3DtoPos2DIsoYawed and bounds the result.
+///
+/// Closed-form O(1) companion to per-voxel cull projection (#1439): a chunk
+/// caches its static world-AABB once, and its cull region under the live yaw is
+/// recovered by projecting 8 corners instead of re-projecting every voxel each
+/// frame. `pos3DtoPos2DIsoYawed` is linear, so the iso-AABB of the projected
+/// corners is the tight iso-AABB of the projected box — and for a voxel set
+/// that does not fill its world-AABB it is a *conservative superset* of the
+/// per-voxel iso bounds (never tighter), so the chunk-visibility gate keeps
+/// over-including rather than dropping on-screen geometry. At @p visualYaw == 0
+/// it reduces to the un-yawed iso projection of the box corners.
+inline IsoBounds2D isoAABBOfWorldAABBUnderYaw(vec3 worldMin, vec3 worldMax, float visualYaw) {
     vec2 corners[8];
     int idx = 0;
     for (int dx = 0; dx <= 1; ++dx) {
         for (int dy = 0; dy <= 1; ++dy) {
             for (int dz = 0; dz <= 1; ++dz) {
-                vec3 corner = worldPos + vec3(dx * voxelSize.x, dy * voxelSize.y, dz * voxelSize.z);
-                corners[idx++] = pos3DtoPos2DIso(corner);
+                const vec3 corner = vec3(
+                    dx ? worldMax.x : worldMin.x,
+                    dy ? worldMax.y : worldMin.y,
+                    dz ? worldMax.z : worldMin.z
+                );
+                corners[idx++] = pos3DtoPos2DIsoYawed(corner, visualYaw);
             }
         }
     }
@@ -513,6 +1247,15 @@ inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
         bmax = glm::max(bmax, corners[i]);
     }
     return IsoBounds2D{bmin, bmax};
+}
+
+/// Returns the tight iso-space axis-aligned bounding box of a rectangular
+/// prism entity at @p worldPos with @p voxelSize dimensions.  The un-yawed,
+/// axis-aligned special case of @ref isoAABBOfWorldAABBUnderYaw over the box
+/// [worldPos, worldPos + voxelSize] (prefer shapeIsoHalfExtent when a
+/// conservative approximation is acceptable).
+inline IsoBounds2D entityIsoBounds(vec3 worldPos, ivec3 voxelSize) {
+    return isoAABBOfWorldAABBUnderYaw(worldPos, worldPos + vec3(voxelSize), 0.0f);
 }
 
 /// Returns true if a rectangular-prism entity's iso bounding box overlaps
@@ -632,6 +1375,48 @@ constexpr vec2 pos2DIsoToPos2DGameResolution(const vec2 position, const vec2 zoo
     return position * zoomLevel * vec2(2, 1);
 }
 
+/// Camera sub-pixel decomposition for the trixel-canvas → framebuffer →
+/// screen blit chain. See @ref cameraSubPixelOffsets.
+struct CameraSubPixelOffsets {
+    /// Game-pixel offset for the trixel-canvas-to-framebuffer placement
+    /// (the translate term in `TRIXEL_TO_FRAMEBUFFER::calcModelMatrix`).
+    ivec2 framebufferGamePxOffset_;
+
+    /// Screen-pixel residual for the framebuffer-to-screen upscale blit
+    /// (the translate term in `FRAMEBUFFER_TO_SCREEN::calcModelMatrix`).
+    ivec2 screenPxResidual_;
+};
+
+/// Decomposes the camera's sub-iso-pixel position into a game-pixel-integer
+/// portion (for the framebuffer placement) and a screen-pixel residual (for
+/// the upscale blit).
+///
+/// The two outputs are derived from the SAME `subIsoGamePx` quantity with
+/// one IRMath::floor() per term, so the pair can never disagree at game-
+/// pixel boundaries — that is the anti-vibration invariant that prevents
+/// per-frame +/-1px jitter as a smoothly-moving camera crosses a game-pixel
+/// boundary at low game resolutions.
+///
+/// `IRPlatform::kIsoToScreenSign` is applied internally on both outputs:
+/// the game-pixel offset multiplies by sign AFTER floor() (to match the
+/// trixel-to-framebuffer convention); the screen residual multiplies by
+/// sign INSIDE floor() (so floor() always rounds toward -infinity in the
+/// motion direction, keeping the upscale residual monotone with camera
+/// motion). Both conventions are preserved as-is from the legacy split
+/// across `TRIXEL_TO_FRAMEBUFFER` and `FRAMEBUFFER_TO_SCREEN`; the helper
+/// is the single source of truth for both.
+constexpr CameraSubPixelOffsets
+cameraSubPixelOffsets(const vec2 cameraIso, const vec2 zoomLevel, const ivec2 scaleFactor) {
+    const vec2 subIsoGamePx = pos2DIsoToPos2DGameResolution(IRMath::fract(cameraIso), zoomLevel);
+    const vec2 gamePxFloor = IRMath::floor(subIsoGamePx);
+    const vec2 subGamePxResidual = subIsoGamePx - gamePxFloor;
+    const vec2 sign = IRPlatform::kIsoToScreenSign;
+    return CameraSubPixelOffsets{
+        ivec2(gamePxFloor) * ivec2(sign),
+        ivec2(IRMath::floor(subGamePxResidual * sign * vec2(scaleFactor))),
+    };
+}
+
 /// Inverse iso projection selecting the 3D position at a specific Z level,
 /// reading from the bottom Z face.
 template <ivec3 size>
@@ -676,6 +1461,43 @@ constexpr int index2DtoIndex1D(const ivec2 index, const ivec2 size) {
 /// Linearises a 3D index into a 1D array index (z-major, row-major order).
 constexpr int index3DtoIndex1D(const ivec3 index, const ivec3 size) {
     return index.z * size.x * size.y + index.y * size.x + index.x;
+}
+
+/// Perpendicular axis pair for structured bindings; avoids repeating (axis+k)%3 at each call site.
+constexpr std::pair<int, int> perpendicularAxes(int axis) {
+    return {(axis + 1) % 3, (axis + 2) % 3};
+}
+
+/// Invokes @p cb(x, y, z) for every integer grid cell in the inclusive
+/// AABB [lo, hi]. Use this to retire hand-written triple-nested loops over voxel volumes.
+template <typename Callback> inline void iterateAABB(ivec3 lo, ivec3 hi, Callback cb) {
+    for (int z = lo.z; z <= hi.z; ++z)
+        for (int y = lo.y; y <= hi.y; ++y)
+            for (int x = lo.x; x <= hi.x; ++x)
+                cb(x, y, z);
+}
+
+/// Invokes @p cb(x, y, z) for every cell where both 2D masks agree.
+/// @p maskXZ is indexed as [x + z * sizeXZ.x] (front/XZ silhouette);
+/// @p maskYZ is indexed as [y + z * sizeY] (side/YZ silhouette).
+/// sizeXZ.y is the shared Z extent; sizeY is the Y extent.
+template <typename Callback>
+inline void apply3DMaskIntersection(
+    const std::vector<bool> &maskXZ,
+    ivec2 sizeXZ,
+    const std::vector<bool> &maskYZ,
+    int sizeY,
+    Callback cb
+) {
+    for (int z = 0; z < sizeXZ.y; ++z)
+        for (int y = 0; y < sizeY; ++y)
+            for (int x = 0; x < sizeXZ.x; ++x) {
+                if (!maskXZ[static_cast<std::size_t>(x + z * sizeXZ.x)])
+                    continue;
+                if (!maskYZ[static_cast<std::size_t>(y + z * sizeY)])
+                    continue;
+                cb(x, y, z);
+            }
 }
 
 // ISOMETRIC THINGS
@@ -731,6 +1553,95 @@ constexpr uvec2 gameResolutionToSize2DIso(const uvec2 gameResolution, const uvec
 constexpr vec2
 gameResolutionToSize2DIso(const vec2 gameResolution, const vec2 scaleFactor = vec2(1.0f)) {
     return gameResolution / vec2(2, 1) / scaleFactor;
+}
+
+/// Worst-case texel dimensions for one per-axis trixel canvas used by the
+/// smooth camera Z-yaw path (#1308;
+/// docs/design/per-axis-trixel-canvas-rotation.md §"Bounded textures + minimum
+/// on-screen trixel size"). The three axis canvases are allocated once at this
+/// size and reused — never reallocated per frame — so the cost is bounded and
+/// only paid while the camera rotates.
+///
+/// Per dimension the size is the larger of two bounds:
+///   • Footprint — derived from the per-face deformation matrix D_φ at the
+///     residual-yaw bound ±π/4. Horizontal: the in-plane stretch gives √2·W
+///     (D_φ row-0 column magnitude is √2 there). Vertical: the Y/X-face row-1
+///     `(c−s−1, 1)` at ±π/4 gives `(−1, 1)`, so the worst-case AABB height is
+///     |−1|·W + 1·H = W + H, which exceeds √2·H for any W > (√2−1)·H. The
+///     full stretched column is (√2, −1) with length √3, not √2; √2 is only its
+///     horizontal component.
+///   • Density — a face going edge-on would otherwise need unbounded trixels
+///     along the skinny axis; the minimum on-screen trixel size floors it. The
+///     cardinal iso canvas packs 2 framebuffer px per trixel horizontally and 1
+///     vertically (see gameResolutionToSize2DIso), so flooring at
+///     @p minOnScreenTrixelPx framebuffer px caps extra subdivision at
+///     2 / floor horizontally and 1 / floor vertically over the cardinal texel
+///     count. Zoom scales trixels at TRIXEL_TO_FRAMEBUFFER (not by resizing the
+///     canvas), so it does not enter this bound.
+inline ivec2 perAxisTrixelCanvasWorstCaseSize(
+    const ivec2 cardinalExtent, const float minOnScreenTrixelPx = 1.0f
+) {
+    const float floorPx = max(minOnScreenTrixelPx, 1.0f);
+    const float W = static_cast<float>(cardinalExtent.x);
+    const float H = static_cast<float>(cardinalExtent.y);
+    // Horizontal: √2 in-plane stretch vs. 2px/trixel density floor.
+    const float scaleX = max(kSqrt2, 2.0f / floorPx);
+    // Vertical: Y/X-face row-1 shear at ±π/4 gives AABB height W + H, which
+    // exceeds the density floor H/floorPx (≤ H ≤ W + H) for any W ≥ 0.
+    const float boundsY = max(W + H, H / floorPx);
+    return ivec2{static_cast<int>(ceil(W * scaleX)), static_cast<int>(ceil(boundsY))};
+}
+
+/// Per-axis lattice-density cap for the smooth-camera-Z-yaw store (#1431).
+///
+/// The per-axis store (`c_voxel_to_trixel_stage_1`, `perAxisRoute != 0`) writes
+/// each voxel face into a face-local integer lattice at `world × subPerAxis`,
+/// keyed at `canvasHalf + inPlane(worldDisp) × subPerAxis` (see
+/// `ir_iso_common.glsl` `faceLocalBase`/`faceInPlaneCoords`). The canvas is
+/// sized once to the base-resolution rotated footprint
+/// (@ref perAxisTrixelCanvasWorstCaseSize) and does NOT scale with
+/// `subPerAxis`, so a large `subPerAxis` (high `voxel_render_subdivisions`, or
+/// high zoom — both fold into `effSub`) drives on-screen cells past
+/// `canvasSize` and `isInsideCanvas` silently drops them: the #1431 black-hole
+/// clip. This caps `subPerAxis` so the worst-case on-screen cell stays inside
+/// the canvas:
+///
+///     subPerAxisCapped = min(effSub, floor( canvasHalf / maxOnScreenWorldDisp ))
+///
+/// `maxOnScreenWorldDisp` is the largest in-plane world displacement of an
+/// on-screen voxel from the camera-tracked anchor: the visible cardinal-iso
+/// half-extent (`cardinalExtent / 2·zoom`) inverted to world on the depth-0
+/// plane (the `isoPixelToPos3D` closed form: `|wx|,|wy| ≤ isoHalf.x/2 +
+/// isoHalf.y/6`, `|wz| ≤ isoHalf.y/3`), grown by the √2 residual-yaw rotation
+/// footprint the canvas was sized for (@ref kSqrt2). The cap MUST be computed
+/// CPU-side: `effSub = clamp(m_vrs × round(zoom), 1, 16)` conflates subdivision
+/// and zoom, so a shader given only `effSub` + `canvasSize` cannot recover the
+/// zoom-dependent on-screen extent — the host knows `zoom` and feeds the capped
+/// value through `voxelRenderOptions.y` so the store, the framebuffer scatter,
+/// and the per-axis AO/lighting recovery all share one consistent world↔cell
+/// scale. Pass the same @p minOnScreenTrixelPx used to allocate the canvas
+/// (e.g. `kMinOnScreenTrixelSizePx`) so the cap is sized against the actual
+/// allocated canvas rather than the default. Returns ≥ 1.
+inline int perAxisSubdivisionCap(
+    const ivec2 cardinalExtent, const vec2 zoom, const float minOnScreenTrixelPx = 1.0f
+) {
+    const float W = static_cast<float>(cardinalExtent.x);
+    const float H = static_cast<float>(cardinalExtent.y);
+    const ivec2 canvasSize = perAxisTrixelCanvasWorstCaseSize(cardinalExtent, minOnScreenTrixelPx);
+    // Smaller zoom ⇒ larger visible extent ⇒ tighter cap; clamp away from 0.
+    const float isoHalfX = W / (2.0f * max(zoom.x, 1e-3f));
+    const float isoHalfY = H / (2.0f * max(zoom.y, 1e-3f));
+    // Depth-0 inverse of isoPixelToPos3D over the visible iso rect. The canvas
+    // X axis stores an in-plane x/y world axis; the Y axis stores z (X/Y faces)
+    // or x/y (Z face) — bound each by the larger candidate.
+    // At depth=0 (x+y+z=0): iso.y=-x-y+2z=3z → z=iso.y/3, y=iso.x/2-iso.y/6.
+    const float maxInPlaneXY = 0.5f * isoHalfX + isoHalfY / 6.0f;
+    const float maxInPlaneZ = isoHalfY / 3.0f;
+    const float maxDispX = maxInPlaneXY;
+    const float maxDispY = max(maxInPlaneZ, maxInPlaneXY);
+    const float capX = (0.5f * static_cast<float>(canvasSize.x)) / (kSqrt2 * maxDispX);
+    const float capY = (0.5f * static_cast<float>(canvasSize.y)) / (kSqrt2 * maxDispY);
+    return max(static_cast<int>(floor(min(capX, capY))), 1);
 }
 
 /// Returns the screen-pixel size of one iso triangle at the given zoom and

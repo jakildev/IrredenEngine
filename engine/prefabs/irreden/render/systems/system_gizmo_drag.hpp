@@ -8,7 +8,8 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 
@@ -17,13 +18,15 @@ namespace IRSystem {
 // Editor gizmo drag — drives the interaction state machine over the
 // per-frame hover flag GIZMO_HOVER just wrote. One drag is active at a
 // time; the dragged handle's anchor entity (typically the gizmo group)
-// gets its C_Position3D / accumulated rotation / accumulated scale
+// gets its C_LocalTransform / accumulated rotation / accumulated scale
 // updated until the mouse button releases.
 //
-// Pipeline: INPUT, after GIZMO_HOVER. Mutates anchor `C_Position3D::pos_`
-// (translate) and accumulates rotate / scale state on the system params
-// — render-side application of rotate/scale is a follow-up once a
-// canonical rotation/scale component lands.
+// Pipeline: INPUT, after GIZMO_HOVER. Mutates anchor
+// `C_LocalTransform::translation_` (translate) and
+// `C_LocalTransform::rotation_` (rotate, #1610 — FK pose editing reads
+// this through PROPAGATE_TRANSFORM + the skeletal skinning substrate);
+// scale still only accumulates on the system params — render-side
+// application is a follow-up once a canonical scale component lands.
 //
 // Drag math (translate):
 //   - At press, capture (a) the anchor's local position, (b) the
@@ -31,7 +34,7 @@ namespace IRSystem {
 //     through the anchor.
 //   - Each frame, recompute the cursor world point at THAT SAME plane
 //     and project the world delta onto the handle's unit axis.
-//   - anchor.pos_ = startPos + axisUnit * dot(worldDelta, axisUnit).
+//   - anchor.translation_ = startPos + axisUnit * dot(worldDelta, axisUnit).
 //   Fixing the plane prevents the gizmo from running away from the
 //   cursor as its iso depth changes.
 //
@@ -41,6 +44,12 @@ namespace IRSystem {
 //     refinement can project the ring plane into screen and use a
 //     true axis-perpendicular angle.
 //   - Shift held → angle snaps to `kRotateSnapStep` (π/12 = 15°).
+//   - anchor.rotation_ = pressRotation ∘ quatAxisAngle(ringAxis, delta):
+//     post-multiplying rotates about the anchor's LOCAL axis — the rings
+//     are children of the anchor, so the grabbed ring's color always
+//     names the local axis the user sees. Composed fresh from the
+//     press-time rotation each frame (not incrementally), so a long
+//     drag accumulates no quat drift.
 //
 // Drag math (scale):
 //   - SCALE_CENTER: cursor screen-distance from press point → uniform
@@ -56,6 +65,7 @@ template <> struct System<GIZMO_DRAG> {
 
     // Press-time captures.
     IRMath::vec3 dragStartAnchorPos_ = IRMath::vec3(0.0f);
+    IRMath::vec4 dragStartAnchorRot_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     IRMath::vec3 dragStartCursorWorld_ = IRMath::vec3(0.0f);
     float dragPlaneIsoDepth_ = 0.0f;
     IRMath::vec2 dragStartCursorScreen_ = IRMath::vec2(0.0f);
@@ -70,8 +80,8 @@ template <> struct System<GIZMO_DRAG> {
     // gizmo's drag from appearing as the new gizmo's current state.
     // endTick() reads these on the press→release transition to log the
     // final per-drag value. Wiring rotate / scale to an accumulating
-    // render-side component is a follow-up once a canonical
-    // C_Rotation / C_Scale pair lands.
+    // render-side component is a follow-up — the canonical channel is
+    // the quat on C_LocalTransform plus a future C_Scale.
     IREntity::EntityId accumOwner_ = IREntity::kNullEntity;
     float accumRotateAngle_ = 0.0f;
     float accumScaleUniform_ = 1.0f;
@@ -182,14 +192,13 @@ template <> struct System<GIZMO_DRAG> {
         dragKind_ = handle.kind_;
         dragAxis_ = handle.axis_;
 
-        auto &anchorLocal = IREntity::getComponent<IRComponents::C_Position3D>(dragAnchor_);
-        auto &anchorGlobal = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(dragAnchor_);
-        // APPLY_POSITION_OFFSET folds the modifier-driven offset channel
-        // into globalPos earlier in the frame, so the world-space anchor
-        // read here matches the rendered position.
-        const IRMath::vec3 anchorWorld = anchorGlobal.pos_;
+        auto &anchorLocal = IREntity::getComponent<IRComponents::C_LocalTransform>(dragAnchor_);
+        auto &anchorWorldTransform =
+            IREntity::getComponent<IRComponents::C_WorldTransform>(dragAnchor_);
+        const IRMath::vec3 anchorWorld = anchorWorldTransform.translation_;
 
-        dragStartAnchorPos_ = anchorLocal.pos_;
+        dragStartAnchorPos_ = anchorLocal.translation_;
+        dragStartAnchorRot_ = anchorLocal.rotation_;
         dragPlaneIsoDepth_ = canvasIsoDepthOfAnchor(anchorWorld);
         dragStartCursorWorld_ = IRRender::mouseWorldPos3DAtIsoDepth(dragPlaneIsoDepth_);
         dragStartCursorScreen_ = mouseScreen_;
@@ -209,7 +218,7 @@ template <> struct System<GIZMO_DRAG> {
     }
 
     void applyDrag() {
-        auto &anchorLocal = IREntity::getComponent<IRComponents::C_Position3D>(dragAnchor_);
+        auto &anchorLocal = IREntity::getComponent<IRComponents::C_LocalTransform>(dragAnchor_);
 
         switch (dragKind_) {
         case IRComponents::GizmoKind::TRANSLATE_ARROW: {
@@ -218,7 +227,7 @@ template <> struct System<GIZMO_DRAG> {
                 IRRender::mouseWorldPos3DAtIsoDepth(dragPlaneIsoDepth_);
             const IRMath::vec3 worldDelta = cursorWorld - dragStartCursorWorld_;
             const float along = IRMath::dot(worldDelta, axisUnit);
-            anchorLocal.pos_ = dragStartAnchorPos_ + axisUnit * along;
+            anchorLocal.translation_ = dragStartAnchorPos_ + axisUnit * along;
             break;
         }
         case IRComponents::GizmoKind::ROTATE_RING: {
@@ -228,6 +237,13 @@ template <> struct System<GIZMO_DRAG> {
                 delta = IRMath::round(delta / kRotateSnapStep) * kRotateSnapStep;
             }
             accumRotateAngle_ = delta;
+            // Post-multiply = rotation about the anchor's LOCAL ring axis;
+            // composed fresh from the press-time rotation so the drag
+            // accumulates no quat drift (see the header drag-math note).
+            anchorLocal.rotation_ = IRMath::quatMul(
+                dragStartAnchorRot_,
+                IRMath::quatAxisAngle(axisToUnit(dragAxis_), delta)
+            );
             break;
         }
         case IRComponents::GizmoKind::SCALE_STICK: {

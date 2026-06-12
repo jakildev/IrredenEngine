@@ -11,6 +11,34 @@ using SystemId = EntityId;
 
 enum SystemTickModifiers { SYSTEM_MODIFIER_NONE = 0, SYSTEM_MODIFIER_WITH_ENTITY = 1 };
 
+/// Per-system dispatch policy. T-222 Phase 2 of the multithreading epic
+/// (#226). Default `SERIAL` keeps every existing system unchanged.
+///
+/// - `SERIAL`        — run the tick on the main thread, one archetype
+///                     node at a time (legacy behavior).
+/// - `PARALLEL_FOR`  — within each matched archetype node, split the
+///                     entity range into chunks of `grainSize` and
+///                     dispatch each chunk to a worker via
+///                     `IRJob::parallelFor`. `beginTick`/`endTick` and
+///                     archetype iteration order still serialize on the
+///                     main thread.
+/// - `MAIN_THREAD`   — like `SERIAL`, but documents that the system
+///                     MUST run on the main thread (Lua-bound side
+///                     effects, GPU calls, etc.). Set by the validator
+///                     when a tick body uses a not-safe surface.
+enum class Concurrency {
+    SERIAL = 0,
+    PARALLEL_FOR,
+    MAIN_THREAD,
+};
+
+/// Default chunk size for `Concurrency::PARALLEL_FOR`. Workload-dependent
+/// in the general case; documented as a constant for now per #1069. A
+/// per-system override is accepted via the trailing `int grainSize`
+/// parameter to `createSystem` or the optional `static constexpr int
+/// kGrainSize` member on a `System<N>` specialization.
+inline constexpr int kDefaultGrainSize = 512;
+
 enum SystemEvent {
     BEGIN_TICK,
     TICK,
@@ -52,12 +80,23 @@ enum SystemName {
     VELOCITY_DRAG,
     MIDI_DELAY_PROCESS,
     PLANT_GROW,
-    GLOBAL_POSITION_3D,
     PROPAGATE_TRANSFORM,
-    APPLY_POSITION_OFFSET,
+    AUTO_SPIN_LOCAL_TRANSFORM,
+    ROTATION_TARGET_LOCAL_TRANSFORM,
+    // Sim-clock substrate (engine/prefabs/irreden/common/sim_clock.hpp).
+    // Order within UPDATE: SIM_CLOCK_ADVANCE first (advances the C_SimClock
+    // singleton), then CYCLE_BOUNDARY_DETECT / TIMER_FIRE read the new tick
+    // and raise their embedded boundary/fired events; place consumers after.
+    // Stopwatches have no system (elapsed is computed on read by IRSim::).
+    SIM_CLOCK_ADVANCE,
+    CYCLE_BOUNDARY_DETECT,
+    TIMER_FIRE,
+    PROPAGATE_CHUNK_MEMBERSHIP,
     VOXEL_SQUASH_STRETCH,
     UPDATE_VOXEL_SET_CHILDREN,
-    VOXEL_SCENE,
+    REBUILD_GRID_VOXELS,
+    REBUILD_DETACHED_VOXELS,
+    PROPAGATE_CANVAS_ROTATION,
     VOXEL_SET_RESHAPER,
     VOXEL_POOL,
     LIFETIME,
@@ -74,6 +113,13 @@ enum SystemName {
     SPRITE_ANIMATION_ADVANCE,
     GIZMO_SCREEN_SPACE_SIZE,
     LOD_UPDATE,
+    // World-space neighbour/spatial-query index. Rebuilds the
+    // C_SpatialIndex singleton each frame from C_WorldTransform +
+    // C_SpatialQueryable entities; a creation places it AFTER
+    // PROPAGATE_TRANSFORM (so translations are current) and BEFORE any
+    // consumer that calls IRPrefab::Spatial::queryRadius. See
+    // engine/prefabs/irreden/spatial/.
+    BUILD_SPATIAL_INDEX,
 
     // Modifier framework — runs at end of UPDATE, before RENDER reads
     // C_ResolvedFields. Order: decay all three vectors (per-entity,
@@ -91,19 +137,28 @@ enum SystemName {
     RENDERING_SCREEN_VIEW,
     RENDERING_TILE_SELECTOR,
     RESOLVE_SUN_DIRECTION,
+    // Complete voxel→trixel rasterization for every voxel-pool canvas:
+    // compact, stage-1, and stage-2 dispatches run in one per-canvas tick.
+    // (The former separate VOXEL_TO_TRIXEL_STAGE_2 system clobbered the
+    // shared voxel SSBOs across multi-canvas scenes — see system_voxel_to_trixel.hpp.)
     VOXEL_TO_TRIXEL_STAGE_1,
-    VOXEL_TO_TRIXEL_STAGE_2,
     TRIXEL_TO_TRIXEL,
     TRIXEL_TO_FRAMEBUFFER_FRAME_DATA,
     TRIXEL_TO_FRAMEBUFFER,
     GUI_TEXT_RENDER,
     TEXT_TO_TRIXEL,
-    SCREEN_SPACE_RESIDUAL_ROTATE,
     FRAMEBUFFER_TO_SCREEN,
     SPRITE_TO_SCREEN,
     DEBUG_OVERLAY,
     RENDERING_VELOCITY_2D_ISO,
     TEXTURE_SCROLL,
+    // Per-frame skeletal joint skin-matrix upload (#605 Phase 2.2 / #1603).
+    // Writes each C_Skeleton joint's skinMatrix into the binding-18
+    // EntityTransformBuffer (a contiguous block per skeleton, from the shared
+    // #1396 budget). MUST run after PROPAGATE_TRANSFORM (joint world transforms
+    // current) and BEFORE UPDATE_VOXEL_POSITIONS_GPU (so binding 18 is filled
+    // when the prepass skins per-voxel bone slots in #605 Phase 2.3).
+    UPDATE_JOINT_MATRICES,
     UPDATE_VOXEL_POSITIONS_GPU,
     UPDATE_GPU_PARTICLES,
     RENDER_GPU_PARTICLES_TO_TRIXEL,
@@ -111,12 +166,18 @@ enum SystemName {
     SHAPES_TO_TRIXEL,
     BUILD_LIGHT_OCCLUSION_GRID,
     COMPUTE_VOXEL_AO,
+    RESOLVE_PER_AXIS_SCREEN_DEPTH,
     BAKE_SUN_SHADOW_MAP,
     COMPUTE_SUN_SHADOW,
     COMPUTE_LIGHT_VOLUME,
     LIGHTING_TO_TRIXEL,
     FOG_TO_TRIXEL,
     CAMERA_MOUSE_PAN,
+    CAMERA_MOUSE_ROTATE,
+    CAMERA_KEY_DRAG_PAN,
+    CAMERA_KEY_DRAG_ROTATE,
+    CAMERA_SCROLL_ZOOM,
+    AUTO_YAW_ROTATE,
     VOXEL_PICKING,
     DEBUG_CULLING_MINIMAP,
     PERF_STATS_OVERLAY,

@@ -8,6 +8,47 @@
 # Bash-sourceable. Comments start with `#`. Values without quotes work
 # for integers; quote any value containing spaces.
 
+# --- Model classes -----------------------------------------------------------
+#
+# Work routes by model class — fable | opus | sonnet — carried on each task
+# (fleet:<class> label / **Model:** body field; optional **Effort:** line).
+# The dispatcher launches each worker iteration with its task's class;
+# architects run fable; the final reviewer runs opus; first-pass review,
+# smoke, and the merger LLM pass run sonnet. See FLEET.md "Model split".
+#
+# The fable class resolves at boot from a probed ladder —
+# claude-fable-5[1m] -> claude-fable-5 -> claude-opus-4-8[1m] — one-token
+# claude call per rung (a few cents, ~5-15 s). When the plan loses Fable
+# access, re-running fleet-up lands the class on the Opus floor.
+#
+# Pin a class verbatim (pinning fable skips the probe):
+# FLEET_MODEL_FABLE="claude-fable-5[1m]"
+# FLEET_MODEL_OPUS="claude-opus-4-8[1m]"
+# FLEET_MODEL_SONNET="sonnet"
+#
+# Per-role dispatch models for the bounded fixed-model roles:
+# FLEET_MODEL_MERGER="sonnet"
+# FLEET_MODEL_OPUS_REVIEWER="claude-opus-4-8[1m]"
+#
+# FLEET_MODEL_FABLE_FALLBACK is handed to dispatched (print-mode) fable
+# iterations as `claude --fallback-model`, so a single iteration survives
+# Fable being overloaded or dropping off the plan mid-session.
+# Comma-separated chain accepted; set to "" to disable. Interactive
+# architect panes can't take the flag (print-only) — they rely on the
+# boot-time resolution above. opus/sonnet dispatches never get a fallback.
+# FLEET_MODEL_FABLE_FALLBACK="claude-opus-4-8[1m]"
+#
+# Fleet-wide cap on concurrent fable-class iterations (the budget
+# throttle; counted across all panes, 0 disables fable dispatch):
+# FLEET_CONCURRENCY_MODEL_FABLE=1
+#
+# FLEET_MODEL_PROBE=0 skips the availability probe (offline / tests);
+# the first ladder candidate is used unprobed.
+# FLEET_MODEL_PROBE=1
+#
+# FLEET_MODEL_PROBE_TIMEOUT caps each probe call in seconds. Default 90.
+# FLEET_MODEL_PROBE_TIMEOUT=90
+
 # --- Per-role concurrency caps ----------------------------------------------
 #
 # Soft cap on simultaneous iterations per role. The dispatcher counts
@@ -18,17 +59,70 @@
 # pane wakes up alongside a normal dispatch to a free pane.
 #
 # Defaults match each role's current pane count under stock fleet-up
-# layout (2x opus-worker, 2x sonnet-author, 1 each of the rest), so under
-# default values no role hits its cap during normal operation. Tune up to
-# allow more parallelism (requires adding panes); tune down to throttle a
-# role that's burning too much credit budget.
+# layout (the unified worker lane fans out across all worker panes, 1 each
+# of the rest), so under default values no role hits its cap during normal
+# operation. Tune up to allow more parallelism (requires adding panes);
+# tune down to throttle a role that's burning too much credit budget.
 
-# FLEET_CONCURRENCY_OPUS_WORKER=2
-# FLEET_CONCURRENCY_SONNET_AUTHOR=2
+# FLEET_CONCURRENCY_WORKER=4         # unified worker lane (any model class)
 # FLEET_CONCURRENCY_SONNET_REVIEWER=1
 # FLEET_CONCURRENCY_OPUS_REVIEWER=1
 # FLEET_CONCURRENCY_QUEUE_MANAGER=1
 # FLEET_CONCURRENCY_MERGER=1
+# FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker pane
+# FLEET_CONCURRENCY_EPIC_STEWARD=1   # concurrent cap for the epic-steward pane
+#
+# Deprecated (pre-P2 per-lane caps). Still honored: when
+# FLEET_CONCURRENCY_WORKER is unset, the worker cap is the sum of these
+# two. Remove once your conf sets FLEET_CONCURRENCY_WORKER directly.
+# FLEET_CONCURRENCY_OPUS_WORKER=2
+# FLEET_CONCURRENCY_SONNET_AUTHOR=2
+
+# --- Build parallelism (ir-build CPU budget) --------------------------------
+#
+# How many concurrent fleet builds to size the CPU budget for. fleet-up
+# exports this as IR_FLEET_WORKERS, which ir-build uses to compute
+# per_build_max = cpu_budget / workers (each build takes that many of `nproc`
+# cores; the rest stay free for other panes' builds). Without it the engine
+# default is 1 -> every build grabs all cores and concurrent builds serialize
+# on the ir-acquire semaphore (600 s timeout = "can't allocate enough CPU").
+# Default = OPUS_WORKER + SONNET_AUTHOR caps (the build-heavy panes). Raise
+# for more build concurrency at fewer cores each; lower for faster individual
+# builds. A process-level IR_FLEET_WORKERS env var overrides this;
+# ~/.config/irreden/host.toml [concurrency] workers applies to non-fleet
+# ir-build invocations.
+# FLEET_BUILD_WORKERS=4
+
+# --- Per-role effort levels -------------------------------------------------
+#
+# Reasoning effort per role: "high" or "xhigh" (xhigh ≈ one notch below the
+# model's max — deeper reasoning, more budget per iteration). Override
+# priority: env var FLEET_EFFORT_<ROLE> > this conf > global FLEET_EFFORT >
+# built-in default.
+#
+# Built-in defaults — the heavy design / render-reasoning roles run xhigh,
+# the rest run high (their work is bounded by the diff / task in front of
+# them, so xhigh buys little). The worker lane's value here is only the
+# fallthrough — per-task Effort: and model-class resolution override it:
+#   opus-architect   xhigh        opus-reviewer    high
+#   game-architect   xhigh        merger           high
+#   worker           xhigh        sonnet-reviewer  high
+#                                 smoke-worker     high
+#
+# Set FLEET_EFFORT (no role suffix) to force one level on every pane.
+
+# FLEET_EFFORT_OPUS_ARCHITECT=xhigh
+# FLEET_EFFORT_GAME_ARCHITECT=xhigh
+# FLEET_EFFORT_WORKER=xhigh
+# FLEET_EFFORT_OPUS_REVIEWER=high
+# FLEET_EFFORT_MERGER=high
+# FLEET_EFFORT_SONNET_REVIEWER=high
+# FLEET_EFFORT_SMOKE_WORKER=high
+# FLEET_EFFORT_EPIC_STEWARD=xhigh
+#
+# Deprecated (pre-P2): FLEET_EFFORT_OPUS_WORKER is still honored as a
+# fallthrough for the worker lane when FLEET_EFFORT_WORKER is unset.
+# FLEET_EFFORT_OPUS_WORKER=xhigh
 
 # --- Usage gate (per-rate-limit-type thresholds) ----------------------------
 #
@@ -81,6 +175,29 @@
 # FLEET_DISPATCHER_USAGE_STALE_SECONDS=3600
 # FLEET_DISPATCHER_RESET_GRACE_SECONDS=600
 
+# --- Dispatch stagger + short-window 429 backoff --------------------------
+#
+# The dispatcher otherwise fires every idle pane in a single tick — at
+# fleet-up that's ~8 cold `claude` cold-starts (each doing a large
+# state.json read) inside one minute, which trips Anthropic's short-window
+# 429 ("Server is temporarily limiting requests (not your usage limit)").
+#
+# FLEET_DISPATCH_MIN_GAP_SECONDS is a MINIMUM wall-clock gap between any two
+# claude launches, across all roles and panes. It spreads the burst (with a
+# 10s poll, launches land ~one per tick); a lone steady-state dispatch whose
+# last launch was long ago still fires immediately. Default 8. Set 0 to
+# disable (single-pane / test setups).
+# FLEET_DISPATCH_MIN_GAP_SECONDS=8
+#
+# FLEET_DISPATCHER_RATE429_DELAY is the per-pane cooldown applied after a
+# short-window 429 *failure* (claude exhausted its internal retries). It is
+# deliberately much shorter than FLEET_DISPATCHER_LIMIT_DELAY (the usage /
+# quota cooldown): the 429 is a per-minute load-shed that clears in seconds,
+# not a quota wall. fleet-dispatch-wrap also re-arms the role's trigger on a
+# 429 failure so reviewer / smoke panes (no periodic re-arm) retry once the
+# window clears. Default 90s.
+# FLEET_DISPATCHER_RATE429_DELAY=90
+
 # --- fleet-run default watchdog -------------------------------------------
 #
 # When fleet-run is invoked without an explicit --timeout, apply this
@@ -97,3 +214,40 @@
 # overnight pile-up of stuck windows.
 
 # FLEET_RUN_DEFAULT_TIMEOUT=300
+
+# --- Smoke-only worker (cross-host) ----------------------------------------
+#
+# FLEET_SMOKE_WORKER=1 tells fleet-up to create and launch a dedicated
+# smoke-worker pane. Useful when running a second host (e.g. Ubuntu
+# alongside a macOS fleet) that should only smoke-test render PRs and not
+# pick up tasks. The pane appears in the ops window and is dispatched by
+# fleet-dispatcher (session-scoped — the dispatcher for THIS session picks
+# it up; a second host needs its own fleet-dispatcher pointed at its session).
+#
+# When unset or 0, no smoke-worker worktree or pane is created. The
+# sonnet-author and opus-worker panes continue to run step-1b smoke as a
+# secondary responsibility — this flag is opt-in extra dedicated capacity.
+
+# FLEET_SMOKE_WORKER=0
+
+# --- Epic-steward (umbrella bookkeeper) ------------------------------------
+#
+# FLEET_EPIC_STEWARD=1 tells fleet-up to create and launch a dedicated
+# epic-steward pane. The epic-steward is the fleet's epic bookkeeper: a
+# transient, dispatcher-driven role that maintains `fleet:epic` umbrella
+# `## Children` checklists, triages design-blocked epic children, aggregates
+# proposal packages for the architect, and drives epic close-out. It writes
+# only docs artifacts (plan files, umbrella comments, labels) — never pushes
+# code. Two worktrees are created: one under the engine clone and one under
+# the game clone (the pane's cwd is the engine worktree; it cds for game epics).
+#
+# When unset or 0, no epic-steward worktree or pane is created. The role's
+# epic-bookkeeping work simply doesn't run; umbrella issues accumulate until
+# the flag is enabled or the human triages them manually.
+#
+# Recommended: enable during active multi-epic queues; disable when the queue
+# is mostly single-task work to conserve credit budget.
+
+# FLEET_EPIC_STEWARD=0
+# FLEET_CONCURRENCY_EPIC_STEWARD=1  # matches the single pane
+# FLEET_EFFORT_EPIC_STEWARD=xhigh   # umbrella triage needs heavier reasoning

@@ -1,0 +1,133 @@
+#include <irreden/world/chunk_persistence.hpp>
+
+#include <irreden/asset/voxel_set_format.hpp>
+#include <irreden/ir_constants.hpp>
+#include <irreden/ir_profile.hpp>
+#include <irreden/world/chunk_coord.hpp>
+
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
+#include <system_error>
+#include <utility>
+
+namespace IRWorld {
+
+namespace {
+
+constexpr int kChunkVolume = static_cast<int>(IRConstants::kChunkSize.x) *
+                             static_cast<int>(IRConstants::kChunkSize.y) *
+                             static_cast<int>(IRConstants::kChunkSize.z);
+
+// Bucket size for the two-level x/y directory split (see header comment).
+constexpr int kDirSplitN = 64;
+
+// Floor division toward −∞ (C++ `/` truncates toward zero for negatives).
+constexpr int floorDiv(int a, int b) noexcept {
+    return a / b - (a % b < 0 ? 1 : 0);
+}
+
+std::string axisFragment(int v) {
+    const int magnitude = (v >= 0) ? v : -v;
+    std::ostringstream oss;
+    oss << (v >= 0 ? '+' : '-') << std::setw(5) << std::setfill('0') << magnitude;
+    return oss.str();
+}
+
+std::string filenameForCoord(const IRMath::ivec3 &coord) {
+    return axisFragment(coord.x) + "_" + axisFragment(coord.y) + "_" + axisFragment(coord.z) +
+           ".vxs";
+}
+
+std::string buildChunkPath(
+    const std::string &chunksDir, const IRMath::ivec3 &coord
+) {
+    return (std::filesystem::path{chunksDir} / std::to_string(floorDiv(coord.x, kDirSplitN)) /
+            std::to_string(floorDiv(coord.y, kDirSplitN)) / filenameForCoord(coord))
+        .string();
+}
+
+} // namespace
+
+ChunkVoxelDiskPersistence::ChunkVoxelDiskPersistence(std::string saveRoot)
+    : m_saveRoot{std::move(saveRoot)}
+    , m_chunksDir{(std::filesystem::path{m_saveRoot} / "chunks").string()} {}
+
+std::string ChunkVoxelDiskPersistence::chunkPath(IRPrefab::Chunk::ChunkKey key) const {
+    return buildChunkPath(m_chunksDir, IRPrefab::Chunk::unpack(key));
+}
+
+IRAsset::BinaryStatus ChunkVoxelDiskPersistence::saveChunk(
+    IRPrefab::Chunk::ChunkKey key, std::span<const IRAsset::VoxelRecord> voxels
+) {
+    if (static_cast<int>(voxels.size()) != kChunkVolume) {
+        std::ostringstream oss;
+        oss << "ChunkVoxelDiskPersistence::saveChunk: voxel span size " << voxels.size()
+            << " does not match chunk volume " << kChunkVolume;
+        IRE_LOG_ERROR("{}", oss.str());
+        return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::WriteFailed, oss.str());
+    }
+
+    auto chunkCoord = IRPrefab::Chunk::unpack(key);
+    const auto chunkFilePath = buildChunkPath(m_chunksDir, chunkCoord);
+    const auto leafDir = std::filesystem::path{chunkFilePath}.parent_path().string();
+    std::error_code ec;
+    std::filesystem::create_directories(leafDir, ec);
+    if (ec) {
+        const std::string msg =
+            "ChunkVoxelDiskPersistence::saveChunk: create_directories failed: " + ec.message() +
+            " (" + leafDir + ")";
+        IRE_LOG_ERROR("{}", msg);
+        return IRAsset::BinaryStatus::error(IRAsset::BinaryIOError::OpenFailed, msg);
+    }
+
+    auto origin = IRPrefab::Chunk::chunkOriginVoxel(chunkCoord);
+
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMin_ = origin;
+    dense.boundsMax_ = origin + IRMath::ivec3{IRConstants::kChunkSize};
+    dense.voxels_.assign(voxels.begin(), voxels.end());
+
+    return IRAsset::saveDenseVoxelSet(chunkFilePath, dense);
+}
+
+std::optional<std::vector<IRAsset::VoxelRecord>>
+ChunkVoxelDiskPersistence::loadChunk(IRPrefab::Chunk::ChunkKey key) const {
+    const std::string path = chunkPath(key);
+
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec) || ec) {
+        return std::nullopt;
+    }
+
+    auto result = IRAsset::loadDenseVoxelSet(path);
+    if (!result.ok()) {
+        IRE_LOG_WARN(
+            "ChunkVoxelDiskPersistence::loadChunk: {} read failed (code={}): {}",
+            path,
+            static_cast<int>(result.status_.code_),
+            result.status_.message_
+        );
+        return std::nullopt;
+    }
+
+    auto &dense = result.value_.dense_;
+    if (dense.voxels_.size() != static_cast<std::size_t>(kChunkVolume)) {
+        IRE_LOG_WARN(
+            "ChunkVoxelDiskPersistence::loadChunk: {} record count {} != chunk volume {}; treating "
+            "as empty",
+            path,
+            dense.voxels_.size(),
+            kChunkVolume
+        );
+        return std::nullopt;
+    }
+    return std::move(dense.voxels_);
+}
+
+bool ChunkVoxelDiskPersistence::chunkExists(IRPrefab::Chunk::ChunkKey key) const {
+    std::error_code ec;
+    return std::filesystem::exists(chunkPath(key), ec) && !ec;
+}
+
+} // namespace IRWorld

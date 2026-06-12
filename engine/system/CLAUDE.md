@@ -22,9 +22,12 @@ matched archetype. Per-entity iteration is the body's responsibility,
 not SystemManager's — the Lua surface uses this to keep the C++/Lua
 boundary at one `sol::function` call per archetype.
 
-Both paths share the same scheduler: `executePipeline` walks
-`m_ticks[system].functionTick_`, which is a `std::function<void(
-ArchetypeNode*)>` regardless of which factory created the system.
+Both paths share the same scheduler: `executePipeline` dispatches via
+`m_ticks[system].prepareRangedTick_` for row-iterating forms (the binder
+resolves component vectors on the main thread and returns a
+`void(begin,end)` closure), or via `m_ticks[system].functionTick_` for
+the batch form and dynamic systems; row-iterating forms leave
+`functionTick_` empty.
 
 ## `replaceSystemBody` for hot-reload
 
@@ -240,9 +243,230 @@ IRSystem::registerPipeline(IRTime::Events::UPDATE, {
 });
 ```
 
-Order in the list is execution order. Systems run sequentially — no
-parallelism. A creation registers its pipelines during init; changing them
+Order in the list is execution order. A creation registers its pipelines during init; changing them
 mid-frame is supported but uncommon.
+
+### Pipeline groups (T-224)
+
+`registerPipelineGroups` lets a creation declare which systems are
+safe to **co-execute** within a single UPDATE/RENDER tick. Each inner
+brace is a *parallel group* — its members run concurrently on the
+IRJob worker pool. Groups themselves run sequentially in declaration
+order; `IREntity::flushStructuralChanges` runs between groups (never
+between systems within a group — the validator ensures group members
+don't mutate the archetype graph at the same time).
+
+```cpp
+IRSystem::registerPipelineGroups(IRTime::Events::UPDATE, {
+    { velocity, drag, gravity },   // group 0: parallel — disjoint writes
+    { globalPosition },            // group 1: serial
+    { lifetime },                  // group 2: serial — spawner / destroyer
+});
+```
+
+Legacy `registerPipeline(list<SystemId>)` is sugar for one-system-per-group —
+every existing call site keeps its prior dispatch semantics bit-for-bit.
+
+**Cross-system access validator.** `IRSystem::validateAllPipelineGroups()`
+runs once at `World::start()`, after every system + every pipeline is
+registered. For each multi-system group it walks the registered
+`SystemAccess` descriptors and FATALs (with both system names + the
+offending component) on the first conflict:
+
+- `mainThreadOnly_` on any group member — `MainThread`-tagged systems
+  cannot co-execute. Pick another group.
+- `mutatesArchetypeGraph_` (`Spawns` / `Destroys`) on **any** group
+  member — the EntityManager's deferred-mutation queue is not
+  thread-safe in Phase 1, so a mutator forbids ALL parallel siblings
+  (not just other mutators). Move the mutator to its own singleton
+  group; T-225 lifts this when per-worker deferred-mutation queues
+  land.
+- `writes_` of A intersects `writes_` of B — concurrent writes to the
+  same component column race. Split across groups.
+- `writes_` of A intersects `reads_` of B (or vice-versa) — the
+  reader would observe a torn snapshot. Split across groups.
+
+The validator is implemented by `findPipelineGroupConflict` in
+`system_access.hpp` — a pure function over a `SystemAccess` array
+that tests can call directly with hand-built fixtures. The
+SystemManager path wraps it with the per-group iteration + the
+IR_ASSERT diagnostic.
+
+**Dispatch.** `executePipeline` walks the group sequence. Single-system
+groups dispatch serially (identical to the pre-T-224 path) and fire
+`TickObserver::onBeforeTick` / `onAfterTick` around the
+`executeSystem` call from the main thread — the observer surface
+relies on main-thread context (the engine's `GpuStageTimingObserver`
+calls `IRRender::device()->finish()` / `writeTimestamp`).
+Multi-system groups fan out via
+`IRJob::parallelFor(0, group.size(), 1, ...)` so each system runs
+on a worker; observer fires are **intentionally skipped** for those
+groups (per-system timing is undefined when systems run concurrently,
+and the GPU APIs the observer drives aren't worker-safe). Any system
+that needs per-tick observer brackets must live in a singleton group.
+`flushStructuralChanges` runs once per group on the main thread before
+the next group starts. When `g_jobManager` is null (unit tests,
+pre-`World` init), groups fall back to serial in-declaration-order
+dispatch.
+
+A `Concurrency::PARALLEL_FOR` system must live in its own singleton
+group. `validateAllPipelineGroups` (called at `World::start()`) FATALs
+if a `PARALLEL_FOR` member is found in a multi-system group — the
+inner `IRJob::parallelFor` it drives cannot fan out from a worker
+thread (main-thread assert, deadlock risk under full-pool saturation).
+In release builds where the validator is a no-op, `executeSystem` falls
+back to serial dispatch as a safety net.
+
+### Appending to a live pipeline (#1540)
+
+`registerPipeline` / `registerPipelineGroups` **replace** the event's
+whole system list. That's wrong for a runtime whose C++ pipeline is
+built before a script runs — the midi runtime calls `initSystems()`
+(knob CC driver, `ROTATION_TARGET_LOCAL_TRANSFORM`, render stages)
+before `runScript("main.lua")`, so a second `registerPipeline` from
+Lua would wipe those C++ systems (and re-listing them double-creates
+named GPU resources). The composition primitives add one system onto
+the existing pipeline instead:
+
+```cpp
+IRSystem::appendToPipeline(IRTime::Events::UPDATE, sysId);              // end
+IRSystem::insertIntoPipelineBefore(IRTime::Events::UPDATE, sysId, anchor);
+IRSystem::insertIntoPipelineAfter(IRTime::Events::UPDATE, sysId, anchor);
+```
+
+- Each adds `sysId` as its **own singleton (serial) group**, so it
+  never co-executes with a neighbor and needs no cross-system
+  validation (the validator skips size-1 groups).
+- `appendToPipeline` creates the event's first group if none exists
+  yet; the insert forms require the anchor's pipeline to already be
+  registered.
+- All three assert (debug; no-op in release) if `sysId` is already in
+  the event's pipeline (a double-add would tick it twice), and the
+  insert forms assert if `anchor` isn't found.
+- Lua surface: `IRSystem.appendSystem(event, sysId)`,
+  `IRSystem.insertSystemBefore(event, sysId, anchor)`,
+  `IRSystem.insertSystemAfter(event, sysId, anchor)` — see
+  `engine/script/CLAUDE.md` "Pipeline composition".
+
+## SystemAccess derivation (T-221)
+
+`engine/system/include/irreden/system/system_access.hpp` defines
+`deriveAccessFromSignature<TickFn, Components...>()` — a constexpr
+trait that returns a `SystemAccess` descriptor (reads / writes set,
+`usesEntityId_`, `isBatchForm_`, plus tag flags `Spawns`, `Destroys`,
+`MainThread`, `ParallelSafe`, `AlsoReads<...>`, `AlsoWrites<...>`).
+T-222 wired the descriptor into `IRSystem::createSystem` as the
+input to the `PARALLEL_FOR` single-system validator (see below);
+T-224 will compose it across pipeline groups for cross-system
+validation. Reads vs writes is signalled by `const`-ness on the
+component in the template pack (`createSystem<const C_Foo, C_Bar>`
+records `C_Foo` as read and `C_Bar` as written). New systems can opt
+in to the const-as-read marker; legacy systems stay conservative
+(all writes).
+
+## Concurrency policy + PARALLEL_FOR dispatch (T-222)
+
+`IRSystem::Concurrency` (defined in `ir_system_types.hpp`) is a
+per-system enum: `SERIAL` (default, legacy behavior), `PARALLEL_FOR`
+(row chunks fan out to the IRJob worker pool), or `MAIN_THREAD`
+(forced main-thread; serializes like SERIAL but documents intent).
+
+A system opts into PARALLEL_FOR by either:
+
+- **`registerSystem<N, Cs...>` form** — declare
+  `static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;`
+  (and optionally `static constexpr int kGrainSize = …;`) on the
+  `System<N>` specialization. The detector falls back to SERIAL /
+  `kDefaultGrainSize` when not declared, so legacy specs are
+  unchanged.
+- **`createSystem<Cs...>` free function** — pass `Concurrency` and
+  optional `grainSize` as the trailing parameters (after begin/end/
+  relation ticks).
+
+`SystemManager::executeSystem` reads the per-system Concurrency at
+dispatch time and, for `PARALLEL_FOR` systems with a populated
+main-thread binder (`prepareRangedTick_`, T-333) and a node larger
+than the grain size, calls the binder once on the main thread to
+resolve per-component vector refs, then passes the returned
+`void(begin, end)` worker closure to `IRJob::parallelFor(0,
+node->length_, grainSize, ...)`. Resolving the component vectors on
+the main thread is what keeps PARALLEL_FOR workers off
+`EntityManager::m_pureComponentTypes`'s hash lookup — that map is
+not safe under concurrent reads from workers. The `beginTick` /
+`endTick` hooks and the archetype-node iteration order always
+serialize on the main thread regardless of policy.
+
+**Registration-time validation** (in `IRSystem::createSystem`):
+
+- `PARALLEL_FOR + usesEntityId_ + !parallelSafe_` → FATAL. The per-
+  entity-id form passes the iterated `EntityId` to the body; without
+  an explicit `ParallelSafe` opt-in the body is presumed to look up
+  another entity through it (non-thread-safe on managers).
+- `PARALLEL_FOR + isBatchForm_` → FATAL. The per-archetype batch
+  form consumes the whole column; row-level chunking would re-enter
+  the body with overlapping handles.
+- `PARALLEL_FOR + isRelationForm_` → FATAL (T-334). The relation
+  branch in `system_manager.hpp`'s `rangedFn` calls
+  `getRelatedEntityFromArchetype` + `getComponentOptional` on
+  `EntityManager` from inside the per-row loop; those manager lookups
+  are not thread-safe. The bit is set in `createSystem` (not the
+  trait) because the two parameter packs collide in a free-function
+  template — see the TODO at `InvocableWithOptionalRelations` in
+  `ir_system_types.hpp`.
+- `PARALLEL_FOR + mainThreadOnly_` → FATAL. Pick one — the
+  `MainThread` tag is explicit "do not parallelize".
+
+The first system to opt in is `VELOCITY_3D` (T-222 POC). T-328
+completed the other two POC ports from #1069: `VELOCITY_DRAG` is now
+`PARALLEL_FOR` (per-thread `IRMath::randomFloat` makes its
+`postHoverVelocity` reset path thread-safe). T-379 bulk-migrated 10
+trivially-safe prefab systems:
+
+**`PARALLEL_FOR` (active as of T-379):**
+
+| System | Domain |
+|---|---|
+| `VELOCITY_3D` | update |
+| `VELOCITY_DRAG` | update |
+| `ACCELERATION_3D` | update |
+| `PERIODIC_IDLE` | update |
+| `GOTO_3D` | update |
+| `REACTIVE_RETURN_3D` | update |
+| `MODIFIER_DECAY` | common |
+| `GLOBAL_MODIFIER_DECAY` | common |
+| `MODIFIER_RESOLVE_EXEMPT` | common |
+| `RENDERING_VELOCITY_2D_ISO` | render |
+| `TEXTURE_SCROLL` | render |
+| `WIDGET_APPLY_SLIDER` | render |
+
+**Kept `SERIAL` (with rationale):**
+
+- `ANIMATION_COLOR` — tick reads the active clip via
+  `IREntity::getComponentOptional` on a foreign entity id; the entity
+  manager is not thread-safe from workers. Re-evaluate after T-225.
+- `MODIFIER_LAMBDA_DECAY` — erasing `C_LambdaModifiers` entries calls
+  `sol::function`'s destructor which calls `lua_unref` into `LuaScript`
+  state; sol2 is not thread-safe.
+- `MODIFIER_RESOLVE_GLOBAL` — reads global modifier state via a
+  function-local static singleton (known `cpp-systems.md` violation);
+  the global pointer access is not worker-safe until the static is
+  migrated to `SystemParams`.
+- `GRAVITY_3D` — function-local static singleton instance (same
+  violation; migrate together with `MODIFIER_RESOLVE_GLOBAL`).
+
+### IR_ASSERT_MAIN_THREAD
+
+`engine/system/include/irreden/system/ir_assert_main_thread.hpp`
+exposes `IR_ASSERT_MAIN_THREAD()` — a debug-only macro that calls
+`IRJob::isMainThread()` and FATALs with the offending worker id.
+Used to guard manager-entry surfaces that mutate non-thread-safe
+singletons (`g_entityManager`, `g_systemManager`, render / audio /
+sol2 bindings) when called from inside a `PARALLEL_FOR` system
+body. Catches the "lambda body escapes into a global" case the
+`SystemAccess` trait cannot see from the tick signature alone. No-op
+in `IR_RELEASE` builds and safe to call when `g_jobManager ==
+nullptr` (unit tests / pre-`World` startup return `true` as the
+default).
 
 ## Gotchas
 

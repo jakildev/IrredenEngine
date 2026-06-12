@@ -9,10 +9,10 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/common/components/component_name.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/math/sdf.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
@@ -25,7 +25,6 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
@@ -39,7 +38,6 @@
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -88,6 +86,10 @@ struct DemoConfig {
     vec3 directionalOverrideDirection_ = vec3(-0.3f, -0.2f, -0.93f);
     float directionalOverrideIntensity_ = 1.0f;
     float directionalOverrideAmbient_ = 0.4f;
+    bool hdrEnabled_ = false;
+    float exposure_ = 1.0f;
+    float skyIntensity_ = 0.0f;
+    vec3 skyColor_ = vec3(0.5f, 0.7f, 1.0f);
 
     // Optional override hooks. When `geometryFn_` is set, the demo's scene
     // geometry comes from the callback instead of the default voxel-pool /
@@ -101,17 +103,17 @@ struct DemoConfig {
 namespace detail {
 
 inline constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "zoom1_origin"},
-    {2.0f, vec2(0, 0), "zoom2_origin"},
-    {4.0f, vec2(0, 0), "zoom4_origin"},
-    {4.0f, vec2(3, 5), "zoom4_offset_3_5"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
+    {4.0f, vec2(0, 0), 0.0f, "zoom4_origin"},
+    {4.0f, vec2(3, 5), 0.0f, "zoom4_offset_3_5"},
     // Higher-zoom shots make per-voxel-pool / SDF parity issues
     // (self-shadowing, AO mismatch from rounding-half-integer voxel
     // positions) immediately visible — they're how the rounding bug
     // fixed in commit `<this>` was found and how regressions on it
     // would surface.
-    {8.0f, vec2(0, 0), "zoom8_origin"},
-    {16.0f, vec2(0, 0), "zoom16_origin"},
+    {8.0f, vec2(0, 0), 0.0f, "zoom8_origin"},
+    {16.0f, vec2(0, 0), 0.0f, "zoom16_origin"},
 };
 
 inline int g_autoWarmupFrames = 0;
@@ -159,7 +161,7 @@ inline EntityId createVoxelPoolShape(
     vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color, ivec3 halfExtent
 ) {
     EntityId entity = IREntity::createEntity(
-        C_Position3D{position},
+        C_LocalTransform{position},
         C_VoxelSetNew{halfExtent * 2 + ivec3(1), color, true}
     );
     auto &voxelSet = IREntity::getComponent<C_VoxelSetNew>(entity);
@@ -179,7 +181,7 @@ inline EntityId createVoxelPoolShape(
 inline EntityId
 createSdfShape(vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color) {
     return IREntity::createEntity(
-        C_Position3D{position},
+        C_LocalTransform{position},
         C_ShapeDescriptor{type, shapeParams, color}
     );
 }
@@ -265,7 +267,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addDirectional_) {
         IREntity::createEntity(
-            C_Position3D{vec3(0.0f)},
             C_LocalTransform{vec3(0.0f)},
             C_LightSource{
                 LightType::DIRECTIONAL,
@@ -281,7 +282,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addEmissive_) {
         IREntity::createEntity(
-            C_Position3D{vec3(24.0f, 6.0f, -2.0f)},
             C_LocalTransform{vec3(24.0f, 6.0f, -2.0f)},
             C_LightSource{
                 LightType::EMISSIVE,
@@ -294,7 +294,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addPoint_) {
         IREntity::createEntity(
-            C_Position3D{vec3(34.0f, -7.0f, -1.0f)},
             C_LocalTransform{vec3(34.0f, -7.0f, -1.0f)},
             C_LightSource{
                 LightType::POINT,
@@ -307,7 +306,6 @@ inline void createLights(const DemoConfig &config) {
 
     if (config.addSpot_) {
         IREntity::createEntity(
-            C_Position3D{vec3(10.0f, -10.0f, -2.0f)},
             C_LocalTransform{vec3(10.0f, -10.0f, -2.0f)},
             C_LightSource{
                 LightType::SPOT,
@@ -334,21 +332,25 @@ inline void initEntities(const DemoConfig &config) {
         IRPrefab::Fog::revealRadius(24, 6, 42);
     }
 
+    IRRender::setHDREnabled(config.hdrEnabled_);
+    IRRender::setExposure(config.exposure_);
+    IRRender::setSkyIntensity(config.skyIntensity_);
+    IRRender::setSkyColor(config.skyColor_);
+
     IRRender::setDebugOverlay(
         g_cliOverlay == IRRender::DebugOverlayMode::NONE ? config.overlay_ : g_cliOverlay
     );
 }
 
 inline void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 
 inline void initSystems(const DemoConfig &config) {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
 
@@ -357,19 +359,21 @@ inline void initSystems(const DemoConfig &config) {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+        }
+    );
 
     // Demo-supplied tick (e.g. animated sun direction). Runs first in the
     // render pipeline so subsequent systems pick up the updated state.

@@ -23,7 +23,14 @@ class TimeManager {
     void beginMainLoop() {
         TimePoint current = Clock::now();
         m_mainLoopElapsed = current - m_mainLoopPrevious;
-        m_profilerUpdate.addLag(m_mainLoopElapsed);
+        // Fixed-step capture mode: during a headless --auto-screenshot run,
+        // advance the UPDATE accumulator by exactly one fixed period per render
+        // frame instead of real wall-clock elapsed. The capture window is
+        // counted in render frames, but per-tick animation (AUTO_SPIN, etc.)
+        // advances per UPDATE tick; without this, the uncapped (vsync-off) loop
+        // races through the window in under one update period and the animation
+        // is captured at ~identity and non-deterministically.
+        m_profilerUpdate.addLag(m_fixedStep ? kFPSNanoDuration : m_mainLoopElapsed);
         m_mainLoopPrevious = current;
     }
 
@@ -39,9 +46,29 @@ class TimeManager {
         m_profilerUpdate.skipEvent();
     }
 
+    void clampUpdateLag(uint32_t maxTicks) {
+        m_profilerUpdate.clampLag(maxTicks);
+    }
+
+    /// Enable deterministic fixed-step UPDATE pacing: beginMainLoop feeds the
+    /// UPDATE accumulator exactly one fixed period per render frame instead of
+    /// real wall-clock elapsed. Resets the UPDATE lag accumulator so warmup=N
+    /// render frames produce exactly N UPDATE ticks. Used for headless
+    /// --auto-screenshot capture so per-tick animation advances reproducibly.
+    void enableFixedStep() {
+        m_profilerUpdate.resetLag();
+        m_fixedStep = true;
+    }
+
     template <Events event> double deltaTime();
     template <Events event> double fps();
     template <Events event> double frameTimeMs();
+
+    /// Raw engine UPDATE tick count — see
+    /// `EventProfiler<UPDATE>::fixedStepCount`. Backs `IRTime::tick()`.
+    std::uint64_t fixedStepCount() const {
+        return m_profilerUpdate.fixedStepCount();
+    }
 
     unsigned int droppedFrames() const {
         return m_profilerRender.droppedFrames();
@@ -57,6 +84,7 @@ class TimeManager {
     TimePoint m_start;
     TimePoint m_mainLoopPrevious;
     NanoSeconds m_mainLoopElapsed;
+    bool m_fixedStep = false;
 };
 
 } // namespace IRTime

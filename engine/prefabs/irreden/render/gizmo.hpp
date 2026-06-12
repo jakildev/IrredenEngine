@@ -15,7 +15,7 @@
 // Phase 3 (T-165) wires hover detection + drag interaction via the
 // `GIZMO_HOVER` / `GIZMO_DRAG` INPUT-pipeline systems; each spawned
 // handle carries `baseColor_` (for the hover tint round-trip) and
-// `anchorEntity_` (the entity whose `C_Position3D` drag mutates — the
+// `anchorEntity_` (the entity whose `C_LocalTransform` drag mutates — the
 // gizmo group parent for multi-handle gizmos, `kNullEntity` for
 // single-marker handles that should be hoverable but not draggable).
 
@@ -24,7 +24,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_name.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -54,8 +54,8 @@ constexpr float kIKMarkerBaseRadius = 1.1f;
 constexpr float kIKMarkerHeight = 2.2f;
 
 using IRComponents::C_GizmoHandle;
+using IRComponents::C_LocalTransform;
 using IRComponents::C_Name;
-using IRComponents::C_Position3D;
 using IRComponents::C_ShapeDescriptor;
 using IRComponents::GizmoAxis;
 using IRComponents::GizmoKind;
@@ -116,7 +116,7 @@ inline IREntity::EntityId spawnHandle(
     // downstream systems. Phase 2 screen-space sizing reads
     // `referenceParams_` / `referenceLocalPos_` as the unscaled baseline
     // and writes scaled copies back each UPDATE tick. `isAnchor_` is
-    // true for single-entity markers whose own `C_Position3D` is the
+    // true for single-entity markers whose own `C_LocalTransform` is the
     // world-space anchor (the editor writes it post-construction) —
     // Phase 2 then scales params but leaves pos alone. Phase 3 records
     // `baseColor_` for the hover-tint round-trip and `anchorEntity_` =
@@ -127,7 +127,7 @@ inline IREntity::EntityId spawnHandle(
     // no-op.
     const bool isAnchor = (parent == IREntity::kNullEntity);
     IREntity::EntityId handle = IREntity::createEntity(
-        C_Position3D{localPos},
+        C_LocalTransform{localPos},
         shapeDesc,
         C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor, color, parent},
         C_Name{name}
@@ -139,11 +139,61 @@ inline IREntity::EntityId spawnHandle(
 }
 
 inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name) {
-    IREntity::EntityId group = IREntity::createEntity(C_Position3D{vec3(0.0f)}, C_Name{name});
+    IREntity::EntityId group = IREntity::createEntity(C_LocalTransform{vec3(0.0f)}, C_Name{name});
     if (parent != IREntity::kNullEntity) {
         IREntity::setParent(group, parent);
     }
     return group;
+}
+
+// Shared by createRotateGizmo / createRotateGizmoForAnchor: the three axis
+// rings (TORUS per axis), parented to — and anchored at — `parent`.
+inline void spawnRotateRings(IREntity::EntityId parent, const char *ringName) {
+    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
+        spawnHandle(
+            parent,
+            GizmoKind::ROTATE_RING,
+            axis,
+            vec3(0.0f),
+            IRRender::ShapeType::TORUS,
+            vec4(kRingMajorRadius, kRingMinorRadius, 0.0f, 0.0f),
+            axisColor(axis),
+            ringName
+        );
+    }
+}
+
+// Shared by createTranslateGizmo / createTranslateGizmoForAnchor: the three
+// axis arrows (CYLINDER shaft + CONE head per axis), parented to — and
+// anchored at — `parent`.
+inline void
+spawnTranslateArrows(IREntity::EntityId parent, const char *shaftName, const char *headName) {
+    constexpr float shaftCenter = kArrowShaftLength * 0.5f;
+    constexpr float headCenter = kArrowShaftLength + kArrowHeadLength * 0.5f;
+
+    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
+        const Color color = axisColor(axis);
+        spawnHandle(
+            parent,
+            GizmoKind::TRANSLATE_ARROW,
+            axis,
+            axisOffset(axis, shaftCenter),
+            IRRender::ShapeType::CYLINDER,
+            vec4(kArrowShaftRadius, 0.0f, kArrowShaftLength, 0.0f),
+            color,
+            shaftName
+        );
+        spawnHandle(
+            parent,
+            GizmoKind::TRANSLATE_ARROW,
+            axis,
+            axisOffset(axis, headCenter),
+            IRRender::ShapeType::CONE,
+            vec4(kArrowHeadRadius, 0.0f, kArrowHeadLength, 0.0f),
+            color,
+            headName
+        );
+    }
 }
 
 } // namespace detail
@@ -153,54 +203,46 @@ inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name)
 inline IREntity::EntityId createTranslateGizmo(IREntity::EntityId parent = IREntity::kNullEntity) {
     using namespace detail;
     IREntity::EntityId group = makeGroup(parent, "GizmoTranslate");
-
-    constexpr float shaftCenter = kArrowShaftLength * 0.5f;
-    constexpr float headCenter = kArrowShaftLength + kArrowHeadLength * 0.5f;
-
-    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
-        const Color color = axisColor(axis);
-        spawnHandle(
-            group,
-            GizmoKind::TRANSLATE_ARROW,
-            axis,
-            axisOffset(axis, shaftCenter),
-            IRRender::ShapeType::CYLINDER,
-            vec4(kArrowShaftRadius, 0.0f, kArrowShaftLength, 0.0f),
-            color,
-            "GizmoTranslateShaft"
-        );
-        spawnHandle(
-            group,
-            GizmoKind::TRANSLATE_ARROW,
-            axis,
-            axisOffset(axis, headCenter),
-            IRRender::ShapeType::CONE,
-            vec4(kArrowHeadRadius, 0.0f, kArrowHeadLength, 0.0f),
-            color,
-            "GizmoTranslateHead"
-        );
-    }
+    spawnTranslateArrows(group, "GizmoTranslateShaft", "GizmoTranslateHead");
     return group;
+}
+
+/// Translate gizmo whose three axis arrows drag the given `anchor`
+/// entity's own `C_LocalTransform` (rather than a separate gizmo group).
+/// Each arrow is parented to `anchor` so it tracks the anchor as it
+/// moves, and its `C_GizmoHandle::anchorEntity_` points at `anchor` so a
+/// `GIZMO_DRAG` mutates the anchor directly. Use for per-target placement
+/// handles where the moved entity IS the visual anchor — e.g. a skeletal
+/// joint authored in the voxel editor (#1604). No group entity is
+/// created; the returned id is `anchor` itself. (`createTranslateGizmo`,
+/// by contrast, anchors its arrows to the group it returns, so dragging
+/// moves the gizmo as a free-standing unit.)
+inline IREntity::EntityId createTranslateGizmoForAnchor(IREntity::EntityId anchor) {
+    using namespace detail;
+    spawnTranslateArrows(anchor, "GizmoAnchorTranslateShaft", "GizmoAnchorTranslateHead");
+    return anchor;
 }
 
 /// Rotate gizmo — three axis rings (TORUS per axis).
 inline IREntity::EntityId createRotateGizmo(IREntity::EntityId parent = IREntity::kNullEntity) {
     using namespace detail;
     IREntity::EntityId group = makeGroup(parent, "GizmoRotate");
-
-    for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
-        spawnHandle(
-            group,
-            GizmoKind::ROTATE_RING,
-            axis,
-            vec3(0.0f),
-            IRRender::ShapeType::TORUS,
-            vec4(kRingMajorRadius, kRingMinorRadius, 0.0f, 0.0f),
-            axisColor(axis),
-            "GizmoRotateRing"
-        );
-    }
+    spawnRotateRings(group, "GizmoRotateRing");
     return group;
+}
+
+/// Rotate gizmo whose three axis rings rotate the given `anchor` entity's
+/// own `C_LocalTransform::rotation_` (rather than a separate gizmo group).
+/// Each ring is parented to `anchor` so it tracks the anchor as it moves,
+/// and its `C_GizmoHandle::anchorEntity_` points at `anchor` so a
+/// `GIZMO_DRAG` rotation lands on the anchor directly. Use for per-target
+/// posing handles where the rotated entity IS the visual anchor — e.g. FK
+/// pose editing of a skeletal joint in the voxel editor (#1610). No group
+/// entity is created; the returned id is `anchor` itself.
+inline IREntity::EntityId createRotateGizmoForAnchor(IREntity::EntityId anchor) {
+    using namespace detail;
+    spawnRotateRings(anchor, "GizmoAnchorRotateRing");
+    return anchor;
 }
 
 /// Scale gizmo — three axis sticks with terminal caps + a center cube

@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# fleet-pr-checkout-detached — fetch a PR's head ref and check it out
+# in detached-HEAD state. Replaces `gh pr checkout <N>` (or
+# `git checkout -B <ref> origin/<ref>`) in fleet worker / merger flows
+# so the same branch can be checked out in multiple worktrees at once.
+#
+# Why this exists
+# ---------------
+# Git refuses to check out the same branch in two worktrees at a time
+# (the local branch ref can only be owned by one worktree). The fleet
+# previously worked around this with a "busy-branch filter" — workers
+# read `git worktree list`, found the PR's head ref already checked
+# out somewhere, and skipped the iteration entirely. That correctly
+# avoided `gh pr checkout` errors, but it ALSO meant the operator
+# inspecting a PR in the main repo clone silently blocked every fleet
+# iteration on that PR until they switched back to master.
+#
+# A detached HEAD doesn't claim the branch ref — any number of
+# worktrees can have the same commit checked out simultaneously.
+# Workers commit on the detached HEAD, then push back to the branch
+# ref directly with `git push --force-with-lease origin HEAD:<head>`.
+# Concurrency safety against concurrent amendments (another worker,
+# the operator pushing from their main repo, the merger mid-rebase)
+# comes from the lease check: if the remote ref moved between fetch
+# and push, the loser exits clean and the next iteration retries.
+#
+# The wrapper also writes a sentinel `.git/fleet-amend-ref` containing
+# the head ref name. The sibling `fleet-pr-amend-push` script reads
+# this sentinel to know where to push the amendment, so the LLM
+# doesn't have to remember or pass the head ref name across steps.
+#
+# Usage
+# -----
+#   fleet-pr-checkout-detached <pr-number> [--repo <slug>]
+#
+# Side effects in CWD:
+#   - fetches origin/<head-ref> (or `pull/<N>/head` if the head ref is
+#     unavailable as a remote branch — happens for fork PRs)
+#   - `git checkout --detach origin/<head-ref>`
+#   - writes `.git/fleet-amend-ref` with the head ref name
+#
+# Exit status:
+#   0  on success
+#   1  on resolution / fetch / checkout failure
+#   2  on usage error
+#
+# Source of truth: scripts/fleet/fleet-pr-checkout-detached in the
+# engine repo. Installed to ~/bin/ by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "usage: fleet-pr-checkout-detached <pr-number> [--repo <slug>]" >&2
+    exit 2
+fi
+
+# Help is handled first so `--help` isn't mis-parsed as the positional
+# pr-number (and rejected by the integer check below).
+case "$1" in
+    -h|--help)
+        sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'
+        exit 0
+        ;;
+esac
+
+pr_number="$1"
+shift
+
+repo_slug=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            if [[ $# -lt 2 ]]; then
+                echo "fleet-pr-checkout-detached: --repo requires a value" >&2
+                exit 2
+            fi
+            repo_slug="$2"
+            shift 2
+            ;;
+        *)
+            echo "fleet-pr-checkout-detached: unknown arg '$1'" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+    echo "fleet-pr-checkout-detached: <pr-number> must be a positive integer (got: $pr_number)" >&2
+    exit 2
+fi
+
+# Worktree-identity guard (engine #1325). The detached checkout below
+# rewinds the cwd repo's HEAD; if cwd is the shared main clone (not a
+# fleet worktree) that silently moves the operator's / another agent's
+# checkout and can strand work. Resolve the sibling helper the same way
+# the other ir-*/fleet-* tools do; fall back to an inline structural
+# check if it isn't linked yet (e.g. before install.sh has run).
+guard="${BASH_SOURCE[0]}"
+while [[ -L "$guard" ]]; do guard="$(readlink "$guard")"; done
+guard="$(cd "$(dirname "$guard")" && pwd)/fleet-assert-worktree"
+if [[ -x "$guard" ]]; then
+    "$guard" || exit 1
+else
+    _tl=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$_tl" && "$_tl" != */.claude/worktrees/* && -z "${FLEET_ALLOW_MAIN_CLONE:-}" ]]; then
+        echo "fleet-pr-checkout-detached: REFUSING — cwd ($_tl) is not a fleet worktree (engine #1325)." >&2
+        echo "  cd into your worktree before checking out a PR. Human override: FLEET_ALLOW_MAIN_CLONE=1" >&2
+        exit 1
+    fi
+fi
+
+repo_args=()
+if [[ -n "$repo_slug" ]]; then
+    repo_args=(--repo "$repo_slug")
+fi
+
+# Resolve the PR's head ref name. `gh pr view` queries the local
+# remote config first, so we keep the --repo argument optional for
+# the common case where the CWD's `origin` matches the PR's repo.
+head_ref=$(gh pr view "$pr_number" "${repo_args[@]}" --json headRefName -q '.headRefName' 2>/dev/null || true)
+if [[ -z "$head_ref" ]]; then
+    echo "fleet-pr-checkout-detached: could not resolve head ref for PR #$pr_number" >&2
+    exit 1
+fi
+
+# Fetch the PR's head ref. For same-repo PRs this is the branch name
+# under refs/heads/; for fork PRs we'd need pull/<N>/head — but the
+# fleet currently only opens same-repo PRs (the bot uses jakildev's
+# account), so refs/heads/<head> is sufficient. If that ever changes,
+# add a fallback to `pull/<N>/head` here.
+if ! git fetch origin "$head_ref" >/dev/null 2>&1; then
+    echo "fleet-pr-checkout-detached: git fetch origin $head_ref failed" >&2
+    exit 1
+fi
+
+if ! git checkout --detach "origin/$head_ref" >/dev/null 2>&1; then
+    echo "fleet-pr-checkout-detached: git checkout --detach origin/$head_ref failed" >&2
+    exit 1
+fi
+
+# Sentinel for commit-and-push amend mode + fleet-pr-amend-push. The
+# `.git/` directory is the right home — it's worktree-local (not the
+# shared repo's .git when in a worktree, but the per-worktree
+# .git/worktrees/<name>/ directory — `git rev-parse --git-dir` resolves
+# the right one for both layouts). Using `--git-dir` avoids needing
+# to special-case the worktree case.
+git_dir=$(git rev-parse --git-dir)
+# Record the checkout-time base SHA next to the head ref (line 2).
+# fleet-pr-amend-push leases its force-push against THIS sha
+# (--force-with-lease=<ref>:<sha>), so a concurrent push that moved
+# origin/<head_ref> after this checkout is REJECTED, not clobbered. A bare
+# --force-with-lease leases against the remote-tracking ref, which any
+# intervening `git fetch` silently refreshes to the other agent's commit —
+# defeating the protection (observed dual-worker clobber on #1310, 2026-05-29).
+base_sha=$(git rev-parse HEAD)
+printf '%s\n%s\n' "$head_ref" "$base_sha" >"$git_dir/fleet-amend-ref"
+
+printf 'fleet-pr-checkout-detached: PR #%s on detached HEAD at origin/%s (base %s)\n' "$pr_number" "$head_ref" "${base_sha:0:8}"
+printf '  Push the amendment with: fleet-pr-amend-push  (lease pinned to base %s)\n' "${base_sha:0:8}"

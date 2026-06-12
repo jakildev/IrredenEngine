@@ -1,76 +1,55 @@
 #!/usr/bin/env bash
-# fleet-build — cmake --build wrapper with auto-parallelism and worktree detection.
+# fleet-build — backwards-compatible shim for ir-build.
 #
-# Removes the need for agents to embed $(nproc) or $(sysctl -n hw.ncpu)
-# in their Bash calls, which triggers Claude Code's command_substitution
-# security gate and blocks unattended operation.
+# Execs ir-build (engine/tools/bin/ir-build) with the same arguments.
+# The worktree-aware build dir, auto-configure, parallelism injection,
+# and ir-acquire cpu lock wrapping all live in ir-build.
 #
-# Auto-detects the current git worktree root and uses <root>/build as
-# the build directory. Each worktree gets its own build tree — no more
-# conflicts between parallel agents. If the build tree hasn't been
-# configured yet, fleet-build runs cmake --preset automatically.
-#
-# Usage:
-#   fleet-build --target IRShapeDebug
-#   fleet-build --target IRCreationDefault
-#   fleet-build --target IrredenEngineTest -- -j4   # override parallelism
-#
-# All arguments are forwarded to `cmake --build`. If no -j flag is
-# provided, one is injected automatically using the detected CPU count.
-#
-# Source of truth: scripts/fleet/fleet-build in the engine repo.
+# Source of truth: scripts/fleet/fleet-build in the engine repo (shim).
 # Installed to ~/bin/fleet-build (as a symlink) by scripts/fleet/install.sh.
+# The real implementation lives at engine/tools/bin/ir-build, which is
+# also symlinked into ~/bin/.
 
 set -euo pipefail
 
-# --- Shared helpers (detect_engine_root) ---
-_FLEET_COMMON_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-common.sh"
-if [[ ! -f "$_FLEET_COMMON_SH" ]]; then
-    echo "fleet-build: missing fleet-common.sh (expected next to fleet-build)" >&2
-    exit 1
-fi
-# shellcheck source=fleet-common.sh
-source "$_FLEET_COMMON_SH"
+# Resolve ir-build through the symlinked-script discipline used by every
+# other ir-* tool. Prefer the source tree adjacent to this shim (works
+# from a worktree before install.sh runs); fall back to PATH lookup.
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+IR_BUILD="$SCRIPT_DIR/../../engine/tools/bin/ir-build"
 
-# --- Build directory resolution ---
-# Priority: $IRREDEN_BUILD_DIR > <worktree-root>/build > ~/src/IrredenEngine/build
-WORKTREE_ROOT=$(detect_engine_root)
-BUILD_DIR="${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}"
-
-# --- Auto-configure if the build tree doesn't exist yet ---
-if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
-    case "$(uname -s)" in
-        Darwin)          PRESET="macos-debug" ;;
-        Linux)           PRESET="linux-debug" ;;
-        MINGW*|MSYS*|CYGWIN*) PRESET="windows-debug" ;;
-        *)
-            echo "fleet-build: unsupported platform $(uname -s)" >&2
-            exit 1
-            ;;
-    esac
-    echo "fleet-build: no build tree at $BUILD_DIR"
-    echo "fleet-build: configuring with preset '$PRESET'..."
-    cmake --preset "$PRESET" -S "$WORKTREE_ROOT"
-    echo "fleet-build: configure done."
-fi
-
-# --- Auto-detect CPU count if no -j flag was passed ---
-has_j_flag=false
-for arg in "$@"; do
-    case "$arg" in
-        -j*|--parallel*) has_j_flag=true ;;
-    esac
+# Redirect "--target format" / "-t format" to "--target format-changed" so
+# fleet builds only reformat branch-touched files, not the entire tree.
+# The bare "format" target is whole-tree; reserve it for intentional
+# cleanup PRs invoked via ir-build or cmake directly.
+args=("$@")
+new_args=()
+i=0
+while (( i < ${#args[@]} )); do
+    arg="${args[i]}"
+    if [[ ("$arg" == "--target" || "$arg" == "-t") && "${args[i+1]:-}" == "format" ]]; then
+        new_args+=("$arg" "format-changed")
+        i=$(( i + 2 ))
+    elif [[ "$arg" == "--target=format" || "$arg" == "-t=format" ]]; then
+        new_args+=("${arg%=format}=format-changed")
+        i=$(( i + 1 ))
+    else
+        new_args+=("$arg")
+        i=$(( i + 1 ))
+    fi
 done
 
-if $has_j_flag; then
-    exec cmake --build "$BUILD_DIR" "$@"
-else
-    if command -v nproc >/dev/null 2>&1; then
-        JOBS=$(nproc)
-    elif command -v sysctl >/dev/null 2>&1; then
-        JOBS=$(sysctl -n hw.ncpu)
-    else
-        JOBS=4
-    fi
-    exec cmake --build "$BUILD_DIR" -j"$JOBS" "$@"
+if [[ -x "$IR_BUILD" ]]; then
+    exec "$IR_BUILD" "${new_args[@]}"
 fi
+
+# Fall back to PATH-resolved ir-build (~/bin/ir-build after install.sh).
+if command -v ir-build >/dev/null 2>&1; then
+    exec ir-build "${new_args[@]}"
+fi
+
+echo "fleet-build: cannot find ir-build (expected at $IR_BUILD or on PATH)" >&2
+echo "             run scripts/fleet/install.sh to set up the symlinks" >&2
+exit 1

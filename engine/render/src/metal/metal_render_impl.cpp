@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace IRRender {
@@ -55,12 +56,14 @@ void bindRenderResources(MTL::RenderCommandEncoder *encoder) {
         if (uniform.buffer_ != nullptr) {
             encoder->setVertexBuffer(uniform.buffer_, uniform.offset_, i);
             encoder->setFragmentBuffer(uniform.buffer_, uniform.offset_, i);
+            markMetalBufferEncoded(uniform.buffer_);
         }
 
         const auto &storage = boundMetalBuffer(BufferTarget::SHADER_STORAGE, i);
         if (storage.buffer_ != nullptr) {
             encoder->setVertexBuffer(storage.buffer_, storage.offset_, i);
             encoder->setFragmentBuffer(storage.buffer_, storage.offset_, i);
+            markMetalBufferEncoded(storage.buffer_);
         }
 
         if (MTL::Texture *texture = boundMetalTexture(i); texture != nullptr) {
@@ -75,11 +78,13 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
         const auto &uniform = boundMetalBuffer(BufferTarget::UNIFORM, i);
         if (uniform.buffer_ != nullptr) {
             encoder->setBuffer(uniform.buffer_, uniform.offset_, i);
+            markMetalBufferEncoded(uniform.buffer_);
         }
 
         const auto &storage = boundMetalBuffer(BufferTarget::SHADER_STORAGE, i);
         if (storage.buffer_ != nullptr) {
             encoder->setBuffer(storage.buffer_, storage.offset_, i);
+            markMetalBufferEncoded(storage.buffer_);
         }
 
         if (MTL::Texture *texture = boundMetalTexture(i); texture != nullptr) {
@@ -91,9 +96,18 @@ void bindComputeResources(MTL::ComputeCommandEncoder *encoder) {
     }
 
     // Image atomic scratch buffer (mirrors the canvas distance R32I texture).
-    // See metal_runtime.hpp for the rationale; binding slot is fixed.
+    // See metal_runtime.hpp for the rationale; binding slot is fixed. Bound
+    // ONLY for kernels registered as scratch consumers: the scratch pointer is
+    // sticky (set by every R32I bindAsImage, never cleared), and slot 16
+    // doubles as kBufferIndex_RevoxelizeDetachedParams — an unconditional bind
+    // clobbered c_revoxelize_detached's params UBO on every encode after the
+    // first distance-image bind of the app's lifetime (#1619).
     if (MTL::Buffer *scratch = currentImageAtomicScratch(); scratch != nullptr) {
-        encoder->setBuffer(scratch, 0, kMetalImageAtomicScratchSlot);
+        const MetalPipelineStateProvider *pipeline = activeMetalPipeline();
+        if (pipeline != nullptr && pipeline->usesImageAtomicScratch()) {
+            encoder->setBuffer(scratch, 0, kMetalImageAtomicScratchSlot);
+            markMetalBufferEncoded(scratch);
+        }
     }
 }
 
@@ -232,9 +246,31 @@ class MetalRenderDevice final : public RenderDevice {
             releaseTimestampPair(pair);
         }
         m_timestamps.clear();
+        // counterSets() returns a non-owning pointer (the MTL::Device owns
+        // the set), so we clear the reference without ->release().
         m_timestampCounterSet = nullptr;
         m_supportsTimestampPairs = false;
+        for (auto &[texture, buf] : m_clearSourceBuffers) {
+            if (buf != nullptr) {
+                buf->release();
+            }
+        }
+        m_clearSourceBuffers.clear();
         shutdownMetalRuntime();
+    }
+
+    void releaseClearSourceBuffer(MTL::Texture *texture) {
+        if (texture == nullptr) {
+            return;
+        }
+        const auto it = m_clearSourceBuffers.find(texture);
+        if (it == m_clearSourceBuffers.end()) {
+            return;
+        }
+        if (it->second != nullptr) {
+            it->second->release();
+        }
+        m_clearSourceBuffers.erase(it);
     }
 
     void beginFrame() override {
@@ -383,6 +419,7 @@ class MetalRenderDevice final : public RenderDevice {
         }
         encoder->setComputePipelineState(pipeline->getComputePipelineState());
         bindComputeResources(encoder);
+        markMetalBufferEncoded(mtlIndirectBuffer);
         encoder->dispatchThreadgroups(
             mtlIndirectBuffer,
             static_cast<NS::UInteger>(offset),
@@ -414,6 +451,8 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
+        markMetalBufferEncoded(layout.indexBuffer_);
         encoder->drawIndexedPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(count),
@@ -451,6 +490,8 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
+        markMetalBufferEncoded(layout.indexBuffer_);
         encoder->drawIndexedPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(count),
@@ -494,6 +535,7 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),
@@ -531,6 +573,7 @@ metalCurrentDepthPixelFormat(),
         }
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),
@@ -563,40 +606,84 @@ metalCurrentDepthPixelFormat(),
         if (width == 0 || height == 0) {
             return;
         }
-        // Pixel size derived from format. For the formats we currently
-        // create through the engine (RGBA8, R32I, RG32UI, RGBA32F) the
-        // bytes-per-pixel is uniquely determined.
         std::size_t bytesPerPixel = 4;
         const auto pixelFormat = texture->pixelFormat();
-        if (pixelFormat == MTL::PixelFormatRG32Uint) {
+        if (pixelFormat == MTL::PixelFormatRG32Uint ||
+            pixelFormat == MTL::PixelFormatRGBA16Float) {
             bytesPerPixel = 8;
         } else if (pixelFormat == MTL::PixelFormatRGBA32Float) {
             bytesPerPixel = 16;
         }
+        const std::size_t totalBytes =
+            static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytesPerPixel;
 
-        std::vector<std::uint8_t> clearData(
-            static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytesPerPixel
-        );
-        if (data != nullptr) {
-            for (std::size_t i = 0; i < clearData.size(); i += bytesPerPixel) {
-                std::memcpy(clearData.data() + i, data, bytesPerPixel);
+        // Get or create a persistent SharedMode source buffer for this texture.
+        // The buffer is filled once at first call for this texture; data changes
+        // on later calls are silently ignored. Current callers always pass the
+        // same constant clear pattern, so this is benign.
+        // Blitted GPU-side every frame — no per-frame CPU allocation or stall.
+        MTL::Buffer *clearBuf = nullptr;
+        {
+            const auto it = m_clearSourceBuffers.find(texture);
+            if (it == m_clearSourceBuffers.end()) {
+                clearBuf = metalDevice()->newBuffer(
+                    totalBytes, MTL::ResourceStorageModeShared
+                );
+                IR_ASSERT(clearBuf != nullptr, "Failed to create Metal clearTexImage buffer");
+                auto *bytes = static_cast<std::uint8_t *>(clearBuf->contents());
+                if (data != nullptr) {
+                    for (std::size_t i = 0; i < totalBytes; i += bytesPerPixel) {
+                        std::memcpy(bytes + i, data, bytesPerPixel);
+                    }
+                } else {
+                    std::memset(bytes, 0, totalBytes);
+                }
+                m_clearSourceBuffers[texture] = clearBuf;
+            } else {
+                clearBuf = it->second;
+            }
+        }
+
+        auto *commandBuffer = metalCommandBuffer();
+        if (commandBuffer != nullptr) {
+            // GPU-side blit: no per-frame allocation, no replaceRegion stall.
+            auto *blit = commandBuffer->blitCommandEncoder();
+            blit->copyFromBuffer(
+                clearBuf,
+                0,
+                static_cast<NS::UInteger>(width * bytesPerPixel),
+                totalBytes,
+                MTL::Size::Make(width, height, 1),
+                texture,
+                0,
+                static_cast<NS::UInteger>(level),
+                MTL::Origin::Make(0, 0, 0)
+            );
+            blit->endEncoding();
+
+            // Mirror the clear into the image atomic scratch buffer so atomic
+            // image-min sees the same starting state as the texture itself.
+            if (pixelFormat == MTL::PixelFormatR32Sint) {
+                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                    scratch != nullptr) {
+                    auto *blit2 = commandBuffer->blitCommandEncoder();
+                    blit2->copyFromBuffer(clearBuf, 0, scratch, 0, totalBytes);
+                    blit2->endEncoding();
+                }
             }
         } else {
-            std::memset(clearData.data(), 0, clearData.size());
-        }
-        texture->replaceRegion(
-            MTL::Region::Make2D(0, 0, width, height),
-            static_cast<NS::UInteger>(level),
-            clearData.data(),
-            static_cast<NS::UInteger>(width * bytesPerPixel)
-        );
-
-        // Mirror the clear into the image atomic scratch buffer so atomic
-        // image-min sees the same starting state as the texture itself.
-        if (pixelFormat == MTL::PixelFormatR32Sint) {
-            if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
-                scratch != nullptr) {
-                std::memcpy(scratch->contents(), clearData.data(), clearData.size());
+            // No command buffer (e.g. during startup init): fall back to replaceRegion.
+            texture->replaceRegion(
+                MTL::Region::Make2D(0, 0, width, height),
+                static_cast<NS::UInteger>(level),
+                clearBuf->contents(),
+                static_cast<NS::UInteger>(width * bytesPerPixel)
+            );
+            if (pixelFormat == MTL::PixelFormatR32Sint) {
+                if (MTL::Buffer *scratch = lookupImageAtomicScratchBuffer(texture);
+                    scratch != nullptr) {
+                    std::memcpy(scratch->contents(), clearBuf->contents(), totalBytes);
+                }
             }
         }
     }
@@ -634,12 +721,25 @@ metalCurrentDepthPixelFormat(),
         descriptor->release();
 
         if (sampleBuffer == nullptr) {
-            const char *description =
-                error != nullptr && error->localizedDescription() != nullptr
-                    ? error->localizedDescription()->utf8String()
-                    : "<unknown>";
-            IR_LOG_WARN("Failed to create Metal timestamp counter sample buffer: {}", description);
-            m_supportsTimestampPairs = false;
+            // Per-pair failure (quota exhaustion mid-tagStage loop is the
+            // common cause) is non-fatal: stages that already got valid
+            // pairs keep timing, the observer no-ops on this stage's invalid
+            // handles (see `nextAvailableSlot`), and `useLegacyTiming` does
+            // not flip — global state matches the constructor probe, not
+            // a per-call result. Log once so the operator notices the
+            // degradation but doesn't get spammed.
+            if (!m_loggedTimestampAllocFailure) {
+                const char *description =
+                    error != nullptr && error->localizedDescription() != nullptr
+                        ? error->localizedDescription()->utf8String()
+                        : "<unknown>";
+                IR_LOG_WARN(
+                    "Failed to create Metal timestamp counter sample buffer "
+                    "(quota likely exhausted; later-tagged stages skip per-stage GPU timing): {}",
+                    description
+                );
+                m_loggedTimestampAllocFailure = true;
+            }
             return kInvalidGpuTimestampHandle;
         }
 
@@ -661,8 +761,18 @@ metalCurrentDepthPixelFormat(),
     }
 
     int recommendedTimestampPairsInFlight() const override {
-        // This backend waits at present today, so one pair per tagged stage is
-        // enough and avoids exhausting Metal's limited sample-buffer quota.
+        // Today's Metal pipeline blocks at `present()` (one frame of GPU work
+        // in flight, then `waitUntilCompleted`), so a single `MTL::CounterSampleBuffer`
+        // per tagged stage is sufficient: by the top of frame N+1 the GPU has
+        // already finished frame N's samples and `resolveCounterRange` returns
+        // valid data without stalling. Bumping past 1 is wasted on this
+        // pipeline and risks exhausting the device's limited sample-buffer
+        // quota (Apple Silicon devices observed at ~stages × 2 = ~40-pair
+        // ceiling, 2026-05-21). Once `present()` is made async (separate task),
+        // raise this to 2-3 so frame N-2 readback survives the deeper
+        // GPU latency without dropping per-frame samples. The per-pair
+        // graceful-fallback in `createTimestampPair` keeps already-tagged
+        // stages timing-functional even when a future bump exceeds quota.
         return 1;
     }
 
@@ -731,10 +841,29 @@ metalCurrentDepthPixelFormat(),
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;
     bool m_supportsTimestampPairs = false;
+    bool m_loggedTimestampAllocFailure = false;
+    std::unordered_map<MTL::Texture *, MTL::Buffer *> m_clearSourceBuffers;
 };
 
-MetalRenderDevice g_metalRenderDevice;
+// Intentionally leaked so the device state outlives all other statics.
+// Mirrors the same pattern in metal_runtime.cpp's `g_runtime()`. Prevents
+// use-after-destroy when `World`'s `RenderingResourceManager` destructs
+// its `Texture2D` resources at static-destruction time: each
+// `~MetalTexture2DImpl` calls `removeClearSourceBuffer(m_texture)`, which
+// dereferences `m_clearSourceBuffers` on this device. Static-destruction
+// order between this TU and the `inline` `g_world` in `ir_engine.hpp` is
+// implementation-defined; without the leak, the device can be destroyed
+// before the textures, and `find()` crashes on the corpse of its
+// unordered_map (T-336).
+MetalRenderDevice &metalRenderDevice() {
+    static auto *device = new MetalRenderDevice{};
+    return *device;
+}
 } // namespace
+
+void removeClearSourceBuffer(MTL::Texture *texture) {
+    metalRenderDevice().releaseClearSourceBuffer(texture);
+}
 
 std::unique_ptr<RenderImpl> createRenderer() {
     return std::make_unique<MetalRenderImpl>();
@@ -747,7 +876,7 @@ MetalRenderImpl::MetalRenderImpl()
 }
 
 MetalRenderImpl::~MetalRenderImpl() {
-    g_metalRenderDevice.shutdown();
+    metalRenderDevice().shutdown();
     if (m_device != nullptr) {
         m_device->release();
         m_device = nullptr;
@@ -762,8 +891,8 @@ void MetalRenderImpl::init() {
     IR_ASSERT(layerPtr != nullptr, "Failed to create CAMetalLayer");
     m_layer = reinterpret_cast<CA::MetalLayer *>(layerPtr);
 
-    g_metalRenderDevice.init(m_device, m_layer);
-    setDevice(&g_metalRenderDevice);
+    metalRenderDevice().init(m_device, m_layer);
+    setDevice(&metalRenderDevice());
 
     IRWindow::getWindow().setCallbackFramebufferSize(metalCallback_framebuffer_size);
     IRE_LOG_INFO("Metal surface attached to window.");

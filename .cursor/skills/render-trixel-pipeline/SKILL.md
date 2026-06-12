@@ -208,7 +208,7 @@ Points an entity to a specific canvas entity for rendering (defaults to main can
 | `TAPERED_BOX` | 6 |
 | `CUSTOM_SDF` | 7 |
 
-Shapes support flags: `HOLLOW`, `MIRROR_X`, `MIRROR_Y`, `VISIBLE`, `DISCRETE_ROTATION`.
+Shapes support flags: `HOLLOW`, `MIRROR_X`, `MIRROR_Y`, `VISIBLE`, `CHECKERBOARD`, `DEPTH_COLOR`, `XRAY_OCCLUDED`.
 
 ## LOD Levels
 

@@ -42,14 +42,80 @@ it in a dedicated PR, not to work around it.
 
 In all three cases:
 
-- **Each worktree has its own build tree.** `fleet-build` auto-detects
-  the worktree root (`git rev-parse --show-toplevel`) and uses
-  `<worktree>/build/`. If the build hasn't been configured yet,
-  `fleet-build` runs `cmake --preset` automatically. Agents edit
-  files in their own worktree and build there — no need to touch the
-  main clone.
+- **Each worktree has its own build tree.** `ir-build` (and the legacy
+  `fleet-build` shim) auto-detects the worktree root
+  (`git rev-parse --show-toplevel`) and uses `<worktree>/build/`. If
+  the build hasn't been configured yet, `ir-build` runs `cmake
+  --preset` automatically. Agents edit files in their own worktree and
+  build there — no need to touch the main clone. (Downstream-creation
+  worktrees route differently — see the next section.)
 - `CMAKE_CXX_STANDARD` is **23**; your compiler must support it.
   (gcc ≥ 13 on Linux/WSL, gcc ≥ 13 via MSYS2 on Windows.)
+
+**Convention for doc snippets that cite a preset** (here and in any doc,
+including downstream creation/game repos): if the recipe's expected CWD is
+not the engine root, the snippet must pass `-S <engine-root>` explicitly —
+`cmake --preset macos-debug` alone fails anywhere without a
+`CMakePresets.json`. And a snippet that names one platform's preset should
+carry a hint comment (`# or linux-debug / windows-debug for your platform`)
+so a reader on another host doesn't hit "preset not found" following it
+literally.
+
+### Downstream-creation worktree builds
+
+Downstream creations (gitignored repos nested under `creations/<name>/`)
+run their own agent worktrees at `creations/<name>/.claude/worktrees/
+<agent>/`. Those worktrees have **no CMake presets of their own** — their
+targets compile through the enclosing engine with the worktree added as a
+user project. `ir-build` / `ir-run` handle this automatically:
+
+- **Detection** — the invoker's git toplevel lacks `CMakePresets.json`
+  and sits under an engine root at `creations/<name>/…`.
+- **Build dir** — `<engine>/build-<creation>-<agent>/` (e.g.
+  `~/src/IrredenEngine/build-game-opus-worker-2/`), already covered by
+  the engine `.gitignore`'s `build-*/` pattern. Build output never lands
+  in the creation repo, and the engine's own build trees are untouched.
+- **Auto-configure** (first build only) — host preset against the
+  enclosing engine source with `-DIRREDEN_BUILD_CREATIONS=OFF` (so the
+  creation's *main* checkout can't collide with the worktree's
+  identically-named targets) and `-DIRREDEN_USER_PROJECTS=<worktree>`.
+- **Routing** — every later `fleet-build --target X` / `fleet-run X`
+  from that cwd resolves the same dedicated dir; `ir-run --targets`
+  lists from it too.
+
+So from a creation worktree, `fleet-build --target <T>` followed by
+`fleet-run <T>` Just Works with zero manual `cmake`. `IRREDEN_BUILD_DIR`
+still overrides the build dir everywhere (the escape hatch when you want
+the build against a specific engine worktree instead of the enclosing
+clone — configure that dir yourself once, then point the env var at it).
+
+Two things to know:
+
+- The engine **source** for the auto-configured tree is the enclosing
+  clone (the one physically containing `creations/<name>/`) at whatever
+  state it's checked out — keep it on `master` on fleet hosts.
+- The creation's **main** checkout (`creations/<name>/` itself, not a
+  worktree) builds through `<engine>/build/` via the engine root's
+  nested-checkout include.
+
+### `ir-build` / `ir-run` (canonical) vs `fleet-build` / `fleet-run` (aliases)
+
+The canonical build/run wrappers live at `engine/tools/bin/ir-build`
+and `engine/tools/bin/ir-run` — they coordinate the same machine
+across the fleet, a solo dev, and CI, so the canonical home is
+engine-tools, not fleet. `scripts/fleet/fleet-build` and
+`scripts/fleet/fleet-run` are one-line shims that `exec` into the
+canonical names; every existing invocation continues to work.
+
+`ir-build` wraps `cmake --build` in `ir-acquire cpu N`, and `ir-run`
+wraps `--auto-screenshot` runs in `ir-acquire gpu` (and
+`--auto-profile` in `ir-acquire benchmark`). Two parallel fleet
+workers therefore serialize on the configured CPU budget or split it
+in half (`IR_FLEET_WORKERS=2` → each build caps at `budget/2` cores)
+without any per-call accounting.
+
+Use whichever name you prefer; the rest of this doc mixes them and
+both keep working.
 
 ---
 

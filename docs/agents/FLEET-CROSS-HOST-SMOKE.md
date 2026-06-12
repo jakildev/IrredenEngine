@@ -12,8 +12,19 @@ the **reviewer** tagging side and the **author** claiming side — live
 here. Role files ([`role-opus-reviewer.md`](../../.claude/commands/role-opus-reviewer.md),
 [`role-sonnet-reviewer.md`](../../.claude/commands/role-sonnet-reviewer.md),
 [`role-opus-worker.md`](../../.claude/commands/role-opus-worker.md),
-[`role-sonnet-author.md`](../../.claude/commands/role-sonnet-author.md))
+[`role-sonnet-author.md`](../../.claude/commands/role-sonnet-author.md),
+[`role-smoke-worker.md`](../../.claude/commands/role-smoke-worker.md))
 point here rather than restating the procedure.
+
+**Dedicated smoke-only mode.** When running a second host (e.g. Ubuntu
+alongside a macOS fleet) that should only handle smoke testing, set
+`FLEET_SMOKE_WORKER=1` in `~/.fleet/fleet-up.conf` and restart fleet-up.
+This creates a `smoke-worker` pane that picks smoke labels exclusively,
+leaving author panes free for task work. See
+[`role-smoke-worker.md`](../../.claude/commands/role-smoke-worker.md) for
+the role spec and
+[`scripts/fleet/fleet-up.conf.sample`](../../scripts/fleet/fleet-up.conf.sample)
+for the configuration option.
 
 Engine repo only. Game-repo PRs do not get cross-host smoke labels —
 backends live in the engine.
@@ -24,8 +35,9 @@ backends live in the engine.
 
 | Label | Owner | Purpose |
 |---|---|---|
-| `fleet:authored-on-linux` / `fleet:authored-on-macos` | `commit-and-push` at PR creation | Records which host the author built + smoked on. Permanent fact, not a state. |
-| `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` | reviewer (after verdict) | Requests a clean-checkout build + `IRShapeDebug` run from an agent on that host. Cleared by the smoking agent on success; flipped to `fleet:needs-fix` on failure. |
+| `fleet:authored-on-linux` / `fleet:authored-on-macos` / `fleet:authored-on-windows` | `commit-and-push` at PR creation | Records which host the author built + smoked on. Permanent fact, not a state. |
+| `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` / `fleet:needs-windows-smoke` | reviewer (after verdict) | Requests a clean-checkout build + `IRShapeDebug` run from an agent on that host. Cleared by the smoking agent (or `platform-catchup` for Windows) on success; flipped to `fleet:needs-fix` on failure. |
+| `fleet:verified-linux` / `fleet:verified-macos` / `fleet:verified-windows` | smoking agent / `platform-catchup` | Set on success to provide a permanent audit trail of which hosts validated the PR. Not used by the merge gate logic; informational. |
 | `fleet:reviewing-<host>-<agent>` | `fleet-claim` script | Atomic lock around the smoke run (same lock the reviewer roles use). Prevents two same-host author agents from racing on the same PR. Released by `fleet-claim review-release`. |
 
 A PR with an outstanding `fleet:needs-<host>-smoke` label is **not safe
@@ -49,12 +61,14 @@ happens at tagging time.
 Tag when **all** of the following hold:
 
 1. The PR is in the engine repo.
-2. The diff touches at least one render path:
+2. The diff touches at least one render-or-platform path:
    - `engine/render/` (any file)
    - `engine/prefabs/irreden/render/` (any file)
    - any `*.glsl` shader
    - any `*.metal` shader
    - any file under `engine/render/src/shaders/`
+   - `engine/system/**` — platform-conditional blocks (`#ifdef _WIN32`, `__APPLE__`, etc.) can silently work on one host and break on another
+   - any `CMakeLists.txt` or `CMakePresets.json` — build configuration is the most common silent cross-host failure mode
 
    Use `gh pr diff <N> --name-only` to read the changed paths.
 
@@ -75,12 +89,28 @@ Subtract the author's host (`commit-and-push` stamped
 `fleet:authored-on-<host>` at PR creation — the author already smoke-
 tested their own host per the workflow):
 
-- PR has `fleet:authored-on-linux` → add `fleet:needs-macos-smoke`
-- PR has `fleet:authored-on-macos` → add `fleet:needs-linux-smoke`
-- Neither label present (Windows-native author, or pre-fix PR) → add **both**
+- PR has `fleet:authored-on-linux` → add `fleet:needs-macos-smoke` + `fleet:needs-windows-smoke`
+- PR has `fleet:authored-on-macos` → add `fleet:needs-linux-smoke` + `fleet:needs-windows-smoke`
+- PR has `fleet:authored-on-windows` → add `fleet:needs-linux-smoke` + `fleet:needs-macos-smoke`
+- None of the above (unrecognized host or pre-fix PR) → add all three
 
 ```
-gh pr edit <N> --add-label "fleet:needs-<other-host>-smoke"
+# Linux author:
+gh pr edit <N> --add-label "fleet:needs-macos-smoke"
+gh pr edit <N> --add-label "fleet:needs-windows-smoke"
+
+# macOS author:
+gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+gh pr edit <N> --add-label "fleet:needs-windows-smoke"
+
+# Windows author:
+gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+gh pr edit <N> --add-label "fleet:needs-macos-smoke"
+
+# None → three calls:
+gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+gh pr edit <N> --add-label "fleet:needs-macos-smoke"
+gh pr edit <N> --add-label "fleet:needs-windows-smoke"
 ```
 
 If `sonnet-reviewer` already added the labels on a first pass, the
@@ -96,12 +126,23 @@ label that matches their host and execute the protocol below. The
 fleet runs at most one smoke run per author iteration so task pickup
 isn't starved by back-to-back builds.
 
+`role-smoke-worker` is a dedicated alternative: it *only* claims and
+executes smoke runs, never picks tasks, and can run on a second host
+dedicated to cross-host validation. Enable it with `FLEET_SMOKE_WORKER=1`
+in `~/.fleet/fleet-up.conf`.
+
 ### Host detection
 
 Derive the host key from `uname -s`:
 
 - `Linux` → host key `linux`, poll `fleet:needs-linux-smoke`
 - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
+
+`fleet:needs-windows-smoke` is **not** polled by fleet author agents — it is
+cleared by the `platform-catchup` workflow (#1093) that runs outside the
+normal agent loop. No role currently claims and executes Windows smoke
+automatically; the label is cleared when the platform-catchup run reports a
+clean Windows build.
 
 ### Picking a PR
 
@@ -239,12 +280,19 @@ re-validates on the next iteration.
   invokes the [`render-debug-loop`](../../.claude/skills/render-debug-loop/SKILL.md)
   skill instead of a single-shot smoke run
 
+### Windows smoke
+
+`fleet:needs-windows-smoke` is outside the Sonnet/Opus split above — neither
+agent type polls for it. It is cleared by `platform-catchup` (#1093). If
+the label persists on a PR and platform-catchup has not run recently, surface
+it in the feedback channel.
+
 ### When the split breaks
 
-If a `fleet:needs-<host>-smoke` PR sits with the label for multiple
-iterations without an opus-worker picking it up (sonnet-fleet keeps
-deferring; opus-worker is busy with `[opus]` tasks), the queue is
-underweighted on Opus author capacity for that host. Surface the
+If a `fleet:needs-linux-smoke` or `fleet:needs-macos-smoke` PR sits with the
+label for multiple iterations without an opus-worker picking it up
+(sonnet-fleet keeps deferring; opus-worker is busy with `[opus]` tasks), the
+queue is underweighted on Opus author capacity for that host. Surface the
 backlog in the per-worktree feedback channel (see [`FLEET.md`](FLEET.md)
 § "Fleet feedback channel").
 

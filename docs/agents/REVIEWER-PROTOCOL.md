@@ -51,6 +51,15 @@ The queue-tick's `cleanup --gh` pass sweeps stranded
 `fleet:reviewing-*` labels after 30 min, but forgetting blocks
 re-review during that window — always release explicitly.
 
+You will never be handed a PR an author is actively amending: a
+worker fixing `fleet:needs-fix` holds a `fleet:amending-<host>-<agent>`
+claim for the whole fix, and the scout projection excludes any
+`fleet:amending-*` PR from your candidate list (a
+`REVIEW_SKIP_PREFIXES` match, the host-suffixed analogue of the
+`fleet:human-amending` skip). It re-enters your queue with
+`fleet:changes-made` once the worker releases the claim. No action
+on your part — just don't expect to see mid-amend PRs.
+
 ---
 
 ## Stack awareness — gate on upstream status, then note context
@@ -122,12 +131,11 @@ re-review the parent.
 The verdict label is the primary signal the human uses to decide what
 to merge — a review without a label is invisible to the human's merge
 queue. After every `gh pr review --comment ...`, your VERY NEXT bash
-call MUST be a `gh pr edit <N> ... --add-label "fleet:..."` from the
-table below.
+call MUST be the `fleet-transition` verdict edge below.
 
-Always remove stale verdict labels in the same call as adding the new
-one. Each verdict also clears three derived-state labels so a single
-verdict re-evaluation cleans them up:
+Always remove stale verdict labels before adding the new one. Each
+verdict also clears four derived-state labels so a single verdict
+re-evaluation cleans them up:
 
 - `fleet:awaiting-upstream-review` — a previously-gated stacked PR
   exits the gate cleanly when the reviewer finally proceeds.
@@ -137,39 +145,70 @@ verdict re-evaluation cleans them up:
 - `fleet:needs-base-update` — set by the merger when a stacked child
   PR conflicted on rebase and needed manual resolution; cleared by
   the next review verdict once the author has resolved and pushed.
+- `fleet:needs-opus-recheck` — the opus-reviewer consumes its own
+  escalation the moment it posts any verdict (approve clears it;
+  needs-fix / blocker also clear it and hand the PR back to the
+  author → sonnet-reviewer cycle). For the sonnet-reviewer this
+  remove is a harmless no-op — it only ever ADDS this label in the
+  special case below, which sets no verdict and bypasses this swap.
 
-For game PRs, add `--repo <game-repo>` to each `gh pr edit` call.
+**One named edge per verdict.** Apply the verdict label-swap with
+`fleet-transition` (`scripts/fleet/fleet-transition`), which reads the
+edge from [`fleet-state-machine.json`](fleet-state-machine.json),
+computes the delta against the PR's **live** label set, and writes it in
+a single idempotent `gh pr edit` call. This supersedes the old
+remove-then-add-then-verify split — that split existed only because
+`gh pr edit --remove-label X` exits non-zero on an *absent* label, and
+`fleet-transition` only ever removes labels actually present, so the
+split (and the `|| true`) is unnecessary. It still verifies after the
+write and retries once, so the `label-absent-after-verdict` guard
+(fix-002 in the fleet fix-log) is preserved. For game PRs, add
+`--repo <game-repo>` (the `gh` slug, e.g. `--repo jakildev/irreden`).
 
 ```
 # Verdict approve, no Nits section:
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved"
+fleet-transition verdict-approve <N>
 
-# Verdict approve WITH a non-empty `### Nits` section (also set fleet:has-nits):
-gh pr edit <N> --remove-label "fleet:needs-fix" --remove-label "fleet:blocker" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:approved" --add-label "fleet:has-nits"
+# Verdict approve WITH a non-empty `### Nits` section (also sets fleet:has-nits):
+fleet-transition verdict-approve-nits <N>
 
 # Verdict needs-fix:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:blocker" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:needs-fix"
+fleet-transition verdict-needs-fix <N>
 
 # Verdict blocker:
-gh pr edit <N> --remove-label "fleet:approved" --remove-label "fleet:needs-fix" --remove-label "fleet:has-nits" --remove-label "fleet:awaiting-upstream-review" --remove-label "fleet:stacked-rebase" --remove-label "fleet:needs-base-update" --add-label "fleet:blocker"
+fleet-transition verdict-blocker <N>
 
-# Re-review of a previously fleet:has-nits PR that's now clean:
-#   removes the has-nits flag while keeping fleet:approved
-gh pr edit <N> --remove-label "fleet:has-nits"
+# Re-review of a previously fleet:has-nits PR that's now clean (drop
+# has-nits, keep fleet:approved): verdict-approve subsumes this — it
+# removes has-nits and leaves the already-present fleet:approved as-is.
+fleet-transition verdict-approve <N>
 ```
 
+The exact remove/add set behind each edge lives in `fleet-state-machine.json`
+(`transitions[]`); edit there, not here, if a verdict's label delta changes.
+
 **Sonnet-reviewer special case: verdict approve + "Opus recheck
-required"** → do NOT set any verdict label. Leave it unlabeled;
-opus-reviewer will set the final label on its next pass. (You still
-set `fleet:has-nits` here if there are nits, even without a verdict
-label.)
+required"** → do NOT set a verdict label (`fleet:approved` is the
+opus-reviewer's to set). Instead stamp the explicit escalation so the
+scout's opus-reviewer projection wakes the pane — the review-body text
+alone is invisible to that projection, so without this label the opus
+pane only fires coincidentally on another PR's has-nits/needs-fix
+transition (PR #1473 sat un-rechecked for exactly this reason):
+
+```
+fleet-transition verdict-needs-opus-recheck <N>
+```
+
+(You still set `fleet:has-nits` here if there are nits, even without a
+verdict label.) The opus-reviewer removes `fleet:needs-opus-recheck`
+as part of its own verdict label-swap, whatever verdict it reaches.
 
 The `review-pr` skill (invoked for engine single-task PRs by
-sonnet-reviewer) writes its own label per the same rules — but if
-you find a PR you reviewed without a label after the skill returns,
-run the `gh pr edit` yourself immediately. Don't assume the skill
-did it; verify with `gh pr view <N> --json labels --jq
-'.labels[].name'` if unsure.
+sonnet-reviewer) prescribes its own label-swap in step 5b — if you
+find a PR you reviewed without a label after the skill returns, run
+`fleet-transition verdict-<verdict> <N>` yourself immediately. Don't
+assume the skill did it; verify with `gh pr view <N> --json labels
+--jq '.labels[].name'` if unsure.
 
 ---
 
@@ -211,6 +250,49 @@ conditions for game-repo and non-render PRs.
 
 ---
 
+## Nit-tracking issues (`fleet:nit-of-pr`)
+
+When a nit is bigger than a single inline entry in the review body,
+crosses scope, or you want it tracked separately, file a GitHub issue
+instead of embedding it in the `### Nits` section. Use this convention
+so the merger can auto-close it when the addressing PR merges:
+
+1. **Label:** `fleet:nit-of-pr`
+2. **Body must include** exactly one line:
+   ```
+   **Nit of PR:** #<addressing-pr-N>
+   ```
+   This is the durable cross-reference the merger's auto-close step
+   reads. Both the label (cheap projection signal) and the body line
+   (audit trail) are required.
+
+```bash
+gh issue create --repo jakildev/IrredenEngine \
+  --label "fleet:nit-of-pr" \
+  --title "<nit title>" \
+  --body "**Nit of PR:** #<N>
+
+<Description of the nit, file:line references, suggested fix.>"
+```
+
+**When to use:**
+- The nit requires multi-line explanation or spans multiple files
+- You want it discoverable in the issue list (e.g. for the human to
+  prioritize independently)
+- The nit is optional-but-noted and too large for the review body
+
+**When NOT to use:**
+- Simple one-line nits (`path:line — <nit>`) belong inline in the
+  `### Nits` section; no need to file a separate issue
+- Anything that must land before merge → `fleet:needs-fix`, not a nit
+
+**If the worker did not address the nit** (it's still genuinely
+open after the PR merges), remove the `**Nit of PR:** #<N>` line
+from the body so the merger's auto-close step skips it. The nit
+issue then lives on as a standalone task.
+
+---
+
 ## Posting the review body
 
 Both reviewers post the review body with `gh pr review --body-file`
@@ -223,14 +305,14 @@ to paths outside the worktree even if `/tmp/` is in
 `additionalDirectories` (the gate is broader than path matching).
 `.review-body.md` is gitignored.
 
-First run `rm -f .review-body.md` so the Write tool doesn't refuse
-with "File has not been read yet" — that error fires when an
-existing file at the path wasn't Read in this session (typical when
-a previous iteration left the body file behind).
+Use the **Read** tool on `.review-body.md` before writing — if the
+file exists from a previous iteration, this marks it as "read in this
+session" so the Write tool can overwrite it; if the file doesn't
+exist, Read returns an error that can be ignored and Write creates it
+fresh. Do **not** use `rm -f .review-body.md` — `rm -f` is not in
+the fleet's `settings.json` allow-list for worktree-local paths.
 
 ```
-rm -f .review-body.md
-# (Write tool writes the body to .review-body.md)
 gh pr review <N> --comment --body-file .review-body.md
 ```
 
@@ -256,3 +338,43 @@ exactly one of:
 explicitly — "Sonnet flagged X; on closer read I confirm/disagree
 because Y" — so the diff between Sonnet's pass and yours is visible
 in the body.
+
+---
+
+## Reviewer hard rules
+
+Shared by both reviewer roles, on top of
+[`CLAUDE-BASELINE.md § Hard rules for autonomous fleet roles`](CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles).
+Each reviewer file points here; role-specific additions stay in the
+role file.
+
+- **Never commit, push, or open PRs from a reviewer worktree.** The
+  `review-pr` skill documents this as an anti-pattern; treat it as a
+  hard rule.
+- **Never `gh pr review --approve` or `--request-changes`.** All fleet
+  agents share one GitHub account and GitHub rejects formal review
+  actions on your own PRs. Always use `--comment` with a clear verdict
+  line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
+- **Never post a review without setting the verdict label.** A review
+  comment without a `fleet:approved` / `fleet:needs-fix` /
+  `fleet:blocker` label is invisible to the human's merge queue — the
+  human filters PRs by label, not by review body. After every
+  `gh pr review --comment ...`, your VERY NEXT bash call MUST be the
+  verdict label-swap (see § Verdict label-swap commands). Describing
+  the label change in the review body does NOT set it — only the `gh`
+  command does. Verify with `gh pr view <N> --json labels`.
+- **Never re-apply a verdict label without posting a new review in the
+  same iteration.** A PR with a prior verdict in history but no current
+  label is NOT automatically a label-fixup candidate — the label may
+  have been legitimately cleared by the author's `commit-and-push`
+  after a fix push, by an ESCALATE handoff (swap of `fleet:needs-fix`
+  for `fleet:changes-made`), or by a worker mid-claim on a
+  `fleet:has-nits` PR. Before re-stamping a "missing" verdict, do one
+  live check for ANY of: (a) a new commit since your last review's
+  `submittedAt`, (b) a new author comment, (c) a recent
+  `fleet:needs-fix` / `fleet:approved` UNLABELED event
+  (`gh api repos/<owner>/<repo>/issues/<N>/timeline`), (d) presence of
+  `fleet:changes-made`. If any are present, the prior verdict was
+  author-acknowledged — treat the PR as a re-review candidate and post
+  a fresh review rather than re-stamping the stale verdict. Otherwise
+  leave the label alone.

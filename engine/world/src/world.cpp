@@ -6,6 +6,7 @@
 #include <irreden/ir_audio.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/profile/profile_report.hpp>
+#include <irreden/video/auto_screenshot.hpp>
 
 #include <irreden/world.hpp>
 
@@ -28,6 +29,7 @@ World::World(const char *configFileName)
     , m_entityManager{}
     , m_commandManager{}
     , m_systemManager{}
+    , m_jobManager{m_worldConfig["worker_thread_count"].get_integer()}
     , m_inputManager{}
     , m_renderingResourceManager{}
     , m_renderer{
@@ -46,7 +48,11 @@ World::World(const char *configFileName)
     , m_startRecordingOnFirstInput{
           m_worldConfig["start_recording_on_first_key_press"].get_boolean()
       }
-    , m_hasHandledFirstInput{false} {
+    , m_hasHandledFirstInput{false}
+    , m_maxUpdateTicksPerFrame{static_cast<uint32_t>(
+          m_worldConfig["max_update_ticks_per_frame"].get_integer()
+      )} {
+    auto iconHandle = IRRender::loadImageAsync("data/images/irreden_engine_logo_v6_alpha.png");
     IRRender::setSubdivisionMode(
         static_cast<IRRender::SubdivisionMode>(m_worldConfig["subdivision_mode"].get_enum())
     );
@@ -57,8 +63,8 @@ World::World(const char *configFileName)
     IRRender::gpuStageTiming().enabled_ = m_worldConfig["gpu_stage_timing"].get_boolean();
     IRRender::gpuStageTiming().legacyFinishTiming_ =
         m_worldConfig["gpu_stage_timing_legacy"].get_boolean();
-    IRRender::ImageData icon{"data/images/irreden_engine_logo_v6_alpha.png"};
-    GLFWimage iconGlfw{icon.width_, icon.height_, icon.data_};
+    auto iconData = iconHandle.take();
+    GLFWimage iconGlfw{iconData.width_, iconData.height_, iconData.pixels_.data()};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
     m_renderer.printRenderInfo();
     m_videoManager.configureCapture(
@@ -78,6 +84,11 @@ World::World(const char *configFileName)
     m_videoManager.configureScreenshotOutputDir(
         m_worldConfig["screenshot_output_dir"].get_string()
     );
+    // T-225: size the EntityManager's per-worker deferred-mutation
+    // staging vector now that JobManager exists. Slot 0 is main,
+    // slots 1..N are IRJob worker threads, so the total is
+    // `workerCount() + 1`.
+    m_entityManager.resizeWorkerStaging(static_cast<std::size_t>(m_jobManager.workerCount() + 1));
     IR_PROFILE_MAIN_THREAD;
     IRE_LOG_INFO("Initalized game world");
 }
@@ -149,6 +160,25 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         }
         return 0.0f;
     };
+    // Voxel cull diagnostic. Returns last-sampled visible + total
+    // voxel counts plus the running average + max collected since the
+    // last enableFrameTiming(true). Only populated while
+    // gpu_stage_timing is enabled.
+    render["getVoxelCullStats"] = [&lua]() {
+        sol::table out = lua.create_table();
+        const auto &timing = IRRender::gpuStageTiming();
+        const auto &acc = IRRender::voxelCullAccumulator();
+        out["visible"] = timing.visibleVoxelCount_;
+        out["total"] = timing.totalVoxelCount_;
+        out["samples"] = acc.sampleCount_;
+        out["avgVisible"] =
+            acc.sampleCount_ > 0 ? static_cast<double>(acc.visibleSum_) / acc.sampleCount_ : 0.0;
+        out["avgTotal"] =
+            acc.sampleCount_ > 0 ? static_cast<double>(acc.totalSum_) / acc.sampleCount_ : 0.0;
+        out["maxVisible"] = acc.maxVisible_;
+        out["maxTotal"] = acc.maxTotal_;
+        return out;
+    };
 
     for (const auto &bind : bindings) {
         bind(m_lua);
@@ -163,12 +193,20 @@ void World::gameLoop() {
     using Clock = std::chrono::steady_clock;
     try {
         start();
+        if (IRVideo::isAutoCaptureActive()) {
+            // Headless --auto-screenshot capture: advance the sim exactly one
+            // UPDATE tick per render frame so per-tick animation (AUTO_SPIN,
+            // etc.) is deterministic and not starved by the uncapped
+            // (vsync-off) loop racing through the frame-counted capture window.
+            m_timeManager.enableFixedStep();
+        }
         if (m_waitForFirstUpdateInput) {
             // Prime render-facing state so paused mode shows initialized voxels.
             update();
         }
         while (!m_IRGLFWWindow.shouldClose()) {
             m_timeManager.beginMainLoop();
+            m_timeManager.clampUpdateLag(m_maxUpdateTicksPerFrame);
 
             Clock::time_point frameStart;
             if (m_frameTimingEnabled) {
@@ -228,6 +266,12 @@ void World::input() {
 }
 
 void World::start() {
+    // T-224: cross-system pipeline-group validation runs once after
+    // every system + pipeline is registered, before the first tick.
+    // FATALs on the first conflict, naming both systems + the
+    // offending component. Single-system groups (every legacy
+    // `registerPipeline` call) are trivially clean and short-circuit.
+    m_systemManager.validateAllPipelineGroups();
     m_timeManager.start();
     IRProfile::CPUProfiler::instance().mainThread();
 }
@@ -277,6 +321,10 @@ void World::render() {
     m_timeManager.endEvent<IRTime::RENDER>();
 }
 
+int World::entityCountOverride() {
+    return m_worldConfig["entity_count_override"].get_integer();
+}
+
 void World::enableFrameTiming(bool enabled) {
     m_frameTimingEnabled = enabled;
     m_systemManager.setTimingEnabled(enabled);
@@ -287,6 +335,7 @@ void World::enableFrameTiming(bool enabled) {
         m_frameMaxUpdateTicksPerFrame = 0;
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
+        IRRender::voxelCullAccumulator().reset();
     }
 }
 
@@ -320,6 +369,13 @@ void World::buildAndWriteProfileReport() {
          lightVolumeTiming.upload_.maxMs_,
          lightVolumeTiming.upload_.sampleCount_}
     );
+
+    const auto &cull = IRRender::voxelCullAccumulator();
+    report.voxelCullStats_.visibleSum_ = cull.visibleSum_;
+    report.voxelCullStats_.totalSum_ = cull.totalSum_;
+    report.voxelCullStats_.maxVisible_ = cull.maxVisible_;
+    report.voxelCullStats_.maxTotal_ = cull.maxTotal_;
+    report.voxelCullStats_.sampleCount_ = cull.sampleCount_;
 
     // Collect per-system timing, grouped by pipeline
     auto pipelineName = [](IRTime::Events e) -> const char * {

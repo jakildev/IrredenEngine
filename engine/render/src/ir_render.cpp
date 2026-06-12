@@ -9,8 +9,9 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/trixel_rect.hpp>
+#include <irreden/render/trixel_text.hpp>
 
-#include <cmath>
 #include <cstring>
 
 namespace IRRender {
@@ -39,6 +40,23 @@ void setDevice(RenderDevice *renderDevice) {
 
 vec2 getCameraPosition2DIso() {
     return getRenderManager().getCameraPosition2DIso();
+}
+vec2 getEffectiveCameraIso() {
+    const vec2 cameraIso = getRenderManager().getCameraPosition2DIso();
+    if (getRenderManager().getRotationPivotMode() == RotationPivotMode::ORIGIN) {
+        return cameraIso;
+    }
+    // CAMERA_CENTER: pivot Z-yaw about the world point under screen center (the
+    // camera focus) instead of the world origin. `P` is the un-yawed world point
+    // that projects to `cameraIso` at z = 0 (depth = 0 is the canonical iso-ray
+    // representative; `pos3DtoPos2DIso(isoPixelToPos3D(iso, 0)) == iso` holds
+    // exactly); re-projecting `P` under the live visual yaw is the offset that
+    // keeps that focus point pinned on screen as the camera rotates. At
+    // `visualYaw == 0` this collapses to `cameraIso` exactly (the round-trip
+    // identity above holds for any depth at yaw = 0, so the cardinal fast path
+    // stays byte-identical to ORIGIN mode).
+    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(cameraIso, 0.0f);
+    return IRMath::pos3DtoPos2DIsoYawed(cameraFocusWorld, IRPrefab::Camera::getYaw());
 }
 vec2 getCameraZoom() {
     return getRenderManager().getCameraZoom();
@@ -75,43 +93,15 @@ vec2 getMainCanvasSizeTrixels() {
 
 namespace {
 
-// Mirror of `kIdentityYawEpsilon` in `f_screen_residual_rotate.glsl` /
-// `screen_residual_rotate.metal`. When |residualYaw| is below this, the
-// composite shader bypasses its rotation and writes the source pixel-
-// identical to the framebuffer, so the picking inverse must do the same
-// or yaw=0 picks would shift by sub-pixel rounding.
-constexpr float kIdentityYawEpsilon = 1e-6f;
-
-// Inverse of the SCREEN_SPACE_RESIDUAL_ROTATE composite, applied to a
-// position in framebuffer-pixel coordinates around the framebuffer
-// center. The composite rotates source samples by -residualYaw (see
-// f_screen_residual_rotate.glsl); recovering the source pixel from a
-// screen-space pixel is the same rotation in the opposite direction.
-//
-// `IRPlatform::kGfx.screenYDirection_` flips the angle on backends whose
-// screen-pixel Y axis runs opposite the framebuffer-texture Y axis (-1 on
-// OpenGL, +1 on Metal/Vulkan), keeping the rotation visually correct
-// regardless of which backend is compiled in.
-//
-// `residualYaw` is a parameter (not re-fetched here) so callers needing
-// both halves of the yaw split can amortize the camera-component lookup
-// — see `mouseWorldPos3DAtIsoDepth`.
-vec2 inverseResidualYawOnFramebufferPixel(vec2 framebufferPixel, float residualYaw) {
-    if (std::abs(residualYaw) < kIdentityYawEpsilon) {
-        return framebufferPixel;
-    }
-    auto &framebuffer =
-        IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
-    const vec2 center = vec2(framebuffer.getResolutionPlusBuffer()) * 0.5f;
-    const float effectiveAngle =
-        -residualYaw * IRPlatform::kGfx.screenYDirection_;
-    return IRMath::rotate2D(framebufferPixel - center, effectiveAngle) + center;
-}
-
-vec2 mouseCanvasIsoFromResidualYaw(float residualYaw) {
+// Residual yaw is folded into faceDeform[] in the trixel emit shaders (T-293);
+// the screen-space residual-rotate stage has been fully retired (T-323). The
+// picking chain therefore needs no residualYaw inverse step. Iso-space picking
+// accuracy at non-cardinal yaws is bounded by the geometric trixel deformation,
+// which is a small per-face offset the picking math doesn't reverse-compose today
+// (follow-up).
+vec2 mouseCanvasIso() {
     return IRMath::pos2DScreenToPos2DIso(
-               inverseResidualYawOnFramebufferPixel(
-                   IRRender::getMousePositionOutputView(), residualYaw),
+               IRRender::getMousePositionOutputView(),
                IRRender::getTriangleStepSizeScreen()
            ) -
            getMainCanvasSizeTrixels() / getCameraZoom() / vec2(2.0f);
@@ -120,34 +110,31 @@ vec2 mouseCanvasIsoFromResidualYaw(float residualYaw) {
 } // namespace
 
 vec2 mousePosition2DIsoScreenRender() {
-    return mouseCanvasIsoFromResidualYaw(IRPrefab::Camera::getResidualYaw());
+    return mouseCanvasIso();
 }
 
 vec2 mousePosition2DIsoWorldRender() {
-    return mousePosition2DIsoScreenRender() - IRRender::getCameraPosition2DIso();
+    return mousePosition2DIsoScreenRender() - IRRender::getEffectiveCameraIso();
 }
 
 vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
-    // Full screen→world picking inverse per `.fleet/plans/T-054.md` (epic
-    // #310, Option B):
-    //   world = R_z(-rasterYaw) · isoPixelToPos3D · R2D(-residualYaw) · screen
-    // The chain mirrors mousePosition2DIsoWorldRender (canvas-frame iso =
-    // M · R_z(rasterYaw) · world); isoPixelToPos3D recovers the unique 3D
-    // point in the canvas frame at the requested canvas-frame iso depth
-    // (= rotated.x + rotated.y + rotated.z, which equals world.x+y+z only
-    // at rasterYaw=0 — see header doc), and rotateCardinalZInv undoes the
-    // cardinal raster rotation to lift back to the world frame. Pulling
-    // both yaw halves via getYawSplit() amortizes the camera-component
-    // lookup vs going through the two-step public helpers.
-    const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
-    const vec2 canvasIso = mouseCanvasIsoFromResidualYaw(residualYaw) -
-                           IRRender::getCameraPosition2DIso();
+    // Screen→world picking inverse per `.fleet/plans/T-054.md` (epic #310).
+    // After T-293 the screen-space residual bilinear is gone and residual
+    // yaw lives in the trixel emit shaders' faceDeform[] — the inverse
+    // chain therefore collapses to the rasterYaw half only:
+    //   world = R_z(-rasterYaw) · isoPixelToPos3D · screen
+    // `mouseCanvasIso()` provides the canvas-frame iso pixel; isoPixelToPos3D
+    // recovers the unique 3D point at the requested depth (= rotated.x +
+    // rotated.y + rotated.z under rasterYaw); rotateCardinalZInv lifts
+    // back to the world frame.
+    const float rasterYaw = IRPrefab::Camera::getRasterYaw();
+    const vec2 canvasIso = mouseCanvasIso() - IRRender::getEffectiveCameraIso();
     const vec3 rotatedWorld = IRMath::isoPixelToPos3D(
         static_cast<int>(glm::floor(canvasIso.x)),
         static_cast<int>(glm::floor(canvasIso.y)),
-        canvasIsoDepth);
-    return IRMath::rotateCardinalZInv(rotatedWorld,
-                                      IRMath::rasterYawCardinalIndex(rasterYaw));
+        canvasIsoDepth
+    );
+    return IRMath::rotateCardinalZInv(rotatedWorld, IRMath::rasterYawCardinalIndex(rasterYaw));
 }
 
 ivec2 mouseTrixelPositionWorld() {
@@ -201,6 +188,14 @@ void setSubdivisionMode(SubdivisionMode mode) {
 
 SubdivisionMode getSubdivisionMode() {
     return getRenderManager().getSubdivisionMode();
+}
+
+void setRotationPivotMode(RotationPivotMode mode) {
+    getRenderManager().setRotationPivotMode(mode);
+}
+
+RotationPivotMode getRotationPivotMode() {
+    return getRenderManager().getRotationPivotMode();
 }
 
 void setVoxelRenderSubdivisions(int subdivisions) {
@@ -301,6 +296,82 @@ void setDebugOverlay(DebugOverlayMode mode) {
 
 DebugOverlayMode getDebugOverlay() {
     return getRenderManager().getDebugOverlay();
+}
+
+void setDepthColorDebug(bool on, float extent) {
+    getRenderManager().setDepthColorDebug(on, extent);
+}
+
+bool getDepthColorDebugMode() {
+    return getRenderManager().getDepthColorDebugMode();
+}
+
+float getDepthColorDebugExtent() {
+    return getRenderManager().getDepthColorDebugExtent();
+}
+
+void setHDREnabled(bool enabled) {
+    getRenderManager().setHDREnabled(enabled);
+}
+
+bool getHDREnabled() {
+    return getRenderManager().getHDREnabled();
+}
+
+void setExposure(float exposure) {
+    getRenderManager().setExposure(exposure);
+}
+
+float getExposure() {
+    return getRenderManager().getExposure();
+}
+
+void setSkyIntensity(float intensity) {
+    getRenderManager().setSkyIntensity(intensity);
+}
+
+float getSkyIntensity() {
+    return getRenderManager().getSkyIntensity();
+}
+
+void setSkyColor(vec3 color) {
+    getRenderManager().setSkyColor(color);
+}
+
+vec3 getSkyColor() {
+    return getRenderManager().getSkyColor();
+}
+
+namespace {
+// Resolve the engine-default "gui" trixel canvas, or nullptr when none exists
+// (headless / pre-render contexts). Shared by the GUI shape-draw entry points
+// so the canvas lookup lives in one place.
+IRComponents::C_TriangleCanvasTextures *guiCanvasTexturesOrNull() {
+    const IREntity::EntityId guiCanvas = getCanvas("gui");
+    if (guiCanvas == IREntity::kNullEntity) {
+        return nullptr;
+    }
+    return &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
+}
+} // namespace
+
+void drawGuiDisc(ivec2 center, int radius, Color color) {
+    IRComponents::C_TriangleCanvasTextures *canvas = guiCanvasTexturesOrNull();
+    if (canvas == nullptr) {
+        return;
+    }
+    // Reused across calls so the per-scanline span buffers amortize; the render
+    // path is single-threaded, so a function-local scratch is safe.
+    static RectFillScratch scratch;
+    fillDisc(*canvas, center, radius, color, kGuiTextDistance, scratch);
+}
+
+void drawGuiLine(ivec2 from, ivec2 to, Color color) {
+    IRComponents::C_TriangleCanvasTextures *canvas = guiCanvasTexturesOrNull();
+    if (canvas == nullptr) {
+        return;
+    }
+    drawLine(*canvas, from, to, color, kGuiTextDistance);
 }
 
 } // namespace IRRender

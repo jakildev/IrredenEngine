@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# ir-build — cmake --build wrapper with auto-parallelism, worktree
+# detection, and ir-acquire cpu coordination.
+#
+# Removes the need for agents to embed $(nproc) or $(sysctl -n hw.ncpu)
+# in their Bash calls, which triggers Claude Code's command_substitution
+# security gate.
+#
+# The cmake --build invocation is wrapped in `ir-acquire cpu <jobs>`,
+# holding N CPU slots out of the engine-level budget (ir_cpu_budget)
+# for the duration of the build. Two parallel fleet workers serialize
+# on the configured CPU budget instead of fighting over the same cores.
+#
+# Auto-detects the *invoker's* git worktree root (not this script's
+# checkout) and builds into <worktree>/build/. Each worktree gets its
+# own build tree — no conflicts between parallel agents. If the build
+# tree hasn't been configured yet, ir-build runs cmake --preset
+# automatically.
+#
+# Downstream-creation worktrees (creations/<name>/.claude/worktrees/
+# <agent>/) are first-class: they have no presets of their own, so the
+# build routes to <engine>/build-<creation>-<agent>/, auto-configured
+# against the enclosing engine with -DIRREDEN_USER_PROJECTS=<worktree>.
+# IRREDEN_BUILD_DIR still overrides the build dir in every case.
+#
+# Usage:
+#   ir-build --target IRShapeDebug
+#   ir-build --target IRCreationDefault
+#   ir-build --target IrredenEngineTest -- -j4   # override parallelism
+#
+# All arguments are forwarded to `cmake --build`. If no -j flag is
+# provided, one is injected automatically using ir_per_build_max
+# (budget/workers floor, min 1).
+#
+# Source of truth: engine/tools/bin/ir-build in the engine repo.
+# Installed to ~/bin/ir-build (as a symlink) by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+# Walk through symlinks to the real script location so we can locate
+# the helpers library + ir-acquire sibling regardless of how ir-build
+# was invoked (direct, ~/bin symlink, or via the fleet-build shim).
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+HELPERS="$SCRIPT_DIR/../lib/concurrency_helpers.sh"
+IR_ACQUIRE="$SCRIPT_DIR/ir-acquire"
+
+if [[ ! -f "$HELPERS" ]]; then
+    echo "ir-build: missing $HELPERS" >&2
+    exit 1
+fi
+if [[ ! -x "$IR_ACQUIRE" ]]; then
+    echo "ir-build: missing or non-executable $IR_ACQUIRE" >&2
+    exit 1
+fi
+# shellcheck source=../lib/concurrency_helpers.sh
+source "$HELPERS"
+
+# --- Build directory resolution ---
+# Priority: $IRREDEN_BUILD_DIR > worktree default (engine worktree:
+# <root>/build; downstream-creation worktree: <engine>/build-<creation>-<agent>).
+WORKTREE_ROOT="$(ir_worktree_root)"
+BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT")}"
+
+# --- Auto-configure if the build tree doesn't exist yet ---
+if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+    case "$(uname -s)" in
+        Darwin)               PRESET="macos-debug" ;;
+        Linux)                PRESET="linux-debug" ;;
+        MINGW*|MSYS*|CYGWIN*) PRESET="windows-debug" ;;
+        *)
+            echo "ir-build: unsupported platform $(uname -s)" >&2
+            exit 1
+            ;;
+    esac
+    echo "ir-build: no build tree at $BUILD_DIR"
+    if CREATION_ENGINE_ROOT="$(ir_creation_worktree_engine_root "$WORKTREE_ROOT")"; then
+        # Downstream-creation worktree: the creation repo has no CMake
+        # presets — its targets compile through the enclosing engine with
+        # the worktree added as a user project. IRREDEN_BUILD_CREATIONS=OFF
+        # keeps the creation's main checkout (and engine-owned demos) out
+        # of this tree so the worktree's identically-named targets can't
+        # collide with the nested main-checkout include.
+        echo "ir-build: downstream-creation worktree; configuring with preset '$PRESET'"
+        echo "ir-build:   engine source: $CREATION_ENGINE_ROOT"
+        echo "ir-build:   user project:  $WORKTREE_ROOT"
+        cmake --preset "$PRESET" -S "$CREATION_ENGINE_ROOT" -B "$BUILD_DIR" \
+            -DIRREDEN_BUILD_CREATIONS=OFF \
+            -DIRREDEN_USER_PROJECTS="$WORKTREE_ROOT"
+    else
+        echo "ir-build: configuring with preset '$PRESET'..."
+        cmake --preset "$PRESET" -S "$WORKTREE_ROOT" -B "$BUILD_DIR"
+    fi
+    echo "ir-build: configure done."
+fi
+
+# --- Detect or compute -j N for cmake AND the ir-acquire cpu count ---
+#
+# If the caller passed -jN / --parallel N, that wins (we still acquire
+# the same number of CPU slots). Otherwise we default to ir_per_build_max
+# (budget/workers floor) so two parallel fleet workers each get their
+# fair share of cores without manual math.
+user_jobs=""
+forward_args=()
+i=1
+nargs=$#
+while (( i <= nargs )); do
+    arg="${!i}"
+    case "$arg" in
+        -j)
+            # -j with separate value
+            next=$(( i + 1 ))
+            if (( next <= nargs )); then
+                val="${!next}"
+                user_jobs="$val"
+                i=$next
+            else
+                echo "ir-build: -j requires a value; using default" >&2
+            fi
+            ;;
+        -j*)
+            user_jobs="${arg#-j}"
+            ;;
+        --parallel)
+            next=$(( i + 1 ))
+            if (( next <= nargs )); then
+                val="${!next}"
+                user_jobs="$val"
+                i=$next
+            fi
+            ;;
+        --parallel=*)
+            user_jobs="${arg#--parallel=}"
+            ;;
+        *)
+            forward_args+=("$arg")
+            ;;
+    esac
+    i=$(( i + 1 ))
+done
+
+if [[ -n "$user_jobs" ]]; then
+    JOBS="$user_jobs"
+else
+    JOBS="$(ir_per_build_max)"
+fi
+
+# Hand off to ir-acquire so the lock is held for exactly the cmake --build
+# call and released by ir-acquire's trap on exit (acquire-late, release-
+# early). exec replaces this process with ir-acquire, which then exec's
+# cmake — final exit status is cmake's.
+exec "$IR_ACQUIRE" cpu "$JOBS" -- cmake --build "$BUILD_DIR" -j"$JOBS" "${forward_args[@]}"

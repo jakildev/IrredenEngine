@@ -9,7 +9,7 @@
 // later by LIGHTING_TO_TRIXEL.
 //
 // Pipeline order: must run after BAKE_SUN_SHADOW_MAP (writes the depth
-// map this pass reads) and after VOXEL_TO_TRIXEL_STAGE_2 / SHAPES_TO_TRIXEL
+// map this pass reads) and after VOXEL_TO_TRIXEL_STAGE_1 / SHAPES_TO_TRIXEL
 // (so the distance texture is populated), and before LIGHTING_TO_TRIXEL
 // which folds the shadow factor into final color.
 
@@ -21,6 +21,8 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -41,7 +43,13 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
     // links even when the bake system isn't registered.
     Buffer *sunShadowDepthMap_ = nullptr;
 
+    // Smooth camera Z-yaw (#1311): main canvas + per-axis voxel canvases,
+    // re-resolved every frame in beginTick. Null unless allocated (rotating).
+    IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
+    C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+
     void tick(
+        IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
         const C_CanvasSunShadow &shadow,
         const C_TrixelCanvasRenderBehavior &behavior
@@ -62,6 +70,65 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kComputeSunShadowGroupSize);
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+        // Smooth camera Z-yaw (#1311): resolve the sun shadow for each per-axis
+        // voxel canvas (reads the shared depth map baked from all four canvases).
+        if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
+            perAxisCanvases_->isAllocated()) {
+            dispatchPerAxisSunShadow(*perAxisCanvases_, canvasTextures, shadow);
+        }
+    }
+
+    // Resolve the sun-shadow factor for each per-axis canvas. Flips the shared
+    // UBO's perAxisRoute so the shader reconstructs world-pos face-locally, then
+    // restores it. The sun depth map (binding 28) and FrameDataSun stay bound.
+    void dispatchPerAxisSunShadow(
+        C_PerAxisTrixelCanvases &axes,
+        const C_TriangleCanvasTextures &mainTextures,
+        const C_CanvasSunShadow &mainShadow
+    ) {
+        // perAxisRoute is a boolean route flag on the lighting path (any nonzero
+        // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
+        // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
+        const int kPerAxisRoute = 1;
+        voxelFrameDataBuf_
+            ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
+        // Recover world-pos with the SAME #1431-capped lattice density the store
+        // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRPrefab::PerAxisCanvas::subdivisionDensity()
+        );
+        const int groupsX = IRMath::divCeil(axes.size_.x, kComputeSunShadowGroupSize);
+        const int groupsY = IRMath::divCeil(axes.size_.y, kComputeSunShadowGroupSize);
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            auto &tex = axes.axes_[axis];
+            tex.distances_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            tex.sunShadow_.second->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+        }
+        // One barrier after the 3 independent per-axis dispatches (each axis
+        // writes its own sun-shadow image texture — disjoint outputs, so dispatch
+        // order doesn't matter) so they overlap on the GPU instead of serializing
+        // per axis (#1311).
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        const int kSingleCanvasRoute = 0;
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
+            sizeof(int),
+            &kSingleCanvasRoute
+        );
+        // Restore the uncapped density for downstream single-canvas passes.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRRender::getVoxelRenderEffectiveSubdivisions()
+        );
+        // Restore the main-canvas image bindings (see the #1311 note in
+        // system_compute_voxel_ao.hpp — the persistent Metal image-binding table
+        // would otherwise dangle when release() frees the per-axis textures).
+        mainTextures.getTextureDistances()
+            ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        mainShadow.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
     }
 
     void beginTick() {
@@ -73,6 +140,17 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         // This pass runs after BAKE so the struct is fresh.
         if (sunShadowDepthMap_ == nullptr) {
             sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+        }
+
+        // Resolve the main canvas + its per-axis voxel canvases (#1311).
+        perAxisCanvasEntity_ = IRRender::getCanvas("main");
+        perAxisCanvases_ = nullptr;
+        if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
+            auto perAxis =
+                IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
+            if (perAxis.has_value()) {
+                perAxisCanvases_ = perAxis.value();
+            }
         }
     }
 

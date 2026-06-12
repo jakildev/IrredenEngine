@@ -1,4 +1,5 @@
 #include "ir_iso_common.metal"
+#include "ir_per_axis_lighting.metal"
 
 // Mirrors shaders/c_compute_voxel_ao.glsl. Per-pixel ambient-occlusion
 // compute. Samples four face-tangent neighbour pixels in trixelDistances
@@ -31,6 +32,14 @@ struct FrameDataSun {
     float4 sunBasisV;
     float2 sunBufferOriginUV;
     float2 sunBufferTexelSize;
+    float2 cascadeOriginUV_0;
+    float2 cascadeTexelSize_0;
+    float2 cascadeOriginUV_1;
+    float2 cascadeTexelSize_1;
+    float cascadeSplitDepth;
+    int cascadeCount;
+    float _cascadePad0;
+    float _cascadePad1;
 };
 
 kernel void c_compute_voxel_ao(
@@ -48,7 +57,9 @@ kernel void c_compute_voxel_ao(
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    if (encoded >= kEmptyDistanceEncoded) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    const int kEmpty = (frameData.perAxisRoute != 0) ? 0x7FFFFFFF : kEmptyDistanceEncoded;
+    if (encoded >= kEmpty) {
         canvasAO.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }
@@ -57,39 +68,65 @@ kernel void c_compute_voxel_ao(
         return;
     }
 
-    int face = encoded & 3;
-    int rawDepth = encoded >> 2;
+    // Decode the visible-triplet slot (0/1/2) the rasterizer wrote, then
+    // resolve the world FaceId via `visibleFaceIds[slot]` (#1278). Single
+    // source of face metadata shared with the raster.
+    int slot = encoded & 3;
+    int faceId = frameData.visibleFaceIds[slot];
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    int rawDepth = (frameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
-    float3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel,
-        rawDepth,
-        frameData.trixelCanvasOffsetZ1,
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions,
-        cardinalIndex
-    );
+    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
+    // face-locally (perAxisRoute != 0), recovered via faceOriginFromInPlane; the
+    // single canvas uses the cardinal-snap reconstruction. Mirrors GLSL.
+    bool perAxis = frameData.perAxisRoute != 0;
+    float3 pos3D = perAxis
+        ? perAxisCellToWorld3D(
+              pixel, rawDepth, faceId, size,
+              frameData.frameCanvasOffset, frameData.voxelRenderOptions
+          )
+        : trixelCanvasPixelToWorld3D(
+              pixel,
+              rawDepth,
+              frameData.trixelCanvasOffsetZ1,
+              frameData.frameCanvasOffset,
+              frameData.voxelRenderOptions,
+              cardinalIndex
+          );
 
-    // Face axes in raster frame; tangents project directly to canvas
-    // pixels. Outward normal is rotated back to world frame for the
-    // d-test in `pos3D`'s frame. Mirrors GLSL.
-    int3 rasterOutwardI = faceOutwardNormalI(face);
+    // World-frame outward normal + in-plane tangents for the camera-visible
+    // face this pixel rendered. Tangents are rotated through R_z(-rasterYaw)
+    // before iso projection so the neighbour-sample iso direction matches
+    // where the rasterizer wrote the +tangent neighbour at this cardinal
+    // (PR #1275 prep). Mirrors GLSL.
+    float3 worldOutward = float3(faceOutwardNormal6I(faceId));
     int3 t1;
     int3 t2;
-    if (face == kZFace) {
+    if (faceId == kFaceZNeg || faceId == kFaceZPos) {
         t1 = int3(1, 0, 0);
         t2 = int3(0, 1, 0);
-    } else if (face == kXFace) {
+    } else if (faceId == kFaceXNeg || faceId == kFaceXPos) {
         t1 = int3(0, 1, 0);
         t2 = int3(0, 0, 1);
     } else {
+        // Y_NEG or Y_POS
         t1 = int3(1, 0, 0);
         t2 = int3(0, 0, 1);
     }
-    float3 worldOutward = rotateCardinalZInv(float3(rasterOutwardI), cardinalIndex);
 
     int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
-    int2 deltaT1 = pos3DtoPos2DIso(t1) * scale;
-    int2 deltaT2 = pos3DtoPos2DIso(t2) * scale;
+    int2 deltaT1;
+    int2 deltaT2;
+    if (perAxis) {
+        // Per-axis canvas is BASE-RESOLUTION (#1458): 1 cell = 1 world voxel.
+        deltaT1 = int2(1, 0);
+        deltaT2 = int2(0, 1);
+    } else {
+        int3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
+        int3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
+        deltaT1 = pos3DtoPos2DIso(t1View) * scale;
+        deltaT2 = pos3DtoPos2DIso(t2View) * scale;
+    }
 
     int occl = 0;
     for (int dir = 0; dir < 4; ++dir) {
@@ -103,17 +140,26 @@ kernel void c_compute_voxel_ao(
             samplePixel.y < 0 || samplePixel.y >= size.y) continue;
 
         int neighbourEncoded = trixelDistances.read(uint2(samplePixel)).x;
-        if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
+        if (neighbourEncoded >= kEmpty) continue;
 
-        int neighbourRawDepth = neighbourEncoded >> 2;
-        float3 neighbourPos3D = trixelCanvasPixelToWorld3D(
-            samplePixel,
-            neighbourRawDepth,
-            frameData.trixelCanvasOffsetZ1,
-            frameData.frameCanvasOffset,
-            frameData.voxelRenderOptions,
-            cardinalIndex
-        );
+        int neighbourRawDepth = (frameData.perAxisRoute != 0) ? (neighbourEncoded >> 10) : (neighbourEncoded >> 2);
+        float3 neighbourPos3D;
+        if (perAxis) {
+            int neighbourFaceId = frameData.visibleFaceIds[neighbourEncoded & 3];
+            neighbourPos3D = perAxisCellToWorld3D(
+                samplePixel, neighbourRawDepth, neighbourFaceId, size,
+                frameData.frameCanvasOffset, frameData.voxelRenderOptions
+            );
+        } else {
+            neighbourPos3D = trixelCanvasPixelToWorld3D(
+                samplePixel,
+                neighbourRawDepth,
+                frameData.trixelCanvasOffsetZ1,
+                frameData.frameCanvasOffset,
+                frameData.voxelRenderOptions,
+                cardinalIndex
+            );
+        }
 
         float d = dot(neighbourPos3D - pos3D, worldOutward);
         if (d > kAOMinHeight && d < kAOMaxHeight) occl++;

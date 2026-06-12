@@ -32,7 +32,8 @@ inline bool clipRectToCanvas(
     const int y0 = IRMath::max(0, pos.y);
     const int x1 = IRMath::min(canvasSize.x, pos.x + size.x);
     const int y1 = IRMath::min(canvasSize.y, pos.y + size.y);
-    if (x1 <= x0 || y1 <= y0) return false;
+    if (x1 <= x0 || y1 <= y0)
+        return false;
     loOut = IRMath::ivec2(x0, y0);
     hiOut = IRMath::ivec2(x1, y1);
     return true;
@@ -60,7 +61,8 @@ inline void fillRect(
     RectFillScratch &scratch
 ) {
     IRMath::ivec2 lo, hi;
-    if (!clipRectToCanvas(pos, size, canvas.size_, lo, hi)) return;
+    if (!clipRectToCanvas(pos, size, canvas.size_, lo, hi))
+        return;
 
     const int w = hi.x - lo.x;
     const int h = hi.y - lo.y;
@@ -70,17 +72,93 @@ inline void fillRect(
     scratch.distances_.assign(pixels, distance);
 
     canvas.textureTriangleColors_.second->subImage2D(
-        lo.x, lo.y, w, h,
+        lo.x,
+        lo.y,
+        w,
+        h,
         IRRender::PixelDataFormat::RGBA,
         IRRender::PixelDataType::UNSIGNED_BYTE,
         scratch.colors_.data()
     );
     canvas.textureTriangleDistances_.second->subImage2D(
-        lo.x, lo.y, w, h,
+        lo.x,
+        lo.y,
+        w,
+        h,
         IRRender::PixelDataFormat::RED_INTEGER,
         IRRender::PixelDataType::INT32,
         scratch.distances_.data()
     );
+}
+
+// Fill a solid disc (filled circle) of `radius` trixels centered on
+// `center`. Drawn as one horizontal `fillRect` span per scanline so the
+// whole disc costs ~2*radius subImage2D pairs and reuses `scratch` for the
+// span buffers — the same allocation-amortized path as `fillRect`. Spans
+// are clipped to the canvas by `fillRect`, so an off-canvas or partially
+// off-canvas disc is handled without a separate bounds check here.
+inline void fillDisc(
+    IRComponents::C_TriangleCanvasTextures &canvas,
+    IRMath::ivec2 center,
+    int radius,
+    IRMath::Color color,
+    int distance,
+    RectFillScratch &scratch
+) {
+    if (radius <= 0)
+        return;
+    const int r2 = radius * radius;
+    for (int dy = -radius; dy <= radius; ++dy) {
+        const int half = static_cast<int>(IRMath::sqrt(static_cast<float>(r2 - dy * dy)));
+        fillRect(
+            canvas,
+            IRMath::ivec2(center.x - half, center.y + dy),
+            IRMath::ivec2(2 * half + 1, 1),
+            color,
+            distance,
+            scratch
+        );
+    }
+}
+
+// Stroke a 1-trixel-wide line between `from` and `to` (inclusive) using the
+// integer Bresenham algorithm, writing one trixel at a time via
+// `setTrixel`. Off-canvas trixels are skipped. Lines are thin, so the
+// per-trixel subImage2D cost is bounded by the line length — no scratch
+// buffer is needed. Writes through `subImage2D` like `fillRect`, so it
+// composes with the GUI canvas clear in command-buffer order on Metal
+// (see engine/render/CLAUDE.md "CPU texture writes order via the command
+// buffer on Metal").
+inline void drawLine(
+    IRComponents::C_TriangleCanvasTextures &canvas,
+    IRMath::ivec2 from,
+    IRMath::ivec2 to,
+    IRMath::Color color,
+    int distance
+) {
+    int x = from.x;
+    int y = from.y;
+    const int dx = IRMath::abs(to.x - from.x);
+    const int dy = -IRMath::abs(to.y - from.y);
+    const int sx = from.x < to.x ? 1 : -1;
+    const int sy = from.y < to.y ? 1 : -1;
+    int err = dx + dy;
+    while (true) {
+        if (x >= 0 && y >= 0 && x < canvas.size_.x && y < canvas.size_.y) {
+            canvas.setTrixel(IRMath::ivec2(x, y), color, distance);
+        }
+        if (x == to.x && y == to.y)
+            break;
+        const int e2 = 2 * err;
+        if (e2 >= dy) {
+            err += dy;
+            x += sx;
+        }
+        if (e2 <= dx) {
+            err += dx;
+            y += sy;
+        }
+    }
 }
 
 // Stroke a 1-trixel-wide hollow border on a canvas. Four thin
@@ -95,7 +173,8 @@ inline void drawBorder(
     int thickness,
     RectFillScratch &scratch
 ) {
-    if (size.x <= 0 || size.y <= 0 || thickness <= 0) return;
+    if (size.x <= 0 || size.y <= 0 || thickness <= 0)
+        return;
     const int t = IRMath::min(thickness, IRMath::min(size.x, size.y));
 
     fillRect(canvas, pos, IRMath::ivec2(size.x, t), color, distance, scratch);

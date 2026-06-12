@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,7 @@ namespace IRLuaCodegen {
 // via `IRComponent.register(...)` so it can validate column-ops references
 // and translate Lua field names to C++ field names (with the `_` suffix).
 
-enum class FieldType { INT32, FLOAT, BOOL, STRING };
+enum class FieldType { INT32, FLOAT, BOOL, STRING, VEC3, IVEC3 };
 
 struct ComponentField {
     std::string name_;
@@ -239,9 +240,17 @@ struct ParsedBody {
 // `docs/design/lua-driven-ecs.md`.
 enum class SystemMode { CODEGEN, EVAL };
 
+// Mirrors `IRSystem::Concurrency` (engine/system/include/irreden/system/
+// ir_system_types.hpp). Kept as a separate enum here so system_dsl.hpp
+// stays free of an engine-header include — the codegen tool's link surface
+// is sol2 + Lua, not the engine static libraries.
+// Values must match IRSystem::Concurrency in engine/system/include/irreden/system/ir_system_types.hpp
+enum class Concurrency { SERIAL = 0, PARALLEL_FOR = 1, MAIN_THREAD = 2 };
+
 struct SystemRecord {
     std::string name_;                       // e.g. "MoveByVelocity"
     SystemMode mode_ = SystemMode::CODEGEN;  // per-system mode override
+    Concurrency concurrency_ = Concurrency::SERIAL;  // T-223 opt-in
     std::vector<std::string> components_;    // include archetype, in declared order
     std::vector<std::string> excludes_;      // exclude archetype, in declared order
     std::string sourceFile_;                 // resolved file path
@@ -280,11 +289,17 @@ ParsedBody parseSystemBody(
 // `componentRegistry` is the set of components captured during the same
 // codegen run (Lua-defined via `IRComponent.register`). The systems emitter
 // rejects any column-op against a name not in this registry.
+//
+// `outRequiredIncludes` is appended (not cleared) with the engine headers any
+// whitelisted side-effecting binding in this body needs (#1616) — main.cpp
+// unions these across all systems and emits them in the generated header's
+// #include block.
 void emitSystem(
     std::string &out,
     const SystemRecord &record,
     const ParsedBody &body,
-    const std::vector<ComponentSchema> &componentRegistry
+    const std::vector<ComponentSchema> &componentRegistry,
+    std::set<std::string> &outRequiredIncludes
 );
 
 // Slice the body source from a file given the `(arch)` parameter list end
@@ -304,10 +319,24 @@ std::string sliceFunctionBody(
 // Whitelisted intrinsic registry. Each entry maps a Lua call (namespace.name)
 // to a C++ emission template (e.g. `IRMath::sin`) and an arity.
 struct Intrinsic {
-    const char *luaNamespace_;     // "math", "IRMath"
-    const char *luaName_;           // "sin", "lerp"
-    const char *cppExpression_;     // "IRMath::sin"  (called as cppExpression_(arg0, arg1, ...))
+    const char *luaNamespace_;     // "math", "IRMath", "IRRender"
+    const char *luaName_;           // "sin", "lerp", "setSunIntensity"
+    const char *cppExpression_;     // "IRMath::sin" (called as cppExpression_(arg0, arg1, ...))
     int arity_;                     // -1 for variadic; v1 uses fixed arities only
+
+    // #1616: side-effecting (void-returning) engine bindings — the IRRender.*
+    // render-glue setters. Allowed ONLY in statement position (a bare call,
+    // e.g. `IRRender.setSunIntensity(x)`) and rejected inside an expression.
+    // The value-returning math.* / IRMath.* intrinsics keep isStatement_ ==
+    // false: usable inside expressions, rejected as a bare statement (a bare
+    // value-returning call is almost always a dropped assignment).
+    bool isStatement_ = false;
+
+    // #1616: engine header that declares cppExpression_, so the generated
+    // header can #include it when a body uses this binding. The emitter
+    // collects the union of these across a codegen run. nullptr → declared by
+    // an always-included core header (ir_math.hpp etc.).
+    const char *requiredInclude_ = nullptr;
 };
 
 const std::vector<Intrinsic> &intrinsicRegistry();

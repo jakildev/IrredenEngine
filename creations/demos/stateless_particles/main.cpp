@@ -15,18 +15,17 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_render_stateless_particles_to_trixel.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdint>
@@ -46,16 +45,16 @@ constexpr std::uint32_t kParticlesPerEmitter = 64u;
 // zoom needs a field big enough to look populated on its own.
 constexpr float kFieldHalfExtent = 160.0f;
 constexpr float kBaseLifetimeSeconds = 4.0f;
-constexpr float kBaseUpwardVelocity = 6.0f;  // voxels/sec along -Z (visually up)
-constexpr float kGravityZ = 4.0f;            // pulls particles back down (+Z is down)
+constexpr float kBaseUpwardVelocity = 6.0f; // voxels/sec along -Z (visually up)
+constexpr float kGravityZ = 4.0f;           // pulls particles back down (+Z is down)
 constexpr float kVelocityJitter = 3.0f;
 constexpr float kPositionJitter = 2.0f;
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), "zoom1_origin"},
-    {2.0f, vec2(0, 0), "zoom2_origin"},
-    {4.0f, vec2(0, 0), "zoom4_origin"},
-    {8.0f, vec2(0, 0), "zoom8_origin"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
+    {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
+    {4.0f, vec2(0, 0), 0.0f, "zoom4_origin"},
+    {8.0f, vec2(0, 0), 0.0f, "zoom8_origin"},
 };
 
 int g_autoWarmupFrames = 0;
@@ -66,8 +65,7 @@ void parseArgs(int argc, char **argv) {
 
 void configureCanvas() {
     const IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-    const ivec2 canvasSize =
-        IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
     // Particles render as 2x3 voxel diamonds with face-priority depth
     // encoding; the lighting pass uses the per-pixel face normal to apply
     // 3-tone shading. Without these canvas-side textures bound the
@@ -112,8 +110,7 @@ void seedEmitters() {
         // spawnRate = particlesPerEmitter / baseLifetime so the staggered
         // phase offsets fully cover the lifetime: subIndex (0..N-1) maps to
         // spawnOffset (0..lifetime), keeping every emitter steady-state.
-        e.spawnRate_ =
-            static_cast<float>(kParticlesPerEmitter) / kBaseLifetimeSeconds;
+        e.spawnRate_ = static_cast<float>(kParticlesPerEmitter) / kBaseLifetimeSeconds;
         e.baseColorPacked_ = IRMath::randomColor().toPackedRGBA();
         e.emitterFlags_ = 0u;
         e.particlesPerEmitter_ = kParticlesPerEmitter;
@@ -150,21 +147,23 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::RENDER_STATELESS_PARTICLES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -179,7 +178,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

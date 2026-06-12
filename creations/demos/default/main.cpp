@@ -2,7 +2,7 @@
 #include <irreden/ir_render.hpp>
 
 // COMPONENTS
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -11,7 +11,7 @@
 // SYSTEMS
 #include <irreden/update/systems/system_velocity.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 
@@ -24,11 +24,9 @@
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_gui_elements.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
-
 // COMMAND SUITES
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/camera_controls.hpp>
 
 #include <irreden/render/commands/command_toggle_gui.hpp>
 
@@ -53,7 +51,7 @@ void initSystems() {
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::VELOCITY_3D>(),
          IRSystem::createSystem<IRSystem::GOTO_3D>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
@@ -64,20 +62,20 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()}
     );
 
-    IRSystem::registerPipeline(
-        IRTime::Events::RENDER,
-        {IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+    auto renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
          IRSystem::createSystem<IRSystem::GUI_TEXT_RENDER>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
+    IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
     IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
         InputTypes::KEY_MOUSE,
@@ -94,16 +92,16 @@ void initEntities() {
         for (int y = 0; y < partitions.y; y++) {
             for (int z = 0; z < partitions.z; z++) {
                 EntityId parent = IREntity::createEntity(
-                    C_Position3D{
+                    C_LocalTransform{vec3(
                         static_cast<float>(x * 16),
                         static_cast<float>(y * 16),
                         static_cast<float>(z * 16)
-                    }
+                    )}
                 );
                 auto entities = IREntity::createEntityBatchWithFunctions_Ext(
                     batchSize / partitions,
                     IREntity::CreateEntityExtraParams{.relation = {Relation::CHILD_OF, parent}},
-                    [](ivec3 index) { return C_Position3D{0, 0, 0}; },
+                    [](ivec3 index) { return C_LocalTransform{vec3(0.0f)}; },
                     [batchSize, partitions](ivec3 index) {
                         Color color{
                             roundFloatToByte(
@@ -125,8 +123,8 @@ void initEntities() {
                     },
                     [](ivec3 index) {
                         return C_GotoEasing3D{
-                            C_Position3D{vec3(0, 0, 0)},
-                            C_Position3D{vec3(index.x, index.y, index.z)},
+                            vec3(0, 0, 0),
+                            vec3(index.x, index.y, index.z),
                             (-index.x + -index.y + -index.z + 700) / 100.0f,
                             IREasingFunctions::kBounceEaseOut
                         };

@@ -10,12 +10,12 @@ section below for which files apply.
 
 | Path | Producer | Reader | Purpose |
 |---|---|---|---|
-| `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), parsed `TASKS.md` rows. ~32 KB. |
+| `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), open `fleet:queued` issue rows. ~32 KB. |
 | `projections/<role>.json` | scout (slicers) | the named role | Pre-filtered per-role slice with full records (e.g. sonnet-author's `tasks_open` + `feedback_prs`). ~5 KB. **Prefer this over `state.json`** when you only need your own role's items. |
 | `prs/<repo>/<N>.json` | scout | `fleet-pr view`/`comments` | Full PR detail: body, conversation comments, review summaries, inline review threads, files-changed list. Refreshed only when the list query's `updatedAt` advances. |
 | `diffs/<repo>/<N>-<sha>.diff` | scout | `fleet-pr diff` | Raw `gh pr diff` output, keyed by head SHA. Refreshed on rebase only; old SHAs garbage-collected. |
 | `issues/<repo>/<N>.json` | scout | `fleet-issue view` | Full issue detail (body + comments + labels + state). Cached for issues in `needs_plan` / `human_approved`. |
-| `repos.json` | `fleet-up` | reviewer / queue-mgr / merger roles | One-shot owner/repo slug map: `{"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}`. |
+| `repos.json` | `fleet-up` | reviewer / merger roles | One-shot owner/repo slug map: `{"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}`. |
 | `triggers/<role>` | scout | `fleet-babysit` | Empty file touched whenever this role's projection changed. Drives `fleet-babysit`'s long-back-off wake-up. |
 | `seen-hashes/<role>` | scout | scout | Hash of the last projection — internal trigger-detection state. |
 
@@ -24,8 +24,8 @@ section below for which files apply.
 
 ## Source of truth for list-y queries
 
-When the cache is fresh, do **NOT** bypass it for `gh pr list`,
-`gh issue list --label …`, or `git show origin/master:TASKS.md`.
+When the cache is fresh, do **NOT** bypass it for `gh pr list` or
+`gh issue list --label …`.
 One Read replaces what used to be 3-6 fan-out gh/git calls per role
 per startup.
 
@@ -48,7 +48,7 @@ gh` line on stderr so misses are visible in pane logs):
 | `fleet-pr view <N> [--repo engine\|game]` | `gh pr view <N> --comments` |
 | `fleet-pr diff <N> [--repo engine\|game]` | `gh pr diff <N>` |
 | `fleet-pr comments <N> [--repo engine\|game]` | `gh pr view <N> --comments` + `gh api repos/.../pulls/<N>/comments` + `gh api repos/.../pulls/<N>/reviews` (merged) |
-| `fleet-issue view <N> [--repo engine\|game]` | `gh issue view <N> --comments` |
+| `fleet-issue view <N> [--repo engine\|game]` | `gh issue view <N> --repo <slug> --json number,title,state,labels,body,comments` |
 
 ### What stays direct
 
@@ -74,9 +74,8 @@ just the items that role works on:
 | sonnet-author | `tasks_open` (filtered to `[sonnet]` engine tasks), `feedback_prs` |
 | opus-worker | `tasks_open` (filtered to `[opus]` tasks, both repos), `needs_plan`, `feedback_prs` |
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
-| opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix`) |
-| queue-manager | `needs_plan`, `human_approved`, `tasks_done`, `needs_flip` (in-progress tasks whose linked issue closed) |
-| merger | `prs` (engine, approved or non-MERGEABLE only) |
+| opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix` / `fleet:needs-opus-recheck`) |
+| merger | `prs` (engine + game, approved or non-MERGEABLE only; each tagged with its `repo`) |
 
 **opus-reviewer:** review bodies longer than 2 KB are stored as
 head + tail with an `…[truncated]…` separator (the verdict line
@@ -92,7 +91,7 @@ looking up an upstream PR by `headRefName`).
 
 `fleet-up` writes `~/.fleet/state/repos.json` once at startup with
 the engine and game owner/repo slugs derived from each repo's
-`origin` remote. Reviewer / queue-manager / merger roles that need
+`origin` remote. Reviewer / merger roles that need
 the `--repo <slug>` flag should read this file rather than running
 `gh repo view --json nameWithOwner --jq .nameWithOwner` per pane.
 If `repos.json` is missing (rare — only happens if `fleet-up`
@@ -113,3 +112,49 @@ missing or older than 5 minutes:
 `fleet-babysit` will relaunch the role on its normal cadence; if
 the scout is genuinely down, the human can `fleet-up` to restart
 it.
+
+## Degraded fetches — `degraded` field in state.json
+
+When a `gh` fetch fails (network error, auth failure, rate-limit exhaustion),
+the scout preserves the **previous snapshot's data** for that section instead
+of writing an empty array. The state is still written with a fresh
+`generated_at` (so staleness checks pass), but a top-level `"degraded"` list
+is added:
+
+```json
+{
+  "generated_at": "2026-06-11T20:00:00Z",
+  "degraded": ["engine.prs", "engine.tasks"],
+  "repos": { ... }
+}
+```
+
+Each entry names a section that fell back to last-known-good data. When no
+previous snapshot exists for a failed section, the empty fallback is used and
+the section is still listed in `degraded`.
+
+**What roles should do when they see `degraded`:**
+
+- Treat listed sections as potentially stale (data is from the prior tick).
+- For **task pickup**, stale `prs[]` means the in-flight cross-check may miss
+  very recently opened PRs — rely on `fleet-claim`'s live duplicate-PR
+  backstop as usual.
+- For **feedback scans**, a degraded `prs[]` may cause flagged PRs to be
+  missed this tick; they will surface on the next successful tick.
+- **Do not** treat a `degraded`-marked snapshot as "no work" and exit — the
+  preserved data is still the best available picture of the world.
+
+The scout already suppresses `reconcile --apply` and `fleet-queue-ingest`
+auto-fires during degraded ticks to avoid comparing live claims against
+potentially incomplete issue lists.
+
+### Convention: degrade, never silent-empty
+
+Any fleet script that fetches GitHub data (the scout, `fleet-validate-stack`,
+ad-hoc `gh` wrappers) must surface a failed or degraded fetch: warn on
+stderr at minimum, and write an explicit error marker into any artifact it
+emits. Emitting empty results on failure is forbidden — an all-empty
+`state.json` with a fresh `generated_at` is indistinguishable from "no work
+anywhere". This fired live during a GraphQL rate-limit exhaustion: the scout
+wrote an empty-but-fresh cache while 27 PRs were open, and the whole fleet
+would have idled on it.

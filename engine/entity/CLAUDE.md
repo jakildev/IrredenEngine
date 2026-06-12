@@ -86,6 +86,70 @@ deferred API:
 - `flushStructuralChanges()` — apply queued changes at a safe point (the
   frame boundary in most pipelines).
 
+### Per-worker buffers + thread safety (T-225)
+
+The deferred API is callable from worker threads inside a
+`PARALLEL_FOR` system body. The mechanism is per-worker staging:
+
+- The `EntityManager` holds `m_workerStaging`, a vector indexed by
+  `IRJob::workerId()` (slot `0` = main thread, slots `1..N` =
+  IRJob worker threads). Workers append to their own slot; no
+  lock is needed on the producer side.
+- The vector is sized at `World` construction time, immediately
+  after `JobManager` is constructed, via
+  `EntityManager::resizeWorkerStaging(workerCount + 1)`. Worker
+  count must not change after that point — if the pool resized
+  mid-frame, queued worker writes would land in the wrong slot.
+- `createEntity` from a worker is also safe: the EntityId is
+  allocated atomically via `m_nextEntityId.fetch_add(1)` and
+  returned to the caller immediately. The actual archetype-node
+  insertion is staged into the worker's slot and runs on the
+  main thread at the next `flushStructuralChanges`. Callers may
+  hold the ID but must not call `getComponent` / `setComponent`
+  on it until after flush.
+- `markEntityForDeletion` from a worker queues into the worker's
+  slot; `destroyMarkedEntities` (run from `World::update` on the
+  main thread) drains the legacy main vector first, then each
+  worker slot in order.
+- `flushStructuralChanges` runs on the main thread (asserted)
+  and drains the legacy vectors first, then each per-worker slot
+  in `workerId` order. The drain order is deterministic so
+  `--auto-screenshot` reproducibility holds across sessions —
+  the same set of worker spawns/destroys produces the same
+  archetype-node row layout.
+
+#### Not callable from workers
+
+The following APIs must only be called from the **main thread**. Calling them
+from a `PARALLEL_FOR` worker body bypasses per-worker staging and produces a
+data race in release builds (the `isMainThreadForDeferred()` assert catches
+misuse only in debug builds):
+
+**Eager mutation APIs** (directly modify the archetype graph in place):
+- `setComponent<C>(id, value)` — use `setComponentDeferred` instead
+- `removeComponent<C>(id)` — use `removeComponentDeferred` instead
+- `removeComponentById(id, componentId)`
+- `destroyEntity(id)` — use `markEntityForDeletion` instead
+- `setComponents(id, ...)` (multi-component overloads)
+- `insertNewComponent<C>(id, value)`
+- `createEntityBatch(...)` / `createEntitiesBatch(...)` — batch paths do not
+  route through per-worker staging
+
+**Flush APIs** (drain staging buffers; assert main-thread at entry):
+- `flushStructuralChanges()`
+- `destroyMarkedEntities()`
+
+A worker-callable `Spawns` or `Destroys` system in a `PARALLEL_FOR` group must
+use only the deferred API. The validator lifts `MUTATOR_IN_PARALLEL_GROUP`
+(T-225) for systems that follow this contract; it cannot enforce the contract
+at the call site — use the deferred variants deliberately.
+
+The atomic ID counter replaced the old recycle pool. IDs are no
+longer reused; the `IR_ENTITY_ID_BITS` (25-bit) space gives ~33M
+entities per session, sufficient for current workloads. Long-running
+sessions that approach the cap should switch to a tiered allocator —
+not yet needed.
+
 ## Pre-destroy hooks
 
 `EntityManager::registerPreDestroyHook(callback)` registers a
@@ -213,21 +277,22 @@ precedes the load, which already clears the cache).
 
 ## Position + transform components are automatic
 
-`createEntity(...)` always adds `C_PositionGlobal3D`,
-`C_LocalTransform`, and `C_WorldTransform`. You cannot opt out, but
-the free-function wrapper detects when the caller passes one of these
-types explicitly and skips the matching default — so
-`createEntity(C_LocalTransform{...})` lands the caller's value rather
-than emplacing a duplicate column row.
+`createEntity(...)` always adds `C_LocalTransform` and
+`C_WorldTransform`. You cannot opt out, but the free-function
+wrapper detects when the caller passes one of these types
+explicitly and skips the matching default — so
+`createEntity(C_LocalTransform{...})` lands the caller's value
+rather than emplacing a duplicate column row.
 
-The legacy `C_PositionGlobal3D` channel and the canonical
-`C_WorldTransform` channel coexist during the T-199 migration; see
-`engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
-propagation" for the SQT formula and pipeline placement. Per-frame
-additive offsets travel through the modifier framework's vec3 fields
-(`POSITION_OFFSET_3D` for the legacy channel,
-`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` for the SQT channel).
-Entities that don't push offsets don't need `C_Modifiers`.
+Rendered position lives in `C_WorldTransform.translation_`,
+composed by `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform`
+plus the parent chain — see `engine/prefabs/irreden/common/CLAUDE.md`
+"SQT transform pair + propagation" for the formula and pipeline
+placement. Per-frame additive offsets travel through the modifier
+framework's `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` vec3 fields;
+entities that don't push offsets don't need `C_Modifiers`. The
+legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation`
+components and their writer chain were retired in T-302.
 
 ## Relations
 

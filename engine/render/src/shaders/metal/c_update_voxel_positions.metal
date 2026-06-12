@@ -1,51 +1,41 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Per-frame voxel transform pass: each thread maps a global voxel index to
-// its owning entity, looks up the entity world position, and writes the
-// transformed world position into the global position buffer.  Mirrors
-// shaders/c_update_voxel_positions.glsl.
+// GPU voxel-position prepass (#1396). Mirrors shaders/c_update_voxel_positions.glsl
+// byte-for-byte: one thread per live voxel computes world = modelToWorld * localPos
+// for GPU-transformed voxels and writes the shared global-position buffer
+// (buffer 5); sentinel-slot (kVoxelTransformStatic) voxels are left untouched so
+// the CPU-direct path keeps owning them (byte-identical). The per-voxel transform
+// slot is bit-packed into the local-position .w lane. The threadgroup grid +
+// linear index reconstruction match c_voxel_visibility_compact.metal exactly.
 
-struct EntityTransform {
-    float4 worldPosition;
-    uint poolOffset;
-    uint voxelCount;
-    uint padding0;
-    uint padding1;
-};
+constant uint VOXEL_TRANSFORM_STATIC = 0xFFFFFFFFu;
 
 struct UpdateParams {
-    int entityCount;
+    int voxelCount;
 };
 
 kernel void c_update_voxel_positions(
     device float4* globalPositions [[buffer(5)]],
     device const float4* localPositions [[buffer(17)]],
-    device const EntityTransform* transforms [[buffer(18)]],
+    device const float4x4* transforms [[buffer(18)]],
     constant UpdateParams& params [[buffer(19)]],
-    uint globalId [[thread_position_in_grid]]
+    uint3 groupId [[threadgroup_position_in_grid]],
+    uint3 groupCount [[threadgroups_per_grid]],
+    uint3 localId [[thread_position_in_threadgroup]]
 ) {
-    uint entityIdx = 0u;
-    uint voxelOffset = 0u;
-    uint cumulative = 0u;
-    bool found = false;
-    for (uint e = 0u; e < uint(params.entityCount); ++e) {
-        const uint nextCumulative = cumulative + transforms[e].voxelCount;
-        if (globalId < nextCumulative) {
-            entityIdx = e;
-            voxelOffset = globalId - cumulative;
-            found = true;
-            break;
-        }
-        cumulative = nextCumulative;
-    }
-
-    if (!found) {
+    const uint workGroupIndex = groupId.x + groupId.y * groupCount.x;
+    const uint voxelId = workGroupIndex * 64u + localId.x;
+    if (voxelId >= uint(params.voxelCount)) {
         return;
     }
 
-    const uint poolIdx = transforms[entityIdx].poolOffset + voxelOffset;
-    const float3 localPos = localPositions[poolIdx].xyz;
-    const float3 worldPos = localPos + transforms[entityIdx].worldPosition.xyz;
-    globalPositions[poolIdx] = float4(worldPos, 1.0);
+    const float4 localEntry = localPositions[voxelId];
+    const uint slot = as_type<uint>(localEntry.w);
+    if (slot == VOXEL_TRANSFORM_STATIC) {
+        return; // CPU-direct voxel — leave buffer 5 as the CPU flush wrote it.
+    }
+
+    const float3 worldPos = (transforms[slot] * float4(localEntry.xyz, 1.0)).xyz;
+    globalPositions[voxelId] = float4(worldPos, 1.0);
 }

@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace IRRender {
@@ -46,6 +47,13 @@ struct MetalRuntimeState {
     // an in-flight command encoder.  Released after the next
     // present/waitUntilCompleted boundary.
     std::vector<MTL::Buffer *> pendingReleaseBuffers_;
+
+    // Buffers that have been encoded into a command encoder since the
+    // previous wait point. subData() consults this set to decide whether
+    // an orphan is required (encoded → orphan; not encoded → in-place
+    // write). Cleared inside releaseDeferredMetalBuffers() right after
+    // the GPU drains.
+    std::unordered_set<MTL::Buffer *> encodedBuffers_;
 };
 
 // Intentionally leaked so the runtime state outlives all other statics.
@@ -315,6 +323,27 @@ void releaseDeferredMetalBuffers() {
         }
     }
     pending.clear();
+    // The wait drained every encoder that could still be reading any
+    // currently-live buffer, so the next subData() on any of them is
+    // safe to land in place. The cleared pendingReleaseBuffers_ vector
+    // also means any stale pointer entries here would dangle — clearing
+    // the set keeps both invariants tight.
+    g_runtime().encodedBuffers_.clear();
+}
+
+void markMetalBufferEncoded(MTL::Buffer *buffer) {
+    if (buffer == nullptr) {
+        return;
+    }
+    g_runtime().encodedBuffers_.insert(buffer);
+}
+
+bool wasMetalBufferEncoded(MTL::Buffer *buffer) {
+    if (buffer == nullptr) {
+        return false;
+    }
+    const auto &set = g_runtime().encodedBuffers_;
+    return set.find(buffer) != set.end();
 }
 
 void replaceMetalBufferInBindings(MTL::Buffer *oldBuffer, MTL::Buffer *newBuffer) {

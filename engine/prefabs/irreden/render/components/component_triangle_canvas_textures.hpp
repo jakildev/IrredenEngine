@@ -11,6 +11,47 @@ using namespace IRRender;
 
 namespace IRComponents {
 
+// Factories for the trixel-canvas texture triple (color / distance / entity-id).
+// Centralized here so C_TriangleCanvasTextures and C_PerAxisTrixelCanvases
+// (smooth camera Z-yaw, #1308) cannot drift on format / wrap / filter — a
+// silent mismatch between the two would corrupt the per-axis distance composite.
+namespace detail {
+
+inline std::pair<ResourceId, Texture2D *> makeCanvasColorTexture(ivec2 size) {
+    return IRRender::createResource<IRRender::Texture2D>(
+        TextureKind::TEXTURE_2D,
+        size.x,
+        size.y,
+        TextureFormat::RGBA8,
+        TextureWrap::REPEAT,
+        TextureFilter::NEAREST
+    );
+}
+
+inline std::pair<ResourceId, Texture2D *> makeCanvasDistanceTexture(ivec2 size) {
+    return IRRender::createResource<IRRender::Texture2D>(
+        TextureKind::TEXTURE_2D,
+        size.x,
+        size.y,
+        TextureFormat::R32I,
+        TextureWrap::REPEAT,
+        TextureFilter::NEAREST
+    );
+}
+
+inline std::pair<ResourceId, Texture2D *> makeCanvasEntityIdTexture(ivec2 size) {
+    return IRRender::createResource<IRRender::Texture2D>(
+        TextureKind::TEXTURE_2D,
+        size.x,
+        size.y,
+        TextureFormat::RG32UI,
+        TextureWrap::CLAMP_TO_EDGE,
+        TextureFilter::NEAREST
+    );
+}
+
+} // namespace detail
+
 struct C_TriangleCanvasTextures {
     ivec2 size_;
     std::pair<ResourceId, Texture2D *> textureTriangleColors_;
@@ -19,30 +60,9 @@ struct C_TriangleCanvasTextures {
 
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}
-        , textureTriangleColors_{IRRender::createResource<IRRender::Texture2D>(
-              TextureKind::TEXTURE_2D,
-              size.x,
-              size.y,
-              TextureFormat::RGBA8,
-              TextureWrap::REPEAT,
-              TextureFilter::NEAREST
-          )}
-        , textureTriangleDistances_{IRRender::createResource<IRRender::Texture2D>(
-              TextureKind::TEXTURE_2D,
-              size.x,
-              size.y,
-              TextureFormat::R32I,
-              TextureWrap::REPEAT,
-              TextureFilter::NEAREST
-          )}
-        , textureTriangleEntityIds_{IRRender::createResource<IRRender::Texture2D>(
-              TextureKind::TEXTURE_2D,
-              size.x,
-              size.y,
-              TextureFormat::RG32UI,
-              TextureWrap::CLAMP_TO_EDGE,
-              TextureFilter::NEAREST
-          )} {}
+        , textureTriangleColors_{detail::makeCanvasColorTexture(size)}
+        , textureTriangleDistances_{detail::makeCanvasDistanceTexture(size)}
+        , textureTriangleEntityIds_{detail::makeCanvasEntityIdTexture(size)} {}
 
     C_TriangleCanvasTextures() {}
 
@@ -76,92 +96,107 @@ struct C_TriangleCanvasTextures {
     }
 
     void clear() const {
-        textureTriangleColors_.second->clear(
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
-            &u8vec4(0, 0, 0, 0)[0]
+        textureTriangleColors_.second
+            ->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &u8vec4(0, 0, 0, 0)[0]);
+        textureTriangleDistances_.second->clear(
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
         );
-        textureTriangleDistances_.second
-            ->clear(
-                PixelDataFormat::RED_INTEGER,
-                PixelDataType::INT32,
-                &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
-            );
         uvec2 zero{0u, 0u};
         textureTriangleEntityIds_.second
             ->clear(PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &zero);
     }
 
     void clearWithColor(const Color &color) const {
-        textureTriangleColors_.second->clear(
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
-            &color
-        );
+        textureTriangleColors_.second
+            ->clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, &color);
         clearDistanceTexture();
     }
 
     void clearWithColorData(ivec2 size, const std::vector<Color> &colorData) const {
-        textureTriangleColors_.second
-            ->subImage2D(
-                0,
-                0,
-                size.x,
-                size.y,
-                PixelDataFormat::RGBA,
-                PixelDataType::UNSIGNED_BYTE,
-                colorData.data()
-            );
+        textureTriangleColors_.second->subImage2D(
+            0,
+            0,
+            size.x,
+            size.y,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            colorData.data()
+        );
         clearDistanceTexture();
     }
 
     void setTrixel(ivec2 index, Color color, int distance = 0) {
-        textureTriangleColors_.second
-            ->subImage2D(
-                index.x,
-                index.y,
-                1,
-                1,
-                PixelDataFormat::RGBA,
-                PixelDataType::UNSIGNED_BYTE,
-                &color
-            );
-        textureTriangleDistances_.second
-            ->subImage2D(
-                index.x,
-                index.y,
-                1,
-                1,
-                PixelDataFormat::RED_INTEGER,
-                PixelDataType::INT32,
-                &distance
-            );
+        textureTriangleColors_.second->subImage2D(
+            index.x,
+            index.y,
+            1,
+            1,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            &color
+        );
+        textureTriangleDistances_.second->subImage2D(
+            index.x,
+            index.y,
+            1,
+            1,
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            &distance
+        );
     }
 
     IREntity::EntityId readEntityIdAt(ivec2 trixelPos) const {
-        if (trixelPos.x < 0 || trixelPos.x >= size_.x ||
-            trixelPos.y < 0 || trixelPos.y >= size_.y) {
+        if (trixelPos.x < 0 || trixelPos.x >= size_.x || trixelPos.y < 0 ||
+            trixelPos.y >= size_.y) {
             return IREntity::kNullEntity;
         }
         uvec2 packed{0u, 0u};
         textureTriangleEntityIds_.second->getSubImage2D(
-            trixelPos.x, trixelPos.y, 1, 1,
-            PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, &packed
+            trixelPos.x,
+            trixelPos.y,
+            1,
+            1,
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
+            &packed
         );
         return static_cast<IREntity::EntityId>(packed.x) |
                (static_cast<IREntity::EntityId>(packed.y) << 32);
     }
 
+    void clearDistances() const {
+        textureTriangleDistances_.second->clear(
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
+        );
+    }
+
     void saveAsPNG() {}
 
   private:
+    // Clears to kTrixelDistanceMaxDistance - 1 (= 65534) rather than
+    // kTrixelDistanceMaxDistance (= 65535). This predates the introduction of
+    // the public clearDistances() helper; the shader's "empty pixel" sentinel
+    // is 65535, so this value is one step below the canonical empty state.
+    //
+    // When invoked via clearCanvasWithBackground() → clearCanvasAndDistances(),
+    // the 65534 value is immediately overwritten by the unconditional
+    // IRRender::device()->clearTexImage(...) call at the end of
+    // clearCanvasAndDistances(), which restores kTrixelDistanceMaxDistance
+    // (65535) on every frame. The
+    // redundant GPU clear here is negligible in cost but retained for correctness
+    // on call-sites (e.g. entity_trixel_canvas.hpp) that invoke clearWithColor()
+    // or clearWithColorData() without a subsequent clearDistances().
     void clearDistanceTexture() const {
-        textureTriangleDistances_.second
-            ->clear(
-                PixelDataFormat::RED_INTEGER,
-                PixelDataType::INT32,
-                &ivec1(IRConstants::kTrixelDistanceMaxDistance - 1)[0]
-            );
+        textureTriangleDistances_.second->clear(
+            PixelDataFormat::RED_INTEGER,
+            PixelDataType::INT32,
+            &ivec1(IRConstants::kTrixelDistanceMaxDistance - 1)[0]
+        );
     }
 };
 

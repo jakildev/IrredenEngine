@@ -6,7 +6,7 @@
 #include <irreden/ir_video.hpp>
 
 // Components
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -16,18 +16,17 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 // Systems
-#include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 
 // Commands
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/render/commands/command_toggle_gui.hpp>
 #include <irreden/render/commands/command_gui_zoom.hpp>
@@ -120,8 +119,8 @@ inline vec3 rowWorldCenter(int i) {
 // Screenshot shots: an overview of the floor and a closer cube-lane view.
 namespace {
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {2.0f, vec2(20.0f, 0.0f), "overview"},
-    {2.5f, vec2(40.0f, 0.0f), "cubes_focus"},
+    {2.0f, vec2(20.0f, 0.0f), 0.0f, "overview"},
+    {2.5f, vec2(40.0f, 0.0f), 0.0f, "cubes_focus"},
 };
 } // namespace
 
@@ -318,26 +317,26 @@ void initSystems() {
     // The animation parameter is recoverable as `(x - y) * 0.5f`; the
     // row's iso.y is `-(x + y)` (z = 0), independent of animation phase.
     auto consumeId =
-        IRSystem::createSystem<C_Position3D, C_ResolvedFields, C_Modifiers, C_ShapeDescriptor>(
+        IRSystem::createSystem<C_LocalTransform, C_ResolvedFields, C_Modifiers, C_ShapeDescriptor>(
             "ModDemo_Consume",
-            [](C_Position3D &pos,
+            [](C_LocalTransform &pos,
                C_ResolvedFields &rf,
                C_Modifiers &mods,
                C_ShapeDescriptor &shape) {
                 float speed = rf.get(IRModifierDemo::g_speedField, IRModifierDemo::kBaseSpeed);
-                pos.pos_.x += speed;
-                pos.pos_.y -= speed;
+                pos.translation_.x += speed;
+                pos.translation_.y -= speed;
 
-                const float anim = (pos.pos_.x - pos.pos_.y) * 0.5f;
+                const float anim = (pos.translation_.x - pos.translation_.y) * 0.5f;
                 if (anim > IRModifierDemo::kAnimRange) {
-                    pos.pos_.x -= 2.0f * IRModifierDemo::kAnimRange;
-                    pos.pos_.y += 2.0f * IRModifierDemo::kAnimRange;
+                    pos.translation_.x -= 2.0f * IRModifierDemo::kAnimRange;
+                    pos.translation_.y += 2.0f * IRModifierDemo::kAnimRange;
                 }
 
                 // Recover the cube index from the row's iso.y, which stays
                 // constant under the (+x,-y) animation. The row mapping is
                 // `rowIsoY(i) = (i - (N+1)/2) * kRowIsoSpacing`.
-                const float isoY = -(pos.pos_.x + pos.pos_.y);
+                const float isoY = -(pos.translation_.x + pos.translation_.y);
                 const int rowIdx = static_cast<int>(std::round(
                     isoY / IRModifierDemo::kRowIsoSpacing + (IRModifierDemo::kNumCubes + 1) * 0.5f
                 ));
@@ -487,7 +486,7 @@ void initSystems() {
             resolver.modifierResolveLambda_,
             consumeId,
             hudId,
-            IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+            IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
         }
     );
 
@@ -498,15 +497,18 @@ void initSystems() {
         }
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        clearMainCanvasId,
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            clearMainCanvasId,
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -524,7 +526,7 @@ void initSystems() {
 // Commands
 // ---------------------------------------------------------------------------
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
     IRCommand::createCommand<IRCommand::TOGGLE_GUI>(
         InputTypes::KEY_MOUSE,
@@ -579,7 +581,7 @@ void initEntities() {
 
         if (i == 6) {
             IRModifierDemo::g_cubes[i] = IREntity::createEntity(
-                C_Position3D{pos},
+                C_LocalTransform{pos},
                 C_ShapeDescriptor{IRRender::ShapeType::BOX, size, color},
                 C_Modifiers{},
                 C_LambdaModifiers{},
@@ -587,7 +589,7 @@ void initEntities() {
             );
         } else {
             IRModifierDemo::g_cubes[i] = IREntity::createEntity(
-                C_Position3D{pos},
+                C_LocalTransform{pos},
                 C_ShapeDescriptor{IRRender::ShapeType::BOX, size, color},
                 C_Modifiers{},
                 C_ResolvedFields{}
@@ -617,7 +619,7 @@ void initEntities() {
                                 IRModifierDemo::kNumCubes * IRModifierDemo::kRowIsoSpacing * 0.5f +
                                 20.0f;
         IREntity::createEntity(
-            C_Position3D{vec3{0.0f, 0.0f, kFloorZ}},
+            C_LocalTransform{vec3{0.0f, 0.0f, kFloorZ}},
             C_ShapeDescriptor{
                 IRRender::ShapeType::BOX,
                 vec4{floorSpan, floorSpan, kFloorThickness, 0.0f},
@@ -635,7 +637,7 @@ void initEntities() {
         const Color pillarColor{90, 100, 130, 255};
         const vec4 pillarSize{2.5f, 2.5f, 6.0f, 0.0f};
         IREntity::createEntity(
-            C_Position3D{vec3{
+            C_LocalTransform{vec3{
                 rowCenter.x - IRModifierDemo::kAnimRange - 4.0f,
                 rowCenter.y + IRModifierDemo::kAnimRange + 4.0f,
                 1.0f
@@ -643,7 +645,7 @@ void initEntities() {
             C_ShapeDescriptor{IRRender::ShapeType::BOX, pillarSize, pillarColor}
         );
         IREntity::createEntity(
-            C_Position3D{vec3{
+            C_LocalTransform{vec3{
                 rowCenter.x + IRModifierDemo::kAnimRange + 4.0f,
                 rowCenter.y - IRModifierDemo::kAnimRange - 4.0f,
                 1.0f
@@ -669,15 +671,14 @@ void initEntities() {
         };
         for (const auto &b : bumps) {
             IREntity::createEntity(
-                C_Position3D{b.pos_},
+                C_LocalTransform{b.pos_},
                 C_ShapeDescriptor{IRRender::ShapeType::BOX, b.size_, b.color_}
             );
         }
     }
 
     // HUD: combined per-cube status panel.
-    // Smallest font (fontSize=1) + gui_scale=1 keeps the HUD compact so it
-    // doesn't dominate the viewport. Press [H] to surface the extended help.
+    // Press [H] to surface the extended help.
     IRModifierDemo::g_hudStatusEntity = IREntity::createEntity(
         C_TextSegment{""},
         C_GuiPosition{12, 12},

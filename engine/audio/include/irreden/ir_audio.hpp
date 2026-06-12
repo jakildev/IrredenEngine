@@ -26,14 +26,20 @@ using AudioInputCallback = std::function<void(const float *, int, double, bool)>
 /// Returns the active `IAudioCaptureSource` (used by `VideoManager` for recording).
 IAudioCaptureSource &getAudioCaptureSource();
 
+/// Returns the names of all MIDI input ports discovered at startup.
+std::vector<std::string> midiInPorts();
+/// Returns the names of all MIDI output ports discovered at startup.
+std::vector<std::string> midiOutPorts();
 /// Opens a MIDI input port by hardcoded interface index.
 int openPortMidiIn(MidiInInterfaces midiInInterface);
 /// Opens the first MIDI input port whose name contains @p deviceName (substring match).
+/// Returns the port index on success, or -1 if no port matches (logs a warning).
 int openPortMidiIn(const std::string &deviceName);
 /// Opens a MIDI output port by hardcoded interface index.
 int openPortMidiOut(MidiOutInterfaces midiOutInterface);
-/// Opens the first MIDI output port whose name contains @p midiOutInterface (substring match).
-int openPortMidiOut(const std::string &midiOutInterface);
+/// Opens the first MIDI output port whose name contains @p deviceName (substring match).
+/// Returns the port index on success, or -1 if no port matches (logs a warning).
+int openPortMidiOut(const std::string &deviceName);
 /// Sends a raw MIDI message (fire-and-forget via `RtMidiOut`).
 void sendMidiMessage(const std::vector<unsigned char> &message);
 
@@ -57,10 +63,7 @@ void insertCCMessage(MidiChannel channel, const IRComponents::C_MidiMessage &mes
 /// @p callback is invoked on the RtAudio thread — copy data out before returning.
 /// Returns `false` if the device could not be opened.
 bool startAudioInputCapture(
-    const std::string &deviceName,
-    int sampleRate,
-    int channels,
-    AudioInputCallback callback
+    const std::string &deviceName, int sampleRate, int channels, AudioInputCallback callback
 );
 /// Stops the active RtAudio input stream.  Always call before `AudioManager` teardown.
 void stopAudioInputCapture();

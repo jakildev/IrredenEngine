@@ -7,8 +7,7 @@
 #include <irreden/ir_ecs.hpp>
 
 #include <irreden/update/components/component_particle_spawner.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 
 #include <irreden/voxel/entities/entity_voxel_particle.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -20,9 +19,9 @@ namespace IRECS {
 
 template <> struct System<PARTICLE_SPAWNER> {
     static SystemId create() {
-        return createSystem<C_ParticleSpawner, C_PositionGlobal3D>(
+        return createSystem<C_ParticleSpawner, C_WorldTransform>(
             "ParticleSpawner",
-            [](C_ParticleSpawner &particleSpawner, C_PositionGlobal3D &position) {
+            [](C_ParticleSpawner &particleSpawner, const C_WorldTransform &worldXform) {
                 if (!particleSpawner.active_) {
                     return;
                 }

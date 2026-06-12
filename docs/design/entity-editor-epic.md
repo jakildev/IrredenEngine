@@ -169,7 +169,7 @@ revisited per-phase:
 | **Single-window invariant lifted only at Phase 8** | Real multi-window has cost; defer until single-window editor proves valuable first. |
 | **Rotation architecture** | `C_LocalTransform` (SQT) per entity; `C_RotationMode` enum (`GRID` vs `DETACHED`); world rotation is Z-axis only via per-face geometric trixel deformation (replaces screen-space bilinear residual); pitch/roll allowed only on detached canvases per-entity. Locked design in engine epic `#936` (successor to `#310`). |
 | **World streaming** | Sparse over chunks; finite GPU residency budget; LRU + camera-radius eviction; one-frame upload budget enforced via low-LOD fallback for off-budget chunks. Locked design in engine epic `#938`. |
-| **SHAPES/HYBRID author flow deprecated (pending decision)** | Primary entity shapes are voxels-only; SDF runtime restricted to special effects (auras, fields, lighting occluders). Decision tracked in engine epic `#937`; lands during Epic C C3–C5. |
+| **SHAPES/HYBRID writer path deprecated; SDF runtime retained for editor chrome + effects + lighting blockers** | Restriction shape is **tri-mode**, not effects-only: the SDF runtime stays for (a) editor chrome (gizmos, axis indicators, selection highlight, debug culling minimap), (b) forward-looking effects (auras, fields, soft glows, gameplay shaders), and (c) `BUILD_LIGHT_OCCLUSION_GRID` blockers using `C_LightBlocker`. Only the *writer-side* SHAPES/HYBRID authoring path retires — the editor never exposes SDF authoring, and the parametric-shape bake (Epic A A3, `#934`) always emits `DENSE`. `VoxelSetMode::SHAPES` / `HYBRID` remain legacy-readable so existing `.vxs` assets continue to `Prefab::spawn` as `C_ShapeDescriptor` children. Rationale: the D1 audit (`docs/design/sdf-runtime-audit.md`, `#945`) found editor chrome and lighting blockers are intrinsic SDF consumers (gizmo screen-space sizing rewrites `params_` per tick; `BUILD_LIGHT_OCCLUSION_GRID` reads `shapeType_` + `params_` against the blocker bitfield) — both cost epic-scale rework to migrate to voxel pools, and the strict "effects-only" framing would have forced that migration without benefit. Decision tracked in engine epic `#937`; migration plan in `#961` (D3); `#690` / `#721` disposition under D4. |
 
 ## Engine vs. game work split
 
@@ -235,13 +235,18 @@ SDF primitives extend the `ShapeType` enum + add an `sdf<NAME>`
 GLSL/Metal pair — **no format version bump required** (extensibility
 rule #2 below).
 
-> **Deprecation note (pending decision):** the SHAPES and HYBRID author
-> flows are being restricted to "effects only" per engine epic `#937`.
-> Primary entity authoring is voxels-only — editor never exposes SDF
-> primitive authoring; the parametric-shape bake operation (Epic A A3,
-> `#934`) always emits a DENSE chunk. SDF runtime path stays for sun
-> shadow / light volume occluders and special-effect entities (auras,
-> fields, glows). Decision deliverable lands during Epic C C3–C5.
+> **Deprecation note (locked, D2 / `#960`):** the SHAPES and HYBRID
+> *writer* paths are deprecated per engine epic `#937`. The editor
+> never exposes SDF primitive authoring; the parametric-shape bake
+> (Epic A A3, `#934`) always emits a DENSE chunk. `VoxelSetMode::SHAPES`
+> / `HYBRID` remain **legacy-readable** so existing `.vxs` assets
+> still `Prefab::spawn` their SDF children. The SDF runtime itself
+> stays for editor chrome, special-effect entities (auras, fields,
+> glows), and `BUILD_LIGHT_OCCLUSION_GRID` lighting blockers — see
+> the "SHAPES/HYBRID writer path deprecated…" row in
+> [Architectural decisions (locked)](#architectural-decisions-locked)
+> and `docs/design/sdf-runtime-audit.md` (D1 / `#945`) for full
+> rationale. Migration plan in `#961` (D3).
 
 ### GPU upload
 
@@ -422,50 +427,83 @@ mode. `.vxs.json` sidecar is human-diffable.
 ## Phase 2 — Hierarchies & skeletal voxels
 
 **Issue:** [`#605`](https://github.com/jakildev/IrredenEngine/issues/605).
-**Blocked by:** Phase 1 (`#604`).
+**Blocked by:** (none) — Phase 1 static authoring (`#604`) shipped.
+**Re-planned 2026-06.** Child tickets `#1602`–`#1612`; full plan in
+[`.fleet/plans/issue-605.md`](../../.fleet/plans/issue-605.md).
 
 ### Scope
 
-Activate the GPU joint-matrix buffer SSBO and per-voxel `bone_id`
-consumption in the compute shader; multi-volume entities have each volume
-bound to a bone; FK pose editing works in the editor.
+Author skeletal voxels end to end: rig a voxel entity with a joint
+hierarchy, paint per-voxel `bone_id`, pose joints with forward kinematics,
+and see voxels deform live in the editor, persisted through `.rig`.
 
-Joints are entities, not vector entries in one component on the rig root.
-The scaffolding for that model — `C_Skeleton` (rig root) + `C_Joint` (tag
-on each joint entity) + CHILD_OF — lands in `#737` ahead of this phase so
-the consumer-side migration here has a stable target. The legacy
-`C_JointHierarchy` is deprecated; sub-task 2.1 reads from the new
-components.
+Joints are entities, not vector entries on the rig root: `C_Skeleton`
+(rig root, `joints_` is the ordered bone list — index *is* `bone_id`) +
+`C_Joint` (tag) + CHILD_OF (landed `#737`). The legacy `C_JointHierarchy`
+is a deprecation shim. `SYSTEM_PROPAGATE_TRANSFORM` (`#734`) composes the
+parent chain, so FK is free — rotating a joint's local transform deforms
+its descendants.
+
+### Skinning rides the #1396 prepass — no second GPU path
+
+Rigid skinning (one bone per voxel, which is exactly what a single
+`uint8 bone_id` expresses — there are no per-voxel weights) is *already*
+the GPU voxel-position prepass shipped in `#1396`:
+`c_update_voxel_positions.glsl` computes `world = transforms[slot] *
+localPos`, where `slot` is bit-packed per-voxel into the binding-17 `.w`
+lane and `transforms[]` is the binding-18 `mat4` buffer with a 4096-slot
+allocator. Skeletal skinning is that operation with the per-voxel slot
+pointing at a **bone** instead of an **entity**:
+
+1. Per joint, CPU computes `skinMatrix = jointWorld × bindInverse`
+   (cost = #joints, not #voxels) into a transform slot in the existing
+   binding-18 buffer.
+2. At voxel-set seed time, each voxel's `.w = slotBase + bone_id`.
+3. The existing prepass shader does the skin. **No new shader, no stage-1
+   change**; the speculative binding-21 joint buffer is retired for the
+   voxel path. `bone_id` is per-skeleton-local (`≤256` joints/skeleton),
+   resolved to a global slot at seed time.
 
 ### Sub-tasks
 
-- **2.1** Drive the joint-matrix SSBO — iterate each `C_Skeleton`,
-  fetch each joint entity's world transform, pack into the SSBO at the
-  slot matching the joint's index in `C_Skeleton.joints_`.
-- **2.2** Per-voxel `bone_id` consumed by compute shader stage 1
-  (`c_voxel_to_trixel_stage_1.glsl` applies
-  `bone_matrix[bone_id] * local_offset`).
-- **2.3** Multi-volume entity, each volume bound to a bone.
-- **2.4** Joint placement gizmos in editor (drag bones in 3D viewport).
-- **2.5** Forward kinematics pose editing — rotate joints, see voxels
-  deform live.
-- **2.6** First skeletal entities — snake (15–40 segment chain),
-  multi-limb creature, articulated tree.
+| # | Sub-task |
+|---|---|
+| `#1602` | Bind-pose on `C_Skeleton` (`bindPose_`) + `skinMatrix` helper. |
+| `#1603` | `SYSTEM_UPDATE_JOINT_MATRICES` → existing binding-18 buffer. |
+| `#1605` | Per-voxel skinning via bone→slot in the binding-17 seed path. |
+| `#1606` | Retire/contain the binding-21 joint buffer for the voxel path. |
+| `#1604` | Editor joint authoring — spawn `C_Joint`, CHILD_OF, gizmo place. |
+| `#1607` | Editor skeleton tree panel (list / select / rename / reparent). |
+| `#1608` | Editor `bone_id` painting (bone selector + tint by bone). |
+| `#1610` | Editor FK pose editing — rotate gizmo → live deform + bind capture. |
+| `#1609` | Editor `.rig` save/load (`C_Skeleton` + joints + bind pose). |
+| `#1611` | Demo entities — 30-joint snake + desk + 2 more (closes F-1.6). |
+| `#1612` | render-verify + CPU↔GPU skinning consistency for rigged demos. |
 
 ### Acceptance
 
-Rig a 30-segment snake; all segments deform when a joint matrix changes.
-Unrigged voxels (`bone_id = 0`) continue to render via identity-bone
-fallback, so any pre-rigging entity keeps rendering after the C_Voxel
-widening lands.
+Rig a 30-joint snake in the editor; all segments deform when a joint
+rotates. Unrigged voxels (`bone_id → identity`) render unchanged at zero
+cost. The rig round-trips through `.rig`. render-verify is green.
+
+### Deferred
+
+- Transform/relation perf hardening (parent-node cache on `ArchetypeNode`,
+  partition-cache invalidation granularity, `removeBySource` reverse
+  index) — skeletons already query joints `O(joints)` via
+  `C_Skeleton.joints_`; land these only if the snake shows propagation in
+  the profile.
+- Severance / dismemberment — Phase 4+ (gameplay).
+- Curve-approximated rigs (bezier / Catmull-Rom skeletons to approximate a
+  long snake with fewer joints) — with IK in Phase 4 (`#607`).
 
 ### Risks
 
-- **GPU joint-buffer sizing.** The SSBO size cap matters once entities
-  scale past trivial counts; design the slot allocation up-front.
-- **Editor gizmo precision.** Bones are placed in world space but rotated
-  in local space. Gizmo math has to round-trip through the parent chain
-  cleanly; trust nothing without a unit test on a 3-bone chain.
+- **Slot-budget pressure.** Bones share the 4096-slot transform budget with
+  entity transforms; document and monitor as rigged entity counts grow.
+- **Editor gizmo precision.** Bones are placed in world space but rotated in
+  local space. Gizmo math must round-trip through the parent chain cleanly;
+  trust nothing without a unit test on a 3-bone chain.
 
 ---
 

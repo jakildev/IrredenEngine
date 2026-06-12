@@ -34,12 +34,11 @@ named lookup. Holds shaders, buffers, textures, VAOs, etc.
 │  UPDATE pipeline: game logic, voxel mutation                     │
 ├──────────────────────────────────────────────────────────────────┤
 │  RENDER pipeline (systems in order):                             │
-│    VOXEL_TO_TRIXEL_STAGE_1                                       │
+│    VOXEL_TO_TRIXEL_STAGE_1  (one per-canvas tick does all of:)   │
 │      • upload voxel pos/col/ids to SSBOs                         │
 │      • clear distance texture to kTrixelDistanceMaxDistance      │
 │      • c_voxel_visibility_compact.glsl → visible index list      │
 │      • c_voxel_to_trixel_stage_1.glsl  → distance writes         │
-│    VOXEL_TO_TRIXEL_STAGE_2                                       │
 │      • c_voxel_to_trixel_stage_2.glsl  → color + entity id       │
 │    SHAPES_TO_TRIXEL / TEXT_TO_TRIXEL  (optional overlays)        │
 │    COMPUTE_VOXEL_AO                                              │
@@ -126,7 +125,16 @@ itself needs regardless of which features a creation enables:
 - GPU resource CRUD (`RenderingResourceManager`).
 - Pipeline execution (frame loop, canvas dispatch, framebuffer flip).
 - Camera, viewport, subdivision mode — the pipeline reads these every frame.
-- Voxel pool allocation (the pool is a device-level concept).
+- Voxel pool allocation (the pool is a device-level concept). When the
+  allocation is a slice owned by a streaming chunk
+  (`IRWorld::ChunkResidencySlot::poolAllocation_`), any system that writes
+  voxels through the slice MUST call
+  `IRWorld::ChunkResidencyManager::markChunkDirty(key)` immediately after
+  the write — without it, eviction silently drops the save and the chunk
+  reverts on re-resident. See
+  [`engine/world/CLAUDE.md`](../world/CLAUDE.md#chunk-mutation-must-route-through-markchunkdirty).
+  Single-chunk creations never see a residency manager and the rule does
+  not apply.
 
 Feature state — anything a creation opts into — belongs in
 `engine/prefabs/irreden/render/`. If the renderer can ship without the feature
@@ -205,6 +213,16 @@ If the PR intentionally changes silhouettes / lighting / shading
 model, call out the intentional drift in the description so reviewers
 know the new crop is the new baseline rather than a regression.
 
+**Occlusion diagnostics for rotated voxel content: use `--checkerboard`,
+not `--depth-color`.** `--depth-color` quantizes hue in 4/3-world-unit
+bands; at any non-cardinal yaw the bands beat against the 1-unit voxel
+lattice as staircase moiré that reads as front/back scramble — while an
+SDF twin (continuous per-pixel palette) looks smooth, making the
+side-by-side structurally misleading. `--depth-color` is only sound at
+cardinal poses or against a voxel (not SDF) reference; `--checkerboard`
+(alternating per-voxel colors) shows true geometry/occlusion in one
+capture. Three fix rounds on #1457 chased this artifact.
+
 The skill drives any creation that supports `--auto-screenshot`
 (today: `shape_debug`; reference implementation is
 `creations/demos/shape_debug/main.cpp`) and carries topic-indexed
@@ -265,6 +283,23 @@ Skip the smoke flow for game-repo PRs (the game's render pipeline
 uses the engine's backend — cross-host applies at engine level) and
 for non-render engine PRs (tooling, docs, non-render modules — these
 don't exercise backends and don't benefit from cross-host smoke).
+
+## Iso-depth-axis invariant (world-camera Z-yaw-only for GRID)
+
+The integer trixel raster, picking, hitbox cardinal-snap, gizmo drag,
+and the SDF analytic AABB cull all assume the world-space (1,1,1)
+direction is the iso depth axis. World-camera pitch or roll silently
+breaks those shortcuts — every "sum of components = depth" closed form
+and every cardinal-index API loses meaning. DETACHED entities are
+exempt (they raster through `faceDeformationMatrixSO3`, which is
+axis-agnostic, and the per-canvas SO(3) bake absorbs arbitrary camera
+rotation).
+
+Future free-camera work (orbit, perspective preview, cinematics) should
+cost itself against the consumer map and "how to break it" table in
+[`docs/design/iso-depth-axis-invariant.md`](../../docs/design/iso-depth-axis-invariant.md)
+before scoping. Sized similarly to T-054 / T-055 combined; DETACHED-only
+pitch/roll is free via issue #1076 + #1075.
 
 ## Lighting culling invariants
 
@@ -417,6 +452,50 @@ of the lighting pass. Invoke from a creation via the engine API
 (`IRRender::setDebugOverlay`) or in `shape_debug` via
 `--debug-overlay <none|ao|light_level|shadow>`.
 
+## Voxel face rasterization (which faces a voxel emits)
+
+The voxel-pool raster's face-selection model — which of a voxel's six
+faces get emitted into the canvas at a given camera orientation — is
+specified in
+[`docs/design/voxel-face-rasterization.md`](../../docs/design/voxel-face-rasterization.md).
+The canonical model is **visible-face triplet × exposed-face mask**: the
+three camera-facing faces (a pure function of the camera quaternion,
+recomputed per frame) intersected with the voxel's exposed faces (the
+camera-independent `exposedFaces` mask set at pool build/mutate time). A
+voxel emits a face iff it is both camera-visible and exposed.
+
+This supersedes the historical "always emit the three lower-coordinate
+faces (−X, −Y, −Z)" model, which was correct only at cardinal yaw 0 and
+caused the stripe/checkerboard artifact (#1256) at every other cardinal.
+Treat the six faces as six distinct enum values, **not** three axes each
+with a ± sign — see the design doc for why that distinction is what fixes
+the bug, and how the same model generalizes to per-entity SO(3) (#1272)
+and camera pitch (PR #1265). Read it before touching
+`c_voxel_to_trixel_stage_{1,2}`, `c_voxel_visibility_compact`,
+`c_compute_voxel_ao`, `c_lighting_to_trixel`, or the `C_VoxelPool` face
+metadata.
+
+**Smooth camera yaw between cardinals** (interpolating voxel-center
+positions, not just deforming face shapes) is a separate architecture, now
+**in implementation** (T1 #1308 / T2 #1309 merged; T3 #1310 in flight): route
+each visible face axis to its own deformed trixel canvas and composite the
+three by depth at the framebuffer. Bounded by a minimum on-screen trixel size.
+The per-canvas trixel→framebuffer **parity** was the #1 correctness risk; it is
+resolved by a **forward-scatter** composite (Option 4) — each non-empty canvas
+cell is scattered to its true deformed footprint with no gather inverse, so the
+single-global-parity stripe class (#1256) cannot occur. Spec + the rejected
+gather/inverse alternatives:
+[`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
+
+Per-axis voxels **cast** sun shadows under continuous yaw via
+`RESOLVE_PER_AXIS_SCREEN_DEPTH` (#1435), which collapses the three face-local
+per-axis canvases into one screen-space cardinal-layout depth texture so
+`BAKE_SUN_SHADOW_MAP` casts them through its existing cardinal recovery — the
+per-screen-pixel flattening the raw face-local store lacks (which is what
+caused #1380's cross-face self-occlusion). Invariant + the cast/receive
+agreement + the Metal `threadgroupSizeForFunctionName` requirement:
+[`docs/design/per-axis-sun-shadow-resolve.md`](../../docs/design/per-axis-sun-shadow-resolve.md).
+
 ## SDF (`SHAPES_TO_TRIXEL`) vs voxel-pool (`VOXEL_TO_TRIXEL_*`) parity
 
 A `C_ShapeDescriptor` (SDF, GPU-evaluated) and a `C_VoxelSetNew` carved
@@ -466,11 +545,31 @@ based on intent: voxel pool for "cubes-of-cubes" stylization, SDF for
 smooth analytical silhouettes. The lighting demo's `kShots[]`
 zoom8/zoom16 captures showcase the difference for visual reference.
 
+Per D2 (Epic D #937, SDF runtime restriction), `C_ShapeDescriptor` is
+effects-only for primary entity authoring. The silhouette delta
+documented above is intentional and **not a bug to fix**: effects
+entities (auras, shadow occluders, soft glows) do not require trixel
+parity with voxel-pool primary shapes.
+
 ## Gotchas
 
 - **Hardcoded uniform-buffer bind points.** Indices like
   `kBufferIndex_FrameDataVoxelToCanvas = 7` appear in both C++ and GLSL. A
   mismatch is silent — wrong uniforms, no error.
+- **Camera-iso offset pivots about the focus (`getEffectiveCameraIso`).**
+  Any producer that positions world content relative to the camera — voxel
+  raster, SDF main-canvas placement, per-axis scatter base, trixel→trixel
+  composite, particles, the framebuffer pan/blit, cull viewports, and the
+  picking/hover inverses — must read `IRRender::getEffectiveCameraIso()`,
+  **not** `getCameraPosition2DIso()`. The effective offset applies the
+  `RotationPivotMode` correction (#1352) so camera Z-yaw pivots about the
+  on-screen focus instead of the world origin; in `ORIGIN` mode and at
+  `visualYaw == 0` it returns the raw offset, so the cardinal fast path is
+  byte-identical. Reading the raw offset at a new producer site silently
+  reintroduces the off-origin orbital swing while every other layer pivots
+  correctly. Lighting-grid centering (`camera_anchor`), screen-space
+  sprites, detached entity canvases, and debug overlays intentionally stay
+  on the raw offset.
 - **Distance texture clear.** Cleared to `kTrixelDistanceMaxDistance`
   (65535, **not** INT32_MAX). Voxels and shapes both write smaller values
   via `imageAtomicMin`; the clear value acts as the "nothing here" background.
@@ -497,3 +596,17 @@ zoom8/zoom16 captures showcase the difference for visual reference.
 - **GUI canvas scaling.** GUI canvas is sized `mainCanvasSize / guiScale`.
   Changing `guiScale` without resizing the GUI canvas entity breaks
   coordinate mapping.
+- **CPU texture writes order via the command buffer on Metal.**
+  `Texture2D::subImage2D` and `clear()` write canvas textures, but on Metal
+  the per-frame work is deferred: `clear()` enqueues a GPU blit and the
+  `subImage2D` backend stages + blits through the frame's command buffer so a
+  CPU `replaceRegion` can't be clobbered by a clear that *executes* later
+  (the OpenGL path is already submission-ordered). The upshot: a system that
+  writes a canvas via `subImage2D` (the widget render systems, fog-of-war) and
+  one that clears it (`TEXT_TO_TRIXEL` clears the GUI canvas each frame) compose
+  correctly **only because** both routes land on the command buffer in encoder
+  order. If you reintroduce an immediate CPU texture path on Metal — or move a
+  clear off the command buffer — CPU writes made earlier in the frame silently
+  vanish under the deferred clear (the #1436 invisible-widgets bug). Mixing a
+  `subImage2D` write with a same-frame CPU `getBytes` readback of the same
+  texture still needs an explicit commit+wait (picking already does this).

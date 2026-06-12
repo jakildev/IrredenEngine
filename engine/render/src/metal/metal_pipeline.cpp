@@ -42,6 +42,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     }
     if (functionName == "c_voxel_visibility_compact" ||
         functionName == "c_update_voxel_positions" ||
+        functionName == "c_revoxelize_detached" ||
         functionName == "c_update_gpu_particles" ||
         functionName == "c_render_gpu_particles_to_trixel" ||
         functionName == "c_render_stateless_particles_to_trixel") {
@@ -63,6 +64,11 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_clear_sun_shadow_map") {
         return MTL::Size(16, 16, 1);
     }
+    if (functionName == "c_resolve_per_axis_screen_depth" ||
+        functionName == "c_resolve_per_axis_blit" ||
+        functionName == "c_resolve_world_placed_depth") {
+        return MTL::Size(16, 16, 1);
+    }
     if (functionName == "c_clear_light_volume") {
         return MTL::Size(8, 8, 8);
     }
@@ -73,6 +79,23 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         return MTL::Size(8, 8, 4);
     }
     return MTL::Size(1, 1, 1);
+}
+
+// Kernels that declare the R32I image-atomic scratch buffer at
+// kMetalImageAtomicScratchSlot (16). bindComputeResources binds the sticky
+// per-frame scratch ONLY for these — slot 16 doubles as
+// kBufferIndex_RevoxelizeDetachedParams for c_revoxelize_detached (the Metal
+// 0-30 table has no free index), and an unconditional bind clobbered that
+// params UBO on every encode after the first distance-image bind (#1619: the
+// fill read distance-clear words as its params and authored nothing). Like
+// threadgroupSizeForFunctionName above, this list does not self-detect: a new
+// kernel that consumes the scratch must be added here.
+bool functionUsesImageAtomicScratch(const std::string &functionName) {
+    return functionName == "c_voxel_to_trixel_stage_1" ||
+           functionName == "c_voxel_to_trixel_stage_2" ||
+           functionName == "c_shapes_to_trixel" ||
+           functionName == "c_render_gpu_particles_to_trixel" ||
+           functionName == "c_render_stateless_particles_to_trixel";
 }
 
 // Minimal #include "name.metal" preprocessor.  Resolves header references
@@ -208,6 +231,7 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
                 case ShaderType::COMPUTE:
                     m_computeFunction = function;
                     m_computeThreadsPerThreadgroup = threadgroupSizeForFunctionName(functionName);
+                    m_usesImageAtomicScratch = functionUsesImageAtomicScratch(functionName);
                     break;
                 case ShaderType::GEOMETRY:
                     function->release();
@@ -255,6 +279,10 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
 
     MTL::Size getThreadsPerThreadgroup() const override {
         return m_computeThreadsPerThreadgroup;
+    }
+
+    bool usesImageAtomicScratch() const override {
+        return m_usesImageAtomicScratch;
     }
 
     MTL::RenderPipelineState *getRenderPipelineState(
@@ -336,6 +364,7 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
     MTL::Function *m_computeFunction = nullptr;
     MTL::ComputePipelineState *m_computeState = nullptr;
     MTL::Size m_computeThreadsPerThreadgroup = MTL::Size(1, 1, 1);
+    bool m_usesImageAtomicScratch = false;
     std::unordered_map<std::string, MTL::RenderPipelineState *> m_renderStates;
 };
 

@@ -1,17 +1,32 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's check_model_tag gate.
+# Tests for fleet-claim's check_model_tag gate (issue-based).
+#
+# The gate reads model affinity from GitHub issue labels (fleet:opus /
+# fleet:sonnet) with a body **Model:** field fallback. These tests stub
+# `gh issue view` to drive both resolution paths without a live GitHub
+# round-trip.
 #
 # Covers:
-#   - sonnet role rejects an opus-tagged task (exit 1)
-#   - opus role accepts an opus-tagged task (exit 0)
-#   - sonnet role accepts a sonnet-tagged task (exit 0)
-#   - opus role rejects a sonnet-tagged task (exit 1)
-#   - FLEET_ROLE_MODEL unset/empty passes any task (bash guard, exit 0)
-#   - task with no Model: field passes any role (python fall-through, exit 0)
-#   - task ID not found in TASKS.md passes (python fall-through, exit 0)
-#   - TASKS.md not found passes (bash guard, exit 0)
+#   - sonnet role rejects fleet:opus-labeled issue
+#   - opus role accepts fleet:opus-labeled issue
+#   - sonnet role accepts fleet:sonnet-labeled issue
+#   - opus role rejects fleet:sonnet-labeled issue
+#   - body **Model:** field is the fallback when no label is set
+#   - FLEET_ROLE_MODEL unset/empty passes any task
+#   - issue with neither label nor body field passes any role
+#   - gh failure passes (soft-degrade contract)
+#   - legacy T-NNN input is rejected with a migration hint
+#   - garbage input rejected
 
 set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
+
+if [[ ! -x "$FLEET_CLAIM" ]]; then
+    echo "test setup: fleet-claim not found at $FLEET_CLAIM" >&2
+    exit 1
+fi
 
 PASS=0
 FAIL=0
@@ -35,139 +50,151 @@ assert_exit() {
     fi
 }
 
-# Inline the Python gate logic from check_model_tag (fleet-claim:316-356).
-# Accepts explicit task_id, tasks_file, role_model args so it can be driven
-# from a synthetic TASKS.md fixture without a live git tree or env vars.
-run_python_gate() {
-    local task_id="$1" tasks_file="$2" role_model="$3"
-    python3 - "$task_id" "$tasks_file" "$role_model" <<'PYEOF'
-import sys, re
-
-task_id = sys.argv[1]
-tasks_file = sys.argv[2]
-role_model = sys.argv[3].lower()
-
-with open(tasks_file) as f:
-    content = f.read()
-
-current_id = None
-task_model = None
-
-for line in content.splitlines():
-    if re.match(r'^- \[.\] \*\*.+\*\*', line):
-        current_id = None
-        continue
-
-    m_id = re.match(r'^\s+- \*\*ID:\*\*\s*(.+)', line)
-    if m_id:
-        current_id = m_id.group(1).strip()
-        continue
-
-    m_model = re.match(r'^\s+- \*\*Model:\*\*\s*(.+)', line)
-    if m_model and current_id == task_id:
-        task_model = m_model.group(1).strip().lower()
-        break
-
-if task_model is None:
-    sys.exit(0)
-
-if task_model != role_model:
-    print(
-        f"fleet-claim: refuse {task_id} — tagged [{task_model}], "
-        f"this role is [{role_model}]; use a [{task_model}] agent",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-sys.exit(0)
-PYEOF
-}
-
-# Mirrors the bash guards in check_model_tag before the Python gate runs.
-# Reproduces the three bash-level short-circuits verbatim:
-#   1. FLEET_ROLE_MODEL unset/empty → 0 (opt-in gate)
-#   2. tasks_file path not found    → 0 (safe fall-through)
-#   3. otherwise → delegate to run_python_gate
-run_gate() {
-    local task_id="$1" role_model="${2:-}" tasks_file="${3:-}"
-
-    if [[ -z "$role_model" ]]; then
-        return 0
-    fi
-
-    if [[ -z "$tasks_file" || ! -f "$tasks_file" ]]; then
-        return 0
-    fi
-
-    run_python_gate "$task_id" "$tasks_file" "$role_model"
-}
-
 TMPROOT=$(mktemp -d)
+export FLEET_CLAIMS_DIR="$TMPROOT/claims"
+export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
+mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
 
-# --- Synthetic TASKS.md fixture -----------------------------------------------
-TASKS="$TMPROOT/TASKS.md"
-cat >"$TASKS" <<'TASKSEOF'
-# TASKS
+# Stub `gh` so check_model_tag reads canned JSON instead of hitting
+# GitHub. The stub dispatches on the issue number passed via
+# `gh issue view <N>`, returning a fixture matching the test under test.
+STUB_DIR="$TMPROOT/bin"
+mkdir -p "$STUB_DIR"
 
-## Open
+cat >"$STUB_DIR/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+# Minimal `gh` stub used by check_model_tag tests. Recognized invocations:
+#   gh issue view <N> --repo ... --json state,labels,body
+#   gh api repos/.../issues/<N>/labels --method POST -f labels[]=...
+#       → emulate the cross-host fleet:claim-* lock acquire: echo the
+#         requested label as a single-element JSON array so _acquire_label_on
+#         sees it as the lex-min winner.
+#   gh issue edit ... (--add-label / --remove-label)  → no-op success.
+case "$1 $2" in
+    "issue view")
+        issue_num="$3"
+        case "$issue_num" in
+            1001)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:opus"},{"name":"fleet:queued"}],"body":""}'
+                ;;
+            1002)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:sonnet"},{"name":"fleet:queued"}],"body":""}'
+                ;;
+            1003)
+                # JSON body has escaped newlines (\\n in printf → \n literal in stdout)
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Context\n\n**Model:** opus\n\nSome more text."}'
+                ;;
+            1004)
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Model:** sonnet (small fix)\n"}'
+                ;;
+            1005)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"No model here."}'
+                ;;
+            1006)
+                exit 1
+                ;;
+            *)
+                echo '{"state":"OPEN","labels":[],"body":""}'
+                ;;
+        esac
+        exit 0
+        ;;
+    "api "*)
+        # gh api repos/.../issues/<N>/labels --method POST -f "labels[]=X"
+        # Extract the requested label from the -f arg and echo it back as
+        # a single-element JSON array so the lex-min winner is us.
+        label=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -f) shift
+                    case "$1" in
+                        labels\[\]=*) label="${1#labels[]=}" ;;
+                    esac
+                    ;;
+            esac
+            shift || true
+        done
+        if [[ -n "$label" ]]; then
+            printf '[{"name":"%s"}]\n' "$label"
+        else
+            echo '[]'
+        fi
+        exit 0
+        ;;
+    "issue edit"|"label "*)
+        exit 0
+        ;;
+esac
+exit 0
+GHSTUB
+chmod +x "$STUB_DIR/gh"
 
-- [ ] **Task A** — opus task
-  - **ID:** T-A01
-  - **Model:** opus
-  - **Owner:** free
-  - **Blocked by:** (none)
+export PATH="$STUB_DIR:$PATH"
 
-- [ ] **Task B** — sonnet task
-  - **ID:** T-B01
-  - **Model:** sonnet
-  - **Owner:** free
-  - **Blocked by:** (none)
+release_quiet() {
+    "$FLEET_CLAIM" release "$1" >/dev/null 2>&1 || true
+}
 
-- [ ] **Task C** — no model field
-  - **ID:** T-C01
-  - **Owner:** free
-  - **Blocked by:** (none)
-TASKSEOF
+# --- T1: sonnet rejects fleet:opus-labeled issue ----------------------------
+echo "T1: sonnet role rejects fleet:opus-labeled issue"
+actual=0; FLEET_ROLE_MODEL=sonnet "$FLEET_CLAIM" claim 1001 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "sonnet rejects fleet:opus → exit 1"
+release_quiet 1001
 
-# --- T1: sonnet rejects opus task --------------------------------------------
-echo "T1: sonnet role rejects opus-tagged task"
-actual=0; run_python_gate T-A01 "$TASKS" sonnet 2>/dev/null || actual=$?
-assert_exit "$actual" 1 "sonnet rejects [opus] task → exit 1"
+# --- T2: opus accepts fleet:opus-labeled issue ------------------------------
+echo "T2: opus role accepts fleet:opus-labeled issue"
+actual=0; FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 1001 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "opus accepts fleet:opus → exit 0"
+release_quiet 1001
 
-# --- T2: opus accepts opus task ----------------------------------------------
-echo "T2: opus role accepts opus-tagged task"
-actual=0; run_python_gate T-A01 "$TASKS" opus 2>/dev/null || actual=$?
-assert_exit "$actual" 0 "opus accepts [opus] task → exit 0"
+# --- T3: sonnet accepts fleet:sonnet-labeled issue --------------------------
+echo "T3: sonnet role accepts fleet:sonnet-labeled issue"
+actual=0; FLEET_ROLE_MODEL=sonnet "$FLEET_CLAIM" claim 1002 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "sonnet accepts fleet:sonnet → exit 0"
+release_quiet 1002
 
-# --- T3: sonnet accepts sonnet task ------------------------------------------
-echo "T3: sonnet role accepts sonnet-tagged task"
-actual=0; run_python_gate T-B01 "$TASKS" sonnet 2>/dev/null || actual=$?
-assert_exit "$actual" 0 "sonnet accepts [sonnet] task → exit 0"
+# --- T4: opus rejects fleet:sonnet-labeled issue ----------------------------
+echo "T4: opus role rejects fleet:sonnet-labeled issue"
+actual=0; FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 1002 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "opus rejects fleet:sonnet → exit 1"
 
-# --- T4: opus rejects sonnet task --------------------------------------------
-echo "T4: opus role rejects sonnet-tagged task"
-actual=0; run_python_gate T-B01 "$TASKS" opus 2>/dev/null || actual=$?
-assert_exit "$actual" 1 "opus rejects [sonnet] task → exit 1"
+# --- T5: body **Model:** opus fallback (sonnet role rejects) ----------------
+echo "T5: sonnet role rejects body **Model:** opus fallback"
+actual=0; FLEET_ROLE_MODEL=sonnet "$FLEET_CLAIM" claim 1003 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "body **Model:** opus, sonnet role → exit 1"
 
-# --- T5: FLEET_ROLE_MODEL unset passes any task (bash guard) -----------------
-echo "T5: FLEET_ROLE_MODEL unset passes any task"
-actual=0; run_gate T-A01 "" "$TASKS" 2>/dev/null || actual=$?
-assert_exit "$actual" 0 "empty FLEET_ROLE_MODEL bypasses gate → exit 0"
+# --- T6: body **Model:** sonnet (annotated) fallback ------------------------
+echo "T6: opus role rejects body **Model:** sonnet (annotated)"
+actual=0; FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" claim 1004 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "body **Model:** sonnet (annotated), opus role → exit 1"
 
-# --- T6: task with no Model: field passes any role ---------------------------
-echo "T6: task with no Model: field passes any role"
-actual=0; run_python_gate T-C01 "$TASKS" sonnet 2>/dev/null || actual=$?
-assert_exit "$actual" 0 "no Model: field → fall-through exit 0"
+# --- T7: FLEET_ROLE_MODEL unset passes any task -----------------------------
+echo "T7: FLEET_ROLE_MODEL unset passes fleet:opus issue"
+actual=0; "$FLEET_CLAIM" claim 1001 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "unset FLEET_ROLE_MODEL bypasses gate → exit 0"
+release_quiet 1001
 
-# --- T7: task ID not found in TASKS.md passes --------------------------------
-echo "T7: task ID not found in TASKS.md passes"
-actual=0; run_python_gate T-ZZZ "$TASKS" sonnet 2>/dev/null || actual=$?
-assert_exit "$actual" 0 "unknown task ID → fall-through exit 0"
+# --- T8: issue with neither label nor body field passes any role ------------
+echo "T8: issue with neither label nor body field passes any role"
+actual=0; FLEET_ROLE_MODEL=sonnet "$FLEET_CLAIM" claim 1005 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "no signal → fall-through exit 0"
+release_quiet 1005
 
-# --- T8: TASKS.md not found passes (bash guard) ------------------------------
-echo "T8: TASKS.md not found passes any role"
-actual=0; run_gate T-A01 "opus" "$TMPROOT/no-such-file.md" 2>/dev/null || actual=$?
-assert_exit "$actual" 0 "missing TASKS.md → bash guard exit 0"
+# --- T9: gh failure soft-degrades to pass -----------------------------------
+echo "T9: gh failure soft-degrades to pass"
+actual=0; FLEET_ROLE_MODEL=sonnet "$FLEET_CLAIM" claim 1006 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "gh failure → soft-pass exit 0"
+release_quiet 1006
+
+# --- T10: legacy T-NNN input rejected with migration hint -------------------
+echo "T10: legacy T-NNN input rejected"
+actual=0; "$FLEET_CLAIM" claim T-001 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 2 "T-NNN form → exit 2 (migration hint)"
+
+# --- T11: non-numeric junk rejected -----------------------------------------
+echo "T11: garbage input rejected"
+actual=0; "$FLEET_CLAIM" claim "not-an-issue" test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 2 "garbage input → exit 2"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

@@ -64,7 +64,14 @@ shot-cycling helper that any creation can opt into with a shot table
 plus five lines of wire-up. Used by the `render-debug-loop` and
 `render-verify` skills.
 
-- `AutoScreenshotShot` — one shot: zoom, camera-iso position, label.
+- `AutoScreenshotShot` — one shot: zoom, camera-iso position,
+  Z-yaw radians (default 0 — set non-zero to cover rotation
+  regressions per render-debug-loop rotation-stable criterion), label,
+  optional ROI crops, and `cullAction_` (NONE / FREEZE / UNFREEZE,
+  default NONE). FREEZE pins the shared cull viewport at that shot's
+  camera pose so later shots free-fly with the cull held — used by
+  `shape_debug --cull-validate` to prove the cull retains the on-screen
+  set (see [`docs/design/cull-validation-harness.md`](../../docs/design/cull-validation-harness.md)).
 - `AutoScreenshotConfig` — warmup/settle frame counts and a
   caller-owned `const AutoScreenshotShot *` table.
 - `parseAutoScreenshotArgv` — CLI parser for

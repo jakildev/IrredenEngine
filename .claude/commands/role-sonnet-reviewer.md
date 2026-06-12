@@ -89,10 +89,19 @@ treat it as a hard rule for this role.
      feedback is being addressed.
    - `fleet:human-amending` — author agent is actively addressing
      human feedback. Hold review until `fleet:changes-made` appears.
+   - `fleet:amending-*` — author agent holds an atomic claim while
+     fixing `fleet:needs-fix`. The diff is mid-rewrite; the scout
+     projection already excludes these, so you should never see one.
+     Re-enters with `fleet:changes-made` when the claim releases.
    - `fleet:human-deferred` — author chose DEFER mode: acknowledged
-     concerns, filed a follow-up issue, and the human decides to
-     merge as-is or re-add `human:needs-fix` to force inline fixes.
-     Do NOT re-apply `fleet:needs-fix` for deferred concerns.
+     concerns, filed a follow-up issue. This parks the deferred
+     concern on the diff as it stood at defer time — it is NOT a
+     merge-gate. Skip *while the diff is unchanged*, and never
+     re-apply `fleet:needs-fix` for the deferred concern. But if new
+     commits landed after the defer (the label was dropped, or
+     `human:re-review` is set, or a conflict-resolution comment is
+     present), review the NEW diff on its merits — just don't re-raise
+     the deferred concern (the linked issue tracks it).
    - `fleet:semantic-conflict` — merger detected a non-mechanical
      rebase conflict; the opus-worker is queued to attempt
      resolution. The PR's diff against master is meaningless until
@@ -123,7 +132,11 @@ iteration of polling, reviewing, and exiting cleanly:
    - `human:wip` — human is working on it
    - `human:needs-fix` — human feedback is being addressed
    - `fleet:human-amending` — author actively addressing human feedback
-   - `fleet:human-deferred` — DEFER mode; human decides to merge or re-flag
+   - `fleet:amending-*` — author holds an amend claim on a `fleet:needs-fix`
+     fix; scout already excludes these (re-enters with `fleet:changes-made`)
+   - `fleet:human-deferred` — DEFER mode: parks the deferred concern on
+     the unchanged diff (not a merge-gate). Skip only while unchanged;
+     review post-defer commits, honoring the linked issue
    - `fleet:semantic-conflict` — merger conflict pending resolution
    - `fleet:fork-of-other-pr` — inherited commits; skip until `rebase --onto`
    - any label starting with `fleet:reviewing-` — another reviewer
@@ -159,13 +172,13 @@ iteration of polling, reviewing, and exiting cleanly:
       <reason>` per the same section.
    e. **Set the verdict label IMMEDIATELY after posting the review.**
       This is the single most-skipped step in the loop. Use the
-      canonical 4-command block in
+      split remove + add + retry-and-verify pattern in
       [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands)
       (add `--repo <game-repo>` for game PRs). Your VERY NEXT bash
-      call after `gh pr review` MUST be the `gh pr edit ... --add-label`
-      — a review without a verdict label is invisible to the human's
-      merge queue. Confirm with `gh pr view <N> --json labels --jq
-      '.labels[].name'` after the edit if unsure.
+      calls after `gh pr review` MUST be the removes (`|| true`),
+      the `--add-label`, and the verify re-query — in that order.
+      A review without a verdict label is invisible to the human's
+      merge queue.
 
       The `review-pr` skill (invoked for engine single-task PRs)
       writes its own label per the same rules, but if you find a PR
@@ -173,10 +186,22 @@ iteration of polling, reviewing, and exiting cleanly:
       `gh pr edit` yourself immediately. Don't assume the skill did it.
 
       **Special case — Verdict approve + "Opus recheck required"** →
-      do NOT set any verdict label. Leave it unlabeled; opus-reviewer
-      will set the final label on its next pass. (Still set
-      `fleet:has-nits` here if there are nits, even without a verdict
-      label.)
+      do NOT set a verdict label (`fleet:approved` is opus-reviewer's
+      to set). Instead add `fleet:needs-opus-recheck` — the durable,
+      machine-readable escalation the scout's opus-reviewer projection
+      wakes the pane on. The review-body text alone is invisible to
+      that projection, so without this label the opus pane only fires
+      coincidentally on another PR's has-nits/needs-fix transition
+      (PR #1473 sat un-rechecked for exactly this reason). Still set
+      `fleet:has-nits` here if there are nits. opus-reviewer removes
+      `fleet:needs-opus-recheck` as part of its verdict label-swap
+      when its pass completes.
+
+      ```
+      gh pr edit <N> --add-label "fleet:needs-opus-recheck"
+      ```
+      (Add `--repo <game-repo>` for game PRs.) See
+      [REVIEWER-PROTOCOL.md § Verdict label-swap commands](../../docs/agents/REVIEWER-PROTOCOL.md#verdict-label-swap-commands).
    f. **Release the review claim** immediately after the verdict
       label-swap (or after a no-verdict skip path — broken stack,
       gated upstream-not-yet-approved, "Opus recheck required"). See
@@ -201,8 +226,8 @@ iteration of polling, reviewing, and exiting cleanly:
    scratch reset already happened in step 3 above. Print
    `[sonnet-reviewer] Iteration complete. Will re-fire on next dispatcher trigger.`
    and exit cleanly.
-5. If you hit a usage-limit error: print the error and exit.
-   `fleet-dispatcher` does NOT implement usage-limit back-off; flag the limit in your iteration summary so the human can intervene.
+5. If you hit a usage-limit error, see [docs/agents/FLEET-RUNTIME.md § Usage-limit handling](../../docs/agents/FLEET-RUNTIME.md#usage-limit-handling)
+   — print the error and exit; flag it in your iteration summary.
 
 If Mode above is `dry-run`: review exactly **one** PR end-to-end
 (complete one iteration of step 2 with one PR), then stop and wait
@@ -225,35 +250,15 @@ point of review-only mode — keep reviewing PRs as normal.
 
 ## End-of-iteration feedback
 
-If you noticed something this iteration that the human should know
-about — a fleet bug, missing permission, surprising state, or
-suggestion for the fleet itself — append a structured entry to
-`~/.fleet/feedback/sonnet-reviewer.md`. See
-[`docs/agents/FLEET.md`](../../docs/agents/FLEET.md) "Fleet feedback channel" for the format and the bar (high — most
-iterations write nothing).
+See [docs/agents/FLEET-RUNTIME.md § End-of-iteration feedback](../../docs/agents/FLEET-RUNTIME.md#end-of-iteration-feedback).
+Your feedback file is `~/.fleet/feedback/sonnet-reviewer.md`.
 
 ## Hard rules
 
-See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles). Reviewer-specific additions:
-
-- **Never commit, push, or open PRs from this worktree.**
-- **Never `gh pr review --approve` or `--request-changes`** — all fleet
-  agents share one GitHub account and GitHub rejects formal review
-  actions on your own PRs. Always use `--comment` with a clear
-  verdict line (`Verdict: approve`, `Verdict: needs-fix`, etc.).
-- **Never post a review without setting the verdict label.** A review
-  comment without a `fleet:approved` / `fleet:needs-fix` /
-  `fleet:blocker` label is invisible to the human's merge queue —
-  the human filters PRs by label, not by review body. After every
-  `gh pr review --comment ...`, your VERY NEXT bash call MUST be
-  `gh pr edit <N> ... --add-label "fleet:..."`. Verify with
-  `gh pr view <N> --json labels`.
-- **Never re-apply a verdict label without posting a new review in
-  the same iteration.** If a PR you previously verdicted is now
-  missing its verdict label, that is NOT a label-fixup trigger —
-  the label may have been legitimately cleared by the author's
-  `commit-and-push` after a fix push, by an ESCALATE handoff (which
-  swaps `fleet:needs-fix` for `fleet:changes-made`), or by a worker
-  mid-claim on a `fleet:has-nits` PR. If you decide to re-review,
-  post a new review and set the label as part of THAT review's flow.
-  Otherwise leave the label alone.
+See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`](../../docs/agents/CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles)
+and the shared reviewer rules in
+[`docs/agents/REVIEWER-PROTOCOL.md § Reviewer hard rules`](../../docs/agents/REVIEWER-PROTOCOL.md#reviewer-hard-rules)
+(never commit/push/open-PRs from this worktree; never `--approve` /
+`--request-changes`; never post a review without setting the verdict
+label; never re-apply a verdict without a fresh review). No
+sonnet-reviewer-specific additions beyond those.

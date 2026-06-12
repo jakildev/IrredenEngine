@@ -23,6 +23,18 @@ fleet workflow.
   "exit" to each pane, waits a short grace period, then kills the
   tmux session and clears stale fleet-claim locks. `--force` skips
   the graceful step; `--keep-claims` preserves `~/.fleet/claims`.
+- **`solo-architect`** — the inverse of `fleet-up`: launches a single
+  architect interactively (`solo-architect` for the engine
+  `/role-opus-architect`, `solo-architect game` for
+  `/role-game-architect`) WITHOUT spawning any workers, reviewers,
+  merger, or scout daemon. Same model / effort / worktree / persisted-
+  session resume as the fleet's architect pane, so you get the full
+  design-partner + sub-agent-direction role as a one-off conversation.
+  Primes the scout cache with one `fleet-state-scout --once` tick (skip
+  with `--no-scout`) and appends a solo-mode prompt so the role doesn't
+  exit on a stale/missing cache. `--fresh` starts a new conversation;
+  `--dry-run` does startup + stand-by only. Tasks it files just wait in
+  the queue until you bring the fleet up.
 - **`install.sh`** — one-time setup per machine. Symlinks every
   `scripts/fleet/fleet-*` script into `~/bin/` and symlinks each
   `.claude/commands/role-*.md` into `~/.claude/commands/`. Picks up
@@ -49,14 +61,19 @@ fleet workflow.
   resulting executable under `build/`, changes to its runtime directory,
   and launches it under `lldb` or `gdb`. Use `--batch` for non-interactive
   crash triage that runs once and prints all thread backtraces.
+- **`fleet-edit`** — exact string replacement CLI (Python3). Takes a
+  target file, an old-text file, and a new-text file; replaces exactly
+  one occurrence (or all with `--replace-all`). Use for tasks that need
+  to modify documentation or configuration files where the built-in
+  `Edit` tool is unavailable.
 - **`fleet-help`** — prints an index of all `fleet-*` tools (build, run,
   tmux fleet, claims, …) and how to install them; `fleet-help <cmd>`
   forwards to `--help` when the tool supports it (or a short summary).
 - **`completions/fleet-run.bash`** — bash tab completion for `fleet-run`
-  (built exe names when the word does not start with `-`) and
-  `fleet-build` (CMake demo names after `--target`) plus `fleet-debug`.
-  `install.sh`
-  symlinks it into `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/`
+  and `ir-run` (built exe names when the word does not start with `-`),
+  `fleet-build` and `ir-build` (CMake demo names after `--target`), plus
+  `fleet-debug`. `install.sh` symlinks it into
+  `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/`
   for bash-completion / Homebrew `bash-completion@2`.
 - **`completions/irreden-fleet.zsh`** — zsh entry: ensures `compinit` (if
   needed), runs `bashcompinit`, then sources `fleet-run.bash`. **macOS

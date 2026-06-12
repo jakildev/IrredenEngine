@@ -7,7 +7,7 @@
 #       reconstructed via stubbed `fleet-claim reserve`
 #   T3: PR with NO worktree on branch → label reverted via stubbed
 #       `gh pr edit` + recovery comment
-#   T4: branch that doesn't match claude/T-NNN-* + worktree on it +
+#   T4: branch that doesn't match claude/<N>-* + worktree on it +
 #       no reservation → warned-and-left-alone (no malformed task id)
 #   T5: idempotent re-run on the post-T2 state → no second reserve
 
@@ -165,12 +165,12 @@ write_pr_list() {
 
 # === T1: worktree + reservation → no change ================================
 echo "T1: worktree on branch + reservation → leave alone"
-make_worktree opus-worker-1 claude/T-163-stateless-particles
+make_worktree opus-worker-1 claude/163-stateless-particles
 # Pre-populate the reservation that the AMEND path would have written.
 cat >"$FLEET_RESERVATIONS_DIR/opus-worker-1.json" <<JSON
-{"task_id":"T-163","worktree":"opus-worker-1","branch":"claude/T-163-stateless-particles","created_at":"2026-01-01T00:00:00Z","created_epoch":1735689600}
+{"task_id":"163","worktree":"opus-worker-1","branch":"claude/163-stateless-particles","created_at":"2026-01-01T00:00:00Z","created_epoch":1735689600}
 JSON
-write_pr_list '[{"number":659,"headRefName":"claude/T-163-stateless-particles","title":"T-163 particles"}]'
+write_pr_list '[{"number":659,"headRefName":"claude/163-stateless-particles","title":"T-163 particles"}]'
 
 t1_res_mtime_before=$(stat -f '%m' "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" 2>/dev/null \
     || stat -c '%Y' "$FLEET_RESERVATIONS_DIR/opus-worker-1.json")
@@ -196,17 +196,17 @@ assert_file_exists "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" \
 if [[ -f "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" ]]; then
     got_task=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('task_id',''))" \
         "$FLEET_RESERVATIONS_DIR/opus-worker-1.json")
-    assert_eq "$got_task" "T-163" "T2 reconstructed reservation has correct task_id"
+    assert_eq "$got_task" "163" "T2 reconstructed reservation has correct task_id"
 fi
-assert_eq "$(grep -c 'reserve T-163 opus-worker-1' "$FC_LOG")" "1" \
-    "T2 called fleet-claim reserve T-163 opus-worker-1"
+assert_eq "$(grep -c 'reserve 163 opus-worker-1' "$FC_LOG")" "1" \
+    "T2 called fleet-claim reserve 163 opus-worker-1"
 assert_eq "$(grep -c 'pr edit' "$GH_LOG")" "0" \
     "T2 did not call gh pr edit (worktree owns branch)"
 
 # === T3: no worktree on branch → label reverted ===========================
 echo "T3: orphaned amendment (no worktree on branch) → revert label"
 # A different PR + branch where no worktree is on it.
-write_pr_list '[{"number":700,"headRefName":"claude/T-999-orphaned","title":"T-999 orphan"}]'
+write_pr_list '[{"number":700,"headRefName":"claude/999-orphaned","title":"#999 orphan"}]'
 rm -f "$FLEET_RESERVATIONS_DIR"/*.json 2>/dev/null || true
 : >"$GH_LOG"; : >"$FC_LOG"
 "$RECONCILER" >"$TMPROOT/log/t3.log" 2>&1 || true
@@ -221,15 +221,15 @@ assert_eq "$(grep -c 'reserve' "$FC_LOG")" "0" \
 assert_file_absent "$FLEET_RESERVATIONS_DIR/opus-worker-1.json" \
     "T3 no stray reservation written"
 
-# === T4: branch on worktree but malformed name (no T-NNN prefix) ==========
-echo "T4: worktree on non-T-NNN branch + no reservation → warn-and-leave"
-make_worktree opus-worker-2 claude/feature-no-task-id
-write_pr_list '[{"number":701,"headRefName":"claude/feature-no-task-id","title":"misnamed"}]'
+# === T4: branch on worktree but malformed name (no claude/<N>- prefix) ====
+echo "T4: worktree on non-claude/<N> branch + no reservation → warn-and-leave"
+make_worktree opus-worker-2 claude/feature-no-issue-num
+write_pr_list '[{"number":701,"headRefName":"claude/feature-no-issue-num","title":"misnamed"}]'
 rm -f "$FLEET_RESERVATIONS_DIR"/*.json 2>/dev/null || true
 : >"$GH_LOG"; : >"$FC_LOG"
 "$RECONCILER" >"$TMPROOT/log/t4.log" 2>&1 || true
 assert_eq "$(grep -c 'reserve' "$FC_LOG")" "0" \
-    "T4 no fleet-claim reserve attempt (branch isn't claude/T-NNN-*)"
+    "T4 no fleet-claim reserve attempt (branch isn't claude/<N>-*)"
 assert_eq "$(grep -c 'pr edit 701' "$GH_LOG")" "0" \
     "T4 no gh pr edit (we have a worktree, just not the right kind)"
 assert_file_absent "$FLEET_RESERVATIONS_DIR/opus-worker-2.json" \
@@ -238,7 +238,7 @@ assert_file_absent "$FLEET_RESERVATIONS_DIR/opus-worker-2.json" \
 # === T5: idempotent re-run on already-reconstructed state =================
 echo "T5: idempotent re-run after T2 — no second reserve call"
 # Set up T2's state again, run reconciler twice, verify second run is no-op.
-write_pr_list '[{"number":659,"headRefName":"claude/T-163-stateless-particles","title":"T-163 particles"}]'
+write_pr_list '[{"number":659,"headRefName":"claude/163-stateless-particles","title":"T-163 particles"}]'
 rm -f "$FLEET_RESERVATIONS_DIR"/*.json 2>/dev/null || true
 : >"$GH_LOG"; : >"$FC_LOG"
 "$RECONCILER" >"$TMPROOT/log/t5a.log" 2>&1 || true

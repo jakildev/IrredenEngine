@@ -228,16 +228,18 @@ void registerLuaBindings() {
         );
 
         // Batch creation functions — every bob-eligible entity also
-        // carries C_Modifiers so PERIODIC_IDLE_POSITION_OFFSET can push
-        // a per-frame vec3 modifier and APPLY_POSITION_OFFSET can
-        // compose it into C_PositionGlobal3D.
+        // carries C_Modifiers so PERIODIC_IDLE_POSITION_OFFSET can push a
+        // per-frame vec3 modifier into TRANSFORM_TRANSLATION. The modifier
+        // folds into C_WorldTransform.translation_; UPDATE_VOXEL_SET_CHILDREN
+        // reads that translation as the voxel-set parent position, so the
+        // bob reconnects directly through the SQT chain.
         luaScript.registerCreateEntityBatchFunction<
-            C_Position3D,
+            C_LocalTransform,
             C_VoxelSetNew,
             C_PeriodicIdle,
             C_Modifiers>("createEntityBatchVoxelPeriodicIdle");
         luaScript.registerCreateEntityBatchFunction<
-            C_Position3D,
+            C_LocalTransform,
             C_VoxelSetNew,
             C_PeriodicIdle,
             C_MidiNote,
@@ -282,11 +284,47 @@ void registerLuaBindings() {
 
         // Audio API
         luaScript.lua()["IRAudio"] = luaScript.lua().create_table();
-        luaScript.lua()["IRAudio"]["openMidiOut"] = [](const std::string &name) {
-            return IRAudio::openPortMidiOut(name);
+        luaScript.lua()["IRAudio"]["midiInPorts"] = [](sol::this_state L) {
+            sol::state_view lua(L);
+            sol::table t = lua.create_table();
+            const auto ports = IRAudio::midiInPorts();
+            for (int i = 0; i < static_cast<int>(ports.size()); i++) {
+                t[i + 1] = ports[i];
+            }
+            return t;
         };
-        luaScript.lua()["IRAudio"]["openMidiIn"] = [](const std::string &name) {
-            return IRAudio::openPortMidiIn(name);
+        luaScript.lua()["IRAudio"]["midiOutPorts"] = [](sol::this_state L) {
+            sol::state_view lua(L);
+            sol::table t = lua.create_table();
+            const auto ports = IRAudio::midiOutPorts();
+            for (int i = 0; i < static_cast<int>(ports.size()); i++) {
+                t[i + 1] = ports[i];
+            }
+            return t;
+        };
+        luaScript.lua()["IRAudio"]["openMidiIn"] = [](const std::string &name,
+                                                      sol::this_state L) -> sol::variadic_results {
+            sol::variadic_results results;
+            int port = IRAudio::openPortMidiIn(name);
+            if (port < 0) {
+                results.push_back({L, sol::in_place, sol::lua_nil});
+                results.push_back({L, sol::in_place, "no MIDI input port matching: " + name});
+            } else {
+                results.push_back({L, sol::in_place, port});
+            }
+            return results;
+        };
+        luaScript.lua()["IRAudio"]["openMidiOut"] = [](const std::string &name,
+                                                       sol::this_state L) -> sol::variadic_results {
+            sol::variadic_results results;
+            int port = IRAudio::openPortMidiOut(name);
+            if (port < 0) {
+                results.push_back({L, sol::in_place, sol::lua_nil});
+                results.push_back({L, sol::in_place, "no MIDI output port matching: " + name});
+            } else {
+                results.push_back({L, sol::in_place, port});
+            }
+            return results;
         };
 
         // Expose IRCommand.{bindPrefab, createCommand, fire, fireByName}

@@ -29,14 +29,15 @@
 
       "Bash(cmake --build:*)",
       "Bash(make:*)", "Bash(ninja:*)", "Bash(ctest:*)",
+      "Bash(bash scripts/dev/canvas-stress-capture:*)",
 
       "Bash(fleet-claim:*)", "Bash(fleet-build:*)", "Bash(fleet-debug:*)",
       "Bash(fleet-run:*)", "Bash(fleet-run-targets:*)", "Bash(fleet-help:*)",
       "Bash(fleet-heartbeat:*)", "Bash(fleet-issue:*)", "Bash(fleet-pr:*)",
       "Bash(fleet-pr-clear-feedback-labels:*)",
+      "Bash(fleet-pr-checkout-detached:*)", "Bash(fleet-pr-amend-push:*)",
       "Bash(fleet-worktree-busy-branches:*)", "Bash(fleet-labels:*)",
-      "Bash(fleet-feedback:*)", "Bash(fleet-gate-status:*)",
-      "Bash(fleet-tasks-render:*)", "Bash(fleet-queue-tick:*)",
+      "Bash(fleet-edit:*)", "Bash(fleet-feedback:*)", "Bash(fleet-gate-status:*)",
       "Bash(fleet-queue-ingest:*)", "Bash(fleet-reconcile-amendments:*)",
       "Bash(fleet-state-scout:*)", "Bash(fleet-dispatcher:*)",
       "Bash(fleet-dispatch-wrap:*)", "Bash(fleet-claude-stream:*)",
@@ -75,6 +76,19 @@
 
       "Bash(sudo:*)",
       "Bash(apt:*)", "Bash(apt-get:*)", "Bash(dpkg:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/fleet/fleet-guard-worktree-edit"
+          }
+        ]
+      }
     ]
   }
 }

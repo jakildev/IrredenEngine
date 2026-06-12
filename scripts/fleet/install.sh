@@ -114,6 +114,8 @@ FLEET_BABYSIT_SRC="$SCRIPT_DIR/fleet-babysit"
 FLEET_BABYSIT_DEST="$HOME/bin/fleet-babysit"
 FLEET_LABELS_SRC="$SCRIPT_DIR/fleet-labels"
 FLEET_LABELS_DEST="$HOME/bin/fleet-labels"
+FLEET_TRANSITION_SRC="$SCRIPT_DIR/fleet-transition"
+FLEET_TRANSITION_DEST="$HOME/bin/fleet-transition"
 FLEET_HEARTBEAT_SRC="$SCRIPT_DIR/fleet-heartbeat"
 FLEET_HEARTBEAT_DEST="$HOME/bin/fleet-heartbeat"
 FLEET_STREAM_SRC="$SCRIPT_DIR/fleet-claude-stream"
@@ -128,6 +130,12 @@ FLEET_PR_SRC="$SCRIPT_DIR/fleet-pr"
 FLEET_PR_DEST="$HOME/bin/fleet-pr"
 FLEET_PR_CLEAR_SRC="$SCRIPT_DIR/fleet-pr-clear-feedback-labels"
 FLEET_PR_CLEAR_DEST="$HOME/bin/fleet-pr-clear-feedback-labels"
+FLEET_PR_CLAIM_FEEDBACK_SRC="$SCRIPT_DIR/fleet-pr-claim-feedback"
+FLEET_PR_CLAIM_FEEDBACK_DEST="$HOME/bin/fleet-pr-claim-feedback"
+FLEET_PR_DETACH_SRC="$SCRIPT_DIR/fleet-pr-checkout-detached"
+FLEET_PR_DETACH_DEST="$HOME/bin/fleet-pr-checkout-detached"
+FLEET_PR_AMEND_SRC="$SCRIPT_DIR/fleet-pr-amend-push"
+FLEET_PR_AMEND_DEST="$HOME/bin/fleet-pr-amend-push"
 FLEET_ISSUE_SRC="$SCRIPT_DIR/fleet-issue"
 FLEET_ISSUE_DEST="$HOME/bin/fleet-issue"
 FLEET_DISPATCHER_SRC="$SCRIPT_DIR/fleet-dispatcher"
@@ -136,18 +144,32 @@ FLEET_DISPATCH_WRAP_SRC="$SCRIPT_DIR/fleet-dispatch-wrap"
 FLEET_DISPATCH_WRAP_DEST="$HOME/bin/fleet-dispatch-wrap"
 FLEET_GATE_STATUS_SRC="$SCRIPT_DIR/fleet-gate-status"
 FLEET_GATE_STATUS_DEST="$HOME/bin/fleet-gate-status"
-FLEET_TASKS_RENDER_SRC="$SCRIPT_DIR/fleet-tasks-render"
-FLEET_TASKS_RENDER_DEST="$HOME/bin/fleet-tasks-render"
-FLEET_QUEUE_TICK_SRC="$SCRIPT_DIR/fleet-queue-tick"
-FLEET_QUEUE_TICK_DEST="$HOME/bin/fleet-queue-tick"
 FLEET_QUEUE_INGEST_SRC="$SCRIPT_DIR/fleet-queue-ingest"
 FLEET_QUEUE_INGEST_DEST="$HOME/bin/fleet-queue-ingest"
+FLEET_QUEUE_LIST_SRC="$SCRIPT_DIR/fleet-queue-list"
+FLEET_QUEUE_LIST_DEST="$HOME/bin/fleet-queue-list"
 FLEET_RECONCILE_AMENDMENTS_SRC="$SCRIPT_DIR/fleet-reconcile-amendments"
 FLEET_RECONCILE_AMENDMENTS_DEST="$HOME/bin/fleet-reconcile-amendments"
 FLEET_ITERATION_SUMMARY_SRC="$SCRIPT_DIR/fleet-iteration-summary"
 FLEET_ITERATION_SUMMARY_DEST="$HOME/bin/fleet-iteration-summary"
+FLEET_EDIT_SRC="$SCRIPT_DIR/fleet-edit"
+FLEET_EDIT_DEST="$HOME/bin/fleet-edit"
+FLEET_NIT_CLOSE_SRC="$SCRIPT_DIR/fleet-nit-close-for-pr"
+FLEET_NIT_CLOSE_DEST="$HOME/bin/fleet-nit-close-for-pr"
+FLEET_VALIDATE_STACK_SRC="$SCRIPT_DIR/fleet-validate-stack"
+FLEET_VALIDATE_STACK_DEST="$HOME/bin/fleet-validate-stack"
+FLEET_EPIC_STATUS_SRC="$SCRIPT_DIR/fleet-epic-status"
+FLEET_EPIC_STATUS_DEST="$HOME/bin/fleet-epic-status"
+FLEET_VALIDATE_ROLES_SRC="$SCRIPT_DIR/fleet-validate-roles"
+FLEET_VALIDATE_ROLES_DEST="$HOME/bin/fleet-validate-roles"
+FLEET_ASSERT_WT_SRC="$SCRIPT_DIR/fleet-assert-worktree"
+FLEET_ASSERT_WT_DEST="$HOME/bin/fleet-assert-worktree"
 WITNESS_SRC="$SCRIPT_DIR/witness"
 WITNESS_DEST="$HOME/bin/witness"
+SOLO_ARCHITECT_SRC="$SCRIPT_DIR/solo-architect"
+SOLO_ARCHITECT_DEST="$HOME/bin/solo-architect"
+FLEET_REBASE_SRC="$SCRIPT_DIR/fleet-rebase"
+FLEET_REBASE_DEST="$HOME/bin/fleet-rebase"
 
 if [[ ! -f "$FLEET_UP_SRC" ]]; then
     echo "install.sh: $FLEET_UP_SRC does not exist — repo is incomplete" >&2
@@ -157,7 +179,7 @@ fi
 # Ensure the sources are executable. Git normally preserves the +x bit,
 # but if someone unpacked a tarball or checked out with core.fileMode
 # off, fix it here.
-for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_COMMON_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_PR_CLEAR_SRC" "$FLEET_ISSUE_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_GATE_STATUS_SRC" "$FLEET_TASKS_RENDER_SRC" "$FLEET_QUEUE_TICK_SRC" "$FLEET_QUEUE_INGEST_SRC" "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_ITERATION_SUMMARY_SRC" "$WITNESS_SRC"; do
+for src in "$FLEET_UP_SRC" "$FLEET_DOWN_SRC" "$FLEET_CLAIM_SRC" "$FLEET_COMMON_SRC" "$FLEET_BUILD_SRC" "$FLEET_DEBUG_SRC" "$FLEET_RUN_SRC" "$FLEET_RUN_TARGETS_SRC" "$FLEET_HELP_SRC" "$FLEET_BABYSIT_SRC" "$FLEET_LABELS_SRC" "$FLEET_TRANSITION_SRC" "$FLEET_HEARTBEAT_SRC" "$FLEET_STREAM_SRC" "$FLEET_SCOUT_SRC" "$FLEET_FEEDBACK_SRC" "$FLEET_BUSY_SRC" "$FLEET_PR_SRC" "$FLEET_PR_CLEAR_SRC" "$FLEET_PR_CLAIM_FEEDBACK_SRC" "$FLEET_PR_DETACH_SRC" "$FLEET_PR_AMEND_SRC" "$FLEET_ISSUE_SRC" "$FLEET_DISPATCHER_SRC" "$FLEET_DISPATCH_WRAP_SRC" "$FLEET_GATE_STATUS_SRC" "$FLEET_QUEUE_INGEST_SRC" "$FLEET_QUEUE_LIST_SRC" "$FLEET_RECONCILE_AMENDMENTS_SRC" "$FLEET_ITERATION_SUMMARY_SRC" "$FLEET_EDIT_SRC" "$FLEET_NIT_CLOSE_SRC" "$FLEET_VALIDATE_STACK_SRC" "$FLEET_EPIC_STATUS_SRC" "$FLEET_VALIDATE_ROLES_SRC" "$FLEET_ASSERT_WT_SRC" "$WITNESS_SRC" "$SOLO_ARCHITECT_SRC" "$FLEET_REBASE_SRC"; do
     if [[ -f "$src" && ! -x "$src" ]]; then
         chmod +x "$src"
     fi
@@ -221,6 +243,11 @@ if [[ -f "$FLEET_LABELS_SRC" ]]; then
     echo "symlinked $FLEET_LABELS_DEST -> $FLEET_LABELS_SRC"
 fi
 
+if [[ -f "$FLEET_TRANSITION_SRC" ]]; then
+    ln -sf "$FLEET_TRANSITION_SRC" "$FLEET_TRANSITION_DEST"
+    echo "symlinked $FLEET_TRANSITION_DEST -> $FLEET_TRANSITION_SRC"
+fi
+
 if [[ -f "$FLEET_HEARTBEAT_SRC" ]]; then
     ln -sf "$FLEET_HEARTBEAT_SRC" "$FLEET_HEARTBEAT_DEST"
     echo "symlinked $FLEET_HEARTBEAT_DEST -> $FLEET_HEARTBEAT_SRC"
@@ -256,6 +283,21 @@ if [[ -f "$FLEET_PR_CLEAR_SRC" ]]; then
     echo "symlinked $FLEET_PR_CLEAR_DEST -> $FLEET_PR_CLEAR_SRC"
 fi
 
+if [[ -f "$FLEET_PR_CLAIM_FEEDBACK_SRC" ]]; then
+    ln -sf "$FLEET_PR_CLAIM_FEEDBACK_SRC" "$FLEET_PR_CLAIM_FEEDBACK_DEST"
+    echo "symlinked $FLEET_PR_CLAIM_FEEDBACK_DEST -> $FLEET_PR_CLAIM_FEEDBACK_SRC"
+fi
+
+if [[ -f "$FLEET_PR_DETACH_SRC" ]]; then
+    ln -sf "$FLEET_PR_DETACH_SRC" "$FLEET_PR_DETACH_DEST"
+    echo "symlinked $FLEET_PR_DETACH_DEST -> $FLEET_PR_DETACH_SRC"
+fi
+
+if [[ -f "$FLEET_PR_AMEND_SRC" ]]; then
+    ln -sf "$FLEET_PR_AMEND_SRC" "$FLEET_PR_AMEND_DEST"
+    echo "symlinked $FLEET_PR_AMEND_DEST -> $FLEET_PR_AMEND_SRC"
+fi
+
 if [[ -f "$FLEET_ISSUE_SRC" ]]; then
     ln -sf "$FLEET_ISSUE_SRC" "$FLEET_ISSUE_DEST"
     echo "symlinked $FLEET_ISSUE_DEST -> $FLEET_ISSUE_SRC"
@@ -276,19 +318,14 @@ if [[ -f "$FLEET_GATE_STATUS_SRC" ]]; then
     echo "symlinked $FLEET_GATE_STATUS_DEST -> $FLEET_GATE_STATUS_SRC"
 fi
 
-if [[ -f "$FLEET_TASKS_RENDER_SRC" ]]; then
-    ln -sf "$FLEET_TASKS_RENDER_SRC" "$FLEET_TASKS_RENDER_DEST"
-    echo "symlinked $FLEET_TASKS_RENDER_DEST -> $FLEET_TASKS_RENDER_SRC"
-fi
-
-if [[ -f "$FLEET_QUEUE_TICK_SRC" ]]; then
-    ln -sf "$FLEET_QUEUE_TICK_SRC" "$FLEET_QUEUE_TICK_DEST"
-    echo "symlinked $FLEET_QUEUE_TICK_DEST -> $FLEET_QUEUE_TICK_SRC"
-fi
-
 if [[ -f "$FLEET_QUEUE_INGEST_SRC" ]]; then
     ln -sf "$FLEET_QUEUE_INGEST_SRC" "$FLEET_QUEUE_INGEST_DEST"
     echo "symlinked $FLEET_QUEUE_INGEST_DEST -> $FLEET_QUEUE_INGEST_SRC"
+fi
+
+if [[ -f "$FLEET_QUEUE_LIST_SRC" ]]; then
+    ln -sf "$FLEET_QUEUE_LIST_SRC" "$FLEET_QUEUE_LIST_DEST"
+    echo "symlinked $FLEET_QUEUE_LIST_DEST -> $FLEET_QUEUE_LIST_SRC"
 fi
 
 if [[ -f "$FLEET_RECONCILE_AMENDMENTS_SRC" ]]; then
@@ -301,9 +338,65 @@ if [[ -f "$FLEET_ITERATION_SUMMARY_SRC" ]]; then
     echo "symlinked $FLEET_ITERATION_SUMMARY_DEST -> $FLEET_ITERATION_SUMMARY_SRC"
 fi
 
+if [[ -f "$FLEET_EDIT_SRC" ]]; then
+    ln -sf "$FLEET_EDIT_SRC" "$FLEET_EDIT_DEST"
+    echo "symlinked $FLEET_EDIT_DEST -> $FLEET_EDIT_SRC"
+fi
+
+if [[ -f "$FLEET_NIT_CLOSE_SRC" ]]; then
+    ln -sf "$FLEET_NIT_CLOSE_SRC" "$FLEET_NIT_CLOSE_DEST"
+    echo "symlinked $FLEET_NIT_CLOSE_DEST -> $FLEET_NIT_CLOSE_SRC"
+fi
+
+if [[ -f "$FLEET_VALIDATE_STACK_SRC" ]]; then
+    ln -sf "$FLEET_VALIDATE_STACK_SRC" "$FLEET_VALIDATE_STACK_DEST"
+    echo "symlinked $FLEET_VALIDATE_STACK_DEST -> $FLEET_VALIDATE_STACK_SRC"
+fi
+
+if [[ -f "$FLEET_EPIC_STATUS_SRC" ]]; then
+    ln -sf "$FLEET_EPIC_STATUS_SRC" "$FLEET_EPIC_STATUS_DEST"
+    echo "symlinked $FLEET_EPIC_STATUS_DEST -> $FLEET_EPIC_STATUS_SRC"
+fi
+
+if [[ -f "$FLEET_VALIDATE_ROLES_SRC" ]]; then
+    ln -sf "$FLEET_VALIDATE_ROLES_SRC" "$FLEET_VALIDATE_ROLES_DEST"
+    echo "symlinked $FLEET_VALIDATE_ROLES_DEST -> $FLEET_VALIDATE_ROLES_SRC"
+fi
+
+if [[ -f "$FLEET_ASSERT_WT_SRC" ]]; then
+    ln -sf "$FLEET_ASSERT_WT_SRC" "$FLEET_ASSERT_WT_DEST"
+    echo "symlinked $FLEET_ASSERT_WT_DEST -> $FLEET_ASSERT_WT_SRC"
+fi
+
 if [[ -f "$WITNESS_SRC" ]]; then
     ln -sf "$WITNESS_SRC" "$WITNESS_DEST"
     echo "symlinked $WITNESS_DEST -> $WITNESS_SRC"
+fi
+
+if [[ -f "$SOLO_ARCHITECT_SRC" ]]; then
+    ln -sf "$SOLO_ARCHITECT_SRC" "$SOLO_ARCHITECT_DEST"
+    echo "symlinked $SOLO_ARCHITECT_DEST -> $SOLO_ARCHITECT_SRC"
+fi
+
+if [[ -f "$FLEET_REBASE_SRC" ]]; then
+    ln -sf "$FLEET_REBASE_SRC" "$FLEET_REBASE_DEST"
+    echo "symlinked $FLEET_REBASE_DEST -> $FLEET_REBASE_SRC"
+fi
+
+# Engine-level ir-* tools (T-318 sub-task 1). These live under
+# engine/tools/bin/ — they're not fleet-specific, but they share the
+# install pattern. Symlink whichever ones are present in this checkout
+# so the next sub-tasks (ir-build / ir-run migration, ir-perf-grid) can
+# add themselves to this loop with a one-line append.
+IR_TOOLS_BIN="$REPO_ROOT/engine/tools/bin"
+if [[ -d "$IR_TOOLS_BIN" ]]; then
+    for ir_src in "$IR_TOOLS_BIN"/ir-*; do
+        [[ -f "$ir_src" ]] || continue
+        [[ -x "$ir_src" ]] || chmod +x "$ir_src"
+        ir_dest="$HOME/bin/$(basename "$ir_src")"
+        ln -sf "$ir_src" "$ir_dest"
+        echo "symlinked $ir_dest -> $ir_src"
+    done
 fi
 
 # Bash programmable completion (fleet-run / fleet-build). Loaded by the
@@ -316,7 +409,9 @@ if [[ -f "$FLEET_COMP_SRC" ]]; then
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-run"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-build"
     ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/fleet-debug"
-    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build, fleet-debug)"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/ir-run"
+    ln -sf "$FLEET_COMP_SRC" "$BASH_COMP_DIR/ir-build"
+    echo "symlinked bash completion -> $BASH_COMP_DIR/fleet-run (+ fleet-build, fleet-debug, ir-run, ir-build)"
 fi
 
 # Zsh: bash-completion dirs are not read by zsh; irreden-fleet.zsh uses
@@ -448,8 +543,8 @@ esac
 
 if [[ -f "$FLEET_COMP_SRC" ]]; then
     echo
-    echo "Bash tab-completion for fleet-run / fleet-build / fleet-debug (built targets and"
-    echo "  fleet-build --target names) installs under:"
+    echo "Bash tab-completion for fleet-run / fleet-build / fleet-debug / ir-run / ir-build"
+    echo "  (built targets and --target names) installs under:"
     echo "    $BASH_COMP_DIR"
     echo "  Open a new bash login shell (or: source your bash-completion init)"
     echo "  so it loads. Ubuntu/Debian: install the \`bash-completion\` package;"
@@ -458,7 +553,7 @@ fi
 
 if [[ -f "$FLEET_ZSH_COMP_SRC" ]]; then
     echo
-    echo "zsh: tab completion for fleet-run / fleet-build uses ~/.zsh/completions/"
+    echo "zsh: tab completion for fleet-run / fleet-build / ir-run / ir-build uses ~/.zsh/completions/"
     echo "  (bash-completion paths are not loaded by zsh by default.)"
     if ((INSTALL_APPEND_ZSHRC)); then
         echo "  If ~/.zshrc was updated, open a new terminal or \`source ~/.zshrc\`."

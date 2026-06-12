@@ -52,8 +52,9 @@ build trees; they share history only via `origin/master`.
 - **Linux / Metal parity.** Use whichever host *lacks* the feature
   you're porting. GLSL → MSL port needs macOS; MSL → GLSL port needs
   WSL or Windows. See the `backend-parity` skill.
-- **Routine TASKS.md work.** Either host works, whichever is in front
-  of you. Tag the task with `[opus]` / `[sonnet]` and go.
+- **Routine issue-queue work.** Either host works, whichever is in front
+  of you. Tasks are tagged `fleet:opus` / `fleet:sonnet` on the GitHub
+  issue; the fleet picks the right model automatically.
 - **Tests, docs, mechanical refactors.** Either host. Sonnet-fleet
   workers on either side.
 - **MIDI-dependent demos.** Run from the Windows-native clone — MIDI
@@ -353,19 +354,24 @@ A reasonable starting setup with the model split in mind:
 | Worktree            | Repo   | Model  | Role                                                |
 |---------------------|--------|--------|-----------------------------------------------------|
 | `opus-architect`    | engine | Opus   | Core engine work, ECS/render/audio. Stand-by.       |
-| `opus-worker-1`     | engine | Opus   | Plans `fleet:needs-plan` issues, executes `[opus]` tasks |
+| `opus-worker-1`     | engine | Opus   | Plans `fleet:needs-plan` issues, executes `fleet:opus` tasks |
 | `opus-worker-2`     | engine | Opus   | Second opus-worker pane — parallel planning/execution    |
-| `sonnet-fleet-1`    | engine | Sonnet | TASKS.md `[sonnet]` items, tests, docs              |
+| `sonnet-fleet-1`    | engine | Sonnet | `fleet:sonnet` tasks, tests, docs                   |
+| `sonnet-fleet-2`    | engine | Sonnet | Second `fleet:sonnet` pane — parallel task execution |
 | `sonnet-reviewer`   | engine | Sonnet | First-pass PR review (polling loop)                 |
 | `opus-reviewer`     | engine | Opus   | Final review on flagged PRs (polling loop)          |
-| `queue-manager`     | engine | Sonnet | Task intake — categorizes and files new tasks       |
-| `merger`            | engine | Opus   | Auto-rebases stale PRs and sort-merges TASKS.md conflicts (polling loop) |
+| `merger`            | engine | Opus   | Auto-rebases stale PRs, resolves semantic conflicts (polling loop) |
 | `game-architect`    | game   | Opus   | Game-side architect / stand-by, cross-repo aware    |
 
 The first eight live in `~/src/IrredenEngine/.claude/worktrees/`. The
 last (`game-architect`) lives inside the game repo at
 `~/src/IrredenEngine/creations/game/.claude/worktrees/game-architect`,
 because the game is its own git repo with its own PR namespace.
+
+> **Note:** `fleet-up` also creates `queue-manager` and
+> `queue-manager-ingest` worktrees as scratch terminals for manual
+> ingestion work (no LLM agent runs in them). They appear in
+> `git worktree list` but are not fleet panes.
 
 You don't have to create these by hand — `fleet-up` (described in §5)
 creates any missing worktrees on first run. The manual `git worktree
@@ -390,10 +396,10 @@ git worktree add -b fleet/opus-architect  .claude/worktrees/opus-architect  orig
 git worktree add -b fleet/opus-worker-1   .claude/worktrees/opus-worker-1   origin/master
 git worktree add -b fleet/opus-worker-2   .claude/worktrees/opus-worker-2   origin/master
 git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  origin/master
+git worktree add -b fleet/sonnet-fleet-2  .claude/worktrees/sonnet-fleet-2  origin/master
 git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
 git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
-git worktree add -b fleet/queue-manager   .claude/worktrees/queue-manager   origin/master
-git worktree add -b fleet/merger          .claude/worktrees/merger          origin/master
+git worktree add -b fleet/merger               .claude/worktrees/merger               origin/master
 
 cd ~/src/IrredenEngine/creations/game
 git fetch origin master
@@ -408,9 +414,9 @@ git worktree list
 
 You should see the main clone on `master` plus eight engine worktrees
 (`opus-architect`, `opus-worker-1`, `opus-worker-2`, `sonnet-fleet-1`,
-`sonnet-reviewer`, `opus-reviewer`, `queue-manager`, `merger`) each on
-their own `fleet/*` seed branch, plus a ninth `game-architect`
-worktree under `creations/game/` if the game repo is present. The
+`sonnet-fleet-2`, `sonnet-reviewer`, `opus-reviewer`, `merger`) each on
+their own `fleet/*` seed branch, plus a ninth `game-architect` worktree under
+`creations/game/` if the game repo is present. The
 `fleet/` prefix keeps these distinct from `claude/<area>-<topic>`
 agent branches so `gh pr list` and branch-completion never confuse
 them.
@@ -442,15 +448,16 @@ no persistent role in the fleet.
 
 tmux is how you keep all the fleet agents visible and
 attachable/detachable from one terminal, on either host. The `fleet-up`
-script creates **one tmux session** named `fleet` with **one window**
-named `agents` containing **seven tiled panes** — one per worktree
-role — and auto-launches `claude` in each pane with the matching
-**role slash command**.
+script creates **one tmux session** named `fleet` with **two windows**
+— `fleet` (3×3 agent grid) and `ops` (meta panes for merger, scratch
+terminals, etc.) — and auto-launches `claude` in each agent pane with
+the matching **role slash command**.
 
 **Key terminology:** in tmux a *window* fills the whole terminal (only
 one shows at a time); a *pane* is a split inside a window. The fleet
-uses one window with multiple panes so you can see all agents
-simultaneously. The default tmux prefix is `C-b` (Ctrl+B); the config
+uses a `fleet` window (3×3 agent grid) and an `ops` window for meta
+panes; each window contains multiple panes so you can see related
+agents simultaneously. The default tmux prefix is `C-b` (Ctrl+B); the config
 below remaps it to `C-a` (Ctrl+A) which is easier to reach. **`C-a`
 means hold Control, press A.**
 
@@ -485,7 +492,6 @@ as its initial prompt. The role files live at:
 - `~/.claude/commands/role-sonnet-author.md`
 - `~/.claude/commands/role-sonnet-reviewer.md`
 - `~/.claude/commands/role-opus-reviewer.md`
-- `~/.claude/commands/role-queue-manager.md`
 - `~/.claude/commands/role-merger.md`
 - `~/.claude/commands/role-game-architect.md`
 
@@ -513,11 +519,11 @@ The fleet launcher and its installer live in the engine repo under
 
 - **`scripts/fleet/fleet-up`** — the launcher. Does four things in
   order:
-  1. Ensures all 7 worktrees exist (creates any that are missing).
+  1. Ensures all worktrees exist (creates any that are missing).
   2. Resets each worktree to a fresh branch off `origin/master`,
      skipping any that have uncommitted changes.
-  3. Creates the tmux session with 7 tiled panes.
-  4. In each pane, runs `claude --model <m> "/role-<role> <mode>"`
+  3. Creates the tmux session with two windows (fleet + ops).
+  4. In each agent pane, runs `claude --model <m> "/role-<role> <mode>"`
      with the appropriate model and role. Default mode is `dry-run`;
      pass `live` to skip dry-run.
 - **`scripts/fleet/install.sh`** — the one-time per-machine installer.
@@ -556,9 +562,9 @@ tmux attach -t fleet    # attach to it
 ```
 
 By default `fleet-up` starts every agent in **dry-run mode**. Each
-agent runs its startup actions (fetch, read TASKS, list open PRs,
-print a summary) and then **stands by** for explicit human
-instruction. This is the safe default — no work happens until you
+agent runs its startup actions (fetch, reads the fleet state cache,
+lists open PRs and the issue queue, prints a summary) and then
+**stands by** for explicit human instruction. This is the safe default — no work happens until you
 authorize it.
 
 When you've validated everything looks healthy, promote a pane to its
@@ -636,11 +642,12 @@ Practical rule:
   `opus-*` and for cases where a Sonnet session hits something subtle
   (escalate with `/model opus`).
 - **Sonnet is the fleet.** Let sonnet-named worktrees run unattended
-  against `TASKS.md` and first-pass reviews. Docs passes, test
-  generation, mechanical refactors all go here.
+  on `fleet:sonnet`-labeled issues and first-pass reviews. Docs passes,
+  test generation, mechanical refactors all go here.
 
-[`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" has the full rules and
-`TASKS.md` uses a `**Model:**` tag on each task.
+[`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" has the full rules.
+Issues are labeled `fleet:opus` or `fleet:sonnet` to route work to
+the right model tier.
 
 ---
 
@@ -693,12 +700,12 @@ without touching the committed file.
 
 ### Why the broad `Bash(git:*)` / `Bash(gh:*)` allow
 
-The fleet's queue-manager and worker roles run in
+The fleet's worker and reviewer roles run in
 `claude --print --output-format stream-json` (non-interactive). Any
 permission prompt in that mode auto-denies, so a narrow allowlist
-that misses one command (e.g. queue-manager's `git push origin
-HEAD:master` for TASKS.md, or `gh issue edit --add-label`) silently
-stalls a whole role. Broad-allow + targeted-deny avoids the
+that misses one command (e.g. `gh issue edit --add-label` or
+`fleet-claim claim`) silently stalls a whole role. Broad-allow +
+targeted-deny avoids the
 maintenance burden of enumerating every command path each role
 might take, while still hard-blocking the actually-dangerous ones.
 
@@ -720,7 +727,7 @@ in the engine repo. You have three options:
    inside a private creation.
 2. **Make each private creation its own git repo.** Nest a separate
    `.git` inside `creations/game/` (or use a submodule). Then the
-   private creation has its own worktrees, its own TASKS.md, its own
+   private creation has its own worktrees, its own issue queue, its own
    `commit-and-push` and `review-pr` skills, its own PR workflow. This
    is the scalable option.
 3. **Un-gitignore** `creations/game/` in the engine repo. Not
@@ -728,7 +735,7 @@ in the engine repo. You have three options:
    repo.
 
 Recommended: **option 2**, with the private repo following the same
-parallel-agent pattern (its own `CLAUDE.md`, `TASKS.md`, skills). The
+parallel-agent pattern (its own `CLAUDE.md`, issue queue, skills). The
 engine-level skills in `.claude/skills/` are already written generically
 so they apply inside a private creation's subtree too, but a private
 creation can override any of them by shipping its own `.claude/skills/`
@@ -793,8 +800,6 @@ Benefits over the old self-managed sleep and tmux-timer approaches:
 - Built-in rate-limit awareness
 - Easy to pause (`/loop stop`) when you come back
 
-The queue-manager uses the same pattern at a 15-minute interval.
-
 **Alternative — `scheduled-tasks` / `schedule` skill (most robust).** For
 "keep running even if every tmux session is dead and my laptop slept,"
 create a scheduled remote trigger that fires every 15 minutes and
@@ -855,8 +860,8 @@ workflow is:
    not yet addressed, read the comments and fix them. Use
    `commit-and-push` to push the fix. Request re-review via
    `gh pr comment <N> --body "re-review please"`.
-2. Otherwise, pick the next unblocked `[sonnet]`-tagged task from
-   `TASKS.md`, work it, and use `commit-and-push` when done.
+2. Otherwise, pick the next unblocked `fleet:sonnet`-labeled task from
+   the issue queue, work it, and use `commit-and-push` when done.
 3. After `commit-and-push`, use `start-next-task` to land on a fresh
    branch before step 1 repeats.
 4. If you hit a usage-limit error, wait until the stated reset time
@@ -912,8 +917,7 @@ Common first-time issues you might hit:
 **On WSL (Linux/OpenGL):**
 
 - **Missing system libs** — apt the dev package for whatever header is
-  missing. Log the package name in `TASKS.md` so the apt list in §1a
-  gets expanded.
+  missing. File a GitHub issue so the apt list in §1a gets expanded.
 - **Windows-only preprocessor blocks** — look for `#ifdef _WIN32` /
   `#ifdef _MSC_VER` / `#ifdef __MINGW64__`. Linux probably needs a
   matching branch, not a silent fallthrough.
@@ -1059,10 +1063,10 @@ to every future fleet-up.
 | Slash command              | Model  | Worktree           | Loop?         |
 |----------------------------|--------|--------------------|---------------|
 | `/role-opus-architect`     | Opus   | `opus-architect`   | Stand-by      |
-| `/role-sonnet-author`      | Sonnet | `sonnet-fleet-*`   | Continuous    |
+| `/role-opus-worker`        | Opus   | `opus-worker-*`    | Dispatcher-triggered |
+| `/role-sonnet-author`      | Sonnet | `sonnet-fleet-*`   | Dispatcher-triggered |
 | `/role-sonnet-reviewer`    | Sonnet | `sonnet-reviewer`  | Polling 10min |
 | `/role-opus-reviewer`      | Opus   | `opus-reviewer`    | Polling 30min |
-| `/role-queue-manager`      | Sonnet | `queue-manager`    | On demand     |
 | `/role-merger`             | Opus   | `merger`           | Polling 10min |
 | `/role-game-architect`     | Opus   | `game-architect`   | Stand-by      |
 
@@ -1116,20 +1120,24 @@ up the change.
 
 If you want to add a task to the queue while agents are working:
 
-1. Switch to the `queue-manager` pane (`C-a` then click, or `C-a` then
-   arrow keys).
-2. Type a rough description of the task. Don't worry about format,
-   tags, or repo — just describe what you want done.
-3. The queue-manager will categorize (engine vs game), tag (`[opus]`
-   vs `[sonnet]`), pick an Area, draft the entry using the TASKS.md
-   template, and open a queue-update PR. Paste the PR URL.
-4. Once the queue PR merges, the next sonnet-fleet pane on its
-   `start-next-task` cycle will see the new task and pick it up
-   automatically.
+1. Open a GitHub issue on the appropriate repo (engine or game).
+   Describe what you want done; include acceptance criteria.
+2. Add the `human:approved` label to the issue.
+3. The `fleet-state-scout` picks up the new `human:approved` issue on
+   its next tick and fires `fleet-queue-ingest`, which stamps
+   `fleet:queued` plus a model-affinity label (`fleet:opus` or
+   `fleet:sonnet`) on the issue.
+4. The next worker/author iteration sees the newly queued issue in its
+   `fleet-queue-list` output and picks it up automatically.
 
-The queue-manager will push back if your description is missing a
-concrete Acceptance criterion. That's intentional — tasks without
-acceptance checks are tasks that get half-finished.
+For quick ad-hoc task creation from the terminal:
+
+```bash
+gh issue create --repo jakildev/IrredenEngine \
+    --title "short task title" \
+    --body "Description and acceptance criteria" \
+    --label "human:approved"
+```
 
 ### Backend-parity sessions (still ad-hoc, not a fleet pane)
 
@@ -1183,8 +1191,8 @@ tmux attach -t fleet
 Each pane will:
 1. Start `claude` with the right model.
 2. Auto-execute its `/role-<x> dry-run` command.
-3. The agent does its startup actions: `git fetch`, reads `TASKS.md`,
-   runs `gh pr list`, prints a one-line summary.
+3. The agent does its startup actions: `git fetch`, reads the fleet
+   state cache, checks the issue queue and open PRs, prints a summary.
 4. The agent prints `<role> standing by (dry-run)` and waits.
 
 Walk through every pane (`C-a` then arrow, or click) and confirm
@@ -1193,17 +1201,33 @@ instead, that's the first thing to fix.
 
 ### Step 2 — drive one author task through the full cycle
 
-Switch to **sonnet-fleet-1** and type:
+First, create a bounded test task in the issue queue so the agent has
+something concrete to pick up:
 
-> exit dry-run mode and do exactly ONE task end-to-end. Pick the
-> "Example: unit tests for engine/math/physics.hpp" task — it's
-> bounded, sonnet-tagged, and has a concrete acceptance check.
+```bash
+gh issue create --repo jakildev/IrredenEngine \
+    --title "test: unit tests for engine/math/physics.hpp" \
+    --body "Write exhaustive tests for physics.hpp. Acceptance: test binary builds and all assertions pass." \
+    --label "fleet:sonnet" \
+    --label "human:approved"
+```
+
+Note the issue number printed. Wait ~30 seconds for `fleet-state-scout`
+to ingest it, then confirm it appears in `fleet-queue-list`.
+
+Switch to **sonnet-fleet-1** and type (substituting the actual issue
+number):
+
+> exit dry-run mode and do exactly ONE task end-to-end. Pick issue #NNN
+> (test: unit tests for engine/math/physics.hpp) — it's bounded,
+> sonnet-tagged, and has a concrete acceptance check.
 > Build with `-j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`. After
 > `commit-and-push`, stop and wait — do not pick another task or loop.
 
 Watch the agent:
-- Cross-check `gh pr list` (it should mention this in its picking step).
-- Flip the task to `[~]` in `TASKS.md` and commit.
+- Cross-check the issue queue and open PRs (it should mention this in
+  its picking step).
+- Claim the issue via `fleet-claim`.
 - Read `engine/math/CLAUDE.md` for the helper specs.
 - Write the test file, build the test target, run it.
 - Call `commit-and-push`. A PR opens.
@@ -1255,41 +1279,39 @@ Switch back to **sonnet-fleet-1** and type:
 > run the `start-next-task` skill
 
 It should rebase onto the merged master, land on a fresh `claude/...`
-branch, and the `[x]` Done move from the merged PR should now be
-visible in `TASKS.md`.
+branch, and the issue's `fleet:claim-*` label should be cleared.
 
-### Step 7 — test the queue-manager
+### Step 7 — test the task-intake flow
 
-Switch to **queue-manager** and type a rough task:
+From any terminal, create a test issue and label it:
 
-> add a task: I want exhaustive tests for engine/common/ir_constants.hpp.
-> Sonnet should be able to handle this. Acceptance is "test binary
-> builds and all assertions pass".
+```bash
+gh issue create --repo jakildev/IrredenEngine \
+    --title "test: dry-run validation task for engine/common/ir_constants.hpp" \
+    --body "Write exhaustive tests for ir_constants.hpp. Acceptance: test binary builds and all assertions pass." \
+    --label "human:approved"
+```
 
-Watch the queue-manager:
-- Categorize as engine repo, `[sonnet]`, area `engine/common`.
-- Format the task using the template.
-- Append to `TASKS.md`.
-- Call `commit-and-push` with a `queue: add task ...` PR.
-- Paste the PR URL.
+Wait for `fleet-state-scout` to pick it up (~30 seconds). Then run
+`fleet-queue-list` and confirm the issue appears with `fleet:queued`
+and a model-affinity label (`fleet:sonnet` for this kind of task).
 
-This validates the task-intake flow. You can merge that queue PR
-or close it — the point was to see the flow work, not to land the
-task.
+This validates the task-intake flow. Close the test issue afterward
+if you don't want it picked up.
 
 ### Step 8 — test the game-architect (cross-repo awareness)
 
 Switch to **game-architect** and type:
 
-> read the engine TASKS.md and the game TASKS.md, then describe a
+> read the engine issue queue and the game issue queue, then describe a
 > hypothetical game task that would require an engine change. Don't
 > file it — just walk me through what the cross-repo flow would look
 > like.
 
 The game-arch should:
 - Reference the cross-repo escalation flow from the game `CLAUDE.md`.
-- Explain that it would file the engine task FIRST, then the blocked
-  game task with `Blocked by:` pointing at the engine PR URL.
+- Explain that it would file the engine issue FIRST, then the blocked
+  game issue with `Blocked by:` pointing at the engine issue/PR.
 - NOT actually file anything.
 
 This validates the agent has read the game `CLAUDE.md` correctly.
@@ -1298,13 +1320,10 @@ This validates the agent has read the game `CLAUDE.md` correctly.
 
 - Did `commit-and-push` open a PR cleanly without permission prompts?
 - Did `review-pr` check out the PR, post the review, and detach cleanly?
-- Did the `[~]` → `[x]` move land in the merged commit, and did the
-  Done list pick it up?
-- Did `gh pr list` show the claim quickly enough that
-  `opus-worker-2` would not have picked the same task?
-  (Test: while opus-worker-1 is mid-task, switch to opus-worker-2
-  and ask it to "list candidate tasks." It should NOT include the
-  in-flight task.)
+- Did `fleet-claim` prevent the second opus-worker from picking the
+  same task? (Test: while opus-worker-1 is mid-task, switch to
+  opus-worker-2 and ask it to "list candidate tasks." It should NOT
+  include the in-flight task.)
 - Did the build go cleanly with
   `-j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`? On macOS,
   hitting an Objective-C++ flag, missing Metal shader, or FFmpeg
@@ -1325,7 +1344,7 @@ tmux attach -t fleet
 ```
 
 All panes will start their normal continuous loops immediately. You
-can then walk away (or watch) and let the fleet drain `TASKS.md`
+can then walk away (or watch) and let the fleet drain the issue queue
 overnight.
 
 If something broke, fix the role file, the skill, or the permissions
@@ -1355,9 +1374,9 @@ make the fleet survive it.
 - **The other models keep working.** Opus and Sonnet budgets are
   separate. When Opus is capped, every Sonnet window in the fleet
   keeps going and vice versa. This is the single biggest reason
-  [`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" wants you to tag tasks `[opus]` or `[sonnet]` — it
-  turns the budget split into a backpressure signal instead of a
-  fleet-wide stall.
+  [`docs/agents/FLEET.md`](agents/FLEET.md) "Model split" tags issues `fleet:opus` or
+  `fleet:sonnet` — it turns the budget split into a backpressure signal
+  instead of a fleet-wide stall.
 - **Resumption is manual by default.** I don't think Claude Code
   auto-retries the failed request at reset time — the pane just sits
   on the error until you re-prompt. If you want automatic resumption,
@@ -1376,15 +1395,15 @@ make the fleet survive it.
   reset time and resume. Keep that line in every persistent-agent
   prompt — it's the difference between a window that comes back on
   its own and one that sits dead until you attach.
-- **Keep `TASKS.md` in git.** It already is. The effect is that if a
-  window dies permanently, the next window picking up from `TASKS.md`
-  knows where to start — no state is stranded in one dead agent.
+- **Task state lives in GitHub Issues.** If a window dies permanently,
+  the next window sees the issue queue and `fleet-claim` state —
+  no work is stranded in one dead agent.
 - **Watch Opus usage.** Opus eats budget much faster than Sonnet per
   dollar. If you find yourself running two Opus windows in parallel
   on core-engine work, ask whether one of them can demote to Sonnet
-  with an Opus final-pass review. The `[opus]` / `[sonnet]` tags are
-  the control knob — re-tag aggressively when you see Opus budget
-  dropping.
+  with an Opus final-pass review. The `fleet:opus` / `fleet:sonnet`
+  labels are the control knob — re-label aggressively when you see
+  Opus budget dropping.
 - **Sonnet-first review.** As above in §9, every PR gets a Sonnet
   first-pass review cheaply; Opus only looks at core-engine PRs or
   ones where the Sonnet review asked for escalation. Skipping the
@@ -1436,9 +1455,9 @@ If a window keeps hitting the cap even after the stated reset time:
 - Check whether a background `loop` or scheduled task is quietly
   burning budget in parallel — `schedule list` / whatever the
   equivalent is on your setup.
-- Consider demoting one or more windows to Sonnet temporarily. Tag
-  the in-flight task in `TASKS.md` with `[sonnet]` so the agent knows
-  it has been demoted and doesn't reach for Opus-only reasoning.
+- Consider demoting one or more windows to Sonnet temporarily. Swap
+  the `fleet:opus` label for `fleet:sonnet` on the in-flight issue so
+  the agent knows it has been demoted.
 
 ### When a window dies entirely
 

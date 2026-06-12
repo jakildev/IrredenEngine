@@ -25,7 +25,7 @@
 //
 //   - **GPU readback (`IRRender::getEntityIdAtMouseTrixel`)** — the O(1)
 //     GPU alternative. Reads the entity-id texture written by
-//     `VOXEL_TO_TRIXEL_STAGE_2` and `SHAPES_TO_TRIXEL` (via a
+//     `VOXEL_TO_TRIXEL_STAGE_1` and `SHAPES_TO_TRIXEL` (via a
 //     persistent-mapped buffer) and returns the frontmost entity at the
 //     cursor pixel in O(1). The trade-off is a one-frame lag (the buffer
 //     holds the previous frame's render) and it yields the entity only
@@ -37,7 +37,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
@@ -114,12 +114,11 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excl
 
             // forEachComponent iterates one component type; position is
             // fetched per-entity because the API has no multi-component
-            // form. Safe: createEntity guarantees C_PositionGlobal3D on
+            // form. Safe: createEntity guarantees C_WorldTransform on
             // every entity. Acceptable: this path fires on click frames
-            // only. APPLY_POSITION_OFFSET has already folded any modifier-
-            // driven offset into globalPos for this frame.
-            auto &gpos = IREntity::getComponent<IRComponents::C_PositionGlobal3D>(id);
-            const IRMath::vec3 worldPos = gpos.pos_;
+            // only.
+            auto &xform = IREntity::getComponent<IRComponents::C_WorldTransform>(id);
+            const IRMath::vec3 worldPos = xform.translation_;
             const IRMath::vec3 rotatedPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);
             const IRMath::vec3 boundHalf = IRMath::SDF::boundingHalf(sd.shapeType_, sd.params_);
 

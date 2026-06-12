@@ -2,7 +2,7 @@
 
 #include <irreden/audio/entities/entity_midi_device.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 int main(int argc, char **argv) {
@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
     // Initialize entities, command, and systems here
     // ...
     IREntity::createEntity(
-        C_Position3D{0, 0, 0},
+        C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{ivec3(4, 4, 4), Color{150, 100, 50, 255}}
     );
     IREntity::createEntity<IREntity::kMidiDevice>(

@@ -35,6 +35,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/video)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/math)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/entity)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/job)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/system)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/window)
@@ -45,6 +46,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/window)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/command)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/script)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/world)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools/bench)
 
 if(IR_isLinux)
     message(STATUS "Linux-specific code will be compiled.")
@@ -87,6 +89,7 @@ target_link_libraries(
     IrredenEngineMath
     IrredenEngineEntity
     IrredenEngineSystem
+    IrredenEngineJob
     # IrredenEngineComponent
     IrredenEngineTime
     IrredenEngineCommand

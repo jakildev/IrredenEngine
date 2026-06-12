@@ -9,8 +9,6 @@
 #include <irreden/render/renderer_impl.hpp>
 #include <irreden/render/voxel_pool_allocation.hpp>
 
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 
 #include <string>
@@ -47,6 +45,8 @@ class RenderManager {
     vec2 screenToOutputWindowOffset() const;
     void setSubdivisionMode(SubdivisionMode mode);
     SubdivisionMode getSubdivisionMode() const;
+    void setRotationPivotMode(RotationPivotMode mode);
+    RotationPivotMode getRotationPivotMode() const;
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
@@ -78,6 +78,19 @@ class RenderManager {
 
     void setDebugOverlay(DebugOverlayMode mode);
     DebugOverlayMode getDebugOverlay() const;
+
+    void setDepthColorDebug(bool on, float extent);
+    bool getDepthColorDebugMode() const;
+    float getDepthColorDebugExtent() const;
+
+    void setHDREnabled(bool enabled);
+    bool getHDREnabled() const;
+    void setExposure(float exposure);
+    float getExposure() const;
+    void setSkyIntensity(float intensity);
+    float getSkyIntensity() const;
+    void setSkyColor(vec3 color);
+    vec3 getSkyColor() const;
 
     void beginFrame();
     void renderFrame();
@@ -115,7 +128,7 @@ class RenderManager {
     EntityId m_mainFramebuffer;
     EntityId m_mainCanvas;
     EntityId m_backgroundCanvas;
-    int m_guiScale = 2;
+    int m_guiScale = 1;
     EntityId m_guiCanvas;
     // EntityId m_playerCanvas;
     EntityId m_camera;
@@ -127,6 +140,7 @@ class RenderManager {
     EntityId m_activeCanvas = kNullEntity;
     FitMode m_fitMode;
     SubdivisionMode m_subdivisionMode = SubdivisionMode::FULL;
+    RotationPivotMode m_rotationPivotMode = RotationPivotMode::CAMERA_CENTER;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;
@@ -146,6 +160,12 @@ class RenderManager {
     bool m_sunShadowsEnabled = true;
     bool m_aoEnabled = true;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
+    bool m_depthColorDebugOn = false;
+    float m_depthColorDebugExtent = 0.0f;
+    bool m_hdrEnabled = false;
+    float m_hdrExposure = 1.0f;
+    float m_skyIntensity = 0.0f;
+    vec3 m_skyColor = vec3(0.5f, 0.7f, 1.0f);
 
     void initRenderingSystems();
     void initRenderingResources();

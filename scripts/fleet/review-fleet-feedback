@@ -1,0 +1,850 @@
+#!/usr/bin/env python3
+"""review-fleet-feedback — closed-loop tracker for ~/.fleet/feedback/.
+
+Pipeline backing the .claude/skills/review-fleet-feedback skill.
+Splits the deterministic work (read entries, cluster by signature,
+cross-reference the fix-log, auto-close stale-applied fixes) from
+the judgment work (which proposals to log, which previously
+proposed fixes were applied), which stays in the skill body.
+
+Subcommands:
+  digest             Read role files, cluster, cross-reference the fix-log,
+                     emit a JSON document to stdout. Reads --since from
+                     .last-reviewed (with a 90d cap and a 7d default).
+  apply <file.json>  Mutate .fix-log.jsonl per the decisions in <file.json>.
+                     Schema: see `apply --schema`.
+  bump               Write current UTC timestamp to .last-reviewed.
+                     Run only after the digest is complete.
+  file-tasks         File a GitHub issue (human:approved) per proposed-status
+                     fix-log row so the existing fleet ingest pipeline picks
+                     it up. Records the issue URL on the row. --dry-run
+                     previews titles without calling gh.
+
+The fix-log lives at ~/.fleet/feedback/.fix-log.jsonl. The marker at
+~/.fleet/feedback/.last-reviewed. Neither is committed.
+
+Source of truth: scripts/fleet/review-fleet-feedback in the engine repo.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from collections import defaultdict
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+FEEDBACK_DIR = Path.home() / ".fleet" / "feedback"
+MARKER = FEEDBACK_DIR / ".last-reviewed"
+FIX_LOG = FEEDBACK_DIR / ".fix-log.jsonl"
+
+DEFAULT_SINCE_HOURS = 24 * 7      # 7d cold-start window
+MAX_SINCE_HOURS = 24 * 90         # cap stale markers at 90d
+AUTO_CLOSE_DAYS = 7               # quiet days before auto-close
+MIN_CLUSTER_SIZE_FOR_PROPOSAL = 2 # singletons never get a proposal
+
+# Entry headers come in several shapes across the role files:
+#   ## 2026-05-26 14:15            (strict: date + time, nothing trailing)
+#   ## 2026-05-08T17:34Z — headline (ISO-T, Z/UTC suffix, inline headline)
+#   ## 2026-05-13 — headline        (date only, inline headline)
+#   ## 2026-05-19 opus-worker-1: …  (date only, inline headline w/o em-dash)
+# Group 1 is the timestamp (date, optional time); group 2 is the optional
+# inline headline. Anything that doesn't lead with a date is a prose section
+# divider and is ignored. Keep this a strict superset of the old date+time
+# form so previously-parsed entries are unaffected.
+ENTRY_HEAD_FILE = re.compile(
+    r"^##\s+"
+    r"(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)"   # date, optional time
+    r"(?:\s*(?:Z|UTC))?"                                      # optional Z / UTC suffix
+    r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                       # optional inline headline; separator optional
+)
+
+# Pattern bank — order matters; first match wins. Widen aggressively;
+# uncategorized noise drowns the signal otherwise.
+SIGNATURES: list[tuple[str, re.Pattern]] = [
+    ("label-absent-after-verdict", re.compile(
+        r"(label\s+(absent|missing|never\s+set|stripped|cleared|left\s+stale)"
+        r"|verdict\s+labels?\s+(absent|missing|never|stripped)"
+        r"|missing\s+verdict\s+labels?"
+        r"|fleet:(needs-fix|approved|changes-made|needs-base-update|has-nits|semantic-conflict)\b"
+        r".*(absent|missing|never|stripped|cleared|left\s+stale|re-?applies|re-?applied|stale)"
+        r"|verdict[- ]?(set|command|template)"
+        r"|swap.*label|label[- ]swap|no\s+fleet:[a-z-]+\s+label)", re.I)),
+    ("stale-task-row", re.compile(
+        r"(T-\d+\b.*(stale|stranded|no-op|already\s+complete|loop|trap|pickup|wedge"
+        r"|still\s+(open|in\s+TASKS|stuck)|reorder|decomposition|superseded|recur|TASKS\.md)"
+        r"|stale[- ]?(TASKS\.md|task\s+row|row|done|open)"
+        r"|TASKS\.md\s+(stale|sync\s+lag|race|still|relative)"
+        r"|queue-manager.*(sync|lag|reconcil|tick|flipped|re-opened|not\s+(tick|reconcil|mov))"
+        r"|maintenance-sync|sqt-phase-a\s+wedge)", re.I)),
+    ("worktree-tracker-drift", re.compile(
+        r"(fleet-worktree-busy-branches"
+        r"|worktree.*(branch-lock|race|drift|reservation|stranded|contention)"
+        r"|worktree\s+(reservation|prune)|stale\s+worktree)", re.I)),
+    # An agent operating on the wrong checkout: Edit/Write/git -C landing in the
+    # main repo or a parent clone instead of the agent's own worktree (and the
+    # reverse). Lookahead form: a worktree/clone token AND a misroute indicator.
+    ("worktree-misroute", re.compile(
+        r"(?=.*(worktree|parent[- ]?(repo|clone)|main\s+(repo|clone)|cwd\s+repo))"
+        r"(?=.*(misroute|wrong\s+worktree|landed\s+in|silently\s+(writes?|edited|targets?|lands?)"
+        r"|instead\s+of\s+(my\s+)?worktree|not\s+(the\s+)?worktree|path\s+vs|repo-?path"
+        r"|git\s+-C|shared\s+main\s+clone|parent[- ]?(repo|clone)|main\s+repo))",
+        re.I | re.S)),
+    ("state-cache-lag", re.compile(
+        r"((cache|projection|scout|state\.json|sonnet-reviewer\.json|tasks_open|snapshot)"
+        r".*(lag|stale|race|raced|miss|6-second|stale-cache|stale-data"
+        r"|stale\s+snapshot|stale\s+view|stale\s+projection|dropped|missed|mixes)"
+        r"|live[- ]state|Within-iteration\s+stale|stale-cache\s+race)", re.I)),
+    ("permission-gate-friction", re.compile(
+        r"(auto.*classifier|auto-mode\s+classifier|Self-Modification\s+gate"
+        r"|security\s+hook|sandbox)", re.I)),
+    ("skill-flow-friction", re.compile(
+        r"(attach-screenshots|skill\s+flow|skill\s+errored|review-pr\s+skill"
+        r"|fleet-iteration-summary|fleet-issue\s+view)", re.I)),
+    # simplify's reuse fan-out (and similar Bash/Read-driven subagents) reading
+    # committed/origin state instead of the dirty working tree, then returning
+    # zero findings — "completed with no output." Lookahead form: requires the
+    # skill name, a reuse/subagent token, AND a no-coverage indicator together.
+    ("simplify-reuse-coverage", re.compile(
+        r"(?=.*simplify)(?=.*(reuse|subagent))"
+        r"(?=.*(silent|no-op|zero\s+finding|no\s+coverage|under-report|miss"
+        r"|do(?:\s+not|n.t)\s+exist|not\s+present|working[- ]?tree|origin.?master"
+        r"|committed\s+state))", re.I | re.S)),
+    ("queue-staleness", re.compile(
+        r"(queue.*(staleness|stale-queue|starved|wall|wedge|wedged|starving|race|backlog|invisible)"
+        r"|stale-queue\s+wall|fleet:queued\b.*(diverge|no\s+TASKS|ingest))", re.I)),
+    ("stacked-pr-merger-gap", re.compile(
+        r"(stacked\s+PR|fleet:awaiting-base|MERGEABLE\s+stacked"
+        r"|merger\s+(re-?target|falls?\s+through|left\s+rebase|posted)"
+        r"|semantic-?conflict.*(comment|storm|stale)|merger-cooldown)", re.I)),
+    ("format-target-overreach", re.compile(
+        r"fleet-build\s+--target\s+format", re.I)),
+    ("stackable-false-positive", re.compile(
+        r"(stackable_blocker_pr"
+        r"|stackable\s+(false-positive|fallback|blocked-tier|blocker|premature)"
+        r"|stackable[- ]blocked|fallback-tier\s+candidate)", re.I)),
+    ("design-escalation-gap", re.compile(
+        r"(design[- ](blocked|unblocked|escalat|doc.*(gap|audit))"
+        r"|escalated\s+PR|twice-escalated|fleet:design-unblocked"
+        r"|cross-system\s+audit\s+gap)", re.I)),
+    ("concurrent-reviewer-claim", re.compile(
+        r"(both\s+claimed.*concurrent|fleet:reviewing-<role>"
+        r"|reviewing-(opus|sonnet)\s+lock"
+        r"|per-role.*does\s+not\s+cross-block)", re.I)),
+]
+
+
+# ───── Entry parsing ──────────────────────────────────────────────────────
+
+@dataclass
+class Entry:
+    ts: str             # ISO-ish "YYYY-MM-DD HH:MM"
+    role: str
+    headline: str
+    body: list[str] = field(default_factory=list)
+
+    @property
+    def dt(self) -> datetime:
+        s = self.ts.replace(" ", "T")
+        # Headlines from feedback files use "YYYY-MM-DD HH:MM" (no seconds);
+        # be permissive about the seconds variant.
+        # Date-only headers ("## 2026-05-13 — …") anchor to midnight UTC.
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+        raise ValueError(f"unparseable entry timestamp: {self.ts!r}")
+
+
+def role_files() -> list[Path]:
+    if not FEEDBACK_DIR.exists():
+        return []
+    return sorted(p for p in FEEDBACK_DIR.glob("*.md") if not p.name.startswith("."))
+
+
+def parse_role_file(path: Path) -> list[Entry]:
+    """Parse a role feedback file into Entry objects.
+
+    Uses ENTRY_HEAD_FILE for entry boundaries — intentionally a superset of
+    scripts/fleet/fleet-feedback's writer regex (date-only headers, Z/UTC
+    suffixes, inline headlines), so the reviewer never drops an entry the
+    append tool or a hand-edit accepted.
+    """
+    role = path.stem
+    entries: list[Entry] = []
+    cur: Entry | None = None
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = ENTRY_HEAD_FILE.match(raw)
+        if m:
+            if cur:
+                entries.append(cur)
+            cur = Entry(ts=m.group(1).replace("T", " "), role=role, headline="")
+            inline = (m.group(2) or "").strip()
+            if inline:
+                cur.headline = inline
+            continue
+        if cur is None:
+            continue
+        if not cur.headline:
+            stripped = raw.strip()
+            if stripped:
+                cur.headline = stripped
+        else:
+            stripped = raw.strip()
+            if stripped:
+                cur.body.append(stripped)
+    if cur:
+        entries.append(cur)
+    return entries
+
+
+def read_entries(since_hours: int) -> list[Entry]:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    out: list[Entry] = []
+    for p in role_files():
+        for e in parse_role_file(p):
+            try:
+                if e.dt >= cutoff:
+                    out.append(e)
+            except ValueError:
+                # malformed timestamp — surface in stderr, skip the entry
+                print(f"WARN: skipping malformed entry in {p.name}: {e.ts!r}", file=sys.stderr)
+    out.sort(key=lambda x: x.dt)
+    return out
+
+
+# ───── Clustering ─────────────────────────────────────────────────────────
+
+def signature_for(entry: Entry) -> str:
+    first_body = entry.body[0] if entry.body else ""
+    text = entry.headline + "\n" + first_body
+    for sig, rx in SIGNATURES:
+        if rx.search(text):
+            return sig
+    return "uncategorized"
+
+
+@dataclass
+class Cluster:
+    signature: str
+    entries: list[Entry] = field(default_factory=list)
+
+    def to_dict(self, include_all: bool = True) -> dict[str, Any]:
+        first = self.entries[0]
+        last = self.entries[-1]
+        d = {
+            "signature": self.signature,
+            "count": len(self.entries),
+            "roles": sorted({e.role for e in self.entries}),
+            "first_seen": first.ts,
+            "last_seen": last.ts,
+            "examples": [
+                {"ts": e.ts, "role": e.role, "headline": e.headline}
+                for e in self.entries[:3]
+            ],
+        }
+        if include_all:
+            d["all"] = [
+                {"ts": e.ts, "role": e.role, "headline": e.headline}
+                for e in self.entries
+            ]
+        return d
+
+
+def cluster_entries(entries: list[Entry]) -> list[Cluster]:
+    buckets: dict[str, list[Entry]] = defaultdict(list)
+    for e in entries:
+        buckets[signature_for(e)].append(e)
+    clusters = [Cluster(sig, sorted(es, key=lambda x: x.dt)) for sig, es in buckets.items()]
+    clusters.sort(key=lambda c: -len(c.entries))
+    return clusters
+
+
+# ───── Fix-log ────────────────────────────────────────────────────────────
+
+FIX_LOG_FIELDS = (
+    "id", "signature", "proposed_at", "first_seen", "occurrences_at_proposal",
+    "proposal", "status", "applied_at", "applied_ref",
+    "verified_closed_at", "last_recurrence_at", "recurrence_count", "notes",
+    "tracking_issue",
+)
+
+
+def load_fix_log() -> list[dict[str, Any]]:
+    """Read the fix-log, tolerating missing fields and bad lines."""
+    if not FIX_LOG.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for i, line in enumerate(FIX_LOG.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            print(f"WARN: .fix-log.jsonl line {i} is not valid JSON; skipping: {line[:120]!r}",
+                  file=sys.stderr)
+            continue
+        for f in FIX_LOG_FIELDS:
+            r.setdefault(f, None)
+        rows.append(r)
+    return rows
+
+
+def write_fix_log(rows: list[dict[str, Any]]) -> None:
+    """Rewrite the fix-log. Atomic via tmpfile+rename."""
+    FIX_LOG.parent.mkdir(parents=True, exist_ok=True)
+    tmp = FIX_LOG.with_suffix(".jsonl.tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        for r in rows:
+            ordered = {k: r.get(k) for k in FIX_LOG_FIELDS}
+            f.write(json.dumps(ordered) + "\n")
+    tmp.replace(FIX_LOG)
+
+
+def next_fix_id(rows: list[dict[str, Any]]) -> str:
+    nums = []
+    for r in rows:
+        m = re.match(r"^fix-(\d+)$", r.get("id", "") or "")
+        if m:
+            nums.append(int(m.group(1)))
+    n = (max(nums) if nums else 0) + 1
+    return f"fix-{n:03d}"
+
+
+def parse_dt(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+# ───── Cross-reference ────────────────────────────────────────────────────
+
+def cross_reference(
+    clusters: list[Cluster], rows: list[dict[str, Any]], now: datetime
+) -> tuple[list[dict], list[dict], list[dict], list[Cluster], list[Cluster], list[dict]]:
+    """Bucket clusters against the fix-log.
+
+    Returns (recurring, still_proposed, closed, fresh, singletons, mutations).
+    `mutations` are pending status flips (flip-to-recurring, flip-to-closed)
+    that the digest emits so `apply` can write them back atomically.
+    """
+    recurring: list[dict] = []
+    still_proposed: list[dict] = []
+    closed: list[dict] = []
+    fresh: list[Cluster] = []
+    singletons: list[Cluster] = []
+    mutations: list[dict] = []
+
+    by_sig: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_sig[r["signature"]].append(r)
+
+    seen_sigs: set[str] = set()
+    for c in clusters:
+        seen_sigs.add(c.signature)
+        open_rows = [r for r in by_sig.get(c.signature, [])
+                     if r["status"] in ("proposed", "applied", "recurring")]
+
+        if not open_rows:
+            if c.signature == "uncategorized":
+                singletons.append(c)
+            elif c.entries and len(c.entries) >= MIN_CLUSTER_SIZE_FOR_PROPOSAL:
+                fresh.append(c)
+            else:
+                singletons.append(c)
+            continue
+
+        latest = max(open_rows, key=lambda r: r.get("proposed_at") or "")
+        last_entry_dt = c.entries[-1].dt
+
+        if latest["status"] == "applied":
+            applied_dt = parse_dt(latest["applied_at"])
+            new_after_apply = applied_dt and last_entry_dt > applied_dt
+            if new_after_apply:
+                recurring.append({"row": latest, "cluster": c.to_dict(False)})
+                mutations.append({
+                    "op": "flip-to-recurring",
+                    "id": latest["id"],
+                    "last_recurrence_at": c.entries[-1].ts.replace(" ", "T"),
+                })
+        elif latest["status"] == "proposed":
+            proposed_dt = parse_dt(latest["proposed_at"])
+            new_after_propose = proposed_dt and last_entry_dt > proposed_dt
+            if new_after_propose:
+                still_proposed.append({
+                    "row": latest,
+                    "new_occurrences": sum(
+                        1 for e in c.entries if e.dt > proposed_dt
+                    ),
+                    "last_entry": c.entries[-1].ts,
+                })
+        elif latest["status"] == "recurring":
+            # Already known — surface in recurring list with bumped count.
+            recurring.append({"row": latest, "cluster": c.to_dict(False)})
+
+    # Auto-close pass: applied fixes whose cluster did not surface this run
+    # AND whose last_recurrence_at is null-or-before-applied_at AND
+    # (now - applied_at) >= AUTO_CLOSE_DAYS.
+    for r in rows:
+        if r["status"] != "applied":
+            continue
+        if r["signature"] in seen_sigs:
+            continue  # cluster surfaced; either recurring or quiet-but-not-7d
+        applied_dt = parse_dt(r["applied_at"])
+        if not applied_dt:
+            continue
+        if (now - applied_dt).days < AUTO_CLOSE_DAYS:
+            continue
+        last_rec = parse_dt(r["last_recurrence_at"])
+        if last_rec and last_rec > applied_dt:
+            continue  # there was a recurrence we already logged
+        closed.append({"row": r, "quiet_days": (now - applied_dt).days})
+        mutations.append({
+            "op": "flip-to-closed",
+            "id": r["id"],
+            "verified_closed_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        })
+
+    return recurring, still_proposed, closed, fresh, singletons, mutations
+
+
+# ───── Subcommands ────────────────────────────────────────────────────────
+
+def check_tracking_issues(rows: list[dict[str, Any]]) -> list[dict]:
+    """For proposed rows with a tracking_issue, find ones whose issue is closed
+    by a merged PR and emit `flip-to-applied` pending mutations.
+
+    Best-effort: silently skips on gh errors so digest still produces output
+    when offline / unauthenticated. The WARN goes to stderr.
+
+    Makes one `gh issue view` call per proposed row that has a tracking_issue
+    URL (worst case ~10 s × N rows if all time out). Performance is fine for
+    the current fix-log size but will degrade linearly as the log grows.
+    """
+    mutations: list[dict] = []
+    for r in rows:
+        if r["status"] != "proposed":
+            continue
+        url = r.get("tracking_issue")
+        if not url:
+            continue
+        # Extract owner/repo and issue number from the URL.
+        m = re.match(r"https?://github\.com/([^/]+/[^/]+)/issues/(\d+)", url)
+        if not m:
+            continue
+        repo, num = m.group(1), m.group(2)
+        try:
+            result = subprocess.run(
+                ["gh", "issue", "view", num, "--repo", repo,
+                 "--json", "state,closedAt,closedByPullRequestsReferences"],
+                capture_output=True, text=True, check=True, timeout=10,
+            )
+            data = json.loads(result.stdout)
+        except (subprocess.SubprocessError, json.JSONDecodeError) as e:
+            print(f"WARN: tracking-issue check failed for {r['id']} ({url}): {e}",
+                  file=sys.stderr)
+            continue
+        if data.get("state") != "CLOSED":
+            continue
+        prs = data.get("closedByPullRequestsReferences") or []
+        if not prs:
+            continue
+        mutations.append({
+            "op": "flip-to-applied",
+            "id": r["id"],
+            "applied_at": data.get("closedAt") or "",
+            "applied_ref": prs[0]["url"],
+        })
+    return mutations
+
+
+def cmd_digest(args: argparse.Namespace) -> int:
+    if not FEEDBACK_DIR.exists():
+        print(json.dumps({"error": "no fleet feedback yet", "feedback_dir": str(FEEDBACK_DIR)}))
+        return 1
+
+    marker_dt: datetime | None = None
+    if MARKER.exists():
+        marker_dt = parse_dt(MARKER.read_text().strip())
+    if marker_dt is None:
+        since_hours = DEFAULT_SINCE_HOURS
+        marker_note = "no marker — defaulted to 7d"
+    else:
+        delta = datetime.now(timezone.utc) - marker_dt
+        since_hours = int(delta.total_seconds() // 3600) + 1
+        marker_note = None
+        if since_hours > MAX_SINCE_HOURS:
+            since_hours = MAX_SINCE_HOURS
+            marker_note = f"marker >90d stale; capped at {MAX_SINCE_HOURS}h"
+
+    entries = read_entries(since_hours)
+    clusters = cluster_entries(entries)
+    rows = load_fix_log()
+    now = datetime.now(timezone.utc)
+    recurring, still_proposed, closed, fresh, singletons, mutations = cross_reference(
+        clusters, rows, now
+    )
+    mutations.extend(check_tracking_issues(rows))
+
+    counts = {"proposed": 0, "applied": 0, "recurring": 0, "closed": 0, "dropped": 0}
+    for r in rows:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+
+    out = {
+        "since_hours": since_hours,
+        "marker": MARKER.read_text().strip() if MARKER.exists() else None,
+        "marker_note": marker_note,
+        "now": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        "total_entries": len(entries),
+        "clusters": [c.to_dict() for c in clusters
+                     if c.signature != "uncategorized" and len(c.entries) >= MIN_CLUSTER_SIZE_FOR_PROPOSAL],
+        "singletons": [
+            {"ts": e.ts, "role": e.role, "headline": e.headline,
+             "signature": signature_for(e)}
+            for c in clusters for e in c.entries
+            if len(c.entries) < MIN_CLUSTER_SIZE_FOR_PROPOSAL or c.signature == "uncategorized"
+        ],
+        "recurring": recurring,
+        "still_proposed": still_proposed,
+        "closed_this_run": closed,
+        "fresh_proposable": [c.to_dict() for c in fresh],
+        "pending_mutations": mutations,
+        "fix_log_counts": counts,
+    }
+    json.dump(out, sys.stdout, indent=2, default=str)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_apply(args: argparse.Namespace) -> int:
+    """Mutate the fix-log per the decisions in <decisions.json>.
+
+    Schema:
+      {
+        "now": "YYYY-MM-DDTHH:MM:SS",  // optional; defaults to now
+        "new_proposals": [
+          {"signature": "...", "first_seen": "YYYY-MM-DDTHH:MM:SS",
+           "occurrences_at_proposal": int, "proposal": "..."}
+        ],
+        "status_transitions": [
+          {"id": "fix-NNN", "to": "applied|dropped",
+           "applied_ref": "...",   // required for applied
+           "notes": "..."}         // required for dropped
+        ],
+        "pending_mutations": [      // from digest output, applied as-is
+          {"op": "flip-to-recurring|flip-to-closed|flip-to-applied",
+           "id": "fix-NNN", ...}
+        ]
+      }
+    """
+    if args.schema:
+        print(cmd_apply.__doc__)
+        return 0
+    if not args.decisions:
+        print("error: --decisions <file.json> is required", file=sys.stderr)
+        return 2
+
+    try:
+        with open(args.decisions) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        print(f"error: decisions file not found: {args.decisions}", file=sys.stderr)
+        return 2
+    now = d.get("now") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+    rows = load_fix_log()
+    by_id = {r["id"]: r for r in rows}
+
+    # Pending mutations from the digest (flip-to-recurring, flip-to-closed,
+    # flip-to-applied).
+    for m in d.get("pending_mutations") or []:
+        r = by_id.get(m["id"])
+        if not r:
+            print(f"WARN: pending mutation references missing id {m['id']}", file=sys.stderr)
+            continue
+        op = m["op"]
+        if op == "flip-to-recurring":
+            r["status"] = "recurring"
+            r["last_recurrence_at"] = m.get("last_recurrence_at") or now
+            r["recurrence_count"] = (r.get("recurrence_count") or 0) + 1
+        elif op == "flip-to-closed":
+            r["status"] = "closed"
+            r["verified_closed_at"] = m.get("verified_closed_at") or now
+        elif op == "flip-to-applied":
+            r["status"] = "applied"
+            r["applied_at"] = m.get("applied_at") or now
+            r["applied_ref"] = m.get("applied_ref")
+        else:
+            print(f"WARN: unknown pending mutation op {op!r}", file=sys.stderr)
+
+    # Human-driven status transitions.
+    for t in d.get("status_transitions") or []:
+        r = by_id.get(t["id"])
+        if not r:
+            print(f"WARN: status transition references missing id {t['id']}", file=sys.stderr)
+            continue
+        to = t["to"]
+        if to == "applied":
+            r["status"] = "applied"
+            r["applied_at"] = now
+            r["applied_ref"] = t.get("applied_ref")
+        elif to == "dropped":
+            r["status"] = "dropped"
+            r["notes"] = t.get("notes")
+        else:
+            print(f"WARN: unknown status transition {to!r}", file=sys.stderr)
+
+    # Append new proposals.
+    new_ids: list[str] = []
+    for p in d.get("new_proposals") or []:
+        nid = next_fix_id(rows)
+        new_row = {
+            "id": nid,
+            "signature": p["signature"],
+            "proposed_at": now,
+            "first_seen": p.get("first_seen"),
+            "occurrences_at_proposal": p.get("occurrences_at_proposal"),
+            "proposal": p["proposal"],
+            "status": "proposed",
+            "applied_at": None,
+            "applied_ref": None,
+            "verified_closed_at": None,
+            "last_recurrence_at": None,
+            "recurrence_count": 0,
+            "notes": None,
+        }
+        rows.append(new_row)
+        new_ids.append(nid)
+
+    write_fix_log(rows)
+    print(json.dumps({"new_proposal_ids": new_ids, "rows_after": len(rows)}))
+    return 0
+
+
+def cmd_bump(args: argparse.Namespace) -> int:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    MARKER.parent.mkdir(parents=True, exist_ok=True)
+    MARKER.write_text(ts + "\n")
+    print(ts)
+    return 0
+
+
+# ───── file-tasks ─────────────────────────────────────────────────────────
+
+# Per-signature title prefixes. Maps signature → (area-prefix, headline).
+# Unknown signatures fall back to a generic prefix.
+TITLE_BY_SIGNATURE: dict[str, str] = {
+    "label-absent-after-verdict":
+        "fleet/review-pr: harden verdict-label step with retry-and-verify guard",
+    "stale-task-row":
+        "fleet/queue-manager: maintenance-sync — re-derive queue state on every wake",
+    "stacked-pr-merger-gap":
+        "fleet/merger: add merged-base re-target with rebase path for stacked PRs",
+    "worktree-tracker-drift":
+        "fleet/scripts: re-derive fleet-worktree-busy-branches from live `git worktree list`",
+    "queue-staleness":
+        "fleet/queue-manager: flag divergence in `fleet:queued` issue set",
+    "state-cache-lag":
+        "fleet/review-pr: live-check labels after claim acquisition (pre-checkout)",
+    "permission-gate-friction":
+        "fleet/auto-mode: extend classifier allow-list for fleet-role workflows",
+    "format-target-overreach":
+        "fleet/scripts: restrict `fleet-build --target format` to touched files",
+    "stackable-false-positive":
+        "fleet/scout: filter stackable_blocker_pr false positives",
+    "worktree-misroute":
+        "fleet: prevent worktree misroute on absolute-path edits to parent clone",
+    "skill-flow-friction":
+        "fleet/skills: clean up skill-flow friction surfaced by fleet feedback",
+    "design-escalation-gap":
+        "fleet: close gaps in design-escalation handling surfaced by fleet feedback",
+    "concurrent-reviewer-claim":
+        "fleet/review-pr: cross-role lock so sonnet+opus don't double-review the same PR",
+}
+
+
+def issue_body_for(row: dict[str, Any], cluster_examples: list[dict] | None) -> str:
+    sig = row["signature"]
+    proposal = row["proposal"]
+    occ = row.get("occurrences_at_proposal") or 0
+    first = row.get("first_seen") or "?"
+    proposed_at = row.get("proposed_at") or "?"
+    fix_id = row["id"]
+
+    examples_block = ""
+    if cluster_examples:
+        examples_block = "\n## Representative feedback entries\n\n" + "\n".join(
+            f"- {e['ts']} [{e['role']}] {e['headline']}"
+            for e in cluster_examples[:3]
+        ) + "\n"
+
+    return (
+        f"## Context\n\n"
+        f"Surfaced by `scripts/fleet/review-fleet-feedback` from aggregated fleet feedback.\n"
+        f"Signature: `{sig}` · {occ} occurrence{'s' if occ != 1 else ''} since {first}.\n"
+        f"Tracked locally in `~/.fleet/feedback/.fix-log.jsonl::{fix_id}` "
+        f"(proposed {proposed_at}).\n"
+        f"{examples_block}\n"
+        f"## Proposed fix\n\n"
+        f"{proposal}\n\n"
+        f"## Acceptance\n\n"
+        f"- Implementation matches the artifact called out in the proposed fix above.\n"
+        f"- Subsequent `review-fleet-feedback digest` runs do not re-surface the "
+        f"`{sig}` cluster after the fix lands (verified via the 7-day quiet window).\n\n"
+        f"---\n\n"
+        f"_Generated by `scripts/fleet/review-fleet-feedback file-tasks`. "
+        f"When this issue's PR merges with a `Closes #<N>` line, the fix-log row's "
+        f"`status` will flip to `applied` automatically on the next `digest` run._\n"
+    )
+
+
+def cluster_examples_for(sig: str) -> list[dict] | None:
+    """Read the role files and pull 3 examples of the given signature.
+
+    Used to enrich the issue body. Returns None on failure (best-effort).
+    """
+    try:
+        entries: list[Entry] = []
+        for p in role_files():
+            entries.extend(parse_role_file(p))
+        matching = [e for e in entries if signature_for(e) == sig]
+        matching.sort(key=lambda e: e.dt)
+        if not matching:
+            return None
+        n = len(matching)
+        idxs = sorted({0, n // 2, n - 1})
+        return [
+            {"ts": matching[i].ts, "role": matching[i].role,
+             "headline": matching[i].headline}
+            for i in idxs
+        ]
+    except Exception as e:
+        print(f"WARN: cluster_examples_for({sig!r}) failed: {e}", file=sys.stderr)
+        return None
+
+
+def cmd_file_tasks(args: argparse.Namespace) -> int:
+    rows = load_fix_log()
+    if not rows:
+        print("no fix-log rows to file", file=sys.stderr)
+        return 0
+
+    selected: list[dict[str, Any]] = []
+    if args.ids:
+        wanted = {x.strip() for x in args.ids.split(",") if x.strip()}
+        for r in rows:
+            if r["id"] in wanted:
+                selected.append(r)
+        missing = wanted - {r["id"] for r in selected}
+        if missing:
+            print(f"WARN: --ids referenced unknown rows: {sorted(missing)}",
+                  file=sys.stderr)
+    else:
+        for r in rows:
+            if r["status"] == "proposed" and not r.get("tracking_issue"):
+                selected.append(r)
+
+    if not selected:
+        print("nothing to file (no proposed rows without a tracking issue)",
+              file=sys.stderr)
+        return 0
+
+    summary = []
+    for r in selected:
+        sig = r["signature"]
+        title = TITLE_BY_SIGNATURE.get(sig) or f"fleet/{sig}: address recurring feedback"
+        body = issue_body_for(r, cluster_examples_for(sig))
+        entry = {"id": r["id"], "signature": sig, "title": title}
+
+        if args.dry_run:
+            entry["would_file"] = True
+            entry["body_preview"] = body[:240] + "…" if len(body) > 240 else body
+            summary.append(entry)
+            continue
+
+        cmd = ["gh", "issue", "create",
+               "--title", title,
+               "--body", body,
+               "--label", "human:approved"]
+        if args.repo:
+            cmd.extend(["--repo", args.repo])
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        except subprocess.CalledProcessError as e:
+            entry["error"] = (e.stderr or e.stdout or str(e)).strip()
+            summary.append(entry)
+            continue
+
+        url = result.stdout.strip().splitlines()[-1] if result.stdout else ""
+        entry["tracking_issue"] = url
+        r["tracking_issue"] = url
+        if not r.get("notes"):
+            r["notes"] = f"filed as {url} via file-tasks"
+        summary.append(entry)
+
+    if not args.dry_run:
+        write_fix_log(rows)
+
+    json.dump({"filed": summary, "dry_run": args.dry_run}, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="review-fleet-feedback",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("digest",
+                   help="Read role files, cluster, cross-reference fix-log, emit JSON.")
+
+    apply = sub.add_parser("apply",
+                           help="Mutate .fix-log.jsonl per decisions in <file.json>.")
+    apply.add_argument("--decisions", "-d", help="Path to decisions JSON.")
+    apply.add_argument("--schema", action="store_true",
+                       help="Print the decisions-JSON schema and exit.")
+
+    sub.add_parser("bump",
+                   help="Write current UTC timestamp to .last-reviewed.")
+
+    ft = sub.add_parser("file-tasks",
+                        help="File a GitHub issue (label human:approved) per "
+                             "proposed-status fix-log row so the fleet queue "
+                             "picks it up via the existing ingest pipeline. "
+                             "Records the issue URL on the row.")
+    ft.add_argument("--ids", help="Comma-separated fix IDs (fix-001,fix-003). "
+                                   "Default: every proposed row without a tracking_issue.")
+    ft.add_argument("--dry-run", action="store_true",
+                    help="Preview titles + body excerpts; do not call `gh`.")
+    ft.add_argument("--repo", help="`gh --repo` override (e.g. jakildev/IrredenEngine).")
+
+    args = parser.parse_args()
+
+    if args.cmd == "digest":
+        return cmd_digest(args)
+    if args.cmd == "apply":
+        return cmd_apply(args)
+    if args.cmd == "bump":
+        return cmd_bump(args)
+    if args.cmd == "file-tasks":
+        return cmd_file_tasks(args)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

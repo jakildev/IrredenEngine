@@ -1,0 +1,40 @@
+# Engine-level coordination defaults.
+#
+# Three-layer config: this file (engine defaults) → ~/.config/irreden/host.toml
+# (per-host overrides) → environment variables (process-level overrides).
+# Highest specificity wins. See engine/tools/README.md for the full model.
+
+[cpu]
+# auto = nproc / sysctl -n hw.ncpu. Integer overrides the auto value.
+budget = "auto"
+
+# Per ir-build invocation cap. Auto = budget / max(workers, 1) so N parallel
+# fleet workers each get budget/N cores without manual math.
+per_build_max = "auto"
+
+[gpu]
+# auto = true on macOS+Metal (Metal allows only one fullscreen GLFW window
+# cleanly), configurable elsewhere. Linux+OpenGL boxes can usually drive two
+# GLFW contexts, but we keep the default strict and let hosts opt in.
+exclusive = "auto"
+
+[perf]
+# Perf measurements always serialize. This is a correctness invariant, not
+# a tuning knob — concurrent perf runs corrupt each other's numbers.
+exclusive = true
+
+# Target wall-clock for the synthetic-load reference bench. The bench's
+# inner loop count adapts to hit this target on the calibration host.
+ref_bench_target_ms = 50
+
+# After this many days, cached calibration is considered stale and
+# re-runs on next perf invocation.
+calibration_max_age_days = 30
+
+[concurrency]
+# Number of concurrent fleet workers expected on this host. auto = read
+# $IR_FLEET_WORKERS env (set by fleet-up), else default to 1 (solo dev).
+workers = "auto"
+
+# How long ir-acquire blocks before giving up on a contended lock.
+queue_timeout_seconds = 600

@@ -6,21 +6,47 @@ in `update/`.
 
 ## Key components
 
-- `C_Position3D` — local vec3 (legacy; T-199 in flight — superseded by
-  `C_LocalTransform` when consumers migrate; new code should prefer SQT).
-- `C_PositionGlobal3D` — world-space vec3. **Auto-added by `createEntity(...)`**
-  (legacy parallel to `C_WorldTransform`; T-199 in flight — both still
-  active during the consumer sweep).
-  Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
-  the modifier framework's `POSITION_OFFSET_3D` vec3 field rather
-  than a dedicated component — see [`position_modifier_fields.hpp`](position_modifier_fields.hpp)
-  and the `APPLY_POSITION_OFFSET` system.
-- `C_Rotation` — Euler vec3 (legacy; T-199 in flight — superseded by the
-  quat field on `C_LocalTransform` when consumers migrate).
+> **Retired (T-302):** `C_Position3D`, `C_PositionGlobal3D`,
+> `C_Rotation`, and the `SYSTEM_GLOBAL_POSITION_3D` writer were
+> deleted in T-302. The canonical replacement is the
+> `C_LocalTransform` / `C_WorldTransform` SQT pair below.
+> Ephemeral per-frame deltas (idle bob, gizmo nudges) travel through
+> the `TRANSFORM_TRANSLATION` modifier field — see
+> [`transform_modifier_fields.hpp`](transform_modifier_fields.hpp)
+> and `SYSTEM_PROPAGATE_TRANSFORM`.
+
 - `C_LocalTransform` / `C_WorldTransform` — canonical SQT transform
   pair. **Both auto-added by `createEntity(...)`**. See
   [SQT transform pair + propagation](#sqt-transform-pair--propagation)
-  below.
+  below. `C_LocalTransform::unbounded_` opts into sub-trixel
+  translation; only meaningful when paired with
+  `C_RotationMode::DETACHED` (GRID-mode entities snap to world cells
+  regardless).
+- `C_RotationMode` (Epic C C2) — `enum class RotationMode { GRID,
+  DETACHED, DETACHED_REVOXELIZE }`. GRID (default) puts the entity in the
+  shared world voxel pool with grid-quantized rotation; DETACHED lives in a
+  per-entity `C_EntityCanvas` whose voxel emit bakes the entity's full
+  SO(3) rotation directly (T-295, via `PROPAGATE_CANVAS_ROTATION` →
+  `C_CanvasLocalRotation`) — the composite stage just places the canvas.
+  DETACHED_REVOXELIZE (#1553 epic, P1 #1555) is like DETACHED but the
+  per-entity private pool is re-filled at the full-rotation CELL positions
+  each frame (`SYSTEM_REBUILD_DETACHED_VOXELS`) and rasterized through
+  CARDINAL frame data — the rotation lives in the cells, not a 2D deform,
+  so an asymmetric solid reads as a true 3D-rotated solid (the model the
+  forward-scatter deform cannot represent, #1551).
+  Attached by
+  `IRPrefab::Prefab::spawnPrefab` (default GRID, or
+  `rotation_mode = IRComponent.RotationMode.DETACHED` in the prefab
+  table — the enum value, not the string). Mutate at runtime with
+  `IRPrefab::RotationMode::setMode(entity, newMode, name, size)` —
+  allocates or destroys the canvas as needed. Non-prefab entities
+  without the component are implicitly GRID.
+- `C_ChunkMembership` — which streaming chunk an entity belongs to
+  (Epic E / `IRPrefab::Chunk::ChunkKey`). **NOT auto-added** —
+  single-chunk creations carry no chunk metadata. Attached by the
+  chunk-membership migration system when a creation opts into world
+  streaming via `IRWorld::ChunkResidencyManager`. Design contract:
+  [`docs/design/world-streaming.md`](../../../../docs/design/world-streaming.md).
 - `C_Modifiers` / `C_GlobalModifiers` / `C_NoGlobalModifiers` /
   `C_LambdaModifiers` / `C_ResolvedFields` — generic modifier
   framework. See [Modifier framework](#modifier-framework) below.
@@ -29,6 +55,57 @@ in `update/`.
 
 None. Position math is read-only in `common/` — write paths live in
 `update/systems/` (velocity, physics, animation, transform propagation).
+The sim-clock systems below are likewise registered from `update/systems/`.
+
+## Sim-clock substrate (#200)
+
+Deterministic simulation time + a generic cycle/timer framework.
+Two-clock model: the **engine tick** (`IRTime::tick()`, always advancing,
+`engine/time/`) drives wall-clock infra; the **sim tick** below pauses and
+scales so gameplay timers freeze on pause.
+
+- `C_SimClock` — singleton (`IREntity::singleton<C_SimClock>()`). Fields
+  `tickCount_` (sim ticks), `timeScale_` (0 = paused, N = fast, 1/N =
+  slow), `subTickAccum_` (sub-integer remainder for fractional scale).
+  `SYSTEM_SIM_CLOCK_ADVANCE` advances it once per UPDATE tick.
+- `C_Cycle` — a tick-aligned recurring period (`"day"`, `"boss_phase"`,
+  …). `SYSTEM_CYCLE_BOUNDARY_DETECT` recomputes the cycle index and
+  intra-period segment each tick and raises the **embedded** boundary
+  event (`boundaryCrossed_` + `fromCycle_`/`toCycle_` +
+  `fromSegment_`/`toSegment_`/`segmentIndex_`) on the crossing tick — the
+  events-as-components pattern (cf. `C_ContactEvent`), self-clearing, no
+  separate clear system. `lastCycleNum_` defaults to a sentinel so a
+  cycle created mid-sim primes silently (no spurious boundary).
+  **Multi-breakpoint support:** call `C_Cycle::addBreakpoint(fraction)` or
+  `IRSim::cycleAddBreakpoint(name, fraction)` to divide each period into
+  segments — the boundary event then fires on EVERY segment crossing, not
+  just the period wrap. Empty breakpoints = single period-wrap boundary
+  only (original behavior). `segmentIndex_` is updated every tick and
+  always reflects the current segment; query it via
+  `IRSim::cycleSegment(name)` by name.
+- `C_Timer` — fires `fired_` when the sim reaches `targetTick_`. One-shot
+  (`intervalTicks_ == 0`, deactivates) or recurring (re-arms past every
+  crossed interval). `SYSTEM_TIMER_FIRE` drives it.
+- `C_Stopwatch` — count-up elapsed with pause/resume. **No system** —
+  elapsed is computed on read by `IRSim::stopwatchElapsed`; pause/resume/
+  reset are imperative `IRSim::` calls that snapshot the sim tick.
+
+`IRSim::` service ([`sim_clock.hpp`](sim_clock.hpp), header-only): clock
+control (`tick`, `timeScale`, `setTimeScale`, `pause`, `resume`,
+`isPaused`), name-keyed cycle/timer/stopwatch create + query
+(`cycleFraction`/`cycleNumber`/`cycleBoundaryCrossed`/`cycleSegment`,
+`timerFraction`/`timerTicksRemaining`/`timerFired`/`timerActive`,
+`stopwatchElapsed`/`stopwatchRunning`/…), factory + breakpoint helpers
+(`createCycle`/`cycleAddBreakpoint`/`createTimer`/`createStopwatch`).
+`cycleFraction("day")` is the load-bearing continuous primitive for
+time-driven values (sun angle, color temp); `cycleSegment("day")` returns
+the current segment index (0 = before the first breakpoint). The service
+lives in `common/` (not `engine/time/`) because it reads ECS components,
+which `engine/time` must not depend on. Lua surface: the `IRSim` table
+(`engine/script/CLAUDE.md`). A consumer registers the three systems in
+its UPDATE pipeline (SIM_CLOCK_ADVANCE first) and touches the clock once
+at init so the singleton exists. Day-specific gameplay stays game-side
+(game #44) — the engine knows only generic cycles.
 
 ## SQT transform pair + propagation
 
@@ -156,7 +233,7 @@ Runtime entry points (all `inline`, header-only):
 Inline-apply factory: `IRPrefab::Modifier::applyVec3ModifierTo<
 TargetComponent, Member>(name, field)` in
 [`modifier_apply.hpp`](modifier_apply.hpp) generalizes the
-`APPLY_POSITION_OFFSET` shape — *iterate
+retired-in-T-300-Phase-2 `APPLY_POSITION_OFFSET` shape — *iterate
 `<TargetComponent, C_Modifiers>`, compose one vec3 field against a
 `vec3(0)` base, ADD the result to a vec3 member of the target
 component*. Use it for any per-frame additive vec3 channel with
@@ -287,17 +364,16 @@ runtime work and architect-gated decisions.
 
 ## Gotchas
 
-- **`createEntity` always adds `C_PositionGlobal3D`.** Rendered
-  position is whatever lives in `C_PositionGlobal3D` after the UPDATE
-  pipeline completes — `GLOBAL_POSITION_3D` writes `local + parent`
-  and `APPLY_POSITION_OFFSET` folds in the modifier-resolved
-  `POSITION_OFFSET_3D` vec3 field. Never infer a draw position from
-  `C_Position3D` alone — it is the *local* position and only the
-  `common/` hierarchy resolves it.
-- **Don't duplicate position components.** Adding your own
-  `C_PositionGlobal3D` second on top of the auto-added one leaves one
-  column stale and causes jitter. `createEntity(...)` detects
-  user-supplied `C_PositionGlobal3D` / `C_LocalTransform` /
+- **`createEntity` always adds `C_LocalTransform` and
+  `C_WorldTransform`.** The canonical rendered position lives in
+  `C_WorldTransform.translation_`, composed by
+  `SYSTEM_PROPAGATE_TRANSFORM` from `C_LocalTransform` plus the
+  parent chain and the `TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE`
+  modifier-resolved fields.
+- **Don't duplicate transform components.** Adding your own
+  `C_LocalTransform` or `C_WorldTransform` second on top of the
+  auto-added one leaves one column stale and causes jitter.
+  `createEntity(...)` detects user-supplied `C_LocalTransform` /
   `C_WorldTransform` and skips the matching default; passing any
   other auto-attached component twice is still a footgun.
 - **No systems means no ownership.** Any code is free to write to any

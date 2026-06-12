@@ -4,9 +4,11 @@
 #
 # Called by fleet-dispatcher via tmux send-keys. Arguments:
 #   $1  pane_key  e.g. "pane-3"
-#   $2  model     e.g. "sonnet" or "claude-opus-4-7"
+#   $2  model     e.g. "sonnet" or "claude-fable-5[1m]"
 #   $3  effort    e.g. "high" or "xhigh"
 #   $4  role      e.g. "sonnet-author"
+#   $5  fallback  optional --fallback-model chain (comma-separated) for
+#                 heavy-tier dispatches; empty for sonnet roles
 #
 # On usage-limit exit (exit code 2), writes a Unix-epoch timestamp to
 # ~/.fleet/state/rate-limit/<pane_key>.ts. fleet-dispatcher checks that
@@ -23,25 +25,102 @@ PANE_KEY="${1:?fleet-dispatch-wrap: missing pane_key}"
 MODEL="${2:?fleet-dispatch-wrap: missing model}"
 EFFORT="${3:?fleet-dispatch-wrap: missing effort}"
 ROLE="${4:?fleet-dispatch-wrap: missing role}"
+FALLBACK_MODEL="${5:-}"
 # Track fleet-dispatcher's STATE_DIR via the same env-var override so a
 # config change in one place propagates to both scripts.
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
 
-# Expose the role's model tier so fleet-claim can enforce the model-tag gate.
-# fleet-claim refuses claims when FLEET_ROLE_MODEL != the task's Model: field.
-if [[ "$MODEL" == *opus* ]]; then
+# Expose the iteration's model class so fleet-claim can enforce the
+# model-tag gate. Classes are literal — fable | opus | sonnet — and the
+# gate exact-matches against the task's fleet:<class> label / Model:
+# field, so a fable iteration can't claim opus tasks and vice versa.
+if [[ "$MODEL" == *fable* ]]; then
+    export FLEET_ROLE_MODEL=fable
+elif [[ "$MODEL" == *opus* ]]; then
     export FLEET_ROLE_MODEL=opus
 else
     export FLEET_ROLE_MODEL=sonnet
 fi
 
-claude --model "$MODEL" --effort "$EFFORT" --print \
-    --output-format stream-json --include-partial-messages --verbose \
-    "/role-$ROLE live" | fleet-claude-stream
+# Re-tag the pane border label with the model this iteration actually
+# runs (worker lanes flex per task), e.g. "opus-worker [fable 1m]".
+# Best-effort: a failure here must never block the dispatch.
+#
+# The target MUST be explicit. Without `-t`, tmux resolves `-p` against
+# TMUX_PANE — which does not reliably reach this process — and then
+# falls back to the attached client's ACTIVE pane, i.e. whatever pane
+# the human has focused. Observed live 2026-06-11: every dispatch
+# re-tagged the focused architect pane, cycling it through
+# "sonnet-reviewer"/"merger" labels. PANE_KEY is "pane-<N>" for tmux
+# pane id "%<N>" (see pane_id_to_key in fleet-dispatcher), so the exact
+# pane this dispatch landed in is reconstructible.
+_tag="$MODEL"
+_tag="${_tag/claude-fable-5/fable}"
+_tag="${_tag/claude-opus-4-8/opus 4.8}"
+_tag="${_tag/claude-sonnet-4-6/sonnet 4.6}"
+_tag="${_tag/\[1m\]/ 1m}"
+tmux set-option -t "%${PANE_KEY#pane-}" -p @role "$ROLE [$_tag]" 2>/dev/null || true
+unset _tag
+
+# Short-window 429 detection. fleet-claude-stream touches this flag if it sees
+# the "Server is temporarily limiting requests (not your usage limit)" error in
+# the stream. Combined with a non-zero exit below, that's the signal to apply a
+# SHORT throttle cooldown + re-arm the role — distinct from the 15-min
+# usage-limit cooldown, which is the wrong tool for a per-minute load-shed.
+# Clear any stale flag from a previous run first.
+mkdir -p "$RATE_LIMIT_DIR"
+export FLEET_THROTTLE_FLAG="$RATE_LIMIT_DIR/$PANE_KEY.throttle-seen"
+rm -f "$FLEET_THROTTLE_FLAG"
+
+# --fallback-model only exists in print mode, which is exactly this path.
+# When the dispatcher hands us a chain, claude retries the iteration on
+# the fallback model(s) if $MODEL is overloaded or no longer available.
+CLAUDE_ARGS=(--model "$MODEL" --effort "$EFFORT" --print
+    --output-format stream-json --include-partial-messages --verbose)
+if [[ -n "$FALLBACK_MODEL" ]]; then
+    CLAUDE_ARGS+=(--fallback-model "$FALLBACK_MODEL")
+fi
+
+claude "${CLAUDE_ARGS[@]}" "/role-$ROLE live" | fleet-claude-stream
 
 rc="${PIPESTATUS[0]}"
+TRIGGERS_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
 if [[ "$rc" == "2" ]]; then
-    mkdir -p "$RATE_LIMIT_DIR"
+    # Usage-limit (quota) exit — long cooldown via the .ts marker.
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
+elif [[ "$rc" != "0" && -f "$FLEET_THROTTLE_FLAG" ]]; then
+    # Short-window 429 failure: claude exhausted its internal retries against a
+    # per-minute load-shed (not a quota wall). Write the short throttle cooldown
+    # and re-arm the role so the dispatcher retries this pane once the window
+    # clears. The re-arm matters most for reviewer / smoke roles, which have no
+    # periodic safety re-arm and would otherwise stall until the scout
+    # projection next changes.
+    mkdir -p "$TRIGGERS_DIR"
+    date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.throttle.ts"
+    touch "$TRIGGERS_DIR/$ROLE"
+    echo "fleet-dispatch-wrap: short-window 429 on $ROLE ($PANE_KEY); wrote throttle cooldown + re-armed $ROLE" >&2
+fi
+rm -f "$FLEET_THROTTLE_FLAG"
+
+# Auto-retrigger: when a worker role exits cleanly (rc=0) with a dirty
+# worktree and an active reservation, the session likely dropped the
+# commit-and-push flow mid-way (e.g. end_turn after simplify). Write a
+# trigger so the dispatcher re-fires the worker on the next tick; the
+# reservation gate at step 0.5 will resume the same task. `worker` is the
+# unified P2 lane; the legacy `opus-worker` / `sonnet-author` names are
+# kept so a still-running pre-P2 dispatcher mid-transition is handled too
+# (the new dispatcher folds triggers/<legacy> into triggers/worker).
+if [[ "$rc" == "0" && ("$ROLE" == "worker" || "$ROLE" == "opus-worker" || "$ROLE" == "sonnet-author") ]]; then
+    worktree_name=$(basename "$PWD")
+    reservation_issue=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
+    if [[ -n "$reservation_issue" ]]; then
+        dirty=$(git -C "$PWD" status --porcelain 2>/dev/null || true)
+        if [[ -n "$dirty" ]]; then
+            trigger_dir="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
+            mkdir -p "$trigger_dir"
+            touch "$trigger_dir/$ROLE"
+            echo "fleet-dispatch-wrap: dirty worktree '$worktree_name' + reservation #$reservation_issue after clean exit — wrote retrigger for $ROLE" >&2
+        fi
+    fi
 fi

@@ -14,25 +14,38 @@ add_executable(IrredenEngineTest
   audio/music_theory_test.cpp
   common/ir_platform_test.cpp
   ecs/entity_manager_test.cpp
+  ecs/grid_rotation_test.cpp
   ecs/hitbox_2d_gui_test.cpp
+  ecs/joint_matrix_upload_test.cpp
   ecs/modifier_quat_runtime_test.cpp
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp
   ecs/modifier_vec3_runtime_test.cpp
   ecs/propagate_transform_test.cpp
+  ecs/rotation_target_test.cpp
   ecs/sort_archetype_relational_test.cpp
+  ecs/parallel_spawn_test.cpp
   ecs/skeleton_components_test.cpp
+  ecs/skeleton_skinning_test.cpp
+  ecs/skinning_pipeline_consistency_test.cpp
+  ecs/spatial_grid_test.cpp
   ecs/system_exclude_test.cpp
+  ecs/voxel_bone_slot_seed_test.cpp
+  ecs/voxel_set_target_canvas_test.cpp
   math/physics_test.cpp
   math/ir_math_test.cpp
   math/ir_math_viewport_helpers_test.cpp
+  math/camera_subpixel_test.cpp
   math/ir_math_color_layout_test.cpp
   math/ir_math_coord_helpers_test.cpp
   math/ir_math_easing_color_sort_test.cpp
   math/ir_math_random_misc_test.cpp
   math/ir_math_trixel_index_test.cpp
+  math/ir_math_yaw_deformation_test.cpp
   math/sdf_test.cpp
   render/camera_yaw_test.cpp
+  render/detached_world_depth_test.cpp
+  render/per_axis_canvas_size_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/per_canvas_light_scope_test.cpp
   render/picking_face_normal_test.cpp
@@ -44,14 +57,30 @@ add_executable(IrredenEngineTest
   script/lua_command_test.cpp
   script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
+  script/lua_enum_register_test.cpp
   script/lua_pipeline_register_test.cpp
+  script/lua_render_bindings_test.cpp
+  script/lua_rotation_target_lua_test.cpp
   script/lua_system_codegen_test.cpp
   script/prefab_api_test.cpp
   script/lua_system_coexistence_test.cpp
   script/lua_system_register_test.cpp
   script/modifier_lua_test.cpp
+  system/pipeline_groups_test.cpp
   system/register_system_test.cpp
+  system/system_access_test.cpp
+  system/system_concurrency_test.cpp
+  time/sim_clock_test.cpp
+  time/cycle_test.cpp
+  time/timer_test.cpp
+  time/stopwatch_test.cpp
+  time/lua_sim_test.cpp
+  job/ir_job_test.cpp
   utility/ir_utility_test.cpp
+  world/chunk_coord_test.cpp
+  world/chunk_membership_migration_test.cpp
+  world/chunk_persistence_test.cpp
+  world/chunk_residency_manager_test.cpp
 )
 
 FetchContent_Declare(
@@ -86,6 +115,7 @@ irreden_lua_codegen(IrredenEngineTest
 target_compile_definitions(IrredenEngineTest PRIVATE
     IR_LUA_CODEGEN_BINARY="$<TARGET_FILE:ir_lua_codegen>"
     IR_LUA_CODEGEN_OVERFLOW_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_component_codegen_overflow_fixture.lua"
+    IR_LUA_CODEGEN_ENUM_ERROR_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/script/lua_enum_codegen_error_fixture.lua"
 )
 add_dependencies(IrredenEngineTest ir_lua_codegen)
 

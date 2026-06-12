@@ -20,6 +20,7 @@ class MidiOut {
     int openPort(MidiOutInterfaces midiInInterface);
 
     int openPort(std::string portNameSubstring);
+    const std::vector<std::string> &getPortNames() const;
     void sendMessage(const std::vector<unsigned char> &message);
     void sendAllNotesOff();
 

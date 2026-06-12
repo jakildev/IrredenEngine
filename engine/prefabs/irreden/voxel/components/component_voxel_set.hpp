@@ -5,6 +5,7 @@
 #include <irreden/ir_constants.hpp>
 
 #include <irreden/voxel/components/component_voxel.hpp>
+#include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
 #include <vector>
@@ -35,17 +36,27 @@ struct C_VoxelSetNew {
     // pointer made the diff resolve to a wild index).
     size_t voxelStartIdx_ = 0;
 
-    // local voxel position
-    std::span<C_Position3D> positions_;
+    // GPU transform-indirection slot for this set (#1396). `kVoxelTransformStatic`
+    // (the default) keeps the set on the CPU-direct world-position path:
+    // UPDATE_VOXEL_SET_CHILDREN folds the parent translation in and uploads
+    // binding 5 directly. Any other value routes the set through the GPU
+    // voxel-position prepass — its voxels carry this slot as their per-voxel
+    // transform index, and UPDATE_VOXEL_POSITIONS_GPU writes
+    // EntityTransformBuffer[slot] from the entity's C_WorldTransform each frame.
+    std::uint32_t gpuTransformSlot_ = IRRender::kVoxelTransformStatic;
+
+    // Local voxel position (16-byte GPU stride POD; see VoxelGpuPosition).
+    std::span<IRRender::VoxelGpuPosition> positions_;
 
     // Per-voxel deformation offset authored by VOXEL_SQUASH_STRETCH.
-    // Internal pool scratch state — not the engine-level entity offset
-    // channel (which travels through the modifier framework's
-    // POSITION_OFFSET_3D vec3 field and lands on C_PositionGlobal3D).
+    // CPU-only scratch — summed into the world position by
+    // UPDATE_VOXEL_SET_CHILDREN, never uploaded directly to the GPU.
     std::span<vec3> positionOffsets_;
 
-    // global voxel position recalculated each update
-    std::span<C_PositionGlobal3D> globalPositions_;
+    // World voxel position recalculated each update. Same 16-byte stride
+    // as positions_ so the std430 SSBO upload stride matches the GPU
+    // contract in c_voxel_to_trixel_stage_1.
+    std::span<IRRender::VoxelGpuPosition> globalPositions_;
 
     std::span<C_Voxel> voxels_;
 
@@ -65,15 +76,23 @@ struct C_VoxelSetNew {
     // meaningful when `pendingVoxels_` is non-empty.
     ivec3 pendingBoundsMin_ = ivec3(0);
 
+    // `targetCanvas` selects which canvas's voxel pool this set allocates
+    // from. `kNullEntity` (the default) keeps the historical behavior —
+    // the currently-active canvas, normally "main". Pass a detached
+    // entity's per-entity canvas to render this set into that canvas.
     C_VoxelSetNew(
-        ivec3 size, Color color = IRColors::kGreen, bool centerAroundOrigin = false
-        // int voxelPoolId = 0
+        ivec3 size,
+        Color color = IRColors::kGreen,
+        bool centerAroundOrigin = false,
+        IREntity::EntityId targetCanvas = IREntity::kNullEntity
     )
         : numVoxels_{size.x * size.y * size.z}
         , size_{size} {
         const int requestedVoxels = size.x * size.y * size.z;
-        canvasEntity_ = IRPrefab::VoxelPool::activeCanvasEntity();
-        auto allocation = IRPrefab::VoxelPool::allocate(requestedVoxels);
+        canvasEntity_ = targetCanvas != IREntity::kNullEntity
+                            ? targetCanvas
+                            : IRPrefab::VoxelPool::activeCanvasEntity();
+        auto allocation = IRPrefab::VoxelPool::allocate(requestedVoxels, canvasEntity_);
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
         positionOffsets_ = allocation.positionOffsets_;
@@ -102,7 +121,11 @@ struct C_VoxelSetNew {
             // and this is a no-op). The dealloc is kept for symmetry with
             // a hypothetical future allocator that returns partial spans.
             // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
-            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(
+                voxelStartIdx_,
+                static_cast<size_t>(numVoxels_),
+                canvasEntity_
+            );
             numVoxels_ = 0;
             size_ = ivec3(0);
             return;
@@ -115,7 +138,8 @@ struct C_VoxelSetNew {
             for (int y = 0; y < size.y; y++) {
                 for (int z = 0; z < size.z; z++) {
                     vec3 pos = vec3(x, y, z) + offset;
-                    positions_[index3DtoIndex1D(ivec3(x, y, z), size)] = C_Position3D{pos};
+                    positions_[index3DtoIndex1D(ivec3(x, y, z), size)] =
+                        IRRender::VoxelGpuPosition{pos, 0.0f};
                     voxels_[index3DtoIndex1D(ivec3(x, y, z), size)].color_ = color;
                 }
             }
@@ -124,10 +148,11 @@ struct C_VoxelSetNew {
         // so the fast-path is `markRangeActive`. The fallback handles a caller
         // who passes a transparent color.
         if (color.alpha_ != 0) {
-            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         } else {
-            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
         IRE_LOG_DEBUG("Allocated {} voxel(s)", numVoxels_);
     }
 
@@ -145,10 +170,17 @@ struct C_VoxelSetNew {
     // `pendingVoxels_` without a canvas, allocates from the pool with one.
     // Bounds + ordering semantics live in `voxel/CLAUDE.md` "C_VoxelSetNew
     // headless / staged mode" and `voxel/dense_bridge.hpp`.
-    C_VoxelSetNew(ivec3 boundsMin, ivec3 boundsMax, std::span<const C_Voxel> voxels)
+    C_VoxelSetNew(
+        ivec3 boundsMin,
+        ivec3 boundsMax,
+        std::span<const C_Voxel> voxels,
+        IREntity::EntityId targetCanvas = IREntity::kNullEntity
+    )
         : numVoxels_{0}
         , size_{boundsMax - boundsMin} {
-        canvasEntity_ = IRPrefab::VoxelPool::activeCanvasEntityOrNull();
+        canvasEntity_ = targetCanvas != IREntity::kNullEntity
+                            ? targetCanvas
+                            : IRPrefab::VoxelPool::activeCanvasEntityOrNull();
         const ivec3 extent = size_;
         const std::size_t requestedVoxels = (extent.x > 0 && extent.y > 0 && extent.z > 0)
                                                 ? static_cast<std::size_t>(extent.x) *
@@ -170,7 +202,10 @@ struct C_VoxelSetNew {
             return;
         }
 
-        auto allocation = IRPrefab::VoxelPool::allocate(static_cast<unsigned int>(requestedVoxels));
+        auto allocation = IRPrefab::VoxelPool::allocate(
+            static_cast<unsigned int>(requestedVoxels),
+            canvasEntity_
+        );
         voxelStartIdx_ = allocation.startIndex_;
         positions_ = allocation.positions_;
         positionOffsets_ = allocation.positionOffsets_;
@@ -195,7 +230,11 @@ struct C_VoxelSetNew {
             // and this is a no-op). The dealloc is kept for symmetry with
             // a hypothetical future allocator that returns partial spans.
             // Zeroing `numVoxels_` then keeps `onDestroy()`'s guard correct.
-            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(
+                voxelStartIdx_,
+                static_cast<size_t>(numVoxels_),
+                canvasEntity_
+            );
             size_ = ivec3(0);
             numVoxels_ = 0;
             return;
@@ -206,14 +245,16 @@ struct C_VoxelSetNew {
             for (int y = 0; y < extent.y; ++y) {
                 for (int z = 0; z < extent.z; ++z) {
                     const int idx = index3DtoIndex1D(ivec3(x, y, z), extent);
-                    positions_[idx] = C_Position3D{vec3(x, y, z) + originOffset};
+                    positions_[idx] =
+                        IRRender::VoxelGpuPosition{vec3(x, y, z) + originOffset, 0.0f};
                     voxels_[idx] = voxels[idx];
                 }
             }
         }
         // Dense payload is a mix of active and inactive slots, so
         // resync from per-voxel alpha rather than the fast bulk path.
-        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
+        IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
 
@@ -232,7 +273,11 @@ struct C_VoxelSetNew {
         // never touches the pool — so this guard skips exactly the cases
         // that have nothing to release.
         if (numVoxels_ > 0) {
-            IRPrefab::VoxelPool::deallocate(voxelStartIdx_, static_cast<size_t>(numVoxels_));
+            IRPrefab::VoxelPool::deallocate(
+                voxelStartIdx_,
+                static_cast<size_t>(numVoxels_),
+                canvasEntity_
+            );
             IRE_LOG_DEBUG("Deallocated {} voxels", numVoxels_);
         }
     }
@@ -240,7 +285,7 @@ struct C_VoxelSetNew {
     void changeVoxelColor(ivec3 index, Color color) {
         const int idx = index3DtoIndex1D(index, size_);
         voxels_[idx].color_ = color;
-        IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, color.alpha_ != 0);
+        IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, color.alpha_ != 0, canvasEntity_);
     }
 
     void changeVoxelColorAll(Color color) {
@@ -248,9 +293,9 @@ struct C_VoxelSetNew {
             voxels_[i].color_ = color;
         }
         if (color.alpha_ != 0) {
-            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         } else {
-            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
     }
 
@@ -258,14 +303,16 @@ struct C_VoxelSetNew {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].deactivate();
         }
-        IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_);
+        IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
     void activateAll() {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].activate();
         }
-        IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+        IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
     // Activates all voxels in the plane perpendicular to `axis` at `planeIndex`
@@ -273,8 +320,7 @@ struct C_VoxelSetNew {
     // axis: 0=X, 1=Y, 2=Z. planeIndex must be in [0, size_[axis]).
     void fillPlane(int axis, int planeIndex, Color color) {
         const ivec3 sz = size_;
-        const int dim0 = (axis + 1) % 3;
-        const int dim1 = (axis + 2) % 3;
+        auto [dim0, dim1] = IRMath::perpendicularAxes(axis);
         IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](IRComponents::C_VoxelPool &pool) {
             for (int a = 0; a < sz[dim0]; ++a) {
                 for (int b = 0; b < sz[dim1]; ++b) {
@@ -289,6 +335,7 @@ struct C_VoxelSetNew {
                 }
             }
         });
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, sz);
     }
 
     // take positions of all voxels in voxel object and form a new shape. This could
@@ -311,7 +358,7 @@ struct C_VoxelSetNew {
                     }
                 }
             }
-            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         if (shape3D == Shape3D::SPHERE) {
             vec3 center = vec3(size_) / 2.0f;
@@ -333,8 +380,9 @@ struct C_VoxelSetNew {
             // Sphere splits the span into active interior + inactive
             // exterior — resync from per-voxel alpha rather than picking
             // bulk active/inactive.
-            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_);
+            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
+        IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
     // TODO each individual voxel should be treated like this
@@ -347,16 +395,20 @@ struct C_VoxelSetNew {
     // `positionOffsets_`, `globalPositions_`, `voxels_`) become invalid
     // after such a migration; only `voxelStartIdx_` and `numVoxels_` remain
     // stable because they are plain scalars on this struct.
-    bool updateAsChild(
-        C_Position3D parentPosition,
-        std::vector<C_PositionGlobal3D> &poolGlobalsOut,
-        const std::vector<C_Position3D> &poolPositions,
+    // Returns the number of positions actually written (safeCount), or 0 if
+    // the parent position is unchanged (early-out). Callers use the return
+    // value to queue exactly the written range for GPU upload — avoids
+    // queuing stale slots in the rare case the pool-bounds guard fires.
+    int updateAsChild(
+        vec3 parentPosition,
+        std::vector<IRRender::VoxelGpuPosition> &poolGlobalsOut,
+        const std::vector<IRRender::VoxelGpuPosition> &poolPositions,
         const std::vector<vec3> &poolOffsets
     ) {
-        if (hasLastParentPosition_ && parentPosition.pos_ == lastParentPosition_) {
-            return false;
+        if (hasLastParentPosition_ && parentPosition == lastParentPosition_) {
+            return 0;
         }
-        lastParentPosition_ = parentPosition.pos_;
+        lastParentPosition_ = parentPosition;
         hasLastParentPosition_ = true;
         const size_t writableTail =
             poolGlobalsOut.size() > voxelStartIdx_ ? poolGlobalsOut.size() - voxelStartIdx_ : 0u;
@@ -371,9 +423,9 @@ struct C_VoxelSetNew {
         for (int i = 0; i < safeCount; i++) {
             poolGlobalsOut[voxelStartIdx_ + i].pos_ = poolPositions[voxelStartIdx_ + i].pos_ +
                                                       poolOffsets[voxelStartIdx_ + i] +
-                                                      parentPosition.pos_;
+                                                      parentPosition;
         }
-        return safeCount > 0;
+        return safeCount;
     }
 
     // TODO: get rid of all unneeded voxels
@@ -400,7 +452,8 @@ struct C_VoxelSetNew {
         }
         IRPrefab::VoxelPool::resyncRangeFromColors(
             voxelStartIdx_,
-            static_cast<std::size_t>(numVoxels_)
+            static_cast<std::size_t>(numVoxels_),
+            canvasEntity_
         );
     }
 

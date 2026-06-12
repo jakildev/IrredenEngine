@@ -30,20 +30,20 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
     void dispatchCompute(std::uint32_t x, std::uint32_t y, std::uint32_t z) override {
-        glDispatchCompute(x, y, z);
+        ENG_API->glDispatchCompute(x, y, z);
     }
 
     void dispatchComputeIndirect(const Buffer *indirectBuffer, std::ptrdiff_t offset) override {
         if (indirectBuffer == nullptr) {
             return;
         }
-        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirectBuffer->getHandle());
-        glDispatchComputeIndirect(static_cast<GLintptr>(offset));
-        glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+        ENG_API->glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, indirectBuffer->getHandle());
+        ENG_API->glDispatchComputeIndirect(static_cast<GLintptr>(offset));
+        ENG_API->glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
     }
 
     void memoryBarrier(BarrierType barrierType) override {
-        glMemoryBarrier(toGLBarrierType(barrierType));
+        ENG_API->glMemoryBarrier(toGLBarrierType(barrierType));
     }
 
     void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
@@ -53,7 +53,7 @@ class OpenGLRenderDevice final : public RenderDevice {
     void drawElementsInstanced(
         DrawMode drawMode, int count, IndexType indexType, int instanceCount
     ) override {
-        glDrawElementsInstanced(
+        ENG_API->glDrawElementsInstanced(
             toGLDrawMode(drawMode),
             count,
             toGLIndexType(indexType),
@@ -70,7 +70,7 @@ class OpenGLRenderDevice final : public RenderDevice {
         if (instanceCount <= 0) {
             return;
         }
-        glDrawArraysInstanced(toGLDrawMode(drawMode), first, count, instanceCount);
+        ENG_API->glDrawArraysInstanced(toGLDrawMode(drawMode), first, count, instanceCount);
     }
 
     void copyImageSubData(
@@ -88,7 +88,7 @@ class OpenGLRenderDevice final : public RenderDevice {
         int height,
         int depth
     ) override {
-        glCopyImageSubData(
+        ENG_API->glCopyImageSubData(
             srcHandle,
             GL_TEXTURE_2D,
             srcLevel,
@@ -170,16 +170,16 @@ class OpenGLRenderDevice final : public RenderDevice {
         if (texture == nullptr) {
             return;
         }
-        glClearTexImage(texture->getHandle(), level, GL_RED_INTEGER, GL_INT, data);
+        ENG_API->glClearTexImage(texture->getHandle(), level, GL_RED_INTEGER, GL_INT, data);
     }
 
     void finish() override {
-        glFinish();
+        ENG_API->glFinish();
     }
 
     GpuTimestampHandle createTimestampPair() override {
         GLuint queries[2] = {0, 0};
-        glGenQueries(2, queries);
+        ENG_API->glGenQueries(2, queries);
         const GpuTimestampHandle handle = m_nextTimestampHandle++;
         m_timestamps[handle] = OpenGLTimestampPair{queries[0], queries[1], false, false};
         return handle;
@@ -191,7 +191,7 @@ class OpenGLRenderDevice final : public RenderDevice {
             return;
         }
         GLuint queries[2] = {it->second.startQuery_, it->second.endQuery_};
-        glDeleteQueries(2, queries);
+        ENG_API->glDeleteQueries(2, queries);
         m_timestamps.erase(it);
     }
 
@@ -206,12 +206,12 @@ class OpenGLRenderDevice final : public RenderDevice {
         }
         OpenGLTimestampPair &pair = it->second;
         if (slot == TimestampSlot::START) {
-            glQueryCounter(pair.startQuery_, GL_TIMESTAMP);
+            ENG_API->glQueryCounter(pair.startQuery_, GL_TIMESTAMP);
             pair.hasStart_ = true;
             pair.hasEnd_ = false;
             return;
         }
-        glQueryCounter(pair.endQuery_, GL_TIMESTAMP);
+        ENG_API->glQueryCounter(pair.endQuery_, GL_TIMESTAMP);
         pair.hasEnd_ = true;
     }
 
@@ -227,16 +227,16 @@ class OpenGLRenderDevice final : public RenderDevice {
 
         GLint startAvailable = GL_FALSE;
         GLint endAvailable = GL_FALSE;
-        glGetQueryObjectiv(pair.startQuery_, GL_QUERY_RESULT_AVAILABLE, &startAvailable);
-        glGetQueryObjectiv(pair.endQuery_, GL_QUERY_RESULT_AVAILABLE, &endAvailable);
+        ENG_API->glGetQueryObjectiv(pair.startQuery_, GL_QUERY_RESULT_AVAILABLE, &startAvailable);
+        ENG_API->glGetQueryObjectiv(pair.endQuery_, GL_QUERY_RESULT_AVAILABLE, &endAvailable);
         if (startAvailable != GL_TRUE || endAvailable != GL_TRUE) {
             return false;
         }
 
         GLuint64 startNs = 0;
         GLuint64 endNs = 0;
-        glGetQueryObjectui64v(pair.startQuery_, GL_QUERY_RESULT, &startNs);
-        glGetQueryObjectui64v(pair.endQuery_, GL_QUERY_RESULT, &endNs);
+        ENG_API->glGetQueryObjectui64v(pair.startQuery_, GL_QUERY_RESULT, &startNs);
+        ENG_API->glGetQueryObjectui64v(pair.endQuery_, GL_QUERY_RESULT, &endNs);
         if (endNs < startNs) {
             return false;
         }

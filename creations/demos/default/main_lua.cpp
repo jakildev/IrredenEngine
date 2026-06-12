@@ -2,7 +2,7 @@
 #include "lua_bindings.hpp"
 
 // COMPONENTS
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -13,12 +13,11 @@
 #include <irreden/common/systems/system_modifier_decay.hpp>
 #include <irreden/update/systems/system_velocity.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
 #include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
-#include <irreden/update/systems/system_apply_position_offset.hpp>
 #include <irreden/audio/systems/system_periodic_idle_midi_trigger.hpp>
 #include <irreden/audio/systems/system_midi_sequence_out.hpp>
 #include <irreden/audio/systems/system_audio_midi_message_out.hpp>
@@ -33,7 +32,7 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_debug_culling_minimap.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
@@ -67,8 +66,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::MIDI_SEQUENCE_OUT>(),
          IRSystem::createSystem<IRSystem::OUTPUT_MIDI_MESSAGE_OUT>(),
          IRSystem::createSystem<IRSystem::GOTO_3D>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
@@ -79,12 +77,11 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::INPUT_GAMEPAD>()}
     );
 
-    IRSystem::registerPipeline(
-        IRTime::Events::RENDER,
-        {IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-         IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+    auto renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
          IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
          IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
          IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
@@ -93,4 +90,5 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );
+    IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }

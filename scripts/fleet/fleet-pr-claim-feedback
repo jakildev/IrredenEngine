@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# fleet-pr-claim-feedback — atomic claim-first entry into PR feedback
+# handling. Composes the two primitives that MUST run first, in the one
+# correct order, as a single command an agent cannot skip or mis-order.
+#
+# Why this exists
+# ---------------
+# Feedback handling (addressing human:needs-fix / human:blocker /
+# fleet:needs-fix / fleet:has-nits / fleet:design-unblocked on an open
+# PR) is gated by an atomic `fleet:amending-<host>-<agent>` claim that
+# must be acquired FIRST — before reading feedback, checking out, or
+# touching any label. #1349 made that protocol-discipline (the agent is
+# *told* to run `fleet-claim amending-claim` then `fleet-pr-checkout-detached`
+# in order), but nothing stopped an agent from skipping it, mis-ordering
+# it, or forgetting the release-on-failure handling. Every per-path
+# bolt-on race in the history (#1316 verdict-less window, #1310 dual-
+# worker force-push, #1336 two workers both starting the same AMEND)
+# came from a human or agent hand-sequencing claim → checkout and getting
+# the order or the coverage wrong.
+#
+# This wrapper makes claim-first the only callable path: win the lex-min
+# claim, then check out detached — so reaching the work is proof the
+# claim was won. A checkout failure after a won claim releases the claim,
+# so a transient fetch error never strands a dangling `fleet:amending-*`
+# label on the PR.
+#
+# It owns ONLY the part that must not be skippable or mis-ordered (claim
+# + checkout + release-on-failure). The per-path label work that follows
+# (clearing the verdict label, the human-amending swap, the ESCALATE
+# label swap) stays in the protocol because it diverges per path — see
+# FLEET-FEEDBACK-HANDLING.md Step b onward.
+#
+# Usage
+# -----
+#   fleet-pr-claim-feedback <pr-number> <agent> [--repo <slug>]
+#
+#   <agent>        your worktree basename (e.g. opus-worker-2); the
+#                  lex-min identity stamped into the claim label.
+#   --repo <slug>  gh owner/repo of the PR (e.g. jakildev/irreden for
+#                  game PRs). Default: jakildev/IrredenEngine (engine).
+#
+# Side effects in CWD (only on full success):
+#   - acquires the `fleet:amending-<host>-<agent>` label on the PR
+#   - `git checkout --detach origin/<head-ref>` (via
+#     fleet-pr-checkout-detached) + writes `.git/fleet-amend-ref`
+#
+# Exit status:
+#   0  claim won AND checkout succeeded — proceed with feedback handling.
+#   1  claim lost / gh unreachable (touched nothing), OR checkout failed
+#      after a won claim (claim released — nothing left dangling).
+#   2  usage error.
+#
+# Caller contract: on a non-zero exit, SKIP this PR and move to the next
+# candidate. Do not read its feedback, edit its labels, or retry in the
+# same iteration — the loser exits in ~1s, which is what keeps the
+# dispatcher's feedback fan-out cheap.
+#
+# Source of truth: scripts/fleet/fleet-pr-claim-feedback in the engine
+# repo. Installed to ~/bin/ by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "usage: fleet-pr-claim-feedback <pr-number> <agent> [--repo <slug>]" >&2
+    exit 2
+fi
+
+# Help first so `--help` isn't mis-parsed as the positional pr-number.
+case "$1" in
+    -h|--help)
+        sed -n '2,59p' "$0" | sed 's/^# \{0,1\}//'
+        exit 0
+        ;;
+esac
+
+pr_number=""
+agent=""
+repo_slug=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            if [[ $# -lt 2 ]]; then
+                echo "fleet-pr-claim-feedback: --repo requires a value" >&2
+                exit 2
+            fi
+            repo_slug="$2"
+            shift 2
+            ;;
+        --repo=*)
+            repo_slug="${1#--repo=}"
+            shift
+            ;;
+        -*)
+            echo "fleet-pr-claim-feedback: unknown option '$1'" >&2
+            exit 2
+            ;;
+        *)
+            if [[ -z "$pr_number" ]]; then
+                pr_number="$1"
+            elif [[ -z "$agent" ]]; then
+                agent="$1"
+            else
+                echo "fleet-pr-claim-feedback: unexpected arg '$1'" >&2
+                exit 2
+            fi
+            shift
+            ;;
+    esac
+done
+
+if ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+    echo "fleet-pr-claim-feedback: <pr-number> must be a positive integer (got: '$pr_number')" >&2
+    exit 2
+fi
+if [[ -z "$agent" ]]; then
+    echo "fleet-pr-claim-feedback: <agent> (worktree basename) is required" >&2
+    echo "usage: fleet-pr-claim-feedback <pr-number> <agent> [--repo <slug>]" >&2
+    exit 2
+fi
+
+# Reconcile the two tools' --repo conventions. `fleet-claim` addresses
+# repos by a short namespace (engine/game) parsed as a GLOBAL flag before
+# the subcommand; `fleet-pr-checkout-detached` (and gh) want the
+# owner/repo slug. Map the slug to the namespace here so the caller only
+# has to pass the gh slug (matching the other fleet-pr-* wrappers). The
+# two known fleet repos mirror fleet-claim's own repo_from_ns table.
+claim_repo_args=()       # global `--repo <ns>` for fleet-claim (empty = engine)
+checkout_repo_args=()    # `--repo <slug>` for fleet-pr-checkout-detached
+if [[ -n "$repo_slug" ]]; then
+    checkout_repo_args=(--repo "$repo_slug")
+    case "$(printf '%s' "$repo_slug" | tr '[:upper:]' '[:lower:]')" in
+        jakildev/irredenengine)
+            : ;;  # engine — fleet-claim's default namespace, no flag
+        jakildev/irreden)
+            claim_repo_args=(--repo game) ;;
+        *)
+            echo "fleet-pr-claim-feedback: unrecognized --repo slug '$repo_slug'" >&2
+            echo "  expected jakildev/IrredenEngine or jakildev/irreden" >&2
+            exit 2
+            ;;
+    esac
+fi
+
+# Step 1 — atomic claim FIRST. The sole-holder claim decides one winner;
+# the loser (or a gh outage) exits here having mutated nothing.
+if ! fleet-claim "${claim_repo_args[@]}" amending-claim "$pr_number" "$agent"; then
+    echo "fleet-pr-claim-feedback: did not win the amending claim for PR #$pr_number — skip it." >&2
+    exit 1
+fi
+
+# Step 2 — check out the PR in detached HEAD. On failure (fetch error,
+# unknown ref, wrong cwd caught by the worktree-identity guard), release
+# the claim so the PR is not left carrying a dangling `fleet:amending-*`
+# label, then exit non-zero.
+if ! fleet-pr-checkout-detached "$pr_number" "${checkout_repo_args[@]}"; then
+    echo "fleet-pr-claim-feedback: checkout failed for PR #$pr_number — releasing claim." >&2
+    fleet-claim "${claim_repo_args[@]}" amending-release "$pr_number" "$agent" || true
+    exit 1
+fi
+
+echo "fleet-pr-claim-feedback: claimed + checked out PR #$pr_number ($agent). Proceed with feedback handling (Step b onward)."
+
+# Write a local amend-snapshot so the reconcile R7 healer can detect
+# in-flight amend claims whose amending label may have been TTL-swept
+# while the agent is still active (#1650). Cleaned up by amending-release.
+_amend_snap_dir="$HOME/.fleet/amend-snapshots"
+mkdir -p "$_amend_snap_dir"
+printf '{"pr":%s,"agent":"%s","acquired_epoch":%s}\n' \
+    "$pr_number" "$agent" "$(date +%s)" \
+    > "$_amend_snap_dir/${pr_number}.json" 2>/dev/null || true

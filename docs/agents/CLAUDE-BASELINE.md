@@ -207,6 +207,7 @@ agent-facing doc, link to the canonical home rather than restating.
 | Feedback-label handling (AMEND / ESCALATE / labels) | `docs/agents/FLEET-FEEDBACK-HANDLING.md` |
 | Per-iteration runtime (heartbeat / exit / shutdown) | `docs/agents/FLEET-RUNTIME.md` |
 | Reviewer protocols (stack gating · label-swap · claim · nits) | `docs/agents/REVIEWER-PROTOCOL.md` |
+| Architect protocol (startup · loop · filing · planning · design-blocked handling) | `docs/agents/architect-protocol.md` |
 | Shared fleet state cache | `docs/agents/FLEET-CACHE.md` |
 | ECS smell diagnostics (machine-checkable) | `.claude/rules/cpp-ecs-smells.md` |
 | Math substitution rules (machine-checkable) | `.claude/rules/cpp-math.md` |
@@ -222,7 +223,7 @@ agent-facing doc, link to the canonical home rather than restating.
 ## Citing source in filed artifacts
 
 When an artifact you're filing or writing references the codebase —
-GitHub issue bodies, PR descriptions, design docs, TASKS.md entries,
+GitHub issue bodies, PR descriptions, design docs,
 review comments — **prefer symbol citations over line-number
 citations** for anything that will be read after the next refactor.
 
@@ -265,6 +266,28 @@ shell compound operators (`&&`, `||`, `;`, `|`) to chain commands.
 Issue each command as its own separate Bash tool call, or use the
 Read/Glob/Grep tools instead of Bash when possible.
 
+**Don't put fallible Bash calls in the same parallel batch.** When you
+emit several Bash calls in one turn they run in parallel, and the harness
+**cancels the entire batch the moment any one call exits non-zero** — the
+siblings come back as `Cancelled: parallel tool call … errored`, which
+reads like a hang, not an error. So one `which a b c` that doesn't find a
+tool, an `ls`/`cat` on a maybe-absent path, or a `gh` lookup that 404s
+silently kills every other call you batched with it. Therefore:
+
+- Only parallel-batch Bash calls you're confident exit 0 (e.g.
+  `git branch --show-current` plus `pwd`).
+- Issue **probing / maybe-failing** commands (`which`, `ls`/`cat` on
+  paths that may not exist, `gh` lookups that may 404, a build that may
+  break) **one per turn** — read each result before the next.
+- Prefer Read/Glob/Grep over Bash for files and directories; they return
+  an empty/no-match result instead of a non-zero exit, so they never
+  trigger the cascade.
+
+This compounds with the single-command rule above: even a
+single-command-compliant but fallible call like `which some-tool`,
+when batched alongside unrelated Bash calls, exits non-zero and
+cancels its batch siblings.
+
 - **No `cd <path> && git ...`** — use `git -C <path> ...` instead.
   `cd && git` triggers a hardcoded Claude Code security gate
   ("Compound commands with cd and git require approval to prevent
@@ -301,7 +324,18 @@ Read/Glob/Grep tools instead of Bash when possible.
 - **Body files for `--body-file`** — write them to a worktree-local path
   (e.g. `.review-body.md`, `.merger-body.md`) via the **Write** tool,
   not `/tmp/`; run `rm -f <path>` first if a prior session may have
-  left the file behind.
+  left the file behind. **Always use `--body-file` (never inline
+  `--body "..."`) for any PR/issue comment containing backticks or `$`** —
+  an inline `gh ... comment --body "...\`code\`..."` lets the shell execute
+  the backticked text and expand `$vars`, corrupting the comment or running
+  arbitrary tokens (observed on PR #1336).
+- **Verify before you report a push.** Stalled Bash output can flush late,
+  out of order, or duplicated — never state that a commit "landed", or cite a
+  SHA, from such a view. Confirm with a fresh `git fetch` then
+  `git rev-parse origin/<branch>` matching local `HEAD` first; if any tool
+  result looks empty or stale, run one trivial probe before the next
+  state-changing call or status-reporting comment (false SHAs `ab12cd34` /
+  `f3a9b2c1` were posted this way on PR #1336 — the real commit was different).
 
 This rule exists because the user-level allowlist (`~/.claude/settings.json`)
 matches on the first token of each Bash command. A compound command like
@@ -317,22 +351,19 @@ is an additional hardcoded gate on top of that.
 (`jakildev/irreden`) is private.** Information flows one way only:
 
 - **Game-side artifacts MAY reference engine.** The engine is public,
-  so a game PR description, commit message, issue, review comment,
-  or `TASKS.md` blocker can freely cite engine PRs/issues/files. Game
-  agents already do this when filing engine issues for cross-repo
-  dependencies.
+  so a game PR description, commit message, issue, or review comment
+  can freely cite engine PRs/issues/files. Game agents already do
+  this when filing engine issues for cross-repo dependencies.
 - **Engine-side artifacts MUST NOT reference game.** Anything the
   engine repo publishes — PR titles, PR descriptions, commit
-  messages, review comments, `TASKS.md` entries, GitHub issue bodies
-  filed on the engine — is world-readable. Leaking the game's task
+  messages, review comments, GitHub issue bodies filed on the engine
+  — is world-readable. Leaking the game's task
   IDs, feature names, design language, file paths, or repo slug
   exposes private game work.
 
 **Concretely, when filing or writing anything that lands in the
 engine repo, never include:**
 
-- Game task IDs (`game T-005`, or unqualified `T-NNN` IDs that came
-  from the game queue).
 - Game PR or issue URLs (`jakildev/irreden#41`, etc.).
 - The game repo slug `jakildev/irreden`.
 - File paths under `creations/game/` (or any other gitignored
@@ -346,12 +377,12 @@ engine repo, never include:**
 
 1. The work that lands in the engine PR is described in **pure
    engine terms** — generic capabilities, no game-specific
-   motivation. The engine task in `TASKS.md` is self-contained.
-2. The game-side PR's description / TASKS.md entry references the
-   engine task by ID or PR URL as a `Blocked by:` dependency.
+   motivation. The engine issue is self-contained.
+2. The game-side PR's description references the engine issue by
+   number or PR URL as a `Blocked by:` dependency.
 
-This is the existing convention for `Blocked by:` (see queue-manager
-role, "Cross-repo work" section). The information-isolation rule
+This is the existing convention for `Blocked by:` (see FLEET.md
+§"Resource coordination"). The information-isolation rule
 generalizes that direction: engine talks engine, game talks both.
 
 **`commit-and-push` checks for this** before opening an engine PR
@@ -412,7 +443,17 @@ Concrete forms:
   consteval-reachable.
 - **Runtime constraint on a function parameter → `IR_ASSERT(predicate,
   "diagnostic")` at function entry.** Use when the value is
-  user-supplied at runtime.
+  user-supplied at runtime. This includes *unwritten* invariants —
+  parallel containers that must agree in length get
+  `IR_ASSERT(parentIdx.size() == joints.size(), ...)` before iterating
+  both, even when no comment ever stated the constraint.
+- **Shared helper whose precondition violation is UB (div-by-zero, OOB
+  index) → the helper asserts its own precondition.** "Callers guard
+  `count > 0`" in a comment is not a guard, and UB is platform-divergent
+  (x86 traps integer div-by-zero; Apple Silicon silently returns 0). A
+  low-level helper called from many modules *is* a system boundary —
+  "only validate at system boundaries" licenses this check rather than
+  forbidding it.
 - **Hybrid → `if consteval` branch that `static_assert`s, falling
   through to a runtime `IR_ASSERT` at the non-consteval branch.** Use
   for helpers that are sometimes called from `constexpr` contexts and
@@ -481,9 +522,9 @@ additional role-specific restrictions.
   follow with `commit-and-push` to land them. The next iteration's
   branch switch will discard them. Don't invoke `simplify` standalone
   — let `commit-and-push` invoke it for you.
-- **`.fleet/status/*.md` is queue-manager-owned bookkeeping**, like
-  `TASKS.md`. Read when a CLAUDE.md pointer directs you to one; never
-  include them in a feature PR's diff. See `.fleet/status/README.md`.
+- **`.fleet/status/*.md` is scout-maintained bookkeeping.** Read
+  when a CLAUDE.md pointer directs you to one; never include them in
+  a feature PR's diff. See `.fleet/status/README.md`.
 - **Edit/Write paths must stay inside your worktree.** The parent
   clone at `/Users/evinjkill/src/IrredenEngine/` and your worktree at
   `.../.claude/worktrees/<your-basename>/` both contain the same tree
@@ -495,6 +536,36 @@ additional role-specific restrictions.
   absolute path, it MUST start with
   `/Users/evinjkill/src/IrredenEngine/.claude/worktrees/<your-basename>/`.
   Re-confirm with `pwd` if unsure.
+- **Mutating git flows assert their worktree first.** The same
+  parent-clone-vs-worktree confusion bites `git` too: a commit, branch
+  checkout, detached PR checkout, or stash run with cwd in the shared
+  main clone contaminates the checkout other agents share. The
+  `commit-and-push`, `start-next-task`, and `fleet-pr-checkout-detached`
+  flows now run `fleet-assert-worktree` (exit 1 if cwd is not a
+  `.claude/worktrees/*` tree) as a preflight. If it fires, `cd` into your
+  worktree and retry — only a human in a deliberate main-clone session
+  should set the `FLEET_ALLOW_MAIN_CLONE=1` override.
+- **`refs/stash` is shared across all worktrees — never use positional
+  stash refs.** Unlike per-worktree `HEAD`, `refs/stash` lives in the
+  common git dir, so every worktree on this clone shares one stash
+  stack. A bare `git stash pop` / `git stash drop` (or any `stash@{N}`)
+  is a TOCTOU race: a parallel agent in another worktree can push/pop
+  between your push and your pop, so your positional ref operates on
+  *their* entry — silently applying their changes into your tree or
+  consuming your WIP. If a fleet flow must stash, tag the entry with a
+  worktree-unique message (include your branch name), then at restore
+  resolve it by that message and reapply **by commit SHA** (`git stash
+  apply <SHA>` — the SHA is immutable; `drop` by re-resolving its
+  current `stash@{N}` index, since `git stash drop` needs the
+  `stash@{N}` form). Alternative if untracked files aren't needed
+  (or combine with `git add -A` first): skip the shared stack — `git
+  stash create` returns a SHA without touching `refs/stash`; or use a
+  throwaway temp-branch commit / a dedicated `git worktree`. Note:
+  `git stash create` has no `-u` equivalent, so it does not capture
+  untracked files — do not substitute it for `git stash push -u`
+  without staging untracked files first. See
+  [`.claude/skills/attach-screenshots/SKILL.md`](../../.claude/skills/attach-screenshots/SKILL.md)
+  for the reference message-keyed, SHA-restored pattern.
 - **Single-command Bash only** — see [`## Bash tool rules`](#bash-tool-rules)
   above.
 - **Edit/Write blocked for `.claude/commands/` files?** The harness

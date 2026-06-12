@@ -30,6 +30,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+# Shared branch<->issue matcher, also imported by fleet-claim's inline
+# python. Insert this script's own dir so the import resolves whether the
+# scout is run directly or loaded by-path in the unit tests (#1425).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fleet_branch_match import branch_matches_issue
+
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
 
@@ -122,12 +128,12 @@ def fetch_prs(repo):
         "isDraft,reviews,updatedAt",
     ])
     if out is None:
-        return []
+        return None
     try:
         prs = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh pr list {repo}: bad JSON: {e}")
-        return []
+        return None
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
@@ -146,32 +152,42 @@ def fetch_prs(repo):
     return prs
 
 
-_ALREADY_QUEUED_LABELS = frozenset({"fleet:queued"})
+_ALREADY_QUEUED_LABELS = frozenset({"fleet:queued", "fleet:scope-shipped", "fleet:needs-human"})
+# fleet:needs-human included: parked issues must not re-enter the queue even if the
+# two-step add+remove call creates a TOCTOU window where fleet:queued is transiently absent.
 
 # Labels that mark issues the queue-manager role doc explicitly skips at
 # Step 5 — filter these out of the ingest projector/slicer so epics and
 # un-planned issues never hold the projection hash non-zero.
 _INGEST_SKIP_LABELS = frozenset({
-    "fleet:queued",      # pre-filtered by fetch_human_approved, included for explicitness
+    "fleet:queued",        # pre-filtered by fetch_human_approved, included for explicitness
     "fleet:epic",
     "fleet:needs-plan",
     "fleet:needs-info",
+    "fleet:scope-shipped", # scope landed under a different issue; human should close
+    "fleet:needs-human",   # parked: fleet can't do it autonomously, human must act;
+                           # keeps human:approved but must NOT be re-queued
 })
 
 
-def fetch_issues_by_label(repo, filter_label, exclude_labels=None):
+def fetch_issues_by_label(repo, filter_label, exclude_labels=None, with_body=False):
+    # with_body pulls the issue body too — the queue-manager-ingest projection
+    # needs it to resolve each human:approved issue's `**Blocked by:**` chain
+    # (resolve_human_approved_blockers); the cheaper label-only fetch is the
+    # default for callers that never inspect blockers (needs-plan).
+    fields = "number,title,labels,updatedAt" + (",body" if with_body else "")
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
         "--label", filter_label, "--state", "open",
-        "--json", "number,title,labels,updatedAt",
+        "--json", fields,
     ])
     if out is None:
-        return []
+        return None
     try:
         issues = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh issue list {repo} --label {filter_label}: bad JSON: {e}")
-        return []
+        return None
     for issue in issues:
         issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
     if exclude_labels:
@@ -184,20 +200,36 @@ def fetch_needs_plan(repo):
     return fetch_issues_by_label(repo, "fleet:needs-plan")
 
 
+def fetch_epics(repo):
+    # Open fleet:epic umbrellas for the epic-steward role (#1664). The body's
+    # `## Children` checklist is the steward's membership source of truth —
+    # parse it into `checklist` and pop the body before the state write (epic
+    # bodies are large; the per-issue detail cache keeps the full body for the
+    # role's drill-in).
+    epics = fetch_issues_by_label(repo, "fleet:epic", with_body=True)
+    if epics is None:
+        return None
+    for epic in epics:
+        body = epic.pop("body", "") or ""
+        epic["checklist"] = _parse_epic_checklist(body)
+    return epics
+
+
 def fetch_human_approved(repo):
     # Exclude already-ingested issues to avoid re-triggering queue-manager.
-    return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS)
+    # with_body=True so resolve_human_approved_blockers can parse the
+    # `**Blocked by:**` chain and keep blocked children out of the ingest set.
+    return fetch_issues_by_label(repo, "human:approved", _ALREADY_QUEUED_LABELS,
+                                 with_body=True)
 
 
 def fetch_closed_fleet_queued(repo, limit=100):
-    # Closed fleet:queued issues whose TASKS.md row hasn't been flipped to [x]
-    # yet. --limit caps API cost; recently-closed issues are returned first.
-    # 100 covers the realistic backlog window — observed 2026-05-19 that the
-    # original 20-item cap missed strands like T-166 (#663) which closed
-    # 2026-05-12 and stayed in TASKS.md `## Open` while ~40 fleet:queued
-    # issues closed after it. The renderer's closed-issue reaper consumes
-    # this slice; missing entries strand rows in Open until they're swept
-    # manually.
+    # Closed fleet:queued issues; the queue-manager projection consumes this
+    # to reap stale fleet:claim-* labels on resolved work. --limit caps API
+    # cost; recently-closed issues are returned first. 100 covers the
+    # realistic backlog window (observed 2026-05-19 that the original 20-item
+    # cap missed older strands when ~40 fleet:queued issues closed after one
+    # another in a tight window).
     out = run_capture([
         "gh", "issue", "list", "--repo", repo,
         "--label", "fleet:queued", "--state", "closed",
@@ -205,12 +237,12 @@ def fetch_closed_fleet_queued(repo, limit=100):
         "--json", "number,title,labels,updatedAt",
     ])
     if out is None:
-        return []
+        return None
     try:
         issues = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh issue list {repo} --label fleet:queued --state closed: bad JSON: {e}")
-        return []
+        return None
     for issue in issues:
         issue["labels"] = sorted(lbl["name"] for lbl in issue.get("labels", []))
     issues.sort(key=lambda issue: issue.get("number", 0))
@@ -245,77 +277,275 @@ def fetch_recent_merged_prs(repo, limit=30):
         "--json", "number,title,headRefName,baseRefName,mergedAt",
     ])
     if out is None:
-        return []
+        return None
     try:
         prs = json.loads(out)
     except json.JSONDecodeError as e:
         log(f"gh pr list {repo} --state merged: bad JSON: {e}")
-        return []
+        return None
     prs.sort(key=lambda pr: pr.get("number", 0))
     return prs
 
 
-TASK_HEADER_RE = re.compile(r"^- \[([ ~x!])\] \*\*(.+?)\*\*\s*(?:—\s*(.*))?$")
-TASK_FIELD_RE = re.compile(r"^\s+- \*\*([^:]+?):\*\*\s*(.+?)\s*$")
-SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
-KNOWN_FIELDS = {"id", "model", "owner", "area", "blocked_by", "issue"}
+# --- Issue-based task queue (T-381, T-392) ---------------------------------
+#
+# The task queue is sourced from GitHub Issues with the fleet:queued label.
+# Model, blocked-by, and area are parsed from issue bodies and labels.
+# Task identity is the issue number itself (rendered as `#NNN`).
+
+_AREA_LABEL_MAP = {
+    "IRRender": "engine/render",
+    "IREngine": "engine",
+    "IRSystem": "engine/system",
+    "IRAsset": "engine/asset",
+    "IRMath": "engine/math",
+}
 
 
-def parse_tasks_md(text):
+def _parse_issue_field(body, field):
+    if not body:
+        return ""
+    m = re.search(rf'\*\*(?:Suggested\s+)?{re.escape(field)}:\*\*\s*(.+?)(?:\n|$)', body)
+    return m.group(1).strip() if m else ""
+
+
+# Umbrella-body `## Children` checklist rows: `- [ ] #N` / `- [x] #N`. The
+# first `#N` on a checkbox line is the child ref, so bold-wrapped forms like
+# `- [x] **#1527 — mechanism**` resolve to 1527 and later refs in the same
+# row's prose are ignored. `[ \t]` (not `\s`) after the box keeps the match on
+# one line — `\s` would let a ref-less checkbox row swallow a `#N` from the
+# next line. Non-checkbox `#N` lines never match.
+_EPIC_CHECKLIST_RE = re.compile(
+    r'^[ \t]*-[ \t]*\[( |x|X)\][ \t].*?#(\d+)', re.MULTILINE)
+
+
+def _parse_epic_checklist(body):
+    """[{number, checked}] for every `- [ ] #N` / `- [x] #N` row in an
+    umbrella body, in document order. Indented sub-bullets count; lines
+    without a checkbox or without a `#N` ref do not."""
+    return [
+        {"number": int(m.group(2)), "checked": m.group(1) in "xX"}
+        for m in _EPIC_CHECKLIST_RE.finditer(body or "")
+    ]
+
+
+# A dependency may be declared two ways: the canonical `**Blocked by:** #N`
+# field, or free-form header prose like `## Blocked on #1300` / `Blocked on
+# PR-x`. `_parse_blocked_by` prefers the field and falls back to the header
+# form so a header-only dependency still surfaces as blocked — #1301 was
+# mis-listed as claimable (owner=free, blocked_by=(none)) because its blocker
+# lived in a `Blocked on #1300` header the field parser never read (#1326).
+# Complements #1296, which handled #N refs that already live inside the field.
+_BLOCKED_ON_RE = re.compile(
+    r'^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _is_no_blocker_value(value):
+    """True when a **Blocked by:** value declares NO blocker.
+
+    The canonical form is `(none)`, but agents also hand-write a bare `none`,
+    `n/a`, `tbd`, a lone dash, or `(none) — prose`, all of which mean "nothing
+    blocks this". The old filter recognized only the parenthesized `(none)`
+    form, so a bare `none — first unblocked.` fell through to the prose-blocker
+    path and stranded the issue as permanently blocked — freezing the whole
+    downstream chain out of the queue (game #138 → #143). A value that names a
+    `#N` or describes a real blocker in prose ("the auth redesign") is NOT a
+    sentinel and must still gate.
+    """
+    # A concrete `#N` ref anywhere in the value means there IS a blocker —
+    # never let a leading "none" word swallow a real reference.
+    if re.search(r"#\d+", value):
+        return False
+    head = value.strip().lower().lstrip("(").strip()
+    if not head or head[0] in "-–—.":
+        return True
+    token = re.split(r"[\s.,;:)\-–—]", head, maxsplit=1)[0]
+    return token in {"none", "n/a", "na", "tbd"}
+
+
+def _parse_blocked_by(body):
+    # Union every standalone **Blocked by:** line (multi-line + multi-ref) so a
+    # child blocked by several refs surfaces all of them — check_blockers gates
+    # on the union and find-stackable-blockers live-resolves them (#1296). Falls
+    # back to a `Blocked on` header (#1326) only when no canonical line exists.
+    # Kept consistent with fleet-claim's check_blockers parser.
+    vals = re.findall(r'^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$',
+                      body or "", re.IGNORECASE | re.MULTILINE)
+    # Also handle inline-bold form: **Blocked by: #N (label)** mid-line where
+    # the colon and value are inside one bold span (#1423). The two patterns are
+    # mutually exclusive: canonical has **Blocked by:** (bold closes at colon),
+    # inline has **Blocked by: value** (space after colon, bold stays open).
+    inline_vals = re.findall(r'\*\*Blocked by:\s+(.+?)\*\*',
+                             body or "", re.IGNORECASE)
+    # No per-line `continue` guard needed (unlike fleet-claim's check_blockers
+    # loop): re.findall over the whole body is safe because canonical and inline
+    # are mutually exclusive — canonical bold closes at ":**", inline bold stays
+    # open past the value — so a single line cannot match both patterns.
+    all_vals = vals + inline_vals
+    real = [v.strip() for v in all_vals if not _is_no_blocker_value(v)]
+    if real:
+        return ", ".join(real)
+    if all_vals:
+        # Every matched form is a no-blocker sentinel → genuinely unblocked.
+        return ""
+    for m in _BLOCKED_ON_RE.finditer(body or ""):
+        cand = m.group(1).strip().strip("*").strip()
+        # Only treat header prose as a blocker when it actually names a #N
+        # issue or a PR; an incidental "Blocked on the redesign" sentence
+        # must not gate the task forever.
+        if cand and ("#" in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
+            return cand
+    return ""
+
+
+def fetch_task_queue(repo_slug):
+    """Fetch open task queue from GitHub Issues with the fleet:queued label."""
+    issues_out = run_capture([
+        "gh", "issue", "list",
+        "--repo", repo_slug,
+        "--label", "fleet:queued",
+        "--state", "open",
+        "--json", "number,title,labels,body",
+        "--limit", "200",
+    ])
+
+    if not issues_out:
+        return None
+
+    try:
+        issues = json.loads(issues_out)
+    except json.JSONDecodeError as e:
+        log(f"fetch_task_queue {repo_slug}: bad JSON: {e}")
+        return None
+
     sections = {"open": [], "in_progress": [], "done": []}
-    if not text:
-        return sections
 
-    section_key = None
-    current_task = None
-    for line in text.splitlines():
-        section_match = SECTION_RE.match(line)
-        if section_match:
-            label = section_match.group(1).strip().lower()
-            if label.startswith("open"):
-                section_key = "open"
-            elif label.startswith("in progress"):
-                section_key = "in_progress"
-            elif label.startswith("done"):
-                section_key = "done"
-            else:
-                section_key = None
-            current_task = None
-            continue
-        if section_key is None:
+    for issue in issues:
+        raw_labels = issue.get("labels", [])
+        labels = {
+            (l["name"] if isinstance(l, dict) else l)
+            for l in raw_labels
+        }
+        body = issue.get("body", "") or ""
+        title = issue.get("title", "")
+        number = issue.get("number", 0)
+        task_id = f"#{number}"
+
+        if "fleet:fable" in labels:
+            model = "fable"
+        elif "fleet:opus" in labels:
+            model = "opus"
+        elif "fleet:sonnet" in labels:
+            model = "sonnet"
+        else:
+            model = _parse_issue_field(body, "Model") or None
+
+        # Optional per-task effort override (low|medium|high|xhigh|max).
+        # Not a claim-routing class — just a launch parameter the
+        # dispatcher reads from the slice; anything unrecognized is
+        # treated as unset and the class default applies. First token
+        # only: the field line may carry a trailing comment (the
+        # file-epic template ships one), and fleet-validate-stack
+        # blesses exactly that shape.
+        effort_tokens = (_parse_issue_field(body, "Effort") or "").lower().split()
+        effort = effort_tokens[0] if effort_tokens else None
+        if effort not in EFFORT_LEVELS:
+            effort = None
+
+        # Claim labels are `fleet:claim-<host>-<agent>`; agent half is what
+        # roles see in `fleet-claim list`.
+        owner = "free"
+        for l in labels:
+            if l.startswith("fleet:claim-"):
+                suffix = l[len("fleet:claim-"):]
+                _, _, agent = suffix.partition("-")
+                owner = agent or suffix
+                break
+
+        # fleet:needs-human marks tasks that require manual human action
+        # before agents can work them. Skip so they don't appear in
+        # tasks.open and trigger infinite autonomous pickup attempts.
+        if "fleet:needs-human" in labels:
             continue
 
-        header_match = TASK_HEADER_RE.match(line)
-        if header_match:
-            current_task = {
-                "status": header_match.group(1),
-                "title": header_match.group(2),
-                "summary": (header_match.group(3) or "").strip(),
-                "id": None, "model": None, "owner": None,
-                "area": None, "blocked_by": None, "issue": None,
-            }
-            sections[section_key].append(current_task)
-            continue
+        in_progress = "fleet:in-progress" in labels or owner != "free"
+        status = "~" if in_progress else " "
 
-        if current_task is not None:
-            field_match = TASK_FIELD_RE.match(line)
-            if field_match:
-                key = field_match.group(1).strip().lower().replace(" ", "_")
-                if key in KNOWN_FIELDS:
-                    current_task[key] = field_match.group(2).strip()
+        blocked_by = _parse_blocked_by(body) or "(none)"
+
+        area_parts = [_AREA_LABEL_MAP[l] for l in labels if l in _AREA_LABEL_MAP]
+        area = (
+            ", ".join(sorted(area_parts))
+            if area_parts
+            else _parse_issue_field(body, "Area") or None
+        )
+
+        task = {
+            "status": status,
+            "title": task_id,
+            "summary": title,
+            "id": task_id,
+            "model": model,
+            "effort": effort,
+            "owner": owner,
+            "area": area,
+            "blocked_by": blocked_by,
+            # #1527: `fleet:blocked` is the visible "queued but a predecessor is
+            # still open" marker stamped by fleet-queue-ingest. Surface it on the
+            # task so workers see the blocked state directly and the ingest
+            # projection can drive fleet:blocked removal once the blocker closes
+            # (see _ingest_unblock_candidates).
+            "blocked": "fleet:blocked" in labels,
+            "issue": task_id,
+            # `**Part of epic:** #U` back-ref (raw field value, e.g. "#1661").
+            # The epic-steward adoption projection joins this against open
+            # umbrellas' checklists (#1664).
+            "epic": _parse_issue_field(body, "Part of epic") or None,
+        }
+
+        if status == "~":
+            sections["in_progress"].append(task)
+        else:
+            sections["open"].append(task)
+
+    for key in ("open", "in_progress"):
+        sections[key].sort(
+            key=lambda t: int((t.get("issue") or "#0").lstrip("#"))
+        )
+
     return sections
 
 
-def fetch_tasks(repo_root):
-    out = run_capture(["git", "-C", str(repo_root), "show", "origin/master:TASKS.md"])
-    return parse_tasks_md(out or "")
+def _populate_tasks_done(repo_state):
+    """Convert closed_fleet_queued entries to tasks.done format."""
+    done = []
+    for issue in repo_state.get("closed_fleet_queued", []):
+        number = issue.get("number", 0)
+        title = issue.get("title", "")
+        task_id = f"#{number}"
+        done.append({
+            "status": "x",
+            "title": task_id,
+            "summary": title,
+            "id": task_id,
+            "model": None,
+            "owner": None,
+            "area": None,
+            "blocked_by": None,
+            "issue": task_id,
+        })
+    done.sort(key=lambda t: int((t.get("issue") or "#0").lstrip("#")))
+    return done
 
 
 # ---------------------------------------------------------------------------
 # Per-PR / per-issue detail cache
 #
 # The list-shaped state.json covers the queries every role makes at startup
-# (open PRs + their labels, issue lists, parsed TASKS.md). Per-item drill-in
+# (open PRs + their labels, issue lists, task queue from fleet:queued issues).
+# Per-item drill-in
 # (full PR body, comment timeline, inline review comments, raw diff, full
 # issue body+comments) used to be live `gh` calls fired per-role per-iteration
 # — the largest remaining token + API cost on the agent side. Scout now
@@ -526,6 +756,8 @@ def refresh_all_details(state):
             jobs.append(("issue", repo_key, issue))
         for issue in repo_state.get("human_approved", []):
             jobs.append(("issue", repo_key, issue))
+        for issue in repo_state.get("epics", []):
+            jobs.append(("issue", repo_key, issue))
 
     pr_refreshed = 0
     diff_refreshed = 0
@@ -576,7 +808,9 @@ def refresh_all_details(state):
         gc_pr_caches(repo_key, pr_numbers, head_oids)
         issue_numbers = {
             i["number"]
-            for i in repo_state.get("needs_plan", []) + repo_state.get("human_approved", [])
+            for i in (repo_state.get("needs_plan", [])
+                      + repo_state.get("human_approved", [])
+                      + repo_state.get("epics", []))
         }
         gc_issue_caches(repo_key, issue_numbers)
 
@@ -596,9 +830,9 @@ FEEDBACK_LABELS = frozenset({
     "human:needs-fix", "human:blocker", "fleet:needs-fix", "fleet:has-nits",
 })
 # Worker-only resume signal — a PR the worker escalated for architectural
-# input that the architect has now answered. Surfaced in project_opus_worker
+# input that the architect has now answered. Surfaced in project_worker
 # (and only there) so the worker iteration picks it up like any other
-# feedback PR; reviewers and authors do not act on it.
+# feedback PR; reviewers do not act on it.
 DESIGN_RESUME_LABELS = frozenset({"fleet:design-unblocked"})
 REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:blocker", "fleet:has-nits",
@@ -610,52 +844,397 @@ REVIEW_SKIP_LABELS = frozenset({
     # the reviewer sees is in flux. Re-evaluate once fleet:changes-made
     # appears (which RECHECK_LABELS picks up).
     "fleet:human-amending",
+    # Parked in an epic-steward proposal package — the PR's open design
+    # question is queued on the umbrella for the human/architect; reviewing
+    # the in-flux diff is wasted work until design-unblock clears it (#1664).
+    "fleet:design-proposed",
 })
+# Dynamic per-host claim prefixes that also bar reviewer pickup. A worker
+# amending a fleet:needs-fix PR holds fleet:amending-<host>-<agent> (minted
+# by `fleet-claim amending-claim`) for the whole fix; reviewers must not
+# review a diff mid-amend. Same intent as the static fleet:human-amending
+# above, but host-suffixed so the label doubles as an atomic fixer-vs-fixer
+# claim. Released alongside fleet:changes-made, which re-triggers review via
+# RECHECK_LABELS.
+REVIEW_SKIP_PREFIXES = ("fleet:amending-",)
 RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 
-MODEL_TOKEN_RE = re.compile(r"\b(opus|sonnet)\b")
+# Labels that wake the opus-reviewer pane. fleet:needs-opus-recheck is the
+# explicit escalation the sonnet-reviewer stamps when its first-pass review
+# approves but ends "Opus recheck required:" — that case sets NO verdict
+# label, so before this marker existed the projection had no label-shaped
+# signal for it and the opus pane only woke coincidentally on some OTHER PR's
+# has-nits/needs-fix transition. PR #1473 sat un-rechecked for exactly this
+# reason (approve + recheck-required + no nits → zero flag labels → no
+# trigger). has-nits / needs-fix stay in the set: they already woke the pane
+# and a flagged PR may still warrant an Opus pass. opus-reviewer removes
+# fleet:needs-opus-recheck as part of its verdict label-swap (whatever the
+# verdict), so a handled escalation drops back out of the projection.
+OPUS_REVIEWER_FLAG_LABELS = frozenset({
+    "fleet:has-nits", "fleet:needs-fix", "fleet:needs-opus-recheck",
+})
 
-# Single-T-NNN blocker. Reject multi-blocker (`T-101, T-102`), free-text
-# (`refactor lands`), and PR-URL (`https://...`) forms — all of which
-# the cross-author stacking flow can't resolve to one upstream branch
-# (multi-blocker decision deferred to v2 per T-110 plan Q3).
-SINGLE_TASK_BLOCKER_RE = re.compile(r"^T-\d{3}$")
+
+def _review_skipped(labels):
+    """True if a PR's label set bars reviewer pickup — exact-name skip
+    labels or any dynamic per-host claim prefix (e.g. fleet:amending-*)."""
+    if labels & REVIEW_SKIP_LABELS:
+        return True
+    return any(l.startswith(p) for l in labels for p in REVIEW_SKIP_PREFIXES)
+
+# Smoke-worker label sets. Windows smoke is excluded — cleared by
+# platform-catchup (#1093), not by fleet agents.
+_SMOKE_PENDING_LABELS = frozenset({
+    "fleet:needs-linux-smoke", "fleet:needs-macos-smoke",
+})
+_SMOKE_SKIP_LABELS = frozenset({
+    "fleet:needs-fix", "fleet:blocker", "human:wip", "fleet:wip",
+    "fleet:merger-cooldown", "human:needs-fix",
+})
+
+MODEL_TOKEN_RE = re.compile(r"\b(fable|opus|sonnet)\b")
+
+# Valid values for the optional per-task `**Effort:**` field.
+EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
+
+# Eligible when blocked_by references exactly one issue. The epic decomposer
+# emits prose suffixes (e.g. "#1308 (T1 must land first)") that the old strict
+# regex rejected, silently killing whole task chains (#1309→#1316, 2026-05-28).
+# Evaluated AFTER resolve_blocked_by(), so a two-ref task whose first blocker
+# is now CLOSED arrives here as one ref and qualifies.
+def _single_blocker_issue(blocked_by):
+    """Return the sole blocker issue number (digits, no '#') when blocked_by
+    references exactly one issue, else None."""
+    refs = re.findall(r"#(\d+)", blocked_by or "")
+    return refs[0] if len(refs) == 1 else None
 
 
 def model_tags(task):
     return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
 
 
+_DESIGN_BLOCK_LABELS = frozenset({
+    "fleet:design-blocked", "fleet:design-escalated",
+    # Steward-parked design question (proposal pending on the umbrella) —
+    # stacking on such a PR has the same hazard as a design-blocked one (#1664).
+    "fleet:design-proposed",
+})
+
+
+def _area_prefixes(area_str):
+    # Drops entries without '/' (meta-tags like 'tooling') that can't match diff paths.
+    if not area_str:
+        return []
+    prefixes = []
+    for entry in area_str.split(","):
+        entry = entry.strip()
+        if "/" in entry:
+            prefixes.append(entry.rstrip("/") + "/")
+    return prefixes
+
+
+def _blocker_pr_files(repo_key, pr_number):
+    # Returns [] on cache miss so the caller treats it as no overlap (safe degradation).
+    pr_path = PRS_DIR / repo_key / f"{pr_number}.json"
+    try:
+        data = json.loads(pr_path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+    return [f.get("path", "") for f in data.get("files", [])]
+
+
+# ---------------------------------------------------------------------------
+# Live blocker resolution (T-1296)
+# ---------------------------------------------------------------------------
+#
+# The raw blocked_by field echoes the issue body's **Blocked by:** line
+# verbatim. When a blocker is CLOSED (or its work has shipped via a merged
+# claude/<N>-* PR) the field still shows it as live, causing workers to skip
+# tasks that are actually ready. resolve_blocked_by() runs after
+# collect_state() and updates each task's blocked_by in place to only
+# contain references that are still genuinely unresolved.
+
+# A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
+# another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
+# repo name (None / empty for a bare same-repo `#N`); group(2) is the number.
+# Kept consistent with fleet-claim's check_blockers and
+# fleet-queue-ingest._blocker_refs parsers. (#1522)
+_BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
+_REPO_SLUG_MAP = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+# Repo-name qualifier (case-insensitive, owner stripped) → canonical repo key.
+_REPO_NAME_TO_KEY = {"irredenengine": "engine", "irreden": "game"}
+
+
+def _parse_blocker_refs(raw, default_key):
+    """(repo_key, number) for every #N in a raw **Blocked by:** value, routing
+    each ref to the repo named by its optional `[owner/]Repo#N` qualifier. A
+    bare ref or an unrecognized qualifier falls back to default_key — the
+    issue's own repo. (#1522)"""
+    refs = []
+    for m in _BLOCKER_REF_RE.finditer(raw or ""):
+        name = m.group(1)
+        key = _REPO_NAME_TO_KEY.get(name.lower(), default_key) if name else default_key
+        refs.append((key, m.group(2)))
+    return refs
+
+
+def _resolve_ref_satisfied(repo_slug, ref_str, cache):
+    """Return True if #ref_str is satisfied: issue CLOSED/MERGED, or a
+    claude/<ref>-* PR is MERGED. Uses per-tick cache to avoid redundant calls.
+    """
+    key = (repo_slug, ref_str)
+    if key in cache:
+        return cache[key]
+    result = False
+    try:
+        r = subprocess.run(
+            ["gh", "issue", "view", ref_str, "--repo", repo_slug,
+             "--json", "state", "--jq", ".state"],
+            capture_output=True, text=True, timeout=10,
+        )
+        result = r.stdout.strip() in ("CLOSED", "MERGED")
+    except (subprocess.SubprocessError, OSError):
+        pass
+    cache[key] = result
+    return result
+
+
+def _closed_issue_numbers(repo_state):
+    """Issue numbers (as strings) known closed from the already-fetched
+    closed_fleet_queued window — the shared in-memory closed-set every
+    resolve_* pass checks before its live fallback."""
+    return {
+        str(i.get("number", ""))
+        for i in repo_state.get("closed_fleet_queued", [])
+        if i.get("number")
+    }
+
+
+def resolve_blocked_by(state):
+    """Resolve blocked_by fields for all open tasks.
+
+    Uses already-fetched closed_fleet_queued and recent_merged_prs for
+    in-memory resolution; falls back to live gh issue view for refs not
+    covered by either. Mutates state in place.
+    """
+    per_tick_cache: dict = {}
+
+    for repo_key, repo_state in state["repos"].items():
+        repo_slug = _REPO_SLUG_MAP.get(repo_key)
+        if not repo_slug:
+            continue
+
+        closed_nums = _closed_issue_numbers(repo_state)
+        merged_heads = [
+            pr.get("headRefName", "") or ""
+            for pr in repo_state.get("recent_merged_prs", [])
+        ]
+
+        for task in repo_state.get("tasks", {}).get("open", []):
+            raw = (task.get("blocked_by") or "").strip()
+            if not raw or raw.lower().startswith("(none"):
+                continue
+            refs = _parse_blocker_refs(raw, repo_key)
+            if not refs:
+                continue  # free-text or PR-URL form — leave unchanged
+
+            unresolved = []
+            for ref_key, ref in refs:
+                if ref_key != repo_key:
+                    # Cross-repo blocker — the scout's window only covers this
+                    # repo, so it can't resolve the ref here. Don't surface it
+                    # as blocked; fleet-claim's check_blockers (routed to the
+                    # referenced repo) is the authoritative pickup gate. (#1522)
+                    continue
+                if ref in closed_nums:
+                    continue
+                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                    continue
+                if _resolve_ref_satisfied(repo_slug, ref, per_tick_cache):
+                    continue
+                unresolved.append(ref)
+
+            if not unresolved:
+                task["blocked_by"] = "(none)"
+            elif len(unresolved) == 1:
+                task["blocked_by"] = f"#{unresolved[0]}"
+            else:
+                task["blocked_by"] = ", ".join(f"#{r}" for r in unresolved)
+
+
+def resolve_human_approved_blockers(state):
+    """Annotate each human:approved issue with `blocked` — True when one or
+    more of its `**Blocked by:**` predecessors is still open.
+
+    Since #1527 the ingest queues EVERY approved, non-skip task regardless of
+    blocked state (a blocked one gets `fleet:queued` + a `fleet:blocked`
+    marker), so this flag no longer gates the queue-manager-ingest projection.
+    It is kept for state.json visibility — `repos.*.human_approved[].blocked`
+    tells an operator at a glance which not-yet-queued approved issues will be
+    stamped blocked on the next ingest. The fleet:blocked label round-trip
+    (add on queue-while-blocked, remove when the last blocker closes) is driven
+    off the live `gh issue view` recheck in fleet-queue-ingest plus the
+    tasks.open-sourced _ingest_unblock_candidates, not off this flag.
+
+    Resolution is in-memory only (closed_fleet_queued + merged `claude/<N>-*`
+    heads), mirroring resolve_blocked_by()'s cheap path — NO live gh here, so
+    the per-tick projection stays fast. `body` is popped after parsing so it
+    never bloats state.json or the per-role slices.
+    """
+    for repo_key, repo_state in state["repos"].items():
+        closed_nums = _closed_issue_numbers(repo_state)
+        merged_heads = [
+            pr.get("headRefName", "") or ""
+            for pr in repo_state.get("recent_merged_prs", [])
+        ]
+
+        for issue in repo_state.get("human_approved", []):
+            body = issue.pop("body", "") or ""
+            # Same `Part of epic` back-ref the task records carry (#1664) —
+            # parsed here because this is where the body already flows.
+            issue["epic"] = _parse_issue_field(body, "Part of epic") or None
+            issue["blocked"] = False
+            raw = _parse_blocked_by(body)
+            if not raw:
+                continue
+            refs = _parse_blocker_refs(raw, repo_key)
+            if not refs:
+                # Blocker named only as prose / a PR URL with no resolvable #N
+                # (e.g. "Blocked on the redesign"). Hold the child out of the
+                # trigger set — matches resolve_blocked_by leaving it blocked.
+                issue["blocked"] = True
+                continue
+            for ref_key, ref in refs:
+                if ref_key != repo_key:
+                    # Cross-repo blocker: unresolvable from this repo's window.
+                    # Defer to fleet-queue-ingest's live cross-repo check rather
+                    # than blocking forever (this froze game #125 out — #1522).
+                    continue
+                if ref in closed_nums:
+                    continue
+                if any(branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                    continue
+                issue["blocked"] = True
+                break
+
+
+def resolve_epic_children(state):
+    """Annotate each epic for the steward projection (#1664). Mutates state
+    in place before the state write, mirroring resolve_blocked_by, so both
+    project_epic_steward and slice_epic_steward stay pure functions of the
+    annotated state (no live gh inside a projector).
+
+    Per epic: `plan_path` (repo-relative) and `plan_exists` (cheap local
+    Path.exists() against the repo checkout — staleness only delays the
+    normalize bootstrap by one pull; never add git fetches here). Per
+    checklist entry: `closed`, resolved from the already-fetched open/closed
+    sets:
+
+    - visible-open union (tasks open/in_progress, human_approved, needs_plan,
+      epics) → open
+    - closed_fleet_queued → closed
+    - already-checked entries → closed without the live fallback. The steward
+      only ticks a box after verifying closure (and flow d re-verifies live
+      before close-out), so trusting the tick avoids a per-tick gh call for
+      every checked child that has aged out of the closed_fleet_queued
+      window. A reopened child re-enters the visible-open union via its
+      surviving fleet:queued label, which takes precedence above.
+    - else the rare _resolve_ref_satisfied live fallback (per-tick cached) —
+      only unchecked children invisible to every list fetch land here (e.g.
+      filed but not yet approved/queued).
+    """
+    per_tick_cache: dict = {}
+    for repo_key, repo_state in state["repos"].items():
+        repo_slug = _REPO_SLUG_MAP.get(repo_key)
+        epics = repo_state.get("epics", [])
+        if not repo_slug or not epics:
+            continue
+
+        tasks = repo_state.get("tasks", {})
+        visible_open = set()
+        for section in ("open", "in_progress"):
+            for task in tasks.get(section, []):
+                num = (task.get("issue") or "").lstrip("#")
+                if num:
+                    visible_open.add(num)
+        for issue in (repo_state.get("human_approved", [])
+                      + repo_state.get("needs_plan", []) + epics):
+            if issue.get("number"):
+                visible_open.add(str(issue["number"]))
+        closed_nums = _closed_issue_numbers(repo_state)
+
+        repo_path = repo_state.get("path", "")
+        for epic in epics:
+            number = epic.get("number")
+            plan_rel = f".fleet/plans/issue-{number}.md"
+            epic["plan_path"] = plan_rel
+            epic["plan_exists"] = bool(
+                repo_path and (Path(repo_path) / plan_rel).exists()
+            )
+            for entry in epic.get("checklist", []):
+                child = str(entry.get("number", ""))
+                if child in visible_open:
+                    entry["closed"] = False
+                elif child in closed_nums or entry.get("checked"):
+                    entry["closed"] = True
+                else:
+                    entry["closed"] = _resolve_ref_satisfied(
+                        repo_slug, child, per_tick_cache)
+
+
 def enrich_stackable_blocker_prs(state):
-    # Per T-110 PR 2: for each task whose blocked_by is exactly one T-NNN
-    # ID with exactly one matching open PR (head ref `claude/T-NNN-…`)
-    # in the same repo, attach a `stackable_blocker_pr` field carrying
-    # {number, headRefName, author}. Workers (T-114) read this to decide
-    # whether to fall through to a stackable claim when no unblocked
-    # tasks are free.
+    # Per T-110 PR 2: for each task whose blocked_by is exactly one issue
+    # number (`#NNN`) with exactly one matching open PR (head ref
+    # `claude/<NNN>-…`) in the same repo, attach a `stackable_blocker_pr`
+    # field carrying {number, headRefName, author}. Workers (T-114) read
+    # this to decide whether to fall through to a stackable claim when no
+    # unblocked tasks are free.
     #
     # The field is always omitted when:
-    #   - blocked_by isn't a single T-NNN (multi-blocker, free-text, URL)
+    #   - blocked_by doesn't reference exactly one issue (multi-blocker,
+    #     free-text, URL, none) — see _single_blocker_issue; a single #NNN
+    #     followed by explanatory prose still qualifies
     #   - zero open PRs match the expected branch prefix (blocker not
     #     yet started, or already merged and dropped from open list)
     #   - more than one open PR matches (rare but possible if a stale
     #     branch lingers — caller can't pick one safely)
+    #   - blocker PR has fleet:design-blocked or fleet:design-escalated (filter b)
+    #   - downstream task's area files appear in the blocker PR diff (filter a)
     #
     # Engine and game tasks are both enriched; worker pickup only honors
     # the field for engine in v1 (the merger's cascade-rebase doesn't
     # process game PRs yet) — that gating lives in the role doc.
-    for repo_state in state["repos"].values():
+    for repo_key, repo_state in state["repos"].items():
         prs = repo_state.get("prs", [])
         for task in repo_state.get("tasks", {}).get("open", []):
             blocked_by = (task.get("blocked_by") or "").strip()
-            if not SINGLE_TASK_BLOCKER_RE.match(blocked_by):
+            issue_num = _single_blocker_issue(blocked_by)
+            if not issue_num:
                 continue
-            prefix = f"claude/{blocked_by}-"
             matches = [pr for pr in prs
-                       if pr.get("headRefName", "").startswith(prefix)]
+                       if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)]
             if len(matches) != 1:
                 continue
             pr = matches[0]
+
+            # Filter (b): blocker PR is stalled on a design question — the
+            # downstream task can't make forward progress on it.
+            if set(pr.get("labels", [])) & _DESIGN_BLOCK_LABELS:
+                continue
+
+            # Filter (a): downstream task's area already overlaps with the
+            # blocker PR's diff — a stackable claim would conflict at review.
+            area_prefixes = _area_prefixes(task.get("area") or "")
+            if area_prefixes:
+                blocker_files = _blocker_pr_files(repo_key, pr["number"])
+                if any(
+                    f.startswith(p) for f in blocker_files for p in area_prefixes
+                ):
+                    continue
+
             task["stackable_blocker_pr"] = {
                 "number": pr["number"],
                 "headRefName": pr["headRefName"],
@@ -663,28 +1242,28 @@ def enrich_stackable_blocker_prs(state):
             }
 
 
-def project_sonnet_author(state):
+# Narrowed label sets stored in the per-role hash item. Storing the full
+# pr["labels"] list here re-flips the projection hash on every transient
+# label change (merger toggling fleet:merger-cooldown, reviewers swapping
+# fleet:changes-made ↔ fleet:needs-fix, smoke gates flipping
+# fleet:needs-linux-smoke), waking the role to find nothing actionable.
+# Same anti-pattern project_merger already documents and avoids — keep
+# only the labels each role's own decision logic actually keys on.
+_WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
+
+
+def project_worker(state):
+    # Single generic-worker lane (P2): the per-class opus-worker /
+    # sonnet-author split was vestigial once model class became a
+    # property of the task (#1691), so this projector is the union of
+    # the two — every open task regardless of class, every needs-plan
+    # issue, and every feedback/design-resume PR. The dispatcher picks
+    # the concrete model per dispatch from the slice (resolve_worker_class
+    # / fleet_task_class.py); the lane no longer pins a model.
     items = []
     for repo, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
-            if "sonnet" in model_tags(task):
-                items.append({"kind": "task", "repo": repo, "id": task["id"],
-                              "blocked_by": task["blocked_by"]})
-        for pr in repo_state.get("prs", []):
-            labels = set(pr["labels"])
-            if "human:wip" in labels:
-                continue
-            if labels & FEEDBACK_LABELS:
-                items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
-                              "labels": pr["labels"]})
-    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
-
-
-def project_opus_worker(state):
-    items = []
-    for repo, repo_state in state["repos"].items():
-        for task in repo_state.get("tasks", {}).get("open", []):
-            if "opus" in model_tags(task):
+            if model_tags(task) & {"opus", "fable", "sonnet"}:
                 items.append({"kind": "task", "repo": repo, "id": task["id"],
                               "blocked_by": task["blocked_by"]})
         for issue in repo_state.get("needs_plan", []):
@@ -694,9 +1273,9 @@ def project_opus_worker(state):
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
-            if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
+            if labels & _WORKER_RELEVANT_LABELS:
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
-                              "labels": pr["labels"]})
+                              "labels": sorted(labels & _WORKER_RELEVANT_LABELS)})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -705,7 +1284,7 @@ def project_sonnet_reviewer(state):
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
             if pr.get("isDraft"):
                 continue
@@ -720,32 +1299,17 @@ def project_sonnet_reviewer(state):
 
 
 def project_opus_reviewer(state):
-    flag_labels = frozenset({"fleet:has-nits", "fleet:needs-fix"})
     items = []
     for repo, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
-            if not (labels & flag_labels):
+            if not (labels & OPUS_REVIEWER_FLAG_LABELS):
                 continue
-            items.append({"repo": repo, "pr": pr["number"], "labels": pr["labels"]})
+            items.append({"repo": repo, "pr": pr["number"],
+                          "labels": sorted(labels & OPUS_REVIEWER_FLAG_LABELS)})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
-
-
-def _needs_flip_entries(repo_state):
-    # Yield (task_id, issue_num) for [~] tasks whose linked fleet:queued issue
-    # closed (PR merged) but TASKS.md hasn't been flipped to [x] yet.
-    closed_queued_nums = {
-        i["number"] for i in repo_state.get("closed_fleet_queued", [])
-    }
-    for task in repo_state.get("tasks", {}).get("open", []):
-        if task.get("status") != "~":
-            continue
-        issue_ref = task.get("issue") or ""
-        m = re.match(r"#(\d+)", issue_ref)
-        if m and int(m.group(1)) in closed_queued_nums:
-            yield task.get("id") or task.get("title"), int(m.group(1))
 
 
 def project_queue_manager(state):
@@ -760,14 +1324,6 @@ def project_queue_manager(state):
         for task in repo_state.get("tasks", {}).get("done", []):
             items.append({"kind": "done", "repo": repo,
                           "id": task.get("id") or task.get("title")})
-        for task_id, issue_num in _needs_flip_entries(repo_state):
-            items.append({"kind": "needs_flip", "repo": repo,
-                          "task_id": task_id, "issue": issue_num})
-        # Recently-merged PRs feed the projection hash so a fresh merge
-        # fires queue-manager's trigger via update_role_trigger, even when
-        # the merge doesn't close a fleet:queued issue. Fixed-size window
-        # (no time filter) keeps the projection quiescent when no new PRs
-        # merge — see fetch_recent_merged_prs for rationale.
         for pr in repo_state.get("recent_merged_prs", []):
             items.append({"kind": "merged_pr", "repo": repo,
                           "pr": pr["number"],
@@ -798,12 +1354,49 @@ def _merger_action_signal(labels, mergeable, base_ref):
     skip signals — the merger isn't the agent that resolves those;
     a smoke-runner clears them. Including them as merger candidates
     just makes the merger fire repeatedly to find nothing to do.
+
+    `fleet:human-deferred` is intentionally NOT skipped. It marks a PR
+    whose *human-review feedback* was deferred to a follow-up issue
+    (approved, internally OK) — NOT a conflict handoff (a failed
+    conflict resolution uses `human:needs-fix`, role-opus-worker.md
+    step j). So the merger treats it like any approved PR: a MERGEABLE
+    one projects merge-ready, a CONFLICTING one projects needs-resolve
+    and the opus-worker resolves it — and drops `fleet:human-deferred`,
+    since new commits invalidate the deferral (role-opus-worker.md step
+    1c.i). The old code skipped it on the theory that re-flagging caused
+    opus-worker thrash (game #101); the real fix is the worker dropping
+    the label on resolution, which breaks that loop without stranding
+    the PR's conflict from the merger.
+
+    The human-owes-a-fix labels — `human:needs-fix`, `human:blocker`,
+    `fleet:needs-fix`, `human:re-review` — are skipped to keep the
+    projection consistent with the merge gate. `role-merger.md` step 3
+    already skips these (the human/reviewer owes a change; the merger
+    must not loop on the PR), but the projection omitted them, so an
+    approved-then-needs-fix PR (e.g. game #144) was projected
+    `merge-ready` and woke the merger every scout tick to find nothing
+    to do. No merge hazard today — the fleet doesn't auto-merge — but the
+    wasted wakes are real and the projection/gate disagreement is a
+    latent footgun. These are durable reviewer/human labels, not
+    merger-set transients, so skipping them preserves the self-trigger
+    invariant above.
     """
     skip = labels & {
         "fleet:wip", "human:wip", "fleet:blocker",
         "fleet:fork-of-other-pr", "fleet:design-blocked",
+        # Parked by the epic-steward pending a proposal answer on the
+        # umbrella — same not-the-merger's-business semantics as
+        # design-blocked; design-unblock re-surfaces it (#1664).
+        "fleet:design-proposed",
         "fleet:needs-info", "fleet:needs-linux-smoke",
         "fleet:needs-macos-smoke",
+        # Human-owes-a-fix labels — mirror role-merger.md step 3. NOT
+        # `FEEDBACK_LABELS`: that set carries `fleet:has-nits` (an
+        # approved+has-nits PR is still merge-ready, so the merger must
+        # see it) and omits `human:re-review` (a reviewer concern that
+        # IS the merger's cue to skip). Hand-list the four deliberately.
+        "human:needs-fix", "human:blocker",
+        "fleet:needs-fix", "human:re-review",
     }
     if skip:
         return None
@@ -834,21 +1427,51 @@ def project_merger(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+def _ingest_unblock_candidates(repo_state):
+    """Queued tasks carrying `fleet:blocked` whose blockers have all closed —
+    the remove-half of the fleet:blocked round-trip (#1527).
+
+    resolve_blocked_by() has already reduced each open task's `blocked_by` to
+    only its still-open refs, so a task that carries the `fleet:blocked` label
+    but now resolves to `(none)` is newly unblocked and needs the label
+    stripped. These re-enter the ingest set from `tasks.open` — NOT
+    human_approved, which excludes `fleet:queued`, so a queued-blocked issue
+    has already left that surface — which makes the removal edge-triggered the
+    same way the add is: the candidate appears the tick its last blocker
+    closes (hash flips → ingest fires → label removed), then disappears the
+    tick after (hash flips → ingest re-fires → no-op → quiescent). Returns a
+    list of issue numbers (ints)."""
+    out = []
+    for task in repo_state.get("tasks", {}).get("open", []):
+        if not task.get("blocked"):
+            continue
+        raw = (task.get("blocked_by") or "").strip().lower()
+        if raw and not raw.startswith("(none"):
+            continue
+        try:
+            out.append(int((task.get("issue") or "").lstrip("#")))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def project_queue_manager_ingest(state):
     """Hash-input projection for the queue-manager-ingest auto-fire.
 
-    Tracks the SET of actionable `human:approved` issues — i.e., issues the
-    human has approved but queue-manager hasn't yet filed into TASKS.md, and
-    that are not in a skip category (epic, needs-plan, needs-info, queued).
-    The hash flips when this set CHANGES:
+    Tracks the SET of ingest-actionable issues. The hash flips when this set
+    CHANGES, and each change spawns fleet-queue-ingest:
 
-    - Operator adds `human:approved` to issue #N: #N enters the set,
-      hash flips, scout spawns fleet-queue-ingest, the LLM iteration
-      categorizes #N and writes a task entry with `fleet:queued`.
-    - After ingestion, #N has `fleet:queued` so it drops from the
-      set; hash flips again. fleet-queue-ingest re-fires, finds the
-      set is empty, exits in <1s. One wasted iteration per ingestion
-      cycle, acceptable cost.
+    - **Add path** — every `human:approved` issue not yet stamped
+      `fleet:queued` and not in a skip category (epic, needs-plan, needs-info,
+      needs-human, scope-shipped). Since #1527 a `**Blocked by:**`-blocked
+      issue is NO LONGER excluded: it enters the set, ingest stamps
+      `fleet:queued` + a model label + `fleet:blocked`, and it drops out
+      (now carrying fleet:queued). The whole queue is visible immediately
+      rather than one child at a time.
+    - **Remove path** — a queued task carrying `fleet:blocked` whose last
+      blocker just closed (`_ingest_unblock_candidates`, sourced from
+      tasks.open since the issue has left human_approved). It enters the set,
+      ingest removes `fleet:blocked`, and it drops out (label gone).
 
     `human_approved` already excludes `fleet:queued` via fetch_human_approved;
     _INGEST_SKIP_LABELS mirrors the role-doc Step 5 filter so epics and
@@ -860,17 +1483,183 @@ def project_queue_manager_ingest(state):
             if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
                 continue
             items.append({"repo": repo, "issue": issue["number"]})
+        for num in _ingest_unblock_candidates(repo_state):
+            items.append({"repo": repo, "issue": num, "op": "unblock"})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
+def _smoke_pr_eligible(labels_set):
+    """Return True if the PR is eligible for smoke pickup."""
+    if "fleet:approved" not in labels_set:
+        return False
+    if not (labels_set & _SMOKE_PENDING_LABELS):
+        return False
+    if labels_set & _SMOKE_SKIP_LABELS:
+        return False
+    if any(l.startswith("fleet:reviewing-") for l in labels_set):
+        return False
+    return True
+
+
+def project_smoke_worker(state):
+    items = []
+    for repo_key, repo_state in state["repos"].items():
+        if repo_key != "engine":
+            continue
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            if not _smoke_pr_eligible(labels):
+                continue
+            smoke_pending = sorted(labels & _SMOKE_PENDING_LABELS)
+            items.append({"pr": pr["number"], "smoke_labels": smoke_pending})
+    return sorted(items, key=lambda x: x["pr"])
+
+
+def _epic_design_prs(repo_key, repo_state):
+    """(pr, umbrella_number, child_number, op) for every open PR carrying a
+    design label that branch-matches a checklist child of an open epic.
+
+    op is "triage" for fleet:design-blocked, "distribute" for a
+    fleet:design-proposed PR whose umbrella no longer carries
+    fleet:steward-proposal (the proposal was answered — the label's removal
+    is the re-fire edge), and None for a design-proposed PR whose proposal
+    is still pending (visible in the slice, absent from the hash). A design
+    PR matching no checklist child is the architect's lane — not emitted.
+    """
+    epics = repo_state.get("epics", [])
+    if not epics:
+        return []
+    epics_by_number = {e.get("number"): e for e in epics}
+    child_to_umbrella = {}
+    for epic in epics:
+        for entry in epic.get("checklist", []):
+            child_to_umbrella.setdefault(
+                str(entry.get("number", "")), epic.get("number"))
+    out = []
+    for pr in repo_state.get("prs", []):
+        labels = set(pr.get("labels", []))
+        blocked = "fleet:design-blocked" in labels
+        proposed = "fleet:design-proposed" in labels
+        if not (blocked or proposed):
+            continue
+        head = pr.get("headRefName", "")
+        match = next(
+            ((child, umbrella) for child, umbrella in child_to_umbrella.items()
+             if branch_matches_issue(head, child, repo_key)),
+            None,
+        )
+        if match is None:
+            continue
+        child, umbrella = match
+        if blocked:
+            op = "triage"
+        elif "fleet:steward-proposal" not in set(
+                epics_by_number.get(umbrella, {}).get("labels", [])):
+            op = "distribute"
+        else:
+            op = None
+        out.append((pr, umbrella, int(child), op))
+    return out
+
+
+def _epic_adopt_candidates(repo_state):
+    """[{issue, epic, title}] for visible open issues (tasks open/in_progress
+    + human_approved) declaring `**Part of epic:** #U` where U is an open
+    epic whose checklist lacks them. A ref to a closed or non-epic umbrella
+    emits nothing — there is no checklist to adopt into."""
+    epics = repo_state.get("epics", [])
+    if not epics:
+        return []
+    member_sets = {
+        e.get("number"): {entry.get("number") for entry in e.get("checklist", [])}
+        for e in epics
+    }
+    candidates = []
+    tasks = repo_state.get("tasks", {})
+    for task in tasks.get("open", []) + tasks.get("in_progress", []):
+        candidates.append((task.get("epic"),
+                           (task.get("issue") or "").lstrip("#"),
+                           task.get("summary", "")))
+    for issue in repo_state.get("human_approved", []):
+        candidates.append((issue.get("epic"),
+                           str(issue.get("number", "")),
+                           issue.get("title", "")))
+    out = []
+    for epic_ref, num_str, title in candidates:
+        m = re.search(r"#(\d+)", epic_ref or "")
+        if not m or not num_str.isdigit():
+            continue
+        umbrella = int(m.group(1))
+        if umbrella not in member_sets or int(num_str) in member_sets[umbrella]:
+            continue
+        out.append({"issue": int(num_str), "epic": umbrella, "title": title})
+    return out
+
+
+def project_epic_steward(state):
+    """Hash-input projection for the epic-steward role (#1664).
+
+    Every op is edge-triggered by the steward's own writes — items carry
+    only stable fields (no label lists, no timestamps; the project_merger
+    lesson), and each disappears as a direct consequence of the steward
+    acting on it:
+
+    - normalize  — managed epic (repo-side plan file exists) with no body
+                   checklist; gone when the steward heals the checklist in.
+                   Legacy checklist-less epics without plan files emit
+                   nothing (no perma-trigger).
+    - rollup     — unchecked checklist child that is closed; gone when the
+                   steward ticks the box.
+    - adopt      — visible open issue declaring `Part of epic: #U` absent
+                   from that umbrella's checklist; gone when appended.
+    - design     — op=triage: fleet:design-blocked PR branch-matched to a
+                   checklist child; gone on design-unblock/design-propose.
+                   op=distribute: fleet:design-proposed PR whose umbrella
+                   dropped fleet:steward-proposal; gone on design-unblock.
+    - closeout   — checklist non-empty and every child closed, umbrella
+                   open; gone when the umbrella closes.
+    """
+    items = []
+    for repo, repo_state in state["repos"].items():
+        epics = repo_state.get("epics", [])
+        if not epics:
+            continue
+        for epic in epics:
+            number = epic.get("number")
+            checklist = epic.get("checklist", [])
+            if not checklist:
+                if epic.get("plan_exists"):
+                    items.append({"kind": "normalize", "repo": repo,
+                                  "epic": number})
+                continue
+            for entry in checklist:
+                if entry.get("closed") and not entry.get("checked"):
+                    items.append({"kind": "rollup", "repo": repo,
+                                  "epic": number,
+                                  "child": entry.get("number")})
+            if all(entry.get("closed") for entry in checklist):
+                items.append({"kind": "closeout", "repo": repo,
+                              "epic": number})
+        for cand in _epic_adopt_candidates(repo_state):
+            items.append({"kind": "adopt", "repo": repo,
+                          "epic": cand["epic"], "issue": cand["issue"]})
+        for pr, umbrella, _child, op in _epic_design_prs(repo, repo_state):
+            if op is None:
+                continue
+            items.append({"kind": "design", "op": op, "repo": repo,
+                          "epic": umbrella, "pr": pr["number"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
 PROJECTORS = {
-    "sonnet-author": project_sonnet_author,
-    "opus-worker": project_opus_worker,
+    "worker": project_worker,
     "sonnet-reviewer": project_sonnet_reviewer,
     "opus-reviewer": project_opus_reviewer,
     "queue-manager": project_queue_manager,
     "queue-manager-ingest": project_queue_manager_ingest,
     "merger": project_merger,
+    "smoke-worker": project_smoke_worker,
+    "epic-steward": project_epic_steward,
 }
 
 
@@ -902,26 +1691,16 @@ def _slice_issue_with_repo(repo_key, issue):
     return out
 
 
-def slice_sonnet_author(state):
-    out = {"tasks_open": [], "feedback_prs": []}
-    for repo_key, repo_state in state["repos"].items():
-        for task in repo_state.get("tasks", {}).get("open", []):
-            if "sonnet" in model_tags(task):
-                out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
-        for pr in repo_state.get("prs", []):
-            labels = set(pr["labels"])
-            if "human:wip" in labels:
-                continue
-            if labels & FEEDBACK_LABELS:
-                out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))
-    return out
-
-
-def slice_opus_worker(state):
+def slice_worker(state):
+    # Unified worker slice (P2): all open tasks of every class, all
+    # needs-plan issues, and all feedback/design-resume PRs. The
+    # dispatcher's per-task class resolution (fleet_task_class.py)
+    # already handles a mixed-class tasks_open list, so a single slice
+    # serves fable / opus / sonnet work.
     out = {"tasks_open": [], "needs_plan": [], "feedback_prs": []}
     for repo_key, repo_state in state["repos"].items():
         for task in repo_state.get("tasks", {}).get("open", []):
-            if "opus" in model_tags(task):
+            if model_tags(task) & {"opus", "fable", "sonnet"}:
                 out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
         for issue in repo_state.get("needs_plan", []):
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
@@ -939,7 +1718,7 @@ def slice_sonnet_reviewer(state):
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
             if pr.get("isDraft"):
                 continue
@@ -952,14 +1731,13 @@ def slice_sonnet_reviewer(state):
 
 
 def slice_opus_reviewer(state):
-    flag_labels = frozenset({"fleet:has-nits", "fleet:needs-fix"})
     out = {"flagged_prs": []}
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
-            if labels & REVIEW_SKIP_LABELS:
+            if _review_skipped(labels):
                 continue
-            if not (labels & flag_labels):
+            if not (labels & OPUS_REVIEWER_FLAG_LABELS):
                 continue
             out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
@@ -970,7 +1748,6 @@ def slice_queue_manager(state):
         "needs_plan": [],
         "human_approved": [],
         "tasks_done": [],
-        "needs_flip": [],
         "recent_merged_prs": [],
     }
     for repo_key, repo_state in state["repos"].items():
@@ -980,54 +1757,114 @@ def slice_queue_manager(state):
             out["human_approved"].append(_slice_issue_with_repo(repo_key, issue))
         for task in repo_state.get("tasks", {}).get("done", []):
             out["tasks_done"].append(_slice_task_with_repo(repo_key, task))
-        for task_id, issue_num in _needs_flip_entries(repo_state):
-            out["needs_flip"].append(
-                {"repo": repo_key, "task_id": task_id, "issue": issue_num}
-            )
         for pr in repo_state.get("recent_merged_prs", []):
             out["recent_merged_prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
 
 
 def slice_queue_manager_ingest(state):
-    """Slice for fleet-queue-ingest. Mirrors the projector — list of
-    actionable issues the human has approved but the queue hasn't filed yet.
-    Applies _INGEST_SKIP_LABELS so the LLM slice never includes epics or
-    un-planned issues that the role-doc skips at Step 5."""
-    out = {"pending_issues": []}
+    """Slice for fleet-queue-ingest. Mirrors the projector:
+
+    - `pending_issues` — approved issues the queue hasn't filed yet, applying
+      _INGEST_SKIP_LABELS so the set never includes epics or un-planned issues
+      the role-doc skips at Step 5. Since #1527 this INCLUDES blocked issues:
+      fleet-queue-ingest stamps a blocked one `fleet:queued` + model +
+      `fleet:blocked` in one pass (the whole queue is queued up front, not one
+      child at a time).
+    - `unblock_issues` — queued tasks carrying `fleet:blocked` whose last
+      blocker just closed (`_ingest_unblock_candidates`). fleet-queue-ingest
+      drops `fleet:blocked` from each. Minimal `{number, repo}` records — the
+      ingest does its own live recheck before removing the label."""
+    out = {"pending_issues": [], "unblock_issues": []}
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
             if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
                 continue
             out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
+        for num in _ingest_unblock_candidates(repo_state):
+            out["unblock_issues"].append({"number": num, "repo": repo_key})
     return out
 
 
 def slice_merger(state):
-    # Merger is engine-only (v1 scope per role-merger.md). Game-repo
-    # PRs would just be skipped by the merger's own filter, but
-    # including them in the slice bloats the file with full review
-    # records the role never reads.
+    # Merger covers both repos (role-merger.md runs an engine pass then a
+    # game pass each iteration). Each PR record is tagged with its repo via
+    # _slice_pr_with_repo so the role knows which worktree / --repo to use.
     out = {"prs": []}
+    for repo_key in ("engine", "game"):
+        repo_state = state["repos"].get(repo_key, {})
+        for pr in repo_state.get("prs", []):
+            labels = set(pr["labels"])
+            mergeable = pr.get("mergeable")
+            approved = "fleet:approved" in labels
+            blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
+            if approved or blocked:
+                out["prs"].append(_slice_pr_with_repo(repo_key, pr))
+    return out
+
+
+def slice_smoke_worker(state):
+    # No explicit human:wip / fleet:wip ownership check here — _smoke_pr_eligible
+    # already rejects both via _SMOKE_SKIP_LABELS. Smoke workers never hold WIP PRs,
+    # so the open-WIP-PR ownership filter the other per-role slicers apply is
+    # intentionally absent.
+    out = {"smoke_pending_prs": []}
     repo_state = state["repos"].get("engine", {})
     for pr in repo_state.get("prs", []):
         labels = set(pr["labels"])
-        mergeable = pr.get("mergeable")
-        approved = "fleet:approved" in labels
-        blocked = mergeable not in (None, "", "MERGEABLE", "UNKNOWN")
-        if approved or blocked:
-            out["prs"].append(_slice_pr_with_repo("engine", pr))
+        if not _smoke_pr_eligible(labels):
+            continue
+        out["smoke_pending_prs"].append({
+            "number": pr["number"],
+            "title": pr.get("title", ""),
+            "labels": pr.get("labels", []),
+            "headRefName": pr.get("headRefName", ""),
+        })
+    out["smoke_pending_prs"].sort(key=lambda p: p["number"])
+    return out
+
+
+def slice_epic_steward(state):
+    """Full-record slice for the epic-steward role (#1664).
+
+    - `epics` — every open umbrella, repo-tagged, with its parsed checklist
+      (per-child `closed` from resolve_epic_children) and the umbrella plan
+      path/presence.
+    - `design_prs` — design-blocked / design-proposed PRs branch-matched to a
+      checklist child, repo-tagged, annotated with `epic`, `child`, and `op`
+      (`triage` / `distribute` / null while the proposal is still pending).
+    - `adoptable` — visible open issues declaring a `Part of epic` umbrella
+      whose checklist lacks them.
+    - `triggers` — the projector's items verbatim, so the role's startup
+      reads pending work by flow without recomputing the hash inputs.
+    """
+    out = {"epics": [], "design_prs": [], "adoptable": []}
+    for repo_key, repo_state in state["repos"].items():
+        for epic in repo_state.get("epics", []):
+            out["epics"].append(_slice_issue_with_repo(repo_key, epic))
+        for pr, umbrella, child, op in _epic_design_prs(repo_key, repo_state):
+            record = _slice_pr_with_repo(repo_key, pr)
+            record["epic"] = umbrella
+            record["child"] = child
+            record["op"] = op
+            out["design_prs"].append(record)
+        for cand in _epic_adopt_candidates(repo_state):
+            record = dict(cand)
+            record["repo"] = repo_key
+            out["adoptable"].append(record)
+    out["triggers"] = project_epic_steward(state)
     return out
 
 
 SLICERS = {
-    "sonnet-author": slice_sonnet_author,
-    "opus-worker": slice_opus_worker,
+    "worker": slice_worker,
     "sonnet-reviewer": slice_sonnet_reviewer,
     "opus-reviewer": slice_opus_reviewer,
     "queue-manager": slice_queue_manager,
     "queue-manager-ingest": slice_queue_manager_ingest,
+    "smoke-worker": slice_smoke_worker,
     "merger": slice_merger,
+    "epic-steward": slice_epic_steward,
 }
 
 
@@ -1052,6 +1889,14 @@ def update_role_trigger(role: str, projection) -> bool:
 
 
 def collect_state():
+    # Load previous state so degraded fetches can fall back to last-known-good
+    # data instead of writing empty arrays into a fresh-timestamped snapshot.
+    _prev_repos = {}
+    try:
+        _prev_repos = json.loads(STATE_FILE.read_text()).get("repos", {})
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
     repos = {"engine": {"path": str(ENGINE)}}
     if (GAME / ".git").exists():
         repos["game"] = {"path": str(GAME)}
@@ -1064,7 +1909,8 @@ def collect_state():
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
             ("engine", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
             ("engine", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
-            ("engine", "tasks", lambda: fetch_tasks(ENGINE)),
+            ("engine", "tasks", lambda: fetch_task_queue("jakildev/IrredenEngine")),
+            ("engine", "epics", lambda: fetch_epics("jakildev/IrredenEngine")),
         ]
     if "game" in repos:
         fetch_specs += [
@@ -1073,9 +1919,11 @@ def collect_state():
             ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
             ("game", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/irreden")),
             ("game", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/irreden")),
-            ("game", "tasks", lambda: fetch_tasks(GAME)),
+            ("game", "tasks", lambda: fetch_task_queue("jakildev/irreden")),
+            ("game", "epics", lambda: fetch_epics("jakildev/irreden")),
         ]
 
+    _degraded = []
     with ThreadPoolExecutor(max_workers=FETCH_MAX_WORKERS) as ex:
         futures = {}
         for i, (repo_key, field, fn) in enumerate(fetch_specs):
@@ -1085,22 +1933,48 @@ def collect_state():
         for fut in as_completed(futures):
             repo_key, field = futures[fut]
             try:
-                repos[repo_key][field] = fut.result()
+                result = fut.result()
             except Exception as e:
                 log(f"fetch {repo_key}/{field} failed: {e}")
-                repos[repo_key][field] = (
-                    {"open": [], "in_progress": [], "done": []}
-                    if field == "tasks" else []
-                )
+                result = None
+            if result is None:
+                prev_value = _prev_repos.get(repo_key, {}).get(field)
+                if prev_value is not None:
+                    log(f"degraded: preserving last-known-good for {repo_key}.{field}")
+                    repos[repo_key][field] = prev_value
+                else:
+                    repos[repo_key][field] = (
+                        {"open": [], "in_progress": [], "done": []}
+                        if field == "tasks" else []
+                    )
+                _degraded.append(f"{repo_key}.{field}")
+            else:
+                repos[repo_key][field] = result
 
-    return {
+    state = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "repos": repos,
     }
+    if _degraded:
+        state["degraded"] = sorted(_degraded)
+    return state
+
+
+def _populate_done_tasks(state):
+    """Populate tasks.done from closed_fleet_queued."""
+    for repo_key, repo_state in state["repos"].items():
+        tasks = repo_state.get("tasks", {})
+        tasks["done"] = _populate_tasks_done(repo_state)
 
 
 def tick_once():
     state = collect_state()
+    if state.get("degraded"):
+        log(f"state degraded: {state['degraded']} — reconcile disabled this tick")
+    _populate_done_tasks(state)
+    resolve_blocked_by(state)
+    resolve_human_approved_blockers(state)
+    resolve_epic_children(state)
     enrich_stackable_blocker_prs(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
@@ -1117,9 +1991,8 @@ def tick_once():
             log(f"projector {role} failed: {e}")
             continue
         if role == "queue-manager":
-            # queue-manager maintenance is now script-driven.
-            # Invoke fleet-queue-tick directly on projection change instead
-            # of writing a trigger for the dispatcher to consume with an LLM.
+            # Run fleet-claim cleanup on projection change to reap stale
+            # lock entries. (fleet-stale-sweep removed in #1233.)
             new_hash = stable_hash(projection)
             seen_file = SEEN_DIR / role
             try:
@@ -1128,26 +2001,49 @@ def tick_once():
                 old_hash = ""
             if new_hash != old_hash:
                 write_atomic(seen_file, new_hash + "\n")
-                try:
-                    tick_cmd = subprocess.run(
-                        ["which", "fleet-queue-tick"],
-                        capture_output=True, text=True,
-                    ).stdout.strip() or str(ENGINE / "scripts" / "fleet" / "fleet-queue-tick")
-                    subprocess.Popen(
-                        [tick_cmd],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        start_new_session=True,
+                if state.get("degraded"):
+                    # Skip reconcile/cleanup when fetch data is stale — comparing
+                    # live claims against a potentially incomplete issue list would
+                    # produce false-positive drift reports or unsafe auto-fixes.
+                    log("queue-manager: skipping reconcile+cleanup (state degraded)")
+                    triggers_fired.append("queue-manager(skipped-degraded)")
+                    continue
+                sweep_cmds = [
+                    ["fleet-claim", "cleanup", "--gh",
+                     "--repo", "jakildev/IrredenEngine"],
+                ]
+                # Cross-surface reconcile is a SINGLE multi-repo pass (one
+                # drift report + one deduped tracker), so unlike per-repo
+                # cleanup it gets exactly one command with the reachable repos
+                # as --repo flags. --apply runs the conservative host-local +
+                # TTL-gated auto-fixes; backgrounded like cleanup so its gh
+                # calls never stall the 30s tick or race a live pane.
+                reconcile_cmd = ["fleet-claim", "reconcile", "--apply",
+                                 "--repo", "jakildev/IrredenEngine"]
+                if (GAME / ".git").exists():
+                    sweep_cmds.append(
+                        ["fleet-claim", "--repo", "game", "cleanup",
+                         "--gh", "--repo", "jakildev/irreden"]
                     )
-                    log("queue-manager: spawned fleet-queue-tick (projection changed)")
-                    triggers_fired.append("queue-manager(queue-tick)")
-                except Exception as e:
-                    log(f"queue-manager: failed to spawn fleet-queue-tick: {e}")
+                    reconcile_cmd += ["--repo", "jakildev/irreden"]
+                sweep_cmds.append(reconcile_cmd)
+                for sweep_cmd in sweep_cmds:
+                    try:
+                        subprocess.Popen(
+                            sweep_cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            start_new_session=True,
+                        )
+                    except Exception as e:
+                        log(f"queue-manager: sweep failed to spawn {sweep_cmd[0]}: {e}")
+                log("queue-manager: spawned claim cleanup + reconcile (projection changed)")
+                triggers_fired.append("queue-manager(claim-cleanup)")
         elif role == "queue-manager-ingest":
             # Auto-fire ingestion when the human:approved-and-not-yet-queued
-            # set changes. Same spawn pattern as queue-tick but invokes an
-            # LLM iteration via fleet-queue-ingest. Lockfile inside the
-            # script prevents concurrent runs.
+            # set changes. Same backgrounded-subprocess pattern as the
+            # queue-manager claim-cleanup spawn above. Lockfile inside
+            # fleet-queue-ingest prevents concurrent runs.
             new_hash = stable_hash(projection)
             seen_file = SEEN_DIR / role
             try:
@@ -1156,6 +2052,10 @@ def tick_once():
                 old_hash = ""
             if new_hash != old_hash:
                 write_atomic(seen_file, new_hash + "\n")
+                if state.get("degraded"):
+                    log("queue-manager-ingest: skipping fleet-queue-ingest (state degraded)")
+                    triggers_fired.append("queue-manager-ingest(skipped-degraded)")
+                    continue
                 try:
                     ingest_cmd = subprocess.run(
                         ["which", "fleet-queue-ingest"],
@@ -1204,6 +2104,32 @@ def cleanup_pid_file():
         pass
 
 
+# Lane names retired by the P2 worker-lane unification. The scout used to
+# write a projection slice, seen-hash, and trigger file per lane; with the
+# keys gone the old files would linger forever — a stale
+# projections/opus-worker.json reads as live to anything that still globs
+# the directory, and a leftover trigger could mis-fire. Sweep them on boot.
+# Remove once P2-2 / P2-3 land (epic #1692).
+_RETIRED_LANE_ROLES = ("opus-worker", "sonnet-author")
+
+
+# Remove once P2-2 / P2-3 land (epic #1692).
+def clean_retired_lane_artifacts():
+    for role in _RETIRED_LANE_ROLES:
+        for path in (
+            PROJECTIONS_DIR / f"{role}.json",
+            SEEN_DIR / role,
+            TRIGGERS_DIR / role,
+        ):
+            try:
+                path.unlink()
+                log(f"removed stale {role} artifact: {path.name}")
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                log(f"could not remove stale {role} artifact {path}: {e}")
+
+
 def signal_handler(signum, _frame):
     log(f"received signal {signum}; shutting down")
     TERMINATE.set()
@@ -1229,6 +2155,8 @@ def main():
     if not ENGINE.exists():
         log(f"engine repo not found at {ENGINE}; aborting")
         sys.exit(1)
+
+    clean_retired_lane_artifacts()
 
     if args.once:
         tick_once()

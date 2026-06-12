@@ -2,11 +2,38 @@
 #define CULL_VIEWPORT_STATE_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/render/commands/command_toggle_culling_freeze.hpp>
 
 using namespace IRMath;
 
 namespace IRRender {
+
+// Cull-freeze flag: pins the shared cull viewport (below) at its current pose
+// so the camera can free-fly while the cull stays put. Lives here — next to
+// the state it gates — rather than in the toggle-command header, so lower
+// layers that drive the cull (the engine/video auto-screenshot harness, #1438)
+// can flip it without depending on the command module. The interactive
+// IRCommand::Command<TOGGLE_CULLING_FREEZE> and the programmatic setter below
+// both write this one flag.
+namespace detail {
+inline bool &cullingFreezeFlag() {
+    static bool frozen = false;
+    return frozen;
+}
+} // namespace detail
+
+inline bool isCullingFrozen() {
+    return detail::cullingFreezeFlag();
+}
+
+inline void setCullingFrozen(bool frozen) {
+    detail::cullingFreezeFlag() = frozen;
+}
+
+// Chunk margin for the CPU-side cull gate in REBUILD_GRID_VOXELS and the GPU
+// chunk-visibility mask in VOXEL_TO_TRIXEL_STAGE_1.  Both use this value so
+// the CPU skip decision is never tighter than the GPU raster decision:
+// if the GPU still renders a chunk's voxels, the CPU must still rebuild them.
+constexpr int kCullChunkMargin = 8;
 
 // Shared cull viewport state.  Updated once per frame (during the render
 // event) so that every render system sees a consistent frozen-or-live
@@ -49,13 +76,9 @@ inline CullViewportState &cullViewportState() {
 // Call once per frame at the start of the render event.
 // Safe to call multiple times per frame — only the first call in a frozen
 // transition captures the snapshot; subsequent calls are no-ops when frozen.
-inline void updateCullViewport(
-    vec2 liveCameraIso,
-    vec2 liveZoom,
-    ivec2 liveCanvasSize
-) {
+inline void updateCullViewport(vec2 liveCameraIso, vec2 liveZoom, ivec2 liveCanvasSize) {
     auto &s = detail::cullViewportState();
-    bool nowFrozen = IRCommand::isCullingFrozen();
+    bool nowFrozen = isCullingFrozen();
     if (!nowFrozen) {
         s.cameraIso_ = liveCameraIso;
         s.zoom_ = liveZoom;

@@ -124,7 +124,6 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::RENDER,
         {IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
     );

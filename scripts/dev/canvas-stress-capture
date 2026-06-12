@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# canvas-stress-capture — build IRCanvasStress and capture an --auto-screenshot
+# sweep into its save_files/screenshots dir. One allowlisted command for the
+# render-debug loop (build + clear + run) so it doesn't prompt each cycle.
+#
+# Usage:  bash scripts/dev/canvas-stress-capture [--no-build] [demo args...]
+#   Extra args pass straight through to the demo, e.g.:
+#     --no-spin     freeze entities at their seed pose (deterministic diff)
+#     120           warmup frames (matches the so3 reference warmup)
+#
+# Output: prints the run exit code, shot count, and the screenshot dir.
+# Self-locating (cd to repo/worktree root), so it works from any cwd / worktree.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT" || exit 1
+SHOTDIR="build/creations/demos/canvas_stress/save_files/screenshots"
+
+if [ "${1:-}" = "--no-build" ]; then
+    shift
+else
+    fleet-build --target IRCanvasStress 2>&1 | tail -2 || { echo "BUILD FAILED"; exit 1; }
+fi
+
+mkdir -p "$SHOTDIR"
+# Scoped find -delete, never an unguarded `rm <dir>/*.png` glob (the dir may be
+# empty, which trips the dangerous-rm guard).
+find "$SHOTDIR" -maxdepth 1 -type f -name '*.png' -delete
+
+fleet-run IRCanvasStress --auto-screenshot "$@" > /tmp/canvas-stress-capture.log 2>&1
+rc=$?
+n=$(find "$SHOTDIR" -maxdepth 1 -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+echo "run exit=$rc  shots=$n  dir=$SHOTDIR"
+if [ "$rc" != "0" ]; then tail -4 /tmp/canvas-stress-capture.log; fi
+exit 0

@@ -1,7 +1,6 @@
 #include <irreden/ir_engine.hpp>
 
 // COMPONENTS
-#include <irreden/common/components/component_position_3d.hpp>
 #include <irreden/update/components/component_velocity_3d.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -13,7 +12,7 @@
 // SYSTEMS
 #include <irreden/update/systems/system_velocity.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 
@@ -58,7 +57,7 @@ void initSystems() {
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::VELOCITY_3D>(),
          IRSystem::createSystem<IRSystem::GOTO_3D>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
@@ -72,7 +71,6 @@ void initSystems() {
         IRTime::Events::RENDER,
         {IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
          IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-         IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
          IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}

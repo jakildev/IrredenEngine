@@ -6,6 +6,7 @@
 #include <irreden/ir_time.hpp>
 
 #include <irreden/system/ir_system_types.hpp>
+#include <irreden/system/system_access.hpp>
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/system/components/component_system_event.hpp>
@@ -35,11 +36,21 @@ template <typename Params> class ISystemParamsImpl : public ISystemParams {
     std::unique_ptr<Params> params_;
 };
 
-/// Observer hook fired before and after every system tick. Used by the
-/// render layer to bracket GPU-stage timing samples around per-system work
-/// without inlining `device()->finish()` blocks into every tick lambda.
-/// Generic on purpose: trace capture or per-system telemetry can plug in
-/// using the same hook without touching SystemManager again.
+/// Observer hook fired before and after each system tick from the main
+/// thread. Used by the render layer to bracket GPU-stage timing samples
+/// around per-system work without inlining `device()->finish()` blocks
+/// into every tick lambda. Generic on purpose: trace capture or
+/// per-system telemetry can plug in using the same hook without
+/// touching SystemManager again.
+///
+/// **Singleton-group only (T-224).** Observer fires bracket each
+/// `executeSystem` call ONLY for single-system pipeline groups. Systems
+/// scheduled inside a multi-system parallel group dispatch from worker
+/// threads (`IRJob::parallelFor`), where the observer surface is
+/// undefined: GPU APIs like `device()->finish()` and `writeTimestamp`
+/// require main-thread context, and per-system CPU-time samples are
+/// meaningless when sibling systems run concurrently. Any system that
+/// needs observer brackets must live in a singleton group.
 class TickObserver {
   public:
     virtual ~TickObserver() = default;
@@ -81,7 +92,10 @@ class SystemManager {
         FunctionEndTick functionEndTick = nullptr,
         RelationParams<RelationComponents...> extraParams = {},
         FunctionRelationTick functionRelationTick = nullptr,
-        Archetype excludeArchetype = {}
+        Archetype excludeArchetype = {},
+        Concurrency concurrency = Concurrency::SERIAL,
+        int grainSize = kDefaultGrainSize,
+        SystemAccess accessDescriptor = {}
     ) {
         m_systemNames.emplace_back(C_Name{name});
         SystemId newSystemId = m_nextSystemId++;
@@ -94,7 +108,33 @@ class SystemManager {
         m_relations.emplace_back(C_SystemRelation{extraParams.relation_});
         m_systemParams.emplace_back(nullptr);
         m_timingAccum.emplace_back();
+        m_concurrency.emplace_back(concurrency);
+        m_grainSize.emplace_back(grainSize > 0 ? grainSize : 1);
+        m_systemAccess.emplace_back(accessDescriptor);
         return newSystemId;
+    }
+
+    /// Per-system concurrency policy, parallel to `m_ticks`. Read by
+    /// `executeSystem` to branch between serial dispatch and the
+    /// `IRJob::parallelFor` worker fan-out.
+    Concurrency getConcurrency(SystemId system) const {
+        return system < m_concurrency.size() ? m_concurrency[system] : Concurrency::SERIAL;
+    }
+
+    /// Per-system chunk size for `Concurrency::PARALLEL_FOR`. Tunable
+    /// per-system via the trailing `grainSize` parameter to
+    /// `createSystem`; defaults to `kDefaultGrainSize` (512).
+    int getGrainSize(SystemId system) const {
+        return system < m_grainSize.size() ? m_grainSize[system] : kDefaultGrainSize;
+    }
+
+    /// Constexpr access descriptor recorded at registration time.
+    /// `Concurrency::PARALLEL_FOR` only validates well if this is
+    /// populated (the entry-point wrapper in `ir_system.hpp` derives it
+    /// from the tick function's signature). Empty for dynamic systems.
+    const SystemAccess &getSystemAccess(SystemId system) const {
+        static const SystemAccess kEmpty{};
+        return system < m_systemAccess.size() ? m_systemAccess[system] : kEmpty;
     }
 
     template <typename Tag> void addSystemTag(SystemId system) {
@@ -129,7 +169,8 @@ class SystemManager {
         std::string name,
         Archetype includeArchetype,
         Archetype excludeArchetype,
-        std::function<void(ArchetypeNode *)> body
+        std::function<void(ArchetypeNode *)> body,
+        Concurrency concurrency = Concurrency::SERIAL
     );
 
     /// Replace the per-archetype tick body of an existing system in place.
@@ -143,6 +184,47 @@ class SystemManager {
     void replaceSystemBody(SystemId system, std::function<void(ArchetypeNode *)> body);
 
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
+
+    /// T-224: pipeline-groups API. Each inner vector is a "parallel
+    /// group" of systems that the cross-system validator (see
+    /// `validateAllPipelineGroups`) has cleared to co-execute on the
+    /// worker pool. Groups themselves run sequentially in declaration
+    /// order; `flushStructuralChanges` runs between groups, never
+    /// between systems within a group (group members are required to
+    /// be structurally clean by the validator). Replaces any prior
+    /// registration for `event`.
+    void registerPipelineGroups(IRTime::Events event, std::vector<std::vector<SystemId>> groups);
+
+    /// #1540: append `system` to the END of `event`'s pipeline as its
+    /// own singleton (serial) group, leaving every previously-registered
+    /// group untouched. This is the composition primitive for a runtime
+    /// where the C++ pipeline is built before a script runs (e.g. the
+    /// midi runtime's `initSystems()` runs before `main.lua`): a Lua-
+    /// authored system can join the live UPDATE/RENDER pipeline without
+    /// re-listing — and double-creating — the existing C++ systems that
+    /// `registerPipeline` / `registerPipelineGroups` would otherwise
+    /// REPLACE. Creates the event's first group if none was registered
+    /// yet. Asserts if `system` already appears in `event`'s pipeline (a
+    /// second add would tick it twice per frame).
+    void appendToPipeline(IRTime::Events event, SystemId system);
+
+    /// #1540: insert `system` as its own singleton group immediately
+    /// before / after the group that contains `anchor` in `event`'s
+    /// pipeline. The position-aware sibling of `appendToPipeline` for
+    /// when ordering relative to an existing system matters. Asserts if
+    /// no pipeline is registered for `event`, `anchor` is absent, or
+    /// `system` is already present.
+    void insertIntoPipelineBefore(IRTime::Events event, SystemId system, SystemId anchor);
+    void insertIntoPipelineAfter(IRTime::Events event, SystemId system, SystemId anchor);
+
+    /// T-224: validate every registered pipeline group against the
+    /// cross-system access rules in `system_access.hpp`. Call once
+    /// after all systems and pipelines are registered, before the
+    /// loop starts. FATALs on the first conflict found, naming both
+    /// systems + the offending component. A group of size <= 1 is
+    /// trivially clean and skipped.
+    void validateAllPipelineGroups() const;
+
     void executePipeline(IRTime::Events event);
     void executeSystem(SystemId system);
 
@@ -155,9 +237,11 @@ class SystemManager {
     void resetTimingStats();
 
     /// Take ownership of an observer; fires `onBeforeTick`/`onAfterTick`
-    /// around every `executeSystem` call. Returns an id usable with
-    /// `unregisterTickObserver`. If `m_observers` is empty the dispatch
-    /// is a single bool check, so unregistered systems pay nothing.
+    /// from the main thread around each singleton-group `executeSystem`
+    /// call (see `TickObserver` for the multi-system parallel-group
+    /// caveat). Returns an id usable with `unregisterTickObserver`. If
+    /// `m_observers` is empty the dispatch is a single bool check, so
+    /// unregistered systems pay nothing.
     TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer);
     void unregisterTickObserver(TickObserverId id);
     void clearTickObservers();
@@ -171,8 +255,24 @@ class SystemManager {
     const TimingAccum &getTimingAccum(SystemId id) const {
         return m_timingAccum[id];
     }
+    /// Flattened, declaration-order view of every pipeline's systems —
+    /// preserved for callers that iterate pipelines for timing /
+    /// telemetry (perf overlay, profile report) and don't care about
+    /// the group partition. Groups are inlined in declaration order:
+    /// `[[a,b], [c]]` reads as `[a, b, c]`. Built lazily from
+    /// `m_systemPipelineGroups` on first read after a registration.
     const std::unordered_map<IRTime::Events, std::list<SystemId>> &getPipelines() const {
-        return m_systemPipelinesNew;
+        refreshFlattenedPipelines();
+        return m_flattenedPipelines;
+    }
+
+    /// T-224: read the group partition for `event` directly (one
+    /// vector per parallel group, in declaration order). Empty if
+    /// no pipeline was registered for `event`.
+    const std::vector<std::vector<SystemId>> &getPipelineGroups(IRTime::Events event) const {
+        static const std::vector<std::vector<SystemId>> kEmpty;
+        auto it = m_systemPipelineGroups.find(event);
+        return it == m_systemPipelineGroups.end() ? kEmpty : it->second;
     }
 
   private:
@@ -186,13 +286,40 @@ class SystemManager {
     std::vector<ErasedParamsPtr> m_systemParams;
     std::unordered_map<SystemName, SystemId> m_engineSystemIds;
 
-    std::unordered_map<IRTime::Events, std::list<SystemId>> m_systemPipelinesNew;
+    /// T-224: canonical pipeline storage is per-group. The legacy
+    /// `registerPipeline(list<SystemId>)` translates each system into
+    /// its own one-element group so existing call sites are
+    /// unchanged.
+    std::unordered_map<IRTime::Events, std::vector<std::vector<SystemId>>> m_systemPipelineGroups;
+
+    /// Lazy mirror for `getPipelines()`'s flattened view. Rebuilt by
+    /// `refreshFlattenedPipelines` after any group registration; the
+    /// flag tracks whether the mirror is current.
+    mutable std::unordered_map<IRTime::Events, std::list<SystemId>> m_flattenedPipelines;
+    mutable bool m_flattenedPipelinesDirty{true};
+
+    void refreshFlattenedPipelines() const;
+
+    /// Shared impl for `insertIntoPipelineBefore` / `insertIntoPipelineAfter`.
+    /// `after == false` inserts the new singleton group at the anchor's
+    /// group index; `after == true` inserts immediately past it.
+    void insertSingletonGroupRelativeTo(
+        IRTime::Events event, SystemId system, SystemId anchor, bool after
+    );
 
     bool m_timingEnabled = false;
     std::vector<TimingAccum> m_timingAccum;
 
     std::uint32_t m_nextObserverId = 1;
     std::vector<std::pair<TickObserverId, std::unique_ptr<TickObserver>>> m_observers;
+
+    // T-222: per-system concurrency policy + grain size + access
+    // descriptor. Parallel to m_ticks; emplaced in createSystem,
+    // defaulted (SERIAL / kDefaultGrainSize / empty) for
+    // createSystemDynamic.
+    std::vector<Concurrency> m_concurrency;
+    std::vector<int> m_grainSize;
+    std::vector<SystemAccess> m_systemAccess;
 
     // Begin tick functions happen once per system before tick function(s)
     template <typename FunctionBeginTick>
@@ -207,55 +334,129 @@ class SystemManager {
     }
 
     // Tick functions are operated on each entity in the system
-    // matching the archetype. This can happen a variery of ways
+    // matching the archetype. The runtime stores one dispatch slot per
+    // system — the binder form established by T-222/T-333:
+    //
+    //   - `prepareRangedTick(node)` — main-thread binder. Resolves
+    //     the per-component vector refs from `node` once via
+    //     `getComponentData<>` (which touches the EntityManager's
+    //     hash map — unsafe under concurrent reads from workers),
+    //     and returns a `void(rangeBegin, rangeEnd)` worker closure
+    //     that captures those refs by value. Populated for every
+    //     signature that iterates entities row-by-row (per-component,
+    //     per-entity-id, optional-relations). `executeSystem` calls
+    //     the binder once and invokes the returned closure with
+    //     `[0, length)` for SERIAL/MAIN_THREAD, or fans the closure
+    //     out to worker chunks via `IRJob::parallelFor` for
+    //     PARALLEL_FOR. No per-node heap allocation.
+    //   - `functionTick(node)` — used ONLY by the per-archetype batch
+    //     form (`InvocableWithNodeVectors`) and dynamic systems
+    //     (`createSystemDynamic` / Lua hot-reload). Row-iterating forms
+    //     leave this empty and dispatch entirely through the binder.
+    //
+    // `Concurrency::PARALLEL_FOR` requires `prepareRangedTick` to be
+    // populated; the entry-point validator in `ir_system.hpp` rejects
+    // batch-form + PARALLEL_FOR.
     template <typename... Components, typename... RelationComponents, typename FunctionTick>
     void insertTickFunction(
         FunctionTick functionTick,
         RelationParams<RelationComponents...> extraParams,
         Archetype excludeArchetype
     ) {
-        m_ticks.emplace_back(
-            C_SystemEvent<TICK>{
-                [functionTick, extraParams](ArchetypeNode *node) {
-                    if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
-                        auto componentsTuple = std::make_tuple(
-                            std::ref(node->entities_),
-                            std::ref(getComponentData<Components>(node))...
-                        );
-                        for (int i = 0; i < node->length_; i++) {
-                            std::apply(
-                                [i, &functionTick](auto &&...components) {
-                                    functionTick(components[i]...);
-                                },
-                                componentsTuple
-                            );
-                        }
-                    } else if constexpr (InvocableWithComponents<FunctionTick, Components...>) {
-                        auto componentsTuple =
-                            std::make_tuple(std::ref(getComponentData<Components>(node))...);
-                        for (int i = 0; i < node->length_; i++) {
-                            std::apply(
-                                [i, &functionTick](auto &&...components) {
-                                    functionTick(components[i]...);
-                                },
-                                componentsTuple
-                            );
-                        }
-                    } else if constexpr (
-                        std::is_invocable_v<
-                            FunctionTick,
-                            Components &...,
-                            std::optional<RelationComponents *>...>
-                    ) {
-                        auto componentsTuple =
-                            std::make_tuple(std::ref(getComponentData<Components>(node))...);
-                        EntityId relatedEntity =
-                            getRelatedEntityFromArchetype(node->type_, extraParams.relation_);
-                        auto relationComponentTuple = std::make_tuple(
-                            getComponentOptional<RelationComponents>(relatedEntity)...
-                        );
+        if constexpr (InvocableWithNodeVectors<FunctionTick, Components...>) {
+            // Per-archetype batch form: the body sees the whole column,
+            // never row-by-row. No ranged variant — chunking would
+            // require splitting the vector, which the body's contract
+            // disallows.
+            auto perNodeFn = [functionTick](ArchetypeNode *node) {
+                auto paramTuple = std::make_tuple(
+                    node->type_,
+                    std::ref(node->entities_),
+                    std::ref(getComponentData<Components>(node))...
+                );
+                std::apply(
+                    [&functionTick](auto &&...args) {
+                        functionTick(std::forward<decltype(args)>(args)...);
+                    },
+                    paramTuple
+                );
+            };
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    std::function<void(ArchetypeNode *)>{std::move(perNodeFn)},
+                    std::function<std::function<void(int, int)>(ArchetypeNode *)>{},
+                    getArchetype<Components...>(),
+                    std::move(excludeArchetype)
+                }
+            );
+            return;
+        } else {
 
-                        for (int i = 0; i < node->length_; i++) {
+            // Row-iterating forms: build a main-thread binder
+            // (`prepareRangedTick`) that resolves the per-component
+            // vector refs from the node once via `getComponentData<>` —
+            // which goes through `EntityManager::m_pureComponentTypes`,
+            // unsafe under concurrent reads — and returns a
+            // `void(rangeBegin, rangeEnd)` worker closure that captures
+            // those refs. The SERIAL / MAIN_THREAD path in `executeSystem`
+            // calls the binder once and invokes the returned closure with
+            // `[0, length)`; the PARALLEL_FOR dispatcher in `executeSystem`
+            // calls the binder once and fans the closure out to worker
+            // chunks via `IRJob::parallelFor`. Wrapped in
+            // an `else` so the unsupported-signature static_assert below
+            // only fires when the batch-form branch above has NOT
+            // discarded this code.
+            auto prepareRangedTick =
+                [functionTick, extraParams](ArchetypeNode *node) -> std::function<void(int, int)> {
+                if constexpr (InvocableWithEntityId<FunctionTick, Components...>) {
+                    auto componentsTuple = std::make_tuple(
+                        std::ref(node->entities_),
+                        std::ref(getComponentData<Components>(node))...
+                    );
+                    return [functionTick, componentsTuple](int rangeBegin, int rangeEnd) {
+                        for (int i = rangeBegin; i < rangeEnd; i++) {
+                            std::apply(
+                                [i, &functionTick](auto &&...components) {
+                                    functionTick(components[i]...);
+                                },
+                                componentsTuple
+                            );
+                        }
+                    };
+                } else if constexpr (InvocableWithComponents<FunctionTick, Components...>) {
+                    auto componentsTuple =
+                        std::make_tuple(std::ref(getComponentData<Components>(node))...);
+                    return [functionTick, componentsTuple](int rangeBegin, int rangeEnd) {
+                        for (int i = rangeBegin; i < rangeEnd; i++) {
+                            std::apply(
+                                [i, &functionTick](auto &&...components) {
+                                    functionTick(components[i]...);
+                                },
+                                componentsTuple
+                            );
+                        }
+                    };
+                } else if constexpr (
+                    std::is_invocable_v<
+                        FunctionTick,
+                        Components &...,
+                        std::optional<RelationComponents *>...>
+                ) {
+                    // Relation form: the validator (T-334 scope) rejects
+                    // PARALLEL_FOR + relation, so this binder runs only
+                    // on the main thread. Resolve component vectors AND
+                    // the optional-relation pointers up-front; the
+                    // returned closure iterates rows over both.
+                    auto componentsTuple =
+                        std::make_tuple(std::ref(getComponentData<Components>(node))...);
+                    EntityId relatedEntity =
+                        getRelatedEntityFromArchetype(node->type_, extraParams.relation_);
+                    auto relationComponentTuple =
+                        std::make_tuple(getComponentOptional<RelationComponents>(relatedEntity)...);
+                    return [functionTick,
+                            componentsTuple,
+                            relationComponentTuple](int rangeBegin, int rangeEnd) {
+                        for (int i = rangeBegin; i < rangeEnd; i++) {
                             std::apply(
                                 [&functionTick](auto &&...args) { functionTick(args...); },
                                 std::tuple_cat(
@@ -268,26 +469,20 @@ class SystemManager {
                                 )
                             );
                         }
-                    } else if constexpr (InvocableWithNodeVectors<FunctionTick, Components...>) {
-                        auto paramTuple = std::make_tuple(
-                            node->type_,
-                            std::ref(node->entities_),
-                            std::ref(getComponentData<Components>(node))...
-                        );
-                        std::apply(
-                            [&functionTick](auto &&...args) {
-                                functionTick(std::forward<decltype(args)>(args)...);
-                            },
-                            paramTuple
-                        );
-                    } else {
-                        static_assert(false, "Unsupported tick function signature.");
-                    }
-                },
-                getArchetype<Components...>(),
-                std::move(excludeArchetype)
-            }
-        );
+                    };
+                } else {
+                    static_assert(false, "Unsupported tick function signature.");
+                }
+            };
+            m_ticks.emplace_back(
+                C_SystemEvent<TICK>{
+                    std::function<void(ArchetypeNode *)>{},
+                    C_SystemEvent<TICK>::PrepareRangedTickFn{std::move(prepareRangedTick)},
+                    getArchetype<Components...>(),
+                    std::move(excludeArchetype)
+                }
+            );
+        }
     }
 
     // End tick functions happen once per system after tick function(s)

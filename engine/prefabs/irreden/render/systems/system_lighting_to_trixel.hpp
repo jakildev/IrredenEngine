@@ -13,6 +13,11 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
@@ -39,8 +44,9 @@ constexpr int kLightingToTrixelGroupSize = 16;
 // `debugOverlayMode_` mirrors `IRRender::DebugOverlayMode`. Non-zero
 // values short-circuit the artistic path and write false-color into
 // `trixelColors` instead — see ir_render_enums.hpp for the encoding.
-// std140 note: five scalars pack tightly at offsets 0,4,8,12,16 for a
-// 20-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
+// std140 note: eight scalars pack at offsets 0..28 (32 bytes), then
+// skyColor_ (vec4) lands at offset 32 (already 16-byte aligned) for a
+// 48-byte UBO. Both C++ and the GLSL/MSL structs lay out identically —
 // no explicit padding is needed.
 struct FrameDataLightingToTrixel {
     int lightingEnabled_ = 0;
@@ -48,6 +54,10 @@ struct FrameDataLightingToTrixel {
     int lightVolumeEnabled_ = 0;
     float debugLightLevel_ = 0.0f;
     int debugOverlayMode_ = 0;
+    int hdrEnabled_ = 0;
+    float exposure_ = 1.0f;
+    float skyIntensity_ = 0.0f;
+    vec4 skyColor_ = vec4(0.5f, 0.7f, 1.0f, 0.0f);
 };
 
 // Screen-space lighting application pass. Inserts between the final
@@ -72,19 +82,70 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // know the volume's world origin to map a pixel's world voxel
     // back into the volume texel.
     Buffer *lightVolumeParamsBuf_ = nullptr;
+    // Baked sun-aligned depth map (slot 28), created by BAKE_SUN_SHADOW_MAP.
+    // The opt-in detached world-receive path (#1576 P4b-2) re-runs the cascade
+    // lookup against it at a world-placed voxel's pos. Resolved lazily (it exists
+    // by the time the pipeline runs); the shader declares the SSBO unconditionally
+    // (Metal kernel arg), so it must be bound every tick — the default path just
+    // never reads it. Whenever LIGHTING_TO_TRIXEL runs the main canvas carries
+    // C_CanvasSunShadow (asserted below), so BAKE ran and the map exists.
+    Buffer *sunShadowDepthMap_ = nullptr;
     Texture2D *paletteLUT_ = nullptr;
     FrameDataLightingToTrixel frameData_{};
 
+    // Smooth camera Z-yaw (#1311): main canvas + per-axis voxel canvases,
+    // re-resolved every frame in beginTick. Null unless allocated (rotating).
+    IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
+    C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+
+    // Per-pass voxel-frame author/restore + main-canvas placeholders for the
+    // relaxed multi-lit-canvas archetype (re-voxelize P4 / #1558). Resolved
+    // once per frame in beginTick; never held across frames.
+    FrameDataVoxelToCanvas scratchVoxelFrame_{};
+    const C_TriangleCanvasTextures *mainCanvasTextures_ = nullptr;
+    const C_VoxelPool *mainVoxelPool_ = nullptr;
+    const C_CanvasLocalRotation *mainCanvasRotation_ = nullptr;
+    // The detached re-voxelize canvas carries no C_CanvasSunShadow /
+    // C_CanvasLightVolume (its lighting is AO + directional sun + sky only).
+    // The shader's isDetachedCanvas branch never samples slots 4/5 for it, but
+    // Metal still requires both setTexture slots populated — so bind the main
+    // canvas's as inert placeholders. Resolved in beginTick.
+    const C_CanvasSunShadow *mainCanvasSunShadow_ = nullptr;
+    const C_CanvasLightVolume *mainCanvasLightVolume_ = nullptr;
+
     void tick(
+        IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
         const C_TrixelCanvasRenderBehavior &behavior,
-        const C_CanvasAOTexture &ao,
-        const C_CanvasSunShadow &shadow,
-        const C_CanvasLightVolume &lightVolume
+        const C_CanvasAOTexture &ao
     ) {
         if (!behavior.useCameraPositionIso_) {
             return;
         }
+
+        // Author THIS canvas's voxel frame data so the Lambert + sky terms read
+        // its own visible-triplet world normals and isDetachedCanvas flag, not
+        // whatever canvas STAGE_1 left resident (#1558). No-op for a pure-SDF
+        // canvas with no voxel pool.
+        authorIteratingCanvasVoxelFrame(
+            scratchVoxelFrame_,
+            voxelFrameDataBuf_,
+            entity,
+            canvasTextures
+        );
+
+        // Relaxed archetype (#1558): sun-shadow + light-volume are optional, so
+        // a detached re-voxelize canvas (which has neither) can still be lit.
+        // Per-canvas component if present, else the main canvas's as an inert
+        // placeholder — the shader's isDetachedCanvas branch forces shadow = 1.0
+        // and disables the light volume for it, so the placeholders are never
+        // sampled; they exist only to satisfy Metal's bound-slot requirement.
+        auto shadowOpt = IREntity::getComponentOptional<C_CanvasSunShadow>(entity);
+        auto lightVolumeOpt = IREntity::getComponentOptional<C_CanvasLightVolume>(entity);
+        const C_CanvasSunShadow *shadow =
+            shadowOpt.has_value() ? shadowOpt.value() : mainCanvasSunShadow_;
+        const C_CanvasLightVolume *lightVolume =
+            lightVolumeOpt.has_value() ? lightVolumeOpt.value() : mainCanvasLightVolume_;
 
         canvasTextures.getTextureColors()
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
@@ -99,28 +160,193 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // shared setTexture slot space, so all three slots must be
         // unique across both kinds.
         paletteLUT_->bind(3);
-        shadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        // Metal requires every setTexture slot to be populated (it does not
+        // default-bind a null slot). `shadow` is the per-canvas component when
+        // present, else the main canvas's as an inert placeholder — the main canvas
+        // always carries C_CanvasSunShadow when LIGHTING_TO_TRIXEL is registered.
+        IR_ASSERT(
+            shadow != nullptr,
+            "Metal requires slot 4 bound — main canvas must carry C_CanvasSunShadow "
+            "when LIGHTING_TO_TRIXEL iterates"
+        );
+        if (shadow != nullptr) {
+            shadow->getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        }
         // `getReadTexture()` returns whichever ping-pong texture
         // the GPU light-volume producer last wrote to, so this
         // sampler always sees the latest dilation result.
-        lightVolume.getReadTexture()->bind(5);
+        if (lightVolume != nullptr) {
+            lightVolume->getReadTexture()->bind(5);
+        }
         frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataLightingToTrixel);
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         lightVolumeParamsBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+        // Sun-depth map (slot 28) for the opt-in detached world-receive path
+        // (#1576 P4b-2). Bound every tick — the shader declares the SSBO
+        // unconditionally (Metal kernel arg); only a world-placed detached solid
+        // reads it. Persists across the per-axis lighting dispatches below (they
+        // only rebind the colour/dist/AO/sun-shadow images).
+        if (sunShadowDepthMap_ != nullptr) {
+            sunShadowDepthMap_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_SunShadowDepthMap
+            );
+        }
 
         const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kLightingToTrixelGroupSize);
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kLightingToTrixelGroupSize);
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+
+        // Smooth camera Z-yaw (#1311): apply lighting to each per-axis voxel
+        // canvas (AO x sun-shadow x face Lambert + shared world light volume) so
+        // the framebuffer scatter composites LIT colours while rotating. Only
+        // the main canvas allocates per-axis canvases, and it always carries
+        // sun-shadow, so `shadow` is non-null on this path.
+        if (entity == perAxisCanvasEntity_ && perAxisCanvases_ != nullptr &&
+            perAxisCanvases_->isAllocated() && shadow != nullptr) {
+            dispatchPerAxisLighting(*perAxisCanvases_, canvasTextures, ao, *shadow);
+        }
+    }
+
+    // Light each per-axis canvas in place. The palette LUT (3) and the shared
+    // light volume (5) plus all four UBOs stay bound from the main pass; only the
+    // per-axis colour/distance/AO/sun-shadow images and the perAxisRoute selector
+    // change. perAxisRoute is restored to 0 on exit.
+    void dispatchPerAxisLighting(
+        C_PerAxisTrixelCanvases &axes,
+        const C_TriangleCanvasTextures &mainTextures,
+        const C_CanvasAOTexture &mainAO,
+        const C_CanvasSunShadow &mainShadow
+    ) {
+        // perAxisRoute is a boolean route flag on the lighting path (any nonzero
+        // = per-axis canvas); the shader recovers the axis per-pixel from faceId,
+        // NOT from this field — distinct from stage-1's 1/2/3 = X/Y/Z axis selector.
+        const int kPerAxisRoute = 1;
+        voxelFrameDataBuf_
+            ->subData(offsetof(FrameDataVoxelToCanvas, perAxisRoute_), sizeof(int), &kPerAxisRoute);
+        // Recover world-pos with the SAME #1431-capped lattice density the store
+        // wrote (perAxisCellToWorld3D reads voxelRenderOptions.y); restored below.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRPrefab::PerAxisCanvas::subdivisionDensity()
+        );
+        const int groupsX = IRMath::divCeil(axes.size_.x, kLightingToTrixelGroupSize);
+        const int groupsY = IRMath::divCeil(axes.size_.y, kLightingToTrixelGroupSize);
+        for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+            auto &tex = axes.axes_[axis];
+            tex.colors_.second->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+            tex.distances_.second->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+            tex.ao_.second->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            tex.sunShadow_.second->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
+        }
+        // One barrier after the 3 independent per-axis dispatches (each axis
+        // writes its own colour image texture in place — disjoint outputs, so
+        // dispatch order doesn't matter) so they overlap on the GPU instead of
+        // serializing per axis (#1311).
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+        const int kSingleCanvasRoute = 0;
+        voxelFrameDataBuf_->subData(
+            offsetof(FrameDataVoxelToCanvas, perAxisRoute_),
+            sizeof(int),
+            &kSingleCanvasRoute
+        );
+        // Restore the uncapped density for downstream single-canvas passes.
+        IRPrefab::PerAxisCanvas::setUboSubdivisionDensity(
+            voxelFrameDataBuf_,
+            IRRender::getVoxelRenderEffectiveSubdivisions()
+        );
+        // Restore the main-canvas image bindings the loop overwrote. This is the
+        // critical one: LIGHTING_TO_TRIXEL is the last image-binding compute stage,
+        // so without this the freed per-axis textures linger in the persistent
+        // Metal image-binding table and dangle when release() frees them at the
+        // next cardinal frame — the #1311 mid-rotation crash. Same restore
+        // discipline as the other per-axis lighting passes.
+        mainTextures.getTextureColors()
+            ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+        mainTextures.getTextureDistances()
+            ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        mainAO.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        mainShadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
     }
 
     void beginTick() {
         program_->use();
-        frameData_.lightingEnabled_ = 1;
+        // Resolve the baked sun-depth map once (created by BAKE_SUN_SHADOW_MAP,
+        // registered ahead of LIGHTING_TO_TRIXEL). Lazy single-init: the resolve
+        // is deferred to beginTick so BAKE_SUN_SHADOW_MAP has already registered
+        // the resource by the time LIGHTING_TO_TRIXEL first runs. getNamedResource
+        // asserts on a missing key — a pipeline without the bake is a config error,
+        // not a graceful fallback (all 13 registered pipelines co-register both
+        // systems under the same !noLighting_ guard).
+        if (sunShadowDepthMap_ == nullptr) {
+            sunShadowDepthMap_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
+        }
+        // Modes above SHADOW (PER_AXIS_ID / PER_AXIS_ORIGIN / UNLIT) belong to
+        // other passes — the lighting shader's overlay fallback would otherwise
+        // misread them as SHADOW. UNLIT additionally disables the modulation
+        // itself so raw rasterized colors flow through (#1457 instrumentation).
+        const int overlayMode = static_cast<int>(IRRender::getDebugOverlay());
+        frameData_.lightingEnabled_ =
+            overlayMode == static_cast<int>(IRRender::DebugOverlayMode::UNLIT) ? 0 : 1;
         frameData_.lightVolumeEnabled_ = 1;
-        frameData_.debugOverlayMode_ = static_cast<int>(IRRender::getDebugOverlay());
+        frameData_.debugOverlayMode_ =
+            overlayMode <= static_cast<int>(IRRender::DebugOverlayMode::SHADOW) ? overlayMode : 0;
+        frameData_.hdrEnabled_ = IRRender::getHDREnabled() ? 1 : 0;
+        frameData_.exposure_ = IRRender::getExposure();
+        frameData_.skyIntensity_ = IRRender::getSkyIntensity();
+        const vec3 sc = IRRender::getSkyColor();
+        frameData_.skyColor_ = vec4(sc, 0.0f);
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
+
+        // Resolve the main canvas + its per-axis voxel canvases (#1311), plus
+        // its voxel-frame inputs and sun-shadow / light-volume placeholders for
+        // the relaxed multi-lit-canvas archetype (#1558). beginTick lookups are
+        // once-per-frame, not the per-entity footgun.
+        perAxisCanvasEntity_ = IRRender::getCanvas("main");
+        perAxisCanvases_ = nullptr;
+        mainCanvasSunShadow_ = nullptr;
+        mainCanvasLightVolume_ = nullptr;
+        if (perAxisCanvasEntity_ != IREntity::kNullEntity) {
+            auto perAxis =
+                IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(perAxisCanvasEntity_);
+            if (perAxis.has_value()) {
+                perAxisCanvases_ = perAxis.value();
+            }
+            // Sun-shadow + light-volume placeholders are LIGHTING-specific (AO
+            // needs neither), so resolve them here; the shared 3-component voxel-
+            // frame inputs come from resolveMainCanvasVoxelFrameInputs below.
+            auto shadow = IREntity::getComponentOptional<C_CanvasSunShadow>(perAxisCanvasEntity_);
+            auto lv = IREntity::getComponentOptional<C_CanvasLightVolume>(perAxisCanvasEntity_);
+            if (shadow.has_value())
+                mainCanvasSunShadow_ = shadow.value();
+            if (lv.has_value())
+                mainCanvasLightVolume_ = lv.value();
+        }
+        resolveMainCanvasVoxelFrameInputs(
+            perAxisCanvasEntity_,
+            &mainCanvasTextures_,
+            &mainVoxelPool_,
+            &mainCanvasRotation_
+        );
+    }
+
+    // Restore the main world canvas's voxel frame data so FOG_TO_TRIXEL /
+    // TRIXEL_TO_FRAMEBUFFER (which run after lighting and read the shared voxel
+    // UBO) see the world frame even when a detached re-voxelize canvas authored
+    // its own above (#1558). Byte-identical render output for single-lit-canvas
+    // scenes (cullIso, the only field buildVoxelFrameData omits, is unused
+    // downstream).
+    void endTick() {
+        restoreMainCanvasVoxelFrame(
+            scratchVoxelFrame_,
+            voxelFrameDataBuf_,
+            mainCanvasTextures_,
+            mainVoxelPool_,
+            mainCanvasRotation_
+        );
     }
 
     static SystemId create() {
@@ -191,13 +417,16 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 );
         }
 
+        // Relaxed archetype (#1558): C_CanvasSunShadow / C_CanvasLightVolume are
+        // resolved per canvas via getComponentOptional in the tick (canvas-
+        // iteration pattern), NOT required template params — so the detached
+        // re-voxelize canvas (AO + directional sun + sky only, no sun-shadow /
+        // light-volume) is lit too. The main canvas still carries both.
         SystemId systemId = registerSystem<
             LIGHTING_TO_TRIXEL,
             C_TriangleCanvasTextures,
             C_TrixelCanvasRenderBehavior,
-            C_CanvasAOTexture,
-            C_CanvasSunShadow,
-            C_CanvasLightVolume>("LightingToTrixel");
+            C_CanvasAOTexture>("LightingToTrixel");
         auto *p = getSystemParams<System<LIGHTING_TO_TRIXEL>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("LightingToTrixelProgram");
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");

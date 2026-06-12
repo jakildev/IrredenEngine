@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# fleet-assert-worktree — assert the current directory is an isolated
+# fleet worktree, NOT the shared main clone, before a mutating flow runs.
+#
+# Why this exists
+# ---------------
+# The main clones (~/src/IrredenEngine and creations/game) are shared:
+# refs/stash, branch refs, and the working tree are all visible to every
+# agent. When an agent runs a *mutating* git operation — commit, branch
+# checkout, detached PR checkout, stash — while its cwd is the main clone
+# instead of its assigned worktree, it silently contaminates that shared
+# checkout: committing on a branch another agent owns, or stranding /
+# clobbering work in the wrong tree. Observed 5x in two days across
+# worker panes (engine #1325).
+#
+# The structural invariant the fleet relies on: every agent operates
+# inside `<clone>/.claude/worktrees/<name>`. The main-clone toplevels
+# never contain the `/.claude/worktrees/` path segment. So a git
+# toplevel WITHOUT that segment means cwd is a main clone — refuse to let
+# a mutating fleet flow proceed there.
+#
+# Read-only `git -C <main-clone> …` calls (fetch, ls-tree, show) at role
+# startup are fine and intentionally NOT guarded — this only fires at the
+# mutation points that wire it in (commit-and-push, start-next-task,
+# fleet-pr-checkout-detached).
+#
+# Usage
+# -----
+#   fleet-assert-worktree [expected-worktree-basename]
+#
+# With no argument it asserts only "cwd is some fleet worktree". Pass the
+# agent's worktree basename (e.g. worker-2) to additionally assert
+# the cwd worktree IS that one — callers that know their own identity
+# (role docs) get the stronger cross-agent guard for free.
+#
+# Exit status:
+#   0  cwd is a valid (and, if given, matching) worktree — or the human
+#      override FLEET_ALLOW_MAIN_CLONE is set
+#   1  cwd is a main clone / not a worktree, or basename mismatch
+#   2  usage error / not inside a git working tree
+#
+# Source of truth: scripts/fleet/fleet-assert-worktree in the engine
+# repo. Installed to ~/bin/fleet-assert-worktree by
+# scripts/fleet/install.sh.
+
+set -euo pipefail
+
+case "${1:-}" in
+    -h|--help)
+        cat <<'EOF'
+fleet-assert-worktree — refuse to run a mutating flow in the shared main clone.
+
+  fleet-assert-worktree                       # assert cwd is some worktree
+  fleet-assert-worktree worker-2              # also assert it is THIS worktree
+
+Exit 0 = ok, 1 = main clone / wrong worktree, 2 = usage / not in a git tree.
+Human override for a deliberate main-clone session: FLEET_ALLOW_MAIN_CLONE=1.
+EOF
+        exit 0
+        ;;
+esac
+
+expected="${1:-}"
+
+if [[ -n "$expected" && ! "$expected" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "fleet-assert-worktree: invalid worktree name '$expected' — must match [A-Za-z0-9_-]+" >&2
+    exit 2
+fi
+
+toplevel=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -z "$toplevel" ]]; then
+    echo "fleet-assert-worktree: not inside a git working tree (cwd: $PWD)" >&2
+    exit 2
+fi
+
+# Human escape hatch for the rare legitimate main-clone session. NOT for
+# autonomous agents: when this guard fires in a fleet role the correct
+# fix is to cd into your worktree, not to set this.
+if [[ -n "${FLEET_ALLOW_MAIN_CLONE:-}" ]]; then
+    echo "fleet-assert-worktree: FLEET_ALLOW_MAIN_CLONE set — skipping worktree guard (toplevel: $toplevel)" >&2
+    exit 0
+fi
+
+if [[ "$toplevel" != */.claude/worktrees/* ]]; then
+    cat >&2 <<EOF
+fleet-assert-worktree: REFUSING to proceed — cwd is NOT a fleet worktree.
+
+  git toplevel: $toplevel
+
+This looks like the shared MAIN clone. Mutating git operations here
+(commit, branch checkout, detached PR checkout, stash) contaminate the
+checkout that other agents and the operator share — cross-agent commit
+collisions and stranded / clobbered work.
+
+Fix: cd into your assigned worktree, e.g.
+  cd <clone>/.claude/worktrees/<your-agent-name>
+then re-run. (Human-only override: FLEET_ALLOW_MAIN_CLONE=1.)
+EOF
+    exit 1
+fi
+
+actual=$(basename "$toplevel")
+if [[ -n "$expected" && "$actual" != "$expected" ]]; then
+    cat >&2 <<EOF
+fleet-assert-worktree: WRONG worktree — expected '$expected' but cwd is '$actual'.
+
+  git toplevel: $toplevel
+
+You are operating in a different agent's worktree. cd into your own
+worktree before mutating anything.
+EOF
+    exit 1
+fi
+
+exit 0

@@ -7,6 +7,8 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 const int kSunShadowMapDim = 1024;
+const int kSunShadowCascadeCount = 2;
+const int kTotalTexels = kSunShadowMapDim * kSunShadowMapDim * kSunShadowCascadeCount;
 
 layout(std430, binding = 28) restrict writeonly buffer SunShadowDepthMap {
     uint sunDepthBuf[];
@@ -14,8 +16,9 @@ layout(std430, binding = 28) restrict writeonly buffer SunShadowDepthMap {
 
 void main() {
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
-    if (gid.x >= kSunShadowMapDim || gid.y >= kSunShadowMapDim) {
+    int linearIdx = gid.y * kSunShadowMapDim + gid.x;
+    if (linearIdx >= kTotalTexels) {
         return;
     }
-    sunDepthBuf[gid.y * kSunShadowMapDim + gid.x] = 0xFFFFFFFFu;
+    sunDepthBuf[linearIdx] = 0xFFFFFFFFu;
 }

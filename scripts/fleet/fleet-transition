@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# fleet-transition — apply a NAMED label transition to a GitHub issue/PR
+# atomically and idempotently, from the table in
+# docs/agents/fleet-state-machine.json.
+#
+# MECHANISM ONLY. This command does NOT decide whether an edge is legal
+# from the current state — the agent decides the verdict/escalation and
+# names the edge. The command's only validation is:
+#   1. the named edge exists,
+#   2. its scope (issue|pr) matches the target's type,
+#   3. every label the edge references is a real node in the JSON.
+# It then writes the *effective* delta (only remove labels actually
+# present, only add labels actually absent) in a single `gh ... edit`
+# call. Re-applying a transition is a clean no-op.
+#
+# Why this exists:
+#   Role docs hand-type `gh pr edit <N> --remove-label A --remove-label B
+#   --add-label C` for verdict / design / smoke swaps. That call is NOT
+#   atomic: gh processes removals left-to-right and exits non-zero on the
+#   first ABSENT label, so REVIEWER-PROTOCOL.md had to split it into a
+#   `... 2>/dev/null || true` remove pass plus an add pass plus a
+#   re-query verify. fleet-transition computes the delta against the live
+#   label set first, so the single edit call only ever references labels
+#   in the state that makes the call succeed — no split, no `|| true`,
+#   and the edge name (not a hand-copied label list) is the stable
+#   contract role docs reference.
+#
+# Usage:
+#   fleet-transition <transition-name> <number> [--repo <slug>] [--dry-run]
+#
+# Options:
+#   --repo <slug>   Target repo (e.g. jakildev/IrredenEngine or
+#                   jakildev/irreden). Default: the current git remote.
+#   --dry-run       Print the computed delta; make no changes.
+#   -h, --help      Show this help.
+#
+# Exit status:
+#   0  transition applied, or already satisfied (idempotent no-op)
+#   1  a gh call failed, or the labels did not converge after apply
+#   2  usage / validation error (unknown edge, scope mismatch, bad data
+#      file) — no writes performed
+#
+# Source of truth: scripts/fleet/fleet-transition in the engine repo.
+# Installed to ~/bin/ by scripts/fleet/install.sh.
+
+set -euo pipefail
+
+PROG="fleet-transition"
+
+# ----------------------------------------------------------------------
+# Locate the state-machine data file
+# ----------------------------------------------------------------------
+# Production invocation is via the ~/bin/fleet-transition symlink, so
+# follow the symlink chain to the real script before deriving the engine
+# root (same approach as fleet-labels). FLEET_STATE_MACHINE overrides the
+# path (used by the test harness to point at a fixture).
+resolve_symlink_chain() {
+    local path="$1"
+    while [[ -L "$path" ]]; do
+        local target
+        target=$(readlink "$path")
+        if [[ "$target" = /* ]]; then
+            path="$target"
+        else
+            path="$(cd "$(dirname "$path")" && pwd)/$target"
+        fi
+    done
+    echo "$path"
+}
+
+if [[ -n "${FLEET_STATE_MACHINE:-}" ]]; then
+    STATE_MACHINE="$FLEET_STATE_MACHINE"
+else
+    SCRIPT_PATH=$(resolve_symlink_chain "${BASH_SOURCE[0]}")
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    ENGINE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    STATE_MACHINE="$ENGINE_ROOT/docs/agents/fleet-state-machine.json"
+fi
+
+# ----------------------------------------------------------------------
+# Parse args
+# ----------------------------------------------------------------------
+transition=""
+number=""
+repo_slug=""
+dry_run=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+                echo "$PROG: --repo requires a value (e.g. owner/repo)" >&2
+                exit 2
+            fi
+            repo_slug="$2"; shift 2 ;;
+        --repo=*)
+            repo_slug="${1#--repo=}"; shift ;;
+        --dry-run) dry_run=1; shift ;;
+        -h|--help)
+            sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        --) shift; break ;;
+        -*)
+            echo "$PROG: unknown option '$1'" >&2; exit 2 ;;
+        *)
+            if [[ -z "$transition" ]]; then transition="$1"
+            elif [[ -z "$number" ]]; then number="$1"
+            else echo "$PROG: unexpected arg '$1'" >&2; exit 2
+            fi
+            shift ;;
+    esac
+done
+
+if [[ -z "$transition" || -z "$number" ]]; then
+    echo "$PROG: usage: $PROG <transition-name> <number> [--repo <slug>] [--dry-run]" >&2
+    exit 2
+fi
+if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+    echo "$PROG: <number> must be an issue/PR number, got '$number'" >&2
+    exit 2
+fi
+
+for dep in gh jq; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        echo "$PROG: $dep not found." >&2; exit 1
+    fi
+done
+if [[ ! -f "$STATE_MACHINE" ]]; then
+    echo "$PROG: state-machine file not found: $STATE_MACHINE" >&2; exit 2
+fi
+
+repo_args=()
+[[ -n "$repo_slug" ]] && repo_args=(--repo "$repo_slug")
+
+# ----------------------------------------------------------------------
+# Look up the edge (typo protection: unknown name -> list valid, bail)
+# ----------------------------------------------------------------------
+edge=$(jq -c --arg n "$transition" '.transitions[] | select(.name == $n)' "$STATE_MACHINE")
+if [[ -z "$edge" ]]; then
+    echo "$PROG: unknown transition '$transition'. Valid transitions:" >&2
+    jq -r '.transitions[] | "  " + .name + "  (" + .scope + ")  " + (.note // "")' "$STATE_MACHINE" >&2
+    exit 2
+fi
+
+scope=$(jq -r '.scope' <<<"$edge")
+mapfile -t want_remove < <(jq -r '.remove[]?' <<<"$edge")
+mapfile -t want_add    < <(jq -r '.add[]?'    <<<"$edge")
+
+# Typo protection: every label the edge names must be a real node.
+unknown=()
+for l in "${want_remove[@]}" "${want_add[@]}"; do
+    if [[ $(jq -r --arg l "$l" '[.labels[].name] | index($l)' "$STATE_MACHINE") == "null" ]]; then
+        unknown+=("$l")
+    fi
+done
+if [[ ${#unknown[@]} -gt 0 ]]; then
+    echo "$PROG: transition '$transition' references label(s) not in the node set: ${unknown[*]}" >&2
+    echo "$PROG: fix docs/agents/fleet-state-machine.json (labels[] is the canonical node list)." >&2
+    exit 2
+fi
+
+# ----------------------------------------------------------------------
+# Scope-correct target accessor + scope-mismatch detection
+# ----------------------------------------------------------------------
+gh_kind="pr"; [[ "$scope" == "issue" ]] && gh_kind="issue"
+other_kind="issue"; [[ "$scope" == "issue" ]] && other_kind="pr"
+
+fetch_labels() {  # echoes newline-delimited live label names for the target
+    gh "$gh_kind" view "$number" "${repo_args[@]}" --json labels --jq '.labels[].name' 2>/dev/null
+}
+
+if ! current=$(fetch_labels); then
+    # Could not read the target as the edge's scope. Distinguish a scope
+    # mismatch (it exists as the OTHER kind) from a genuine not-found.
+    if gh "$other_kind" view "$number" "${repo_args[@]}" --json number >/dev/null 2>&1; then
+        echo "$PROG: transition '$transition' is scope=$scope but #$number is a $other_kind." >&2
+        exit 2
+    fi
+    echo "$PROG: could not read $gh_kind #$number (not found, or gh/auth error)." >&2
+    exit 1
+fi
+
+# ----------------------------------------------------------------------
+# Compute the effective delta against the LIVE set (idempotency)
+# ----------------------------------------------------------------------
+has_label() { printf '%s\n' "$current" | grep -Fxq -- "$1"; }
+
+del=(); add=()
+for l in "${want_remove[@]}"; do has_label "$l" && del+=("$l"); done
+for l in "${want_add[@]}"; do has_label "$l" || add+=("$l"); done
+
+describe="$gh_kind #$number: $transition"
+if [[ ${#del[@]} -eq 0 && ${#add[@]} -eq 0 ]]; then
+    echo "$PROG: $describe — already satisfied; no-op."
+    exit 0
+fi
+
+edit_args=()
+for l in "${add[@]}"; do edit_args+=(--add-label "$l"); done
+for l in "${del[@]}"; do edit_args+=(--remove-label "$l"); done
+
+if [[ "$dry_run" -eq 1 ]]; then
+    echo "$PROG: [dry-run] $describe"
+    [[ ${#add[@]} -gt 0 ]] && echo "  + add:    ${add[*]}"
+    [[ ${#del[@]} -gt 0 ]] && echo "  - remove: ${del[*]}"
+    exit 0
+fi
+
+# ----------------------------------------------------------------------
+# Apply in a single edit call, then verify convergence (one retry under
+# GitHub label eventual-consistency).
+# ----------------------------------------------------------------------
+apply_delta() {  # args: edit flag pairs
+    gh "$gh_kind" edit "$number" "${repo_args[@]}" "$@" >/dev/null 2>&1
+}
+
+if ! apply_delta "${edit_args[@]}"; then
+    echo "$PROG: gh $gh_kind edit failed for #$number" >&2
+    exit 1
+fi
+
+# Re-fetch and confirm: every want_add present, every want_remove absent.
+verify_and_residual() {  # populates global r_add/r_del with what's still off
+    local live
+    live=$(fetch_labels) || return 1
+    r_add=(); r_del=()
+    local l
+    for l in "${want_add[@]}"; do
+        printf '%s\n' "$live" | grep -Fxq -- "$l" || r_add+=("$l")
+    done
+    for l in "${want_remove[@]}"; do
+        printf '%s\n' "$live" | grep -Fxq -- "$l" && r_del+=("$l")
+    done
+    return 0
+}
+
+if verify_and_residual; then
+    if [[ ${#r_add[@]} -gt 0 || ${#r_del[@]} -gt 0 ]]; then
+        # One corrective re-apply for transient propagation gaps.
+        retry=()
+        for l in "${r_add[@]}"; do retry+=(--add-label "$l"); done
+        for l in "${r_del[@]}"; do retry+=(--remove-label "$l"); done
+        apply_delta "${retry[@]}" || true
+        if verify_and_residual && { [[ ${#r_add[@]} -gt 0 || ${#r_del[@]} -gt 0 ]]; }; then
+            echo "$PROG: $describe — applied but did not converge (still off: add=${r_add[*]} remove=${r_del[*]})" >&2
+            exit 1
+        fi
+    fi
+fi
+
+summary=""
+[[ ${#add[@]} -gt 0 ]] && summary+=" +[${add[*]}]"
+[[ ${#del[@]} -gt 0 ]] && summary+=" -[${del[*]}]"
+echo "$PROG: $describe —${summary}"

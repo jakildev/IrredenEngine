@@ -50,25 +50,25 @@ CMake flag, and the hot-reload-only-in-EVAL contract.
 
 ## `createEntity` auto-attaches transform components
 
-`IREntity::createEntity(...)` implicitly adds `C_PositionGlobal3D`,
-`C_LocalTransform`, and `C_WorldTransform` to every entity, whether
-you asked for them or not. The free function detects when the caller
-supplies one of these types explicitly and skips the matching default
-so the caller-provided value lands cleanly. Legacy systems read
-`C_PositionGlobal3D` (updated by `GLOBAL_POSITION_3D` +
-`APPLY_POSITION_OFFSET`); the canonical SQT path reads
-`C_WorldTransform` (updated by `PROPAGATE_TRANSFORM` from
-`C_LocalTransform` composed with the parent chain — see
+`IREntity::createEntity(...)` implicitly adds `C_LocalTransform` and
+`C_WorldTransform` to every entity, whether you asked for them or
+not. The free function detects when the caller supplies one of these
+types explicitly and skips the matching default so the caller-
+provided value lands cleanly. Consumers read `C_WorldTransform`
+(updated by `PROPAGATE_TRANSFORM` from `C_LocalTransform` composed
+with the parent chain — see
 `engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
-propagation").
+propagation"). The legacy `C_Position3D` / `C_PositionGlobal3D` /
+`C_Rotation` channel and its `SYSTEM_GLOBAL_POSITION_3D` writer were
+retired in T-302; use `C_LocalTransform` + `C_WorldTransform`.
 
 Per-frame additive offsets (idle bob, gizmo nudges, future per-frame
 perturbations) travel through the modifier framework's vec3 fields:
-`POSITION_OFFSET_3D` (folded into `C_PositionGlobal3D` by
-`APPLY_POSITION_OFFSET`) and the SQT-side `TRANSFORM_TRANSLATION` /
-`TRANSFORM_SCALE` (folded into `C_WorldTransform` by
-`PROPAGATE_TRANSFORM`). Entities that don't push such offsets don't
-need `C_Modifiers`.
+`TRANSFORM_TRANSLATION` / `TRANSFORM_SCALE` (folded into
+`C_WorldTransform` by `PROPAGATE_TRANSFORM`). Entities that don't
+push such offsets don't need `C_Modifiers`. The legacy
+`POSITION_OFFSET_3D` / `APPLY_POSITION_OFFSET` channel was retired in
+T-300 Phase 2.
 
 ## Manager globals
 

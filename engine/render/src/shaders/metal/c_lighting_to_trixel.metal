@@ -1,48 +1,37 @@
 #include "ir_iso_common.metal"
+#include "ir_per_axis_lighting.metal"
+// FrameDataSun + the sun-depth buffer cascade lookup (worldSunShadowFactor) —
+// for the opt-in detached re-voxelize world-receive path (#1576 P4b-2). Shared
+// with c_compute_sun_shadow; replaces this kernel's former local FrameDataSun.
+#include "ir_sun_shadow_sample.metal"
 
 // Mirrors shaders/c_lighting_to_trixel.glsl. Screen-space lighting
 // application pass — modulates trixelColors.rgb by (AO × sun-shadow),
 // with an optional LUT palette shading path keyed off lutEnabled and
 // an optional flood-fill light-volume additive contribution keyed off
-// lightVolumeEnabled. When the volume path is active, the per-pixel
-// world voxel position is recovered from the distance texture and the
-// bound 3D light volume is sampled and additively combined with the
-// AO base.
+// lightVolumeEnabled. When hdrEnabled is set, computes in unclamped
+// float precision, adds the sky-term contribution, applies exposure,
+// and tonemaps via the ACES Filmic curve before writing back to the
+// canvas.
 
 struct FrameDataLightingToTrixel {
     int   lightingEnabled;
     int   lutEnabled;
     int   lightVolumeEnabled;
     float debugLightLevel;
-    // Mirrors IRRender::DebugOverlayMode. 0 = NONE (artistic path); 1 = AO,
-    // 2 = LIGHT_LEVEL, 3 = SHADOW all short-circuit and write false-color.
     int   debugOverlayMode;
-};
-
-struct FrameDataSun {
-    float4 sunDirection;
-    float sunIntensity;
-    float sunAmbient;
-    int shadowsEnabled;
-    int aoEnabled;
-    float4 sunBasisU;
-    float4 sunBasisV;
-    float2 sunBufferOriginUV;
-    float2 sunBufferTexelSize;
+    int   hdrEnabled;
+    float exposure;
+    float skyIntensity;
+    float4 skyColor;
 };
 
 // Mirror of `kLightVolumeSize` in component_canvas_light_volume.hpp.
 constant float kLightVolumeSize = 128.0;
 constant float kLightVolumeHalfExtent = 64.0;
 
-// Phase 1c (#360): mirrors LightVolumeParams in ir_render_types.hpp.
-// Only `worldOriginVoxel.xyz` is read here; the seed/propagate ints
-// are unused on the lighting path but the layout must match for
-// std140/Metal-buffer compatibility with the shared UBO.
-// Layout tombstones — must match the propagate/seed UBO layout
-// (c_seed_light_volume.metal, c_propagate_light_volume.metal). Lighting
-// only reads `worldOriginVoxel`; leading-underscore names mark the
-// unused slots.
+// Layout must match the propagate/seed UBO layout so the shared buffer
+// binding works. Lighting only reads `worldOriginVoxel`.
 struct LightVolumeParams {
     int   _gridSize;
     int   _halfExtent;
@@ -51,22 +40,30 @@ struct LightVolumeParams {
     int4  worldOriginVoxel;
 };
 
-// `faceOutwardNormal()` lives in ir_iso_common.metal — shared with
-// c_compute_voxel_ao.metal so AO sampling and lambert use the same
-// convention.
+// ACES Filmic tone mapping (Stephen Hill's fitted curve).
+float3 ACESFilm(float3 x) {
+    const float a = 2.51f;
+    const float b = 0.03f;
+    const float c = 2.43f;
+    const float d = 0.59f;
+    const float e = 0.14f;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0f, 1.0f);
+}
 
 kernel void c_lighting_to_trixel(
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
     constant FrameDataVoxelToTrixel& voxelFrameData [[buffer(7)]],
     constant FrameDataSun& sunFrameData [[buffer(29)]],
     constant LightVolumeParams& lightVolumeParams [[buffer(23)]],
+    // Baked sun-aligned depth map — read by the detached world-receive path
+    // (#1576 P4b-2) to re-run the cascade lookup at a world-placed voxel's pos.
+    device const uint* sunDepthBuf [[buffer(28)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasAO [[texture(2)]],
     texture2d<float, access::sample> paletteLUT [[texture(3)]],
-    // canvasSunShadow sits at texture unit 4 — Metal flattens texture
-    // and image tables into a shared slot space, so it cannot collide
-    // with paletteLUT at unit 3 or lightVolume at unit 5.
+    // Unit 4 — Metal flattens texture/image tables into a shared slot
+    // space; cannot collide with paletteLUT(3) or lightVolume(5).
     texture2d<float, access::read> canvasSunShadow [[texture(4)]],
     texture3d<float, access::sample> lightVolume [[texture(5)]],
     uint3 globalId [[thread_position_in_grid]]
@@ -85,16 +82,61 @@ kernel void c_lighting_to_trixel(
     }
 
     const int encoded = trixelDistances.read(uint2(pixel)).x;
-    if (encoded >= 65535) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    if (encoded >= (voxelFrameData.perAxisRoute != 0 ? 0x7FFFFFFF : 65535)) {
         return;
     }
 
+    // A detached re-voxelize canvas (#1558) is lit by AO + directional sun + sky
+    // only by DEFAULT; the opt-in world-placed path (#1576 P4b-2,
+    // detachedWorldReceive.w != 0) instead has it RECEIVE world sun-shadow + 128³
+    // light-volume bleed at its recovered world pos, like a GRID solid. Default
+    // path stays byte-identical. Mirrors c_lighting_to_trixel.glsl.
+    const bool detachedCanvas = voxelFrameData.isDetachedCanvas != 0.0f;
+    const bool worldReceive = detachedCanvas && voxelFrameData.detachedWorldReceive.w != 0.0f;
+
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    const int rawDepth = (voxelFrameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
+    // Decode the visible-triplet slot (#1278) → world FaceId → world-frame
+    // six-face outward normal. Used by Lambert, the sky-term, and the
+    // world-receive sun-shadow normal — hoisted above the shadow read.
+    const int slot = encoded & 3;
+    const int faceId = voxelFrameData.visibleFaceIds[slot];
+    float3 worldNormal = faceOutwardNormal6(faceId);
+
+    // Recover this voxel's WORLD position once for an opt-in world-placed
+    // detached solid (model pos + the entity's world cell origin); shared by the
+    // sun-shadow receive and the light-volume sample. Mirrors GLSL.
+    float3 worldReceivePos = float3(0.0f);
+    if (worldReceive) {
+        worldReceivePos = trixelCanvasPixelToWorld3D(
+            pixel, rawDepth, voxelFrameData.trixelCanvasOffsetZ1,
+            voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions,
+            voxelFrameData.rasterYaw
+        ) + voxelFrameData.detachedWorldReceive.xyz;
+    }
+
     const float  ao     = canvasAO.read(uint2(pixel)).r;
-    const float  shadow = canvasSunShadow.read(uint2(pixel)).r;
+    // Shadow factor: the world canvas reads its COMPUTE_SUN_SHADOW result; an
+    // opt-in world-placed detached solid re-runs that cascade lookup at its world
+    // pos (world iso depth = model rawDepth + the offset's iso depth picks the
+    // cascade); a default detached overlay stays forced fully lit.
+    float shadow;
+    if (worldReceive) {
+        shadow = sunFrameData.shadowsEnabled != 0
+            ? worldSunShadowFactor(
+                  worldReceivePos, worldNormal,
+                  float(rawDepth) + voxelFrameData.detachedWorldReceive.x +
+                      voxelFrameData.detachedWorldReceive.y +
+                      voxelFrameData.detachedWorldReceive.z,
+                  sunFrameData, sunDepthBuf
+              )
+            : 1.0f;
+    } else {
+        shadow = detachedCanvas ? 1.0f : canvasSunShadow.read(uint2(pixel)).r;
+    }
     const float4 src    = trixelColors.read(uint2(pixel));
 
-    // Debug overlay short-circuits artistic shading and paints a false-
-    // color representation of the selected lighting buffer.
     if (frameData.debugOverlayMode != 0) {
         float3 debugColor = float3(0.0f);
         if (frameData.debugOverlayMode == 1) {
@@ -109,9 +151,9 @@ kernel void c_lighting_to_trixel(
         return;
     }
 
-    const int rawDepth = encoded >> 2;
-    const int face = encoded & 3;
-    const float lambert = max(0.0f, dot(faceOutwardNormal(face), sunFrameData.sunDirection.xyz));
+    // Sun direction is world frame; worldNormal (decoded above) is the matching
+    // world-frame surface normal; Lambert is a plain dot product. Mirrors GLSL.
+    const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
     const float faceFactor =
         mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;
 
@@ -119,45 +161,55 @@ kernel void c_lighting_to_trixel(
     if (frameData.lutEnabled == 0) {
         baseRgb = src.rgb * ao * shadow * faceFactor;
     } else {
-        // LUT palette shading: AO drives the X axis (light level), luminance
-        // drives Y. Shadow darkening is applied after the LUT lookup so
-        // palette shading and directional shadows compose without needing a
-        // 3D LUT.
         constexpr sampler s(filter::nearest, address::clamp_to_edge);
         const float  luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
         const float4 lut       = paletteLUT.sample(s, float2(ao, luminance));
         baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
     }
 
-    if (frameData.lightVolumeEnabled != 0) {
-        // Recover the world voxel position of this pixel from the encoded
-        // depth + iso offset, mirroring the math in c_compute_voxel_ao.metal.
-        // Subdivision-aware canvasOffset matches c_compute_voxel_ao.metal.
-        // At cardinalIndex==0 the path collapses to master so yaw=0 stays
-        // byte-identical; non-zero cardinal yaw composes R(-rasterYaw)
-        // afterward to recover world coordinates.
-        float3 pos3D = trixelCanvasPixelToWorld3D(
-            pixel,
-            rawDepth,
-            voxelFrameData.trixelCanvasOffsetZ1,
-            voxelFrameData.frameCanvasOffset,
-            voxelFrameData.voxelRenderOptions,
-            voxelFrameData.rasterYaw
-        );
+    // Light-volume bleed: the world / per-axis camera canvases sample the shared
+    // 128³ volume; an opt-in world-placed detached solid samples it too, at its
+    // recovered world pos (#1576 P4b-2). A default detached overlay stays
+    // excluded — byte-identical. Mirrors GLSL.
+    if (frameData.lightVolumeEnabled != 0 && (!detachedCanvas || worldReceive)) {
+        // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
+        // face-locally; the single canvas uses the cardinal-snap reconstruction.
+        // The shared world light volume is sampled the same way for both. The
+        // world-placed detached solid reuses worldReceivePos (model + offset).
+        // Smooth-yaw single-canvas recovery (#1719): while rotating, the main
+        // canvas's remaining SDF/text content stores at the FULL visualYaw
+        // with view-frame depth, so the light-volume sample position must use
+        // the smooth inverse or the glow drifts off the surface as |residual|
+        // grows. residualYaw == 0 (and every detached canvas, whose frame
+        // carries zero yaw) keeps the byte-identical cardinal recovery.
+        float3 pos3D = worldReceive
+            ? worldReceivePos
+            : (voxelFrameData.perAxisRoute != 0
+                ? perAxisCellToWorld3D(
+                      pixel, rawDepth, faceId, size,
+                      voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
+                  )
+                : (voxelFrameData.residualYaw != 0.0
+                    ? trixelCanvasPixelToWorld3DSmoothYaw(
+                          pixel,
+                          rawDepth,
+                          voxelFrameData.trixelCanvasOffsetZ1,
+                          voxelFrameData.frameCanvasOffset,
+                          voxelFrameData.voxelRenderOptions,
+                          voxelFrameData.visualYaw
+                      )
+                    : trixelCanvasPixelToWorld3D(
+                          pixel,
+                          rawDepth,
+                          voxelFrameData.trixelCanvasOffsetZ1,
+                          voxelFrameData.frameCanvasOffset,
+                          voxelFrameData.voxelRenderOptions,
+                          voxelFrameData.rasterYaw
+                      )));
 
-        // Sample the light volume at the surface voxel. CLAMP_TO_EDGE means
-        // out-of-volume samples read zero light (border texels were cleared
-        // during BFS staging).
         constexpr sampler volumeSampler(
             filter::nearest, address::clamp_to_edge
         );
-        // The propagate pass stores unattenuated emit color in rgb and
-        // residual strength in alpha, so the visible contribution is
-        // `rgb * alpha` (linear falloff with Manhattan distance, zero
-        // past the light's radius).
-        // Phase 1c (#360): subtract the camera-anchored world origin
-        // so the sample maps to the texel the seed/propagate passes
-        // wrote.
         const float3 localPos =
             pos3D - float3(lightVolumeParams.worldOriginVoxel.xyz);
         const float3 sampleCoord =
@@ -165,7 +217,17 @@ kernel void c_lighting_to_trixel(
             float3(kLightVolumeSize);
         const float4 lightSample = lightVolume.sample(volumeSampler, sampleCoord);
         const float3 light = lightSample.rgb * lightSample.a;
-        baseRgb = clamp(baseRgb + src.rgb * light, 0.0f, 1.0f);
+        baseRgb = baseRgb + src.rgb * light;
+    }
+
+    if (frameData.hdrEnabled != 0) {
+        if (frameData.skyIntensity > 0.0f) {
+            float skyFactor = max(0.0f, worldNormal.z);
+            baseRgb += frameData.skyColor.rgb * frameData.skyIntensity * skyFactor * ao;
+        }
+        baseRgb = ACESFilm(baseRgb * frameData.exposure);
+    } else {
+        baseRgb = clamp(baseRgb, 0.0f, 1.0f);
     }
 
     trixelColors.write(float4(baseRgb, src.a), uint2(pixel));

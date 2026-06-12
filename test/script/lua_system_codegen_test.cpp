@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -46,6 +47,13 @@ class LuaSystemCodegenTest : public testing::Test {
 };
 
 // ---- Canonical loop + column ops -----------------------------------------
+//
+// pos and vel are read-only (no write to CodegenSysPos between the at(i)
+// binding and any subsequent read). The emitter should lower both to
+// `const auto& pos` / `const auto& vel` rather than `auto` (copy). Verify
+// in: build/test/codegen/lua_system_codegen_fixtures.hpp →
+// createSystem_CodegenMove(). If the alias path silently regresses to copy,
+// the fixture will show `auto pos` instead of `const auto& pos`.
 
 TEST_F(LuaSystemCodegenTest, MovePositionByVelocityRoundTrip) {
     using IRComponents::C_CodegenSysPos;
@@ -125,6 +133,33 @@ TEST_F(LuaSystemCodegenTest, ExcludesFilterDropsTaggedArchetype) {
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(eSkip).x_, 0.0f);
 }
 
+// ---- #1368: packed vec3 / ivec3 fields in a tick -------------------------
+//
+// CodegenVecStep reads each packed field via getField (typed VEC3 / IVEC3),
+// reads its `.x/.y/.z` components, rebuilds the value via vec3.new / ivec3.new,
+// and writes it back via setField. Verifies the DSL lowers component access to
+// bare `.x/.y/.z` (no trailing `_`) and the constructors to IRMath aggregates.
+
+TEST_F(LuaSystemCodegenTest, VecStepReadsComponentsAndWritesPackedFields) {
+    using IRComponents::C_CodegenSysBody;
+    // Fields sort alphabetically: ctor order is (cell, pos).
+    const auto e = IREntity::createEntity(
+        C_CodegenSysBody{IRMath::ivec3{10, 20, 30}, IRMath::vec3{1.0f, 2.0f, 3.0f}}
+    );
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenVecStep();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    const auto &b = IREntity::getComponent<C_CodegenSysBody>(e);
+    EXPECT_FLOAT_EQ(b.pos_.x, 2.0f);
+    EXPECT_FLOAT_EQ(b.pos_.y, 4.0f);
+    EXPECT_FLOAT_EQ(b.pos_.z, 6.0f);
+    EXPECT_EQ(b.cell_.x, 11);
+    EXPECT_EQ(b.cell_.y, 20);
+    EXPECT_EQ(b.cell_.z, 30);
+}
+
 // ---- Field-level column ops (getField / setField) ------------------------
 
 TEST_F(LuaSystemCodegenTest, DamageAppliesFieldGetAndFieldSet) {
@@ -160,6 +195,101 @@ TEST_F(LuaSystemCodegenTest, RegistryReturnsAllCodegenSystemIds) {
     EXPECT_NE(ids.CodegenWobble, ids.CodegenClampPositive);
     EXPECT_NE(ids.CodegenClampPositive, ids.CodegenAddOne);
     EXPECT_NE(ids.CodegenAddOne, ids.CodegenDamage);
+    EXPECT_NE(ids.CodegenDamage, ids.CodegenParallelInc);
+    EXPECT_NE(ids.CodegenParallelInc, ids.CodegenReadAfterWrite);
+    EXPECT_NE(ids.CodegenReadAfterWrite, ids.CodegenForNumericBackEdge);
+    EXPECT_NE(ids.CodegenForNumericBackEdge, ids.CodegenRenderGlue);
+}
+
+// ---- PARALLEL_FOR registers without FATAL and updates every row --------
+//
+TEST_F(LuaSystemCodegenTest, ParallelIncRegistersAndUpdatesEveryRow) {
+    using IRComponents::C_CodegenSysPos;
+
+    constexpr int kCount = 256;
+    std::vector<IREntity::EntityId> entities;
+    entities.reserve(kCount);
+    for (int i = 0; i < kCount; ++i) {
+        entities.push_back(IREntity::createEntity(C_CodegenSysPos(static_cast<float>(i), 0.0f)));
+    }
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenParallelInc();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    for (int i = 0; i < kCount; ++i) {
+        EXPECT_FLOAT_EQ(
+            IREntity::getComponent<C_CodegenSysPos>(entities[i]).x_,
+            static_cast<float>(i) + 1.0f
+        );
+        EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(entities[i]).y_, 2.0f);
+    }
+}
+
+// ---- #1353: row-alias optimisation preserves copy semantics --------------
+//
+// `CodegenReadAfterWrite` reads `r.x` AFTER writing column x through
+// `setField`. The optimised emitter must keep `local r = arch.C:at(i)` a
+// by-value copy here (a row alias would observe the just-written x). With an
+// initial (x=3, y=7): x is overwritten to 99, then y is set from the
+// PRE-write x (3). An (incorrect) alias would yield y == 99.
+
+TEST_F(LuaSystemCodegenTest, ReadAfterWriteKeepsCopySemantics) {
+    using IRComponents::C_CodegenSysPos;
+
+    const auto e = IREntity::createEntity(C_CodegenSysPos(3.0f, 7.0f));
+
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenReadAfterWrite();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 99.0f);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).y_, 3.0f);
+}
+
+// ---- #1353: FOR_NUMERIC back-edge keeps copy semantics for outer binding --
+//
+// `CodegenForNumericBackEdge` binds `local a = arch.C:at(i)` before a
+// for_numeric loop that writes field x inside the body. The back-edge
+// analysis passes `cWritten || bodyWrites` so a read in iteration N+1
+// must not see the write from iteration N via an alias. With an initial
+// x=1.0 and 3 iterations (j=0,1,2), copy semantics yield x=2.0 (each
+// write reads the unchanged copy 1.0). An incorrect alias would
+// accumulate: 1→2→3→4.
+
+TEST_F(LuaSystemCodegenTest, ForNumericBackEdgeKeepsCopySemantics) {
+    using IRComponents::C_CodegenSysPos;
+
+    const auto e = IREntity::createEntity(C_CodegenSysPos(1.0f, 0.0f));
+
+    const IRSystem::SystemId sys =
+        IRScript::CodegenRegistry::createSystem_CodegenForNumericBackEdge();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sys});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    // Copy semantics: each of the 3 iterations reads the original a.x (1.0)
+    // and writes 1.0 + 1.0 = 2.0. An alias would accumulate to 4.0.
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_CodegenSysPos>(e).x_, 2.0f);
+}
+
+// ---- #1616: whitelisted side-effecting engine binding as a bare statement --
+//
+// `CodegenRenderGlue`'s tick body calls `IRRender.setSunIntensity(pos.x)` as a
+// bare statement — a void render-glue setter that the DSL now lowers to
+// `IRRender::setSunIntensity(...)`. The strongest assertion is structural and
+// already paid: for this test to COMPILE and LINK, the generated
+// `createSystem_CodegenRenderGlue()` must contain valid C++ that resolves the
+// real `IRRender::setSunIntensity` symbol (the generated header `#include`s
+// `<irreden/ir_render.hpp>`). Here we confirm the system registers cleanly.
+//
+// We deliberately do NOT execute the tick against a matching entity: the
+// render-glue setter calls `getRenderManager()`, which IR_ASSERTs on the
+// absent RenderManager in this headless harness (engine/render/src/ir_render.cpp).
+// The lowering + link is the regression surface this test pins.
+TEST_F(LuaSystemCodegenTest, RenderGlueSideEffectLowersAndRegisters) {
+    const IRSystem::SystemId sys = IRScript::CodegenRegistry::createSystem_CodegenRenderGlue();
+    EXPECT_LT(sys, m_system_manager.getSystemCount());
+    EXPECT_STREQ(m_system_manager.getSystemName(sys).c_str(), "CodegenRenderGlue");
 }
 
 } // namespace

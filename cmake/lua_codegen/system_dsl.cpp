@@ -6,10 +6,12 @@
 
 #include <cctype>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace IRLuaCodegen {
@@ -34,6 +36,21 @@ const std::vector<Intrinsic> kIntrinsicRegistry = {
     {"math", "max",   "IRMath::max",   2},
     // --- IRMath.* ---
     {"IRMath", "clamp", "IRMath::clamp", 3},
+    // --- IRRender.* render-glue setters (#1616) ----------------------------
+    //
+    // Whitelisted side-effecting (void) engine bindings: allowed as a bare
+    // statement in a CODEGEN tick body (`IRRender.setSunIntensity(x)`), lowered
+    // to the C++ free function. These are pure pass-throughs to RenderManager —
+    // no new engine surface — so a system that *computes* a render parameter
+    // under CODEGEN can also *apply* it without falling back to EVAL / a C++
+    // bridge. Scalar args only (the DSL lowers each arg as a numeric
+    // expression). `true` marks statement-position-only; the trailing header
+    // is emitted as an #include in the generated header so the call compiles.
+    {"IRRender", "setSunIntensity", "IRRender::setSunIntensity", 1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setSunAmbient",   "IRRender::setSunAmbient",   1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setExposure",     "IRRender::setExposure",     1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setSkyIntensity", "IRRender::setSkyIntensity", 1, true, "irreden/ir_render.hpp"},
+    {"IRRender", "setCameraZoom",   "IRRender::setCameraZoom",   1, true, "irreden/ir_render.hpp"},
 };
 
 [[noreturn]] void fail(const std::string &file, int line, const std::string &msg) {
@@ -536,11 +553,16 @@ struct Parser {
             return stmt;
         }
 
-        // Anything else: parse the expression and reject it. Either:
-        //   - `var.field = ...` (unsupported assignment target — point at the actual
-        //     supported targets), or
-        //   - a bare expression statement like `pos.x` or `math.sin(0)` (no side
-        //     effect; almost certainly a typo).
+        // Anything else: parse the expression. It's accepted only as a bare
+        // call to a whitelisted side-effecting binding (#1616); otherwise
+        // reject it. Either:
+        //   - `var.field = ...` (unsupported assignment target — point at the
+        //     actual supported targets), or
+        //   - a bare INTRINSIC_CALL like `IRRender.setSunIntensity(x)` → an
+        //     expression statement (emission validates it's a statement-allowed
+        //     void binding; a value-returning one like `math.sin(0)` is rejected
+        //     there), or
+        //   - any other bare expression like `pos.x` (no side effect; a typo).
         ExprPtr e = parseExpr();
         if (check(TokenKind::ASSIGN)) {
             fail(file_, line,
@@ -548,9 +570,17 @@ struct Parser {
                  "bare locals (`x = expr`), column rows (`arch.Comp:setAt(i, val)`), "
                  "and column fields (`arch.Comp:setField(i, \"f\", val)`)");
         }
+        if (e->kind_ == ExprKind::INTRINSIC_CALL) {
+            auto stmt = std::make_unique<Stmt>();
+            stmt->kind_ = StmtKind::EXPR_STMT;
+            stmt->line_ = line;
+            stmt->exprStmt_ = std::move(e);
+            return stmt;
+        }
         fail(file_, line,
              "bare expression statements are not supported in CODEGEN bodies; valid "
-             "statements are `local`, assignment, `if`, `for`, and column-write calls");
+             "statements are `local`, assignment, `if`, `for`, column-write calls, and "
+             "whitelisted side-effecting engine bindings (e.g. `IRRender.setSunIntensity(x)`)");
     }
 
     // Precedence climbing for binary expressions. Lower number = lower precedence.
@@ -846,6 +876,8 @@ enum class ExprType {
     BOOL,
     STRING,
     COMPONENT,        // a Lua-defined codegen'd component value (typed by name)
+    VEC3,             // IRMath::vec3 — from a vec3 field or `vec3.new(x,y,z)`
+    IVEC3,            // IRMath::ivec3 — from an ivec3 field or `ivec3.new(x,y,z)`
 };
 
 struct Symbol {
@@ -859,6 +891,8 @@ ExprType fieldTypeToExprType(FieldType t) {
         case FieldType::FLOAT:  return ExprType::FLOAT;
         case FieldType::BOOL:   return ExprType::BOOL;
         case FieldType::STRING: return ExprType::STRING;
+        case FieldType::VEC3:   return ExprType::VEC3;
+        case FieldType::IVEC3:  return ExprType::IVEC3;
     }
     return ExprType::UNKNOWN;
 }
@@ -869,6 +903,8 @@ const char *cppTypeForFieldType(FieldType t) {
         case FieldType::FLOAT:  return "float";
         case FieldType::BOOL:   return "bool";
         case FieldType::STRING: return "std::string";
+        case FieldType::VEC3:   return "IRMath::vec3";
+        case FieldType::IVEC3:  return "IRMath::ivec3";
     }
     return "/*unknown*/";
 }
@@ -879,7 +915,173 @@ const char *cppTypeForExprType(ExprType t) {
         case ExprType::FLOAT:    return "float";
         case ExprType::BOOL:     return "bool";
         case ExprType::STRING:   return "std::string";
+        case ExprType::VEC3:     return "IRMath::vec3";
+        case ExprType::IVEC3:    return "IRMath::ivec3";
         default:                 return "auto";
+    }
+}
+
+// ---- #1353: row-alias vs row-copy analysis ---------------------------------
+//
+// The per-row emitter lowers `local a = arch.C:at(i)` to `auto a =
+// _ir_row_C;` — a by-value copy of the whole component row. For read-light
+// kernels that copy is the dominant per-row cost (#1353: ~2.5x hand-C++ at
+// 1024 rows). When the binding is only ever READ, an alias (`const auto& a =
+// _ir_row_C;`) is observationally identical and skips the copy.
+//
+// Soundness rests on one fact about the DSL: a component-typed local cannot
+// be mutated through field assignment — `a.x = ...` is rejected by the
+// parser, so the only way component C's row changes mid-body is a
+// `setAt`/`setField` on `arch.C`. A copy freezes the row at bind time; an
+// alias tracks live writes. They diverge exactly when a read of `a` is
+// sequenced AFTER a write to C's row. The analysis below emits an alias only
+// when the binding is never reassigned and no read of it can follow a write
+// to its component; any uncertainty falls back to the safe by-value copy.
+
+// True if `e` reads the local `name` anywhere in the expression tree.
+bool exprReadsName(const Expr &e, const std::string &name) {
+    switch (e.kind_) {
+        case ExprKind::NAME_REF:
+            return e.name_ == name;
+        case ExprKind::UNARY_OP:
+            return e.lhs_ && exprReadsName(*e.lhs_, name);
+        case ExprKind::BINARY_OP:
+            return (e.lhs_ && exprReadsName(*e.lhs_, name)) ||
+                   (e.rhs_ && exprReadsName(*e.rhs_, name));
+        case ExprKind::INDEX:   // `a.field` — receiver is the NAME_REF
+            return e.receiver_ && exprReadsName(*e.receiver_, name);
+        case ExprKind::INTRINSIC_CALL:
+        case ExprKind::COLUMN_AT:
+        case ExprKind::COLUMN_GET_FIELD:
+        case ExprKind::COMPONENT_NEW:
+            for (const auto &a : e.args_) if (a && exprReadsName(*a, name)) return true;
+            return false;
+        default:                // literals
+            return false;
+    }
+}
+
+bool blockWritesComponent(const std::vector<StmtPtr> &stmts, const std::string &comp);
+
+// True if statement `s` (recursing into nested if/for bodies) writes
+// component `comp` via `arch.comp:setAt`/`setField`.
+bool stmtWritesComponent(const Stmt &s, const std::string &comp) {
+    switch (s.kind_) {
+        case StmtKind::ASSIGN:
+            return (s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_AT ||
+                    s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_FIELD) &&
+                   s.assignTarget_.componentName_ == comp;
+        case StmtKind::IF: {
+            for (const auto &br : s.ifBranches_)
+                if (blockWritesComponent(br.body_, comp)) return true;
+            return s.hasElse_ && blockWritesComponent(s.elseBody_, comp);
+        }
+        case StmtKind::FOR_NUMERIC:
+            return blockWritesComponent(s.forBody_, comp);
+        default:
+            return false;
+    }
+}
+
+bool blockWritesComponent(const std::vector<StmtPtr> &stmts, const std::string &comp) {
+    for (const auto &s : stmts) if (s && stmtWritesComponent(*s, comp)) return true;
+    return false;
+}
+
+// Forward pass over `stmts[startIdx..]` for the binding `name` (component
+// `comp`). `cWritten` is true if `comp` may already have been written before
+// this range. Sets `unsafe = true` if `name` is reassigned, redeclared
+// (shadowed), or read after a write to `comp`. A nested loop is entered with
+// `cWritten` OR-ed with whether its body writes `comp`, so a write-then-read
+// across the loop back-edge is caught; the enclosing loop needs no such
+// treatment because the binding's decl re-runs (refreshing a copy) at the
+// top of every iteration.
+void analyzeForward(const std::vector<StmtPtr> &stmts, std::size_t startIdx,
+                    const std::string &name, const std::string &comp,
+                    bool cWritten, bool &unsafe) {
+    for (std::size_t i = startIdx; i < stmts.size(); ++i) {
+        if (!stmts[i]) continue;
+        const Stmt &s = *stmts[i];
+        switch (s.kind_) {
+            case StmtKind::LOCAL_DECL:
+                if (s.localInit_ && exprReadsName(*s.localInit_, name) && cWritten)
+                    unsafe = true;
+                if (s.localName_ == name) unsafe = true;   // shadow → fall back to copy
+                break;
+            case StmtKind::ASSIGN: {
+                // Index + RHS are evaluated before the column write takes effect.
+                if (s.assignTarget_.indexExpr_ &&
+                    exprReadsName(*s.assignTarget_.indexExpr_, name) && cWritten)
+                    unsafe = true;
+                if (s.assignRhs_ && exprReadsName(*s.assignRhs_, name) && cWritten)
+                    unsafe = true;
+                if (s.assignTarget_.kind_ == AssignTargetKind::NAME &&
+                    s.assignTarget_.name_ == name)
+                    unsafe = true;                          // reassignment
+                if ((s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_AT ||
+                     s.assignTarget_.kind_ == AssignTargetKind::COLUMN_SET_FIELD) &&
+                    s.assignTarget_.componentName_ == comp)
+                    cWritten = true;
+                break;
+            }
+            case StmtKind::IF:
+                for (const auto &br : s.ifBranches_) {
+                    if (br.cond_ && exprReadsName(*br.cond_, name) && cWritten)
+                        unsafe = true;
+                    analyzeForward(br.body_, 0, name, comp, cWritten, unsafe);
+                }
+                if (s.hasElse_)
+                    analyzeForward(s.elseBody_, 0, name, comp, cWritten, unsafe);
+                if (stmtWritesComponent(s, comp)) cWritten = true;
+                break;
+            case StmtKind::FOR_NUMERIC: {
+                if (s.forLo_ && exprReadsName(*s.forLo_, name) && cWritten) unsafe = true;
+                if (s.forHi_ && exprReadsName(*s.forHi_, name) && cWritten) unsafe = true;
+                const bool bodyWrites = blockWritesComponent(s.forBody_, comp);
+                analyzeForward(s.forBody_, 0, name, comp, cWritten || bodyWrites, unsafe);
+                if (bodyWrites) cWritten = true;
+                break;
+            }
+            case StmtKind::RETURN:
+                if (s.hasReturnExpr_ && s.returnExpr_ &&
+                    exprReadsName(*s.returnExpr_, name) && cWritten)
+                    unsafe = true;
+                break;
+            case StmtKind::EXPR_STMT:
+                if (s.exprStmt_ && exprReadsName(*s.exprStmt_, name) && cWritten)
+                    unsafe = true;
+                break;
+        }
+    }
+}
+
+// Walk `stmts`, adding every `local a = arch.C:at(i)` decl whose binding is
+// alias-safe to `out` (keyed by the LOCAL_DECL Stmt address). Recurses into
+// nested if/for bodies so decls in inner scopes are analysed in their own
+// scope.
+void collectRefSafeColumnAtDecls(const std::vector<StmtPtr> &stmts,
+                                 std::unordered_set<const Stmt *> &out) {
+    for (std::size_t k = 0; k < stmts.size(); ++k) {
+        if (!stmts[k]) continue;
+        const Stmt &s = *stmts[k];
+        if (s.kind_ == StmtKind::LOCAL_DECL && s.localInit_ &&
+            s.localInit_->kind_ == ExprKind::COLUMN_AT) {
+            bool unsafe = false;
+            analyzeForward(stmts, k + 1, s.localName_,
+                           s.localInit_->componentName_, /*cWritten=*/false, unsafe);
+            if (!unsafe) out.insert(&s);
+        }
+        switch (s.kind_) {
+            case StmtKind::IF:
+                for (const auto &br : s.ifBranches_) collectRefSafeColumnAtDecls(br.body_, out);
+                if (s.hasElse_) collectRefSafeColumnAtDecls(s.elseBody_, out);
+                break;
+            case StmtKind::FOR_NUMERIC:
+                collectRefSafeColumnAtDecls(s.forBody_, out);
+                break;
+            default:
+                break;
+        }
     }
 }
 
@@ -890,10 +1092,68 @@ struct Emitter {
     const std::vector<ComponentSchema> &registry_;
     std::unordered_map<std::string, Symbol> symbols_;
 
+    // #1353: LOCAL_DECL Stmt addresses whose `arch.C:at(i)` binding is safe to
+    // emit as a `const auto&` alias of the row instead of a by-value copy.
+    // Populated by collectRefSafeColumnAtDecls() before emission.
+    std::unordered_set<const Stmt *> refSafeColumnAtDecls_;
+
+    // Per-row emission mode. When non-empty, the emitted lambda is
+    // the per-component form `[](C_X& _ir_row_X, ...)` rather than the
+    // batch form `[](Archetype&, vector<EntityId>&, vector<C_X>&, ...)`,
+    // and column-op index expressions that match `loopVarName_` lower to
+    // the per-row reference `_ir_row_X` (or `_ir_row_X.field_`) instead
+    // of `_ir_col_X[i]`. Indexing with any other expression is a parse
+    // error — per-row form has no column vector to scatter-index into.
+    std::string loopVarName_;
+
+    // #1616: engine-binding headers required by whitelisted side-effecting
+    // intrinsics emitted in this body (e.g. ir_render.hpp for IRRender.*).
+    // Merged into outRequiredIncludes by emitSystem.
+    std::set<std::string> requiredIncludes_;
+
     Emitter(const std::string &file, const std::vector<ComponentSchema> &registry)
         : file_(file), registry_(registry) {}
 
     void writeIndent() { for (int i = 0; i < indent_; ++i) out_ << "    "; }
+
+    // #1616: resolve an INTRINSIC_CALL against the whitelist + arity. Fails
+    // (codegen error) on an unknown name or arity mismatch. Shared by
+    // expression-position (emitExpr) and statement-position (EXPR_STMT)
+    // lowering so the two paths agree on the diagnostic.
+    const Intrinsic &resolveIntrinsic(const Expr &e) const {
+        const Intrinsic *intr = findIntrinsic(e.intrinsicNamespace_, e.intrinsicName_);
+        if (!intr) {
+            fail(file_, e.line_,
+                 "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                     "` is not in the CODEGEN whitelist (see cmake/lua_codegen/system_dsl.cpp)");
+        }
+        if (intr->arity_ >= 0 && static_cast<int>(e.args_.size()) != intr->arity_) {
+            fail(file_, e.line_,
+                 "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                     "` expects " + std::to_string(intr->arity_) + " argument(s), got " +
+                     std::to_string(e.args_.size()));
+        }
+        return *intr;
+    }
+
+    // #1616: emit `cppExpression_(arg0, arg1, ...)` with no trailing
+    // punctuation. Shared by both intrinsic-call positions.
+    void emitIntrinsicCall(const Expr &e, const Intrinsic &intr) {
+        out_ << intr.cppExpression_ << "(";
+        for (size_t i = 0; i < e.args_.size(); ++i) {
+            if (i) out_ << ", ";
+            emitExpr(*e.args_[i]);
+        }
+        out_ << ")";
+    }
+
+    // True when this expression is exactly the per-row loop variable
+    // reference (used to validate column-op index args in per-row mode).
+    bool isLoopVarRef(const Expr &e) const {
+        return !loopVarName_.empty() &&
+               e.kind_ == ExprKind::NAME_REF &&
+               e.name_ == loopVarName_;
+    }
 
     const ComponentSchema *findComponent(const std::string &name) const {
         for (const auto &c : registry_) if (c.name_ == name) return &c;
@@ -995,9 +1255,19 @@ struct Emitter {
                 }
                 out_ << "(";
                 ExprType lt = emitExpr(*e.lhs_);
+                if (lt == ExprType::VEC3 || lt == ExprType::IVEC3) {
+                    fail(file_, e.line_,
+                         "vector values have no whole-vector operators in CODEGEN; operate on "
+                         "components via `.x` / `.y` / `.z`");
+                }
                 out_ << " " << op << " ";
                 ExprType rt = emitExpr(*e.rhs_);
                 out_ << ")";
+                if (rt == ExprType::VEC3 || rt == ExprType::IVEC3) {
+                    fail(file_, e.line_,
+                         "vector values have no whole-vector operators in CODEGEN; operate on "
+                         "components via `.x` / `.y` / `.z`");
+                }
                 // Result-type inference (kept simple for v1):
                 switch (e.binOp_) {
                     case BinOp::LT: case BinOp::GT: case BinOp::LE: case BinOp::GE:
@@ -1016,6 +1286,15 @@ struct Emitter {
                 // arch.length is a special case
                 if (e.receiver_->kind_ == ExprKind::NAME_REF &&
                     e.receiver_->name_ == "arch" && e.field_ == "length") {
+                    if (!loopVarName_.empty()) {
+                        // Per-row form has no archetype column to size — the
+                        // canonical `for i = 0, arch.length - 1` outer loop is dropped
+                        // and the row count is implicit in the engine's per-row dispatch.
+                        fail(file_, e.line_,
+                             "`arch.length` is only valid as the upper bound of the "
+                             "canonical `for i = 0, arch.length - 1 do` loop; CODEGEN "
+                             "bodies have no archetype-length read outside that loop");
+                    }
                     out_ << "static_cast<std::int32_t>(_ir_codegen_ids.size())";
                     return ExprType::INT32;
                 }
@@ -1034,10 +1313,27 @@ struct Emitter {
                 }
                 const std::string &recvName = e.receiver_->name_;
                 auto it = symbols_.find(recvName);
-                if (it == symbols_.end() || it->second.type_ != ExprType::COMPONENT) {
+                if (it == symbols_.end()) {
                     fail(file_, e.line_,
-                         "field access on `" + recvName + "` requires it to hold a component value "
-                         "(declared via `local x = arch.Comp:at(i)` or `Comp.new(...)`)");
+                         "field access on `" + recvName + "` requires it to be a `local` "
+                         "declared in this body");
+                }
+                // vec3 / ivec3 value: only `.x` / `.y` / `.z` component reads.
+                // IRMath::vec3 members are bare `.x/.y/.z` (no trailing `_`).
+                if (it->second.type_ == ExprType::VEC3 || it->second.type_ == ExprType::IVEC3) {
+                    if (e.field_ != "x" && e.field_ != "y" && e.field_ != "z") {
+                        fail(file_, e.line_,
+                             "vector value `" + recvName + "` supports only `.x`, `.y`, `.z` "
+                             "(got `." + e.field_ + "`)");
+                    }
+                    out_ << recvName << "." << e.field_;
+                    return it->second.type_ == ExprType::VEC3 ? ExprType::FLOAT : ExprType::INT32;
+                }
+                if (it->second.type_ != ExprType::COMPONENT) {
+                    fail(file_, e.line_,
+                         "field access on `" + recvName + "` requires it to hold a component or "
+                         "vector value (declared via `local x = arch.Comp:at(i)`, `Comp.new(...)`, "
+                         "or a vec3 / ivec3 field)");
                 }
                 const auto *schema = findComponent(it->second.componentName_);
                 if (!schema) {
@@ -1053,30 +1349,18 @@ struct Emitter {
                 return fieldTypeToExprType(field->type_);
             }
             case ExprKind::INTRINSIC_CALL: {
-                const auto *intr = findIntrinsic(e.intrinsicNamespace_, e.intrinsicName_);
-                if (!intr) {
+                const Intrinsic &intr = resolveIntrinsic(e);
+                if (intr.isStatement_) {
+                    // #1616: a void side-effecting binding has no value to use.
                     fail(file_, e.line_,
-                         "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
-                             "` is not in the CODEGEN whitelist (see cmake/lua_codegen/system_dsl.cpp)");
+                         "binding `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                             "` returns void (side-effecting render-glue) and may only be used "
+                             "as a bare statement, not inside an expression");
                 }
-                if (intr->arity_ >= 0 && static_cast<int>(e.args_.size()) != intr->arity_) {
-                    fail(file_, e.line_,
-                         "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
-                             "` expects " + std::to_string(intr->arity_) + " argument(s), got " +
-                             std::to_string(e.args_.size()));
-                }
-                out_ << intr->cppExpression_ << "(";
-                for (size_t i = 0; i < e.args_.size(); ++i) {
-                    if (i) out_ << ", ";
-                    emitExpr(*e.args_[i]);
-                }
-                out_ << ")";
-                // For now treat intrinsic results as float (the listed set returns
-                // float/int but we generally need to multiply with other floats).
-                if (e.intrinsicName_ == "min" || e.intrinsicName_ == "max" ||
-                    e.intrinsicName_ == "abs" || e.intrinsicName_ == "clamp") {
-                    return ExprType::FLOAT;     // generic — the actual arity respects template deduction
-                }
+                emitIntrinsicCall(e, intr);
+                // Treat value-returning intrinsic results as float (the listed
+                // set returns float/int; C++ template deduction handles the
+                // rest where we feed the result into further float math).
                 return ExprType::FLOAT;
             }
             case ExprKind::COLUMN_AT: {
@@ -1086,6 +1370,17 @@ struct Emitter {
                          "component `" + e.componentName_ +
                              "` is not declared via `IRComponent.register(...)` "
                              "(CODEGEN system bodies only support Lua-defined components)");
+                }
+                if (!loopVarName_.empty()) {
+                    if (!isLoopVarRef(*e.args_[0])) {
+                        fail(file_, e.line_,
+                             "`arch." + e.componentName_ +
+                                 ":at(...)` index must be the canonical loop variable `" +
+                                 loopVarName_ + "` (CODEGEN bodies dispatch per-row; "
+                                 "computed indexes have no per-row meaning)");
+                    }
+                    out_ << "_ir_row_" << e.componentName_;
+                    return ExprType::COMPONENT;
                 }
                 out_ << "_ir_col_" << e.componentName_ << "[";
                 emitExpr(*e.args_[0]);
@@ -1104,12 +1399,43 @@ struct Emitter {
                     fail(file_, e.line_,
                          "component `" + schema->name_ + "` has no field `" + e.fieldNameLiteral_ + "`");
                 }
+                if (!loopVarName_.empty()) {
+                    if (!isLoopVarRef(*e.args_[0])) {
+                        fail(file_, e.line_,
+                             "`arch." + e.componentName_ +
+                                 ":getField(...)` index must be the canonical loop variable `" +
+                                 loopVarName_ + "`");
+                    }
+                    out_ << "_ir_row_" << e.componentName_ << "." << e.fieldNameLiteral_ << "_";
+                    return fieldTypeToExprType(field->type_);
+                }
                 out_ << "_ir_col_" << e.componentName_ << "[";
                 emitExpr(*e.args_[0]);
                 out_ << "]." << e.fieldNameLiteral_ << "_";
                 return fieldTypeToExprType(field->type_);
             }
             case ExprKind::COMPONENT_NEW: {
+                // Built-in vector constructors: `vec3.new(x, y, z)` /
+                // `ivec3.new(x, y, z)`. These are not registered components —
+                // they lower directly to IRMath aggregate literals so a tick
+                // can write a packed field: `arch.C:setField(i, "pos", vec3.new(...))`.
+                if (e.componentName_ == "vec3" || e.componentName_ == "ivec3") {
+                    const bool isInt = e.componentName_ == "ivec3";
+                    if (e.args_.size() != 3) {
+                        fail(file_, e.line_,
+                             "`" + e.componentName_ + ".new(...)` expects 3 arguments (x, y, z), got " +
+                                 std::to_string(e.args_.size()));
+                    }
+                    out_ << (isInt ? "IRMath::ivec3{" : "IRMath::vec3{");
+                    for (size_t i = 0; i < 3; ++i) {
+                        if (i) out_ << ", ";
+                        out_ << "static_cast<" << (isInt ? "std::int32_t" : "float") << ">(";
+                        emitExpr(*e.args_[i]);
+                        out_ << ")";
+                    }
+                    out_ << "}";
+                    return isInt ? ExprType::IVEC3 : ExprType::VEC3;
+                }
                 const auto *schema = findComponent(e.componentName_);
                 if (!schema) {
                     fail(file_, e.line_,
@@ -1150,8 +1476,14 @@ struct Emitter {
                     t = ExprType::COMPONENT;
                     componentName = s.localInit_->componentName_;
                 } else if (s.localInit_->kind_ == ExprKind::COMPONENT_NEW) {
-                    t = ExprType::COMPONENT;
-                    componentName = s.localInit_->componentName_;
+                    if (s.localInit_->componentName_ == "vec3") {
+                        t = ExprType::VEC3;
+                    } else if (s.localInit_->componentName_ == "ivec3") {
+                        t = ExprType::IVEC3;
+                    } else {
+                        t = ExprType::COMPONENT;
+                        componentName = s.localInit_->componentName_;
+                    }
                 } else if (s.localInit_->kind_ == ExprKind::COLUMN_GET_FIELD) {
                     const auto *schema = findComponent(s.localInit_->componentName_);
                     if (schema) {
@@ -1163,7 +1495,14 @@ struct Emitter {
                 // headaches); for scalars, declare an explicit type so subsequent uses get
                 // the right inference.
                 if (t == ExprType::COMPONENT) {
-                    out_ << "auto " << s.localName_ << " = ";
+                    // #1353: a read-only `local a = arch.C:at(i)` binding can
+                    // alias the row (`const auto&`) instead of copying it.
+                    // Only COLUMN_AT bindings are aliasable — a COMPONENT_NEW
+                    // value is a temporary, so it stays by-value.
+                    const bool aliasRow =
+                        s.localInit_->kind_ == ExprKind::COLUMN_AT &&
+                        refSafeColumnAtDecls_.count(&s) != 0;
+                    out_ << (aliasRow ? "const auto& " : "auto ") << s.localName_ << " = ";
                     sym.type_ = ExprType::COMPONENT;
                     sym.componentName_ = componentName;
                     symbols_[s.localName_] = sym;
@@ -1202,6 +1541,18 @@ struct Emitter {
                                  "component `" + s.assignTarget_.componentName_ +
                                      "` is not declared via `IRComponent.register(...)`");
                         }
+                        if (!loopVarName_.empty()) {
+                            if (!isLoopVarRef(*s.assignTarget_.indexExpr_)) {
+                                fail(file_, s.line_,
+                                     "`arch." + s.assignTarget_.componentName_ +
+                                         ":setAt(...)` index must be the canonical loop "
+                                         "variable `" + loopVarName_ + "`");
+                            }
+                            out_ << "_ir_row_" << s.assignTarget_.componentName_ << " = ";
+                            emitExpr(*s.assignRhs_);
+                            out_ << ";\n";
+                            return;
+                        }
                         out_ << "_ir_col_" << s.assignTarget_.componentName_ << "[";
                         emitExpr(*s.assignTarget_.indexExpr_);
                         out_ << "] = ";
@@ -1221,6 +1572,20 @@ struct Emitter {
                             fail(file_, s.line_,
                                  "component `" + schema->name_ + "` has no field `" +
                                      s.assignTarget_.fieldNameLiteral_ + "`");
+                        }
+                        if (!loopVarName_.empty()) {
+                            if (!isLoopVarRef(*s.assignTarget_.indexExpr_)) {
+                                fail(file_, s.line_,
+                                     "`arch." + s.assignTarget_.componentName_ +
+                                         ":setField(...)` index must be the canonical loop "
+                                         "variable `" + loopVarName_ + "`");
+                            }
+                            out_ << "_ir_row_" << s.assignTarget_.componentName_ << "."
+                                 << s.assignTarget_.fieldNameLiteral_ << "_ = static_cast<"
+                                 << cppTypeForFieldType(field->type_) << ">(";
+                            emitExpr(*s.assignRhs_);
+                            out_ << ");\n";
+                            return;
                         }
                         out_ << "_ir_col_" << s.assignTarget_.componentName_ << "[";
                         emitExpr(*s.assignTarget_.indexExpr_);
@@ -1276,8 +1641,25 @@ struct Emitter {
                 return;
             }
             case StmtKind::EXPR_STMT: {
+                // #1616: the parser only builds EXPR_STMT for a bare
+                // INTRINSIC_CALL. Statement position is reserved for
+                // whitelisted side-effecting (void) bindings — a bare
+                // value-returning intrinsic is almost always a dropped
+                // assignment, so reject it with a pointed message.
+                const Expr &e = *s.exprStmt_;
+                const Intrinsic &intr = resolveIntrinsic(e);
+                if (!intr.isStatement_) {
+                    fail(file_, e.line_,
+                         "intrinsic `" + e.intrinsicNamespace_ + "." + e.intrinsicName_ +
+                             "` returns a value; a bare call statement is only valid for a "
+                             "whitelisted side-effecting binding (assign the result to a "
+                             "`local` or a column field instead)");
+                }
+                if (intr.requiredInclude_) {
+                    requiredIncludes_.insert(intr.requiredInclude_);
+                }
                 writeIndent();
-                emitExpr(*s.exprStmt_);
+                emitIntrinsicCall(e, intr);
                 out_ << ";\n";
                 return;
             }
@@ -1320,11 +1702,49 @@ ParsedBody parseSystemBody(
     return body;
 }
 
+// T-347: identify the canonical per-row loop body. The shape:
+//   for <loopVar> = 0, arch.length - 1 do <stmts> end
+// at the top level of the tick body, as the ONLY top-level statement.
+// Returns the for-statement pointer when matched, else nullptr. The
+// pointer is borrowed from `body`; callers must not outlive it.
+const Stmt *matchPerRowCanonicalLoop(const ParsedBody &body) {
+    if (body.stmts_.size() != 1) return nullptr;
+    const Stmt *s = body.stmts_[0].get();
+    if (s->kind_ != StmtKind::FOR_NUMERIC) return nullptr;
+
+    // Lo: integer literal 0.
+    if (!s->forLo_ || s->forLo_->kind_ != ExprKind::NUMBER_LITERAL ||
+        !s->forLo_->isInt_ || s->forLo_->intValue_ != 0) {
+        return nullptr;
+    }
+
+    // Hi: `arch.length - 1` (BinOp SUB; lhs INDEX(arch, length); rhs int 1).
+    const Expr *hi = s->forHi_.get();
+    if (!hi || hi->kind_ != ExprKind::BINARY_OP || hi->binOp_ != BinOp::SUB) {
+        return nullptr;
+    }
+    const Expr *hiLhs = hi->lhs_.get();
+    const Expr *hiRhs = hi->rhs_.get();
+    if (!hiLhs || hiLhs->kind_ != ExprKind::INDEX ||
+        hiLhs->field_ != "length" ||
+        !hiLhs->receiver_ || hiLhs->receiver_->kind_ != ExprKind::NAME_REF ||
+        hiLhs->receiver_->name_ != "arch") {
+        return nullptr;
+    }
+    if (!hiRhs || hiRhs->kind_ != ExprKind::NUMBER_LITERAL ||
+        !hiRhs->isInt_ || hiRhs->intValue_ != 1) {
+        return nullptr;
+    }
+
+    return s;
+}
+
 void emitSystem(
     std::string &out,
     const SystemRecord &record,
     const ParsedBody &body,
-    const std::vector<ComponentSchema> &componentRegistry
+    const std::vector<ComponentSchema> &componentRegistry,
+    std::set<std::string> &outRequiredIncludes
 ) {
     // Validate components.
     for (const auto &compName : record.components_) {
@@ -1360,6 +1780,28 @@ void emitSystem(
         }
     }
 
+    // CODEGEN system bodies must follow the canonical per-row shape
+    // so the emitted lambda is the per-component form
+    // (`[](C_X& _ir_row_X, ...)`). Per-component is the engine's default
+    // tick signature (engine/system/CLAUDE.md "Three valid TICK function
+    // signatures") and the only one compatible with
+    // `Concurrency::PARALLEL_FOR` — the batch form FATALs in
+    // `detail::validateConcurrencyForAccess` (engine/system/include/irreden/
+    // ir_system.hpp).
+    const Stmt *perRowLoop = matchPerRowCanonicalLoop(body);
+    if (!perRowLoop) {
+        ParseError err;
+        err.message_ = "system `" + record.name_ +
+            "` body must consist of exactly one canonical per-row loop: "
+            "`for i = 0, arch.length - 1 do ... end`. CODEGEN dispatches "
+            "per-row so column ops outside the loop or computed loop bounds "
+            "have no meaning. (Switch to `mode = \"eval\"` for bodies that "
+            "need the batch form.)";
+        err.file_ = record.sourceFile_;
+        err.line_ = record.linedefined_;
+        throw err;
+    }
+
     Emitter emitter(record.sourceFile_, componentRegistry);
 
     std::ostringstream sig;
@@ -1383,21 +1825,52 @@ void emitSystem(
     }
     sig << "    >(\n";
     sig << "        \"" << record.name_ << "\",\n";
-    sig << "        []([[maybe_unused]] const IREntity::Archetype& _ir_arch,\n";
-    sig << "           std::vector<IREntity::EntityId>& _ir_codegen_ids";
-    for (const auto &compName : record.components_) {
-        sig << ",\n";
-        sig << "           std::vector<IRComponents::C_" << compName << ">& _ir_col_"
-            << compName;
+    sig << "        [](";
+    for (size_t i = 0; i < record.components_.size(); ++i) {
+        if (i) sig << ",\n           ";
+        sig << "IRComponents::C_" << record.components_[i] << "& _ir_row_"
+            << record.components_[i];
     }
     sig << ") {\n";
     out += sig.str();
 
+    emitter.loopVarName_ = perRowLoop->forVar_;
     emitter.indent_ = 3;
-    for (const auto &s : body.stmts_) emitter.emitStmt(*s);
+    // #1353: decide which `arch.C:at(i)` bindings can alias the row instead of
+    // copying it, before emitting the body.
+    collectRefSafeColumnAtDecls(perRowLoop->forBody_, emitter.refSafeColumnAtDecls_);
+    for (const auto &s : perRowLoop->forBody_) emitter.emitStmt(*s);
+
+    // #1616: surface the engine-binding headers this body's whitelisted
+    // side-effecting calls need, so main.cpp can #include them.
+    outRequiredIncludes.insert(emitter.requiredIncludes_.begin(),
+                               emitter.requiredIncludes_.end());
 
     out += emitter.str();
     out += "        }\n";
+    // T-223: thread the per-system concurrency value through to the
+    // engine-side createSystem<>'s trailing Concurrency arg. The
+    // trailing-argument shape requires the begin/end/relation tick + the
+    // exclude-archetype slots to be filled first; pass the zero-value
+    // sentinels (`nullptr` lambdas, default-constructed `RelationParams`,
+    // and an empty `IREntity::Archetype`) so the named positional carries
+    // the meaning. SERIAL is the no-op default and is emitted explicitly
+    // for diffability — a reader sees the policy at a glance instead of
+    // having to look up the function's default.
+    const char *concCpp = "IRSystem::Concurrency::SERIAL";
+    switch (record.concurrency_) {
+        case Concurrency::SERIAL:       concCpp = "IRSystem::Concurrency::SERIAL"; break;
+        case Concurrency::PARALLEL_FOR: concCpp = "IRSystem::Concurrency::PARALLEL_FOR"; break;
+        case Concurrency::MAIN_THREAD:  concCpp = "IRSystem::Concurrency::MAIN_THREAD"; break;
+    }
+    out += "        ,\n";
+    out += "        /* functionBeginTick */ nullptr,\n";
+    out += "        /* functionEndTick */ nullptr,\n";
+    out += "        /* extraParams */ {},\n";
+    out += "        /* functionRelationTick */ nullptr,\n";
+    out += "        /* concurrency */ ";
+    out += concCpp;
+    out += "\n";
     out += "    );\n";
     out += "}\n\n";
 }

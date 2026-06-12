@@ -1,35 +1,38 @@
 #!/usr/bin/env bash
-# fleet-queue-ingest — spawn one LLM ingestion iteration when scout sees
-# new human:approved issues that aren't yet in TASKS.md.
-#
-# Sibling to fleet-queue-tick. fleet-queue-tick handles MECHANICAL
-# bookkeeping (status flips, Owner, Done section, blocked-by resolution)
-# via fleet-tasks-render — pure deterministic, no LLM. fleet-queue-ingest
-# handles LLM-grade INGESTION (read issue body, categorize, write a new
-# TASKS.md entry with model assignment, blocked-by chain, plan reference)
-# by invoking `claude --print /role-queue-manager ingest`.
+# fleet-queue-ingest — stamp fleet:queued + the model-affinity label on
+# human:approved issues that lack them, so the scout's queue projection
+# picks them up.
 #
 # Invoked directly by fleet-state-scout when the queue-manager-ingest
-# projection changes (new human:approved issue appears, or an existing
-# one gets fleet:queued and drops out of the set).
+# projection changes (new human:approved issue appears, an existing one gets
+# fleet:queued and drops out of the set, or a queued task's last blocker closes
+# and it enters the unblock set).
 #
-# Idempotent: if there are no pending issues to ingest, exits in <1s
-# without invoking claude. The role doc itself re-checks before doing
-# any work, so a spurious spawn (e.g. on the post-ingestion drop-out
-# transition) costs only the bash startup time.
+# Pure label-stamping — no LLM, no master push.
+# Idempotent: if there is no pending or unblock work, exits in <1s. Per-host
+# lockfile prevents same-host concurrent runs; cross-host races are
+# caught by the live `gh issue view` re-check inside the stamping loop
+# (gh issue edit --add-label converges either way, but the re-check
+# avoids burning API budget on already-stamped issues).
 #
-# Lockfile prevents concurrent runs.
+# Queue-all / mark-blocked (#1527, supersedes the #1476 defer-the-stamp gate):
+# every approved, non-skip task is stamped fleet:queued + model up front; a task
+# whose `**Blocked by:** #N` predecessor is still open additionally gets a
+# fleet:blocked marker (the whole queue is visible immediately, not one child at
+# a time). The unblock pass strips fleet:blocked once the last blocker closes.
+# The per-issue live `gh issue view <ref> --json state` re-check is authoritative
+# for both add and remove (and the sole blocker gate when ingest runs against a
+# hand-built projection). Claimability is unchanged — fleet-claim's own
+# Blocked-by gate still refuses a plain claim; see docs/design/fleet-queue-stacking.md.
 #
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
 
 set -euo pipefail
 
-ENGINE="${FLEET_ENGINE:-$HOME/src/IrredenEngine}"
 LOCK_DIR="${FLEET_QUEUE_INGEST_LOCK:-$HOME/.fleet/state/queue-ingest.lock}"
 LOG_FILE="$HOME/.fleet/logs/queue-ingest.log"
 PROJECTION_FILE="$HOME/.fleet/state/projections/queue-manager-ingest.json"
-QM_WT="$ENGINE/.claude/worktrees/queue-manager"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
@@ -38,69 +41,398 @@ log() {
         | tee -a "$LOG_FILE" >&2
 }
 
-# Directory-based lockfile (atomic on POSIX). Concurrent fleet-queue-ingest
-# would race on TASKS.md edits; fail silently here so the second invocation
-# just exits.
+# Directory-based lockfile (atomic on POSIX). Concurrent same-host runs
+# would only waste API budget (gh issue edit --add-label is idempotent),
+# but the seen-hash invalidation below matters: without it, scout writes
+# the seen-hash before the spawn returns, so a lock-bailed spawn silently
+# consumes the projection-change signal and approved issues can strand
+# until the hash is manually deleted (#973).
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     log "another fleet-queue-ingest is running; exiting"
-    # Invalidate the seen-hash so the next scout tick re-fires the trigger.
-    # Without this, scout writes the seen-hash before the spawn returns, so
-    # a lock-bailed spawn silently consumes the projection-change signal and
-    # approved issues can strand until the hash is manually deleted (issue #973).
     rm -f "$HOME/.fleet/state/seen-hashes/queue-manager-ingest" || true
     exit 0
 fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null; true' EXIT INT TERM
 
 # Fast-path: scout's projection-diff fires on BOTH set-grow (new approved
-# issue) AND set-shrink (issue ingested, dropped out of human:approved-
-# minus-fleet:queued). On the post-ingestion drop-out the set is empty.
-# Bail out cheaply instead of spinning up claude to find nothing to do.
+# issue, or a queued task whose last blocker just closed) AND set-shrink
+# (issue ingested / fleet:blocked removed, dropped out of the set). On a
+# post-action drop-out both work lists are empty.
 if [[ -f "$PROJECTION_FILE" ]]; then
-    pending_count=$(python3 -c "
+    counts=$(python3 -c "
 import json, sys
 try:
     data = json.load(open('$PROJECTION_FILE'))
-    print(len(data.get('pending_issues', [])))
+    print(len(data.get('pending_issues', [])), len(data.get('unblock_issues', [])))
 except Exception:
-    print(0)
+    print(0, 0)
 ")
-    if [[ "$pending_count" == "0" ]]; then
-        log "no pending issues — empty projection, exiting"
+    read -r pending_count unblock_count <<< "$counts"
+    if [[ "${pending_count:-0}" == "0" && "${unblock_count:-0}" == "0" ]]; then
+        log "no pending or unblock issues — empty projection, exiting"
         exit 0
     fi
 fi
 
-# Use the queue-manager worktree as an isolated working area (mirrors
-# fleet-queue-tick). Fall back to the main clone if the worktree
-# doesn't exist (e.g. fresh fleet install pre-fleet-up).
-if [[ ! -d "$QM_WT" ]]; then
-    log "queue-manager worktree not found at $QM_WT; using main clone"
-    QM_WT="$ENGINE"
+# Scope-shipped pre-flight: detect issues whose scope already landed in a
+# merged PR. Posts a comment on the issue, adds the fleet:scope-shipped
+# label so future triage passes skip it, and removes it from the pending
+# list. Mutating the projection file lets the label-stamping pass below
+# skip scope-shipped issues without re-querying (#1175).
+if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
+    scope_shipped_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" INGEST_SELF="${BASH_SOURCE[0]}" python3 - << 'SCOPE_PY' 2>>"$LOG_FILE"
+import json, os, subprocess, sys
+
+# Import the genuine-reference predicate from the sibling module. realpath
+# resolves the ~/bin/fleet-queue-ingest install symlink back to the versioned
+# scripts/fleet/ copy, where fleet_scope_shipped.py lives next to this script.
+sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
+from fleet_scope_shipped import select_shipped_pr
+
+REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+
+proj_path = os.environ['FLEET_PROJ_FILE']
+try:
+    data = json.load(open(proj_path))
+    pending = data.get('pending_issues', [])
+except Exception:
+    print('0,0')
+    sys.exit(0)
+
+kept, shipped = [], 0
+for issue in pending:
+    n = issue.get('number', 0)
+    repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
+    if not n:
+        kept.append(issue)
+        continue
+    # GitHub strips the '#' and matches the bare token n anywhere (titles,
+    # bodies, comments, line numbers, relevance) — so the search is a coarse
+    # candidate set, not a reference match. select_shipped_pr() verifies a
+    # genuine word-boundary #n cross-reference in title/body before trusting it.
+    r = subprocess.run(
+        ['gh', 'pr', 'list', '--repo', repo, '--state', 'merged',
+         '--search', f'#{n}', '--json', 'number,title,body,url,mergedAt', '--limit', '5'],
+        capture_output=True, text=True, timeout=15,
+    )
+    try:
+        prs = json.loads(r.stdout or '[]') if r.returncode == 0 else []
+    except Exception:
+        prs = []
+    best = select_shipped_pr(prs, n)
+    if best is None:
+        kept.append(issue)
+        continue
+    merged_date = best.get('mergedAt', '')[:10]
+    comment = (
+        f"Scope check: this issue's scope appears to have landed in "
+        f"\"{best['title']}\" (#{best['number']}, merged {merged_date}). "
+        "Skipping ingest; please close this issue if the scope is fully "
+        "addressed. — fleet-queue-ingest"
+    )
+    cr = subprocess.run(
+        ['gh', 'issue', 'comment', str(n), '--repo', repo, '--body', comment],
+        capture_output=True, timeout=15,
+    )
+    if cr.returncode != 0:
+        kept.append(issue)
+        continue
+    subprocess.run(
+        ['gh', 'issue', 'edit', str(n), '--repo', repo,
+         '--add-label', 'fleet:scope-shipped'],
+        capture_output=True, timeout=15,
+    )
+    shipped += 1
+
+data['pending_issues'] = kept
+tmp_path = proj_path + '.tmp'
+try:
+    with open(tmp_path, 'w') as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp_path, proj_path)
+except Exception:
+    try:
+        os.unlink(tmp_path)
+    except Exception:
+        pass
+
+print(f'{shipped},{len(kept)}')
+SCOPE_PY
+    )
+    if [[ -n "$scope_shipped_out" ]]; then
+        IFS=',' read -r shipped_count kept_count <<< "$scope_shipped_out"
+        if [[ "${shipped_count:-0}" -gt 0 ]]; then
+            log "scope-shipped: skipped $shipped_count issue(s) with merged PR coverage; $kept_count remaining"
+        fi
+        if [[ "${kept_count:-0}" == "0" ]] && [[ "${shipped_count:-0}" -gt "0" ]]; then
+            log "scope-shipped: all pending issues have merged coverage — nothing to stamp"
+            exit 0
+        fi
+    fi
 fi
 
-# Reset the worktree to a clean state on master so we never carry stale
-# branch commits or pre-existing dirty edits into the LLM iteration.
-git -C "$QM_WT" fetch origin --quiet
-git -C "$QM_WT" checkout -B fleet-queue-ingest origin/master >/dev/null 2>&1
-
-log "starting LLM ingestion iteration"
-
-# Dispatch a one-shot claude --print invocation in ingest mode. The role
-# doc reads the queue-manager-ingest projection slice, categorizes each
-# issue, edits TASKS.md, commits, and pushes. claude --print exits when
-# the LLM produces a final response (no kill -TERM needed; that's
-# blocked by the auto-mode classifier anyway).
-#
-# stdin/stdout/stderr go to the log so the operator can debug. start a
-# new session so the script can return immediately if needed (though we
-# do wait here so the lockfile stays held until the LLM finishes).
-cd "$QM_WT"
-claude --model sonnet --effort high --print \
-    --output-format stream-json --include-partial-messages --verbose \
-    "/role-queue-manager ingest" >> "$LOG_FILE" 2>&1 || {
-    log "claude exited non-zero (rc=$?); leaving lock for manual inspection"
+# Label-stamping pass: for each pending human:approved issue, fetch live
+# body + labels, then add `fleet:queued` plus the model-affinity label
+# parsed from the **Model:** body field. Per-issue live re-fetch is what
+# resolves cross-host races — if another host stamped fleet:queued while
+# our projection slice was being read, the live view shows the label and
+# we skip the edit. The projection slice's `repo` field routes engine vs
+# game issues to the right repo slug.
+if ! command -v gh >/dev/null 2>&1; then
+    log "gh not on PATH; cannot stamp labels"
     exit 1
-}
+fi
+
+stamping_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" python3 - << 'STAMP_PY' 2>>"$LOG_FILE"
+import json, os, re, subprocess, sys
+
+REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+
+proj_path = os.environ['FLEET_PROJ_FILE']
+try:
+    data = json.load(open(proj_path))
+    pending = data.get('pending_issues', [])
+except Exception:
+    print('0,0,0,0')
+    sys.exit(0)
+
+# Body-field parsers mirror fleet-state-scout._parse_issue_field so we
+# label issues by the same fields the scout reads back out.
+MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
+BLOCKED_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
+# Inline-bold form `**Blocked by: #N (label)**` (#1423): colon + value inside
+# one bold span. Mutually exclusive with BLOCKED_RE (canonical bold closes at
+# the colon), so scanning both over the whole body never double-counts a line.
+BLOCKED_INLINE_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\s+(.+?)\*\*', re.IGNORECASE)
+# Free-form header prose like `## Blocked on #1300` / `Blocked on PR-x` is an
+# alternate dependency declaration the scout's _parse_blocked_by also reads, so
+# don't warn "treat as unblocked" for an issue whose blocker lives only in a
+# header (#1326). Only count prose that names a #N or PR reference.
+BLOCKED_ON_RE = re.compile(r'(?im)^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$')
+# A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
+# another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
+# repo name (None/empty for a bare same-repo ref); group(2) is the number.
+# Kept consistent with fleet-state-scout._parse_blocker_refs and fleet-claim's
+# check_blockers. (#1522)
+REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
+# Repo-name qualifier (case-insensitive, owner stripped) → GitHub slug.
+_REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
+                     'irreden': 'jakildev/irreden'}
+
+
+def _ref_slug(name, default_repo):
+    if name:
+        return _REF_NAME_TO_SLUG.get(name.lower(), default_repo)
+    return default_repo
+
+
+def _qual_refs(text, default_repo):
+    """(slug, number) pairs for every #N in text, routing each cross-repo ref
+    to the slug named by its `[owner/]Repo#N` qualifier (#1522)."""
+    return [(_ref_slug(m.group(1), default_repo), m.group(2))
+            for m in REF_RE.finditer(text or '')]
+
+
+def _has_header_blocker(text):
+    for m in BLOCKED_ON_RE.finditer(text):
+        cand = m.group(1).strip().strip('*').strip()
+        if cand and ('#' in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
+            return True
+    return False
+
+
+def _blocker_refs(body, default_repo):
+    """(slug, number) pairs for every `#N` predecessor — from canonical
+    `**Blocked by:** #N` lines, the inline-bold `**Blocked by: #N**` form, and
+    `Blocked on` header prose. Each ref is routed to the repo named by an
+    optional `[owner/]Repo#N` qualifier, defaulting to default_repo (the
+    child's own repo). Mirrors fleet-state-scout._parse_blocked_by so the gate
+    reads the same refs the scout and fleet-claim do. `(none)` values
+    contribute nothing."""
+    vals = [m.group(1) for m in BLOCKED_RE.finditer(body)]
+    vals += BLOCKED_INLINE_RE.findall(body)
+    real = [v.strip() for v in vals if not v.strip().lower().startswith('(none')]
+    refs = []
+    for v in real:
+        refs.extend(_qual_refs(v, default_repo))
+    if refs:
+        return refs
+    # No canonical/inline #N refs → fall back to a `Blocked on …` header.
+    for m in BLOCKED_ON_RE.finditer(body):
+        cand = m.group(1).strip().strip('*').strip()
+        if cand and ('#' in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
+            refs.extend(_qual_refs(cand, default_repo))
+    return refs
+
+
+def _blocker_open(repo, ref, cache):
+    """True when predecessor #ref is still open (state not CLOSED/MERGED).
+    Per-run cache dedupes repeated refs across the batch. An unreadable state
+    is treated as still-open — defer queuing rather than risk queuing a child
+    whose blocker we could not confirm closed."""
+    key = (repo, ref)
+    if key in cache:
+        return cache[key]
+    r = subprocess.run(
+        ['gh', 'issue', 'view', ref, '--repo', repo,
+         '--json', 'state', '--jq', '.state'],
+        capture_output=True, text=True, timeout=15,
+    )
+    state = r.stdout.strip() if r.returncode == 0 else ''
+    is_open = state not in ('CLOSED', 'MERGED')
+    cache[key] = is_open
+    return is_open
+
+stamped = 0
+skipped_already = 0
+blocked_marked = 0
+failed = 0
+blocker_cache = {}
+
+for issue in pending:
+    n = issue.get('number', 0)
+    repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
+    if not n:
+        continue
+
+    r = subprocess.run(
+        ['gh', 'issue', 'view', str(n), '--repo', repo,
+         '--json', 'body,labels'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: fetch failed: {r.stderr.strip()}', file=sys.stderr)
+        continue
+    try:
+        view = json.loads(r.stdout)
+    except Exception:
+        failed += 1
+        continue
+    body = view.get('body', '') or ''
+    labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
+
+    if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
+            or 'fleet:needs-human' in labels):
+        skipped_already += 1
+        continue
+
+    # human:owned is a human de-queue marker — the human took the issue out
+    # of fleet rotation. Never re-stamp fleet:queued onto it, even though it
+    # still carries human:approved (so it stays in the ingest pending set).
+    # reconcile (R6) flags any issue that ends up carrying both labels.
+    if 'human:owned' in labels:
+        skipped_already += 1
+        print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
+        continue
+
+    # Blocked-by handling (#1527): queue blocked tasks too. A task whose
+    # **Blocked by:** predecessors aren't all closed still gets fleet:queued +
+    # a model label, plus a fleet:blocked marker — the whole approved queue is
+    # visible up front instead of one child at a time (the old #1476 "defer the
+    # stamp" behavior). Claimability is unchanged: fleet-claim's own Blocked-by
+    # gate still refuses a plain claim on it, and --stackable-on still works;
+    # fleet:blocked is the operator-visible "queued but not plainly claimable
+    # yet" signal that the unblock pass below removes once the last blocker
+    # closes. The live re-check is authoritative — it's the only blocker gate
+    # when ingest runs against a hand-built projection (tests, manual run).
+    open_blockers = [(slug, ref) for slug, ref in _blocker_refs(body, repo)
+                     if _blocker_open(slug, ref, blocker_cache)]
+
+    # Parse model from body. Classes are literal — fable | opus | sonnet —
+    # and each maps to its own label. fable is opt-in for the genuinely
+    # hard work (see FLEET.md "Model split"); the missing/unrecognized
+    # default is fleet:opus, the workhorse class.
+    model_match = MODEL_RE.search(body)
+    model_text = (model_match.group(1).strip().lower() if model_match else '')
+    if 'fable' in model_text:
+        model_label = 'fleet:fable'
+    elif 'opus' in model_text:
+        model_label = 'fleet:opus'
+    elif 'sonnet' in model_text:
+        model_label = 'fleet:sonnet'
+    else:
+        model_label = 'fleet:opus'
+        print(f'WARN issue {repo}#{n}: **Model:** field missing or unrecognized; defaulting to fleet:opus', file=sys.stderr)
+
+    if not BLOCKED_RE.search(body) and not _has_header_blocker(body) and not BLOCKED_INLINE_RE.search(body):
+        print(f'WARN issue {repo}#{n}: **Blocked by:** field missing; scout will treat as unblocked', file=sys.stderr)
+
+    add_labels = ['fleet:queued']
+    if model_label not in labels:
+        add_labels.append(model_label)
+    if open_blockers and 'fleet:blocked' not in labels:
+        add_labels.append('fleet:blocked')
+        joined = ', '.join((f'#{ref}' if slug == repo else f'{slug}#{ref}')
+                           for slug, ref in open_blockers)
+        print(f'INFO issue {repo}#{n}: queuing with fleet:blocked '
+              f'(blocked by open {joined})', file=sys.stderr)
+
+    cmd = ['gh', 'issue', 'edit', str(n), '--repo', repo]
+    for lbl in add_labels:
+        cmd.extend(['--add-label', lbl])
+    er = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    if er.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: label edit failed: {er.stderr.strip()}', file=sys.stderr)
+        continue
+    stamped += 1
+    if open_blockers:
+        blocked_marked += 1
+
+# Unblock pass (#1527): drop fleet:blocked from queued tasks whose last blocker
+# has closed. Sourced from unblock_issues (tasks.open-derived in the scout)
+# since a fleet:queued issue has already left the human:approved add set above.
+# Reuses the same blocker parsers + per-run cache as the stamping pass.
+unblocked = 0
+unblock_still = 0
+for issue in data.get('unblock_issues', []):
+    n = issue.get('number', 0)
+    repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
+    if not n:
+        continue
+    r = subprocess.run(
+        ['gh', 'issue', 'view', str(n), '--repo', repo, '--json', 'body,labels'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: fetch failed: {r.stderr.strip()}', file=sys.stderr)
+        continue
+    try:
+        view = json.loads(r.stdout)
+    except Exception:
+        failed += 1
+        continue
+    labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
+    # Already cleared (or never marked) — nothing to do. Guards the one-tick
+    # window where the scout still lists the candidate after a prior removal.
+    if 'fleet:blocked' not in labels:
+        continue
+    body = view.get('body', '') or ''
+    open_blockers = [(slug, ref) for slug, ref in _blocker_refs(body, repo)
+                     if _blocker_open(slug, ref, blocker_cache)]
+    if open_blockers:
+        unblock_still += 1
+        continue  # still genuinely blocked — leave the marker
+    er = subprocess.run(
+        ['gh', 'issue', 'edit', str(n), '--repo', repo,
+         '--remove-label', 'fleet:blocked'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if er.returncode != 0:
+        failed += 1
+        print(f'WARN issue {repo}#{n}: remove fleet:blocked failed: {er.stderr.strip()}', file=sys.stderr)
+        continue
+    unblocked += 1
+
+print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still}')
+STAMP_PY
+)
+
+if [[ -n "$stamping_out" ]]; then
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
+fi
 
 log "ingestion iteration complete"

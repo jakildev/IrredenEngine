@@ -11,7 +11,7 @@
 
 namespace IRSystem {
 
-// Register before GLOBAL_POSITION_3D in UPDATE so the singleton is current before RENDER ticks.
+// Register before PROPAGATE_TRANSFORM in UPDATE so the singleton is current before RENDER ticks.
 // Takes max(zoom.x, zoom.y) — render_manager.cpp snaps to uniform power-of-two so x==y in practice.
 template <> struct System<LOD_UPDATE> {
     void beginTick() {

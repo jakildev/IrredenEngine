@@ -26,8 +26,11 @@
 
 // Engine components touched by the demo's grid + render pipeline.
 #include <irreden/common/components/component_name.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_3d_lua.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_local_transform_lua.hpp>
+#include <irreden/common/components/component_modifiers.hpp>
+#include <irreden/common/modifier.hpp>
+#include <irreden/common/transform_modifier_fields.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -44,18 +47,17 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
@@ -84,11 +86,15 @@ struct CliOverrides {
     int gridSize_ = 16;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    bool subdivisionModeSet_ = false;
+    IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+    bool baseSubdivisionsSet_ = false;
+    int baseSubdivisions_ = 1;
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {0.5f, vec2(0, 0), "fit_grid"},
-    {1.0f, vec2(0, 0), "zoom1_origin"},
+    {0.5f, vec2(0, 0), 0.0f, "fit_grid"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
 };
 
 LuaPerfGridSettings g_settings{};
@@ -149,6 +155,31 @@ void parseArgs(int argc, char **argv) {
             if (zoom > 0.0f) {
                 g_cliOverrides.zoom_ = zoom;
                 g_cliOverrides.zoomSet_ = true;
+            }
+            ++i;
+        } else if (std::strcmp(argv[i], "--subdivision-mode") == 0 && i + 1 < argc) {
+            std::string mode = argv[i + 1];
+            if (mode == "none") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else if (mode == "position_only") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else if (mode == "full") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else {
+                IR_LOG_WARN(
+                    "Unknown --subdivision-mode '{}'; expected none|position_only|full",
+                    mode
+                );
+            }
+            ++i;
+        } else if (std::strcmp(argv[i], "--base-subdivisions") == 0 && i + 1 < argc) {
+            int sub = std::atoi(argv[i + 1]);
+            if (sub > 0) {
+                g_cliOverrides.baseSubdivisions_ = sub;
+                g_cliOverrides.baseSubdivisionsSet_ = true;
             }
             ++i;
         }
@@ -246,8 +277,9 @@ void createGridEntities() {
         for (int y = 0; y < n; ++y) {
             for (int x = 0; x < n; ++x) {
                 IREntity::createEntity(
-                    C_Position3D{positionForCell(x, y, z)},
+                    C_LocalTransform{positionForCell(x, y, z)},
                     C_VoxelSetNew{ivec3(1, 1, 1), colorForCell(x, y, z, n), false},
+                    C_Modifiers{},
                     makeWaveState(x, y, z)
                 );
             }
@@ -266,13 +298,16 @@ void configureLightingAndCanvas() {
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, -64.0f)},
         C_LocalTransform{vec3(0.0f, 0.0f, -64.0f)},
         C_LightSource{
             LightType::EMISSIVE,
             Color{90, 200, 255, 255},
             2.0f,
-            static_cast<uint8_t>(180)
+            // Mirrors the perf_grid C++ baseline (was 180; silently
+            // capped at kLightVolumePropagateIterations=32). 24 reads
+            // as the same blue glow at default zoom and pairs with the
+            // adaptive propagate budget for a perf win on Linux/GL.
+            static_cast<uint8_t>(24)
         }
     );
     IRPrefab::Fog::revealRadius(0, 0, 128);
@@ -301,11 +336,9 @@ IRSystem::SystemId resolveLuaWaveTickId(IRScript::LuaScript &script) {
     } else {
         const sol::object obj = script.lua()["LuaWaveTickSysId"];
         if (!obj.valid() || !obj.is<lua_Integer>()) {
-            IR_LOG_ERROR(
-                "lua_perf_grid: LuaWaveTickSysId missing after main.lua "
-                "(EVAL build expects IRSystem.registerSystem to return a "
-                "non-zero SystemId and main.lua to assign it to the global)."
-            );
+            IR_LOG_ERROR("lua_perf_grid: LuaWaveTickSysId missing after main.lua "
+                         "(EVAL build expects IRSystem.registerSystem to return a "
+                         "non-zero SystemId and main.lua to assign it to the global).");
             return IRSystem::SystemId{0};
         }
         return static_cast<IRSystem::SystemId>(obj.as<lua_Integer>());
@@ -321,12 +354,12 @@ void registerLuaBindings() {
         // wired (g_scriptsDir was set by the surrounding init() call).
         script.bindLuaDrivenEcs();
 
-        // Pre-bind C_Position3D so an EVAL-mode wave-tick body could touch
-        // it via `arch.C_Position3D` if a future revision inlines the
-        // position update — currently the wave system writes to its own
+        // Pre-bind C_LocalTransform so an EVAL-mode wave-tick body could
+        // touch it via `arch.C_LocalTransform` if a future revision inlines
+        // the position update — currently the wave system writes to its own
         // Lua-defined component only, but the binding is cheap and matches
         // lua_pipeline_demo's component-pack pattern.
-        script.registerTypeFromTraits<IRComponents::C_Position3D>();
+        script.registerTypeFromTraits<IRComponents::C_LocalTransform>();
 
         // T-106..T-108: pre-register every Lua-defined component declared
         // in main.lua as a C++ struct + binding. The runtime `IRComponent.
@@ -354,11 +387,36 @@ void registerLuaBindings() {
 
         const IRSystem::SystemId waveSysId = resolveLuaWaveTickId(script);
 
+        // Bridge: read the wave-eased vec3 out of C_LuaWaveState (written by
+        // waveSysId above) and upsert it as the entity's TRANSFORM_TRANSLATION
+        // ADD modifier. PROPAGATE_TRANSFORM next folds the modifier into
+        // C_WorldTransform.translation_. Mirrors PERIODIC_IDLE_POSITION_OFFSET
+        // for the C++ perf_grid demo, but reads the Lua-codegen-produced
+        // C_LuaWaveState instead of C_PeriodicIdle. Without this bridge the
+        // wave runs but never reaches the rendered position (T-302 / T-300
+        // retired the legacy C_PositionOffset3D path, so a creation-side
+        // writer is the only way to drive per-frame additive translation).
+        const IRSystem::SystemId luaWaveOffsetId =
+            IRSystem::createSystem<C_LuaWaveState, C_Modifiers>(
+                "LuaWaveStateToOffset",
+                [](IREntity::EntityId entity,
+                   C_LuaWaveState &wave,
+                   C_Modifiers &mods) {
+                    IRPrefab::Modifier::upsertBySourceInPlace(
+                        mods,
+                        IRPrefab::TransformModifier::translationField(),
+                        IRComponents::TransformKind::ADD,
+                        vec3(wave.out_x_, wave.out_y_, wave.out_z_),
+                        entity
+                    );
+                }
+            );
+
         IRSystem::registerPipeline(
             IRTime::Events::UPDATE,
             {
                 waveSysId,
-                IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+                luaWaveOffsetId,
                 IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
                 IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
             }
@@ -368,22 +426,24 @@ void registerLuaBindings() {
             {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
         );
 
-        std::list<IRSystem::SystemId> renderPipeline = {
-            IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-            IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
-        };
+        std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+        renderPipeline.insert(
+            renderPipeline.end(),
+            {
+                IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+                IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+                IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+                IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+                IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+                IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+                IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+                IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+                IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+                IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
+                IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+                IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            }
+        );
 
         if (g_autoProfileFrames > 0) {
             IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(
@@ -413,6 +473,7 @@ void registerLuaBindings() {
         }
 
         IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
+        IRPrefab::Camera::registerStandardKeyboardCommands();
 
         createGridEntities();
         configureLightingAndCanvas();
@@ -440,6 +501,12 @@ int main(int argc, char **argv) {
     IREngine::init(argv[0]);
     if (g_autoProfileFrames > 0) {
         IREngine::enableFrameTiming(true);
+    }
+    if (g_cliOverrides.subdivisionModeSet_) {
+        IRRender::setSubdivisionMode(g_cliOverrides.subdivisionMode_);
+    }
+    if (g_cliOverrides.baseSubdivisionsSet_) {
+        IRRender::setVoxelRenderSubdivisions(g_cliOverrides.baseSubdivisions_);
     }
     IREngine::gameLoop();
     return 0;

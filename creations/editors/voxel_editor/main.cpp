@@ -9,19 +9,21 @@
 #include <irreden/ir_video.hpp>
 
 // Components
-#include <irreden/common/components/component_position_3d.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/components/component_joint.hpp>
+#include <irreden/voxel/components/component_joint_name.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
+#include <irreden/voxel/rig_bridge.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
-#include <irreden/render/components/component_zoom_level.hpp>
-#include <irreden/input/components/component_mouse_scroll.hpp>
+#include <irreden/render/components/component_camera.hpp>
 
 // Gizmo primitives (T-152, F-0.5 Phase 1)
 #include <irreden/render/gizmo.hpp>
@@ -33,7 +35,7 @@
 #include <irreden/render/widgets.hpp>
 
 // Systems
-#include <irreden/update/systems/system_update_positions_global.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -48,13 +50,16 @@
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
+#include <irreden/render/systems/system_camera_scroll_zoom.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_gizmo_hover.hpp>
 #include <irreden/render/systems/system_gizmo_drag.hpp>
+#include <irreden/render/systems/system_update_joint_matrices.hpp>
+#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
@@ -62,16 +67,15 @@
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_list.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
+#include <irreden/render/systems/system_widget_apply_text_input.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
 #include <irreden/render/systems/system_widget_render_list.hpp>
+#include <irreden/render/systems/system_widget_render_text_input.hpp>
 #include <irreden/render/systems/system_widget_render_checkbox.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
 
 // Camera prefab namespace (Z-yaw API)
 #include <irreden/render/camera.hpp>
-
-// Command suites
-#include <irreden/common/command_suite_camera.hpp>
 
 // Frame-based animation state (T-214, F-1.4)
 #include "animation.hpp"
@@ -80,6 +84,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <list>
 #include <memory>
@@ -92,6 +97,16 @@
 
 // Scene save/load
 #include "scene_io.hpp"
+// Rig save/load (joint entities ↔ .rig asset)
+#include "rig_scene_io.hpp"
+
+// Loft-tool mask rendering (trixel_rect fillRect, trixel_text renderText,
+// mask_grid_painter drawMaskGridOntoCanvas + hitTestGridCell,
+// layout mouse-in-GUI-trixels helper).
+#include <irreden/render/trixel_rect.hpp>
+#include <irreden/render/trixel_text.hpp>
+#include <irreden/render/mask_grid_painter.hpp>
+#include <irreden/render/layout.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -126,6 +141,21 @@ constexpr Color kPaletteColors[kPaletteCount] = {
     Color{220, 180, 140, 255},
     Color{120, 80, 60, 255},
     Color{240, 240, 240, 255},
+};
+
+// Per-bone display colors for the bone selector panel (F-2.7 / #1608).
+// Index 0 = identity / unrigged (neutral gray). Indices 1..7 cycle through
+// distinct hues so painted bone assignments read clearly against each other.
+constexpr int kBoneSwatchCount = 8;
+constexpr Color kBoneColors[kBoneSwatchCount] = {
+    Color{180, 180, 180, 255}, // identity/unrigged
+    Color{220, 80, 80, 255},
+    Color{80, 200, 80, 255},
+    Color{80, 120, 220, 255},
+    Color{220, 200, 60, 255},
+    Color{220, 120, 60, 255},
+    Color{200, 80, 220, 255},
+    Color{60, 200, 220, 255},
 };
 
 // Per-stroke undo record. One record per click; per-voxel drag-paint
@@ -189,6 +219,18 @@ struct EditorState {
 
 EditorState g_editor;
 
+// Bone-paint mode state (F-2.7 / #1608). N toggles the mode; while active,
+// left-click writes activeBoneIdx_ to C_Voxel.bone_id_ and tints the voxel
+// with kBoneColors[activeBoneIdx_] so the assignment is immediately visible.
+// boneSwatches_ / bonePanel_ are created in initEntities once per session.
+struct BonePaintState {
+    bool active_ = false;
+    int activeBoneIdx_ = 0;
+    std::vector<IREntity::EntityId> boneSwatches_;
+    IREntity::EntityId bonePanel_ = IREntity::kNullEntity;
+};
+BonePaintState g_bonePaint;
+
 // Frame-based animation state (T-214, F-1.4). Each VoxelFrame snapshots
 // the editable target's voxel pool span; switchToFrame swaps the live
 // voxels in and out. Lives at module scope (not in EditorState) because
@@ -202,11 +244,6 @@ namespace {
 constexpr float kRotationSensitivity = 0.004f;
 
 SymmetryState g_symmetry;
-
-struct ScrollZoomParams {
-    IREntity::EntityId cameraEntity_ = IREntity::kNullEntity;
-    int scrollDelta_ = 0;
-};
 
 struct RotateParams {
     bool firstRotFrame_ = true;
@@ -225,14 +262,28 @@ struct FillToolState {
 };
 FillToolState g_fillTool;
 
+// Loft-from-profiles tool (A2). Two 2D boolean masks — XZ (front) and YZ
+// (side) — rendered as pixel grids on the GUI canvas. Voxels land only
+// where both mask projections overlap (CSG of two extrusions).
+constexpr ivec2 kLoftGridXZPos{4, 30};  // top-left of XZ cell grid
+constexpr ivec2 kLoftGridYZPos{76, 30}; // top-left of YZ cell grid (8 px gap)
+constexpr int kLoftCellPx = 4;          // trixel pixels per mask cell
+
+struct LoftToolState {
+    bool active_ = false;
+    std::vector<bool> maskXZ_; // [x + z * sizeX] — front (XZ) projection
+    std::vector<bool> maskYZ_; // [y + z * sizeY] — side (YZ) projection
+};
+LoftToolState g_loftTool;
+
 // Three auto-screenshot framings so the render-debug-loop / regression
 // harness records the palette panel and the editable scene from a
 // stable camera. Camera position is irrelevant to the GUI canvas but
 // it does anchor the world-space scene render.
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "editor_idle"},
-    {0.75f, IRMath::vec2(0.0f, 0.0f), "editor_zoom_out"},
-    {1.5f, IRMath::vec2(0.0f, 0.0f), "editor_zoom_in"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_idle"},
+    {0.75f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_out"},
+    {1.5f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_in"},
 };
 
 int g_autoWarmupFrames = 0;
@@ -255,6 +306,25 @@ IREntity::EntityId g_layerList = IREntity::kNullEntity;
 IREntity::EntityId g_layerVisCheckbox = IREntity::kNullEntity;
 IREntity::EntityId g_layerAddBtn = IREntity::kNullEntity;
 IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
+
+// Fill-mode status label — top-left status bar updated each frame with the
+// active fill mode (BOX / LINE / FACE) and active symmetry axes.
+IREntity::EntityId g_fillModeLabel = IREntity::kNullEntity;
+
+// Parametric shape bake panel widget entity IDs (T-286).
+IREntity::EntityId g_bakePanel = IREntity::kNullEntity;
+IREntity::EntityId g_bakeShapeList = IREntity::kNullEntity;
+IREntity::EntityId g_bakeParam1Slider = IREntity::kNullEntity;
+IREntity::EntityId g_bakeParam2Slider = IREntity::kNullEntity;
+IREntity::EntityId g_bakeButton = IREntity::kNullEntity;
+
+// Skeleton tree panel widget entity IDs (#1607).
+IREntity::EntityId g_skeletonPanel = IREntity::kNullEntity;
+IREntity::EntityId g_skeletonList = IREntity::kNullEntity;
+IREntity::EntityId g_jointRenameInput = IREntity::kNullEntity;
+IREntity::EntityId g_jointRenameBtn = IREntity::kNullEntity;
+IREntity::EntityId g_jointReparentInput = IREntity::kNullEntity;
+IREntity::EntityId g_jointReparentBtn = IREntity::kNullEntity;
 
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
@@ -284,24 +354,29 @@ void applyLayerVisibility(std::uint8_t layerId, bool visible) {
             v.deactivate();
     }
     set.syncActiveMask();
+    IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
 }
 
 // Apply a single placement / erasure edit to the voxel set, appending
 // the prior state to the in-flight stroke buffer. Skips the edit when
 // the target index is out of bounds for the set. `flat` is the linear
 // pool index so the per-voxel mutation reuses the precomputed offset.
+// `boneId` defaults to 0 (identity) for normal color-paint; pass the
+// active bone index when in bone-paint mode (#1608).
 void applyEdit(
     IREntity::EntityId voxelSetEntity,
     C_VoxelSetNew &set,
     ivec3 localIdx,
     std::size_t flat,
     bool place,
-    Color placeColor
+    Color placeColor,
+    std::uint8_t boneId = 0
 ) {
     UndoEdit edit{voxelSetEntity, localIdx, set.voxels_[flat]};
     g_editor.pendingStroke_.edits_.push_back(edit);
     if (place) {
         set.voxels_[flat].color_ = placeColor;
+        set.voxels_[flat].bone_id_ = boneId;
         set.voxels_[flat].layer_id_ = g_layerManager.activeLayerId();
         // Keep hidden when placed onto a currently-hidden layer.
         if (g_layerManager.isVisible(set.voxels_[flat].layer_id_))
@@ -330,6 +405,10 @@ void commitStroke() {
     while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
         g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
         g_editor.undoRecords_.pop_front();
+    }
+    if (g_sceneVoxelSetEntity != IREntity::kNullEntity) {
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+        IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
     }
 }
 
@@ -361,7 +440,9 @@ void undoOne() {
         }
     }
     for (auto id : touchedSets) {
-        IREntity::getComponent<C_VoxelSetNew>(id).syncActiveMask();
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
+        set.syncActiveMask();
+        IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
     }
 }
 
@@ -370,7 +451,7 @@ void undoOne() {
 // the set's bounds; false otherwise.
 bool worldVoxelToLocal(
     const C_VoxelSetNew &set,
-    const C_PositionGlobal3D &globalPos,
+    const C_WorldTransform &worldTransform,
     ivec3 worldVoxel,
     ivec3 &outLocal,
     std::size_t &outFlat
@@ -378,7 +459,7 @@ bool worldVoxelToLocal(
     if (set.numVoxels_ <= 0 || set.voxels_.empty()) {
         return false;
     }
-    const ivec3 origin = IRMath::roundVec3HalfUp(globalPos.pos_);
+    const ivec3 origin = IRMath::roundVec3HalfUp(worldTransform.translation_);
     outLocal = worldVoxel - origin;
     if (outLocal.x < 0 || outLocal.x >= set.size_.x || outLocal.y < 0 ||
         outLocal.y >= set.size_.y || outLocal.z < 0 || outLocal.z >= set.size_.z) {
@@ -392,11 +473,12 @@ bool worldVoxelToLocal(
 void applyFillAABB(
     IREntity::EntityId entity,
     C_VoxelSetNew &set,
-    const C_PositionGlobal3D &gpos,
+    const C_WorldTransform &gpos,
     ivec3 worldA,
     ivec3 worldB,
     bool place,
-    Color color
+    Color color,
+    std::uint8_t boneId = 0
 ) {
     const ivec3 lo{
         IRMath::min(worldA.x, worldB.x),
@@ -408,25 +490,24 @@ void applyFillAABB(
         IRMath::max(worldA.y, worldB.y),
         IRMath::max(worldA.z, worldB.z)
     };
-    for (int z = lo.z; z <= hi.z; ++z)
-        for (int y = lo.y; y <= hi.y; ++y)
-            for (int x = lo.x; x <= hi.x; ++x) {
-                ivec3 local{};
-                std::size_t flat = 0;
-                if (worldVoxelToLocal(set, gpos, {x, y, z}, local, flat))
-                    applyEdit(entity, set, local, flat, place, color);
-            }
+    IRMath::iterateAABB(lo, hi, [&](int x, int y, int z) {
+        ivec3 local{};
+        std::size_t flat = 0;
+        if (worldVoxelToLocal(set, gpos, {x, y, z}, local, flat))
+            applyEdit(entity, set, local, flat, place, color, boneId);
+    });
 }
 
 // Fill voxels along the dominant axis between worldA and worldB.
 void applyFillLine(
     IREntity::EntityId entity,
     C_VoxelSetNew &set,
-    const C_PositionGlobal3D &gpos,
+    const C_WorldTransform &gpos,
     ivec3 worldA,
     ivec3 worldB,
     bool place,
-    Color color
+    Color color,
+    std::uint8_t boneId = 0
 ) {
     const ivec3 delta = worldB - worldA;
     const int dx = IRMath::abs(delta.x);
@@ -456,7 +537,7 @@ void applyFillLine(
         ivec3 local{};
         std::size_t flat = 0;
         if (worldVoxelToLocal(set, gpos, pos, local, flat))
-            applyEdit(entity, set, local, flat, place, color);
+            applyEdit(entity, set, local, flat, place, color, boneId);
     }
 }
 
@@ -465,11 +546,12 @@ void applyFillLine(
 void applyFillFace(
     IREntity::EntityId entity,
     C_VoxelSetNew &set,
-    const C_PositionGlobal3D &gpos,
+    const C_WorldTransform &gpos,
     ivec3 worldHit,
     ivec3 faceNormal,
     bool place,
-    Color color
+    Color color,
+    std::uint8_t boneId = 0
 ) {
     int fixedAxis = -1;
     if (faceNormal.x != 0)
@@ -481,7 +563,7 @@ void applyFillFace(
     if (fixedAxis < 0)
         return;
 
-    const ivec3 origin = IRMath::roundVec3HalfUp(gpos.pos_);
+    const ivec3 origin = IRMath::roundVec3HalfUp(gpos.translation_);
     const ivec3 startLocal = worldHit - origin;
     if (startLocal.x < 0 || startLocal.x >= set.size_.x || startLocal.y < 0 ||
         startLocal.y >= set.size_.y || startLocal.z < 0 || startLocal.z >= set.size_.z)
@@ -491,12 +573,12 @@ void applyFillFace(
     std::vector<bool> visited(static_cast<std::size_t>(totalCells), false);
 
     // 4-connected neighbor offsets in the plane perpendicular to fixedAxis
-    const ivec3 neighborSteps[4] = {
-        fixedAxis == 0 ? ivec3{0, 1, 0} : ivec3{1, 0, 0},
-        fixedAxis == 0 ? ivec3{0, -1, 0} : ivec3{-1, 0, 0},
-        fixedAxis == 2 ? ivec3{0, 1, 0} : ivec3{0, 0, 1},
-        fixedAxis == 2 ? ivec3{0, -1, 0} : ivec3{0, 0, -1},
-    };
+    auto [dim0, dim1] = IRMath::perpendicularAxes(fixedAxis);
+    ivec3 step0{0, 0, 0};
+    ivec3 step1{0, 0, 0};
+    step0[dim0] = 1;
+    step1[dim1] = 1;
+    const ivec3 neighborSteps[4] = {step0, -step0, step1, -step1};
 
     const int startFlat = IRMath::index3DtoIndex1D(startLocal, set.size_);
     if (startFlat < 0 || static_cast<std::size_t>(startFlat) >= set.voxels_.size())
@@ -511,7 +593,7 @@ void applyFillFace(
         const int flat = IRMath::index3DtoIndex1D(cur, set.size_);
         if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
             continue;
-        applyEdit(entity, set, cur, static_cast<std::size_t>(flat), place, color);
+        applyEdit(entity, set, cur, static_cast<std::size_t>(flat), place, color, boneId);
         for (const auto &step : neighborSteps) {
             const ivec3 nb = cur + step;
             if (nb.x < 0 || nb.x >= set.size_.x || nb.y < 0 || nb.y >= set.size_.y || nb.z < 0 ||
@@ -528,13 +610,42 @@ void applyFillFace(
     }
 }
 
+// CPU SDF voxel bake — fill every voxel in `set` whose SDF value for
+// `shapeType`/`sdfParams` is ≤ kSurfaceThreshold. The shape is centered on
+// the voxel set; the SDF math is batched into `IRMath::SDF::evaluateGrid`,
+// so this function only owns the placement decision. Always produces
+// DENSE output (no SHAPES chunk).
+void applyFillSDF(
+    IREntity::EntityId entity,
+    C_VoxelSetNew &set,
+    IRMath::SDF::ShapeType shapeType,
+    vec4 sdfParams,
+    bool place,
+    Color color
+) {
+    const std::size_t total = static_cast<std::size_t>(set.size_.x) *
+                              static_cast<std::size_t>(set.size_.y) *
+                              static_cast<std::size_t>(set.size_.z);
+    std::vector<float> distances(total);
+    IRMath::SDF::evaluateGrid(set.size_, shapeType, sdfParams, distances);
+    IRMath::iterateAABB({0, 0, 0}, set.size_ - ivec3(1), [&](int x, int y, int z) {
+        const ivec3 local{x, y, z};
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+        if (distances[flat] > IRMath::SDF::kSurfaceThreshold)
+            return;
+        if (flat < set.voxels_.size())
+            applyEdit(entity, set, local, flat, place, color);
+    });
+}
+
 // Update the ghost shape entity to visualize the fill region during drag.
 // Uses AABB bounds for box fill, or the dominant-axis extent for line fill.
 void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     if (g_fillTool.ghostEntity_ == IREntity::kNullEntity)
         return;
     auto &ghost = IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_);
-    auto &ghostPos = IREntity::getComponent<C_Position3D>(g_fillTool.ghostEntity_);
+    auto &ghostTransform = IREntity::getComponent<C_LocalTransform>(g_fillTool.ghostEntity_);
     ghost.flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_HOLLOW |
                    IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
 
@@ -575,8 +686,50 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
         };
     }
     const vec3 halfExt = vec3(hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1) * 0.5f;
-    ghostPos.pos_ = vec3(lo) + halfExt;
+    ghostTransform.translation_ = vec3(lo) + halfExt;
     ghost.params_ = vec4(halfExt.x, halfExt.y, halfExt.z, 0.0f);
+}
+
+// Loft mask cell colors. Painted onto the GUI canvas by
+// IRRender::drawMaskGridOntoCanvas in the EditorLoftRender system.
+constexpr Color kLoftCellOn{180, 220, 180, 230};
+constexpr Color kLoftCellOff{35, 38, 48, 220};
+
+// Place voxels in the editable set wherever both loft masks agree (CSG
+// intersection). Works entirely in local voxel indices: mask[x + z*sizeX]
+// is true when the front (XZ) profile includes column x at height z, and
+// mask[y + z*sizeY] when the side (YZ) profile includes column y at z.
+void applyLoft(Color color) {
+    if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+        return;
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    const int sx = set.size_.x;
+    const int sy = set.size_.y;
+    const int sz = set.size_.z;
+    if (static_cast<int>(g_loftTool.maskXZ_.size()) < sx * sz)
+        return;
+    if (static_cast<int>(g_loftTool.maskYZ_.size()) < sy * sz)
+        return;
+    IRMath::apply3DMaskIntersection(
+        g_loftTool.maskXZ_,
+        {sx, sz},
+        g_loftTool.maskYZ_,
+        sy,
+        [&](int x, int y, int z) {
+            const int flat = IRMath::index3DtoIndex1D({x, y, z}, set.size_);
+            if (flat < 0 || static_cast<std::size_t>(flat) >= set.voxels_.size())
+                return;
+            applyEdit(
+                g_editor.editableVoxelSet_,
+                set,
+                {x, y, z},
+                static_cast<std::size_t>(flat),
+                true,
+                color
+            );
+        }
+    );
+    commitStroke();
 }
 
 // Copy the editable target's live voxels into frames_[idx].voxels_.
@@ -653,6 +806,199 @@ void switchToFrame(int frameIndex) {
     );
 }
 
+// --- F-2.5 (#1604) skeletal joint authoring + FK posing (#1610) -------------
+//
+// One rig per editor session: a rig-root entity carrying C_Skeleton, with
+// joint entities parented under it via CHILD_OF. Each joint carries C_Joint
+// and the engine's C_LocalTransform; an orange JOINT_MARKER sphere
+// (IRPrefab::Gizmo::createJointMarker), a translate gizmo for placement, and
+// a rotate gizmo for FK posing — all anchored to the joint itself. The index
+// of a joint in C_Skeleton.joints_ IS its bone_id; bindPose_ is kept parallel.
+// The "active" joint is the parent for the next add (B); R starts a fresh
+// chain off the rig root. Joint selection / reparent-to-any-joint / tree
+// panel land in #1607.
+//
+// Placement vs posing (#1610): a TRANSLATE_ARROW drag on a joint is
+// authoring — bindPose_ recaptures at gesture end so the bind tracks the
+// authored rest. A ROTATE_RING drag is FK posing — GIZMO_DRAG writes the
+// joint's C_LocalTransform.rotation_, PROPAGATE_TRANSFORM composes the
+// chain, and UPDATE_JOINT_MATRICES skins the rig's voxels live; the bind is
+// deliberately NOT recaptured, so the deformation stays visible. T captures
+// the current pose as the new bind explicitly (skin matrices → identity).
+
+// Local offset of each newly-added joint from its parent (refined by drag).
+// Clears the 8-unit translate arrows (shaft 6 + head 2) so one joint's +X
+// handle doesn't pierce the next joint in a default-spawned chain.
+constexpr vec3 kJointSpawnLocalOffset{10.0f, 0.0f, 0.0f};
+// Where a freshly-created rig root sits — clear of the editable scene
+// (x,y ∈ [-8,8]) AND the perimeter gizmo-reference row (y = ±12) so the
+// starter chain's handles don't overlap the showcase gizmos' hover targets,
+// while staying inside the lit band around the scene (further out the
+// sun-shadow / light volume coverage ends and markers read near-black).
+constexpr vec3 kJointRigOrigin{-12.0f, 16.0f, -4.0f};
+
+struct JointToolState {
+    bool active_ = false; // J toggles authoring mode
+    IREntity::EntityId rigRoot_ = IREntity::kNullEntity;
+    int activeJointIdx_ = -1;    // index into joints_ (-1 = rig root)
+    std::vector<int> parentIdx_; // parallel to joints_; -1 = rig root
+    bool bindPoseRecaptured_ =
+        false; // cleared each beginTick; prevents O(joints×archetypes) redundant recompute
+    // GIZMO_DRAG's dragHandle_ as of last frame — the bind-sync system
+    // edge-detects the drag release (handle → kNullEntity) against this.
+    IREntity::EntityId lastDragHandle_ = IREntity::kNullEntity;
+};
+JointToolState g_jointTool;
+
+// Ensures the session's rig-root entity (the C_Skeleton owner) exists,
+// creating it at kJointRigOrigin on first use. Joints parent under it.
+IREntity::EntityId ensureRigRoot() {
+    if (g_jointTool.rigRoot_ == IREntity::kNullEntity) {
+        g_jointTool.rigRoot_ =
+            IREntity::createEntity(C_LocalTransform{kJointRigOrigin}, C_Skeleton{});
+    }
+    return g_jointTool.rigRoot_;
+}
+
+// Recomputes C_Skeleton.bindPose_ from each joint's live C_LocalTransform,
+// folding the parent chain with the same sqtCompose convention
+// SYSTEM_PROPAGATE_TRANSFORM uses — so a joint left at rest has
+// C_WorldTransform == bindPose_[i] and IRPrefab::Skeleton::skinMatrix returns
+// identity at the bind pose. joints_ is in creation order, so a parent's bind
+// slot is always resolved before its children's.
+void recomputeJointBindPose() {
+    if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
+        return;
+    auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+    IR_ASSERT(
+        g_jointTool.parentIdx_.size() == skeleton.joints_.size(),
+        "parentIdx_ / joints_ size mismatch"
+    );
+    const std::size_t count = skeleton.joints_.size();
+    skeleton.bindPose_.assign(count, IRMath::SQT{});
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto &local = IREntity::getComponent<C_LocalTransform>(skeleton.joints_[i]);
+        const IRMath::SQT localSqt{local.scale_, local.rotation_, local.translation_};
+        const int parent = g_jointTool.parentIdx_[i];
+        skeleton.bindPose_[i] =
+            (parent < 0) ? localSqt : IRMath::sqtCompose(skeleton.bindPose_[parent], localSqt);
+    }
+}
+
+// True when `entity` is one of the session rig's joints (the drag anchor of
+// a per-joint gizmo handle). O(joints) scan — called once per drag release.
+bool isRigJoint(IREntity::EntityId entity) {
+    if (entity == IREntity::kNullEntity || g_jointTool.rigRoot_ == IREntity::kNullEntity)
+        return false;
+    const auto &joints = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_).joints_;
+    return std::find(joints.begin(), joints.end(), entity) != joints.end();
+}
+
+// "Set current pose as bind" (#1610): capture every joint's live local
+// transform chain into bindPose_. The posed shape becomes the new rest —
+// skin matrices return to identity and the rig's voxels relax in place.
+void setCurrentPoseAsBind() {
+    if (g_jointTool.rigRoot_ == IREntity::kNullEntity)
+        return;
+    recomputeJointBindPose();
+    IR_LOG_INFO("Bind pose captured from the current pose (skin matrices -> identity).");
+}
+
+// Spawns one joint parented to the active joint (or the rig root when none /
+// after R), appends it to C_Skeleton.joints_ (its index is the bone_id),
+// refreshes the parallel bind pose, and makes it the new active joint. The
+// joint renders as an orange sphere and carries a translate gizmo anchored to
+// itself for placement.
+IREntity::EntityId addJointAuthored() {
+    const IREntity::EntityId rigRoot = ensureRigRoot();
+    const int parentIdx = g_jointTool.activeJointIdx_;
+    const IREntity::EntityId parentEntity =
+        (parentIdx < 0) ? rigRoot : IREntity::getComponent<C_Skeleton>(rigRoot).joints_[parentIdx];
+
+    // Structural changes — spawn the joint and its marker/gizmo children
+    // first, then re-fetch C_Skeleton so the stored reference can't dangle if
+    // any createEntity reshuffled the rig root's archetype storage.
+    const IREntity::EntityId joint =
+        IREntity::createEntity(C_LocalTransform{kJointSpawnLocalOffset}, C_Joint{});
+    IREntity::setParent(joint, parentEntity);
+    // Orange JOINT_MARKER sphere (hover-highlight + xray silhouette + the
+    // screen-space size pass), per-joint translate arrows for placement, and
+    // per-joint rotate rings for FK posing (#1610) — every drag mutates the
+    // joint's own C_LocalTransform (translation vs rotation by handle kind).
+    IRPrefab::Gizmo::createJointMarker(joint);
+    IRPrefab::Gizmo::createTranslateGizmoForAnchor(joint);
+    IRPrefab::Gizmo::createRotateGizmoForAnchor(joint);
+
+    auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
+    skeleton.joints_.push_back(joint);
+    g_jointTool.parentIdx_.push_back(parentIdx);
+    g_jointTool.activeJointIdx_ = static_cast<int>(skeleton.joints_.size()) - 1;
+    recomputeJointBindPose();
+
+    IR_LOG_INFO("Joint added: bone {} (parent bone {})", g_jointTool.activeJointIdx_, parentIdx);
+    return joint;
+}
+
+// Starts a fresh bone chain: the next B-add parents to the rig root rather
+// than chaining off the last-added joint. (Reparent-to-any-joint is #1607.)
+void resetJointChain() {
+    g_jointTool.activeJointIdx_ = -1;
+    IR_LOG_INFO("Joint chain reset — next joint parents to the rig root.");
+}
+
+// Author a short starter chain so the feature is visible on launch and in
+// auto-screenshots, mirroring the perimeter gizmo references in initEntities.
+//
+// #1610 also rigs the chain with a skinned voxel bar (the FK verification
+// vehicle): a 31×3×3 bar on the rig root, painted one bone per third by
+// nearest joint. UPDATE_JOINT_MATRICES allocates the skeleton's slot block on
+// its first tick and auto-seeds the per-voxel bone→slot indices (#1605), so
+// dragging a rotate ring on a mid-chain joint visibly bends the bar live.
+void seedDemoSkeleton() {
+    const IREntity::EntityId rigRoot = ensureRigRoot();
+    g_jointTool.activeJointIdx_ = -1;
+    addJointAuthored();
+    addJointAuthored();
+    addJointAuthored();
+
+    // Center the chain in the bar's 3×3 cross-section: the bar's local
+    // coords span y,z ∈ [0..2], so lift the first joint to (10,1,1) and the
+    // chained joints (+10 x each) follow on the y=1,z=1 line through the
+    // bar. Re-capture the bind so the lifted chain is the rest pose.
+    {
+        auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
+        auto &firstLocal = IREntity::getComponent<C_LocalTransform>(skeleton.joints_[0]);
+        firstLocal.translation_ = vec3(10.0f, 1.0f, 1.0f);
+        recomputeJointBindPose();
+    }
+
+    // The skinned bar: local x ∈ [0..30] spans the joints at x = 10/20/30.
+    // Painted per-segment colors make each bone's span legible while posing.
+    IREntity::setComponent(rigRoot, C_VoxelSetNew{ivec3(31, 3, 3), Color{210, 160, 110, 255}});
+    auto &voxelSet = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
+    const auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
+    constexpr Color kBoneSegmentColors[] = {
+        Color{220, 130, 110, 255},
+        Color{130, 200, 120, 255},
+        Color{120, 150, 220, 255},
+    };
+    for (std::size_t i = 0; i < voxelSet.voxels_.size(); ++i) {
+        // Nearest joint along the chain axis owns the voxel.
+        const float x = voxelSet.positions_[i].pos_.x;
+        std::uint8_t bone = 0;
+        float best = IRMath::abs(x - skeleton.bindPose_[0].translation_.x);
+        for (std::uint8_t j = 1; j < skeleton.joints_.size(); ++j) {
+            const float d = IRMath::abs(x - skeleton.bindPose_[j].translation_.x);
+            if (d < best) {
+                best = d;
+                bone = j;
+            }
+        }
+        voxelSet.voxels_[i].bone_id_ = bone;
+        voxelSet.voxels_[i].color_ = kBoneSegmentColors[bone];
+    }
+}
+
 } // namespace
 
 } // namespace IRVoxelEditor
@@ -669,6 +1015,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
     IR_LOG_INFO("  Left-click (no drag): place single voxel adjacent to hit face");
     IR_LOG_INFO("  Right-click: erase hit voxel (drag still rotates camera)");
+    IR_LOG_INFO("  Escape: cancel active drag without committing");
     IR_LOG_INFO("  Middle-drag: pan camera");
     IR_LOG_INFO("  Scroll: zoom in/out");
     IR_LOG_INFO("  Q/E: snap-rotate 90 deg CCW/CW");
@@ -678,6 +1025,11 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("  Left/Right arrow: previous/next frame");
     IR_LOG_INFO("  P: play/pause  A: add blank frame  D: duplicate  Backspace: delete frame");
     IR_LOG_INFO("  L: toggle loop mode (LOOP / PING-PONG)");
+    IR_LOG_INFO("  F: toggle loft mode (paint XZ+YZ profiles)  Enter: stamp  C: clear masks");
+    IR_LOG_INFO("  J: toggle joint authoring  B: add joint to chain  R: start new chain");
+    IR_LOG_INFO("  N: toggle bone-paint mode (click swatch in BONE panel to pick bone)");
+    IR_LOG_INFO("  Joint arrows place (re-binds at release); rings FK-pose (live deform)");
+    IR_LOG_INFO("  T: set current pose as bind (joint mode)");
     IREngine::init(argv[0]);
     initSystems();
     initCommands();
@@ -686,33 +1038,178 @@ int main(int argc, char **argv) {
     return 0;
 }
 
+static void updateSwatchSelection(const std::vector<IREntity::EntityId> &swatches, int &activeIdx) {
+    const int n = static_cast<int>(swatches.size());
+    for (int i = 0; i < n; ++i) {
+        if (IRPrefab::Widget::wasClicked(swatches[i])) {
+            activeIdx = i;
+            break;
+        }
+    }
+    for (int i = 0; i < n; ++i) {
+        IRPrefab::Widget::setColorSwatchSelected(swatches[i], i == activeIdx);
+    }
+}
+
 void initSystems() {
     using IRVoxelEditor::RotateParams;
-    using IRVoxelEditor::ScrollZoomParams;
 
-    auto scrollParams = std::make_unique<ScrollZoomParams>();
-    auto *sp = scrollParams.get();
-    auto scrollZoomSystem = IRSystem::createSystem<C_MouseScroll>(
-        "EditorScrollZoom",
-        [sp](C_MouseScroll &scroll) {
-            if (scroll.yoffset_ > 0.0)
-                ++sp->scrollDelta_;
-            else if (scroll.yoffset_ < 0.0)
-                --sp->scrollDelta_;
+    // Loft-mask render: draws the XZ and YZ mask grids onto the GUI canvas.
+    // Runs in the RENDER pipeline after TEXT_TO_TRIXEL (canvas clear) so
+    // the grids paint over the cleared canvas. Pixel-packing + texture
+    // upload live in IRRender::drawMaskGridOntoCanvas (mask_grid_painter.hpp);
+    // scratch_ is grown to the largest grid size and reused across frames.
+    struct LoftRenderParams {
+        C_TriangleCanvasTextures *canvas_ = nullptr;
+        IRRender::MaskGridPaintScratch scratch_;
+    };
+    auto loftRenderData = std::make_unique<LoftRenderParams>();
+    auto *lrp = loftRenderData.get();
+    auto loftRenderSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorLoftRender",
+        [](const C_GuiElement &) {},
+        [lrp]() {
+            lrp->canvas_ =
+                &IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui"));
         },
-        [sp]() { sp->cameraEntity_ = IREntity::getEntity("camera"); },
-        [sp]() {
-            if (sp->scrollDelta_ != 0) {
-                auto &zoom = IREntity::getComponent<C_ZoomLevel>(sp->cameraEntity_);
-                for (int i = 0; i < sp->scrollDelta_; ++i)
-                    zoom.zoomIn();
-                for (int i = 0; i > sp->scrollDelta_; --i)
-                    zoom.zoomOut();
-                sp->scrollDelta_ = 0;
-            }
+        [lrp]() {
+            if (!IRVoxelEditor::g_loftTool.active_ || !lrp->canvas_)
+                return;
+            auto &loft = IRVoxelEditor::g_loftTool;
+            const int sx = IRVoxelEditor::kEditableSceneSize.x;
+            const int sy = IRVoxelEditor::kEditableSceneSize.y;
+            const int sz = IRVoxelEditor::kEditableSceneSize.z;
+            IRRender::drawMaskGridOntoCanvas(
+                *lrp->canvas_,
+                loft.maskXZ_,
+                ivec2(sx, sz),
+                IRVoxelEditor::kLoftGridXZPos,
+                IRVoxelEditor::kLoftCellPx,
+                IRVoxelEditor::kLoftCellOn,
+                IRVoxelEditor::kLoftCellOff,
+                IRRender::kWidgetBackgroundDistance,
+                lrp->scratch_
+            );
+            IRRender::drawMaskGridOntoCanvas(
+                *lrp->canvas_,
+                loft.maskYZ_,
+                ivec2(sy, sz),
+                IRVoxelEditor::kLoftGridYZPos,
+                IRVoxelEditor::kLoftCellPx,
+                IRVoxelEditor::kLoftCellOn,
+                IRVoxelEditor::kLoftCellOff,
+                IRRender::kWidgetBackgroundDistance,
+                lrp->scratch_
+            );
+            const int gridH = sz * IRVoxelEditor::kLoftCellPx;
+            IRRender::renderText(
+                *lrp->canvas_,
+                "XZ",
+                IRVoxelEditor::kLoftGridXZPos + ivec2(0, -12),
+                Color{200, 220, 200, 220}
+            );
+            IRRender::renderText(
+                *lrp->canvas_,
+                "YZ",
+                IRVoxelEditor::kLoftGridYZPos + ivec2(0, -12),
+                Color{200, 220, 200, 220}
+            );
+            IRRender::renderText(
+                *lrp->canvas_,
+                "LOFT  Shift=sym  C=clear  Enter=stamp  F=exit",
+                ivec2(IRVoxelEditor::kLoftGridXZPos.x, IRVoxelEditor::kLoftGridXZPos.y + gridH + 4),
+                Color{200, 200, 200, 180}
+            );
         }
     );
-    IRSystem::setSystemParams(scrollZoomSystem, std::move(scrollParams));
+    IRSystem::setSystemParams(loftRenderSystem, std::move(loftRenderData));
+
+    // Loft-mask input: detects left-click / drag over the XZ and YZ grid
+    // panels and toggles or paints mask cells. Toggle direction is fixed
+    // at the first PRESSED event for the duration of the drag stroke; Shift
+    // mirrors each painted cell horizontally within the same mask.
+    struct LoftInputParams {
+        vec2 mouseGuiTrixel_ = vec2(0.0f);
+        bool painting_ = false;
+        bool paintVal_ = true;
+    };
+    auto loftInputData = std::make_unique<LoftInputParams>();
+    auto *lip = loftInputData.get();
+    auto loftInputSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorLoftInput",
+        [](const C_GuiElement &) {},
+        [lip]() { lip->mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels(); },
+        [lip]() {
+            if (!IRVoxelEditor::g_loftTool.active_)
+                return;
+
+            const bool leftPressed =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
+            const bool leftHeld =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD);
+            const bool leftReleased =
+                IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED);
+
+            if (leftReleased) {
+                lip->painting_ = false;
+                return;
+            }
+            if (!leftPressed && !leftHeld)
+                return;
+            if (!lip->painting_ && leftHeld)
+                return;
+
+            const ivec2 mouseGui(
+                static_cast<int>(lip->mouseGuiTrixel_.x),
+                static_cast<int>(lip->mouseGuiTrixel_.y)
+            );
+            const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+            const int sx = IRVoxelEditor::kEditableSceneSize.x;
+            const int sy = IRVoxelEditor::kEditableSceneSize.y;
+            const int sz = IRVoxelEditor::kEditableSceneSize.z;
+            const int cell = IRVoxelEditor::kLoftCellPx;
+
+            auto paintCell = [&](std::vector<bool> &mask, ivec2 cellHV, int sH) {
+                const std::size_t flat = static_cast<std::size_t>(cellHV.x + cellHV.y * sH);
+                if (leftPressed) {
+                    lip->paintVal_ = !mask[flat];
+                    lip->painting_ = true;
+                }
+                if (!lip->painting_)
+                    return;
+                mask[flat] = lip->paintVal_;
+                if (shiftHeld) {
+                    const int mirror = sH - 1 - cellHV.x;
+                    if (mirror != cellHV.x)
+                        mask[static_cast<std::size_t>(mirror + cellHV.y * sH)] = lip->paintVal_;
+                }
+            };
+
+            if (auto hit = IRRender::hitTestGridCell(
+                    mouseGui,
+                    IRVoxelEditor::kLoftGridXZPos,
+                    cell,
+                    ivec2(sx, sz)
+                )) {
+                paintCell(IRVoxelEditor::g_loftTool.maskXZ_, *hit, sx);
+                return;
+            }
+            if (auto hit = IRRender::hitTestGridCell(
+                    mouseGui,
+                    IRVoxelEditor::kLoftGridYZPos,
+                    cell,
+                    ivec2(sy, sz)
+                )) {
+                paintCell(IRVoxelEditor::g_loftTool.maskYZ_, *hit, sy);
+                return;
+            }
+
+            // Click outside both grids — do not start a paint stroke.
+            if (leftPressed)
+                lip->painting_ = false;
+        }
+    );
+    IRSystem::setSystemParams(loftInputSystem, std::move(loftInputData));
 
     // Palette swatch poller: detect which swatch fired this frame,
     // update the active index, and mirror the selection bit onto every
@@ -726,22 +1223,23 @@ void initSystems() {
         "EditorPaletteUpdate",
         [](const C_GuiElement &) {},
         []() {
-            // Resolve the swatch the user clicked this frame, if any.
-            const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
-            for (int i = 0; i < n; ++i) {
-                if (IRPrefab::Widget::wasClicked(IRVoxelEditor::g_editor.paletteSwatches_[i])) {
-                    IRVoxelEditor::g_editor.activeSwatchIdx_ = i;
-                    break;
-                }
-            }
-            // Always reconcile the selected-bit so the renderer reflects
-            // whatever the active index is now (cheap: 16 boolean writes).
-            for (int i = 0; i < n; ++i) {
-                IRPrefab::Widget::setColorSwatchSelected(
-                    IRVoxelEditor::g_editor.paletteSwatches_[i],
-                    i == IRVoxelEditor::g_editor.activeSwatchIdx_
-                );
-            }
+            updateSwatchSelection(
+                IRVoxelEditor::g_editor.paletteSwatches_,
+                IRVoxelEditor::g_editor.activeSwatchIdx_
+            );
+        }
+    );
+
+    // Bone-paint selector (F-2.7 / #1608). Clicking a swatch sets activeBoneIdx_
+    // and reconciles the selected-bit so the renderer highlights the active bone.
+    auto bonePaintUpdateSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorBonePaintUpdate",
+        [](const C_GuiElement &) {},
+        []() {
+            updateSwatchSelection(
+                IRVoxelEditor::g_bonePaint.boneSwatches_,
+                IRVoxelEditor::g_bonePaint.activeBoneIdx_
+            );
         }
     );
 
@@ -756,8 +1254,40 @@ void initSystems() {
         [](const C_GuiElement &) {},
         []() {},
         []() {
+            // All 3D editing is suppressed in loft mode — the loft input system
+            // handles mouse events over the mask panels instead.
+            if (IRVoxelEditor::g_loftTool.active_)
+                return;
+
+            if (IRVoxelEditor::g_fillModeLabel != IREntity::kNullEntity) {
+                std::string status;
+                if (IRVoxelEditor::g_bonePaint.active_) {
+                    status = "BONE";
+                } else {
+                    const bool shiftNow =
+                        IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
+                    const bool ctrlNow =
+                        IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u);
+                    status = ctrlNow ? "FACE" : (shiftNow ? "LINE" : "BOX");
+                }
+                const auto &sym = IRVoxelEditor::g_symmetry;
+                if (sym.enableX_ || sym.enableY_ || sym.enableZ_) {
+                    status += " |";
+                    if (sym.enableX_)
+                        status += " X";
+                    if (sym.enableY_)
+                        status += " Y";
+                    if (sym.enableZ_)
+                        status += " Z";
+                }
+                IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
+            }
+
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel);
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel);
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -767,17 +1297,32 @@ void initSystems() {
                     }
                 }
             }
+            if (!overWidget) {
+                const int n = static_cast<int>(IRVoxelEditor::g_bonePaint.boneSwatches_.size());
+                for (int i = 0; i < n; ++i) {
+                    if (IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.boneSwatches_[i])) {
+                        overWidget = true;
+                        break;
+                    }
+                }
+            }
 
+            const bool inBoneMode = IRVoxelEditor::g_bonePaint.active_;
+            const std::uint8_t placeBoneId =
+                inBoneMode ? static_cast<std::uint8_t>(IRVoxelEditor::g_bonePaint.activeBoneIdx_)
+                           : std::uint8_t{0};
             const Color placeColor =
-                IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
+                inBoneMode
+                    ? IRVoxelEditor::kBoneColors[IRVoxelEditor::g_bonePaint.activeBoneIdx_]
+                    : IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
 
-            // Right-click: single-voxel erase (unchanged).
+            // Right-click: single-voxel erase (bone_id_ unaffected — erase only).
             if (!overWidget &&
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED)) {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
-                    auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
+                    auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
                     ivec3 local{};
                     std::size_t flat = 0;
                     if (IRVoxelEditor::worldVoxelToLocal(set, gpos, hit->voxelPos_, local, flat)) {
@@ -795,7 +1340,7 @@ void initSystems() {
                 const auto hit = IRPrefab::Picking::castVoxelRay();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
-                    auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(hit->entity_);
+                    auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
                     IRVoxelEditor::applyFillFace(
                         hit->entity_,
                         set,
@@ -803,7 +1348,8 @@ void initSystems() {
                         hit->voxelPos_ + hit->faceNormal_,
                         hit->faceNormal_,
                         true,
-                        placeColor
+                        placeColor,
+                        placeBoneId
                     );
                     IRVoxelEditor::commitStroke();
                 }
@@ -846,8 +1392,7 @@ void initSystems() {
             if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(
-                        IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -855,7 +1400,7 @@ void initSystems() {
                 if (targetEntity == IREntity::kNullEntity)
                     return;
                 auto &set = IREntity::getComponent<C_VoxelSetNew>(targetEntity);
-                auto &gpos = IREntity::getComponent<C_PositionGlobal3D>(targetEntity);
+                auto &gpos = IREntity::getComponent<C_WorldTransform>(targetEntity);
                 const ivec3 startPos = IRVoxelEditor::g_fillTool.dragStartWorld_;
                 const ivec3 endPos = IRVoxelEditor::g_fillTool.lastEndWorld_;
                 const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift, 0u);
@@ -864,7 +1409,15 @@ void initSystems() {
                     ivec3 local{};
                     std::size_t flat = 0;
                     if (IRVoxelEditor::worldVoxelToLocal(set, gpos, startPos, local, flat))
-                        IRVoxelEditor::applyEdit(targetEntity, set, local, flat, true, placeColor);
+                        IRVoxelEditor::applyEdit(
+                            targetEntity,
+                            set,
+                            local,
+                            flat,
+                            true,
+                            placeColor,
+                            placeBoneId
+                        );
                 } else if (shiftHeld) {
                     IRVoxelEditor::applyFillLine(
                         targetEntity,
@@ -873,7 +1426,8 @@ void initSystems() {
                         startPos,
                         endPos,
                         true,
-                        placeColor
+                        placeColor,
+                        placeBoneId
                     );
                 } else {
                     IRVoxelEditor::applyFillAABB(
@@ -883,7 +1437,8 @@ void initSystems() {
                         startPos,
                         endPos,
                         true,
-                        placeColor
+                        placeColor,
+                        placeBoneId
                     );
                 }
                 IRVoxelEditor::commitStroke();
@@ -894,7 +1449,7 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
@@ -905,33 +1460,31 @@ void initSystems() {
     // scene clicks under the palette. Gizmo input lands after the
     // widget chain so an over-gizmo click doesn't trip the scene-
     // edit path either.
-    auto rotParams = std::make_unique<RotateParams>();
-    auto *rp = rotParams.get();
-    auto rotateSystem = IRSystem::createSystem<C_CameraYaw>(
+    auto rotState = std::make_shared<RotateParams>();
+    auto rotateSystem = IRSystem::createSystem<C_Camera>(
         "EditorViewportRotate",
-        [](C_CameraYaw &) {},
-        [rp]() {
+        [](C_Camera &) {},
+        [rotState]() {
             bool rightPressed =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED);
             bool rightHeld =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::HELD);
 
             if (rightPressed) {
-                rp->firstRotFrame_ = true;
+                rotState->firstRotFrame_ = true;
             }
 
             if (rightHeld) {
                 vec2 mouse = IRInput::getMousePositionScreen();
-                if (!rp->firstRotFrame_) {
-                    float deltaX = mouse.x - rp->prevMouseX_;
+                if (!rotState->firstRotFrame_) {
+                    float deltaX = mouse.x - rotState->prevMouseX_;
                     IRPrefab::Camera::rotateYaw(deltaX * IRVoxelEditor::kRotationSensitivity);
                 }
-                rp->prevMouseX_ = mouse.x;
-                rp->firstRotFrame_ = false;
+                rotState->prevMouseX_ = mouse.x;
+                rotState->firstRotFrame_ = false;
             }
         }
     );
-    IRSystem::setSystemParams(rotateSystem, std::move(rotParams));
 
     // Scrubber + FPS sync (T-214). Runs in INPUT, after WIDGET_APPLY_SLIDER
     // so the drag value is already committed to C_WidgetSlider::currentValue_.
@@ -965,7 +1518,7 @@ void initSystems() {
     );
 
     // Frame-based animation playback (T-214). Runs once per RENDER tick
-    // in beginTick over C_CameraYaw (the singleton camera entity), so
+    // in beginTick over C_Camera (the singleton camera entity), so
     // the swap lands BEFORE this frame's voxel-to-trixel stages read
     // C_VoxelSetNew::voxels_. Use the camera archetype filter because
     // we need a one-shot per-frame fire regardless of voxel-set state;
@@ -973,9 +1526,9 @@ void initSystems() {
     // tickPlayback returns the next frame index via out-param without
     // touching g_anim.activeFrame_ — that lets switchToFrame snapshot
     // the old active frame's voxels before swapping in the new one.
-    auto animPlaybackSystem = IRSystem::createSystem<C_CameraYaw>(
+    auto animPlaybackSystem = IRSystem::createSystem<C_Camera>(
         "EditorAnimPlayback",
-        [](C_CameraYaw &) {},
+        [](C_Camera &) {},
         []() {
             const float dt = static_cast<float>(IRTime::deltaTime(IRTime::Events::RENDER));
             int next = 0;
@@ -1045,6 +1598,7 @@ void initSystems() {
                             v.deactivate();
                     }
                     set.syncActiveMask();
+                    IRPrefab::Voxel::recomputeFaceOccupancy(set.voxels_, set.size_);
                     g_layerManager.deleteLayer(delId);
                 }
             }
@@ -1088,6 +1642,217 @@ void initSystems() {
         }
     );
 
+    // Shape bake system (T-286): runs in INPUT after WIDGET_APPLY_LIST so the
+    // list selection is committed, and after WIDGET_APPLY_SLIDER so slider
+    // values are committed. Reads the BAKE button and fires applyFillSDF.
+    auto bakeSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorBake",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_bakeButton == IREntity::kNullEntity)
+                return;
+            if (!IRPrefab::Widget::wasClicked(g_bakeButton))
+                return;
+            if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
+                return;
+
+            static constexpr IRMath::SDF::ShapeType kShapeTypes[] = {
+                IRMath::SDF::ShapeType::BOX,
+                IRMath::SDF::ShapeType::SPHERE,
+                IRMath::SDF::ShapeType::CYLINDER,
+                IRMath::SDF::ShapeType::TORUS,
+                IRMath::SDF::ShapeType::CONE,
+                IRMath::SDF::ShapeType::ELLIPSOID,
+            };
+            static constexpr int kNumShapes = 6;
+
+            const int sel = (g_bakeShapeList != IREntity::kNullEntity)
+                                ? IRPrefab::Widget::listSelectedIndex(g_bakeShapeList)
+                                : 1;
+            const int idx = (sel >= 0 && sel < kNumShapes) ? sel : 1;
+            const IRMath::SDF::ShapeType shapeType = kShapeTypes[idx];
+
+            const float p1 = (g_bakeParam1Slider != IREntity::kNullEntity)
+                                 ? IRPrefab::Widget::sliderValue(g_bakeParam1Slider)
+                                 : 5.0f;
+            const float p2 = (g_bakeParam2Slider != IREntity::kNullEntity)
+                                 ? IRPrefab::Widget::sliderValue(g_bakeParam2Slider)
+                                 : 3.0f;
+
+            // Build SDF params for evaluate(): semantics depend on shape type.
+            // evaluate() computes halfSize = vec3(params)*0.5 for box-family shapes.
+            vec4 sdfParams{};
+            switch (shapeType) {
+            case IRMath::SDF::ShapeType::SPHERE:
+                sdfParams = vec4(p1, 0.0f, 0.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::TORUS:
+                sdfParams = vec4(p1, p2, 0.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::BOX:
+            case IRMath::SDF::ShapeType::ELLIPSOID:
+                sdfParams = vec4(p1 * 2.0f, p1 * 2.0f, p2 * 2.0f, 0.0f);
+                break;
+            case IRMath::SDF::ShapeType::CYLINDER:
+            case IRMath::SDF::ShapeType::CONE:
+            default:
+                sdfParams = vec4(p1, p1, p2 * 2.0f, 0.0f);
+                break;
+            }
+
+            const Color placeColor = kPaletteColors[g_editor.activeSwatchIdx_];
+            auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+            applyFillSDF(g_editor.editableVoxelSet_, set, shapeType, sdfParams, true, placeColor);
+            commitStroke();
+            IR_LOG_INFO("Bake: shape {} P1={:.1f} P2={:.1f}", idx, p1, p2);
+        }
+    );
+
+    // Joint-authoring bind-pose sync (#1604, placement-vs-posing split in
+    // #1610). A TRANSLATE_ARROW drag on a rig joint is authoring: recapture
+    // the bind pose once at gesture end so bindPose_ tracks the authored
+    // rest. A ROTATE_RING drag is FK posing and must NOT recapture — the
+    // pose deforms the skinned voxels away from the bind by design (T
+    // captures explicitly). Release is edge-detected against GIZMO_DRAG's
+    // own state (handle → kNullEntity) so a plain scene click — or a drag
+    // of a non-rig showcase gizmo — never touches the rig.
+    const IRSystem::SystemId gizmoDragId = IRSystem::createSystem<IRSystem::GIZMO_DRAG>();
+    auto jointBindSyncSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorJointBindSync",
+        [](const C_GuiElement &) {},
+        []() {},
+        [gizmoDragId]() {
+            const auto *drag =
+                IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(gizmoDragId);
+            const bool releasedThisFrame =
+                IRVoxelEditor::g_jointTool.lastDragHandle_ != IREntity::kNullEntity &&
+                drag->dragHandle_ == IREntity::kNullEntity;
+            IRVoxelEditor::g_jointTool.lastDragHandle_ = drag->dragHandle_;
+            if (!releasedThisFrame)
+                return;
+            if (drag->dragKind_ != IRComponents::GizmoKind::TRANSLATE_ARROW)
+                return; // rotate rings are FK posing (#1610), not bind authoring
+            if (!IRVoxelEditor::isRigJoint(drag->dragAnchor_))
+                return; // showcase / non-rig gizmos don't touch the rig
+            IRVoxelEditor::recomputeJointBindPose();
+        }
+    );
+
+    // Skeleton tree panel sync (#1607). Runs after WIDGET_APPLY_LIST so
+    // list.selectedIndex_ already reflects any click from this frame.
+    // Rebuilds list items from C_Skeleton.joints_ (names from C_JointName or
+    // "bone_N" default), mirrors activeJointIdx_ <-> list selection, handles
+    // rename button (writes C_JointName), and reparent button (rewrites
+    // CHILD_OF + updates parentIdx_ + refreshes bindPose_).
+    auto jointTreeSyncSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorJointTreeSync",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_skeletonList == IREntity::kNullEntity)
+                return;
+
+            auto &list = IREntity::getComponent<C_WidgetList>(g_skeletonList);
+
+            if (g_jointTool.rigRoot_ != IREntity::kNullEntity) {
+                const auto &skeleton = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                const int count = static_cast<int>(skeleton.joints_.size());
+                if (static_cast<int>(list.items_.size()) != count)
+                    list.items_.resize(static_cast<std::size_t>(count));
+                for (int i = 0; i < count; ++i) {
+                    const IREntity::EntityId joint = skeleton.joints_[static_cast<std::size_t>(i)];
+                    auto nameOpt = IREntity::getComponentOptional<C_JointName>(joint);
+                    // Label is rebuilt each frame; a mutation counter on C_Skeleton
+                    // could skip this for unchanged rigs (deferred — benign at ≤10 joints).
+                    std::string label = (nameOpt.has_value() && !(*nameOpt)->name_.empty())
+                                            ? std::to_string(i) + " " + (*nameOpt)->name_
+                                            : "bone_" + std::to_string(i);
+                    if (list.items_[static_cast<std::size_t>(i)] != label)
+                        list.items_[static_cast<std::size_t>(i)] = std::move(label);
+                }
+
+                // Mirror activeJointIdx_ → list selection.
+                if (list.selectedIndex_ != g_jointTool.activeJointIdx_)
+                    IRPrefab::Widget::setListSelectedIndex(
+                        g_skeletonList,
+                        g_jointTool.activeJointIdx_
+                    );
+            } else {
+                list.items_.clear();
+                list.selectedIndex_ = -1;
+            }
+
+            // List click → update activeJointIdx_ and pre-fill rename input.
+            if (IRPrefab::Widget::wasClicked(g_skeletonList)) {
+                g_jointTool.activeJointIdx_ = list.selectedIndex_;
+                if (g_jointRenameInput != IREntity::kNullEntity &&
+                    g_jointTool.rigRoot_ != IREntity::kNullEntity && list.selectedIndex_ >= 0) {
+                    const auto &sk = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                    const int idx = list.selectedIndex_;
+                    if (idx < static_cast<int>(sk.joints_.size())) {
+                        auto nameOpt = IREntity::getComponentOptional<C_JointName>(
+                            sk.joints_[static_cast<std::size_t>(idx)]
+                        );
+                        IRPrefab::Widget::setTextInputValue(
+                            g_jointRenameInput,
+                            (nameOpt.has_value() && !(*nameOpt)->name_.empty()) ? (*nameOpt)->name_
+                                                                                : ""
+                        );
+                    }
+                }
+            }
+
+            // Rename button → write C_JointName on the active joint.
+            if (g_jointRenameBtn != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_jointRenameBtn) &&
+                g_jointTool.rigRoot_ != IREntity::kNullEntity && g_jointTool.activeJointIdx_ >= 0) {
+                const auto &sk = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                const int idx = g_jointTool.activeJointIdx_;
+                if (idx < static_cast<int>(sk.joints_.size())) {
+                    const std::string &newName =
+                        IRPrefab::Widget::textInputValue(g_jointRenameInput);
+                    IREntity::setComponent(
+                        sk.joints_[static_cast<std::size_t>(idx)],
+                        C_JointName{newName}
+                    );
+                }
+            }
+
+            // Reparent button → rewrite CHILD_OF for the active joint.
+            if (g_jointReparentBtn != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_jointReparentBtn) &&
+                g_jointTool.rigRoot_ != IREntity::kNullEntity && g_jointTool.activeJointIdx_ >= 0) {
+                const auto &sk = IREntity::getComponent<C_Skeleton>(g_jointTool.rigRoot_);
+                const int idx = g_jointTool.activeJointIdx_;
+                const int count = static_cast<int>(sk.joints_.size());
+                if (idx < count) {
+                    int newParentIdx = -1;
+                    try {
+                        newParentIdx =
+                            std::stoi(IRPrefab::Widget::textInputValue(g_jointReparentInput));
+                    } catch (...) {
+                        newParentIdx = -1;
+                    }
+                    const IREntity::EntityId joint = sk.joints_[static_cast<std::size_t>(idx)];
+                    // Guard: can't parent to self or out-of-range bone.
+                    // No cycle detection — A→B→A passes this guard and produces a stale
+                    // bindPose_ from recomputeJointBindPose (bounded loop, no crash).
+                    if (newParentIdx != idx && (newParentIdx < 0 || newParentIdx < count)) {
+                        const IREntity::EntityId newParentEntity =
+                            (newParentIdx < 0) ? g_jointTool.rigRoot_
+                                               : sk.joints_[static_cast<std::size_t>(newParentIdx)];
+                        IREntity::setParent(joint, newParentEntity);
+                        g_jointTool.parentIdx_[static_cast<std::size_t>(idx)] = newParentIdx;
+                        recomputeJointBindPose();
+                    }
+                }
+            }
+        }
+    );
+
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
@@ -1095,48 +1860,76 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
+         IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          scrubberSystem,
          layerSyncSystem,
+         loftInputSystem,
+         bakeSystem,
          paletteUpdateSystem,
+         bonePaintUpdateSystem,
          placeEraseSystem,
-         scrollZoomSystem,
+         IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
          IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
-         IRSystem::createSystem<IRSystem::GIZMO_DRAG>()}
+         gizmoDragId,
+         jointBindSyncSystem,
+         jointTreeSyncSystem}
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        rotateSystem,
-        animPlaybackSystem,
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        // TEXT_TO_TRIXEL clears the GUI canvas to transparent in its
-        // beginTick (`canvasTextures_->clear()`). Without this stage,
-        // the GUI canvas keeps stale pixels — when composited over the
-        // main canvas by TRIXEL_TO_FRAMEBUFFER, the result is an
-        // opaque-black overlay that hides the 3D scene. Widget renders
-        // must come AFTER the clear so their pixels survive.
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
-        IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
-    };
+    // GPU voxel-position prepass (#1396) + joint skin-matrix upload (#1603) +
+    // per-voxel bone→slot seeding (#1605) — the FK live-deform substrate
+    // (#1610). UPDATE_JOINT_MATRICES must run AFTER PROPAGATE_TRANSFORM
+    // (UPDATE pipeline, earlier this frame) and BEFORE
+    // UPDATE_VOXEL_POSITIONS_GPU so binding 18 holds the skin matrices when
+    // the prepass dispatches. Both are no-ops until a voxel set opts in via
+    // gpuTransformSlot_ (the seeded rig does), so an unrigged scene renders
+    // byte-identically. Created up-front so their SystemIds can wire the
+    // slot-allocator handles.
+    const IRSystem::SystemId updateVoxelPositionsId =
+        IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>();
+    IRPrefab::VoxelTransform::setAllocatorSystem(updateVoxelPositionsId);
+    const IRSystem::SystemId updateJointMatricesId =
+        IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>();
+    IRPrefab::JointTransform::setSystem(updateJointMatricesId);
+
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.push_front(animPlaybackSystem);
+    renderPipeline.push_front(rotateSystem);
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            updateJointMatricesId,
+            updateVoxelPositionsId,
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            // TEXT_TO_TRIXEL clears the GUI canvas to transparent in its
+            // beginTick (`canvasTextures_->clear()`). Without this stage,
+            // the GUI canvas keeps stale pixels — when composited over the
+            // main canvas by TRIXEL_TO_FRAMEBUFFER, the result is an
+            // opaque-black overlay that hides the 3D scene. Widget renders
+            // must come AFTER the clear so their pixels survive.
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            loftRenderSystem,
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+        }
+    );
 
     if (IRVoxelEditor::g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -1151,7 +1944,59 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    // Register camera commands individually so we can own the Escape binding.
+    // (registerCameraCommands() also binds Escape→CLOSE_WINDOW, which conflicts
+    // with the drag-cancel handler below — we handle Escape ourselves.)
+    IRCommand::createCommand<IRCommand::ZOOM_IN>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEqual
+    );
+    IRCommand::createCommand<IRCommand::ZOOM_OUT>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonMinus
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonA
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_START>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonD
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_UP_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonW
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_DOWN_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonS
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_LEFT_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonA
+    );
+    IRCommand::createCommand<IRCommand::MOVE_CAMERA_RIGHT_END>(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::RELEASED,
+        IRInput::KeyMouseButtons::kKeyButtonD
+    );
 
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
@@ -1402,6 +2247,76 @@ void initCommands() {
         }
     );
 
+    // Escape: cancel drag if active, otherwise close the window.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEscape,
+        []() {
+            if (IRVoxelEditor::g_fillTool.dragging_) {
+                IRVoxelEditor::g_fillTool.dragging_ = false;
+                if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
+                    )
+                        .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+                }
+                IR_LOG_INFO("Fill drag cancelled (Escape).");
+                return;
+            }
+            IRWindow::closeWindow();
+        }
+    );
+
+    // F — toggle loft mode on/off. Cancels any active fill drag and hides
+    // the ghost shape so it doesn't linger over the mask panels.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonF,
+        []() {
+            auto &loft = IRVoxelEditor::g_loftTool;
+            loft.active_ = !loft.active_;
+            IRVoxelEditor::g_fillTool.dragging_ = false;
+            if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
+                IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_)
+                    .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
+            }
+            IR_LOG_INFO("Loft mode: {}", loft.active_ ? "ON" : "OFF");
+        }
+    );
+
+    // Enter — stamp the current loft masks into the scene using the active
+    // palette color. Does nothing if loft mode is inactive or masks are empty.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonEnter,
+        []() {
+            if (!IRVoxelEditor::g_loftTool.active_)
+                return;
+            const Color placeColor =
+                IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
+            IRVoxelEditor::applyLoft(placeColor);
+            IR_LOG_INFO("Loft stamped.");
+        }
+    );
+
+    // C — clear both loft masks when in loft mode. No-op outside loft mode
+    // so the key stays available for future bindings.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonC,
+        []() {
+            if (!IRVoxelEditor::g_loftTool.active_)
+                return;
+            auto &loft = IRVoxelEditor::g_loftTool;
+            std::fill(loft.maskXZ_.begin(), loft.maskXZ_.end(), false);
+            std::fill(loft.maskYZ_.begin(), loft.maskYZ_.end(), false);
+            IR_LOG_INFO("Loft masks cleared.");
+        }
+    );
+
     // K: add a new layer (auto-named from count, immediately becomes active).
     // N is reserved for frame-animation's "add blank frame" binding.
     IRCommand::createCommand(
@@ -1441,6 +2356,75 @@ void initCommands() {
         }
     );
 
+    // J — toggle skeletal joint-authoring mode (#1604). While on, B adds a
+    // joint and R starts a fresh chain off the rig root.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonJ,
+        []() {
+            IRVoxelEditor::g_jointTool.active_ = !IRVoxelEditor::g_jointTool.active_;
+            IR_LOG_INFO("Joint authoring: {}", IRVoxelEditor::g_jointTool.active_ ? "ON" : "OFF");
+        }
+    );
+
+    // B — add a joint, chained to the active joint (or the rig root). No-op
+    // outside joint mode so the key stays free for other tools.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonB,
+        []() {
+            if (!IRVoxelEditor::g_jointTool.active_)
+                return;
+            IRVoxelEditor::addJointAuthored();
+        }
+    );
+
+    // R — start a new bone chain: the next B parents to the rig root rather
+    // than the last-added joint. No-op outside joint mode.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonR,
+        []() {
+            if (!IRVoxelEditor::g_jointTool.active_)
+                return;
+            IRVoxelEditor::resetJointChain();
+        }
+    );
+
+    // N — toggle bone-paint mode (#1608). While on, left-click writes
+    // bone_id_ to the hit voxel and tints it with the selected bone's
+    // display color. The bone selector swatch panel drives activeBoneIdx_.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonN,
+        []() {
+            IRVoxelEditor::g_bonePaint.active_ = !IRVoxelEditor::g_bonePaint.active_;
+            IR_LOG_INFO(
+                "Bone paint mode: {}  (active bone: {})",
+                IRVoxelEditor::g_bonePaint.active_ ? "ON" : "OFF",
+                IRVoxelEditor::g_bonePaint.activeBoneIdx_
+            );
+        }
+    );
+
+    // T — set current pose as bind (#1610): the posed joint chain becomes
+    // the new rest, skin matrices return to identity, and the rig's voxels
+    // relax in place. No-op outside joint mode.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonT,
+        []() {
+            if (!IRVoxelEditor::g_jointTool.active_)
+                return;
+            IRVoxelEditor::setCurrentPoseAsBind();
+        }
+    );
+
     // H: toggle active layer visibility. Iterates C_VoxelSetNew and updates
     // voxel alpha so hidden layers vanish from the viewport immediately.
     IRCommand::createCommand(
@@ -1462,7 +2446,10 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u))
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl,
+                    IRInput::kModifierShift
+                ))
                 return;
             auto &anim = IRVoxelEditor::g_anim;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
@@ -1490,13 +2477,48 @@ void initCommands() {
         }
     );
 
+    // Ctrl+Shift+S — save skeleton to {kSceneSaveDir}/{kSceneBaseName}.rig.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonS,
+        []() {
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl | IRInput::kModifierShift,
+                    0u
+                ))
+                return;
+            if (IRVoxelEditor::g_jointTool.rigRoot_ == IREntity::kNullEntity) {
+                IR_LOG_WARN("No rig to save — author joints with J + B first.");
+                return;
+            }
+            auto res = IRVoxelEditor::saveRigScene(
+                std::string(IRVoxelEditor::kSceneSaveDir),
+                std::string(IRVoxelEditor::kSceneBaseName),
+                IRVoxelEditor::g_jointTool.rigRoot_,
+                IRVoxelEditor::g_jointTool.parentIdx_
+            );
+            if (res.ok_)
+                IR_LOG_INFO(
+                    "Rig saved to {}/{}",
+                    IRVoxelEditor::kSceneSaveDir,
+                    IRVoxelEditor::kSceneBaseName
+                );
+            else
+                IR_LOG_ERROR("Rig save failed: {}", res.errorMsg_);
+        }
+    );
+
     // Ctrl+O — load scene from disk, replacing all frames and layer state.
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
-            if (!IRInput::checkKeyMouseModifiers(IRInput::kModifierControl, 0u))
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl,
+                    IRInput::kModifierShift
+                ))
                 return;
             auto loaded = IRVoxelEditor::loadEditorScene(
                 std::string(IRVoxelEditor::kSceneSaveDir),
@@ -1549,6 +2571,111 @@ void initCommands() {
             );
         }
     );
+
+    // Ctrl+Shift+O — load skeleton from {kSceneSaveDir}/{kSceneBaseName}.rig.
+    // Destroys existing joint entities and their gizmo children, then
+    // reconstructs the skeleton from the saved .rig file.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonO,
+        []() {
+            if (!IRInput::checkKeyMouseModifiers(
+                    IRInput::kModifierControl | IRInput::kModifierShift,
+                    0u
+                ))
+                return;
+
+            auto loaded = IRVoxelEditor::loadRigScene(
+                std::string(IRVoxelEditor::kSceneSaveDir),
+                std::string(IRVoxelEditor::kSceneBaseName)
+            );
+            if (!loaded.ok_) {
+                IR_LOG_ERROR("Rig load failed: {}", loaded.errorMsg_);
+                return;
+            }
+
+            // Collect existing joint ids.
+            std::vector<IREntity::EntityId> oldJointIds;
+            IREntity::forEachComponent<IRComponents::C_Joint>(
+                [&](IREntity::EntityId id, IRComponents::C_Joint &) { oldJointIds.push_back(id); }
+            );
+
+            // Collect gizmo handles anchored to those joints, then destroy
+            // gizmos first so no child tries to read a destroyed parent.
+            {
+                std::vector<IREntity::EntityId> oldGizmoIds;
+                IREntity::forEachComponent<IRComponents::C_GizmoHandle>(
+                    [&](IREntity::EntityId id, IRComponents::C_GizmoHandle &h) {
+                        for (const auto jid : oldJointIds) {
+                            if (h.anchorEntity_ == jid) {
+                                oldGizmoIds.push_back(id);
+                                break;
+                            }
+                        }
+                    }
+                );
+                for (const auto id : oldGizmoIds)
+                    IREntity::destroyEntity(id);
+            }
+            for (const auto id : oldJointIds)
+                IREntity::destroyEntity(id);
+
+            // Reset skeleton and authoring tool state.
+            const IREntity::EntityId rigRoot = IRVoxelEditor::ensureRigRoot();
+            {
+                auto &skeleton = IREntity::getComponent<IRComponents::C_Skeleton>(rigRoot);
+                skeleton.joints_.clear();
+                skeleton.bindPose_.clear();
+            }
+            IRVoxelEditor::g_jointTool.parentIdx_.clear();
+            IRVoxelEditor::g_jointTool.activeJointIdx_ = -1;
+            IRVoxelEditor::g_jointTool.bindPoseRecaptured_ = false;
+
+            // Reconstruct joint entities from the loaded rig.
+            const auto &rig = loaded.rig_;
+            const std::size_t count = rig.joints_.size();
+            std::vector<IREntity::EntityId> newJoints;
+            newJoints.reserve(count);
+
+            for (std::size_t i = 0; i < count; ++i) {
+                const auto &j = rig.joints_[i];
+                const IRMath::vec3 t{j.translation_.x, j.translation_.y, j.translation_.z};
+                const IREntity::EntityId joint = IREntity::createEntity(
+                    IRComponents::C_LocalTransform{t, j.rotation_},
+                    IRComponents::C_Joint{}
+                );
+                const bool atRigRoot = j.parentIndex_ == static_cast<std::uint32_t>(i) ||
+                                       j.parentIndex_ >= static_cast<std::uint32_t>(count);
+                IR_ASSERT(atRigRoot || j.parentIndex_ < i,
+                    ".rig parentIndex forward-reference — not supported by linear reconstruction");
+                const IREntity::EntityId parentEntity =
+                    atRigRoot ? rigRoot : newJoints[j.parentIndex_];
+                IREntity::setParent(joint, parentEntity);
+                IRPrefab::Gizmo::createJointMarker(joint);
+                IRPrefab::Gizmo::createTranslateGizmoForAnchor(joint);
+                newJoints.push_back(joint);
+                IRVoxelEditor::g_jointTool.parentIdx_.push_back(
+                    atRigRoot ? -1 : static_cast<int>(j.parentIndex_)
+                );
+            }
+
+            // Re-fetch skeleton after all createEntity calls to avoid
+            // stale references, then populate joints and bind pose.
+            {
+                auto &skeleton = IREntity::getComponent<IRComponents::C_Skeleton>(rigRoot);
+                skeleton.joints_.insert(skeleton.joints_.end(), newJoints.begin(), newJoints.end());
+                skeleton.bindPose_ = IRPrefab::Rig::bindPose(rig);
+            }
+
+            IR_LOG_INFO(
+                "Rig loaded: {} joints from {}/{}",
+                count,
+                IRVoxelEditor::kSceneSaveDir,
+                IRVoxelEditor::kSceneBaseName
+            );
+        }
+    );
 }
 
 void initEntities() {
@@ -1566,7 +2693,7 @@ void initEntities() {
     constexpr float kFloorZ = 2.0f;
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, kFloorZ)},
+        C_LocalTransform{vec3(0.0f, 0.0f, kFloorZ)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(40.0f, 40.0f, 1.0f, 0.0f),
@@ -1575,7 +2702,7 @@ void initEntities() {
     );
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(16.0f, 0.5f, 0.5f, 0.0f),
@@ -1584,7 +2711,7 @@ void initEntities() {
     );
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(0.5f, 16.0f, 0.5f, 0.0f),
@@ -1593,7 +2720,7 @@ void initEntities() {
     );
 
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(0.0f, 0.0f, 0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(1.5f, 1.5f, 1.5f, 0.0f),
@@ -1605,23 +2732,35 @@ void initEntities() {
     // visual references for the gizmo render pass.
     {
         IREntity::EntityId translateGizmo = IRPrefab::Gizmo::createTranslateGizmo();
-        IREntity::getComponent<C_Position3D>(translateGizmo).pos_ = vec3(-12.0f, 12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(translateGizmo).translation_ =
+            vec3(-12.0f, 12.0f, -3.0f);
 
         IREntity::EntityId rotateGizmo = IRPrefab::Gizmo::createRotateGizmo();
-        IREntity::getComponent<C_Position3D>(rotateGizmo).pos_ = vec3(12.0f, 12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(rotateGizmo).translation_ =
+            vec3(12.0f, 12.0f, -3.0f);
 
         IREntity::EntityId scaleGizmo = IRPrefab::Gizmo::createScaleGizmo();
-        IREntity::getComponent<C_Position3D>(scaleGizmo).pos_ = vec3(-12.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(scaleGizmo).translation_ =
+            vec3(-12.0f, -12.0f, -3.0f);
 
         IREntity::EntityId jointMarker = IRPrefab::Gizmo::createJointMarker();
-        IREntity::getComponent<C_Position3D>(jointMarker).pos_ = vec3(8.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(jointMarker).translation_ =
+            vec3(8.0f, -12.0f, -3.0f);
 
         IREntity::EntityId bindPointMarker = IRPrefab::Gizmo::createBindPointMarker();
-        IREntity::getComponent<C_Position3D>(bindPointMarker).pos_ = vec3(12.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(bindPointMarker).translation_ =
+            vec3(12.0f, -12.0f, -3.0f);
 
         IREntity::EntityId ikMarker = IRPrefab::Gizmo::createIKMarker();
-        IREntity::getComponent<C_Position3D>(ikMarker).pos_ = vec3(16.0f, -12.0f, -3.0f);
+        IREntity::getComponent<C_LocalTransform>(ikMarker).translation_ =
+            vec3(16.0f, -12.0f, -3.0f);
     }
+
+    // F-2.5 (#1604) joint-authoring starter rig — a short bone chain so the
+    // feature is visible on launch and in auto-screenshots (same spirit as the
+    // perimeter gizmo references above). Author more with J (toggle mode) + B
+    // (add joint); R starts a new chain off the rig root.
+    IRVoxelEditor::seedDemoSkeleton();
 
     // Editable voxel set — the place/erase target. Allocated empty
     // (default color, alpha=255 so cells are active at start) then
@@ -1630,12 +2769,17 @@ void initEntities() {
     // first click to land on. Architect D1: the size is a named
     // constant on the editor side, not hardcoded inline.
     g_editor.editableVoxelSet_ = IREntity::createEntity(
-        C_Position3D{IRVoxelEditor::kEditableSceneOrigin},
+        C_LocalTransform{IRVoxelEditor::kEditableSceneOrigin},
         C_VoxelSetNew{IRVoxelEditor::kEditableSceneSize, Color{200, 200, 210, 255}}
     );
     IRVoxelEditor::g_sceneVoxelSetEntity = g_editor.editableVoxelSet_;
     {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+        const int sx = set.size_.x;
+        const int sy = set.size_.y;
+        const int sz = set.size_.z;
+        IRVoxelEditor::g_loftTool.maskXZ_.assign(static_cast<std::size_t>(sx * sz), false);
+        IRVoxelEditor::g_loftTool.maskYZ_.assign(static_cast<std::size_t>(sy * sz), false);
         set.deactivateAll();
         // Ground plane at z == size_.z - 1: flat gray, gives the user
         // something to click before placing any voxels themselves.
@@ -1647,11 +2791,11 @@ void initEntities() {
     // on. Their colors stay fixed so it's obvious which click landed
     // on the editable set versus a satellite.
     IREntity::createEntity(
-        C_Position3D{vec3(-16.0f, 0.0f, -6.0f)},
+        C_LocalTransform{vec3(-16.0f, 0.0f, -6.0f)},
         C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
     );
     IREntity::createEntity(
-        C_Position3D{vec3(16.0f, 0.0f, -6.0f)},
+        C_LocalTransform{vec3(16.0f, 0.0f, -6.0f)},
         C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
     );
 
@@ -1696,14 +2840,12 @@ void initEntities() {
             kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
             kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
         );
-        g_editor.paletteSwatches_.push_back(
-            IRPrefab::Widget::makeColorSwatch(
-                pos,
-                ivec2(kSwatchSize, kSwatchSize),
-                IRVoxelEditor::kPaletteColors[i],
-                i == 0
-            )
-        );
+        g_editor.paletteSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
+            pos,
+            ivec2(kSwatchSize, kSwatchSize),
+            IRVoxelEditor::kPaletteColors[i],
+            i == 0
+        ));
     }
 
     // Animation controls panel (T-214, F-1.4) — sits below the palette
@@ -1768,11 +2910,133 @@ void initEntities() {
         "-"
     );
 
+    // Parametric shape bake panel (T-286). Sits below the LAYERS panel.
+    // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
+    // secondary params; BAKE writes DENSE voxels into the active entity.
+    constexpr ivec2 kBakePanelPos{130, 342};
+    constexpr ivec2 kBakePanelSize{120, 140};
+    IRVoxelEditor::g_bakePanel = IRPrefab::Widget::makePanel(kBakePanelPos, kBakePanelSize, "BAKE");
+    IREntity::setComponent(IRVoxelEditor::g_bakePanel, IRComponents::C_HitBox2DGui{kBakePanelSize});
+    IRVoxelEditor::g_bakeShapeList = IRPrefab::Widget::makeList(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 18),
+        ivec2(112, 66),
+        {"BOX", "SPHERE", "CYLINDER", "TORUS", "CONE", "ELLIPSOID"},
+        1,
+        11
+    );
+    IRVoxelEditor::g_bakeParam1Slider = IRPrefab::Widget::makeSlider(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 88),
+        ivec2(112, 14),
+        "P1",
+        0.5f,
+        12.0f,
+        8.0f
+    );
+    IRVoxelEditor::g_bakeParam2Slider = IRPrefab::Widget::makeSlider(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 106),
+        ivec2(112, 14),
+        "P2",
+        0.5f,
+        12.0f,
+        3.0f
+    );
+    IRVoxelEditor::g_bakeButton = IRPrefab::Widget::makeButton(
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 124),
+        ivec2(112, 12),
+        "BAKE"
+    );
+
+    // Bone selector panel (F-2.7 / #1608). kBoneSwatchCount swatches in a 2×4
+    // grid; index 0 = identity (gray), indices 1..7 cycle through distinct hues.
+    // Clicking a swatch sets g_bonePaint.activeBoneIdx_; N enables bone-paint mode.
+    // Third column (x=256) atop the SKELETON panel — mirrors the LAYERS/BAKE
+    // stack in column two so both bone panels stay on-screen.
+    constexpr ivec2 kBonePanelPos{256, 240};
+    constexpr ivec2 kBonePanelSize{120, 96};
+    constexpr int kBoneSwatchSize = 20;
+    constexpr int kBoneSwatchGap = 4;
+    constexpr int kBoneSwatchOriginX = kBonePanelPos.x + 8;
+    constexpr int kBoneSwatchOriginY = kBonePanelPos.y + 36;
+    constexpr int kBoneGridCols = 4;
+
+    IRVoxelEditor::g_bonePaint.bonePanel_ =
+        IRPrefab::Widget::makePanel(kBonePanelPos, kBonePanelSize, "BONE");
+    IREntity::setComponent(
+        IRVoxelEditor::g_bonePaint.bonePanel_,
+        IRComponents::C_HitBox2DGui{kBonePanelSize}
+    );
+    IRPrefab::Widget::makeLabel(ivec2(kBonePanelPos.x + 8, kBonePanelPos.y + 22), "N:ON/OFF");
+
+    IRVoxelEditor::g_bonePaint.boneSwatches_.reserve(IRVoxelEditor::kBoneSwatchCount);
+    for (int i = 0; i < IRVoxelEditor::kBoneSwatchCount; ++i) {
+        const int row = i / kBoneGridCols;
+        const int col = i % kBoneGridCols;
+        const ivec2 pos(
+            kBoneSwatchOriginX + col * (kBoneSwatchSize + kBoneSwatchGap),
+            kBoneSwatchOriginY + row * (kBoneSwatchSize + kBoneSwatchGap)
+        );
+        IRVoxelEditor::g_bonePaint.boneSwatches_.push_back(
+            IRPrefab::Widget::makeColorSwatch(
+                pos,
+                ivec2(kBoneSwatchSize, kBoneSwatchSize),
+                IRVoxelEditor::kBoneColors[i],
+                i == 0
+            )
+        );
+    }
+
+    // Skeleton tree panel (F-2.6, #1607). Sits below the BONE selector in the
+    // third column (mirrors LAYERS→BAKE in column two), so the swatch grid and
+    // the joint tree coexist without overlapping.
+    // Shows the live joint list from C_Skeleton.joints_; clicking a row
+    // selects that joint as the active bone (for B-chaining). The rename
+    // row writes C_JointName; the reparent row rewrites the CHILD_OF
+    // relation and updates parentIdx_ + bindPose_.
+    constexpr ivec2 kSkeletonPanelPos{256, 342};
+    constexpr ivec2 kSkeletonPanelSize{120, 114};
+    IRVoxelEditor::g_skeletonPanel =
+        IRPrefab::Widget::makePanel(kSkeletonPanelPos, kSkeletonPanelSize, "SKELETON");
+    IREntity::setComponent(
+        IRVoxelEditor::g_skeletonPanel,
+        IRComponents::C_HitBox2DGui{kSkeletonPanelSize}
+    );
+    IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_skeletonPanel).zOrder_ = -1;
+
+    IRVoxelEditor::g_skeletonList = IRPrefab::Widget::makeList(
+        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 18),
+        ivec2(112, 52),
+        {},
+        -1,
+        13
+    );
+    IRVoxelEditor::g_jointRenameInput = IRPrefab::Widget::makeTextInput(
+        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 74),
+        ivec2(82, 14),
+        "",
+        24
+    );
+    IRVoxelEditor::g_jointRenameBtn = IRPrefab::Widget::makeButton(
+        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 74),
+        ivec2(26, 14),
+        "REN"
+    );
+    IRVoxelEditor::g_jointReparentInput = IRPrefab::Widget::makeTextInput(
+        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 92),
+        ivec2(82, 14),
+        "-1",
+        4
+    );
+    IRVoxelEditor::g_jointReparentBtn = IRPrefab::Widget::makeButton(
+        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 92),
+        ivec2(26, 14),
+        "PAR"
+    );
+
     // Ghost preview entity for drag-fill. Invisible until
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
     // frame and hides it again on RELEASED.
     IRVoxelEditor::g_fillTool.ghostEntity_ = IREntity::createEntity(
-        C_Position3D{vec3(0.0f)},
+        C_LocalTransform{vec3(0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(0.5f, 0.5f, 0.5f, 0.0f),
@@ -1781,4 +3045,9 @@ void initEntities() {
     );
     IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_).flags_ =
         IRMath::SDF::SHAPE_FLAG_NONE;
+
+    // Fill-mode status label — top-left of the GUI canvas. Updated each frame
+    // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
+    // symmetry axes are active so the user can see modifier state at a glance.
+    IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
 }

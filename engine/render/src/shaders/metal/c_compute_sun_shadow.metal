@@ -1,45 +1,14 @@
 #include "ir_iso_common.metal"
+#include "ir_per_axis_lighting.metal"
+// FrameDataSun, the cascade PCF sampler, and the world-space
+// worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's detached
+// world-receive path (#1576 P4b-2).
+#include "ir_sun_shadow_sample.metal"
 
 // Mirrors shaders/c_compute_sun_shadow.glsl. Per-pixel directional sun
-// shadow compute — reconstructs the voxel-space surface position for
-// each rasterized pixel, projects into the sun-aligned depth map baked
-// by BAKE_SUN_SHADOW_MAP, and writes a 0..1 brightness factor into
-// canvasSunShadow.r.
+// shadow compute with cascaded shadow maps.
 
 constant int kEmptyDistanceEncoded = 65535;
-constant float kShadowDarken = 0.45;
-
-// Must match c_bake_sun_shadow_map.metal.
-constant int kSunShadowMapDim = 1024;
-constant float kSunDepthScale = 1024.0;
-constant float kSunDepthOffset = 512.0;
-// Normal-bias offset pushes the lookup point along the face's outward
-// normal before projecting into sun-space, preventing self-shadow acne on
-// cube tops and SDF spheres caused by adjacent-face pixels rounding to the
-// same sun-texel. Tune via render-debug-loop on shape_debug.
-constant float kNormalBiasVoxels = 0.5;
-// Slope-scale bias covers the worst-case sunZ variation between iso pixels
-// that share a sun-space texel — roughly texelSize/slope voxels. Below
-// that threshold a flat surface self-shadows. Tune via render-debug-loop on shape_debug.
-constant float kShadowBiasTexelScale = 2.0;
-constant float kShadowBiasSlopeMin = 0.05;
-constant float kShadowBiasQuantNoise = 4.0 / kSunDepthScale;
-
-inline float unpackSunDepth(uint packedDepth) {
-    return float(packedDepth) / kSunDepthScale - kSunDepthOffset;
-}
-
-struct FrameDataSun {
-    float4 sunDirection;
-    float sunIntensity;
-    float sunAmbient;
-    int shadowsEnabled;
-    int aoEnabled;
-    float4 sunBasisU;
-    float4 sunBasisV;
-    float2 sunBufferOriginUV;
-    float2 sunBufferTexelSize;
-};
 
 kernel void c_compute_sun_shadow(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
@@ -57,7 +26,8 @@ kernel void c_compute_sun_shadow(
     if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    if (encoded >= kEmptyDistanceEncoded) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    if (encoded >= (frameData.perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         canvasSunShadow.write(float4(1.0, 0.0, 0.0, 0.0), uint2(pixel));
         return;
     }
@@ -66,70 +36,60 @@ kernel void c_compute_sun_shadow(
         return;
     }
 
-    int rawDepth = encoded >> 2;
-
-    // sunDirection stays in world coordinates (camera-independent), so only
-    // the surface position needs the R(-rasterYaw) compose. At
-    // cardinalIndex==0 the path collapses to master so yaw=0 stays
-    // byte-identical.
-    float3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel,
-        rawDepth,
-        frameData.trixelCanvasOffsetZ1,
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions,
-        frameData.rasterYaw
-    );
-
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    int rawDepth = (frameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     int face = encoded & 3;
-    float3 normal = faceOutwardNormal(face);
+    int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
-    // Screen-space lookup against the bake output. sunZ is negated
-    // (smaller = closer to sun) so the bake's atomicMin stores the
-    // nearest blocker per texel. The lookup position is offset along the
-    // outward normal first so the projected sun-texel shifts away from the
-    // true-surface writer, eliminating self-shadow acne without biasing the
-    // baked depth map itself.
-    float3 sunDir = sunFrameData.sunDirection.xyz;
-    float3 uHat = sunFrameData.sunBasisU.xyz;
-    float3 vHat = sunFrameData.sunBasisV.xyz;
-    float3 biasedPos3D = pos3D + normal * kNormalBiasVoxels;
-    float2 sunUV = float2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
-    float sunZ = -dot(biasedPos3D, sunDir);
-
-    // Bias depends only on per-fragment constants (face/normal/sunDir,
-    // texelSize) — hoisted outside the PCF loop. T-132's slope-scale +
-    // quantisation-noise formula stays unchanged; the PCF kernel just
-    // applies it to each of the four taps.
-    float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
-    float texelSize = max(
-        sunFrameData.sunBufferTexelSize.x,
-        sunFrameData.sunBufferTexelSize.y
-    );
-    float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
-
-    // 2×2 PCF: bilinearly weighted sample of four neighboring sun-space texels.
-    // Fades shadow boundaries across one sun-texel instead of cliff-edging.
-    // floor() pairs with the bake's round() convention (texel centers on
-    // integers) so the four taps surround the fragment's continuous sunPxF.
-    float2 sunPxF = (sunUV - sunFrameData.sunBufferOriginUV) /
-                    sunFrameData.sunBufferTexelSize;
-    int2 base = int2(floor(sunPxF));
-    float2 frac = sunPxF - float2(base);
-    float shadowAccum = 0.0;
-    for (int dy = 0; dy < 2; ++dy) {
-        for (int dx = 0; dx < 2; ++dx) {
-            int2 px = base + int2(dx, dy);
-            if (px.x < 0 || px.x >= kSunShadowMapDim ||
-                px.y < 0 || px.y >= kSunShadowMapDim) continue;
-            uint stored = sunDepthBuf[px.y * kSunShadowMapDim + px.x];
-            if (stored == 0xFFFFFFFFu) continue;  // no caster → lit
-            float nearestZ = unpackSunDepth(stored);
-            float weight = mix(1.0f - frac.x, frac.x, float(dx))
-                         * mix(1.0f - frac.y, frac.y, float(dy));
-            if ((sunZ - nearestZ) > bias) shadowAccum += weight;
-        }
+    // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
+    // face-locally — recover world-pos via faceOriginFromInPlane and read the
+    // world-frame outward normal directly. The single canvas keeps its
+    // cardinal-snap reconstruction + R_z(-rasterYaw) normal rotation. Mirrors GLSL.
+    bool perAxis = frameData.perAxisRoute != 0;
+    float3 pos3D;
+    float3 normal;
+    if (perAxis) {
+        int faceId = frameData.visibleFaceIds[face];
+        pos3D = perAxisCellToWorld3D(
+            pixel, rawDepth, faceId, size,
+            frameData.frameCanvasOffset, frameData.voxelRenderOptions
+        );
+        normal = faceOutwardNormal6(faceId);
+    } else if (frameData.residualYaw != 0.0) {
+        // Smooth-yaw receive (#1719). While rotating, voxels leave the single
+        // canvas (per-axis scatter) and its remaining SDF/text content is
+        // stored at the FULL visualYaw with view-frame depth (#1345/#1370) —
+        // recover with the matching smooth inverse. The cardinal recovery
+        // returns a residual-rotated world pos here, so receivers sampled the
+        // sun map off the true surface (frozen / vanishing floor shadows).
+        // residualYaw == 0 keeps the byte-identical cardinal path. Mirrors GLSL.
+        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.visualYaw
+        );
+        normal = rotateYawZInv(faceOutwardNormal(face), frameData.visualYaw);
+    } else {
+        pos3D = trixelCanvasPixelToWorld3D(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.rasterYaw
+        );
+        // Rotate raster-frame face normal to world frame so normal bias and slope
+        // bias are applied in the correct world-space direction at non-zero camera
+        // yaw. No-op at yaw=0 (cardinalIndex=0). Matches the AO shader pattern.
+        normal = rotateCardinalZInv(faceOutwardNormal(face), cardinalIndex);
     }
-    float factor = mix(1.0f, kShadowDarken, shadowAccum);
+
+    // World iso depth picks the cascade; rawDepth IS the world iso depth for the
+    // world canvas this pass runs on. The cascade PCF lookup is shared with the
+    // detached world-receive path (ir_sun_shadow_sample.metal, #1576).
+    float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
 }

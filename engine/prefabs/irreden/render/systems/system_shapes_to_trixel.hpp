@@ -7,7 +7,7 @@
 #include <irreden/ir_constants.hpp>
 
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -15,6 +15,7 @@
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/voxel_dispatch_grid.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -61,38 +62,67 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     float residualYaw_ = 0.0f;
     float yawCos_ = 1.0f;
     float yawSin_ = 0.0f;
+    // Cardinal snap index of rasterYaw_, reused by the cull-pass view rotation
+    // (IRMath::rotateCardinalZ) so it shares the rasterizer's world->view
+    // permutation instead of open-coding the same cos/sin product.
+    IRMath::CardinalIndex cardinalIndex_ = IRMath::CardinalIndex::k0;
     bool yawZero_ = true;
+    // Continuous-yaw snapshot for the smooth camera Z-yaw SDF path (#1345).
+    // smoothYaw_ is true inside a residual bracket (residualYaw != 0); the cull
+    // (any canvas — widening is conservative) and the main-canvas tile footprint
+    // then project at the full visualYaw and grow by the continuous |cos|,|sin|
+    // (up to the sqrt(2) footprint at +/-45deg) so off-center shapes inside the
+    // rotated footprint are not dropped from the cardinal-snapped viewport.
+    // yawCosVisual_/yawSinVisual_ are cos/sin(visualYaw_).
+    bool smoothYaw_ = false;
+    float yawCosVisual_ = 1.0f;
+    float yawSinVisual_ = 0.0f;
     // LOD tier snapshotted at beginTick from the C_ActiveLodLevel singleton
     // (written by LOD_UPDATE in UPDATE phase). Per-entity tick skips shapes
-    // whose lodMin_ < activeLod_ — those are too-fine-grained for this
-    // frame's zoom. Defaults to LOD_4 (no culling) so creations that don't
-    // register LOD_UPDATE keep their pre-LOD behavior.
+    // whose [lodMax_ .. lodMin_] band does not contain activeLod_ — they want
+    // more (or less) detail than this frame's zoom provides. Defaults to LOD_4
+    // (no culling) so creations that don't register LOD_UPDATE keep their
+    // pre-LOD behavior.
     IRRender::LodLevel activeLod_ = IRRender::LodLevel::LOD_4;
 
     void tick(
-        IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_PositionGlobal3D &pos
+        IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
     ) {
-        if (IRRender::shouldSkipAtLod(shape.lodMin_, activeLod_)) {
+        if (IRRender::shouldSkipAtLod(shape.lodMin_, shape.lodMax_, activeLod_)) {
             return;
         }
         if (cullBounds_.has_value()) {
-            vec3 viewPos = pos.pos_;
             vec3 sizeForExtent = vec3(shape.params_);
-            if (!yawZero_) {
-                viewPos = vec3(
-                    yawCos_ * pos.pos_.x + yawSin_ * pos.pos_.y,
-                    -yawSin_ * pos.pos_.x + yawCos_ * pos.pos_.y,
-                    pos.pos_.z
+            const bool hasRotation = IRMath::abs(xform.rotation_.w) < 0.9999f;
+            if (hasRotation) {
+                vec3 ax = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(sizeForExtent.x, 0, 0), xform.rotation_)
                 );
-                const float absC = IRMath::abs(yawCos_);
-                const float absS = IRMath::abs(yawSin_);
-                sizeForExtent = vec3(
-                    sizeForExtent.x * absC + sizeForExtent.y * absS,
-                    sizeForExtent.x * absS + sizeForExtent.y * absC,
-                    sizeForExtent.z
+                vec3 ay = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, sizeForExtent.y, 0), xform.rotation_)
                 );
+                vec3 az = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, 0, sizeForExtent.z), xform.rotation_)
+                );
+                sizeForExtent = ax + ay + az;
             }
-            vec2 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
+            vec2 shapeIsoPosition;
+            if (smoothYaw_) {
+                // Continuous-yaw cull: project the center at the full visualYaw
+                // and grow the iso half-extent by the continuous |c|,|s| (up to
+                // the sqrt(2) footprint at +/-45deg) so off-center shapes inside
+                // the rotated footprint survive the cardinal-snapped viewport.
+                sizeForExtent =
+                    IRMath::yawGrownIsoHalfExtent(sizeForExtent, yawCosVisual_, yawSinVisual_);
+                shapeIsoPosition = IRMath::pos3DtoPos2DIsoYawed(xform.translation_, visualYaw_);
+            } else {
+                vec3 viewPos = xform.translation_;
+                if (!yawZero_) {
+                    viewPos = IRMath::rotateCardinalZ(xform.translation_, cardinalIndex_);
+                    sizeForExtent = IRMath::yawGrownIsoHalfExtent(sizeForExtent, yawCos_, yawSin_);
+                }
+                shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
+            }
             vec2 shapeIsoHalfExtent = IRMath::shapeIsoHalfExtent(sizeForExtent);
             if (shapeIsoPosition.x + shapeIsoHalfExtent.x < cullBounds_->min_.x ||
                 shapeIsoPosition.x - shapeIsoHalfExtent.x > cullBounds_->max_.x ||
@@ -112,8 +142,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             return;
         }
         GPUShapeDescriptor desc{};
-        desc.worldPosition = vec4(pos.pos_, 1.0f);
+        desc.worldPosition = vec4(xform.translation_, 1.0f);
         desc.params = shape.params_;
+        desc.rotation = xform.rotation_;
         desc.shapeType = static_cast<std::uint32_t>(shape.shapeType_);
         desc.color = shape.color_.toPackedRGBA();
         desc.entityId = entityId;
@@ -147,20 +178,23 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(visualYaw_);
         rasterYaw_ = rasterYaw;
         residualYaw_ = residualYaw;
-        static constexpr float kCardinalCos[4] = {1.f, 0.f, -1.f, 0.f};
-        static constexpr float kCardinalSin[4] = {0.f, 1.f, 0.f, -1.f};
-        constexpr float kHalfPi = 1.5707963267948966f;
-        const int q = IRMath::round(rasterYaw / kHalfPi);
-        const int cardinalIdx = ((q % 4) + 4) % 4;
-        yawCos_ = kCardinalCos[cardinalIdx];
-        yawSin_ = kCardinalSin[cardinalIdx];
+        cardinalIndex_ = IRMath::rasterYawCardinalIndex(rasterYaw);
+        const vec2 cardinalCosSin = IRMath::cardinalYawCosSin(cardinalIndex_);
+        yawCos_ = cardinalCosSin.x;
+        yawSin_ = cardinalCosSin.y;
         yawZero_ = (rasterYaw_ == 0.0f);
+        // Smooth camera Z-yaw (#1345): continuous-yaw cull/footprint inside a
+        // residual bracket. cos/sin of the full visualYaw (not the cardinal
+        // table) so the rotated footprint grows to the true sqrt(2) extent.
+        smoothYaw_ = (residualYaw_ != 0.0f);
+        yawCosVisual_ = IRMath::cos(visualYaw_);
+        yawSinVisual_ = IRMath::sin(visualYaw_);
 
         IREntity::EntityId mainCanvas = IRRender::getActiveCanvasEntity();
         auto texOpt = IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
         if (texOpt.has_value()) {
             IRRender::updateCullViewport(
-                IRRender::getCameraPosition2DIso(),
+                IRRender::getEffectiveCameraIso(),
                 IRRender::getCameraZoom(),
                 texOpt.value()->size_
             );
@@ -173,16 +207,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // shaders never clip a shadow-feeder pixel. Sun-direction
             // resolution is gated on the shadow flag so a disabled-
             // shadow creation skips the C_LightSource archetype scan.
-            const bool shadowsEnabled = IRRender::getSunShadowsEnabled();
-            const vec3 sunDir =
-                shadowsEnabled ? IRPrefab::SunShadow::getFrameSunDirection() : vec3(0.0f);
-            const float sweepDistance =
-                shadowsEnabled ? IRPrefab::SunShadow::kSunShadowMaxDistance : 0.0f;
-            cullBounds_ = IRMath::shadowFeederIsoBounds(
-                IRRender::getCullViewport().isoViewport(kMargin),
-                sunDir,
-                sweepDistance
-            );
+            const auto shadowFeeder = IRPrefab::SunShadow::frameShadowFeederParams();
+            cullBounds_ = IRPrefab::SunShadow::shadowFeederCullViewport(kMargin, shadowFeeder);
         } else {
             cullBounds_.reset();
         }
@@ -206,7 +232,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             auto &canvasTextures = *texturesOpt.value();
 
             if (canvasId == mainCanvas) {
-                frameData_.cameraTrixelOffset = IRRender::getCameraPosition2DIso();
+                frameData_.cameraTrixelOffset = IRRender::getEffectiveCameraIso();
             } else {
                 canvasTextures.clear();
                 vec3 entityPos = vec3(gpuShapes[0].worldPosition);
@@ -228,6 +254,21 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             frameData_.visualYaw = visualYaw;
             frameData_.rasterYaw = rasterYaw;
             frameData_.residualYaw = residualYaw;
+            // Smooth camera Z-yaw (#1345): the continuous-yaw SDF path is enabled
+            // only on the rotating MAIN world canvas. Detached per-entity canvases
+            // keep the cardinal rasterYaw + faceDeform path (their camera-rotation
+            // is absorbed by their own SO(3) bake, not the SDF rasterizer).
+            const bool canvasSmoothYaw = smoothYaw_ && (canvasId == mainCanvas);
+            frameData_.smoothYawEnabled = canvasSmoothYaw ? 1 : 0;
+            // Residual yaw is folded into faceDeform per-face for the
+            // shapes shader (T-293, replaces the T-058 / T-322 bilinear
+            // path). Identity at residualYaw==0.
+            const mat2 fdX = IRMath::faceDeformationMatrix(IRMath::kXFace, residualYaw);
+            const mat2 fdY = IRMath::faceDeformationMatrix(IRMath::kYFace, residualYaw);
+            const mat2 fdZ = IRMath::faceDeformationMatrix(IRMath::kZFace, residualYaw);
+            frameData_.faceDeform[IRMath::kXFace] = vec4(fdX[0], fdX[1]);
+            frameData_.faceDeform[IRMath::kYFace] = vec4(fdY[0], fdY[1]);
+            frameData_.faceDeform[IRMath::kZFace] = vec4(fdZ[0], fdZ[1]);
 
             shapeDescBuf_
                 ->subData(0, gpuShapes.size() * sizeof(GPUShapeDescriptor), gpuShapes.data());
@@ -245,6 +286,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 rasterYaw,
                 yawCos_,
                 yawSin_,
+                canvasSmoothYaw,
+                visualYaw,
+                yawCosVisual_,
+                yawSinVisual_,
                 gridX
             );
             if (tileCount == 0) {
@@ -319,6 +364,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             BufferTarget::UNIFORM,
             kBufferIndex_ShapesFrameData
         );
+        // Scaffolding for future SDF-shape joint deformation (binding 21,
+        // c_shapes_to_trixel.glsl). jointData[] is declared in the shader but not
+        // yet indexed — all shapes set jointIndex = 0. Not used by the voxel
+        // skinning path (which uses EntityTransformBuffer at binding 18 and
+        // per-voxel bone-slot indices at binding 17 via seedVoxelBoneSlots).
         IRRender::createNamedResource<Buffer>(
             "JointTransformBuffer",
             nullptr,
@@ -344,9 +394,8 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             kBufferIndex_ShapeTileDescriptors
         );
 
-        SystemId systemId = registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_PositionGlobal3D>(
-            "ShapesToTrixel"
-        );
+        SystemId systemId =
+            registerSystem<SHAPES_TO_TRIXEL, C_ShapeDescriptor, C_WorldTransform>("ShapesToTrixel");
         auto *p = getSystemParams<System<SHAPES_TO_TRIXEL>>(systemId);
         p->shapesProgram_ = IRRender::getNamedResource<ShaderProgram>("ShapesToTrixelProgram");
         p->shapeDescBuf_ = IRRender::getNamedResource<Buffer>("ShapeDescriptorBuffer");
@@ -373,6 +422,13 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // @p yawCos/@p yawSin are cos/sin of rasterYaw, snapshotted at frame
     // start so the cull pass and the per-tile dispatch see byte-identical
     // values even if a script mutates yaw mid-frame.
+    //
+    // Smooth camera Z-yaw (#1345): when @p smoothYaw is set the tile footprint
+    // is centered on the FULL-visualYaw iso projection (matching the shader's
+    // continuous originIsoScaled) and grown by the continuous |cos|,|sin| up to
+    // the sqrt(2) extent. @p visualYaw / @p yawCosVisual / @p yawSinVisual are
+    // the continuous angle and its cos/sin. At @p smoothYaw=false the cardinal
+    // rasterYaw footprint is used unchanged (byte-identical).
     static int buildAndUploadTileDescriptors(
         const std::vector<GPUShapeDescriptor> &gpuShapes,
         Buffer *tileDescBuf,
@@ -381,6 +437,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         float rasterYaw,
         float yawCos,
         float yawSin,
+        bool smoothYaw,
+        float visualYaw,
+        float yawCosVisual,
+        float yawSinVisual,
         int &gridXOut
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
@@ -388,18 +448,12 @@ template <> struct System<SHAPES_TO_TRIXEL> {
 
         const int sub = (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
         const bool yawZero = (rasterYaw == 0.0f);
-        const float absYawC = IRMath::abs(yawCos);
-        const float absYawS = IRMath::abs(yawSin);
+        const IRMath::CardinalIndex cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
             const auto &desc = gpuShapes[i];
             vec3 worldPos = vec3(desc.worldPosition);
-            vec3 viewPos = yawZero ? worldPos
-                                   : vec3(
-                                         yawCos * worldPos.x + yawSin * worldPos.y,
-                                         -yawSin * worldPos.x + yawCos * worldPos.y,
-                                         worldPos.z
-                                     );
+            vec3 viewPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);
             ivec3 origin = IRMath::roundVec3HalfUp(viewPos);
 
             // Canonical bounding half-extent lives in IRMath::SDF (shared with
@@ -409,21 +463,47 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 static_cast<IRMath::SDF::ShapeType>(desc.shapeType),
                 desc.params
             );
+            const bool hasRotation = IRMath::abs(desc.rotation.w) < 0.9999f;
+            if (hasRotation) {
+                vec3 ax = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(boundingHalf.x, 0, 0), desc.rotation)
+                );
+                vec3 ay = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, boundingHalf.y, 0), desc.rotation)
+                );
+                vec3 az = IRMath::abs(
+                    IRMath::rotateVectorByQuat(vec3(0, 0, boundingHalf.z), desc.rotation)
+                );
+                boundingHalf = ax + ay + az;
+            }
             // Z-yaw expands the XY AABB by |c|·hX + |s|·hY (and symmetric).
             // Grow the iso footprint conservatively so every visible pixel
             // of the rotated shape is inside at least one dispatched tile.
-            if (!yawZero) {
-                boundingHalf = vec3(
-                    boundingHalf.x * absYawC + boundingHalf.y * absYawS,
-                    boundingHalf.x * absYawS + boundingHalf.y * absYawC,
-                    boundingHalf.z
-                );
+            ivec2 isoMin;
+            ivec2 isoMax;
+            if (smoothYaw) {
+                // Continuous-yaw footprint: center on the full-visualYaw iso
+                // projection (matches the shader's originIsoScaled) and grow by
+                // the continuous |c|,|s| (sqrt(2) extent at +/-45deg).
+                boundingHalf =
+                    IRMath::yawGrownIsoHalfExtent(boundingHalf, yawCosVisual, yawSinVisual);
+                const vec2 originIsoF =
+                    IRMath::pos3DtoPos2DIsoYawed(worldPos * static_cast<float>(sub), visualYaw);
+                const ivec2 originIsoScaled =
+                    ivec2(IRMath::roundHalfUp(originIsoF.x), IRMath::roundHalfUp(originIsoF.y));
+                const ivec2 isoHalfExtent =
+                    ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f)) * sub;
+                isoMin = originIsoScaled - isoHalfExtent - ivec2(2);
+                isoMax = originIsoScaled + isoHalfExtent + ivec2(2);
+            } else {
+                if (!yawZero) {
+                    boundingHalf = IRMath::yawGrownIsoHalfExtent(boundingHalf, yawCos, yawSin);
+                }
+                const ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
+                const ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
+                isoMin = (originIso - isoHalfExtent) * sub - ivec2(2);
+                isoMax = (originIso + isoHalfExtent) * sub + ivec2(2);
             }
-            ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
-            ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
-
-            ivec2 isoMin = (originIso - isoHalfExtent) * sub - ivec2(2);
-            ivec2 isoMax = (originIso + isoHalfExtent) * sub + ivec2(2);
             ivec2 isoSize = isoMax - isoMin;
 
             const int tilesX = IRMath::divCeil(IRMath::max(isoSize.x, 1), kShapeTileSize);
@@ -448,17 +528,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             gridXOut = 1;
             return 0;
         }
-        constexpr int kMaxDispatchGroupsX = 1024;
-        const int gridX = IRMath::min(tileCount, kMaxDispatchGroupsX);
-        const int gridY = IRMath::divCeil(tileCount, gridX);
-        const int paddedCount = gridX * gridY;
+        const ivec2 grid = voxelDispatchGridForCount(tileCount);
+        const int paddedCount = grid.x * grid.y;
         ShapeTileDescriptor sentinel{};
         sentinel.shapeIndex = -1;
         while (static_cast<int>(tiles.size()) < paddedCount) {
             tiles.push_back(sentinel);
         }
         tileDescBuf->subData(0, paddedCount * sizeof(ShapeTileDescriptor), tiles.data());
-        gridXOut = gridX;
+        gridXOut = grid.x;
         return tileCount;
     }
 };

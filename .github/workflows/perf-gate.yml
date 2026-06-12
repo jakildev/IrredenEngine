@@ -1,0 +1,204 @@
+name: Perf Gate
+
+# Runs on push to master (updates the committed baseline) and on PRs (compares
+# PR head against the last committed baseline and fails on >10% regression).
+# Only fires when the changed paths include engine/render, engine/system, or
+# engine/math — tooling, doc, or asset-only PRs skip this entirely.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'engine/render/**'
+      - 'engine/prefabs/irreden/render/**'
+      - 'engine/system/**'
+      - 'engine/math/**'
+  pull_request:
+    paths:
+      - 'engine/render/**'
+      - 'engine/prefabs/irreden/render/**'
+      - 'engine/system/**'
+      - 'engine/math/**'
+
+permissions:
+  contents: write       # baseline commit on master push
+  pull-requests: write  # PR comment
+  issues: write         # perf:improved label
+
+env:
+  ENGINE_ROOT: ${{ github.workspace }}
+
+jobs:
+  perf-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 g++-13 cmake ninja-build pkg-config \
+            libgl1-mesa-dev libglu1-mesa-dev xorg-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libasound2-dev libpulse-dev libjack-jackd2-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libavdevice-dev libavfilter-dev \
+            xvfb
+
+      - name: Configure
+        run: cmake --preset linux-debug
+
+      - name: Build IRPerfGrid + ir_ref_bench
+        run: cmake --build build --target IRPerfGrid ir_ref_bench --parallel 4
+
+      - name: Install fleet-run CI stub + ir-perf-grid on PATH
+        # perf_grid_matrix.sh requires fleet-run on PATH; provide a thin wrapper
+        # that finds the built binary by name and runs it under Xvfb.
+        # ir-perf-grid (under engine/tools/bin) wraps perf_grid_matrix.sh +
+        # ir-acquire benchmark + ir_ref_bench calibration; the CI runner has
+        # plenty of headroom so the ir-acquire locks are a no-op against
+        # future concurrent workers.
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          cat > "$HOME/.local/bin/fleet-run" << 'STUB'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          TIMEOUT=120
+          if [[ "${1:-}" == "--timeout" ]]; then TIMEOUT="$2"; shift 2; fi
+          TARGET="$1"; shift
+          BINARY=$(find "${ENGINE_ROOT}/build" -name "$TARGET" -type f -executable 2>/dev/null | head -1)
+          if [[ -z "$BINARY" ]]; then
+            echo "fleet-run: $TARGET not found in ${ENGINE_ROOT}/build" >&2; exit 1
+          fi
+          # cd to binary dir so save_files/profile_report.txt lands under BUILD_ROOT
+          # (perf_grid_matrix.sh's find_latest_report searches there)
+          cd "$(dirname "$BINARY")"
+          exec xvfb-run --auto-servernum -- timeout "$TIMEOUT" "$BINARY" "$@"
+          STUB
+          chmod +x "$HOME/.local/bin/fleet-run"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/engine/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Run quick perf matrix (head)
+        run: ir-perf-grid --quick --label ci
+
+      - name: Locate head run directory
+        id: head
+        run: |
+          DIR=$(ls -dt save_files/perf/*-ci 2>/dev/null | head -1)
+          if [[ -z "$DIR" ]]; then
+            DIR=$(ls -dt save_files/perf/* 2>/dev/null | head -1)
+          fi
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      # ── Pull-request path ────────────────────────────────────────────────
+
+      - name: Compare head against baseline (PR)
+        if: github.event_name == 'pull_request'
+        id: gate
+        run: |
+          BASELINE="docs/perf/baseline_latest"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          if [[ ! -f "$BASELINE/manifest.json" ]]; then
+            gh pr comment "$PR_NUMBER" \
+              --body "**perf-gate:** no committed baseline yet — skipping comparison. A baseline will be committed the next time a perf-relevant change lands on master."
+            exit 0
+          fi
+
+          STATUS=0
+          python3 scripts/perf/check_regression.py \
+            "$BASELINE" "${{ steps.head.outputs.dir }}" \
+            --regress-pct 10 --improve-pct 5 \
+            > /tmp/perf_comment_body.md 2>/tmp/perf_gate_stderr.txt || STATUS=$?
+
+          # Prepend a header so the comment is self-describing
+          {
+            echo "<!-- perf-gate -->"
+            echo "## Perf gate"
+            echo ""
+            cat /tmp/perf_comment_body.md
+            if [[ $STATUS -eq 1 ]]; then
+              echo ""
+              echo "---"
+              echo ":warning: **Regression detected** — at least one cell regressed >10% on mean frame avg. Fix or justify before merging."
+            fi
+          } > /tmp/perf_comment.md
+
+          gh pr comment "$PR_NUMBER" --body-file /tmp/perf_comment.md
+
+          # empty on early-exit (no-baseline path); downstream steps check == '0'/'1'
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add perf:improved label when improvements detected (PR)
+        if: github.event_name == 'pull_request' && steps.gate.outputs.status == '0'
+        run: |
+          if [[ -f /tmp/perf_comment_body.md ]] && grep -q '↓' /tmp/perf_comment_body.md; then
+            gh pr edit "${{ github.event.pull_request.number }}" \
+              --add-label "perf:improved" \
+              --repo "${{ github.repository }}"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail check on regression (PR)
+        if: github.event_name == 'pull_request' && steps.gate.outputs.status == '1'
+        run: |
+          cat /tmp/perf_gate_stderr.txt >&2
+          exit 1
+
+      # ── Master push path — update committed baseline ──────────────────────
+
+      - name: Update committed baseline (master push)
+        if: github.event_name == 'push'
+        run: |
+          # Per-host-fingerprinted baseline layout — pulls the slug from the
+          # head manifest's calibration block written by ir-perf-grid.
+          HEAD_DIR="${{ steps.head.outputs.dir }}"
+          SLUG=$(python3 -c "
+          import json, sys
+          m = json.load(open(sys.argv[1]))
+          print((m.get('calibration') or {}).get('host_slug', ''))
+          " "$HEAD_DIR/manifest.json")
+
+          if [[ -z "$SLUG" ]]; then
+            echo "perf-gate: head manifest missing calibration.host_slug; skipping baseline update." >&2
+            exit 0
+          fi
+
+          BASELINE_DIR="docs/perf/baseline_latest/$SLUG"
+          mkdir -p "$BASELINE_DIR"
+          # Copy manifest + cell txt files; skip temp files (.cell_marker, *.log)
+          find "$HEAD_DIR" -maxdepth 1 \
+            -not -type d \
+            -not -name '.cell_marker' \
+            -not -name '*.log' \
+            -exec cp {} "$BASELINE_DIR/" \;
+
+          # host.json sidecar — the ir-host-probe output that produced the slug.
+          python3 -c "
+          import json, sys
+          m = json.load(open(sys.argv[1]))
+          host = (m.get('calibration') or {}).get('host_fingerprint', {})
+          json.dump(host, open(sys.argv[2], 'w'), indent=2, sort_keys=True)
+          " "$HEAD_DIR/manifest.json" "$BASELINE_DIR/host.json"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/perf/baseline_latest/
+
+          SHA=$(git rev-parse --short HEAD)
+          DATE=$(date -u +%Y-%m-%d)
+          if git diff --cached --quiet; then
+            echo "perf-gate: baseline unchanged, nothing to commit."
+          else
+            git commit -m "perf: update CI baseline ($SLUG) ${DATE}@${SHA} [skip ci]"
+            git push
+          fi

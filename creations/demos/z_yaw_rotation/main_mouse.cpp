@@ -9,19 +9,18 @@
 #include <irreden/render/camera.hpp>
 
 // COMPONENTS
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/components/component_camera_yaw.hpp>
+#include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 
 // SYSTEMS
-#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
@@ -34,13 +33,12 @@
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 
 // COMMAND SUITES
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
+#include <irreden/render/camera_controls.hpp>
 
 #include "common.hpp"
 
@@ -85,8 +83,7 @@ int main(int argc, char **argv) {
 void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
     IRSystem::registerPipeline(
@@ -94,11 +91,11 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    // Mouse-driven yaw + click detection.  Anchored on C_CameraYaw so
+    // Mouse-driven yaw + click detection.  Anchored on C_Camera so
     // endTick fires exactly once per frame regardless of entity count.
-    auto mouseYawSystem = IRSystem::createSystem<C_CameraYaw>(
+    auto mouseYawSystem = IRSystem::createSystem<C_Camera>(
         "MouseYawRotate",
-        [](C_CameraYaw &) {},
+        [](C_Camera &) {},
         []() {
             // R toggles rotation
             if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonR, IRInput::PRESSED)) {
@@ -134,28 +131,30 @@ void initSystems() {
         }
     );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        mouseYawSystem,
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.push_front(mouseYawSystem);
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 
@@ -164,7 +163,7 @@ void initEntities() {
 
     // North-west: SDF sphere (clickable — entity-id readback targets SDF canvases)
     IREntity::createEntity(
-        C_Position3D{vec3(-kRingRadius, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(-kRingRadius, 0.0f, 0.0f)},
         C_ShapeDescriptor{IRRender::ShapeType::SPHERE, vec4(4, 4, 4, 0), Color{220, 140, 80, 255}}
     );
 
@@ -173,14 +172,14 @@ void initEntities() {
         ivec3 half{3, 3, 3};
         ivec3 size = half * 2 + ivec3(1);
         IREntity::createEntity(
-            C_Position3D{vec3(0.0f, -kRingRadius, 0.0f)},
+            C_LocalTransform{vec3(0.0f, -kRingRadius, 0.0f)},
             C_VoxelSetNew{size, Color{100, 200, 220, 255}, true}
         );
     }
 
     // South-east: SDF box
     IREntity::createEntity(
-        C_Position3D{vec3(kRingRadius, 0.0f, 0.0f)},
+        C_LocalTransform{vec3(kRingRadius, 0.0f, 0.0f)},
         C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(6, 6, 6, 0), Color{100, 220, 140, 255}}
     );
 
@@ -194,7 +193,7 @@ void initEntities() {
         };
         ivec3 size = half * 2 + ivec3(1);
         EntityId e = IREntity::createEntity(
-            C_Position3D{vec3(0.0f, kRingRadius, 0.0f)},
+            C_LocalTransform{vec3(0.0f, kRingRadius, 0.0f)},
             C_VoxelSetNew{size, Color{180, 100, 220, 255}, true}
         );
         auto &vs = IREntity::getComponent<C_VoxelSetNew>(e);
@@ -203,7 +202,6 @@ void initEntities() {
 
     // Point light between the shapes so lighting shows depth on all four.
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, -4.0f)},
         C_LocalTransform{vec3(0.0f, 0.0f, -4.0f)},
         C_LightSource{
             LightType::EMISSIVE,

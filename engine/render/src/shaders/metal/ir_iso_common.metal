@@ -8,9 +8,23 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Axis-only face indices (X / Y / Z axis, polarity-blind). The 3-face
+// helpers use these; the 6-face FaceId constants below are the
+// polarity-aware version used by visible-triplet rasterization (#1278).
 constant int kXFace = 0;
 constant int kYFace = 1;
 constant int kZFace = 2;
+
+// Polarity-aware six-face IDs (mirrors `kFaceXNeg`/... in the GLSL
+// `ir_iso_common.glsl` and `IRMath::FaceId` in C++). Bit positions line
+// up with `IRComponents::VoxelFlags::kFaceOccluded*`:
+//   bit(faceId) = 2 + faceId
+constant int kFaceXNeg = 0;
+constant int kFaceXPos = 1;
+constant int kFaceYNeg = 2;
+constant int kFaceYPos = 3;
+constant int kFaceZNeg = 4;
+constant int kFaceZPos = 5;
 
 inline int2 pos3DtoPos2DIso(int3 position) {
     return int2(
@@ -100,6 +114,36 @@ inline int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
 }
 
+// Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
+// uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders by depth first.
+// Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid encoding overwrites the sentinel.
+// rawDepth must be in world units; depth field is 22 bits so rawDepth must stay < 2^21.
+inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int uFrac4, int vFrac4) {
+    return (rawDepth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot;
+}
+
+// Maps fracInCell to 4-bit sub-cell offsets (0..15, 8 = cell centre) for the
+// given axis, following the uv assignment of faceInPlaneUnitAxes.
+inline void fracToFrac4(int axis, float3 fracInCell, thread int& uFrac4, thread int& vFrac4) {
+    if (axis == 0) {
+        uFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+    } else if (axis == 1) {
+        uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.z * 16.0) + 8, 0, 15);
+    } else {
+        uFrac4 = clamp(int(fracInCell.x * 16.0) + 8, 0, 15);
+        vFrac4 = clamp(int(fracInCell.y * 16.0) + 8, 0, 15);
+    }
+}
+
+// Convenience overload: compute uFrac4/vFrac4 from fracInCell and encode in one call.
+inline int encodeDepthWithFaceFrac(int rawDepth, int slot, int axis, float3 fracInCell) {
+    int uFrac4, vFrac4;
+    fracToFrac4(axis, fracInCell, uFrac4, vFrac4);
+    return encodeDepthWithFaceFrac(rawDepth, slot, uFrac4, vFrac4);
+}
+
 // Outward unit normal for the visible side of each iso-rendered face. The
 // iso projection has view direction (1,1,1), so a camera at
 // (-large,-large,-large) sees the faces whose outward normals point
@@ -117,6 +161,35 @@ inline int3 faceOutwardNormalI(int face) {
     if (face == kXFace) return int3(-1, 0, 0);
     if (face == kYFace) return int3(0, -1, 0);
     return int3(0, 0, -1);
+}
+
+// Six-face polarity-aware outward unit normal. Mirrors
+// `faceOutwardNormal6` in shaders/ir_iso_common.glsl and
+// `IRMath::faceOutwardNormal(FaceId)`. Used by AO + lighting after the
+// per-slot `faceId = visibleFaceIds[slot]` lookup.
+inline float3 faceOutwardNormal6(int faceId) {
+    if (faceId == kFaceXNeg) return float3(-1.0, 0.0, 0.0);
+    if (faceId == kFaceXPos) return float3( 1.0, 0.0, 0.0);
+    if (faceId == kFaceYNeg) return float3(0.0, -1.0, 0.0);
+    if (faceId == kFaceYPos) return float3(0.0,  1.0, 0.0);
+    if (faceId == kFaceZNeg) return float3(0.0, 0.0, -1.0);
+    return float3(0.0, 0.0, 1.0);  // kFaceZPos
+}
+
+inline int3 faceOutwardNormal6I(int faceId) {
+    if (faceId == kFaceXNeg) return int3(-1, 0, 0);
+    if (faceId == kFaceXPos) return int3( 1, 0, 0);
+    if (faceId == kFaceYNeg) return int3(0, -1, 0);
+    if (faceId == kFaceYPos) return int3(0,  1, 0);
+    if (faceId == kFaceZNeg) return int3(0, 0, -1);
+    return int3(0, 0, 1);  // kFaceZPos
+}
+
+// True when face `faceId` is exposed (neighbor cell empty). Encoding
+// mirrors `IRComponents::VoxelFlags::kFaceOccluded*`: bit `(2 + faceId)`
+// set ⟺ neighbor exists ⟺ face occluded ⟺ skip emit.
+inline bool faceIsExposed(uint flagsByte, int faceId) {
+    return ((flagsByte >> uint(2 + faceId)) & 1u) == 0u;
 }
 
 inline int3 faceMicroPositionFixed(
@@ -146,6 +219,63 @@ inline int3 faceMicroPositionFixed(
     );
 }
 
+// Six-face polarity-aware micro position. For POS faces the fixed-axis
+// coordinate sits at `voxelPositionFixed.<axis> + subdivisions`; for NEG
+// faces it sits at `voxelPositionFixed.<axis>` (identical to the 3-face
+// overload above). Mirrors `faceMicroPositionFixed6` in
+// shaders/ir_iso_common.glsl. Used by the subdivided emit path in
+// `c_voxel_to_trixel_stage_{1,2}.metal` after the per-slot world
+// `faceId = visibleFaceIds[slot]` lookup (#1278).
+inline int3 faceMicroPositionFixed6(
+    int faceId,
+    int3 voxelPositionFixed,
+    int u,
+    int v,
+    int subdivisions
+) {
+    if (faceId == kFaceXNeg) {
+        return int3(
+            voxelPositionFixed.x,
+            voxelPositionFixed.y + u,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceXPos) {
+        return int3(
+            voxelPositionFixed.x + subdivisions,
+            voxelPositionFixed.y + u,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceYNeg) {
+        return int3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceYPos) {
+        return int3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y + subdivisions,
+            voxelPositionFixed.z + v
+        );
+    }
+    if (faceId == kFaceZNeg) {
+        return int3(
+            voxelPositionFixed.x + u,
+            voxelPositionFixed.y + v,
+            voxelPositionFixed.z
+        );
+    }
+    // kFaceZPos
+    return int3(
+        voxelPositionFixed.x + u,
+        voxelPositionFixed.y + v,
+        voxelPositionFixed.z + subdivisions
+    );
+}
+
 inline bool isInsideCanvas(int2 pixel, int2 canvasSize) {
     return pixel.x >= 0 && pixel.x < canvasSize.x &&
            pixel.y >= 0 && pixel.y < canvasSize.y;
@@ -169,6 +299,21 @@ inline int3 roundHalfUp(float3 v) {
 
 inline int roundHalfUp(float v) {
     return int(floor(v + 0.5f));
+}
+
+inline int2 roundHalfUp(float2 v) {
+    return int2(floor(v + float2(0.5)));
+}
+
+// Per-voxel iso occlusion depth of model position `pos` projected onto a
+// (possibly entity-rotated) iso depth `axis` — the SO(3) generalization of
+// pos3DtoDistance (identical to it when axis == (1,1,1)). For a rotated
+// DETACHED canvas `axis` is `R⁻¹·(1,1,1)` (uploaded in
+// FrameDataVoxelToTrixel.voxelDepthAxis); the world canvas keeps (1,1,1).
+// CPU twin: IRMath::isoDepthAlongAxis — roundHalfUp keeps the half-integer
+// rounding bit-identical across the CPU/GPU boundary (#1462).
+inline int isoDepthAlongAxis(int3 pos, float3 axis) {
+    return roundHalfUp(dot(float3(pos), axis));
 }
 
 inline int2 trixelOriginOffsetX1(int2 trixelCanvasSize) {
@@ -250,11 +395,31 @@ inline int rasterYawCardinalIndex(float rasterYaw) {
     return ((q % 4) + 4) % 4;
 }
 
+// (cos, sin) of the cardinal angle named by cardinalIndex — exact ±1/0, the
+// snapped Z-yaw the GRID rasterizer projects at. Mirrors
+// IRMath::cardinalYawCosSin and ir_iso_common.glsl; retires the open-coded
+// cardinalCos/cardinalSin tables that callers used to inline.
+inline float2 cardinalYawCosSin(int cardinalIndex) {
+    if (cardinalIndex == 1) return float2( 0.0,  1.0);
+    if (cardinalIndex == 2) return float2(-1.0,  0.0);
+    if (cardinalIndex == 3) return float2( 0.0, -1.0);
+    return float2(1.0, 0.0);
+}
+
 inline int3 rotateCardinalZ(int3 v, int cardinalIndex) {
     if (cardinalIndex == 1) return int3( v.y, -v.x, v.z);   // R_z(-pi/2)
     if (cardinalIndex == 2) return int3(-v.x, -v.y, v.z);   // R_z(+/-pi)
     if (cardinalIndex == 3) return int3(-v.y,  v.x, v.z);   // R_z(+pi/2)
     return v;
+}
+
+// Mirror of `cardinalLowerCornerShift` in shaders/ir_iso_common.glsl.
+// See that file for the geometric rationale; bodies match line-for-line.
+inline int3 cardinalLowerCornerShift(int cardinalIndex) {
+    if (cardinalIndex == 1) return int3(0, -1, 0);
+    if (cardinalIndex == 2) return int3(-1, -1, 0);
+    if (cardinalIndex == 3) return int3(-1, 0, 0);
+    return int3(0, 0, 0);
 }
 
 inline float3 rotateCardinalZInv(float3 v, int cardinalIndex) {
@@ -271,7 +436,8 @@ inline int3 rotateCardinalZInvI(int3 v, int cardinalIndex) {
     return v;
 }
 
-// Convenience wrapper for T-057 (picking inverse) and T-058 (screen-space residual pass).
+// Convenience wrapper for T-057 (picking inverse). T-058 (screen-space residual
+// pass) was retired by T-323 — residual yaw lives in faceDeform[] (T-293).
 // Not consumed by the current T-055 shaders; scaffolded here so consuming tasks
 // can reference it from ir_iso_common directly.
 inline float3 isoPixelToWorld3D(int isoX, int isoY, float depth, int cardinalIndex) {
@@ -294,6 +460,10 @@ inline float3 trixelCanvasPixelToWorld3D(
         pos3D /= float(scale);
     }
     if (cardinalIndex != 0) {
+        // Undo the rasterizer's `cardinalLowerCornerShift` (applied in
+        // world units after division by scale) before rotating back to
+        // world coordinates. Matches shaders/ir_iso_common.glsl.
+        pos3D -= float3(cardinalLowerCornerShift(cardinalIndex));
         pos3D = rotateCardinalZInv(pos3D, cardinalIndex);
     }
     return pos3D;
@@ -313,6 +483,283 @@ inline float3 trixelCanvasPixelToWorld3D(
     );
 }
 
+// View frame -> world frame under a continuous camera Z-yaw: R_z(+yaw)·v, the
+// smooth companion to rotateCardinalZInv (pos3DtoPos2DIsoYawed projects the
+// view point R_z(-yaw)·world, so this is its rotation inverse).
+inline float3 rotateYawZInv(float3 v, float yaw) {
+    const float c = cos(yaw);
+    const float s = sin(yaw);
+    return float3(c * v.x - s * v.y, s * v.x + c * v.y, v.z);
+}
+
+// Smooth-camera-yaw inverse (#1719) of the #1345 smooth-yaw SDF store: those
+// pixels are placed at roundHalfUp(pos3DtoPos2DIsoYawed(world, visualYaw))
+// with the VIEW-frame iso depth (#1370), so recover the view-frame point with
+// the cardinal-frame solver and rotate back by the full +visualYaw. No
+// lower-corner shift — the smooth store never applies one. Identical to
+// trixelCanvasPixelToWorld3D at visualYaw == 0 (cos=1/sin=0, cardinal 0 takes
+// the same shift-free path), keeping the cardinal fast path byte-identical.
+inline float3 trixelCanvasPixelToWorld3DSmoothYaw(
+    int2 pixel,
+    int rawDepth,
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions,
+    float visualYaw
+) {
+    const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    const int2 isoRel =
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+    float3 viewPos = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    if (scale > 1) {
+        viewPos /= float(scale);
+    }
+    return rotateYawZInv(viewPos, visualYaw);
+}
+
+// Continuous-yaw + per-face deformation math (T-292; consumed by T-293).
+// Mirrors shaders/ir_iso_common.glsl and IRMath::pos3DtoPos2DIsoYawed /
+// faceDeformationMatrix / deformedTrixelIsoPixel / sqtToMat4 /
+// matrixApplyToVoxelGrid in engine/math/include/irreden/ir_math.hpp.
+
+inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
+    const float vx = worldPos.x * c + worldPos.y * s;
+    const float vy = -worldPos.x * s + worldPos.y * c;
+    return float2(-vx + vy, -vx - vy + 2.0f * worldPos.z);
+}
+
+// Exact (unquantized) composite depth key for a forward-scattered face —
+// mirror of scatterCompositeDepthKey in ir_iso_common.glsl; see that file for
+// the full rationale (the rounded key it replaces tied adjacent micro-cells on
+// a foreshortened axis and let draw order pick the farther quad on the
+// sign-flip side of a bracket — the #1457 wrong-voxel-color bands). Keeps the
+// cardinal encodeDepthWithFace scale (x4 + slot) so it co-sorts with the SDF
+// smooth-yaw path. Shared by every forward-scatter composite writer.
+inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) {
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
+    const float yawedSum = origin.x * (c - s) + origin.y * (s + c) + origin.z;
+    return yawedSum * 4.0f + float(slot);
+}
+
+// Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
+// (cosYaw, sinYaw): each in-plane axis grows to |c|*hX + |s|*hY, Z unchanged.
+// CPU mirror: IRMath::yawGrownIsoHalfExtent; GLSL mirror in ir_iso_common.glsl.
+inline float3 yawGrownIsoHalfExtent(float3 halfExtent, float cosYaw, float sinYaw) {
+    const float absC = abs(cosYaw);
+    const float absS = abs(sinYaw);
+    return float3(halfExtent.x * absC + halfExtent.y * absS,
+                  halfExtent.x * absS + halfExtent.y * absC,
+                  halfExtent.z);
+}
+
+// --- Smooth camera Z-yaw forward-scatter: face-local in-plane store (#1310) ---
+// Mirror of shaders/ir_iso_common.glsl. See that file for the full rationale:
+// each visible face is stored at the dense, collision-free lattice of its two
+// in-plane world axes (X -> (y,z), Y -> (x,z), Z -> (x,y)), replacing the
+// iso-position store that dropped compressed-axis faces (cracks) and whose
+// recovery was singular at yaw = +/-120 deg (speckle). axis = faceId >> 1.
+
+inline int2 faceInPlaneCoords(int faceId, int3 worldPos) {
+    const int axis = faceId >> 1;
+    if (axis == 0) return int2(worldPos.y, worldPos.z);
+    if (axis == 1) return int2(worldPos.x, worldPos.z);
+    return int2(worldPos.x, worldPos.y);
+}
+
+// Inverse of faceInPlaneCoords: exact integer recovery (rawDepth = x + y + z).
+inline int3 faceOriginFromInPlane(int faceId, int2 inPlane, int rawDepth) {
+    const int third = rawDepth - inPlane.x - inPlane.y;
+    const int axis = faceId >> 1;
+    if (axis == 0) return int3(third, inPlane.x, inPlane.y);
+    if (axis == 1) return int3(inPlane.x, third, inPlane.y);
+    return int3(inPlane.x, inPlane.y, third);
+}
+
+// Camera-tracking anchor (canvas-native units) centering the store on screen;
+// uses the non-singular UN-yawed iso inverse. Store + scatter must compute it
+// identically (matching perAxisBase + canvasSize) — they do.
+inline int3 faceLocalAnchor(int2 perAxisBase, int2 canvasSize) {
+    const int2 isoCenter = canvasSize / int2(2) - perAxisBase;
+    return roundHalfUp(isoPixelToPos3D(isoCenter.x, isoCenter.y, 0.0f));
+}
+
+// Face-local storage base for `axis`: cell = canvasSize/2 + inPlane(origin - anchor).
+inline int2 faceLocalBase(int axis, int3 anchor, int2 canvasSize) {
+    int2 anchorInPlane;
+    if (axis == 0) anchorInPlane = int2(anchor.y, anchor.z);
+    else if (axis == 1) anchorInPlane = int2(anchor.x, anchor.z);
+    else anchorInPlane = int2(anchor.x, anchor.y);
+    return canvasSize / int2(2) - anchorInPlane;
+}
+
+// 2x2 deformation matrix per face for residual yaw. At residualYaw == 0 all
+// three return identity. `face` uses the kXFace / kYFace / kZFace convention;
+// other values return identity. CPU mirror: IRMath::faceDeformationMatrix.
+inline float2x2 faceDeformationMatrix(int face, float residualYaw) {
+    const float c = cos(residualYaw);
+    const float s = sin(residualYaw);
+    if (face == kXFace) {
+        return float2x2(float2(c - s, 1.0f - (c + s)), float2(0.0f, 1.0f));
+    }
+    if (face == kYFace) {
+        return float2x2(float2(c + s, c - s - 1.0f), float2(0.0f, 1.0f));
+    }
+    if (face == kZFace) {
+        return float2x2(float2(c, -s), float2(s, c));
+    }
+    return float2x2(float2(1.0f, 0.0f), float2(0.0f, 1.0f));
+}
+
+inline int2 deformedTrixelIsoPixel(int face, int subPixel, float residualYaw) {
+    const int2 unyawed = faceOffset_2x3(face, subPixel);
+    const float2x2 D = faceDeformationMatrix(face, residualYaw);
+    const float2 deformed = D * float2(unyawed);
+    return int2(roundHalfUp(deformed.x), roundHalfUp(deformed.y));
+}
+
+// Rotates vector v by unit quaternion q = (qx, qy, qz, qw).
+// CPU mirror: IRMath::rotateVectorByQuat.
+inline float3 rotateByQuat(float3 v, float4 q) {
+    float3 u = q.xyz;
+    float w = q.w;
+    float3 t = 2.0f * cross(u, v);
+    return v + w * t + cross(u, t);
+}
+
+// Rotates vector v by the inverse (conjugate) of unit quaternion q.
+inline float3 rotateByInverseQuat(float3 v, float4 q) {
+    return rotateByQuat(v, float4(-q.xyz, q.w));
+}
+
+// Iso projection of a detached entity's model point under SO(3) rotation:
+// iso(R * modelPos). Full-rotation companion to pos3DtoPos2DIsoYawed (Z-yaw
+// only). Feed the octahedral-snap residual as `rotation`; at identity this is
+// pos3DtoPos2DIso(modelPos). CPU mirror: IRMath::pos3DtoPos2DIsoRotated —
+// rotateByQuat then the same iso columns keep CPU/GPU bit-identical (#1463).
+// No shader caller since #1560 retired the detached forward-scatter; retained
+// primitive (re-voxelize is the sole detached SO(3) path).
+inline float2 pos3DtoPos2DIsoRotated(float3 modelPos, float4 rotation) {
+    const float3 r = rotateByQuat(modelPos, rotation);
+    return float2(-r.x + r.y, -r.x - r.y + 2.0f * r.z);
+}
+
+// The two in-plane unit model axes (e_u, e_v) a face's scatter quad spans, by
+// axis = faceId >> 1 (0=X spans y,z; 1=Y spans x,z; 2=Z spans x,y) — matching
+// faceSpanCorner's cornerSel.x -> e_u, cornerSel.y -> e_v ordering. Mirror of
+// the GLSL twin in ir_iso_common.glsl.
+inline void faceInPlaneUnitAxes(int axis, thread float3& eu, thread float3& ev) {
+    eu = (axis == 0) ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    ev = (axis == 2) ? float3(0.0, 1.0, 0.0) : float3(0.0, 0.0, 1.0);
+}
+
+// In-plane iso-pixel unit steps (su, sv) for a face's two in-plane world axes —
+// the iso directions along which a re-voxelized cell's in-plane neighbour cells
+// sit on screen. Mirror of the GLSL twin in ir_iso_common.glsl (#1557): the
+// detached re-voxelize raster dilates each surface face's footprint by ±su / ±sv
+// so the sub-cell gaps round-to-cell leaves between adjacent rotated cells fill
+// with the nearest (occlusion-winning, correct-colour) surface face. Normalised
+// to ~1px so the silhouette grows by at most a pixel along the surface, never
+// across a concave notch.
+inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
+    float3 eu, ev;
+    faceInPlaneUnitAxes(faceId >> 1, eu, ev);
+    su = roundHalfUp(normalize(float2(pos3DtoPos2DIso(int3(eu)))));
+    sv = roundHalfUp(normalize(float2(pos3DtoPos2DIso(int3(ev)))));
+}
+
+// Default conservative-coverage margin (framebuffer pixels) the per-axis
+// forward-scatter grows each quad by along each screen edge normal (#1494).
+// Mirror of the GLSL constant in ir_iso_common.glsl.
+constant float kScatterDilateMarginPx = 0.85;
+
+// Depth penalty (x4+slot key scale) a scatter fragment in the conservative-
+// dilation MARGIN adds — mirror of kScatterMarginDepthBiasKey in
+// ir_iso_common.glsl; see that file for the #1457 rationale (margins only
+// fill pixels no exact footprint claims; never beat a same-plane owner).
+constant float kScatterMarginDepthBiasKey = 0.25;
+
+// Miter limit for the conservative dilation below (#1538). Mirror of the GLSL
+// constant in ir_iso_common.glsl.
+constant float kScatterMiterLimit = 2.0;
+
+// Pitch-proportional coverage fraction for the DETACHED forward-scatter (#1538).
+// Mirror of the GLSL constant in ir_iso_common.glsl — a margin floor set to this
+// fraction of the on-screen cell pitch closes the detached seam gap at every
+// scale without blobbing small cubes.
+constant float kScatterDetachedPitchFraction = 0.5;
+
+// Conservative screen-space coverage for the per-axis forward-scatter (#1494,
+// #1538) — mirror of scatterConservativeDilation in ir_iso_common.glsl. At
+// off-snap residual poses a per-cell deformed rhombus foreshortens toward a
+// sub-pixel-thin sliver that slips between fragment centers and drops out under
+// pixel-center rasterization. Grow each quad outward; `su`/`sv` are the face
+// in-plane unit axes projected to framebuffer pixels, `cornerSign` is
+// sign(position). Returns the clip-space (NDC) offset to add.
+//
+// MITER, not additive sum (#1538): the naive marginPx*(e1+e2) of the two edge
+// normals cancels at a sliver's acute corner (e1,e2 antiparallel -> sum ~0),
+// leaving the sharp tip un-grown — those tips line up along the foreshortened
+// lattice and leak (lattice-aligned cracks + interior speckle on detached
+// cubes). The miter marginPx*(e1+e2)/(1+dot(e1,e2)) moves BOTH edges out by
+// marginPx, equals the additive sum at a square corner, and keeps the acute tip
+// moving outward; clamp |δ| to kScatterMiterLimit*marginPx so a sliver tip can't
+// blow into a blob (the failure mode of just raising marginPx).
+inline float2 scatterConservativeDilation(
+    float2 su, float2 sv, float2 cornerSign, float marginPx, float2 ndcPerPx
+) {
+    float2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8f));
+    float2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8f));
+    bool hasU = dot(nu, nu) > 1e-10f;
+    bool hasV = dot(nv, nv) > 1e-10f;
+    if (!hasU && !hasV) return float2(0.0);
+    float2 e1 = hasU ? cornerSign.y * normalize(nu) : float2(0.0); // e_u edge normal
+    float2 e2 = hasV ? cornerSign.x * normalize(nv) : float2(0.0); // e_v edge normal
+    if (!hasU) return e2 * marginPx * ndcPerPx;
+    if (!hasV) return e1 * marginPx * ndcPerPx;
+    float2 sum = e1 + e2;
+    float sumLen = length(sum);
+    if (sumLen < 1e-4f) {
+        return float2(-e1.y, e1.x) * (marginPx * kScatterMiterLimit) * ndcPerPx;
+    }
+    float2 miterDir = sum / sumLen;
+    float cosHalf = max(dot(miterDir, e1), 1.0f / kScatterMiterLimit);
+    return miterDir * (marginPx / cosHalf) * ndcPerPx;
+}
+
+// Builds the local->world matrix from an SQT triple (scale, quaternion
+// rotation, translation). Composition is T * R * S; quaternion layout matches
+// the engine canon: float4(qx, qy, qz, qw) with .w the scalar; identity is
+// (0, 0, 0, 1). CPU mirror: IRMath::sqtToMat4.
+inline float4x4 sqtToMat4(float3 scaleVec, float4 rotationQuat, float3 translation) {
+    const float x = rotationQuat.x;
+    const float y = rotationQuat.y;
+    const float z = rotationQuat.z;
+    const float w = rotationQuat.w;
+    const float3 col0 = float3(1.0f - 2.0f * (y * y + z * z),
+                               2.0f * (x * y + w * z),
+                               2.0f * (x * z - w * y)) * scaleVec.x;
+    const float3 col1 = float3(2.0f * (x * y - w * z),
+                               1.0f - 2.0f * (x * x + z * z),
+                               2.0f * (y * z + w * x)) * scaleVec.y;
+    const float3 col2 = float3(2.0f * (x * z + w * y),
+                               2.0f * (y * z - w * x),
+                               1.0f - 2.0f * (x * x + y * y)) * scaleVec.z;
+    return float4x4(
+        float4(col0, 0.0f),
+        float4(col1, 0.0f),
+        float4(col2, 0.0f),
+        float4(translation, 1.0f)
+    );
+}
+
+inline int3 matrixApplyToVoxelGrid(float4x4 transformMat, int3 cell) {
+    const float4 worldPos = transformMat * float4(float3(cell), 1.0f);
+    return roundHalfUp(float3(worldPos.x, worldPos.y, worldPos.z));
+}
+
 // Frame data layout used by all voxel→trixel compute kernels.  Mirrors the
 // FrameDataVoxelToTrixel UBO in the GLSL pipeline.  std140 padding rules from
 // GLSL collapse cleanly into Metal's natural packing here.
@@ -322,14 +769,52 @@ struct FrameDataVoxelToTrixel {
     int2 voxelRenderOptions;
     int2 voxelDispatchGrid;
     int voxelCount;
-    int voxelDispatchPadding;
+    // Smooth-camera-Z-yaw per-axis route selector (mirrors
+    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single-canvas raster (byte-
+    // identical); 1/2/3 = the X/Y/Z per-axis canvas pass (#1309).
+    int perAxisRoute;
     int2 canvasSizePixels;
     int2 cullIsoMin;
     int2 cullIsoMax;
-    float visualYaw;    // not consumed in T-055 — scaffolded for T-058
+    float visualYaw;
     float rasterYaw;    // consumed: cardinal-snap basis selection
-    float residualYaw;  // not consumed in T-055 — scaffolded for T-058
-    float _yawPadding;  // not consumed in T-055 — scaffolded for T-058
+    // baked into faceDeform[] CPU-side. The pre-T-293 screen-space residual
+    // composite (T-058 / T-322) that consumed this as a post-trixel rotation
+    // was retired by T-323.
+    float residualYaw;
+    // 1.0 for a detached entity canvas, 0.0 for the world canvas. Gates
+    // emitDeformedFace super-sampling to the detached path only — see
+    // c_voxel_to_trixel_stage_1.glsl for the super-sampling contract.
+    float isDetachedCanvas;
+    // Per-slot deformation matrix packed column-major: .xy = col0, .zw =
+    // col1 of `IRMath::faceDeformationMatrix(axis(visibleFaceIds[slot]),
+    // residualYaw)`. **Indexed by visible-triplet SLOT (0/1/2)**, not by
+    // axis — at non-zero cardinal the world face whose matrix lives at
+    // slot s changes per `visibleFaceIds[s]`. Identity when residualYaw==0
+    // so cardinal-snap stays bit-identical pixel-for-pixel against pre-#1278
+    // master at cardinal 0. Mirrors the GLSL `vec4 faceDeform[3]`.
+    float4 faceDeform[3];
+    // Per-slot world FaceId (0..5) — the three camera-visible faces
+    // resolved on the CPU via `IRMath::visibleFaceTripletCardinal` (#1278).
+    // .w is std140 padding. Mirrors `ivec4 visibleFaceIds` in the GLSL
+    // UBO declarations.
+    int4 visibleFaceIds;
+    // Model-frame iso depth axis `R⁻¹·(1,1,1)` for the per-voxel occlusion
+    // metric (#1462). (1,1,1) for the world canvas / identity entity →
+    // isoDepthAlongAxis collapses to x+y+z (byte-identical); a rotated
+    // DETACHED canvas uploads IRMath::isoDepthAxisModel(rotation). .w is
+    // padding. Mirrors `vec4 voxelDepthAxis` appended in the GLSL stage-1 UBO
+    // and FrameDataVoxelToCanvas::voxelDepthAxis_. Other kernels that bind
+    // this struct never read it.
+    float4 voxelDepthAxis;
+    // World-receive offset for an opt-in world-placed detached re-voxelize solid
+    // (#1576 P4b-2). .xyz = the entity world cell origin
+    // (roundVec3HalfUp(translation)); .w = 1.0 when worldPlaced_, else 0.0.
+    // c_lighting_to_trixel recovers world pos as modelPos + .xyz and samples the
+    // shared world sun-shadow map + light volume there; .w == 0 keeps the default
+    // screen-locked path byte-identical. Mirrors
+    // FrameDataVoxelToCanvas::detachedWorldReceive_. Other kernels never read it.
+    float4 detachedWorldReceive;
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED

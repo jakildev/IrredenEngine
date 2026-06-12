@@ -4,10 +4,15 @@
 
 #include <irreden/ir_system.hpp>
 
+#include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
+#include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
+#include <irreden/script/lua_render_bindings.hpp>
+#include <irreden/script/lua_sim_bindings.hpp>
+#include <irreden/script/lua_spatial_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
@@ -51,6 +56,14 @@ LuaFieldType inferTypeFromDefault(const sol::object &value) {
         return LuaFieldType::FLOAT;
     if (value.is<std::string>())
         return LuaFieldType::STRING;
+    // Packed vector userdata: only matches if the creation registered an
+    // IRMath::vec3 / IRMath::ivec3 sol usertype (e.g. `vec3.new(...)`). When
+    // unregistered, `is<>` is false and the explicit `{ type = "vec3" }` tag
+    // form (parseExplicitTypeTag) remains the portable path.
+    if (value.is<IRMath::ivec3>())
+        return LuaFieldType::IVEC3;
+    if (value.is<IRMath::vec3>())
+        return LuaFieldType::VEC3;
     if (value.is<sol::function>())
         return LuaFieldType::FUNCTION;
     // Numeric values with a fractional part: under LuaJIT (Lua 5.1
@@ -80,6 +93,10 @@ LuaFieldType parseExplicitTypeTag(const std::string &tag, bool &ok) {
         return LuaFieldType::FUNCTION;
     if (tag == "table")
         return LuaFieldType::TABLE;
+    if (tag == "vec3")
+        return LuaFieldType::VEC3;
+    if (tag == "ivec3")
+        return LuaFieldType::IVEC3;
     ok = false;
     return LuaFieldType::TABLE;
 }
@@ -107,7 +124,7 @@ LuaFieldSchema buildFieldSchema(
                 throw sol::error{
                     "IRComponent.register: " + componentName + "." + fieldName +
                     " has unknown type tag '" + *tag +
-                    "' (expected one of int|float|bool|string|function|table)"
+                    "' (expected one of int|float|bool|string|function|table|vec3|ivec3)"
                 };
             }
             s.type_ = inferred;
@@ -446,6 +463,30 @@ void LuaScript::bindLuaDrivenEcs() {
 
     m_lua["IRComponent"]["register"] = registerComponent;
 
+    // Enum-typed schema values get a Lua table mirror so prefab files and
+    // creation scripts spell them as `IRComponent.X.Y` rather than the
+    // string "Y" — keeps Lua-side authoring in lockstep with the C++ enum
+    // and avoids string-name lookups in the C++ binding code (see
+    // .claude/rules/cpp-lua-enums.md).
+    sol::table rotationModeTable = m_lua.create_table();
+#define IR_BIND_ROTMODE(name)                                                                      \
+    rotationModeTable[#name] = static_cast<lua_Integer>(IRComponents::RotationMode::name)
+    IR_BIND_ROTMODE(GRID);
+    IR_BIND_ROTMODE(DETACHED);
+    IR_BIND_ROTMODE(DETACHED_REVOXELIZE);
+#undef IR_BIND_ROTMODE
+    m_lua["IRComponent"]["RotationMode"] = rotationModeTable;
+
+    // Shared detail::registerLuaEnum guarantees identical ordinals at build time and runtime.
+    m_lua["IREnum"] = m_lua.create_table();
+    m_lua["IREnum"]["register"] =
+        [this](const std::string &enumName, sol::table members) -> sol::object {
+        return sol::make_object(
+            m_lua,
+            detail::registerLuaEnum(m_lua, m_luaEnumNames, enumName, members)
+        );
+    };
+
     m_lua.new_usertype<IRScript::LuaEntity>(
         "LuaEntity",
         sol::constructors<IRScript::LuaEntity(IREntity::EntityId)>(),
@@ -591,9 +632,13 @@ void LuaScript::bindLuaDrivenEcs() {
     // `bindModifierFramework` populates `IRModifier`.
     detail::bindIRTimeEvents(*this);
     detail::bindSystemNameEnum(*this);
+    detail::bindConcurrencyEnum(*this);
     detail::bindRegisterPipelineAndSystemId(*this, prefabSystemIds());
     detail::bindModifierFramework(*this);
     detail::bindPrefabApi(*this);
+    detail::bindSpatialApi(*this);
+    detail::bindRenderGlue(*this);
+    detail::bindSimApi(*this);
 }
 
 void LuaScript::bindLuaCommands() {
@@ -607,7 +652,7 @@ namespace {
 // Resolve one entry of a `components` / `excludes` list to a
 // `ComponentId`. Lists may hold either:
 //   - a string (the Lua name of a C++ component bound via
-//     `lua_component_pack`, e.g. "C_Position3D", or the user name of a
+//     `lua_component_pack`, e.g. "C_LocalTransform", or the user name of a
 //     Lua-defined component, e.g. "Hp"); OR
 //   - a table handle returned by `IRComponent.register` (as produced
 //     by T-100, holding `componentId` + `typeName` + `fields`).
@@ -794,6 +839,62 @@ void LuaScript::bindLuaDrivenSystems() {
             excludeIds = resolveComponentList(*excludes, "excludes", systemName, *this, em);
         }
 
+        // T-223: optional `concurrency` field. Accept the integer-typed
+        // `IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}` table
+        // entry only; string names are rejected per the cpp-lua-enums
+        // rule. PARALLEL_FOR is structurally unsafe for EVAL — the body
+        // is a sol::protected_function call and both sol2 and LuaJIT's
+        // GC are single-threaded — so PARALLEL_FOR is forced to
+        // MAIN_THREAD with a one-time per-system warning so the misuse
+        // surfaces in the log. MAIN_THREAD is the explicit "do not pull
+        // me onto a worker" tag for pipeline groups (T-224); SERIAL is
+        // the legacy default.
+        IRSystem::Concurrency concurrency = IRSystem::Concurrency::SERIAL;
+        sol::object concObj = args["concurrency"];
+        if (concObj.valid() && concObj.get_type() != sol::type::lua_nil) {
+            if (concObj.get_type() == sol::type::string) {
+                throw sol::error{
+                    "IRSystem.registerSystem: '" + systemName +
+                    "' field 'concurrency' must be an IRSystem.Concurrency.* "
+                    "value (e.g. IRSystem.Concurrency.MAIN_THREAD), not a string"
+                };
+            }
+            if (!concObj.is<lua_Integer>()) {
+                throw sol::error{
+                    "IRSystem.registerSystem: '" + systemName +
+                    "' field 'concurrency' must be an integer-typed "
+                    "IRSystem.Concurrency.* value"
+                };
+            }
+            const lua_Integer raw = concObj.as<lua_Integer>();
+            if (raw < static_cast<lua_Integer>(IRSystem::Concurrency::SERIAL) ||
+                raw > static_cast<lua_Integer>(IRSystem::Concurrency::MAIN_THREAD)) {
+                throw sol::error{
+                    "IRSystem.registerSystem: '" + systemName +
+                    "' field 'concurrency' = " + std::to_string(raw) +
+                    " is out of range; use IRSystem.Concurrency.{SERIAL,"
+                    "PARALLEL_FOR,MAIN_THREAD}"
+                };
+            }
+            concurrency = static_cast<IRSystem::Concurrency>(raw);
+            if (concurrency == IRSystem::Concurrency::PARALLEL_FOR) {
+                if (m_warnedParallelForEvalSystems.insert(systemName).second) {
+                    IRE_LOG_WARN(
+                        "Lua EVAL system '{}' requested "
+                        "Concurrency::PARALLEL_FOR but EVAL bodies are "
+                        "sol::protected_function calls into LuaJIT — "
+                        "both sol2 and LuaJIT GC are single-threaded. "
+                        "Forcing Concurrency::MAIN_THREAD. When codegen "
+                        "lifts the batch-form restriction, switch to "
+                        "mode='codegen' for native-speed parallel "
+                        "dispatch (tracked in #1120).",
+                        systemName.c_str()
+                    );
+                }
+                concurrency = IRSystem::Concurrency::MAIN_THREAD;
+            }
+        }
+
         IREntity::Archetype includeArchetype{includeIds.begin(), includeIds.end()};
         IREntity::Archetype excludeArchetype{excludeIds.begin(), excludeIds.end()};
 
@@ -844,7 +945,8 @@ void LuaScript::bindLuaDrivenSystems() {
             systemName,
             std::move(includeArchetype),
             std::move(excludeArchetype),
-            std::move(body)
+            std::move(body),
+            concurrency
         );
         m_luaSystemTicks.emplace(systemId, tickRef);
         return sol::make_object(m_lua, static_cast<lua_Integer>(systemId));

@@ -61,7 +61,20 @@ import shutil
 import subprocess
 import sys
 
-TASK_ID_RE = re.compile(r"^claude/(T-\d+)-")
+# Shared branch<->issue matcher, so game claude/game-<N>-* branches resolve
+# to their issue number here too (engine-only regex used to drop them; #1425).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fleet_branch_match import issue_from_branch
+
+# Branch shapes the reconciler can resolve to a task identifier:
+#   claude/<N>-…       → new convention (post-#1216). issue_from_branch
+#   claude/game-<N>-…    yields the issue number (it strips the optional
+#                        game- infix); the reconciler passes it straight to
+#                        `fleet-claim reserve`.
+#   claude/T-NNN-…     → legacy. No way to resolve back to the issue number,
+#                        so reconstruction skips it and the worker manually
+#                        re-reserves on next iteration.
+LEGACY_TASK_BRANCH_RE = re.compile(r"^claude/T-\d+-")
 
 # Resolve home-relative paths consistently with the fleet-up shell parent.
 HOME = pathlib.Path.home()
@@ -218,18 +231,25 @@ def reconcile_repo(repo: str, wt_root: pathlib.Path) -> None:
         if reservation_exists(basename):
             log(f"{repo}#{number} ({branch}): worktree {basename} has reservation → leave alone")
             continue
-        match = TASK_ID_RE.match(branch)
-        if not match:
-            warn(
-                f"{repo}#{number} ({branch}): worktree {basename} has no reservation "
-                f"but branch isn't claude/T-NNN-* — can't reconstruct, leaving alone"
-            )
+        issue_num = issue_from_branch(branch)
+        if issue_num is None:
+            if LEGACY_TASK_BRANCH_RE.match(branch):
+                warn(
+                    f"{repo}#{number} ({branch}): legacy claude/T-NNN-* branch "
+                    f"(post-#1216 retirement). Skipping reconstruction — re-reserve "
+                    f"manually if needed."
+                )
+            else:
+                warn(
+                    f"{repo}#{number} ({branch}): worktree {basename} has no reservation "
+                    f"but branch isn't claude/<issue>-* — can't reconstruct, leaving alone"
+                )
             continue
-        task_id = match.group(1)
+        task_id = str(issue_num)
         if reconstruct_reservation(basename, task_id, branch):
             log(
                 f"{repo}#{number} ({branch}): reconstructed reservation for {basename} "
-                f"({task_id}) so step 0.5 resumes on next iteration"
+                f"(#{task_id}) so step 0.5 resumes on next iteration"
             )
 
 

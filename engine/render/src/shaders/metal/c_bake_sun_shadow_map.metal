@@ -1,11 +1,13 @@
 #include "ir_iso_common.metal"
+#include "ir_per_axis_lighting.metal"
 #include <metal_atomic>
 
-// Mirrors shaders/c_bake_sun_shadow_map.glsl. See that file for the
-// algorithm and convention notes.
+// Mirrors shaders/c_bake_sun_shadow_map.glsl. Projects each rasterized
+// iso pixel into both cascade regions of the sun shadow depth buffer.
 
 constant int kEmptyDistanceEncoded = 65535;
 constant int kSunShadowMapDim = 1024;
+constant int kCascadeTexelCount = kSunShadowMapDim * kSunShadowMapDim;
 constant float kSunDepthScale = 1024.0;
 constant float kSunDepthOffset = 512.0;
 
@@ -24,7 +26,32 @@ struct FrameDataSun {
     float4 sunBasisV;
     float2 sunBufferOriginUV;
     float2 sunBufferTexelSize;
+    float2 cascadeOriginUV_0;
+    float2 cascadeTexelSize_0;
+    float2 cascadeOriginUV_1;
+    float2 cascadeTexelSize_1;
+    float cascadeSplitDepth;
+    int cascadeCount;
+    float _cascadePad0;
+    float _cascadePad1;
 };
+
+inline void bakeCascade(
+    float2 sunUV, float sunZ, float2 origin, float2 texelSz,
+    int cascadeOffset, device atomic_uint *sunDepthBuf
+) {
+    int2 sunPx = int2(floor((sunUV - origin) / texelSz));
+    if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
+        sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
+        return;
+    }
+    uint packedDepth = packSunDepth(sunZ);
+    atomic_fetch_min_explicit(
+        &sunDepthBuf[cascadeOffset + sunPx.y * kSunShadowMapDim + sunPx.x],
+        packedDepth,
+        memory_order_relaxed
+    );
+}
 
 kernel void c_bake_sun_shadow_map(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
@@ -43,40 +70,58 @@ kernel void c_bake_sun_shadow_map(
     }
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    if (encoded >= kEmptyDistanceEncoded) {
+    // Per-axis canvas uses INT_MAX as empty sentinel (#1458); single-canvas keeps 65535.
+    if (encoded >= (frameData.perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
         return;
     }
-    int rawDepth = encoded >> 2;
+    // Per-axis encoding (#1458): rawDepth in bits [31:10]; single-canvas: bits [31:2].
+    int rawDepth = (frameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
 
-    // Mirrors c_compute_sun_shadow.metal pos3D reconstruction.
-    float3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel,
-        rawDepth,
-        frameData.trixelCanvasOffsetZ1,
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions,
-        frameData.rasterYaw
-    );
+    // Smooth camera Z-yaw (#1311): the per-axis voxel canvases bake into the same
+    // shared sun depth map as the main canvas (SDF/text) so voxels and shapes
+    // shadow each other under rotation. Per-axis stores the world frame
+    // face-locally; the single canvas stores the cardinal-snapped iso pixel.
+    float3 pos3D;
+    if (frameData.perAxisRoute != 0) {
+        pos3D = perAxisCellToWorld3D(
+            pixel, rawDepth, frameData.visibleFaceIds[encoded & 3], size,
+            frameData.frameCanvasOffset, frameData.voxelRenderOptions
+        );
+    } else if (frameData.residualYaw != 0.0) {
+        // Smooth-yaw cast (#1719). While rotating, the single canvas's
+        // remaining SDF/text content is stored at the FULL visualYaw with
+        // view-frame depth (#1345/#1370) — recover with the matching smooth
+        // inverse so those casters bake at their true world positions. The
+        // CARDINAL-layout resolve textures (per-axis #1435 + world-placed
+        // P4b-3) bake with residualYaw zeroed by the C++ driver, so they keep
+        // the cardinal recovery below. Mirrors GLSL.
+        pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.visualYaw
+        );
+    } else {
+        pos3D = trixelCanvasPixelToWorld3D(
+            pixel,
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.rasterYaw
+        );
+    }
 
-    // sunZ negated: see GLSL counterpart for the convention.
     float3 sunDir = sunFrameData.sunDirection.xyz;
     float3 uHat = sunFrameData.sunBasisU.xyz;
     float3 vHat = sunFrameData.sunBasisV.xyz;
     float2 sunUV = float2(dot(pos3D, uHat), dot(pos3D, vHat));
     float sunZ = -dot(pos3D, sunDir);
 
-    int2 sunPx = int2(round(
-        (sunUV - sunFrameData.sunBufferOriginUV) / sunFrameData.sunBufferTexelSize
-    ));
-    if (sunPx.x < 0 || sunPx.x >= kSunShadowMapDim ||
-        sunPx.y < 0 || sunPx.y >= kSunShadowMapDim) {
-        return;
-    }
-
-    uint packedDepth = packSunDepth(sunZ);
-    atomic_fetch_min_explicit(
-        &sunDepthBuf[sunPx.y * kSunShadowMapDim + sunPx.x],
-        packedDepth,
-        memory_order_relaxed
-    );
+    bakeCascade(sunUV, sunZ, sunFrameData.cascadeOriginUV_0,
+                sunFrameData.cascadeTexelSize_0, 0, sunDepthBuf);
+    bakeCascade(sunUV, sunZ, sunFrameData.cascadeOriginUV_1,
+                sunFrameData.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf);
 }

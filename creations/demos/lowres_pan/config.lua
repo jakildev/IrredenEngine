@@ -1,0 +1,17 @@
+config = {
+    init_window_width = 1280,
+    init_window_height = 720,
+    game_resolution_width = 320,
+    game_resolution_height = 180,
+    fit_mode = "stretch",
+    fullscreen = false,
+    monitor_index = -1,
+    monitor_name = "",
+    subdivision_mode = "full",
+    voxel_render_subdivisions = 1,
+    screenshot_output_dir = "save_files/screenshots",
+    start_updates_on_first_key_press = false,
+    profiling_enabled = false,
+    gui_scale = 1,
+    hovered_trixel_visible = false,
+}

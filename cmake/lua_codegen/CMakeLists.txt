@@ -11,6 +11,11 @@ add_executable(ir_lua_codegen main.cpp system_dsl.cpp)
 target_link_libraries(ir_lua_codegen PRIVATE lua sol2)
 target_compile_features(ir_lua_codegen PRIVATE cxx_std_20)
 
+# The IREnum shim shares engine/script's lua_enum_def.hpp so ordinals are identical at build time and runtime.
+target_include_directories(ir_lua_codegen PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../engine/script/include
+)
+
 # Codegen-time errors should surface verbatim; never strip the symbols
 # even on Release.
 set_target_properties(ir_lua_codegen PROPERTIES

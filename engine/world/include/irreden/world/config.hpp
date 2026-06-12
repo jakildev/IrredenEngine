@@ -144,7 +144,7 @@ class WorldConfig {
         );
         m_config.addEntry(
             "gui_scale",
-            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(2)
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(1)
         );
         m_config.addEntry(
             "hovered_trixel_visible",
@@ -157,6 +157,18 @@ class WorldConfig {
         m_config.addEntry(
             "gpu_stage_timing_legacy",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
+        );
+        m_config.addEntry(
+            "entity_count_override",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(0)
+        );
+        m_config.addEntry(
+            "worker_thread_count",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(-1)
+        );
+        m_config.addEntry(
+            "max_update_ticks_per_frame",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(8)
         );
         sol::table configTable = m_lua.getTable("config");
         m_config.parse(configTable);

@@ -5,13 +5,15 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/ir_time.hpp>
 #include <irreden/ir_constants.hpp>
+#include <irreden/profile/scope_timer.hpp>
 #include <irreden/render/camera.hpp>
 
 // Components
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_name.hpp>
-#include <irreden/common/components/component_position_3d.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -29,7 +31,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
@@ -37,21 +39,18 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
-#include <irreden/render/systems/system_screen_residual_rotate.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/common/systems/system_modifier_decay.hpp>
-#include <irreden/update/systems/system_apply_position_offset.hpp>
 #include <irreden/update/systems/system_periodic_idle.hpp>
 #include <irreden/update/systems/system_periodic_idle_position_offset.hpp>
-#include <irreden/update/systems/system_update_positions_global.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 // Command suites
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
@@ -59,6 +58,9 @@
 #include <cstdlib>
 #include <numbers>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 // IRPerfGrid stress test: voxel_set vs sdf share the same lattice (positions,
 // colors, periodic-idle wave). They are *not* lighting-equivalent today:
@@ -94,6 +96,13 @@ struct PerfGridSettings {
     float wavePeriodSeconds_ = 4.0f;
     bool waveOffscreen_ = false;
     float initialZoom_ = 0.5f;
+    // Subdivision — config/preset-settable; CLI overrides both.
+    // Only applied if explicit_ is true so the engine's built-in default
+    // is undisturbed when neither config nor CLI specifies these.
+    IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+    bool subdivisionModeExplicit_ = false;
+    int baseSubdivisions_ = 1;
+    bool baseSubdivisionsExplicit_ = false;
 };
 
 struct CliOverrides {
@@ -103,15 +112,24 @@ struct CliOverrides {
     int gridSize_ = 64;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    bool waveAmplitudeSet_ = false;
+    float waveAmplitude_ = 0.0f;
+    bool subdivisionModeSet_ = false;
+    IRRender::SubdivisionMode subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+    bool baseSubdivisionsSet_ = false;
+    int baseSubdivisions_ = 1;
+    // Accepted and recorded for manifest/cell-ID purposes; ignored until T-221.
+    int workerThreads_ = 0;
+    std::string configPreset_; // path from --config-preset, empty if absent
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {0.5f, vec2(0, 0), "fit_grid"},
-    {1.0f, vec2(0, 0), "zoom1_origin"},
+    {0.5f, vec2(0, 0), 0.0f, "fit_grid"},
+    {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
     // Profiler-overlay regression shot — captures the perf_stats overlay
     // backing T-275 acceptance: future overlay-breaking diffs (font, layout,
     // CPU/GPU readout) trip the render-verify image compare.
-    {0.5f, vec2(0, 0), "profiler_overlay"},
+    {0.5f, vec2(0, 0), 0.0f, "profiler_overlay"},
 };
 
 PerfGridSettings g_settings{};
@@ -158,13 +176,7 @@ template <typename T> void readLuaValue(sol::table table, const char *key, T &ou
     }
 }
 
-void applyConfigTable() {
-    IRScript::LuaScript configScript{IREngine::resolveScriptPath("config.lua").c_str()};
-    sol::table perfGrid = configScript.getTable("perf_grid");
-    if (!perfGrid.valid()) {
-        return;
-    }
-
+void applyPerfGridTable(sol::table perfGrid) {
     std::string mode = modeName(g_settings.mode_);
     readLuaValue(perfGrid, "mode", mode);
     g_settings.mode_ = parseMode(mode);
@@ -173,6 +185,53 @@ void applyConfigTable() {
     readLuaValue(perfGrid, "wave_amplitude", g_settings.waveAmplitude_);
     readLuaValue(perfGrid, "wave_period_seconds", g_settings.wavePeriodSeconds_);
     readLuaValue(perfGrid, "wave_offscreen", g_settings.waveOffscreen_);
+    // zoom, subdivision_mode, and base_subdivisions are also settable from
+    // config.lua and preset files (not just CLI flags).
+    readLuaValue(perfGrid, "zoom", g_settings.initialZoom_);
+
+    std::string subModeStr;
+    readLuaValue(perfGrid, "subdivision_mode", subModeStr);
+    if (subModeStr == "none") {
+        g_settings.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
+        g_settings.subdivisionModeExplicit_ = true;
+    } else if (subModeStr == "position_only") {
+        g_settings.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
+        g_settings.subdivisionModeExplicit_ = true;
+    } else if (subModeStr == "full") {
+        g_settings.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+        g_settings.subdivisionModeExplicit_ = true;
+    }
+
+    int baseSub = 0;
+    readLuaValue(perfGrid, "base_subdivisions", baseSub);
+    // 0 treated as absent; valid subdivision counts are >= 1.
+    if (baseSub > 0) {
+        g_settings.baseSubdivisions_ = baseSub;
+        g_settings.baseSubdivisionsExplicit_ = true;
+    }
+}
+
+void applyConfigTable() {
+    IRScript::LuaScript configScript{IREngine::resolveScriptPath("config.lua").c_str()};
+    sol::table perfGrid = configScript.getTable("perf_grid");
+    if (!perfGrid.valid()) {
+        return;
+    }
+    applyPerfGridTable(perfGrid);
+}
+
+void applyConfigPreset(const std::string &presetPath) {
+    if (presetPath.empty()) {
+        return;
+    }
+    IRScript::LuaScript presetScript{presetPath.c_str()};
+    sol::table perfGrid = presetScript.getTable("perf_grid");
+    if (!perfGrid.valid()) {
+        IR_LOG_WARN("--config-preset '{}': no perf_grid table found, skipping", presetPath);
+        return;
+    }
+    IR_LOG_INFO("Applying config preset: {}", presetPath);
+    applyPerfGridTable(perfGrid);
 }
 
 void applyCliOverrides() {
@@ -185,10 +244,23 @@ void applyCliOverrides() {
     if (g_cliOverrides.zoomSet_) {
         g_settings.initialZoom_ = g_cliOverrides.zoom_;
     }
+    if (g_cliOverrides.waveAmplitudeSet_) {
+        g_settings.waveAmplitude_ = g_cliOverrides.waveAmplitude_;
+    }
+    // CLI subdivision flags supersede config/preset values.
+    if (g_cliOverrides.subdivisionModeSet_) {
+        g_settings.subdivisionMode_ = g_cliOverrides.subdivisionMode_;
+        g_settings.subdivisionModeExplicit_ = true;
+    }
+    if (g_cliOverrides.baseSubdivisionsSet_) {
+        g_settings.baseSubdivisions_ = g_cliOverrides.baseSubdivisions_;
+        g_settings.baseSubdivisionsExplicit_ = true;
+    }
 }
 
 void parseArgs(int argc, char **argv) {
     IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
+    g_cliOverrides.configPreset_ = IREngine::parseConfigPresetArg(argc, argv);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--auto-profile") == 0) {
             g_autoProfileFrames = 300;
@@ -215,6 +287,45 @@ void parseArgs(int argc, char **argv) {
             if (zoom > 0.0f) {
                 g_cliOverrides.zoom_ = zoom;
                 g_cliOverrides.zoomSet_ = true;
+            }
+            ++i;
+        } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
+            // 0.0 = static scene (no per-frame voxel motion). Useful for
+            // isolating per-frame upload cost in profiler runs.
+            g_cliOverrides.waveAmplitude_ = static_cast<float>(std::atof(argv[i + 1]));
+            g_cliOverrides.waveAmplitudeSet_ = true;
+            ++i;
+        } else if (std::strcmp(argv[i], "--subdivision-mode") == 0 && i + 1 < argc) {
+            std::string mode = argv[i + 1];
+            if (mode == "none") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else if (mode == "position_only") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else if (mode == "full") {
+                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+                g_cliOverrides.subdivisionModeSet_ = true;
+            } else {
+                IR_LOG_WARN(
+                    "Unknown --subdivision-mode '{}'; expected none|position_only|full",
+                    mode
+                );
+            }
+            ++i;
+        } else if (std::strcmp(argv[i], "--base-subdivisions") == 0 && i + 1 < argc) {
+            int sub = std::atoi(argv[i + 1]);
+            if (sub > 0) {
+                g_cliOverrides.baseSubdivisions_ = sub;
+                g_cliOverrides.baseSubdivisionsSet_ = true;
+            }
+            ++i;
+        } else if (std::strcmp(argv[i], "--worker-threads") == 0 && i + 1 < argc) {
+            // Accepted for cell-ID purposes by perf_grid_matrix.sh; ignored
+            // until T-221 wires enkiTS thread-pool sizing.
+            int wt = std::atoi(argv[i + 1]);
+            if (wt >= 0) {
+                g_cliOverrides.workerThreads_ = wt;
             }
             ++i;
         }
@@ -321,7 +432,7 @@ void createGridEntities() {
         const ivec3 size{n, n, n};
         const vec3 originOffset{-(n - 1) * 0.5f * g_settings.spacing_};
         EntityId rootEntity = IREntity::createEntity(
-            C_Position3D{originOffset},
+            C_LocalTransform{originOffset},
             C_VoxelSetNew{size, color, true},
             C_Modifiers{}
         );
@@ -351,14 +462,14 @@ void createGridEntities() {
 
                 if (g_settings.mode_ == PerfGridMode::VoxelSet) {
                     IREntity::createEntity(
-                        C_Position3D{pos},
+                        C_LocalTransform{pos},
                         C_VoxelSetNew{ivec3(1, 1, 1), color, false},
                         idle,
                         C_Modifiers{}
                     );
                 } else {
                     IREntity::createEntity(
-                        C_Position3D{pos},
+                        C_LocalTransform{pos},
                         C_ShapeDescriptor{
                             IRRender::ShapeType::BOX,
                             vec4(1.0f, 1.0f, 1.0f, 0.0f),
@@ -385,13 +496,18 @@ void configureLightingAndCanvas() {
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(
-        C_Position3D{vec3(0.0f, 0.0f, -64.0f)},
         C_LocalTransform{vec3(0.0f, 0.0f, -64.0f)},
         C_LightSource{
             LightType::EMISSIVE,
             Color{90, 200, 255, 255},
             2.0f,
-            static_cast<uint8_t>(180)
+            // Was 180; silently capped at kLightVolumePropagateIterations
+            // (32) before the propagate adapted to per-frame max radius.
+            // 24 is the smallest value that still reads as the same
+            // decorative glow at the demo's default camera zoom, and
+            // saves ~25% on per-frame propagate dispatches on Linux/GL
+            // where this stage dominates IRPerfGrid's frame budget.
+            static_cast<uint8_t>(24)
         }
     );
     IRPrefab::Fog::revealRadius(0, 0, 128);
@@ -409,11 +525,33 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: perf_grid");
     IREngine::init(argv[0]);
     applyConfigTable();
+    applyConfigPreset(g_cliOverrides.configPreset_);
     applyCliOverrides();
+
+    // entity_count_override in config.lua overrides grid_size when nonzero
+    // and the caller hasn't already set --grid-size explicitly.
+    if (!g_cliOverrides.gridSizeSet_) {
+        const int eco = IREngine::entityCountOverride();
+        if (eco > 0) {
+            const int cbrtCount = static_cast<int>(IRMath::cbrt(static_cast<double>(eco)) + 0.5);
+            if (cbrtCount > 0) {
+                g_settings.gridSize_ = cbrtCount;
+                IR_LOG_INFO("entity_count_override={} → grid_size={}", eco, cbrtCount);
+            }
+        }
+    }
+
     validateSettings();
 
     if (g_autoProfileFrames > 0) {
         IREngine::enableFrameTiming(true);
+    }
+
+    if (g_settings.subdivisionModeExplicit_) {
+        IRRender::setSubdivisionMode(g_settings.subdivisionMode_);
+    }
+    if (g_settings.baseSubdivisionsExplicit_) {
+        IRRender::setVoxelRenderSubdivisions(g_settings.baseSubdivisions_);
     }
 
     initSystems();
@@ -433,53 +571,64 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    IRSystem::registerPipeline(
+    // Every UPDATE system runs in its own singleton group. PERIODIC_IDLE and
+    // MODIFIER_DECAY each carry Concurrency::PARALLEL_FOR (T-379 bulk
+    // migration), so each drives an inner IRJob::parallelFor that fans its
+    // per-entity work across the whole worker pool. A PARALLEL_FOR system
+    // therefore cannot share a multi-system parallel group: its inner
+    // parallelFor would be asked to fan out from a worker thread, which
+    // SystemManager::validateAllPipelineGroups rejects at boot. (T-332 grouped
+    // PERIODIC_IDLE + MODIFIER_DECAY back when both were SERIAL; T-379 tagged
+    // them PARALLEL_FOR without splitting the group, which is what aborted this
+    // demo at startup.) Per-system data-parallelism supersedes that old
+    // task-parallel co-execution. The three trailing systems are SERIAL and
+    // ordered as a producer→consumer chain: PERIODIC_IDLE_POSITION_OFFSET reads
+    // C_PeriodicIdle (after PERIODIC_IDLE), then PROPAGATE_TRANSFORM and
+    // UPDATE_VOXEL_SET_CHILDREN run in sequence on C_WorldTransform.
+    IRSystem::registerPipelineGroups(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::PERIODIC_IDLE>(),
-         IRSystem::createSystem<IRSystem::MODIFIER_DECAY>(),
-         IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>(),
-         IRSystem::createSystem<IRSystem::GLOBAL_POSITION_3D>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::APPLY_POSITION_OFFSET>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
+        {{IRSystem::createSystem<IRSystem::PERIODIC_IDLE>()},
+         {IRSystem::createSystem<IRSystem::MODIFIER_DECAY>()},
+         {IRSystem::createSystem<IRSystem::PERIODIC_IDLE_POSITION_OFFSET>()},
+         {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()},
+         {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}}
     );
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
-    // perf_grid is the canonical profiler-overlay demo: it ships with both
-    // CPU per-stage histogram and GPU timer-query reading enabled, so the
-    // PERF_STATS_OVERLAY rendered at the end of the pipeline always carries
-    // full timing data. A creation that wants a cheaper run can flip either
-    // of these back off through `ir.render.setCpuTimingEnabled(false)` /
-    // `setGpuTimingEnabled(false)` from a Lua config.
-    IRProfile::cpuFrameHistogram().enabled_ = true;
-    IRRender::gpuStageTiming().enabled_ = true;
+    // PERF_STATS_OVERLAY implicitly enables both timing histograms at
+    // beginTick (see system_perf_stats_overlay.hpp). The flip runs every
+    // frame, so disabling either flag has no effect while PERF_STATS_OVERLAY
+    // is in the pipeline; remove the system from the pipeline to disable
+    // timing collection.
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
-        IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
-        IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
-        IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-        // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
-        // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
-        // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
-        // must be overlay → text → trixel-to-fb for the HUD to land on
-        // screen — matches the lighting demo wiring.
-        IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::SCREEN_SPACE_RESIDUAL_ROTATE>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
+            IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
+            IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
+            // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
+            // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
+            // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
+            // must be overlay → text → trixel-to-fb for the HUD to land on
+            // screen — matches the lighting demo wiring.
+            IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(
@@ -489,6 +638,51 @@ void initSystems() {
                 ++g_autoProfileCount;
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
+                    // Dump the last completed frame's CPU + GPU per-stage
+                    // ms so PR bodies can quote concrete before/after numbers
+                    // without screenshotting the HUD. Single-frame value, but
+                    // representative at the steady state perf_grid settles
+                    // into after warmup.
+                    const auto &cpu = IRProfile::cpuFrameHistogram();
+                    const auto &gpu = IRRender::gpuStageTiming();
+                    IR_LOG_INFO(
+                        "Auto-profile stats — FPS:{:.1f} frame:{:.3f}ms",
+                        IRTime::renderFps(),
+                        IRTime::renderFrameTimeMs()
+                    );
+                    IR_LOG_INFO(
+                        "Auto-profile CPU — voxelStage1:{:.3f} voxelStage2:{:.3f} "
+                        "voxelCompact:{:.3f} input:{:.3f} update:{:.3f} render:{:.3f}",
+                        cpu.lastFrameMs("voxelStage1"),
+                        cpu.lastFrameMs("voxelStage2"),
+                        cpu.lastFrameMs("voxelCompact"),
+                        cpu.lastFrameMs("input"),
+                        cpu.lastFrameMs("update"),
+                        cpu.lastFrameMs("render")
+                    );
+                    // Self-describing per-scope dump: every IR_PROFILE_SCOPE
+                    // that ran last frame, sorted by total ms descending. Lets
+                    // a profiling pass localize cost inside a system tick
+                    // without re-editing this hard-coded list each time.
+                    {
+                        std::vector<std::pair<std::string_view, double>> scopes;
+                        for (const auto &[name, stats] : cpu.lastFrame()) {
+                            scopes.emplace_back(name, stats.totalMs_);
+                        }
+                        std::sort(scopes.begin(), scopes.end(), [](const auto &a, const auto &b) {
+                            return a.second > b.second;
+                        });
+                        for (const auto &[name, ms] : scopes) {
+                            IR_LOG_INFO("Auto-profile CPU-scope — {}: {:.3f}ms", name, ms);
+                        }
+                    }
+                    IR_LOG_INFO(
+                        "Auto-profile GPU — voxelStage1:{:.3f} voxelStage2:{:.3f} "
+                        "voxelCompact:{:.3f}",
+                        gpu.voxelStage1Ms_,
+                        gpu.voxelStage2Ms_,
+                        gpu.voxelCompactMs_
+                    );
                     IRWindow::closeWindow();
                 }
             }
@@ -509,7 +703,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

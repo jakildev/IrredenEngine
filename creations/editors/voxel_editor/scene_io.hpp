@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace IRVoxelEditor {
@@ -78,9 +79,7 @@ inline IRComponents::C_Voxel toCVoxel(const IRAsset::VoxelRecord &r) {
 
 // Build the META entries for frame 0 — carries animation + layer metadata.
 inline std::vector<IRAsset::MetaEntry> buildMeta(
-    const EditorLayerManager &layerMgr,
-    const AnimationState &anim,
-    const SymmetryState &sym
+    const EditorLayerManager &layerMgr, const AnimationState &anim, const SymmetryState &sym
 ) {
     auto entry = [](std::string k, std::string v) -> IRAsset::MetaEntry {
         return IRAsset::MetaEntry{std::move(k), std::move(v)};
@@ -117,14 +116,6 @@ inline std::vector<IRAsset::MetaEntry> buildMeta(
     }
 
     return meta;
-}
-
-// Look up a key in the META entries. Returns empty string if not found.
-inline std::string metaGet(const std::vector<IRAsset::MetaEntry> &meta, const std::string &key) {
-    for (const auto &e : meta)
-        if (e.key_ == key)
-            return e.value_;
-    return {};
 }
 
 } // namespace detail
@@ -203,7 +194,14 @@ inline LoadResult loadEditorScene(const std::string &dir, const std::string &bas
 
     // Parse META from frame 0.
     const auto &meta = f0.meta_;
-    auto get = [&](const std::string &k) { return detail::metaGet(meta, k); };
+    std::unordered_map<std::string, std::string> metaIndex;
+    metaIndex.reserve(meta.size());
+    for (const auto &e : meta)
+        metaIndex.emplace(e.key_, e.value_);
+    auto get = [&](const std::string &k) -> std::string {
+        auto it = metaIndex.find(k);
+        return it != metaIndex.end() ? it->second : std::string{};
+    };
 
     int frameCount = 1;
     try {
@@ -222,18 +220,24 @@ inline LoadResult loadEditorScene(const std::string &dir, const std::string &bas
             result.activeFrame_ = std::stoi(afStr);
 
         const std::string sxStr = get("sym_enable_x");
-        if (!sxStr.empty()) result.symmetry_.enableX_ = sxStr == "1";
+        if (!sxStr.empty())
+            result.symmetry_.enableX_ = sxStr == "1";
         const std::string syStr = get("sym_enable_y");
-        if (!syStr.empty()) result.symmetry_.enableY_ = syStr == "1";
+        if (!syStr.empty())
+            result.symmetry_.enableY_ = syStr == "1";
         const std::string szStr = get("sym_enable_z");
-        if (!szStr.empty()) result.symmetry_.enableZ_ = szStr == "1";
+        if (!szStr.empty())
+            result.symmetry_.enableZ_ = szStr == "1";
 
         const std::string oxStr = get("sym_offset_x");
-        if (!oxStr.empty()) result.symmetry_.offsetX_ = std::stof(oxStr);
+        if (!oxStr.empty())
+            result.symmetry_.offsetX_ = std::stof(oxStr);
         const std::string oyStr = get("sym_offset_y");
-        if (!oyStr.empty()) result.symmetry_.offsetY_ = std::stof(oyStr);
+        if (!oyStr.empty())
+            result.symmetry_.offsetY_ = std::stof(oyStr);
         const std::string ozStr = get("sym_offset_z");
-        if (!ozStr.empty()) result.symmetry_.offsetZ_ = std::stof(ozStr);
+        if (!ozStr.empty())
+            result.symmetry_.offsetZ_ = std::stof(ozStr);
 
         const std::string activeLayerIdStr = get("active_layer_id");
         if (!activeLayerIdStr.empty())
@@ -261,9 +265,9 @@ inline LoadResult loadEditorScene(const std::string &dir, const std::string &bas
             const std::string cg = get(prefix + "color_g");
             const std::string cb = get(prefix + "color_b");
             const std::string ca = get(prefix + "color_a");
-            rec.colorTag_.red_   = cr.empty() ? 180 : static_cast<std::uint8_t>(std::stoi(cr));
+            rec.colorTag_.red_ = cr.empty() ? 180 : static_cast<std::uint8_t>(std::stoi(cr));
             rec.colorTag_.green_ = cg.empty() ? 180 : static_cast<std::uint8_t>(std::stoi(cg));
-            rec.colorTag_.blue_  = cb.empty() ? 200 : static_cast<std::uint8_t>(std::stoi(cb));
+            rec.colorTag_.blue_ = cb.empty() ? 200 : static_cast<std::uint8_t>(std::stoi(cb));
             rec.colorTag_.alpha_ = ca.empty() ? 255 : static_cast<std::uint8_t>(std::stoi(ca));
             result.layers_.push_back(rec);
         }
@@ -281,7 +285,7 @@ inline LoadResult loadEditorScene(const std::string &dir, const std::string &bas
     result.frameSnapshots_.resize(static_cast<std::size_t>(frameCount));
 
     auto convertVoxels = [&](const IRAsset::DenseVoxelSet &dense,
-                              std::vector<IRComponents::C_Voxel> &out) {
+                             std::vector<IRComponents::C_Voxel> &out) {
         out.reserve(dense.voxels_.size());
         for (const auto &r : dense.voxels_)
             out.push_back(detail::toCVoxel(r));

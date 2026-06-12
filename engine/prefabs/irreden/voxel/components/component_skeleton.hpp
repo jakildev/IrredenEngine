@@ -6,11 +6,16 @@
 // joint entity (carrying C_Joint + the engine's canonical local-transform
 // component) related to the rig root via CHILD_OF.
 //
-// The position of a joint in `joints_` IS the bone_id used by C_Voxel.bone_id_
-// and indexed by the per-frame GPU joint-matrix SSBO (binding
-// `kBufferIndex_JointTransforms` in `ir_render_types.hpp`). The index
-// space is stable across saves and severance — see "Severance leaves holes"
-// below — so re-baking voxel bone_ids is not required when a joint detaches.
+// The position of a joint in `joints_` IS the bone_id stored in
+// C_Voxel.bone_id_. At skinning time, UPDATE_JOINT_MATRICES (P2.2/P2.3)
+// sets each voxel's transform slot in LocalVoxelPositions (binding
+// kBufferIndex_LocalVoxelPositions, slot 17) to `slotBase + bone_id`,
+// where slotBase is the skeleton's contiguous block in EntityTransformBuffer
+// (binding kBufferIndex_EntityTransforms, slot 18). Binding 21
+// (kBufferIndex_JointTransforms) is SDF-shapes-path scaffolding only — not
+// used for voxel skinning. The index space is stable across saves and
+// severance — see "Severance leaves holes" below — so re-baking voxel
+// bone_ids is not required when a joint detaches.
 //
 // Replaces the SoA C_JointHierarchy. The legacy component remains for one
 // release as a deprecation shim; new rigs use C_Skeleton + per-joint entities.
@@ -46,13 +51,18 @@
 // ## Bind pose
 //
 // Skinning math needs the bind-pose inverse to recover skinning matrices.
-// `bindPose_` is intentionally NOT declared in this header yet — IRMath::SQT
-// is now available (since #731 Phase 1 landed — PR #749); a follow-up task
-// (#605 Phase 2) adds `std::vector<IRMath::SQT> bindPose_;` here, parallel
-// to `joints_`. Until then, callers that need a bind pose load it from the
-// `.rig` asset's BIND chunk via `IRPrefab::Rig::bindPose(rigRoot)`.
+// `bindPose_` (added in #605 Phase 2 / #1602) holds joint `i`'s rest transform
+// in rig-root-local space — the same space `C_WorldTransform` reports for a
+// joint left at rest, so `IRPrefab::Skeleton::skinMatrix(jointWorld, bindPose_[i])`
+// returns identity at the bind pose and the joint's posed motion otherwise.
+// Populate it from a `.rig` via `IRPrefab::Rig::bindPose(rig)`, which composes
+// the JNTS rest chain — NOT the `.rig` BIND chunk, which stores named
+// attachment points (`C_BindPoints`) unrelated to per-joint skinning despite
+// the chunk name. The slot order matches `joints_`, so a kNullEntity severance
+// hole keeps its (now-unused) bind slot.
 
 #include <irreden/entity/ir_entity_types.hpp>
+#include <irreden/ir_math.hpp>
 
 #include <vector>
 
@@ -60,6 +70,7 @@ namespace IRComponents {
 
 struct C_Skeleton {
     std::vector<IREntity::EntityId> joints_;
+    std::vector<IRMath::SQT> bindPose_;
 
     C_Skeleton() = default;
 };

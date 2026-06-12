@@ -17,6 +17,19 @@ TEST(SpriteComponents, SpriteDefaults) {
     EXPECT_FLOAT_EQ(sprite.anchor_.x, 0.5f);
     EXPECT_FLOAT_EQ(sprite.anchor_.y, 0.0f);
     EXPECT_EQ(sprite.tint_.alpha_, 0xFFu);
+    EXPECT_FALSE(sprite.screenPixelSmooth_);
+}
+
+TEST(SpriteComponents, SpriteFullConstructorAcceptsScreenPixelSmooth) {
+    IRComponents::C_Sprite sprite{
+        7u,
+        IRMath::vec2{16.0f, 16.0f},
+        IRMath::vec4{0.0f, 0.0f, 1.0f, 1.0f},
+        IRMath::vec2{0.5f, 0.5f},
+        IRMath::IRColors::kWhite,
+        true
+    };
+    EXPECT_TRUE(sprite.screenPixelSmooth_);
 }
 
 TEST(SpriteComponents, SpriteTwoArgConstructorPicksAnchorDefault) {
@@ -34,10 +47,12 @@ TEST(SpriteComponents, SpriteSheetDefaultsAndPopulate) {
     EXPECT_TRUE(sheet.frames_.empty());
     EXPECT_TRUE(sheet.animations_.empty());
 
-    sheet.frames_.push_back(IRComponents::SpriteFrame{
-        IRMath::vec4{0.0f, 0.0f, 0.5f, 1.0f}, IRMath::ivec2{16, 32}});
-    sheet.animations_.push_back(IRComponents::NamedAnimation{
-        "walk_left", IRComponents::SpriteAnimation{0, 1, 12.0f}});
+    sheet.frames_.push_back(
+        IRComponents::SpriteFrame{IRMath::vec4{0.0f, 0.0f, 0.5f, 1.0f}, IRMath::ivec2{16, 32}}
+    );
+    sheet.animations_.push_back(
+        IRComponents::NamedAnimation{"walk_left", IRComponents::SpriteAnimation{0, 1, 12.0f}}
+    );
 
     EXPECT_EQ(sheet.frames_.size(), 1u);
     const int idx = sheet.findAnimationIndex("walk_left");

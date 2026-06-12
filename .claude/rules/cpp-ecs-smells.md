@@ -32,6 +32,13 @@ In any system `tick` function:
   insertion. Fix: pre-size in `beginTick` (or at component construction for
   member buffers) and reuse across frames.
 
+- **Tick block scoped to one specific entity without an entity guard.** In a
+  system that iterates multiple entities, a block meant for only one of them
+  (a particular canvas, a singleton-ish entity) must carry
+  `entity == specificMember_ &&` in its condition -- a comment saying
+  "requires entity X" is not a guard. Mirror the guard the sibling blocks in
+  the same tick already use.
+
 ## System registration
 
 - **New prefab system not added to `SystemName`** in
@@ -72,3 +79,10 @@ In any system `tick` function:
 - **Hand-written `IRTime` / `SystemName` string keys** in new C++ binding code
   (`t["NAME"] = ...`). Use `IR_BIND_TIME(NAME)` / `IR_BIND_SYS(NAME)` so the
   key is derived from the enum and stays in sync.
+
+- **C++ binding code checking a Lua string name against a fixed value set**
+  (`if (s == "GRID") ... else if (s == "DETACHED")`). Expose the C++ enum as
+  a Lua integer table (`IRComponent.RotationMode.{GRID,DETACHED}`) and accept
+  the integer at the binding boundary. See
+  [`cpp-lua-enums.md`](cpp-lua-enums.md) for the full pattern and
+  allowlist.

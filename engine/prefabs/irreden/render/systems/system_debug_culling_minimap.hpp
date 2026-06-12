@@ -7,7 +7,7 @@
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
@@ -154,9 +154,9 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
     void tick(
         IREntity::EntityId entityId,
         const C_ShapeDescriptor &shape,
-        const C_PositionGlobal3D &position
+        const C_WorldTransform &xform
     ) {
-        vec2 isoPosition = IRMath::pos3DtoPos2DIso(position.pos_);
+        vec2 isoPosition = IRMath::pos3DtoPos2DIso(xform.translation_);
         vec2 isoHalfExtent = IRMath::shapeIsoHalfExtent(vec3(shape.params_));
 
         spatialHash_.insert(entityId, isoPosition - isoHalfExtent, isoPosition + isoHalfExtent);
@@ -257,7 +257,7 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
 
     static SystemId create(const Params &initialParams) {
         SystemId systemId =
-            registerSystem<DEBUG_CULLING_MINIMAP, C_ShapeDescriptor, C_PositionGlobal3D>(
+            registerSystem<DEBUG_CULLING_MINIMAP, C_ShapeDescriptor, C_WorldTransform>(
                 "DebugCullingMinimap"
             );
         auto *p = getSystemParams<System<DEBUG_CULLING_MINIMAP>>(systemId);

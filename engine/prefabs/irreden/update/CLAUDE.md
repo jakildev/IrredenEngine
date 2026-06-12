@@ -15,6 +15,17 @@ in the `UPDATE` pipeline unless explicitly noted.
   face bias, gravity mode).
 - `C_PeriodicIdle` — sine/easing position offset for drift.
 - `C_Lifetime` — integer countdown; destroyed when ≤ 0.
+- `C_RotationTarget` — drives local rotation from a normalized control input
+  (axis + min/max angle + input value/range + optional easing curve). The
+  rotation sibling of `C_GotoEasing3D` (which eases local *position*):
+  input-driven, not time-driven — a creation updates `input_` each frame from
+  a CC, slider, or any [0,1] signal, and the entity holds the last mapped
+  angle when the input is unchanged. Owns the entity's local rotation (writes
+  it absolutely); don't pair with `C_AutoSpin` on the same entity. Lua-bindable
+  via `component_rotation_target_lua.hpp` — the scalar fields (`input_`,
+  `minAngle_`/`maxAngle_`, `inputMin_`/`inputMax_`) are read-write member
+  pointers, so a Lua automation lane drives `input_` straight through the
+  column view; `axis_` + easing stay constructor-only config.
 
 ## Key systems (all UPDATE pipeline)
 
@@ -28,11 +39,25 @@ in the `UPDATE` pipeline unless explicitly noted.
 - `PERIODIC_IDLE` — advances per-entity `C_PeriodicIdle` timer.
 - `PERIODIC_IDLE_POSITION_OFFSET` — upserts the resolved bob value as a
   vec3 ADD modifier on the entity's `C_Modifiers` each tick via
-  `upsertBySourceInPlace` (under the `POSITION_OFFSET_3D` field).
-  Slot key is `(entity, POSITION_OFFSET_3D, ADD)` — one entry per
+  `upsertBySourceInPlace` (under the `TRANSFORM_TRANSLATION` field).
+  Slot key is `(entity, TRANSFORM_TRANSLATION, ADD)` — one entry per
   bob-eligible entity, updated in place. No `ticksRemaining_` countdown;
-  no `MODIFIER_DECAY` dependency. `APPLY_POSITION_OFFSET` later folds the
-  composed value into `C_PositionGlobal3D`.
+  no `MODIFIER_DECAY` dependency. `PROPAGATE_TRANSFORM` later folds the
+  resolved value into `C_WorldTransform.translation_` per the SQT
+  formula.
+- `AUTO_SPIN_LOCAL_TRANSFORM` — composes `quatAxisAngle(axis, rate)` on
+  the left of `C_LocalTransform.rotation_` each tick for entities carrying
+  `C_AutoSpin` (axis + radians-per-frame). Place before
+  `PROPAGATE_TRANSFORM` so the new rotation propagates to `C_WorldTransform`
+  in the same tick — and, for GRID-mode entities, drives
+  `REBUILD_GRID_VOXELS` re-rasterization downstream.
+- `ROTATION_TARGET_LOCAL_TRANSFORM` — maps each `C_RotationTarget`'s
+  normalized `input_` (over `[inputMin_, inputMax_]`, through the easing
+  curve) onto `[minAngle_, maxAngle_]` and writes it as an **absolute**
+  `quatAxisAngle(axis, angle)` into `C_LocalTransform.rotation_`. The
+  rotation sibling of `GOTO_3D` (eased local translation). Same ordering
+  contract as `AUTO_SPIN_LOCAL_TRANSFORM`: place before `PROPAGATE_TRANSFORM`.
+  A zero `axis_` is a no-op (guards the NaN quaternion).
 - `PROPAGATE_TRANSFORM` — walks the `CHILD_OF` parent chain in
   topological order and writes `C_WorldTransform` from each entity's
   `C_LocalTransform` composed with the parent chain. Modifier-resolved
@@ -41,8 +66,13 @@ in the `UPDATE` pipeline unless explicitly noted.
   `engine/prefabs/irreden/common/CLAUDE.md` "SQT transform pair +
   propagation". Place after the modifier resolver pipeline and before
   any consumer (render, gizmo, physics) that reads
-  `C_WorldTransform`. Cost is O(N + passes × archetypes) where passes
-  is bounded by the deepest parent chain.
+  `C_WorldTransform`. T-378 partitions the archetype set into
+  per-depth levels (cached across frames; the partition rebuilds only
+  on archetype-graph changes); within each level the per-archetype
+  composition fans out to IRJob workers via `IRJob::parallelFor`. Cost
+  is O(N) total compose work with O(passes × archetypes) topology
+  bookkeeping, where passes is bounded by the deepest parent chain.
+  See `docs/perf-reports/threading_propagate_transform.md`.
 
 ## Commands
 
@@ -51,9 +81,10 @@ in the `UPDATE` pipeline unless explicitly noted.
 
 ## Free functions
 
-- `engine/prefabs/irreden/update/nav_query.hpp` — grid navigation helper
-  functions (not a system or component). Lives in the domain root
-  because it's a set of pure functions.
+- None in this domain currently. The domain-root free-function pattern (a
+  set of pure functions, not a component/system/command, living in the
+  domain root) is exemplified by
+  `engine/prefabs/irreden/spatial/spatial_query.hpp`.
 
 ## Gotchas
 

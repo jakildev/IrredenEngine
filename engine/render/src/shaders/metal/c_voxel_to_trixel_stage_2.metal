@@ -45,6 +45,71 @@ inline void writeColorTap(
     triangleCanvasEntityIds.write(uint4(packedEntityId, 0u, 0u), pixel);
 }
 
+// Emit a face's 2x3 trixel block through the deformation matrix D.
+// Super-sampling gated by isDetached — see c_voxel_to_trixel_stage_1.glsl
+// for the full super-sampling contract.
+inline void emitDeformedFace(
+    int2 base,
+    float2x2 D,
+    int voxelDistance,
+    float4 voxelColor,
+    uint2 packedEntityId,
+    uint2 localId,
+    bool isDetached,
+    int faceId,
+    bool reVoxelize,
+    int2 canvasSize,
+    device const atomic_int* distanceScratch,
+    texture2d<float, access::write> triangleCanvasColors,
+    texture2d<int, access::write> triangleCanvasDistances,
+    texture2d<uint, access::write> triangleCanvasEntityIds
+) {
+    const int maxN = isDetached ? 6 : 1;
+    const int n = clamp(int(ceil(max(length(D[0]), length(D[1])))), 1, maxN);
+    const float inv = 1.0 / float(n);
+    // Conservative coverage (#1557 Option B) — mirror of stage 1's footprint
+    // dilation so the colour/entity tap reaches the same gap pixels the distance
+    // tap claimed; writeColorTap's depth re-test paints only the occlusion winner.
+    int2 su = int2(0);
+    int2 sv = int2(0);
+    if (reVoxelize) {
+        faceInPlaneIsoSteps(faceId, su, sv);
+    }
+    for (int sy = 0; sy < n; ++sy) {
+        for (int sx = 0; sx < n; ++sx) {
+            const float2 src = float2(localId) + float2(float(sx), float(sy)) * inv;
+            const int2 p = base + roundHalfUp(D * src);
+            writeColorTap(
+                p, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                triangleCanvasEntityIds
+            );
+            if (reVoxelize) {
+                writeColorTap(
+                    p + su, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+                writeColorTap(
+                    p - su, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+                writeColorTap(
+                    p + sv, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+                writeColorTap(
+                    p - sv, voxelDistance, voxelColor, packedEntityId, canvasSize,
+                    distanceScratch, triangleCanvasColors, triangleCanvasDistances,
+                    triangleCanvasEntityIds
+                );
+            }
+        }
+    }
+}
+
 // 12 B per voxel — must match C_Voxel layout in
 // engine/prefabs/irreden/voxel/components/component_voxel.hpp.
 struct Voxel {
@@ -79,38 +144,112 @@ kernel void c_voxel_to_trixel_stage_2(
         return;
     }
     const uint2 localId = localId3.xy;
-    const int face = localIDToFace_2x3(localId);
+    // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
+    const int slot = localIDToFace_2x3(localId);
+    const int faceId = frameData.visibleFaceIds[slot];
 
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;
     const uint2 packedEntityId = entityIds[voxelIndex];
 
-    // At cardinalIndex==0 the rotation is the identity; gating it behind a
-    // branch keeps the GLSL/MSL compilers from reshuffling instructions or
-    // changing depth-tie ordering on the GPU, so yaw=0 stays byte-identical
-    // pixel-for-pixel against master.
+    // Re-voxelize marker — mirror of stage 1.
+    const bool reVoxelize = frameData.visibleFaceIds.w != 0;
+
+    // Stage 2 mirrors stage 1's exposed-face gate (#1278) so it doesn't waste a
+    // depth compare on faces stage 1 skipped — and is BYPASSED for re-voxelize
+    // (#1570) for the same reason (its `flags_` mask is in the unrotated
+    // authoring frame, not the baked-in rotated cell frame; see the GLSL twin).
+    // Stage 1 emitted all three cardinal faces for re-voxelize, so stage 2 must
+    // paint them too or the colour tap is lost. writeColorTap's depth re-test
+    // still keeps only the occlusion winner among the emitted faces.
+    const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
+    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
+
+    // Per-slot deformation matrix — see stage 1 GLSL for the contract.
+    const float2x2 D = float2x2(
+        frameData.faceDeform[slot].xy,
+        frameData.faceDeform[slot].zw
+    );
+
+    // Smooth camera Z-yaw per-axis routing (T2 / #1309 + T3 / #1310) — mirrors
+    // stage 1's geometry exactly so the color/entity-id tap lands on the same
+    // single center cell. T3 stores one cell per face center; the framebuffer
+    // scatter reconstructs the deformed face quad. See
+    // c_voxel_to_trixel_stage_1.glsl for the contract.
+    if (frameData.perAxisRoute != 0) {
+        const int axis = frameData.perAxisRoute - 1;
+        if ((faceId >> 1) != axis) return;
+        // Face-local in-plane store — mirrors stage 1 (#1310 fix). See
+        // c_voxel_to_trixel_stage_1.glsl / ir_iso_common.metal.
+        const int2 perAxisBase = trixelFrameOffset(
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions
+        );
+        const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
+        const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
+        if (frameData.voxelRenderOptions.x == 0) {
+            const int3 worldPos = int3(round(voxelPosition.xyz));
+            // Mirror stage 1's face-plane store (#1310 seam fix) so the color
+            // tap lands on the same cell + depth the distance tap did.
+            const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
+            // No sub-cell offset at base resolution; encode centre fracs (8,8).
+            const int voxelDistance =
+                encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
+            writeColorTap(
+                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance, voxelColor,
+                packedEntityId, canvasSize, distanceScratch,
+                triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
+            );
+            return;
+        }
+        // #1458: mirror stage 1's base-resolution store (z=0 only).
+        if (groupId.z != 0) return;
+        const float3 worldAligned_s2 = snapNearIntegerVoxelPosition(voxelPosition.xyz);
+        const int3 worldPos_s2 = int3(round(worldAligned_s2));
+        const int3 facePos_s2 = faceMicroPositionFixed6(faceId, worldPos_s2, 0, 0, 1);
+        const float3 fracInCell_s2 = worldAligned_s2 - float3(worldPos_s2);
+        const int voxelDistance_s2 =
+            encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
+        writeColorTap(
+            cellBase + faceInPlaneCoords(faceId, facePos_s2), voxelDistance_s2, voxelColor,
+            packedEntityId, canvasSize, distanceScratch,
+            triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
+        );
+        return;
+    }
 
     if (frameData.voxelRenderOptions.x == 0) {
         int3 voxelPositionInt = int3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {
             voxelPositionInt = rotateCardinalZ(voxelPositionInt, cardinalIndex);
+            voxelPositionInt += cardinalLowerCornerShift(cardinalIndex);
         }
-        const int voxelDistance = encodeDepthWithFace(
-            pos3DtoDistance(voxelPositionInt), face
-        );
-        const int2 canvasPixel =
+        // Detached entities project occlusion depth onto the entity-rotated
+        // iso axis (#1462); world/GRID keeps the fixed (1,1,1) via
+        // pos3DtoDistance. MUST mirror stage 1's distance-tap depth or the
+        // re-test in writeColorTap rejects the tap (#1499).
+        const int rawDepth = frameData.isDetachedCanvas > 0.5f
+            ? isoDepthAlongAxis(voxelPositionInt, frameData.voxelDepthAxis.xyz)
+            : pos3DtoDistance(voxelPositionInt);
+        const int voxelDistance = encodeDepthWithFace(rawDepth, slot);
+        const int2 base =
             trixelFrameOffset(
                 frameData.trixelCanvasOffsetZ1,
                 frameData.frameCanvasOffset,
                 frameData.voxelRenderOptions
             ) +
-            int2(localId) +
             pos3DtoPos2DIso(voxelPositionInt);
-        writeColorTap(
-            canvasPixel,
+        emitDeformedFace(
+            base,
+            D,
             voxelDistance,
             voxelColor,
             packedEntityId,
+            localId,
+            frameData.isDetachedCanvas > 0.5f,
+            faceId,
+            reVoxelize,
             canvasSize,
             distanceScratch,
             triangleCanvasColors,
@@ -133,20 +272,28 @@ kernel void c_voxel_to_trixel_stage_2(
     );
 
     int3 microPositionFixed =
-        faceMicroPositionFixed(face, voxelPositionFixed, u, v);
+        faceMicroPositionFixed6(faceId, voxelPositionFixed, u, v, subdivisions);
     if (cardinalIndex != 0) {
         microPositionFixed = rotateCardinalZ(microPositionFixed, cardinalIndex);
+        microPositionFixed += cardinalLowerCornerShift(cardinalIndex) * subdivisions;
     }
-    const int depthBase =
-        microPositionFixed.x + microPositionFixed.y + microPositionFixed.z;
-    const int voxelDistance = encodeDepthWithFace(depthBase, face);
-    const int2 canvasPixel =
-        frameOffsetFixed + int2(localId) + pos3DtoPos2DIso(microPositionFixed);
-    writeColorTap(
-        canvasPixel,
+    // Detached: mirror stage 1's entity-rotated occlusion axis (#1462 / #1499);
+    // depth is in subdivision units on both branches so the encode is unchanged.
+    const int depthBase = frameData.isDetachedCanvas > 0.5f
+        ? isoDepthAlongAxis(microPositionFixed, frameData.voxelDepthAxis.xyz)
+        : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
+    const int voxelDistance = encodeDepthWithFace(depthBase, slot);
+    const int2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
+    emitDeformedFace(
+        base,
+        D,
         voxelDistance,
         voxelColor,
         packedEntityId,
+        localId,
+        frameData.isDetachedCanvas > 0.5f,
+        faceId,
+        reVoxelize,
         canvasSize,
         distanceScratch,
         triangleCanvasColors,

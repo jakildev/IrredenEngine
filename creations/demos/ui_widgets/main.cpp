@@ -17,7 +17,8 @@
 // Systems
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
-#include <irreden/render/systems/system_camera_mouse_pan.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
@@ -46,7 +47,6 @@
 #include <irreden/render/widget_theme.hpp>
 
 // Commands
-#include <irreden/common/command_suite_camera.hpp>
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdio>
@@ -86,9 +86,9 @@ namespace {
 // full widget set. Camera position is irrelevant for the GUI canvas but
 // the harness still varies it.
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_idle"},
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_after_settle"},
-    {1.0f, IRMath::vec2(0.0f, 0.0f), "widgets_followup"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_idle"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_after_settle"},
+    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_followup"},
 };
 
 int g_autoWarmupFrames = 0;
@@ -188,29 +188,34 @@ void initSystems() {
             IRPrefab::Widget::setLabelText(IRWidgetsDemo::g_statusLabel, buf);
         }
     );
-    IRSystem::registerPipeline(IRTime::Events::UPDATE, {pollId});
+    IRSystem::registerPipeline(
+        IRTime::Events::UPDATE,
+        {pollId, IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()}
+    );
 
-    std::list<IRSystem::SystemId> renderPipeline = {
-        IRSystem::createSystem<IRSystem::CAMERA_MOUSE_PAN>(),
-        IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
-        IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_2>(),
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_SCROLL>(),
-        // Dropdown renders LAST among widgets so its open panel paints
-        // over any neighbor it overlaps.
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SLIDER>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_CHECKBOX>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_SCROLL>(),
+            // Dropdown renders LAST among widgets so its open panel paints
+            // over any neighbor it overlaps.
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+        }
+    );
 
     if (IRWidgetsDemo::g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -225,7 +230,7 @@ void initSystems() {
 }
 
 void initCommands() {
-    IRCommand::registerCameraCommands();
+    IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
 }
 

@@ -82,6 +82,6 @@ already correct. The follow-up only matters once T-055 starts moving
   — fractional trixel raster — would lose the O(1) optimization and is
   filed as a v2 epic.
 - Per-canvas yaw. All canvases share the engine's single camera entity
-  and hence a single `visualYaw`. Per-canvas yaw would require a
-  `C_CameraYaw` per canvas-camera and per-canvas frame-data uploads;
-  not currently planned.
+  and hence a single `visualYaw` (extracted from `C_LocalTransform.rotation_`).
+  Per-canvas yaw would require a per-canvas camera entity and per-canvas
+  frame-data uploads; not currently planned.

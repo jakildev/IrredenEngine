@@ -2,8 +2,10 @@
 #define IR_ENGINE_H
 
 #include <irreden/world.hpp>
+#include <cstring>
 #include <filesystem>
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace IREngine {
@@ -75,9 +77,25 @@ inline void enableFrameTiming(bool enabled) {
     getWorld().enableFrameTiming(enabled);
 }
 
+inline int entityCountOverride() {
+    return getWorld().entityCountOverride();
+}
+
 inline void gameLoop() {
     getWorld().gameLoop();
 }
+
+// Scans argv for the first --config-preset <path> pair and returns the
+// path string, or an empty string if the flag is absent.
+inline std::string parseConfigPresetArg(int argc, char **argv) {
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (std::strcmp(argv[i], "--config-preset") == 0) {
+            return argv[i + 1];
+        }
+    }
+    return {};
+}
+
 } // namespace IREngine
 
 #endif /* IR_ENGINE_H */

@@ -8,6 +8,123 @@ by `IREngine::init()` and destroyed at shutdown.
 
 `engine/world/include/irreden/world.hpp` — declares `class World`.
 
+## Chunk residency (Epic E)
+
+`engine/world/include/irreden/world/chunk_residency.hpp` declares
+`IRWorld::ChunkResidencyManager` — the resident-set + per-chunk voxel
+sub-pool + entity manifest. **Not** owned by `World` — creations that
+opt into streaming construct one explicitly. Single-chunk creations
+ignore it entirely (zero-overhead). Companion chunk-coord utilities
+live in [`engine/prefabs/irreden/world/`](../prefabs/irreden/world/);
+full design contract in
+[`docs/design/world-streaming.md`](../../docs/design/world-streaming.md).
+
+### Camera-aware prefetch (E3)
+
+`beginFrame(vec3 cameraWorldVoxel)` drives both the E2 eviction policy
+(Euclidean distance + hysteresis → EVICTING) and the E3 chunk-coordinate
+derivation. `tickPrefetch()` then scans a Chebyshev ring of
+`Config::prefetchRadiusChunks_` around the derived chunk coordinate and
+`requestResident`s every chunk in the ring; eviction is left entirely to
+`beginFrame` + `endFrame` (no per-ring eviction in `tickPrefetch`). The
+distance from camera to each slot's chunk center is written to
+`ChunkResidencySlot::distanceVoxels_` for the budget-gate and future sorting.
+
+### Upload-bandwidth cap + low-LOD billboard (T-358)
+
+Opt in via `Config::deferredUpload_ = true`. With the toggle on,
+`requestResident` enqueues the chunk in `LOADING` instead of
+synchronously transitioning to `RESIDENT`, and `flushUploads(maxBytes)`
+drains the queue each frame in (priority, distance) order capped at
+the byte budget. `FORCED` requests bypass the budget. A
+single-chunk-exceeds-budget guard always drains at least one
+non-forced entry per call so streaming can never stall on a chunk
+larger than the cap. The default budget lives in
+`Config::defaultUploadBudgetBytes_` (4 MiB, matching the design doc's
+≈240 MiB/s @ 60 fps target); pass `0` to `flushUploads` to use it.
+
+Each `ChunkResidencySlot` carries low-LOD AABB billboard metadata —
+`aabbColor_` (default grey), `aabbMinVoxel_` / `aabbMaxVoxel_` (full
+chunk by default), `lowLodFlags_`. The renderer's low-LOD pass
+iterates `forEachLowLodSlot` to spawn a `BOX` `C_ShapeDescriptor` per
+non-`RESIDENT` chunk; once the chunk reaches `RESIDENT` the voxel pool
+takes over and the billboard is dropped. Full design and the on-disk
+`BBOX` chunk record that will eventually replace the defaults are in
+[`docs/design/world-streaming.md`](../../docs/design/world-streaming.md)
+§"Topic 4 — Upload-bandwidth cap + low-LOD fallback".
+
+When `deferredUpload_` is false (the default), the legacy E1
+synchronous behavior is preserved: `requestResident` reaches
+`RESIDENT` inline, `flushUploads` is a no-op, and the low-LOD fields
+remain at their defaults but no chunk is ever in the non-`RESIDENT`
+state long enough for them to matter. Existing E1+E2+E6 consumers
+keep working unchanged.
+
+`engine/world/include/irreden/world/chunk_persistence.hpp` declares
+`IRWorld::ChunkVoxelDiskPersistence` — per-chunk `.vxs` save/load under a
+`<saveRoot>/chunks/<x_div_64>/<y_div_64>/` two-level directory tree. One
+file per chunk; filename embeds the signed chunk coord (e.g.
+`chunks/0/-1/+00003_-00007_+00011.vxs`). When wired
+on `ChunkResidencyManager::Config::persistence_`, the manager loads
+the chunk slice from disk on first `requestResident` and saves dirty
+chunks on `requestEvict`. `flushPendingSaves()` is the editor's
+save-all hook. Synchronous in v1; E3 lifts the same calls into an
+async worker pool without changing the surface. Entity-level state
+(components beyond the chunk's voxel pool) belongs to the parallel
+world-snapshot path (#199), not this layer.
+
+### Eviction policy (E2)
+
+`ChunkResidencyManager::beginFrame(vec3 cameraWorldVoxel)` recomputes
+`distanceVoxels_` for every slot and marks slots beyond
+`R_prefetch + R_hysteresis` as `EVICTING`. `endFrame()` processes
+`EVICTING` slots (saves dirty ones via persistence, deallocates pool
+slices via the `PoolDeallocator` callback, erases the slot) then
+enforces the budget cap — evicting furthest-from-camera slots with
+LRU tie-breaking until `residentChunkCount() <= maxResidentChunks_`.
+
+Config knobs on `ChunkResidencyManager::Config`:
+- `maxResidentChunks_` (default 256)
+- `viewRadiusVoxels_` (default 128.0f — matches the light-volume window)
+- `prefetchRadiusVoxels_` (default 256.0f)
+- `hysteresisVoxels_` (default 32.0f = one chunk edge — prevents thrashing)
+
+`PoolDeallocator` is the deallocation counterpart to `PoolAllocator`:
+production wires it to return the pool slice to `C_VoxelPool`'s
+free-list via `deallocateVoxels(startIndex, size)`. The E1 skeleton
+leaked allocations on evict; E2 closes that path.
+
+`FrameStats` (via `frameStats()`) reports `evictedThisFrame_`,
+`loadedThisFrame_`, and `residentCount_` for HUD display and profiling.
+
+### Chunk mutation must route through `markChunkDirty`
+
+> Any code that writes to a chunk-owned `VoxelPoolAllocation` (the
+> slice exposed via `ChunkResidencySlot::poolAllocation_`) MUST call
+> `ChunkResidencyManager::markChunkDirty(key)` immediately after the
+> write. The same rule covers entity attach / detach / migrate when
+> a creation opts into streaming.
+
+The dirty bit is consulted at eviction and by `flushPendingSaves()`;
+a missed `markChunkDirty` call after a real mutation means the save
+is silently skipped and the chunk reverts to its pre-edit state on
+re-resident. This is the ECS-footgun class of bug — invisible under
+single-chunk creations, fires only after
+streaming load surfaces an eviction-then-re-resident cycle.
+
+`ChunkResidencySlot::isDirty()` is the read side; the underlying
+field is private with `ChunkResidencyManager` as a `friend`, so
+`slot->dirty_ = true` no longer compiles. The manager's
+`attachEntity` / `migrateEntity` already self-route through
+`markChunkDirty`; the voxel-mutation routing lands when push-at-
+mutation uploads (Epic B / #944) wire in.
+
+When you add a new mutation path (voxel-pool write, entity move,
+component write within `ownedEntities_`), route it through
+`markChunkDirty`. The cross-link from
+[`engine/render/CLAUDE.md`](../render/CLAUDE.md) at the voxel-pool
+section is the reciprocal pointer for renderer-side authors.
+
 Most code never touches `World` directly. It accesses managers via the
 `IR<Module>::get*Manager()` free functions in each module's `ir_*.hpp`
 header, which reach through the global pointers `World` sets up at
@@ -21,12 +138,17 @@ construction time.
    window size, MIDI device, video-capture defaults, etc.).
 2. Constructs every manager in dependency order:
    `IRGLFWWindow` → `LuaScript` → `EntityManager` → `SystemManager` →
-   `InputManager` → `CommandManager` → `RenderingResourceManager` →
-   `RenderManager` → `AudioManager` → `TimeManager` → `VideoManager`.
+   `JobManager` → `InputManager` → `CommandManager` →
+   `RenderingResourceManager` → `RenderManager` → `AudioManager` →
+   `TimeManager` → `VideoManager`.
    `LuaScript` leads the manager block so `sol::state` outlives
    `EntityManager` — archetype columns can hold `sol::object` refs from
    Lua-defined components (T-100), and C++ destructs members in reverse
-   declaration order.
+   declaration order. `JobManager` slots in after `SystemManager`
+   because the worker pool sits below the engine's high-level managers
+   (renderer, input, video) and consumes only `WorldConfig` —
+   see `engine/job/CLAUDE.md` for the IRJob surface and lifetime
+   contract (Phase 1 of the multithreading epic #226).
 3. Sets the globals: `g_entityManager = &m_entityManager;`, etc.
 4. Calls `initEngineSystems()`, `initIRInputSystems()`,
    `initIRUpdateSystems()`, `initIRRenderSystems()` to register the

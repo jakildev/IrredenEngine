@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace IRScript {
@@ -271,6 +272,16 @@ class LuaScript {
     // after `registerCodegenComponents()` so the runtime mirrors the
     // build-time default driven by `IR_LUA_ECS_DEFAULT_MODE`.
     EcsMode m_ecsDefaultMode = EcsMode::EVAL;
+
+    // T-223: per-system one-shot dedupe of the
+    // "PARALLEL_FOR requested under EVAL — forced to MAIN_THREAD"
+    // warning. Specs that re-register on hot-reload would otherwise
+    // log every call; one log per system name is enough to surface
+    // the misuse.
+    std::unordered_set<std::string> m_warnedParallelForEvalSystems;
+
+    // Tracked so a second registration raises rather than silently shadowing the prior table.
+    std::unordered_set<std::string> m_luaEnumNames;
 
     // Declared last so it destructs first: lua_close() runs before any
     // closure-captured map (m_prefabSystemIds etc.) is gone. Mirrors the

@@ -334,6 +334,6 @@ A Sonnet agent running this skill should escalate to Opus when:
 - The build break looks like it touches lifetime / ownership of a
   GPU resource (buffer creation, destruction, persistent mapping).
 
-Escalate by stopping, updating `TASKS.md` to re-tag the gap as
-`[opus]`, and posting a short note on why in the task body. Don't
+Escalate by stopping, filing a follow-up GitHub issue with the
+`fleet:opus` label and explaining the reason in the issue body. Don't
 ship a half-port.

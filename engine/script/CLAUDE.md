@@ -105,7 +105,7 @@ and register via its own `lua_component_pack.hpp`:
 // ... only what this creation needs ...
 
 void registerLuaComponentPack(LuaScript& script) {
-    script.registerTypesFromTraits<C_Position3D, C_ZoomLevel /* ... */>();
+    script.registerTypesFromTraits<C_LocalTransform, C_ZoomLevel /* ... */>();
 }
 ```
 
@@ -143,8 +143,11 @@ IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
   short form fails registration with a Lua error if a default value isn't
   natively classifiable; nested tables in the short form are intentionally
   rejected. Use the explicit `{ type = "...", default = ... }` form to
-  disambiguate (`current = { type = "float", default = 100 }`) or to opt
-  in to opaque table storage (`payload = { type = "table", default = {} }`).
+  disambiguate (`current = { type = "float", default = 100 }`), to opt
+  in to opaque table storage (`payload = { type = "table", default = {} }`),
+  or to declare a packed `vec3` / `ivec3` field (`pos = { type = "vec3",
+  default = { x = 0, y = 0, z = 0 } }` — see "Packed vec3 / ivec3 fields"
+  below).
 - **Identity rule:** registering the same `name` twice raises a Lua error.
   C++ and Lua share one `ComponentId` space (`EntityManager::registerComponentDynamic`
   goes through the same component-id allocator).
@@ -158,9 +161,49 @@ IREntity.setLuaField(rules, C_Hp, C_Hp.fields.current.index, 100)
   `kInvalidFieldId` (not modifier-targetable).
 - **Storage:** a Lua-typed component is one `IComponentDataLuaTyped`
   impl with one native vector column per declared field
-  (`std::vector<int32_t>`, `std::vector<float>`, etc., per field type).
-  Reading or writing a field is a typed vector index — never a per-frame
-  `sol::table` lookup.
+  (`std::vector<int32_t>`, `std::vector<float>`, `std::vector<IRMath::vec3>`,
+  etc., per field type). Reading or writing a field is a typed vector index —
+  never a per-frame `sol::table` lookup.
+
+### Packed vec3 / ivec3 fields (#1368, design G1a)
+
+A field can declare a packed `vec3` / `ivec3` kind instead of hand-flattening
+to `_x/_y/_z` scalars. Declared via the explicit-tag form with an `{ x, y, z }`
+(or positional `{ 1, 2, 3 }`) default:
+
+```lua
+local C_Body = IRComponent.register("Body", {
+    pos  = { type = "vec3",  default = { 0, 0, 0 } },
+    cell = { type = "ivec3", default = { x = 0, y = 0, z = 0 } },
+})
+```
+
+- **EVAL** stores a real `std::vector<IRMath::vec3>` / `ivec3` column —
+  byte-identical to a hand-C++ `vec3` field. The table-style accessors surface
+  a value as an `{ x, y, z }` Lua table (`getLuaComponent`, `getLuaField`); the
+  write accessors (`setLuaField`, `addLuaComponent` overrides) accept an
+  `{ x, y, z }` table **or** an `IRMath::vec3` userdata. The friendly read
+  allocates a 3-key table per call — fine for setup/inspection, not a per-tick
+  hot path; a zero-alloc hot path uses three scalar fields instead.
+- **CODEGEN** emits a real `IRMath::vec3` / `ivec3` struct member. Inside a
+  CODEGEN tick body, read a packed field's components with `.x` / `.y` / `.z`
+  and build a fresh value with the `vec3.new(x, y, z)` / `ivec3.new(x, y, z)`
+  built-in constructors (the only DSL way to write a packed field — there is no
+  whole-vector arithmetic; operate on components):
+
+  ```lua
+  local p = arch.Body:getField(i, "pos")
+  arch.Body:setField(i, "pos", vec3.new(p.x + vx, p.y + vy, p.z + vz))
+  ```
+
+- **Not modifier-targetable.** Packed fields receive `kInvalidFieldId` — only
+  scalar `int32` / `float` / `bool` fields auto-register a modifier binding.
+  For modifier-driven vec3 offsets use the modifier framework's typed vec3
+  fields (`IRModifier.registerFieldVec3`), not a component field binding.
+- **Out of scope:** `vec2` / `quat` (same mechanism, deferred until needed)
+  and variable-length array fields (G1b: a bounded `"float[K]"` inline-array,
+  or engine-owned data for genuinely ragged lists — see
+  `docs/design/lua-driven-ecs.md`).
 
 ### Two-tier accessor contract
 
@@ -186,6 +229,45 @@ Both accessors bounds-check `fieldIndex` and raise a Lua error on
 out-of-range. Use index-style inside any per-tick Lua system body.
 
 The full design is in [`docs/design/lua-driven-ecs.md`](../../docs/design/lua-driven-ecs.md).
+
+## Lua-defined enums (`IREnum.register`)
+
+Closed enums can be defined in Lua, the Lua-native counterpart to the C++
+`registerEnum` stopgap (`*_lua.hpp` + `kHasLuaBinding`). Bound by the same
+`bindLuaDrivenEcs()` call, so no extra init:
+
+```lua
+local DeviceType = IREnum.register("DeviceType", { "EFFECT", "SYNTH", "CONTROLLER" })
+DeviceType.EFFECT       -- 0
+DeviceType.SYNTH        -- 1
+IREnum.DeviceType.SYNTH -- same table, reachable by name from any file
+```
+
+- **Members map to 0-based ordinals** in declaration order — same numbering
+  as a C++ `enum class` and the 0-based field `index` of
+  `IRComponent.register`. The returned handle *is* the enum table, and the
+  same table is also stored at `IREnum.<Name>` for cross-file reference.
+- **Validated at registration, not silently.** A non-string member, an
+  empty-string member, an empty member list, a duplicate member, a
+  duplicate enum name, or the reserved name `"register"` raises a Lua error
+  at the `IREnum.register` call. A *typo on access* (`DeviceType.EFEKT`) is
+  plain Lua `nil` — push enum members up to load time by spelling them
+  through the table, never as bare strings (see
+  [`.claude/rules/cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)).
+- **Usable wherever a C++ `registerEnum` enum is** — the value is an
+  integer, so `kind = DeviceType.SYNTH` is a valid `int32` component-field
+  default, a function argument, etc.
+- **No native storage.** Unlike `IRComponent.register`, an enum is a pure
+  name→int table with nothing to lower to C++, so **CODEGEN and EVAL behave
+  identically**: both build the table at runtime, and the build-time codegen
+  tool carries a matching `IREnum.register` shim (sharing
+  `IRScript::detail::buildLuaEnumTable`, `lua_enum_def.hpp`) so codegen-mode
+  `.lua` files that reference enum members — e.g. as a component default —
+  resolve to the *same* ordinals at build time and validate the same way.
+- **Limitation:** an enum member used *inside a CODEGEN system tick body*
+  (lowered by `system_dsl`) is not yet folded to a literal by the DSL —
+  enums are for setup/identity/config and EVAL-mode logic in v1. Use a
+  literal in CODEGEN tick bodies, or keep the enum-consuming system in EVAL.
 
 ## Build-time codegen of Lua-defined components (CODEGEN mode)
 
@@ -215,9 +297,13 @@ the matching `kHasLuaBinding` + `bindLuaType` specializations and a
 that pre-registers each component with the EntityManager and binds the
 usertype.
 
-**CODEGEN supports:** `int32` / `float` / `bool` / `string` field types and
-both the short form (`current = 100`) and the explicit-type form
-(`current = { type = "float", default = 100 }`).
+**CODEGEN supports:** `int32` / `float` / `bool` / `string` / `vec3` / `ivec3`
+field types and both the short form (`current = 100`) and the explicit-type
+form (`current = { type = "float", default = 100 }`). Packed `vec3` / `ivec3`
+fields require the explicit-tag form with an `{ x, y, z }` default (the codegen
+tool has no `vec3` usertype to infer from a short-form value) and lower to real
+`IRMath::vec3` / `ivec3` struct members — see "Packed vec3 / ivec3 fields"
+above for the tick-body `.x/.y/.z` + `vec3.new` DSL surface.
 
 **EVAL-only (codegen-time error if used in CODEGEN):** `table` and
 `function` field types, nested-table short form, duplicate component names,
@@ -270,7 +356,23 @@ so creations / tests can register every codegen'd system in one call.
   `cmake/lua_codegen/system_dsl.cpp`'s `kIntrinsicRegistry`. Adding an
   entry is one line: Lua name, C++ expression head, arity. `math.*`
   routes to `IRMath::*` (the engine's math wrapper layer — the
-  CODEGEN-emitted code never calls `std::sin` etc. directly).
+  CODEGEN-emitted code never calls `std::sin` etc. directly). These are
+  value-returning — use them inside an expression (a `local`, a column
+  setter, a branch cond); a bare call statement is rejected.
+- Whitelisted **side-effecting engine bindings** (#1616) — a curated set
+  of void pass-through engine setters callable as a **bare statement**
+  (not inside an expression), e.g. `IRRender.setSunIntensity(x)` lowers
+  to `IRRender::setSunIntensity(...)`. The current set is the
+  `IRRender.*` render-glue setters (`setSunIntensity`, `setSunAmbient`,
+  `setExposure`, `setSkyIntensity`, `setCameraZoom`), marked
+  `isStatement_ = true` in `kIntrinsicRegistry`. This lets a system that
+  *computes* a render parameter under CODEGEN also *apply* it inline,
+  instead of stranding the application layer in EVAL or a C++ bridge.
+  Each statement-binding entry carries the engine header that declares
+  its C++ function (`requiredInclude_`); the codegen tool emits that
+  `#include` in the generated header only when a body actually uses the
+  binding. Adding a setter is one registry line + (if a new namespace)
+  its header. Scalar args only — each arg lowers as a numeric expression.
 
 **Forbidden in CODEGEN bodies (build-time error pointing at file:line):**
 
@@ -280,8 +382,16 @@ so creations / tests can register every codegen'd system in one call.
   to Lua.
 - Closures capturing external upvalues, metatables, dynamic dispatch
   (`arch.foo[name](...)`), `require`, table constructors beyond
-  `Comp.new`, varargs, `nil`, `_` length operator, side-effecting
-  bare expression statements.
+  `Comp.new`, varargs, `nil`, `_` length operator. A bare call
+  statement is rejected **unless** it targets a whitelisted
+  side-effecting binding (above); a bare value-returning intrinsic
+  (`math.sin(x)` as a statement) is still an error — it's a dropped
+  assignment.
+- **String formatting is not yet supported** — `string.format` / `..`
+  concatenation in a CODEGEN tick body is rejected. The string-building
+  half of #1616 is deferred; keep label/HUD systems that format strings
+  in EVAL (`mode = "eval"`) for now. (Sibling gap: the IREnum-in-tick
+  literal-folding limitation above.)
 
 **`excludes = { 'Tag' }`** at registration time materialises as
 `IRSystem::Exclude<C_Tag>` in the generated `IRSystem::createSystem<...>`
@@ -427,13 +537,13 @@ component sets and a tick body, both resolved against the same
 ```lua
 local sysId = IRSystem.registerSystem({
     name = "MoveByVelocity",
-    components = { IRComponent.C_Position3D, IRComponent.C_Velocity3D, C_Marker },
+    components = { IRComponent.C_LocalTransform, IRComponent.C_Velocity3D, C_Marker },
     excludes = { IRComponent.C_NoMove },
     tick = function(arch)
         for i = 0, arch.length - 1 do
-            local pos = arch.C_Position3D:at(i)
+            local xf  = arch.C_LocalTransform:at(i)
             local vel = arch.C_Velocity3D:at(i)
-            arch.C_Position3D:setAt(i, C_Position3D.new(pos.x + vel.x, pos.y, pos.z))
+            arch.C_LocalTransform:setAt(i, C_LocalTransform.new(vec3(xf.translation_x + vel.x, xf.translation_y, xf.translation_z)))
         end
     end,
 })
@@ -441,7 +551,7 @@ local sysId = IRSystem.registerSystem({
 
 - **Component handle rule.** Always reference engine C++ components in
   `components` / `excludes` lists using the `IRComponent.C_Name` handle,
-  never as a bare string like `"C_Position3D"`. After `bindLuaDrivenEcs()`
+  never as a bare string like `"C_LocalTransform"`. After `bindLuaDrivenEcs()`
   + `registerType<T>("C_Name", ...)`, `IRComponent.C_Name` is a handle
   table `{ typeName, componentId }` identical in shape to what
   `IRComponent.register` returns for Lua-defined components. Both forms
@@ -489,6 +599,53 @@ local sysId = IRSystem.registerSystem({
 - **No begin/end ticks yet.** Lua-side `beginTick` / `endTick`
   hooks are not exposed; add them when a use case needs
   frame-scoped setup or teardown.
+- **Optional `concurrency` field** (T-223). Accepts the integer-typed
+  `IRSystem.Concurrency.{SERIAL, PARALLEL_FOR, MAIN_THREAD}` enum
+  value; default `SERIAL` matches the legacy behavior. The codegen
+  path threads the value through to the emitted
+  `IRSystem::createSystem<...>(...)` call's trailing concurrency
+  arg — engine-side `detail::validateConcurrencyForAccess` runs at
+  template instantiation time and FATALs on the same invalid
+  combinations a hand-written C++ system would (`PARALLEL_FOR` +
+  batch-form tick, `PARALLEL_FOR` + entity-id form without
+  `ParallelSafe`, `PARALLEL_FOR` + `MainThread` tag). The EVAL path
+  is more conservative: an EVAL system body is a
+  `sol::protected_function` call into LuaJIT, and **both sol2 and
+  LuaJIT's GC are single-threaded** — running an EVAL body on a
+  worker thread is unsound. The runtime shim therefore forces
+  `PARALLEL_FOR` → `MAIN_THREAD` (with a one-shot per-system warning
+  naming the spec) so the misuse surfaces in the log. Per the
+  [`cpp-lua-enums`](../../.claude/rules/cpp-lua-enums.md) rule the
+  field rejects string values (`concurrency = "parallel_for"`) with
+  a diagnostic pointing at the `IRSystem.Concurrency.*` spelling;
+  out-of-range integers raise an explicit error.
+
+  The codegen tick body emits the per-component form: the canonical
+  `for i = 0, arch.length - 1 do ... end` outer loop is dropped at
+  emission time and the inner `arch.Comp:at(i)` / `setAt(i, ...)` /
+  `getField(i, "f")` / `setField(i, "f", ...)` column ops lower to
+  per-row `_ir_row_<CompName>` references, producing a
+  `[](C_Foo& _ir_row_Foo, ...)` lambda. This is the engine's default
+  tick signature (engine/system/CLAUDE.md "Three valid TICK function
+  signatures") and the only one compatible with `PARALLEL_FOR` — the
+  `isBatchForm_` validator path that would otherwise FATAL is now
+  unreachable from CODEGEN. Bodies that don't fit the canonical
+  per-row shape (multiple top-level statements, a non-canonical loop
+  bound, `arch.length` outside the loop bound, a column-op index
+  that isn't the loop variable) are rejected at codegen time with a
+  message pointing at the requirement; the EVAL path remains
+  available via `mode = "eval"` for bodies that need a different
+  shape.
+
+  A `local a = arch.Comp:at(i)` binding that is only read — never
+  reassigned, and never read after the same column is written via
+  `setAt`/`setField` — lowers to a `const auto&` alias of the row
+  (`const auto& a = _ir_row_Comp;`) instead of a by-value copy, so
+  read-light kernels skip the per-row struct copy (#1353). Any
+  binding the emitter can't prove read-only stays by-value: the DSL
+  forbids `a.field = ...`, so the only way the row changes mid-body
+  is a `setAt`/`setField` on the same component, and a copy vs an
+  alias differ only when a read is sequenced after such a write.
 
 ## Hot-reload of Lua system bodies (`IRSystem.replaceSystemBody`)
 
@@ -549,7 +706,7 @@ which prefab systems Lua may spell:
 script.bindLuaDrivenEcs();
 script.registerPrefabSystems<
     IRSystem::LIFETIME,
-    IRSystem::GLOBAL_POSITION_3D,
+    IRSystem::PROPAGATE_TRANSFORM,
     IRSystem::FRAMEBUFFER_TO_SCREEN
 >();
 // Also valid: cache an externally-created prefab id under its enum name.
@@ -565,12 +722,12 @@ local SystemName = IRSystem.SystemName
 
 local luaSysId = IRSystem.registerSystem({
     name = "MyLuaSys",
-    components = { IRComponent.C_Position3D },
+    components = { IRComponent.C_LocalTransform },
     tick = function(arch) ... end,
 })
 
 IRSystem.registerPipeline(IRTime.UPDATE, {
-    IRSystem.systemId(SystemName.GLOBAL_POSITION_3D),
+    IRSystem.systemId(SystemName.PROPAGATE_TRANSFORM),
     IRSystem.systemId(SystemName.LIFETIME),
     luaSysId,
     IRSystem.systemId(SystemName.MODIFIER_DECAY),
@@ -598,6 +755,24 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
   missing C++ registration if the name was never wired up.
 - **`IRSystem.registerPipeline(event, ids)`** — accepts any mix of prefab
   ids (from `systemId`) and Lua-defined ids (from `registerSystem`).
+  **Replaces** `event`'s whole system list (so does
+  `registerPipelineGroups`).
+- **`IRSystem.appendSystem(event, sysId)`** (#1540) — adds one system to
+  the END of `event`'s **already-registered** pipeline as its own serial
+  group, WITHOUT replacing the systems already there. The supported path
+  when the C++ pipeline is built before the script runs (e.g. the midi
+  runtime's `initSystems()` runs before `main.lua`) and Lua wants to add
+  one UPDATE / RENDER system — `registerPipeline` would wipe the C++
+  systems; `appendSystem` composes. Asserts in debug if the system is
+  already in the pipeline (double-add → ticks twice in release).
+- **`IRSystem.insertSystemBefore(event, sysId, anchor)`** /
+  **`IRSystem.insertSystemAfter(event, sysId, anchor)`** (#1540) — the
+  position-aware variants; insert `sysId` as its own serial group
+  immediately before / after `anchor` (a SystemId already in `event`'s
+  pipeline). Asserts in debug if `anchor` isn't in the pipeline; in
+  release a bad anchor silently front-inserts.
+  Underlying semantics: `engine/system/CLAUDE.md` "Appending to a live
+  pipeline".
 - **Game-side enums** (e.g. `IRGameSystem.GameSystemName`) extend the
   same pattern — bind the game's own enum table at game-side init via
   `LuaScript::registerEnum<...>()` plus `registerPrefabSystemId` for each
@@ -687,6 +862,45 @@ IRModifier.resolvedQuat(entity, fieldNameOrId, fallback) -- read quat slot
   engine assertion in debug and silently no-op in release. The compose
   pass normalizes the final resolved quat once at the end.
 
+## Sim clock (`IRSim.*`)
+
+`bindLuaDrivenEcs()` exposes the sim-clock / cycle / timer / stopwatch
+service (engine #200, `engine/prefabs/irreden/common/sim_clock.hpp`) as the
+`IRSim` table. The **sim tick** is pausable and scalable (distinct from the
+always-advancing engine tick); a creation composes `SIM_CLOCK_ADVANCE` /
+`CYCLE_BOUNDARY_DETECT` / `TIMER_FIRE` into its UPDATE pipeline C++-side.
+
+```lua
+IRSim.setTimeScale(0.5)            -- 0 = paused, N = fast, 1/N = slow
+IRSim.tick()                       -- current sim tick
+IRSim.pause(); IRSim.resume(); IRSim.isPaused()
+
+IRSim.createCycle("day", 24000)    -- name, periodTicks[, phaseOffset]
+local t = IRSim.cycleFraction("day")          -- [0,1) — drive sun/colour on this
+IRSim.cycleNumber("day"); IRSim.cycleTickWithin("day")
+IRSim.cycleBoundaryCrossed("day")             -- true the tick a boundary crossed
+
+IRSim.createTimer("reload", 50)    -- name, targetTick[, intervalTicks] (0 = one-shot)
+IRSim.timerFired("reload"); IRSim.timerActive("reload")
+IRSim.timerTicksRemaining("reload"); IRSim.timerFraction("reload")
+
+IRSim.createStopwatch("run")
+IRSim.stopwatchElapsed("run")
+IRSim.stopwatchPause("run"); IRSim.stopwatchResume("run"); IRSim.stopwatchReset("run")
+```
+
+- **Discrete events are polled, not callbacks.** `cycleBoundaryCrossed` /
+  `timerFired` read the embedded event flag (true only on the firing tick)
+  the same tick the C++ detector raised it — the events-as-components
+  model. A registered-callback (`onCycleBoundary`) form is a follow-up if a
+  real consumer needs it.
+- **Names are registry keys**, not enums — string lookups here are allowed
+  (cf. modifier `fieldNameOrId`); a handful of cycles/timers per world makes
+  the linear name scan a query convenience, not a hot path.
+- Service surface only — the advance systems are not exposed for Lua
+  pipeline assembly (same as most prefab systems). Coverage:
+  `test/time/lua_sim_test.cpp`.
+
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
 `bindLuaDrivenEcs()` also exposes the `Prefab` Lua table — the runtime
@@ -703,11 +917,44 @@ return {
     prefab_version = 1,                  -- REQUIRED, must equal 1
     voxel_ref      = "creations/...vxs", -- OPTIONAL, loaded via loadVoxelSet
     rig_ref        = "creations/...rig", -- OPTIONAL, loaded via loadRig
+    rotation_mode  = IRComponent.RotationMode.GRID
+                  | IRComponent.RotationMode.DETACHED
+                  | IRComponent.RotationMode.DETACHED_REVOXELIZE,
+                                         -- OPTIONAL, default GRID
+    unbounded      = true | false,       -- OPTIONAL, default false
+    canvas_size    = { x = 64, y = 64 }, -- REQUIRED when DETACHED or DETACHED_REVOXELIZE
     setup          = function(entity)    -- OPTIONAL, user-provided
         IREntity.setComponent(entity, ...)
     end,
 }
 ```
+
+`rotation_mode` (Epic C C2) attaches `C_RotationMode` to the spawned
+root. GRID (default) renders into the world voxel pool with grid-
+quantized rotation; DETACHED allocates a per-entity `C_EntityCanvas`
+via `IRPrefab::EntityCanvas::create()` so a future C3 composite pass
+threads the entity's `C_LocalTransform` through the per-canvas TRS
+without per-voxel rebake; DETACHED_REVOXELIZE extends DETACHED by
+re-filling the canvas pool at full-rotation cell positions each frame
+so asymmetric solids read as true 3D-rotated (not 2D-warped) shapes.
+`canvas_size = { x, y }` is required for DETACHED and DETACHED_REVOXELIZE
+— sized in trixels — and is ignored for GRID. `unbounded =
+true` sets `C_LocalTransform::unbounded_` for sub-trixel positioning;
+meaningful with DETACHED and DETACHED_REVOXELIZE.
+
+**The schema accepts the `IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE}`
+enum value (an integer), not a string.** String-name lookups —
+`rotation_mode = 'GRID'` — surface a schema error with the
+`IRComponent.RotationMode.X` spelling in the diagnostic. This keeps
+the Lua-side authoring surface in lockstep with the C++ enum, the
+same way `IRModifier.Transform.X`, `IRTime.X`, `IRSystem.SystemName.X`,
+`IRCommand.CommandName.X` already work. See
+[`.claude/rules/cpp-lua-enums.md`](../../.claude/rules/cpp-lua-enums.md)
+for the general rule.
+
+Out-of-range integers, missing `canvas_size`, or non-positive
+width/height also surface a schema error and the spawn fails
+cleanly.
 
 C++ surface lives at `engine/script/include/irreden/script/prefab_api.hpp`
 in `namespace IRPrefab::Prefab`:
@@ -740,12 +987,47 @@ Lua side:
 **v1 scope notes** — three follow-up areas the editor will eventually
 land:
 
-- **Declarative `components = { C_Name = { ... } }` table** — needs a
-  reflection layer so an arbitrary C++ component type can be
-  constructed from a Lua table of named fields. The editor-epic doc
-  (Phase 5 risks) flags this as a design call. Use the `setup`
-  callback in the meantime — it lets the prefab call any Lua-bound
-  `IREntity.setComponent(entity, C_Foo.new(...))` directly.
+- **Declarative `components = { C_Name = { ... } }` table** — landed via
+  #698. The optional `components` table maps each component's binding
+  string (the name passed to `registerType<T>("C_Foo")`) to a table of
+  field overrides; spawn() runs each entry's registered factory after
+  rig / voxel attachment and before `setup`, so a `setup` callback
+  observes (and may freely overwrite) declaratively-attached
+  components.
+
+  ```lua
+  return {
+      prefab_version = 1,
+      components = {
+          C_ZoomLevel = { zoom = 5.0 },
+          -- ... any component whose *_lua.hpp opted in ...
+      },
+  }
+  ```
+
+  Wiring contract: each `*_lua.hpp` opts in by calling
+  `IRScript::registerComponentFactoryFor<C>(name, setFields)` after the
+  usertype registration. `setFields(C&, const sol::table&)` copies
+  override values out of the table into the default-constructed
+  component; the factory then attaches via `IREntity::setComponent`.
+  See `engine/prefabs/irreden/render/components/component_zoom_level_lua.hpp`
+  for the canonical opt-in shape.
+
+  Error modes (each destroys the partial entity + any spawned children
+  before returning):
+  - Top-level `components` value is not a table (e.g. `components = 42`)
+    → silently treated as absent. `sol::optional<sol::table>` returns
+    `nullopt` and the block is skipped, just like an omitted field.
+  - Per-entry value is not a table (e.g.
+    `components = { C_ZoomLevel = 42 }`) → "components['<name>'] must
+    be a table of field overrides".
+  - Component name has no registered factory → "no factory registered
+    for component '<name>'" with the binding-fix hint pointing at
+    `IRScript::registerComponentFactoryFor`.
+
+  v1 carry-over: components without a `*_lua.hpp` (and thus no
+  factory) remain unreachable from the declarative table — the `setup`
+  callback is still the escape hatch for those.
 - **`bind_point_overrides = { ... }`** — landed via T-181. The
   optional `bind_point_overrides` table on a prefab maps names to
   `{ offset = vec3, rotation = vec4, boneId = uint }` (any subset);
@@ -783,23 +1065,26 @@ land:
   to a bind point), pre-resolve the integer bone index at spawn
   time and cache the offset/rotation in a flat component instead.
 - **`C_VoxelSetNew` canvas-attach pass for staged dense data** —
-  DENSE / HYBRID records do attach as `C_VoxelSetNew` on the
-  spawned entity (see "DENSE / HYBRID voxel_ref attachment"
-  below), but when the prefab spawns before a render canvas
-  exists the per-voxel records live in `pendingVoxels_` and no
-  pool allocation happens. A follow-up pass needs to seed the
-  pool the frame after a canvas activates and promote the staged
-  records into the pool span — track in the issue queue.
+  DENSE records do attach as `C_VoxelSetNew` on the spawned entity
+  (see "DENSE voxel_ref attachment" below), but when the prefab
+  spawns before a render canvas exists the per-voxel records live in
+  `pendingVoxels_` and no pool allocation happens. A follow-up pass
+  needs to seed the pool the frame after a canvas activates and
+  promote the staged records into the pool span — track in the issue
+  queue.
 
-**SHAPES voxel_ref attachment.** When `voxel_ref` points at a
-SHAPES or HYBRID `.vxs`, `Prefab.spawn` attaches one child entity
-per `ShapeRecord` under the spawned root via `IREntity::setParent`.
+**SHAPES voxel_ref attachment (effects-only per D2, Epic D #937).**
+When `voxel_ref` points at a SHAPES or HYBRID `.vxs`, `Prefab.spawn`
+attaches one child entity per `ShapeRecord` under the spawned root
+via `IREntity::setParent`. SHAPES is reserved for effects-only SDF
+entities (occluders, auras, soft glows); HYBRID is deprecated for new
+authoring but loads backward-compatibly.
+
 Each child carries:
 
-- `C_Position3D{record.offset_}` — record-local position; the
-  CHILD_OF relation + `system_update_positions_global` compose it
-  with the parent's position so the rendered position is
-  `parent.global + record.offset`.
+- `C_LocalTransform{record.offset_}` — record-local position;
+  `PROPAGATE_TRANSFORM` walks the CHILD_OF chain and composes it
+  with the parent's transform into the child's `C_WorldTransform`.
 - `C_ShapeDescriptor{shapeType, params, color}` with `flags_`
   copied from the record. The SDF primitive renders through the
   normal `SHAPES_TO_TRIXEL` pass once a canvas is active.
@@ -816,9 +1101,10 @@ with `canvasEntity_ = kNullEntity` instead of asserting on the
 absent `RenderManager`. Iterating render systems already gate work
 on a non-null canvas binding.
 
-**DENSE / HYBRID voxel_ref attachment.** When `voxel_ref` points
-at a DENSE or HYBRID `.vxs`, `Prefab.spawn` attaches a
-`C_VoxelSetNew` on the spawned root entity via the bridge
+**DENSE voxel_ref attachment (primary entity path; D2, Epic D #937).**
+When `voxel_ref` points at a DENSE `.vxs` (or a HYBRID file loading
+for backward-compat), `Prefab.spawn` attaches a `C_VoxelSetNew` on
+the spawned root entity via the bridge
 `IRPrefab::DenseVoxel::toComponent` in
 `engine/prefabs/irreden/voxel/dense_bridge.hpp`. The bridge calls
 the dense-data ctor `C_VoxelSetNew(boundsMin, boundsMax,
@@ -835,9 +1121,11 @@ span<const C_Voxel>)`, which is headless-safe:
 `C_VoxelSetNew::recordCount()` returns the data count regardless
 of mode, so the round-trip test asserts
 `recordCount() == dense.voxelCount()` without caring whether the
-pool was reachable. For HYBRID prefabs the SHAPES half attaches
-as child entities (per "SHAPES voxel_ref attachment") and the
-DENSE half attaches to the root in the same spawn call.
+pool was reachable. For HYBRID files loading in backward-compat
+mode, the SHAPES half attaches as child entities (per "SHAPES
+voxel_ref attachment") and the DENSE half attaches to the root in
+the same spawn call. New prefabs should not rely on this dual-half
+path — HYBRID authoring is deprecated per D2.
 
 If the loaded `.vxs` is malformed (e.g. BNDS present but VOXR
 truncated, so `dense.voxels_.size() != dense.voxelCount()`), the
@@ -962,6 +1250,58 @@ bindings (`registerMidiNoteCommand` / `registerMidiCCCommand`),
 gamepad-axis-to-value bindings, IRInput query helpers
 (`checkKeyMouseButton` etc.).
 
+## Render glue + GUI draw (`IRRender.*`, `IRGui.*`)
+
+`bindLuaDrivenEcs()` exposes a shared render-glue surface (engine #1615) so
+creations on the Lua-first authoring path drive lighting and HUD visuals
+without re-declaring per-creation pass-throughs. The binding block lives in
+`engine/script/include/irreden/script/lua_render_bindings.hpp`
+(`detail::bindRenderGlue`).
+
+```lua
+-- Lighting (thin pass-throughs to the existing IRRender:: setters):
+IRRender.setSunDirection(x, y, z)  -- forwards to IRRender::setSunDirection;
+                                   -- the engine-side `z <= 0` assert + normalize
+                                   -- on write are preserved
+IRRender.setSunIntensity(f)
+IRRender.setSunAmbient(f)
+IRRender.setSkyColor(r, g, b)      -- sky-hemisphere term (0..1 floats)
+IRRender.setSkyIntensity(f)
+
+-- GUI-canvas shape draw (screen-space trixel coords on the "gui" canvas):
+IRGui.drawDisc(x, y, radius, { 255, 64, 64 })          -- filled disc
+IRGui.drawLine(x0, y0, x1, y1, { r = 0, g = 255, b = 0 }) -- 1-trixel line
+```
+
+- **No clear/background-color setter exists engine-side** — `setSkyColor`
+  (the additive sky-hemisphere term consumed by the HDR composite) is the
+  closest color knob. If a true clear-color setter lands on `IRRender::`,
+  expose it here as a follow-up.
+- **Color argument** — an `IRMath::Color` userdata or a `{ r, g, b[, a] }` /
+  `{ 1, 2, 3[, 4] }` table (0-255 components, keyed or indexed; missing
+  channels default to 255). Parsed by `IRScript::colorFromLua` (see the
+  helper table below).
+- **The shape draws forward to the `IRRender::drawGuiDisc` / `drawGuiLine`
+  entry points**, which own the "gui"-canvas resolution and rasterize via the
+  same `subImage2D` path the C++ widget render systems use
+  (`engine/render/include/irreden/render/trixel_rect.hpp` `fillDisc` /
+  `drawLine`). They are IMMEDIATE-MODE: the GUI canvas is cleared every frame
+  by `TEXT_TO_TRIXEL`, so a draw persists on screen ONLY if re-issued each
+  frame from a RENDER-phase Lua system positioned after that clear — the same
+  contract the widget render systems follow. A one-shot draw at script-load
+  time is wiped on the next frame that clears the canvas. (Writing via
+  `subImage2D` keeps the draw correctly ordered against the clear in
+  command-buffer order on Metal — see `engine/render/CLAUDE.md` "CPU texture
+  writes order via the command buffer on Metal".)
+- `IRRender` / `IRGui` tables are created with the
+  `if (!valid())` guard, so a creation that also populates its own `IRRender`
+  table (e.g. the default demo's `getGuiScale` / `measureText`) keeps those
+  entries — the glue extends, never replaces.
+
+Coverage: `test/script/lua_render_bindings_test.cpp` asserts table/function
+presence + the `colorFromLua` parse cases headless; the runtime draw + sun
+path is exercised visually by `creations/demos/lua_pipeline_demo`.
+
 ## C++ ↔ Lua math type helpers
 
 When a binding accepts a math type that Lua callers may pass as either a
@@ -972,6 +1312,7 @@ ad-hoc extraction lambdas per binding:
 | Task | Helper |
 |------|--------|
 | `sol::object` → `IRMath::vec3` | `IRScript::vec3FromLua(obj)` |
+| `sol::object` → `IRMath::Color` | `IRScript::colorFromLua(obj)` |
 
 `vec3FromLua` accepts an `IRMath::vec3` userdata **or** a `{x,y,z}` / `{1,2,3}`
 table. Returns `{0,0,0}` for nil/none. Validate the type at the callsite and

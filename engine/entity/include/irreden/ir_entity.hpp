@@ -8,7 +8,6 @@
 #include <irreden/entity/prefabs.hpp>
 
 #include <irreden/common/components/component_local_transform.hpp>
-#include <irreden/common/components/component_position_global_3d.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 
 #include <tuple>
@@ -26,6 +25,8 @@ smart_ComponentData createComponentData(ComponentId type);
 std::string makeComponentString(const Archetype &type);
 EntityId getRelatedEntityFromArchetype(Archetype type, Relation relation);
 EntityId getParentEntityFromArchetype(Archetype type);
+// Setup-time only: at most ~3 named entities ("camera", "mainFramebuffer",
+// "modifierGlobals"). Do not call inside a per-entity tick.
 void setName(EntityId entity, const std::string &name);
 EntityId getEntity(const std::string &name);
 EntityRecord getEntityRecord(EntityId entity);
@@ -150,15 +151,12 @@ NodeId getParentNodeFromRelation(RelationId relation);
 // (entity record points at the first, the caller's value at row+1 is
 // orphaned).
 template <typename... Components> EntityId createEntity(const Components &...components) {
-    using GP = IRComponents::C_PositionGlobal3D;
     using LT = IRComponents::C_LocalTransform;
     using WT = IRComponents::C_WorldTransform;
-    constexpr bool kHasGP = (std::is_same_v<GP, Components> || ...);
     constexpr bool kHasLT = (std::is_same_v<LT, Components> || ...);
     constexpr bool kHasWT = (std::is_same_v<WT, Components> || ...);
 
     auto defaults = std::tuple_cat(
-        std::conditional_t<kHasGP, std::tuple<>, std::tuple<GP>>{},
         std::conditional_t<kHasLT, std::tuple<>, std::tuple<LT>>{},
         std::conditional_t<kHasWT, std::tuple<>, std::tuple<WT>>{}
     );
@@ -174,37 +172,6 @@ template <typename... Components> EntityId createEntity(const Components &...com
 template <PrefabTypes type, typename... Args> EntityId createEntity(Args &&...args) {
     return Prefab<type>::create(args...);
 }
-
-// template <
-//     typename... Components
-// >
-// EntityId createEntity_Ext(
-//     const Components&... components,
-//     const CreateEntityExtraParams& params
-// )
-// {
-//     EntityId entity = getEntityManager().createEntity(
-//         IRComponents::C_PositionGlobal3D{},
-//         components...
-//     );
-
-//     if(params.parentEntity != kNullEntity) {
-//         setParent(entity, params.parentEntity);
-//     }
-// }
-
-// template <
-//     typename... Components
-// >
-// EntityId createEntityChild(
-//     EntityId parent,
-//     const Components&... components
-// )
-// {
-//     return getEntityManager().createEntity(
-//         components...
-//     );
-// }
 
 EntityId setParent(EntityId child, EntityId parent);
 void destroyEntity(EntityId entity);
@@ -247,7 +214,7 @@ template <typename... Functions>
 std::vector<EntityId> createEntityBatchWithFunctions_Ext(
     IRMath::ivec3 numEntities, const CreateEntityExtraParams &params, Functions... functions
 ) {
-    const IRMath::vec3 center = vec3(numEntities) / vec3(2);
+    const IRMath::vec3 center = IRMath::vec3(numEntities) / IRMath::vec3(2);
     IREntity::CreateEntityCallbackParams callbackParams{IRMath::ivec3{0, 0, 0}, center};
     std::vector<EntityId> res;
     for (int i = 0; i < numEntities.x; i++) {
@@ -266,6 +233,7 @@ template <typename Component> Component &getComponent(EntityId entity) {
     return getEntityManager().getComponent<Component>(entity);
 }
 
+// Delegates to getEntity — setup-time only, see above.
 template <typename Component> Component &getComponent(const std::string &name) {
     return getEntityManager().getComponent<Component>(getEntity(name));
 }

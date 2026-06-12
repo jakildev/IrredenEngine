@@ -1,0 +1,7 @@
+enkiTS v1.11
+https://github.com/dougbinks/enkiTS
+zlib license
+
+Pinned via IR_ENKITS_GIT_TAG cache variable in
+engine/job/third_party/enkiTS/CMakeLists.txt. Override at configure
+time with `-DIR_ENKITS_GIT_TAG=<sha>` for a fully reproducible build.

@@ -8,13 +8,55 @@ the ECS surface.
 ## Key components
 
 - `C_TriangleCanvasTextures` — owns 3 GPU textures (color / distance /
-  entity-id). **Created in ctor, destroyed in `onDestroy()`.**
+  entity-id). **Created in ctor, destroyed in `onDestroy()`.** The
+  color/distance/entity-id format triple is centralized in
+  `detail::makeCanvas*Texture` factories in its header so other canvas
+  components can't drift from it.
+- `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
+  for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
+  Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
+  **lazily**. Bundled on **every** voxel-pool canvas by
+  `Prefab<kVoxelPoolCanvas>` (default-constructed inert). A single once-per-frame
+  gate in `VOXEL_TO_TRIXEL_STAGE_1::beginTick` stands the textures up only while
+  there is rotation to smooth: `syncAllocationToCameraYaw()` allocates the
+  **main canvas's** while the camera sits at a non-cardinal residual yaw, and
+  frees them at the cardinal so a static scene is byte-identical (fast path).
+  This machinery is now **camera-only**: the detached per-axis forward-scatter
+  (P3a/P3b, #1463–#1475) was **retired in #1560**. A rotating **detached** entity
+  no longer uses per-axis canvases at all — its SO(3) renders through the
+  **re-voxelize** path (#1555–#1560), which rotates+rounds the entity's voxel
+  CELLS into a private pool that rasterizes through the normal single-canvas
+  cardinal path + blit. For the **main world canvas**, T2
+  (#1309) routes each visible voxel face into its axis canvas with continuous
+  (`pos3DtoPos2DIsoYawed`) center reposition + shared world depth; T3
+  (#1310) composites the three by depth-tested forward scatter at the
+  framebuffer; T4 (#1311) lights each per-axis canvas (AO + sun-shadow +
+  light-volume + Lambert) at trixel resolution before the scatter, adding
+  per-axis `ao_` / `sunShadow_` textures with the same rotation-only
+  lifecycle (the world sun-shadow map + 128³ light volume stay shared).
+  **Per-axis base-resolution encoding (#1458):** the per-axis store writes at
+  BASE (world-unit) resolution — one cell per voxel face, regardless of the
+  active subdivision factor. The fractional sub-cell offset (where the voxel
+  lands within its world cell) is packed into bits `[9:2]` of the distance
+  encoding so the forward scatter can sub-pixel-shift each face quad and
+  recover smooth detail without overflowing the base-resolution canvas.
+  The canvas IS still sized at base-resolution (not `world × subPerAxis`);
+  the per-axis dispatch still uses the capped density from
+  `IRPrefab::PerAxisCanvas::subdivisionDensity()` for how many work-groups
+  to launch, but z-slices ≥ 1 return early — only the z=0 invocation writes.
+  AO, sun-shadow, lighting, and scatter all decode `rawDepth` directly as
+  world units (`rawDist >> 10` for the per-axis path).
 - `C_TrixelCanvasRenderBehavior` — toggles: use camera pan/zoom, run
   subdivisions, hover detection, pixel offset, etc.
 - `C_TrixelFramebuffer` — wraps a `Framebuffer` (color + depth). Also
   ctor-allocated, `onDestroy()`-freed.
-- `C_CameraYaw` — continuous Z-yaw (radians), normalized to `[-π, π)`. See
-  `camera.hpp` for the cardinal/residual split API.
+- Camera rotation lives in `C_LocalTransform.rotation_` (the same SQT
+  quaternion every entity uses), composed as `qZ(yaw) × qX(pitch)`.
+  `camera.hpp` exposes `IRPrefab::Camera::` helpers for both halves;
+  the GRID trixel rasterizer reads only Z-yaw (via the cardinal/residual
+  split), while DETACHED canvases consume the full quaternion through
+  `system_propagate_canvas_rotation`. Pitch is clamped to ±(π/2 − ε)
+  to avoid gimbal lock. `C_CameraYaw` was retired in T-364.
 - `C_Sprite` / `C_SpriteSheet` / `C_SpriteAnimation` — 2D screen-composite
   sprite + atlas metadata + per-instance playback state. Sprites bypass the
   trixel pipeline and draw at the `FRAMEBUFFER_TO_SCREEN` stage;
@@ -24,7 +66,13 @@ the ECS surface.
   atlas GPU texture handle — **freed in `onDestroy()`**; callers must not
   call `destroyResource` manually. See
   [`docs/design/sprites.md`](../../../../docs/design/sprites.md) for the
-  full data model, depth semantics, and cross-task scope.
+  full data model, depth semantics, and cross-task scope. The
+  `C_Sprite::screenPixelSmooth_` flag opts a sprite out of the default
+  game-pixel snap (it lands at floating-point screen precision instead);
+  reserve for the player avatar or a camera-locked entity that should
+  move between game pixels. See
+  [`IRMath::cameraSubPixelOffsets`](../../../math/include/irreden/ir_math.hpp)
+  for the granularity hierarchy the flag participates in.
 - `C_GizmoHandle` — marker on editor gizmo entities, tagging handle kind
   (translate-arrow, rotate-ring, scale-stick / scale-center, joint /
   bind-point / IK marker) + axis. Visible geometry comes from a sibling
@@ -35,20 +83,62 @@ the ECS surface.
 - `C_VoxelSelection` / `C_VoxelSelectionHighlight` — editor selection
   state and the tag that marks the highlight entity. The picking system
   (`VOXEL_PICKING`) mutates the selection on left-click; the highlight
-  carries `C_Position3D + C_ShapeDescriptor` so the picked-voxel marker
-  renders through the normal SDF path. Created hidden by the editor;
+  carries `C_LocalTransform + C_WorldTransform + C_ShapeDescriptor` so
+  the picked-voxel marker renders through the normal SDF path. Created hidden by the editor;
   toggled via `SHAPE_FLAG_VISIBLE` when a hit/miss happens.
 - `C_ActiveLodLevel` — singleton row written by `LOD_UPDATE` each frame
   with the camera-zoom-derived `IRRender::LodLevel`. Read by
   `SHAPES_TO_TRIXEL` at `beginTick` to filter `C_ShapeDescriptor`
-  entities whose `lodMin_` is below the active tier (i.e. requested
-  more detail than the camera is providing). Phase 1 of the LOD story;
-  see `docs/design/lod-strategy.md`.
+  entities whose inclusive `[lodMax_ .. lodMin_]` band excludes the
+  active tier (too-fine or too-coarse for the camera's zoom). Disjoint
+  bands across co-located variants give exclusive swap-not-stack LOD
+  (#1467). Phase 1 of the LOD story; see `docs/design/lod-strategy.md`.
 
 ## Key systems
 
-- `VOXEL_TO_TRIXEL_STAGE_1` / `STAGE_2` — compute-shader voxel
-  rasterization to the 3 canvas textures.
+- `UPDATE_VOXEL_POSITIONS_GPU` — GPU voxel-position prepass (#1396). Runs
+  **before** `VOXEL_TO_TRIXEL_STAGE_1` and computes `world = modelToWorld *
+  localPos` into the binding-5 position SSBO for voxel sets that opt into
+  transform indirection (`C_VoxelSetNew::gpuTransformSlot_ != kVoxelTransformStatic`).
+  Voxels keep the sentinel by default, so the prepass skips them and the
+  CPU-direct `UPDATE_VOXEL_SET_CHILDREN` flush still owns their slots —
+  scenes with no GPU-transformed sets are byte-identical and pay no
+  dispatch. Per-frame upload is one `mat4` per dynamic set, not O(voxels).
+  Shared substrate for per-entity SO(3) (#1272/#1299) and skeletal voxels
+  (#605). The transform slot is bit-packed into the local-position `.w`
+  lane (Metal has no free buffer index past 30).
+- `UPDATE_JOINT_MATRICES` — per-frame skeletal joint skin-matrix upload (#605
+  Phase 2.2 / #1603). For each `C_Skeleton` it writes every joint's
+  `IRPrefab::Skeleton::skinMatrix` (`jointWorld × bindInverse`) into a
+  contiguous block of the **same** binding-18 `EntityTransformBuffer` the
+  prepass consumes — no second buffer (binding-21 is retired for the voxel
+  path in Phase 2.4). Phase 2.3 (#1605, `seedVoxelBoneSlots`) sets a skinned
+  voxel's `.w` to `slotBase + bone_id` so the existing
+  `c_update_voxel_positions` prepass skins it with no new shader: when a
+  skeleton's slot block is (re)allocated, the system auto-stamps the rig
+  root's `C_VoxelSetNew` per-voxel pool transform indices (lazily acquiring
+  the set's entity slot via `IRPrefab::VoxelTransform::acquireSlot`; bone ids
+  outside the joint list fall back to that entity slot = rigid follow).
+  Editors that re-paint `C_Voxel::bone_id_` without changing the joint list
+  re-stamp via `IRPrefab::JointTransform::seedVoxelBoneSlots(rigRoot)`;
+  `IRPrefab::JointTransform::slotBase(rigRoot)` exposes the block for
+  downstream phases. The association is same-entity: the skeleton and the
+  skinned voxel set live on the same rig-root entity (the DENSE
+  `Prefab.spawn` shape). Iterates the `<C_Joint, C_WorldTransform>` archetype
+  (world transform via dense iteration, no per-joint `getComponent`); the rest
+  pose + target slot per joint are gathered once in `beginTick` from each
+  skeleton's own `bindPose_`. **The 4096-slot binding-18 budget is partitioned**
+  so the prepass's contiguous `[0, maxSlotUsed_]` re-upload can never clobber a
+  joint slot: dynamic voxel-set slots grow up from 0 (capped at
+  `kJointTransformSlotBase`); joint blocks are carved down from
+  `kMaxGpuVoxelTransforms` (the reserved `kMaxGpuJointTransforms`-slot high
+  region). Register **after** `PROPAGATE_TRANSFORM` and **before**
+  `UPDATE_VOXEL_POSITIONS_GPU`; a creation that authors skeletons must register
+  the prepass too (this system reuses its buffer).
+- `VOXEL_TO_TRIXEL_STAGE_1` — compute-shader voxel rasterization to the
+  3 canvas textures. Runs compact + stage-1 + stage-2 dispatches in one
+  per-canvas tick (the former separate `VOXEL_TO_TRIXEL_STAGE_2` system
+  clobbered the shared voxel SSBOs across multi-canvas scenes).
 - `TRIXEL_TO_TRIXEL` — compositing between trixel textures.
 - `TEXT_TO_TRIXEL` — glyph rasterization (cap: 8192 glyph commands per
   frame).
@@ -57,12 +147,11 @@ the ECS surface.
   framebuffer.
 - `FRAMEBUFFER_TO_SCREEN` — final blit with camera pan/zoom.
 - `SPRITE_TO_SCREEN` — optional screen-composite pass that draws every
-  entity holding `C_Sprite + C_PositionGlobal3D` as a textured alpha-
+  entity holding `C_Sprite + C_WorldTransform` as a textured alpha-
   blended quad, sorted back-to-front and grouped by atlas (one
-  `drawArraysInstanced` per atlas). World position is read directly
-  from `C_PositionGlobal3D` (modifier-driven offsets have already been
-  folded in by `APPLY_POSITION_OFFSET` earlier in the UPDATE
-  pipeline). Bypasses the trixel pipeline; runs after the main
+  `drawArraysInstanced` per atlas). Reads world position from
+  `C_WorldTransform.translation_`. Bypasses the trixel
+  pipeline; runs after the main
   canvas's `FRAMEBUFFER_TO_SCREEN` tick. Empty-case fast-path means a
   creation can register the system unconditionally — zero sprites =
   zero draws.
@@ -87,16 +176,21 @@ story (`docs/design/lod-strategy.md`). Each frame it snapshots
 `IRRender::getCameraZoom()`, maps it through
 `lod_utils.hpp::computeLodLevel()`, and writes the result into the
 `C_ActiveLodLevel` singleton. `SHAPES_TO_TRIXEL` reads the singleton
-at `beginTick` and skips `C_ShapeDescriptor` rows whose `lodMin_` is
-below the active tier — purely a CPU-side filter ahead of the yaw /
-cull-bounds math, no GPU staging cost for culled shapes, no shader
-change. `LodLevel` indexes go DOWN as detail goes UP (`LOD_0` =
-highest detail at zoom ≥ 16, `LOD_4` = silhouette tier always
-drawn), and a shape's default `lodMin_ = LOD_4` means an unmarked
-shape renders at every zoom. Register before `GLOBAL_POSITION_3D` in
+at `beginTick` and draws each `C_ShapeDescriptor` row only when the
+active tier falls inside its inclusive LOD band `[lodMax_ .. lodMin_]`
+(`shouldSkipAtLod` in `lod_utils.hpp`) — purely a CPU-side filter ahead
+of the yaw / cull-bounds math, no GPU staging cost for culled shapes,
+no shader change. `LodLevel` indexes go DOWN as detail goes UP (`LOD_0`
+= highest detail at zoom ≥ 16, `LOD_4` = silhouette tier always drawn);
+the band defaults (`lodMin_ = LOD_4`, `lodMax_ = LOD_0`) span the whole
+range, so an unmarked shape renders at every zoom — byte-identical to
+the pre-band single-sided filter. Co-located variants authored with
+**disjoint** bands render exclusively: exactly one per zoom, swapping
+in place instead of stacking (the #1467 fix — additive co-location
+z-fought and read as glitchy). Register before `PROPAGATE_TRANSFORM` in
 the UPDATE pipeline so the singleton is current by the time RENDER
-ticks. Phase 1 only filters `SHAPES_TO_TRIXEL`; DENSE-mode voxel
-LOD, rig LOD, and multi-tier `.vxs` composition are out of scope.
+ticks. Filters `SHAPES_TO_TRIXEL` only; DENSE-mode voxel LOD, rig LOD,
+and multi-tier `.vxs` composition are out of scope.
 
 ## Editor gizmo interaction (INPUT pipeline; F-0.5 Phase 3)
 
@@ -118,8 +212,9 @@ drag math.
   point projected onto a fixed iso-depth plane through the anchor,
   and the cursor's canvas-iso angle around the anchor. Each frame the
   mouse is down, applies kind-specific math to the anchor's
-  `C_Position3D` (translate) or to per-anchor accumulators on the
-  system (rotate / scale): TRANSLATE_ARROW projects cursor world
+  `C_LocalTransform` (translate → `translation_`; rotate →
+  `rotation_`, #1610) or to per-anchor accumulators on the
+  system (scale): TRANSLATE_ARROW projects cursor world
   delta onto the handle's unit axis; ROTATE_RING tracks the canvas-
   iso angle change with Shift snapping to 15° (π/12); SCALE_STICK
   projects onto the axis with reference distance `kScaleStickRefWorld`
@@ -137,6 +232,12 @@ gizmo as a unit. For `createJointMarker` / `createIKMarker` called
 with a real anchor parent, drag would move that parent — passing
 `kNullEntity` (Phase 1's default in `voxel_editor/main.cpp`) makes
 those handles still hoverable but no-op on drag.
+`createTranslateGizmoForAnchor(anchor)` (#1604) and
+`createRotateGizmoForAnchor(anchor)` (#1610) use the parent-as-anchor
+routing deliberately: the handles are parented to an existing entity and
+drag mutates that entity's own `C_LocalTransform` (translation vs
+rotation by handle kind) — the per-joint placement and FK-posing handles
+in the voxel editor. No group entity is created.
 
 See `engine/render/CLAUDE.md` for the full pipeline diagram.
 
@@ -182,17 +283,17 @@ cleaned up.
 `gizmo.hpp` exposes `IRPrefab::Gizmo::` builders that spawn the editor's
 transform handles (translate / rotate / scale) and marker primitives
 (joint / bind-point / IK) as small groups of child entities under a
-returned group root. Each emitted handle carries `C_PositionGlobal3D +
-C_Position3D + C_ShapeDescriptor + C_GizmoHandle + C_Name`; geometry
+returned group root. Each emitted handle carries `C_LocalTransform +
+C_WorldTransform + C_ShapeDescriptor + C_GizmoHandle + C_Name`; geometry
 comes from the SDF primitives in `IRMath::SDF::ShapeType`
 (`CYLINDER`, `CONE`, `TORUS`, `SPHERE`, `BOX`) rendered by the existing
 `SHAPES_TO_TRIXEL` pass — no new render stage is introduced.
 
 ```cpp
 // Place a translate gizmo at the origin, then attach it to a selection
-// target by re-parenting or by writing C_Position3D::pos_.
+// target by re-parenting or by writing C_LocalTransform::translation_.
 EntityId gizmo = IRPrefab::Gizmo::createTranslateGizmo();
-IREntity::getComponent<C_Position3D>(gizmo).pos_ = anchor;
+IREntity::getComponent<C_LocalTransform>(gizmo).translation_ = anchor;
 ```
 
 Phase 2 (T-164) wires the runtime polish: the
@@ -318,9 +419,72 @@ when extending or composing widgets:
   scrollable content by reading `scrollPos_` itself; it does not
   reparent into the scroll widget.
 
+## Rotation modes: GRID is world-integrated, DETACHED is a screen-locked overlay
+
+A rotating solid reaches the framebuffer through one of two `C_RotationMode`
+paths, and the choice determines whether it participates in world depth and
+lighting. This is a deliberate split, not an asymmetry to "fix" (#1582 decision):
+
+- **`GRID`** (the default) — `REBUILD_GRID_VOXELS` re-rasterizes the entity's
+  rotated voxels into the **shared world pool** every frame, so they write world
+  `trixelDistances` at their true iso depth (`x+y+z`). Consequence: GRID solids
+  **depth-sort against, cast shadows onto, and receive shadows from** world
+  geometry — they are fully world-integrated. Cost: per-frame world
+  re-rasterization + the documented round-to-cell aliasing (`voxel/CLAUDE.md`).
+
+- **`DETACHED` / `DETACHED_REVOXELIZE`** — the rotated solid renders on a
+  **private canvas** (camera-yaw-zeroed, at the camera origin) which
+  `ENTITY_CANVAS_TO_FRAMEBUFFER` (`system_entity_canvas_to_framebuffer.hpp`)
+  composites **by default** as a cheap **2D overlay at the iso screen position, at
+  a FIXED framebuffer depth** (`model` Z = 0, `distanceOffset_` = 0). This is the
+  epic #1553 decision-1 contract: cheap per-frame rotation with no world
+  re-rasterization. The deliberate cost of the default: detached entities **do
+  NOT** depth-sort against, cast shadows onto, or receive shadows from world
+  geometry — they never write world `trixelDistances` at their world depth.
+  `DETACHED_REVOXELIZE` only changes *how* the private canvas is filled (GPU
+  scatter bakes rotation into integer cells, removing per-frame spin flicker); by
+  default it is **still a screen-locked overlay**. The **opt-in**
+  `C_EntityCanvas::worldPlaced_` (P4b / #1576) world-integrates a re-voxelize
+  solid — see "World-integration" below.
+
+**Picking a mode:** need a rotating solid that casts/receives world shadows and
+sorts against world geometry (e.g. a grounded scene with a shadow floor) → use
+`GRID`. Need cheap, isolated rotation where world depth/shadow don't matter (HUD
+props, floating showcases) → use a `DETACHED` mode.
+
+**World-integration (opt-in, P4b / #1576).** A detached re-voxelize solid can
+opt into world participation via `C_EntityCanvas::worldPlaced_` (default off):
+
+- **P4b-1 (landed):** the composite sets `distanceOffset_` to the entity's world
+  iso depth (`pos3DtoDistance(roundVec3HalfUp(translation))`), so the solid
+  depth-sorts against world geometry on the shared GRID `trixelDistances`
+  convention. `worldPlaced_` off stays byte-identical to the overlay contract.
+- **P4b-2 (landed, #1576):** receive. The entity world cell origin is propagated
+  onto `C_CanvasLocalRotation` (`worldPlaced_` + `worldCellOffset_`) by
+  PROPAGATE_CANVAS_ROTATION and published into the shared voxel-frame UBO as
+  `detachedWorldReceive_`. When set, `LIGHTING_TO_TRIXEL` recovers each detached
+  voxel's WORLD pos (model pos + the offset) and samples the SHARED world
+  sun-shadow map (re-running the cascade lookup — shared `ir_sun_shadow_sample`
+  with COMPUTE_SUN_SHADOW) + 128³ light volume there, so the solid darkens in
+  world shadow and picks up light bleed like a GRID solid. Gated on the flag →
+  the default overlay path is byte-identical (no per-canvas sun-shadow texture).
+- **P4b-3 (landed, #1596):** cast. `BAKE_SUN_SHADOW_MAP` scatters every opt-in
+  canvas's model-frame distances (+ its world cell origin) into one shared
+  main-canvas-layout scratch (`c_resolve_world_placed_depth`), blits to a
+  bake-owned R32I resolve texture, and bakes that through the unchanged cardinal
+  recovery — ONE extra bake regardless of caster count, mirroring the per-axis
+  resolve precedent. Invariant: the sun-shadow bake only ever reads
+  main-canvas-layout depth sources; a foreign model-frame canvas texture is
+  never a bake input (the direct read returns empty through Metal's
+  image-atomic scratch indirection — #1640 tracks the backend gap).
+
+Keep world-depth behind the opt-in — do not move it onto the default path — and
+match the GRID `trixelDistances` convention so an opt-in cell and the same GRID
+cell composite to the same depth (the `detached_world_depth_test` equivalence).
+
 ## Gotchas
 
-- **SQT transition (T-199 in flight).** `C_Position3D` / `C_PositionGlobal3D` references in this file are accurate-but-aging — new code should prefer `C_LocalTransform` + `C_WorldTransform`; legacy usages will be swept by the T-199 consumer migration.
+- **SQT transition complete (T-299/T-300/T-301a/T-302).** All render-side, update-side, and voxel-side readers/writers use `C_LocalTransform` + `C_WorldTransform`. The voxel pool's per-voxel SoA arrays are a dedicated 16-byte `IRRender::VoxelGpuPosition` POD (std430 stride contract). The legacy `C_Position3D` / `C_PositionGlobal3D` / `C_Rotation` components and `SYSTEM_GLOBAL_POSITION_3D` were deleted in T-302; consumers read `C_WorldTransform.translation_` and the SQT quat directly.
 - **Canvas texture lifetime.** The 3 GPU textures owned by
   `C_TriangleCanvasTextures` are created in the ctor and only freed in
   `onDestroy()`. Destroying a canvas entity mid-frame while a system
@@ -337,3 +501,16 @@ when extending or composing widgets:
 - **Render-behavior flags are the knobs.** Changing pipeline behavior
   for a canvas (disable zoom tracking, turn off hover) is done via
   `C_TrixelCanvasRenderBehavior`, not by branching in the systems.
+- **Detached world-placement is on `C_EntityCanvas`, not the render behavior.**
+  The `worldPlaced_` opt-in (see "World-integration" above) lives on
+  `C_EntityCanvas` — which `ENTITY_CANVAS_TO_FRAMEBUFFER` already iterates — not on
+  `C_TrixelCanvasRenderBehavior` (the child canvas entity), so the composite reads
+  it with no per-tick foreign getComponent.
+- **Seed GPU-buffer sentinels GPU-side, never via a resource-sized CPU
+  staging vector + `subData`.** Metal's `fillBuffer` writes a repeating
+  single byte, so multi-byte sentinels like `kTrixelDistanceMaxDistance`
+  (`0x0000FFFF`) have no driver-side clear — reuse an already-owned
+  self-resetting kernel (e.g. one dispatch of the resolve blit) or a clear
+  dispatch instead of a multi-MB cold-path staging alloc + upload.
+  Live deviation to migrate when next touched:
+  `system_resolve_per_axis_screen_depth.hpp` seeds its scratch the old way.

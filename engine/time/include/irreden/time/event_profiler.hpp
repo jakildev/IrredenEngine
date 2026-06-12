@@ -69,6 +69,10 @@ template <> class EventProfiler<UPDATE> {
         m_tickCount++;
     }
 
+    void resetLag() {
+        m_lag = NanoDuration{0};
+    }
+
     bool shouldUpdate() {
         return m_lag >= kFPSNanoDuration;
     }
@@ -77,6 +81,14 @@ template <> class EventProfiler<UPDATE> {
         if (m_lag >= kFPSNanoDuration) {
             m_lag -= kFPSNanoDuration;
             ++m_fixedStepCount;
+        }
+    }
+
+    void clampLag(uint32_t maxTicks) {
+        IR_ASSERT(maxTicks > 0, "max_update_ticks_per_frame must be > 0");
+        NanoDuration maxLag = kFPSNanoDuration * static_cast<int64_t>(maxTicks);
+        if (m_lag > maxLag) {
+            m_lag = maxLag;
         }
     }
 
@@ -92,15 +104,27 @@ template <> class EventProfiler<UPDATE> {
         return m_deltaTimeFixed;
     }
 
+    /// Total fixed-step UPDATE ticks executed since startup. Monotonic,
+    /// advances exactly once per UPDATE pipeline run (even while the sim
+    /// clock is paused), so it stays wall-clock-aligned. Backs
+    /// `IRTime::tick()`. Widened to 64 bits at the public boundary so the
+    /// engine-tick counter never wraps over a long-running session.
+    std::uint64_t fixedStepCount() const {
+        return m_fixedStepCount;
+    }
+
     double fps() const {
-        if (m_fpsCount == 0) return 0.0;
+        if (m_fpsCount == 0)
+            return 0.0;
         auto now = Clock::now();
         auto cutoff = now - std::chrono::seconds(1);
         size_t count = 0;
         for (size_t i = 0; i < m_fpsCount; ++i) {
             size_t idx = (m_fpsHead + kFpsWindowCapacity - 1 - i) % kFpsWindowCapacity;
-            if (m_fpsTimestamps[idx] >= cutoff) ++count;
-            else break;
+            if (m_fpsTimestamps[idx] >= cutoff)
+                ++count;
+            else
+                break;
         }
         return static_cast<double>(count);
     }
@@ -109,7 +133,8 @@ template <> class EventProfiler<UPDATE> {
     void recordFrame(TimePoint tp) {
         m_fpsTimestamps[m_fpsHead] = tp;
         m_fpsHead = (m_fpsHead + 1) % kFpsWindowCapacity;
-        if (m_fpsCount < kFpsWindowCapacity) m_fpsCount++;
+        if (m_fpsCount < kFpsWindowCapacity)
+            m_fpsCount++;
     }
 
     TimePoint m_start;
@@ -185,14 +210,17 @@ template <> class EventProfiler<RENDER> {
     }
 
     double fps() const {
-        if (m_fpsCount == 0) return 0.0;
+        if (m_fpsCount == 0)
+            return 0.0;
         auto now = Clock::now();
         auto cutoff = now - std::chrono::seconds(1);
         size_t count = 0;
         for (size_t i = 0; i < m_fpsCount; ++i) {
             size_t idx = (m_fpsHead + kFpsWindowCapacity - 1 - i) % kFpsWindowCapacity;
-            if (m_fpsTimestamps[idx] >= cutoff) ++count;
-            else break;
+            if (m_fpsTimestamps[idx] >= cutoff)
+                ++count;
+            else
+                break;
         }
         return static_cast<double>(count);
     }
@@ -209,7 +237,8 @@ template <> class EventProfiler<RENDER> {
     void recordFrame(TimePoint tp) {
         m_fpsTimestamps[m_fpsHead] = tp;
         m_fpsHead = (m_fpsHead + 1) % kFpsWindowCapacity;
-        if (m_fpsCount < kFpsWindowCapacity) m_fpsCount++;
+        if (m_fpsCount < kFpsWindowCapacity)
+            m_fpsCount++;
     }
 
     TimePoint m_start;

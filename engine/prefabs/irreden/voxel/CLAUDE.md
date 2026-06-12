@@ -7,13 +7,17 @@ for single voxels and particles.
 ## Key components
 
 - `C_Voxel` — per-voxel record (12 B std430): RGBA color + `material_id`,
-  `flags` (bit-packed `VoxelFlags::kAoContrib | kEmissive | kInteractive`),
-  `bone_id`, `layer_id` (editor layer membership; 0 = default layer).
-  Default ctor sets `flags = kAoContrib` and the rest zero so v1 scenes
-  render unchanged. Usually handled as spans inside a `C_VoxelPool`.
-  Layout matches the GPU SSBO at slot 6 — see
-  `components/component_voxel.hpp` and the per-pipeline shaders for the
-  struct mirror.
+  `flags` (bit-packed: bit 0 `kAoContrib`, bit 1 `kEmissive`, bits 2..7
+  face-occlusion bits `kFaceOccluded{Neg,Pos}{X,Y,Z}`), `bone_id`,
+  `layer_id` (editor layer membership; 0 = default layer). Default ctor
+  sets `flags = kAoContrib` and the rest zero so v1 scenes render
+  unchanged. Face-occlusion bits are maintained by
+  `IRPrefab::Voxel::recomputeFaceOccupancy` (`voxel/face_occupancy.hpp`),
+  invoked from set-level `C_VoxelSetNew` mutators (`reshape`, `fillPlane`,
+  `activate/deactivateAll`, dense-data ctor). Voxels usually handled as
+  spans inside a `C_VoxelPool`. Layout matches the GPU SSBO at slot 6 —
+  see `components/component_voxel.hpp` and the per-pipeline shaders for
+  the struct mirror.
 - `C_VoxelPool` — master allocator; allocates/deallocates contiguous spans,
   tracks per-chunk bounds for visibility culling, and owns a per-slot
   active-mask (`m_activeMask`) that mirrors `m_voxelColors[i].color_.alpha_ != 0`.
@@ -36,8 +40,11 @@ for single voxels and particles.
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint
-  EntityIds. The position in the vector IS the bone_id used by
-  `C_Voxel.bone_id_` and indexed by the per-frame GPU joint-matrix SSBO.
+  EntityIds. The position in the vector IS the bone_id stored in
+  `C_Voxel.bone_id_`. At skinning time `UPDATE_JOINT_MATRICES` maps each
+  bone_id to `slotBase + bone_id` in `EntityTransformBuffer` (binding 18)
+  via per-voxel slots in `LocalVoxelPositions` (binding 17) — binding 21
+  (`kBufferIndex_JointTransforms`) is SDF-shapes scaffolding only.
   See "Entity-based joints" below.
 - `C_Joint` — tag marking an entity as a skeletal joint. Paired with the
   engine's canonical local-transform component and a `CHILD_OF` relation
@@ -58,7 +65,77 @@ for single voxels and particles.
 ## Key systems
 
 - `UPDATE_VOXEL_SET_CHILDREN` (UPDATE pipeline) — pushes per-voxel-set
-  global-position updates into the pool, also registers ownership lookups.
+  world-position updates into the pool, also registers ownership lookups.
+  Translate-only path: voxels move with the entity's
+  `C_WorldTransform.translation_` (composed by `PROPAGATE_TRANSFORM` from
+  `C_LocalTransform` + parent chain + `TRANSFORM_TRANSLATION` modifiers)
+  but no per-set rotation/scale composition. Voxel sets whose translation
+  is unchanged from the prior tick early-out of `updateAsChild` and
+  contribute nothing to the per-pool GPU position queue
+  (`C_VoxelPool::queuePositionRange`) — a static voxel scene pays zero
+  CPU→GPU position bytes/frame.
+- `REBUILD_GRID_VOXELS` (UPDATE pipeline, T-294) — Epic C C6. Runs AFTER
+  `UPDATE_VOXEL_SET_CHILDREN`. Re-rasterizes GRID-mode entities (entities
+  carrying `C_RotationMode::GRID`, the default) into rotated world cells
+  from their live `C_WorldTransform`. On-screen sets re-rasterize every
+  frame (no per-set transform-comparison early-out — that was a dirty flag
+  in disguise, see `.claude/rules/cpp-ecs.md` "No dirty flags"); the only
+  skip is a frustum-cull gate (`C_VoxelPool::isRangeVisible` against the
+  shadow-feeder-expanded cull viewport), so sets whose pool chunks are all
+  off-screen pay nothing. DETACHED-mode entities are skipped — they rotate through
+  the per-canvas TRS composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`) and
+  never touch the world voxel pool's globals. Cell aliasing
+  (multiple authored voxels collapsing into one world cell after
+  rotation) is accepted by design; render-order is deterministic given
+  stable entity ids. Math helper:
+  `IRPrefab::GridRotation::worldCellForGridVoxel` in `grid_rotation.hpp`
+  — call directly from creations that need the same mapping outside
+  the pipeline. Creations that spawn entities with `C_RotationMode::GRID`
+  must register `REBUILD_GRID_VOXELS` in their UPDATE pipeline after
+  `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces silent no-ops.
+- `REBUILD_DETACHED_VOXELS` (UPDATE pipeline, #1553 P1 / #1555, **repurposed P2
+  / #1556**) — P1 re-rasterized a `RotationMode::DETACHED_REVOXELIZE` entity's
+  **private** pool into full-rotation cell positions on the CPU every frame. P2
+  moved that fill to the GPU compute (`c_revoxelize_detached`, dispatched
+  from `VOXEL_TO_TRIXEL_STAGE_1` in place of `flushStaticPositionRanges`): the
+  GPU now owns binding 5 on both backends, the only per-frame upload is the canvas
+  quat (O(entities)), and this system's per-frame CPU rewrite is **gone**. The fill
+  has two modes (`RevoxelizeDetachedParams.dest_.w`): at identity it forward-writes
+  one cell per source voxel (byte-identical to #1556); while ROTATING it
+  **inverse-resamples** (#1619) — one thread per DEST cell of the rotated-AABB cube
+  inverse-maps `roundHalfUp(R⁻¹·c)` into a per-pool source occupancy+color grid
+  (`C_DetachedRevoxelizeBuffer::sourceGrid_`) and authors position+color+active for
+  hits. Forward scatter is not surjective onto the rotated lattice (covered dest
+  cells got no source voxel → coverage holes / missing faces); inverse resampling
+  is surjective → hole-free at every size. The shared compact/stage1/stage2 raster
+  is untouched (slot `i` is now "dest cell i" not "source voxel i"). Its
+  remaining job is to seed — ONCE — the conservative origin-centered world-AABB
+  (`C_VoxelPool::setStaticReVoxelizeBound`, radius = farthest authored corner from
+  the pool origin) that `rebuildChunkBounds` projects for the STAGE_1
+  visibility gate, since the CPU global mirror no longer follows the rotation.
+  Still ticks the CANVAS entity `(C_VoxelPool, C_CanvasLocalRotation)`, gated on
+  `reVoxelize_`; early-outs once the bound is set (no per-frame work). Register
+  AFTER `PROPAGATE_CANVAS_ROTATION`. The GPU compute mirrors
+  `IRPrefab::GridRotation::worldCellForGridVoxel` (now `roundHalfUp`, the CPU↔GPU
+  convention) about the pool ORIGIN, translation-free. **Invariant: one centered
+  voxel set per private pool** — the conservative bound (and P1's per-pool single
+  rotation) assume a centered solid; a future multi-set / off-origin detached
+  canvas must rotate per set about each set's pivot and offset the bound.
+  Detached pools are frustum-cull-exempt for the rotation (the conservative bound
+  is rotation-independent), but a canvas-local pool still culls when the camera
+  pans off the canvas origin — frame detached entities centered (#1555).
+  Round-to-cell aliasing is accepted at P1/P2 (the spatial speckle was refined in
+  epic P3 by the `.w=1` conservative dilation). **Temporal spin flicker is an
+  accepted limitation** (#1570 D1): every frame re-voxelizes the rotated solid
+  onto the integer cell grid via `roundHalfUp`, so the occupied-cell SET — and
+  thus the emitted face set — flips discontinuously whenever a voxel crosses a
+  half-integer boundary as the entity spins. This is the same round-to-cell
+  source as the GRID stance above, manifesting temporally. It is **not** fixed
+  with per-cell hysteresis / sticky cell keys: caching last-frame cell state to
+  suppress flips is a snapshot-compare-and-early-return, which the no-dirty-flags
+  rule forbids (`.claude/rules/cpp-ecs.md`). Supersampling the re-voxelize grid
+  (scatter at Nx density, downsample) would trade flicker for fill cost + memory
+  but is not justified at present — revisit only if it becomes a shipping blocker.
 - `VOXEL_SQUASH_STRETCH` — animates voxel set scale/deformation via easing.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**
@@ -66,28 +143,36 @@ for single voxels and particles.
 
 ## Prefab.spawn voxel_ref → ECS components
 
+**D2 restriction (Epic D #937):** SHAPES and HYBRID authoring are
+deprecated for primary entities. Going forward, primary entity shapes
+use DENSE `.vxs` assets; SHAPES (`C_ShapeDescriptor`) is reserved for
+effects-only SDF entities (sun shadow occluders, auras, soft glows).
+HYBRID authoring is fully deprecated — HYBRID `.vxs` files load for
+backward-compat but no new assets should be authored in HYBRID mode.
+
 `Prefab.spawn` (in `engine/script/`) routes a prefab's `voxel_ref`
 through to runtime components when the loaded `.vxs` carries shape
 records:
 
-- **SHAPES / HYBRID shape half** — one child entity per
+- **SHAPES shape half** (effects-only per D2) — one child entity per
   `IRAsset::ShapeRecord`, parented via `IREntity::setParent`. Each
-  child gets `C_Position3D{record.offset_}` plus
+  child gets `C_LocalTransform{record.offset_}` plus
   `C_ShapeDescriptor` populated from `record.shapeTypeId_` /
-  `params_` / `color_` / `flags_`. CHILD_OF composition keeps the
-  rendered position equal to `parent.global + record.offset`. Per-
-  record `rotation_`, `csgOp_`, and `boneId_` are loaded but not
-  attached in v1 (no renderer consumes them; T-181 wires bone
-  binding).
-- **DENSE / HYBRID dense half** — `C_VoxelSetNew` attached to the
-  spawned root entity via `IRPrefab::DenseVoxel::toComponent`
-  (`voxel/dense_bridge.hpp`). The bridge translates
-  `IRAsset::DenseVoxelSet` → `C_VoxelSetNew` via a per-record copy
-  (`VoxelRecord` and `C_Voxel` share the 12 B std430 layout but
-  remain distinct types so layout drift surfaces as a compile
-  error). For HYBRID, the SHAPES children and the DENSE
-  `C_VoxelSetNew` land on the same root entity in a single
-  `Prefab.spawn` call.
+  `params_` / `color_` / `flags_`. `SYSTEM_PROPAGATE_TRANSFORM`
+  composes the parent's `C_WorldTransform` with the child's
+  `C_LocalTransform` so the rendered translation equals
+  `parent.world + record.offset`. Per-record `rotation_`, `csgOp_`,
+  and `boneId_` are loaded but not attached in v1 (no renderer
+  consumes them; T-181 wires bone binding). Also fires for HYBRID
+  assets during backward-compat load.
+- **DENSE dense half** (primary entity path) — `C_VoxelSetNew`
+  attached to the spawned root entity via
+  `IRPrefab::DenseVoxel::toComponent` (`voxel/dense_bridge.hpp`).
+  The bridge translates `IRAsset::DenseVoxelSet` → `C_VoxelSetNew`
+  via a per-record copy (`VoxelRecord` and `C_Voxel` share the 12 B
+  std430 layout but remain distinct types so layout drift surfaces as
+  a compile error). Also fires for HYBRID during backward-compat
+  load (both halves attach in a single spawn call).
 
 `C_ShapeDescriptor`'s constructors snapshot the active canvas via
 `IRRender::getActiveCanvasEntityOrNull()` rather than the
@@ -130,9 +215,12 @@ single component on the rig root. Three pieces:
 
 - **`C_Skeleton`** on the rig root. Holds `std::vector<EntityId> joints_`
   — the canonical, ordered list of joint entities. The index of an entry
-  in `joints_` IS the `bone_id` used by `C_Voxel.bone_id_` and indexed by
-  the per-frame GPU joint-matrix SSBO at `kBufferIndex_JointTransforms`
-  (defined in `engine/render/include/irreden/render/ir_render_types.hpp`).
+  in `joints_` IS the `bone_id` stored in `C_Voxel.bone_id_`. At skinning
+  time `UPDATE_JOINT_MATRICES` maps each bone_id to `slotBase + bone_id` in
+  `EntityTransformBuffer` (binding `kBufferIndex_EntityTransforms`, slot 18)
+  via per-voxel slots in `LocalVoxelPositions` (binding 17). Binding 21
+  (`kBufferIndex_JointTransforms`) is SDF-shapes scaffolding only — not
+  used by the voxel skinning path.
 - **`C_Joint`** tag on each joint entity. Drives joint-only archetype
   queries like `<C_Joint, C_LocalTransform>` so IK solvers and the GPU
   joint-matrix uploader iterate joints without seeing rig roots or
@@ -174,19 +262,26 @@ target. File a follow-up ticket when `#605` Phase 2 unblocks.
 ### Bind pose
 
 Skinning math needs the bind-pose inverse to recover skinning matrices.
-`C_Skeleton` does **not** carry a `bindPose_` field yet — `IRMath::SQT` is
-available since `#731` Phase 1 landed (PR #749); a follow-up (#605 Phase 2)
-adds `std::vector<IRMath::SQT> bindPose_;` to `C_Skeleton` parallel to
-`joints_`. Until then, callers that need a bind pose load it from the `.rig`
-asset's BIND chunk via `IRPrefab::Rig::bindPose(rigRoot)`.
+`C_Skeleton.bindPose_` (`std::vector<IRMath::SQT>`, parallel to `joints_` —
+added in #605 Phase 2 / #1602) holds each joint's rest transform in
+rig-root-local space. Populate it from a `.rig` via
+`IRPrefab::Rig::bindPose(rig)` (`rig_bridge.hpp`), which folds the JNTS rest
+chain with `IRMath::sqtCompose` — **not** the `.rig` BIND chunk, which stores
+named attachment points (`C_BindPoints`), a separate concept despite the chunk
+name. `IRPrefab::Skeleton::skinMatrix(jointWorld, bindPose_[i])`
+(`skeleton.hpp`) returns `jointWorld × bindInverse`: identity at the bind pose,
+the joint's posed deformation otherwise. The bind SQT is inverted analytically
+(`IRMath::sqtInverse`) rather than via a 4×4 inverse. Under #605 Phase 2.3 the
+per-joint skin matrix feeds the binding-18 transform buffer the
+`c_update_voxel_positions` prepass already consumes.
 
-### Optional follow-up: C_JointName
+### C_JointName
 
-The design also calls for an optional `C_JointName` tag carrying the
-bone name string for editor / animation reference. Filed as a separate
-follow-up rather than baked in here — `C_Skeleton.joints_[i]` is the
-authoritative reference; bone names are a UX convenience for editors and
-animation clips that want to address joints by string.
+Optional tag on joint entities carrying the bone name string for editor
+/ animation reference (`component_joint_name.hpp`). Shipped in #1607.
+`C_Skeleton.joints_[i]` remains the authoritative index; bone names are
+a UX convenience for editors and animation clips that address joints by
+string.
 
 ## Gotchas
 
@@ -201,9 +296,11 @@ animation clips that want to address joints by string.
   canvas the dense-data ctor stages to `pendingVoxels_`; the element-count
   ctor asserts (use the dense ctor for headless construction). Check
   `numVoxels_ > 0` after construction either way.
-- **Position lag by one frame.** `C_PositionGlobal3D` on a voxel set is
-  only pushed to the pool by `system_update_voxel_set_children`. Any
-  system that moves the entity must run **before** that system in the
+- **Position lag by one frame.** `C_WorldTransform.translation_` on a
+  voxel set is only pushed to the pool by
+  `system_update_voxel_set_children`. Any system that writes the
+  entity's translation (or upstream modifier resolver +
+  `PROPAGATE_TRANSFORM`) must run **before** that system in the
   pipeline or voxels lag a frame.
 - **`onDestroy()` must run.** Destroying a voxel set without the
   destructor (e.g. by bypassing the entity manager) leaks its span.

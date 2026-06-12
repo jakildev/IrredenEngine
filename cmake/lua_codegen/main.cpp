@@ -16,8 +16,8 @@
 //
 // Usage: ir_lua_codegen --out <output.hpp> <input1.lua> [input2.lua ...]
 //
-// Field types supported in CODEGEN mode: int32, float, bool, string.
-// Tables and functions in component schemas are an explicit codegen-time
+// Field types supported in CODEGEN mode: int32, float, bool, string, vec3,
+// ivec3. Tables and functions in component schemas are an explicit codegen-time
 // error pointing at file/line/field — those fields belong in EVAL mode.
 // CODEGEN system bodies must use only Lua-defined components (declared via
 // `IRComponent.register`); systems that touch C++-bound types stay in EVAL.
@@ -27,28 +27,39 @@
 
 #include "system_dsl.hpp"
 
+#include <irreden/script/lua_enum_def.hpp>
+
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
 namespace {
 
-enum class FieldType { INT32, FLOAT, BOOL, STRING };
+enum class FieldType { INT32, FLOAT, BOOL, STRING, VEC3, IVEC3 };
 
 struct Field {
     std::string name_;
     FieldType type_;
-    std::variant<std::int32_t, float, bool, std::string> default_;
+    // vec3 / ivec3 defaults are held as a 3-element POD here because the
+    // codegen tool links only sol2 + Lua (no engine math); the generated
+    // header — which DOES include <irreden/ir_math.hpp> — spells the value as
+    // an `IRMath::vec3{...}` / `IRMath::ivec3{...}` literal (renderDefaultLiteral).
+    std::variant<std::int32_t, float, bool, std::string, std::array<float, 3>,
+                 std::array<std::int32_t, 3>>
+        default_;
 };
 
 struct Component {
@@ -83,6 +94,8 @@ const char *fieldTypeName(FieldType t) {
         case FieldType::FLOAT: return "float";
         case FieldType::BOOL: return "bool";
         case FieldType::STRING: return "string";
+        case FieldType::VEC3: return "vec3";
+        case FieldType::IVEC3: return "ivec3";
     }
     return "?";
 }
@@ -93,6 +106,8 @@ const char *fieldCppType(FieldType t) {
         case FieldType::FLOAT: return "float";
         case FieldType::BOOL: return "bool";
         case FieldType::STRING: return "std::string";
+        case FieldType::VEC3: return "IRMath::vec3";
+        case FieldType::IVEC3: return "IRMath::ivec3";
     }
     return "?";
 }
@@ -122,26 +137,37 @@ std::string escapeStringLiteral(std::string_view s) {
     return out;
 }
 
+// Render a float as a valid C++ float literal — always with a decimal point
+// before the `f` suffix (`100f` is a parse error; `100.f` is fine).
+std::string renderFloatLiteral(float v) {
+    std::ostringstream os;
+    os.precision(9);
+    os << v;
+    std::string s = os.str();
+    if (s.find('.') == std::string::npos && s.find('e') == std::string::npos &&
+        s.find('E') == std::string::npos) {
+        s += ".0";
+    }
+    s += "f";
+    return s;
+}
+
 std::string renderDefaultLiteral(const Field &f) {
     switch (f.type_) {
         case FieldType::INT32: return std::to_string(std::get<std::int32_t>(f.default_));
-        case FieldType::FLOAT: {
-            // Always emit a decimal point so the literal is a valid C++
-            // float (`100f` is a parse error; `100.f` is fine).
-            const float v = std::get<float>(f.default_);
-            std::ostringstream os;
-            os.precision(9);
-            os << v;
-            std::string s = os.str();
-            if (s.find('.') == std::string::npos && s.find('e') == std::string::npos &&
-                s.find('E') == std::string::npos) {
-                s += ".0";
-            }
-            s += "f";
-            return s;
-        }
+        case FieldType::FLOAT: return renderFloatLiteral(std::get<float>(f.default_));
         case FieldType::BOOL: return std::get<bool>(f.default_) ? "true" : "false";
         case FieldType::STRING: return escapeStringLiteral(std::get<std::string>(f.default_));
+        case FieldType::VEC3: {
+            const auto &v = std::get<std::array<float, 3>>(f.default_);
+            return "IRMath::vec3{" + renderFloatLiteral(v[0]) + ", " + renderFloatLiteral(v[1]) +
+                   ", " + renderFloatLiteral(v[2]) + "}";
+        }
+        case FieldType::IVEC3: {
+            const auto &v = std::get<std::array<std::int32_t, 3>>(f.default_);
+            return "IRMath::ivec3{" + std::to_string(v[0]) + ", " + std::to_string(v[1]) + ", " +
+                   std::to_string(v[2]) + "}";
+        }
     }
     return "/*unknown*/";
 }
@@ -234,6 +260,43 @@ Field inferFromShortValue(
     );
 }
 
+// Read a vec3 / ivec3 `{ x, y, z }` (or positional `{1, 2, 3}`) default table
+// into 3 components. nil → zeros. Accepts named (x/y/z) or positional (1/2/3)
+// keys, matching vec3FromLua / ivec3FromLua on the EVAL side. `T` is `float`
+// for vec3 and `std::int32_t` for ivec3 (the int cast truncates toward zero,
+// same as a C++ `static_cast<int>`).
+template <typename T>
+std::array<T, 3> readVec3Default(
+    sol::this_state ts,
+    const std::string &componentName,
+    const std::string &fieldName,
+    const sol::object &def,
+    const char *typeName
+) {
+    if (def.is<sol::nil_t>()) {
+        return {T{}, T{}, T{}};
+    }
+    if (def.get_type() != sol::type::table) {
+        schemaError(
+            ts,
+            "lua_codegen: field '" + componentName + "." + fieldName + "' " + typeName +
+                " default must be an { x, y, z } table"
+        );
+    }
+    sol::table t = def.as<sol::table>();
+    auto pick = [&](const char *key, int idx) -> T {
+        sol::object o = t[key];
+        if (!o.valid() || o.get_type() == sol::type::lua_nil) {
+            o = t[idx];
+        }
+        if (o.valid() && o.get_type() == sol::type::number) {
+            return static_cast<T>(o.as<double>());
+        }
+        return T{};
+    };
+    return {pick("x", 1), pick("y", 2), pick("z", 3)};
+}
+
 Field inferFromExplicitTable(
     sol::this_state ts,
     const std::string &componentName,
@@ -294,6 +357,13 @@ Field inferFromExplicitTable(
         } else {
             f.default_ = defaultVal.as<std::string>();
         }
+    } else if (typeStr == "vec3") {
+        f.type_ = FieldType::VEC3;
+        f.default_ = readVec3Default<float>(ts, componentName, fieldName, defaultVal, "vec3");
+    } else if (typeStr == "ivec3") {
+        f.type_ = FieldType::IVEC3;
+        f.default_ =
+            readVec3Default<std::int32_t>(ts, componentName, fieldName, defaultVal, "ivec3");
     } else if (typeStr == "table" || typeStr == "function") {
         schemaError(
             ts,
@@ -304,7 +374,7 @@ Field inferFromExplicitTable(
         schemaError(
             ts,
             "lua_codegen: field '" + componentName + "." + fieldName + "' has unknown type '" +
-                typeStr + "'. Allowed: int32, float, bool, string."
+                typeStr + "'. Allowed: int32, float, bool, string, vec3, ivec3."
         );
     }
     return f;
@@ -482,6 +552,50 @@ void registerSystemCb(
 
     std::vector<std::string> excludes = readStringArray(ts, schema["excludes"], name, "excludes");
 
+    // T-223: optional `concurrency` field. Accepts integer-typed
+    // IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}; strings
+    // are rejected per the cpp-lua-enums rule. The value is threaded
+    // into the emitted `IRSystem::createSystem<...>(...)` call's
+    // trailing concurrency arg — the engine-side
+    // `detail::validateConcurrencyForAccess` runs at template
+    // instantiation time and fires (IR_ASSERT in debug builds) when the
+    // requested policy conflicts with the tick signature. CODEGEN tick
+    // bodies today emit the per-archetype batch form, so PARALLEL_FOR
+    // would fail that assert — surfaced as a registration-time FATAL
+    // pointing at the schema, exactly matching the hand-written C++
+    // path's behavior.
+    IRLuaCodegen::Concurrency concurrency = IRLuaCodegen::Concurrency::SERIAL;
+    sol::object concVal = schema["concurrency"];
+    if (!concVal.is<sol::nil_t>()) {
+        if (concVal.get_type() == sol::type::string) {
+            schemaError(
+                ts,
+                "lua_codegen: system '" + name +
+                    "' field 'concurrency' must be an IRSystem.Concurrency.* "
+                    "value (e.g. IRSystem.Concurrency.PARALLEL_FOR), not a string"
+            );
+        }
+        if (concVal.get_type() != sol::type::number) {
+            schemaError(
+                ts,
+                "lua_codegen: system '" + name +
+                    "' field 'concurrency' must be an integer-typed "
+                    "IRSystem.Concurrency.* value"
+            );
+        }
+        const lua_Integer raw = concVal.as<lua_Integer>();
+        if (raw < static_cast<lua_Integer>(IRLuaCodegen::Concurrency::SERIAL) ||
+            raw > static_cast<lua_Integer>(IRLuaCodegen::Concurrency::MAIN_THREAD)) {
+            schemaError(
+                ts,
+                "lua_codegen: system '" + name + "' field 'concurrency' = " +
+                    std::to_string(raw) + " is out of range; use "
+                    "IRSystem.Concurrency.{SERIAL,PARALLEL_FOR,MAIN_THREAD}"
+            );
+        }
+        concurrency = static_cast<IRLuaCodegen::Concurrency>(raw);
+    }
+
     sol::object tickVal = schema["tick"];
     if (tickVal.get_type() != sol::type::function) {
         schemaError(
@@ -509,6 +623,7 @@ void registerSystemCb(
     IRLuaCodegen::SystemRecord rec;
     rec.name_ = name;
     rec.mode_ = resolvedMode;
+    rec.concurrency_ = concurrency;
     rec.components_ = std::move(components);
     rec.excludes_ = std::move(excludes);
     rec.sourceFile_ = std::move(file);
@@ -537,6 +652,8 @@ toComponentSchemas(const std::vector<Component> &comps) {
                 case FieldType::FLOAT:  sf.type_ = IRLuaCodegen::FieldType::FLOAT; break;
                 case FieldType::BOOL:   sf.type_ = IRLuaCodegen::FieldType::BOOL; break;
                 case FieldType::STRING: sf.type_ = IRLuaCodegen::FieldType::STRING; break;
+                case FieldType::VEC3:   sf.type_ = IRLuaCodegen::FieldType::VEC3; break;
+                case FieldType::IVEC3:  sf.type_ = IRLuaCodegen::FieldType::IVEC3; break;
             }
             s.fields_.push_back(std::move(sf));
         }
@@ -560,6 +677,46 @@ void writeOutput(
         os << "//   " << s.sourceFile_ << " (system " << s.name_ << ")\n";
     }
     os << "#pragma once\n\n";
+
+    // #1616: pre-emit the CODEGEN system bodies into a buffer first, so we can
+    // collect the set of engine-binding headers their whitelisted
+    // side-effecting calls (e.g. `IRRender.setSunIntensity`) require and emit
+    // those #includes alongside the static core set below. The buffer is
+    // flushed into the IRScript::CodegenRegistry namespace further down, in its
+    // original position — only the parse/emit timing moves, not the output
+    // order.
+    std::string systemsBuf;
+    std::set<std::string> extraIncludes;
+    const bool hasCodegenSystems = std::any_of(
+        cap.systems_.begin(), cap.systems_.end(),
+        [](const IRLuaCodegen::SystemRecord &r) {
+            return r.mode_ == IRLuaCodegen::SystemMode::CODEGEN;
+        }
+    );
+    if (hasCodegenSystems) {
+        const auto componentRegistry = toComponentSchemas(cap.components_);
+        for (auto &rec : cap.systems_) {
+            if (rec.mode_ != IRLuaCodegen::SystemMode::CODEGEN) {
+                continue;
+            }
+            int bodyStartLine = 0;
+            try {
+                rec.bodySource_ = IRLuaCodegen::sliceFunctionBody(
+                    rec.sourceFile_, rec.linedefined_, rec.lastlinedefined_, bodyStartLine
+                );
+                rec.bodyStartLine_ = bodyStartLine;
+                IRLuaCodegen::ParsedBody body = IRLuaCodegen::parseSystemBody(
+                    rec.sourceFile_, rec.bodyStartLine_, rec.bodySource_
+                );
+                IRLuaCodegen::emitSystem(systemsBuf, rec, body, componentRegistry, extraIncludes);
+            } catch (const IRLuaCodegen::ParseError &err) {
+                std::cerr << "lua_codegen: error in system '" << rec.name_ << "' at "
+                          << err.file_ << ":" << err.line_ << ": " << err.message_ << "\n";
+                std::exit(1);
+            }
+        }
+    }
+
     os << "#include <cstdint>\n";
     os << "#include <string>\n";
     os << "#include <vector>\n\n";
@@ -568,7 +725,14 @@ void writeOutput(
     os << "#include <irreden/ir_system.hpp>\n";
     os << "#include <irreden/script/lua_binding_traits.hpp>\n";
     os << "#include <irreden/script/lua_script.hpp>\n";
-    os << "#include <irreden/system/ir_system_types.hpp>\n\n";
+    os << "#include <irreden/system/ir_system_types.hpp>\n";
+    // #1616: engine-binding headers required by whitelisted side-effecting
+    // intrinsics used in this run's CODEGEN tick bodies (std::set → sorted,
+    // deduped). Empty unless a body calls an IRRender.* (or future) binding.
+    for (const auto &inc : extraIncludes) {
+        os << "#include <" << inc << ">\n";
+    }
+    os << "\n";
 
     os << "namespace IRComponents {\n\n";
     for (const auto &c : cap.components_) {
@@ -653,42 +817,18 @@ void writeOutput(
     // `inline IRSystem::SystemId createSystem_<NAME>()` that wraps a
     // typed `IRSystem::createSystem<...>` invocation with the translated
     // tick body. Component validation, intrinsic-whitelist enforcement, and
-    // strict DSL-violation errors all happen here — any reject surfaces as a
-    // codegen-time error pointing at file:line:feature.
+    // strict DSL-violation errors all happen in that emit pass — any reject
+    // surfaces as a codegen-time error pointing at file:line:feature.
     //
     // Systems with `mode = "eval"` are deliberately skipped here. Their
     // names are captured in `kEvalSystemNames` below as a prepared hook for
     // a future runtime verification loop — not yet consumed.
-    const bool hasCodegenSystems = std::any_of(
-        cap.systems_.begin(), cap.systems_.end(),
-        [](const IRLuaCodegen::SystemRecord &r) {
-            return r.mode_ == IRLuaCodegen::SystemMode::CODEGEN;
-        }
-    );
+    //
+    // #1616: the parse/emit pass ran earlier (so its required #includes could
+    // be hoisted into the include block above); `systemsBuf` already holds the
+    // emitted create-functions. Flush it here in its original output position.
     if (hasCodegenSystems) {
-        const auto componentRegistry = toComponentSchemas(cap.components_);
         os << "namespace IRScript::CodegenRegistry {\n\n";
-        std::string systemsBuf;
-        for (auto &rec : cap.systems_) {
-            if (rec.mode_ != IRLuaCodegen::SystemMode::CODEGEN) {
-                continue;
-            }
-            int bodyStartLine = 0;
-            try {
-                rec.bodySource_ = IRLuaCodegen::sliceFunctionBody(
-                    rec.sourceFile_, rec.linedefined_, rec.lastlinedefined_, bodyStartLine
-                );
-                rec.bodyStartLine_ = bodyStartLine;
-                IRLuaCodegen::ParsedBody body = IRLuaCodegen::parseSystemBody(
-                    rec.sourceFile_, rec.bodyStartLine_, rec.bodySource_
-                );
-                IRLuaCodegen::emitSystem(systemsBuf, rec, body, componentRegistry);
-            } catch (const IRLuaCodegen::ParseError &err) {
-                std::cerr << "lua_codegen: error in system '" << rec.name_ << "' at "
-                          << err.file_ << ":" << err.line_ << ": " << err.message_ << "\n";
-                std::exit(1);
-            }
-        }
         os << systemsBuf;
         os << "} // namespace IRScript::CodegenRegistry\n\n";
     }
@@ -863,6 +1003,27 @@ int main(int argc, char **argv) {
         }
     );
 
+    // IREnum.register shim — shared detail::registerLuaEnum guarantees identical ordinals at build time and runtime.
+    std::unordered_set<std::string> enumNames;
+    sol::table irEnum = lua.create_named_table("IREnum");
+    irEnum.set_function(
+        "register",
+        [&lua, &enumNames](
+            sol::this_state, const std::string &name, const sol::table &members
+        ) -> sol::table {
+            try {
+                return IRScript::detail::registerLuaEnum(lua, enumNames, name, members);
+            } catch (const std::exception &e) {
+                // Mirror schemaError(): print before the exception unwinds
+                // through LuaJIT, which drops what() in this tool (no
+                // SOL_EXCEPTIONS_ALWAYS_UNSAFE here). Keeps the diagnostic
+                // visible in the codegen build log / test 2>&1 capture.
+                std::cerr << e.what() << "\n";
+                throw;
+            }
+        }
+    );
+
     // T-107: real `IRSystem.registerSystem` shim — captures the system
     // metadata + tick function source location for later parse + emit. The
     // remaining IRSystem surface stays stubbed because the codegen tool
@@ -883,6 +1044,19 @@ int main(int argc, char **argv) {
     irSystem.set_function("systemId", [](sol::variadic_args) { return 0; });
     irSystem.set_function("replaceSystemBody", [](sol::variadic_args) {});
     irSystem["SystemName"] = lua.create_table();
+
+    // T-223: expose IRSystem.Concurrency as an integer table so .lua
+    // schemas can reference `IRSystem.Concurrency.PARALLEL_FOR` etc. on
+    // the registerSystem spec. Values mirror IRLuaCodegen::Concurrency
+    // (which in turn mirrors IRSystem::Concurrency on the engine side).
+    sol::table concurrencyTbl = lua.create_table();
+    concurrencyTbl["SERIAL"] =
+        static_cast<lua_Integer>(IRLuaCodegen::Concurrency::SERIAL);
+    concurrencyTbl["PARALLEL_FOR"] =
+        static_cast<lua_Integer>(IRLuaCodegen::Concurrency::PARALLEL_FOR);
+    concurrencyTbl["MAIN_THREAD"] =
+        static_cast<lua_Integer>(IRLuaCodegen::Concurrency::MAIN_THREAD);
+    irSystem["Concurrency"] = concurrencyTbl;
 
     sol::table irTime = lua.create_named_table("IRTime");
     irTime["UPDATE"] = 0;
