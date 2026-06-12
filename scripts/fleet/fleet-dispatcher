@@ -118,6 +118,11 @@ _env_effort_smoke_worker="${FLEET_EFFORT_SMOKE_WORKER:-}"
 _env_effort_epic_steward="${FLEET_EFFORT_EPIC_STEWARD:-}"
 # Same guard for the model-class knobs (consumed by the class table and
 # ROLE_MODEL map further down) and the fable concurrency cap.
+# INVARIANT: every FLEET_MODEL_<ROLE> knob must appear in all THREE sites —
+# capture here (before `source`), restore below (after `source`), and unset at
+# the end of the block. Miss one and a conf-set value silently wins over the
+# caller's env for that role (reversed precedence, no error). The
+# FLEET_EFFORT_<ROLE> block above follows the identical three-site rule.
 _env_model_fable="${FLEET_MODEL_FABLE:-}"
 _env_model_opus="${FLEET_MODEL_OPUS:-}"
 _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
