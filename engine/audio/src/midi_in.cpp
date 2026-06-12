@@ -4,6 +4,7 @@
 #include <irreden/audio/midi_in.hpp>
 #include <irreden/update/components/component_lifetime.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
+#include <irreden/audio/components/component_midi_source_port.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 
 using namespace IRComponents;
@@ -15,23 +16,13 @@ MidiIn::MidiIn()
     : m_rtMidiIn{}
     , m_numberPorts(m_rtMidiIn.getPortCount())
     , m_portNames{}
-    , m_openPorts{}
-    , m_rtMidiInMap{}
-    , m_ccMessagesThisFrame{}
-    , m_midiNoteOffMessagesThisFrame{}
-    , m_midiNoteOnMessagesThisFrame{} {
+    , m_ports{}
+    , m_frameBuffer{} {
     IRE_LOG_INFO("Descovered {} MIDI input sources", m_numberPorts);
     for (int i = 0; i < m_numberPorts; i++) {
         m_portNames.push_back(m_rtMidiIn.getPortName(i));
         IRE_LOG_INFO("MIDI input source {}: {}", i, m_portNames[i].c_str());
     }
-
-    for (unsigned char i = 0; i < kNumMidiChannels; ++i) {
-        m_ccMessagesThisFrame.insert({i, std::unordered_map<CCMessage, CCData>{}});
-        m_midiNoteOffMessagesThisFrame.insert({i, std::vector<C_MidiMessage>{}});
-        m_midiNoteOnMessagesThisFrame.insert({i, std::vector<C_MidiMessage>{}});
-    }
-    setCallback(m_rtMidiIn, readMessageTestCallbackNew);
     IRE_LOG_INFO("Created MidiIn");
 }
 
@@ -43,46 +34,53 @@ void MidiIn::tick() {
 }
 
 void MidiIn::clearPreviousMessages() {
-    for (auto &channelMap : m_ccMessagesThisFrame) {
-        channelMap.second.clear();
-    }
-    for (auto &channelMap : m_midiNoteOnMessagesThisFrame) {
-        channelMap.second.clear();
-    }
-    for (auto &channelMap : m_midiNoteOffMessagesThisFrame) {
-        channelMap.second.clear();
-    }
+    m_frameBuffer.clear();
 }
 
 CCData MidiIn::checkCCMessageThisFrame(MidiChannel channel, CCMessage ccNumber) const {
-    if (!m_ccMessagesThisFrame.at(channel).contains(ccNumber)) {
-        return kCCFalse;
-    }
-    return m_ccMessagesThisFrame.at(channel).at(ccNumber);
+    return m_frameBuffer.checkCC(channel, ccNumber);
+}
+CCData
+MidiIn::checkCCMessageThisFrame(int portIndex, MidiChannel channel, CCMessage ccNumber) const {
+    return m_frameBuffer.checkCC(portIndex, channel, ccNumber);
 }
 
 const std::vector<C_MidiMessage> &MidiIn::getMidiNotesOnThisFrame(MidiChannel channel) const {
-    return m_midiNoteOnMessagesThisFrame.at(channel);
+    return m_frameBuffer.notesOn(channel);
 }
 const std::vector<C_MidiMessage> &MidiIn::getMidiNotesOffThisFrame(MidiChannel channel) const {
-    return m_midiNoteOffMessagesThisFrame.at(channel);
+    return m_frameBuffer.notesOff(channel);
 }
-
-// void MidiIn::openPort(unsigned int portNumber) {
-//     IRE_LOG_INFO("Opening MIDI In port {}", portNumber);
-//     m_rtMidiIn.openPort(portNumber);
-//     m_openPorts.push_back(portNumber);
-// }
+const std::vector<C_MidiMessage> &
+MidiIn::getMidiNotesOnThisFrame(int portIndex, MidiChannel channel) const {
+    return m_frameBuffer.notesOn(portIndex, channel);
+}
+const std::vector<C_MidiMessage> &
+MidiIn::getMidiNotesOffThisFrame(int portIndex, MidiChannel channel) const {
+    return m_frameBuffer.notesOff(portIndex, channel);
+}
 
 int MidiIn::openPort(const std::string &portNameSubstring) {
     for (int i = 0; i < m_numberPorts; i++) {
         const std::string_view portName{m_portNames[i]};
-        if (portName.find(portNameSubstring) != portName.npos) {
-            m_rtMidiIn.openPort(i);
-            m_openPorts.push_back(i);
-            IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
-            return i;
+        if (portName.find(portNameSubstring) == portName.npos) {
+            continue;
         }
+        for (const auto &port : m_ports) {
+            if (port->portIndex_ == i) {
+                IRE_LOG_INFO("MIDI In port {} ({}) already open", i, portName);
+                return i;
+            }
+        }
+        auto port = std::make_unique<MidiInPort>();
+        port->portIndex_ = i;
+        port->name_ = m_portNames[i];
+        port->rtMidiIn_ = std::make_unique<RtMidiIn>();
+        port->rtMidiIn_->openPort(i);
+        port->rtMidiIn_->setCallback(readMessageTestCallbackNew, &port->queue_);
+        m_ports.push_back(std::move(port));
+        IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
+        return i;
     }
     IRE_LOG_WARN(
         "No MIDI input port matching '{}' — {} port(s) available",
@@ -100,32 +98,52 @@ const std::vector<std::string> &MidiIn::getPortNames() const {
     return m_portNames;
 }
 
-void MidiIn::processMidiMessageQueue() {
+std::vector<int> MidiIn::getOpenPortIndices() const {
+    std::vector<int> indices;
+    indices.reserve(m_ports.size());
+    for (const auto &port : m_ports) {
+        indices.push_back(port->portIndex_);
+    }
+    return indices;
+}
 
-    while (!m_messageQueue.empty()) {
-        const C_MidiMessage &message = m_messageQueue.front();
-        IREntity::createEntity(C_MidiMessage{message}, C_MidiIn{}, C_Lifetime{1});
-        m_messageQueue.pop();
+void MidiIn::processMidiMessageQueue() {
+    for (auto &port : m_ports) {
+        while (!port->queue_.empty()) {
+            const C_MidiMessage &message = port->queue_.front();
+            IREntity::createEntity(
+                C_MidiMessage{message},
+                C_MidiIn{},
+                C_MidiSourcePort{port->portIndex_},
+                C_Lifetime{1}
+            );
+            port->queue_.pop();
+        }
     }
 }
 
 void MidiIn::insertNoteOffMessage(MidiChannel channel, const C_MidiMessage &midiMessage) {
-    m_midiNoteOffMessagesThisFrame[channel].push_back(midiMessage);
+    m_frameBuffer.insertNoteOff(channel, midiMessage);
 }
-
 void MidiIn::insertNoteOnMessage(MidiChannel channel, const C_MidiMessage &midiMessage) {
-    m_midiNoteOnMessagesThisFrame[channel].push_back(midiMessage);
+    m_frameBuffer.insertNoteOn(channel, midiMessage);
 }
-
 void MidiIn::insertCCMessage(MidiChannel channel, const C_MidiMessage &midiMessage) {
-    m_ccMessagesThisFrame[channel][midiMessage.getCCNumber()] = midiMessage.getCCValue();
+    m_frameBuffer.insertCC(channel, midiMessage);
 }
 
-void MidiIn::setCallback(
-    RtMidiIn &rtMidiIn,
-    void (*midiInputCallback)(double timeStamp, std::vector<unsigned char> *message, void *userData)
+void MidiIn::insertNoteOffMessage(
+    int portIndex, MidiChannel channel, const C_MidiMessage &midiMessage
 ) {
-    rtMidiIn.setCallback(midiInputCallback, &m_messageQueue);
+    m_frameBuffer.insertNoteOff(portIndex, channel, midiMessage);
+}
+void MidiIn::insertNoteOnMessage(
+    int portIndex, MidiChannel channel, const C_MidiMessage &midiMessage
+) {
+    m_frameBuffer.insertNoteOn(portIndex, channel, midiMessage);
+}
+void MidiIn::insertCCMessage(int portIndex, MidiChannel channel, const C_MidiMessage &midiMessage) {
+    m_frameBuffer.insertCC(portIndex, channel, midiMessage);
 }
 
 //-----------Callback---------//

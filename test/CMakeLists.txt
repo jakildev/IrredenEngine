@@ -11,6 +11,7 @@ add_executable(IrredenEngineTest
   asset/voxel_set_hybrid_test.cpp
   asset/voxel_set_rle_test.cpp
   asset/voxel_set_shapes_test.cpp
+  audio/midi_multiport_test.cpp
   audio/music_theory_test.cpp
   common/ir_platform_test.cpp
   ecs/entity_manager_test.cpp

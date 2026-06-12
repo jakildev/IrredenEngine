@@ -1,10 +1,12 @@
 #ifndef SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
 #define SYSTEM_AUDIO_MIDI_MESSAGE_IN_H
 
+#include <irreden/ir_system.hpp>
 #include <irreden/ir_audio.hpp>
 
 #include <irreden/audio/components/component_midi_device.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
+#include <irreden/audio/components/component_midi_source_port.hpp>
 #include <irreden/audio/components/component_midi_channel.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
@@ -17,24 +19,32 @@ namespace IRSystem {
 
 template <> struct System<INPUT_MIDI_MESSAGE_IN> {
     static SystemId create() {
-        SystemId system =
-            createSystem<C_MidiMessage>("InputMidiMessageIn", [](C_MidiMessage &midiMessage) {
+        // Match C_MidiSourcePort so only genuine inbound messages (tagged with
+        // their source port by MidiIn::processMidiMessageQueue) are drained
+        // into the query buffer — outbound C_MidiMessage entities lack it and
+        // are left for the OUTPUT system. The port id routes each message into
+        // both the merged (all-ports) and per-port query views.
+        SystemId system = createSystem<C_MidiMessage, C_MidiSourcePort>(
+            "InputMidiMessageIn",
+            [](C_MidiMessage &midiMessage, C_MidiSourcePort &sourcePort) {
                 const MidiStatus statusBits = midiMessage.getStatusBits();
                 const MidiChannel channel = midiMessage.getChannelBits();
+                const int portIndex = sourcePort.portIndex_;
 
                 if (statusBits == IRAudio::kMidiStatus_NOTE_ON) {
                     IRE_LOG_INFO("Midi message note on!");
-                    IRAudio::insertNoteOnMessage(channel, midiMessage);
+                    IRAudio::insertNoteOnMessage(portIndex, channel, midiMessage);
                 }
                 if (statusBits == IRAudio::kMidiStatus_NOTE_OFF) {
                     IRE_LOG_INFO("Midi message note off!");
-                    IRAudio::insertNoteOffMessage(channel, midiMessage);
+                    IRAudio::insertNoteOffMessage(portIndex, channel, midiMessage);
                 }
                 if (statusBits == IRAudio::kMidiStatus_CONTROL_CHANGE) {
                     IRE_LOG_DEBUG("Midi message control change!");
-                    IRAudio::insertCCMessage(channel, midiMessage);
+                    IRAudio::insertCCMessage(portIndex, channel, midiMessage);
                 }
-            });
+            }
+        );
         addSystemTag<C_MidiIn>(system);
         return system;
     }
