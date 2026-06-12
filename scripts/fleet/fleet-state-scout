@@ -34,7 +34,7 @@ from pathlib import Path
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests (#1425).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fleet_branch_match import branch_matches_issue
+from fleet_branch_match import branch_matches_issue, PARKED_PR_LABELS
 
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
@@ -1242,6 +1242,42 @@ def enrich_stackable_blocker_prs(state):
             }
 
 
+def enrich_inflight_pr_tasks(state):
+    # A queued task whose OWN issue (#N) already has an open implementation PR
+    # (branch `claude/<N>-…`) is not something a fresh worker can claim off the
+    # queue: the PR is either active work or parked awaiting a design answer,
+    # and the resume path in both cases is the feedback / design-unblocked tier,
+    # not a fresh queue claim. The scout already routes actively-claimed tasks
+    # (fleet:in-progress) into tasks.in_progress, but a *parked* design-blocked
+    # PR releases its issue-side claim during the escalation flow — so its task
+    # drops back into tasks.open looking owner-free and claimable, while a fresh
+    # worker would (correctly) refuse it on sight. That projection/behaviour
+    # mismatch let the dispatch resolver keep electing such a task head-of-queue
+    # and churn no-op opus dispatches, starving fable work behind it (#1726 —
+    # the #1640 / PR #1700 incident). Tag the task with `inflight_pr` so
+    # fleet_task_class._task_claimable skips it; the projection item carried in
+    # the role trigger hash is unchanged (id + blocked_by), so this adds no
+    # spurious trigger churn — only the resolver's claimable filter sees it.
+    for repo_key, repo_state in state["repos"].items():
+        prs = repo_state.get("prs", [])
+        for task in repo_state.get("tasks", {}).get("open", []):
+            issue_num = (task.get("issue") or "").lstrip("#")
+            if not issue_num:
+                continue
+            match = next(
+                (pr for pr in prs
+                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)),
+                None,
+            )
+            if match is None:
+                continue
+            task["inflight_pr"] = {
+                "number": match.get("number"),
+                "headRefName": match.get("headRefName", ""),
+                "parked": bool(set(match.get("labels", [])) & PARKED_PR_LABELS),
+            }
+
+
 # Narrowed label sets stored in the per-role hash item. Storing the full
 # pr["labels"] list here re-flips the projection hash on every transient
 # label change (merger toggling fleet:merger-cooldown, reviewers swapping
@@ -1976,6 +2012,7 @@ def tick_once():
     resolve_human_approved_blockers(state)
     resolve_epic_children(state)
     enrich_stackable_blocker_prs(state)
+    enrich_inflight_pr_tasks(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
     try:

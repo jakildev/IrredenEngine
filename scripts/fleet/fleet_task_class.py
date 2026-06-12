@@ -23,10 +23,11 @@ else the class default below.
 
 The fable concurrency cap is enforced here by *skipping* fable items when
 the cap is reached — the lane then serves its next non-fable item instead
-of idling. When fable items were skipped and nothing else is actionable,
-the verdict is ``defer`` (keep the trigger, dispatch nothing) rather than
-an empty result, so the dispatcher doesn't burn an iteration on a lane
-whose only work is gate-refused.
+of idling. When the only work left is non-actionable — cap-blocked fable,
+or tasks already covered by an open implementation PR (``inflight_pr``,
+#1726) — the verdict is ``defer`` (keep the trigger, dispatch nothing)
+rather than an empty result, so the dispatcher doesn't burn an iteration
+on a lane whose only work a fresh worker would refuse.
 
 Output protocol (one line on stdout, consumed by fleet-dispatcher):
 
@@ -34,7 +35,10 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   claimable items of a *different* class
                                   remain (keep the trigger so the next tick
                                   serves them), else 0.
-  ``defer``                     — only cap-blocked fable work right now.
+  ``defer``                     — queue isn't empty but nothing is claimable
+                                  right now (only cap-blocked fable, or tasks
+                                  with an open implementation PR). Keep the
+                                  trigger; dispatch nothing.
   (empty)                       — nothing class-routable in the slice; the
                                   dispatcher falls back to the lane default
                                   (this path covers reservation resumes and
@@ -52,7 +56,31 @@ FEEDBACK_BLOCKING_LABELS = {"human:needs-fix", "human:blocker", "fleet:needs-fix
 
 
 def _task_claimable(task):
-    return task.get("owner") in (None, "", "free") and not task.get("blocked")
+    # `inflight_pr` (set by the scout) means an open PR already implements this
+    # issue — parked on a design question or otherwise in flight — so a fresh
+    # worker can't start it off the queue. Skipping it here stops the dispatcher
+    # churning no-op iterations on a head-of-queue task every candidate refuses,
+    # which was starving lower-class work queued behind it (#1726, the #1640 /
+    # design-blocked PR #1700 incident).
+    return (
+        task.get("owner") in (None, "", "free")
+        and not task.get("blocked")
+        and not task.get("inflight_pr")
+    )
+
+
+def _only_inflight_pr_tasks(slice_data):
+    """True when tasks_open is non-empty and EVERY item is non-actionable
+    solely because an open PR already implements it (`inflight_pr`).
+
+    Used to pick 'go quiet' (defer) over the lane-default dispatch fallthrough:
+    in this shape a fresh worker can claim nothing, so a dispatch is a no-op.
+    Requiring *all* items to be inflight keeps a mixed slice (an inflight head
+    plus a stackable `blocked` task behind it) on the '' fallthrough so the
+    worker's stackable tier still gets its dispatch.
+    """
+    tasks = slice_data.get("tasks_open") or []
+    return bool(tasks) and all(t.get("inflight_pr") for t in tasks)
 
 
 def feedback_pr_class(labels):
@@ -105,10 +133,23 @@ def resolve(slice_data, lane_default, fable_blocked):
         servable_classes.add(cls)
         if chosen is None:
             chosen = (cls, effort)
-    if chosen is None:
-        return "defer" if skipped_fable else ""
-    more = 1 if servable_classes - {chosen[0]} else 0
-    return f"{chosen[0]} {chosen[1]} {more}"
+    if chosen is not None:
+        more = 1 if servable_classes - {chosen[0]} else 0
+        return f"{chosen[0]} {chosen[1]} {more}"
+    if skipped_fable:
+        return "defer"
+    # Nothing servable AND no cap-blocked fable. If the queue's only content is
+    # tasks already implemented by an open PR (every tasks_open item carries
+    # `inflight_pr`), a lane-default dispatch is a guaranteed no-op — a fresh
+    # worker refuses every one on sight — so the lane goes quiet (defer) instead
+    # of churning that no-op every tick (#1726). Any other shape (a claimable
+    # task would have been chosen above; a plain `blocked` task may still be
+    # stackable; an owned task, an empty/missing slice) returns '' so the
+    # dispatcher's lane-default fallthrough keeps covering the stackable tier,
+    # reservation resumes, and missing slices.
+    if _only_inflight_pr_tasks(slice_data):
+        return "defer"
+    return ""
 
 
 def main(argv):

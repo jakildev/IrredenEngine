@@ -1107,16 +1107,19 @@ dispatch_role() {
     # multiple panes dispatched this tick race-claim within the class.
     resolve_worker_class "$role"
     if (( DISPATCH_DEFER )); then
-        # Only cap-blocked fable work is actionable. Dispatching the lane
-        # default would burn an iteration on gate-refused claims; keep
-        # the trigger and wait for a fable slot to free up.
-        if [[ -z "${CAP_DEFER_LOGGED[$role-fable]+x}" ]]; then
-            log "$role: only fable-class work actionable but fable cap ($FABLE_CONCURRENCY_CAP) is full; deferring trigger"
-            CAP_DEFER_LOGGED["$role-fable"]=1
+        # Nothing a fresh worker can claim right now: either the only
+        # actionable work is cap-blocked fable, or the queue's only items
+        # already have open implementation PRs (inflight_pr, #1726).
+        # Dispatching the lane default would burn an iteration on
+        # gate-refused claims; keep the trigger and wait (a freed fable
+        # slot or a resolved/merged PR re-fires the scout projection).
+        if [[ -z "${CAP_DEFER_LOGGED[$role-noclaim]+x}" ]]; then
+            log "$role: no claimable work (cap-blocked fable or in-flight PRs only); deferring trigger"
+            CAP_DEFER_LOGGED["$role-noclaim"]=1
         fi
         return
     fi
-    unset "CAP_DEFER_LOGGED[$role-fable]"
+    unset "CAP_DEFER_LOGGED[$role-noclaim]"
 
     local dispatched=0
     local gap_blocked=""
