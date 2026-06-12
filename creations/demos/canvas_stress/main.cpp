@@ -135,6 +135,11 @@ struct CanvasStressSettings {
     int sweepYawCount_ = 0;
     int sweepFramesCount_ = 0;
     int sweepFramesSettle_ = 0;
+    // `--auto-profile` enables per-system frame timing so the World dtor
+    // writes save_files/profile_report.txt on the auto-screenshot exit —
+    // the per-system CPU sensor for the rotating-GRID / re-voxelize load
+    // this demo uniquely exercises (perf_grid has no rotating sets).
+    bool autoProfile_ = false;
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -678,6 +683,8 @@ void parseArgs(int argc, char **argv) {
             g_settings.sweepFramesCount_ = std::atoi(argv[i + 1]);
             g_settings.sweepFramesSettle_ = std::atoi(argv[i + 2]);
             i += 2;
+        } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
+            g_settings.autoProfile_ = true;
         }
     }
     if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
@@ -700,6 +707,9 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: canvas_stress");
     IREngine::init(argv[0]);
     readConfig();
+    if (g_settings.autoProfile_) {
+        IREngine::enableFrameTiming(true);
+    }
 
     initSystems();
     initCommands();
@@ -1096,14 +1106,15 @@ void initEntities() {
     constexpr int kOrbitCount = 12;
     constexpr float kOrbitRadius = 200.0f;
     // Shape↔mode pairing is by robustness. Both CELL-REBAKING paths — GRID (main
-    // world canvas) and DETACHED_REVOXELIZE (detached) — now re-derive the
-    // exposed mask against the rotated cells (#1570 detached + its GRID parity),
-    // so they render detailed SOLID shapes (sphere / octahedron) cleanly, not
-    // just cubes. What still aliases on those paths is THIN geometry (round-to-
-    // cell leaves gaps in wireframes / arms), so the frame + cross go to the
-    // forward-scatter DETACHED path, which deforms face SHAPES instead of moving
-    // cells and renders thin detail crisply. Spheres appear on all three paths
-    // for a side-by-side of the techniques.
+    // world canvas) and DETACHED_REVOXELIZE (detached) — re-derive the exposed
+    // mask against the rotated cells (#1570) and inverse-resample the dest
+    // lattice (#1619 detached, #1720 GRID), so coverage is hole-free for solids
+    // AND for thin carved shapes (the full-box span has slot slack ≫ covered
+    // cells). The CROSS rides the GRID path deliberately as the standing thin-
+    // geometry regression guard (#1720 DoD); the FRAME stays on forward-scatter
+    // DETACHED, which deforms face SHAPES instead of moving cells (the
+    // wireframe also showcases that technique's crisp thin detail). Spheres
+    // appear on all three paths for a side-by-side of the techniques.
     constexpr OrbitShape kOrbitShapes[kOrbitCount]{
         OrbitShape::SPHERE,
         OrbitShape::FRAME,
@@ -1122,8 +1133,8 @@ void initEntities() {
         RotationMode::GRID,
         RotationMode::DETACHED,
         RotationMode::DETACHED_REVOXELIZE,
-        RotationMode::GRID,
-        RotationMode::DETACHED,
+        RotationMode::DETACHED, // octahedron
+        RotationMode::GRID,     // cross — the standing GRID thin-geometry guard (#1720)
         RotationMode::DETACHED_REVOXELIZE,
         RotationMode::GRID,
         RotationMode::DETACHED,
