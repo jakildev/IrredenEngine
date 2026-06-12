@@ -1148,6 +1148,16 @@ struct IsoBounds2D {
     vec2 extent() const {
         return max_ - min_;
     }
+
+    /// Returns the intersection with @p other. Disjoint inputs produce an
+    /// empty result (min_ > max_ on the separated axis); point/AABB tests
+    /// against an empty box correctly reject everything.
+    IsoBounds2D intersect(const IsoBounds2D &other) const {
+        return {
+            vec2(glm::max(min_.x, other.min_.x), glm::max(min_.y, other.min_.y)),
+            vec2(glm::min(max_.x, other.max_.x), glm::min(max_.y, other.max_.y))
+        };
+    }
 };
 
 /// Returns the visible iso-space viewport rectangle given camera and canvas

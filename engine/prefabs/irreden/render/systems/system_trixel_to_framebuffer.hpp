@@ -37,6 +37,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // single-canvas gather draw on the main canvas while rotating; see
     // drawPerAxisScatter.
     ShaderProgram *scatterProgram_ = nullptr;
+    // Scatter compaction (#1310 perf follow-up): compute pre-pass appending
+    // each axis canvas's non-empty cell indices + the indirect draw args the
+    // scatter consumes via drawElementsIndirect.
+    ShaderProgram *scatterCompactProgram_ = nullptr;
+    Buffer *scatterCellsBuf_ = nullptr;
+    Buffer *scatterDrawArgsBuf_ = nullptr;
     VAO *quadVao_ = nullptr;
 
     // Smooth camera Z-yaw (T3 / #1310). Re-resolved every frame in beginTick,
@@ -269,20 +275,57 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.scatterDebugMode_ = static_cast<int>(IRRender::getDebugOverlay());
         frameData.updateFrameData(frameDataBuf_);
 
-        scatterProgram_->use();
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
-        const int instanceCount = axes.size_.x * axes.size_.y;
         for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
             const C_PerAxisTrixelCanvases::AxisTextures &tex = axes.axes_[axis];
+
+            // Compaction pre-pass: append this axis canvas's non-empty cell
+            // indices and author the indirect draw's instanceCount, so the
+            // scatter launches one instance per OCCUPIED cell. The brute-force
+            // full-grid sweep this replaces degenerated >90% of its instances
+            // — the worst-case (2W, W+H) canvas is mostly empty at every zoom
+            // (a flat ~6 ms/frame on the rotated path at 1280×720).
+            // Bindings 25/26 are re-asserted each pass: they alias the voxel
+            // pipeline's CompactedVoxelIndices / IndirectDispatchParams slots
+            // (the Metal 0-30 table has no free index; same pattern as the
+            // sprite instances buffer), restored after the axis loop.
+            const std::uint32_t drawArgsTemplate[5] =
+                {static_cast<std::uint32_t>(IRShapes2D::kQuadIndicesLength), 0u, 0u, 0u, 0u};
+            scatterDrawArgsBuf_->subData(0, sizeof(drawArgsTemplate), drawArgsTemplate);
+            scatterCellsBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_CompactedVoxelIndices
+            );
+            scatterDrawArgsBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_IndirectDispatchParams
+            );
+            scatterCompactProgram_->use();
+            tex.colors_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            IRRender::device()->dispatchCompute(
+                IRMath::divCeil(axes.size_.x, 16),
+                IRMath::divCeil(axes.size_.y, 16),
+                1
+            );
+            IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+            IRRender::device()->memoryBarrier(BarrierType::COMMAND);
+
+            scatterProgram_->use();
             tex.colors_.second->bind(0);
             tex.distances_.second->bind(1);
-            IRRender::device()->drawElementsInstanced(
+            IRRender::device()->drawElementsIndirect(
                 DrawMode::TRIANGLES,
-                IRShapes2D::kQuadIndicesLength,
                 IndexType::UNSIGNED_SHORT,
-                instanceCount
+                scatterDrawArgsBuf_,
+                0
             );
         }
+        // Restore the canonical owners of the aliased binding points for the
+        // next frame's voxel compact + stage dispatches.
+        IRRender::getNamedResource<Buffer>("CompactedVoxelIndices")
+            ->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
+        IRRender::getNamedResource<Buffer>("IndirectDispatchParams")
+            ->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
         // Restore the gather program for any subsequent canvas's single-canvas
         // tick (background / gui / overlays draw after the main canvas).
         program_->use();
@@ -333,6 +376,45 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 ShaderStage{IRRender::kFileFragPerAxisScatter, ShaderType::FRAGMENT}
             }
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisScatterCompactProgram",
+            std::vector{ShaderStage{IRRender::kFileCompCompactScatterCells, ShaderType::COMPUTE}}
+        );
+        // Scatter-compaction buffers, sized for the worst-case per-axis canvas
+        // the main canvas can allocate (every cell occupied). The draw-args
+        // buffer is one 5-uint indirect command, CPU-seeded per axis pass.
+        {
+            const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
+            ivec2 worstCase = ivec2(1);
+            if (mainCanvas != IREntity::kNullEntity) {
+                auto cardinal =
+                    IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvas);
+                if (cardinal.has_value()) {
+                    worstCase = IRMath::perAxisTrixelCanvasWorstCaseSize(
+                        (*cardinal.value()).size_,
+                        IRPrefab::PerAxisCanvas::kMinOnScreenTrixelSizePx
+                    );
+                }
+            }
+            // Created WITHOUT a bind point: both alias voxel-pipeline slots
+            // (25 / 26) and are bindBase'd per axis pass inside
+            // drawPerAxisScatter, with the canonical owners re-asserted after
+            // the loop. Binding here would clobber the voxel pipeline's
+            // creation-time bindings on every cardinal-only run.
+            IRRender::createNamedResource<Buffer>(
+                "PerAxisScatterCells",
+                nullptr,
+                static_cast<std::size_t>(worstCase.x) * static_cast<std::size_t>(worstCase.y) *
+                    sizeof(std::uint32_t),
+                BUFFER_STORAGE_DYNAMIC
+            );
+            IRRender::createNamedResource<Buffer>(
+                "PerAxisScatterDrawArgs",
+                nullptr,
+                5 * sizeof(std::uint32_t),
+                BUFFER_STORAGE_DYNAMIC
+            );
+        }
         IRRender::createNamedResource<Buffer>(
             "TrixelToFramebufferFrameData",
             nullptr,
@@ -366,6 +448,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->hoveredIdBuf_ = IRRender::getNamedResource<Buffer>("HoveredEntityIdBuffer");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram");
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
+        sys->scatterCompactProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("PerAxisScatterCompactProgram");
+        sys->scatterCellsBuf_ = IRRender::getNamedResource<Buffer>("PerAxisScatterCells");
+        sys->scatterDrawArgsBuf_ = IRRender::getNamedResource<Buffer>("PerAxisScatterDrawArgs");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         IRRender::tagGpuStage(id, "trixelToFb");
         return id;

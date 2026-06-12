@@ -424,16 +424,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameData_.canvasSizePixels_ = axes.size_;
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
+            // Dispatch the single-z-slice indirect command (byte offset 20,
+            // see VoxelIndirectDispatchParams): the per-axis store writes at
+            // base resolution (#1458) and only the z=0 invocation emits, so
+            // the primary command's subdivisions² z-slices are subdivisions²×
+            // overdispatch here — the dominant rotated-frame cost at high
+            // zoom before this used the dedicated command.
+            constexpr std::ptrdiff_t kSingleSliceOffset =
+                offsetof(VoxelIndirectDispatchParams, singleSliceNumGroupsX);
             stage1Program_->use();
             distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->dispatchComputeIndirect(indirectBuf_, kSingleSliceOffset);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
             stage2Program_->use();
             colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->dispatchComputeIndirect(indirectBuf_, kSingleSliceOffset);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
 
@@ -535,7 +543,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Shadow-feeder params are resolved once per frame in beginTick
         // (frameShadowFeederParams), so no C_LightSource archetype scan runs
         // per entity; shadowFeederCullViewport reuses them at both margins.
-        const IsoBounds2D chunkVp =
+        IsoBounds2D chunkVp =
             IRPrefab::SunShadow::shadowFeederCullViewport(kCullChunkMargin, shadowFeederParams_);
         const CardinalIndex chunkCardinal = IRMath::rasterYawCardinalIndex(frameData_.rasterYaw_);
         // Smooth camera Z-yaw (T3 / #1310): while rotating (residual yaw != 0,
@@ -544,6 +552,39 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // off-center chunks aren't dropped by the cardinal snap. residual == 0
         // keeps the byte-identical cardinal path.
         const bool rotating = frameData_.residualYaw_ != 0.0f;
+
+        // Canvas-coverage cull clamp. A subdivided raster writes its taps at
+        // trixelFrameOffset + isoPos*scale, so the fixed-size canvas only
+        // holds iso positions within canvasSize/(2*scale) of the view center
+        // — anything beyond that (notably the shadow-feeder sweep, a
+        // constant-world-size region whose share of raster work grows as
+        // scale² while the canvas can hold less of it) has EVERY tap rejected
+        // by the texture-bounds check. Intersecting the cull viewports with
+        // the coverage is byte-identical to the un-clamped raster and skips
+        // the z-slice dispatch on voxels that could never land a write (the
+        // zoom-scaled FULL-mode frame-time cliff). Skipped while rotating —
+        // the compacted list feeds only the per-axis store there, whose
+        // face-local base-resolution window is far wider than the main canvas
+        // coverage — and for detached canvases (model-space raster).
+        const int rasterScale = frameData_.voxelRenderOptions_.x != 0
+                                    ? IRMath::max(frameData_.voxelRenderOptions_.y, 1)
+                                    : 1;
+        const bool clampToCanvasCoverage =
+            !rotating && !canvasLocalRotation.isDetached() && rasterScale > 1;
+        // Absorbs the floor(camIso*scale)/scale vs floor(camIso) rounding
+        // mismatch plus the ~2-px iso footprint of a voxel face diamond.
+        constexpr int kCoverageSlackPx = 4;
+        if (clampToCanvasCoverage) {
+            chunkVp = chunkVp.intersect(
+                IRMath::visibleIsoViewport(
+                    IRRender::getCullViewport().cameraIso_,
+                    IRMath::trixelOriginOffsetZ1(triangleCanvasTextures.size_),
+                    triangleCanvasTextures.size_,
+                    vec2(static_cast<float>(rasterScale)),
+                    kCullChunkMargin + kCoverageSlackPx
+                )
+            );
+        }
         if (revoxInverse) {
             // Dest-cell domain (#1619): the rotated solid rasters in its own
             // model-space canvas (camera pan/yaw zeroed), so the whole solid is
@@ -571,8 +612,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         constexpr int kGpuMargin = 4;
-        const IsoBounds2D gpuVp =
+        IsoBounds2D gpuVp =
             IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
+        if (clampToCanvasCoverage) {
+            // Same coverage clamp as the chunk gate above, at this margin.
+            gpuVp = gpuVp.intersect(
+                IRMath::visibleIsoViewport(
+                    IRRender::getCullViewport().cameraIso_,
+                    IRMath::trixelOriginOffsetZ1(triangleCanvasTextures.size_),
+                    triangleCanvasTextures.size_,
+                    vec2(static_cast<float>(rasterScale)),
+                    kGpuMargin + kCoverageSlackPx
+                )
+            );
+        }
         frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
         frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);

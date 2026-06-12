@@ -15,9 +15,12 @@ const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffe
 // Smooth camera Z-yaw forward-scatter composite (T3 / #1310): instanced draw
 // over per-axis canvas cells, scattering each occupied cell as its deformed
 // face quad into the framebuffer depth buffer (Metal mirror in
-// metal/peraxis_scatter.metal).
+// metal/peraxis_scatter.metal). The compaction pre-pass appends each axis
+// canvas's non-empty cell indices + the indirect draw args so the scatter
+// launches one instance per occupied cell, not one per canvas cell.
 const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
+const char *const kFileCompCompactScatterCells = "shaders/c_compact_scatter_cells.glsl";
 
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";

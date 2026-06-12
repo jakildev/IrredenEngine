@@ -962,7 +962,14 @@ struct VoxelIndirectDispatchParams {
     std::uint32_t numGroupsZ = 0;
     std::uint32_t visibleCount = 0;
     std::uint32_t completedGroups = 0;
-    std::uint32_t _padding[3] = {};
+    // Second indirect dispatch command (byte offset 20): same XY extent as
+    // the primary command but a single z-slice, for passes that walk the
+    // compacted voxel list exactly once per voxel. The per-axis smooth-yaw
+    // store dispatches it — its lattice is base-resolution (#1458), so the
+    // primary command's subdivisions² z-slices are pure overdispatch there.
+    std::uint32_t singleSliceNumGroupsX = 0;
+    std::uint32_t singleSliceNumGroupsY = 0;
+    std::uint32_t singleSliceNumGroupsZ = 0;
 };
 
 // TODO: Future culling optimization constants

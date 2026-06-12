@@ -14,9 +14,10 @@
 //   [2] numGroupsZ        (written by last group)
 //   [3] visibleCount      (atomic increment, read by stage 1 / stage 2)
 //   [4] completedGroups   (atomic increment, last-group barrier)
-// All five fields are accessed through a single `device atomic_uint*` so
-// that we can mix atomic_fetch_add (3, 4) with atomic_store (0, 1, 2)
-// without rebinding the buffer.
+//   [5..7] singleSlice command — same XY, z=1 (per-axis store dispatch)
+// All fields are accessed through a single `device atomic_uint*` so
+// that we can mix atomic_fetch_add (3, 4) with atomic_store (0, 1, 2,
+// 5..7) without rebinding the buffer.
 //
 // memory_order_relaxed is intentional. The happens-before edge that makes
 // the indirect-dispatch params visible to the following pipeline stage
@@ -33,6 +34,11 @@ constant uint kSlotNumGroupsY     = 1;
 constant uint kSlotNumGroupsZ     = 2;
 constant uint kSlotVisibleCount   = 3;
 constant uint kSlotCompletedGroups = 4;
+// Second indirect command (slots 5..7): same XY, single z-slice — for
+// passes that walk the compacted list once per voxel (per-axis store).
+constant uint kSlotSingleSliceNumGroupsX = 5;
+constant uint kSlotSingleSliceNumGroupsY = 6;
+constant uint kSlotSingleSliceNumGroupsZ = 7;
 
 // T-287 / #950: this kernel no longer reads the per-voxel color SSBO. The
 // per-slot active bit at `activeMask[idx >> 5] & (1 << (idx & 31))` is the
@@ -133,6 +139,21 @@ kernel void c_voxel_visibility_compact(
             atomic_store_explicit(
                 &indirectParams[kSlotNumGroupsZ],
                 gz,
+                memory_order_relaxed
+            );
+            atomic_store_explicit(
+                &indirectParams[kSlotSingleSliceNumGroupsX],
+                gxClamped,
+                memory_order_relaxed
+            );
+            atomic_store_explicit(
+                &indirectParams[kSlotSingleSliceNumGroupsY],
+                gy,
+                memory_order_relaxed
+            );
+            atomic_store_explicit(
+                &indirectParams[kSlotSingleSliceNumGroupsZ],
+                1u,
                 memory_order_relaxed
             );
         }

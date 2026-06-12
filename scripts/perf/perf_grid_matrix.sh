@@ -14,6 +14,8 @@
 #   scripts/perf/perf_grid_matrix.sh --full              # extended matrix (30 cells)
 #   scripts/perf/perf_grid_matrix.sh --quick             # smoke matrix (2 cells)
 #   scripts/perf/perf_grid_matrix.sh --grid-size 32      # smaller grid (default 64)
+#   scripts/perf/perf_grid_matrix.sh --yaws "0 0.35"     # camera Z-yaw axis (radians;
+#       # non-cardinal values exercise the per-axis smooth-yaw path; default "0")
 #   scripts/perf/perf_grid_matrix.sh --presets <dir>     # sweep *.lua preset files
 #   scripts/perf/perf_grid_matrix.sh --threading-baseline
 #       # 9-cell threading baseline: {4K,32K,262K} entities × {0,1,hw-2} worker_threads.
@@ -63,6 +65,7 @@ TIMEOUT=90
 MATRIX="default"
 PRESETS_DIR=""
 THREADING_BASELINE=false
+YAWS="0"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -76,6 +79,7 @@ while [[ $# -gt 0 ]]; do
         --label) LABEL="$2"; shift 2 ;;
         --frames) FRAMES="$2"; shift 2 ;;
         --grid-size) GRID_SIZE="$2"; shift 2 ;;
+        --yaws) YAWS="$2"; shift 2 ;;
         --timeout) TIMEOUT="$2"; shift 2 ;;
         --full) MATRIX="full"; shift ;;
         --quick) MATRIX="quick"; shift ;;
@@ -136,7 +140,8 @@ else
             SUB_BASES=(1 4)
             ;;
     esac
-    CELL_COUNT=$(( ${#ZOOMS[@]} * ${#SUB_MODES[@]} * ${#SUB_BASES[@]} * ${#TARGETS[@]} ))
+    read -ra YAW_LIST <<< "$YAWS"
+    CELL_COUNT=$(( ${#ZOOMS[@]} * ${#SUB_MODES[@]} * ${#SUB_BASES[@]} * ${#YAW_LIST[@]} * ${#TARGETS[@]} ))
 fi
 
 TARGET_LABEL="$($TARGET_BOTH && echo "both" || echo "$TARGET")"
@@ -269,20 +274,30 @@ else
         for ZOOM in "${ZOOMS[@]}"; do
             for SUB_MODE in "${SUB_MODES[@]}"; do
                 for SUB_BASE in "${SUB_BASES[@]}"; do
-                    INDEX=$((INDEX + 1))
-                    CELL_ID="target=${RUN_TARGET},zoom=${ZOOM},sub_mode=${SUB_MODE},sub_base=${SUB_BASE}"
-                    if [[ -n "$GRID_SIZE" ]]; then
-                        CELL_ID="${CELL_ID},grid=${GRID_SIZE}"
-                    fi
-                    CELL_ARGS=(--auto-profile "$FRAMES" --zoom "$ZOOM"
-                               --subdivision-mode "$SUB_MODE"
-                               --base-subdivisions "$SUB_BASE")
-                    if [[ -n "$GRID_SIZE" ]]; then
-                        CELL_ARGS+=(--grid-size "$GRID_SIZE")
-                    fi
-                    run_cell "$RUN_TARGET" "$CELL_ID" \
-                        "\"zoom\": $ZOOM, \"sub_mode\": \"$SUB_MODE\", \"sub_base\": $SUB_BASE" \
-                        "${CELL_ARGS[@]}"
+                    for YAW in "${YAW_LIST[@]}"; do
+                        INDEX=$((INDEX + 1))
+                        CELL_ID="target=${RUN_TARGET},zoom=${ZOOM},sub_mode=${SUB_MODE},sub_base=${SUB_BASE}"
+                        # yaw=0 cells keep the historical ID so runs predating
+                        # the yaw axis stay comparable.
+                        if [[ "$YAW" != "0" ]]; then
+                            CELL_ID="${CELL_ID},yaw=${YAW}"
+                        fi
+                        if [[ -n "$GRID_SIZE" ]]; then
+                            CELL_ID="${CELL_ID},grid=${GRID_SIZE}"
+                        fi
+                        CELL_ARGS=(--auto-profile "$FRAMES" --zoom "$ZOOM"
+                                   --subdivision-mode "$SUB_MODE"
+                                   --base-subdivisions "$SUB_BASE")
+                        if [[ "$YAW" != "0" ]]; then
+                            CELL_ARGS+=(--yaw "$YAW")
+                        fi
+                        if [[ -n "$GRID_SIZE" ]]; then
+                            CELL_ARGS+=(--grid-size "$GRID_SIZE")
+                        fi
+                        run_cell "$RUN_TARGET" "$CELL_ID" \
+                            "\"zoom\": $ZOOM, \"sub_mode\": \"$SUB_MODE\", \"sub_base\": $SUB_BASE, \"yaw\": $YAW" \
+                            "${CELL_ARGS[@]}"
+                    done
                 done
             done
         done

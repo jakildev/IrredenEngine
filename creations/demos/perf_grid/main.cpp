@@ -112,6 +112,10 @@ struct CliOverrides {
     int gridSize_ = 64;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    // Initial camera Z-yaw (radians). Non-cardinal values activate the
+    // per-axis smooth-yaw path, the rotation axis of the perf matrix.
+    bool yawSet_ = false;
+    float yaw_ = 0.0f;
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
     bool subdivisionModeSet_ = false;
@@ -300,6 +304,10 @@ void parseArgs(int argc, char **argv) {
                 g_cliOverrides.zoom_ = zoom;
                 g_cliOverrides.zoomSet_ = true;
             }
+            ++i;
+        } else if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
+            g_cliOverrides.yaw_ = static_cast<float>(std::atof(argv[i + 1]));
+            g_cliOverrides.yawSet_ = true;
             ++i;
         } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
             // 0.0 = static scene (no per-frame voxel motion). Useful for
@@ -572,6 +580,9 @@ int main(int argc, char **argv) {
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
+    if (g_cliOverrides.yawSet_) {
+        IRPrefab::Camera::setYaw(g_cliOverrides.yaw_);
+    }
     IR_LOG_INFO(
         "Initial camera zoom: requested={}, actual={}",
         g_settings.initialZoom_,

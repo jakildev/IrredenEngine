@@ -95,6 +95,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
     }
 
     ~MetalTexture2DImpl() override {
+        unbindMetalTexture(m_texture);
         releaseImageAtomicScratchBuffer(m_texture);
         removeClearSourceBuffer(m_texture);
         if (m_texture != nullptr) {
@@ -342,6 +343,7 @@ class MetalTexture3DImpl final : public Texture3DImpl {
     }
 
     ~MetalTexture3DImpl() override {
+        unbindMetalTexture(m_texture);
         if (m_texture != nullptr) {
             m_texture->release();
             m_texture = nullptr;

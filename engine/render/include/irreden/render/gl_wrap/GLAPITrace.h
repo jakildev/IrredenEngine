@@ -784,6 +784,13 @@ void GLTracer_glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count,
     IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
 }
 
+void GLTracer_glDrawElementsIndirect(GLenum mode, GLenum type, const void *indirect) {
+    IRE_GL_LOG_DEBUG("glDrawElementsIndirect({}, {}, {})", E2S(mode), E2S(type), indirect);
+    apiHook.glDrawElementsIndirect(mode, type, indirect);
+    GLenum glError = apiHook.glGetError();
+    IR_ASSERT(glError == GL_NO_ERROR, E2S(glError));
+}
+
 void GLTracer_glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void *indices,
                                       GLsizei instancecount) {
     IRE_GL_LOG_DEBUG("glDrawElementsInstanced({}, {}, {}, {}, {})", E2S(mode), count, E2S(type),
@@ -1903,6 +1910,7 @@ void InjectAPITracer4(GL4API *api) {
     INJECT(glDrawBuffers);
     INJECT(glDrawElements);
     INJECT(glDrawElementsInstanced);
+    INJECT(glDrawElementsIndirect);
     INJECT(glEnable);
     INJECT(glEnableVertexArrayAttrib);
     INJECT(glEnableVertexAttribArray);
@@ -2129,6 +2137,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glDrawBuffers);
     LOAD_GL_FUNC(glDrawElements);
     LOAD_GL_FUNC(glDrawElementsInstanced);
+    LOAD_GL_FUNC(glDrawElementsIndirect);
     LOAD_GL_FUNC(glEnable);
     LOAD_GL_FUNC(glEnableVertexArrayAttrib);
     LOAD_GL_FUNC(glEnableVertexAttribArray);
