@@ -77,7 +77,7 @@ int MidiIn::openPort(const std::string &portNameSubstring) {
         port->name_ = m_portNames[i];
         port->rtMidiIn_ = std::make_unique<RtMidiIn>();
         port->rtMidiIn_->openPort(i);
-        port->rtMidiIn_->setCallback(readMessageTestCallbackNew, &port->queue_);
+        port->rtMidiIn_->setCallback(onRtMidiMessage, &port->queue_);
         m_ports.push_back(std::move(port));
         IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
         return i;
@@ -148,7 +148,7 @@ void MidiIn::insertCCMessage(int portIndex, MidiChannel channel, const C_MidiMes
 
 //-----------Callback---------//
 
-void readMessageTestCallbackNew(
+void onRtMidiMessage(
     double deltaTime, std::vector<unsigned char> *message, void *userdata
 ) {
     // Audio messages will be processed async
@@ -158,7 +158,7 @@ void readMessageTestCallbackNew(
     IR_ASSERT(messageSize > 0, "Received size 0 midi message");
 
     for (int i = 0; i < messageSize; i++) {
-        IRE_LOG_INFO("Message byte {}: {}", i, message->at(i));
+        IRE_LOG_DEBUG("Message byte {}: {}", i, message->at(i));
     }
 
     auto messageQueue = static_cast<std::queue<IRComponents::C_MidiMessage> *>(userdata);

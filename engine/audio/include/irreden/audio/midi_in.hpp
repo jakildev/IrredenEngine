@@ -86,7 +86,7 @@ class MidiIn {
     void clearPreviousMessages();
 };
 
-void readMessageTestCallbackNew(
+void onRtMidiMessage(
     double deltaTime, std::vector<unsigned char> *message, void *userData
 );
 
