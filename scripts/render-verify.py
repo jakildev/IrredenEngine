@@ -205,6 +205,10 @@ def _crop_reference_name(shot_label: str, crop_label: str) -> str:
     return f"{shot_label}__crop_{crop_label}.png"
 
 
+def _label_index(shot_labels: list[str]) -> dict[str, int]:
+    return {label: i for i, label in enumerate(shot_labels)}
+
+
 # ── Structural-metric gates ──────────────────────────────────────────────
 # A structural gate asserts a backend-agnostic, zoom-stable property of one
 # capture (e.g. shadow hole_ratio) instead of a pixel-diff against a per-
@@ -284,7 +288,7 @@ def evaluate_shots(
     rows: list[dict[str, Any]] = []
     crops = crops or {}
     structural = structural or {}
-    label_index = {label: i for i, label in enumerate(shot_labels)}
+    label_index = _label_index(shot_labels)
 
     # 1. Full-frame pixel-diff (the original gate; unchanged behavior).
     for actual, label in zip(captured, shot_labels):
@@ -442,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
         # Also snapshot any manifest-declared ROI crops so the crop gate has
         # a baseline. Structural gates are threshold-based (no reference PNG),
         # so they need nothing here.
-        label_index = {label: i for i, label in enumerate(shot_labels)}
+        label_index = _label_index(shot_labels)
         for label, crop_labels in crops_block.items():
             if label not in label_index:
                 continue
