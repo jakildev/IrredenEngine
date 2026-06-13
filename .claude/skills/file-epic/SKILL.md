@@ -38,6 +38,13 @@ for why.
   command**; it auto-discovers children and fails loudly on a malformed
   body. It is the belt that the step-5 hand-filing convention is the
   suspenders for.
+- Per-child plan files (flow step 6) must meet
+  [`PLANNING-PROTOCOL.md`](../../../docs/agents/PLANNING-PROTOCOL.md)
+  step-2 rigor — verified current state / confirmed repro, one picked
+  approach, sibling + in-flight reconciliation — not a restated phase line
+  (#1456). The engine's `fleet-queue-ingest` plan gate only checks that
+  `.fleet/plans/issue-<N>.md` exists, so land the step-6.5 docs PR promptly
+  (it is also what makes a child pass the gate cross-host).
 - Engine-repo vs game-repo: most epics target `jakildev/IrredenEngine`.
   The cross-repo info-isolation rule (see
   [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)

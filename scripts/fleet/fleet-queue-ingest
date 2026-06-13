@@ -25,6 +25,14 @@
 # hand-built projection). Claimability is unchanged — fleet-claim's own
 # Blocked-by gate still refuses a plain claim; see docs/design/fleet-queue-stacking.md.
 #
+# Planning gate (#1456): an approved issue with no plan file — neither the
+# committed repo-side `.fleet/plans/issue-<N>.md` nor the planner-host
+# `~/.fleet/plans/issue-<N>.md` staging copy — is bounced to fleet:needs-plan
+# instead of stamped fleet:queued, unless its title/body names an explicit
+# "investigation spike". Carve-offs queued straight to human:approved without
+# ever passing through planning made the worker the first person to open the
+# code, and it design-blocked on claim (the #1370 → #1414/#1431/#1435 pattern).
+#
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
 
@@ -218,6 +226,12 @@ REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
 # Repo-name qualifier (case-insensitive, owner stripped) → GitHub slug.
 _REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
                      'irreden': 'jakildev/irreden'}
+# Planning-gate escape hatch (#1456): an issue whose title or body names an
+# explicit "investigation spike" is worker-investigates-first by design and
+# queues without a plan file (architect-protocol.md §"Carve-offs are unplanned
+# tickets" is where the phrase is defined).
+SPIKE_RE = re.compile(r'investigation\s+spike', re.IGNORECASE)
+PLANS_DIR = os.path.expanduser('~/.fleet/plans')
 
 
 def _ref_slug(name, default_repo):
@@ -283,11 +297,43 @@ def _blocker_open(repo, ref, cache):
     cache[key] = is_open
     return is_open
 
+
+def _plan_exists(repo, n, cache):
+    """True when a plan file exists for issue n — the planner-host staging
+    copy (~/.fleet/plans/issue-<n>.md) or the committed repo-side copy on the
+    default branch (live `gh api` contents probe, host-independent). Only a
+    confirmed 404 reads as missing; any other probe failure fails OPEN
+    (treated as present) so a transient API error never bounces a planned
+    issue back to fleet:needs-plan."""
+    if os.path.exists(os.path.join(PLANS_DIR, f'issue-{n}.md')):
+        return True
+    key = (repo, n)
+    if key in cache:
+        return cache[key]
+    r = subprocess.run(
+        ['gh', 'api', f'repos/{repo}/contents/.fleet/plans/issue-{n}.md',
+         '--jq', '.path'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode == 0:
+        present = True
+    elif '404' in (r.stderr or ''):
+        present = False
+    else:
+        present = True
+        print(f'WARN issue {repo}#{n}: plan probe failed '
+              f'({(r.stderr or "").strip()}); failing open as plan-present',
+              file=sys.stderr)
+    cache[key] = present
+    return present
+
 stamped = 0
 skipped_already = 0
 blocked_marked = 0
+plan_bounced = 0
 failed = 0
 blocker_cache = {}
+plan_cache = {}
 
 for issue in pending:
     n = issue.get('number', 0)
@@ -297,7 +343,7 @@ for issue in pending:
 
     r = subprocess.run(
         ['gh', 'issue', 'view', str(n), '--repo', repo,
-         '--json', 'body,labels'],
+         '--json', 'title,body,labels'],
         capture_output=True, text=True, timeout=15,
     )
     if r.returncode != 0:
@@ -309,11 +355,12 @@ for issue in pending:
     except Exception:
         failed += 1
         continue
+    title = view.get('title', '') or ''
     body = view.get('body', '') or ''
     labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
-            or 'fleet:needs-human' in labels):
+            or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels):
         skipped_already += 1
         continue
 
@@ -324,6 +371,44 @@ for issue in pending:
     if 'human:owned' in labels:
         skipped_already += 1
         print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
+        continue
+
+    # Planning gate (#1456): refuse to queue an issue that never passed
+    # through planning. Carve-offs stamped human:approved directly carry a
+    # hypothesis, not a plan — without a plan file the claiming worker is
+    # the first to open the code and design-blocks. Bounce to
+    # fleet:needs-plan (routes through PLANNING-PROTOCOL.md; the label also
+    # drops the issue out of the ingest pending set via _INGEST_SKIP_LABELS)
+    # unless the issue is an explicit investigation spike. Sits before the
+    # blocker probes so a bounced issue costs no per-blocker API calls.
+    if (not SPIKE_RE.search(title) and not SPIKE_RE.search(body)
+            and not _plan_exists(repo, n, plan_cache)):
+        comment = (
+            f"Planning gate: no plan file found for this issue — neither "
+            f"committed `.fleet/plans/issue-{n}.md` nor planner-host "
+            f"`~/.fleet/plans/issue-{n}.md` — and it is not an explicit "
+            "investigation spike. Unplanned carve-offs design-block on "
+            "claim (#1456), so adding `fleet:needs-plan` to route it "
+            "through PLANNING-PROTOCOL.md before it can queue. "
+            "— fleet-queue-ingest"
+        )
+        subprocess.run(
+            ['gh', 'issue', 'comment', str(n), '--repo', repo,
+             '--body', comment],
+            capture_output=True, timeout=15,
+        )
+        er = subprocess.run(
+            ['gh', 'issue', 'edit', str(n), '--repo', repo,
+             '--add-label', 'fleet:needs-plan'],
+            capture_output=True, text=True, timeout=15,
+        )
+        if er.returncode != 0:
+            failed += 1
+            print(f'WARN issue {repo}#{n}: add fleet:needs-plan failed: {er.stderr.strip()}', file=sys.stderr)
+            continue
+        plan_bounced += 1
+        print(f'WARN issue {repo}#{n}: no plan file and not an investigation '
+              f'spike — bounced to fleet:needs-plan (#1456)', file=sys.stderr)
         continue
 
     # Blocked-by handling (#1527): queue blocked tasks too. A task whose
@@ -426,13 +511,13 @@ for issue in data.get('unblock_issues', []):
         continue
     unblocked += 1
 
-print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still}')
+print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced}')
 STAMP_PY
 )
 
 if [[ -n "$stamping_out" ]]; then
-    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count <<< "$stamping_out"
-    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"
