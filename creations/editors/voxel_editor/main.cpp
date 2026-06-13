@@ -105,6 +105,7 @@
 // layout mouse-in-GUI-trixels helper).
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/trixel_text.hpp>
+#include <irreden/render/gui_text_batch.hpp>
 #include <irreden/render/mask_grid_painter.hpp>
 #include <irreden/render/layout.hpp>
 
@@ -1062,6 +1063,7 @@ void initSystems() {
     struct LoftRenderParams {
         C_TriangleCanvasTextures *canvas_ = nullptr;
         IRRender::MaskGridPaintScratch scratch_;
+        std::vector<IRRender::GlyphDrawCommand> textCmds_;
     };
     auto loftRenderData = std::make_unique<LoftRenderParams>();
     auto *lrp = loftRenderData.get();
@@ -1102,24 +1104,38 @@ void initSystems() {
                 lrp->scratch_
             );
             const int gridH = sz * IRVoxelEditor::kLoftCellPx;
-            IRRender::renderText(
-                *lrp->canvas_,
+            const ivec2 canvasSize = lrp->canvas_->size_;
+            IRPrefab::GuiText::queueGuiText(
+                lrp->textCmds_,
                 "XZ",
                 IRVoxelEditor::kLoftGridXZPos + ivec2(0, -12),
-                Color{200, 220, 200, 220}
+                canvasSize,
+                Color{200, 220, 200, 220},
+                1
             );
-            IRRender::renderText(
-                *lrp->canvas_,
+            IRPrefab::GuiText::queueGuiText(
+                lrp->textCmds_,
                 "YZ",
                 IRVoxelEditor::kLoftGridYZPos + ivec2(0, -12),
-                Color{200, 220, 200, 220}
+                canvasSize,
+                Color{200, 220, 200, 220},
+                1
             );
-            IRRender::renderText(
-                *lrp->canvas_,
+            IRPrefab::GuiText::queueGuiText(
+                lrp->textCmds_,
                 "LOFT  Shift=sym  C=clear  Enter=stamp  F=exit",
                 ivec2(IRVoxelEditor::kLoftGridXZPos.x, IRVoxelEditor::kLoftGridXZPos.y + gridH + 4),
-                Color{200, 200, 200, 180}
+                canvasSize,
+                Color{200, 200, 200, 180},
+                1
             );
+            // Inline dispatch (not deferred to endTick like the widget
+            // render systems): the loft overlay is a single-canvas system
+            // that runs its whole render once per frame in this tick body,
+            // so queuing and dispatching here is equivalent to the deferred
+            // pattern — there is no second tick that would append more glyphs
+            // before the dispatch.
+            IRPrefab::GuiText::dispatchGuiText(lrp->textCmds_);
         }
     );
     IRSystem::setSystemParams(loftRenderSystem, std::move(loftRenderData));
@@ -2647,8 +2663,10 @@ void initCommands() {
                 );
                 const bool atRigRoot = j.parentIndex_ == static_cast<std::uint32_t>(i) ||
                                        j.parentIndex_ >= static_cast<std::uint32_t>(count);
-                IR_ASSERT(atRigRoot || j.parentIndex_ < i,
-                    ".rig parentIndex forward-reference — not supported by linear reconstruction");
+                IR_ASSERT(
+                    atRigRoot || j.parentIndex_ < i,
+                    ".rig parentIndex forward-reference — not supported by linear reconstruction"
+                );
                 const IREntity::EntityId parentEntity =
                     atRigRoot ? rigRoot : newJoints[j.parentIndex_];
                 IREntity::setParent(joint, parentEntity);
@@ -2975,14 +2993,12 @@ void initEntities() {
             kBoneSwatchOriginX + col * (kBoneSwatchSize + kBoneSwatchGap),
             kBoneSwatchOriginY + row * (kBoneSwatchSize + kBoneSwatchGap)
         );
-        IRVoxelEditor::g_bonePaint.boneSwatches_.push_back(
-            IRPrefab::Widget::makeColorSwatch(
-                pos,
-                ivec2(kBoneSwatchSize, kBoneSwatchSize),
-                IRVoxelEditor::kBoneColors[i],
-                i == 0
-            )
-        );
+        IRVoxelEditor::g_bonePaint.boneSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
+            pos,
+            ivec2(kBoneSwatchSize, kBoneSwatchSize),
+            IRVoxelEditor::kBoneColors[i],
+            i == 0
+        ));
     }
 
     // Skeleton tree panel (F-2.6, #1607). Sits below the BONE selector in the

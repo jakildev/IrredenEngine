@@ -21,6 +21,7 @@ namespace IRSystem {
 template <> struct System<WIDGET_RENDER_SLIDER> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRRender::RectFillScratch scratch_;
+    std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
@@ -33,12 +34,14 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
+        if (!canvas_)
+            return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
         const int W = widget.size_.x;
         const int H = widget.size_.y;
-        if (W <= 0 || H <= 0) return;
+        if (W <= 0 || H <= 0)
+            return;
 
         // Top half is the optional label, bottom half is track + thumb.
         const int labelH = slider.label_.empty() ? 0 : IRRender::kGlyphStepY;
@@ -46,8 +49,9 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
         const int trackX = guiPos.pos_.x;
 
         if (!slider.label_.empty()) {
-            IRPrefab::Widget::detail::drawLeftText(
-                *canvas_,
+            IRPrefab::Widget::detail::queueLeftText(
+                textCmds_,
+                canvas_->size_,
                 slider.label_,
                 guiPos.pos_,
                 labelH,
@@ -66,19 +70,18 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
         );
 
         // Thumb
-        const float range =
-            (slider.maxValue_ - slider.minValue_) != 0.0f ? (slider.maxValue_ - slider.minValue_) : 1.0f;
-        const float t = IRMath::clamp(
-            (slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f
-        );
+        const float range = (slider.maxValue_ - slider.minValue_) != 0.0f
+                                ? (slider.maxValue_ - slider.minValue_)
+                                : 1.0f;
+        const float t =
+            IRMath::clamp((slider.currentValue_ - slider.minValue_) / range, 0.0f, 1.0f);
         const int thumbW = theme.sliderThumbWidth_;
         const int thumbH = H - labelH;
         const int thumbX = guiPos.pos_.x + static_cast<int>(t * static_cast<float>(W - thumbW));
         const int thumbY = guiPos.pos_.y + labelH;
-        const IRMath::Color thumbColor =
-            widget.disabled_   ? theme.backgroundDisabled_
-            : state.hovered_   ? theme.sliderThumbHover_
-                               : theme.sliderThumbIdle_;
+        const IRMath::Color thumbColor = widget.disabled_ ? theme.backgroundDisabled_
+                                         : state.hovered_ ? theme.sliderThumbHover_
+                                                          : theme.sliderThumbIdle_;
         IRRender::fillRect(
             *canvas_,
             IRMath::ivec2(thumbX, thumbY),
@@ -88,22 +91,27 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
             scratch_
         );
 
-        // Value text at the right edge of the label row.
+        // Value text right-aligned within the label row [pos.x, pos.x + W).
         if (!slider.label_.empty()) {
             char buf[16];
             std::snprintf(buf, sizeof(buf), "%.2f", slider.currentValue_);
-            const std::string valueStr = buf;
-            const IRMath::ivec2 ts = IRPrefab::Widget::detail::measureSingleLine(valueStr);
-            const IRMath::ivec2 vpos =
-                IRMath::ivec2(guiPos.pos_.x + W - ts.x, guiPos.pos_.y);
-            IRPrefab::Widget::detail::drawLeftText(
-                *canvas_,
-                valueStr,
-                vpos,
-                labelH,
-                IRPrefab::Widget::detail::stateText(theme, widget)
+            IRPrefab::GuiText::queueGuiText(
+                textCmds_,
+                buf,
+                guiPos.pos_,
+                canvas_->size_,
+                IRPrefab::Widget::detail::stateText(theme, widget),
+                IRPrefab::Widget::detail::kWidgetTextFontSize,
+                IRComponents::TextAlignH::RIGHT,
+                IRComponents::TextAlignV::CENTER,
+                W,
+                labelH
             );
         }
+    }
+
+    void endTick() {
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
     }
 
     static SystemId create() {
@@ -112,8 +120,7 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
             IRComponents::C_Widget,
             IRComponents::C_WidgetSlider,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderSlider");
+            IRComponents::C_GuiPosition>("WidgetRenderSlider");
     }
 };
 

@@ -24,6 +24,7 @@ namespace IRSystem {
 template <> struct System<WIDGET_RENDER_PANEL> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRRender::RectFillScratch scratch_;
+    std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
@@ -36,7 +37,8 @@ template <> struct System<WIDGET_RENDER_PANEL> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
+        if (!canvas_)
+            return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
         IRRender::fillRect(
@@ -58,8 +60,9 @@ template <> struct System<WIDGET_RENDER_PANEL> {
                 IRRender::kWidgetBorderDistance,
                 scratch_
             );
-            IRPrefab::Widget::detail::drawCenteredText(
-                *canvas_,
+            IRPrefab::Widget::detail::queueCenteredText(
+                textCmds_,
+                canvas_->size_,
                 panel.title_,
                 guiPos.pos_,
                 IRMath::ivec2(widget.size_.x, titleBarH),
@@ -80,14 +83,17 @@ template <> struct System<WIDGET_RENDER_PANEL> {
         }
     }
 
+    void endTick() {
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
+    }
+
     static SystemId create() {
         return registerSystem<
             WIDGET_RENDER_PANEL,
             IRComponents::C_Widget,
             IRComponents::C_WidgetPanel,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderPanel");
+            IRComponents::C_GuiPosition>("WidgetRenderPanel");
     }
 };
 
