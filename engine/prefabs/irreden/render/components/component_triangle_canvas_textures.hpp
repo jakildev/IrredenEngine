@@ -124,6 +124,7 @@ struct C_TriangleCanvasTextures {
     // Downsampled Hi-Z level `mip` (0-based over hiZMips_, i.e. conceptual mip
     // level `mip + 1`). Level 0 of the pyramid is getTextureDistances().
     const Texture2D *getHiZMip(int mip) const {
+        IR_ASSERT(mip < hiZMipCount(), "getHiZMip: mip out of range");
         return hiZMips_[mip].second;
     }
 
