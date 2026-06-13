@@ -1129,6 +1129,12 @@ void initSystems() {
                 Color{200, 200, 200, 180},
                 1
             );
+            // Inline dispatch (not deferred to endTick like the widget
+            // render systems): the loft overlay is a single-canvas system
+            // that runs its whole render once per frame in this tick body,
+            // so queuing and dispatching here is equivalent to the deferred
+            // pattern — there is no second tick that would append more glyphs
+            // before the dispatch.
             IRPrefab::GuiText::dispatchGuiText(lrp->textCmds_);
         }
     );

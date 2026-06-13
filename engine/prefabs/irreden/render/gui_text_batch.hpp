@@ -1,5 +1,5 @@
-#ifndef GUI_TEXT_BATCH_H
-#define GUI_TEXT_BATCH_H
+#ifndef GUI_TEXT_BATCH_HPP
+#define GUI_TEXT_BATCH_HPP
 
 // Batched GUI text on the compute path.
 //
@@ -26,6 +26,7 @@
 
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_profile.hpp>
 
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_text.hpp>
@@ -67,12 +68,24 @@ inline std::vector<std::uint32_t> buildFontBuffer() {
     return buf;
 }
 
-inline int glyphWidth(int fontSize) { return IRRender::kGlyphWidth * fontSize; }
-inline int glyphHeight(int fontSize) { return IRRender::kGlyphHeight * fontSize; }
-inline int glyphStepX(int fontSize) { return IRRender::kGlyphStepX * fontSize; }
-inline int glyphStepY(int fontSize) { return IRRender::kGlyphStepY * fontSize; }
-inline int glyphSpacingX(int fontSize) { return IRRender::kGlyphSpacingX * fontSize; }
-inline int glyphSpacingY(int fontSize) { return IRRender::kGlyphSpacingY * fontSize; }
+inline int glyphWidth(int fontSize) {
+    return IRRender::kGlyphWidth * fontSize;
+}
+inline int glyphHeight(int fontSize) {
+    return IRRender::kGlyphHeight * fontSize;
+}
+inline int glyphStepX(int fontSize) {
+    return IRRender::kGlyphStepX * fontSize;
+}
+inline int glyphStepY(int fontSize) {
+    return IRRender::kGlyphStepY * fontSize;
+}
+inline int glyphSpacingX(int fontSize) {
+    return IRRender::kGlyphSpacingX * fontSize;
+}
+inline int glyphSpacingY(int fontSize) {
+    return IRRender::kGlyphSpacingY * fontSize;
+}
 
 inline int nextWordWidth(const std::string &text, std::size_t i, int fontSize) {
     int width = 0;
@@ -229,7 +242,16 @@ inline void queueGuiText(
     if (text.empty())
         return;
     expandTextToCommands(
-        commands, text, pos, canvasSize, color, wrapWidth, alignH, alignV, boxWidth, boxHeight,
+        commands,
+        text,
+        pos,
+        canvasSize,
+        color,
+        wrapWidth,
+        alignH,
+        alignV,
+        boxWidth,
+        boxHeight,
         fontSize
     );
 }
@@ -254,17 +276,22 @@ inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
     auto &canvas = IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
 
     int count = static_cast<int>(commands.size());
-    if (count > kMaxGlyphCommands)
+    if (count > kMaxGlyphCommands) {
+        IRE_LOG_WARN(
+            "dispatchGuiText: {} glyph commands exceeds the {}-command "
+            "dispatch cap — truncating; some GUI text will not render.",
+            count,
+            kMaxGlyphCommands
+        );
         count = kMaxGlyphCommands;
+    }
 
     program->use();
     cmdBuf->subData(0, count * sizeof(IRRender::GlyphDrawCommand), commands.data());
-    canvas.getTextureColors()->bindAsImage(
-        0, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::RGBA8
-    );
-    canvas.getTextureDistances()->bindAsImage(
-        1, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::R32I
-    );
+    canvas.getTextureColors()
+        ->bindAsImage(0, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::RGBA8);
+    canvas.getTextureDistances()
+        ->bindAsImage(1, IRRender::TextureAccess::WRITE_ONLY, IRRender::TextureFormat::R32I);
     IRRender::device()->dispatchCompute(count, 1, 1);
     IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
 
@@ -273,4 +300,4 @@ inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
 
 } // namespace IRPrefab::GuiText
 
-#endif /* GUI_TEXT_BATCH_H */
+#endif /* GUI_TEXT_BATCH_HPP */
