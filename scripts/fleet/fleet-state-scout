@@ -1287,6 +1287,25 @@ def enrich_inflight_pr_tasks(state):
 # only the labels each role's own decision logic actually keys on.
 _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 
+# fleet:semantic-conflict is intentionally NOT in this set. A stale
+# fleet:semantic-conflict on a MERGEABLE PR (fail-then-succeed race, #1654)
+# must not trigger a false step-1c resolution pass — the structural exclusion
+# here is the guarantee. The label is cleared by fleet-rebase's stale-conflict
+# cleanup sweep (#1654) before the worker ever sees the PR.
+_OPUS_WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
+
+
+def project_opus_worker(state):
+    """Retired opus-worker projection — preserved as an importable symbol for
+    the #1654 structural test. The opus-worker lane was unified into the generic
+    worker lane (#1691); this function returns the same output as project_worker.
+
+    The key guarantee: fleet:semantic-conflict is NOT in _OPUS_WORKER_RELEVANT_LABELS,
+    so a stale fleet:semantic-conflict on a MERGEABLE PR never surfaces here as a
+    kind=="pr" item, preventing a false step-1c resolution pass (#1654).
+    """
+    return project_worker(state)
+
 
 def project_worker(state):
     # Single generic-worker lane (P2): the per-class opus-worker /
