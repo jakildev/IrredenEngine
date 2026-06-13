@@ -1285,6 +1285,11 @@ def enrich_inflight_pr_tasks(state):
 # fleet:needs-linux-smoke), waking the role to find nothing actionable.
 # Same anti-pattern project_merger already documents and avoids — keep
 # only the labels each role's own decision logic actually keys on.
+# fleet:semantic-conflict is intentionally NOT in this set. A stale
+# fleet:semantic-conflict on a MERGEABLE PR (fail-then-succeed race, #1654)
+# must not trigger a false step-1c resolution pass — the structural exclusion
+# here is the guarantee. The label is cleared by fleet-rebase's stale-conflict
+# cleanup sweep (#1654) before the worker ever sees the PR.
 _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 
 
