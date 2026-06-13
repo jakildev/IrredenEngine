@@ -128,6 +128,27 @@ class TestShadowMetric(unittest.TestCase):
         b = shadow_metrics(p)
         self.assertEqual(a, b)
 
+    def test_max_components_cli_fails_when_roi_too_large(self):
+        """--max-components with an oversized ROI must warn to stderr + exit 1."""
+        import io
+        p = str(self.dir / "big_shadow.png")
+        _write(p, 8, 8, lambda x, y: MAGENTA)
+        orig_cap = _mod.MAX_FLOOD_PX
+        _mod.MAX_FLOOD_PX = 10  # 8*8=64 > 10 triggers the skip
+        try:
+            stderr_buf = io.StringIO()
+            stdout_buf = io.StringIO()
+            old_err, old_out = sys.stderr, sys.stdout
+            sys.stderr, sys.stdout = stderr_buf, stdout_buf
+            try:
+                rc = _mod._main([p, "--max-components", "5"])
+            finally:
+                sys.stderr, sys.stdout = old_err, old_out
+            self.assertEqual(rc, 1)
+            self.assertIn("warning", stderr_buf.getvalue())
+        finally:
+            _mod.MAX_FLOOD_PX = orig_cap
+
 
 if __name__ == "__main__":
     unittest.main()

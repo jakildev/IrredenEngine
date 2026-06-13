@@ -197,9 +197,16 @@ def _main(argv: list[str]) -> int:
     failed = []
     if args.max_hole_ratio is not None and m["hole_ratio"] > args.max_hole_ratio:
         failed.append(f"hole_ratio {m['hole_ratio']} > {args.max_hole_ratio}")
-    if (args.max_components is not None and m.get("components") is not None
-            and m["components"] > args.max_components):
-        failed.append(f"components {m['components']} > {args.max_components}")
+    if args.max_components is not None:
+        if m.get("components") is None:
+            print(
+                "warning: --max-components requested but component count was "
+                "skipped (roi too large; see components_note in output)",
+                file=sys.stderr,
+            )
+            failed.append("max-components check skipped (roi too large)")
+        elif m["components"] > args.max_components:
+            failed.append(f"components {m['components']} > {args.max_components}")
     m["pass"] = not failed
     if failed:
         m["reason"] = "; ".join(failed)
