@@ -219,6 +219,31 @@ kernel void c_voxel_to_trixel_stage_2(
         return;
     }
 
+    // Depth-only shadow-feeder path (#1740) — mirror of c_voxel_to_trixel_stage_2.glsl.
+    // On the cardinal single-canvas world route, a voxel whose cardinal iso
+    // position lies outside the un-widened visible viewport but inside the
+    // shadow-feeder-widened cull is an off-screen SHADOW FEEDER: it only casts
+    // sun shadows via stage 1's distance bake and is never displayed/lit/picked.
+    // Stage 1 wrote its full-res depth (the bake + AO read only trixelDistances),
+    // so skipping its colour/entity-id taps is byte-identical and removes the
+    // feeder's stage-2 cost. visibleIsoBounds carries a +4-iso-px margin covering
+    // the face footprint; with sun shadows off it equals cullIsoMin/Max so
+    // nothing is skipped.
+    if (frameData.residualYaw == 0.0f && frameData.isDetachedCanvas < 0.5f) {
+        int3 feederPos = int3(round(voxelPosition.xyz));
+        if (cardinalIndex != 0) {
+            feederPos = rotateCardinalZ(feederPos, cardinalIndex);
+            feederPos += cardinalLowerCornerShift(cardinalIndex);
+        }
+        const int2 feederIso = pos3DtoPos2DIso(feederPos);
+        if (feederIso.x < frameData.visibleIsoBounds.x ||
+            feederIso.x > frameData.visibleIsoBounds.z ||
+            feederIso.y < frameData.visibleIsoBounds.y ||
+            feederIso.y > frameData.visibleIsoBounds.w) {
+            return;
+        }
+    }
+
     if (frameData.voxelRenderOptions.x == 0) {
         int3 voxelPositionInt = int3(round(voxelPosition.xyz));
         if (cardinalIndex != 0) {

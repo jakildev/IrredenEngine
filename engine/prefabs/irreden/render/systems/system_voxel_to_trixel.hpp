@@ -575,6 +575,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRPrefab::SunShadow::shadowFeederCullViewport(kGpuMargin, shadowFeederParams_);
         frameData_.cullIsoMin_ = ivec2(IRMath::floor(gpuVp.min_));
         frameData_.cullIsoMax_ = ivec2(IRMath::ceil(gpuVp.max_));
+        // Depth-only shadow-feeder path (#1740): the SAME viewport at the same
+        // margin BEFORE shadowFeederCullViewport widened it toward the sun. A
+        // voxel inside gpuVp (it passed the compact cull) but outside this is an
+        // off-screen shadow feeder — stage 2 skips its colour/entity-id taps.
+        // When sun shadows are off the sweep is zero, so gpuVp == this and stage
+        // 2 skips nothing (byte-identical). Same getCullViewport() the widened
+        // form reads above, so the two boxes are derived consistently.
+        const IsoBounds2D visibleVp = IRRender::getCullViewport().isoViewport(kGpuMargin);
+        frameData_.visibleIsoBounds_ = ivec4(
+            ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_))
+        );
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         // Voxel positions are uploaded via the pending-range queue populated by

@@ -285,6 +285,21 @@ struct FrameDataVoxelToCanvas {
     // offset is unchanged and shaders that read only the prefix need no update;
     // only c_lighting_to_trixel declares it.
     vec4 detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    // Un-widened (no shadow-feeder sweep) iso cull viewport for the depth-only
+    // shadow-feeder path (#1740). `.xy` = floor(min), `.zw` = ceil(max) of the
+    // SAME viewport `cullIsoMin_/cullIsoMax_` derive from, but BEFORE
+    // IRMath::shadowFeederIsoBounds widens it toward the sun. A voxel whose
+    // cardinal iso position lies inside [cullIsoMin_, cullIsoMax_] (it passed
+    // the compact cull) but OUTSIDE this box is an off-screen shadow FEEDER —
+    // it only casts sun shadows via the stage-1 distance bake and is never
+    // displayed / lit / picked, so c_voxel_to_trixel_stage_2 skips its
+    // colour + entity-id taps (stage 1 still writes its full-resolution depth,
+    // which is all the bake + AO read). When sun shadows are off the sweep is
+    // zero, so this equals cullIsoMin_/cullIsoMax_ and stage 2 skips nothing —
+    // byte-identical. Read only by c_voxel_to_trixel_stage_2; std140-appended
+    // after detachedWorldReceive_ (offset 176) so every prior offset is
+    // unchanged and the gather shaders that read only the prefix need no update.
+    ivec4 visibleIsoBounds_ = ivec4(0, 0, 0, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -532,9 +547,16 @@ static_assert(
     "every existing offset — and the default screen-locked path — stays unchanged"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 176,
+    offsetof(FrameDataVoxelToCanvas, visibleIsoBounds_) == 176,
+    "FrameDataVoxelToCanvas::visibleIsoBounds_ must land at offset 176 "
+    "(detachedWorldReceive_ at 160 + 16 B). Appended after the prior last field "
+    "so every existing offset — and the shadows-off byte-identical path — stays "
+    "unchanged"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 192,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(detachedWorldReceive_ vec4 append: 160 + 16 = 176)"
+    "(visibleIsoBounds_ ivec4 append: 176 + 16 = 192)"
 );
 
 struct FrameDataSun {
