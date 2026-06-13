@@ -184,6 +184,14 @@ def _main(argv: list[str]) -> int:
     ap.add_argument("--max-components", type=int, default=None,
                     help="fail if the shadow shatters into more than this many "
                          "4-connected components.")
+    ap.add_argument("--min-largest-frac", type=float, default=None,
+                    help="fail if the largest shadow component is a smaller "
+                         "fraction of shadow_px than this. A single convex "
+                         "caster reads ~1.0; fragmentation (swiss-cheese) "
+                         "shatters it small, and a vanished shadow reads 0 — so "
+                         "this one lower bound catches BOTH the fragment and the "
+                         "missing-shadow regressions. Requires the component "
+                         "pass (not --no-components).")
     ap.add_argument("--no-components", action="store_true",
                     help="skip the (slower) connected-component pass.")
     args = ap.parse_args(argv)
@@ -207,6 +215,30 @@ def _main(argv: list[str]) -> int:
             failed.append("max-components check skipped (roi too large)")
         elif m["components"] > args.max_components:
             failed.append(f"components {m['components']} > {args.max_components}")
+    if args.min_largest_frac is not None:
+        if args.no_components:
+            print(
+                "warning: --min-largest-frac requires the component pass; do "
+                "not combine with --no-components",
+                file=sys.stderr,
+            )
+            failed.append("min-largest-frac check skipped (--no-components)")
+        elif "largest_frac" in m:
+            if m["largest_frac"] < args.min_largest_frac:
+                failed.append(
+                    f"largest_frac {m['largest_frac']} < {args.min_largest_frac}"
+                )
+        elif "components" in m:  # present but None -> roi too large to flood
+            print(
+                "warning: --min-largest-frac requested but the component pass "
+                "was skipped (roi too large; see components_note in output)",
+                file=sys.stderr,
+            )
+            failed.append("min-largest-frac check skipped (roi too large)")
+        else:  # shadow_px == 0: the shadow vanished entirely
+            failed.append(
+                f"largest_frac 0.0 < {args.min_largest_frac} (no shadow pixels)"
+            )
     m["pass"] = not failed
     if failed:
         m["reason"] = "; ".join(failed)

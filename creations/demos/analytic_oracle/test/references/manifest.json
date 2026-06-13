@@ -1,0 +1,22 @@
+{
+  "demo": "analytic_oracle",
+  "target": "IRAnalyticOracle",
+  "screenshot_subdir": "save_files/screenshots",
+  "warmup": 20,
+  "shots": [
+    "oracle_box_zoom"
+  ],
+  "structural_only": [
+    "oracle_box_zoom"
+  ],
+  "structural": {
+    "oracle_box_zoom": [
+      {
+        "metric": "shadow",
+        "min_largest_frac": 0.8,
+        "max_components": 6
+      }
+    ]
+  },
+  "notes": "Analytic diagnostic oracle (epic #1766 T-4, issue #1770). A deterministic scene whose expected shadow occupancy is COMPUTABLE FROM FIRST PRINCIPLES, gated by render-shadow-metric.py against that computed expectation rather than a captured per-backend reference PNG. This is how the zoom regime that ordinary pixel-diff excludes (CPU<->GPU float divergence drifts the match% run to run, e.g. canvas_stress's revoxelize_solids_zoom) becomes a deterministic pass/fail: the structural metric is backend-agnostic and resolution-independent, so one threshold is a shared oracle across macos-debug (Metal) and linux-debug (OpenGL) with NO reference set. SCENE (creations/demos/analytic_oracle/main.cpp): one axis-aligned BOX caster of edge 18, centred at the world origin, resting on a flat floor (its bottom face flush with the floor top at z = 18/2 + 1 = 10; +Z is the downward height axis), under a single fixed directional sun dir=(0.30,0.52,-0.74). Rendered in the SHADOW debug overlay (black=lit, magenta=shadowed) so occupancy is encoded directly as colour and classifies exactly. EXPECTED -> GATE: a single CONVEX caster on a flat ground under one directional sun casts EXACTLY ONE connected, hole-free shadow — its self-shadowed faces and its cast shadow on the floor are adjacent in the iso projection and merge into a single magenta blob. So the analytic expectation is components==1 and largest_frac==1.0. The gate is set with margin to absorb benign per-backend anti-aliasing (a stray edge fleck may split off a few px on one backend): min_largest_frac>=0.8 (the one dominant component holds at least 80% of the shadow — this single lower bound catches BOTH a fragmentation/swiss-cheese regression, which shatters the blob so the largest is tiny, AND a vanished-shadow regression, which reads 0) and max_components<=6 (bounds fragmentation; the swiss-cheese failure mode reads 100+ components, ~20x the gate, so the discrimination is wide). The shot is at zoom 2.5 — well into the magnified regime where pixel-diff references are excluded — to demonstrate the structural gate holds there. STRUCTURAL_ONLY: this manifest lists oracle_box_zoom in 'structural_only', so render-verify captures it but skips the full-frame pixel-diff and requires no committed reference PNG — the shot is gated purely by the analytic thresholds above (the whole point: no jittery captured reference, deterministic at zoom, shared across backends). Because every shot here is structural_only, the demo commits no reference PNGs at all. Run: scripts/render-verify.py --target IRAnalyticOracle. To inspect the overlay capture manually, run IRAnalyticOracle --auto-screenshot 20 and view save_files/screenshots/screenshot_000001.png. The whole-frame component flood-fill stays under render-shadow-metric.py's MAX_FLOOD_PX (4M px) on both standard hosts (1280x720 and the 2560x1440 retina framebuffer); a higher-resolution host would skip the component pass and the gate would fail loudly (by design) rather than silently pass."
+}

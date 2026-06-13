@@ -128,6 +128,53 @@ class TestShadowMetric(unittest.TestCase):
         b = shadow_metrics(p)
         self.assertEqual(a, b)
 
+    def _run_cli(self, args):
+        """Run the metric CLI capturing stdout/stderr; return (rc, out, err)."""
+        import io
+        out_buf, err_buf = io.StringIO(), io.StringIO()
+        old_out, old_err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = out_buf, err_buf
+        try:
+            rc = _mod._main(args)
+        finally:
+            sys.stdout, sys.stderr = old_out, old_err
+        return rc, out_buf.getvalue(), err_buf.getvalue()
+
+    def test_min_largest_frac_clean_passes(self):
+        # A solid blob is one dominant component (largest_frac == 1.0).
+        p = str(self.dir / "solid_lf.png")
+        _write(p, 32, 32, lambda x, y: MAGENTA)
+        rc, _, _ = self._run_cli([p, "--min-largest-frac", "0.8"])
+        self.assertEqual(rc, 0)
+
+    def test_min_largest_frac_swiss_cheese_fails(self):
+        # A checkerboard shatters the shadow — the largest component is tiny,
+        # so the lower bound bites (the fragmentation guard).
+        p = str(self.dir / "checker_lf.png")
+        _write(p, 32, 32, lambda x, y: MAGENTA if (x + y) % 2 == 0 else BLACK)
+        rc, out, _ = self._run_cli([p, "--min-largest-frac", "0.8"])
+        self.assertEqual(rc, 1)
+        self.assertIn("largest_frac", out)
+
+    def test_min_largest_frac_vanished_shadow_fails(self):
+        # No shadow pixels at all -> the lower bound must fail (the vanish
+        # guard: max-only thresholds would wrongly pass an empty shadow).
+        p = str(self.dir / "vanished_lf.png")
+        _write(p, 16, 16, lambda x, y: BLACK)
+        rc, out, _ = self._run_cli([p, "--min-largest-frac", "0.8"])
+        self.assertEqual(rc, 1)
+        self.assertIn("no shadow pixels", out)
+
+    def test_min_largest_frac_skipped_with_no_components(self):
+        # --no-components removes the data the bound needs; it must warn + fail
+        # rather than silently pass.
+        p = str(self.dir / "solid_nc.png")
+        _write(p, 16, 16, lambda x, y: MAGENTA)
+        rc, _, err = self._run_cli(
+            [p, "--no-components", "--min-largest-frac", "0.8"])
+        self.assertEqual(rc, 1)
+        self.assertIn("warning", err)
+
     def test_max_components_cli_fails_when_roi_too_large(self):
         """--max-components with an oversized ROI must warn to stderr + exit 1."""
         import io

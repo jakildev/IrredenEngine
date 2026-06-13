@@ -239,6 +239,50 @@ class RenderVerifyHarness(unittest.TestCase):
             self._eval(structural={"nope": [{"metric": "shadow",
                                              "max_hole_ratio": 0.05}]})
 
+    # ── structural-only shots (analytic oracle, no reference PNG) ─────────
+    def _eval_so(self, structural, structural_only):
+        return evaluate_shots(
+            captured=self.frames,
+            shot_labels=self.labels,
+            ref_dir=self.refs,
+            diff_dir=self.diffs,
+            thresholds={},
+            structural=structural,
+            structural_only=structural_only,
+        )
+
+    def test_structural_only_skips_frame_diff_and_needs_no_reference(self):
+        # shotA is structural_only: a clean magenta SHADOW capture with NO
+        # committed reference. It produces no frame row (the pixel-diff is
+        # skipped) but its structural gate still runs and passes. shotB keeps
+        # its normal full-frame pixel-diff.
+        self._ref("shotB.png")  # only shotB has a reference
+        _write(self.frames[0], 32, 32, lambda x, y: MAGENTA)
+        rows = self._eval_so(
+            structural={"shotA": [{"metric": "shadow",
+                                   "min_largest_frac": 0.8, "max_components": 6}]},
+            structural_only={"shotA"},
+        )
+        frame_labels = [r["label"] for r in rows if r["kind"] == "frame"]
+        self.assertNotIn("shotA", frame_labels)  # no pixel-diff, no ref needed
+        self.assertIn("shotB", frame_labels)
+        struct = self._row(rows, "shotA:shadow")
+        self.assertEqual(struct["kind"], "struct")
+        self.assertTrue(struct["pass"])
+
+    def test_structural_only_gate_still_fails_on_regression(self):
+        # The structural gate must still bite for a structural_only shot — a
+        # swiss-cheese capture fails even though it's exempt from pixel-diff.
+        self._ref("shotB.png")
+        _write(self.frames[0], 32, 32,
+               lambda x, y: MAGENTA if (x + y) % 2 == 0 else BLACK)
+        rows = self._eval_so(
+            structural={"shotA": [{"metric": "shadow",
+                                   "min_largest_frac": 0.8, "max_components": 6}]},
+            structural_only={"shotA"},
+        )
+        self.assertFalse(self._row(rows, "shotA:shadow")["pass"])
+
     # ── crop-path derivation ─────────────────────────────────────────────
     def test_crop_capture_path_pairs_with_frame_index(self):
         frame = Path("/x/save/screenshot_000007.png")
