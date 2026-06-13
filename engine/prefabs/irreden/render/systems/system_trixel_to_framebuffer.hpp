@@ -237,8 +237,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const vec2 anchorPanExcess = vec2(anchorPan) *
                                      (1.0f / static_cast<float>(subdivisionScale) - 1.0f) *
                                      screenPxPerCanvasPx;
-        mat4 panCorrection = mat4(1.0f);
-        panCorrection = translate(panCorrection, vec3(anchorPanExcess.x, -anchorPanExcess.y, 0.0f));
+        mat4 panCorrection =
+            translate(mat4(1.0f), vec3(anchorPanExcess.x, -anchorPanExcess.y, 0.0f));
         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                          panCorrection *
                                          calcModelMatrix(
