@@ -1,13 +1,4 @@
-"""Regression tests for parse_dt() + recurrence detection in review-fleet-feedback.
-
-The `apply` subcommand (and GitHub closedAt/mergedAt) persist timestamps as
-Z-suffixed UTC ISO ("2026-05-24T06:39:33Z"). parse_dt() once lacked a format
-that matched the trailing Z, so it returned None for every applied_at — which
-silently disabled BOTH mechanical transitions the skill exists to drive:
-recurrence (applied -> recurring) and auto-close (applied -> closed). These
-tests pin the parse and prove the closed loop actually fires. Import via
-importlib because the script has no .py extension.
-"""
+"""parse_dt Z-suffix regression: applied_at silently returned None, killing both mechanical transitions."""
 import importlib.machinery
 import importlib.util
 import sys
@@ -19,8 +10,7 @@ _SCRIPT = Path(__file__).parent.parent / "review-fleet-feedback"
 _loader = importlib.machinery.SourceFileLoader("review_fleet_feedback", str(_SCRIPT))
 _spec = importlib.util.spec_from_loader("review_fleet_feedback", _loader)
 _mod = importlib.util.module_from_spec(_spec)
-# Register before exec: @dataclass annotation resolution looks the module up in
-# sys.modules via cls.__module__ (Python 3.12+).
+# Register before exec so @dataclass cls.__module__ resolves in sys.modules (Python 3.12+).
 sys.modules["review_fleet_feedback"] = _mod
 _loader.exec_module(_mod)
 
