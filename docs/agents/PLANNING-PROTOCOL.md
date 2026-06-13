@@ -24,7 +24,26 @@ For each `fleet:needs-plan` issue:
 2. **Assess scope and post a structured plan as an issue comment**
    covering:
    - What files/modules are involved
-   - Step-by-step implementation approach
+   - **Verified current state + confirmed repro.** For a defect ticket,
+     name the repro you actually ran **against the actual code path** —
+     not the path the issue body guesses at. A body ending in "likely
+     suspects / confirm during investigation" is a hypothesis, not a
+     plan; verify the premise before writing the approach (every #1370
+     carve-off design-blocked because nobody had).
+   - **One approach, picked.** Step-by-step: which files, what order,
+     key decisions — and the plan **commits to a single approach**.
+     Deferring the choice to the worker ("confirm during
+     investigation/design", "option A or B, decide while implementing")
+     is forbidden: if the approach can't be picked yet, the issue isn't
+     plannable — keep `fleet:needs-plan` on and say what's missing, or
+     reframe it as an explicit **investigation spike** (the literal
+     phrase in the title/body; see
+     [`architect-protocol.md § Carve-offs`](architect-protocol.md)).
+   - **Sibling + in-flight reconciliation.** Check the parent ticket's
+     other carve-offs and every open PR touching the same surface — a
+     plan that duplicates or contradicts an active PR or a sibling's
+     recorded conclusion (e.g. #1440 prescribed the approach #1420 had
+     already proved wrong) wastes a full worker round.
    - Whether it should be **one task or broken into subtasks**
    - Suggested model tag (`[opus]` or `[sonnet]`) for each piece
    - Acceptance criteria
@@ -42,9 +61,21 @@ For each `fleet:needs-plan` issue:
    (the `file-epic` skill enforces the structured `**Blocked by:** #N`
    chain the scout and `fleet-claim` parsers require).
 
+   The same rule applies to **carve-offs**: when more than one residual
+   is split out of an over-scoped or in-flight ticket and they touch
+   the same surface, file them as a `file-epic` **chain** (each child
+   `Blocked by:` its predecessor), not N flat siblings that all hang
+   off the parent. Flat siblings go claimable simultaneously the
+   moment the parent closes and get worked in parallel on the same
+   files — the #1370 trio produced three conflicting, all
+   design-blocked PRs exactly this way.
+
 3. **Save the plan locally** for workers to read later:
    `mkdir -p ~/.fleet/plans`, then use the **Write tool** to create
-   `~/.fleet/plans/issue-<N>.md` (where N is the issue number). Format:
+   `~/.fleet/plans/issue-<N>.md` (where N is the issue number), and
+   **commit it into the repo** at `.fleet/plans/issue-<N>.md` via a
+   small docs PR — `~/.fleet/plans/` is same-host staging only, and a
+   worker claiming on another host reads the plan from master. Format:
 
    ```markdown
    # Plan: <issue title>
@@ -82,6 +113,16 @@ For each `fleet:needs-plan` issue:
    without `fleet:needs-plan` (and without `fleet:needs-info`) is the
    signal that the issue is queue-ready. The plan file stays at
    `~/.fleet/plans/issue-<N>.md` for the lifetime of the task.
+
+   This gate is mechanically enforced (#1456): `fleet-queue-ingest`
+   refuses to stamp `fleet:queued` on an approved issue that has no
+   plan file — neither the committed `.fleet/plans/issue-<N>.md` nor
+   the planner-host staging copy — and bounces it back to
+   `fleet:needs-plan` with a comment. The only escape hatch is an
+   explicit **investigation spike**: the literal phrase "investigation
+   spike" in the issue's title or body, for tickets whose deliverable
+   *is* the investigation. Labeling an unplanned build task
+   `human:approved` no longer queues it.
 
 **If you disagree with the issue's direction**, comment with your
 concerns but leave `fleet:needs-plan` on — let the human decide.
