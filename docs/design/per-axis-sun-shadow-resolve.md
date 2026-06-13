@@ -52,8 +52,13 @@ since Metal has no portable image-atomic syntax):
    `perAxisCellToWorld3D` uses), rotate it into the cardinal view frame
    (`rotateCardinalZ` + `cardinalLowerCornerShift × subdivisionScale`,
    mirroring `c_voxel_to_trixel_stage_1`'s cardinal store), and
-   `imageAtomicMin` the encoded iso-depth into a screen-space scratch SSBO at
-   the cardinal iso pixel `pos3DtoPos2DIso(viewPos)`.
+   `imageAtomicMin` the encoded iso-depth into a screen-space scratch SSBO
+   across the face's full cardinal-layout **footprint** (#1724): the
+   `scale²` micro-cells of the `faceMicroPositionFixed6` u,v sweep, each
+   covering its slot's two-pixel `faceOffset_2x3` diamond region, with the
+   per-micro-cell depth a real cardinal store would hold. Writing only the
+   origin pixel left the resolve ~50% sparse (pinhole casters → dithered,
+   gap-riddled shadows).
 2. **blit** (`c_resolve_per_axis_blit`): materialize the scratch into the
    resolve R32I texture `BAKE` reads, then reset each scratch slot to the empty
    sentinel for next frame (no separate clear dispatch).
