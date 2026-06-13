@@ -190,23 +190,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const ivec2 mainCanvasSize,
         const vec2 framebufferResolution
     ) {
-        // #1431: the per-axis store wrote its face-local lattice at the CAPPED
-        // density (subPerAxis), not the raw effSub baked into canvasZoomLevel_
-        // (= baseZoom / effSub). The scatter recovers cell origins in those
-        // capped lattice units, so the model matrix must un-scale by the capped
-        // density too: rescale zoomEff by effSub/cappedDensity (= 1 when the cap
-        // doesn't bite, so the cardinal / un-capped path is unchanged).
+        // #1458 stores the per-axis face-local lattice at BASE (world-unit)
+        // resolution — camera zoom is no longer baked into the lattice, so the
+        // scatter's screen scale is the FULL camera zoom. canvasZoomLevel_ has
+        // effSub divided out (for the subdivided cardinal canvas the gather
+        // reads); multiply it back, then rescale component-wise for the larger
+        // per-axis texture extent. The pre-#1458 effSub/cappedDensity rescale
+        // assumed a density-scaled lattice; against the base-resolution store
+        // it cancelled zoom entirely — zooming while rotated shrank the cull
+        // viewport (crop) without magnifying content.
         const int effSub = IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
-        const int cappedDensity = IRPrefab::PerAxisCanvas::subdivisionDensity();
-        const float densityRescale = static_cast<float>(effSub) / static_cast<float>(cappedDensity);
-        const vec2 zoomEff = frameData.frameData_.canvasZoomLevel_ * densityRescale *
+        const vec2 zoomEff = frameData.frameData_.canvasZoomLevel_ * static_cast<float>(effSub) *
                              vec2(axes.size_) / vec2(mainCanvasSize);
-        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
-                                         calcModelMatrix(
-                                             framebufferResolution,
-                                             frameData.frameData_.cameraTrixelOffset_,
-                                             zoomEff
-                                         );
 
         // Per-axis scatter inputs. `perAxisBase` MUST match
         // VOXEL_TO_TRIXEL_STAGE_1's trixelFrameOffset for this axis canvas
@@ -218,17 +213,39 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const auto cardinalIndex =
             IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        // perAxisBase MUST match the store's trixelFrameOffset, which now uses
-        // the #1431-capped density (in voxelRenderOptions.y) — so the scatter's
+        // perAxisBase MUST match the store's trixelFrameOffset, which uses the
+        // #1431-capped density (in voxelRenderOptions.y) — so the scatter's
         // face-origin recovery (faceLocalAnchor/faceLocalBase) is bit-consistent
         // with where the cells were written. NONE mode stores at world scale
         // (effectiveTrixelSubdivisionScale == 1 when renderMode == NONE).
+        const int cappedDensity = IRPrefab::PerAxisCanvas::subdivisionDensity();
         const int subdivisionScale =
             IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE ? cappedDensity : 1;
         const vec2 cameraIso = IRRender::getEffectiveCameraIso();
-        frameData.frameData_.perAxisBase_ =
-            IRMath::trixelOriginOffsetZ1(axes.size_) +
+        const ivec2 anchorPan =
             ivec2(IRMath::floor(cameraIso * static_cast<float>(subdivisionScale)));
+        frameData.frameData_.perAxisBase_ = IRMath::trixelOriginOffsetZ1(axes.size_) + anchorPan;
+
+        // The anchor's camera term pans the lattice window in store-scale
+        // steps (subdivisionScale anchor cells per iso pixel), but on screen —
+        // at the base-resolution zoom above — each anchor cell now spans a
+        // FULL world cell, so the anchor pan runs subdivisionScale× the true
+        // camera pan. Cancel the excess in the matrix translate (game px);
+        // exactly zero when subdivisionScale == 1, so previously-correct
+        // configurations are untouched.
+        const vec2 screenPxPerCanvasPx = framebufferResolution * zoomEff / vec2(axes.size_);
+        const vec2 anchorPanExcess = vec2(anchorPan) *
+                                     (1.0f / static_cast<float>(subdivisionScale) - 1.0f) *
+                                     screenPxPerCanvasPx;
+        mat4 panCorrection =
+            translate(mat4(1.0f), vec3(anchorPanExcess.x, -anchorPanExcess.y, 0.0f));
+        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
+                                         panCorrection *
+                                         calcModelMatrix(
+                                             framebufferResolution,
+                                             frameData.frameData_.cameraTrixelOffset_,
+                                             zoomEff
+                                         );
         frameData.frameData_.visualYaw_ = visualYaw;
         frameData.frameData_.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
@@ -243,8 +260,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // Per-pixel depth-color debug (#1697): evaluate hue from interpolated
         // face-corner world depth in the fragment shader instead of pre-baked
         // per-voxel vColor, eliminating the 4/3-band moiré at non-cardinal yaw.
-        frameData.frameData_.depthColorMode_ =
-            IRRender::getDepthColorDebugMode() ? 1 : 0;
+        frameData.frameData_.depthColorMode_ = IRRender::getDepthColorDebugMode() ? 1 : 0;
         frameData.frameData_.depthColorExtent_ = IRRender::getDepthColorDebugExtent();
         // Composite instrumentation (#1457): the scatter shaders false-color by
         // winning axis canvas / recovered origin when the matching overlay mode
