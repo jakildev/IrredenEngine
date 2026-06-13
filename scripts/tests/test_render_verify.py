@@ -216,9 +216,11 @@ class RenderVerifyHarness(unittest.TestCase):
         self.assertFalse(self._row(rows, "shotA:shadow")["pass"])
 
     def test_structural_unimplemented_metric_raises(self):
+        # shadow/coverage/silhouette/clip are implemented; an unknown metric
+        # name must still fail loudly (no render-<metric>-metric.py script).
         with self.assertRaises(SystemExit) as cm:
             _run_structural_metric(self.frames[0],
-                                   {"metric": "coverage", "min_coverage": 0.9},
+                                   {"metric": "nonexistent", "max_hole_ratio": 0.9},
                                    "shotA")
         self.assertIn("not", str(cm.exception).lower())
 
