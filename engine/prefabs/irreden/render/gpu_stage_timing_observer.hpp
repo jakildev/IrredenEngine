@@ -42,6 +42,10 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
     void tagStage(IRSystem::SystemId system, const GpuStageInfo &info) {
         StageState state{};
         state.info_ = &info;
+        // Index into the parallel `gpuStageAccumulators()` array — `info` is a
+        // reference into the `gpuStageRegistry()` array, so pointer arithmetic
+        // against its base gives the matching accumulator slot.
+        state.registryIndex_ = static_cast<int>(&info - gpuStageRegistry().data());
         state.device_ = IRRender::device();
         if (state.device_ != nullptr && state.device_->supportsGpuTimestampPairs()) {
             const int pairsInFlight =
@@ -104,7 +108,9 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
             return;
         if (useLegacyTiming()) {
             IRRender::device()->finish();
-            gpuStageTiming().*(it->second.info_->field_) = elapsedMs(m_t0, SteadyClock::now());
+            const float ms = elapsedMs(m_t0, SteadyClock::now());
+            gpuStageTiming().*(it->second.info_->field_) = ms;
+            recordStageSample(it->second.registryIndex_, ms);
             return;
         }
 
@@ -122,6 +128,7 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
 
     struct StageState {
         const GpuStageInfo *info_ = nullptr;
+        int registryIndex_ = -1;
         std::array<GpuTimestampHandle, kSamplesInFlight> handles_{};
         std::array<bool, kSamplesInFlight> pending_{};
         RenderDevice *device_ = nullptr;
@@ -147,9 +154,21 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
                 continue;
             if (IRRender::device()->readTimestampPairMs(state.handles_[i], ms)) {
                 gpuStageTiming().*(state.info_->field_) = ms;
+                recordStageSample(state.registryIndex_, ms);
                 state.pending_[i] = false;
             }
         }
+    }
+
+    // Feed one resolved per-frame GPU sample into the running accumulator the
+    // profile report drains. The live `GpuStageTiming::*Ms_` field (read by the
+    // perf overlay) keeps only the last frame; this builds the avg/min/max.
+    static void recordStageSample(int registryIndex, float ms) {
+        if (registryIndex < 0 ||
+            static_cast<std::size_t>(registryIndex) >= gpuStageAccumulators().size()) {
+            return;
+        }
+        gpuStageAccumulators()[registryIndex].record(ms);
     }
 
     static int nextAvailableSlot(StageState &state) {
