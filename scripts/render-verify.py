@@ -13,10 +13,22 @@ Workflow:
   5. Run the demo with `--auto-screenshot` via `fleet-run`.
   6. For each shot (manifest order), map `screenshot_NNNNNN.png` → `<label>.png`
      and compare via `render-compare.py`.
-  7. Print a pass/fail table and exit non-zero on any failure.
+  7. For each shot the manifest opts into a `crops` block, compare its ROI
+     crops against committed reference crops (`<label>__crop_<crop>.png`).
+  8. For each shot the manifest opts into a `structural` block, run the named
+     `render-<metric>-metric.py` gate (e.g. shadow hole_ratio) on the capture.
+  9. Print a pass/fail table and exit non-zero on any failure.
 
-`--update-references` copies the captured shots over the reference set for
-the current backend (after explicit confirmation unless ``--force`` is given).
+The `crops` and `structural` manifest blocks are both optional and additive:
+a manifest without them runs exactly the original full-frame pixel-diff. See
+``creations/demos/<demo>/test/references/manifest.json`` ``notes`` for the
+per-shot schema. Structural gates are backend-agnostic (one threshold gates
+both the macos-debug and linux-debug reference sets); ROI-crop pixel-diff is
+per-backend like the full-frame path.
+
+`--update-references` copies the captured shots (and any manifest-declared ROI
+crops) over the reference set for the current backend (after explicit
+confirmation unless ``--force`` is given).
 
 Assumes this file lives at ``<repo>/scripts/render-verify.py``.
 """
@@ -127,7 +139,9 @@ def _load_manifest(demo_dir: Path) -> dict[str, Any]:
 # VideoManager::writePendingRoiCrops). A bare ``screenshot_*.png`` glob matches
 # both, and since ``.`` < ``_`` the crops sort *between* full frames — so the
 # first-N slice below would pick 128x128 crops as full shots. Match the
-# index-only form so crops never enter the shot->reference mapping.
+# index-only form so crops never enter the *full-frame* shot->reference
+# mapping. Crops are still compared, but via the separate manifest-driven
+# ``crops`` gate (see ``evaluate_shots``), not this index mapping.
 _FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
 
 
@@ -170,6 +184,168 @@ def _compare_shot(actual: Path, reference: Path, thresholds: dict[str, Any],
         raise SystemExit(f"render-compare returned non-JSON: {proc.stdout!r} ({e})")
 
 
+# ── ROI crops ────────────────────────────────────────────────────────────
+# A shot's ROI crops are captured by VideoManager::writePendingRoiCrops as
+# ``screenshot_<idx>_<shotLabel>__crop_<cropLabel>.png`` alongside the
+# full-frame ``screenshot_<idx>.png``. The committed reference for a crop
+# drops the per-run index prefix: ``<shotLabel>__crop_<cropLabel>.png``.
+# Crops are compared only when the manifest's ``crops`` block opts the shot
+# in — a demo may emit inspection-only crops that aren't part of the gate.
+
+def _crop_capture_path(fullframe: Path, shot_label: str, crop_label: str) -> Path:
+    """Captured-crop path for a full-frame, given its shot + crop labels.
+
+    Reuses the full-frame's index (its ``stem``) so the crop and frame stay
+    paired even across re-runs where the absolute index drifts.
+    """
+    return fullframe.with_name(f"{fullframe.stem}_{shot_label}__crop_{crop_label}.png")
+
+
+def _crop_reference_name(shot_label: str, crop_label: str) -> str:
+    return f"{shot_label}__crop_{crop_label}.png"
+
+
+def _label_index(shot_labels: list[str]) -> dict[str, int]:
+    return {label: i for i, label in enumerate(shot_labels)}
+
+
+# ── Structural-metric gates ──────────────────────────────────────────────
+# A structural gate asserts a backend-agnostic, zoom-stable property of one
+# capture (e.g. shadow hole_ratio) instead of a pixel-diff against a per-
+# backend reference. Each ``metric`` name maps to a sibling
+# ``render-<metric>-metric.py`` script with a uniform CLI contract:
+#   * positional ``image`` (the PNG to measure)
+#   * ``--roi x,y,w,h`` (optional; default = whole image)
+#   * one ``--<threshold-key>`` flag per manifest threshold key
+#     (``max_hole_ratio`` -> ``--max-hole-ratio`` etc.)
+#   * emits a JSON object on stdout; exit 0 = within thresholds, 1 = a
+#     threshold was exceeded, 2 = I/O or format error.
+# render-shadow-metric.py (#1765) is the first implementer; T-3 adds
+# coverage / silhouette / clip metrics behind the same contract.
+
+def _run_structural_metric(image: Path, entry: dict[str, Any],
+                           shot_label: str) -> dict[str, Any]:
+    metric = entry.get("metric")
+    if not metric:
+        raise SystemExit(
+            f"structural entry for shot '{shot_label}' is missing a 'metric' key"
+        )
+    threshold_keys = [k for k in entry if k not in ("metric", "roi")]
+    if not threshold_keys:
+        raise SystemExit(
+            f"structural '{metric}' gate on shot '{shot_label}' declares no "
+            f"thresholds — the gate would always pass; add e.g. max_hole_ratio"
+        )
+    script = SCRIPT_DIR / f"render-{metric}-metric.py"
+    if not script.exists():
+        raise SystemExit(
+            f"structural metric '{metric}' (shot '{shot_label}') is not "
+            f"implemented: no {script.name}. See epic #1766 T-3."
+        )
+
+    cmd = [sys.executable, str(script), str(image)]
+    roi = entry.get("roi")
+    if roi is not None:
+        cmd.extend(["--roi", ",".join(str(v) for v in roi)])
+    for key in threshold_keys:
+        cmd.extend([f"--{key.replace('_', '-')}", str(entry[key])])
+
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode == 2:
+        raise SystemExit(
+            f"render-{metric}-metric errored on '{image.name}': {proc.stderr}"
+        )
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        raise SystemExit(
+            f"render-{metric}-metric returned non-JSON: {proc.stdout!r} ({e})"
+        )
+    # The exit code is the authoritative pass/fail (0 within thresholds, 1
+    # exceeded); the JSON carries the measured metrics + a human reason.
+    data["pass"] = proc.returncode == 0
+    data["metric"] = metric
+    return data
+
+
+def evaluate_shots(
+    *,
+    captured: list[Path],
+    shot_labels: list[str],
+    ref_dir: Path,
+    diff_dir: Path,
+    thresholds: dict[str, Any],
+    crops: dict[str, list[str]] | None = None,
+    structural: dict[str, list[dict[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
+    """Compare captures and run structural gates; return one row per check.
+
+    Each row is ``{label, kind, pass, ...}`` where ``kind`` is ``frame``
+    (full-frame pixel-diff), ``crop`` (ROI-crop pixel-diff) or ``struct``
+    (structural-metric gate). Pure given its inputs — no build/run — so the
+    gate logic is unit-testable against synthetic captures + references.
+    """
+    rows: list[dict[str, Any]] = []
+    crops = crops or {}
+    structural = structural or {}
+    label_index = _label_index(shot_labels)
+
+    # 1. Full-frame pixel-diff (the original gate; unchanged behavior).
+    for actual, label in zip(captured, shot_labels):
+        reference = ref_dir / f"{label}.png"
+        if not reference.exists():
+            rows.append({"label": label, "kind": "frame", "pass": False,
+                         "reason": f"no reference at {reference}"})
+            continue
+        result = _compare_shot(actual, reference, thresholds,
+                               diff_dir / f"{label}.diff.png")
+        rows.append({"label": label, "kind": "frame",
+                     "pass": result["pass"], "result": result})
+
+    # 2. ROI-crop pixel-diff (manifest-opted-in shots only).
+    for label, crop_labels in crops.items():
+        if label not in label_index:
+            raise SystemExit(
+                f"manifest 'crops' references unknown shot '{label}' "
+                f"(not in 'shots')"
+            )
+        fullframe = captured[label_index[label]]
+        for crop_label in crop_labels:
+            disp = f"{label}:{crop_label}"
+            actual_crop = _crop_capture_path(fullframe, label, crop_label)
+            reference = ref_dir / _crop_reference_name(label, crop_label)
+            if not actual_crop.exists():
+                rows.append({"label": disp, "kind": "crop", "pass": False,
+                             "reason": f"crop not captured ({actual_crop.name}) "
+                                       f"— does the shot declare this RoiCrop?"})
+                continue
+            if not reference.exists():
+                rows.append({"label": disp, "kind": "crop", "pass": False,
+                             "reason": f"no reference at {reference}"})
+                continue
+            result = _compare_shot(actual_crop, reference, thresholds,
+                                   diff_dir / f"{label}__crop_{crop_label}.diff.png")
+            rows.append({"label": disp, "kind": "crop",
+                         "pass": result["pass"], "result": result})
+
+    # 3. Structural-metric gates (manifest-opted-in shots only).
+    for label, entries in structural.items():
+        if label not in label_index:
+            raise SystemExit(
+                f"manifest 'structural' references unknown shot '{label}' "
+                f"(not in 'shots')"
+            )
+        fullframe = captured[label_index[label]]
+        for entry in entries:
+            result = _run_structural_metric(fullframe, entry, label)
+            disp = f"{label}:{result['metric']}"
+            rows.append({"label": disp, "kind": "struct",
+                         "pass": result["pass"], "result": result,
+                         "reason": result.get("reason")})
+
+    return rows
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--target", default="IRShapeDebug",
@@ -206,6 +382,10 @@ def main(argv: list[str] | None = None) -> int:
     manifest = _load_manifest(demo_dir)
     shot_labels: list[str] = manifest["shots"]
     thresholds = manifest.get("thresholds", {})
+    # Optional, additive gate blocks (a manifest without them behaves exactly
+    # as before — full-frame pixel-diff only).
+    crops_block: dict[str, list[str]] = manifest.get("crops", {})
+    structural_block: dict[str, list[dict[str, Any]]] = manifest.get("structural", {})
     screenshot_subdir = manifest.get("screenshot_subdir", "save_files/screenshots")
     # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
@@ -263,6 +443,23 @@ def main(argv: list[str] | None = None) -> int:
             dest = ref_dir / f"{label}.png"
             shutil.copy2(actual, dest)
             print(f"[render-verify] updated {dest}")
+        # Also snapshot any manifest-declared ROI crops so the crop gate has
+        # a baseline. Structural gates are threshold-based (no reference PNG),
+        # so they need nothing here.
+        label_index = _label_index(shot_labels)
+        for label, crop_labels in crops_block.items():
+            if label not in label_index:
+                continue
+            fullframe = captured[label_index[label]]
+            for crop_label in crop_labels:
+                src = _crop_capture_path(fullframe, label, crop_label)
+                if not src.exists():
+                    print(f"[render-verify] warning: declared crop not captured, "
+                          f"skipping ({src.name})")
+                    continue
+                dest = ref_dir / _crop_reference_name(label, crop_label)
+                shutil.copy2(src, dest)
+                print(f"[render-verify] updated {dest}")
         return 0
 
     if not ref_dir.exists() or not any(ref_dir.glob("*.png")):
@@ -273,39 +470,50 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    rows = evaluate_shots(
+        captured=captured,
+        shot_labels=shot_labels,
+        ref_dir=ref_dir,
+        diff_dir=diff_dir,
+        thresholds=thresholds,
+        crops=crops_block,
+        structural=structural_block,
+    )
+
     print()
-    print(f"{'shot':30} {'result':8} {'match%':>8} {'max_d':>6} {'psnr':>8}")
-    print("-" * 66)
-    all_pass = True
-    failures: list[tuple[str, dict[str, Any]]] = []
-    for actual, label in zip(captured, shot_labels):
-        reference = ref_dir / f"{label}.png"
-        if not reference.exists():
-            print(f"{label:30} {'MISSING':8}")
-            all_pass = False
-            failures.append((label, {"reason": f"no reference at {reference}"}))
-            continue
-        diff_out = diff_dir / f"{label}.diff.png"
-        result = _compare_shot(actual, reference, thresholds, diff_out)
-        verdict = "PASS" if result["pass"] else "FAIL"
-        psnr = result["psnr_db"]
-        print(f"{label:30} {verdict:8} {result['match_pct']:>8} "
-              f"{result['max_delta']:>6} {psnr:>8}")
-        if not result["pass"]:
-            all_pass = False
-            failures.append((label, result))
+    print(f"{'shot':40} {'result':8} {'match%':>8} {'max_d':>6} {'psnr':>8}")
+    print("-" * 76)
+    failures: list[dict[str, Any]] = []
+    for row in rows:
+        verdict = "PASS" if row["pass"] else "FAIL"
+        result = row.get("result")
+        if row["kind"] in ("frame", "crop") and result and "match_pct" in result:
+            print(f"{row['label']:40} {verdict:8} {result['match_pct']:>8} "
+                  f"{result['max_delta']:>6} {result['psnr_db']:>8}")
+        else:
+            # MISSING / not-captured rows and structural gates have no
+            # pixel-diff numbers — show the reason in the wide column.
+            reason = row.get("reason") or (result.get("reason") if result else "") or ""
+            print(f"{row['label']:40} {verdict:8} {reason}")
+        if not row["pass"]:
+            failures.append(row)
+    all_pass = not failures
 
     print()
     if all_pass and run_crash is None:
-        print(f"[render-verify] all {len(shot_labels)} shots PASS")
+        print(f"[render-verify] all {len(rows)} checks PASS "
+              f"({len(shot_labels)} frames"
+              f"{f', {sum(len(v) for v in crops_block.values())} crops' if crops_block else ''}"
+              f"{f', {sum(len(v) for v in structural_block.values())} structural' if structural_block else ''})")
         return 0
 
     if not all_pass:
-        print(f"[render-verify] {len(failures)} of {len(shot_labels)} shots FAIL")
-        for label, result in failures:
-            reason = result.get("reason", "mismatch")
+        print(f"[render-verify] {len(failures)} of {len(rows)} checks FAIL")
+        for row in failures:
+            result = row.get("result") or {}
+            reason = row.get("reason") or result.get("reason", "mismatch")
             diff = result.get("diff_path", "(no diff)")
-            print(f"  - {label}: {reason}  diff={diff}")
+            print(f"  - {row['label']}: {reason}  diff={diff}")
 
     if run_crash is not None:
         rc, _ = run_crash
