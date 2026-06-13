@@ -378,7 +378,7 @@ for issue in pending:
     # hypothesis, not a plan — without a plan file the claiming worker is
     # the first to open the code and design-blocks. Bounce to
     # fleet:needs-plan (routes through PLANNING-PROTOCOL.md; the label also
-    # drops the issue out of the ingest pending set via _INGEST_SKIP_LABELS)
+    # drops the issue out of the ingest pending set via the live-label skip guard)
     # unless the issue is an explicit investigation spike. Sits before the
     # blocker probes so a bounced issue costs no per-blocker API calls.
     if (not SPIKE_RE.search(title) and not SPIKE_RE.search(body)
