@@ -11,7 +11,7 @@ section below for which files apply.
 | Path | Producer | Reader | Purpose |
 |---|---|---|---|
 | `state.json` | scout | every role | List-shape state: open PRs (with labels, reviews, mergeable), needs-plan / human-approved issues (number + title + labels + updatedAt), open `fleet:queued` issue rows. ~32 KB. |
-| `projections/<role>.json` | scout (slicers) | the named role | Pre-filtered per-role slice with full records (e.g. sonnet-author's `tasks_open` + `feedback_prs`). ~5 KB. **Prefer this over `state.json`** when you only need your own role's items. |
+| `projections/<role>.json` | scout (slicers) | the named role | Pre-filtered per-role slice with full records (e.g. the worker lane's `tasks_open` + `feedback_prs`). ~5 KB. **Prefer this over `state.json`** when you only need your own role's items. |
 | `prs/<repo>/<N>.json` | scout | `fleet-pr view`/`comments` | Full PR detail: body, conversation comments, review summaries, inline review threads, files-changed list. Refreshed only when the list query's `updatedAt` advances. |
 | `diffs/<repo>/<N>-<sha>.diff` | scout | `fleet-pr diff` | Raw `gh pr diff` output, keyed by head SHA. Refreshed on rebase only; old SHAs garbage-collected. |
 | `issues/<repo>/<N>.json` | scout | `fleet-issue view` | Full issue detail (body + comments + labels + state). Cached for issues in `needs_plan` / `human_approved`. |
@@ -71,8 +71,7 @@ just the items that role works on:
 
 | Role | Slice keys |
 |---|---|
-| sonnet-author | `tasks_open` (filtered to `[sonnet]` engine tasks), `feedback_prs` |
-| opus-worker | `tasks_open` (filtered to `[opus]` tasks, both repos), `needs_plan`, `feedback_prs` |
+| worker | `tasks_open` (all classes, both repos), `needs_plan`, `feedback_prs` |
 | sonnet-reviewer | `candidate_prs` (review-skip filter applied) |
 | opus-reviewer | `flagged_prs` (`fleet:has-nits` / `fleet:needs-fix` / `fleet:needs-opus-recheck`) |
 | merger | `prs` (engine + game, approved or non-MERGEABLE only; each tagged with its `repo`) |

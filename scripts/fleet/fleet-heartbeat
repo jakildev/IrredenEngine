@@ -19,7 +19,7 @@
 #
 #   - Wrapping the write in a subprocess sidesteps the issue. Claude
 #     Code tracks approval on the COMMAND it invokes (`fleet-heartbeat
-#     sonnet-fleet-1`), not on what that subprocess writes internally.
+#     worker-1`), not on what that subprocess writes internally.
 #     Allowlist `Bash(fleet-heartbeat:*)` and the prompts stop.
 #
 #   - Centralization: if we later want to bump a /status snapshot file
@@ -29,8 +29,8 @@
 #   fleet-heartbeat <role-name>
 #
 # Examples:
-#   fleet-heartbeat sonnet-fleet-1
-#   fleet-heartbeat opus-worker-1
+#   fleet-heartbeat worker-1
+#   fleet-heartbeat worker-2
 #   fleet-heartbeat merger
 #
 # Source of truth: scripts/fleet/fleet-heartbeat in the engine repo.

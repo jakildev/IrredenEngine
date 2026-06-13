@@ -54,13 +54,13 @@
       "name": "fleet:opus",
       "scope": "issue",
       "color": "1d76db",
-      "description": "Model-affinity tag set by fleet-queue-ingest; opus-worker picks tasks with this label"
+      "description": "Model-affinity tag set by fleet-queue-ingest; opus-class workers pick tasks with this label"
     },
     {
       "name": "fleet:sonnet",
       "scope": "issue",
       "color": "1d76db",
-      "description": "Model-affinity tag set by fleet-queue-ingest; sonnet-author picks tasks with this label"
+      "description": "Model-affinity tag set by fleet-queue-ingest; sonnet-class workers pick tasks with this label"
     },
     {
       "name": "fleet:blocked",
@@ -138,7 +138,7 @@
       "name": "fleet:semantic-conflict",
       "scope": "pr",
       "color": "d73a4a",
-      "description": "Merger hit non-mechanical conflict; opus-worker resolves or escalates"
+      "description": "Merger hit non-mechanical conflict; opus+-class worker resolves or escalates"
     },
     {
       "name": "fleet:merger-cooldown",
@@ -399,7 +399,7 @@
     {
       "name": "design-block",
       "scope": "pr",
-      "owner": "opus-worker",
+      "owner": "worker",
       "remove": [
         "fleet:design-unblocked",
         "fleet:design-proposed"
@@ -407,7 +407,7 @@
       "add": [
         "fleet:design-blocked"
       ],
-      "note": "Worker escalates for architectural input mid-task. Keeps fleet:wip (qualifier). Also clears a stale steward parking marker on re-escalation. role-opus-worker.md step 8c."
+      "note": "Worker escalates for architectural input mid-task. Keeps fleet:wip (qualifier). Also clears a stale steward parking marker on re-escalation. role-worker.md step 8c."
     },
     {
       "name": "design-unblock",

@@ -129,17 +129,14 @@ loop, hard rules. Skills are reusable routines any role can call.
 
 ### Authors — produce changes
 
-- **`/role-sonnet-author`** (Sonnet, `sonnet-fleet-*` worktrees,
-  continuous loop) — picks bounded `[sonnet]`-tagged issues from the
-  GitHub queue (`fleet:queued` + `fleet:sonnet`). Test generation,
-  doc passes, mechanical refactors, gameplay/creation-level work.
-  Most of the volume goes through here. Escalates back to the queue
-  if a task turns out subtler than expected.
-- **`/role-opus-worker`** (Opus, `opus-worker-*`, continuous loop) —
-  picks `[opus]`-tagged issues from the GitHub queue and plans
-  `fleet:needs-plan` issues (writes a structured plan, posts it as
-  a comment, swaps labels). Use Opus budget here only when the task
-  is genuinely Opus-grade.
+- **`/role-worker`** (class-routed fable|opus|sonnet, `worker-*`
+  worktrees, continuous loop) — picks issues of its dispatched class
+  from the GitHub queue (`fleet:queued` + `fleet:<class>`). The
+  dispatcher resolves the class per dispatch from the task
+  (`fleet_task_class.py`); sonnet-class iterations do the bounded
+  volume work (tests, docs, mechanical refactors), opus+ classes do
+  the heavy work and plan `fleet:needs-plan` issues. A task subtler
+  than its class is re-tagged one class up and released.
 - **`/role-opus-architect`** (Opus, `opus-architect`, stand-by) —
   core engine architecture, ECS/render/audio invariants, deep
   ownership/lifetime decisions. Doesn't pick tasks autonomously;
@@ -168,7 +165,7 @@ loop, hard rules. Skills are reusable routines any role can call.
 - **`/role-merger`** (Opus, `merger`, polling loop ~10 min) —
   proactively rebases stale PRs, auto-resolves mechanical conflicts.
   When it can't resolve mechanically, it sets
-  `fleet:semantic-conflict` and the next opus-worker pass picks it
+  `fleet:semantic-conflict` and the next opus+-class worker pass picks it
   up.
 - **`/role-game-architect`** (Opus, `game-architect`, stand-by) —
   optional, only if `creations/game/` is its own git repo. Game-
@@ -189,7 +186,7 @@ human adds `human:approved`
 fleet-queue-ingest stamps `fleet:queued` + model label
         │
         ▼
-sonnet-author or opus-worker claims it
+a worker claims it
         │
         ▼
 work, then `commit-and-push`        ──►  PR opens with `fleet:wip`
@@ -363,7 +360,7 @@ what you want and the agent does it.
   [`docs/AGENT_FLEET_SETUP.md` §15](../AGENT_FLEET_SETUP.md). Crash
   diagnostics live in `~/.fleet/logs/<role>.log`.
 - A PR has a `fleet:semantic-conflict` label: the merger couldn't
-  auto-rebase. The next opus-worker pass picks it up.
+  auto-rebase. The next opus+-class worker pass picks it up.
 - The fleet feels off: `fleet-feedback` aggregates per-role notes
   agents write to `~/.fleet/feedback/<role>.md` — that's the one-way
   signal channel from running agents to you.

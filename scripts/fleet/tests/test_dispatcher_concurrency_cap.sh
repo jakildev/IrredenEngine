@@ -13,10 +13,9 @@
 #   - conf file override
 #   - conf override beat by env var
 #
-# count-active queries the unified `worker` lane while the dispatch
-# records, pane tags, and reservations still carry the legacy
-# `opus-worker` strings — exercising pane_role_matches_lane's coexistence
-# aliasing (panes aren't renamed until P2-2).
+# count-active queries the unified `worker` lane; dispatch records,
+# pane tags, and reservations carry the same `worker` role string
+# (P2-2 renamed the panes; P2-3 removed the legacy-alias shims).
 
 set -euo pipefail
 
@@ -94,10 +93,8 @@ chmod +x "$TMPROOT/bin/gh"
 ln -s "$FLEET_CLAIM" "$TMPROOT/bin/fleet-claim"
 export PATH="$TMPROOT/bin:$PATH"
 
-# The dispatch records and pane tags below deliberately use the legacy
-# `opus-worker` role string: P2-2 has not renamed the panes yet, so the
-# unified `worker` lane must count work that still carries the old tag
-# (pane_role_matches_lane). This is the coexistence path.
+# The dispatch records and pane tags below use the unified `worker`
+# role string with per-pane worker-N worktrees (post-P2-2 layout).
 
 # --- Test 1: no records, no reservations -----------------------------------
 echo "T1: empty state — count is 0"
@@ -105,25 +102,25 @@ n=$("$DISPATCHER" --count-active worker)
 assert_eq "$n" "0" "worker count is 0 with empty state"
 
 # --- Test 2: in-flight only ------------------------------------------------
-echo "T2: one in-flight dispatch record (legacy opus-worker tag)"
+echo "T2: one in-flight dispatch record"
 cat >"$FLEET_STATE_DIR/dispatch/pane-3.json" <<'JSON'
-{"role":"opus-worker","pane":"%3","dispatched_at":"2026-05-08T00:00:00Z"}
+{"role":"worker","pane":"%3","dispatched_at":"2026-05-08T00:00:00Z"}
 JSON
 n=$("$DISPATCHER" --count-active worker)
-assert_eq "$n" "1" "worker count is 1 with one in-flight (legacy tag aliased)"
+assert_eq "$n" "1" "worker count is 1 with one in-flight"
 n=$("$DISPATCHER" --count-active merger)
 assert_eq "$n" "0" "merger count is 0 (in-flight is a worker-lane record)"
 
 # --- Test 3: reservation only ----------------------------------------------
-echo "T3: a reservation for an opus task on a different worktree"
-"$FLEET_CLAIM" reserve 901 opus-worker-2 claude/901-something >/dev/null
+echo "T3: a reservation for a task on a different worktree"
+"$FLEET_CLAIM" reserve 901 worker-2 claude/901-something >/dev/null
 n=$("$DISPATCHER" --count-active worker)
 assert_eq "$n" "2" "worker count is 2 (1 in-flight + 1 reserved on different worktree)"
 
 # --- Test 4: dedup when same worktree has both ------------------------------
 echo "T4: add second in-flight whose worktree matches the reservation"
 # pane-5's dispatch record — without tmux, fallback identity is pane-5
-# (cannot match the reservation key opus-worker-2). To exercise dedup
+# (cannot match the reservation key worker-2). To exercise dedup
 # AND the new busy-pane-counts-reservation semantics, stub tmux for
 # has-session, list-panes (so worktree-busy population works), and
 # display-message (so dispatch records resolve to worktree names).
@@ -136,9 +133,9 @@ case "$sub" in
     list-panes)
         # Tab-separated: pane_id, fleet-role, pane_current_command.
         # Both panes report `claude` (busy) so the reservation on
-        # opus-worker-2 is counted via the live-iteration path, then
+        # worker-2 is counted via the live-iteration path, then
         # dedups with pane %5's dispatch record.
-        printf '%%3\topus-worker\tclaude\n%%5\topus-worker\tclaude\n'
+        printf '%%3\tworker\tclaude\n%%5\tworker\tclaude\n'
         exit 0
         ;;
     display-message)
@@ -152,8 +149,8 @@ case "$sub" in
         done
         if [[ "$fmt" == *pane_current_path* ]]; then
             case "$pane" in
-                "%3") echo "/fake/worktrees/opus-worker-1" ;;
-                "%5") echo "/fake/worktrees/opus-worker-2" ;;
+                "%3") echo "/fake/worktrees/worker-1" ;;
+                "%5") echo "/fake/worktrees/worker-2" ;;
                 *)    echo "/fake/worktrees/unknown" ;;
             esac
         elif [[ "$fmt" == *pane_pid* ]]; then
@@ -168,24 +165,24 @@ esac
 TMUXEOF
 chmod +x "$TMPROOT/bin-tmux/tmux"
 
-# Add a second dispatch record on pane %5 (opus-worker-2)
+# Add a second dispatch record on pane %5 (worker-2)
 cat >"$FLEET_STATE_DIR/dispatch/pane-5.json" <<'JSON'
-{"role":"opus-worker","pane":"%5","dispatched_at":"2026-05-08T00:00:00Z"}
+{"role":"worker","pane":"%5","dispatched_at":"2026-05-08T00:00:00Z"}
 JSON
 
-# With tmux stub: pane %3 → opus-worker-1, pane %5 → opus-worker-2,
-# both busy. Reservation is on opus-worker-2 → dedup with pane %5's
-# record. Total unique = 2 (opus-worker-1, opus-worker-2).
+# With tmux stub: pane %3 → worker-1, pane %5 → worker-2,
+# both busy. Reservation is on worker-2 → dedup with pane %5's
+# record. Total unique = 2 (worker-1, worker-2).
 PATH="$TMPROOT/bin-tmux:$PATH" n=$("$DISPATCHER" --count-active worker)
 assert_eq "$n" "2" "worker count dedups same-worktree dispatch+reservation"
 
 # --- Test 4b: reservation on IDLE pane (resume case) does NOT count --------
 echo "T4b: reservation on idle pane does NOT count (resume case)"
 # Clean slate: drop dispatch records and the prior reservation; reserve
-# #901 for opus-worker-2 again.
+# #901 for worker-2 again.
 rm -f "$FLEET_STATE_DIR"/dispatch/*.json
-"$FLEET_CLAIM" release-worktree opus-worker-2 >/dev/null 2>&1 || true
-"$FLEET_CLAIM" reserve 901 opus-worker-2 claude/901-something >/dev/null
+"$FLEET_CLAIM" release-worktree worker-2 >/dev/null 2>&1 || true
+"$FLEET_CLAIM" reserve 901 worker-2 claude/901-something >/dev/null
 
 mkdir -p "$TMPROOT/bin-tmux-idle"
 cat >"$TMPROOT/bin-tmux-idle/tmux" <<'TMUXEOF'
@@ -198,7 +195,7 @@ case "$sub" in
         # this tmux stub forces the wrapper-child probe to "not
         # running" → the new count_active_for_role semantics skip
         # the reservation as a queued resume signal.
-        printf '%%5\topus-worker\tzsh\n'
+        printf '%%5\tworker\tzsh\n'
         exit 0
         ;;
     display-message)
@@ -211,7 +208,7 @@ case "$sub" in
             esac
         done
         if [[ "$fmt" == *pane_current_path* ]]; then
-            echo "/fake/worktrees/opus-worker-2"
+            echo "/fake/worktrees/worker-2"
         elif [[ "$fmt" == *pane_pid* ]]; then
             echo "1"
         fi
@@ -248,7 +245,7 @@ case "$sub" in
     list-panes)
         # pane_current_command=claude → outside the shell allowlist
         # → considered busy without needing the wrapper-child probe.
-        printf '%%5\topus-worker\tclaude\n'
+        printf '%%5\tworker\tclaude\n'
         exit 0
         ;;
     display-message)
@@ -261,7 +258,7 @@ case "$sub" in
             esac
         done
         if [[ "$fmt" == *pane_current_path* ]]; then
-            echo "/fake/worktrees/opus-worker-2"
+            echo "/fake/worktrees/worker-2"
         elif [[ "$fmt" == *pane_pid* ]]; then
             echo "999998"
         fi

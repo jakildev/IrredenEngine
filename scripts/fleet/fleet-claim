@@ -82,8 +82,8 @@ __remove_claim() {
 # to different tasks across repos. Game-side claims pass `--repo game`
 # BEFORE the subcommand to namespace the slug:
 #
-#   fleet-claim claim 1234 opus-worker-1                # engine: slug=1234
-#   fleet-claim --repo game claim 18 opus-worker-1      # game: slug=game-18
+#   fleet-claim claim 1234 worker-1                     # engine: slug=1234
+#   fleet-claim --repo game claim 18 worker-1           # game: slug=game-18
 #   fleet-claim --repo game release 18                  # release with same prefix
 #
 # Parsed BEFORE the subcommand so it doesn't collide with cleanup's own
@@ -178,7 +178,7 @@ slugify() {
 #   - fleet:claim-<host>-<agent>      (task claim)
 #
 # Host disambiguation is required for correctness — two hosts can both
-# have an `opus-worker-1` worktree.
+# have a `worker-1` worktree.
 #
 # Stale label sweep runs from `fleet-claim cleanup --gh`; orphan sentinels
 # under ~/.fleet/orphans/ retry failed removals on the next cleanup pass.
@@ -2204,7 +2204,7 @@ for repo in repos:
             if "fleet:wip" not in labs and not (labs & FEEDBACK):
                 continue
             # A fleet:design-blocked PR is intentionally claim-less, not drift.
-            # The design-escalation protocol (role-opus-worker.md step 8c) has
+            # The design-escalation protocol (role-worker.md step 8c) has
             # the worker RELEASE its claim + worktree reservation when parking
             # the PR for the architect; re-adoption is gated on the architect
             # flipping it to fleet:design-unblocked, not a free pickup decision.
@@ -2627,7 +2627,7 @@ PYEOF
 #   each --apply tick a finding recurs and resets when it does not, so a
 #   freshly-opened WIP PR still propagating its claim is never acted on. When a
 #   finding crosses <threshold> ticks, re-add fleet:design-unblocked so the
-#   opus-worker resume loop adopts the PR (the worker — never reconcile — makes
+#   worker resume loop adopts the PR (the worker — never reconcile — makes
 #   the resume-or-close call). Idempotent: once the label is back the finding
 #   stops reproducing, so its counter resets and the heal does not repeat. A
 #   failed re-add simply recurs on the next tick (the counter is already past
@@ -3612,12 +3612,10 @@ for line in body.splitlines():
     done
 
     case "$model" in
-        # fable tasks dispatch from the heavy (opus-worker) lane until the
-        # phase-2 generic-worker unification — mapping it here keeps
-        # crash-survived fable reservations counted against that lane's
-        # concurrency cap.
-        fable|opus) echo "opus-worker" ;;
-        sonnet)     echo "sonnet-author" ;;
+        # All classes dispatch from the unified worker lane (P2, epic
+        # #1692) — crash-survived reservations of any class count
+        # against that lane's concurrency cap.
+        fable|opus|sonnet) echo "worker" ;;
         *) ;;
     esac
     return 0
@@ -4055,8 +4053,7 @@ reservation commands (worktree-pinning, distinct from claims):
                                 empty.
   list-reservations             table of all active reservations.
   reservation-role <worktree>   print dispatcher role tag for this
-                                worktree's reservation (opus-worker /
-                                sonnet-author).
+                                worktree's reservation (worker).
 
 molecule commands (crash-recovery state for stack claims):
   molecule list                          show all active molecules
@@ -4083,8 +4080,8 @@ Slug canonicalization:
   global --repo flag (e.g. "1234" or "game-15").
 
 Examples:
-  fleet-claim claim 1234 opus-worker-1                  # engine claim
-  fleet-claim --repo game claim 18 opus-worker-1        # game claim
+  fleet-claim claim 1234 worker-1                       # engine claim
+  fleet-claim --repo game claim 18 worker-1             # game claim
   fleet-claim --repo game release 18                    # release game claim
   fleet-claim list                                      # show all claims
 USAGE

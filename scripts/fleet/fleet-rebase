@@ -88,7 +88,7 @@ rearm_llm() {
 # rebase keeps it mergeable instead of letting it accumulate conflicts as
 # master advances (the exact stranding that motivated this change); a
 # CONFLICTING one re-arms the LLM merger pass to resolve, and the
-# opus-worker drops the label on resolution.
+# the worker drops the label on resolution.
 #
 # Single source: the python triage below reads this via
 # FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.

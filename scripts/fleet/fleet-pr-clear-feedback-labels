@@ -21,7 +21,7 @@
 # ESCALATE-path outcome, not a feedback trigger. It is cleared
 # separately via --labels "fleet:human-deferred" on two paths:
 #   1. human:needs-fix / human:blocker ESCALATE→AMEND (FLEET-FEEDBACK-HANDLING.md step b)
-#   2. opus-worker step 1c.i (semantic-conflict resolution invalidates the prior deferral)
+#   2. role-worker.md step 1c.i (semantic-conflict resolution invalidates the prior deferral)
 #
 # Usage:
 #   fleet-pr-clear-feedback-labels <N> [--repo <slug>] [--labels <csv>]

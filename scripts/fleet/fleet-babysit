@@ -4,7 +4,7 @@
 # Runs claude interactively with a role slash command, then auto-resumes
 # on exit. Two distinct lifecycles:
 #
-#   Workers (sonnet-author, opus-worker, sonnet-reviewer, opus-reviewer,
+#   Workers (worker, sonnet-reviewer, opus-reviewer,
 #   queue-manager, merger): each task iteration is a *fresh* claude
 #   invocation, so context doesn't accumulate across tasks. After a
 #   clean exit (task done), babysit picks one of two between-iteration
@@ -37,8 +37,8 @@
 #   fleet-babysit <model> <role> [mode] [loop-interval]
 #
 # Examples:
-#   fleet-babysit sonnet sonnet-author dry-run
-#   fleet-babysit sonnet sonnet-author live          # fresh per task, no interval
+#   fleet-babysit sonnet worker dry-run
+#   fleet-babysit sonnet worker live                 # fresh per task, no interval
 #   fleet-babysit sonnet sonnet-reviewer live 3m     # fresh per task, 3m between
 #   fleet-babysit opus  opus-reviewer live 30m       # fresh per task, 30m between
 #   fleet-babysit sonnet queue-manager live 5m       # fresh per task, 5m between
@@ -268,7 +268,7 @@ esac
 # name from `pwd` so it can re-touch the file during long sleeps and
 # during long agent iterations — without that, the witness sees a
 # heartbeat go stale during normal between-iteration sleeps (the
-# 1200s opus-worker LOOP_INTERVAL plus a 33-min iteration easily
+# 1200s worker LOOP_INTERVAL plus a 33-min iteration easily
 # blows past the 30m staleness threshold even when the fleet is
 # functioning correctly — observed in production 2026-04-22).
 HEARTBEAT_FILE=""
@@ -423,7 +423,7 @@ run_with_heartbeat() {
 #     a persisted session-id. Always use --resume on relaunch so the
 #     interactive design conversation never resets.
 #
-#   Workers (everyone else: sonnet-author, opus-worker, sonnet-reviewer,
+#   Workers (everyone else: worker, sonnet-reviewer,
 #     opus-reviewer, queue-manager) — one fresh `claude` invocation per
 #     task iteration. Between tasks, we relaunch with the role slash
 #     command (no --continue, no --resume), so the new task starts with
@@ -464,7 +464,7 @@ launch_worker_fresh() {
     # emits a "standing by" message, then sits at the prompt forever
     # waiting for more user input. Babysit only relaunches on process
     # exit, so no-exit = no-relaunch = agent goes stale. Observed in
-    # production with sonnet-fleet-1 / sonnet-reviewer running once
+    # production with worker-1 / sonnet-reviewer running once
     # then stuck forever.
     #
     # `--print` means one-shot: run the prompt (including all tool use

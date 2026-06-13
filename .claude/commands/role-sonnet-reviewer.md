@@ -103,7 +103,7 @@ treat it as a hard rule for this role.
      present), review the NEW diff on its merits — just don't re-raise
      the deferred concern (the linked issue tracks it).
    - `fleet:semantic-conflict` — merger detected a non-mechanical
-     rebase conflict; the opus-worker is queued to attempt
+     rebase conflict; an opus+-class worker is queued to attempt
      resolution. The PR's diff against master is meaningless until
      the rebase lands, so reviewing now wastes a pass.
    - `fleet:fork-of-other-pr` — PR branch forked from another open
