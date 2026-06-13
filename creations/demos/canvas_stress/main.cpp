@@ -140,6 +140,15 @@ struct CanvasStressSettings {
     // the per-system CPU sensor for the rotating-GRID / re-voxelize load
     // this demo uniquely exercises (perf_grid has no rotating sets).
     bool autoProfile_ = false;
+    // `--debug-overlay <mode>` forces a render debug overlay for the whole run
+    // (none|ao|light_level|shadow|peraxis_id|peraxis_origin|unlit). T-1 (#1767)
+    // captures with `--debug-overlay shadow` so cast shadows read magenta and
+    // render-shadow-metric.py (#1765) can classify the swiss-cheese / dithering
+    // signature (epic #1717). The run-global form keeps the shared
+    // AutoScreenshotShot table backend-agnostic — a per-shot overlay field is
+    // deferred to the structural-gate work (T-2/T-3). NONE leaves the live
+    // pipeline untouched, so a flagless run is byte-identical.
+    IRRender::DebugOverlayMode debugOverlay_ = IRRender::DebugOverlayMode::NONE;
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -685,6 +694,9 @@ void parseArgs(int argc, char **argv) {
             i += 2;
         } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
             g_settings.autoProfile_ = true;
+        } else if (std::strcmp(argv[i], "--debug-overlay") == 0 && i + 1 < argc) {
+            g_settings.debugOverlay_ = IRRender::debugOverlayModeFromString(argv[i + 1]);
+            ++i;
         }
     }
     if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
@@ -718,6 +730,12 @@ int main(int argc, char **argv) {
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
     IRPrefab::Camera::setYaw(g_settings.cameraYaw_);
+
+    // T-1 (#1767): force the requested debug overlay for the whole run.
+    // NONE (the default) is a no-op so a flagless run stays byte-identical.
+    if (g_settings.debugOverlay_ != IRRender::DebugOverlayMode::NONE) {
+        IRRender::setDebugOverlay(g_settings.debugOverlay_);
+    }
 
     IREngine::gameLoop();
     return 0;
@@ -855,6 +873,23 @@ void initSystems() {
             // Wide pull-back framing the full orbit ring (radius 200) around the
             // center cluster, so the added shape variety reads as one tumbling orbit.
             g_allShots.push_back({0.32f, vec2(0.0f), 0.0f, "orbit_overview"});
+            // T-1 (#1767) structural-validation framing shots for epic #1766.
+            // Appended AFTER the manifest suite so render-verify (which reads the
+            // first N=manifest shots) ignores them — they feed the structural
+            // metrics, not the pixel-diff gate (T-2 #1768 wires the gate). Both
+            // stay at camera (0,0) for the detached-canvas cull contract above.
+            //
+            // (a) Cast-shadow occupancy: a wide framing of the #1587 SDF floor,
+            //     the GRID spin row, and the grounded re-voxelize cast-proof cube
+            //     (#1596). Capture with `--debug-overlay shadow` so cast shadows
+            //     read magenta and render-shadow-metric.py (#1765) measures
+            //     hole_ratio / components (the swiss-cheese signature, #1717).
+            g_allShots.push_back({0.55f, vec2(0.0f), 0.0f, "shadow_overlay_floor"});
+            // (b) Re-voxelize surface coverage: the screen-center solid column
+            //     zoomed for per-voxel surface readout, captured in normal render
+            //     so a coverage metric can count interior background holes inside
+            //     the solid silhouette (the #1619-class missing-face defect).
+            g_allShots.push_back({2.4f, vec2(0.0f), 0.0f, "revox_coverage"});
         }
 
         IRVideo::AutoScreenshotConfig cfg{};
