@@ -30,7 +30,9 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         lastCanvas_ = IREntity::kNullEntity;
         lastPool_ = nullptr;
 
-        // Mirrors the visibility gate in system_rebuild_grid_voxels.hpp.
+        // Mirrors the on-screen cull gate in system_rebuild_grid_voxels.hpp;
+        // shadow-feeder-expanded viewport not needed here as position updates
+        // for off-screen sets are not required for rendering.
         // getCullViewport() holds last render frame's snapshot when called
         // from the UPDATE pipeline.
         const IRRender::CullViewportState &cull = IRRender::getCullViewport();
