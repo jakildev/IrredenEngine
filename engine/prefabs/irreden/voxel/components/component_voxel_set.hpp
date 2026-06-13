@@ -430,7 +430,8 @@ struct C_VoxelSetNew {
     // stable because they are plain scalars on this struct.
     // Returns the number of positions actually written (safeCount), or 0 if
     // the pool-bounds guard fires (numVoxels_ exceeds available pool slots).
-    // The caller gates visibility — call only when the set is on-screen.
+    // The caller gates visibility — call only when the set is within the
+    // shadow-feeder cull viewport (see system_update_voxel_set_children.hpp).
     // Callers use the return value to queue exactly the written range for
     // GPU upload; avoids queuing stale tail slots on bounds-guard overflow.
     int updateAsChild(

@@ -72,9 +72,9 @@ for single voxels and particles.
   but no per-set rotation/scale composition. On-screen sets re-upload every
   frame (unconditional per ECS no-dirty-flags rule). Off-screen sets are
   skipped via `C_VoxelPool::isRangeVisible` against the previous frame's
-  render viewport — same cull gate as `REBUILD_GRID_VOXELS` (#1288). A set
-  entirely off-screen pays nothing; a visible set in a static scene
-  re-uploads its positions every frame.
+  shadow-feeder-expanded cull viewport — same cull gate as `REBUILD_GRID_VOXELS`
+  (#1288). A set entirely outside that viewport pays nothing; a visible set in
+  a static scene re-uploads its positions every frame.
 - `REBUILD_GRID_VOXELS` (UPDATE pipeline, T-294; inverse re-voxelize #1720)
   — Epic C C6. Runs AFTER `UPDATE_VOXEL_SET_CHILDREN`. Re-rasterizes
   GRID-mode entities (entities carrying `C_RotationMode::GRID`, the
