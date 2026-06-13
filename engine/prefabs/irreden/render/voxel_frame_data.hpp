@@ -46,12 +46,14 @@ inline void buildVoxelFrameData(
 
     const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
-    // Clamp to 1: voxelDispatchGridForCount divides by the count, and the
-    // lighting passes author frame data for canvases whose pool is EMPTY
-    // (authorIteratingCanvasVoxelFrame / restoreMainCanvasVoxelFrame have no
-    // liveVoxelCount gate — observed as a SIGFPE on a lit scene whose main
-    // canvas holds zero voxels, #1619 step-0 harness). voxelCount_ below still
-    // carries the honest 0, which gates all shader-side work.
+    // Clamp to 1: voxelDispatchGridForCount divides by the count (and asserts
+    // count > 0 at entry), and the lighting passes author frame data
+    // for canvases whose pool is EMPTY (authorIteratingCanvasVoxelFrame /
+    // restoreMainCanvasVoxelFrame have no liveVoxelCount gate — observed as a
+    // SIGFPE on a lit scene whose main canvas holds zero voxels, #1619 step-0
+    // harness). This clamp is the one deliberate empty-pool exception to that
+    // contract; voxelCount_ below still carries the honest 0, which gates all
+    // shader-side work.
     const ivec2 dispatchGrid = voxelDispatchGridForCount(IRMath::max(liveVoxelCount, 1));
 
     frameData.cameraTrixelOffset_ = IRRender::getEffectiveCameraIso();
