@@ -23,6 +23,7 @@ namespace IRSystem {
 template <> struct System<WIDGET_RENDER_LIST> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRRender::RectFillScratch scratch_;
+    std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
@@ -35,8 +36,10 @@ template <> struct System<WIDGET_RENDER_LIST> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
-        if (widget.size_.x <= 0 || widget.size_.y <= 0) return;
+        if (!canvas_)
+            return;
+        if (widget.size_.x <= 0 || widget.size_.y <= 0)
+            return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
         const int itemH = IRMath::max(1, list.itemHeight_);
@@ -54,13 +57,15 @@ template <> struct System<WIDGET_RENDER_LIST> {
 
         for (int row = 0; row < rows; ++row) {
             const int idx = list.scrollOffset_ + row;
-            if (idx < 0 || idx >= n) break;
+            if (idx < 0 || idx >= n)
+                break;
             const IRMath::ivec2 rowPos(guiPos.pos_.x, guiPos.pos_.y + row * itemH);
             const IRMath::ivec2 rowSize(widget.size_.x, itemH);
 
             const bool isSelected = (idx == list.selectedIndex_);
-            const bool isHoverRow = state.hovered_ && (state.dragValue_ >= static_cast<float>(row) &&
-                                                       state.dragValue_ < static_cast<float>(row + 1));
+            const bool isHoverRow =
+                state.hovered_ && (state.dragValue_ >= static_cast<float>(row) &&
+                                   state.dragValue_ < static_cast<float>(row + 1));
 
             if (isSelected) {
                 IRRender::fillRect(
@@ -82,8 +87,9 @@ template <> struct System<WIDGET_RENDER_LIST> {
                 );
             }
 
-            IRPrefab::Widget::detail::drawLeftText(
-                *canvas_,
+            IRPrefab::Widget::detail::queueLeftText(
+                textCmds_,
+                canvas_->size_,
                 list.items_[static_cast<std::size_t>(idx)],
                 IRMath::ivec2(rowPos.x + theme.padding_ * 2, rowPos.y),
                 itemH,
@@ -102,14 +108,17 @@ template <> struct System<WIDGET_RENDER_LIST> {
         );
     }
 
+    void endTick() {
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
+    }
+
     static SystemId create() {
         return registerSystem<
             WIDGET_RENDER_LIST,
             IRComponents::C_Widget,
             IRComponents::C_WidgetList,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderList");
+            IRComponents::C_GuiPosition>("WidgetRenderList");
     }
 };
 

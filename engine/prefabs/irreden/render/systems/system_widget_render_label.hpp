@@ -16,6 +16,7 @@ namespace IRSystem {
 
 template <> struct System<WIDGET_RENDER_LABEL> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
+    std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
@@ -27,14 +28,26 @@ template <> struct System<WIDGET_RENDER_LABEL> {
         const IRComponents::C_WidgetLabel &label,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
-        if (label.text_.empty()) return;
+        if (!canvas_)
+            return;
+        if (label.text_.empty())
+            return;
         const auto &theme = IRPrefab::Widget::defaultTheme();
-        const IRMath::Color color =
-            (label.colorOverride_.alpha_ == 0)
-                ? IRPrefab::Widget::detail::stateText(theme, widget)
-                : label.colorOverride_;
-        IRRender::renderText(*canvas_, label.text_, guiPos.pos_, color);
+        const IRMath::Color color = (label.colorOverride_.alpha_ == 0)
+                                        ? IRPrefab::Widget::detail::stateText(theme, widget)
+                                        : label.colorOverride_;
+        IRPrefab::GuiText::queueGuiText(
+            textCmds_,
+            label.text_,
+            guiPos.pos_,
+            canvas_->size_,
+            color,
+            IRPrefab::Widget::detail::kWidgetTextFontSize
+        );
+    }
+
+    void endTick() {
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
     }
 
     static SystemId create() {
@@ -42,8 +55,7 @@ template <> struct System<WIDGET_RENDER_LABEL> {
             WIDGET_RENDER_LABEL,
             IRComponents::C_Widget,
             IRComponents::C_WidgetLabel,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderLabel");
+            IRComponents::C_GuiPosition>("WidgetRenderLabel");
     }
 };
 

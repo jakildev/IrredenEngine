@@ -24,6 +24,7 @@ namespace IRSystem {
 template <> struct System<WIDGET_RENDER_DROPDOWN> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRRender::RectFillScratch scratch_;
+    std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
@@ -36,8 +37,10 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
-        if (widget.size_.x <= 0 || widget.size_.y <= 0) return;
+        if (!canvas_)
+            return;
+        if (widget.size_.x <= 0 || widget.size_.y <= 0)
+            return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
         const int itemH = IRMath::max(1, dd.itemHeight_);
@@ -63,12 +66,12 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         );
 
         // Selected label (or placeholder dash when empty).
-        const std::string &headerText =
-            (dd.selectedIndex_ >= 0 && dd.selectedIndex_ < n)
-                ? dd.items_[static_cast<std::size_t>(dd.selectedIndex_)]
-                : std::string("---");
-        IRPrefab::Widget::detail::drawLeftText(
-            *canvas_,
+        const std::string &headerText = (dd.selectedIndex_ >= 0 && dd.selectedIndex_ < n)
+                                            ? dd.items_[static_cast<std::size_t>(dd.selectedIndex_)]
+                                            : std::string("---");
+        IRPrefab::Widget::detail::queueLeftText(
+            textCmds_,
+            canvas_->size_,
             headerText,
             IRMath::ivec2(guiPos.pos_.x + theme.padding_ * 2, guiPos.pos_.y),
             widget.size_.y,
@@ -99,7 +102,8 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             scratch_
         );
 
-        if (!dd.isOpen_ || n == 0) return;
+        if (!dd.isOpen_ || n == 0)
+            return;
 
         // Expanded item panel. Painted in painter order over anything below it.
         const IRMath::ivec2 panelPos(guiPos.pos_.x, guiPos.pos_.y + widget.size_.y);
@@ -139,8 +143,9 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                     scratch_
                 );
             }
-            IRPrefab::Widget::detail::drawLeftText(
-                *canvas_,
+            IRPrefab::Widget::detail::queueLeftText(
+                textCmds_,
+                canvas_->size_,
                 dd.items_[static_cast<std::size_t>(i)],
                 IRMath::ivec2(rowPos.x + theme.padding_ * 2, rowPos.y),
                 itemH,
@@ -159,14 +164,17 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         );
     }
 
+    void endTick() {
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
+    }
+
     static SystemId create() {
         return registerSystem<
             WIDGET_RENDER_DROPDOWN,
             IRComponents::C_Widget,
             IRComponents::C_WidgetDropdown,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderDropdown");
+            IRComponents::C_GuiPosition>("WidgetRenderDropdown");
     }
 };
 
