@@ -32,7 +32,7 @@ one invocation per pool-chunk:
 2. Project to iso, pick the Hi-Z mip whose texel ≥ the AABB footprint, expand the
    footprint by one texel (conservative).
 3. Sample the **max** Hi-Z depth over that footprint; AND `0` into the chunk's
-   `ChunkVisibility` bit (binding 24) **iff** the chunk's *nearest* depth is
+   `ChunkVisibility` entry (binding 24) **iff** the chunk's *nearest* depth is
    strictly behind the Hi-Z max over the *whole* footprint. On any partial
    coverage, keep the chunk.
 4. Run before the compact pass; reads last frame's Hi-Z (#1798).
@@ -50,7 +50,7 @@ residual.
 
 ## Acceptance criteria
 
-- Occlusion bit ANDed into `ChunkVisibility` (binding 24) upstream of the compact
+- Occluded chunks' `ChunkVisibility` entries ANDed to `0` (binding 24) upstream of the compact
   pass — additive, no consumer migration.
 - Conservative: footprint +1 texel; keep on partial coverage. A false positive is
   a visible hole; a false negative is only lost savings.

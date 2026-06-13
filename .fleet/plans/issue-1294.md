@@ -71,7 +71,7 @@ before next frame's cull reads it. New `SystemName` enum entry. Per-canvas.
 invocation per pool-chunk; projects the chunk's iso AABB
 (`C_VoxelPool::getChunkBounds`, **expanded by the shadow-feeder sweep**), picks
 the Hi-Z mip whose texel ≥ AABB footprint, samples max-depth, ANDs `0` into the
-chunk's `ChunkVisibility` bit (binding 24) iff the chunk's nearest depth is
+chunk's `ChunkVisibility` entry (binding 24) iff the chunk's nearest depth is
 strictly behind the Hi-Z max. Conservative: expand footprint one texel; keep on
 partial coverage. Reads **last frame's** Hi-Z.
 
@@ -98,7 +98,7 @@ the per-voxel follow-on. Document the one-frame-lag pop as intentional drift.
 
 - **`ChunkVisibility` SSBO (binding 24)** — produced by CPU
   `buildChunkVisibilityMask`, consumed by `c_voxel_visibility_compact.glsl`. The
-  cull AND-s an occlusion bit in: **additive, no consumer migration.**
+  cull AND-s `0` into an occluded chunk's entry: **additive, no consumer migration.**
 - **`triangleCanvasDistances` (binding 1, R32I)** — Hi-Z downsample-max source;
   also read by sun-shadow bake (binding 0) + AO. Hi-Z is a **new derived
   texture**; the existing distance texture is unmodified — no consumer migration,
@@ -108,7 +108,7 @@ the per-voxel follow-on. Document the one-frame-lag pop as intentional drift.
 
 - Child 1: Hi-Z mip chain built each frame from last frame's distances; renders
   unchanged (Hi-Z is write-only-consumed-next-frame at this stage).
-- Child 2: occlusion bit ANDed into `ChunkVisibility`; with the flag forced on,
+- Child 2: occluded chunks' `ChunkVisibility` entries ANDed to `0`; with the flag forced on,
   output still correct on `voxel_set`.
 - Child 3: cull-on vs cull-off **bit-identical** in `render-verify`; **measured
   `voxelStage1` reduction recorded** on `voxel_set` zoom8; zero cost when
