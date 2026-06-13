@@ -2853,7 +2853,9 @@ void initEntities() {
     // manually so clicks on the panel background (title bar, label gap, padding)
     // are blocked from falling through to the scene picker.
     IREntity::setComponent(g_editor.palettePanel_, IRComponents::C_HitBox2DGui{kPanelSize});
-    IRPrefab::Widget::makeLabel(ivec2(kPanelPos.x + 12, kPanelPos.y + 36), "CLICK A SWATCH");
+    // Left-align the hint to the panel padding so it doesn't overflow the
+    // right edge ("CLICK A SWATCH" is ~111 trixels; the panel interior is ~116).
+    IRPrefab::Widget::makeLabel(ivec2(kPanelPos.x + 4, kPanelPos.y + 36), "CLICK A SWATCH");
 
     g_editor.paletteSwatches_.reserve(IRVoxelEditor::kPaletteCount);
     for (int i = 0; i < IRVoxelEditor::kPaletteCount; ++i) {
@@ -2936,19 +2938,22 @@ void initEntities() {
     // Parametric shape bake panel (T-286). Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
+    // List itemHeight is one glyph row + 2-trixel gap so the 6 shape rows
+    // don't touch (itemHeight == glyph height made adjacent rows overlap). The
+    // sub-controls sit below the now-taller 6-row list (18 + 6*13 = 96).
     constexpr ivec2 kBakePanelPos{130, 342};
-    constexpr ivec2 kBakePanelSize{120, 140};
+    constexpr ivec2 kBakePanelSize{120, 156};
     IRVoxelEditor::g_bakePanel = IRPrefab::Widget::makePanel(kBakePanelPos, kBakePanelSize, "BAKE");
     IREntity::setComponent(IRVoxelEditor::g_bakePanel, IRComponents::C_HitBox2DGui{kBakePanelSize});
     IRVoxelEditor::g_bakeShapeList = IRPrefab::Widget::makeList(
         ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 18),
-        ivec2(112, 66),
+        ivec2(112, 78),
         {"BOX", "SPHERE", "CYLINDER", "TORUS", "CONE", "ELLIPSOID"},
         1,
-        11
+        13
     );
     IRVoxelEditor::g_bakeParam1Slider = IRPrefab::Widget::makeSlider(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 88),
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 100),
         ivec2(112, 14),
         "P1",
         0.5f,
@@ -2956,7 +2961,7 @@ void initEntities() {
         8.0f
     );
     IRVoxelEditor::g_bakeParam2Slider = IRPrefab::Widget::makeSlider(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 106),
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 118),
         ivec2(112, 14),
         "P2",
         0.5f,
@@ -2964,7 +2969,7 @@ void initEntities() {
         3.0f
     );
     IRVoxelEditor::g_bakeButton = IRPrefab::Widget::makeButton(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 124),
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 136),
         ivec2(112, 12),
         "BAKE"
     );
