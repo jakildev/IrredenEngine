@@ -114,11 +114,16 @@ unset _fleet_claim_self
 # Defensive check: catch a mis-resolved lib dir before any subcommand runs, so the
 # failure is visible (a clear stderr message) rather than a silent exit 1 from
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
-if [[ ! -f "$FLEET_LIB_DIR/fleet_branch_match.py" ]]; then
-    echo "fleet-claim: fleet_branch_match.py not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
-    echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
-    exit 1
-fi
+# A missing module would otherwise fail OPEN in the --stackable-on guard below
+# (empty reason -> claim proceeds), so fail loud here instead.
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py; do
+    if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
+        echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
+        echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
+        exit 1
+    fi
+done
+unset _fleet_lib
 
 # --- input validation -----------------------------------------------------
 
@@ -750,7 +755,7 @@ cmd_claim() {
     local stackable_branch=""
     if [[ -n "$stackable_pr" ]]; then
         local pr_json pr_state pr_head
-        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName 2>/dev/null); then
+        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName,labels 2>/dev/null); then
             echo "fleet-claim claim: failed to fetch PR state for $stackable_pr" >&2
             return 1
         fi
@@ -766,6 +771,37 @@ cmd_claim() {
             OPEN)
                 if [[ -z "$pr_head" ]]; then
                     echo "fleet-claim claim: $stackable_pr returned empty headRefName — refusing claim" >&2
+                    return 1
+                fi
+                # Live base-state cross-check (#1751): an OPEN base may still be
+                # unsafe to stack on — WIP / design-unblocked / amending (head
+                # diff in flux), awaiting-rebase, a fork, or an empty
+                # claim-commit-only skeleton. Verify against LIVE labels + diff
+                # (not the cached projection the scout offered from) using the
+                # same predicate the scout's offer-time filter uses, so offer
+                # and accept can't disagree.
+                local pr_labels stack_diff stack_reject
+                pr_labels=$(printf '%s' "$pr_json" \
+                    | python3 -c 'import sys, json; print("\n".join(l.get("name","") for l in json.load(sys.stdin).get("labels", [])))')
+                if ! stack_diff=$(gh pr diff "$stackable_pr" --name-only 2>/dev/null); then
+                    echo "fleet-claim claim: could not fetch diff for $stackable_pr — refusing to stack on an unverifiable base" >&2
+                    return 1
+                fi
+                # gh exited 0 above, so an empty diff is a known-empty
+                # claim-commit base (not "unknown") -> the predicate rejects it.
+                if ! stack_reject=$(PR_LABELS="$pr_labels" STACK_DIFF="$stack_diff" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_stack_base import unsafe_base_reason
+labels = [l for l in os.environ.get("PR_LABELS", "").splitlines() if l]
+files = [f for f in os.environ.get("STACK_DIFF", "").splitlines() if f]
+sys.stdout.write(unsafe_base_reason(labels, files) or "")
+'); then
+                    echo "fleet-claim claim: base-safety check failed (Python error) — refusing to stack on an unverifiable base" >&2
+                    return 1
+                fi
+                if [[ -n "$stack_reject" ]]; then
+                    echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_reject) — refusing claim" >&2
                     return 1
                 fi
                 stackable_branch="$pr_head"

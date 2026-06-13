@@ -7,6 +7,8 @@ importlib because the script has no .py extension.
 """
 import importlib.machinery
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -45,8 +47,11 @@ def _task(id_, blocked_by):
     return {"id": id_, "blocked_by": blocked_by}
 
 
-def _pr(number, head_ref, author="bot"):
-    return {"number": number, "headRefName": head_ref, "author": author}
+def _pr(number, head_ref, author="bot", labels=None):
+    pr = {"number": number, "headRefName": head_ref, "author": author}
+    if labels is not None:
+        pr["labels"] = labels
+    return pr
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +59,30 @@ def _pr(number, head_ref, author="bot"):
 # ---------------------------------------------------------------------------
 
 class TestEnrichStackableBlockerPrs(unittest.TestCase):
+
+    def setUp(self):
+        # Point PRS_DIR at an empty temp dir so `pr_cache_path.exists()` (the
+        # empty-claim / known-files check, #1751) is deterministic and never
+        # leaks the live ~/.fleet cache. Tests that exercise the diff path write
+        # a fixture via _write_pr_cache; the rest leave it absent (files
+        # "unknown" → not treated as empty).
+        self._tmp = tempfile.TemporaryDirectory()
+        self._orig_prs_dir = _mod.PRS_DIR
+        _mod.PRS_DIR = Path(self._tmp.name)
+
+    def tearDown(self):
+        _mod.PRS_DIR = self._orig_prs_dir
+        self._tmp.cleanup()
+
+    def _write_pr_cache(self, repo, number, files):
+        """Write a cached PR detail JSON (the shape `_blocker_pr_files` reads)
+        so a test can give a blocker PR a known diff (empty list = empty
+        claim-commit)."""
+        repo_dir = Path(self._tmp.name) / repo
+        repo_dir.mkdir(parents=True, exist_ok=True)
+        (repo_dir / f"{number}.json").write_text(
+            json.dumps({"files": [{"path": p} for p in files]})
+        )
 
     def test_happy_path_single_match(self):
         """Exactly one PR matches the blocked_by prefix → field is written."""
@@ -234,6 +263,69 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         self.assertEqual(task["stackable_blocker_pr"]["number"], 1316)
         self.assertEqual(task["stackable_blocker_pr"]["headRefName"],
                          "claude/1308-per-axis-trixel-canvas-infra")
+
+    # ---- #1751: non-stackable base-state rejection (offer side) -----------
+
+    def _assert_no_offer(self, labels=None, cached_files="unset"):
+        """A single blocker PR with the given labels / cached diff yields NO
+        stackable_blocker_pr field."""
+        tasks = [_task("#1112", "#1111")]
+        prs = [_pr(536, "claude/1111-x", labels=labels)]
+        if cached_files != "unset":
+            self._write_pr_cache("engine", 536, cached_files)
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertNotIn("stackable_blocker_pr",
+                         state["repos"]["engine"]["tasks"]["open"][0])
+
+    def test_wip_base_no_field(self):
+        """fleet:wip base (head diff in flux) is not offered."""
+        self._assert_no_offer(labels=["fleet:wip"])
+
+    def test_human_wip_base_no_field(self):
+        self._assert_no_offer(labels=["human:wip"])
+
+    def test_design_unblocked_base_no_field(self):
+        """A just-design-unblocked skeleton is not offered (#1751 / the
+        2026-06-06 empty-skeleton hazard)."""
+        self._assert_no_offer(labels=["fleet:design-unblocked"])
+
+    def test_design_blocked_base_no_field(self):
+        """Regression: the old filter (b) design-block rejection still holds
+        through the unified predicate."""
+        self._assert_no_offer(labels=["fleet:design-blocked"])
+
+    def test_amending_base_no_field(self):
+        """fleet:amending-<host>-<agent> (dynamic prefix) base is not offered."""
+        self._assert_no_offer(labels=["fleet:amending-mac-worker-2"])
+
+    def test_empty_claim_base_no_field(self):
+        """An OPEN base whose cached diff is empty (claim-commit-only skeleton)
+        is not offered — the 2026-06-06 empty-claim replay."""
+        self._assert_no_offer(labels=None, cached_files=[])
+
+    def test_clean_nonempty_open_base_enriched(self):
+        """A clean OPEN base with a real (non-empty) diff and no reject labels
+        is still offered."""
+        tasks = [_task("#1112", "#1111")]
+        prs = [_pr(536, "claude/1111-x")]
+        self._write_pr_cache("engine", 536, ["engine/render/x.cpp"])
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        task = state["repos"]["engine"]["tasks"]["open"][0]
+        self.assertIn("stackable_blocker_pr", task)
+        self.assertEqual(task["stackable_blocker_pr"]["number"], 536)
+
+    def test_cache_miss_unknown_files_still_enriched(self):
+        """No cached PR detail (files unknown) + clean labels → still offered;
+        'unknown' is not treated as empty, so a not-yet-cached base isn't
+        suppressed. The claim gate re-checks the diff live."""
+        tasks = [_task("#1112", "#1111")]
+        prs = [_pr(536, "claude/1111-x")]  # no cache fixture written
+        state = _state(engine_tasks=tasks, engine_prs=prs)
+        enrich_stackable_blocker_prs(state)
+        self.assertIn("stackable_blocker_pr",
+                      state["repos"]["engine"]["tasks"]["open"][0])
 
 
 if __name__ == "__main__":

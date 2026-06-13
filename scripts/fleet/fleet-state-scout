@@ -36,6 +36,7 @@ from pathlib import Path
 # scout is run directly or loaded by-path in the unit tests (#1425).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fleet_branch_match import branch_matches_issue, PARKED_PR_LABELS
+from fleet_stack_base import unsafe_base_reason
 
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
@@ -914,14 +915,6 @@ def model_tags(task):
     return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
 
 
-_DESIGN_BLOCK_LABELS = frozenset({
-    "fleet:design-blocked", "fleet:design-escalated",
-    # Steward-parked design question (proposal pending on the umbrella) —
-    # stacking on such a PR has the same hazard as a design-blocked one (#1664).
-    "fleet:design-proposed",
-})
-
-
 def _area_prefixes(area_str):
     # Drops entries without '/' (meta-tags like 'tooling') that can't match diff paths.
     if not area_str:
@@ -1221,16 +1214,29 @@ def enrich_stackable_blocker_prs(state):
                 continue
             pr = matches[0]
 
-            # Filter (b): blocker PR is stalled on a design question — the
-            # downstream task can't make forward progress on it.
-            if set(pr.get("labels", [])) & _DESIGN_BLOCK_LABELS:
+            # Filter (b): blocker PR is in a non-stackable base state — parked
+            # on a design question (design-blocked/escalated/proposed/unblocked),
+            # WIP/amending (head diff in flux), awaiting rebase, a fork, or an
+            # empty claim-commit-only skeleton. One shared predicate with the
+            # claim gate (fleet_stack_base) so the offer and the accept can never
+            # disagree (#1751). blocker_files is the cached diff when the PR
+            # detail is cached, else None ("unknown" — don't suppress a
+            # not-yet-cached base; the claim gate re-checks live). A known-empty
+            # list ([]) is a claim-commit-only skeleton and IS rejected.
+            pr_cache_path = PRS_DIR / repo_key / f"{pr['number']}.json"
+            blocker_files = (
+                _blocker_pr_files(repo_key, pr["number"])
+                if pr_cache_path.exists()
+                else None
+            )
+            if unsafe_base_reason(set(pr.get("labels", [])), blocker_files):
                 continue
 
             # Filter (a): downstream task's area already overlaps with the
             # blocker PR's diff — a stackable claim would conflict at review.
+            # Reuse the file list fetched above (don't double-fetch).
             area_prefixes = _area_prefixes(task.get("area") or "")
-            if area_prefixes:
-                blocker_files = _blocker_pr_files(repo_key, pr["number"])
+            if area_prefixes and blocker_files:
                 if any(
                     f.startswith(p) for f in blocker_files for p in area_prefixes
                 ):
