@@ -35,6 +35,16 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // so the GRID path stays byte-identical. Appended after visibleFaceIds
     // (offset 144) to match the CPU struct + stage 1's binding-7 layout.
     uniform vec4 voxelDepthAxis;
+    // detachedWorldReceive_ (offset 160) — declared as padding so the field
+    // below lands at its std140 offset; stage 2 doesn't read it (only
+    // c_lighting_to_trixel does).
+    uniform vec4 _detachedWorldReceivePad;
+    // Un-widened iso cull viewport for the depth-only feeder path (#1740):
+    // .xy = floor(min), .zw = ceil(max). A voxel inside [cullIsoMin, cullIsoMax]
+    // but OUTSIDE this box is an off-screen shadow feeder — stage 2 skips its
+    // colour/entity-id taps (stage 1 still wrote its full-res depth). Matches
+    // FrameDataVoxelToCanvas::visibleIsoBounds_ (offset 176).
+    uniform ivec4 visibleIsoBounds;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -196,6 +206,33 @@ void main() {
             voxelColor, voxelIndex
         );
         return;
+    }
+
+    // Depth-only shadow-feeder path (#1740). On the cardinal single-canvas world
+    // route (perAxisRoute == 0 guaranteed here; the per-axis / smooth / detached
+    // routes returned above), a voxel whose cardinal iso position lies outside
+    // the un-widened visible viewport but inside the shadow-feeder-widened cull
+    // is a SHADOW FEEDER: it exists only to cast sun shadows onto on-screen
+    // pixels through stage 1's distance bake, and is never displayed, lit, or
+    // picked. Stage 1 already wrote its full-resolution depth (the sun-shadow
+    // bake + AO read ONLY trixelDistances), so skipping its colour + entity-id
+    // taps here is byte-identical in rendered output and removes the feeder's
+    // entire stage-2 cost. The +4-iso-px margin baked into visibleIsoBounds
+    // covers the voxel face footprint, so no on-screen pixel is ever a feeder.
+    // When sun shadows are off visibleIsoBounds == cullIsoMin/Max, so nothing is
+    // skipped — byte-identical. Matches the compact cull's cardinal projection
+    // (c_voxel_visibility_compact.glsl) so the classification agrees.
+    if (residualYaw == 0.0 && isDetachedCanvas < 0.5) {
+        ivec3 feederPos = ivec3(round(voxelPosition.xyz));
+        if (cardinalIndex != 0) {
+            feederPos = rotateCardinalZ(feederPos, cardinalIndex);
+            feederPos += cardinalLowerCornerShift(cardinalIndex);
+        }
+        const ivec2 feederIso = pos3DtoPos2DIso(feederPos);
+        if (feederIso.x < visibleIsoBounds.x || feederIso.x > visibleIsoBounds.z ||
+            feederIso.y < visibleIsoBounds.y || feederIso.y > visibleIsoBounds.w) {
+            return;
+        }
     }
 
     if (voxelRenderOptions.x == 0) {

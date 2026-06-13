@@ -815,6 +815,13 @@ struct FrameDataVoxelToTrixel {
     // screen-locked path byte-identical. Mirrors
     // FrameDataVoxelToCanvas::detachedWorldReceive_. Other kernels never read it.
     float4 detachedWorldReceive;
+    // Un-widened (no shadow-feeder sweep) iso cull viewport for the depth-only
+    // shadow-feeder path (#1740). .xy = floor(min), .zw = ceil(max). A voxel
+    // inside [cullIsoMin, cullIsoMax] but OUTSIDE this box is an off-screen
+    // shadow feeder — c_voxel_to_trixel_stage_2 skips its colour/entity-id taps
+    // (stage 1 still wrote its full-res depth, all the bake + AO read). Mirrors
+    // FrameDataVoxelToCanvas::visibleIsoBounds_. Other kernels never read it.
+    int4 visibleIsoBounds;
 };
 
 #endif // IR_ISO_COMMON_METAL_INCLUDED
