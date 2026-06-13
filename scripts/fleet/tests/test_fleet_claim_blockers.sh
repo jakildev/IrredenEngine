@@ -212,6 +212,22 @@ case "$1 $2" in
                 # the referenced repo → claim fails.
                 printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** irreden#126\n"}'
                 ;;
+            2019)
+                # #1749: PLAIN mid-line `Blocked by: #N` (the #174-children form
+                # every bold-only parser skipped), #101 OPEN → claim fails. Also
+                # guards that the epic ref #174 in the prose is NOT mistaken for
+                # a blocker — only the `Blocked by:` ref-list is captured.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174 (Phase D). [opus] Blocked by: #101.\n"}'
+                ;;
+            2020)
+                # #1749: plain form, referenced issue #100 CLOSED → pass.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"Part of epic #174. Blocked by: #100.\n"}'
+                ;;
+            2021)
+                # #1749 false-positive guard: prose "not blocked by anything"
+                # has no `#N` after the colon → not a blocker → claim succeeds.
+                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nThis task is not blocked by anything yet.\n"}'
+                ;;
             *)
                 printf '%s' '{"state":"OPEN","labels":[],"body":""}'
                 ;;
@@ -380,6 +396,26 @@ release_quiet 2017
 echo "T18: cross-repo 'irreden#126' OPEN in game → claim fails"
 actual=0; "$FLEET_CLAIM" claim 2018 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "cross-repo game#126 OPEN → exit 1"
+
+# --- T19: plain mid-line `Blocked by: #N` — #101 OPEN → fail (#1749) ---------
+# The #174-children mechanism: a non-bold `Blocked by: #N` declaration that
+# every bold-only parser skipped, so the blocked child surfaced as claimable.
+# The shared parser now gates it. The leading epic ref #174 must NOT gate.
+echo "T19: plain 'Blocked by: #101' (epic #174 prose) — #101 OPEN → claim fails"
+actual=0; "$FLEET_CLAIM" claim 2019 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 1 "plain-form #101 OPEN → exit 1 (epic #174 not mistaken for blocker)"
+
+# --- T20: plain form — referenced issue CLOSED → pass (#1749) ----------------
+echo "T20: plain 'Blocked by: #100' — #100 CLOSED → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2020 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "plain-form #100 CLOSED → exit 0"
+release_quiet 2020
+
+# --- T21: false-positive guard — "not blocked by anything" → pass (#1749) ----
+echo "T21: prose 'not blocked by anything yet' (no #N) → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2021 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "ref-less 'blocked by' prose bypasses gate → exit 0"
+release_quiet 2021
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

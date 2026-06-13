@@ -37,6 +37,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fleet_branch_match import branch_matches_issue, PARKED_PR_LABELS
 from fleet_stack_base import unsafe_base_reason
+from fleet_blocked_by import parse_blocked_by, is_no_blocker_value
 
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
@@ -331,75 +332,16 @@ def _parse_epic_checklist(body):
     ]
 
 
-# A dependency may be declared two ways: the canonical `**Blocked by:** #N`
-# field, or free-form header prose like `## Blocked on #1300` / `Blocked on
-# PR-x`. `_parse_blocked_by` prefers the field and falls back to the header
-# form so a header-only dependency still surfaces as blocked — #1301 was
-# mis-listed as claimable (owner=free, blocked_by=(none)) because its blocker
-# lived in a `Blocked on #1300` header the field parser never read (#1326).
-# Complements #1296, which handled #N refs that already live inside the field.
-_BLOCKED_ON_RE = re.compile(
-    r'^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$',
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
-def _is_no_blocker_value(value):
-    """True when a **Blocked by:** value declares NO blocker.
-
-    The canonical form is `(none)`, but agents also hand-write a bare `none`,
-    `n/a`, `tbd`, a lone dash, or `(none) — prose`, all of which mean "nothing
-    blocks this". The old filter recognized only the parenthesized `(none)`
-    form, so a bare `none — first unblocked.` fell through to the prose-blocker
-    path and stranded the issue as permanently blocked — freezing the whole
-    downstream chain out of the queue (game #138 → #143). A value that names a
-    `#N` or describes a real blocker in prose ("the auth redesign") is NOT a
-    sentinel and must still gate.
-    """
-    # A concrete `#N` ref anywhere in the value means there IS a blocker —
-    # never let a leading "none" word swallow a real reference.
-    if re.search(r"#\d+", value):
-        return False
-    head = value.strip().lower().lstrip("(").strip()
-    if not head or head[0] in "-–—.":
-        return True
-    token = re.split(r"[\s.,;:)\-–—]", head, maxsplit=1)[0]
-    return token in {"none", "n/a", "na", "tbd"}
-
-
-def _parse_blocked_by(body):
-    # Union every standalone **Blocked by:** line (multi-line + multi-ref) so a
-    # child blocked by several refs surfaces all of them — check_blockers gates
-    # on the union and find-stackable-blockers live-resolves them (#1296). Falls
-    # back to a `Blocked on` header (#1326) only when no canonical line exists.
-    # Kept consistent with fleet-claim's check_blockers parser.
-    vals = re.findall(r'^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$',
-                      body or "", re.IGNORECASE | re.MULTILINE)
-    # Also handle inline-bold form: **Blocked by: #N (label)** mid-line where
-    # the colon and value are inside one bold span (#1423). The two patterns are
-    # mutually exclusive: canonical has **Blocked by:** (bold closes at colon),
-    # inline has **Blocked by: value** (space after colon, bold stays open).
-    inline_vals = re.findall(r'\*\*Blocked by:\s+(.+?)\*\*',
-                             body or "", re.IGNORECASE)
-    # No per-line `continue` guard needed (unlike fleet-claim's check_blockers
-    # loop): re.findall over the whole body is safe because canonical and inline
-    # are mutually exclusive — canonical bold closes at ":**", inline bold stays
-    # open past the value — so a single line cannot match both patterns.
-    all_vals = vals + inline_vals
-    real = [v.strip() for v in all_vals if not _is_no_blocker_value(v)]
-    if real:
-        return ", ".join(real)
-    if all_vals:
-        # Every matched form is a no-blocker sentinel → genuinely unblocked.
-        return ""
-    for m in _BLOCKED_ON_RE.finditer(body or ""):
-        cand = m.group(1).strip().strip("*").strip()
-        # Only treat header prose as a blocker when it actually names a #N
-        # issue or a PR; an incidental "Blocked on the redesign" sentence
-        # must not gate the task forever.
-        if cand and ("#" in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
-            return cand
-    return ""
+# Blocker-declaration parsing — canonical `**Blocked by:** #N`, inline-bold
+# `**Blocked by: #N**` (#1423), the plain mid-line `Blocked by: #N` form
+# (#1749), the no-blocker sentinels, and the `Blocked on …` header fallback
+# (#1326) — is shared with fleet-queue-ingest and fleet-claim via
+# fleet_blocked_by.py so the three can't drift (the #1749 reconciliation;
+# the scout previously had the richest sentinel logic but ingest/claim lagged,
+# and all three missed the plain form). These aliases preserve the private
+# names the scout's call sites and unit tests reference.
+_parse_blocked_by = parse_blocked_by
+_is_no_blocker_value = is_no_blocker_value
 
 
 def fetch_task_queue(repo_slug):
@@ -951,8 +893,8 @@ def _blocker_pr_files(repo_key, pr_number):
 # A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
 # another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
 # repo name (None / empty for a bare same-repo `#N`); group(2) is the number.
-# Kept consistent with fleet-claim's check_blockers and
-# fleet-queue-ingest._blocker_refs parsers. (#1522)
+# Kept consistent with fleet_blocked_by.blocker_refs; routing differs
+# (key vs slug) so this helper stays separate. (#1522)
 _BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
 _REPO_SLUG_MAP = {
     "engine": "jakildev/IrredenEngine",
