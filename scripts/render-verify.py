@@ -26,6 +26,15 @@ per-shot schema. Structural gates are backend-agnostic (one threshold gates
 both the macos-debug and linux-debug reference sets); ROI-crop pixel-diff is
 per-backend like the full-frame path.
 
+A shot listed in the optional `structural_only` block is still captured but
+skips the full-frame pixel-diff and needs no committed reference PNG — it is
+gated solely by its `structural` entries. This lets an analytic-oracle scene
+(epic #1766 T-4) gate the zoom regime that pixel-diff excludes as
+non-deterministic: the structural metric is compared against a computed
+expectation, not a jittery captured reference, so it is deterministic at zoom
+and shared across backends. A manifest whose shots are *all* structural_only
+commits no reference PNGs at all.
+
 `--update-references` copies the captured shots (and any manifest-declared ROI
 crops) over the reference set for the current backend (after explicit
 confirmation unless ``--force`` is given).
@@ -277,6 +286,7 @@ def evaluate_shots(
     thresholds: dict[str, Any],
     crops: dict[str, list[str]] | None = None,
     structural: dict[str, list[dict[str, Any]]] | None = None,
+    structural_only: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Compare captures and run structural gates; return one row per check.
 
@@ -284,14 +294,24 @@ def evaluate_shots(
     (full-frame pixel-diff), ``crop`` (ROI-crop pixel-diff) or ``struct``
     (structural-metric gate). Pure given its inputs — no build/run — so the
     gate logic is unit-testable against synthetic captures + references.
+
+    ``structural_only`` shots are still captured (so the index→reference map
+    stays aligned) but skip the full-frame pixel-diff and need no committed
+    reference PNG — they're gated purely by their ``structural`` entries
+    (an analytic oracle, deterministic at zoom where pixel-diff is excluded).
     """
     rows: list[dict[str, Any]] = []
     crops = crops or {}
     structural = structural or {}
+    structural_only = structural_only or set()
     label_index = _label_index(shot_labels)
 
-    # 1. Full-frame pixel-diff (the original gate; unchanged behavior).
+    # 1. Full-frame pixel-diff (the original gate; unchanged behavior). A
+    #    structural-only shot is captured but not pixel-diffed — it has no
+    #    reference PNG and is gated solely by its structural entries (step 3).
     for actual, label in zip(captured, shot_labels):
+        if label in structural_only:
+            continue
         reference = ref_dir / f"{label}.png"
         if not reference.exists():
             rows.append({"label": label, "kind": "frame", "pass": False,
@@ -386,6 +406,24 @@ def main(argv: list[str] | None = None) -> int:
     # as before — full-frame pixel-diff only).
     crops_block: dict[str, list[str]] = manifest.get("crops", {})
     structural_block: dict[str, list[dict[str, Any]]] = manifest.get("structural", {})
+    # Shots gated purely by structural metrics: still captured (for the
+    # index→reference alignment) but no full-frame pixel-diff and no committed
+    # reference PNG. This is how an analytic-oracle scene gates the zoom regime
+    # that pixel-diff excludes (epic #1766 T-4). Each must be a declared shot
+    # and must carry a structural gate, else it would be captured-but-ungated.
+    structural_only: set[str] = set(manifest.get("structural_only", []))
+    for label in structural_only:
+        if label not in shot_labels:
+            raise SystemExit(
+                f"manifest 'structural_only' references unknown shot '{label}' "
+                f"(not in 'shots')"
+            )
+        if label not in structural_block:
+            raise SystemExit(
+                f"shot '{label}' is 'structural_only' but has no 'structural' "
+                f"gate — it would be captured but never checked. Add a "
+                f"structural entry or drop it from structural_only."
+            )
     screenshot_subdir = manifest.get("screenshot_subdir", "save_files/screenshots")
     # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
@@ -440,6 +478,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         ref_dir.mkdir(parents=True, exist_ok=True)
         for actual, label in zip(captured, shot_labels):
+            if label in structural_only:
+                continue  # threshold-gated, no reference PNG to write
             dest = ref_dir / f"{label}.png"
             shutil.copy2(actual, dest)
             print(f"[render-verify] updated {dest}")
@@ -462,7 +502,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[render-verify] updated {dest}")
         return 0
 
-    if not ref_dir.exists() or not any(ref_dir.glob("*.png")):
+    # A reference set is only required when at least one shot is pixel-diffed.
+    # An all-structural-only manifest (a pure analytic oracle) is backend-
+    # agnostic and commits no reference PNGs, so the missing-reference guard
+    # must not fire for it.
+    has_pixel_diff_shot = any(label not in structural_only for label in shot_labels)
+    if has_pixel_diff_shot and (
+        not ref_dir.exists() or not any(ref_dir.glob("*.png"))
+    ):
         print(
             f"[render-verify] no references found for backend '{backend}' at "
             f"{ref_dir}. Run with --update-references to capture them.",
@@ -478,6 +525,7 @@ def main(argv: list[str] | None = None) -> int:
         thresholds=thresholds,
         crops=crops_block,
         structural=structural_block,
+        structural_only=structural_only,
     )
 
     print()
