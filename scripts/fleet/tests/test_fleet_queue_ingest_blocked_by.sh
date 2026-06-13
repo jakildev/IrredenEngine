@@ -40,6 +40,9 @@ PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # Cross-repo (#1522): #735 = engine task blocked by a CLOSED game ref
 # (jakildev/irreden#777) → routed to game, not blocked; #736 = engine task
 # blocked by an OPEN game ref (jakildev/irreden#778) → blocked.
+# Plain form (#1749): #737 = engine task whose ONLY dep is a degraded plain
+# mid-line `Blocked by: #719` (the #174-children form) → blocked. Before the
+# shared parser, the bold-only ingest copy missed it and it queued unmarked.
 # Remove path: #733 = queued+fleet:blocked, blocker #717 now CLOSED (unblock);
 #              #734 = queued+fleet:blocked, blocker #719 still OPEN (stay).
 cat > "$PROJ" <<'JSON'
@@ -48,7 +51,8 @@ cat > "$PROJ" <<'JSON'
   {"number":731,"repo":"engine"},
   {"number":732,"repo":"engine"},
   {"number":735,"repo":"engine"},
-  {"number":736,"repo":"engine"}
+  {"number":736,"repo":"engine"},
+  {"number":737,"repo":"engine"}
 ],"unblock_issues":[
   {"number":733,"repo":"engine"},
   {"number":734,"repo":"engine"}
@@ -98,6 +102,7 @@ case "$1" in
                     734) echo '{"body":"**Blocked by:** #719","labels":[{"name":"fleet:queued"},{"name":"fleet:opus"},{"name":"fleet:blocked"}]}' ;;
                     735) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#777","labels":[{"name":"human:approved"}]}' ;;
                     736) echo '{"body":"**Model:** opus\n**Blocked by:** jakildev/irreden#778","labels":[{"name":"human:approved"}]}' ;;
+                    737) echo '{"body":"**Model:** opus\nPart of epic #174 (Phase D). [opus] Blocked by: #719.","labels":[{"name":"human:approved"}]}' ;;
                     *)   echo '{"body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;
@@ -166,6 +171,18 @@ if [[ -n "$l736" && "$l736" == *"fleet:queued"* && "$l736" == *"fleet:blocked"* 
     ok "#736 cross-repo blocker (game#778 OPEN) → fleet:queued + fleet:blocked"
 else
     bad "#736 cross-repo open blocker not marked: '$l736'"
+fi
+
+# --- Plain mid-line form (#1749) ------------------------------------------
+# #737 declares its only dep as a degraded plain `Blocked by: #719` (the
+# #174-children form). The shared parser catches it → fleet:queued +
+# fleet:blocked. Before the fix the bold-only ingest copy missed it and the
+# child queued unmarked (surfacing as plainly claimable).
+l737=$(edit_line 737)
+if [[ -n "$l737" && "$l737" == *"fleet:queued"* && "$l737" == *"fleet:blocked"* ]]; then
+    ok "#737 plain 'Blocked by: #719' (epic #174 prose) → fleet:queued + fleet:blocked"
+else
+    bad "#737 plain-form blocker not marked: '$l737'"
 fi
 
 # --- Remove path ----------------------------------------------------------

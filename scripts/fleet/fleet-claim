@@ -116,7 +116,7 @@ unset _fleet_claim_self
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
 # A missing module would otherwise fail OPEN in the --stackable-on guard below
 # (empty reason -> claim proceeds), so fail loud here instead.
-for _fleet_lib in fleet_branch_match.py fleet_stack_base.py; do
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py; do
     if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
         echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
         echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
@@ -504,84 +504,26 @@ check_blockers() {
     BODY_B64="$body_b64" SKIP_IDS="$skip_ids" REPO=$(repo_from_ns) ISSUE_NUM="$issue_num" \
     python3 <<'PYEOF'
 import os, re, subprocess, sys, base64
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+# Shared blocker parser (#1749) — one routine for scout/ingest/claim so the
+# three can't disagree, and it catches the plain `Blocked by: #N` form the
+# bold-only copies skipped. parse_blocked_by handles canonical / inline-bold
+# (#1423) / plain / `Blocked on` header (#1326) + the rich no-blocker sentinel;
+# blocker_refs routes cross-repo `[owner/]Repo#N` qualifiers (#1522).
+from fleet_blocked_by import parse_blocked_by, blocker_refs
 
 issue_num = os.environ.get("ISSUE_NUM", "")
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 skip_ids = set(os.environ.get("SKIP_IDS", "").split())
 repo = os.environ.get("REPO", "")
 
-# Parse the `**Blocked by:**` field. The line shape is markdown bold-key:
-#   **Blocked by:** #1234, #1235
-#   **Blocked by:** (none — explanatory text)
-# Accept either bare `**Blocked by:**` or list-bullet `- **Blocked by:**`.
-# Also handle inline-bold form: **Blocked by: #N (label)** mid-line where the
-# colon and value sit inside one bold span (#1423). The two patterns are
-# mutually exclusive: canonical has **Blocked by:** (bold closes at colon),
-# inline has **Blocked by: value** (space after colon, bold stays open).
-field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-inline_re = re.compile(r"\*\*Blocked by:\s+(.+?)\*\*", re.IGNORECASE)
-field_values = []
-for line in body.splitlines():
-    m = field_re.match(line)
-    if m:
-        field_values.append(m.group(1).strip())
-        continue
-    for m2 in inline_re.finditer(line):
-        val = m2.group(1).strip()
-        if val:
-            field_values.append(val)
-# Union every canonical line (multi-line + multi-ref); drop explicit (none)
-# declarations. If every **Blocked by:** line is (none), the task is unblocked.
-real = [v for v in field_values if not v.lower().startswith("(none")]
-if field_values and not real:
-    sys.exit(0)
-field_value = ", ".join(real) if real else None
-
-# Fall back to free-form header prose like `## Blocked on #1300` / `Blocked
-# on PR-x` when the canonical field is absent, so a header-only dependency
-# still gates the claim — #1301 slipped through as claimable because its
-# blocker lived in a `Blocked on #1300` header (#1326). Mirrors
-# fleet-state-scout._parse_blocked_by; #1296 covered #N refs INSIDE the
-# field, this covers the header-prose form. Only honor prose that names a #N
-# or PR so an incidental "blocked on the redesign" sentence isn't a gate.
-if field_value is None:
-    blocked_on_re = re.compile(
-        r"^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$",
-        re.IGNORECASE,
-    )
-    for line in body.splitlines():
-        m = blocked_on_re.match(line)
-        if m:
-            cand = m.group(1).strip().strip("*").strip()
-            if cand and ("#" in cand or re.search(r"\bPR\b", cand, re.IGNORECASE)):
-                field_value = cand
-                break
-
-if field_value is None:
+# `(none)` / absent / sentinel-only → no gate.
+field_value = parse_blocked_by(body)
+if not field_value:
     sys.exit(0)
 
-# `(none)` with optional parenthetical commentary means "no real blocker".
-# Treat anything starting with `(none` as a no-op.
-if field_value.lower().startswith("(none"):
-    sys.exit(0)
-
-# Extract referenced issue numbers and PR URLs. A `#N` may carry an optional
-# `[owner/]Repo#N` qualifier — route its live state check to the *referenced*
-# repo so a cross-repo dependency resolves against the right repo, not the
-# issue's own (#1522). Bare / unrecognized refs default to this issue's repo.
-_REF_NAME_TO_SLUG = {"irredenengine": "jakildev/IrredenEngine",
-                     "irreden": "jakildev/irreden"}
-
-
-def _ref_repo(name):
-    if name:
-        return _REF_NAME_TO_SLUG.get(name.lower(), repo)
-    return repo
-
-
-qual_ref_re = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
-issue_refs = [(_ref_repo(m.group(1)), m.group(2))
-              for m in qual_ref_re.finditer(field_value)]
+# Referenced issue numbers (qualifier-routed to the referenced repo) + PR URLs.
+issue_refs = blocker_refs(body, repo)
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", field_value)
 
 failed = []
@@ -1011,27 +953,16 @@ cmd_find_stackable_blockers() {
 import base64, json, os, re, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import branch_matches_issue
+# Shared blocker parser (#1749) — same value the scout / ingest /
+# check_blockers see, including the plain `Blocked by: #N` form.
+from fleet_blocked_by import parse_blocked_by
 
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 repo = os.environ.get("REPO", "")
 
-field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-inline_re = re.compile(r"\*\*Blocked by:\s+(.+?)\*\*", re.IGNORECASE)
-field_values = []
-for line in body.splitlines():
-    m = field_re.match(line)
-    if m:
-        field_values.append(m.group(1).strip())
-        continue
-    for m2 in inline_re.finditer(line):
-        val = m2.group(1).strip()
-        if val:
-            field_values.append(val)
-# Union every canonical line (multi-line + multi-ref); drop (none).
-real = [v for v in field_values if not v.lower().startswith("(none")]
-if not real:
+value = parse_blocked_by(body)
+if not value:
     sys.exit(0)
-value = ", ".join(real)
 
 issue_refs = re.findall(r"#(\d+)", value)
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", value)
