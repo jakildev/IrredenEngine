@@ -893,8 +893,8 @@ def _blocker_pr_files(repo_key, pr_number):
 # A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
 # another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
 # repo name (None / empty for a bare same-repo `#N`); group(2) is the number.
-# Kept consistent with fleet-claim's check_blockers and
-# fleet-queue-ingest._blocker_refs parsers. (#1522)
+# Kept consistent with fleet_blocked_by.blocker_refs; routing differs
+# (key vs slug) so this helper stays separate. (#1522)
 _BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
 _REPO_SLUG_MAP = {
     "engine": "jakildev/IrredenEngine",
