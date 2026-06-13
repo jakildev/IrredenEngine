@@ -7,6 +7,7 @@
 #include <irreden/common/components/component_player.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/sun_shadow_constants.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -30,15 +31,18 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         lastCanvas_ = IREntity::kNullEntity;
         lastPool_ = nullptr;
 
-        // Mirrors the on-screen cull gate in system_rebuild_grid_voxels.hpp;
-        // shadow-feeder-expanded viewport not needed here as position updates
-        // for off-screen sets are not required for rendering.
-        // getCullViewport() holds last render frame's snapshot when called
-        // from the UPDATE pipeline.
+        // Mirrors the cull gate in system_rebuild_grid_voxels.hpp — same
+        // shadow-feeder-expanded viewport so off-screen casters whose position
+        // update is required for shadow projection still upload. getCullViewport()
+        // holds last render frame's snapshot when called from the UPDATE pipeline.
         const IRRender::CullViewportState &cull = IRRender::getCullViewport();
         cullValid_ = cull.canvasSize_.x > 0 && cull.canvasSize_.y > 0;
         if (cullValid_) {
-            viewport_ = cull.isoViewport(IRRender::kCullChunkMargin);
+            viewport_ = IRPrefab::SunShadow::shadowFeederCullViewport(
+                IRRender::kCullChunkMargin,
+                IRPrefab::SunShadow::frameShadowFeederParams(),
+                cull
+            );
         }
     }
 
