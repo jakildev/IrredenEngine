@@ -1,0 +1,27 @@
+{
+  "issue": 1767,
+  "epic": 1766,
+  "host": "macos-debug (Metal)",
+  "demo": "IRCanvasStress",
+  "master_commit": "8fb2b934",
+  "captured_with": {
+    "shadow": "IRCanvasStress --auto-screenshot 120 --debug-overlay shadow  (shot shadow_overlay_floor)",
+    "coverage_scene": "IRCanvasStress --auto-screenshot 120  (shot revox_coverage)",
+    "coverage_solo": "IRCanvasStress --auto-screenshot 120 --solo-revox  (shot revoxelize_solids_zoom)"
+  },
+  "note": "Structural baselines are backend-agnostic (occupancy classification + connected components are invariant under sub-pixel CPU<->GPU jitter), so these thresholds apply to linux-debug too. The PNGs under macos-debug/ are the Metal capture used to derive them. ROIs are framebuffer pixels (2560x1440), top-left origin.",
+  "shadow": {
+    "_metric": "scripts/render-shadow-metric.py (#1765): magenta=shadowed, black=lit. hole_ratio = lit/(lit+shadow) inside the ROI; components = 4-connected shadow blobs; largest_frac = biggest blob / shadow_px. Clean cast shadow ~= few components, largest_frac near 1.",
+    "image": "macos-debug/shadow_overlay_floor.png",
+    "full_frame": { "roi": [0, 0, 2560, 1440], "shadow_px": 22332, "lit_px": 3579140, "hole_ratio": 0.9938, "components": 101, "largest_frac": 0.3357 },
+    "cast_shadow_roi": { "roi": [1010, 540, 450, 250], "shadow_px": 14280, "lit_px": 98220, "hole_ratio": 0.8731, "components": 62, "largest_frac": 0.5249 },
+    "verdict": "REPRODUCES — the cast shadow on the SDF floor shatters into 62 4-connected components (largest only 52% of shadow pixels) in a tight ROI; a clean cast shadow is a handful of large blobs. Swiss-cheese / dithered cast shadow (#1717 items 3-4) persists post-#1734."
+  },
+  "coverage": {
+    "_metric": "interior see-through holes inside a re-voxelized solid silhouette: classify pixels as background (near-black / near-floor-gray) vs solid; flood-fill background from the ROI border (exterior); enclosed background = interior holes. fill_ratio = solid / (solid + interior_holes). Clean solid ~= fill_ratio near 1, interior_hole_ratio near 0. The reusable, unit-tested coverage metric is T-3 (#1769); this is the T-1 baseline measurement.",
+    "solo_lprism_vs_black": { "image": "captured via --solo-revox, ROI on solo_lprism_crop", "roi": [1180, 880, 300, 300], "solid_px": 28256, "interior_hole_px": 256, "silhouette_px": 28512, "fill_ratio": 0.991, "interior_hole_ratio": 0.009 },
+    "grounded_cube_clean_control_vs_floor": { "image": "macos-debug/revox_coverage_scene.png", "roi": [1130, 560, 230, 230], "solid_px": 52900, "interior_hole_px": 0, "fill_ratio": 1.0, "interior_hole_ratio": 0.0 },
+    "verdict": "DOES NOT REPRODUCE — the dense grounded re-voxelize cube is 100% covered (0 interior holes); the carved/multi-color L-prism is 99.1% covered (0.9% interior holes = the documented fine round-to-cell speckle, sub-cell CPU<->GPU divergence, expected per P1/P3). No #1619-class missing-face holes on the detached/thin re-voxelize path. The #1619 GRID-half fix (#1732) holds."
+  },
+  "magenta_anomaly": "EXPLAINED — the lone magenta/purple entity in a normal-colour capture is the #1596 (P4b-3) grounded world-placed cast-proof re-voxelize cube, intentionally tinted Color{210,120,255} so its cast shadow is identifiable beside the GRID cubes'. It is NOT the SHADOW debug overlay magenta (vec3(1,0,1) = 255,0,255), which only appears under --debug-overlay shadow. The issue premise ('only in-tree magenta source is the SHADOW debug overlay') is incomplete: this entity tint is a second source."
+}
