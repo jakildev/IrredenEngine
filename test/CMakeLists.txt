@@ -48,6 +48,7 @@ add_executable(IrredenEngineTest
   render/detached_world_depth_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/frame_data_sun_layout_test.cpp
+  render/gpu_compute_dispatch_test.cpp
   render/per_canvas_light_scope_test.cpp
   render/picking_face_normal_test.cpp
   render/sun_direction_test.cpp
@@ -94,6 +95,14 @@ FetchContent_MakeAvailable(googletest)
 target_link_libraries(IrredenEngineTest PUBLIC
     IrredenEngine
     gtest_main
+)
+
+# Headless GPU compute test (render/gpu_compute_dispatch_test.cpp) compiles a
+# real engine compute shader by absolute path so it resolves regardless of cwd
+# (the engine itself chdir's to the exe dir at boot; the test never does). The
+# shader source tree is engine/render/src/shaders/.
+target_compile_definitions(IrredenEngineTest PRIVATE
+    IR_TEST_RENDER_SHADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/src/shaders"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua
