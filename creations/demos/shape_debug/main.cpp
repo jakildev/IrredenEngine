@@ -45,6 +45,7 @@
 #include <irreden/render/systems/system_update_joint_matrices.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
+#include <irreden/render/systems/system_build_distance_hiz.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
@@ -335,10 +336,8 @@ int main(int argc, char **argv) {
         // on-screen effect as which voxels rasterize, so the diff isolates
         // voxel retention. (The interactive F10 path keeps shadows.)
         IRRender::setSunShadowsEnabled(false);
-        IR_LOG_INFO(
-            "Cull-validate: sun shadows disabled to isolate voxel retention from "
-            "shadow-feeder coupling"
-        );
+        IR_LOG_INFO("Cull-validate: sun shadows disabled to isolate voxel retention from "
+                    "shadow-feeder coupling");
     }
     IREngine::gameLoop();
     return 0;
@@ -399,6 +398,10 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            // Hi-Z max-depth mip chain over the (now final) distance texture,
+            // for next frame's voxel occlusion cull (#1294 child 1/3). Produces
+            // only — renders unchanged this PR.
+            IRSystem::createSystem<IRSystem::COMPUTE_DISTANCE_HIZ>(),
             IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
             IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),

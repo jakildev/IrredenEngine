@@ -30,6 +30,7 @@
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_build_distance_hiz.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
@@ -625,6 +626,10 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            // Hi-Z max-depth mip chain over the (now final) distance texture,
+            // for next frame's voxel occlusion cull (#1294 child 1/3). Produces
+            // only — renders unchanged this PR.
+            IRSystem::createSystem<IRSystem::COMPUTE_DISTANCE_HIZ>(),
             IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),

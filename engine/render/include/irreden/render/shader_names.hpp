@@ -29,6 +29,9 @@ const char *const kFileCompShapesToTrixel = "shaders/c_shapes_to_trixel.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
+// Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling
+// (#1294 child 1/3). Metal mirror in metal/c_build_distance_hiz.metal.
+const char *const kFileCompBuildDistanceHiZ = "shaders/c_build_distance_hiz.glsl";
 // Smooth camera Z-yaw per-axis sun-shadow resolve (#1435): the scatter pass
 // re-projects the three face-local per-axis voxel canvases into a screen-space
 // front-most iso-depth scratch SSBO; the blit pass materializes that scratch

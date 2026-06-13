@@ -6,6 +6,9 @@
 
 #include <irreden/render/texture.hpp>
 
+#include <utility>
+#include <vector>
+
 using namespace IRMath;
 using namespace IRRender;
 
@@ -50,6 +53,32 @@ inline std::pair<ResourceId, Texture2D *> makeCanvasEntityIdTexture(ivec2 size) 
     );
 }
 
+// Hi-Z (hierarchical max-depth) mip chain over the distance texture, for the
+// voxel-pool occlusion cull (#1294 / docs/design/voxel-occlusion-culling.md).
+// Returns the DOWNSAMPLED levels 1..N only — conceptual level 0 IS the
+// canvas's own R32I distance texture, so the full-res copy is avoided. Each
+// returned level is ceil(prev / 2) in each axis (ceil-division so every source
+// texel maps into exactly one destination texel's 2x2 footprint; see
+// c_build_distance_hiz.glsl), R32I to match the distance encoding, down to 1x1.
+// A 1x1-or-smaller canvas yields an empty chain.
+inline std::vector<std::pair<ResourceId, Texture2D *>> makeHiZMipChain(ivec2 size) {
+    std::vector<std::pair<ResourceId, Texture2D *>> mips;
+    ivec2 levelSize = size;
+    while (levelSize.x > 1 || levelSize.y > 1) {
+        levelSize =
+            ivec2(IRMath::max(1, (levelSize.x + 1) / 2), IRMath::max(1, (levelSize.y + 1) / 2));
+        mips.push_back(IRRender::createResource<IRRender::Texture2D>(
+            TextureKind::TEXTURE_2D,
+            levelSize.x,
+            levelSize.y,
+            TextureFormat::R32I,
+            TextureWrap::CLAMP_TO_EDGE,
+            TextureFilter::NEAREST
+        ));
+    }
+    return mips;
+}
+
 } // namespace detail
 
 struct C_TriangleCanvasTextures {
@@ -57,12 +86,22 @@ struct C_TriangleCanvasTextures {
     std::pair<ResourceId, Texture2D *> textureTriangleColors_;
     std::pair<ResourceId, Texture2D *> textureTriangleDistances_;
     std::pair<ResourceId, Texture2D *> textureTriangleEntityIds_;
+    // Hi-Z max-depth mip chain over textureTriangleDistances_ (#1294 child 1/3).
+    // Conceptual level 0 IS textureTriangleDistances_; these are the downsampled
+    // levels 1..N (each ceil(prev / 2), R32I), holding the per-texel MAX
+    // (farthest) encoded distance over the source footprint. Produced each frame
+    // by COMPUTE_DISTANCE_HIZ and consumed NEXT frame by the chunk-occlusion
+    // pre-pass (child 2). Empty/background texels carry the 65535 sentinel — the
+    // largest encoded value — so any footprint that still sees background keeps
+    // the max at 65535 = "never occlude", the conservative direction.
+    std::vector<std::pair<ResourceId, Texture2D *>> hiZMips_;
 
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}
         , textureTriangleColors_{detail::makeCanvasColorTexture(size)}
         , textureTriangleDistances_{detail::makeCanvasDistanceTexture(size)}
-        , textureTriangleEntityIds_{detail::makeCanvasEntityIdTexture(size)} {}
+        , textureTriangleEntityIds_{detail::makeCanvasEntityIdTexture(size)}
+        , hiZMips_{detail::makeHiZMipChain(size)} {}
 
     C_TriangleCanvasTextures() {}
 
@@ -70,6 +109,22 @@ struct C_TriangleCanvasTextures {
         IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
         IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
         IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);
+        for (const auto &mip : hiZMips_) {
+            IRRender::destroyResource<Texture2D>(mip.first);
+        }
+    }
+
+    // Number of downsampled Hi-Z levels (levels 1..N). Level 0 is
+    // getTextureDistances(); the cull samples whichever level's texel footprint
+    // covers a pool-chunk's iso AABB.
+    int hiZMipCount() const {
+        return static_cast<int>(hiZMips_.size());
+    }
+
+    // Downsampled Hi-Z level `mip` (0-based over hiZMips_, i.e. conceptual mip
+    // level `mip + 1`). Level 0 of the pyramid is getTextureDistances().
+    const Texture2D *getHiZMip(int mip) const {
+        return hiZMips_[mip].second;
     }
 
     const Texture2D *getTextureColors() const {
