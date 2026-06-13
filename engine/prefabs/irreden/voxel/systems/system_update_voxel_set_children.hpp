@@ -6,6 +6,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/components/component_player.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/cull_viewport_state.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -19,9 +20,24 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     IREntity::EntityId lastCanvas_ = IREntity::kNullEntity;
     C_VoxelPool *lastPool_ = nullptr;
 
+    // Cull viewport captured from the previous render frame (one-frame lag,
+    // consistent with the GPU cull and invisible for camera pans). cullValid_
+    // is false until the render pipeline produces a non-zero canvas size.
+    bool cullValid_ = false;
+    IsoBounds2D viewport_ = {};
+
     void beginTick() {
         lastCanvas_ = IREntity::kNullEntity;
         lastPool_ = nullptr;
+
+        // Mirrors the visibility gate in system_rebuild_grid_voxels.hpp.
+        // getCullViewport() holds last render frame's snapshot when called
+        // from the UPDATE pipeline.
+        const IRRender::CullViewportState &cull = IRRender::getCullViewport();
+        cullValid_ = cull.canvasSize_.x > 0 && cull.canvasSize_.y > 0;
+        if (cullValid_) {
+            viewport_ = cull.isoViewport(IRRender::kCullChunkMargin);
+        }
     }
 
     void tick(
@@ -29,6 +45,10 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         C_VoxelSetNew &voxelSet,
         const C_WorldTransform &worldTransform
     ) {
+        if (voxelSet.numVoxels_ <= 0) {
+            return;
+        }
+
         IREntity::EntityId canvas = voxelSet.canvasEntity_;
         if (canvas == IREntity::kNullEntity) {
             canvas = IRRender::getActiveCanvasEntity();
@@ -38,10 +58,23 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             lastCanvas_ = canvas;
         }
         C_VoxelPool &pool = *lastPool_;
-        // updateAsChild returns the number of positions written, or 0 if the
-        // parent is unchanged (static voxel scene pays zero bytes/frame on
-        // the GPU side). Using the exact count avoids queuing stale tail
-        // slots if the pool-bounds guard fires (safeCount < numVoxels_).
+
+        // Cull gate: skip the CPU→GPU position update when none of this
+        // set's pool chunks are in the camera viewport. On-screen sets
+        // re-upload every frame (unconditional per ECS no-dirty-flags rule).
+        // cullValid_ is false before the first render frame — fail-safe to
+        // doing the work rather than silently dropping geometry at startup.
+        if (cullValid_ && !pool.isRangeVisible(
+                              voxelSet.voxelStartIdx_,
+                              static_cast<std::size_t>(voxelSet.numVoxels_),
+                              viewport_
+                          )) {
+            return;
+        }
+
+        // updateAsChild returns the number of positions actually written
+        // (may be < numVoxels_ if the pool-bounds guard fires). Use the
+        // exact count to avoid queuing stale tail slots for GPU upload.
         const int writtenCount = voxelSet.updateAsChild(
             worldTransform.translation_,
             pool.getPositionGlobals(),
