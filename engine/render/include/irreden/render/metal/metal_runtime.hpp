@@ -75,6 +75,13 @@ MTL::Texture *boundMetalTexture(std::uint32_t unit);
 void bindMetalImageTexture(std::uint32_t unit, MTL::Texture *texture);
 MTL::Texture *boundMetalImageTexture(std::uint32_t unit);
 
+/// Purge @p texture from the sticky texture + image binding tables. Called
+/// by the texture destructor — the tables hold raw pointers that
+/// bindComputeResources / bindRenderResources re-encode on every dispatch,
+/// so a destroyed texture left in a slot is a use-after-free on the next
+/// encoder unless something happens to rebind that slot first.
+void unbindMetalTexture(MTL::Texture *texture);
+
 void bindMetalDefaultRenderTarget();
 void bindMetalFramebufferRenderTarget(
     MTL::Texture *colorTexture,

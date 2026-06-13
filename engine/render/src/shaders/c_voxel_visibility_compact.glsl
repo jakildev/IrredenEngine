@@ -49,6 +49,11 @@ layout(std430, binding = 26) buffer IndirectDispatchParams {
     uint numGroupsZ;
     uint visibleCount;
     uint completedGroups;
+    // Second indirect command: same XY, single z-slice — for passes that
+    // walk the compacted list once per voxel (per-axis smooth-yaw store).
+    uint singleSliceNumGroupsX;
+    uint singleSliceNumGroupsY;
+    uint singleSliceNumGroupsZ;
 };
 
 void main() {
@@ -110,6 +115,9 @@ void main() {
             numGroupsY = max((count + max(gx, 1u) - 1u) / max(gx, 1u), 1u);
             int subdivisions = max(voxelRenderOptions.y, 1);
             numGroupsZ = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+            singleSliceNumGroupsX = numGroupsX;
+            singleSliceNumGroupsY = numGroupsY;
+            singleSliceNumGroupsZ = 1u;
         }
     }
 }

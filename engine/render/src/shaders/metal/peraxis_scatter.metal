@@ -115,11 +115,15 @@ vertex VertexOut v_peraxis_scatter(
     texture2d<float> triangleColors [[texture(0)]],
     texture2d<int> triangleDistances [[texture(1)]],
     constant GlobalConstants& globals [[buffer(1)]],
-    constant FrameDataIsoTriangles& frameData [[buffer(3)]]
+    constant FrameDataIsoTriangles& frameData [[buffer(3)]],
+    // Non-empty cell indices appended by c_compact_scatter_cells; the
+    // indirect draw's instanceCount matches, so every instance is an
+    // occupied cell.
+    device const uint* scatterCells [[buffer(25)]]
 ) {
     VertexOut out;
     const int2 canvasSize = int2(triangleColors.get_width(), triangleColors.get_height());
-    const int cell = int(instanceId);
+    const int cell = int(scatterCells[instanceId]);
     const uint2 ij = uint2(uint(cell % canvasSize.x), uint(cell / canvasSize.x));
 
     const float4 color = triangleColors.read(ij);

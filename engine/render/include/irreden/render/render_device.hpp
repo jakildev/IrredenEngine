@@ -32,6 +32,13 @@ class RenderDevice {
     virtual void drawElements(DrawMode drawMode, int count, IndexType indexType) = 0;
     virtual void
     drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) = 0;
+    /// Indexed instanced draw whose {indexCount, instanceCount, firstIndex,
+    /// baseVertex, baseInstance} command is read from @p indirectBuffer at
+    /// @p offset (GPU-authored — no CPU readback of the instance count). The
+    /// 5-uint command layout is identical on both backends.
+    virtual void drawElementsIndirect(
+        DrawMode drawMode, IndexType indexType, const Buffer *indirectBuffer, std::ptrdiff_t offset
+    ) = 0;
     virtual void drawArrays(DrawMode drawMode, int first, int count) = 0;
     virtual void
     drawArraysInstanced(DrawMode drawMode, int first, int count, int instanceCount) = 0;

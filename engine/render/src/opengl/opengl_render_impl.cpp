@@ -62,6 +62,21 @@ class OpenGLRenderDevice final : public RenderDevice {
         );
     }
 
+    void drawElementsIndirect(
+        DrawMode drawMode, IndexType indexType, const Buffer *indirectBuffer, std::ptrdiff_t offset
+    ) override {
+        if (indirectBuffer == nullptr) {
+            return;
+        }
+        ENG_API->glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer->getHandle());
+        ENG_API->glDrawElementsIndirect(
+            toGLDrawMode(drawMode),
+            toGLIndexType(indexType),
+            reinterpret_cast<const void *>(offset)
+        );
+        ENG_API->glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+    }
+
     void drawArrays(DrawMode drawMode, int first, int count) override {
         ENG_API->glDrawArrays(toGLDrawMode(drawMode), first, count);
     }

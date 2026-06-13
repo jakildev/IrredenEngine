@@ -427,55 +427,24 @@ class MetalRenderDevice final : public RenderDevice {
         );
         encoder->endEncoding();
     }
-    void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
+    // Shared encoder setup for every draw entry point: resolves the active
+    // pipeline + vertex layout, creates a render encoder, sets pipeline /
+    // depth-stencil state, binds resources, and binds + marks the vertex
+    // (and, when required, index) buffer. Returns nullptr when the draw
+    // should silently no-op (no pipeline, compute pipeline active, missing
+    // index buffer, encoder creation failure). Caller issues the terminal
+    // draw call and endEncoding().
+    MTL::RenderCommandEncoder *beginConfiguredRenderEncoder(bool needsIndexBuffer) {
         auto *pipeline = activeMetalPipeline();
         const auto &layout = activeMetalVertexLayout();
-        if (pipeline == nullptr || pipeline->isComputePipeline() || layout.indexBuffer_ == nullptr) {
-            return;
+        if (pipeline == nullptr || pipeline->isComputePipeline() ||
+            (needsIndexBuffer && layout.indexBuffer_ == nullptr)) {
+            return nullptr;
         }
 
         auto *encoder = createRenderEncoder();
         if (encoder == nullptr) {
-            return;
-        }
-
-        auto *pipelineState = pipeline->getRenderPipelineState(
-metalCurrentColorPixelFormat(),
-metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
-        );
-        IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
-        encoder->setRenderPipelineState(pipelineState);
-        if (metalCurrentDepthTexture() != nullptr) {
-            encoder->setDepthStencilState(currentMetalDepthStencilState());
-        }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
-        markMetalBufferEncoded(layout.indexBuffer_);
-        encoder->drawIndexedPrimitives(
-            toMetalPrimitiveType(drawMode),
-            static_cast<NS::UInteger>(count),
-            toMetalIndexType(indexType),
-            layout.indexBuffer_,
-            0
-        );
-        encoder->endEncoding();
-    }
-
-    void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
-        if (instanceCount <= 0) {
-            return;
-        }
-        auto *pipeline = activeMetalPipeline();
-        const auto &layout = activeMetalVertexLayout();
-        if (pipeline == nullptr || pipeline->isComputePipeline() || layout.indexBuffer_ == nullptr) {
-            return;
-        }
-
-        auto *encoder = createRenderEncoder();
-        if (encoder == nullptr) {
-            return;
+            return nullptr;
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
@@ -491,14 +460,68 @@ metalCurrentDepthPixelFormat(),
         bindRenderResources(encoder);
         encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
         markMetalBufferEncoded(layout.vertexBuffer_);
-        markMetalBufferEncoded(layout.indexBuffer_);
+        if (needsIndexBuffer) {
+            markMetalBufferEncoded(layout.indexBuffer_);
+        }
+        return encoder;
+    }
+
+    void drawElements(DrawMode drawMode, int count, IndexType indexType) override {
+        auto *encoder = beginConfiguredRenderEncoder(true);
+        if (encoder == nullptr) {
+            return;
+        }
         encoder->drawIndexedPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(count),
             toMetalIndexType(indexType),
-            layout.indexBuffer_,
+            activeMetalVertexLayout().indexBuffer_,
+            0
+        );
+        encoder->endEncoding();
+    }
+
+    void drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) override {
+        if (instanceCount <= 0) {
+            return;
+        }
+        auto *encoder = beginConfiguredRenderEncoder(true);
+        if (encoder == nullptr) {
+            return;
+        }
+        encoder->drawIndexedPrimitives(
+            toMetalPrimitiveType(drawMode),
+            static_cast<NS::UInteger>(count),
+            toMetalIndexType(indexType),
+            activeMetalVertexLayout().indexBuffer_,
             0,
             static_cast<NS::UInteger>(instanceCount)
+        );
+        encoder->endEncoding();
+    }
+
+    void drawElementsIndirect(
+        DrawMode drawMode, IndexType indexType, const Buffer *indirectBuffer, std::ptrdiff_t offset
+    ) override {
+        if (indirectBuffer == nullptr) {
+            return;
+        }
+        auto *mtlIndirectBuffer = static_cast<MTL::Buffer *>(indirectBuffer->getNativeBuffer());
+        if (mtlIndirectBuffer == nullptr) {
+            return;
+        }
+        auto *encoder = beginConfiguredRenderEncoder(true);
+        if (encoder == nullptr) {
+            return;
+        }
+        markMetalBufferEncoded(mtlIndirectBuffer);
+        encoder->drawIndexedPrimitives(
+            toMetalPrimitiveType(drawMode),
+            toMetalIndexType(indexType),
+            activeMetalVertexLayout().indexBuffer_,
+            0,
+            mtlIndirectBuffer,
+            static_cast<NS::UInteger>(offset)
         );
         encoder->endEncoding();
     }
@@ -512,30 +535,10 @@ metalCurrentDepthPixelFormat(),
     }
 
     void drawArrays(DrawMode drawMode, int first, int count) override {
-        auto *pipeline = activeMetalPipeline();
-        const auto &layout = activeMetalVertexLayout();
-        if (pipeline == nullptr || pipeline->isComputePipeline()) {
-            return;
-        }
-
-        auto *encoder = createRenderEncoder();
+        auto *encoder = beginConfiguredRenderEncoder(false);
         if (encoder == nullptr) {
             return;
         }
-
-        auto *pipelineState = pipeline->getRenderPipelineState(
-metalCurrentColorPixelFormat(),
-metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
-        );
-        IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
-        encoder->setRenderPipelineState(pipelineState);
-        if (metalCurrentDepthTexture() != nullptr) {
-            encoder->setDepthStencilState(currentMetalDepthStencilState());
-        }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),
@@ -550,30 +553,10 @@ metalCurrentDepthPixelFormat(),
         if (instanceCount <= 0) {
             return;
         }
-        auto *pipeline = activeMetalPipeline();
-        const auto &layout = activeMetalVertexLayout();
-        if (pipeline == nullptr || pipeline->isComputePipeline()) {
-            return;
-        }
-
-        auto *encoder = createRenderEncoder();
+        auto *encoder = beginConfiguredRenderEncoder(false);
         if (encoder == nullptr) {
             return;
         }
-
-        auto *pipelineState = pipeline->getRenderPipelineState(
-            metalCurrentColorPixelFormat(),
-            metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
-        );
-        IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
-        encoder->setRenderPipelineState(pipelineState);
-        if (metalCurrentDepthTexture() != nullptr) {
-            encoder->setDepthStencilState(currentMetalDepthStencilState());
-        }
-        bindRenderResources(encoder);
-        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
-        markMetalBufferEncoded(layout.vertexBuffer_);
         encoder->drawPrimitives(
             toMetalPrimitiveType(drawMode),
             static_cast<NS::UInteger>(first),

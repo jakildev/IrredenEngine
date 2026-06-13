@@ -140,3 +140,30 @@ worst-case matrix cell) land here as part of the optimization PR.
   when UPDATE can run multiple times per render frame. The tell is a
   system whose CPU cost tracks *frame time* rather than scene
   content — sub-tick `IR_PROFILE_SCOPE` blocks pinpoint the region.
+
+## Rotated-camera zoom matrix sweep (claude/render-perfgrid-optimize, 2026-06-12)
+
+- **What**: Three stacked fixes on the smooth-yaw path discovered by
+  adding a `--yaws` axis to the perf matrix: (1) per-axis store
+  dispatched the shared `numGroupsZ = sub²` indirect command while only
+  z=0 writes post-#1458 — added a second single-z-slice command in the
+  same `VoxelIndirectDispatchParams` buffer; (2) cardinal cull viewports
+  clamped to the canvas's world coverage (`canvasSize/(2·scale)`) —
+  swept shadow-feeders the canvas can't store had every tap
+  clip-rejected anyway; (3) per-axis forward scatter compacted from
+  brute-force W×H instancing to an indirect draw over non-empty cells
+  (`c_compact_scatter_cells` + `drawElementsIndirect`).
+- **Where**: `system_voxel_to_trixel.hpp`,
+  `system_trixel_to_framebuffer.hpp`, `c_voxel_visibility_compact.*`,
+  `c_compact_scatter_cells.*`, `v_peraxis_scatter.glsl` /
+  `peraxis_scatter.metal`.
+- **Win**: worst cell (zoom 8, FULL, yaw 0.35) **137 ms → ~13 ms**
+  (~10×); cardinal zoom 8 FULL 48.5 → 25.7 ms; rotated NONE floor
+  ~12 ms over cardinal → ~1 ms. Bottleneck-catalog entries 7
+  (updated), 12, 13.
+- **Lesson**: rotation/zoom interactions need their own matrix axis —
+  every cell of the pre-existing matrix was cardinal, so a 2.8× rotated
+  multiplier shipped invisibly. When a flat per-path cost doesn't scale
+  with scene content (tiny-grid A/B), suspect full-grid sweeps; when a
+  path's cost scales with another path's dispatch geometry, suspect
+  shared indirect commands.

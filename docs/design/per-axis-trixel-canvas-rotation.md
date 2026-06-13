@@ -233,10 +233,13 @@ sweep degenerates after a single `texelFetch` + branch and does **not** dominate
   fast path still resolves hover at every cardinal; the scatter does not yet
   write the hovered-id SSBO.
 - **Compute-compaction pre-pass** (append non-empty cell indices + indirect
-  draw args to shrink the scatter instance count). Measured-deferred: the perf
-  gate above shows the empty-cell sweep does not dominate, so this is a future
-  optimization only if a heavier scene flags it (see Cost above). The perf gate
-  itself + `optimize` are **done** (results in the Landed block).
+  draw args to shrink the scatter instance count). **Landed** (with the
+  rotated-zoom perf pass): `c_compact_scatter_cells.{glsl,metal}` appends each
+  axis canvas's non-empty cells + authors the 5-uint indirect command, and the
+  scatter draws via `drawElementsIndirect` — one instance per occupied cell.
+  The originally-measured "sweep does not dominate" verdict didn't survive the
+  rotated perf matrix: the full-grid sweep cost a flat ~6 ms/frame at 1280×720
+  (IRPerfGrid rotated NONE floor), independent of scene content.
 
 ### Rejected alternatives
 

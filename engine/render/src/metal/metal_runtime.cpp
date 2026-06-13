@@ -250,6 +250,21 @@ void bindMetalImageTexture(std::uint32_t unit, MTL::Texture *texture) {
     g_runtime().imageTextures_[unit] = texture;
 }
 
+void unbindMetalTexture(MTL::Texture *texture) {
+    if (texture == nullptr) {
+        return;
+    }
+    auto &runtime = g_runtime();
+    for (std::uint32_t unit = 0; unit < kMaxMetalTextureBindings; ++unit) {
+        if (runtime.textures_[unit] == texture) {
+            runtime.textures_[unit] = nullptr;
+        }
+        if (runtime.imageTextures_[unit] == texture) {
+            runtime.imageTextures_[unit] = nullptr;
+        }
+    }
+}
+
 MTL::Texture *boundMetalImageTexture(std::uint32_t unit) {
     if (unit >= kMaxMetalTextureBindings) {
         return nullptr;

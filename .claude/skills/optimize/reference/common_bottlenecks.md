@@ -136,12 +136,21 @@ session uncovers lands here in the same PR as the fix.
 - **Symptom**: `compare_perf_runs.py` cull-effectiveness table shows a
   ratio 10–30× looser than `1/zoom²` ideal at high zoom. Frame time
   scales with `sub² × visible_count` and `visible_count` stays high.
-- **Fix**: Currently filed as issue #1020. Sketch: split shadow-feeder
-  voxels into a depth-only fast path that doesn't pay the `sub²` cost
-  in `voxel_to_trixel_stage_2`. Don't break the invariant
-  (`engine/render/CLAUDE.md` §"Lighting culling invariants") — feeder
-  voxels still need `trixelDistances` writes for the sun-shadow bake;
-  they just don't need color / AO / entity ID.
+- **Fix (partial, landed)**: the **canvas-coverage cull clamp** in
+  `system_voxel_to_trixel.hpp` (`clampToCanvasCoverage`): a subdivided
+  raster writes taps at `offset + isoPos*scale`, so the fixed-size
+  canvas only holds iso positions within `canvasSize/(2*scale)` of the
+  view center — swept feeders beyond that have EVERY tap clip-rejected
+  and culling them is byte-identical (IRPerfGrid zoom8 FULL cardinal:
+  48.5 → 25.7 ms, cull 0.47 → 0.23). The clamp applies only where the
+  canvas physically can't hold the sweep; feeders the canvas CAN hold
+  still raster (shadow correctness preserved).
+- **Fix (remaining, open)**: feeders inside coverage still pay `sub²`.
+  Sketch: split shadow-feeder voxels into a depth-only fast path that
+  doesn't pay the `sub²` cost in `voxel_to_trixel_stage_2`. Don't break
+  the invariant (`engine/render/CLAUDE.md` §"Lighting culling
+  invariants") — feeder voxels still need `trixelDistances` writes for
+  the sun-shadow bake; they just don't need color / AO / entity ID.
 
 ### 8. O(sub²) per-shape tile generation in SHAPES_TO_TRIXEL
 
@@ -173,6 +182,53 @@ session uncovers lands here in the same PR as the fix.
   exceeds a threshold. Not yet filed — currently the
   `getVoxelRenderEffectiveSubdivisions` clamp to 16 keeps it under the
   limit, but the headroom is small.
+
+### 12. Reusing an indirect dispatch command whose Z the pass ignores
+
+- **Pattern**: a pass dispatches `dispatchComputeIndirect` from a
+  shared indirect-params buffer whose `numGroupsZ = subdivisions²`,
+  but the pass's shader early-returns for every `z != 0` (base-
+  resolution stores post-#1458). Each wasted z-slice still launches,
+  reads its inputs, and exits — `sub²×` overdispatch.
+- **Where**: the per-axis smooth-yaw store in
+  `system_voxel_to_trixel.hpp::dispatchPerAxisCanvases` (3 axes × 2
+  stages per frame) before the single-slice command landed.
+- **Symptom**: rotated frame time scales with zoom² while the cardinal
+  path doesn't; IRPerfGrid zoom8 FULL rotated sat at 137 ms vs 48 ms
+  cardinal. GPU stage timing won't show it if the stage tags don't
+  cover the extra dispatches.
+- **Fix**: have the producer (compact pass) author a SECOND indirect
+  command in the same buffer — same XY, `z = 1`
+  (`VoxelIndirectDispatchParams::singleSliceNumGroups*`, byte offset
+  20) — and dispatch the z-ignoring pass from that offset.
+  137 → 20.6 ms on the worst IRPerfGrid cell.
+
+### 13. Brute-force instanced draw over a mostly-empty grid
+
+- **Pattern**: `drawElementsInstanced(instanceCount = W*H)` over every
+  cell of a canvas/grid, with the vertex shader degenerating empties
+  off-screen. >90 % of instances are empty on typical frames; the
+  vertex stage still runs (texelFetch + branch) for each.
+- **Where**: the per-axis forward scatter in
+  `system_trixel_to_framebuffer.hpp::drawPerAxisScatter` before the
+  compaction pre-pass (worst-case (2W, W+H) canvas ≈ 2M cells × 3
+  axes per frame).
+- **Symptom**: a flat per-frame cost on the affected path that does
+  NOT scale with scene content — IRPerfGrid rotated NONE-mode floor
+  sat ~6 ms above cardinal even with a 512-voxel grid.
+- **Fix**: compute pre-pass (`c_compact_scatter_cells`) appends
+  non-empty cell indices + authors the 5-uint indirect draw command;
+  the draw becomes `drawElementsIndirect` over occupied cells only.
+  Caveats: (a) GL `DrawElementsIndirectCommand` and Metal
+  `MTLDrawIndexedPrimitivesIndirectArguments` share the 5-uint layout,
+  so one shader writes both; (b) canvas-texture reads in a COMPUTE
+  pass must use `bindAsImage`/`imageLoad`, not sampler `bind()` — the
+  Metal compute table only sees image binds; (c) on Metal, any sticky
+  image/texture bind of a transient texture (the per-axis canvases
+  release at cardinal) must be purged on texture destruction —
+  `unbindMetalTexture` in the texture destructor — or the next
+  encoder re-encodes a freed `MTL::Texture*` (segfault at the
+  rotated→cardinal transition).
 
 ---
 

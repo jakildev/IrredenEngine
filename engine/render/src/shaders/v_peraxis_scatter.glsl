@@ -27,6 +27,14 @@ layout(std140, binding = 1) uniform GlobalConstants {
     int kMaxTriangleDistance;
 };
 
+// Non-empty cell indices appended by c_compact_scatter_cells for this axis
+// canvas; the indirect draw's instanceCount matches, so every instance is an
+// occupied cell (the brute-force full-grid sweep degenerated >90% of its
+// instances).
+layout(std430, binding = 25) readonly buffer ScatterCells {
+    uint scatterCells[];
+};
+
 // Shared with f_/v_trixel_to_framebuffer (binding 3). The cardinal fast path
 // reads only the prefix; the T3 scatter adds perAxisBase / visualYaw /
 // visibleFaceIds at the end (std140 append — existing offsets unchanged).
@@ -124,7 +132,7 @@ vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
 
 void main() {
     const ivec2 canvasSize = textureSize(triangleDistances, 0);
-    const int cell = gl_InstanceID;
+    const int cell = int(scatterCells[gl_InstanceID]);
     const ivec2 ij = ivec2(cell % canvasSize.x, cell / canvasSize.x);
 
     const vec4 color = texelFetch(triangleColors, ij, 0);
