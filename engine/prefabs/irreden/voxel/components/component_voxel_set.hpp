@@ -27,8 +27,6 @@ struct C_VoxelSetNew {
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
     // TODO: Evaulate if we should store here or somewhere else.
     IREntity::EntityId ownerEntityId_ = IREntity::kNullEntity;
-    vec3 lastParentPosition_ = vec3(0.0f);
-    bool hasLastParentPosition_ = false;
 
     // Index into the canvas voxel pool's underlying arrays. Captured at
     // allocation time so consumers never recompute it from a pointer-diff
@@ -431,20 +429,17 @@ struct C_VoxelSetNew {
     // after such a migration; only `voxelStartIdx_` and `numVoxels_` remain
     // stable because they are plain scalars on this struct.
     // Returns the number of positions actually written (safeCount), or 0 if
-    // the parent position is unchanged (early-out). Callers use the return
-    // value to queue exactly the written range for GPU upload — avoids
-    // queuing stale slots in the rare case the pool-bounds guard fires.
+    // the pool-bounds guard fires (numVoxels_ exceeds available pool slots).
+    // The caller gates visibility — call only when the set is within the
+    // shadow-feeder cull viewport (see system_update_voxel_set_children.hpp).
+    // Callers use the return value to queue exactly the written range for
+    // GPU upload; avoids queuing stale tail slots on bounds-guard overflow.
     int updateAsChild(
         vec3 parentPosition,
         std::vector<IRRender::VoxelGpuPosition> &poolGlobalsOut,
         const std::vector<IRRender::VoxelGpuPosition> &poolPositions,
         const std::vector<vec3> &poolOffsets
     ) {
-        if (hasLastParentPosition_ && parentPosition == lastParentPosition_) {
-            return 0;
-        }
-        lastParentPosition_ = parentPosition;
-        hasLastParentPosition_ = true;
         const size_t writableTail =
             poolGlobalsOut.size() > voxelStartIdx_ ? poolGlobalsOut.size() - voxelStartIdx_ : 0u;
         const size_t availPositions =
