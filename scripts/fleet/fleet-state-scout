@@ -25,6 +25,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1910,9 +1911,51 @@ SLICERS = {
 
 
 def write_atomic(path: Path, payload: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(payload)
-    os.replace(tmp, path)
+    # Replace `path` with `payload` so a concurrent reader only ever sees the
+    # complete prior file or the complete new one — never a half-written splice.
+    #
+    # #1750: a FIXED temp name (the old `path.with_suffix(".tmp")`) is the bug.
+    # os.replace is atomic, but two overlapping writers (the 30s fleet-up scout
+    # tick racing a manual / solo-architect scout run, or an overlong tick) shared
+    # one `<name>.tmp`: writer B could os.replace a temp that writer A was still
+    # mid-write into — the reader then json.loads a truncated file. A per-call
+    # unique temp gives each writer its own file; whichever renames last wins, and
+    # no reader ever sees a partial. The temp MUST live in path.parent: os.replace
+    # is only atomic within one filesystem, so a /tmp temp would silently degrade
+    # to a non-atomic cross-device copy. fsync is durability insurance — the rename
+    # is the reader-visibility barrier, not the fsync.
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix="." + path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def read_json_retry(path, attempts=3, backoff=0.05):
+    # Script-side cache readers can still lose the race against a concurrent
+    # os.replace on a slow filesystem; one short retry recovers instead of
+    # surfacing a spurious parse error. Raises the last error after `attempts`
+    # tries so callers keep their existing fallback semantics. (Workers read the
+    # cache out-of-band via the Read tool and can't call this, but the unique-temp
+    # write_atomic above already closes their torn-read window.) A near-twin lives
+    # in fleet-epic-status — the two scripts can't share a module without the
+    # ~/bin symlink module-resolution hazard (#1578), so keep them in sync.
+    last = None
+    for i in range(attempts):
+        try:
+            return json.loads(Path(path).read_text())
+        except (json.JSONDecodeError, FileNotFoundError) as exc:
+            last = exc
+            time.sleep(backoff * (i + 1))
+    raise last
 
 
 def update_role_trigger(role: str, projection) -> bool:
@@ -1934,7 +1977,7 @@ def collect_state():
     # data instead of writing empty arrays into a fresh-timestamped snapshot.
     _prev_repos = {}
     try:
-        _prev_repos = json.loads(STATE_FILE.read_text()).get("repos", {})
+        _prev_repos = read_json_retry(STATE_FILE).get("repos", {})
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 
