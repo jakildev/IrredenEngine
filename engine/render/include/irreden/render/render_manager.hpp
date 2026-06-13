@@ -61,6 +61,12 @@ class RenderManager {
 
     void setGuiScale(int scale);
     int getGuiScale() const;
+    // Opt-in (default off): resize the GUI canvas to the native framebuffer
+    // pixel resolution (1 GUI trixel == 1 framebuffer pixel) so GUI text /
+    // widgets render small and crisp instead of at the coarse iso-canvas
+    // resolution. A creation that enables this owns laying its GUI out for
+    // the finer coordinate space. Overrides guiScale-based sizing.
+    void setGuiCanvasFullResolution();
 
     void setHoveredTrixelVisible(bool visible);
     bool isHoveredTrixelVisible() const;
@@ -129,6 +135,7 @@ class RenderManager {
     EntityId m_mainCanvas;
     EntityId m_backgroundCanvas;
     int m_guiScale = 1;
+    bool m_guiFullResolution = false;
     EntityId m_guiCanvas;
     // EntityId m_playerCanvas;
     EntityId m_camera;
@@ -172,6 +179,10 @@ class RenderManager {
     void updateOutputResolution();
 
     ivec2 calcOutputScaleByMode();
+
+    // Destroy + recreate the GUI canvas textures at `newSize` and update its
+    // C_SizeTriangles. Shared by setGuiScale and setGuiCanvasFullResolution.
+    void resizeGuiCanvas(ivec2 newSize);
 };
 
 } // namespace IRRender

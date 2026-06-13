@@ -310,6 +310,11 @@ bool isGuiVisible();
 /// mid-frame without understanding the coordinate-mapping consequences.
 void setGuiScale(int scale);
 int getGuiScale();
+/// Opt-in (default off): render the GUI canvas at the native framebuffer pixel
+/// resolution so GUI text / widgets are small and crisp instead of coarse. The
+/// calling creation owns laying its GUI out for the finer coordinate space;
+/// overrides guiScale-based sizing. Call once at init, before building widgets.
+void setGuiCanvasFullResolution();
 /// Enable / disable the trixel hover highlight (visual ring around the trixel under
 /// the cursor). Entity-id detection continues regardless of this flag.
 void setHoveredTrixelVisible(bool visible);

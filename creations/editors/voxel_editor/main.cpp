@@ -2825,6 +2825,11 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
 
+    // Render the GUI at native framebuffer resolution so panels/text are
+    // small and crisp instead of the coarse iso-canvas default. The editor
+    // lays its widgets out relative to the resulting GUI canvas size below.
+    IRRender::setGuiCanvasFullResolution();
+
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
     // Palette panel — fixed top-left dock at 200×220 trixels. The 16

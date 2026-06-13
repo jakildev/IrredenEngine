@@ -238,6 +238,10 @@ int getGuiScale() {
     return getRenderManager().getGuiScale();
 }
 
+void setGuiCanvasFullResolution() {
+    getRenderManager().setGuiCanvasFullResolution();
+}
+
 void setHoveredTrixelVisible(bool visible) {
     getRenderManager().setHoveredTrixelVisible(visible);
 }
