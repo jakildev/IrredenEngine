@@ -789,14 +789,17 @@ cmd_claim() {
                 fi
                 # gh exited 0 above, so an empty diff is a known-empty
                 # claim-commit base (not "unknown") -> the predicate rejects it.
-                stack_reject=$(PR_LABELS="$pr_labels" STACK_DIFF="$stack_diff" python3 -c '
+                if ! stack_reject=$(PR_LABELS="$pr_labels" STACK_DIFF="$stack_diff" python3 -c '
 import os, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_stack_base import unsafe_base_reason
 labels = [l for l in os.environ.get("PR_LABELS", "").splitlines() if l]
 files = [f for f in os.environ.get("STACK_DIFF", "").splitlines() if f]
 sys.stdout.write(unsafe_base_reason(labels, files) or "")
-')
+'); then
+                    echo "fleet-claim claim: base-safety check failed (Python error) — refusing to stack on an unverifiable base" >&2
+                    return 1
+                fi
                 if [[ -n "$stack_reject" ]]; then
                     echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_reject) — refusing claim" >&2
                     return 1

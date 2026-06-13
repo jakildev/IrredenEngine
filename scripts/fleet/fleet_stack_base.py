@@ -45,6 +45,9 @@ NOT_STACKABLE_BASE_LABELS = frozenset({
     # Parked on a design question — same hazard as design-blocked.
     "fleet:design-unblocked", "fleet:design-blocked", "fleet:design-escalated",
     "fleet:design-proposed",
+    # Pending merger rebase — diff against master is meaningless until resolved;
+    # stacking would create a two-rebase chain when the conflict is resolved.
+    "fleet:semantic-conflict",
     # Not yet rebaseable against its own base / not its own work.
     "fleet:awaiting-base", "fleet:awaiting-upstream-review",
     "fleet:fork-of-other-pr",

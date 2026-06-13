@@ -79,6 +79,14 @@ class TestUnsafeBaseReason(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, NOT_STACKABLE_BASE_LABELS)
 
+    def test_semantic_conflict_rejected(self):
+        """A PR awaiting merger rebase is not a safe stack base — its diff
+        against master is meaningless until the conflict is resolved, and
+        stacking would create a two-rebase chain."""
+        self.assertEqual(unsafe_base_reason(["fleet:semantic-conflict"]),
+                         "fleet:semantic-conflict")
+        self.assertIn("fleet:semantic-conflict", NOT_STACKABLE_BASE_LABELS)
+
     def test_accepts_set_or_list(self):
         """labels may arrive as a list (scout) or a set (claim block)."""
         self.assertEqual(unsafe_base_reason({"fleet:wip"}), "fleet:wip")
