@@ -65,6 +65,9 @@ via `INGEST_SELF` realpath). Single source of truth for:
   3. **NEW** plain `Blocked by:` (bold optional, anywhere on a line) directly
      followed by a `#N[, #M …]` ref-list — capture **only** the `#N` ref
      tokens, never trailing prose, so it cannot over-capture a sentence.
+     Regex: `(?<!\*)Blocked by:\s*(#\d+[^\n]*)` — note `#\d+` (not `#\d`);
+     `[^\n]*` absorbs the rest of the line but `#\d+` makes explicit the
+     capture starts at a full issue number, not just `#` + one digit.
   4. `Blocked on …` header prose fallback (#1326) — only when 1–3 found nothing.
 - `blocker_refs(body, default_repo) -> [(slug, num)]` — qualified-ref
   extraction (lift ingest's `REF_RE` + `_REF_NAME_TO_SLUG` + `_qual_refs`
