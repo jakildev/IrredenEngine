@@ -11,7 +11,12 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    uniform int _voxelDispatchPadding;
+    // Per-axis store list-walk split (#1739): the per-region element capacity
+    // (the perAxisRoute_ slot, dead during the compact). 0 = single full list
+    // (byte-identical). Non-zero = split mode: append each visible voxel into the
+    // axis regions it has an exposed face on; the value is the stride between
+    // those three regions in compactedVoxelIndices.
+    uniform int perAxisSplitStride;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
@@ -23,6 +28,21 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
     vec4 positions[];
+};
+
+// Per-voxel material/flag/bone word. Read ONLY in per-axis split mode
+// (perAxisSplitStride != 0): the face-occlusion flags byte (bits [2..7] of
+// byte 5 = `materialFlagBone >> 8`) routes each visible voxel into the axis
+// regions it has an exposed face on. Layout must match C_Voxel and the `Voxel`
+// struct in c_voxel_to_trixel_stage_1.glsl (12 B). Binding 6 (VoxelColorBuffer)
+// is bound every frame, so this is safe to declare unconditionally.
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+layout(std430, binding = 6) readonly buffer ColorBuffer {
+    Voxel voxels[];
 };
 
 // Per-slot active bitmask uploaded from `C_VoxelPool::m_activeMask`:
@@ -43,13 +63,31 @@ layout(std430, binding = 25) writeonly buffer CompactedIndices {
     uint compactedVoxelIndices[];
 };
 
-layout(std430, binding = 26) buffer IndirectDispatchParams {
-    uint numGroupsX;
-    uint numGroupsY;
-    uint numGroupsZ;
-    uint visibleCount;
-    uint completedGroups;
+// Indirect dispatch params, declared flat so one kernel writes either layout:
+//   single-canvas mode  -> the 32-byte IndirectDispatchParams buffer (struct 0)
+//   per-axis split mode  -> PerAxisIndirectDispatchParams: three structs spaced
+//                           kPerAxisIndirectStrideUints apart (256 B), so the CPU
+//                           can bindRange each at an SSBO-offset-aligned boundary.
+// Per-struct slots: 0 = numGroupsX, 1 = numGroupsY, 2 = numGroupsZ,
+//                   3 = visibleCount (atomic append counter), 4 = completedGroups.
+// Slot 4 of struct 0 (params[4]) is the shared cross-group completion counter in
+// BOTH modes.
+const uint kPerAxisIndirectStrideUints = 64u;  // 256 B / 4 — mirrors C++ kPerAxisSsboAlignBytes
+layout(std430, binding = 26) buffer IndirectDispatchParamsBuf {
+    uint params[];
 };
+
+// Compute the indirect dispatch grid for the struct at `base` from its
+// visibleCount slot (matches the single-canvas numGroups math exactly). The
+// count is read atomically so the last group sees every other group's appends.
+void writeDispatchDims(uint base) {
+    uint count = atomicAdd(params[base + 3u], 0u);
+    uint gx = max(min(count, 1024u), 1u);
+    params[base + 0u] = gx;
+    params[base + 1u] = max((count + gx - 1u) / gx, 1u);
+    int subdivisions = max(voxelRenderOptions.y, 1);
+    params[base + 2u] = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+}
 
 void main() {
     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
@@ -90,8 +128,28 @@ void main() {
                     isoPos.x <= cullIsoMax.x + cullMargin &&
                     isoPos.y >= cullIsoMin.y - cullMargin &&
                     isoPos.y <= cullIsoMax.y + cullMargin) {
-                    uint slot = atomicAdd(visibleCount, 1u);
-                    compactedVoxelIndices[slot] = idx;
+                    if (perAxisSplitStride == 0) {
+                        // Single full list (byte-identical to master).
+                        uint slot = atomicAdd(params[3], 1u);
+                        compactedVoxelIndices[slot] = idx;
+                    } else {
+                        // Per-axis split (#1739): append this voxel into each axis
+                        // region whose axis it has an exposed face on. The store
+                        // shader re-checks the precise visible-face exposure per
+                        // axis, so an over-inclusive entry here is harmless; a
+                        // fully-interior voxel (every face occluded) lands in no
+                        // region, which is tighter than master's full-list walk.
+                        uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
+                        uint stride = uint(perAxisSplitStride);
+                        for (int axis = 0; axis < 3; ++axis) {
+                            if (faceIsExposed(flagsByte, 2 * axis) ||
+                                faceIsExposed(flagsByte, 2 * axis + 1)) {
+                                uint base = uint(axis) * kPerAxisIndirectStrideUints;
+                                uint slot = atomicAdd(params[base + 3u], 1u);
+                                compactedVoxelIndices[uint(axis) * stride + slot] = idx;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -101,15 +159,18 @@ void main() {
     memoryBarrierBuffer();
 
     if (gl_LocalInvocationIndex == 0u) {
-        uint finished = atomicAdd(completedGroups, 1u) + 1u;
+        // params[4] (struct 0's completedGroups slot) is the shared cross-group
+        // completion counter in both modes.
+        uint finished = atomicAdd(params[4], 1u) + 1u;
         uint totalGroups = gl_NumWorkGroups.x * gl_NumWorkGroups.y;
         if (finished == totalGroups) {
-            uint count = atomicAdd(visibleCount, 0u);
-            uint gx = min(count, 1024u);
-            numGroupsX = max(gx, 1u);
-            numGroupsY = max((count + max(gx, 1u) - 1u) / max(gx, 1u), 1u);
-            int subdivisions = max(voxelRenderOptions.y, 1);
-            numGroupsZ = (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+            if (perAxisSplitStride == 0) {
+                writeDispatchDims(0u);
+            } else {
+                for (int axis = 0; axis < 3; ++axis) {
+                    writeDispatchDims(uint(axis) * kPerAxisIndirectStrideUints);
+                }
+            }
         }
     }
 }
