@@ -101,7 +101,7 @@ def foreground_mask(
     w, h, bpp, pix = read_png(path)
     px = array("B", pix)
     rx, ry, rw, rh = resolve_roi(roi, w, h)
-    br, bgg, bb = bg
+    br, bg_g, bb = bg
     mask = bytearray(rw * rh)
     fg = 0
     for j in range(rh):
@@ -109,7 +109,7 @@ def foreground_mask(
         mbase = j * rw
         for i in range(rw):
             o = (row + rx + i) * bpp
-            if (abs(px[o] - br) > bg_tol or abs(px[o + 1] - bgg) > bg_tol
+            if (abs(px[o] - br) > bg_tol or abs(px[o + 1] - bg_g) > bg_tol
                     or abs(px[o + 2] - bb) > bg_tol):
                 mask[mbase + i] = 1
                 fg += 1
