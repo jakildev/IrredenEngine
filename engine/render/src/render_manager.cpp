@@ -499,26 +499,40 @@ bool RenderManager::isGuiVisible() const {
     return m_guiVisible;
 }
 
+void RenderManager::resizeGuiCanvas(ivec2 newSize) {
+    if (IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ == newSize)
+        return;
+    auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_guiCanvas);
+    textures.onDestroy();
+    textures = C_TriangleCanvasTextures{newSize};
+    IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ = newSize;
+}
+
 void RenderManager::setGuiScale(int scale) {
     scale = std::clamp(scale, 1, 8);
     if (scale == m_guiScale)
         return;
+    if (m_guiFullResolution)
+        return; // full-resolution sizing overrides the scale divisor; don't record the intent
     m_guiScale = scale;
 
     ivec2 mainSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
     ivec2 newSize = mainSize / ivec2(scale);
-
-    auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_guiCanvas);
-    textures.onDestroy();
-    textures = C_TriangleCanvasTextures{newSize};
-
-    IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ = newSize;
-
+    resizeGuiCanvas(newSize);
     IRE_LOG_INFO("GUI scale set to {}x (canvas {}x{})", scale, newSize.x, newSize.y);
 }
 
 int RenderManager::getGuiScale() const {
     return m_guiScale;
+}
+
+void RenderManager::setGuiCanvasFullResolution() {
+    m_guiFullResolution = true;
+    // The main framebuffer is sized gameResolution + buffer pixels; matching it
+    // makes one GUI trixel == one framebuffer pixel (1:1, no iso stretch).
+    const ivec2 fbSize = m_gameResolution + IRConstants::kSizeExtraPixelBuffer;
+    resizeGuiCanvas(fbSize);
+    IRE_LOG_INFO("GUI canvas set to full resolution ({}x{})", fbSize.x, fbSize.y);
 }
 
 void RenderManager::setHoveredTrixelVisible(bool visible) {

@@ -593,9 +593,12 @@ parity with voxel-pool primary shapes.
 - **Canvas render order matters.** Multiple canvases write to the same
   framebuffer in registration order. Stage 2 must complete for a canvas
   before the next canvas reads from it.
-- **GUI canvas scaling.** GUI canvas is sized `mainCanvasSize / guiScale`.
-  Changing `guiScale` without resizing the GUI canvas entity breaks
-  coordinate mapping.
+- **GUI canvas scaling.** GUI canvas is sized `mainCanvasSize / guiScale`
+  by default; `IRRender::setGuiCanvasFullResolution()` instead sizes it to
+  the native framebuffer resolution (1 GUI trixel == 1 framebuffer pixel) so
+  GUI text/widgets render small and crisp — the calling creation owns laying
+  its GUI out for the finer coordinate space. Changing `guiScale` without
+  resizing the GUI canvas entity breaks coordinate mapping.
 - **CPU texture writes order via the command buffer on Metal.**
   `Texture2D::subImage2D` and `clear()` write canvas textures, but on Metal
   the per-frame work is deferred: `clear()` enqueues a GPU blit and the
