@@ -151,6 +151,14 @@ session uncovers lands here in the same PR as the fix.
   the invariant (`engine/render/CLAUDE.md` §"Lighting culling
   invariants") — feeder voxels still need `trixelDistances` writes for
   the sun-shadow bake; they just don't need color / AO / entity ID.
+- **Measured dead end (2026-06, Metal)**: a load-test-skip before
+  `writeDistanceTap`'s `imageAtomicMin` (plain load, atomic only when
+  the candidate is nearer — correctness holds because distances only
+  decrease within the frame) moved NOTHING on the 24-cell IRPerfGrid
+  matrix (zoom 8 FULL cardinal 26.1 → 26.4 ms, noise). The FULL-mode
+  zoom cost is not atomic-RMW-bound on Apple Silicon; don't re-try
+  without first profiling where the stage's time actually goes
+  (blocked on #1738 — Metal per-stage GPU timing is unreliable).
 
 ### 8. O(sub²) per-shape tile generation in SHAPES_TO_TRIXEL
 
@@ -183,7 +191,7 @@ session uncovers lands here in the same PR as the fix.
   `getVoxelRenderEffectiveSubdivisions` clamp to 16 keeps it under the
   limit, but the headroom is small.
 
-### 12. Reusing an indirect dispatch command whose Z the pass ignores
+### 15. Reusing an indirect dispatch command whose Z the pass ignores
 
 - **Pattern**: a pass dispatches `dispatchComputeIndirect` from a
   shared indirect-params buffer whose `numGroupsZ = subdivisions²`,
@@ -203,7 +211,7 @@ session uncovers lands here in the same PR as the fix.
   20) — and dispatch the z-ignoring pass from that offset.
   137 → 20.6 ms on the worst IRPerfGrid cell.
 
-### 13. Brute-force instanced draw over a mostly-empty grid
+### 16. Brute-force instanced draw over a mostly-empty grid
 
 - **Pattern**: `drawElementsInstanced(instanceCount = W*H)` over every
   cell of a canvas/grid, with the vertex shader degenerating empties

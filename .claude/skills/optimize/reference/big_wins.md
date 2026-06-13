@@ -160,7 +160,7 @@ worst-case matrix cell) land here as part of the optimization PR.
 - **Win**: worst cell (zoom 8, FULL, yaw 0.35) **137 ms → ~13 ms**
   (~10×); cardinal zoom 8 FULL 48.5 → 25.7 ms; rotated NONE floor
   ~12 ms over cardinal → ~1 ms. Bottleneck-catalog entries 7
-  (updated), 12, 13.
+  (updated), 15, 16.
 - **Lesson**: rotation/zoom interactions need their own matrix axis —
   every cell of the pre-existing matrix was cardinal, so a 2.8× rotated
   multiplier shipped invisibly. When a flat per-path cost doesn't scale
