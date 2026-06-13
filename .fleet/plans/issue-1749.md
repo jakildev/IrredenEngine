@@ -4,47 +4,57 @@
 - **Model:** opus
 - **Date:** 2026-06-13
 
+> Engine-repo artifact: described in pure fleet-tooling terms. The live repro
+> lives in a downstream-creation epic; per the cross-repo info-isolation rule
+> this plan uses generic placeholder issue numbers (`#E`, `#A`…`#F`) for the
+> example bodies. The test fixtures use the same synthetic bodies — no live
+> downstream issues are fetched.
+
 ## Premise correction (verified against the actual code path)
 
-The issue body guesses the #174 gap is an epic-header **"Children (D needs
-A+B+C)" letter-chain** prose format. That is a **red herring**. I fetched the
-real child bodies and ran the three live parsers against them:
+The issue body guesses the recurring epic-child gap is an epic-header
+**"Children (D needs A+B+C)" letter-chain** prose format. That is a **red
+herring**. I fetched the real epic-phase child bodies and ran the three live
+parsers against them. Each **child self-declares** its blockers — but in
+**plain text**, e.g. a phase-D child whose body opens with:
 
-- `#178` body: `Part of epic #174 (Phase D). [opus] Blocked by: #175, #176, #177.`
-- `#179` body: `Part of epic #174 (Phase E). [sonnet] Blocked by: #178.`
+```
+Part of epic #E (Phase D). [opus] Blocked by: #A, #B, #C.
+```
 
-Each **child self-declares** its blockers — but in **plain text**: not the
-canonical bold standalone `**Blocked by:** #N` line, not the inline-bold
-`**Blocked by: #N**` span, not a `Blocked on` header. Running the exact
-current regexes from all three sources against `#178`'s body returns **empty**
-from every one, which is exactly why the live scout cache shows `#178` as
-`blocked:false, blocked_by:"(none)"` (state.json) and it surfaced as pickable.
+and a phase-E child: `Part of epic #E (Phase E). [sonnet] Blocked by: #D.`
+
+This is **not** the canonical bold standalone `**Blocked by:** #N` line, **not**
+the inline-bold `**Blocked by: #N**` span, **not** a `Blocked on` header.
+Running the exact current regexes from all three sources against that body
+returns **empty** from every one — which is why the live scout projection
+marks such a child `blocked:false, blocked_by:"(none)"` and it surfaces as
+pickable before its predecessors land.
 
 So the verified root cause is: **plain (non-bold, possibly mid-line)
 `Blocked by: #N[, #M]` declarations are skipped by all three bold-only
-parsers.** The epic-header letter-chain does not need to be parsed at all —
-the children carry their own deps in degraded form. Fixing the plain-form
-miss fixes #174 end-to-end. The "needs A+B+C" letter→issue propagation is
-intentionally **out of scope** (redundant given self-declaration, and a
-brittle free-form-prose parser we'd have to maintain in three places).
+parsers.** Children carry their own deps in degraded form, so fixing the
+plain-form miss fixes the case end-to-end — no letter→issue propagation is
+needed (rejected as redundant + brittle to maintain in three places).
 
 Independently, the three parsers also **disagree on the no-blocker sentinel**:
 the scout has the rich `_is_no_blocker_value` (handles bare `none`, `n/a`,
 `tbd`, a lone dash, `#N`-wins), while ingest and claim only test
 `startswith('(none')`. A bare `none — first unblocked.` gates in claim/ingest
-but not in the scout — the same class of "three parsers disagree" defect the
-ticket is about (game #138→#143 was this, fixed only in the scout).
+but not in the scout — the same "three parsers disagree" defect class the
+ticket exists to close (an earlier bare-`none` case was fixed only in the
+scout, leaving ingest/claim divergent).
 
 ## Scope
 
 Reconcile the scout / queue-ingest / claim `blocked_by` readers into **one
 shared parse routine** so they never disagree, **widen it to the plain-text
-`Blocked by: #N` form** (the verified #174 mechanism), and lock the contract
-with a fixture corpus replaying every observed format including #1500 and
-#178/#179. One opus task, one PR — splitting it would reintroduce the
-disagreement window the ticket exists to close.
+`Blocked by: #N` form** (the verified mechanism), and lock the contract with a
+fixture corpus replaying every observed format. One opus task, one PR —
+splitting it would reintroduce the disagreement window the ticket exists to
+close.
 
-## Approach (one PR, three parts in order)
+## Approach (one PR, four parts in order)
 
 ### Part 1 — shared module `scripts/fleet/fleet_blocked_by.py`
 
@@ -56,7 +66,7 @@ via `INGEST_SELF` realpath). Single source of truth for:
 
 - `is_no_blocker_value(value) -> bool` — port the scout's current rich version
   verbatim (a concrete `#\d+` anywhere wins → not a sentinel; else first token
-  in `{none, n/a, na, tbd}` or leading dash/`(` → sentinel).
+  in `{none, n/a, na, tbd}` or a leading dash/`(` → sentinel).
 - `parse_blocked_by(body) -> str` — union of every blocker declaration,
   returning the canonical comma-joined value (or `""` when genuinely
   unblocked). Forms recognized, **in this precedence**:
@@ -75,8 +85,8 @@ via `INGEST_SELF` realpath). Single source of truth for:
 
 Design notes the implementer must honor:
 - The plain pattern (3) also matches the bold forms (1,2) since `**` is
-  optional — that is fine for the **gating** decision (it only cares about
-  `#N` refs). Keep a *separate* canonical-line check ONLY where the
+  optional — fine for the **gating** decision (it only cares about `#N` refs).
+  Keep a *separate* canonical-line presence check ONLY where the
   sentinel-vs-absent distinction matters (ingest's "Blocked by field missing"
   WARN at fleet-queue-ingest:443). i.e. unify the ref-extraction, preserve the
   "was a Blocked-by field present at all?" signal.
@@ -86,9 +96,9 @@ Design notes the implementer must honor:
 ### Part 2 — refactor the three consumers to import the module
 
 - **scout** (`fleet-state-scout` `_parse_blocked_by` ~L368): replace the body
-  with `from fleet_blocked_by import parse_blocked_by` delegation. Keep
-  `_BLOCKED_ON_RE` only if still referenced elsewhere; otherwise move it into
-  the module. `resolve_blocked_by` / `find_stackable_blockers` keep calling
+  with a `from fleet_blocked_by import parse_blocked_by` delegation. Move
+  `_BLOCKED_ON_RE` into the module if it stops being referenced locally.
+  `resolve_blocked_by` / `find_stackable_blockers` keep calling
   `_parse_blocked_by` (now a thin shim) so their downstream logic is untouched.
 - **ingest** (`fleet-queue-ingest` `_blocker_refs`/`_has_header_blocker`/
   `BLOCKED_*` ~L210-279): delegate `_blocker_refs` to
@@ -100,28 +110,26 @@ Design notes the implementer must honor:
   fleet_blocked_by import parse_blocked_by, blocker_refs, is_no_blocker_value`
   and replace the inline `field_re`/`inline_re`/`blocked_on_re` block. Add the
   lib-presence guard next to the existing `fleet_branch_match.py` check at
-  fleet-claim:117 so a missing module fails loud, not silently exit-0 (the
-  #1578 `FLEET_LIB_DIR` symlink-resolution trap — the new file must sit in the
-  same dir the existing guard validates).
+  fleet-claim:117 so a missing module fails loud, not a silent exit-0.
 
 ### Part 3 — fleet-claim backstop (issue's explicit ask) — falls out of Part 2
 
 The issue asks claim to "backstop a scout miss rather than trusting the cached
 projection." `check_blockers` already reads the **issue body directly** (never
 the scout cache) — so once the shared parser catches the plain form, claiming
-`#178` parses `Blocked by: #175, #176, #177` and gates correctly with **no
-extra work and no epic fetch**. (Because the verified mechanism is child
+the phase-D child parses its `Blocked by: #A, #B, #C` and gates correctly with
+**no extra work and no epic fetch**. Because the verified mechanism is child
 self-declaration, the heavier "fetch the parent epic and parse its
-letter-chain in the claim path" design is unnecessary — explicitly rejected.)
+letter-chain in the claim path" design is unnecessary — explicitly rejected.
 
 ### Part 4 — fixtures + manual replay
 
 - `scripts/fleet/tests/test_blocked_by.py` — unit tests for the module, one
-  case per format: canonical standalone; inline-bold `**Blocked by: #N (x)**`;
-  **plain `Blocked by: #175, #176, #177`** (the #178 replay); multi-line +
-  multi-ref union; `Blocked on #N` header; sentinels (`(none)`, bare `none`,
-  `n/a`, `tbd`, lone dash); cross-repo `jakildev/IrredenEngine#1476` /
-  `irreden#778` qualifier routing; false-positive guard
+  case per format (synthetic bodies): canonical standalone; inline-bold
+  `**Blocked by: #N (x)**`; **plain `Blocked by: #A, #B, #C`** (the
+  epic-phase-child replay); multi-line + multi-ref union; `Blocked on #N`
+  header; sentinels (`(none)`, bare `none`, `n/a`, `tbd`, lone dash);
+  cross-repo `[owner/]Repo#N` qualifier routing; false-positive guard
   (`"not blocked by anything"` → unblocked). Each asserts both
   `parse_blocked_by` and `blocker_refs`.
 - **Cross-parser agreement** is structural once all three import the module;
@@ -130,11 +138,11 @@ letter-chain in the claim path" design is unnecessary — explicitly rejected.)
   scripts: add a plain-`Blocked by:` child case to
   `test_fleet_queue_ingest_blocked_by.sh` (asserts `fleet:blocked` is stamped)
   and to `test_fleet_claim_blockers.sh` (asserts claim refuses).
-- **#1500 replay**: canonical `**Blocked by:** #1499 (prose)` → still gated
-  (regression guard; already worked).
-- **#174 replay**: feed `#178`'s real body → `parse_blocked_by` returns
-  `#175, #176, #177` and the child stays out of the claimable set; `#179` →
-  `#178`.
+- **Canonical regression**: replay #1500's form `**Blocked by:** #1499 (prose)`
+  → still gated (already worked; guard against regressing it).
+- **Plain-form replay**: feed the synthetic phase-D child body →
+  `parse_blocked_by` returns `#A, #B, #C` and the child stays out of the
+  claimable set; phase-E child → `#D`.
 
 ## Affected files
 
@@ -153,27 +161,29 @@ letter-chain in the claim path" design is unnecessary — explicitly rejected.)
   import it. `grep -n 'Blocked by:' scripts/fleet/fleet-{state-scout,queue-ingest,claim}`
   shows no surviving private copy of the parse logic (comments/WARN strings ok).
 - The plain `Blocked by: #N[, #M]` form (non-bold, mid-line) is gated by all
-  three: replaying `#178`/`#179` bodies yields their blocker refs; the live
-  scout projection would mark them `blocked:true`.
+  three: replaying the synthetic phase-child bodies yields their blocker refs;
+  the live scout projection would mark them `blocked:true`.
 - Regression fixtures under `scripts/fleet/tests/` cover canonical, inline-bold,
   plain, multi-ref, header `Blocked on #N`, sentinels, cross-repo qualifier,
   and the false-positive guard. New + existing fleet tests pass
   (`test_blocked_by.py`, `test_fleet_queue_ingest_blocked_by.sh`,
   `test_fleet_claim_blockers.sh`, `test_issue_queue_parser.py`,
   `test_live_blocker_resolution.py`).
-- #1500 (canonical) and #174-children (plain) both stay out of the claimable set.
+- The canonical (#1500-form) and plain (epic-phase-child) cases both stay out
+  of the claimable set.
 
 ## Gotchas
 
 - **Premise**: do NOT build a "Children (D needs A+B+C)" letter→issue
   propagation. Verified unnecessary — children self-declare. Building it would
-  burn a round (the protocol's "verify the premise" case). Replay #174 via the
+  burn a round (the protocol's "verify the premise" case). Replay via the
   **child** body, not the epic header.
-- **`FLEET_LIB_DIR` / #1578**: the new module must live beside the scripts so
-  fleet-claim resolves it through the same `FLEET_LIB_DIR` the existing
-  `fleet_branch_match.py` guard uses; add a matching presence guard so a missing
-  file fails loud instead of silently exiting 0 (which would make every claim
-  look unblocked — worse than the bug being fixed).
+- **`FLEET_LIB_DIR` / symlink resolution (#1578)**: the new module must live
+  beside the scripts so fleet-claim resolves it through the same
+  `FLEET_LIB_DIR` the existing `fleet_branch_match.py` guard uses; add a
+  matching presence guard so a missing file fails loud instead of silently
+  exiting 0 (which would make every claim look unblocked — worse than the bug
+  being fixed).
 - **Sentinel-vs-absent**: keep ingest's "Blocked by field missing → treat as
   unblocked" WARN (L443) working — that needs "was any `**Blocked by:**`
   present?", which the unified `#N`-anchored ref pattern alone doesn't answer.
@@ -183,12 +193,13 @@ letter-chain in the claim path" design is unnecessary — explicitly rejected.)
   it; the unit test's cross-repo case guards this.
 - **`Blocked on` vs `Blocked by`**: keep them distinct. The plain widening is
   for `Blocked by:` + `#N`; the `Blocked on` header stays a separate
-  lower-precedence fallback (it already needs `#`/`PR` to gate, to avoid
-  "Blocked on the redesign" gating forever).
+  lower-precedence fallback (it already needs `#`/`PR` to gate, so an
+  incidental "Blocked on the redesign" sentence can't gate forever).
 - **Recommended companion (NOT in this PR, note for the human)**: file-epic
   already mandates the bold standalone form and marks plain/header prose a ❌
-  anti-pattern (file-epic.md:334,375). #174's children are a filing-time
+  anti-pattern (file-epic.md:334,375). The degraded plain form is a filing-time
   contract violation. A `fleet-validate-stack` lint that flags a child whose
   only `Blocked by:` is the degraded plain form would stop the regression at
-  the source. Worth a follow-up issue (filed with no labels per TASK-FILING.md),
-  but the parser widening above makes the fleet robust to it regardless.
+  the source — worth a follow-up issue (filed with no labels per
+  TASK-FILING.md), but the parser widening above makes the fleet robust to it
+  regardless.
