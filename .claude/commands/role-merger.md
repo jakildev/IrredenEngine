@@ -363,7 +363,7 @@ exit cleanly:
 
 3.5. **No busy-branch filter.** Step 5.a uses `git checkout --detach`,
    which doesn't claim the branch ref — the merger can rebase on
-   the same commit another worktree has checked out (an worker
+   the same commit another worktree has checked out (a worker
    mid-resolution of `fleet:semantic-conflict` on the same PR, the
    operator inspecting it from the main clone, etc.). Concurrency
    against parallel rebases is handled at push time by
@@ -378,7 +378,7 @@ exit cleanly:
 
    **a. Check out the PR (detached HEAD).** Detached avoids the
       `branch is already used by worktree` collision with the
-      operator's main clone or an worker on the same PR.
+      operator's main clone or a worker on the same PR.
       `git rebase` works fine on detached HEAD; the resulting
       commits live at HEAD and get pushed back to the branch ref
       explicitly in step e (`git push --force-with-lease origin
@@ -747,7 +747,7 @@ exit cleanly:
            - `<file1>` — master: `<sha> <subj>`; PR: `<sha> <subj>`
            - `<file2>` — ...
 
-           Labeled `fleet:semantic-conflict` — an worker will
+           Labeled `fleet:semantic-conflict` — a worker will
            attempt resolution on its next iteration (rebase,
            manually resolve, build, push). If the worker also
            can't resolve (truly ambiguous, design decision needed),
