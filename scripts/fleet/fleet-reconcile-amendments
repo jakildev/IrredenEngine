@@ -34,7 +34,7 @@ Per PR:
   no worktree owns the branch
     → orphan; revert the label (fleet:human-amending → human:needs-fix)
       and leave a recovery comment so the standard feedback-pickup
-      path picks the PR back up on the next sonnet-author / opus-worker
+      path picks the PR back up on the next worker
       iteration
 
 Env overrides (used by tests):

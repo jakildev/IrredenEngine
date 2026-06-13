@@ -59,7 +59,7 @@ gh pr edit <N> --add-label "fleet:needs-macos-smoke"
 gh pr edit <N> --add-label "fleet:needs-windows-smoke"
 ```
 
-Each host's author agents (opus-worker, sonnet-author) poll for the label matching their host, run a clean-checkout build + `IRShapeDebug` smoke, and remove the label on success. While any smoke label persists, the human should hold the merge — that's the whole point of the tally.
+Each host's worker iterations poll for the label matching their host, run a clean-checkout build + `IRShapeDebug` smoke, and remove the label on success. While any smoke label persists, the human should hold the merge — that's the whole point of the tally.
 
 ## Skip the tagging step for
 

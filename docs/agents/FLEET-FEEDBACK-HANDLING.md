@@ -1,8 +1,8 @@
 # Fleet feedback-label handling
 
 Canonical procedure for addressing the feedback labels a reviewer or
-human sets on an open PR. Authoring roles (`role-opus-worker.md`,
-`role-sonnet-author.md`) pull in the full protocol at their step 1.
+human sets on an open PR. The authoring role (`role-worker.md`)
+pulls in the full protocol at its step 1.
 The architect role (`role-opus-architect.md`) follows the same
 protocol when the human directs it to address a PR.
 
@@ -37,19 +37,18 @@ Address one PR per iteration, oldest within each tier:
    mid-task escalation (`fleet:design-blocked` → resolved). The
    canonical plan at `.fleet/plans/T-<NNN>.md` has been updated;
    address per the architect's PR comment +
-   updated plan, just like a normal feedback fix. **Worker-only**;
-   sonnet-author does not encounter this label (only opus-worker
-   originates design escalations).
+   updated plan, just like a normal feedback fix. **Opus+ classes
+   only**; sonnet-class iterations skip this tier (absorbing an
+   architect's design reply is opus-tier work).
 
 **Skip** PRs labeled `human:wip` — the human is working on the PR
 directly.
 
-**Skip** PRs labeled `fleet:semantic-conflict` if you are
-sonnet-author. That label is opus-worker's lane (the rebase +
-manual conflict resolution flow lives in the worker role's step
-1c). If the opus-worker also can't resolve, IT escalates to
-`human:needs-fix`, which sonnet-author DOES pick up via the normal
-cycle.
+**Skip** PRs labeled `fleet:semantic-conflict` at sonnet class. That
+label is the opus+-class lane (the rebase + manual conflict
+resolution flow lives in the worker role's step 1c). If the opus+
+pass also can't resolve, IT escalates to `human:needs-fix`, which
+sonnet-class iterations DO pick up via the normal cycle.
 
 **Skip** PRs already carrying a `fleet:amending-*` label — another
 worker holds the atomic feedback claim and is handling that PR (see
@@ -62,9 +61,9 @@ lex-min in Step a.
 
 Feedback pickup fans out: the dispatcher launches **every** idle pane
 of your role on a single trigger (`find_idle_panes_for_role` is plural
-by design — that's how `opus-worker-1` and `-2` run concurrently). So
+by design — that's how the worker panes run concurrently). So
 two workers routinely select the same flagged PR in the same tick
-(observed #1336, 2026-05-30 — two opus-workers both started the same
+(observed #1336, 2026-05-30 — two workers both started the same
 `human:needs-fix` AMEND). The **only** thing that makes pickup safe is
 an atomic claim, acquired **first** — before reading the feedback or
 touching any label. `fleet-pr-claim-feedback` performs that claim-first
@@ -157,7 +156,7 @@ fix in Step i.)
 - **For `fleet:has-nits`**: focus on the latest review's `### Nits`
   section. Treat it like a checklist. Address every nit unless
   it's purely subjective preference.
-- **For `fleet:design-unblocked`** (opus-worker only): also re-read
+- **For `fleet:design-unblocked`** (opus+ classes only): also re-read
   the architect's plan file at `~/.fleet/plans/issue-<N>.md` (current
   naming, keyed to the issue number; some older plans use `T-<NNN>.md`
   — check both, prefer the `issue-` form). This is REQUIRED reading
@@ -196,9 +195,9 @@ when:
 - The original review (Sonnet/Opus) explicitly deferred the
   concern; the human is overriding that deferral and the new
   direction belongs in its own design issue.
-- The fix needs a different model tier than your own — Sonnet
-  escalates to Opus when the change needs Opus-tier reasoning;
-  opus-worker rarely needs to escalate on tier alone.
+- The fix needs a heavier class than your iteration's — a
+  sonnet-class iteration escalates when the change needs opus-tier
+  reasoning; opus+ classes rarely need to escalate on tier alone.
 
 Default to AMEND when uncertain. ESCALATE is a deliberate choice
 that needs justification in the linked issue.
@@ -302,7 +301,7 @@ and architect direction don't trigger the human-amending state, and
 
 #### Worker-only: reserve the worktree for the in-flight amendment
 
-`role-opus-worker.md` and `role-sonnet-author.md` reserve the
+`role-worker.md` reserves the
 worktree for the human-amending paths so the amendment survives a
 fleet kill+restart. `role-opus-architect.md` skips reservation
 (interactive mode; the human is the trigger, not the dispatcher).
@@ -325,7 +324,7 @@ clobbering the in-progress work:
 fleet-claim reserve <issue-number> <your-worktree-basename> <branch>
 ```
 
-Example: `fleet-claim reserve 163 opus-worker-2 claude/163-stateless-particles`.
+Example: `fleet-claim reserve 163 worker-2 claude/163-stateless-particles`.
 
 ### Step c — address the feedback
 
@@ -474,11 +473,10 @@ branch itself if no new feedback PR is waiting.
 
 ## Game-side feedback work
 
-This protocol is **symmetric across both author roles and both repos**:
-`role-opus-worker.md` **and** `role-sonnet-author.md` each cover engine
-**and** game feedback (each within its own model tier — opus-worker the
-`[opus]` PRs, sonnet-author the `[sonnet]` PRs). There is no engine-only
-carve-out for either role.
+This protocol is **symmetric across both repos**: `role-worker.md`
+covers engine **and** game feedback (each iteration within its own
+class — the dispatcher routes the PR's class per dispatch). There is
+no engine-only carve-out.
 
 For game-side feedback, **cd into your role's game worktree** before any
 git/gh ops:
@@ -537,10 +535,10 @@ reviewers off the PR for the whole fix (mirrors `fleet:human-amending`
 on the human path) and tie-breaks two workers racing the same
 flagged PR.
 
-**Design-unblocked cycle** (opus-worker only): the worker hits a
+**Design-unblocked cycle** (opus+ classes only): the worker hits a
 mid-task design blocker and sets `fleet:design-blocked`; the
 architect responds and swaps the label to `fleet:design-unblocked`
-after updating the plan; any opus-worker picks it back up via
-priority tier 4 above.
+after updating the plan; any opus+-class worker iteration picks it
+back up via priority tier 4 above.
 
 Address all flagged PRs before doing any other work.

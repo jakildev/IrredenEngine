@@ -1,15 +1,14 @@
 # AUTHOR-PIPELINE.md — shared build → verify → optimize → ship pipeline
 
-The execution pipeline shared by the two author-side roles
-(`role-opus-worker.md` and `role-sonnet-author.md`). Once a task is
-claimed and the plan is read, both roles run the same build → run →
-verify-visual → optimize → finalize sequence. Both role files point
-here rather than restating it, so the two cannot drift on shared
-mechanics.
+The execution pipeline shared by every author-side iteration
+(`role-worker.md`, any class). Once a task is claimed and the plan is
+read, all classes run the same build → run → verify-visual → optimize
+→ finalize sequence. The role file points here rather than restating
+it, so classes cannot drift on shared mechanics.
 
-Role-specific deltas (Opus-vs-Sonnet, engine-vs-game) are called out
-inline below with **[opus-worker]** / **[sonnet-author]** tags. Where
-no tag appears, the step is identical for both.
+Class-specific deltas (opus+-vs-sonnet class, engine-vs-game) are
+called out inline below with **[opus+ classes]** / **[sonnet class]**
+tags. Where no tag appears, the step is identical for all classes.
 
 The per-iteration runtime ceremonies (heartbeat, reservation check,
 shutdown) live in [`FLEET-RUNTIME.md`](FLEET-RUNTIME.md); the
@@ -90,11 +89,11 @@ loop; a missing diagnostic pass is a fast reviewer-rejection.
 Both must complete before `optimize` and `commit-and-push` so any
 resulting fixes land in the same commit as the code change.
 
-**[sonnet-author]** If `render-debug-loop` surfaces something subtler
+**[sonnet class]** If `render-debug-loop` surfaces something subtler
 than expected (the diagnostic table doesn't match a known symptom, or
-the fix would touch core render pipeline code), STOP and escalate (file
-the opus follow-up issue per [`TASK-FILING.md`](TASK-FILING.md) and note
-it on your PR). That's an Opus-tier debugging session, not a Sonnet one.
+the fix would touch core render pipeline code), STOP and escalate (re-tag
+the task one class up per `role-worker.md` step 8a and release). That's
+an opus-tier debugging session, not a sonnet one.
 
 ---
 
@@ -105,12 +104,12 @@ hotspots, and verifies no regressions.
 
 **When to run:**
 
-- **[opus-worker]** Almost always — `[opus]` work almost always
+- **[opus+ classes]** Almost always — heavy-class work almost always
   touches perf-critical code (engine/render, engine/system,
   engine/world, engine/audio, engine/video, engine/math). Skip only
   for pure docs or mechanical refactors that preserve hot-path
   structure.
-- **[sonnet-author]** Only if the change touches a system tick, a
+- **[sonnet class]** Only if the change touches a system tick, a
   render pipeline stage, a shader, audio/video, math hot paths, or
   anywhere on the per-frame critical path. Skip for pure docs, tests,
   mechanical refactors, or build/CI changes.
@@ -139,7 +138,7 @@ gh pr edit <N> --remove-label "fleet:wip"
 fleet-claim release <issue-#>
 ```
 
-**[opus-worker] game task** — you `cd`'d into the game worktree at
+**Game task** — you `cd`'d into the game worktree at
 claim time, so `commit-and-push` already targets the right repo; add
 `--repo jakildev/irreden` to `gh` and `--repo game` to `fleet-claim`
 so the right PR + the right slug are targeted:

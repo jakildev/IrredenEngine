@@ -1399,13 +1399,13 @@ def _merger_action_signal(labels, mergeable, base_ref):
     `fleet:human-deferred` is intentionally NOT skipped. It marks a PR
     whose *human-review feedback* was deferred to a follow-up issue
     (approved, internally OK) — NOT a conflict handoff (a failed
-    conflict resolution uses `human:needs-fix`, role-opus-worker.md
-    step j). So the merger treats it like any approved PR: a MERGEABLE
+    conflict resolution uses `human:needs-fix`, role-worker.md
+    step 1c.j). So the merger treats it like any approved PR: a MERGEABLE
     one projects merge-ready, a CONFLICTING one projects needs-resolve
-    and the opus-worker resolves it — and drops `fleet:human-deferred`,
-    since new commits invalidate the deferral (role-opus-worker.md step
+    and the worker resolves it — and drops `fleet:human-deferred`,
+    since new commits invalidate the deferral (role-worker.md step
     1c.i). The old code skipped it on the theory that re-flagging caused
-    opus-worker thrash (game #101); the real fix is the worker dropping
+    worker thrash (game #101); the real fix is the worker dropping
     the label on resolution, which breaks that loop without stranding
     the PR's conflict from the merger.
 
@@ -2146,32 +2146,6 @@ def cleanup_pid_file():
         pass
 
 
-# Lane names retired by the P2 worker-lane unification. The scout used to
-# write a projection slice, seen-hash, and trigger file per lane; with the
-# keys gone the old files would linger forever — a stale
-# projections/opus-worker.json reads as live to anything that still globs
-# the directory, and a leftover trigger could mis-fire. Sweep them on boot.
-# Remove once P2-2 / P2-3 land (epic #1692).
-_RETIRED_LANE_ROLES = ("opus-worker", "sonnet-author")
-
-
-# Remove once P2-2 / P2-3 land (epic #1692).
-def clean_retired_lane_artifacts():
-    for role in _RETIRED_LANE_ROLES:
-        for path in (
-            PROJECTIONS_DIR / f"{role}.json",
-            SEEN_DIR / role,
-            TRIGGERS_DIR / role,
-        ):
-            try:
-                path.unlink()
-                log(f"removed stale {role} artifact: {path.name}")
-            except FileNotFoundError:
-                pass
-            except OSError as e:
-                log(f"could not remove stale {role} artifact {path}: {e}")
-
-
 def signal_handler(signum, _frame):
     log(f"received signal {signum}; shutting down")
     TERMINATE.set()
@@ -2197,8 +2171,6 @@ def main():
     if not ENGINE.exists():
         log(f"engine repo not found at {ENGINE}; aborting")
         sys.exit(1)
-
-    clean_retired_lane_artifacts()
 
     if args.once:
         tick_once()

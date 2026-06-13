@@ -1,12 +1,13 @@
 # PLANNING-PROTOCOL.md — handling `fleet:needs-plan` issues
 
 The shared procedure for turning a `fleet:needs-plan` issue into a
-queue-ready task with a plan. Used by `role-opus-worker.md` (which
-plans these autonomously as a scout-triggered step) and
-`role-opus-architect.md` (which plans them on request during a design
-conversation). Both point here rather than restating the flow.
+queue-ready task with a plan. Used by `role-worker.md` (which plans
+these autonomously as a scout-triggered step, at opus class or higher)
+and `role-opus-architect.md` (which plans them on request during a
+design conversation). Both point here rather than restating the flow.
 
-Sonnet roles do not plan — planning is `[opus]` work.
+Sonnet-class iterations do not plan — planning runs at opus class or
+higher (`FLEET_ROLE_MODEL` is the signal).
 
 ---
 
@@ -131,7 +132,7 @@ concerns but leave `fleet:needs-plan` on — let the human decide.
 
 ## Role-specific notes
 
-**[opus-worker]** The cached `repos.engine.needs_plan[]` and
+**[worker, opus+ classes]** The cached `repos.engine.needs_plan[]` and
 `repos.game.needs_plan[]` arrays hold the open needs-plan issues; pick
 the oldest unprocessed entry (smallest `number`) across both repos.
 This runs as a scout-triggered loop step — see the worker role file
@@ -139,7 +140,7 @@ for where it sits in the iteration. Cross-repo: add `--repo game` to
 `fleet-issue` / `gh issue edit` for game-side issues.
 
 **[opus-architect]** You plan these when the human asks during a design
-conversation (the opus-worker handles the autonomous queue). Same flow;
+conversation (the worker handles the autonomous queue). Same flow;
 you do not poll for them. If the plan needs an independently-reviewed
 design doc first, see [`docs/agents/architect-protocol.md § Handling
 fleet:design-blocked PRs`](architect-protocol.md)

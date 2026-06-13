@@ -16,8 +16,9 @@ per-iteration shutdown). It still shares the **startup cache read** and
 
 Every role's startup reads the scout's cache before doing anything else.
 The *which slice* differs by role — most read the full
-`~/.fleet/state/state.json`; sonnet-author reads its projection slice
-`~/.fleet/state/projections/sonnet-author.json`; reviewers also discover
+`~/.fleet/state/state.json`; the dispatcher's class routing reads the
+worker projection slice `~/.fleet/state/projections/worker.json`;
+reviewers also discover
 repo slugs (see [`FLEET-CACHE.md`](FLEET-CACHE.md)). The **stale-scout
 guard is identical for all of them**:
 
@@ -41,8 +42,8 @@ with your worktree basename:
 fleet-heartbeat <your-worktree-basename>
 ```
 
-The basename is your `pwd` at startup — for example `opus-worker-1`,
-`opus-worker-2`, `sonnet-fleet-1`, `merger`, `opus-reviewer`,
+The basename is your `pwd` at startup — for example `worker-1`,
+`worker-2`, `merger`, `opus-reviewer`,
 `sonnet-reviewer`. The wrapper is a thin `touch
 ~/.fleet/heartbeats/<role>` routed through a helper script so the raw
 `touch ~/...` form doesn't trigger the path-scope permission prompt.
@@ -57,7 +58,7 @@ trip the staleness alert mid-iteration.
 
 | Role | Threshold |
 |---|---|
-| opus-worker, sonnet-author | 30 minutes |
+| worker | 30 minutes |
 | merger | 20 minutes (10-minute loop interval + 10-minute budget for rebases/pushes) |
 | opus-reviewer, sonnet-reviewer | default (witness config) |
 
@@ -182,7 +183,7 @@ The feedback name is per-role:
 
 | Role | File |
 |---|---|
-| opus-worker, sonnet-author | `<your-worktree-basename>.md` (e.g. `opus-worker-1.md`, `sonnet-fleet-1.md`) — per-worktree so the human can tell which pane observed what |
+| worker | `<your-worktree-basename>.md` (e.g. `worker-1.md`) — per-worktree so the human can tell which pane observed what |
 | opus-reviewer, sonnet-reviewer, merger, smoke-worker | the fixed role name (e.g. `opus-reviewer.md`) |
 | opus-architect | `opus-architect.md` |
 
@@ -214,6 +215,6 @@ record. The dispatcher does not implement usage-limit back-off, so the
 next scout-trigger will re-fire and may hit the same limit — flag the
 limit in your iteration summary so the human can adjust.
 
-Sonnet roles (sonnet-author, sonnet-reviewer): do NOT switch to `/model
+Sonnet-class iterations and sonnet-reviewer: do NOT switch to `/model
 opus` to keep working — that defeats the budget split. Wait for the
 reset window stated in the limit message.

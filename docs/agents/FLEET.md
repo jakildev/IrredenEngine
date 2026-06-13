@@ -134,7 +134,7 @@ coordination mechanisms prevent duplicate work:
   and skips the PR immediately — no branch touched, no cleanup needed.
   Stale `fleet:resolving-*` labels are swept by `fleet-claim cleanup --gh`
   after the same 1800 s TTL as `fleet:reviewing-*` labels.
-  See `role-opus-worker.md` step 1c and `scripts/fleet/fleet-claim`
+  See `role-worker.md` step 1c and `scripts/fleet/fleet-claim`
   `resolving-claim` / `resolving-release` subcommands.
 
 **Known limitations:**
@@ -323,7 +323,7 @@ re-picked as unblocked next iteration. Use
 
 Reviewer agents skip `fleet:design-blocked` PRs (they're in
 escalation limbo, not awaiting review). The full per-role procedure
-is in `role-opus-worker.md` (escalate + resume) and the shared
+is in `role-worker.md` (escalate + resume) and the shared
 [`docs/agents/architect-protocol.md`](architect-protocol.md)
 ("Handling `fleet:design-blocked` PRs"), which `role-opus-architect.md`
 wraps.
@@ -345,8 +345,7 @@ Opus 4.8 [1m]), so when the plan stops covering Fable, `fleet:fable`
 tasks degrade to the Opus floor automatically; dispatched fable
 iterations also carry `--fallback-model` for mid-session resilience.
 Pin classes with `FLEET_MODEL_FABLE` / `FLEET_MODEL_OPUS` /
-`FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`. Role slugs
-(`opus-worker`) are historical lane names, not model pins.
+`FLEET_MODEL_SONNET` in `~/.fleet/fleet-up.conf`.
 
 **fable — opt-in, for the genuinely hard work.** Budget is the scarce
 resource; `FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps concurrent
@@ -385,7 +384,7 @@ fable iterations fleet-wide. Tag `Model: fable` only for:
   all: `fleet-rebase` (tier-0) clears clean rebases of approved stacked
   or behind PRs mechanically for zero tokens, and only re-arms the
   sonnet pass when conflicts or unhandled states remain. The
-  `fleet:semantic-conflict` handoff to opus-worker/human is unchanged.
+  `fleet:semantic-conflict` handoff to an opus+-class worker/human is unchanged.
 
 If an agent finds its task subtler than its class, stop and escalate —
 re-tag one class up and release rather than grinding. The cost of
@@ -563,7 +562,7 @@ Two stacking modes exist in this fleet:
    - **Clean rebase** → force-push #101, post a confirmation
      comment, leave existing approval labels intact.
    - **Conflict** → add `fleet:needs-base-update` to #101, name
-     the conflict files, leave it for Worker B (or an opus-worker)
+     the conflict files, leave it for Worker B (or any opus+-class worker)
      to reconcile manually with `git rebase origin/<baseRefName>`;
      the label clears when they push a clean rebase or when the
      upstream merges.
@@ -605,7 +604,7 @@ same stacked-base re-target / cascade-rebase / fork-detection (steps
   with `stackable_blocker_pr`.
 
 For role-specific framing (when to stack, role-specific edge cases),
-see `role-sonnet-author.md` and `role-opus-worker.md`. For the
+see `role-worker.md`. For the
 merger's cascade-rebase step and `fleet:needs-base-update`, see
 `role-merger.md`. For upstream-gating and cross-author topology
 notes, see `role-sonnet-reviewer.md`. The shared command sequences
@@ -655,11 +654,10 @@ Always exits 0 (safe to include in a parallel tool batch with
   instead of `done` and surface the failure to the human before
   continuing.
 
-  **Cross-repo molecules** (opus-worker only — sonnet-author is
-  engine-only): if the in-flight molecule's issues live in the game
-  repo (claimed with `--repo game`), all
+  **Cross-repo molecules**: if the in-flight molecule's issues live
+  in the game repo (claimed with `--repo game`), all
   `fleet-claim molecule advance/complete` calls must include
-  `--repo game` too. Cd into the game opus-worker worktree before
+  `--repo game` too. Cd into the game worker worktree before
   resuming so `commit-and-push` targets the right repo.
 
 - **Stdout is empty** — nothing to resume. Either no molecule exists

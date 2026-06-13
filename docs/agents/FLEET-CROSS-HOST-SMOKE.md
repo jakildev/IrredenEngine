@@ -11,8 +11,7 @@ This doc is the single source of truth for the protocol. Both halves —
 the **reviewer** tagging side and the **author** claiming side — live
 here. Role files ([`role-opus-reviewer.md`](../../.claude/commands/role-opus-reviewer.md),
 [`role-sonnet-reviewer.md`](../../.claude/commands/role-sonnet-reviewer.md),
-[`role-opus-worker.md`](../../.claude/commands/role-opus-worker.md),
-[`role-sonnet-author.md`](../../.claude/commands/role-sonnet-author.md),
+[`role-worker.md`](../../.claude/commands/role-worker.md),
 [`role-smoke-worker.md`](../../.claude/commands/role-smoke-worker.md))
 point here rather than restating the procedure.
 
@@ -121,7 +120,7 @@ idempotent.
 
 ## Author side: claiming + running
 
-Both `role-opus-worker` and `role-sonnet-author` poll for the smoke
+Worker iterations of every class poll for the smoke
 label that matches their host and execute the protocol below. The
 fleet runs at most one smoke run per author iteration so task pickup
 isn't starved by back-to-back builds.
@@ -163,9 +162,8 @@ the protocol. Otherwise pick the oldest (smallest number).
 ### Acquiring the claim
 
 **Always acquire the claim BEFORE checking out the PR.** Two
-same-host author agents (`opus-worker-1` / `opus-worker-2`, or
-`sonnet-fleet-1` / `sonnet-fleet-2`) poll the same label and could
-race. The reviewer-claim lock serializes them:
+same-host worker panes (`worker-1` … `worker-4`) poll the same label
+and could race. The reviewer-claim lock serializes them:
 
 ```
 fleet-claim review-claim <N> <your-worktree-basename>
@@ -245,7 +243,7 @@ handles the cases that need judgment.
 
 ### What Sonnet catches
 
-`role-sonnet-author`'s smoke run catches anything visible in the
+A sonnet-class smoke run catches anything visible in the
 `fleet-build` + `fleet-run` exit codes and logs:
 
 - Build breakage (compile errors, missing symbols, link failures)
@@ -261,14 +259,14 @@ fully black image that still hit `closeWindow()` — are invisible to
 Sonnet's pass.
 
 If the run log mentions shader-compile warnings/errors but still
-exits zero, the Sonnet agent comments
+exits zero, the sonnet-class iteration comments
 "smoke run exited clean but log flagged compile warnings; flagging
-for Opus recheck" and **leaves the smoke label on** so an opus-worker
-re-validates on the next iteration.
+for Opus recheck" and **leaves the smoke label on** so an opus+-class
+iteration re-validates on the next pass.
 
 ### What Opus catches
 
-`role-opus-worker`'s smoke run does everything Sonnet's does, plus:
+An opus+-class smoke run does everything Sonnet's does, plus:
 
 - Reads the captured screenshots and diagnoses visual regressions
   against the reference behavior baked into
@@ -290,10 +288,10 @@ it in the feedback channel.
 ### When the split breaks
 
 If a `fleet:needs-linux-smoke` or `fleet:needs-macos-smoke` PR sits with the
-label for multiple iterations without an opus-worker picking it up
-(sonnet-fleet keeps deferring; opus-worker is busy with `[opus]` tasks), the
-queue is underweighted on Opus author capacity for that host. Surface the
-backlog in the per-worktree feedback channel (see [`FLEET.md`](FLEET.md)
+label for multiple iterations without an opus+-class pass picking it up
+(sonnet-class keeps deferring; the heavy classes are busy with tasks), the
+queue is underweighted on heavy-class author capacity for that host. Surface
+the backlog in the per-worktree feedback channel (see [`FLEET.md`](FLEET.md)
 § "Fleet feedback channel").
 
 ---

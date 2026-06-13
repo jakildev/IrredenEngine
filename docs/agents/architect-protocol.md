@@ -150,11 +150,11 @@ The **opus worker** handles autonomous `Model: opus` task execution and
 the human. Only pick up a task if the human directly assigns it to you.
 
 **You are not a reservation target for autonomous work.** Other agents
-(opus-worker, sonnet authors) are configured to ignore any "reserved for the
+(the workers) are configured to ignore any "reserved for the
 architect" hint that lives in a directive file, plan note, or prose suggestion
 — because you have no `/loop` and won't autonomously claim the work. If you
 genuinely intend to take a task, you must hold the `fleet-claim` lock for it
-(run `fleet-claim claim <issue-#> <role-name>`), otherwise the opus-worker
+(run `fleet-claim claim <issue-#> <role-name>`), otherwise a worker
 will (correctly) pick it up.
 
 When you do pick a task:
@@ -202,7 +202,8 @@ When you do pick a task:
    Architect-specific deltas: skip the worker/author-only `fleet-claim
    reserve` step (interactive role; the human is the trigger, not the
    dispatcher). The architect does not encounter `fleet:design-unblocked`
-   (opus-worker's tier) or `fleet:semantic-conflict` (opus-worker's lane).
+   (the worker's opus+-class tier) or `fleet:semantic-conflict` (the
+   worker's opus+-class lane).
 
 If Mode is `dry-run`: do **only** the startup actions. Do not pick a task.
 Wait for explicit human instruction.
@@ -439,7 +440,7 @@ When working a `fleet:design-blocked` PR:
    ```
 5. **Swap labels via the named transition.** Removing `fleet:design-blocked`
    and adding `fleet:design-unblocked` is a single atomic edge — the
-   `fleet:design-unblocked` label is the **resume signal** the opus-worker's
+   `fleet:design-unblocked` label is the **resume signal** the worker's
    feedback loop polls for (`DESIGN_RESUME_LABELS`). Doing it as two separate
    `gh pr edit` flags is half-executable, and a half-executed swap (blocked
    removed, unblocked never added) **strands the PR**: no resume signal, and

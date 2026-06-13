@@ -1,9 +1,8 @@
 # TASK-FILING.md — filing issues into the fleet queue
 
 How fleet roles file new work as GitHub issues. Used by the architect
-(files work it identifies), opus-worker (files follow-ups + escalations),
-and sonnet-author (files opus escalations). All point here rather than
-restating the convention.
+(files work it identifies) and the workers (file follow-ups +
+escalations). All point here rather than restating the convention.
 
 The label state machine these issues flow through lives in
 [`FLEET.md § Issue/PR labeling discipline`](FLEET.md). This doc covers
@@ -40,16 +39,16 @@ and `fleet-claim`'s blocker gate parse them):
 The issue sits in the backlog until the **human triages and adds
 `human:approved`**. Only then does the scout ingest it.
 
-### Escalation issues (sonnet → opus, or scope-grew)
+### Escalation issues (scope-grew)
 
-When a `[sonnet]` task turns out to need Opus, or a worker hits a
-non-architectural blocker (scope grew, structural build break,
-multi-module public-API surface), file the follow-up as a single issue
-with the same body shape, prefixed with the escalation context:
+When a worker hits a non-architectural blocker (scope grew, structural
+build break, multi-module public-API surface), file the follow-up as a
+single issue with the same body shape, prefixed with the escalation
+context:
 
 ```
-gh issue create --repo jakildev/IrredenEngine --title "<what needs opus attention>" \
-  --body "Escalated from sonnet.
+gh issue create --repo jakildev/IrredenEngine --title "<what needs attention>" \
+  --body "Escalated from <class>-class worker (scope grew).
 
 **Area:** ...
 **Model:** opus
@@ -60,6 +59,11 @@ Context: ..."
 
 Then comment on your PR linking the filed issue, release the claim,
 reset, and move on. The human triages and stamps `human:approved`.
+
+> A task that is merely **subtler than its class** (not bigger) does
+> NOT get a fresh issue — re-tag the same issue one class up
+> (`fleet:sonnet` → `fleet:opus` → `fleet:fable`) and release, per
+> `role-worker.md` step 8a.
 
 > Architectural blockers route differently — via the
 > `fleet:design-blocked` label on the open PR, not a fresh issue. See
