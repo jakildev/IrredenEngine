@@ -327,6 +327,19 @@ IREntity::EntityId g_jointRenameBtn = IREntity::kNullEntity;
 IREntity::EntityId g_jointReparentInput = IREntity::kNullEntity;
 IREntity::EntityId g_jointReparentBtn = IREntity::kNullEntity;
 
+// Hover help (#: editor F-series). The EditorHelpRender system draws the help
+// text of whatever panel/control the cursor is over into the HELP panel docked
+// below the panel stack. g_helpEntries maps a widget to its one-line help and
+// is populated in initEntities once the widgets exist; the smallest hovered
+// hitbox wins so a control reads more specifically than the panel under it.
+struct HelpEntry {
+    IREntity::EntityId widget_ = IREntity::kNullEntity;
+    const char *text_ = nullptr;
+};
+std::vector<HelpEntry> g_helpEntries;
+constexpr ivec2 kHelpPanelPos{4, 500};
+constexpr ivec2 kHelpPanelSize{372, 92};
+
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
         IR_LOG_INFO(
@@ -1140,6 +1153,56 @@ void initSystems() {
     );
     IRSystem::setSystemParams(loftRenderSystem, std::move(loftRenderData));
 
+    // Hover-help render: draws the most-specific hovered widget's help text into
+    // the HELP panel. Registered last among the GUI renders so the text lands
+    // over the HELP panel background; reuses the batched GUI-text path (#1774).
+    struct HelpRenderParams {
+        C_TriangleCanvasTextures *canvas_ = nullptr;
+        std::vector<IRRender::GlyphDrawCommand> textCmds_;
+    };
+    auto helpRenderData = std::make_unique<HelpRenderParams>();
+    auto *hrp = helpRenderData.get();
+    auto helpRenderSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorHelpRender",
+        [](const C_GuiElement &) {},
+        [hrp]() {
+            hrp->canvas_ =
+                &IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui"));
+        },
+        [hrp]() {
+            if (hrp->canvas_ == nullptr)
+                return;
+            const char *help = nullptr;
+            int bestArea = 0;
+            for (const auto &entry : IRVoxelEditor::g_helpEntries) {
+                auto hitbox = IREntity::getComponentOptional<C_HitBox2DGui>(entry.widget_);
+                if (!hitbox.has_value() || !(*hitbox)->hovered_)
+                    continue;
+                const int area = (*hitbox)->size_.x * (*hitbox)->size_.y;
+                if (help == nullptr || area < bestArea) {
+                    bestArea = area;
+                    help = entry.text_;
+                }
+            }
+            const char *shown = (help != nullptr) ? help : "Hover a panel or control for help.";
+            IRPrefab::GuiText::queueGuiText(
+                hrp->textCmds_,
+                shown,
+                IRVoxelEditor::kHelpPanelPos + ivec2(6, 22),
+                hrp->canvas_->size_,
+                Color{180, 200, 220, 255},
+                1,
+                IRComponents::TextAlignH::LEFT,
+                IRComponents::TextAlignV::TOP,
+                0,
+                0,
+                IRVoxelEditor::kHelpPanelSize.x - 12
+            );
+            IRPrefab::GuiText::dispatchGuiText(hrp->textCmds_);
+        }
+    );
+    IRSystem::setSystemParams(helpRenderSystem, std::move(helpRenderData));
+
     // Loft-mask input: detects left-click / drag over the XZ and YZ grid
     // panels and toggles or paints mask cells. Toggle direction is fixed
     // at the first PRESSED event for the duration of the drag stroke; Shift
@@ -1941,6 +2004,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
+            helpRenderSystem,
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
@@ -3057,6 +3121,35 @@ void initEntities() {
         ivec2(26, 14),
         "PAR"
     );
+
+    // Hover-help panel — docks below the panel stack and shows the help text of
+    // whatever panel/control is hovered (drawn by the EditorHelpRender system).
+    IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kHelpPanelPos,
+        IRVoxelEditor::kHelpPanelSize,
+        "HELP"
+    );
+    IRVoxelEditor::g_helpEntries = {
+        {g_editor.palettePanel_, "PALETTE: click a swatch to set the active paint color."},
+        {IRVoxelEditor::g_scrubberSlider, "FRAME: drag to scrub frames (Left/Right keys too)."},
+        {IRVoxelEditor::g_fpsSlider, "FPS: animation playback speed (1-30)."},
+        {IRVoxelEditor::g_layerPanel, "LAYERS: edit-layer stack. Keys K [ ] H also work."},
+        {IRVoxelEditor::g_layerList, "LAYERS: click a layer row to make it active."},
+        {IRVoxelEditor::g_layerVisCheckbox, "VISIBLE: toggle the active layer's visibility (H)."},
+        {IRVoxelEditor::g_layerAddBtn, "ADD: create a new edit layer."},
+        {IRVoxelEditor::g_layerDelBtn, "DEL: remove the active edit layer."},
+        {IRVoxelEditor::g_bakePanel, "BAKE: pick a shape, set P1/P2, then BAKE the active entity."},
+        {IRVoxelEditor::g_bakeShapeList, "SHAPE: choose the SDF primitive to voxelize."},
+        {IRVoxelEditor::g_bakeParam1Slider, "P1: primary shape parameter (size / radius)."},
+        {IRVoxelEditor::g_bakeParam2Slider, "P2: secondary shape parameter."},
+        {IRVoxelEditor::g_bakeButton, "BAKE: voxelize the selected shape into the active entity."},
+        {IRVoxelEditor::g_bonePaint.bonePanel_,
+         "BONE: click a swatch to pick a bone; N toggles paint."},
+        {IRVoxelEditor::g_skeletonPanel, "SKELETON: click a joint to select it; REN/PAR edit it."},
+        {IRVoxelEditor::g_skeletonList, "JOINTS: click a row to select that joint as active bone."},
+        {IRVoxelEditor::g_jointRenameBtn, "REN: rename the selected joint to the text at left."},
+        {IRVoxelEditor::g_jointReparentBtn, "PAR: reparent selected joint to the index at left."},
+    };
 
     // Ghost preview entity for drag-fill. Invisible until
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
