@@ -320,7 +320,18 @@ def next_fix_id(rows: list[dict[str, Any]]) -> str:
 def parse_dt(s: str | None) -> datetime | None:
     if not s:
         return None
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+    # The `apply` subcommand persists `applied_at`/`verified_closed_at` as
+    # Z-suffixed UTC ISO ("2026-05-24T06:39:33Z") — and GitHub closedAt/mergedAt
+    # arrive the same way. Strip the zone marker so the explicit-format loop
+    # below matches; keep the date-only fallback in lockstep with Entry.dt so
+    # the reader and writer never disagree on a timestamp (a mismatch silently
+    # kills recurrence + auto-close, the two mechanical transitions this skill
+    # exists to drive).
+    s = s.strip()
+    if s.endswith("Z"):
+        s = s[:-1]
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M", "%Y-%m-%d"):
         try:
             return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
         except ValueError:
