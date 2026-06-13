@@ -512,9 +512,9 @@ void RenderManager::setGuiScale(int scale) {
     scale = std::clamp(scale, 1, 8);
     if (scale == m_guiScale)
         return;
-    m_guiScale = scale;
     if (m_guiFullResolution)
-        return; // full-resolution sizing overrides the scale divisor
+        return; // full-resolution sizing overrides the scale divisor; don't record the intent
+    m_guiScale = scale;
 
     ivec2 mainSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
     ivec2 newSize = mainSize / ivec2(scale);
