@@ -42,6 +42,7 @@ in epic #1808.
 ## Affected files
 
 - `creations/demos/perf_grid/main.cpp` — `--yaw` parse + initial residual-yaw set.
+- `engine/render/include/irreden/ir_render.hpp` — add `setCameraVisualYaw(float)` public setter (no yaw setter exists today; `ir_render.hpp:272-273` has `setCameraZoom` and `setCameraPosition2DIso` but not yaw).
 
 ## Acceptance criteria
 
