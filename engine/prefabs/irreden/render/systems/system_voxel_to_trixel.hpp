@@ -209,6 +209,27 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *voxelEntityIdBuf_ = nullptr;
     Buffer *chunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
+    Buffer *compactedBuf_ = nullptr;
+    // Per-axis store list-walk split (#1739). While the main canvas's per-axis
+    // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
+    // its visible-voxel list into three axis-keyed regions — each voxel landing
+    // in the regions whose axis it has an exposed face on — so each per-axis
+    // dispatch walks only its ~1/3 region instead of re-reading the full list
+    // 6× (3 axes × stage1/stage2) and rejecting 2/3 of its threads. No new
+    // persistent bind point (the Metal buffer-index budget is full at 30):
+    // these are bound onto 25/26 transiently for the per-axis dispatch via
+    // bindRange, then 25/26 are restored to the full compact buffers.
+    // perAxisRegionStride_ is the per-region element capacity (maxSingleVoxels
+    // rounded up so each region's byte offset meets the SSBO offset alignment).
+    Buffer *perAxisCompactedBuf_ = nullptr;
+    Buffer *perAxisIndirectBuf_ = nullptr;
+    int perAxisRegionStride_ = 0;
+    // Each per-axis list region and indirect-params struct starts at a multiple
+    // of this byte boundary so the per-axis dispatch can bindRange them onto
+    // 25/26 (GL requires SSBO bindRange offsets to be multiples of
+    // GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, <= 256 on real hardware). The
+    // compact shader mirrors the indirect stride as kPerAxisIndirectStrideUints.
+    static constexpr int kPerAxisSsboAlignBytes = 256;
     FrameDataVoxelToCanvas frameData_{};
     // Resolved once per frame in beginTick; read by the per-entity tick.
     IRPrefab::SunShadow::ShadowFeederParams shadowFeederParams_{};
@@ -424,18 +445,52 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameData_.canvasSizePixels_ = axes.size_;
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
+            // Per-axis store list-walk split (#1739): this axis dispatches over
+            // only its own ~1/3 region of the compacted list (every voxel in it
+            // already has an exposed face on this axis), so both stages walk a
+            // third of the voxels instead of the full list, with the store
+            // shader's (faceId>>1)!=axis reject pruning the other two of the
+            // workgroup's three visible-triplet slots. Bind this axis's region +
+            // indirect-params struct onto the 25/26 the store shaders read; the
+            // store-shader SSBO declarations are unchanged (they read from offset
+            // 0 of the bound range). The compact filled these in the split pass
+            // above. Offsets are kPerAxisSsboAlignBytes-aligned by construction.
+            const std::ptrdiff_t regionOffsetBytes = static_cast<std::ptrdiff_t>(axis) *
+                                                     perAxisRegionStride_ *
+                                                     static_cast<int>(sizeof(std::uint32_t));
+            const std::ptrdiff_t indirectOffsetBytes =
+                static_cast<std::ptrdiff_t>(axis) * kPerAxisSsboAlignBytes;
+            perAxisCompactedBuf_->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_CompactedVoxelIndices,
+                regionOffsetBytes,
+                static_cast<size_t>(perAxisRegionStride_) * sizeof(std::uint32_t)
+            );
+            perAxisIndirectBuf_->bindRange(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_IndirectDispatchParams,
+                indirectOffsetBytes,
+                sizeof(VoxelIndirectDispatchParams)
+            );
+
             stage1Program_->use();
             distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
 
             stage2Program_->use();
             colors->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             distances->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::R32I);
             entityIds->bindAsImage(2, TextureAccess::WRITE_ONLY, TextureFormat::RG32UI);
-            IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+            IRRender::device()->dispatchComputeIndirect(perAxisIndirectBuf_, indirectOffsetBytes);
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
+
+        // Restore the full compact buffers to 25/26 so the next canvas's compact +
+        // single-canvas path read/write them (the split pass + the bindRange loop
+        // above left the per-axis buffers bound there).
+        compactedBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
+        indirectBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
 
         // Restore the main-canvas frame data so downstream stages read the
         // exact UBO state the single-canvas pass left.
@@ -583,9 +638,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // 2 skips nothing (byte-identical). Same getCullViewport() the widened
         // form reads above, so the two boxes are derived consistently.
         const IsoBounds2D visibleVp = IRRender::getCullViewport().isoViewport(kGpuMargin);
-        frameData_.visibleIsoBounds_ = ivec4(
-            ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_))
-        );
+        frameData_.visibleIsoBounds_ =
+            ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         // Voxel positions are uploaded via the pending-range queue populated by
@@ -666,6 +720,49 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const VoxelIndirectDispatchParams zeroed{};
         indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
 
+        // Smooth camera Z-yaw (T3 / #1310): while the MAIN canvas's per-axis
+        // canvases are active, SKIP the single-canvas voxel rasterization. The
+        // per-axis dispatch below writes the voxels (smooth), and the framebuffer
+        // scatter composites them; rasterizing the snapped voxels into the single
+        // canvas too would double-draw them (the single canvas is composited for
+        // its SDF / overlay content, which sits at the SAME depth as the smooth
+        // copies → snapped ghosts). Skipping leaves the single canvas holding only
+        // SHAPES_TO_TRIXEL / text / overlay content, which the composite draws
+        // alongside the smooth voxels. The compact pass below still runs (the
+        // per-axis dispatch reuses its compacted list). Detached entities (incl.
+        // re-voxelize SO(3)) always take the single-canvas emit + blit, so this is
+        // false for them, byte-identical to master.
+        const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
+                                            perAxisCanvases_ != nullptr &&
+                                            perAxisCanvases_->isAllocated();
+
+        // Per-axis store list-walk split (#1739). For exactly the main-canvas-
+        // rotating compact (whose voxels the per-axis dispatch consumes, and
+        // whose single-canvas pass is skipped above) route the compact's writes
+        // into the three axis-keyed regions instead of the single full list:
+        // bind the per-axis buffers onto 25/26 and pass the region stride through
+        // the otherwise-dead perAxisRoute_ slot (non-zero = split mode; the store
+        // shaders never see this value — single-canvas is skipped and the per-axis
+        // pass re-uploads perAxisRoute_ to 1/2/3). Every other compact keeps the
+        // single full list, byte-identical to master.
+        const bool perAxisSplit = skipSingleCanvasVoxels;
+        if (perAxisSplit) {
+            constexpr int kPerAxisIndirectWords =
+                3 * kPerAxisSsboAlignBytes / static_cast<int>(sizeof(std::uint32_t));
+            const std::uint32_t zeroedPerAxisIndirect[kPerAxisIndirectWords] = {};
+            perAxisIndirectBuf_->subData(0, sizeof(zeroedPerAxisIndirect), zeroedPerAxisIndirect);
+            perAxisCompactedBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_CompactedVoxelIndices
+            );
+            perAxisIndirectBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_IndirectDispatchParams
+            );
+            frameData_.perAxisRoute_ = perAxisRegionStride_;
+            frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+        }
+
         compactProgram_->use();
         constexpr int kCompactLocalSize = 64;
         // Inverse-resample walks the D dest slots; the source path walks the live
@@ -677,21 +774,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         IRRender::device()->memoryBarrier(BarrierType::COMMAND);
 
-        // Smooth camera Z-yaw (T3 / #1310): while the MAIN canvas's per-axis
-        // canvases are active, SKIP the single-canvas voxel rasterization. The
-        // per-axis dispatch below writes the voxels (smooth), and the framebuffer
-        // scatter composites them; rasterizing the snapped voxels into the single
-        // canvas too would double-draw them (the single canvas is composited for
-        // its SDF / overlay content, which sits at the SAME depth as the smooth
-        // copies → snapped ghosts). Skipping leaves the single canvas holding only
-        // SHAPES_TO_TRIXEL / text / overlay content, which the composite draws
-        // alongside the smooth voxels. The compact pass above still runs (the
-        // per-axis dispatch reuses its compacted list). Detached entities (incl.
-        // re-voxelize SO(3)) always take the single-canvas emit + blit, so this is
-        // false for them, byte-identical to master.
-        const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
-                                            perAxisCanvases_ != nullptr &&
-                                            perAxisCanvases_->isAllocated();
+        if (perAxisSplit) {
+            // Reset perAxisRoute_ for any downstream UBO read; the per-axis pass
+            // sets it to 1/2/3 itself. 25/26 stay bound to the per-axis buffers —
+            // dispatchPerAxisCanvases consumes them via bindRange and restores
+            // 25/26 to the full compact buffers when it finishes.
+            frameData_.perAxisRoute_ = 0;
+            frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+        }
+
         if (!skipSingleCanvasVoxels) {
             stage1Program_->use();
             triangleCanvasTextures.getTextureDistances()
@@ -875,6 +966,35 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_IndirectDispatchParams
         );
 
+        // Per-axis store list-walk split (#1739). One list buffer holding three
+        // axis-keyed regions + one indirect-params buffer holding three dispatch
+        // structs. Sized so each region's / struct's byte offset is a multiple of
+        // kPerAxisSsboAlignBytes (the portable-safe SSBO bind-range alignment) —
+        // these are bound onto 25/26 via bindRange at per-axis dispatch time.
+        // Created with the same 25/26 bind indices but restored to the full
+        // compact buffers below, so the steady-state binding (single-canvas +
+        // every other canvas's compact) is unchanged.
+        constexpr int kPerAxisStrideAlignElems =
+            kPerAxisSsboAlignBytes / static_cast<int>(sizeof(std::uint32_t));
+        const int regionStride =
+            IRMath::divCeil(maxSingleVoxels, kPerAxisStrideAlignElems) * kPerAxisStrideAlignElems;
+        IRRender::createNamedResource<Buffer>(
+            "PerAxisCompactedVoxelIndices",
+            nullptr,
+            static_cast<size_t>(3) * regionStride * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_CompactedVoxelIndices
+        );
+        IRRender::createNamedResource<Buffer>(
+            "PerAxisIndirectDispatchParams",
+            nullptr,
+            static_cast<size_t>(3) * kPerAxisSsboAlignBytes,
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_IndirectDispatchParams
+        );
+
         SystemId systemId = registerSystem<
             VOXEL_TO_TRIXEL_STAGE_1,
             C_VoxelPool,
@@ -895,6 +1015,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->voxelEntityIdBuf_ = IRRender::getNamedResource<Buffer>("VoxelEntityIdBuffer");
         p->chunkVisBuf_ = IRRender::getNamedResource<Buffer>("ChunkVisibilityBuffer");
         p->indirectBuf_ = IRRender::getNamedResource<Buffer>("IndirectDispatchParams");
+        p->compactedBuf_ = IRRender::getNamedResource<Buffer>("CompactedVoxelIndices");
+        p->perAxisCompactedBuf_ =
+            IRRender::getNamedResource<Buffer>("PerAxisCompactedVoxelIndices");
+        p->perAxisIndirectBuf_ =
+            IRRender::getNamedResource<Buffer>("PerAxisIndirectDispatchParams");
+        p->perAxisRegionStride_ = regionStride;
+        // The per-axis buffers were created with the 25/26 bind indices, which
+        // displaced the full compact buffers' steady-state binding. Restore
+        // 25/26 to the full buffers; the per-axis buffers are re-bound onto
+        // 25/26 transiently (via bindRange) only inside dispatchPerAxisCanvases.
+        p->compactedBuf_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_CompactedVoxelIndices
+        );
+        p->indirectBuf_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_IndirectDispatchParams
+        );
         // The observer-based timing brackets the entire system tick. The
         // formerly-separate canvasClear and voxelCompact sub-stages now
         // collapse into voxelStage1's measurement; their registry slots
