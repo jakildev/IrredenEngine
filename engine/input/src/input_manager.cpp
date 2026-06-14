@@ -48,6 +48,11 @@ void InputManager::tick() {
     std::fill(m_buttonPressesThisFrame.begin(), m_buttonPressesThisFrame.end(), 0);
     std::fill(m_buttonReleasesThisFrame.begin(), m_buttonReleasesThisFrame.end(), 0);
 
+    if (m_syntheticInputActive) {
+        drainInjectedInput();
+        return;
+    }
+
     processKeyMouseButtons(
         IRWindow::getWindow().getKeysPressedToProcess(),
         ButtonStatuses::PRESSED
@@ -78,8 +83,9 @@ void InputManager::advanceInputState(IRTime::Events event) {
         ButtonStatuses current = state.buttonStates_[i];
         if (current == ButtonStatuses::PRESSED) {
             current = ButtonStatuses::HELD;
-        } else if (current == ButtonStatuses::RELEASED ||
-                   current == ButtonStatuses::PRESSED_AND_RELEASED) {
+        } else if (
+            current == ButtonStatuses::RELEASED || current == ButtonStatuses::PRESSED_AND_RELEASED
+        ) {
             current = ButtonStatuses::NOT_HELD;
         }
 
@@ -98,7 +104,11 @@ void InputManager::advanceInputState(IRTime::Events event) {
 
     std::fill(state.pressAccumulator_.begin(), state.pressAccumulator_.end(), false);
     std::fill(state.releaseAccumulator_.begin(), state.releaseAccumulator_.end(), false);
-    IRWindow::getCursorPosition(state.mousePosition_);
+    if (m_syntheticInputActive) {
+        state.mousePosition_ = m_syntheticCursorScreen;
+    } else {
+        IRWindow::getCursorPosition(state.mousePosition_);
+    }
 }
 
 ButtonStatuses InputManager::getButtonStatus(KeyMouseButtons button) const {
@@ -107,20 +117,17 @@ ButtonStatuses InputManager::getButtonStatus(KeyMouseButtons button) const {
 
 bool InputManager::checkButtonPressed(KeyMouseButtons button) const {
     ButtonStatuses status = getButtonStatus(button);
-    return status == ButtonStatuses::PRESSED ||
-           status == ButtonStatuses::PRESSED_AND_RELEASED;
+    return status == ButtonStatuses::PRESSED || status == ButtonStatuses::PRESSED_AND_RELEASED;
 }
 
 bool InputManager::checkButtonDown(KeyMouseButtons button) const {
     ButtonStatuses status = getButtonStatus(button);
-    return status == ButtonStatuses::PRESSED ||
-           status == ButtonStatuses::HELD;
+    return status == ButtonStatuses::PRESSED || status == ButtonStatuses::HELD;
 }
 
 bool InputManager::checkButtonReleased(KeyMouseButtons button) const {
     ButtonStatuses status = getButtonStatus(button);
-    return status == ButtonStatuses::RELEASED ||
-           status == ButtonStatuses::PRESSED_AND_RELEASED;
+    return status == ButtonStatuses::RELEASED || status == ButtonStatuses::PRESSED_AND_RELEASED;
 }
 
 bool InputManager::checkButton(KeyMouseButtons button, ButtonStatuses status) const {
@@ -162,42 +169,69 @@ bool InputManager::checkGamepadButton(
     GamepadButtons button, ButtonStatuses status, int irGamepadId
 ) const {
     IR_ASSERT(
-        status == ButtonStatuses::PRESSED ||
-        status == ButtonStatuses::HELD ||
-        status == ButtonStatuses::RELEASED,
+        status == ButtonStatuses::PRESSED || status == ButtonStatuses::HELD ||
+            status == ButtonStatuses::RELEASED,
         "Invalid button status to check"
     );
-    IR_ASSERT(irGamepadId >= 0 && irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
+    IR_ASSERT(
+        irGamepadId >= 0 && irGamepadId < static_cast<int>(m_gamepadEntities.size()),
+        "Gamepad {} not connected at startup",
+        irGamepadId
+    );
     return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities[irGamepadId])
         .checkButton(button, status);
 }
 
 float InputManager::getGamepadAxis(GamepadAxes axis, int irGamepadId) const {
-    IR_ASSERT(irGamepadId >= 0 && irGamepadId < static_cast<int>(m_gamepadEntities.size()), "Gamepad {} not connected at startup", irGamepadId);
+    IR_ASSERT(
+        irGamepadId >= 0 && irGamepadId < static_cast<int>(m_gamepadEntities.size()),
+        "Gamepad {} not connected at startup",
+        irGamepadId
+    );
     return IREntity::getComponent<C_GLFWGamepadState>(m_gamepadEntities[irGamepadId])
         .getAxisValue(axis);
+}
+
+void InputManager::applyButtonEvent(KeyMouseButtons irButton, ButtonStatuses status) {
+    if (status == ButtonStatuses::PRESSED) {
+        ++m_buttonPressesThisFrame[irButton];
+        for (auto &[event, eventState] : m_eventStates) {
+            eventState.pressAccumulator_[static_cast<int>(irButton)] = true;
+        }
+    }
+    if (status == ButtonStatuses::RELEASED) {
+        ++m_buttonReleasesThisFrame[irButton];
+        for (auto &[event, eventState] : m_eventStates) {
+            eventState.releaseAccumulator_[static_cast<int>(irButton)] = true;
+        }
+    }
 }
 
 void InputManager::processKeyMouseButtons(std::queue<int> &queueOfButtons, ButtonStatuses status) {
     while (!queueOfButtons.empty()) {
         int button = queueOfButtons.front();
         KeyMouseButtons irButton = kMapGLFWtoIRKeyMouseButtons.at(button);
-        if (status == ButtonStatuses::PRESSED) {
-            ++m_buttonPressesThisFrame[irButton];
-            for (auto &[event, eventState] : m_eventStates) {
-                eventState.pressAccumulator_[static_cast<int>(irButton)] = true;
-            }
-        }
-        if (status == ButtonStatuses::RELEASED) {
-            ++m_buttonReleasesThisFrame[irButton];
-            for (auto &[event, eventState] : m_eventStates) {
-                eventState.releaseAccumulator_[static_cast<int>(irButton)] = true;
-            }
-        }
+        applyButtonEvent(irButton, status);
         queueOfButtons.pop();
 
         IRE_LOG_DEBUG("Processed button={}, status={}", button, static_cast<int>(status));
     }
+}
+
+void InputManager::drainInjectedInput() {
+    // Latch the pending cursor once per frame so every pipeline-event snapshot
+    // this frame reads the same position (mirrors GLFW's per-frame cursor).
+    m_syntheticCursorScreen = m_syntheticCursorPending;
+
+    while (!m_injectedButtons.empty()) {
+        const auto &[button, status] = m_injectedButtons.front();
+        applyButtonEvent(button, status);
+        m_injectedButtons.pop();
+    }
+
+    // Scroll injection reuses the GLFW scroll path — same ephemeral C_MouseScroll
+    // entities, drained by the LIFETIME system.
+    processScrolls(m_injectedScrolls);
 }
 
 void InputManager::processScrolls(std::queue<std::pair<double, double>> &queueOfScrolls) {
@@ -240,6 +274,27 @@ EventInputState &InputManager::currentEventState() {
 
 const EventInputState &InputManager::currentEventState() const {
     return m_eventStates.at(m_currentEvent);
+}
+
+void InputManager::beginSyntheticInput() {
+    m_syntheticInputActive = true;
+    IRE_LOG_INFO("InputManager: synthetic input active (GLFW input suppressed)");
+}
+
+void InputManager::injectMouseMove(IRMath::ivec2 screenPx) {
+    IR_ASSERT(m_syntheticInputActive, "injectMouseMove requires beginSyntheticInput()");
+    m_syntheticCursorPending =
+        IRMath::dvec2(static_cast<double>(screenPx.x), static_cast<double>(screenPx.y));
+}
+
+void InputManager::injectButton(KeyMouseButtons button, ButtonStatuses status) {
+    IR_ASSERT(m_syntheticInputActive, "injectButton requires beginSyntheticInput()");
+    m_injectedButtons.push({button, status});
+}
+
+void InputManager::injectScroll(double xOffset, double yOffset) {
+    IR_ASSERT(m_syntheticInputActive, "injectScroll requires beginSyntheticInput()");
+    m_injectedScrolls.push({xOffset, yOffset});
 }
 
 } // namespace IRInput

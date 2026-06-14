@@ -39,6 +39,23 @@ bool checkGamepadButton(GamepadButtons button, ButtonStatuses buttonStatus, int 
 /// Asserts if no gamepad was connected at engine startup.
 float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0);
 
+/// @name Synthetic input (headless GUI/mouse verification harness, #1793)
+/// Flip the active `InputManager` to consume injected events instead of GLFW
+/// for the rest of the run, so a headless run can move the cursor and press
+/// buttons. Inject calls assert if @ref beginSyntheticInput() was not called.
+/// @{
+/// Activate synthetic input for the remainder of the run (GLFW input suppressed).
+void beginSyntheticInput();
+/// Returns `true` when synthetic input is active.
+bool isSyntheticInputActive();
+/// Set the cursor (screen pixels) for the next frame's snapshot.
+void injectMouseMove(IRMath::ivec2 screenPx);
+/// Enqueue a button press/release, applied at the next frame boundary.
+void injectButton(KeyMouseButtons button, ButtonStatuses status);
+/// Enqueue a scroll delta, applied at the next frame boundary.
+void injectScroll(double xOffset, double yOffset);
+/// @}
+
 /// @name Internal input counters (used by input systems, not for general use)
 /// @{
 int getNumButtonPressesThisFrame(KeyMouseButtons button);
