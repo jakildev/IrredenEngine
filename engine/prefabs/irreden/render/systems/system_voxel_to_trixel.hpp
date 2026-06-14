@@ -194,8 +194,8 @@ inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCo
     }
 }
 
-// Hi-Z mip-sampler count declared by c_chunk_occlusion_cull.{glsl,metal}; the
-// CPU binds [0, mipCount) to real levels and the surplus to the coarsest one.
+// Mirrors `kMaxHiZMipLevels` in c_chunk_occlusion_cull.{glsl,metal}; CPU
+// binds [0, mipCount) to real levels and fills the surplus with the coarsest.
 constexpr int kChunkOcclusionMaxHiZLevels = 12;
 
 // Per-chunk Hi-Z occlusion query (#1294 child 2/3). Mirrors `ChunkQuery` in
