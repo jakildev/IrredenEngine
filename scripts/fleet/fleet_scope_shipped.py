@@ -97,7 +97,7 @@ def pr_references_issue(title, body, n):
     Title: any word-boundary ``#n`` counts (the ``#N: <desc>`` PR-naming
     convention) UNLESS it is a range endpoint (``#1602-#1612`` — a planning PR
     naming filed children) OR the whole title is a plan/design-doc title
-    (``docs: plan …`` / ``docs/design: …`` — a PR that plans/designs ``n``,
+    (``docs: plan …`` / ``docs/design: …`` / ``docs: design …`` — a PR that plans/designs ``n``,
     never ships it). Body: ``#n`` counts only when immediately preceded by a
     closing-action verb, and likewise never as a range endpoint. A bare body
     mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected.
