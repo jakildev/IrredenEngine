@@ -3,201 +3,220 @@
 - **Issue:** #1814
 - **Model:** opus
 - **Date:** 2026-06-14
-- **Decomposition:** one opus PR (rationale below)
+- **Epic:** game-repo `jakildev/irreden#192` (GMTK '26 jam-readiness), build-order step 1/5
+- **Hard downstream:** game `jakildev/irreden#190` (scene/state machine) is **Blocked by #1814**
 
-## Verified current state (what exists, what's missing)
+## Scope
 
-Grounded in `engine/entity`, `engine/system`, `engine/world`:
+Add an engine primitive that tears down a running gameplay scene and lets the
+next scene be rebuilt in-place, repeatably, without leaking entities or GPU
+resources and without killing engine-level state (render/GL/Metal context,
+C++ managers, designated must-survive entities). This is the structural
+backbone the game's Lua scene/state machine (#190) drives. It is **teardown
+only** — persistence (world-snapshot save #199/#667) is explicitly out of scope.
 
-**Entity destruction**
-- `IREntity::destroyEntity(EntityId)` — `engine/entity/include/irreden/ir_entity.hpp:177`,
-  impl `engine/entity/src/entity_manager.cpp:125`. Fires pre-destroy hooks (registration
-  order) + each component's `onDestroy()`, swap-removes from the archetype node, returns the
-  id to the atomic counter. Eager, main-thread only.
-- `IREntity::destroyAllEntities()` — `entity_manager.cpp:351`. Flushes deferred changes,
-  snapshots live ids from `m_entityIndex`, destroys **every** entity (singletons included),
-  then clears the singleton cache `m_singletonEntityByComponent` at the end.
-- **GAP:** no *subset/filtered* destroy. `destroyAllEntities` is all-or-nothing and takes
-  singletons with it.
+The deliverable is a single coherent **capability contract** with four faces,
+because the consumer (#190) cannot start until the whole contract exists:
+1. gameplay-entity teardown that preserves engine entities + managers,
+2. system-pipeline swap/clear,
+3. automatic GPU-resource release tied to entity destruction (no leaks),
+4. a Lua-reachable surface for 1–3, honoring the enum-as-Lua-table convention.
 
-**Singletons — the preserve set already has a registry**
-- `IREntity::singleton<T>()` / `singletonEntity<T>()` — `ir_entity.hpp:280`. Singleton
-  entities are *normal* entities in the archetype graph, cached by `ComponentId` in
-  `EntityManager::m_singletonEntityByComponent` (entity `CLAUDE.md` "Singleton components").
-  **This cache is already the authoritative registry of which entity ids are singletons** —
-  reuse it as the preserve set; no new bookkeeping needed.
-- Must-survive examples: `C_GlobalModifiers`, the sim-clock `C_SimClock` (#200), future
-  game-rules holders.
+## Verified current state (confirmed against the code, not the body's guesses)
 
-**Gameplay vs engine tagging**
-- Tag components exist (`C_*Tag{}`) but only as *system-dispatch filters* (`Exclude<Tag>`),
-  never lifecycle/group markers. **GAP:** no "gameplay"/"scene" grouping today.
+- **Entity pool:** `EntityManager` owned per-`World`
+  (`engine/world/include/irreden/world.hpp:47`); singleton ptr `g_entityManager`.
+  Not process-global — each World owns one.
+- **Only existing bulk teardown:** `IREntity::destroyAllEntities()`
+  (`engine/entity/src/entity_manager.cpp:351-372`) destroys **literally every**
+  entity and clears the singleton cache `m_singletonEntityByComponent`. It is
+  **test-only** today (`test/ecs/entity_manager_test.cpp:233`); no production
+  caller. There is **no subset/preserve teardown** and **no
+  gameplay-vs-engine tag** anywhere.
+- **destroyAllEntities footguns (verified):** it does **not** prune
+  `m_namedEntities` (`entity_manager.hpp:475`) → a name like `"camera"` keeps
+  pointing at a destroyed id; does **not** reset the monotonic
+  `m_nextEntityId{IR_RESERVED_ENTITIES}` (`:501`) — fine for correctness (no id
+  reuse/collision), only consumes id space; does **not** drain
+  `m_preDestroyHooks` (`:502`) or the archetype graph (empty nodes persist).
+- **Engine singletons that survive for free:** the C++ managers
+  (`RenderManager`, `AudioManager`, `RenderingResourceManager`, `TimeManager`,
+  `VideoManager`) and the Lua state are `World` members, **not entities**
+  (`world.hpp:41-59`) → any entity teardown leaves them intact automatically.
+- **Engine entities that DO need preserving:** `RenderManager`'s four canvases
+  are real ECS entities — `m_mainFramebuffer`, `m_mainCanvas`,
+  `m_backgroundCanvas`, `m_guiCanvas`
+  (`engine/render/include/irreden/render/render_manager.hpp:136-141`), created
+  via `createEntity<...>` at construction. A naive `destroyAllEntities()` would
+  destroy these and leave RenderManager holding dangling ids. **These are the
+  canonical must-preserve set.**
+- **Pre-destroy hook mechanism exists:** `registerPreDestroyHook(PreDestroyHook)`
+  / `unregisterPreDestroyHook` (`entity_manager.hpp:429-430`; `PreDestroyHook =
+  std::function<void(EntityId)>`, `:36`). Hooks fire **before** component
+  teardown in `destroyEntity` (`entity_manager.cpp:131-135`). This is the clean
+  seam for automatic GPU-resource release.
+- **GPU resources are manual, not RAII, not entity-tied:**
+  `RenderingResourceManager` pools `unique_ptr<T>` by `ResourceId`
+  (`engine/render/include/irreden/render/rendering_rm.hpp:37-52`); `create<T>` /
+  `destroy<T>(id)` are explicit. Destroying a voxel/canvas entity does **not**
+  free its `ResourceId`s today → that is the "GPU leak across cycles" gap the
+  acceptance criteria forbid. The render context (`RenderImpl`, GL/Metal) is a
+  separate `unique_ptr` (`render_manager.hpp:128`) and survives entity teardown.
+- **System pipelines (verified, `engine/system/src/system_manager.cpp`):**
+  systems are append-only — a `SystemId` slot is never freed; there is **no
+  destroySystem**. Pipeline APIs: `registerPipeline(event, ids)` (:106-117) and
+  `registerPipelineGroups` (:120-125) **replace** the whole event's list;
+  `appendToPipeline` / `insertIntoPipelineBefore/After` (:143-209, PR #1540) add
+  a single system non-destructively. There is **no clear/swap/deactivate**.
+  `validateAllPipelineGroups()` runs **once** at `World::start()`
+  (`world.cpp:268-277`) and is **not** re-run after later pipeline changes.
+- **Tick safety:** `executeSystem` iterates `node->length_` at dispatch time
+  (`system_manager.cpp:391-502`) and `flushStructuralChanges` runs between
+  groups — so destroyed entities simply vanish from the next tick; systems do
+  **not** dangle on stored handles. The real dangle risk is a system caching a
+  *foreign* entity id (e.g. a camera) in `beginTick`/params across a reset.
+- **Lua bindings:** central registration in
+  `engine/script/src/lua_script.cpp:373-642`
+  (`bindLuaDrivenEcs` / `bindLuaDrivenSystems` / `bindLuaCommands` / `bindSimApi`).
+  Enum-as-Lua-table convention via the `IR_BIND_ROTMODE` macro / `IREnum.register`
+  (`lua_script.cpp:472-477`; rule `.claude/rules/cpp-lua-enums.md`). Pipeline
+  composition is already Lua-exposed
+  (`engine/script/include/irreden/script/lua_pipeline_bindings.hpp:210-334`).
+- **Demos are single hardcoded scenes:**
+  `init → initSystems → initCommands → initEntities → gameLoop`
+  (`creations/demos/default/main.cpp:37-151`); no mid-run teardown anywhere.
 
-**System pipelines**
-- `SystemManager::registerPipeline(event, list)` — `system_manager.hpp:186` — **replaces**
-  the event's pipeline (so swap-by-re-register already works). `appendToPipeline` /
-  `insertIntoPipelineBefore/After` compose; `executePipeline(event)` runs it.
-- **GAP:** no clear/unregister convenience; no "destroy system" (systems persist for the
-  manager lifetime — dropping one from a pipeline just makes it inert, which is acceptable
-  since the set is bounded); no "which systems are active" query.
+## Approach (one approach, committed)
 
-**Render / GL-Metal context**
-- The device/context lives on the RenderManager (manager state), NOT as entities (entity
-  `CLAUDE.md` "Use the API for what it's for") → it survives a partial entity teardown
-  automatically.
-- Most render-bearing components free their GPU resources in `onDestroy()` — e.g.
-  `C_GPUParticlePool::onDestroy()` (`component_gpu_particle_pool.hpp:79`),
-  `C_VoxelSetNew::onDestroy()` → `VoxelPool::deallocate` (`component_voxel_set.hpp:288`),
-  the canvas texture/shadow/AO/light-volume components. Destroying a scene's render entities
-  frees their GPU memory with no extra code, idempotently (guards like `numVoxels_ > 0`).
-  **Exception: `C_Sprite` (`component_sprite.hpp:37`) holds `textureHandle_: IRRender::ResourceId`
-  with no `onDestroy()`** — sprite entities in gameplay scenes leak texture ResourceIds on reset.
-  Audit for additional missing cases at implementation time.
+**Model: a destroy-by-default preserve-set, not a tag.** Teardown destroys
+**every** entity *except* an explicitly-registered preserve set. This is chosen
+over an opt-in "gameplay tag" because the failure modes invert correctly: an
+unregistered new entity is *destroyed* (loud, immediate breakage — caught at
+once), whereas an untagged gameplay entity under the tag model would *survive*
+and silently grow entity count across cycles — exactly the leak the acceptance
+criteria forbid. Destroy-by-default also needs no migration of existing
+creations (nothing has to be tagged).
 
-**Lua surface**
-- `IRSystem.registerSystem{...}` / `IRSystem.registerPipeline(event,{ids})` exposed —
-  `lua_pipeline_bindings.hpp`. `IRTime.UPDATE/RENDER/INPUT/...` already an enum table
-  (`lua_pipeline_bindings.hpp:62`). `IREntity.singleton(componentDef)` exposed (entity
-  `CLAUDE.md:223`). **GAP:** no Lua reset / pipeline-clear.
+Implement in this order (one PR):
 
-## Approach (one approach, picked)
-
-Add a **preserve-by-default reset**: destroy every live entity *except* (1) singleton
-entities and (2) entities explicitly marked persistent. This reuses the singleton cache as
-the preserve registry (zero per-gameplay-entity bookkeeping — the common case "just works"),
-with `C_Persistent{}` as the escape hatch for the rare non-singleton entity an
-engine/creation needs to survive. Pipeline swap reuses the existing `registerPipeline`
-replace semantics; add only a thin `clearPipeline` convenience and the Lua glue.
-
-Steps, in order:
-
-1. **`C_Persistent{}` marker** — new empty tag component (place alongside existing common
-   markers, e.g. `engine/prefabs/irreden/common/`). Opt-out: an entity carrying it is spared
-   by reset. Singletons are spared automatically and need no tag.
-   **RenderManager must stamp `C_Persistent{}` on each of its 4 canvas entities**
-   (`m_mainFramebuffer`, `m_mainCanvas`, `m_backgroundCanvas`, `m_guiCanvas`, per
-   `engine/render/src/render_manager.cpp:136-141`) immediately after creating them at startup.
-   These are non-singleton entities; without the tag they are destroyed on the first scene reset,
-   breaking the renderer.
-
-2. **Core primitive in `EntityManager`** — `destroyAllExceptPreserved()` (working name; e.g.
-   `resetGameplayEntities`):
-   - `flushStructuralChanges()` first (mirror `destroyAllEntities`).
-   - Build the preserve set: all `EntityId`s in `m_singletonEntityByComponent` ∪ all ids
-     matching `C_Persistent` (`forEachComponent<C_Persistent>`).
-   - Snapshot live ids from `m_entityIndex`; `destroyEntity(id)` for every id NOT in the
-     preserve set.
-   - **Do NOT clear `m_singletonEntityByComponent`** — singletons survive, so the cache
-     stays valid (the key difference from `destroyAllEntities`).
-   - Eager, main-thread, snapshot-based — safe outside iteration; must NOT be called mid
-     `forEachComponent`.
-
-3. **Public facade** — `IREntity::resetGameplay()` free function (`ir_entity.hpp` /
-   `entity_manager.cpp`) forwarding to the manager method.
-
-4. **Pipeline swap support** — `SystemManager::clearPipeline(event)` = `registerPipeline(event,
-   {})` convenience (`system_manager.hpp`/`.cpp`); expose `IRSystem::clearPipeline`. Document
-   that scene swap = `clearPipeline`/`registerPipeline` per event. Systems persisting in
-   memory is acceptable; the scene machine just re-points pipelines.
-   After composing the new scene's pipeline, call `revalidatePipelines()` — `validateAllPipelineGroups()`
-   runs only at `World::start()` (`world.cpp:268-277`); a mid-run `registerPipeline` skips
-   revalidation and multi-system group ordering may be silently wrong.
-
-5. **Lua surface** — extend `lua_pipeline_bindings.hpp`: `IRWorld.resetGameplay()` (or
-   `IREntity.resetGameplay()`) + `IRSystem.clearPipeline(event)`. No new enum required
-   (`IRTime` events already a table); honor the enum-table rule if a preserve-policy enum is
-   added later.
-
-6. **Ordering contract** — the scene machine must, within one frame boundary:
-   `resetGameplay()` → register the next scene's pipelines → spawn the next scene's entities,
-   so no system ticks against destroyed entities and the new scene is live next tick.
-   Document in engine `CLAUDE.md` + the demo.
-
-7. **Demo + idempotency test** — `creations/demos/scene_reset/` (or extend an existing demo):
-   build scene A (canvas + voxels + a system), `resetGameplay()`, build scene B, loop N≥10
-   cycles. Assert: live-entity count returns to the preserve-set baseline each cycle (no
-   gameplay leak); VoxelPool allocated-voxel count returns to baseline (CPU/GPU voxel memory
-   freed); the engine still renders after reset (context survived). Runs headless under
-   `--auto-screenshot`.
+1. **EntityManager preserve-set + reset (engine/entity).**
+   - Add `std::unordered_set<EntityId> m_preservedEntities;` and public
+     `preserveEntity(EntityId)` / `releaseEntity(EntityId)` (idempotent;
+     mask with `IR_ENTITY_ID_BITS` consistent with the existing code).
+   - Add `void EntityManager::resetWorld();` (and `IREntity::resetWorld()` in
+     `ir_entity.hpp`) that mirrors `destroyAllEntities()` but: skips ids in
+     `m_preservedEntities`; after the destroy loop, **prunes `m_namedEntities`**
+     of any entry whose id no longer exists; clears
+     `m_singletonEntityByComponent` (so ECS singletons lazily re-mint fresh).
+     Do **not** reset `m_nextEntityId` (preserved entities hold low ids; resetting
+     the counter would collide). Factor the shared destroy loop so
+     `destroyAllEntities()` becomes `resetWorld()` with an empty preserve set (or
+     a private `destroyEntitiesExcept(set)` both call) — keep `destroyAllEntities`
+     behavior byte-for-byte for its existing test.
+2. **RenderManager registers its must-survive entities + GPU cleanup hook
+   (engine/render).**
+   - After creating the four canvases, call `IREntity::preserveEntity(id)` for
+     each (`m_mainFramebuffer/m_mainCanvas/m_backgroundCanvas/m_guiCanvas`).
+   - Register **one** pre-destroy hook at RenderManager construction (store the
+     `PreDestroyHookId`, unregister in the dtor) that, for the entity being
+     destroyed, checks for the GPU-resource-bearing render components (voxel pool
+     / canvas-texture components — grep `ResourceId` fields under
+     `engine/prefabs/irreden/render/components/` and `C_VoxelPool`) and calls
+     `RenderingResourceManager::destroy<T>(id)` for each held `ResourceId`. This
+     makes GPU release **automatic and entity-lifetime-tied** for *all* entity
+     destruction, not just resets — directly satisfying "no leaked GPU
+     resources". (A `getComponent` inside a destroy hook is fine — teardown, not
+     a hot tick.)
+3. **Pipeline swap/clear (engine/system).**
+   - Add `SystemManager::clearPipeline(IRTime::Events)` (empties that event's
+     groups) and a public `revalidatePipelines()` that re-runs
+     `validateAllPipelineGroups()`. The swap contract for the game: call
+     `clearPipeline(event)` then `registerPipeline(event, sceneB_ids)` (or just
+     `registerPipeline`, which already replaces) for each event, then
+     `revalidatePipelines()` once. Confirm `registerPipeline(event, {})` yields a
+     no-system (paused) pipeline — add the empty-list path if missing.
+4. **Lua surface (engine/script).**
+   - New `engine/script/include/irreden/script/lua_world_bindings.hpp` with
+     `detail::bindWorldManagement(LuaScript&)`, called from `lua_script.cpp`
+     near line 638. Expose `IRWorld.resetWorld()`, `IRSystem.clearPipeline(event)`
+     / `IRSystem.revalidatePipelines()` (alongside the existing pipeline
+     bindings). Any scene/pipeline identifiers that cross the boundary must use
+     the enum-as-Lua-table pattern (`IREnum.register` / `IR_BIND_*`), never
+     string-name lookups — #190 registers its TITLE/PLAY/PAUSE/GAME_OVER set this
+     way and expects engine ids in the same shape.
+5. **Idempotency test (test/ecs + optional Lua demo).**
+   - C++ test: preserve a sentinel entity, build a scene (N entities, some with
+     GPU `ResourceId`s), `resetWorld()`, rebuild — repeat ≥3×. Assert: live
+     entity count returns to the post-build baseline each cycle (no growth);
+     preserved sentinel + (mock) canvas ids survive; a destroyed named entity is
+     gone from `m_namedEntities`; singleton re-mints a fresh id; the
+     RenderingResourceManager `ResourceId` count returns to baseline (no GPU
+     leak). Optionally a tiny Lua reset→rebuild loop in a demo to prove the bound
+     surface, but the C++ test is the gate.
 
 ## Affected files
-- `engine/prefabs/irreden/common/.../component_persistent.hpp` (new) — `C_Persistent{}`.
-- `engine/entity/include/irreden/entity/entity_manager.hpp` + `src/entity_manager.cpp` —
-  `destroyAllExceptPreserved()`.
-- `engine/entity/include/irreden/ir_entity.hpp` — `IREntity::resetGameplay()` facade.
-- `engine/system/include/irreden/system/system_manager.hpp` + `src/system_manager.cpp` —
-  `clearPipeline(event)`.
-- `engine/system/include/irreden/ir_system.hpp` — `IRSystem::clearPipeline` facade.
-- `engine/script/include/irreden/script/lua_pipeline_bindings.hpp` — `IRWorld.resetGameplay()`
-  + `IRSystem.clearPipeline`.
-- `engine/render/src/render_manager.cpp` — stamp `C_Persistent{}` on the 4 canvas entities.
-- `engine/entity/CLAUDE.md` + `engine/system/CLAUDE.md` — document the primitive, preserve-set
-  semantics, ordering contract, dangling-id hazard.
-- `creations/demos/scene_reset/` (new) — demo + idempotency assertions; CMake + pipeline
-  registration (create-creation conventions).
+
+- `engine/entity/include/irreden/entity/entity_manager.hpp` — preserve-set members, `preserveEntity`/`releaseEntity`/`resetWorld` decls.
+- `engine/entity/src/entity_manager.cpp` — `resetWorld` + shared destroy loop + `m_namedEntities` prune.
+- `engine/entity/include/irreden/ir_entity.hpp` — public `IREntity::resetWorld/preserveEntity/releaseEntity` forwards.
+- `engine/render/include/irreden/render/render_manager.hpp` / `src/render_manager.cpp` — preserve the 4 canvases; register/unregister the GPU-cleanup pre-destroy hook.
+- `engine/system/include/irreden/system/system_manager.hpp` / `src/system_manager.cpp` — `clearPipeline` + `revalidatePipelines` (+ empty-list `registerPipeline` path if needed).
+- `engine/script/include/irreden/script/lua_world_bindings.hpp` (new) + `engine/script/src/lua_script.cpp` — `bindWorldManagement` wiring.
+- `test/ecs/` — idempotency test (new file or extend `entity_manager_test.cpp`).
+- `engine/entity/CLAUDE.md` + `engine/system/CLAUDE.md` — document the preserve/reset + pipeline-swap contract.
+
+## Cross-system audit (shared resource: the entity pool + GPU resource pool)
+
+The change is **additive** — it does not migrate existing consumers:
+- `destroyAllEntities()` keeps identical behavior (its only caller is a test);
+  `resetWorld()` is new. No existing caller changes semantics.
+- The preserve-set is opt-in: only RenderManager registers today. **Contract to
+  document:** any engine subsystem that creates a must-survive entity (future
+  audio/video singletons, editor chrome) must call `preserveEntity` at creation —
+  otherwise `resetWorld()` destroys it. Grep audited for entity-holding engine
+  managers: RenderManager (4 canvases) is the only current case;
+  Audio/Video/Time managers hold no EntityId members.
+- The GPU pre-destroy hook reads render components by presence; it must cover
+  **every** component that owns a `ResourceId` — enumerate them at implementation
+  time by grepping `ResourceId` under `engine/prefabs/irreden/render/components/`
+  and `engine/render/`, and free each. Missing one re-introduces the leak.
 
 ## Acceptance criteria
-- A demo builds a scene, `resetGameplay()`s, and builds a different scene ≥10× with **no
-  entity-count growth** above the preserve-set baseline and **no VoxelPool/GPU growth** across
-  cycles.
-- Singletons (`C_GlobalModifiers`, `C_SimClock`) and the render/GL-Metal context survive a
-  reset; the engine renders the next scene correctly.
-- No system ticks against destroyed entities (reset + re-register happen at a frame boundary).
-- The primitive is callable from Lua (`IRWorld.resetGameplay()`) so game #190's scene machine
-  can drive it.
-- Builds + runs headless on macOS (Metal) and Linux (GL).
+
+- Build → `resetWorld()` → rebuild a *different* scene N≥3× with **no live
+  entity-count growth** and the RenderingResourceManager `ResourceId` count back
+  to baseline each cycle (**no GPU leak**).
+- Preserved entities (RenderManager canvases / a test sentinel) and all C++
+  managers + render context survive every reset; only non-preserved entities die.
+- A pipeline swap re-points cleanly: scene B's systems tick, scene A's do not,
+  and no system ticks against a destroyed entity; `revalidatePipelines()` passes.
+- `resetWorld`, pipeline clear/swap, and revalidate are all callable from Lua,
+  with any crossing identifiers as enum-as-Lua-table values.
 
 ## Gotchas
-- **Dangling EntityIds across a reset.** Surviving singletons/persistent entities holding an
-  `EntityId` of a destroyed gameplay entity go stale. The pre-destroy hook auto-sweeps
-  *modifiers* only — arbitrary id fields are not swept. Re-acquire ids after rebuild, or null
-  them in a pre-destroy hook.
-- **Call at a frame boundary, not mid-iteration.** The primitive eager-destroys on a snapshot
-  (mirrors `destroyAllEntities`); calling it inside a `forEachComponent` / parallel group is
-  UB. Drive it from a command or a standalone transition system.
-- **Do NOT clear the singleton cache** (unlike `destroyAllEntities`) — singletons survive;
-  clearing would orphan their live rows (entity `CLAUDE.md` "lazy-create-ghost" hazard,
-  lines 177-188).
-- **Pre-destroy hooks during partial teardown** must use the no-create singleton accessors
-  (`singletonOrNull`) — same rule as bulk teardown.
-- **System-internal / Lua-global state persists** across reset (systems are never destroyed;
-  the Lua VM isn't reset). Keep per-scene state in components (destroyed on reset), not in
-  system statics or Lua globals; the scene machine owns its own Lua state.
-- **Which engine entities need `C_Persistent`?** Any engine-created *non-singleton* entity
-  that must survive must be tagged, or it is torn down. **Concretely: the RenderManager's 4
-  canvas entities (`m_mainFramebuffer`, `m_mainCanvas`, `m_backgroundCanvas`, `m_guiCanvas`,
-  `render_manager.cpp:136-141`) are non-singleton and must be stamped `C_Persistent{}` at
-  construction** — without the tag they are destroyed on the first scene reset, breaking the
-  renderer. Verify during implementation by asserting the engine still renders after a reset.
-- **`m_namedEntities` must be pruned after reset.** `destroyEntity()` does not remove entries
-  from `EntityManager::m_namedEntities` (`entity_manager.cpp:179-188`). After
-  `destroyAllExceptPreserved()`, any gameplay entity registered via `setName("camera")` retains
-  a stale name→id entry; a subsequent `getEntityByName("camera")` asserts at line 187 on the
-  dead id. After the destroy loop, erase every entry in `m_namedEntities` whose id no longer
-  exists in `m_entityIndex`.
-- **Idempotency measurement.** Entity ids never recycle (atomic counter), so don't assert on
-  id *values* — assert on live-entity *count* and on resource counters (VoxelPool) returning
-  to baseline.
 
-## Sibling / in-flight reconciliation
-- **Consumer:** game #190 "Scene/state machine Lua module" (planned in this batch) is the
-  direct Lua consumer of `resetGameplay()`. This ticket is the engine half; keep the Lua name
-  stable for #190.
-- **Adjacent, distinct:** #199 world-snapshot save (designed-not-implemented) is persistence,
-  not teardown — no overlap. Both touch `destroyAllEntities`/the singleton cache, but this
-  plan does **not** change `destroyAllEntities` (only adds a sibling method), so #199 is
-  unaffected.
-- No open PR currently touches `entity_manager` teardown or `system_manager` pipeline
-  registration — no in-flight conflict.
-
-## Cross-system audit (lifecycle-touching addition)
-- **Singleton cache** — `destroyAllExceptPreserved` reads `m_singletonEntityByComponent` but
-  must NOT clear it (only `destroyAllEntities` clears it, at end-of-world). No other consumer
-  affected.
-- **Pre-destroy hooks** — fire normally per destroyed entity (modifier-sweep hook etc.); no
-  change to hook registration.
-- **Component `onDestroy()`** — every render/voxel component with GPU resources already
-  implements it; the reset relies on this existing contract (no per-component change).
-- **`registerPipeline` consumers** — `clearPipeline` is additive (= `registerPipeline(event,
-  {})`); existing pipeline registrations unaffected.
-- **No public symbol removed** → Engine API removal rule N/A.
+- **Do NOT reset `m_nextEntityId`.** Preserved entities hold low ids minted at
+  boot; resetting the counter to `IR_RESERVED_ENTITIES` would collide with them.
+  Monotonic growth is correct; the 32-bit id space (~33M) dwarfs any jam reset
+  count. (If a future use truly needs id-space reclaim, that is a separate task.)
+- **Prune `m_namedEntities`** during reset — the single nastiest existing
+  footgun: a stale `"camera" → dead id` survives `destroyAllEntities` today and
+  would make `getEntity("camera")` assert post-reset.
+- **Foreign-handle caches dangle.** A system that caches a non-preserved entity
+  id (camera, player) in `beginTick`/params will dangle after a reset. Mitigate
+  by re-establishing such caches in the new scene's init; note in the CLAUDE.md
+  contract. (A one-shot "pre-reset" hook to let subsystems null caches is a
+  reasonable *follow-up* if real cases appear — not in this PR's scope.)
+- **GPU hook must be exhaustive.** Enumerate *all* `ResourceId`-bearing render
+  components; a missed one silently re-leaks and fails the acceptance test.
+- **Archetype-graph empty nodes** are not pruned (same as today). Not a leak of
+  entities/GPU; acceptable for v1. Don't add graph compaction here.
+- **Pipeline validation** is not auto-run on swap — the game MUST call
+  `revalidatePipelines()` after composing scene B, or a mis-composed multi-system
+  group races undetected. Single-system groups (the likely jam case) pass
+  trivially, but expose + document the call regardless.
+- **One task, not a stack:** the four faces are one contract #190 consumes
+  whole; splitting would create micro-PRs that only make sense merged together
+  and need file-epic + re-approval. If the GPU-cleanup face genuinely balloons
+  the diff past one reviewable PR, use the normal step-8 follow-up escalation —
+  do not pre-split.
