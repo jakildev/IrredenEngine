@@ -8,10 +8,15 @@ the ECS surface.
 ## Key components
 
 - `C_TriangleCanvasTextures` — owns 3 GPU textures (color / distance /
-  entity-id). **Created in ctor, destroyed in `onDestroy()`.** The
-  color/distance/entity-id format triple is centralized in
+  entity-id) plus a Hi-Z max-depth mip chain over the distance texture
+  (`hiZMips_`, #1294). **All created in ctor, destroyed in `onDestroy()`.**
+  The color/distance/entity-id format triple is centralized in
   `detail::makeCanvas*Texture` factories in its header so other canvas
-  components can't drift from it.
+  components can't drift from it; `detail::makeHiZMipChain` builds the
+  downsampled R32I levels (conceptual level 0 is the distance texture).
+  `COMPUTE_DISTANCE_HIZ` downsample-maxes the chain each frame for the
+  voxel occlusion cull (`docs/design/voxel-occlusion-culling.md`); the
+  chain is produced-only until the chunk-occlusion pre-pass consumes it.
 - `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
   for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
   Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
