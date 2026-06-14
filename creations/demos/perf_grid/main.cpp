@@ -150,6 +150,24 @@ CliOverrides g_cliOverrides{};
 int g_autoProfileFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
+// --occlusion-cull (#1294 child 3/3): force the voxel-pool chunk-occlusion HZB
+// pre-pass ON (off by default in the engine). This is the measurement + verify
+// toggle for the cull: pair `--mode voxel_set --auto-profile` runs with and
+// without it to read the realized `voxelStage1` reduction (the 0.97 ceiling on
+// the many-small-entity grid), and pair `--auto-screenshot` runs to prove the
+// output is bit-identical cull-on vs cull-off (fully-occluded voxels write
+// nothing, so any diff would be a cull bug). Intentional drift: on a
+// discontinuous camera move the cull self-disables for one frame (stale Hi-Z),
+// which can produce a one-frame silhouette pop — by design, not a regression.
+bool g_occlusionCull = false;
+// --no-overlay (#1294 child 3/3): drop PERF_STATS_OVERLAY from the render
+// pipeline. The overlay bakes live CPU/GPU timing text into every frame, which
+// is run-variant and defeats a bit-identical screenshot compare. Off (overlay
+// present) by default; pass it to capture a deterministic frame, e.g. to prove
+// cull-on renders pixel-identical to cull-off on the heavily-occluded voxel_set
+// scene. The --auto-profile path enables frame timing explicitly, so timing
+// still works under --no-overlay.
+bool g_noOverlay = false;
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -284,6 +302,10 @@ void parseArgs(int argc, char **argv) {
                     ++i;
                 }
             }
+        } else if (std::strcmp(argv[i], "--occlusion-cull") == 0) {
+            g_occlusionCull = true;
+        } else if (std::strcmp(argv[i], "--no-overlay") == 0) {
+            g_noOverlay = true;
         } else if (std::strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
             g_cliOverrides.mode_ = parseMode(argv[i + 1]);
             g_cliOverrides.modeSet_ = true;
@@ -571,6 +593,13 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
 
+    if (g_occlusionCull) {
+        IRRender::setVoxelOcclusionCullEnabled(true);
+        IR_LOG_INFO("Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 3/3). "
+                    "Output stays bit-identical to cull-off; one-frame silhouette pop on a "
+                    "discontinuous camera move is intentional drift (stale Hi-Z self-disable).");
+    }
+
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
     IR_LOG_INFO(
@@ -635,12 +664,21 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-            // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
-            // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
-            // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
-            // must be overlay → text → trixel-to-fb for the HUD to land on
-            // screen — matches the lighting demo wiring.
-            IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
+        }
+    );
+    // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
+    // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
+    // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
+    // must be overlay → text → trixel-to-fb for the HUD to land on
+    // screen — matches the lighting demo wiring. --no-overlay drops it so a
+    // captured frame is deterministic (the HUD's live timing text is otherwise
+    // run-variant, defeating a bit-identical cull-on vs cull-off compare).
+    if (!g_noOverlay) {
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>());
+    }
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),

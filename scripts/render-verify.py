@@ -388,6 +388,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="Skip the --update-references confirmation prompt.")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip `fleet-build`; assume the target is already built.")
+    ap.add_argument("--demo-arg", action="append", default=[], metavar="ARG",
+                    help="Extra argument passed through to the demo after "
+                         "--auto-screenshot (repeatable). Use to prove a feature "
+                         "flag is output-neutral against the committed references "
+                         "— e.g. `--demo-arg --occlusion-cull` checks the voxel "
+                         "occlusion cull renders bit-identical to the cull-off "
+                         "baseline (#1294 child 3/3).")
     args = ap.parse_args(argv)
 
     worktree = _detect_worktree_root(Path.cwd())
@@ -442,6 +449,7 @@ def main(argv: list[str] | None = None) -> int:
 
     run_cmd = ["fleet-run", "--timeout", str(args.timeout), args.target,
                "--auto-screenshot", str(warmup)]
+    run_cmd.extend(args.demo_arg)
     print("+ " + " ".join(run_cmd), flush=True)
     proc = subprocess.run(run_cmd, cwd=str(worktree),
                           capture_output=True, text=True)

@@ -239,6 +239,17 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *chunkOcclusionQueryBuf_ = nullptr;
     std::vector<ChunkOcclusionQuery> chunkOcclusionScratch_;
     int maxPoolChunks_ = 0;
+    // One-frame occlusion-cull disable on a discontinuous camera move (#1294
+    // child 3/3, design § 4). The chunk-occlusion pre-pass samples last frame's
+    // Hi-Z; on a camera cut/teleport/first frame that lag source belongs to a
+    // different view, so the projected chunk AABBs would test unrelated depths
+    // and could cull on-screen geometry. When this frame's camera iso jumps more
+    // than a fraction of the visible viewport, the cull is disabled for that one
+    // frame — always the safe direction (keeps every chunk). Resolved once per
+    // frame in beginTick; read by the per-canvas gate.
+    vec2 lastOcclusionCameraIso_ = vec2(0.0f);
+    bool hasLastOcclusionCameraIso_ = false;
+    bool occlusionLagSourceStale_ = false;
     // Per-axis store list-walk split (#1739). While the main canvas's per-axis
     // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
     // its visible-voxel list into three axis-keyed regions — each voxel landing
@@ -757,14 +768,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
         // Chunk-occlusion HZB pre-pass (#1294 child 2/3, off by default). Gated to
         // the configuration whose distance encoding + shadow-feeder semantics are
-        // verified: enabled, NONE render mode (encodeDepthWithFace = rawDepth*4),
-        // cardinal yaw (!rotating → per-axis canvases are also inactive, so no
-        // split-list interaction), and a non-re-voxelize pool (the frustum mask is
-        // the real per-chunk mask, not the all-visible dest-cell scratch). Any
-        // other state keeps every chunk (conservative). The pass ANDs occluded
-        // chunks out of ChunkVisibility (24) before the compact pass reads it.
-        if (IRRender::getVoxelOcclusionCullEnabled() && frameData_.voxelRenderOptions_.x == 0 &&
-            !rotating && revoxBuffer == nullptr) {
+        // verified: enabled, NOT stale (no discontinuous camera move this frame —
+        // #1294 child 3/3, resolved in beginTick), NONE render mode
+        // (encodeDepthWithFace = rawDepth*4), cardinal yaw (!rotating → per-axis
+        // canvases are also inactive, so no split-list interaction), and a
+        // non-re-voxelize pool (the frustum mask is the real per-chunk mask, not
+        // the all-visible dest-cell scratch). Any other state keeps every chunk
+        // (conservative). The pass ANDs occluded chunks out of ChunkVisibility
+        // (24) before the compact pass reads it.
+        if (IRRender::getVoxelOcclusionCullEnabled() && !occlusionLagSourceStale_ &&
+            frameData_.voxelRenderOptions_.x == 0 && !rotating && revoxBuffer == nullptr) {
             dispatchChunkOcclusion(voxelPool, triangleCanvasTextures, visibleVp);
         }
 
@@ -991,6 +1004,29 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             if (perAxis.has_value()) {
                 perAxisCanvases_ = perAxis.value();
             }
+        }
+
+        // Resolve the one-frame occlusion-cull disable (#1294 child 3/3, design
+        // § 4). The chunk-occlusion pre-pass tests last frame's Hi-Z, so on a
+        // discontinuous camera move (cut / teleport / first frame) that lag
+        // source is from an unrelated view and the cull is disabled for one
+        // frame. The threshold is half the visible viewport's smaller iso extent
+        // — larger than any single-frame smooth pan but far below a cut. Disabling
+        // is always safe (keeps every chunk); a smooth pan's one-frame-lag pop is
+        // the accepted intentional drift, not a discontinuity. Skipped entirely
+        // when the cull is off so the default config adds nothing — the gate
+        // short-circuits on getVoxelOcclusionCullEnabled() before reading the
+        // staleness flag, and the first enabled frame is treated as a cut.
+        if (IRRender::getVoxelOcclusionCullEnabled()) {
+            const vec2 cameraIso = IRRender::getEffectiveCameraIso();
+            const IsoBounds2D occlusionViewport = IRRender::getCullViewport().isoViewport();
+            const vec2 viewportExtent = occlusionViewport.max_ - occlusionViewport.min_;
+            const float cutThreshold = 0.5f * IRMath::min(viewportExtent.x, viewportExtent.y);
+            occlusionLagSourceStale_ =
+                !hasLastOcclusionCameraIso_ ||
+                IRMath::length(cameraIso - lastOcclusionCameraIso_) > cutThreshold;
+            lastOcclusionCameraIso_ = cameraIso;
+            hasLastOcclusionCameraIso_ = true;
         }
     }
 
