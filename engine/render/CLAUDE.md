@@ -556,6 +556,14 @@ parity with voxel-pool primary shapes.
 - **Hardcoded uniform-buffer bind points.** Indices like
   `kBufferIndex_FrameDataVoxelToCanvas = 7` appear in both C++ and GLSL. A
   mismatch is silent — wrong uniforms, no error.
+- **GPU buffer bind-point budget is full (0–30).** Every `kBufferIndex_*`
+  (`ir_render_types.hpp`) is occupied and Metal has no free buffer index
+  past 30. A change that needs a new SSBO/UBO while the voxel/per-axis path
+  is active must **reuse an existing binding transiently** — bind the new
+  buffer onto an occupied index via `Buffer::bindRange`/`bindBase` for the
+  dispatch, then restore — never claim a 31st index. A plan that adds a GPU
+  buffer should check this before settling on a binding, or it designs an
+  approach that's impossible to wire mid-implementation.
 - **Camera-iso offset pivots about the focus (`getEffectiveCameraIso`).**
   Any producer that positions world content relative to the camera — voxel
   raster, SDF main-canvas placement, per-axis scatter base, trixel→trixel

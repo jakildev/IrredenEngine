@@ -197,6 +197,29 @@ Already covered by section 6 (Reuse opportunities) — left here only as
 a cross-reference. The engine has `IRE_LOG_*` and `IR_LOG_*` macros;
 raw stdout/printf in non-debug code is a cleanup target.
 
+**Check 4: location-reference comment narration.**
+
+Comments that point the reader at *other code* — "set above", "see below",
+"see above", "defined above", "declared below", "called from" — narrate
+WHERE rather than WHY. They are a specific, grep-able instance of the
+WHY-not-WHAT rule (`CLAUDE-BASELINE.md` §Style: "'Set above' is code
+narration, not a WHY"): the location is already visible in the code, and any
+real rationale belongs at the referenced site, not cross-referenced from
+here.
+
+```
+Grep tool with:
+  pattern: '//.*\b(set above|see below|see above|defined above|declared below|called from)\b'
+  glob:    '**/*.{hpp,cpp,h,cc}'
+  output_mode: 'content'
+  -n: true
+```
+
+Cross-reference hits against `git diff --unified=0` added (`+`) lines —
+only flag newly introduced narration, not pre-existing comments in
+untouched code. Fix: delete the cross-reference; if it was carrying a real
+WHY, move that WHY to the site it points at.
+
 ### 2c. Serialized-struct version-bump check
 
 See `engine/asset/CLAUDE.md` §"Automated version-bump detection" for the full
@@ -360,6 +383,10 @@ Remove:
   These narrate the diff (which git already shows in the commit
   history) and age into noise once the change is the new normal.
   Delete; let the commit message carry the change story.
+- Location-reference narration that points at other code instead of
+  explaining why — `// ... (set above)`, `// see below`, `// called
+  from X`. Mechanically caught by §2b Check 4; delete the
+  cross-reference (move any real WHY to the site it points at).
 - Stale `// TODO`/`// FIXME` markers on code you actually finished
   this session.
 - "Old code" markers next to deleted lines.

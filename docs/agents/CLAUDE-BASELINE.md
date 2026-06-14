@@ -45,6 +45,13 @@ See `engine/system/CLAUDE.md` for the full tick-function-signature story.
 | Fragment shaders  | `f_` prefix                                        |
 | Geometry shaders  | `g_` prefix                                        |
 | Header helpers    | nested `detail` namespace (not anonymous, not feature-named) |
+| Include guards    | `<NAME>_H` from the file basename (not `_HPP`, not `#pragma once`) |
+
+Include guards follow `<NAME>_H` derived from the file basename; the engine
+is 477:3 `_H` over `_HPP` engine-wide and the prefab render tree is 157/157
+`#ifndef` (no `#pragma once`). Don't flag or "fix" an existing `_H` guard to
+`_HPP` for "consistency with the `.hpp` extension" — the data runs the other
+way.
 
 Prefer descriptive names over abbreviations (`viewCenterIso` not `vcIso`).
 Use a lowercase `detail` namespace for header-only helpers under the owning

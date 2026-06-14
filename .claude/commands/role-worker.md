@@ -353,6 +353,20 @@ Do the work, then exit cleanly:
        whichever the PR is actually based on, NOT always master:
        `git fetch origin <baseRefName>`
        `git rebase origin/<baseRefName>`
+    d'. **Inherited-prefix shortcut — check before resolving by hand.** If
+       every conflicted file is one your branch *inherited* from a parent PR
+       that has since merged (the conflict is your stale inherited copy vs
+       master's now-merged copy), do NOT resolve file-by-file. Drop the
+       inherited prefix instead:
+       `git rebase --onto origin/master <child-fork-point>`
+       where `<child-fork-point>` is the inherited commit on your branch —
+       `git merge-base HEAD origin/<parent-branch>` (the parent's *pre-merge*
+       head). That replays only your genuine commits; the inherited files
+       resolve to master automatically and the diff shrinks to your own
+       changes. `fleet-rebase`'s auto-drop normally does this for you; this
+       is the manual fallback for when it silently doesn't fire — e.g. the
+       parent branch was amended during review *after* you forked, so its
+       recorded `headRefOid` is no longer an ancestor of your head (#1791).
     e. For each conflicted file (`git diff --name-only --diff-filter=U`):
        - **Read the full file** (not just the conflict block) so you
          understand the surrounding code.
