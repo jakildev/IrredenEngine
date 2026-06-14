@@ -55,13 +55,22 @@ because the consumer (#190) cannot start until the whole contract exists:
   std::function<void(EntityId)>`, `:36`). Hooks fire **before** component
   teardown in `destroyEntity` (`entity_manager.cpp:131-135`). This is the clean
   seam for automatic GPU-resource release.
-- **GPU resources are manual, not RAII, not entity-tied:**
-  `RenderingResourceManager` pools `unique_ptr<T>` by `ResourceId`
-  (`engine/render/include/irreden/render/rendering_rm.hpp:37-52`); `create<T>` /
-  `destroy<T>(id)` are explicit. Destroying a voxel/canvas entity does **not**
-  free its `ResourceId`s today → that is the "GPU leak across cycles" gap the
-  acceptance criteria forbid. The render context (`RenderImpl`, GL/Metal) is a
-  separate `unique_ptr` (`render_manager.hpp:128`) and survives entity teardown.
+- **GPU resources are manual (not RAII); most are freed per-component via
+  `onDestroy()`:** `RenderingResourceManager` pools `unique_ptr<T>` by
+  `ResourceId` (`engine/render/include/irreden/render/rendering_rm.hpp:37-52`);
+  `create<T>` / `destroy<T>(id)` are explicit. **Most** canvas/shadow/AO/voxel
+  components already release their `ResourceId`s on entity destruction via an
+  `onDestroy()` that calls `IRRender::destroyResource<T>()` — e.g.
+  `C_CanvasSunShadow`, `C_SpriteSheet`, `C_TrixelFramebuffer`,
+  `C_CanvasLightVolume`, `C_PerAxisTrixelCanvases`, `C_DetachedRevoxelizeBuffer`,
+  `C_CanvasAOTexture`, `C_GpuParticlePool`. The known gap is `C_Sprite`
+  (`component_sprite.hpp:37` holds `textureHandle_: ResourceId` but has **no**
+  `onDestroy()`) → that residual set is the "GPU leak across cycles" the
+  acceptance criteria forbid. Enumerate all `ResourceId`-bearing components
+  *without* an `onDestroy()` at implementation time; the RenderManager
+  pre-destroy hook (step 2) covers exactly those. The render context
+  (`RenderImpl`, GL/Metal) is a separate `unique_ptr` (`render_manager.hpp:128`)
+  and survives entity teardown.
 - **System pipelines (verified, `engine/system/src/system_manager.cpp`):**
   systems are append-only — a `SystemId` slot is never freed; there is **no
   destroySystem**. Pipeline APIs: `registerPipeline(event, ids)` (:106-117) and
@@ -119,22 +128,27 @@ Implement in this order (one PR):
      each (`m_mainFramebuffer/m_mainCanvas/m_backgroundCanvas/m_guiCanvas`).
    - Register **one** pre-destroy hook at RenderManager construction (store the
      `PreDestroyHookId`, unregister in the dtor) that, for the entity being
-     destroyed, checks for the GPU-resource-bearing render components (voxel pool
-     / canvas-texture components — grep `ResourceId` fields under
-     `engine/prefabs/irreden/render/components/` and `C_VoxelPool`) and calls
+     destroyed, frees the `ResourceId`s of GPU-resource-bearing render
+     components **that lack their own `onDestroy()`** (today: `C_Sprite`).
+     Enumerate the set at implementation time by grepping `ResourceId` fields
+     under `engine/prefabs/irreden/render/components/` and `C_VoxelPool`, then
+     **excluding** any that already release in `onDestroy()` — double-freeing a
+     self-releasing component is a use-after-free. Call
      `RenderingResourceManager::destroy<T>(id)` for each held `ResourceId`. This
-     makes GPU release **automatic and entity-lifetime-tied** for *all* entity
-     destruction, not just resets — directly satisfying "no leaked GPU
-     resources". (A `getComponent` inside a destroy hook is fine — teardown, not
-     a hot tick.)
+     closes the residual leak and keeps GPU release **automatic and
+     entity-lifetime-tied** for *all* entity destruction, not just resets. (A
+     `getComponent` inside a destroy hook is fine — teardown, not a hot tick.)
 3. **Pipeline swap/clear (engine/system).**
    - Add `SystemManager::clearPipeline(IRTime::Events)` (empties that event's
      groups) and a public `revalidatePipelines()` that re-runs
      `validateAllPipelineGroups()`. The swap contract for the game: call
      `clearPipeline(event)` then `registerPipeline(event, sceneB_ids)` (or just
      `registerPipeline`, which already replaces) for each event, then
-     `revalidatePipelines()` once. Confirm `registerPipeline(event, {})` yields a
-     no-system (paused) pipeline — add the empty-list path if missing.
+     `revalidatePipelines()` once. `registerPipeline(event, {})` **already**
+     yields a no-system (paused) pipeline — it forwards to
+     `registerPipelineGroups`, which assigns the (empty) group vector
+     unconditionally (`system_manager.cpp:119-124`), so no empty-list
+     special-case is needed.
 4. **Lua surface (engine/script).**
    - New `engine/script/include/irreden/script/lua_world_bindings.hpp` with
      `detail::bindWorldManagement(LuaScript&)`, called from `lua_script.cpp`
@@ -160,7 +174,7 @@ Implement in this order (one PR):
 - `engine/entity/src/entity_manager.cpp` — `resetWorld` + shared destroy loop + `m_namedEntities` prune.
 - `engine/entity/include/irreden/ir_entity.hpp` — public `IREntity::resetWorld/preserveEntity/releaseEntity` forwards.
 - `engine/render/include/irreden/render/render_manager.hpp` / `src/render_manager.cpp` — preserve the 4 canvases; register/unregister the GPU-cleanup pre-destroy hook.
-- `engine/system/include/irreden/system/system_manager.hpp` / `src/system_manager.cpp` — `clearPipeline` + `revalidatePipelines` (+ empty-list `registerPipeline` path if needed).
+- `engine/system/include/irreden/system/system_manager.hpp` / `src/system_manager.cpp` — `clearPipeline` + `revalidatePipelines`.
 - `engine/script/include/irreden/script/lua_world_bindings.hpp` (new) + `engine/script/src/lua_script.cpp` — `bindWorldManagement` wiring.
 - `test/ecs/` — idempotency test (new file or extend `entity_manager_test.cpp`).
 - `engine/entity/CLAUDE.md` + `engine/system/CLAUDE.md` — document the preserve/reset + pipeline-swap contract.
@@ -177,9 +191,11 @@ The change is **additive** — it does not migrate existing consumers:
   managers: RenderManager (4 canvases) is the only current case;
   Audio/Video/Time managers hold no EntityId members.
 - The GPU pre-destroy hook reads render components by presence; it must cover
-  **every** component that owns a `ResourceId` — enumerate them at implementation
-  time by grepping `ResourceId` under `engine/prefabs/irreden/render/components/`
-  and `engine/render/`, and free each. Missing one re-introduces the leak.
+  every `ResourceId`-owning component that does **not** already free in its own
+  `onDestroy()` — enumerate them at implementation time by grepping `ResourceId`
+  under `engine/prefabs/irreden/render/components/` and `engine/render/`, drop
+  the ones with a self-releasing `onDestroy()`, and free the rest. Missing one
+  re-introduces the leak; double-covering a self-releasing one double-frees.
 
 ## Acceptance criteria
 
@@ -207,8 +223,10 @@ The change is **additive** — it does not migrate existing consumers:
   by re-establishing such caches in the new scene's init; note in the CLAUDE.md
   contract. (A one-shot "pre-reset" hook to let subsystems null caches is a
   reasonable *follow-up* if real cases appear — not in this PR's scope.)
-- **GPU hook must be exhaustive.** Enumerate *all* `ResourceId`-bearing render
-  components; a missed one silently re-leaks and fails the acceptance test.
+- **GPU hook must be exhaustive — but must not double-cover.** Enumerate the
+  `ResourceId`-bearing render components *without* an `onDestroy()`; a missed one
+  silently re-leaks and fails the acceptance test, while hooking one that already
+  self-releases in `onDestroy()` double-frees (use-after-free).
 - **Archetype-graph empty nodes** are not pruned (same as today). Not a leak of
   entities/GPU; acceptable for v1. Don't add graph compaction here. Empty nodes
   add a `node->length_ == 0` dead stop on each iteration pass — negligible at
