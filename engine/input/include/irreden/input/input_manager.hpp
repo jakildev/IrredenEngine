@@ -51,8 +51,7 @@ class InputManager {
     int getButtonPressesThisFrame(KeyMouseButtons button) const;
     int getButtonReleasesThisFrame(KeyMouseButtons button) const;
     bool hasAnyButtonPressedThisFrame() const;
-    bool
-    checkGamepadButton(GamepadButtons button, ButtonStatuses status, int irGamepadId = 0) const;
+    bool checkGamepadButton(GamepadButtons button, ButtonStatuses status, int irGamepadId = 0) const;
     float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0) const;
 
     // Synthetic input (#1794): deterministic injection so a headless run can

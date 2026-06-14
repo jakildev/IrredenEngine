@@ -193,6 +193,11 @@ float InputManager::getGamepadAxis(GamepadAxes axis, int irGamepadId) const {
 }
 
 void InputManager::applyButtonEvent(KeyMouseButtons irButton, ButtonStatuses status) {
+    IR_ASSERT(
+        status == ButtonStatuses::PRESSED || status == ButtonStatuses::RELEASED,
+        "applyButtonEvent only accepts PRESSED or RELEASED, got {}",
+        static_cast<int>(status)
+    );
     if (status == ButtonStatuses::PRESSED) {
         ++m_buttonPressesThisFrame[irButton];
         for (auto &[event, eventState] : m_eventStates) {
@@ -227,6 +232,8 @@ void InputManager::drainInjectedInput() {
         const auto &[button, status] = m_injectedButtons.front();
         applyButtonEvent(button, status);
         m_injectedButtons.pop();
+
+        IRE_LOG_DEBUG("Processed button={}, status={}", static_cast<int>(button), static_cast<int>(status));
     }
 
     // Scroll injection reuses the GLFW scroll path — same ephemeral C_MouseScroll
