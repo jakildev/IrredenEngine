@@ -81,6 +81,8 @@ class RenderManager {
     bool getSunShadowsEnabled() const;
     void setAOEnabled(bool enabled);
     bool getAOEnabled() const;
+    void setVoxelOcclusionCullEnabled(bool enabled);
+    bool getVoxelOcclusionCullEnabled() const;
 
     void setDebugOverlay(DebugOverlayMode mode);
     DebugOverlayMode getDebugOverlay() const;
@@ -166,6 +168,10 @@ class RenderManager {
     float m_sunAmbient = 0.4f;
     bool m_sunShadowsEnabled = true;
     bool m_aoEnabled = true;
+    // Voxel-pool chunk-occlusion cull (#1294). Off by default — the pre-pass is
+    // not dispatched unless this is set, so a default scene is byte-identical to
+    // master. The gating heuristic + camera-cut disable land in child 3 (#1800).
+    bool m_voxelOcclusionCullEnabled = false;
     DebugOverlayMode m_debugOverlayMode = DebugOverlayMode::NONE;
     bool m_depthColorDebugOn = false;
     float m_depthColorDebugExtent = 0.0f;

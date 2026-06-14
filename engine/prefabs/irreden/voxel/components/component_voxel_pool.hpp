@@ -28,6 +28,13 @@ constexpr std::size_t kVoxelActiveMaskBits = 32;
 struct ChunkBounds {
     vec2 isoMin_ = vec2(std::numeric_limits<float>::max());
     vec2 isoMax_ = vec2(std::numeric_limits<float>::lowest());
+    // Nearest raw iso depth (x+y+z = pos3DtoDistance) of the chunk's live
+    // voxels, in the same projection as isoMin_/isoMax_. Consumed by the
+    // chunk-occlusion pre-pass (#1294 child 2/3) as the chunk's front-most
+    // depth for the Hi-Z compare. Only the cardinal `rebuildChunkBounds` path
+    // fills it (the only path the cull is enabled on); other paths leave the
+    // sentinel and their chunks are flagged not cull-eligible.
+    float minDepth_ = std::numeric_limits<float>::max();
 
     void expand(vec2 isoPos) {
         isoMin_ = IRMath::min(isoMin_, isoPos);
@@ -37,6 +44,7 @@ struct ChunkBounds {
     void reset() {
         isoMin_ = vec2(std::numeric_limits<float>::max());
         isoMax_ = vec2(std::numeric_limits<float>::lowest());
+        minDepth_ = std::numeric_limits<float>::max();
     }
 };
 
@@ -360,6 +368,12 @@ struct C_VoxelPool {
                 pos += vec3(IRMath::cardinalLowerCornerShift(cardinalIndex));
             }
             m_chunkBounds[chunk].expand(IRMath::pos3DtoPos2DIso(pos));
+            // Track the chunk's front-most raw iso depth in the same projection,
+            // for the occlusion pre-pass's Hi-Z compare (#1294 child 2/3).
+            m_chunkBounds[chunk].minDepth_ = IRMath::min(
+                m_chunkBounds[chunk].minDepth_,
+                static_cast<float>(IRMath::pos3DtoDistance(pos))
+            );
         }
         m_lastBoundsCardinalIndex = cardinalIndex;
         m_chunkBoundsDirty = false;
@@ -599,13 +613,15 @@ struct C_VoxelPool {
             indices.size(),
             m_voxelTransformIndices.size()
         );
-        // Caller guarantees every index satisfies kVoxelTransformStatic || < kMaxGpuVoxelTransforms.
-        // The loop assert below enforces the same invariant as setTransformIndexForRange in debug builds.
+        // Caller guarantees every index satisfies kVoxelTransformStatic || <
+        // kMaxGpuVoxelTransforms. The loop assert below enforces the same invariant as
+        // setTransformIndexForRange in debug builds.
         for (std::size_t i = 0; i < indices.size(); ++i) {
             IR_ASSERT(
                 indices[i] == IRRender::kVoxelTransformStatic ||
                     indices[i] < static_cast<std::uint32_t>(IRRender::kMaxGpuVoxelTransforms),
-                "setTransformIndicesForRange: indices[{}]={} out of range (kMaxGpuVoxelTransforms={})",
+                "setTransformIndicesForRange: indices[{}]={} out of range "
+                "(kMaxGpuVoxelTransforms={})",
                 i,
                 indices[i],
                 IRRender::kMaxGpuVoxelTransforms
