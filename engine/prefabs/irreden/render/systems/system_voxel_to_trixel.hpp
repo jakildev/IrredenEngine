@@ -238,6 +238,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *occlusionProgram_ = nullptr;
     Buffer *chunkOcclusionQueryBuf_ = nullptr;
     std::vector<ChunkOcclusionQuery> chunkOcclusionScratch_;
+    int maxPoolChunks_ = 0;
     // Per-axis store list-walk split (#1739). While the main canvas's per-axis
     // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
     // its visible-voxel list into three axis-keyed regions — each voxel landing
@@ -547,6 +548,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         const int chunkCount = static_cast<int>(bounds.size());
         if (chunkCount == 0)
             return;
+        IR_ASSERT(
+            chunkCount <= maxPoolChunks_,
+            "dispatchChunkOcclusion: chunkCount {} exceeds query-buffer capacity {}",
+            chunkCount,
+            maxPoolChunks_
+        );
 
         // iso -> canvas pixel exactly as stage 1 at NONE mode
         // (effectiveTrixelSubdivisionScale == 1): canvasPixel =
@@ -1161,6 +1168,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->occlusionProgram_ = IRRender::getNamedResource<ShaderProgram>("ChunkOcclusionProgram");
         p->chunkOcclusionQueryBuf_ =
             IRRender::getNamedResource<Buffer>("ChunkOcclusionQueryBuffer");
+        p->maxPoolChunks_ = maxVoxelPoolChunks;
         // The per-axis buffers were created with the 25/26 bind indices, which
         // displaced the full compact buffers' steady-state binding. Restore
         // 25/26 to the full buffers; the per-axis buffers are re-bound onto
