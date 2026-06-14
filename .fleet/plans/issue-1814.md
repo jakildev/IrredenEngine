@@ -210,7 +210,9 @@ The change is **additive** — it does not migrate existing consumers:
 - **GPU hook must be exhaustive.** Enumerate *all* `ResourceId`-bearing render
   components; a missed one silently re-leaks and fails the acceptance test.
 - **Archetype-graph empty nodes** are not pruned (same as today). Not a leak of
-  entities/GPU; acceptable for v1. Don't add graph compaction here.
+  entities/GPU; acceptable for v1. Don't add graph compaction here. Empty nodes
+  add a `node->length_ == 0` dead stop on each iteration pass — negligible at
+  scene scale but worth flagging for a future optimizer.
 - **Pipeline validation** is not auto-run on swap — the game MUST call
   `revalidatePipelines()` after composing scene B, or a mis-composed multi-system
   group races undetected. Single-system groups (the likely jam case) pass
