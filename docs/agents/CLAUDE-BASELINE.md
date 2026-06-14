@@ -117,6 +117,13 @@ path, or the API keeps signalling "experimental" when it's the production code
   that isn't in `IRMath` yet, add a wrapper in `engine/math/` first,
   then call it. The math library may itself wrap `glm::*` / `std::*`
   internally — that is the **only** place those names should appear.
+- **"Set above" is code narration, not a WHY.** Comments that point at
+  *where* code is — `// set above`, `// see below`, `// defined above`,
+  `// called from X` — narrate location instead of explaining intent.
+  The location is already visible in the code; any real rationale belongs
+  at the referenced site, not cross-referenced from here. Delete them; if
+  the comment carried a genuine WHY, move it to the site it points at.
+  (The `simplify` skill's Check 4 greps for these mechanically on new diffs.)
 
 ---
 
