@@ -172,8 +172,8 @@ instance of the stale-clone false-grant this very plan fixes (the planning
 gate fired 3× within seconds because the claim lock wasn't observed freshly).
 
 Steps 4–5, their matching affected-files / acceptance entries, and this
-correction were folded in from the closed #1825 plan + worker-3's #1810
-addendum, which caught two deploy-blockers the originally-merged plan omitted:
+correction were folded in from the closed #1825 plan + linux-worker-3's
+comment on issue #1810, which caught two deploy-blockers the originally-merged plan omitted:
 
 - **Root-cause correction:** the "Root cause" section above states scout
   imports from "the script's own (resolved-symlink) directory." That holds for
