@@ -1,6 +1,6 @@
 """Tests for the genuine-ship predicate in fleet_scope_shipped.
 
-Covers two false-positive classes:
+Covers the false-positive classes:
 
 * #1304 — fleet-queue-ingest's scope-shipped pre-flight used to trust prs[0]
   from a `gh pr list --search '#N'` query, but GitHub matches the bare token N
@@ -11,6 +11,11 @@ Covers two false-positive classes:
   "pre-existing #1269", "filed as #1269", "Refs #N"). A body ref counts only
   when a closing-action verb sits directly before it; a title ref is trusted
   as-is (the `#N: <desc>` PR-naming convention).
+* #1602 / #1612 (layer 3) — range endpoints in an epic-planning title
+  ("file children #1602-#1612") enumerate, they don't ship.
+* #1807 / #1802 / #1354 (layer 4) — a plan/design-doc title ("docs: plan …",
+  "docs/design: …") names the issue it plans/designs, not one it ships, so its
+  title ref is not trusted; only a body closing-verb ships it.
 
 The module is a real .py, but it is loaded via importlib (mirroring
 test_enrich_stackable_blocker_prs.py) so the test runs regardless of cwd.
@@ -141,9 +146,15 @@ class PrReferencesIssue(unittest.TestCase):
     def test_title_em_dash_range_rejected(self):
         self.assertFalse(pr_references_issue("file #1602—#1612", "", 1612))
 
-    def test_title_epic_ref_outside_range_still_trusted(self):
-        # The epic (#605) precedes the range and is not itself a range endpoint.
-        self.assertTrue(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 605))
+    def test_replan_doc_title_does_not_ship_the_epic(self):
+        # Layer 4 supersedes the old "epic ref outside range still trusted" case:
+        # _FILE_CHILDREN_TITLE is a "docs: re-plan …" plan-doc title, so even the
+        # epic ref (#605) it re-plans is NOT trusted — a re-plan commits the plan,
+        # not the implementation. Flipping is safe: a scope-shipped false negative
+        # just leaves the issue queued.
+        self.assertFalse(pr_references_issue(self._FILE_CHILDREN_TITLE, "", 605))
+        # A body closing-verb still ships it even from a plan PR.
+        self.assertTrue(pr_references_issue(self._FILE_CHILDREN_TITLE, "Closes #605", 605))
 
     def test_plain_title_ref_unaffected_by_range_guard(self):
         # Regression: the normal "#N: <desc>" convention still counts.
@@ -157,6 +168,45 @@ class PrReferencesIssue(unittest.TestCase):
         # Conservative: "Closes #1602-#1612" closes a span, not #1602's individual
         # scope. Reject — a scope-shipped false negative just leaves it queued.
         self.assertFalse(pr_references_issue("title", "Closes #1602-#1612", 1602))
+
+    # --- plan/design-doc titles (#1807 / #1802 / #1354 — layer 4) ---
+
+    def test_plan_doc_title_single_issue_rejected(self):
+        # #1807 ← #1809: a "docs: plan …" PR plans the issue, doesn't ship it.
+        self.assertFalse(pr_references_issue(
+            "docs: plan rotation-profiling task (#1807)", "", 1807))
+
+    def test_plan_doc_title_hash_subject_rejected(self):
+        # "docs: plan #1052 …" names the planned epic in the subject.
+        self.assertFalse(pr_references_issue(
+            "docs: plan #1052 update-parallelization carve-offs", "", 1052))
+
+    def test_plan_doc_title_slash_list_child_rejected(self):
+        # #1802 ← #1805: filed children as a '/'-separated list — a shape the
+        # layer-3 dash guard never covered; layer 4 rejects the whole plan title.
+        title = "docs: plan #1052 update-parallelization carve-offs (#1802/#1803/#1804)"
+        for child in (1802, 1803, 1804):
+            self.assertFalse(pr_references_issue(title, "", child), child)
+
+    def test_design_doc_scope_rejected(self):
+        # #1354 ← #1411: "docs/design: …" designs the issue, doesn't ship it.
+        self.assertFalse(pr_references_issue(
+            "docs/design: world-space neighbour/spatial-query surface (#1354)", "", 1354))
+
+    def test_design_subject_rejected(self):
+        # "docs: design …" (design in the subject, not the scope) is also caught.
+        self.assertFalse(pr_references_issue(
+            "docs: design for the deterministic GUI/mouse harness (#1792)", "", 1792))
+
+    def test_plan_doc_title_still_ships_via_body_closing_verb(self):
+        # A doc PR whose deliverable genuinely IS the doc still ships via body.
+        self.assertTrue(pr_references_issue(
+            "docs: plan #1052 carve-offs", "Closes #1052", 1052))
+
+    def test_non_plan_docs_pr_title_ref_still_trusted(self):
+        # Regression: a normal docs PR (subject not plan/design) keeps title-trust.
+        self.assertTrue(pr_references_issue(
+            "docs: #1679 cmake preset -S flag", "", 1679))
 
 
 class SelectShippedPr(unittest.TestCase):
@@ -197,12 +247,21 @@ class SelectShippedPr(unittest.TestCase):
         self.assertIsNone(select_shipped_pr([pr], 1269))
 
     def test_real_world_1614_files_children_ships_none(self):
-        # #1614 FILES the P2 children as a title range; it ships none of them.
+        # #1614 FILES the P2 children as a title range; it ships none of them —
+        # and under layer 4 (a "docs: re-plan …" title) it doesn't ship the epic
+        # #605 it re-plans either.
         pr = _pr(1614,
                  "docs: re-plan entity-editor Phase 2 (#605) — file children #1602-#1612",
                  "Files the P2 child tickets #1602-#1612 under epic #605.")
-        for child in (1602, 1607, 1612):
-            self.assertIsNone(select_shipped_pr([pr], child), child)
+        for issue in (605, 1602, 1607, 1612):
+            self.assertIsNone(select_shipped_pr([pr], issue), issue)
+
+    def test_real_world_1807_planned_not_shipped_by_1809(self):
+        # #1807 ← #1809: the plan-doc PR is the only #1807 search hit; it plans
+        # the profiling task, it doesn't ship it.
+        pr = _pr(1809, "docs: plan rotation-profiling task (#1807)",
+                 "Plan doc committed for #1807.")
+        self.assertIsNone(select_shipped_pr([pr], 1807))
 
 
 if __name__ == "__main__":

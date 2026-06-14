@@ -24,12 +24,24 @@ incidental match have to be rejected:
    ``#N`` that is an endpoint of a ``#A-#B`` range is enumerating issues, never
    shipping one, so range endpoints are rejected in both title and body.
 
+4. Plan/design-doc title (#1807 ← #1809, #1802 ← #1805, #1354 ← #1411). A plan
+   or design PR is titled after the issue it *plans/designs*, not one it ships:
+   "docs: plan rotation-profiling task (#1807)", "docs: plan #1052 …
+   (#1802/#1803/#1804)", "docs/design: … (#1354)". The title-trust below then
+   read the planned issue — or a filed child named with a ``/`` separator,
+   which the layer-3 dash guard doesn't cover — as shipped. A ``docs:
+   (re-)plan`` / ``docs/design:`` title commits the plan, never the
+   implementation, so its title ref is NOT trusted: the issue ships only if a
+   body closing-verb says so (a doc PR whose deliverable genuinely IS the doc
+   change still ships via ``Closes #N`` in the body).
+
 So a body ``#N`` counts only when a closing-action verb sits directly before it
 (``Closes #N``, ``fixes (#N)``, ``supersedes #N``). A ``#N`` in the *title* is
 trusted as-is — PRs in this repo are named ``#N: <desc>`` after the issue they
-implement — EXCEPT when it is a range endpoint (layer 3): a planning PR names
-filed children in its title, and that is the one title shape that mentions
-without implementing. Every other observed false positive came from the body.
+implement — EXCEPT (layer 3) when it is a range endpoint, or (layer 4) when the
+title is a plan/design-doc title: both shapes name issues they enumerate or
+plan without implementing. Every other observed false positive came from the
+body.
 """
 import re
 
@@ -53,6 +65,18 @@ _VERB_TO_REF_GAP = r'[\s:]*[(\[]?\s*'
 _RANGE_DASH = r'[-–—]'
 
 
+# Plan/design-doc PR titles (layer 4). A ``docs:``-scoped PR whose subject is
+# plan / re-plan / design, or any ``docs/design:`` PR, names the issue it plans
+# or designs — never one it implements. The match is anchored to the ``docs``
+# commit scope so a normal implementation PR titled ``docs: #N fix the snippet``
+# (deliverable IS the doc) is unaffected; only plan/design subjects are caught.
+_PLAN_DOC_TITLE = re.compile(
+    r'^\s*docs/design\b'
+    r'|^\s*docs(?:/[\w-]+)?:\s*(?:re-?)?(?:plan|design)\b',
+    re.IGNORECASE,
+)
+
+
 def _ref_pattern(n):
     # ``(?<!\w)`` rejects ``abc#1300``; ``(?!\d)`` stops ``#13000`` / ``#21300``
     # from satisfying ``n=1300``. The two range guards reject a ``#N`` that is an
@@ -72,9 +96,11 @@ def pr_references_issue(title, body, n):
 
     Title: any word-boundary ``#n`` counts (the ``#N: <desc>`` PR-naming
     convention) UNLESS it is a range endpoint (``#1602-#1612`` — a planning PR
-    naming filed children). Body: ``#n`` counts only when immediately preceded
-    by a closing-action verb, and likewise never as a range endpoint. A bare
-    body mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected.
+    naming filed children) OR the whole title is a plan/design-doc title
+    (``docs: plan …`` / ``docs/design: …`` — a PR that plans/designs ``n``,
+    never ships it). Body: ``#n`` counts only when immediately preceded by a
+    closing-action verb, and likewise never as a range endpoint. A bare body
+    mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected.
     """
     if not n:
         return False
@@ -82,7 +108,12 @@ def pr_references_issue(title, body, n):
         ref = _ref_pattern(n)
     except (ValueError, TypeError):
         return False
-    if re.search(ref, title or ''):
+    title = title or ''
+    # Title-trust (the ``#N: <desc>`` PR-naming convention) — UNLESS the title
+    # is a plan/design-doc title (layer 4): a plan/design PR names the issue it
+    # plans, not one it ships, so its title ref falls through to the body
+    # closing-verb check below (where a genuine doc-ship still says ``Closes #N``).
+    if not _PLAN_DOC_TITLE.search(title) and re.search(ref, title):
         return True
     body_re = re.compile(
         r'\b(?:' + _CLOSING_VERB + r')\b' + _VERB_TO_REF_GAP + ref,
