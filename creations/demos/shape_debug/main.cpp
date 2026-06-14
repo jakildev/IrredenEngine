@@ -153,6 +153,12 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 bool g_depthColor = false;
 bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by default
+// --occlusion-cull (#1294 child 2/3): force the voxel-pool chunk-occlusion HZB
+// pre-pass on (off by default in the engine). A test hook so the cull can be
+// exercised before the child-3 measurement demo lands. On the sparse shape_debug
+// scene nothing is inter-object-occluded, so output must stay identical (a hole
+// would be a false-positive cull bug).
+bool g_occlusionCull = false;
 // --gpu-voxel-smoke (#1396): spawn one voxel cube routed through the GPU
 // voxel-position prepass with a fixed 45° rotation. Off by default so the
 // standard scene stays byte-identical; the rotated cube is direct proof the
@@ -231,6 +237,8 @@ int main(int argc, char **argv) {
             g_depthColor = true;
         } else if (std::strcmp(argv[i], "--checkerboard") == 0) {
             g_checkerboard = true;
+        } else if (std::strcmp(argv[i], "--occlusion-cull") == 0) {
+            g_occlusionCull = true;
         } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
             g_gpuVoxelSmoke = true;
         } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
@@ -310,6 +318,10 @@ int main(int argc, char **argv) {
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
     }
+    if (g_occlusionCull) {
+        IRRender::setVoxelOcclusionCullEnabled(true);
+        IR_LOG_INFO("Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 2/3)");
+    }
     if (g_initialYawRadians != 0.0f) {
         IRPrefab::Camera::setYaw(g_initialYawRadians);
         IR_LOG_INFO(
@@ -336,8 +348,10 @@ int main(int argc, char **argv) {
         // on-screen effect as which voxels rasterize, so the diff isolates
         // voxel retention. (The interactive F10 path keeps shadows.)
         IRRender::setSunShadowsEnabled(false);
-        IR_LOG_INFO("Cull-validate: sun shadows disabled to isolate voxel retention from "
-                    "shadow-feeder coupling");
+        IR_LOG_INFO(
+            "Cull-validate: sun shadows disabled to isolate voxel retention from "
+            "shadow-feeder coupling"
+        );
     }
     IREngine::gameLoop();
     return 0;

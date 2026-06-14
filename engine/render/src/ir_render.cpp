@@ -286,6 +286,14 @@ bool getSunShadowsEnabled() {
     return getRenderManager().getSunShadowsEnabled();
 }
 
+void setVoxelOcclusionCullEnabled(bool enabled) {
+    getRenderManager().setVoxelOcclusionCullEnabled(enabled);
+}
+
+bool getVoxelOcclusionCullEnabled() {
+    return getRenderManager().getVoxelOcclusionCullEnabled();
+}
+
 void setAOEnabled(bool enabled) {
     getRenderManager().setAOEnabled(enabled);
 }

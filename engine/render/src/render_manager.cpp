@@ -454,10 +454,12 @@ void RenderManager::printRenderInfo() {
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
         return IRMath::max(
-            ivec2(IRMath::min(
-                IRMath::floor(m_viewport.x / m_gameResolution.x),
-                IRMath::floor(m_viewport.y / m_gameResolution.y)
-            )),
+            ivec2(
+                IRMath::min(
+                    IRMath::floor(m_viewport.x / m_gameResolution.x),
+                    IRMath::floor(m_viewport.y / m_gameResolution.y)
+                )
+            ),
             ivec2(1)
         );
     }
@@ -582,6 +584,14 @@ void RenderManager::setAOEnabled(bool enabled) {
 
 bool RenderManager::getAOEnabled() const {
     return m_aoEnabled;
+}
+
+void RenderManager::setVoxelOcclusionCullEnabled(bool enabled) {
+    m_voxelOcclusionCullEnabled = enabled;
+}
+
+bool RenderManager::getVoxelOcclusionCullEnabled() const {
+    return m_voxelOcclusionCullEnabled;
 }
 
 void RenderManager::setDebugOverlay(DebugOverlayMode mode) {

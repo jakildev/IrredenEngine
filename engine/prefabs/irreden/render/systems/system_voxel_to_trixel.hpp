@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -193,6 +194,25 @@ inline void flushStaticPositionRanges(C_VoxelPool &pool, Buffer *buf, int liveCo
     }
 }
 
+// Mirrors `kMaxHiZMipLevels` in c_chunk_occlusion_cull.{glsl,metal}; CPU
+// binds [0, mipCount) to real levels and fills the surplus with the coarsest.
+constexpr int kChunkOcclusionMaxHiZLevels = 12;
+
+// Per-chunk Hi-Z occlusion query (#1294 child 2/3). Mirrors `ChunkQuery` in
+// c_chunk_occlusion_cull.{glsl,metal} (std430, 32 B). Record 0 of the upload is
+// a header: `pixelMin_` carries (chunkCount, mipCount).
+struct ChunkOcclusionQuery {
+    ivec2 pixelMin_{0, 0};
+    ivec2 pixelMax_{0, 0};
+    std::int32_t encodedNearest_ = 0;
+    std::int32_t eligible_ = 0;
+    std::int32_t pad0_ = 0;
+    std::int32_t pad1_ = 0;
+};
+static_assert(
+    sizeof(ChunkOcclusionQuery) == 32, "ChunkOcclusionQuery must match the std430 ChunkQuery stride"
+);
+
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     ShaderProgram *compactProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
@@ -210,6 +230,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *chunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
     Buffer *compactedBuf_ = nullptr;
+    // Chunk-occlusion HZB pre-pass (#1294 child 2/3, off by default). The query
+    // buffer is bound transiently on kBufferIndex_CompactedVoxelIndices (25) for
+    // the pre-pass and the compacted-index buffer restored afterward — the Metal
+    // 0-30 buffer table has no free index. `chunkOcclusionScratch_` holds the
+    // per-frame CPU query upload (header at [0], one record per chunk after).
+    ShaderProgram *occlusionProgram_ = nullptr;
+    Buffer *chunkOcclusionQueryBuf_ = nullptr;
+    std::vector<ChunkOcclusionQuery> chunkOcclusionScratch_;
+    int maxPoolChunks_ = 0;
     // Per-axis store list-walk split (#1739). While the main canvas's per-axis
     // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
     // its visible-voxel list into three axis-keyed regions — each voxel landing
@@ -501,6 +530,90 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
     }
 
+    // Chunk-occlusion HZB pre-pass (#1294 child 2/3). Runs after the frustum
+    // ChunkVisibility mask + frame-data are uploaded and BEFORE the compact pass,
+    // so the compact reads the AND of frustum ∧ occlusion. Tests last frame's
+    // Hi-Z (#1798); only fully-on-screen NONE-mode cardinal chunks are eligible
+    // (shadow-feeder-safe by construction — off-screen casters fall outside the
+    // visible viewport and are never tested). Conservative: a footprint still
+    // seeing background (65535) keeps the chunk. Caller gates the whole pass off
+    // by default, so a default scene never reaches here.
+    void dispatchChunkOcclusion(
+        C_VoxelPool &voxelPool, const C_TriangleCanvasTextures &canvas, const IsoBounds2D &visibleVp
+    ) {
+        const int mipCount = canvas.hiZMipCount();
+        if (mipCount <= 0)
+            return;
+        const auto &bounds = voxelPool.getChunkBounds();
+        const int chunkCount = static_cast<int>(bounds.size());
+        if (chunkCount == 0)
+            return;
+        IR_ASSERT(
+            chunkCount <= maxPoolChunks_,
+            "dispatchChunkOcclusion: chunkCount {} exceeds query-buffer capacity {}",
+            chunkCount,
+            maxPoolChunks_
+        );
+
+        // iso -> canvas pixel exactly as stage 1 at NONE mode
+        // (effectiveTrixelSubdivisionScale == 1): canvasPixel =
+        // trixelCanvasOffsetZ1 + floor(cameraIso) + isoPos.
+        const ivec2 frameOffset =
+            frameData_.trixelCanvasOffsetZ1_ + ivec2(IRMath::floor(frameData_.cameraTrixelOffset_));
+
+        chunkOcclusionScratch_.assign(chunkCount + 1, ChunkOcclusionQuery{});
+        chunkOcclusionScratch_[0].pixelMin_ = ivec2(chunkCount, mipCount);
+
+        constexpr float kNoDepth = std::numeric_limits<float>::max();
+        for (int c = 0; c < chunkCount; ++c) {
+            const ChunkBounds &cb = bounds[c];
+            ChunkOcclusionQuery &q = chunkOcclusionScratch_[c + 1];
+            // Eligible only when the chunk has live voxels with a tracked depth
+            // AND its iso AABB sits fully inside the VISIBLE viewport — never an
+            // off-screen shadow feeder (which lives in the wider swept viewport).
+            const bool hasVoxels = cb.isoMin_.x <= cb.isoMax_.x && cb.minDepth_ < kNoDepth;
+            const bool fullyVisible =
+                hasVoxels && cb.isoMin_.x >= visibleVp.min_.x && cb.isoMin_.y >= visibleVp.min_.y &&
+                cb.isoMax_.x <= visibleVp.max_.x && cb.isoMax_.y <= visibleVp.max_.y;
+            if (fullyVisible) {
+                q.pixelMin_ = frameOffset + ivec2(IRMath::floor(cb.isoMin_));
+                q.pixelMax_ = frameOffset + ivec2(IRMath::ceil(cb.isoMax_));
+                // Encode the chunk's nearest depth like trixelDistances at NONE
+                // mode (encodeDepthWithFace: rawDepth * 4, face slot 0).
+                q.encodedNearest_ = static_cast<std::int32_t>(cb.minDepth_) * 4;
+                q.eligible_ = 1;
+            }
+        }
+
+        chunkOcclusionQueryBuf_->subData(
+            0,
+            chunkOcclusionScratch_.size() * sizeof(ChunkOcclusionQuery),
+            chunkOcclusionScratch_.data()
+        );
+
+        occlusionProgram_->use();
+        chunkOcclusionQueryBuf_->bindBase(
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_CompactedVoxelIndices
+        );
+        // chunkVisBuf_ stays bound at kBufferIndex_ChunkVisibility (24). Bind the
+        // Hi-Z downsampled levels [0, mipCount) as sampled images; surplus sampler
+        // slots get the coarsest level (never sampled — mip selection clamps).
+        for (int u = 0; u < kChunkOcclusionMaxHiZLevels; ++u) {
+            canvas.getHiZMip(IRMath::min(u, mipCount - 1))->bind(u);
+        }
+
+        // Matches local_size_x in c_chunk_occlusion_cull.{glsl,metal}.
+        constexpr int kOcclusionLocalSize = 64;
+        const ivec2 grid =
+            voxelDispatchGridForCount(IRMath::divCeil(chunkCount, kOcclusionLocalSize));
+        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+
+        // Restore the compacted-index buffer on slot 25 for the compact pass.
+        compactedBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
+    }
+
     void tick(
         IREntity::EntityId entity,
         C_VoxelPool &voxelPool,
@@ -641,6 +754,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         frameData_.visibleIsoBounds_ =
             ivec4(ivec2(IRMath::floor(visibleVp.min_)), ivec2(IRMath::ceil(visibleVp.max_)));
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
+
+        // Chunk-occlusion HZB pre-pass (#1294 child 2/3, off by default). Gated to
+        // the configuration whose distance encoding + shadow-feeder semantics are
+        // verified: enabled, NONE render mode (encodeDepthWithFace = rawDepth*4),
+        // cardinal yaw (!rotating → per-axis canvases are also inactive, so no
+        // split-list interaction), and a non-re-voxelize pool (the frustum mask is
+        // the real per-chunk mask, not the all-visible dest-cell scratch). Any
+        // other state keeps every chunk (conservative). The pass ANDs occluded
+        // chunks out of ChunkVisibility (24) before the compact pass reads it.
+        if (IRRender::getVoxelOcclusionCullEnabled() && frameData_.voxelRenderOptions_.x == 0 &&
+            !rotating && revoxBuffer == nullptr) {
+            dispatchChunkOcclusion(voxelPool, triangleCanvasTextures, visibleVp);
+        }
 
         // Voxel positions are uploaded via the pending-range queue populated by
         // `UPDATE_VOXEL_SET_CHILDREN` (`cpp-ecs.md` pending-list-flush rule).
@@ -881,6 +1007,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "SingleVoxel2",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage2, ShaderType::COMPUTE}}
         );
+        // Chunk-occlusion HZB pre-pass program (#1294 child 2/3).
+        IRRender::createNamedResource<ShaderProgram>(
+            "ChunkOcclusionProgram",
+            std::vector{ShaderStage{IRRender::kFileCompChunkOcclusionCull, ShaderType::COMPUTE}}
+        );
         // Detached re-voxelize GPU scatter compute + its per-frame params UBO
         // (#1556). The resident locals SSBO is owned per-canvas by
         // C_DetachedRevoxelizeBuffer (allocated lazily), so only the program and
@@ -995,6 +1126,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_IndirectDispatchParams
         );
 
+        // Chunk-occlusion query buffer (#1294 child 2/3): a 32-byte header record
+        // + one record per pool-chunk. Created on slot 25 like the per-axis
+        // buffers (bound there transiently by the pre-pass); the restore below
+        // returns slot 25 to the full compacted-index buffer for steady state.
+        IRRender::createNamedResource<Buffer>(
+            "ChunkOcclusionQueryBuffer",
+            nullptr,
+            static_cast<size_t>(maxVoxelPoolChunks + 1) * sizeof(ChunkOcclusionQuery),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBufferIndex_CompactedVoxelIndices
+        );
+
         SystemId systemId = registerSystem<
             VOXEL_TO_TRIXEL_STAGE_1,
             C_VoxelPool,
@@ -1021,6 +1165,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->perAxisIndirectBuf_ =
             IRRender::getNamedResource<Buffer>("PerAxisIndirectDispatchParams");
         p->perAxisRegionStride_ = regionStride;
+        p->occlusionProgram_ = IRRender::getNamedResource<ShaderProgram>("ChunkOcclusionProgram");
+        p->chunkOcclusionQueryBuf_ =
+            IRRender::getNamedResource<Buffer>("ChunkOcclusionQueryBuffer");
+        p->maxPoolChunks_ = maxVoxelPoolChunks;
         // The per-axis buffers were created with the 25/26 bind indices, which
         // displaced the full compact buffers' steady-state binding. Restore
         // 25/26 to the full buffers; the per-axis buffers are re-bound onto

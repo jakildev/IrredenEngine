@@ -15,8 +15,13 @@ the ECS surface.
   components can't drift from it; `detail::makeHiZMipChain` builds the
   downsampled R32I levels (conceptual level 0 is the distance texture).
   `COMPUTE_DISTANCE_HIZ` downsample-maxes the chain each frame for the
-  voxel occlusion cull (`docs/design/voxel-occlusion-culling.md`); the
-  chain is produced-only until the chunk-occlusion pre-pass consumes it.
+  voxel occlusion cull (`docs/design/voxel-occlusion-culling.md`). The
+  chunk-occlusion pre-pass (#1294 child 2/3) consumes it inside
+  `VOXEL_TO_TRIXEL_STAGE_1` — HZB-testing each pool-chunk's iso AABB against
+  last frame's chain and ANDing occluded chunks out of `ChunkVisibility`
+  before the compact pass — but is gated off by default
+  (`IRRender::setVoxelOcclusionCullEnabled`), so the chain stays produced-only
+  in the default pipeline.
 - `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
   for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
   Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated

@@ -343,6 +343,12 @@ float getSunAmbient();
 /// When false, sun face shading remains active but projected shadows are disabled.
 void setSunShadowsEnabled(bool enabled);
 bool getSunShadowsEnabled();
+/// Voxel-pool chunk-occlusion cull (#1294 child 2/3). Off by default — the
+/// HZB pre-pass is dispatched only when enabled, so the default pipeline is
+/// byte-identical to master. When on, pool-chunks proven fully covered by
+/// closer geometry (last frame's Hi-Z) are dropped before the compact pass.
+void setVoxelOcclusionCullEnabled(bool enabled);
+bool getVoxelOcclusionCullEnabled();
 /// When false, ambient occlusion crease darkening is skipped — the AO compute
 /// shader short-circuits with a constant 1.0 so the lighting pass treats AO
 /// as a no-op. Sun face shading and projected shadows are unaffected.
