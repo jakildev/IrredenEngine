@@ -1,131 +1,264 @@
-# Plan: fleet — scout/ingest/fleet-claim read the stale main-clone working tree
+# Plan: scout/ingest/fleet-claim run stale fleet scripts from the un-fast-forwarded main clone
 
 - **Issue:** #1810
 - **Model:** opus
 - **Date:** 2026-06-14
 - **Area:** scripts/fleet (one task; no stack)
 
-## Root cause (verified this iteration, mac host)
+> This plan supersedes the earlier #1821 plan that merged to master first.
+> It is the same deployment fix, kept as the canonical version because it
+> verified the actual code paths (with line citations), picks a specific
+> approach, and identifies a second root cause #1821 missed (the long-lived
+> scout daemon's import caching). The #1821 plan's one genuinely-distinct
+> contribution — a warning about adding new scout-imported python modules
+> — is folded into the Gotchas below so nothing is lost in the merge.
 
-The `~/bin/fleet-*` symlinks (`fleet-state-scout`, `fleet-claim`,
-`fleet-queue-ingest`, `fleet-dispatcher`, `fleet-up`) all resolve to the
-**main clone working tree** `~/src/IrredenEngine/scripts/fleet/`. scout and
-fleet-claim import the `blocked_by` parser from `FLEET_LIB_DIR` = the script's
-own (resolved-symlink) directory = that same tree
-(`fleet-state-scout:37,40`; `fleet-claim:110,119,507,513`). When the main
-clone's checked-out `master` lags `origin/master`, the scripts **and** their
-python modules (`fleet_blocked_by.py`, added by merged #1783) are stale or
-physically absent — so the merged parser fix never runs.
+## Scope
 
-Decisive refinement: issue **bodies are read live via `gh issue view --json
-body`** (`fleet-claim:452,3549`; scout fetches via gh) — the *data* is already
-fresh. **Only the parser/script CODE is stale.** => the issue body's option
-(b) ("read bodies from origin/master refs") is a misdiagnosis; the fix must
-refresh the **code**, i.e. advance the clone.
+Make `fleet-state-scout`, `fleet-queue-ingest`, and `fleet-claim` always run
+the **merged** version of the fleet scripts (and the shared parser they
+import), so a fleet-script fix that lands on `origin/master` takes effect on
+the next scout cycle **without a manual pull** — and, when the clone is
+genuinely stuck, fails **loud** instead of silently false-freeing a
+blocked task.
 
-Why it persists: `fleet-up` runs `git -C $ENGINE fetch origin` (`fleet-up:435`)
-and resets the **worktrees** to origin/master (`fleet-up:717-719`), but
-**never fast-forwards the main clone's own checked-out `master`**. Nothing
-else does either (`grep -rE 'pull --ff-only|merge --ff-only' scripts/fleet`
-→ none). So the clone stays pinned wherever last manually pulled (observed
-`22102ab6`, 20 behind) and re-drifts as new PRs merge mid-session. The scout's
-own note (`fleet-state-scout:1068`) forbids per-tick fetches and assumes a
-"normalize bootstrap" pull that, for the main clone, **does not exist** — that
-is the gap.
+This is the active re-fix for fix-006 (`state-cache-lag`), the root cause
+behind ~70/72 fleet-feedback entries in the last review window. It is **not**
+another `blocked_by` parser tweak — the parser fix (#1783 / `ae6a5d28`) is
+correct but inert.
 
-## Approach (one opus task)
+## Verified current state (confirmed this iteration, linux host)
 
-A guarded, rate-limited fast-forward of the main clone + a fail-loud freshness
-assertion on the claim side + a fetch-free freshness annotation in state.json.
+Investigated the actual code paths rather than trusting the issue body's
+"reads the stale working tree" framing — the real mechanism is subtler:
 
-1. **`advance_main_clone` guarded helper** — new sourced bash helper
-   `scripts/fleet/fleet-clone-freshness.sh` (sourced by-dir, the same way
-   `fleet-common.sh` resolves through a ~/bin symlink). `advance_main_clone <repo_root>`:
-   - rate-limit: skip the fetch if `~/.fleet/state/.<repo>-advanced` sentinel
-     is < 60s old; else `git -C <root> fetch origin master --quiet` + touch it.
-   - guard (ALL required): clone is (a) on branch `master`,
-     (b) `git status --porcelain` empty, (c) `master` strictly behind AND a
-     pure ancestor of `origin/master` (`merge-base --is-ancestor master
-     origin/master` true and heads differ). Then `git merge --ff-only
-     origin/master` — never a checkout-switch, never `reset --hard`.
-   - on any guard miss (off-master / dirty / diverged): skip + loud `>&2`
-     warning, do NOT mutate. Mirrors the `reset_worktree` dirty-guard idiom
-     (`fleet-up:707-714`).
-   - Wire into **fleet-up startup** (right after the `$ENGINE`/`$GAME` fetches
-     at :435 / :466) AND the **dispatcher main loop** (once per pass — this is
-     the home that fixes mid-session re-drift; fleet-up alone is insufficient
-     because the issue observed drift across multiple scout cycles in one
-     session).
-2. **fleet-claim freshness guard (fail-loud)** — in the blocker-gate path
-   (around the `parse_blocked_by` import at `fleet-claim:507-521`), before
-   trusting the parser, compare `git -C $ENGINE rev-parse master` vs
-   `rev-parse origin/master` (**no fetch** — uses the ref fleet-up/dispatcher
-   already fetched). If `master` is strictly behind origin/master, **refuse
-   the claim** with `fleet-claim: main clone is N commits behind origin/master
-   (stale parser) — run 'git -C ~/src/IrredenEngine merge --ff-only
-   origin/master' or fleet-up` and exit non-zero. Converts the silent
-   false-grant into a loud refusal (the "fail loud instead of false-free"
-   requirement).
-3. **state.json freshness annotation (scout)** — scout emits
-   `clone_freshness: {head, origin_master_head, behind: N, fresh: bool}` using
-   **rev-parse only, no fetch** (respects the no-fetch-in-hot-path rule). Lets
-   readers/dispatcher see staleness; dispatcher logs a warning when
-   `fresh==false` persists.
+1. **Issue/PR *data* is already read live via the `gh` API**, not from the
+   local working tree. `fleet-state-scout` (`fetch_prs` / `fetch_issues_by_label`,
+   ~L127–155), `fleet-queue-ingest` (`gh issue view`, ~L289–305), and
+   `fleet-claim` (`check_blockers` probes blockers live via `gh issue view`,
+   ~L540–563) all hit GitHub. So the issue body's "(b) read state from
+   `origin/master` refs" is moot for the *data*.
+
+2. **The stale thing is the script *code itself*.** All three import the
+   shared parser as an on-disk Python module:
+   - scout: `scripts/fleet/fleet-state-scout:37–40`
+     `sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))` then
+     `from fleet_blocked_by import parse_blocked_by, is_no_blocker_value`.
+   - ingest: `scripts/fleet/fleet-queue-ingest:195–202`
+     (`from fleet_blocked_by import blocker_refs, has_blocked_by_field`).
+   - claim: `scripts/fleet/fleet-claim:504–573`
+     (`sys.path.insert(0, os.environ["FLEET_LIB_DIR"])` →
+     `from fleet_blocked_by import parse_blocked_by, blocker_refs`).
+   The path resolves through the `~/bin/fleet-*` symlinks, which
+   `install.sh` deliberately points at the **main clone**
+   `~/src/IrredenEngine/scripts/fleet/` (install.sh:57–79 — worktrees get
+   reset, so the main clone is the stable target). `fleet-claim:108–112`
+   resolves `FLEET_LIB_DIR` by following that symlink.
+
+3. **Nothing fast-forwards the main clone.** `fleet-up` Step 3d
+   (fleet-up:1027–1063) `nohup`s the scout daemon with no preceding
+   `git pull`/`fetch` on the main clone (it fetches *worktrees* at
+   fleet-up:435–436/465–466, not the main clone). So the main clone's
+   `master` only advances if a human/other op happens to pull it. On the
+   mac host it sat 20 commits / >1 day behind (issue thread); on this
+   linux host it was 1 behind / clean / on `master` at planning time —
+   i.e. host-dependent and chronic.
+
+4. **Second, independent gap — daemon import caching.** scout is a
+   long-running daemon: `main()` loops `tick_once()` every 30s
+   (`POLL_SECONDS_DEFAULT=30`, fleet-state-scout:75, main loop ~2169–2188).
+   It imports `fleet_blocked_by` **once at module load**. So even after the
+   on-disk file is fast-forwarded, the *running* scout keeps the old parser
+   until the process is restarted. A naive "just `git pull` the clone" fix
+   would silently miss this — the file would be fresh but the daemon
+   wouldn't use it. (ingest and claim are short-lived — relaunched per
+   scout tick / per worker iteration — so they re-import fresh code as soon
+   as the on-disk file advances; only scout needs an explicit reload.)
+
+## Approach (one approach, picked)
+
+Guarded periodic fast-forward of the main clone in the scout loop +
+scout self-`os.execv` when the scripts change + a no-network freshness
+assertion in the short-lived consumers. This realizes the issue's
+direction (a) (`git pull --ff-only` before scout cycles) made **automatic
+and periodic** (so it can't "re-drift" the way a manual pull does — the
+concern raised by worker-1/worker-2 in the thread), and adds the
+fail-loud assertion the human asked for.
+
+1. **New shared freshness helper** (single source of truth for the git
+   guards; importable + tiny CLI). See the Gotchas note on module
+   resolution before deciding the file form — `scripts/fleet/fleet_freshness.py`
+   (python, beside the existing `fleet_blocked_by.py`) is the default; a
+   sourced bash `fleet-clone-freshness.sh` (the #1821 form) is the
+   zero-new-python-import fallback. Either way it exposes:
+   - `refresh_main_clone(engine: Path) -> dict` — guarded ff:
+     - SKIP (return `{"skipped": "off-master:<ref>"}`) unless
+       `git -C engine symbolic-ref --short HEAD` == `master` (not detached,
+       not a feature branch).
+     - SKIP (`{"skipped": "dirty"}`) if `git -C engine status --porcelain`
+       is non-empty.
+     - `git -C engine fetch origin master --quiet`.
+     - `old = HEAD`, `new = origin/master`. If equal → `{"advanced": False}`.
+     - SKIP (`{"skipped": "diverged"}`) unless
+       `git -C engine merge-base --is-ancestor HEAD origin/master` (true
+       fast-forward only — never `reset --hard`, which would nuke a
+       checked-out branch's work).
+     - `git -C engine merge --ff-only origin/master`.
+     - `scripts_changed = not (git -C engine diff --quiet old new -- scripts/fleet)`.
+     - return `{"advanced": True, "old": old, "new": new, "scripts_changed": scripts_changed}`.
+   - `assert_fresh(engine: Path) -> (bool, reason)` — **no network**:
+     `git -C engine merge-base --is-ancestor origin/master HEAD`. False ⇒
+     HEAD is behind the last-fetched `origin/master` ⇒ stale (the bug).
+     Compares against the *locally-known* ref, so it can't deadlock on a
+     network outage and won't false-nag during the normal fetch-lag window
+     (a just-merged commit not yet fetched still leaves HEAD == local
+     origin/master).
+   - `__main__`: `--refresh` (run `refresh_main_clone`, print JSON, exit 0)
+     and `--assert` (exit non-zero + stderr if stale) so bash callers reuse
+     the same guards.
+
+2. **scout (`fleet-state-scout`)** — `from fleet_freshness import refresh_main_clone`
+   beside the other imports (~L40). In `main()`:
+   - Before the first `tick_once()` and then every `K` ticks (K=4 ⇒ ~2 min,
+     to bound `git fetch` cost vs. the 30s tick), call
+     `refresh_main_clone(ENGINE)`.
+   - On `scripts_changed` only, `log()` a loud
+     `re-exec: scripts advanced <old>..<new>` line and
+     `os.execv(sys.executable, [sys.executable, os.path.realpath(__file__)] + sys.argv[1:])`.
+     Re-exec only when `scripts/fleet` actually changed — a plain `advanced`
+     with no script delta (doc PRs, game merges, etc.) must NOT re-exec, or
+     the daemon needlessly restarts (and drops ~30s of cadence) every time
+     master moves. Re-exec keeps the same PID (so `scout.pid` stays valid)
+     and happens **between ticks** (state.json is written atomically each
+     tick via `write_atomic`, so no torn state). `os.path.realpath(__file__)`
+     resolves the symlinked launch to the now-updated main-clone file.
+
+3. **fleet-up (`Step 3d`, ~L1040)** — call the helper's `--refresh` CLI
+   once **before** `nohup`ing scout, so the daemon starts on fresh code:
+   `python3 "$ENGINE/scripts/fleet/fleet_freshness.py" --refresh || true`
+   (best-effort; the periodic in-loop refresh covers steady state).
+   Optionally also call it once per `fleet-dispatcher` main-loop pass (the
+   #1821 placement) as defense-in-depth — harmless if scout already
+   advanced the clone, and it covers the window if the scout daemon is
+   wedged. Not required for the fix; scout's periodic refresh is the
+   primary home.
+
+4. **fleet-claim (`check_blockers` inline python, ~L504)** — call
+   `assert_fresh`. If stale, **refuse the claim** (exit non-zero) with a
+   loud diagnostic (`STALE FLEET SCRIPTS — refusing claim to avoid
+   false-grant; scout will self-refresh, retry shortly`). Refusing (not
+   false-granting) is the safe direction; staleness is transient
+   (≤ refresh cadence) so this self-clears.
+
+5. **fleet-queue-ingest (`STAMP_PY`, ~L195)** — call `assert_fresh`. If
+   stale, **skip** the blocked/unblock label pass this run and log loud
+   (don't stamp potentially-wrong `fleet:blocked` state). Normal case:
+   scout has already refreshed before launching ingest, so it's fresh.
+
+6. **Tests** — add `scripts/fleet/tests/` coverage for the freshness helper:
+   off-master → skip, dirty → skip, behind+clean+on-master → advance,
+   diverged → skip, up-to-date → no-op. Use a throwaway temp git repo with
+   a fake `origin`.
 
 ## Affected files
-- `scripts/fleet/fleet-clone-freshness.sh` — NEW guarded `advance_main_clone` + `assert_clone_fresh`.
-- `scripts/fleet/fleet-up` — source helper; advance after the engine/game fetches (:435/:466).
-- `scripts/fleet/fleet-dispatcher` — source helper; periodic advance in the main loop.
-- `scripts/fleet/fleet-claim` — fail-loud freshness guard in the blocker-gate path (~:507-521).
-- `scripts/fleet/fleet-state-scout` — emit `clone_freshness` (rev-parse only).
-- `scripts/fleet/install.sh` — symlink the new helper into ~/bin (by-dir source resolves through the symlink, like fleet-common.sh).
+
+- `scripts/fleet/fleet_freshness.py` — **NEW**: `refresh_main_clone`,
+  `assert_fresh`, `--refresh`/`--assert` CLI. (If the bash-helper fallback
+  is chosen instead, this is `scripts/fleet/fleet-clone-freshness.sh` +
+  an install.sh symlink — see Gotchas.)
+- `scripts/fleet/fleet-state-scout` — import + periodic guarded refresh +
+  `os.execv` re-exec in `main()` (on `scripts_changed` only); one refresh
+  before the first tick.
+- `scripts/fleet/fleet-up` — one-shot `--refresh` before launching scout
+  (Step 3d, ~L1040).
+- `scripts/fleet/fleet-claim` — `assert_fresh` in `check_blockers`; refuse
+  claim (loud) when stale.
+- `scripts/fleet/fleet-queue-ingest` — `assert_fresh` in `STAMP_PY`; skip
+  label pass + log loud when stale.
+- `scripts/fleet/fleet-dispatcher` — (optional) per-pass `--refresh` as
+  defense-in-depth.
+- `scripts/fleet/tests/` — freshness guard tests.
 
 ## Acceptance criteria
-- After a fleet-script fix merges to origin/master, the next dispatcher pass
-  (or fleet-up) advances the main clone: `git -C ~/src/IrredenEngine
-  merge-base --is-ancestor <fix-sha> master` → true with no manual pull.
-- A genuinely-blocked task with a non-bold `Blocked by: #N` line (e.g. #174
-  Phase-E children) projects `blocked=true`, and `fleet-claim` refuses the
-  claim — because the parser is now fresh, or, if somehow still stale, because
-  the fail-loud guard fires.
-- Guard safety: off-master / dirty / diverged main clone → advance skipped
-  with a warning, working tree untouched (no clobber of a checked-out branch).
-- state.json carries `clone_freshness.fresh`.
+
+- After a fleet-script fix merges to `origin/master`, within one refresh
+  cadence (~2 min) the running scout re-execs onto the new code with no
+  manual pull. Verify:
+  `git -C ~/src/IrredenEngine merge-base --is-ancestor <fix-sha> HEAD` → true,
+  and `scout.log` shows the `re-exec: scripts advanced …` line.
+- A genuinely-blocked task whose body carries the **non-bold / inline**
+  `Blocked by: #N` prose form (the coverage #1783 added) projects
+  `blocked=true` / `blocked_by=#N` in `state.json`, and
+  `fleet-claim … claim <N>` refuses.
+- The guarded refresh **skips loudly** (no error, logged reason) when the
+  main clone is off-`master`, detached, or dirty — never disrupts a
+  checked-out branch (no `reset --hard`, ff-only).
+- A plain master advance with **no** `scripts/fleet` change does **not**
+  trigger a scout re-exec (the nit: re-exec gates on `scripts_changed`).
+- Freshness helper tests pass (the 5 guard cases above).
 
 ## Gotchas
-- **Module-resolution fragility (#1750/#1578):** do NOT add a new
-  *scout-imported python module* — the scout resolves its lib dir via
-  abspath-of-symlink and a new module can silently fail to resolve. Keep the
-  scout's freshness read as a tiny inline `git rev-parse` (≤5 lines), not an
-  import. Bash consumers share `fleet-clone-freshness.sh` (sourced by-dir).
-- **install.sh must symlink the new helper** into ~/bin — all fleet scripts
-  are individually symlinked; a sibling sourced via `dirname` only resolves if
-  it is symlinked there too (see the fleet-common.sh header).
-- **Bootstrap chicken-and-egg:** the fix lives in scripts that themselves run
-  from the stale clone, so deploying it needs ONE manual `git -C
-  ~/src/IrredenEngine merge --ff-only origin/master` (or fleet-up restart).
-  Self-healing thereafter — call this out in the PR body.
-- **Shared-checkout hazard** (`feedback_main_worktree_shared`): the main clone
-  is shared; agents may rarely check out a branch there. The
-  off-master/dirty/diverged guard is mandatory — only `merge --ff-only`, only
-  when clean + on-master + pure-ancestor.
-- **No per-tick fetches in the scout** (`fleet-state-scout:1068`): the advance
-  lives in fleet-up + dispatcher (periodic), never the scout cache regen; the
-  scout does fetch-free rev-parse only.
 
-## Cross-system audit (consumers of the stale-clone mechanism)
-All run from the main clone via ~/bin symlinks and depend on fresh parser code:
-- `fleet-state-scout` — blocked/owner/stackable projection (parser import :40).
-- `fleet-claim` — blocker-gate false-grant (parser import :513).
-- `fleet-queue-ingest` — fleet:queued stamping gate (same parser family).
-- `fleet-dispatcher` — consumes the scout projection; new home for the periodic advance.
-All are fixed transitively by advancing the clone; fleet-claim additionally
-gets the explicit fail-loud guard as defense-in-depth.
+- **Daemon import caching is the easy thing to miss.** Fast-forwarding the
+  file is necessary but not sufficient for scout — it must `os.execv` to
+  reload. The whole bug recurred precisely because the merged parser file
+  existed somewhere but the *running* consumer didn't use it. Note the
+  re-exec reloads the **existing** `fleet_blocked_by` import (the real
+  daemon-staleness fix) and is independent of where the new freshness logic
+  lives — it works even if the freshness helper is the bash form.
+- **New scout-imported python module — resolution fragility (#1821's
+  warning, #1750/#1578).** The #1821 plan cautioned against adding a *new*
+  scout-imported python module because scout resolves its lib dir via
+  abspath-of-symlink and `FLEET_LIB_DIR` has mis-resolved before (#1578).
+  Reconciliation: scout **already** imports `fleet_blocked_by` from that
+  same dir successfully, so a sibling `fleet_freshness.py` placed beside it
+  resolves through the *identical* mechanism — it shares the existing
+  failure mode rather than adding a new one (a FLEET_LIB_DIR mis-resolution
+  would break `fleet_blocked_by` too, independent of module count). So the
+  python form is acceptable **iff** the new file lives in the same
+  `scripts/fleet/` dir as `fleet_blocked_by.py`. If the implementer wants
+  zero new python imports in the daemon, fall back to the #1821 bash form
+  (`fleet-clone-freshness.sh`, sourced by-dir like `fleet-common.sh`, with
+  an `install.sh` symlink) for the shared ff/assert logic — the os.execv
+  re-exec stays either way.
+- **Edit in your worktree, not the main clone.** `fleet-guard-worktree-edit`
+  denies writes escaping the worktree root, and editing the main clone's
+  `scripts/fleet/` directly would be live-editing the running fleet. Work
+  in `…/.claude/worktrees/worker-N/scripts/fleet/` (relative paths — cf.
+  the worktree absolute-path trap).
+- **Bootstrap chicken-and-egg.** The fix lives in scripts that themselves
+  run from the stale clone, so deploying it needs ONE manual `git -C
+  ~/src/IrredenEngine merge --ff-only origin/master` (or a fleet-up restart)
+  the first time. Self-healing thereafter — call this out in the PR body.
+- **Don't fetch every 30s tick** — gate to every K ticks. A quiet
+  single-ref fetch is cheap but per-tick is wasteful.
+- **ff-only, never reset.** The main clone is a *shared* checkout (issue
+  body: "agents switch branches in" it). Only advance when on a clean
+  `master` and HEAD is a strict ancestor of `origin/master`.
+- **`assert_fresh` is no-network on purpose** — it compares against the
+  last-fetched `origin/master`, so it can't deadlock the fleet during a
+  GitHub outage and won't nag during normal fetch lag.
+- **Residual / future hardening (out of scope here):** if the main clone
+  turns out to be left off-`master` for long stretches (rare — workers use
+  worktrees), the guarded ff will keep skipping. The fully robust fix would
+  materialize `scripts/fleet/` from `origin/master` into a dedicated,
+  never-checked-out cache dir and point `FLEET_LIB_DIR` there (install.sh
+  symlink retarget). Not needed now; the freshness assertion makes the
+  off-master case fail loud rather than silent. Note it if the skip-loud
+  path starts firing in feedback.
+- **One task, not a stack.** All edits live in `scripts/fleet/` and are
+  tightly coupled (new helper + 4–5 consumers); a partial landing doesn't
+  fix the bug, so splitting only adds rebase latency.
 
 ## Sibling / in-flight reconciliation
-- #1749 / #1783 (blocked_by parser, MERGED) — this is the **deployment**
-  complement, not a duplicate; the parser is correct but inert.
-- #1750 (state.json atomicity) and #1751 (stackable base guard) — distinct
-  families per the issue body; no surface overlap.
-- No open PR touches the fleet-up / dispatcher / fleet-claim clone-advance
-  surface (engine PRs #1742, #1811 are render-only).
+
+- **#1821 (plan, MERGED first)** — same fix, less detail; this plan
+  supersedes it (the merged-plan file now carries this content). Its one
+  distinct contribution (the new-python-module fragility warning) is folded
+  into the Gotchas above. If a separate #1822 plan PR is still open for
+  #1810, it is now redundant with this — flag for the human/merger.
+- **#1749 / #1783 (blocked_by parser, MERGED)** — this is the **deployment**
+  complement, not a duplicate; the parser is correct but inert until the
+  clone advances.
+- **#1750 (state.json atomicity) and #1751 (stackable base guard)** —
+  distinct families per the issue body; no surface overlap.
