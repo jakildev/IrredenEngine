@@ -45,11 +45,14 @@ Grounded in `engine/entity`, `engine/system`, `engine/world`:
 - The device/context lives on the RenderManager (manager state), NOT as entities (entity
   `CLAUDE.md` "Use the API for what it's for") → it survives a partial entity teardown
   automatically.
-- Render-*bearing* entities free their GPU resources in component `onDestroy()` — e.g.
+- Most render-bearing components free their GPU resources in `onDestroy()` — e.g.
   `C_GPUParticlePool::onDestroy()` (`component_gpu_particle_pool.hpp:79`),
   `C_VoxelSetNew::onDestroy()` → `VoxelPool::deallocate` (`component_voxel_set.hpp:288`),
   the canvas texture/shadow/AO/light-volume components. Destroying a scene's render entities
   frees their GPU memory with no extra code, idempotently (guards like `numVoxels_ > 0`).
+  **Exception: `C_Sprite` (`component_sprite.hpp:37`) holds `textureHandle_: IRRender::ResourceId`
+  with no `onDestroy()`** — sprite entities in gameplay scenes leak texture ResourceIds on reset.
+  Audit for additional missing cases at implementation time.
 
 **Lua surface**
 - `IRSystem.registerSystem{...}` / `IRSystem.registerPipeline(event,{ids})` exposed —
@@ -71,6 +74,11 @@ Steps, in order:
 1. **`C_Persistent{}` marker** — new empty tag component (place alongside existing common
    markers, e.g. `engine/prefabs/irreden/common/`). Opt-out: an entity carrying it is spared
    by reset. Singletons are spared automatically and need no tag.
+   **RenderManager must stamp `C_Persistent{}` on each of its 4 canvas entities**
+   (`m_mainFramebuffer`, `m_mainCanvas`, `m_backgroundCanvas`, `m_guiCanvas`, per
+   `engine/render/src/render_manager.cpp:136-141`) immediately after creating them at startup.
+   These are non-singleton entities; without the tag they are destroyed on the first scene reset,
+   breaking the renderer.
 
 2. **Core primitive in `EntityManager`** — `destroyAllExceptPreserved()` (working name; e.g.
    `resetGameplayEntities`):
@@ -91,6 +99,9 @@ Steps, in order:
    {})` convenience (`system_manager.hpp`/`.cpp`); expose `IRSystem::clearPipeline`. Document
    that scene swap = `clearPipeline`/`registerPipeline` per event. Systems persisting in
    memory is acceptable; the scene machine just re-points pipelines.
+   After composing the new scene's pipeline, call `revalidatePipelines()` — `validateAllPipelineGroups()`
+   runs only at `World::start()` (`world.cpp:268-277`); a mid-run `registerPipeline` skips
+   revalidation and multi-system group ordering may be silently wrong.
 
 5. **Lua surface** — extend `lua_pipeline_bindings.hpp`: `IRWorld.resetGameplay()` (or
    `IREntity.resetGameplay()`) + `IRSystem.clearPipeline(event)`. No new enum required
@@ -119,6 +130,7 @@ Steps, in order:
 - `engine/system/include/irreden/ir_system.hpp` — `IRSystem::clearPipeline` facade.
 - `engine/script/include/irreden/script/lua_pipeline_bindings.hpp` — `IRWorld.resetGameplay()`
   + `IRSystem.clearPipeline`.
+- `engine/render/src/render_manager.cpp` — stamp `C_Persistent{}` on the 4 canvas entities.
 - `engine/entity/CLAUDE.md` + `engine/system/CLAUDE.md` — document the primitive, preserve-set
   semantics, ordering contract, dangling-id hazard.
 - `creations/demos/scene_reset/` (new) — demo + idempotency assertions; CMake + pipeline
@@ -152,10 +164,17 @@ Steps, in order:
   the Lua VM isn't reset). Keep per-scene state in components (destroyed on reset), not in
   system statics or Lua globals; the scene machine owns its own Lua state.
 - **Which engine entities need `C_Persistent`?** Any engine-created *non-singleton* entity
-  that must survive (e.g. a default render/canvas entity, if one exists outside the singleton
-  set) must be tagged, or it is torn down. Verify during implementation by asserting the
-  engine still renders after a reset (acceptance covers this) — verification within the chosen
-  approach, not a deferred design choice.
+  that must survive must be tagged, or it is torn down. **Concretely: the RenderManager's 4
+  canvas entities (`m_mainFramebuffer`, `m_mainCanvas`, `m_backgroundCanvas`, `m_guiCanvas`,
+  `render_manager.cpp:136-141`) are non-singleton and must be stamped `C_Persistent{}` at
+  construction** — without the tag they are destroyed on the first scene reset, breaking the
+  renderer. Verify during implementation by asserting the engine still renders after a reset.
+- **`m_namedEntities` must be pruned after reset.** `destroyEntity()` does not remove entries
+  from `EntityManager::m_namedEntities` (`entity_manager.cpp:179-188`). After
+  `destroyAllExceptPreserved()`, any gameplay entity registered via `setName("camera")` retains
+  a stale name→id entry; a subsequent `getEntityByName("camera")` asserts at line 187 on the
+  dead id. After the destroy loop, erase every entry in `m_namedEntities` whose id no longer
+  exists in `m_entityIndex`.
 - **Idempotency measurement.** Entity ids never recycle (atomic counter), so don't assert on
   id *values* — assert on live-entity *count* and on resource counters (VoxelPool) returning
   to baseline.
