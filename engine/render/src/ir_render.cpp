@@ -182,6 +182,10 @@ void setCameraPosition2DIso(vec2 pos) {
     getRenderManager().setCameraPosition2DIso(pos);
 }
 
+void setCameraVisualYaw(float degrees) {
+    IRPrefab::Camera::setYaw(degrees * IRMath::kPi / 180.0f);
+}
+
 void setSubdivisionMode(SubdivisionMode mode) {
     getRenderManager().setSubdivisionMode(mode);
 }
