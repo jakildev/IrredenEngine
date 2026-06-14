@@ -125,7 +125,8 @@ NOT the low-level device/decoder API. Record in `engine/audio/CLAUDE.md`:
 - `engine/script/include/irreden/script/lua_audio_bindings.hpp` (new) — `bindAudioApi`.
 - `engine/script/src/lua_script.cpp` — register `bindLuaAudio()` (`:644`).
 - `engine/audio/CLAUDE.md` — library decision + rationale + the two documented seams; flip the "MIDI-only" scope note.
-- `creations/demos/audio_playback/` (new) — Lua demo + committed wav/ogg assets + CMakeLists.
+- `creations/demos/audio_playback/CMakeLists.txt` (new) — demo build target.
+- `creations/CMakeLists.txt` (or equivalent demo-list file) — register the new demo so it builds with the rest of the creation suite.
 - `test/audio/audio_playback_test.cpp` (optional) — headless load/handle/bus-volume unit test; gate device-dependent bits.
 
 ## Acceptance criteria
@@ -152,5 +153,6 @@ NOT the low-level device/decoder API. Record in `engine/audio/CLAUDE.md`:
 - **Headless CI:** opening a real device can fail on a headless box; guard the
   demo/test so a no-device environment degrades gracefully (log + skip) rather than
   asserting — mirror the MIDI "absent port" non-asserting goal (#1503).
+- **Looped sound handle retention:** `playSound`/`playMusic` with `loop=true` return a `SoundHandle` the caller MUST retain to allow stop/fade; a lost handle cannot be stopped until `ma_engine_uninit` at teardown. Document in the API header and Lua binding comments.
 - **Asset licensing:** the committed demo `.wav`/`.ogg` must be license-clean
   (CC0 / self-generated). A ~0.2 s blip + a few-second loop is enough.
