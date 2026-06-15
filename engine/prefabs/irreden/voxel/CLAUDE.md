@@ -107,7 +107,11 @@ for single voxels and particles.
   `IRPrefab::GridRotation::worldCellForGridVoxel` (forward; identity arm +
   creation-facing) and `sourceCellForWorldCell` (inverse) in
   `grid_rotation.hpp` — call directly from creations that need the same
-  mapping outside the pipeline. Creations that spawn entities with
+  mapping outside the pipeline. Both helpers live outside the system header
+  specifically so `test/ecs/grid_rotation_test.cpp` can exercise the math
+  headlessly — when you add a public function here, extend that test file in
+  the same change (the scaffolding already exists; a new function shipping
+  untested is a review miss, #1732). Creations that spawn entities with
   `C_RotationMode::GRID` must register `REBUILD_GRID_VOXELS` in their
   UPDATE pipeline after `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces
   silent no-ops.
@@ -158,6 +162,17 @@ for single voxels and particles.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**
 - A WIP scene/skeleton hierarchy traversal system is present but incomplete.
+
+**Shadow-path invariant.** Any UPDATE-pipeline system that writes
+`pool.getPositionGlobals()` (the source buffer for both
+`VOXEL_TO_TRIXEL_STAGE_1` and the shadow bake) must gate on
+`IRPrefab::SunShadow::shadowFeederCullViewport`, **not**
+`cull.isoViewport(kCullChunkMargin)`. The shadow bake reads positions over
+the sun-widened viewport; the narrower render viewport silently drops
+off-screen casters' position updates, freezing their cast-shadow positions.
+`REBUILD_GRID_VOXELS` and `UPDATE_VOXEL_SET_CHILDREN` both use
+`shadowFeederCullViewport` for this reason — port the wider gate, not the
+render gate, into any new position-writing system (#1764).
 
 ## Prefab.spawn voxel_ref → ECS components
 
