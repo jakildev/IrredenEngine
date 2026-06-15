@@ -77,7 +77,7 @@ kernel void c_compute_voxel_ao(
     int rawDepth = (frameData.perAxisRoute != 0) ? (encoded >> 10) : (encoded >> 2);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-    // face-locally (perAxisRoute != 0), recovered via faceOriginFromInPlane; the
+    // face-locally (perAxisRoute != 0), recovered via isoPixelToPos3D; the
     // single canvas uses the cardinal-snap reconstruction. Mirrors GLSL.
     bool perAxis = frameData.perAxisRoute != 0;
     float3 pos3D = perAxis

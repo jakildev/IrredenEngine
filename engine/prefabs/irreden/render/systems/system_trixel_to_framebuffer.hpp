@@ -160,10 +160,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // `pos3DtoDistance`, so each non-empty cell is the occlusion winner on its
     // view ray). This pass forward-scatters each non-empty cell as its true
     // deformed face quad: instanced over the canvas grid (one instance per
-    // cell), the vertex shader recovers the face's world origin from
-    // (cell - perAxisBase, storedDepth>>2, visualYaw) — closed form, the
-    // denominator 2cos(yaw)+1 is the design doc's depth-monotonicity quantity,
-    // positive across the ±45° bracket — then projects the four cube-face
+    // cell), the vertex shader recovers the face's world origin from the
+    // un-yawed (cardinal) iso pixel `isoPixelToPos3D(cell - perAxisBase,
+    // storedDepth>>10)` — an exact integer inverse, non-singular at every yaw
+    // (the index is un-yawed) — then projects the four cube-face
     // corners with pos3DtoPos2DIsoYawed (which IS P(θ)·corner, the deform
     // implicit). The framebuffer GL_LESS depth test (enabled on bind) composites
     // the three canvases per pixel. No gather / parity inverse ⇒ the #1256
@@ -215,7 +215,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
         // perAxisBase MUST match the store's trixelFrameOffset, which uses the
         // #1431-capped density (in voxelRenderOptions.y) — so the scatter's
-        // face-origin recovery (faceLocalAnchor/faceLocalBase) is bit-consistent
+        // face-origin recovery (isoPixelToPos3D) is bit-consistent
         // with where the cells were written. NONE mode stores at world scale
         // (effectiveTrixelSubdivisionScale == 1 when renderMode == NONE).
         const int cappedDensity = IRPrefab::PerAxisCanvas::subdivisionDensity();

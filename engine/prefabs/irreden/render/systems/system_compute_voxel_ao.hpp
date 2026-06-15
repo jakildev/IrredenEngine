@@ -116,7 +116,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     // shared UBO's perAxisRoute selector so the shader reconstructs world-pos
     // face-locally (perAxisCellToWorld3D), then restores it to 0 so downstream
     // single-canvas passes are unaffected. The world AO band is per-axis-correct
-    // because the canvas is a same-axis in-plane lattice.
+    // because the canvas is a same-axis cardinal-iso lattice.
     void dispatchPerAxisAO(
         C_PerAxisTrixelCanvases &axes,
         const C_TriangleCanvasTextures &mainTextures,

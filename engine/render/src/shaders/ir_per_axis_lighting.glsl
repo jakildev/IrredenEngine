@@ -5,9 +5,8 @@
 // instruction scheduling and drift a few SDF-edge pixels at the cardinal fast
 // path (breaking the residualYaw == 0 byte-identity guarantee). Only the four
 // lighting compute shaders include this file, AFTER ir_iso_common.glsl (whose
-// helpers — trixelFrameOffset, trixelOriginOffsetZ1, faceLocalAnchor,
-// faceLocalBase, faceOriginFromInPlane, effectiveTrixelSubdivisionScale — this
-// builds on).
+// helpers — trixelFrameOffset, trixelOriginOffsetZ1, isoPixelToPos3D,
+// effectiveTrixelSubdivisionScale — this builds on).
 
 // Reconstruct the world-unit surface position of a per-axis trixel canvas cell.
 // The per-axis store (#1458: base-resolution encoding) keys each cell by its
