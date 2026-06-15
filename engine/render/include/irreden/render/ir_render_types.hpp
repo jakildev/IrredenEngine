@@ -181,6 +181,11 @@ static_assert(
     "or resize would corrupt the scatter UBO with no compile diagnostic"
 );
 
+/// Multiplier in the @c encodeDepthWithFace convention (d·4 + face), shared by
+/// the world-placed detached-canvas composite and any producer that converts world
+/// iso depth or model-frame rawDist into shared framebuffer depth units (×effSub × 4).
+constexpr int kDepthEncodeShift = 4;
+
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
     ivec2 trixelCanvasOffsetZ1_;

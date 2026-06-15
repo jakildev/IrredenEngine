@@ -198,7 +198,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // the pre-#1624 fixed-depth overlay); a canvas that did not raster a
         // voxel pool this frame (renderedSubdivisions_ == 0, e.g. pure SDF/text
         // overlay) keeps the pre-existing raw offset.
-        constexpr int kDepthFaceEncodeScale = 4; // mirrors encodeDepthWithFace
         const int cubeSub = canvasTextures->renderedSubdivisions_;
         float depthScale = 1.0f;
         int compositeDistanceOffset = 0;
@@ -206,7 +205,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             const int worldDepth = pos3DtoDistance(roundVec3HalfUp(worldTransform.translation_));
             if (cubeSub >= 1) {
                 depthScale = static_cast<float>(effectiveSub_) / static_cast<float>(cubeSub);
-                compositeDistanceOffset = worldDepth * effectiveSub_ * kDepthFaceEncodeScale;
+                compositeDistanceOffset = worldDepth * effectiveSub_ * kDepthEncodeShift;
             } else {
                 compositeDistanceOffset = worldDepth;
             }
