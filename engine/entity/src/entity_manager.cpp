@@ -6,6 +6,7 @@
 #include <irreden/job/job_manager.hpp>
 
 #include <memory>
+#include <unordered_set>
 
 namespace IREntity {
 
@@ -369,6 +370,77 @@ void EntityManager::destroyAllEntities() {
     }
 
     m_singletonEntityByComponent.clear();
+}
+
+void EntityManager::destroyAllExceptPreserved(const std::vector<ComponentId> &preserveMarkers) {
+    IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+
+    flushStructuralChanges();
+    destroyMarkedEntities();
+
+    // Build the preserve set (masked ids). (1) Every singleton entity — the
+    // cache is the authoritative singleton registry. (2) Every entity holding
+    // a preserve-marker component, found by scanning the archetype nodes that
+    // contain the marker's ComponentId (no per-entity getComponent).
+    std::unordered_set<EntityId> preserved;
+    // (0) Component-TYPE entities. Each registered component is itself backed
+    // by an entity id (registerComponentImpl -> createEntity), so it lives in
+    // m_entityIndex. Unlike destroyAllEntities (full teardown), resetGameplay
+    // continues into the next scene, so these infrastructure entities MUST
+    // survive — otherwise the next scene's createEntity<T> would reference a
+    // ComponentId whose backing entity was torn down.
+    for (const auto &[componentId, _impl] : m_pureComponentVectors) {
+        preserved.insert(componentId & IR_ENTITY_ID_BITS);
+    }
+    for (const auto &[componentId, singletonEntity] : m_singletonEntityByComponent) {
+        if (entityExists(singletonEntity)) {
+            preserved.insert(singletonEntity & IR_ENTITY_ID_BITS);
+        }
+    }
+    if (!preserveMarkers.empty()) {
+        for (const auto &nodePtr : m_archetypeGraph.getArchetypeNodes()) {
+            ArchetypeNode *node = nodePtr.get();
+            const bool hasMarker = std::any_of(
+                preserveMarkers.begin(),
+                preserveMarkers.end(),
+                [node](ComponentId marker) { return node->type_.contains(marker); }
+            );
+            if (!hasMarker) {
+                continue;
+            }
+            for (int i = 0; i < node->length_; ++i) {
+                preserved.insert(node->entities_[i] & IR_ENTITY_ID_BITS);
+            }
+        }
+    }
+
+    // Snapshot live ids, then destroy everything not in the preserve set.
+    std::vector<EntityId> entitiesToDestroy;
+    entitiesToDestroy.reserve(m_entityIndex.size());
+    for (const auto &[entityId, _record] : m_entityIndex) {
+        if (!preserved.contains(entityId & IR_ENTITY_ID_BITS)) {
+            entitiesToDestroy.push_back(entityId);
+        }
+    }
+    for (const EntityId entity : entitiesToDestroy) {
+        if (m_entityIndex.contains(entity & IR_ENTITY_ID_BITS)) {
+            destroyEntity(entity);
+        }
+    }
+
+    // Prune stale name->id entries — destroyEntity does not touch
+    // m_namedEntities, so a destroyed gameplay entity's name would otherwise
+    // resolve (and assert) on a dead id at the next getEntityByName.
+    for (auto it = m_namedEntities.begin(); it != m_namedEntities.end();) {
+        if (!m_entityIndex.contains(it->second & IR_ENTITY_ID_BITS)) {
+            it = m_namedEntities.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Deliberately do NOT clear m_singletonEntityByComponent — singletons
+    // survive a gameplay reset (the key difference from destroyAllEntities).
 }
 
 EntityId EntityManager::getOrCreateSingletonByComponentId(ComponentId componentType) {

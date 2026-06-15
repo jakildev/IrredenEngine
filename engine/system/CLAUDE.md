@@ -348,6 +348,25 @@ IRSystem::insertIntoPipelineAfter(IRTime::Events::UPDATE, sysId, anchor);
   `IRSystem.insertSystemAfter(event, sysId, anchor)` — see
   `engine/script/CLAUDE.md` "Pipeline composition".
 
+### Clearing a pipeline (#1814)
+
+`clearPipeline(event)` empties an event's pipeline (no systems run for it) —
+the scene-transition counterpart to `registerPipeline`. A scene machine clears
+the previous scene's pipeline, then registers the next scene's:
+
+```cpp
+IRSystem::clearPipeline(IRTime::Events::UPDATE);          // tear down scene A
+IRSystem::registerPipeline(IRTime::Events::UPDATE, {...}); // bring up scene B
+```
+
+Equivalent to `registerPipeline(event, {})`. Pair it with
+`IREntity::resetGameplay()` (the entity-side teardown — see
+`engine/entity/CLAUDE.md` "Scene-transition reset") at a frame boundary so no
+system ticks against destroyed entities. Lua: `IRSystem.clearPipeline(event)`.
+Systems themselves are never destroyed (they persist for the manager lifetime);
+dropping one from a pipeline just makes it inert, which is fine since the set is
+bounded.
+
 ## SystemAccess derivation (T-221)
 
 `engine/system/include/irreden/system/system_access.hpp` defines

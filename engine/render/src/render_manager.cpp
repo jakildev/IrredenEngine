@@ -18,6 +18,7 @@
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
+#include <irreden/common/components/component_persistent.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
@@ -122,6 +123,16 @@ RenderManager::RenderManager(
     );
     m_renderImpl->init();
     IREntity::setName(m_camera, "camera");
+
+    // #1814: the renderer's camera + framebuffer/canvas entities are normal
+    // (non-singleton) ECS entities. Tag them C_Persistent so a scene-transition
+    // IREntity::resetGameplay() spares them — without the tag they'd be torn
+    // down on the first reset and the render context would break.
+    IREntity::setComponent(m_camera, C_Persistent{});
+    IREntity::setComponent(m_mainFramebuffer, C_Persistent{});
+    IREntity::setComponent(m_mainCanvas, C_Persistent{});
+    IREntity::setComponent(m_backgroundCanvas, C_Persistent{});
+    IREntity::setComponent(m_guiCanvas, C_Persistent{});
     // IRECS::setComponent(
     //     m_backgroundCanvas,
     //     C_TextureScrollPosition{
