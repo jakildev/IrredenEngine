@@ -33,8 +33,9 @@ The creation must opt into the P3 assertion tables:
 
 1. Include `engine/prefabs/irreden/render/gui_test_assertions.hpp`.
 2. Populate `g_shotAssertions[i]` arrays for the shots under test.
-3. Call `createGuiTestSystem(cfg)` in `initSystems()` (done automatically
-   when `g_autoWarmupFrames > 0`, set by `--auto-screenshot`).
+3. Call `IRVideo::createGuiTestSystem(cfg)` in `initSystems()`, guarded by
+   `if (g_autoWarmupFrames > 0)` so the harness only runs in screenshot mode
+   (follow `creations/editors/voxel_editor/main.cpp` as the worked example).
 
 When this is in place the binary emits one `GUI-ASSERT` log line per
 assertion per assertion-shot, in the format:

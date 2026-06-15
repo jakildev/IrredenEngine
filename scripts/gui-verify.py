@@ -41,7 +41,8 @@ def _run_capture(cmd: list[str]) -> tuple[int, str]:
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     lines: list[str] = []
-    assert proc.stdout is not None
+    if proc.stdout is None:
+        raise RuntimeError("stdout unavailable (Popen stdout=PIPE failed)")
     for line in proc.stdout:
         print(line, end="", flush=True)
         lines.append(line)
