@@ -21,7 +21,7 @@ namespace IRScript::detail {
 // logic lives here. Bound by `bindLuaDrivenEcs()` like the render glue / sim
 // surfaces, so every Lua-first creation gets it without per-creation wiring.
 //
-// `IRAudio.Bus.{Creature,Environment,Ability,UI,Music}` is the category enum
+// `IRAudio.Bus.{CREATURE,ENVIRONMENT,ABILITY,UI,MUSIC}` is the category enum
 // as an integer table (the `cpp-lua-enums.md` convention) — pass the value,
 // never a bus-name string.
 
