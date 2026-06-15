@@ -124,4 +124,50 @@ void stopAudioInputCapture() {
     getAudioManager().getAudio().closeStreamIn();
 }
 
+SoundHandle playSound(const std::string &path, AudioBus bus, float volume, bool loop) {
+    return getAudioManager().getAudioPlayback().playSound(path, bus, volume, loop);
+}
+
+SoundHandle playMusic(const std::string &path, float volume, bool loop) {
+    return getAudioManager().getAudioPlayback().playMusic(path, volume, loop);
+}
+
+SoundHandle playSoundAt(
+    const std::string &path, AudioBus bus, const IRMath::vec3 &position, float volume, bool loop
+) {
+    return getAudioManager().getAudioPlayback().playSoundAt(path, bus, position, volume, loop);
+}
+
+void stopSound(SoundHandle handle) {
+    getAudioManager().getAudioPlayback().stop(handle);
+}
+
+void setSoundVolume(SoundHandle handle, float volume) {
+    getAudioManager().getAudioPlayback().setSoundVolume(handle, volume);
+}
+
+void fadeInSound(SoundHandle handle, unsigned int milliseconds) {
+    getAudioManager().getAudioPlayback().fadeIn(handle, milliseconds);
+}
+
+void fadeOutSound(SoundHandle handle, unsigned int milliseconds) {
+    getAudioManager().getAudioPlayback().fadeOut(handle, milliseconds);
+}
+
+void setBusVolume(AudioBus bus, float volume) {
+    getAudioManager().getAudioPlayback().setBusVolume(bus, volume);
+}
+
+void setMasterVolume(float volume) {
+    getAudioManager().getAudioPlayback().setMasterVolume(volume);
+}
+
+void setListenerPosition(const IRMath::vec3 &position) {
+    getAudioManager().getAudioPlayback().setListenerPosition(position);
+}
+
+void tickAudioPlayback() {
+    getAudioManager().getAudioPlayback().tickPlayback();
+}
+
 } // namespace IRAudio

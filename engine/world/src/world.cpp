@@ -261,6 +261,7 @@ void World::input() {
     m_inputManager.tick();
     m_inputManager.advanceInputState(IRTime::Events::INPUT);
     m_audioManager.getMidiIn().tick();
+    m_audioManager.getAudioPlayback().tickPlayback();
 
     m_systemManager.executePipeline(IRTime::Events::INPUT);
 }

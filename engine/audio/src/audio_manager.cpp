@@ -6,7 +6,8 @@ namespace IRAudio {
 AudioManager::AudioManager()
     : m_audio{}
     , m_midiIn{}
-    , m_midiOut{} {
+    , m_midiOut{}
+    , m_audioPlayback{} {
     // for(auto& midiInInterface : midiInInterfaces) {
     //     m_midiIn.openPort(midiInInterface);
     // }

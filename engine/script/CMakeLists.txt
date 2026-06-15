@@ -45,6 +45,14 @@ target_include_directories(
     IrredenEngineScripting PRIVATE
     $<TARGET_PROPERTY:IrredenEngineRendering,INTERFACE_INCLUDE_DIRECTORIES>
 )
+# lua_audio_bindings.hpp includes <irreden/ir_audio.hpp> (the IRAudio file-
+# playback surface, #1813). Same generator-expression include-only pattern as
+# the render glue above — IRAudio:: symbols resolve at final exe link time
+# through IrredenEngineWorld, no full library link here.
+target_include_directories(
+    IrredenEngineScripting PRIVATE
+    $<TARGET_PROPERTY:IrredenEngineAudio,INTERFACE_INCLUDE_DIRECTORIES>
+)
 # Force sol2 to use its try/catch trampoline rather than letting C++
 # exceptions propagate through the LuaJIT VM. With LuaJIT 2.1 sol2's
 # default is exception propagation; in practice the exception message

@@ -6,6 +6,8 @@
 
 #include <irreden/audio/components/component_midi_message.hpp>
 
+#include <irreden/math/ir_math_types.hpp>
+
 #include <functional>
 #include <vector>
 #include <string>
@@ -97,6 +99,43 @@ bool startAudioInputCapture(
 );
 /// Stops the active RtAudio input stream.  Always call before `AudioManager` teardown.
 void stopAudioInputCapture();
+
+/// @name File playback (miniaudio) — load + play `.wav`/`.ogg` through category buses
+/// Forwards to `AudioManager::getAudioPlayback()`. When no playback device came
+/// up these are silent no-ops (the `play*` calls return @ref kInvalidSoundHandle).
+/// @{
+/// Plays @p path once (or looped) through @p bus, decoded into memory. For SFX.
+SoundHandle
+playSound(const std::string &path, AudioBus bus, float volume = 1.0f, bool loop = false);
+/// Streams @p path through the `Music` bus; loops by default.
+SoundHandle playMusic(const std::string &path, float volume = 1.0f, bool loop = true);
+/// Positional one-shot spatialized at world @p position against the engine
+/// listener (the #207 spatial-audio seam).
+SoundHandle playSoundAt(
+    const std::string &path,
+    AudioBus bus,
+    const IRMath::vec3 &position,
+    float volume = 1.0f,
+    bool loop = false
+);
+/// Stops and reclaims a live sound now.
+void stopSound(SoundHandle handle);
+/// Sets a live sound's linear volume (1.0 = unity).
+void setSoundVolume(SoundHandle handle, float volume);
+/// Fades a sound up from silence to its current volume over @p milliseconds.
+void fadeInSound(SoundHandle handle, unsigned int milliseconds);
+/// Fades a sound to silence over @p milliseconds, then stops it.
+void fadeOutSound(SoundHandle handle, unsigned int milliseconds);
+/// Sets a category bus's linear volume (scales every sound on the bus).
+void setBusVolume(AudioBus bus, float volume);
+/// Sets the master mix volume.
+void setMasterVolume(float volume);
+/// Moves the single engine listener (the #207 positional-audio seam).
+void setListenerPosition(const IRMath::vec3 &position);
+/// Reclaims finished one-shot sounds. Called once per frame by the engine
+/// runtime next to `MidiIn::tick()`; creations do not call this.
+void tickAudioPlayback();
+/// @}
 
 } // namespace IRAudio
 

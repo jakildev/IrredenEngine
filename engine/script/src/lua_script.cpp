@@ -6,6 +6,7 @@
 
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
+#include <irreden/script/lua_audio_bindings.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
@@ -639,6 +640,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindSpatialApi(*this);
     detail::bindRenderGlue(*this);
     detail::bindSimApi(*this);
+    detail::bindAudioApi(*this);
 }
 
 void LuaScript::bindLuaCommands() {

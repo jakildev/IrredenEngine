@@ -23,6 +23,24 @@ constexpr CCData kCCFalse = 0xFF;
 /// Default RtAudio input buffer size in frames (samples per callback invocation).
 constexpr unsigned int kAudioInputDefaultBufferFrames = 1024;
 
+/// Opaque handle to a live playback sound, returned by `IRAudio::playSound` /
+/// `playMusic`. Pass back to `stop` / `setSoundVolume` / `fade*`. Values are
+/// monotonic per session; @ref kInvalidSoundHandle means "no sound" (the load
+/// failed or playback is disabled).
+using SoundHandle = unsigned int;
+/// Sentinel handle: returned when a play call could not start a sound.
+constexpr SoundHandle kInvalidSoundHandle = 0;
+
+/// Category mixer buses for file playback, one `ma_sound_group` each under the
+/// playback engine. A closed categorical set (creature / environment / ability
+/// / UI sounds, plus the streamed-music `MUSIC` bus). The integer values double
+/// as the C++ group-array index AND the `IRAudio.Bus` Lua table — keep them
+/// contiguous from 0 and keep `COUNT` last.
+enum class AudioBus : int { CREATURE, ENVIRONMENT, ABILITY, UI, MUSIC, COUNT };
+
+/// Number of category buses (excludes the `COUNT` sentinel).
+constexpr int kNumAudioBuses = static_cast<int>(AudioBus::COUNT);
+
 /// Indices into the hardcoded MIDI-input device list.
 /// Pass to `openPortMidiIn(MidiInInterfaces)` to open by index, or use
 /// @ref kMidiInInterfaceNames to open by substring match.
