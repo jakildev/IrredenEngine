@@ -34,6 +34,9 @@
 // Widget framework (T-145 / T-177)
 #include <irreden/render/widgets.hpp>
 
+// GUI-test assertions (P3, #1796)
+#include <irreden/render/gui_test_assertions.hpp>
+
 // Systems
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -293,14 +296,73 @@ constexpr IRVideo::GuiInputEvent kPaletteClickEvents[] = {
      IRInput::kMouseButtonLeft},
 };
 
-// GUI-test shot table covering stable render framings plus one scripted-click
-// shot. Superset of the previous kShots[] — render-verify labels still match.
+// Scripted GUI-assert click (P3, #1796): park the cursor over the LAYERS-panel
+// list, press, release. The cursor stays put through capture so the hover
+// assertion still reads it; the latch catches the one-frame click-fire. The
+// list is a large, child-free hover target so the small screen→GUI-trixel
+// offset can't push the cursor off it.
+constexpr IRVideo::GuiInputEvent kGuiAssertEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(190, 284)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(190, 284),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(190, 284),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
+// Scripted scene-pick (P3, #1796): move the cursor over the 3D scene (right of
+// the left-column GUI panels), so PICKS_VOXEL casts a ray onto a scene voxel —
+// the regression net for the screen→world picking alignment.
+constexpr IRVideo::GuiInputEvent kPickVoxelEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 450)},
+};
+
+// GUI-test shot table covering stable render framings plus the scripted-click
+// shots. Superset of the previous kShots[] — render-verify labels still match.
+// kGuiAssertShotIndex / kPickVoxelShotIndex select the assertion-bearing shots.
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_idle"}, nullptr, 0},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_palette_click"}, kPaletteClickEvents, 3},
     {{0.75f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_out"}, nullptr, 0},
     {{1.5f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_in"}, nullptr, 0},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_gui_assert"}, kGuiAssertEvents, 3},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_pick_voxel"}, kPickVoxelEvents, 1},
 };
+constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
+constexpr int kGuiAssertShotIndex = 4;
+constexpr int kPickVoxelShotIndex = 5;
+
+// GUI-test assertion tables (P3, #1796). Filled in initEntities once the widget
+// entities exist — assertions reference runtime EntityIds, so unlike the shot
+// table they can't be constexpr. Index-aligned with kGuiTestShots.
+// g_guiAssertLatch is the caller-owned latch the harness's onAssertFrame_
+// callback threads through onFrame (CLICK_FIRES latches the one-frame pulse).
+IRPrefab::GuiTest::LatchState g_guiAssertLatch;
+std::vector<IRPrefab::GuiTest::Assertion> g_shotAssertions[kNumGuiTestShots];
+
+// Forwarder wired to IRVideo::GuiTestConfig::onAssertFrame_. The harness owns
+// input + capture timing in engine/video; this hands each frame to the prefab
+// evaluator with the shot's assertion table (engine/video can't see widgets).
+void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
+    if (shotIndex < 0 || shotIndex >= kNumGuiTestShots)
+        return;
+    const auto &assertions = g_shotAssertions[shotIndex];
+    if (assertions.empty())
+        return; // shots without assertions (idle / zoom framings) skip latch+eval
+    IRPrefab::GuiTest::onFrame(
+        g_guiAssertLatch,
+        shotIndex,
+        isCaptureFrame,
+        kGuiTestShots[shotIndex].render_.label_,
+        assertions.data(),
+        static_cast<int>(assertions.size())
+    );
+}
 
 int g_autoWarmupFrames = 0;
 
@@ -2034,6 +2096,10 @@ void initSystems() {
         cfg.shots_ = IRVoxelEditor::kGuiTestShots;
         cfg.numShots_ =
             sizeof(IRVoxelEditor::kGuiTestShots) / sizeof(IRVoxelEditor::kGuiTestShots[0]);
+        // P3 (#1796): evaluate GUI assertions at each shot's capture frame. The
+        // assertion tables themselves are populated later in initEntities (once
+        // the widget entities exist), before the game loop fires this callback.
+        cfg.onAssertFrame_ = &IRVoxelEditor::onGuiAssertFrame;
         renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
     }
 
@@ -3191,4 +3257,28 @@ void initEntities() {
     // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
     // symmetry axes are active so the user can see modifier state at a glance.
     IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
+
+    // GUI-test assertions (P3, #1796) — populated here (not at the constexpr
+    // shot table) because they reference runtime widget EntityIds. The
+    // hover-export singleton (one per world) lets HOVERS read the topmost
+    // hovered widget via WIDGET_INPUT::endTick. The scripted GUI-assert shot
+    // parks the cursor on the layer list and clicks; the pick shot casts a ray
+    // onto the scene. PICKS_VOXEL's expected voxel is the regression baseline
+    // for screen→world picking alignment.
+    IRPrefab::Widget::makeGuiHoverState();
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kGuiAssertShotIndex] = {
+        IRPrefab::GuiTest::hovers(IRVoxelEditor::g_layerList, "layer_list_hover"),
+        IRPrefab::GuiTest::clickFires(IRVoxelEditor::g_layerList, "layer_list_click"),
+        IRPrefab::GuiTest::checkbox(IRVoxelEditor::g_layerVisCheckbox, true, "layer_visible"),
+        IRPrefab::GuiTest::sliderValue(
+            IRVoxelEditor::g_fpsSlider,
+            IRVoxelEditor::g_anim.fps_,
+            0.5f,
+            "fps_value"
+        ),
+    };
+    constexpr ivec3 kScenePickExpected{-1, -1, -1};
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kPickVoxelShotIndex] = {
+        IRPrefab::GuiTest::picksVoxel(kScenePickExpected, "scene_pick"),
+    };
 }

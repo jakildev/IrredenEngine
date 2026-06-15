@@ -199,6 +199,15 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
             // captureAt: settleFrames_ full settle frames follow the last event.
             const int captureAt = maxOffset + 1 + state->config_.settleFrames_;
 
+            // Phase 3 assertion hook (#1796): fire every live frame so the
+            // consumer can latch one-frame pulses (C_WidgetState::fireAction_);
+            // flag the capture frame for evaluation. Gated on
+            // !screenshotRequested_ so the capture frame fires it exactly once
+            // (the request tick), not again on the advance tick.
+            if (state->config_.onAssertFrame_ != nullptr && !state->screenshotRequested_) {
+                state->config_.onAssertFrame_(state->currentShot_, state->shotFrame_ == captureAt);
+            }
+
             // Event phase: dispatch any events scheduled for shotFrame_.
             if (state->shotFrame_ <= maxOffset) {
                 for (int i = 0; i < shot.numInputs_; ++i) {

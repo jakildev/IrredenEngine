@@ -383,7 +383,25 @@ so its expanded item panel paints over any neighbor it overlaps.
 per-kind apply followers exist so the input system itself never calls
 `getComponent` on per-entity kind-specific data — slider value and
 checkbox toggle land on their own dedicated systems whose archetype
-filter already includes the kind-specific component.
+filter already includes the kind-specific component. Its `endTick`
+publishes the z-ordered topmost hovered widget (`topHoveredId_`) into the
+optional `C_GuiHoverState` singleton (#1796); create one per world with
+`IRPrefab::Widget::makeGuiHoverState()` and read it back with
+`hoveredWidget()`. No singleton → the publish is a no-op, so non-test
+creations pay nothing.
+
+**Headless GUI assertions (P3, #1796).** `gui_test_assertions.hpp`
+exposes `IRPrefab::GuiTest::` — capture-frame assertions
+(`hovers` / `clickFires` / `sliderValue` / `checkbox` / `picksVoxel`)
+over the introspectable widget + picking state, each emitting one
+machine-readable `GUI-ASSERT …` log line. Evaluation lives in the prefab
+layer (it needs widget / picking access engine/video lacks); the
+`engine/video` scripted-shot harness drives it through the type-erased
+`IRVideo::GuiTestConfig::onAssertFrame_` callback, threading a
+caller-owned `GuiTest::LatchState` (CLICK_FIRES latches the one-frame
+`fireAction_` pulse across the settle window). Reference wiring:
+`creations/editors/voxel_editor/main.cpp` (`editor_gui_assert` /
+`editor_pick_voxel` shots).
 
 `WIDGET_RENDER_*` is split per kind for the same reason. Each renders
 its own backgrounds, borders, and label text onto the **GUI canvas**
