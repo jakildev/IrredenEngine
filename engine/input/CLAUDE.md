@@ -15,6 +15,19 @@ RENDER) so each stage sees the state relevant to its tick.
 - `getMousePositionScreen()` — cursor position in screen (pixel) space.
 - Per-button press/release frame counters.
 
+### Synthetic input (headless GUI/mouse verification, #1793)
+
+- `beginSyntheticInput()` — flip the `InputManager` to consume injected
+  events instead of GLFW for the rest of the run, so a headless run can move
+  the cursor and press buttons. Run-scoped (mirrors
+  `IRVideo::isAutoCaptureActive()`'s fixed-step flip); inactive path stays
+  byte-identical to GLFW-only. `isSyntheticInputActive()` reports the flag.
+- `injectMouseMove(screenPx)` / `injectButton(button, status)` /
+  `injectScroll(dx, dy)` — feed the same snapshot the GLFW path writes;
+  applied at the next frame boundary (one batch per `tick()`). The inject
+  calls assert if `beginSyntheticInput()` was not called first. Design:
+  [`docs/design/gui-mouse-harness.md`](../../docs/design/gui-mouse-harness.md) §"Phase 1".
+
 ### Gamepad
 
 - `checkGamepadButton(button, status, irGamepadId = 0)` — is this gamepad button in
