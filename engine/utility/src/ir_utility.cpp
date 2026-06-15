@@ -1,6 +1,7 @@
 #include <irreden/ir_utility.hpp>
 #include <irreden/ir_profile.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -49,6 +50,41 @@ std::string pathWithExtension(const std::string &path, const std::string &extens
     std::filesystem::path updatedPath(path);
     updatedPath.replace_extension(normalizedExtension(extension));
     return updatedPath.string();
+}
+
+namespace {
+
+// Returns the env var's value if it is set and non-empty, else nullptr.
+const char *nonEmptyEnv(const char *name) {
+    const char *value = std::getenv(name);
+    return (value != nullptr && value[0] != '\0') ? value : nullptr;
+}
+
+} // namespace
+
+std::string userDataDir(const std::string &appName) {
+#if defined(_WIN32)
+    if (const char *appData = nonEmptyEnv("APPDATA")) {
+        return (std::filesystem::path(appData) / appName).string();
+    }
+    if (const char *userProfile = nonEmptyEnv("USERPROFILE")) {
+        return (std::filesystem::path(userProfile) / appName).string();
+    }
+#elif defined(__APPLE__)
+    if (const char *home = nonEmptyEnv("HOME")) {
+        return (std::filesystem::path(home) / "Library" / "Application Support" / appName).string();
+    }
+#else
+    if (const char *xdg = nonEmptyEnv("XDG_DATA_HOME")) {
+        return (std::filesystem::path(xdg) / appName).string();
+    }
+    if (const char *home = nonEmptyEnv("HOME")) {
+        return (std::filesystem::path(home) / ".local" / "share" / appName).string();
+    }
+#endif
+    // No usable environment variable — fall back to a bare relative path so
+    // the caller's create_directories still has somewhere to write.
+    return appName;
 }
 
 std::string formatNumberedFilename(

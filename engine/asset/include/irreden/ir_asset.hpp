@@ -1,6 +1,8 @@
 #ifndef IR_ASSET_H
 #define IR_ASSET_H
 
+#include <irreden/asset/key_value_store.hpp>
+
 #include <irreden/ir_math.hpp>
 
 #include <string>
