@@ -5,7 +5,13 @@
 // `encodeDepthWithFace` — samples four face-tangent neighbour pixels in
 // `trixelDistances` and counts each one as occluding when its decoded
 // surface position sits in front of the receiver's face plane by ~1
-// voxel along the face-outward normal.
+// voxel along the face-outward normal AND belongs to a DIFFERENT visible
+// face. The different-face gate is what keeps a rotated voxel surface from
+// self-darkening: a real crease / contact is always two distinct faces
+// meeting, whereas a same-face neighbour ~1 voxel in front is just the
+// round-to-cell stair-step of a tilted-flat surface (the alternating-band
+// speckle that reads as "missing sections" on rotating solids). Flat
+// cardinal faces are coplanar (d ~ 0) so the gate never changes them.
 //
 // SDF shapes participate in crease AO automatically because their
 // `trixelDistances` writes are visible to the sampling — no separate
@@ -199,8 +205,17 @@ void main() {
             );
         }
 
+        // Only a DIFFERENT visible face counts as an occluder. A real crease or
+        // contact shadow is always two distinct faces meeting; a SAME-face
+        // neighbour at d ~ 1 voxel is the round-to-cell stair-step of a rotated
+        // (tilted-flat) voxel surface, not a crease — counting it darkened every
+        // step edge, the alternating-band speckle that reads as "missing
+        // sections" on rotating solids. Flat cardinal faces are coplanar
+        // (d ~ 0, already rejected by kAOMinHeight) so they are unchanged; a
+        // per-axis canvas holds a single face, so its stair-step-only AO (no
+        // real cross-face crease is visible within one axis canvas) drops out.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        if (d > kAOMinHeight && d < kAOMaxHeight) occl++;
+        if ((neighbourEncoded & 3) != slot && d > kAOMinHeight && d < kAOMaxHeight) occl++;
     }
 
     // Each occluding edge-neighbour darkens by 10%; all four caps at 60%
