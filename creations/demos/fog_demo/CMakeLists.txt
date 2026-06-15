@@ -42,14 +42,6 @@ add_custom_target(IRFogDemoAssets
 add_dependencies(IRFogDemo IRFogDemoAssets)
 
 add_custom_target(IRFogDemoRun
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_FOG_DEMO_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_FOG_DEMO_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_FOG_DEMO_RUNTIME_DIR}/shaders
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_FOG_DEMO_SCRIPTS_DIR}/config.lua
     COMMAND $<TARGET_FILE:IRFogDemo>
     DEPENDS IRFogDemo
     WORKING_DIRECTORY ${IR_FOG_DEMO_RUNTIME_DIR}
