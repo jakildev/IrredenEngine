@@ -179,7 +179,7 @@ kernel void c_voxel_to_trixel_stage_2(
     if (frameData.perAxisRoute != 0) {
         const int axis = frameData.perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Un-yawed (cardinal) iso store (prototype) — mirrors stage 1's re-key.
+        // Un-yawed (cardinal) iso store — mirrors stage 1's re-key.
         // Color tap lands on the same cardinal iso cell + depth the distance tap
         // did, so the per-axis depth re-test paints the occlusion winner.
         const int2 perAxisBase = trixelFrameOffset(

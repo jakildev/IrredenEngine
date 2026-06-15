@@ -15,8 +15,7 @@
 // recovers the face origin by the exact iso inverse the forward scatter uses
 // (isoPixelToPos3D — no 2cos(yaw)+1 singularity, since the index is un-yawed).
 // rawDepth is already in world units — no scale division required.
-// `faceId` is the world FaceId (visibleFaceIds[slot]); NO cardinal rotation —
-// the per-axis store writes the world frame directly (pos3DtoPos2DIsoYawed).
+// faceId retained in signature for caller compatibility; no longer used in recovery.
 // `canvasSize` is the per-axis canvas size (= imageSize).
 vec3 perAxisCellToWorld3D(
     ivec2 cell, int rawDepth, int faceId,

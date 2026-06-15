@@ -42,7 +42,7 @@ kernel void c_resolve_per_axis_screen_depth(
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions
     );
-    // Un-yawed iso recovery (prototype): the store filed this face at
+    // Un-yawed iso recovery: the store filed this face at
     // `perAxisBase + pos3DtoPos2DIso(facePos)`; invert via isoPixelToPos3D
     // (exact integer facePos for integer cell + rawDepth).
     const int2 isoPix = cell - perAxisBase;

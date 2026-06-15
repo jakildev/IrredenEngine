@@ -147,7 +147,7 @@ vertex VertexOut v_peraxis_scatter(
     // Hoist in-plane axes before origin so fractional offset and dilation block share them.
     float3 eu, ev;
     faceInPlaneUnitAxes(axis, eu, ev);
-    // Un-yawed iso recovery (prototype) — mirror of v_peraxis_scatter.glsl. The
+    // Un-yawed iso recovery — mirror of v_peraxis_scatter.glsl. The
     // store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`, so the
     // cardinal iso pixel is `ij - perAxisBase` and isoPixelToPos3D inverts it
     // exactly against rawDepth (= x+y+z of the face plane). Non-singular at every

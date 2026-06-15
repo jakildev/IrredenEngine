@@ -20,7 +20,8 @@ inline float3 perAxisCellToWorld3D(
 ) {
     const int2 perAxisBase =
         trixelFrameOffset(trixelOriginOffsetZ1(canvasSize), frameCanvasOffset, voxelRenderOptions);
-    // Un-yawed iso recovery (prototype) — mirror of the scatter + stage 1/2 store.
+    // Un-yawed iso recovery — mirror of the scatter + stage 1/2 store.
+    // faceId retained in signature for caller compatibility; no longer used in recovery.
     // The store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`.
     const int2 isoPix = cell - perAxisBase;
     return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));

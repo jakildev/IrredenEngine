@@ -146,7 +146,7 @@ kernel void c_voxel_to_trixel_stage_1(
     if (frameData.perAxisRoute != 0) {
         const int axis = frameData.perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Un-yawed (cardinal) iso store (prototype): key each face by its
+        // Un-yawed (cardinal) iso store: key each face by its
         // cardinal iso pixel `perAxisBase + pos3DtoPos2DIso(facePos)` instead of
         // the in-plane (y,z)/(x,z)/(x,y) lattice. The in-plane lattice collapses
         // faces that share an in-plane column but differ in depth-along-the-fixed
