@@ -35,6 +35,10 @@
 
 set -euo pipefail
 
+# This suite exercises cmd_claim against the real (possibly-stale) main clone but
+# does not care about clone freshness — disable the #1810 freshness gate.
+export FLEET_SKIP_CLONE_FRESHNESS=1
+
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 

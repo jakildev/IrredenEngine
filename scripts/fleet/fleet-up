@@ -22,6 +22,19 @@ ENGINE="$HOME/src/IrredenEngine"
 GAME="$ENGINE/creations/game"
 SESSION="fleet"
 
+# Main-clone freshness helper (#1810): advances the shared main clone's
+# checked-out master so merged fleet-script fixes stop staying inert. Sourced
+# by-dir so it resolves through the ~/bin symlink (the helper is symlinked into
+# ~/bin alongside fleet-up by install.sh, same as fleet-common.sh).
+_FLEET_CLONE_FRESHNESS_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fleet-clone-freshness.sh"
+if [[ -f "$_FLEET_CLONE_FRESHNESS_SH" ]]; then
+    # shellcheck source=/dev/null
+    source "$_FLEET_CLONE_FRESHNESS_SH"
+else
+    advance_main_clone() { :; }  # helper not installed yet — no-op
+fi
+unset _FLEET_CLONE_FRESHNESS_SH
+
 # Model classes — change these when bumping the fleet to a new release.
 #
 # The queue routes work by model CLASS: fable | opus | sonnet. Tasks carry
@@ -434,6 +447,9 @@ migrate_legacy_worker_worktrees() {
 
 (cd "$ENGINE" && git fetch origin --quiet) || {
     echo "fleet-up: engine git fetch failed" >&2; exit 1; }
+# Advance the engine main clone before resetting worktrees, so a just-merged
+# fleet-script fix is live for this session's scout/claim/dispatcher. (#1810)
+advance_main_clone "$ENGINE"
 
 ensure_worktree "$ENGINE" .claude/worktrees/opus-architect    fleet/opus-architect
 migrate_legacy_worker_worktrees "$ENGINE"
@@ -464,6 +480,7 @@ fi
 if [[ -d "$GAME/.git" ]]; then
     (cd "$GAME" && git fetch origin --quiet) || {
         echo "fleet-up: game git fetch failed (continuing without game panes)" >&2; }
+    advance_main_clone "$GAME"  # keep the game main clone current too (#1810)
     ensure_worktree "$GAME" .claude/worktrees/game-architect  fleet/game-architect
     # Worker panes cover both engine and game queues; each of the four
     # worker panes gets its own game worktree to cd into for game tasks.

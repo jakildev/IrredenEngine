@@ -1920,6 +1920,47 @@ def update_role_trigger(role: str, projection) -> bool:
     return True
 
 
+def clone_freshness(root):
+    """Fetch-free staleness check of <root>'s checked-out master vs origin/master.
+
+    rev-parse / rev-list only — NEVER fetches (the no-per-tick-fetch rule;
+    fleet-up + the dispatcher keep origin/master fresh). Surfaced as
+    state.json `clone_freshness` so readers can see when the main clone (and
+    thus the fleet-script code scout/claim/ingest run) has fallen behind. (#1810)
+
+    Kept as a tiny inline git call rather than importing a shared module — the
+    scout's module resolution is fragile (#1750/#1578).
+    """
+    def _rev(ref):
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", ref],
+                capture_output=True, text=True, timeout=5,
+            )
+            return r.stdout.strip() or None
+        except (subprocess.SubprocessError, OSError):
+            return None
+
+    head = _rev("refs/heads/master")
+    origin_head = _rev("refs/remotes/origin/master")
+    behind = 0
+    if head and origin_head and head != origin_head:
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(root), "rev-list", "--count", "master..origin/master"],
+                capture_output=True, text=True, timeout=5,
+            )
+            behind = int(r.stdout.strip() or 0)
+        except (subprocess.SubprocessError, OSError, ValueError):
+            behind = 0
+    return {
+        "head": head,
+        "origin_master_head": origin_head,
+        "behind": behind,
+        "fresh": behind == 0,
+    }
+
+
 def collect_state():
     # Load previous state so degraded fetches can fall back to last-known-good
     # data instead of writing empty arrays into a fresh-timestamped snapshot.
@@ -1986,6 +2027,9 @@ def collect_state():
     state = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "repos": repos,
+        # Main-clone freshness for the engine clone (where the fleet-script code
+        # + parsers live). rev-parse only, no fetch. (#1810)
+        "clone_freshness": clone_freshness(ENGINE),
     }
     if _degraded:
         state["degraded"] = sorted(_degraded)
