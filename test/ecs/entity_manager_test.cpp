@@ -264,4 +264,98 @@ TEST_F(IREntityTest, SetComponentSupportsNonDefaultConstructibleType) {
     IREntity::setComponent(entity, TestNonDefaultConstructible{42});
     EXPECT_EQ(IREntity::getComponent<TestNonDefaultConstructible>(entity).value_, 42);
 }
+
+// resetGameplay() (#1814): scene-transition teardown. Destroys every gameplay
+// entity but preserves singletons, C_Persistent-tagged entities, and the
+// component-type backing entities. The key contrast with destroyAllEntities is
+// that the singleton cache is NOT cleared and the world remains usable.
+
+TEST_F(IREntityTest, ResetGameplayDestroysGameplayPreservesTagged) {
+    auto keep = IREntity::createEntity(TestMarker{});
+    IREntity::setComponent(keep, IRComponents::C_Persistent{});
+    auto doomedA = IREntity::createEntity(TestMarker{});
+    auto doomedB = IREntity::createEntity(TestMarker{}, TestPayload{3});
+
+    IREntity::resetGameplay();
+
+    EXPECT_TRUE(IREntity::entityExists(keep));
+    EXPECT_FALSE(IREntity::entityExists(doomedA));
+    EXPECT_FALSE(IREntity::entityExists(doomedB));
+}
+
+TEST_F(IREntityTest, ResetGameplayPreservesSingletonValueUnlikeDestroyAll) {
+    IREntity::singleton<TestSingleton>().counter_ = 77;
+    auto singletonId = IREntity::singletonEntity<TestSingleton>();
+    IREntity::createEntity(TestMarker{}); // gameplay entity, should be destroyed
+
+    IREntity::resetGameplay();
+
+    // Unlike destroyAllEntities (which clears the cache + recreates with a
+    // default), the singleton entity and its value survive intact.
+    EXPECT_EQ(IREntity::singletonEntityOrNull<TestSingleton>(), singletonId);
+    EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 77);
+}
+
+TEST_F(IREntityTest, ResetGameplayKeepsComponentTypesUsableInNextScene) {
+    // Scene A registers TestMarker + TestPayload (and their backing
+    // component-type entities).
+    IREntity::createEntity(TestMarker{}, TestPayload{1});
+
+    IREntity::resetGameplay();
+
+    // Scene B: the same component types must still create + read correctly —
+    // regression guard for component-type-entity preservation.
+    auto entity = IREntity::createEntity(TestMarker{}, TestPayload{99});
+    auto payload = IREntity::getComponentOptional<TestPayload>(entity);
+    ASSERT_TRUE(payload.has_value());
+    EXPECT_EQ((*payload)->value_, 99);
+}
+
+TEST_F(IREntityTest, ResetGameplayPrunesNamesOfDestroyedEntities) {
+    auto keep = IREntity::createEntity(TestMarker{});
+    IREntity::setComponent(keep, IRComponents::C_Persistent{});
+    IREntity::setName(keep, "keeper");
+
+    auto doomed = IREntity::createEntity(TestMarker{});
+    IREntity::setName(doomed, "doomed");
+
+    IREntity::resetGameplay();
+
+    // Preserved entity keeps its name; destroyed entity's stale name->id entry
+    // is pruned (otherwise getEntityByName would later assert on a dead id).
+    EXPECT_TRUE(m_entity_manager.hasName("keeper"));
+    EXPECT_FALSE(m_entity_manager.hasName("doomed"));
+    EXPECT_EQ(IREntity::getEntity("keeper"), keep);
+}
+
+TEST_F(IREntityTest, ResetGameplayLiveCountIsIdempotentAcrossCycles) {
+    IREntity::singleton<TestSingleton>().counter_ = 1;
+    auto persistent = IREntity::createEntity(TestMarker{});
+    IREntity::setComponent(persistent, IRComponents::C_Persistent{});
+
+    auto buildScene = [](int count) {
+        for (int i = 0; i < count; ++i) {
+            IREntity::createEntity(TestMarker{}, TestPayload{i});
+        }
+    };
+
+    // Warm up: register every component type used, then reset so the baseline
+    // reflects the post-registration steady state (ids never recycle, so the
+    // baseline is a count, not specific id values).
+    buildScene(5);
+    IREntity::resetGameplay();
+    const IREntity::EntityId baseline = IREntity::getLiveEntityCount();
+
+    for (int cycle = 0; cycle < 12; ++cycle) {
+        buildScene(7 + cycle); // vary the scene size each cycle
+        EXPECT_GT(IREntity::getLiveEntityCount(), baseline);
+        IREntity::resetGameplay();
+        EXPECT_EQ(IREntity::getLiveEntityCount(), baseline)
+            << "live entity count drifted at cycle " << cycle;
+    }
+
+    // Preserved entities survived every cycle.
+    EXPECT_EQ(IREntity::singleton<TestSingleton>().counter_, 1);
+    EXPECT_TRUE(IREntity::entityExists(persistent));
+}
 } // namespace

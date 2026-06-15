@@ -498,6 +498,15 @@ void LuaScript::bindLuaDrivenEcs() {
         m_lua["IREntity"] = m_lua.create_table();
     }
 
+    // #1814: world-level scene-transition teardown. Destroys every gameplay
+    // entity, preserving singletons + C_Persistent-tagged entities (the
+    // renderer's camera/canvas survive). The scene machine pairs this with
+    // IRSystem.clearPipeline / registerPipeline at a frame boundary.
+    if (!m_lua["IRWorld"].valid()) {
+        m_lua["IRWorld"] = m_lua.create_table();
+    }
+    m_lua["IRWorld"]["resetGameplay"] = []() { IREntity::resetGameplay(); };
+
     m_lua["IREntity"]["addLuaComponent"] = [this](
                                                IRScript::LuaEntity entity,
                                                sol::table componentDef,

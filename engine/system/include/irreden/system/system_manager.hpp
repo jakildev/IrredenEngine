@@ -185,6 +185,12 @@ class SystemManager {
 
     void registerPipeline(IRTime::Events event, std::list<SystemId> pipeline);
 
+    /// #1814: empty `event`'s pipeline (no systems run for it). The
+    /// scene-transition counterpart to `registerPipeline` — a scene machine
+    /// clears the previous scene's pipeline, then registers the next scene's.
+    /// Equivalent to `registerPipeline(event, {})`.
+    void clearPipeline(IRTime::Events event);
+
     /// T-224: pipeline-groups API. Each inner vector is a "parallel
     /// group" of systems that the cross-system validator (see
     /// `validateAllPipelineGroups`) has cleared to co-execute on the

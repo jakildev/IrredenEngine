@@ -16,6 +16,16 @@ void destroyAllEntities() {
     getEntityManager().destroyAllEntities();
 }
 
+void resetGameplay() {
+    // The preserve policy lives here (not in EntityManager) so the low-level
+    // entity module stays free of the prefab-layer C_Persistent dependency.
+    // getComponentType lazily registers C_Persistent if no entity has ever
+    // been tagged — an empty preserve-marker scan, which is harmless.
+    const ComponentId persistentMarker =
+        getEntityManager().getComponentType<IRComponents::C_Persistent>();
+    getEntityManager().destroyAllExceptPreserved({persistentMarker});
+}
+
 smart_ComponentData createComponentData(ComponentId type) {
     return getEntityManager().createComponentDataVector(type);
 }

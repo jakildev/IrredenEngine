@@ -275,6 +275,60 @@ the loaded entity. Workers retrofitting #199 into the singleton API should
 verify the cache invalidates on load (typically a `destroyAllEntities`
 precedes the load, which already clears the cache).
 
+## Scene-transition reset (`resetGameplay`)
+
+`IREntity::resetGameplay()` (#1814) is the scene-transition teardown
+primitive: it destroys every live **gameplay** entity while preserving the
+engine's infrastructure entities, leaving the world immediately usable for the
+next scene (the contrast with `destroyAllEntities`, which tears down
+*everything* and is end-of-world / test-teardown only).
+
+**Preserve-by-default — three categories survive a reset:**
+
+1. **Singleton entities** — everything in the singleton cache
+   (`m_singletonEntityByComponent`). The cache IS the preserve registry, so the
+   common case ("global game state lives on a singleton component") needs zero
+   per-entity bookkeeping. Crucially the cache is **NOT cleared** (unlike
+   `destroyAllEntities`), so a surviving singleton keeps its entity id *and its
+   value* across the reset.
+2. **`C_Persistent`-tagged entities** — the opt-out for a non-singleton entity
+   that must outlive a reset. The RenderManager stamps `C_Persistent` on its
+   camera + framebuffer/canvas entities at construction
+   (`render_manager.cpp`), so the render context survives. Any engine- or
+   creation-created non-singleton entity that must persist needs this tag.
+3. **Component-type backing entities** — each registered component is itself
+   backed by an entity id; these stay alive so the next scene's
+   `createEntity<T>` keeps working.
+
+The low-level primitive is `EntityManager::destroyAllExceptPreserved(
+preserveMarkers)` — generic over a list of preserve-marker `ComponentId`s, so
+`engine/entity/` carries no dependency on the prefab-layer `C_Persistent`. The
+`C_Persistent` policy lives in the `IREntity::resetGameplay` facade.
+
+**Ordering contract.** Drive a scene swap at a **frame boundary** (not mid-tick
+— `resetGameplay` eager-destroys on a snapshot, mirroring `destroyAllEntities`;
+calling it inside a `forEachComponent` / parallel group is UB). The scene
+machine does, within one boundary: `resetGameplay()` → re-register the next
+scene's pipelines (`IRSystem::clearPipeline` / `registerPipeline`) → spawn the
+next scene's entities. Lua: `IRWorld.resetGameplay()` + `IRSystem.clearPipeline`.
+
+**Gotchas:**
+
+- **Dangling EntityIds.** A surviving singleton/persistent entity holding the
+  `EntityId` of a destroyed gameplay entity goes stale. The modifier
+  pre-destroy hook auto-sweeps *modifiers*; arbitrary id fields are not swept —
+  re-acquire ids after the next scene builds, or null them in a pre-destroy hook.
+- **Named entities are pruned.** `destroyEntity` does not remove `m_namedEntities`
+  entries, so `resetGameplay` prunes every name pointing at a now-dead id
+  (otherwise `getEntityByName` would assert on the corpse). Surviving entities
+  keep their names.
+- **System-internal / Lua-global state persists** — systems are never destroyed
+  and the Lua VM is not reset. Keep per-scene state in components (destroyed on
+  reset), not in system statics or Lua globals.
+- **Idempotency is a count, not ids.** Entity ids never recycle (atomic
+  counter), so assert on live-entity *count* (and resource counters) returning
+  to baseline across cycles, never on id values.
+
 ## Position + transform components are automatic
 
 `createEntity(...)` always adds `C_LocalTransform` and

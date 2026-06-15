@@ -467,6 +467,12 @@ void insertIntoPipelineAfter(IRTime::Events event, SystemId system, SystemId anc
 /// hand-built pipeline.
 void validateAllPipelineGroups();
 
+/// #1814: clear `event`'s pipeline (no systems run for it). The
+/// scene-transition counterpart to `registerPipeline` — a scene machine
+/// clears the previous scene's pipeline before registering the next scene's.
+/// Lua: `IRSystem.clearPipeline(event)`.
+void clearPipeline(IRTime::Events event);
+
 void executePipeline(IRTime::Events event);
 
 inline void setTimingEnabled(bool enabled) {

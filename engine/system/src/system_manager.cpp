@@ -117,6 +117,13 @@ void SystemManager::registerPipeline(IRTime::Events event, std::list<SystemId> p
     registerPipelineGroups(event, std::move(groups));
 }
 
+void SystemManager::clearPipeline(IRTime::Events event) {
+    // Empties the event's pipeline (no groups). The scene-transition
+    // counterpart to registerPipeline: clear, then register the next
+    // scene's systems. Reuses the replace semantics of registerPipeline.
+    registerPipeline(event, {});
+}
+
 void SystemManager::registerPipelineGroups(
     IRTime::Events event, std::vector<std::vector<SystemId>> groups
 ) {
