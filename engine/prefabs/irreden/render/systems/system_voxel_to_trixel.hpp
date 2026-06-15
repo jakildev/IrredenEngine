@@ -837,28 +837,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
         syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
 
-        // Cull diagnostic readback (gated by gpu_stage_timing.enabled_).
-        // The buffer still holds the prior frame's visibleCount; reading
-        // it here — before we zero it for this frame's compact pass —
-        // requires no explicit fence: the driver serializes the CPU read
-        // against the prior frame's already-retired compact write.
-        // Frame N+1 reads frame N's value; the first frame reports 0,
-        // contributing a 1/N bias to the running average — negligible
-        // over typical measurement runs.
-        if (gpuStageTiming().enabled_) {
-            VoxelIndirectDispatchParams previous{};
-            indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);
-            gpuStageTiming().visibleVoxelCount_ = previous.visibleCount;
-            gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(effectiveVoxelCount);
-            voxelCullAccumulator().record(
-                previous.visibleCount,
-                static_cast<std::uint32_t>(effectiveVoxelCount)
-            );
-        }
-
-        const VoxelIndirectDispatchParams zeroed{};
-        indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
-
         // Smooth camera Z-yaw (T3 / #1310): while the MAIN canvas's per-axis
         // canvases are active, SKIP the single-canvas voxel rasterization. The
         // per-axis dispatch below writes the voxels (smooth), and the framebuffer
@@ -870,10 +848,59 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // alongside the smooth voxels. The compact pass below still runs (the
         // per-axis dispatch reuses its compacted list). Detached entities (incl.
         // re-voxelize SO(3)) always take the single-canvas emit + blit, so this is
-        // false for them, byte-identical to master.
+        // false for them, byte-identical to master. Resolved before the cull
+        // diagnostic so it can pick the matching indirect-dispatch-params source.
         const bool skipSingleCanvasVoxels = entity == perAxisCanvasEntity_ &&
                                             perAxisCanvases_ != nullptr &&
                                             perAxisCanvases_->isAllocated();
+
+        // Cull diagnostic readback (gated by gpu_stage_timing.enabled_).
+        // The indirect buffer still holds the prior frame's visibleCount;
+        // reading it here — before we zero it for this frame's compact pass —
+        // requires no explicit fence: the driver serializes the CPU read
+        // against the prior frame's already-retired compact write.
+        // Frame N+1 reads frame N's value; the first frame reports 0,
+        // contributing a 1/N bias to the running average — negligible
+        // over typical measurement runs.
+        //
+        // The source depends on the path the prior frame's compact took. The
+        // single-canvas (cardinal) compact appends survivors into indirectBuf_,
+        // but the per-axis split (#1739, active iff skipSingleCanvasVoxels)
+        // routes its count into perAxisIndirectBuf_'s three axis regions and
+        // leaves indirectBuf_ zeroed. Reading indirectBuf_ unconditionally
+        // reported a spurious 0/total for every rotating (per-axis) frame
+        // (#1856) — sum the three axis regions when the split path is active.
+        // A voxel exposed on N axes is appended to N regions, so the per-axis
+        // sum counts face-routings (≥ the unique visible-voxel count): the
+        // "how much work the per-axis path does" cull-effectiveness signal the
+        // overlay wants, not a strict voxel count comparable 1:1 to cardinal.
+        if (gpuStageTiming().enabled_) {
+            std::uint32_t visible = 0;
+            if (skipSingleCanvasVoxels && perAxisIndirectBuf_ != nullptr) {
+                for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
+                    VoxelIndirectDispatchParams region{};
+                    perAxisIndirectBuf_->getSubData(
+                        static_cast<std::ptrdiff_t>(axis) * kPerAxisSsboAlignBytes,
+                        sizeof(VoxelIndirectDispatchParams),
+                        &region
+                    );
+                    visible += region.visibleCount;
+                }
+            } else {
+                VoxelIndirectDispatchParams previous{};
+                indirectBuf_->getSubData(0, sizeof(VoxelIndirectDispatchParams), &previous);
+                visible = previous.visibleCount;
+            }
+            gpuStageTiming().visibleVoxelCount_ = visible;
+            gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(effectiveVoxelCount);
+            voxelCullAccumulator().record(
+                visible,
+                static_cast<std::uint32_t>(effectiveVoxelCount)
+            );
+        }
+
+        const VoxelIndirectDispatchParams zeroed{};
+        indirectBuf_->subData(0, sizeof(VoxelIndirectDispatchParams), &zeroed);
 
         // Per-axis store list-walk split (#1739). For exactly the main-canvas-
         // rotating compact (whose voxels the per-axis dispatch consumes, and
