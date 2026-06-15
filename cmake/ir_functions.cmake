@@ -251,3 +251,189 @@ function(
         )
     endif()
 endfunction()
+
+# irreden_bundle_assets — populate the exe-relative runtime asset layout that
+# every creation needs (the engine resolves data/, shaders/, scripts/ from the
+# executable's directory; see IREngine::init). Factors the per-demo asset-copy
+# boilerplate (DLL copy + data/shaders/scripts) into one call so it is defined
+# once instead of hand-copied across every creation's CMakeLists.
+#
+# Usage:
+#   irreden_bundle_assets(<target>
+#       [SCRIPTS f1.lua f2.lua ...]      # copied into <exedir>/scripts/
+#       [EXTRA_DIRS <src1> <dst1> ...]   # copy dir <src> -> <exedir>/<dst>
+#   )
+#
+# Produces, next to the executable ($<TARGET_FILE_DIR:target>):
+#   data/    <- engine/render/data + engine/data   (merged)
+#   shaders/ <- engine/render/src/shaders          (.metal/.glsl source the
+#               runtime path actually loads)
+#   scripts/<f> for each SCRIPTS file (resolved from the caller's source dir)
+#   <dst>/   for each EXTRA_DIRS (src dst) pair
+# On Windows it also POST_BUILD-copies $<TARGET_RUNTIME_DLLS:target> next to the
+# exe (inert off-Windows). Defines a `<target>Assets` custom target carrying the
+# directory/script copies and wires add_dependencies(<target> <target>Assets);
+# the layout matches the hand-written per-demo blocks byte-for-byte.
+function(irreden_bundle_assets target)
+    cmake_parse_arguments(IRBA "" "" "SCRIPTS;EXTRA_DIRS" ${ARGN})
+
+    set(_exedir "$<TARGET_FILE_DIR:${target}>")
+
+    # Windows runtime DLLs next to the exe. WIN32 (not IR_isWindows): the
+    # latter is set PARENT_SCOPE only in scopes that called
+    # IrredenEngine_setSystemCompileDefinitions, so it is unreliable inside a
+    # standalone helper. COMMAND_EXPAND_LISTS expands the DLL generator-list.
+    if(WIN32)
+        add_custom_command(
+            TARGET ${target}
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy -t ${_exedir} $<TARGET_RUNTIME_DLLS:${target}>
+            COMMAND_EXPAND_LISTS
+        )
+    endif()
+
+    # Asset directories: merge engine/render/data + engine/data into data/, and
+    # the shader source tree into shaders/. copy_directory (not _if_different)
+    # to match the existing per-demo Assets targets exactly.
+    set(_asset_cmds
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${PROJECT_SOURCE_DIR}/engine/render/data ${_exedir}/data
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${PROJECT_SOURCE_DIR}/engine/data ${_exedir}/data
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${_exedir}/shaders
+    )
+
+    # Scripts -> <exedir>/scripts/<basename>. copy_if_different keeps the
+    # per-script copy cheap on incremental builds (matches the demos' OUTPUT
+    # form, which fed the Assets target's DEPENDS).
+    if(IRBA_SCRIPTS)
+        list(APPEND _asset_cmds
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${_exedir}/scripts)
+        foreach(_s IN LISTS IRBA_SCRIPTS)
+            if(IS_ABSOLUTE "${_s}")
+                set(_src "${_s}")
+            else()
+                set(_src "${CMAKE_CURRENT_SOURCE_DIR}/${_s}")
+            endif()
+            get_filename_component(_name "${_s}" NAME)
+            list(APPEND _asset_cmds
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${_src} ${_exedir}/scripts/${_name})
+        endforeach()
+    endif()
+
+    # EXTRA_DIRS: (src dst) pairs; dst is relative to the exe directory.
+    if(IRBA_EXTRA_DIRS)
+        list(LENGTH IRBA_EXTRA_DIRS _ed_len)
+        math(EXPR _ed_mod "${_ed_len} % 2")
+        if(NOT _ed_mod EQUAL 0)
+            message(FATAL_ERROR
+                "irreden_bundle_assets(${target}): EXTRA_DIRS needs <src> <dst> pairs")
+        endif()
+        math(EXPR _ed_last "${_ed_len} - 1")
+        foreach(_i RANGE 0 ${_ed_last} 2)
+            list(GET IRBA_EXTRA_DIRS ${_i} _ed_src)
+            math(EXPR _j "${_i} + 1")
+            list(GET IRBA_EXTRA_DIRS ${_j} _ed_dst)
+            list(APPEND _asset_cmds
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    ${_ed_src} ${_exedir}/${_ed_dst})
+        endforeach()
+    endif()
+
+    add_custom_target(${target}Assets ${_asset_cmds})
+    add_dependencies(${target} ${target}Assets)
+endfunction()
+
+# irreden_package_target — assemble a self-contained, per-platform,
+# double-clickable bundle (exe + data/ + shaders/ + scripts/ + runtime libs)
+# and zip it to <target>-<platform>-<arch>.zip in the build dir. Consumes the
+# exe-relative layout irreden_bundle_assets() already produced, so call that
+# first. One-command invocation:
+#   cmake --build <build-dir> --target <target>Package
+#
+# Relocatability is already handled by IREngine::init (cwd -> exe dir), so the
+# unzipped folder runs by double-click on a clean box. Uses `cmake -E tar
+# --format=zip`, NOT CPack: CPack's install()-prefix model fights the
+# per-platform dep bundling and the exe-relative asset layout, and a custom
+# target gives full control for a time-boxed packaging deliverable.
+#
+# Platform runtime-dep bundling (next to the exe in the staging dir):
+#   Windows: $<TARGET_RUNTIME_DLLS> + the MinGW runtime trio (libgcc_s_seh-1,
+#            libstdc++-6, libwinpthread-1), which TARGET_RUNTIME_DLLS omits.
+#   Linux:   deps default to static (top-level CMakeLists.txt), so usually
+#            nothing to bundle; $ORIGIN rpath covers any shared .so left.
+#   macOS:   cmake/macos_bundle_dylibs.cmake copies the exe's non-system
+#            dylibs next to it and rewrites the load commands to
+#            @executable_path. NOTE: this is a SHALLOW (direct-dependency)
+#            bundle — transitive Homebrew deps (e.g. ffmpeg's codec libs) are
+#            NOT yet walked, so clean-box self-containment is follow-up work;
+#            verify a macOS bundle via cross-host smoke / the human.
+function(irreden_package_target target)
+    set(_exedir "$<TARGET_FILE_DIR:${target}>")
+    set(_pkg_root "${CMAKE_BINARY_DIR}/package")
+    set(_stage "${_pkg_root}/${target}")
+    set(_staged_exe "${_stage}/$<TARGET_FILE_NAME:${target}>")
+
+    # platform-arch tag for the archive name (e.g. macos-arm64, linux-x86_64).
+    string(TOLOWER "${CMAKE_SYSTEM_NAME}" _os)
+    if(_os STREQUAL "darwin")
+        set(_os "macos")
+    endif()
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _arch)
+    set(_zip "${CMAKE_BINARY_DIR}/${target}-${_os}-${_arch}.zip")
+
+    # Clean staging dir + the exe-relative asset layout (already built by
+    # <target>Assets, which we DEPEND on below).
+    set(_pkg_cmds
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${_stage}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${_stage}
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${target}> ${_stage}/
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${_exedir}/data ${_stage}/data
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${_exedir}/shaders ${_stage}/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${_exedir}/scripts ${_stage}/scripts
+    )
+
+    if(WIN32)
+        list(APPEND _pkg_cmds
+            COMMAND ${CMAKE_COMMAND} -E copy -t ${_stage} $<TARGET_RUNTIME_DLLS:${target}>
+            COMMAND_EXPAND_LISTS)
+        # MinGW runtime trio is not in TARGET_RUNTIME_DLLS; pull it from the
+        # compiler's bin dir (creations/CLAUDE.md gotcha).
+        get_filename_component(_mingw_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        list(APPEND _pkg_cmds
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${_mingw_bin}/libgcc_s_seh-1.dll
+                ${_mingw_bin}/libstdc++-6.dll
+                ${_mingw_bin}/libwinpthread-1.dll
+                ${_stage})
+    elseif(APPLE)
+        list(APPEND _pkg_cmds
+            COMMAND ${CMAKE_COMMAND}
+                -DEXE=${_staged_exe} -DDEST=${_stage}
+                -P ${PROJECT_SOURCE_DIR}/cmake/macos_bundle_dylibs.cmake)
+    endif()
+
+    # Zip from the package root so the archive holds a single top-level
+    # <target>/ folder (unzip -> double-clickable bundle dir). `cmake -E chdir`
+    # avoids a WORKING_DIRECTORY on the target itself, which make would cd into
+    # before the staging dir exists. tar --format=zip needs CMake >= 3.18;
+    # project min is 3.28, so no version bump.
+    list(APPEND _pkg_cmds
+        COMMAND ${CMAKE_COMMAND} -E chdir ${_pkg_root}
+            ${CMAKE_COMMAND} -E tar cf ${_zip} --format=zip ${target})
+
+    # Linux note: no runtime libs are staged because FetchContent deps default
+    # to static there (top-level CMakeLists.txt), so the exe is self-contained.
+    # If a Linux build ever enables BUILD_SHARED_LIBS, the staged exe would
+    # need a `patchelf --set-rpath '$ORIGIN'` step + the shared .so copied in —
+    # INSTALL_RPATH alone doesn't help, since manual-copy packaging bypasses
+    # CMake's install() rpath rewrite.
+
+    add_custom_target(${target}Package
+        ${_pkg_cmds}
+        DEPENDS ${target} ${target}Assets
+        COMMENT "Packaging ${target} -> ${target}-${_os}-${_arch}.zip"
+        VERBATIM)
+endfunction()
