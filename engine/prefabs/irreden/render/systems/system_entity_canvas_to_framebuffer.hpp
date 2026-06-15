@@ -60,6 +60,13 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // site so detached canvases composite onto the same sub-pixel-snapped grid
     // as the main canvas. Derived from cameraIso_ / cameraZoom_.
     vec2 isoPixelOffset_{};
+    // Global voxel subdivision factor the SHARED framebuffer depth buffer runs
+    // at this frame (the main world canvas + SDF floor encode depth as
+    // worldDepth × effSub × 4). A world-placed detached canvas rasters its pool
+    // at its OWN (possibly capped) sub, so its model-frame depth must be
+    // rescaled into these units before it can depth-sort against world geometry
+    // — the #1624 world-placed depth fix.
+    int effectiveSub_ = 1;
 
     void beginTick() {
         instances_.clear();
@@ -79,6 +86,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         const IRMath::CameraSubPixelOffsets subPixelOffsets =
             IRMath::cameraSubPixelOffsets(cameraIso_, cameraZoom_, ivec2(1));
         isoPixelOffset_ = vec2(subPixelOffsets.framebufferGamePxOffset_);
+
+        effectiveSub_ = IRRender::getVoxelRenderEffectiveSubdivisions();
     }
 
     void tick(const C_EntityCanvas &entityCanvas, const C_WorldTransform &worldTransform) {
@@ -172,11 +181,38 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // (IRPrefab::GridRotation::worldCellForGridVoxel), so CPU and the
         // world voxel rasterizer classify the entity cell identically. With
         // screenLocked_ this stays 0 (the overlay opt-out above).
-        fd.distanceOffset_ = entityCanvas.screenLocked_
-                                 ? 0
-                                 : pos3DtoDistance(roundVec3HalfUp(worldTransform.translation_));
+        // World-placed depth must land in the SHARED framebuffer depth units —
+        // the main world canvas + SDF floor encode depth as
+        // worldDepth × effSub × 4 (encodeDepthWithFace's ×4 face-bit shift in
+        // ir_iso_common). This canvas rastered its pool in MODEL space at its
+        // own renderedSubdivisions_ (≤ effSub when the #1570 D2 cap fired), so
+        // its texture rawDist is modelDepth × cubeSub × 4. To depth-sort against
+        // world geometry the composite (a) rescales rawDist by effSub / cubeSub
+        // (depthScale, carried in the otherwise-unused
+        // effectiveSubdivisionsForHover_.y and applied in f_trixel_to_framebuffer)
+        // and (b) adds the entity's world iso depth at the same effSub × 4 scale.
+        // The #1624 default left the offset in raw world units — under-scaled by
+        // effSub × 4 — which sank world-placed solids behind the floor as zoom
+        // (effSub) grew, clipping their lower faces at a horizontal line.
+        // screenLocked overlays keep depthScale 1 + offset 0 (byte-identical to
+        // the pre-#1624 fixed-depth overlay); a canvas that did not raster a
+        // voxel pool this frame (renderedSubdivisions_ == 0, e.g. pure SDF/text
+        // overlay) keeps the pre-existing raw offset.
+        const int cubeSub = canvasTextures->renderedSubdivisions_;
+        float depthScale = 1.0f;
+        int compositeDistanceOffset = 0;
+        if (!entityCanvas.screenLocked_) {
+            const int worldDepth = pos3DtoDistance(roundVec3HalfUp(worldTransform.translation_));
+            if (cubeSub >= 1) {
+                depthScale = static_cast<float>(effectiveSub_) / static_cast<float>(cubeSub);
+                compositeDistanceOffset = worldDepth * effectiveSub_ * kDepthEncodeShift;
+            } else {
+                compositeDistanceOffset = worldDepth;
+            }
+        }
+        fd.distanceOffset_ = compositeDistanceOffset;
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
-        fd.effectiveSubdivisionsForHover_ = vec2(1.0f);
+        fd.effectiveSubdivisionsForHover_ = vec2(1.0f, depthScale);
         fd.showHoverHighlight_ = 0.0f;
 
         CanvasInstance inst{};

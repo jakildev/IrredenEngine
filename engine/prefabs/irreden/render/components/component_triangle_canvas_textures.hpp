@@ -67,14 +67,16 @@ inline std::vector<std::pair<ResourceId, Texture2D *>> makeHiZMipChain(ivec2 siz
     while (levelSize.x > 1 || levelSize.y > 1) {
         levelSize =
             ivec2(IRMath::max(1, (levelSize.x + 1) / 2), IRMath::max(1, (levelSize.y + 1) / 2));
-        mips.push_back(IRRender::createResource<IRRender::Texture2D>(
-            TextureKind::TEXTURE_2D,
-            levelSize.x,
-            levelSize.y,
-            TextureFormat::R32I,
-            TextureWrap::CLAMP_TO_EDGE,
-            TextureFilter::NEAREST
-        ));
+        mips.push_back(
+            IRRender::createResource<IRRender::Texture2D>(
+                TextureKind::TEXTURE_2D,
+                levelSize.x,
+                levelSize.y,
+                TextureFormat::R32I,
+                TextureWrap::CLAMP_TO_EDGE,
+                TextureFilter::NEAREST
+            )
+        );
     }
     return mips;
 }
@@ -95,6 +97,19 @@ struct C_TriangleCanvasTextures {
     // largest encoded value — so any footprint that still sees background keeps
     // the max at 65535 = "never occlude", the conservative direction.
     std::vector<std::pair<ResourceId, Texture2D *>> hiZMips_;
+
+    // Subdivision factor this canvas actually rastered its voxel pool at this
+    // frame, stamped by VOXEL_TO_TRIXEL_STAGE_1 after the per-canvas
+    // subdivision cap (#1570 D2). For a DETACHED canvas this can be BELOW the
+    // global IRRender::getVoxelRenderEffectiveSubdivisions() because the cap
+    // keeps the model-space lattice inside the fixed canvas. The detached
+    // composite (ENTITY_CANVAS_TO_FRAMEBUFFER) reads it to rescale the canvas's
+    // model-frame depth into the shared framebuffer depth units (which run at
+    // the global effSub × 4 encode scale) so a world-placed detached solid
+    // depth-sorts against the floor / GRID solids correctly under zoom. 0 =
+    // the canvas did not raster a voxel pool this frame (pure SDF / text
+    // overlay) — the composite then keeps the pre-#1624 raw offset.
+    int renderedSubdivisions_ = 0;
 
     C_TriangleCanvasTextures(ivec2 size)
         : size_{size}

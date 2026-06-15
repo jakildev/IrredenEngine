@@ -87,13 +87,19 @@ struct FrameDataTrixelToFramebuffer {
     vec2 cameraTrixelOffset_;
     vec2 textureOffset_;
     vec2 mouseHoveredTriangleIndex_;
-    /// When smooth mode: effective subdivisions for hover coord conversion. x=subdivisions,
-    /// y=unused.
+    /// x = effective subdivisions for smooth-mode hover coord conversion.
+    /// y = depth rescale (effSub / canvas renderedSub) applied to rawDist in
+    /// f_trixel_to_framebuffer before distanceOffset_ is added, so a world-placed
+    /// DETACHED canvas rastered at a capped sub lands in the shared framebuffer
+    /// depth units; <= 0 means 1.0 (the world/overlay fast path).
     vec2 effectiveSubdivisionsForHover_;
     /// Config: when 0, hovered trixel is not visually highlighted (entity detection still works).
     float showHoverHighlight_;
-    /// Added to raw canvas distance before depth normalization.
-    /// 0 for world/overlay canvases; pos3DtoDistance(entityPos) for per-entity canvases.
+    /// Added to (rescaled) raw canvas distance before depth normalization. 0 for
+    /// world/overlay canvases; for a world-placed per-entity canvas it is the
+    /// entity world iso depth in encoded framebuffer units
+    /// (pos3DtoDistance(entityPos) * effSub * 4 — the encodeDepthWithFace ×4 over
+    /// the ×subdivision depth scale).
     int distanceOffset_ = 0;
     /// Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Consumed
     /// only by the per-axis scatter shaders (v_/f_peraxis_scatter); the
@@ -174,6 +180,11 @@ static_assert(
     "per-pixel depth-color mode for the scatter path (#1697); a silent reorder "
     "or resize would corrupt the scatter UBO with no compile diagnostic"
 );
+
+/// Multiplier in the @c encodeDepthWithFace convention (d·4 + face), shared by
+/// the world-placed detached-canvas composite and any producer that converts world
+/// iso depth or model-frame rawDist into shared framebuffer depth units (×effSub × 4).
+constexpr int kDepthEncodeShift = 4;
 
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
