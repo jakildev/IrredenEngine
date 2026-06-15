@@ -328,6 +328,13 @@ next scene's entities. Lua: `IRWorld.resetGameplay()` + `IRSystem.clearPipeline`
 - **Idempotency is a count, not ids.** Entity ids never recycle (atomic
   counter), so assert on live-entity *count* (and resource counters) returning
   to baseline across cycles, never on id values.
+- **CHILD_OF relation entities for preserved entities are destroyed.** A
+  `CHILD_OF` relation is itself an ECS entity and is NOT in any preserve
+  category, so `destroyAllExceptPreserved` destroys it even when both the
+  parent and child survive a reset. The relation remains functionally correct
+  because entity ids never recycle — the zombie relation id can never become a
+  real entity. Do not call `entityExists(relationId)` expecting `true` after a
+  reset; use `getParentEntityFromArchetype` to query the relationship instead.
 
 ## Position + transform components are automatic
 
