@@ -10,9 +10,10 @@
 // builds on).
 
 // Reconstruct the world-unit surface position of a per-axis trixel canvas cell.
-// The per-axis store (#1458: base-resolution encoding) keys each cell face-locally
-// in world units; this recovers the face origin by the exact integer inverse the
-// forward scatter uses (faceOriginFromInPlane — no 2cos(yaw)+1 singularity).
+// The per-axis store (#1458: base-resolution encoding) keys each cell by its
+// un-yawed (cardinal) iso pixel `perAxisBase + pos3DtoPos2DIso(facePos)`; this
+// recovers the face origin by the exact iso inverse the forward scatter uses
+// (isoPixelToPos3D — no 2cos(yaw)+1 singularity, since the index is un-yawed).
 // rawDepth is already in world units — no scale division required.
 // `faceId` is the world FaceId (visibleFaceIds[slot]); NO cardinal rotation —
 // the per-axis store writes the world frame directly (pos3DtoPos2DIsoYawed).
@@ -23,8 +24,6 @@ vec3 perAxisCellToWorld3D(
 ) {
     ivec2 perAxisBase =
         trixelFrameOffset(trixelOriginOffsetZ1(canvasSize), frameCanvasOffset, voxelRenderOptions);
-    ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-    int axis = faceId >> 1;
-    ivec2 inPlane = cell - faceLocalBase(axis, anchor, canvasSize);
-    return vec3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    ivec2 isoPix = cell - perAxisBase;
+    return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
 }

@@ -147,10 +147,14 @@ vertex VertexOut v_peraxis_scatter(
     // Hoist in-plane axes before origin so fractional offset and dilation block share them.
     float3 eu, ev;
     faceInPlaneUnitAxes(axis, eu, ev);
-    // Exact face-local recovery (#1310 fix) — mirror of v_peraxis_scatter.glsl.
-    const int3 anchor = faceLocalAnchor(frameData.perAxisBase, canvasSize);
-    const int2 inPlane = int2(ij) - faceLocalBase(axis, anchor, canvasSize);
-    const float3 baseOrigin = float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    // Un-yawed iso recovery (prototype) — mirror of v_peraxis_scatter.glsl. The
+    // store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`, so the
+    // cardinal iso pixel is `ij - perAxisBase` and isoPixelToPos3D inverts it
+    // exactly against rawDepth (= x+y+z of the face plane). Non-singular at every
+    // yaw because the recovered index is un-yawed; the yaw is applied below.
+    const int2 isoPix = int2(ij) - frameData.perAxisBase;
+    const float3 baseOrigin =
+        isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
     // Apply sub-cell offset packed in the encoding (#1458).
     const float3 origin = baseOrigin
         + eu * (float(uFrac4) / 16.0f - 0.5f)

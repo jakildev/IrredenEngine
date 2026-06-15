@@ -20,10 +20,10 @@ inline float3 perAxisCellToWorld3D(
 ) {
     const int2 perAxisBase =
         trixelFrameOffset(trixelOriginOffsetZ1(canvasSize), frameCanvasOffset, voxelRenderOptions);
-    const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-    const int axis = faceId >> 1;
-    const int2 inPlane = cell - faceLocalBase(axis, anchor, canvasSize);
-    return float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    // Un-yawed iso recovery (prototype) — mirror of the scatter + stage 1/2 store.
+    // The store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`.
+    const int2 isoPix = cell - perAxisBase;
+    return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
 }
 
 #endif // IR_PER_AXIS_LIGHTING_METAL_INCLUDED

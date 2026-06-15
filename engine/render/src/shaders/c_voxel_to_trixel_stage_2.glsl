@@ -171,24 +171,19 @@ void main() {
     if (perAxisRoute != 0) {
         const int axis = perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Face-local in-plane store — mirrors stage 1 exactly so the color tap
-        // lands on the same cell the distance tap did. See
-        // c_voxel_to_trixel_stage_1.glsl / ir_iso_common.glsl (#1310 fix).
+        // Un-yawed (cardinal) iso store — mirrors stage 1's re-key so the color /
+        // entity-id tap lands on the same cardinal iso cell + depth the distance
+        // tap did. See c_voxel_to_trixel_stage_1.glsl for the full rationale.
         const ivec2 perAxisBase =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
-        const ivec2 canvasSize = imageSize(triangleCanvasDistances);
-        const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-        const ivec2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (voxelRenderOptions.x == 0) {
             const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
-            // Mirror stage 1's face-plane store (#1310 seam fix) so the color
-            // tap lands on the same cell + depth the distance tap did.
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeColorTap(
-                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance,
+                perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
                 voxelColor, voxelIndex
             );
             return;
@@ -202,7 +197,7 @@ void main() {
         const int voxelDistance_s2 =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
         writeColorTap(
-            cellBase + faceInPlaneCoords(faceId, facePos_s2), voxelDistance_s2,
+            perAxisBase + pos3DtoPos2DIso(facePos_s2), voxelDistance_s2,
             voxelColor, voxelIndex
         );
         return;
