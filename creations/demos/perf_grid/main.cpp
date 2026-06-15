@@ -97,6 +97,7 @@ struct PerfGridSettings {
     float wavePeriodSeconds_ = 4.0f;
     bool waveOffscreen_ = false;
     float initialZoom_ = 0.5f;
+    float initialYaw_ = 0.0f;
     // Subdivision — config/preset-settable; CLI overrides both.
     // Only applied if explicit_ is true so the engine's built-in default
     // is undisturbed when neither config nor CLI specifies these.
@@ -113,6 +114,8 @@ struct CliOverrides {
     int gridSize_ = 64;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    bool yawSet_ = false;
+    float yaw_ = 0.0f;
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
     bool subdivisionModeSet_ = false;
@@ -275,6 +278,9 @@ void applyCliOverrides() {
     if (g_cliOverrides.zoomSet_) {
         g_settings.initialZoom_ = g_cliOverrides.zoom_;
     }
+    if (g_cliOverrides.yawSet_) {
+        g_settings.initialYaw_ = g_cliOverrides.yaw_;
+    }
     if (g_cliOverrides.waveAmplitudeSet_) {
         g_settings.waveAmplitude_ = g_cliOverrides.waveAmplitude_;
     }
@@ -323,6 +329,10 @@ void parseArgs(int argc, char **argv) {
                 g_cliOverrides.zoom_ = zoom;
                 g_cliOverrides.zoomSet_ = true;
             }
+            ++i;
+        } else if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
+            g_cliOverrides.yaw_ = static_cast<float>(std::atof(argv[i + 1]));
+            g_cliOverrides.yawSet_ = true;
             ++i;
         } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
             // 0.0 = static scene (no per-frame voxel motion). Useful for
@@ -602,6 +612,7 @@ int main(int argc, char **argv) {
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
+    IRRender::setCameraVisualYaw(g_settings.initialYaw_);
     IR_LOG_INFO(
         "Initial camera zoom: requested={}, actual={}",
         g_settings.initialZoom_,

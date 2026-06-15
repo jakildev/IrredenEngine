@@ -271,6 +271,10 @@ IREntity::EntityId getEntityIdAtMouseTrixel();
 /// @name Camera setters
 void setCameraZoom(float zoom);
 void setCameraPosition2DIso(vec2 pos);
+/// Set the camera's continuous Z-yaw. Takes @p degrees in degrees (converted
+/// to radians internally); non-zero values switch the voxel rasterizer from
+/// the cardinal gather path to the per-axis scatter path.
+void setCameraVisualYaw(float degrees);
 /// @}
 
 /// @{
