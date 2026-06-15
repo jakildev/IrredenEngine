@@ -307,9 +307,9 @@ function(irreden_bundle_assets target)
     # Scripts -> <exedir>/scripts/<basename>. copy_if_different keeps the
     # per-script copy cheap on incremental builds (matches the demos' OUTPUT
     # form, which fed the Assets target's DEPENDS).
+    list(APPEND _asset_cmds
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${_exedir}/scripts)
     if(IRBA_SCRIPTS)
-        list(APPEND _asset_cmds
-            COMMAND ${CMAKE_COMMAND} -E make_directory ${_exedir}/scripts)
         foreach(_s IN LISTS IRBA_SCRIPTS)
             if(IS_ABSOLUTE "${_s}")
                 set(_src "${_s}")
