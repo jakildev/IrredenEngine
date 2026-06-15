@@ -161,8 +161,13 @@ kernel void c_compute_voxel_ao(
             );
         }
 
+        // Only a DIFFERENT visible face counts as an occluder — see the GLSL
+        // twin: a SAME-face neighbour at d ~ 1 is the round-to-cell stair-step
+        // of a rotated voxel surface (the "missing sections" speckle), not a
+        // crease. Flat cardinal faces (d ~ 0) and a single-face per-axis canvas
+        // drop out cleanly.
         float d = dot(neighbourPos3D - pos3D, worldOutward);
-        if (d > kAOMinHeight && d < kAOMaxHeight) occl++;
+        if ((neighbourEncoded & 3) != slot && d > kAOMinHeight && d < kAOMaxHeight) occl++;
     }
 
     // Each occluding edge-neighbour darkens by 10%; all four caps at 60%
