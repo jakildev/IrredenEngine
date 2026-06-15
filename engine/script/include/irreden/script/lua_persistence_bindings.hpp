@@ -163,7 +163,11 @@ inline void bindPersistenceApi(LuaScript &script) {
     };
 
     save["save"] = [stores](const std::string &name) -> bool {
-        return IRAsset::saveKeyValueStore(keyValueStorePath(name), (*stores)[name]).ok();
+        const auto it = stores->find(name);
+        if (it == stores->end()) {
+            return false;
+        }
+        return IRAsset::saveKeyValueStore(keyValueStorePath(name), it->second).ok();
     };
 
     save["set"] = [stores](const std::string &name, const std::string &key, sol::object value) {
