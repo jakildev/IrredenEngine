@@ -681,6 +681,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IRMath::clamp(frameData_.voxelRenderOptions_.y, 1, cap);
         }
 
+        // Publish the sub this canvas actually rastered at so the detached
+        // composite can rescale this canvas's model-frame depth into the shared
+        // framebuffer depth units (#1624 world-placed depth fix). For the main
+        // world canvas this is the un-capped global effSub; for a capped
+        // re-voxelize canvas it is the reduced value. Stamped for every voxel
+        // canvas (the main canvas's value is simply never read by the detached
+        // composite).
+        triangleCanvasTextures.renderedSubdivisions_ = frameData_.voxelRenderOptions_.y;
+
         // Detached re-voxelize fill mode (#1556 / #1619). The INVERSE path (#1619,
         // rotating) dispatches over the dest-cell cube and the GPU authors
         // position + color + active for those slots, so the shared compact + frame

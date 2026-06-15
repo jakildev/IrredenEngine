@@ -28,7 +28,12 @@ the ECS surface.
   — last frame's Hi-Z is the cull's lag source and is stale across a cut. Output
   is bit-identical cull-on vs cull-off (fully-occluded voxels write nothing); the
   per-chunk realized payoff is weak vs the per-voxel ceiling (per-voxel follow-on
-  tracked separately).
+  tracked separately). Also carries `renderedSubdivisions_`, stamped each frame
+  by `VOXEL_TO_TRIXEL_STAGE_1` with the sub this canvas actually rastered at
+  (below the global effSub when the `subdivisionCap` fired); the detached
+  composite reads it to rescale model-frame depth into shared framebuffer units
+  (the world-placed depth fix, see "World-integration mechanics" below). 0 = no
+  voxel raster this frame.
 - `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
   for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
   Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
@@ -480,9 +485,19 @@ overlay → any `DETACHED` mode with `screenLocked_ = true`.
 world-placed re-voxelize solid integrates:
 
 - **Depth (P4b-1):** the composite sets `distanceOffset_` to the entity's world
-  iso depth (`pos3DtoDistance(roundVec3HalfUp(translation))`), so the solid
-  depth-sorts against world geometry on the shared GRID `trixelDistances`
-  convention. `screenLocked_` keeps the offset at 0 (overlay).
+  iso depth, so the solid depth-sorts against world geometry on the shared GRID
+  `trixelDistances` convention. The shared framebuffer depth runs at
+  `worldDepth × effSub × 4` (the `encodeDepthWithFace` ×4 face-bit shift over
+  the ×subdivision-scaled depth), and a detached canvas rasters its pool at its
+  OWN possibly-capped sub (`subdivisionCap`, #1570 D2), so the composite must
+  (a) scale the offset to those units —
+  `pos3DtoDistance(roundVec3HalfUp(translation)) × effSub × 4` — and (b) rescale
+  the canvas's model-frame `rawDist` by `effSub / renderedSubdivisions_`
+  (carried in `effectiveSubdivisionsForHover_.y`, applied in
+  `f_trixel_to_framebuffer`). Leaving the offset in raw world units (the #1624
+  default) under-scaled it by `effSub × 4`, sinking world-placed solids behind
+  the floor as zoom grew. `screenLocked_` keeps the offset at 0 + scale 1
+  (overlay, byte-identical).
 - **Receive (P4b-2):** the entity world cell origin is propagated
   onto `C_CanvasLocalRotation` (`worldPlaced_` + `worldCellOffset_`) by
   PROPAGATE_CANVAS_ROTATION and published into the shared voxel-frame UBO as

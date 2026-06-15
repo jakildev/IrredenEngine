@@ -54,7 +54,16 @@ void main() {
 
     vec4 color = textureLod(triangleColors, origin / textureSize, 0);
     int rawDist = textureLod(triangleDistances, origin / textureSize, 0).r;
-    float depth = normalizeDistance(rawDist + distanceOffset);
+    // effectiveSubdivisionsForHover.y carries the per-canvas depth rescale
+    // (effSub / cubeSub) for world-placed DETACHED canvases: their model-frame
+    // rawDist was written at the canvas's own (possibly #1570-D2-capped)
+    // subdivision, so it must be lifted into the shared framebuffer depth units
+    // (worldDepth × effSub × 4) before the world iso-depth offset is added — the
+    // #1624 world-placed depth fix. 0 (world/overlay canvases, zero-init) → 1.0,
+    // i.e. the byte-identical fast path.
+    float depthScale = effectiveSubdivisionsForHover.y;
+    if (depthScale <= 0.0) depthScale = 1.0;
+    float depth = normalizeDistance(int(round(float(rawDist) * depthScale)) + distanceOffset);
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
     // canvasOffset is already scaled by subdivisions in smooth mode (CPU side)
     // mouseHoveredTriangleIndex is base space; scale to subdivided space for comparison
