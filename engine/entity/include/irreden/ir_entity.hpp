@@ -9,6 +9,7 @@
 
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/common/components/component_persistent.hpp>
 
 #include <tuple>
 #include <type_traits>
@@ -176,6 +177,14 @@ template <PrefabTypes type, typename... Args> EntityId createEntity(Args &&...ar
 EntityId setParent(EntityId child, EntityId parent);
 void destroyEntity(EntityId entity);
 void destroyAllEntities();
+
+/// Scene-transition teardown (#1814): destroy every live gameplay entity,
+/// preserving singletons and any entity tagged `C_Persistent`. The renderer's
+/// camera + canvas entities are stamped `C_Persistent` at construction so the
+/// render context survives. Call at a frame boundary (eager + snapshot-based,
+/// like `destroyAllEntities`); the scene machine then re-registers pipelines
+/// and spawns the next scene. Lua: `IRWorld.resetGameplay()`.
+void resetGameplay();
 
 // Returns the first EntityId of the batch
 // Needs to guarentee that entities are ajacent for

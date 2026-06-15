@@ -248,6 +248,16 @@ inline void bindRegisterPipelineAndSystemId(
         IRSystem::registerPipeline(static_cast<IRTime::Events>(event), std::move(pipeline));
     };
 
+    // #1814: clear an event's pipeline (no systems run for it). The scene-
+    // transition counterpart to registerPipeline — a Lua scene machine clears
+    // the previous scene's pipeline, then registers the next scene's.
+    //
+    //     IRSystem.clearPipeline(IRTime.UPDATE)
+    lua["IRSystem"]["clearPipeline"] = [](lua_Integer event) {
+        requireValidPipelineEvent("IRSystem.clearPipeline", event);
+        IRSystem::clearPipeline(static_cast<IRTime::Events>(event));
+    };
+
     // T-224: groups-aware variant. Outer table is the sequence of
     // groups, each inner table a parallel group. The cross-system
     // validator runs at `World::start()` (engine-side hook); a typo

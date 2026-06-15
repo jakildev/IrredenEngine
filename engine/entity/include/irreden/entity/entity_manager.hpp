@@ -96,6 +96,17 @@ class EntityManager {
     void removeComponentById(EntityId entity, ComponentId componentType);
     void destroyEntity(EntityId entity);
     void destroyAllEntities();
+    /// Scene-transition teardown (#1814): destroy every live entity EXCEPT
+    /// (1) singleton entities (everything in `m_singletonEntityByComponent`)
+    /// and (2) entities holding any of the `preserveMarkers` component types.
+    /// Unlike `destroyAllEntities`, the singleton cache is NOT cleared — the
+    /// preserved singletons stay valid for the next scene. Eager + snapshot-
+    /// based (mirrors `destroyAllEntities`): main-thread only, must NOT run
+    /// mid-iteration (call it at a frame boundary). Stale `m_namedEntities`
+    /// entries pointing at destroyed ids are pruned. Generic by design — the
+    /// `C_Persistent` policy lives in the `IREntity::resetGameplay` facade so
+    /// this low-level module stays free of any prefab-component dependency.
+    void destroyAllExceptPreserved(const std::vector<ComponentId> &preserveMarkers);
     void markEntityForDeletion(EntityId &entity);
     void destroyMarkedEntities();
     NodeId getParentNodeFromRelation(RelationId relation);
@@ -104,6 +115,10 @@ class EntityManager {
     RelationId registerRelation(Relation relation, EntityId relatedEntity);
     void setName(EntityId entity, const std::string &name);
     EntityId getEntityByName(const std::string &name) const;
+    // Non-asserting existence check (getEntityByName asserts on a miss).
+    bool hasName(const std::string &name) const {
+        return m_namedEntities.contains(name);
+    }
 
     template <typename... Components> EntityId createEntity(const Components &...components) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
@@ -115,11 +130,9 @@ class EntityManager {
         if (!isMainThreadForDeferred()) {
             EntityId entity = allocateEntityIdAtomic();
             int slot = workerSlotForCurrentThread();
-            m_workerStaging[slot].structuralChanges_.push_back(
-                [this, entity, components...]() {
-                    insertReservedEntity(entity, components...);
-                }
-            );
+            m_workerStaging[slot].structuralChanges_.push_back([this, entity, components...]() {
+                insertReservedEntity(entity, components...);
+            });
             return entity;
         }
         EntityId entity = allocateEntity();

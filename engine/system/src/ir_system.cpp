@@ -32,6 +32,10 @@ void validateAllPipelineGroups() {
     getSystemManager().validateAllPipelineGroups();
 }
 
+void clearPipeline(IRTime::Events event) {
+    getSystemManager().clearPipeline(event);
+}
+
 void executePipeline(IRTime::Events event) {
     getSystemManager().executePipeline(event);
 }
