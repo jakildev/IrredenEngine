@@ -277,14 +277,29 @@ struct LoftToolState {
 };
 LoftToolState g_loftTool;
 
-// Three auto-screenshot framings so the render-debug-loop / regression
-// harness records the palette panel and the editable scene from a
-// stable camera. Camera position is irrelevant to the GUI canvas but
-// it does anchor the world-space scene render.
-constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_idle"},
-    {0.75f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_out"},
-    {1.5f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_in"},
+// Scripted palette-click: move cursor to a palette swatch, press, release.
+// frameOffset_ = 0: move; 1: press; 2: release — settle then captures.
+constexpr IRVideo::GuiInputEvent kPaletteClickEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(200, 300)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(200, 300),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(200, 300),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
+// GUI-test shot table covering stable render framings plus one scripted-click
+// shot. Superset of the previous kShots[] — render-verify labels still match.
+constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_idle"}, nullptr, 0},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_palette_click"}, kPaletteClickEvents, 3},
+    {{0.75f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_out"}, nullptr, 0},
+    {{1.5f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_in"}, nullptr, 0},
 };
 
 int g_autoWarmupFrames = 0;
@@ -1471,7 +1486,8 @@ void initSystems() {
             if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(
+                        IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -2012,12 +2028,13 @@ void initSystems() {
     );
 
     if (IRVoxelEditor::g_autoWarmupFrames > 0) {
-        IRVideo::AutoScreenshotConfig cfg{};
+        IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = IRVoxelEditor::g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = IRVoxelEditor::kShots;
-        cfg.numShots_ = sizeof(IRVoxelEditor::kShots) / sizeof(IRVoxelEditor::kShots[0]);
-        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
+        cfg.shots_ = IRVoxelEditor::kGuiTestShots;
+        cfg.numShots_ =
+            sizeof(IRVoxelEditor::kGuiTestShots) / sizeof(IRVoxelEditor::kGuiTestShots[0]);
+        renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
     }
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
@@ -2336,7 +2353,8 @@ void initCommands() {
             if (IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(
+                        IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -2929,12 +2947,14 @@ void initEntities() {
             kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
             kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
         );
-        g_editor.paletteSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
-            pos,
-            ivec2(kSwatchSize, kSwatchSize),
-            IRVoxelEditor::kPaletteColors[i],
-            i == 0
-        ));
+        g_editor.paletteSwatches_.push_back(
+            IRPrefab::Widget::makeColorSwatch(
+                pos,
+                ivec2(kSwatchSize, kSwatchSize),
+                IRVoxelEditor::kPaletteColors[i],
+                i == 0
+            )
+        );
     }
 
     // Animation controls panel (T-214, F-1.4) — sits below the palette
@@ -3067,12 +3087,14 @@ void initEntities() {
             kBoneSwatchOriginX + col * (kBoneSwatchSize + kBoneSwatchGap),
             kBoneSwatchOriginY + row * (kBoneSwatchSize + kBoneSwatchGap)
         );
-        IRVoxelEditor::g_bonePaint.boneSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
-            pos,
-            ivec2(kBoneSwatchSize, kBoneSwatchSize),
-            IRVoxelEditor::kBoneColors[i],
-            i == 0
-        ));
+        IRVoxelEditor::g_bonePaint.boneSwatches_.push_back(
+            IRPrefab::Widget::makeColorSwatch(
+                pos,
+                ivec2(kBoneSwatchSize, kBoneSwatchSize),
+                IRVoxelEditor::kBoneColors[i],
+                i == 0
+            )
+        );
     }
 
     // Skeleton tree panel (F-2.6, #1607). Sits below the BONE selector in the
