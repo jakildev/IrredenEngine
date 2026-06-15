@@ -21,7 +21,14 @@ the ECS surface.
   last frame's chain and ANDing occluded chunks out of `ChunkVisibility`
   before the compact pass — but is gated off by default
   (`IRRender::setVoxelOcclusionCullEnabled`), so the chain stays produced-only
-  in the default pipeline.
+  in the default pipeline. When enabled it also self-disables for one frame
+  after a discontinuous camera move (#1294 child 3/3): `VOXEL_TO_TRIXEL_STAGE_1`
+  `beginTick` compares the camera iso to last frame's and, on a jump over half
+  the visible viewport (cut/teleport/first frame), keeps every chunk that frame
+  — last frame's Hi-Z is the cull's lag source and is stale across a cut. Output
+  is bit-identical cull-on vs cull-off (fully-occluded voxels write nothing); the
+  per-chunk realized payoff is weak vs the per-voxel ceiling (per-voxel follow-on
+  tracked separately).
 - `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
   for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
   Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
