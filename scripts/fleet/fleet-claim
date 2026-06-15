@@ -125,6 +125,18 @@ for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py;
 done
 unset _fleet_lib
 
+# Main-clone freshness helper (#1810). fleet-claim imports its blocked_by parser
+# + stack-base resolver from the main clone's working tree via FLEET_LIB_DIR; if
+# that clone's master is stale so is the parser, and a missed blocker becomes a
+# silent false-grant. cmd_claim calls assert_clone_fresh to refuse loudly
+# instead. FLEET_LIB_DIR is symlink-resolved → the real file (not a symlink).
+if [[ -f "$FLEET_LIB_DIR/fleet-clone-freshness.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
+else
+    assert_clone_fresh() { :; }  # helper not installed yet — no-op (fail open)
+fi
+
 # --- input validation -----------------------------------------------------
 
 # require_issue_number <input>
@@ -684,6 +696,15 @@ cmd_claim() {
                 ;;
         esac
     done
+
+    # Freshness gate (#1810): refuse the claim if the main clone — whose
+    # blocked_by parser + stack-base resolver this script imports — is behind
+    # origin/master. A stale parser can miss a blocker and silently false-grant;
+    # fail loud instead. rev-parse only (no fetch — fleet-up/dispatcher keep the
+    # origin/master ref fresh). Covers both the normal and --stackable-on paths.
+    if ! assert_clone_fresh "$FLEET_ENGINE_ROOT"; then
+        return 1
+    fi
 
     local slug
     slug=$(slugify "$issue_num")

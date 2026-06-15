@@ -147,6 +147,32 @@ The scout already suppresses `reconcile --apply` and `fleet-queue-ingest`
 auto-fires during degraded ticks to avoid comparing live claims against
 potentially incomplete issue lists.
 
+## Main-clone freshness — `clone_freshness` field in state.json
+
+The scout, `fleet-claim`, and `fleet-queue-ingest` all run from the **main
+clone**'s working tree (`~/src/IrredenEngine`) via `~/bin` symlinks, and import
+their python parsers from it. When the main clone's checked-out `master` lags
+`origin/master`, that code is stale — a merged fleet-script fix (e.g. a
+`blocked_by` parser change) stays inert. `fleet-up` and the dispatcher advance
+the clone (`fleet-clone-freshness.sh advance_main_clone`, a guarded ff-only),
+and the scout records the result as a top-level `clone_freshness` (rev-parse
+only, no fetch):
+
+```json
+{
+  "generated_at": "2026-06-14T20:00:00Z",
+  "clone_freshness": {"head": "<sha>", "origin_master_head": "<sha>", "behind": 0, "fresh": true},
+  "repos": { ... }
+}
+```
+
+`fresh: false` (behind > 0) means the running fleet-script code is stale. The
+`fleet-claim` claim path additionally refuses with a loud message when the
+clone is behind (`assert_clone_fresh`; opt out with `FLEET_SKIP_CLONE_FRESHNESS=1`).
+A persistently `false` value usually means the clone is off-master, dirty, or
+diverged so the guarded advance can't fast-forward it — fix the clone by hand
+(`git -C ~/src/IrredenEngine merge --ff-only origin/master`). (#1810)
+
 ### Convention: degrade, never silent-empty
 
 Any fleet script that fetches GitHub data (the scout, `fleet-validate-stack`,

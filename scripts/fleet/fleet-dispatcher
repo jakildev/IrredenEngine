@@ -78,6 +78,20 @@ done
 FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)}"
 unset _fleet_dispatcher_self
 
+# Engine/game roots + main-clone freshness helper (#1810). The dispatcher
+# periodically advances the shared main clone's master in its main loop, so a
+# fleet-script fix that merges mid-session goes live without a fleet-up restart
+# (fleet-up alone is insufficient — drift recurs across scout cycles in one
+# session). FLEET_LIB_DIR is symlink-resolved, so the helper is the real file.
+ENGINE="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
+GAME="$ENGINE/creations/game"
+if [[ -f "$FLEET_LIB_DIR/fleet-clone-freshness.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
+else
+    advance_main_clone() { :; }  # helper not installed yet — no-op
+fi
+
 # --- Per-role concurrency cap config ---------------------------------------
 #
 # Soft cap on simultaneous iterations per role. Counts unique active
@@ -1461,6 +1475,14 @@ main() {
         fi
 
         cleanup_stale_dispatches
+
+        # Keep the main clone current so a fleet-script fix that merges
+        # mid-session goes live (rate-limited to one fetch/60s in the helper;
+        # guarded to only ff-advance a clean, on-master, fast-forwardable clone). (#1810)
+        advance_main_clone "$ENGINE"
+        if [[ -d "$GAME/.git" ]]; then
+            advance_main_clone "$GAME"
+        fi
 
         # Scout-watchdog safety net + periodic worker safety rearm.
         # Runs first so any rearm-written triggers are picked up by
