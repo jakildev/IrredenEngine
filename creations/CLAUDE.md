@@ -62,6 +62,7 @@ distributable bundle via `irreden_package_target(<target>)` — both in
 `cmake/ir_functions.cmake`; prefer them over hand-copied `add_custom_command`
 blocks. See [`docs/agents/BUILD.md`](../docs/agents/BUILD.md) §"Packaging a
 distributable bundle".
+
 Note: MinGW runtime DLLs (`libgcc_s_seh-1.dll`, etc.) are not copied by
 the Windows `$<TARGET_RUNTIME_DLLS:...>` POST_BUILD step — they come from
 `C:\msys64\mingw64\bin` and must be on `PATH` at runtime.

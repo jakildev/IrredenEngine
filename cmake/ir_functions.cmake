@@ -397,8 +397,7 @@ function(irreden_package_target target)
 
     if(WIN32)
         list(APPEND _pkg_cmds
-            COMMAND ${CMAKE_COMMAND} -E copy -t ${_stage} $<TARGET_RUNTIME_DLLS:${target}>
-            COMMAND_EXPAND_LISTS)
+            COMMAND ${CMAKE_COMMAND} -E copy -t ${_stage} $<TARGET_RUNTIME_DLLS:${target}>)
         # MinGW runtime trio is not in TARGET_RUNTIME_DLLS; pull it from the
         # compiler's bin dir (creations/CLAUDE.md gotcha).
         get_filename_component(_mingw_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
@@ -435,5 +434,6 @@ function(irreden_package_target target)
         ${_pkg_cmds}
         DEPENDS ${target} ${target}Assets
         COMMENT "Packaging ${target} -> ${target}-${_os}-${_arch}.zip"
+        COMMAND_EXPAND_LISTS
         VERBATIM)
 endfunction()
