@@ -110,10 +110,6 @@ bool isAutoCaptureActive();
 /// Requires @c IREngine::init() has run (so the system manager is live).
 IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config);
 
-// ---------------------------------------------------------------------------
-// GUI-test shot tables (P2, #1795)
-// ---------------------------------------------------------------------------
-
 /// One scripted input event within a @c GuiTestShot.
 ///
 /// @c frameOffset_ is relative to the first frame after the camera is applied
