@@ -1,5 +1,5 @@
-#ifndef COMPONENT_EXAMPLE_HPP
-#define COMPONENT_EXAMPLE_HPP
+#ifndef COMPONENT_EXAMPLE_H
+#define COMPONENT_EXAMPLE_H
 
 #include <string>
 
@@ -17,4 +17,4 @@ struct C_Example {
 
 } // namespace IRComponents
 
-#endif // COMPONENT_EXAMPLE_HPP
+#endif // COMPONENT_EXAMPLE_H
