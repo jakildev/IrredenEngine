@@ -85,7 +85,8 @@ button without binding it, its click handler, and the metrics to place it).
    `bindRenderGlue`'s shape (extend-don't-replace the `IRGui` table). `#include`
    it in `lua_script.cpp` and call `detail::bindWidgets(*this);`
    **immediately after** the `detail::bindRenderGlue(*this);` line
-   (`lua_script.cpp:640`).
+   (`lua_script.cpp:640` — re-verify this line number at implementation time;
+   plan-time references drift as the file grows).
 
 2. **Constructor bindings into the `IRGui` table** (return the EntityId as a
    `lua_Integer` so Lua can hold a handle):
@@ -101,7 +102,10 @@ button without binding it, its click handler, and the metrics to place it).
 
 3. **GUI metrics for positioning (deliverable #2).** Add a small
    `IRMath::ivec2 IRRender::getGuiCanvasSize()` accessor in
-   `ir_render.hpp` (reads `getCanvas("gui")` → `C_TriangleCanvasTextures::size_`),
+   `ir_render.hpp` (reads `getCanvas("gui")` → `C_TriangleCanvasTextures::size_`;
+   `getCanvas("gui")` is a runtime string lookup — acceptable for one-time layout
+   sizing at widget-creation time, but cache the result in a local if called in a
+   tick loop),
    bind it as `IRRender.getGuiCanvasSize()` (return two ints), and expose the
    glyph step (`IRRender.glyphStepY()` or a `getGlyphMetrics()` returning the
    x/y step from `IRRender::kGlyphStepY`). This is what lets Lua lay widgets out
@@ -121,7 +125,8 @@ button without binding it, its click handler, and the metrics to place it).
      `IRGui.makeButton(..., onClick)` stores `widgetCallbacks()[id] = onClick;`.
      (Static, so the dispatch system needs no `LuaScript` handle. Keeps the
      `sol::protected_function` dependency in the **script** layer — the render
-     widget prefab gains no sol2 coupling.)
+     widget prefab gains no sol2 coupling. The static has program-lifetime;
+     see Registry teardown gotcha for the required destructor-body clear.)
    - **Dispatch:** a tiny **singleton** C++ system
      `system_widget_lua_dispatch.hpp` registered in the **INPUT** pipeline
      **immediately after `WIDGET_INPUT`** (so `fireAction_` is fresh this frame,
@@ -205,7 +210,12 @@ button without binding it, its click handler, and the metrics to place it).
 - **Registry teardown.** Clear `widgetCallbacks()` on script teardown / world
   reset so stale `sol::protected_function`s don't outlive their `lua_State`
   (cross-refs the #1814 world-reset work; for this MVP a clear on
-  `LuaScript` destruction suffices).
+  `LuaScript` destruction suffices). Call `widgetCallbacks().clear()` in the
+  `~LuaScript()` destructor **body** — not from a sol2 lifecycle hook — so the
+  clear runs before the `sol::state` member is destroyed. The destructor body
+  runs before member destructors, so a body-level clear is safe; any sol2 hook
+  that fires after `sol::state` tears down would invoke `sol::protected_function`
+  destructors on a dead state (undefined behavior).
 - **No string-named params.** Per `.claude/rules/cpp-lua-enums.md`, do not add
   any `"button"`/`"left"`-style string lookups; the typed constructors avoid
   enums entirely.
