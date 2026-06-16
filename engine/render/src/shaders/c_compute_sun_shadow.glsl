@@ -64,7 +64,7 @@ void main() {
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
 
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-    // face-locally, so recover world-pos via faceOriginFromInPlane and read the
+    // face-locally, so recover world-pos via isoPixelToPos3D and read the
     // world-frame outward normal directly (no cardinal rotation — the store
     // already wrote world coords). The single canvas keeps its cardinal-snap
     // reconstruction + R_z(-rasterYaw) normal rotation, byte-identical at the

@@ -48,7 +48,7 @@ since Metal has no portable image-atomic syntax):
 
 1. **scatter** (`c_resolve_per_axis_screen_depth`, dispatched once per axis):
    read each face-local cell, recover the face origin
-   (`faceOriginFromInPlane`, the same exact integer inverse
+   (`isoPixelToPos3D`, the same exact iso inverse
    `perAxisCellToWorld3D` uses), rotate it into the cardinal view frame
    (`rotateCardinalZ` + `cardinalLowerCornerShift × subdivisionScale`,
    mirroring `c_voxel_to_trixel_stage_1`'s cardinal store), and
@@ -71,7 +71,7 @@ runs strictly before `BAKE` rebinds slot 28.
 `BAKE`'s per-axis dispatch recovers world-pos from the resolve texture via the
 cardinal `trixelCanvasPixelToWorld3D`. `COMPUTE_SUN_SHADOW`'s per-axis receive
 recovers world-pos via the face-local `perAxisCellToWorld3D`. Both derive from
-the **identical** `faceOriginFromInPlane` origin, so cast and receive agree on
+the **identical** `isoPixelToPos3D` origin, so cast and receive agree on
 world-pos by construction — no shadow acne at the cast/receive boundary.
 `COMPUTE_SUN_SHADOW` is therefore unchanged.
 

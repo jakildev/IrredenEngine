@@ -129,7 +129,11 @@ kernel void c_voxel_to_trixel_stage_1(
     // lets the depth re-test keep the front-most surface — see the GLSL twin for
     // the full rationale.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
+    // Re-voxelize now authors the ROTATED-frame exposed mask on the GPU
+    // (c_revoxelize_detached) like the GRID path's #1720, so it gates on
+    // faceIsExposed too (no all-3-face bypass → no slot-tie AO hatching). The
+    // reVoxelize flag still drives the ±1px dilation in emitDeformedFace.
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(

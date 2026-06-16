@@ -112,7 +112,7 @@ vec3 hueWheel(float t) {
 // via faceMicroPositionFixed6 — POS faces store the high-side plane, NEG faces
 // the low-side plane — so the recovered depth lands on the face plane and the
 // scatter only spans the face's two in-plane world axes (X->y,z  Y->x,z
-// Z->x,y, matching faceInPlaneCoords). Re-adding the polarity offset here (the
+// Z->x,y). Re-adding the polarity offset here (the
 // old per-faceId +1) double-shifts POS faces one cell past the plane: the
 // #1310 back-face seam (a ~1px dark gap between the POS face and its neighbors
 // at cardinals 1/2/3). cornerSel in {0,1}^2.
