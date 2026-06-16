@@ -134,11 +134,21 @@ struct GuiTestShot {
 };
 
 /// Declarative config for @c createGuiTestSystem.
+///
+/// @c onAssertFrame_ is the Phase 3 (#1796) assertion hook. When set, the
+/// harness calls it once per frame while a shot is live (from the first frame
+/// after the camera is applied through the capture frame), passing the shot
+/// index and whether this is the capture frame. Assertion evaluation needs
+/// widget / picking state that engine/video cannot see, so it is injected as a
+/// type-erased callback the creation supplies (typically forwarding to
+/// @c IRPrefab::GuiTest::onFrame). @c nullptr keeps a pure-capture run — every
+/// existing GuiTest caller is unaffected.
 struct GuiTestConfig {
     int warmupFrames_ = 10;
     int settleFrames_ = 3;
     const GuiTestShot *shots_ = nullptr;
     int numShots_ = 0;
+    void (*onAssertFrame_)(int shotIndex, bool isCaptureFrame) = nullptr;
 };
 
 /// Create a system that fires scripted input events on scheduled frames,
