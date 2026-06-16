@@ -42,7 +42,7 @@ kernel void c_compute_sun_shadow(
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
 
     // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-    // face-locally — recover world-pos via faceOriginFromInPlane and read the
+    // face-locally — recover world-pos via isoPixelToPos3D and read the
     // world-frame outward normal directly. The single canvas keeps its
     // cardinal-snap reconstruction + R_z(-rasterYaw) normal rotation. Mirrors GLSL.
     bool perAxis = frameData.perAxisRoute != 0;
