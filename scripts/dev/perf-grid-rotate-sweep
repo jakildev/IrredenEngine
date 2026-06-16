@@ -48,7 +48,8 @@ mkdir -p "$SS_DIR"
 # empty, which trips the dangerous-rm guard).
 find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
 ( cd "$EXE_DIR" && ./IRPerfGrid --mode "$MODE" --grid-size 64 --yaw-ramp \
-    --no-overlay --auto-screenshot "$WARMUP" ) >/dev/null
+    --no-overlay --auto-screenshot "$WARMUP" ) >/dev/null \
+    || { echo "RUN FAILED"; exit 1; }
 
 echo "[3/3] scoring captures ..."
 SCRIPTS_DIR="$ROOT/scripts" SS_DIR="$SS_DIR" python3 - <<'PY'

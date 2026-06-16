@@ -206,10 +206,10 @@ PerfGridMode parseMode(const std::string &value) {
     if (value == "sdf" || value == "shape") {
         return PerfGridMode::Sdf;
     }
-    if (value == "dense_set") {
+    if (value == "dense_set" || value == "dense") {
         return PerfGridMode::DenseSet;
     }
-    if (value == "hollow_set") {
+    if (value == "hollow_set" || value == "hollow") {
         return PerfGridMode::HollowSet;
     }
     IR_LOG_WARN("Unknown perf_grid mode '{}'; using voxel_set", value);
