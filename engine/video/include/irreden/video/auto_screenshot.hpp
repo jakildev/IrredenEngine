@@ -4,6 +4,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/system/ir_system_types.hpp>
+#include <irreden/input/ir_input_types.hpp>
 
 namespace IRVideo {
 
@@ -108,6 +109,55 @@ bool isAutoCaptureActive();
 ///
 /// Requires @c IREngine::init() has run (so the system manager is live).
 IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config);
+
+/// One scripted input event within a @c GuiTestShot.
+///
+/// @c frameOffset_ is relative to the first frame after the camera is applied
+/// for this shot. Events at the same offset fire in array order. Settle frames
+/// begin after the highest @c frameOffset_ in the list, ensuring the GUI
+/// reflects the interaction before capture.
+struct GuiInputEvent {
+    int frameOffset_ = 0;
+    enum class Type { MOVE, PRESS, RELEASE, SCROLL } type_ = Type::MOVE;
+    ivec2 screenPx_ = ivec2(0);
+    vec2 scroll_ = vec2(0.0f);
+    IRInput::KeyMouseButtons button_ = IRInput::kNullButton;
+};
+
+/// Superset of @c AutoScreenshotShot — carries the same render config plus an
+/// optional scripted input sequence. @c inputs_ / @c numInputs_ must outlive
+/// the game loop. Pass @c nullptr / 0 for a pure render shot.
+struct GuiTestShot {
+    AutoScreenshotShot render_;
+    const GuiInputEvent *inputs_ = nullptr;
+    int numInputs_ = 0;
+};
+
+/// Declarative config for @c createGuiTestSystem.
+///
+/// @c onAssertFrame_ is the Phase 3 (#1796) assertion hook. When set, the
+/// harness calls it once per frame while a shot is live (from the first frame
+/// after the camera is applied through the capture frame), passing the shot
+/// index and whether this is the capture frame. Assertion evaluation needs
+/// widget / picking state that engine/video cannot see, so it is injected as a
+/// type-erased callback the creation supplies (typically forwarding to
+/// @c IRPrefab::GuiTest::onFrame). @c nullptr keeps a pure-capture run — every
+/// existing GuiTest caller is unaffected.
+struct GuiTestConfig {
+    int warmupFrames_ = 10;
+    int settleFrames_ = 3;
+    const GuiTestShot *shots_ = nullptr;
+    int numShots_ = 0;
+    void (*onAssertFrame_)(int shotIndex, bool isCaptureFrame) = nullptr;
+};
+
+/// Create a system that fires scripted input events on scheduled frames,
+/// settles for @c settleFrames_ frames after the last event per shot, captures
+/// a screenshot, then calls @c IRWindow::closeWindow() when done.
+///
+/// Calls @c IRInput::beginSyntheticInput() at creation — the process is in
+/// synthetic-input mode for its lifetime. Requires @c IREngine::init() has run.
+IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config);
 
 } // namespace IRVideo
 

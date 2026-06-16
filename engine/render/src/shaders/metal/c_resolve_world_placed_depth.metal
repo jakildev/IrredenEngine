@@ -65,12 +65,28 @@ kernel void c_resolve_world_placed_depth(
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions
     );
-    const int2 mainPixel = mainBase + pos3DtoPos2DIso(viewPos);
-    if (mainPixel.x < 0 || mainPixel.x >= canvasSize.x ||
-        mainPixel.y < 0 || mainPixel.y >= canvasSize.y) {
-        return;
-    }
 
-    const uint idx = uint(mainPixel.y) * uint(canvasSize.x) + uint(mainPixel.x);
-    atomic_fetch_min_explicit(&resolveScratch[idx], encoded, memory_order_relaxed);
+    // Emit the micro-cell's two-pixel diamond region (#1724), not just its
+    // origin pixel: roundHalfUp collapses a region's input pixels onto one
+    // recovered cell, so a single-pixel write left the resolve ~50% sparse —
+    // pinhole casters whose world-placed shadows dithered. The detached store
+    // is model-frame (slot = model face axis), so rotate the face into the
+    // view frame the same way the position was to pick the region
+    // (faceOffset_2x3 is polarity-blind: axis only).
+    const int3 viewNormal =
+        rotateCardinalZ(faceOutwardNormal6I(slot << 1), cardinalIndex);
+    const int viewAxis =
+        (viewNormal.x != 0) ? kXFace : ((viewNormal.y != 0) ? kYFace : kZFace);
+    const int2 cellBase = mainBase + pos3DtoPos2DIso(viewPos);
+    for (int k = 0; k < 2; ++k) {
+        const int2 mainPixel = cellBase + faceOffset_2x3(viewAxis, k);
+        if (!isInsideCanvas(mainPixel, canvasSize)) {
+            continue;
+        }
+        // Front-most per screen pixel: smallest encoded distance wins (depth
+        // dominates the 2 slot bits), exactly like the main canvas atomicMin
+        // store.
+        const uint idx = uint(mainPixel.y) * uint(canvasSize.x) + uint(mainPixel.x);
+        atomic_fetch_min_explicit(&resolveScratch[idx], encoded, memory_order_relaxed);
+    }
 }

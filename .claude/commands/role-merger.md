@@ -317,7 +317,7 @@ exit cleanly:
         cascade-rebase pass skip this PR until the label clears.
         It clears automatically when the upstream merges (step
         2.5 re-targets to master and removes the label) or
-        closes; otherwise the human or an opus-worker clears it
+        closes; otherwise the human or an opus+-class worker clears it
         after a manual rebase.
 
         — fleet merger
@@ -343,8 +343,8 @@ exit cleanly:
    - `human:blocker` — same
    - `human:re-review` — reviewer concern; not the merger's lane
    - `fleet:awaiting-base` — stacked PR waiting on its base to merge. Step 2.5 runs first and clears this label whenever the base has merged or closed; if the label survives into step 3 it means the base is still OPEN, so skip.
-   - `fleet:semantic-conflict` — already handed off to opus-worker; the
-     label IS the durable cooldown and only opus-worker (or the human,
+   - `fleet:semantic-conflict` — already handed off to the worker
+     (opus+ class); the label IS the durable cooldown and only a worker (or the human,
      via `human:needs-fix` escalation) clears it. Re-running rebase
      would just re-post the same comment every loop.
    - `fleet:needs-info` — set in stacked-PR case iii (orphaned base).
@@ -353,7 +353,7 @@ exit cleanly:
    - `fleet:fork-of-other-pr` — PR's branch forked from another open PR; skip until the human clears this label after the upstream PR merges
    - `fleet:needs-base-update` — set in step 2.6 when a stacked child's
      upstream tip moved and the cascade-rebase conflicted. Durable
-     handoff to the author / opus-worker; cleared automatically when
+     handoff to the author / worker; cleared automatically when
      the base merges (step 2.5 ii) or closes (step 2.5 iii), or
      manually after a successful rebase onto the new upstream tip.
 
@@ -363,7 +363,7 @@ exit cleanly:
 
 3.5. **No busy-branch filter.** Step 5.a uses `git checkout --detach`,
    which doesn't claim the branch ref — the merger can rebase on
-   the same commit another worktree has checked out (an opus-worker
+   the same commit another worktree has checked out (a worker
    mid-resolution of `fleet:semantic-conflict` on the same PR, the
    operator inspecting it from the main clone, etc.). Concurrency
    against parallel rebases is handled at push time by
@@ -378,7 +378,7 @@ exit cleanly:
 
    **a. Check out the PR (detached HEAD).** Detached avoids the
       `branch is already used by worktree` collision with the
-      operator's main clone or an opus-worker on the same PR.
+      operator's main clone or a worker on the same PR.
       `git rebase` works fine on detached HEAD; the resulting
       commits live at HEAD and get pushed back to the branch ref
       explicitly in step e (`git push --force-with-lease origin
@@ -444,24 +444,24 @@ exit cleanly:
          On the rebase-conflict branch below, the re-target and label
          cleanup are intentionally NOT rolled back — and they intentionally
          run FIRST, before the rebase attempt. Two coupled reasons:
-         (1) opus-worker's `fleet:semantic-conflict` filter at step 1c
+         (1) worker's `fleet:semantic-conflict` filter at step 1c
          excludes `fleet:awaiting-base` / `fleet:awaiting-upstream-review`
          / `fleet:fork-of-other-pr` (PRs not yet rebaseable against
-         master), so those labels MUST be cleared for opus-worker to
+         master), so those labels MUST be cleared for worker to
          pick the PR up.
-         (2) opus-worker's step 1c rebases against the PR's current
+         (2) worker's step 1c rebases against the PR's current
          `baseRefName` (`git rebase origin/<baseRefName>`), so
-         `baseRefName` MUST point at master for opus-worker to rebase
+         `baseRefName` MUST point at master for worker to rebase
          against the master tip rather than the merged-but-still-extant
          base branch — which would replay the stacked-merge conflict
          against the pre-merge base tip without actually resolving it
          (master may have moved further).
          Inverting (rebase first, re-target + label cleanup only on
          clean exit) would silently strand conflict-path PRs: either
-         the labels survive and opus-worker skips the PR indefinitely,
+         the labels survive and worker skips the PR indefinitely,
          or the labels are cleared but `baseRefName` still points at
-         the stale base and opus-worker's rebase target is wrong. The
-         current order keeps the merger ↔ opus-worker contract
+         the stale base and worker's rebase target is wrong. The
+         current order keeps the merger ↔ worker contract
          coherent. See issue #1149 for the full trade-off analysis.
 
          - `gh pr edit <N> --base master`
@@ -498,7 +498,7 @@ exit cleanly:
            - Log: `... base #<base-pr-number> merged, re-targeted + rebased onto master, verdict preserved`.
 
          **Rebase conflict (non-zero exit).** Child commits cannot be
-         replayed onto current master — hand off to opus-worker via
+         replayed onto current master — hand off to worker via
          the semantic-conflict path (same shape as case iii in step d).
 
          Capture the conflict file list FIRST (the diff filter only
@@ -517,14 +517,14 @@ exit cleanly:
              ```
              Merger: base PR #<base-pr-number> merged; re-targeted this PR
              to `master` but the rebase onto current master conflicts.
-             The child commits cannot be replayed cleanly — opus-worker
+             The child commits cannot be replayed cleanly — worker
              will resolve semantically.
 
              Conflicted files:
              - `<file1>` — master: `<sha> <subj>`; PR: `<sha> <subj>`
              - …
 
-             Labeled `fleet:semantic-conflict` — opus-worker handles next.
+             Labeled `fleet:semantic-conflict` — worker handles next.
 
              — fleet merger
              ```
@@ -607,7 +607,7 @@ exit cleanly:
         This drops #<upstream-N>'s inherited commits and leaves only
         this PR's own changes on top of master.
 
-        Labeled `fleet:fork-of-other-pr` — the merger and opus-worker
+        Labeled `fleet:fork-of-other-pr` — the merger and worker
         skip this PR in their conflict-resolution sweeps.
 
         — fleet merger
@@ -747,9 +747,9 @@ exit cleanly:
            - `<file1>` — master: `<sha> <subj>`; PR: `<sha> <subj>`
            - `<file2>` — ...
 
-           Labeled `fleet:semantic-conflict` — an opus-worker will
+           Labeled `fleet:semantic-conflict` — a worker will
            attempt resolution on its next iteration (rebase,
-           manually resolve, build, push). If the opus-worker also
+           manually resolve, build, push). If the worker also
            can't resolve (truly ambiguous, design decision needed),
            it will escalate to `human:needs-fix`.
 
@@ -855,7 +855,7 @@ worktree, and `gh` target change.
     with `--repo jakildev/irreden`.
 
 Semantic game conflicts get `fleet:semantic-conflict` exactly like
-engine — **opus-worker covers game** (it has its own game worktree),
+engine — **worker covers game** (it has its own game worktree),
 so the handoff has an actor. Log game-pass actions to the same
 `~/.fleet/logs/merger-audit.log` (prefix the PR with `game#` so the
 two repos' PR-number spaces don't collide in the audit trail).
@@ -902,7 +902,7 @@ See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`]
   only in-rebase resolutions you apply are mechanical
   whitespace-only diffs handled in case (i). Any other source-file
   resolution is a semantic decision and belongs to the human or
-  opus-worker (via `fleet:semantic-conflict`).
+  worker (via `fleet:semantic-conflict`).
 - **Always log every action** to `~/.fleet/logs/merger-audit.log`
   AND comment on the PR. Two-channel audit: the log is the merger's
   internal trail; the comment is the human-visible trail. The
@@ -924,7 +924,7 @@ The merger has TWO tiers of "don't touch this PR again":
    `fleet:awaiting-base`, `fleet:needs-info`,
    `fleet:needs-base-update`. Once the merger sets one of these,
    the PR is no longer the merger's responsibility. Only the role
-   that owns the next step (opus-worker for semantic-conflict; the
+   that owns the next step (worker for semantic-conflict; the
    merger itself for awaiting-base when the base merges/closes
    and for needs-base-update on the same transition; the human or
    author for needs-base-update via manual rebase; the human for

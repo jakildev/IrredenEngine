@@ -199,20 +199,28 @@ void main() {
     // Sun direction lives in the world frame; the six-face `faceOutwardNormal6`
     // (decoded above into worldNormal) gives the matching world-frame normal.
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
-    const float faceFactor = mix(sunAmbient, 1.0, lambert) * sunIntensity;
+    // The sun-shadow darkens only the DIRECTIONAL (Lambert) term — ambient is
+    // indirect fill light and is never blocked by the sun-shadow map. Folding
+    // `shadow` into the whole `faceFactor` (the old `* shadow` below) collapsed
+    // a fully self-shadowed face to pure black: a re-voxelize cube's -X/-Y side
+    // facing away from the sun lands in its own cast shadow, lost its 0.4
+    // ambient floor, and read as a missing/black face at every off-cardinal
+    // pose. Unshadowed pixels (shadow == 1) are byte-identical to before.
+    const float faceFactor =
+        (sunAmbient + (1.0 - sunAmbient) * lambert * shadow) * sunIntensity;
 
     vec3 baseRgb;
     if (lutEnabled == 0) {
-        baseRgb = src.rgb * ao * shadow * faceFactor;
+        baseRgb = src.rgb * ao * faceFactor;
     } else {
         // LUT palette shading: AO drives the X axis (light level) and pixel
         // luminance selects the palette row so highlights and shadows get
-        // distinct cel-shade colour casts. Shadow darkening is applied after
-        // the LUT lookup so palette shading and directional shadows compose
-        // without needing a 3D LUT.
+        // distinct cel-shade colour casts. The directional shadow is already
+        // folded into faceFactor (ambient-preserving), so the LUT path composes
+        // palette shading and shadows without needing a 3D LUT.
         const float luminance = dot(src.rgb, vec3(0.299, 0.587, 0.114));
         const vec4  lut       = texture(paletteLUT, vec2(ao, luminance));
-        baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
+        baseRgb = src.rgb * lut.rgb * faceFactor;
     }
 
     // Light-volume bleed: the world canvas (and per-axis camera canvases) sample

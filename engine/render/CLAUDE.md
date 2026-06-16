@@ -556,6 +556,14 @@ parity with voxel-pool primary shapes.
 - **Hardcoded uniform-buffer bind points.** Indices like
   `kBufferIndex_FrameDataVoxelToCanvas = 7` appear in both C++ and GLSL. A
   mismatch is silent — wrong uniforms, no error.
+- **GPU buffer bind-point budget is full (0–30).** Every `kBufferIndex_*`
+  (`ir_render_types.hpp`) is occupied and Metal has no free buffer index
+  past 30. A change that needs a new SSBO/UBO while the voxel/per-axis path
+  is active must **reuse an existing binding transiently** — bind the new
+  buffer onto an occupied index via `Buffer::bindRange`/`bindBase` for the
+  dispatch, then restore — never claim a 31st index. A plan that adds a GPU
+  buffer should check this before settling on a binding, or it designs an
+  approach that's impossible to wire mid-implementation.
 - **Camera-iso offset pivots about the focus (`getEffectiveCameraIso`).**
   Any producer that positions world content relative to the camera — voxel
   raster, SDF main-canvas placement, per-axis scatter base, trixel→trixel
@@ -593,9 +601,12 @@ parity with voxel-pool primary shapes.
 - **Canvas render order matters.** Multiple canvases write to the same
   framebuffer in registration order. Stage 2 must complete for a canvas
   before the next canvas reads from it.
-- **GUI canvas scaling.** GUI canvas is sized `mainCanvasSize / guiScale`.
-  Changing `guiScale` without resizing the GUI canvas entity breaks
-  coordinate mapping.
+- **GUI canvas scaling.** GUI canvas is sized `mainCanvasSize / guiScale`
+  by default; `IRRender::setGuiCanvasFullResolution()` instead sizes it to
+  the native framebuffer resolution (1 GUI trixel == 1 framebuffer pixel) so
+  GUI text/widgets render small and crisp — the calling creation owns laying
+  its GUI out for the finer coordinate space. Changing `guiScale` without
+  resizing the GUI canvas entity breaks coordinate mapping.
 - **CPU texture writes order via the command buffer on Metal.**
   `Texture2D::subImage2D` and `clear()` write canvas textures, but on Metal
   the per-frame work is deferred: `clear()` enqueues a GPU blit and the
@@ -610,3 +621,22 @@ parity with voxel-pool primary shapes.
   vanish under the deferred clear (the #1436 invisible-widgets bug). Mixing a
   `subImage2D` write with a same-frame CPU `getBytes` readback of the same
   texture still needs an explicit commit+wait (picking already does this).
+- **Foreign-canvas R32I image reads in a second in-tick compute dispatch
+  return empty on Metal (#1640).** An R32I distance texture whose contents
+  were produced by `imageAtomicMin` (the scratch-buffer path —
+  `VOXEL_TO_TRIXEL_STAGE_1` and the other `functionUsesImageAtomicScratch`
+  kernels; see `metal_runtime.hpp`) is reliably readable on Metal by the
+  canvas's own downstream stages and by later same-frame passes that read it
+  as a sampled / `access::read` texture (e.g. `LIGHTING_TO_TRIXEL`). But
+  binding a **non-main** canvas's distance texture as the read source of a
+  **second** in-tick compute dispatch (the rejected per-caster sun-shadow
+  bake reading a detached canvas's own model-frame distances, PR #1626's
+  literal Q2-(a)) returns the clear value (65535) for every pixel — that
+  canvas's data is not delivered to the read, even though a forced-position
+  write proves the dispatch runs. The sanctioned pattern (mirrored from the
+  per-axis cast precedent) is to **resolve** foreign distances into a
+  main-canvas-layout texture via an `imageStore`-written, real-texture-memory
+  resolve pass first, then read THAT — never bind a foreign model-frame R32I
+  texture as a bake/compute read input. Invariant: the sun-shadow bake only
+  ever reads main-canvas-layout depth sources. The underlying backend gap is
+  tracked as #1640; until it lands, resolve-then-bake is mandatory.

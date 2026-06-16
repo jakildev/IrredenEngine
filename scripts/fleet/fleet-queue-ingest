@@ -25,6 +25,14 @@
 # hand-built projection). Claimability is unchanged — fleet-claim's own
 # Blocked-by gate still refuses a plain claim; see docs/design/fleet-queue-stacking.md.
 #
+# Planning gate (#1456): an approved issue with no plan file — neither the
+# committed repo-side `.fleet/plans/issue-<N>.md` nor the planner-host
+# `~/.fleet/plans/issue-<N>.md` staging copy — is bounced to fleet:needs-plan
+# instead of stamped fleet:queued, unless its title/body names an explicit
+# "investigation spike". Carve-offs queued straight to human:approved without
+# ever passing through planning made the worker the first person to open the
+# code, and it design-blocked on claim (the #1370 → #1414/#1431/#1435 pattern).
+#
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
 
@@ -183,8 +191,15 @@ if ! command -v gh >/dev/null 2>&1; then
     exit 1
 fi
 
-stamping_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" python3 - << 'STAMP_PY' 2>>"$LOG_FILE"
+stamping_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" INGEST_SELF="${BASH_SOURCE[0]}" python3 - << 'STAMP_PY' 2>>"$LOG_FILE"
 import json, os, re, subprocess, sys
+
+# Shared blocker parser (#1749) — one routine for scout/ingest/claim so the
+# three can't disagree, and it catches the plain `Blocked by: #N` form the
+# bold-only copies skipped. realpath resolves the ~/bin symlink back to the
+# scripts/fleet dir the module ships in (same pattern as the SCOPE_PY block).
+sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
+from fleet_blocked_by import blocker_refs, has_blocked_by_field
 
 REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
 
@@ -197,72 +212,16 @@ except Exception:
     sys.exit(0)
 
 # Body-field parsers mirror fleet-state-scout._parse_issue_field so we
-# label issues by the same fields the scout reads back out.
+# label issues by the same fields the scout reads back out. (The `Blocked by:`
+# regexes + cross-repo ref routing now live in fleet_blocked_by.py — imported
+# above — so ingest, the scout, and fleet-claim share one parser; #1749.)
 MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
-BLOCKED_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\*\*\s*(.+?)(?:\n|$)', re.IGNORECASE)
-# Inline-bold form `**Blocked by: #N (label)**` (#1423): colon + value inside
-# one bold span. Mutually exclusive with BLOCKED_RE (canonical bold closes at
-# the colon), so scanning both over the whole body never double-counts a line.
-BLOCKED_INLINE_RE = re.compile(r'\*\*(?:Suggested\s+)?Blocked by:\s+(.+?)\*\*', re.IGNORECASE)
-# Free-form header prose like `## Blocked on #1300` / `Blocked on PR-x` is an
-# alternate dependency declaration the scout's _parse_blocked_by also reads, so
-# don't warn "treat as unblocked" for an issue whose blocker lives only in a
-# header (#1326). Only count prose that names a #N or PR reference.
-BLOCKED_ON_RE = re.compile(r'(?im)^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$')
-# A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
-# another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
-# repo name (None/empty for a bare same-repo ref); group(2) is the number.
-# Kept consistent with fleet-state-scout._parse_blocker_refs and fleet-claim's
-# check_blockers. (#1522)
-REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
-# Repo-name qualifier (case-insensitive, owner stripped) → GitHub slug.
-_REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
-                     'irreden': 'jakildev/irreden'}
-
-
-def _ref_slug(name, default_repo):
-    if name:
-        return _REF_NAME_TO_SLUG.get(name.lower(), default_repo)
-    return default_repo
-
-
-def _qual_refs(text, default_repo):
-    """(slug, number) pairs for every #N in text, routing each cross-repo ref
-    to the slug named by its `[owner/]Repo#N` qualifier (#1522)."""
-    return [(_ref_slug(m.group(1), default_repo), m.group(2))
-            for m in REF_RE.finditer(text or '')]
-
-
-def _has_header_blocker(text):
-    for m in BLOCKED_ON_RE.finditer(text):
-        cand = m.group(1).strip().strip('*').strip()
-        if cand and ('#' in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
-            return True
-    return False
-
-
-def _blocker_refs(body, default_repo):
-    """(slug, number) pairs for every `#N` predecessor — from canonical
-    `**Blocked by:** #N` lines, the inline-bold `**Blocked by: #N**` form, and
-    `Blocked on` header prose. Each ref is routed to the repo named by an
-    optional `[owner/]Repo#N` qualifier, defaulting to default_repo (the
-    child's own repo). Mirrors fleet-state-scout._parse_blocked_by so the gate
-    reads the same refs the scout and fleet-claim do. `(none)` values
-    contribute nothing."""
-    vals = [m.group(1) for m in BLOCKED_RE.finditer(body)]
-    vals += BLOCKED_INLINE_RE.findall(body)
-    real = [v.strip() for v in vals if not v.strip().lower().startswith('(none')]
-    refs = []
-    for v in real:
-        refs.extend(_qual_refs(v, default_repo))
-    if refs:
-        return refs
-    # No canonical/inline #N refs → fall back to a `Blocked on …` header.
-    for m in BLOCKED_ON_RE.finditer(body):
-        cand = m.group(1).strip().strip('*').strip()
-        if cand and ('#' in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
-            refs.extend(_qual_refs(cand, default_repo))
-    return refs
+# Planning-gate escape hatch (#1456): an issue whose title or body names an
+# explicit "investigation spike" is worker-investigates-first by design and
+# queues without a plan file (architect-protocol.md §"Carve-offs are unplanned
+# tickets" is where the phrase is defined).
+SPIKE_RE = re.compile(r'investigation\s+spike', re.IGNORECASE)
+PLANS_DIR = os.path.expanduser('~/.fleet/plans')
 
 
 def _blocker_open(repo, ref, cache):
@@ -283,11 +242,43 @@ def _blocker_open(repo, ref, cache):
     cache[key] = is_open
     return is_open
 
+
+def _plan_exists(repo, n, cache):
+    """True when a plan file exists for issue n — the planner-host staging
+    copy (~/.fleet/plans/issue-<n>.md) or the committed repo-side copy on the
+    default branch (live `gh api` contents probe, host-independent). Only a
+    confirmed 404 reads as missing; any other probe failure fails OPEN
+    (treated as present) so a transient API error never bounces a planned
+    issue back to fleet:needs-plan."""
+    if os.path.exists(os.path.join(PLANS_DIR, f'issue-{n}.md')):
+        return True
+    key = (repo, n)
+    if key in cache:
+        return cache[key]
+    r = subprocess.run(
+        ['gh', 'api', f'repos/{repo}/contents/.fleet/plans/issue-{n}.md',
+         '--jq', '.path'],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode == 0:
+        present = True
+    elif '404' in (r.stderr or ''):
+        present = False
+    else:
+        present = True
+        print(f'WARN issue {repo}#{n}: plan probe failed '
+              f'({(r.stderr or "").strip()}); failing open as plan-present',
+              file=sys.stderr)
+    cache[key] = present
+    return present
+
 stamped = 0
 skipped_already = 0
 blocked_marked = 0
+plan_bounced = 0
 failed = 0
 blocker_cache = {}
+plan_cache = {}
 
 for issue in pending:
     n = issue.get('number', 0)
@@ -297,7 +288,7 @@ for issue in pending:
 
     r = subprocess.run(
         ['gh', 'issue', 'view', str(n), '--repo', repo,
-         '--json', 'body,labels'],
+         '--json', 'title,body,labels'],
         capture_output=True, text=True, timeout=15,
     )
     if r.returncode != 0:
@@ -309,11 +300,12 @@ for issue in pending:
     except Exception:
         failed += 1
         continue
+    title = view.get('title', '') or ''
     body = view.get('body', '') or ''
     labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
-            or 'fleet:needs-human' in labels):
+            or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels):
         skipped_already += 1
         continue
 
@@ -326,6 +318,44 @@ for issue in pending:
         print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
         continue
 
+    # Planning gate (#1456): refuse to queue an issue that never passed
+    # through planning. Carve-offs stamped human:approved directly carry a
+    # hypothesis, not a plan — without a plan file the claiming worker is
+    # the first to open the code and design-blocks. Bounce to
+    # fleet:needs-plan (routes through PLANNING-PROTOCOL.md; the label also
+    # drops the issue out of the ingest pending set via the live-label skip guard)
+    # unless the issue is an explicit investigation spike. Sits before the
+    # blocker probes so a bounced issue costs no per-blocker API calls.
+    if (not SPIKE_RE.search(title) and not SPIKE_RE.search(body)
+            and not _plan_exists(repo, n, plan_cache)):
+        comment = (
+            f"Planning gate: no plan file found for this issue — neither "
+            f"committed `.fleet/plans/issue-{n}.md` nor planner-host "
+            f"`~/.fleet/plans/issue-{n}.md` — and it is not an explicit "
+            "investigation spike. Unplanned carve-offs design-block on "
+            "claim (#1456), so adding `fleet:needs-plan` to route it "
+            "through PLANNING-PROTOCOL.md before it can queue. "
+            "— fleet-queue-ingest"
+        )
+        subprocess.run(
+            ['gh', 'issue', 'comment', str(n), '--repo', repo,
+             '--body', comment],
+            capture_output=True, timeout=15,
+        )
+        er = subprocess.run(
+            ['gh', 'issue', 'edit', str(n), '--repo', repo,
+             '--add-label', 'fleet:needs-plan'],
+            capture_output=True, text=True, timeout=15,
+        )
+        if er.returncode != 0:
+            failed += 1
+            print(f'WARN issue {repo}#{n}: add fleet:needs-plan failed: {er.stderr.strip()}', file=sys.stderr)
+            continue
+        plan_bounced += 1
+        print(f'WARN issue {repo}#{n}: no plan file and not an investigation '
+              f'spike — bounced to fleet:needs-plan (#1456)', file=sys.stderr)
+        continue
+
     # Blocked-by handling (#1527): queue blocked tasks too. A task whose
     # **Blocked by:** predecessors aren't all closed still gets fleet:queued +
     # a model label, plus a fleet:blocked marker — the whole approved queue is
@@ -336,7 +366,7 @@ for issue in pending:
     # yet" signal that the unblock pass below removes once the last blocker
     # closes. The live re-check is authoritative — it's the only blocker gate
     # when ingest runs against a hand-built projection (tests, manual run).
-    open_blockers = [(slug, ref) for slug, ref in _blocker_refs(body, repo)
+    open_blockers = [(slug, ref) for slug, ref in blocker_refs(body, repo)
                      if _blocker_open(slug, ref, blocker_cache)]
 
     # Parse model from body. Classes are literal — fable | opus | sonnet —
@@ -355,7 +385,7 @@ for issue in pending:
         model_label = 'fleet:opus'
         print(f'WARN issue {repo}#{n}: **Model:** field missing or unrecognized; defaulting to fleet:opus', file=sys.stderr)
 
-    if not BLOCKED_RE.search(body) and not _has_header_blocker(body) and not BLOCKED_INLINE_RE.search(body):
+    if not has_blocked_by_field(body):
         print(f'WARN issue {repo}#{n}: **Blocked by:** field missing; scout will treat as unblocked', file=sys.stderr)
 
     add_labels = ['fleet:queued']
@@ -410,7 +440,7 @@ for issue in data.get('unblock_issues', []):
     if 'fleet:blocked' not in labels:
         continue
     body = view.get('body', '') or ''
-    open_blockers = [(slug, ref) for slug, ref in _blocker_refs(body, repo)
+    open_blockers = [(slug, ref) for slug, ref in blocker_refs(body, repo)
                      if _blocker_open(slug, ref, blocker_cache)]
     if open_blockers:
         unblock_still += 1
@@ -426,13 +456,13 @@ for issue in data.get('unblock_issues', []):
         continue
     unblocked += 1
 
-print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still}')
+print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced}')
 STAMP_PY
 )
 
 if [[ -n "$stamping_out" ]]; then
-    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count <<< "$stamping_out"
-    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"

@@ -104,6 +104,15 @@ system". The easy_profiler trace is the right input for "what inside
 this system is slow". Use both — matrix to detect the regression, trace
 to localize.
 
+`IRCanvasStress` also accepts `--auto-profile` (no frame-count arg —
+pair it with `--auto-screenshot`, whose exit triggers the World-dtor
+report). Use it instead of the perf_grid matrix when the change touches
+the **rotating-set CPU paths** (`REBUILD_GRID_VOXELS` inverse resample,
+`REBUILD_DETACHED_VOXELS`) — perf_grid spawns no rotating sets, so those
+systems idle in its report. Reference point (#1720, full default scene,
+507 frames): RebuildGridVoxels avg 0.287 ms, RebuildDetachedVoxels
+avg 0.771 ms.
+
 ## Reading the trace
 
 `.prof` files are dumped on exit. The human runs `profiler_gui` to view

@@ -196,7 +196,7 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--role", default=None,
-        help="Filter to one role (e.g. merger, sonnet-author). For multi-instance roles use the full per-worktree name (e.g. sonnet-author-1, opus-worker-2).",
+        help="Filter to one role (e.g. merger, worker). For multi-instance roles use the full per-worktree name (e.g. worker-1, worker-2).",
     )
     parser.add_argument(
         "--headlines", action="store_true",

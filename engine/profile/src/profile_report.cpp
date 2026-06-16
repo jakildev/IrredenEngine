@@ -156,13 +156,29 @@ void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     // --- GPU stage timing ---
     if (!report.gpuStages_.empty()) {
         std::fprintf(f, "--- GPU stage timing ---\n");
-        std::fprintf(f, "%-36s %9s %9s\n", "Stage", "Avg(ms)", "Max(ms)");
+        std::fprintf(
+            f,
+            "%-36s %9s %9s %9s %7s\n",
+            "Stage",
+            "Avg(ms)",
+            "Min(ms)",
+            "Max(ms)",
+            "Samples"
+        );
 
         for (auto &stage : report.gpuStages_) {
             if (stage.sampleCount_ == 0)
                 continue;
             float avgMs = stage.totalMs_ / static_cast<float>(stage.sampleCount_);
-            std::fprintf(f, "%-36s %9.3f %9.3f\n", stage.name_.c_str(), avgMs, stage.maxMs_);
+            std::fprintf(
+                f,
+                "%-36s %9.3f %9.3f %9.3f %7u\n",
+                stage.name_.c_str(),
+                avgMs,
+                stage.minMs_,
+                stage.maxMs_,
+                stage.sampleCount_
+            );
         }
         std::fprintf(f, "\n");
     }

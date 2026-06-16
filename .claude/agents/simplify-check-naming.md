@@ -23,6 +23,7 @@ Authoritative reference: [`docs/agents/CLAUDE-BASELINE.md`](../../docs/agents/CL
 | Fragment shaders  | `f_` prefix                                        |
 | Geometry shaders  | `g_` prefix                                        |
 | Header helpers    | nested `detail` namespace (not anonymous, not feature-named) |
+| Include guards    | `<NAME>_H` from the file basename (not `_HPP`)      |
 
 ## Scope
 
@@ -41,6 +42,8 @@ For each `.hpp`/`.cpp` file in the diff, scan for:
 6. **Abbreviations in new identifiers.** `vcIso` instead of `viewCenterIso`, `mmC` instead of `minimapCenter`. Flag as a `nit` only — context-dependent.
 
 7. **Enum values not in `SCREAMING_SNAKE_CASE`.** A new `enum class` value in `camelCase` or `PascalCase`. (Type names themselves are `PascalCase`; only the values use `SCREAMING_SNAKE_CASE`.)
+
+8. **Include-guard form.** A new `.hpp` whose guard token is `<NAME>_HPP` (or that uses `#pragma once`) instead of `<NAME>_H` derived from the file basename. The engine convention is `<NAME>_H` (477:3 engine-wide). Flag the `#ifndef`/`#define` token and suggest `_H`. `nit` severity. Only flag a guard whose `#ifndef` line is in the diff's `+` lines — do not flag pre-existing `_HPP` outliers in untouched files. **Exempt:** the graphics backends (`engine/render/include/irreden/render/{metal,opengl}/**`) and vendored `engine/render/third_party/**` keep their local `#pragma once` convention — don't flag those.
 
 ## Output format
 

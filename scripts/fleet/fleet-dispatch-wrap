@@ -6,7 +6,7 @@
 #   $1  pane_key  e.g. "pane-3"
 #   $2  model     e.g. "sonnet" or "claude-fable-5[1m]"
 #   $3  effort    e.g. "high" or "xhigh"
-#   $4  role      e.g. "sonnet-author"
+#   $4  role      e.g. "worker"
 #   $5  fallback  optional --fallback-model chain (comma-separated) for
 #                 heavy-tier dispatches; empty for sonnet roles
 #
@@ -44,7 +44,7 @@ else
 fi
 
 # Re-tag the pane border label with the model this iteration actually
-# runs (worker lanes flex per task), e.g. "opus-worker [fable 1m]".
+# runs (the worker lane flexes per task), e.g. "worker [fable 1m]".
 # Best-effort: a failure here must never block the dispatch.
 #
 # The target MUST be explicit. Without `-t`, tmux resolves `-p` against
@@ -107,11 +107,8 @@ rm -f "$FLEET_THROTTLE_FLAG"
 # worktree and an active reservation, the session likely dropped the
 # commit-and-push flow mid-way (e.g. end_turn after simplify). Write a
 # trigger so the dispatcher re-fires the worker on the next tick; the
-# reservation gate at step 0.5 will resume the same task. `worker` is the
-# unified P2 lane; the legacy `opus-worker` / `sonnet-author` names are
-# kept so a still-running pre-P2 dispatcher mid-transition is handled too
-# (the new dispatcher folds triggers/<legacy> into triggers/worker).
-if [[ "$rc" == "0" && ("$ROLE" == "worker" || "$ROLE" == "opus-worker" || "$ROLE" == "sonnet-author") ]]; then
+# reservation gate at step 0.5 will resume the same task.
+if [[ "$rc" == "0" && "$ROLE" == "worker" ]]; then
     worktree_name=$(basename "$PWD")
     reservation_issue=$(fleet-claim reservation-of "$worktree_name" 2>/dev/null || true)
     if [[ -n "$reservation_issue" ]]; then

@@ -431,10 +431,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     }
 
-    // Collect opt-in world-placed detached re-voxelize solids for the cast
-    // resolve (#1576 P4b-3). Iterates C_EntityCanvas — the same component the
-    // composite (ENTITY_CANVAS_TO_FRAMEBUFFER) reads worldPlaced_ off — and
-    // captures each opt-in canvas's distance texture + the world cell origin
+    // Collect world-placed detached re-voxelize solids (the default since
+    // #1624; screenLocked_ canvases opt out) for the cast resolve (#1576
+    // P4b-3). Iterates C_EntityCanvas — the same component the composite
+    // (ENTITY_CANVAS_TO_FRAMEBUFFER) reads screenLocked_ off — and
+    // captures each world-placed canvas's distance texture + the world cell origin
     // PROPAGATE_CANVAS_ROTATION stamped on its C_CanvasLocalRotation (the same
     // propagated values the P4b-2 receive consumes, so cast and receive share
     // one world origin per frame). Once per frame in beginTick (few canvases),
@@ -448,7 +449,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             auto &canvases = IREntity::getComponentData<C_EntityCanvas>(node);
             for (int i = 0; i < node->length_; ++i) {
                 const C_EntityCanvas &entityCanvas = canvases[i];
-                if (!entityCanvas.worldPlaced_ || !entityCanvas.visible_ ||
+                if (entityCanvas.screenLocked_ || !entityCanvas.visible_ ||
                     entityCanvas.canvasEntity_ == IREntity::kNullEntity) {
                     continue;
                 }

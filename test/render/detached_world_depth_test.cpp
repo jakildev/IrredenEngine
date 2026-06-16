@@ -1,7 +1,8 @@
 // Detached re-voxelize world-depth composite — CPU↔GPU GRID-equivalence
-// (#1576 P4b-1). Verifies the architect's Q4 invariant: a voxel placed at a
-// known world cell via the opt-in WORLD-PLACED detached path composites to the
-// SAME framebuffer depth as the same world cell rendered through GRID.
+// (#1576 P4b-1; world placement is the default since #1624). Verifies the
+// architect's Q4 invariant: a voxel placed at a known world cell via the
+// WORLD-PLACED detached path (the default) composites to the SAME framebuffer
+// depth as the same world cell rendered through GRID.
 //
 // The framebuffer composite depth is `normalizeDistance(rawDist + distanceOffset)`
 // (f_trixel_to_framebuffer.{glsl,metal}), monotonic in `rawDist + distanceOffset`,
@@ -17,7 +18,8 @@
 //                    zeroed). VOXEL_TO_TRIXEL_STAGE_1 keeps voxelDepthAxis = (1,1,1)
 //                    for re-voxelize, so its rawDist is exactly pos3DtoDistance.
 //                    distanceOffset = pos3DtoDistance(roundVec3HalfUp(translation))
-//                    — the value ENTITY_CANVAS_TO_FRAMEBUFFER sets when worldPlaced_.
+//                    — the value ENTITY_CANVAS_TO_FRAMEBUFFER sets by default
+//                    (C_EntityCanvas::screenLocked_ false).
 //
 // Because pos3DtoDistance is linear (x+y+z) and the entity translation is an
 // integer world cell, distanceOffset + modelCell-depth == worldCell-depth EXACTLY,
@@ -180,10 +182,11 @@ TEST(DetachedWorldDepthTest, OffsetEqualsEntityOriginGridDepth) {
     }
 }
 
-// The default (screen-locked overlay) path keeps distanceOffset = 0, so its
-// composite depth is the pool-centered model depth — independent of the entity's
-// world position. This is what makes the default byte-identical across world
-// positions (and is the behavior worldPlaced_ opts OUT of).
+// The screen-locked overlay path (the explicit screenLocked_ opt-OUT since
+// #1624) keeps distanceOffset = 0, so its composite depth is the pool-centered
+// model depth — independent of the entity's world position. This is what makes
+// the overlay byte-identical across world positions (and is the behavior
+// world placement, the default, replaces).
 TEST(DetachedWorldDepthTest, OverlayDepthIsWorldPositionIndependent) {
     const auto &[local, offset] = kVoxels[1];
     const C_WorldTransform poolFrame = makeTransform(vec3(0.0f), kIdentityQuat);

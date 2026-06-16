@@ -40,7 +40,7 @@ in the `UPDATE` pipeline unless explicitly noted.
 - `PERIODIC_IDLE_POSITION_OFFSET` — upserts the resolved bob value as a
   vec3 ADD modifier on the entity's `C_Modifiers` each tick via
   `upsertBySourceInPlace` (under the `TRANSFORM_TRANSLATION` field).
-  Slot key is `(entity, TRANSFORM_TRANSLATION, ADD)` — one entry per
+  Slot key is `(kNullEntity, TRANSFORM_TRANSLATION, ADD)` — one entry per
   bob-eligible entity, updated in place. No `ticksRemaining_` countdown;
   no `MODIFIER_DECAY` dependency. `PROPAGATE_TRANSFORM` later folds the
   resolved value into `C_WorldTransform.translation_` per the SQT

@@ -8,6 +8,10 @@ creation composes MIDI behavior by adding components to entities.
 
 - `C_MidiMessage` — status + channel + data1/data2. Helpers for note
   number, velocity, CC value.
+- `C_MidiSourcePort` — RtMidi port index an inbound message arrived on
+  (-1 = unknown). Attached to in-message entities alongside `C_MidiMessage`
+  + `C_MidiIn` by `MidiIn::processMidiMessageQueue`; the `InputMidiMessageIn`
+  drainer matches it to route messages into the per-port query view.
 - `C_MidiSequence` — BPM, time signature, measures, tick-based playback,
   loop flag, message buffer.
 - `C_MidiNote` — note number, velocity, channel, hold duration.

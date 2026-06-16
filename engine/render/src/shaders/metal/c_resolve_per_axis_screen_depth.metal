@@ -59,8 +59,7 @@ kernel void c_resolve_per_axis_screen_depth(
         viewPos = rotateCardinalZ(origin, cardinalIndex);
         viewPos += cardinalLowerCornerShift(cardinalIndex);  // world units
     }
-    viewPos *= scale;  // convert to subdivision units
-    const int encoded = encodeDepthWithFace(pos3DtoDistance(viewPos), slot);
+    viewPos *= scale;  // face-plane origin in subdivision units
 
     const int2 canvasSize = frameData.canvasSizePixels; // MAIN canvas size
     const int2 mainBase = trixelFrameOffset(
@@ -68,12 +67,41 @@ kernel void c_resolve_per_axis_screen_depth(
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions
     );
-    const int2 mainPixel = mainBase + pos3DtoPos2DIso(viewPos);
-    if (mainPixel.x < 0 || mainPixel.x >= canvasSize.x ||
-        mainPixel.y < 0 || mainPixel.y >= canvasSize.y) {
-        return;
-    }
 
-    const uint idx = uint(mainPixel.y) * uint(canvasSize.x) + uint(mainPixel.x);
-    atomic_fetch_min_explicit(&resolveScratch[idx], encoded, memory_order_relaxed);
+    // Emit the face's full cardinal-layout footprint (#1724), not just the
+    // origin pixel: scale² micro-cells (the faceMicroPositionFixed6 u,v sweep
+    // the cardinal store makes), each covering its slot's two-pixel diamond
+    // region (faceOffset_2x3). A single-pixel write left the resolve texture
+    // ~50% sparse at scale 1 and sparser as effSub grew — pinhole casters
+    // whose shadows dithered with interior gaps. `slot` doubles as the
+    // view-frame face axis: visibleFaceTripletCardinal orders the triplet so
+    // slot s's world face rotates onto view axis s (0 = X column, 1 = Y
+    // column, 2 = Z row of the 2x3 diamond).
+    float3 eu;
+    float3 ev;
+    faceInPlaneUnitAxes(axis, eu, ev);
+    const int3 stepU = rotateCardinalZ(int3(eu), cardinalIndex);
+    const int3 stepV = rotateCardinalZ(int3(ev), cardinalIndex);
+    for (int v = 0; v < scale; ++v) {
+        for (int u = 0; u < scale; ++u) {
+            const int3 microView = viewPos + stepU * u + stepV * v;
+            // Per-micro-cell depth, shared by the region's two pixels — the
+            // exact encode a real cardinal store would hold here, so BAKE's
+            // pixel+depth inverse recovers points on the face plane.
+            const int encoded = encodeDepthWithFace(pos3DtoDistance(microView), slot);
+            const int2 cellBase = mainBase + pos3DtoPos2DIso(microView);
+            for (int k = 0; k < 2; ++k) {
+                const int2 mainPixel = cellBase + faceOffset_2x3(slot, k);
+                if (!isInsideCanvas(mainPixel, canvasSize)) {
+                    continue;
+                }
+                // Front-most per screen pixel: smallest encoded distance wins
+                // (depth dominates the 2 slot bits), exactly like the main
+                // canvas atomicMin store.
+                const uint idx =
+                    uint(mainPixel.y) * uint(canvasSize.x) + uint(mainPixel.x);
+                atomic_fetch_min_explicit(&resolveScratch[idx], encoded, memory_order_relaxed);
+            }
+        }
+    }
 }

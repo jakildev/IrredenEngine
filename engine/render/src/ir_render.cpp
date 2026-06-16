@@ -182,6 +182,10 @@ void setCameraPosition2DIso(vec2 pos) {
     getRenderManager().setCameraPosition2DIso(pos);
 }
 
+void setCameraVisualYaw(float degrees) {
+    IRPrefab::Camera::setYaw(degrees * IRMath::kPi / 180.0f);
+}
+
 void setSubdivisionMode(SubdivisionMode mode) {
     getRenderManager().setSubdivisionMode(mode);
 }
@@ -238,6 +242,10 @@ int getGuiScale() {
     return getRenderManager().getGuiScale();
 }
 
+void setGuiCanvasFullResolution() {
+    getRenderManager().setGuiCanvasFullResolution();
+}
+
 void setHoveredTrixelVisible(bool visible) {
     getRenderManager().setHoveredTrixelVisible(visible);
 }
@@ -280,6 +288,14 @@ void setSunShadowsEnabled(bool enabled) {
 
 bool getSunShadowsEnabled() {
     return getRenderManager().getSunShadowsEnabled();
+}
+
+void setVoxelOcclusionCullEnabled(bool enabled) {
+    getRenderManager().setVoxelOcclusionCullEnabled(enabled);
+}
+
+bool getVoxelOcclusionCullEnabled() {
+    return getRenderManager().getVoxelOcclusionCullEnabled();
 }
 
 void setAOEnabled(bool enabled) {

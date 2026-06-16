@@ -18,6 +18,7 @@
 
 #include <irreden/common/components/component_position_2d_iso.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
+#include <irreden/common/components/component_persistent.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
@@ -122,6 +123,16 @@ RenderManager::RenderManager(
     );
     m_renderImpl->init();
     IREntity::setName(m_camera, "camera");
+
+    // #1814: the renderer's camera + framebuffer/canvas entities are normal
+    // (non-singleton) ECS entities. Tag them C_Persistent so a scene-transition
+    // IREntity::resetGameplay() spares them — without the tag they'd be torn
+    // down on the first reset and the render context would break.
+    IREntity::setComponent(m_camera, C_Persistent{});
+    IREntity::setComponent(m_mainFramebuffer, C_Persistent{});
+    IREntity::setComponent(m_mainCanvas, C_Persistent{});
+    IREntity::setComponent(m_backgroundCanvas, C_Persistent{});
+    IREntity::setComponent(m_guiCanvas, C_Persistent{});
     // IRECS::setComponent(
     //     m_backgroundCanvas,
     //     C_TextureScrollPosition{
@@ -454,10 +465,12 @@ void RenderManager::printRenderInfo() {
 ivec2 RenderManager::calcOutputScaleByMode() {
     if (m_fitMode == FitMode::FIT) {
         return IRMath::max(
-            ivec2(IRMath::min(
-                IRMath::floor(m_viewport.x / m_gameResolution.x),
-                IRMath::floor(m_viewport.y / m_gameResolution.y)
-            )),
+            ivec2(
+                IRMath::min(
+                    IRMath::floor(m_viewport.x / m_gameResolution.x),
+                    IRMath::floor(m_viewport.y / m_gameResolution.y)
+                )
+            ),
             ivec2(1)
         );
     }
@@ -499,26 +512,40 @@ bool RenderManager::isGuiVisible() const {
     return m_guiVisible;
 }
 
+void RenderManager::resizeGuiCanvas(ivec2 newSize) {
+    if (IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ == newSize)
+        return;
+    auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_guiCanvas);
+    textures.onDestroy();
+    textures = C_TriangleCanvasTextures{newSize};
+    IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ = newSize;
+}
+
 void RenderManager::setGuiScale(int scale) {
     scale = std::clamp(scale, 1, 8);
     if (scale == m_guiScale)
         return;
+    if (m_guiFullResolution)
+        return; // full-resolution sizing overrides the scale divisor; don't record the intent
     m_guiScale = scale;
 
     ivec2 mainSize = IREntity::getComponent<C_SizeTriangles>(m_mainCanvas).size_;
     ivec2 newSize = mainSize / ivec2(scale);
-
-    auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(m_guiCanvas);
-    textures.onDestroy();
-    textures = C_TriangleCanvasTextures{newSize};
-
-    IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ = newSize;
-
+    resizeGuiCanvas(newSize);
     IRE_LOG_INFO("GUI scale set to {}x (canvas {}x{})", scale, newSize.x, newSize.y);
 }
 
 int RenderManager::getGuiScale() const {
     return m_guiScale;
+}
+
+void RenderManager::setGuiCanvasFullResolution() {
+    m_guiFullResolution = true;
+    // The main framebuffer is sized gameResolution + buffer pixels; matching it
+    // makes one GUI trixel == one framebuffer pixel (1:1, no iso stretch).
+    const ivec2 fbSize = m_gameResolution + IRConstants::kSizeExtraPixelBuffer;
+    resizeGuiCanvas(fbSize);
+    IRE_LOG_INFO("GUI canvas set to full resolution ({}x{})", fbSize.x, fbSize.y);
 }
 
 void RenderManager::setHoveredTrixelVisible(bool visible) {
@@ -568,6 +595,14 @@ void RenderManager::setAOEnabled(bool enabled) {
 
 bool RenderManager::getAOEnabled() const {
     return m_aoEnabled;
+}
+
+void RenderManager::setVoxelOcclusionCullEnabled(bool enabled) {
+    m_voxelOcclusionCullEnabled = enabled;
+}
+
+bool RenderManager::getVoxelOcclusionCullEnabled() const {
+    return m_voxelOcclusionCullEnabled;
 }
 
 void RenderManager::setDebugOverlay(DebugOverlayMode mode) {

@@ -102,8 +102,11 @@ any `c_compute_*shadow*.glsl` / `.metal`)
   Add the annotation and set `kSaveVersion = 1` on the struct.
 
 **Naming / style** — follow the table in [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md) §Naming.
-- `m_` on public members, trailing `_` on private members (backwards — the
-  single most common slip).
+- Private members take `m_`; public members take a trailing `_`. The reversed
+  form — `m_` on a *public* member, or a trailing `_` on a *private* member —
+  is the single most common slip. A private member that already carries `m_`
+  is correct; do **not** flag it (this inversion produced a false-positive nit
+  on PR #1706).
 
 **Tests / build**
 - Code change with no corresponding test change where a test existed.
@@ -139,6 +142,12 @@ verdict footer if any of these surfaces are touched)
   to** this engine checklist. The engine checklist is the baseline; the
   creation's `CLAUDE.md` is the delta. Apply both. If the subdirectory has a
   dedicated `REVIEW.md`, prefer it for review-specific rules.
+
+**Fleet scripts** (if the diff renames pane IDs, role names, or other
+identifiers in `scripts/fleet/`)
+- Inline comments — layout diagrams, role-list blocks, `--help` banners —
+  still naming the old identifiers. `grep` the renamed-from names across the
+  touched scripts; comment blocks drift silently because nothing compiles them.
 
 ## Verdict-label swap commands (shared-flow step 5b)
 

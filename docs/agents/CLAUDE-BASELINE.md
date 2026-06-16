@@ -45,11 +45,23 @@ See `engine/system/CLAUDE.md` for the full tick-function-signature story.
 | Fragment shaders  | `f_` prefix                                        |
 | Geometry shaders  | `g_` prefix                                        |
 | Header helpers    | nested `detail` namespace (not anonymous, not feature-named) |
+| Include guards    | `<NAME>_H` from the file basename (not `_HPP`, not `#pragma once`) |
+
+Include guards follow `<NAME>_H` derived from the file basename; the engine
+is 477:3 `_H` over `_HPP` engine-wide and the prefab render tree is 157/157
+`#ifndef` (no `#pragma once`). Don't flag or "fix" an existing `_H` guard to
+`_HPP` for "consistency with the `.hpp` extension" — the data runs the other
+way.
 
 Prefer descriptive names over abbreviations (`viewCenterIso` not `vcIso`).
 Use a lowercase `detail` namespace for header-only helpers under the owning
 namespace (`IRSystem::detail`, `IRRender::detail`). Don't use anonymous
 namespaces in headers; keep them in `.cpp`.
+
+No prototype-phase infixes (`Test`, `New`, `Tmp`) in production (non-test)
+function names — rename an experimental copy before it's wired into the real
+path, or the API keeps signalling "experimental" when it's the production code
+(`Debug` is fine when it names a real debug *feature*, not a leftover prototype).
 
 ---
 
@@ -105,6 +117,13 @@ namespaces in headers; keep them in `.cpp`.
   that isn't in `IRMath` yet, add a wrapper in `engine/math/` first,
   then call it. The math library may itself wrap `glm::*` / `std::*`
   internally — that is the **only** place those names should appear.
+- **"Set above" is code narration, not a WHY.** Comments that point at
+  *where* code is — `// set above`, `// see below`, `// defined above`,
+  `// called from X` — narrate location instead of explaining intent.
+  The location is already visible in the code; any real rationale belongs
+  at the referenced site, not cross-referenced from here. Delete them; if
+  the comment carried a genuine WHY, move it to the site it points at.
+  (The `simplify` skill's Check 4 greps for these mechanically on new diffs.)
 
 ---
 
@@ -501,6 +520,12 @@ rule** above. Removal of engine ECS surface (systems, components,
 entities) is forbidden without explicit human sign-off; deprecation
 markers are the slower-moving "this surface is going away eventually"
 signal that applies to any API the human has decided to phase out.
+
+**Transition shims** — code intentionally dead once a known milestone lands
+(compatibility aliases, legacy-artifact cleaners, deprecated-knob
+fallthrough) — carry a `// Remove once <phase> lands (epic #N)` tombstone at
+the declaration so the cleanup pass is self-guided instead of depending on
+whoever remembers which epic the shim was tied to.
 
 ---
 

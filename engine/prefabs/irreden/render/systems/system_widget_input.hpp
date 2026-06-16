@@ -9,6 +9,7 @@
 
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_gui_hover_state.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/render/layout.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
@@ -196,6 +197,21 @@ template <> struct System<WIDGET_INPUT> {
                     IRMath::clamp(dx / static_cast<float>(widget.size_.x), 0.0f, 1.0f);
             }
         }
+    }
+
+    // Publish the z-ordered topmost hovered widget (resolved in beginTick)
+    // into the C_GuiHoverState singleton, if a creation registered one. A
+    // once-per-frame singleton write (endTick is allowed to do bounded
+    // lookups, unlike the per-entity tick). No singleton → no-op, so
+    // non-test creations pay nothing. Read back via
+    // IRPrefab::Widget::hoveredWidget(); used by the headless GUI-test
+    // harness (#1796) to assert hover without re-scanning hitboxes.
+    void endTick() {
+        IREntity::forEachComponent<IRComponents::C_GuiHoverState>(
+            [this](IREntity::EntityId &, IRComponents::C_GuiHoverState &hoverState) {
+                hoverState.hoveredWidget_ = topHoveredId_;
+            }
+        );
     }
 
     static SystemId create() {

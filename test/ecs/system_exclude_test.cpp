@@ -137,4 +137,19 @@ TEST_F(SystemExcludeTest, AddSystemExcludeTagMatchesExcludeTemplateParam) {
     EXPECT_EQ(IREntity::getComponent<Counter>(idB).n_, 0);
 }
 
+TEST_F(SystemExcludeTest, ClearPipelineStopsTicksOnNextExecute) {
+    auto id = IREntity::createEntity(Counter{0});
+
+    auto sysId = IRSystem::createSystem<Counter>(
+        "IncrementForClearTest",
+        [](Counter &c) { c.n_++; }
+    );
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {sysId});
+    m_system_manager.clearPipeline(IRTime::Events::UPDATE);
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_EQ(IREntity::getComponent<Counter>(id).n_, 0)
+        << "cleared pipeline must fire no ticks";
+}
+
 } // namespace

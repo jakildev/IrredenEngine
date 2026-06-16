@@ -82,8 +82,8 @@ __remove_claim() {
 # to different tasks across repos. Game-side claims pass `--repo game`
 # BEFORE the subcommand to namespace the slug:
 #
-#   fleet-claim claim 1234 opus-worker-1                # engine: slug=1234
-#   fleet-claim --repo game claim 18 opus-worker-1      # game: slug=game-18
+#   fleet-claim claim 1234 worker-1                     # engine: slug=1234
+#   fleet-claim --repo game claim 18 worker-1           # game: slug=game-18
 #   fleet-claim --repo game release 18                  # release with same prefix
 #
 # Parsed BEFORE the subcommand so it doesn't collide with cleanup's own
@@ -114,10 +114,27 @@ unset _fleet_claim_self
 # Defensive check: catch a mis-resolved lib dir before any subcommand runs, so the
 # failure is visible (a clear stderr message) rather than a silent exit 1 from
 # python3's ModuleNotFoundError propagating through a pipefail command substitution.
-if [[ ! -f "$FLEET_LIB_DIR/fleet_branch_match.py" ]]; then
-    echo "fleet-claim: fleet_branch_match.py not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
-    echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
-    exit 1
+# A missing module would otherwise fail OPEN in the --stackable-on guard below
+# (empty reason -> claim proceeds), so fail loud here instead.
+for _fleet_lib in fleet_branch_match.py fleet_stack_base.py fleet_blocked_by.py; do
+    if [[ ! -f "$FLEET_LIB_DIR/$_fleet_lib" ]]; then
+        echo "fleet-claim: $_fleet_lib not found in FLEET_LIB_DIR=$FLEET_LIB_DIR" >&2
+        echo "             Ensure fleet-claim's real script dir is scripts/fleet/ in the engine repo." >&2
+        exit 1
+    fi
+done
+unset _fleet_lib
+
+# Main-clone freshness helper (#1810). fleet-claim imports its blocked_by parser
+# + stack-base resolver from the main clone's working tree via FLEET_LIB_DIR; if
+# that clone's master is stale so is the parser, and a missed blocker becomes a
+# silent false-grant. cmd_claim calls assert_clone_fresh to refuse loudly
+# instead. FLEET_LIB_DIR is symlink-resolved → the real file (not a symlink).
+if [[ -f "$FLEET_LIB_DIR/fleet-clone-freshness.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
+else
+    assert_clone_fresh() { :; }  # helper not installed yet — no-op (fail open)
 fi
 
 # --- input validation -----------------------------------------------------
@@ -178,7 +195,7 @@ slugify() {
 #   - fleet:claim-<host>-<agent>      (task claim)
 #
 # Host disambiguation is required for correctness — two hosts can both
-# have an `opus-worker-1` worktree.
+# have a `worker-1` worktree.
 #
 # Stale label sweep runs from `fleet-claim cleanup --gh`; orphan sentinels
 # under ~/.fleet/orphans/ retry failed removals on the next cleanup pass.
@@ -499,84 +516,26 @@ check_blockers() {
     BODY_B64="$body_b64" SKIP_IDS="$skip_ids" REPO=$(repo_from_ns) ISSUE_NUM="$issue_num" \
     python3 <<'PYEOF'
 import os, re, subprocess, sys, base64
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+# Shared blocker parser (#1749) — one routine for scout/ingest/claim so the
+# three can't disagree, and it catches the plain `Blocked by: #N` form the
+# bold-only copies skipped. parse_blocked_by handles canonical / inline-bold
+# (#1423) / plain / `Blocked on` header (#1326) + the rich no-blocker sentinel;
+# blocker_refs routes cross-repo `[owner/]Repo#N` qualifiers (#1522).
+from fleet_blocked_by import parse_blocked_by, blocker_refs
 
 issue_num = os.environ.get("ISSUE_NUM", "")
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 skip_ids = set(os.environ.get("SKIP_IDS", "").split())
 repo = os.environ.get("REPO", "")
 
-# Parse the `**Blocked by:**` field. The line shape is markdown bold-key:
-#   **Blocked by:** #1234, #1235
-#   **Blocked by:** (none — explanatory text)
-# Accept either bare `**Blocked by:**` or list-bullet `- **Blocked by:**`.
-# Also handle inline-bold form: **Blocked by: #N (label)** mid-line where the
-# colon and value sit inside one bold span (#1423). The two patterns are
-# mutually exclusive: canonical has **Blocked by:** (bold closes at colon),
-# inline has **Blocked by: value** (space after colon, bold stays open).
-field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-inline_re = re.compile(r"\*\*Blocked by:\s+(.+?)\*\*", re.IGNORECASE)
-field_values = []
-for line in body.splitlines():
-    m = field_re.match(line)
-    if m:
-        field_values.append(m.group(1).strip())
-        continue
-    for m2 in inline_re.finditer(line):
-        val = m2.group(1).strip()
-        if val:
-            field_values.append(val)
-# Union every canonical line (multi-line + multi-ref); drop explicit (none)
-# declarations. If every **Blocked by:** line is (none), the task is unblocked.
-real = [v for v in field_values if not v.lower().startswith("(none")]
-if field_values and not real:
-    sys.exit(0)
-field_value = ", ".join(real) if real else None
-
-# Fall back to free-form header prose like `## Blocked on #1300` / `Blocked
-# on PR-x` when the canonical field is absent, so a header-only dependency
-# still gates the claim — #1301 slipped through as claimable because its
-# blocker lived in a `Blocked on #1300` header (#1326). Mirrors
-# fleet-state-scout._parse_blocked_by; #1296 covered #N refs INSIDE the
-# field, this covers the header-prose form. Only honor prose that names a #N
-# or PR so an incidental "blocked on the redesign" sentence isn't a gate.
-if field_value is None:
-    blocked_on_re = re.compile(
-        r"^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$",
-        re.IGNORECASE,
-    )
-    for line in body.splitlines():
-        m = blocked_on_re.match(line)
-        if m:
-            cand = m.group(1).strip().strip("*").strip()
-            if cand and ("#" in cand or re.search(r"\bPR\b", cand, re.IGNORECASE)):
-                field_value = cand
-                break
-
-if field_value is None:
+# `(none)` / absent / sentinel-only → no gate.
+field_value = parse_blocked_by(body)
+if not field_value:
     sys.exit(0)
 
-# `(none)` with optional parenthetical commentary means "no real blocker".
-# Treat anything starting with `(none` as a no-op.
-if field_value.lower().startswith("(none"):
-    sys.exit(0)
-
-# Extract referenced issue numbers and PR URLs. A `#N` may carry an optional
-# `[owner/]Repo#N` qualifier — route its live state check to the *referenced*
-# repo so a cross-repo dependency resolves against the right repo, not the
-# issue's own (#1522). Bare / unrecognized refs default to this issue's repo.
-_REF_NAME_TO_SLUG = {"irredenengine": "jakildev/IrredenEngine",
-                     "irreden": "jakildev/irreden"}
-
-
-def _ref_repo(name):
-    if name:
-        return _REF_NAME_TO_SLUG.get(name.lower(), repo)
-    return repo
-
-
-qual_ref_re = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
-issue_refs = [(_ref_repo(m.group(1)), m.group(2))
-              for m in qual_ref_re.finditer(field_value)]
+# Referenced issue numbers (qualifier-routed to the referenced repo) + PR URLs.
+issue_refs = blocker_refs(body, repo)
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", field_value)
 
 failed = []
@@ -738,6 +697,15 @@ cmd_claim() {
         esac
     done
 
+    # Freshness gate (#1810): refuse the claim if the main clone — whose
+    # blocked_by parser + stack-base resolver this script imports — is behind
+    # origin/master. A stale parser can miss a blocker and silently false-grant;
+    # fail loud instead. rev-parse only (no fetch — fleet-up/dispatcher keep the
+    # origin/master ref fresh). Covers both the normal and --stackable-on paths.
+    if ! assert_clone_fresh "$FLEET_ENGINE_ROOT"; then
+        return 1
+    fi
+
     local slug
     slug=$(slugify "$issue_num")
 
@@ -750,7 +718,7 @@ cmd_claim() {
     local stackable_branch=""
     if [[ -n "$stackable_pr" ]]; then
         local pr_json pr_state pr_head
-        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName 2>/dev/null); then
+        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName,labels 2>/dev/null); then
             echo "fleet-claim claim: failed to fetch PR state for $stackable_pr" >&2
             return 1
         fi
@@ -766,6 +734,37 @@ cmd_claim() {
             OPEN)
                 if [[ -z "$pr_head" ]]; then
                     echo "fleet-claim claim: $stackable_pr returned empty headRefName — refusing claim" >&2
+                    return 1
+                fi
+                # Live base-state cross-check (#1751): an OPEN base may still be
+                # unsafe to stack on — WIP / design-unblocked / amending (head
+                # diff in flux), awaiting-rebase, a fork, or an empty
+                # claim-commit-only skeleton. Verify against LIVE labels + diff
+                # (not the cached projection the scout offered from) using the
+                # same predicate the scout's offer-time filter uses, so offer
+                # and accept can't disagree.
+                local pr_labels stack_diff stack_reject
+                pr_labels=$(printf '%s' "$pr_json" \
+                    | python3 -c 'import sys, json; print("\n".join(l.get("name","") for l in json.load(sys.stdin).get("labels", [])))')
+                if ! stack_diff=$(gh pr diff "$stackable_pr" --name-only 2>/dev/null); then
+                    echo "fleet-claim claim: could not fetch diff for $stackable_pr — refusing to stack on an unverifiable base" >&2
+                    return 1
+                fi
+                # gh exited 0 above, so an empty diff is a known-empty
+                # claim-commit base (not "unknown") -> the predicate rejects it.
+                if ! stack_reject=$(PR_LABELS="$pr_labels" STACK_DIFF="$stack_diff" python3 -c '
+import os, sys
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_stack_base import unsafe_base_reason
+labels = [l for l in os.environ.get("PR_LABELS", "").splitlines() if l]
+files = [f for f in os.environ.get("STACK_DIFF", "").splitlines() if f]
+sys.stdout.write(unsafe_base_reason(labels, files) or "")
+'); then
+                    echo "fleet-claim claim: base-safety check failed (Python error) — refusing to stack on an unverifiable base" >&2
+                    return 1
+                fi
+                if [[ -n "$stack_reject" ]]; then
+                    echo "fleet-claim claim: $stackable_pr is not a stackable base ($stack_reject) — refusing claim" >&2
                     return 1
                 fi
                 stackable_branch="$pr_head"
@@ -975,27 +974,16 @@ cmd_find_stackable_blockers() {
 import base64, json, os, re, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import branch_matches_issue
+# Shared blocker parser (#1749) — same value the scout / ingest /
+# check_blockers see, including the plain `Blocked by: #N` form.
+from fleet_blocked_by import parse_blocked_by
 
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 repo = os.environ.get("REPO", "")
 
-field_re = re.compile(r"^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$", re.IGNORECASE)
-inline_re = re.compile(r"\*\*Blocked by:\s+(.+?)\*\*", re.IGNORECASE)
-field_values = []
-for line in body.splitlines():
-    m = field_re.match(line)
-    if m:
-        field_values.append(m.group(1).strip())
-        continue
-    for m2 in inline_re.finditer(line):
-        val = m2.group(1).strip()
-        if val:
-            field_values.append(val)
-# Union every canonical line (multi-line + multi-ref); drop (none).
-real = [v for v in field_values if not v.lower().startswith("(none")]
-if not real:
+value = parse_blocked_by(body)
+if not value:
     sys.exit(0)
-value = ", ".join(real)
 
 issue_refs = re.findall(r"#(\d+)", value)
 pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", value)
@@ -2204,7 +2192,7 @@ for repo in repos:
             if "fleet:wip" not in labs and not (labs & FEEDBACK):
                 continue
             # A fleet:design-blocked PR is intentionally claim-less, not drift.
-            # The design-escalation protocol (role-opus-worker.md step 8c) has
+            # The design-escalation protocol (role-worker.md step 8c) has
             # the worker RELEASE its claim + worktree reservation when parking
             # the PR for the architect; re-adoption is gated on the architect
             # flipping it to fleet:design-unblocked, not a free pickup decision.
@@ -2627,7 +2615,7 @@ PYEOF
 #   each --apply tick a finding recurs and resets when it does not, so a
 #   freshly-opened WIP PR still propagating its claim is never acted on. When a
 #   finding crosses <threshold> ticks, re-add fleet:design-unblocked so the
-#   opus-worker resume loop adopts the PR (the worker — never reconcile — makes
+#   worker resume loop adopts the PR (the worker — never reconcile — makes
 #   the resume-or-close call). Idempotent: once the label is back the finding
 #   stops reproducing, so its counter resets and the heal does not repeat. A
 #   failed re-add simply recurs on the next tick (the counter is already past
@@ -3612,12 +3600,10 @@ for line in body.splitlines():
     done
 
     case "$model" in
-        # fable tasks dispatch from the heavy (opus-worker) lane until the
-        # phase-2 generic-worker unification — mapping it here keeps
-        # crash-survived fable reservations counted against that lane's
-        # concurrency cap.
-        fable|opus) echo "opus-worker" ;;
-        sonnet)     echo "sonnet-author" ;;
+        # All classes dispatch from the unified worker lane (P2, epic
+        # #1692) — crash-survived reservations of any class count
+        # against that lane's concurrency cap.
+        fable|opus|sonnet) echo "worker" ;;
         *) ;;
     esac
     return 0
@@ -4055,8 +4041,7 @@ reservation commands (worktree-pinning, distinct from claims):
                                 empty.
   list-reservations             table of all active reservations.
   reservation-role <worktree>   print dispatcher role tag for this
-                                worktree's reservation (opus-worker /
-                                sonnet-author).
+                                worktree's reservation (worker).
 
 molecule commands (crash-recovery state for stack claims):
   molecule list                          show all active molecules
@@ -4083,8 +4068,8 @@ Slug canonicalization:
   global --repo flag (e.g. "1234" or "game-15").
 
 Examples:
-  fleet-claim claim 1234 opus-worker-1                  # engine claim
-  fleet-claim --repo game claim 18 opus-worker-1        # game claim
+  fleet-claim claim 1234 worker-1                       # engine claim
+  fleet-claim --repo game claim 18 worker-1             # game claim
   fleet-claim --repo game release 18                    # release game claim
   fleet-claim list                                      # show all claims
 USAGE

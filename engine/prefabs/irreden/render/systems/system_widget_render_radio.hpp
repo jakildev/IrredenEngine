@@ -25,6 +25,7 @@ namespace IRSystem {
 template <> struct System<WIDGET_RENDER_RADIO> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRRender::RectFillScratch scratch_;
+    std::vector<IRRender::GlyphDrawCommand> textCmds_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
@@ -37,7 +38,8 @@ template <> struct System<WIDGET_RENDER_RADIO> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
+        if (!canvas_)
+            return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
         const int box = theme.radioBoxSize_;
@@ -74,8 +76,9 @@ template <> struct System<WIDGET_RENDER_RADIO> {
         }
 
         if (!radio.label_.empty()) {
-            IRPrefab::Widget::detail::drawLeftText(
-                *canvas_,
+            IRPrefab::Widget::detail::queueLeftText(
+                textCmds_,
+                canvas_->size_,
                 radio.label_,
                 IRMath::ivec2(guiPos.pos_.x + box + theme.padding_ * 2, guiPos.pos_.y),
                 widget.size_.y,
@@ -84,14 +87,17 @@ template <> struct System<WIDGET_RENDER_RADIO> {
         }
     }
 
+    void endTick() {
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
+    }
+
     static SystemId create() {
         return registerSystem<
             WIDGET_RENDER_RADIO,
             IRComponents::C_Widget,
             IRComponents::C_WidgetRadio,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderRadio");
+            IRComponents::C_GuiPosition>("WidgetRenderRadio");
     }
 };
 

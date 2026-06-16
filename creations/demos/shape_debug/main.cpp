@@ -27,7 +27,6 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
-#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -45,6 +44,7 @@
 #include <irreden/render/systems/system_update_joint_matrices.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
+#include <irreden/render/systems/system_build_distance_hiz.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
@@ -52,8 +52,6 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
-#include <irreden/render/systems/system_fog_to_trixel.hpp>
-#include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -152,6 +150,12 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 bool g_depthColor = false;
 bool g_checkerboard = false; // opt-in via --checkerboard; flickered, off by default
+// --occlusion-cull (#1294 child 2/3): force the voxel-pool chunk-occlusion HZB
+// pre-pass on (off by default in the engine). A test hook so the cull can be
+// exercised before the child-3 measurement demo lands. On the sparse shape_debug
+// scene nothing is inter-object-occluded, so output must stay identical (a hole
+// would be a false-positive cull bug).
+bool g_occlusionCull = false;
 // --gpu-voxel-smoke (#1396): spawn one voxel cube routed through the GPU
 // voxel-position prepass with a fixed 45° rotation. Off by default so the
 // standard scene stays byte-identical; the rotated cube is direct proof the
@@ -230,6 +234,8 @@ int main(int argc, char **argv) {
             g_depthColor = true;
         } else if (std::strcmp(argv[i], "--checkerboard") == 0) {
             g_checkerboard = true;
+        } else if (std::strcmp(argv[i], "--occlusion-cull") == 0) {
+            g_occlusionCull = true;
         } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
             g_gpuVoxelSmoke = true;
         } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
@@ -308,6 +314,10 @@ int main(int argc, char **argv) {
     }
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
         IRRender::setDebugOverlay(g_debugOverlay);
+    }
+    if (g_occlusionCull) {
+        IRRender::setVoxelOcclusionCullEnabled(true);
+        IR_LOG_INFO("Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 2/3)");
     }
     if (g_initialYawRadians != 0.0f) {
         IRPrefab::Camera::setYaw(g_initialYawRadians);
@@ -399,12 +409,15 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            // Hi-Z max-depth mip chain over the (now final) distance texture,
+            // for next frame's voxel occlusion cull (#1294 child 1/3). Produces
+            // only — renders unchanged this PR.
+            IRSystem::createSystem<IRSystem::COMPUTE_DISTANCE_HIZ>(),
             IRSystem::createSystem<IRSystem::RESOLVE_PER_AXIS_SCREEN_DEPTH>(),
             IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
@@ -1033,7 +1046,6 @@ void initEntities() {
     // AO / sun-shadow / light-volume / lighting systems' archetype filter
     // wouldn't otherwise match the main canvas and they'd silently skip it.
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-    IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
 
     // Default sun direction: high and slightly off-axis so every demo
     // shape casts a visible shadow without any further setup.
@@ -1046,12 +1058,6 @@ void initEntities() {
         C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );
-
-    // Seed a visible-circle at origin so the demo's shapes are rendered
-    // while the surrounding floor fades to "unexplored" black — proves
-    // the fog-of-war pass end-to-end. Radius chosen to cover the shape
-    // row (kSpacingX * kNumCases / 2 ≈ 32) with some peripheral margin.
-    IRPrefab::Fog::revealRadius(0, 0, 48);
 
     // --load-vxs: load a DENSE-mode .vxs file (frame 0) and place the voxel
     // set at the origin so it can be compared against the procedural shapes.

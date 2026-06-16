@@ -336,6 +336,7 @@ void World::enableFrameTiming(bool enabled) {
         m_systemManager.resetTimingStats();
         IRRender::computeLightVolumeTiming().reset();
         IRRender::voxelCullAccumulator().reset();
+        IRRender::resetGpuStageAccumulators();
     }
 }
 
@@ -411,18 +412,23 @@ void World::buildAndWriteProfileReport() {
 
     auto &gpu = IRRender::gpuStageTiming();
     if (gpu.enabled_ && report.totalFrames_ > 0) {
-        for (const auto &info : IRRender::gpuStageRegistry()) {
-            const float perFrameMs = gpu.*info.field_;
+        // Drain the per-stage accumulator filled by `gpu_stage_timing_observer`
+        // each frame (indexed parallel to `gpuStageRegistry()`). This is a real
+        // running sum / min / max across every sampled frame — not the old
+        // last-frame-snapshot approximation, which reported Avg == Max on every
+        // stage because `GpuStageTiming::*Ms_` only retains the latest sample
+        // (#1738). Stages with no resolved samples (no writer, or readback never
+        // ready) stay at sampleCount_ == 0 and are skipped by the report writer.
+        const auto &accumulators = IRRender::gpuStageAccumulators();
+        const auto &registry = IRRender::gpuStageRegistry();
+        for (std::size_t i = 0; i < registry.size(); ++i) {
+            const auto &acc = accumulators[i];
             IRProfile::GpuStageEntry stage;
-            stage.name_ = std::string(info.name_);
-            // totalMs_ is an approximation: the GpuStageTiming struct only
-            // keeps the last frame's sample, not a running sum across all
-            // frames. Multiplying by totalFrames_ estimates total GPU cost
-            // assuming steady-state — good enough for a summary report,
-            // not a true accumulator. Same snapshot is used for maxMs_.
-            stage.totalMs_ = perFrameMs * static_cast<float>(report.totalFrames_);
-            stage.maxMs_ = perFrameMs;
-            stage.sampleCount_ = report.totalFrames_;
+            stage.name_ = std::string(registry[i].name_);
+            stage.totalMs_ = static_cast<float>(acc.sumMs_);
+            stage.minMs_ = acc.minMs_;
+            stage.maxMs_ = acc.maxMs_;
+            stage.sampleCount_ = acc.sampleCount_;
             report.gpuStages_.push_back(std::move(stage));
         }
     }

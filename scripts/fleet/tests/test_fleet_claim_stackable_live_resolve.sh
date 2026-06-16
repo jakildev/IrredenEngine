@@ -25,6 +25,10 @@
 
 set -euo pipefail
 
+# This suite exercises cmd_claim against the real (possibly-stale) main clone but
+# does not care about clone freshness — disable the #1810 freshness gate.
+export FLEET_SKIP_CLONE_FRESHNESS=1
+
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 
@@ -162,6 +166,29 @@ case "$1 $2" in
         echo "[]"
         exit 0
         ;;
+    "pr view")
+        # claim --stackable-on base re-verify (#1751): state + head + labels.
+        # $3 is the PR id passed to --stackable-on.
+        case "$3" in
+            901) printf '%s' '{"state":"OPEN","headRefName":"claude/901-wip","labels":[{"name":"fleet:wip"}]}' ;;
+            902) printf '%s' '{"state":"OPEN","headRefName":"claude/902-empty","labels":[{"name":"fleet:queued"}]}' ;;
+            903) printf '%s' '{"state":"OPEN","headRefName":"claude/903-clean","labels":[{"name":"fleet:queued"}]}' ;;
+            904) printf '%s' '{"state":"OPEN","headRefName":"claude/904-difffail","labels":[{"name":"fleet:queued"}]}' ;;
+            *)   printf '%s' '{"state":"OPEN","headRefName":"claude/x","labels":[]}' ;;
+        esac
+        exit 0
+        ;;
+    "pr diff")
+        # claim --stackable-on live diff: empty output = empty claim-commit,
+        # non-empty = real diff, exit 1 = fetch failure (unverifiable base).
+        case "$3" in
+            902) : ;;                                  # empty diff (claim-commit only)
+            903) printf '%s\n' "engine/render/x.cpp" ;;  # real non-empty diff
+            904) exit 1 ;;                             # fetch failure
+            *)   printf '%s\n' "engine/x.cpp" ;;
+        esac
+        exit 0
+        ;;
     "api "*)
         label=""
         while [[ $# -gt 0 ]]; do
@@ -224,6 +251,36 @@ else
     FAIL=$((FAIL + 1))
     echo "  FAIL: multi-line result does not include claude/101-work-branch"
 fi
+
+# --- #1751: claim --stackable-on rejects an OPEN-but-unsafe base -------------
+# The base re-verify runs before any blocker/model/reservation gate, so an
+# unsafe base refuses the claim outright regardless of the rest of the flow.
+assert_refused() {
+    local pr_id="$1" reason="$2" msg="$3"
+    local err="$TMPROOT/refuse.err"
+    if "$FLEET_CLAIM" claim 3001 worker-test --stackable-on "$pr_id" >/dev/null 2>"$err"; then
+        FAIL=$((FAIL + 1))
+        echo "  FAIL: $msg — claim SUCCEEDED on an unsafe base"
+        return
+    fi
+    if grep -q "$reason" "$err"; then
+        PASS=$((PASS + 1))
+        echo "  ok: $msg (cited: $reason)"
+    else
+        FAIL=$((FAIL + 1))
+        echo "  FAIL: $msg — refused but reason '$reason' not in stderr:"
+        sed 's/^/        /' "$err"
+    fi
+}
+
+echo "T6: claim --stackable-on an OPEN-but-WIP base (#901) → refused"
+assert_refused 901 "not a stackable base (fleet:wip)" "WIP base refused"
+
+echo "T7: claim --stackable-on an OPEN empty-claim base (#902, empty diff) → refused"
+assert_refused 902 "not a stackable base (empty claim-commit)" "empty-claim base refused"
+
+echo "T8: claim --stackable-on a base whose diff fetch fails (#904) → refused"
+assert_refused 904 "refusing to stack on an unverifiable base" "unverifiable base refused"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

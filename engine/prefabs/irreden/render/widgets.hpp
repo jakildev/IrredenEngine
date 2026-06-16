@@ -6,6 +6,7 @@
 
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_gui_hover_state.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/widget_theme.hpp>
@@ -143,6 +144,26 @@ inline float sliderValue(IREntity::EntityId widget) {
 
 inline bool checkboxState(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetCheckbox>(widget).checked_;
+}
+
+// Hovered-widget export (#1796). Create one C_GuiHoverState singleton per
+// world with makeGuiHoverState(); WIDGET_INPUT::endTick publishes the
+// z-ordered topmost hovered widget into it each frame. hoveredWidget()
+// reads it back — kNullEntity when nothing is hovered or no singleton
+// exists. Lets a headless GUI test assert "which widget is hovered"
+// without re-scanning every hitbox.
+inline IREntity::EntityId makeGuiHoverState() {
+    return IREntity::createEntity(IRComponents::C_GuiHoverState{});
+}
+
+inline IREntity::EntityId hoveredWidget() {
+    IREntity::EntityId result = IREntity::kNullEntity;
+    IREntity::forEachComponent<IRComponents::C_GuiHoverState>(
+        [&result](IREntity::EntityId &, IRComponents::C_GuiHoverState &hoverState) {
+            result = hoverState.hoveredWidget_;
+        }
+    );
+    return result;
 }
 
 inline void setSliderValue(IREntity::EntityId widget, float value) {

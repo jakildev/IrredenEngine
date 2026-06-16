@@ -27,7 +27,7 @@ _spec = importlib.util.spec_from_loader("fleet_state_scout", _loader)
 _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
 project_merger = _mod.project_merger
-project_opus_worker = _mod.project_opus_worker
+project_worker = _mod.project_worker
 slice_merger = _mod.slice_merger
 stable_hash = _mod.stable_hash
 
@@ -294,21 +294,21 @@ class FailThenSucceedStackedRebase(unittest.TestCase):
             "removing stale fleet:semantic-conflict must not retrigger the merger",
         )
 
-    def test_stale_semantic_conflict_not_flagged_to_opus_worker(self):
+    def test_stale_semantic_conflict_not_flagged_to_worker(self):
         # A stale fleet:semantic-conflict on a clean MERGEABLE PR must not
-        # surface in the opus-worker projection — opus-worker step 1c looks
+        # surface in the worker projection — worker step 1c looks
         # for fleet:semantic-conflict PRs to resolve, but this one has no
-        # real conflict. The label is NOT in _OPUS_WORKER_RELEVANT_LABELS so
+        # real conflict. The label is NOT in _WORKER_RELEVANT_LABELS so
         # this is a structural guarantee, not just current behavior.
         pr = _pr(101, labels=[
             "fleet:approved", "fleet:semantic-conflict", "fleet:stacked-rebase",
         ], mergeable="MERGEABLE", base="master")
         state = _state([pr])
-        items = project_opus_worker(state)
+        items = project_worker(state)
         pr_items = [i for i in items if i.get("kind") == "pr"]
         self.assertEqual(pr_items, [],
                          "stale fleet:semantic-conflict must not appear in "
-                         "opus-worker projection (would trigger false step-1c "
+                         "worker projection (would trigger false step-1c "
                          "resolution pass on an already-clean PR)")
 
 

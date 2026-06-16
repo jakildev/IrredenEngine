@@ -88,7 +88,7 @@ rearm_llm() {
 # rebase keeps it mergeable instead of letting it accumulate conflicts as
 # master advances (the exact stranding that motivated this change); a
 # CONFLICTING one re-arms the LLM merger pass to resolve, and the
-# opus-worker drops the label on resolution.
+# worker drops the label on resolution.
 #
 # Single source: the python triage below reads this via
 # FLEET_REBASE_SKIP_RE and the pre-push re-verify greps it directly.
@@ -184,6 +184,45 @@ preflight_pr() {
         return 1
     fi
     return 0
+}
+
+# Remove a stale fleet:semantic-conflict (and fleet:merger-cooldown) left
+# behind when a second concurrent merger pass succeeded after the first one
+# conflicted (#1654). Live-reverified before touching: confirms OPEN,
+# MERGEABLE, and label still present so a genuine conflict that GitHub
+# recomputed CONFLICTING between the scout tick and now is never cleared.
+cleanup_stale_conflict() {
+    local repo_key="$1" pr="$2"
+    local repo_slug
+    repo_slug=$(repo_slug_for "$repo_key")
+    if (( DRY_RUN )); then
+        log "$repo_key#$pr: stale fleet:semantic-conflict on MERGEABLE PR — would remove (dry-run)"
+        return 0
+    fi
+    local tsv state mergeable labels
+    tsv=$(gh pr view "$pr" --repo "$repo_slug" \
+        --json state,mergeable,labels \
+        --jq '[.state, .mergeable, ([.labels[].name] | join(","))] | @tsv' \
+        2>/dev/null) || {
+        log "$repo_key#$pr: preflight for stale-conflict cleanup failed; skipping"
+        return 0
+    }
+    IFS=$'\t' read -r state mergeable labels <<< "$tsv"
+    if [[ "$state" != "OPEN" ]]; then
+        log "$repo_key#$pr: no longer open; skipping stale-conflict cleanup"
+        return 0
+    fi
+    if [[ "$mergeable" != "MERGEABLE" ]]; then
+        log "$repo_key#$pr: no longer MERGEABLE ($mergeable); skipping stale-conflict cleanup"
+        return 0
+    fi
+    if ! printf '%s' "$labels" | grep -q "fleet:semantic-conflict"; then
+        log "$repo_key#$pr: fleet:semantic-conflict already cleared; skipping"
+        return 0
+    fi
+    gh pr edit "$pr" --repo "$repo_slug" --remove-label "fleet:semantic-conflict" >/dev/null 2>&1 || true
+    gh pr edit "$pr" --repo "$repo_slug" --remove-label "fleet:merger-cooldown"   >/dev/null 2>&1 || true
+    log "$repo_key#$pr: removed stale fleet:semantic-conflict (fail-then-succeed race, #1654)"
 }
 
 # Attempt one PR. Returns 0 = cleanly rebased+pushed (or nothing to do),
@@ -409,7 +448,21 @@ for pr in data.get("prs", []):
         continue
     seen_heads.add(key)
     approved = "fleet:approved" in labels
-    if any(skip_re.search(l) for l in labels):
+    # Stale fleet:semantic-conflict cleanup (fail-then-succeed race, #1654):
+    # a concurrent second merger pass may succeed and push but not remove the
+    # failed first pass's label. Detect before the general skip_re check so
+    # MERGEABLE PRs with no real conflict bypass the skip-labels verdict and
+    # get label cleanup instead. Guard: no other skip labels present, PR is
+    # approved, and GitHub reports MERGEABLE (conflict is provably resolved).
+    has_stale_conflict = (
+        "fleet:semantic-conflict" in labels
+        and approved
+        and mergeable == "MERGEABLE"
+        and not any(skip_re.search(l) for l in labels if l != "fleet:semantic-conflict")
+    )
+    if has_stale_conflict:
+        verdict = "stale-conflict"
+    elif any(skip_re.search(l) for l in labels):
         verdict = "skip-labels"
     elif {"fleet:needs-base-update", "fleet:awaiting-base"} & set(labels):
         # Merger-set stack-coordination transients — the LLM pass owns
@@ -437,6 +490,13 @@ for line in "${PR_LINES[@]:-}"; do
             else
                 LLM_REMAINING=$((LLM_REMAINING + 1))
             fi
+            ;;
+        stale-conflict)
+            # Second concurrent pass succeeded but left the first pass's
+            # fleet:semantic-conflict behind (#1654). Remove it so the PR
+            # re-enters the normal merge-ready flow without routing a worker
+            # step-1c onto an already-clean branch.
+            cleanup_stale_conflict "$repo_key" "$pr"
             ;;
         skip-labels)
             # Parked with another agent/human — neither tier-0 nor the

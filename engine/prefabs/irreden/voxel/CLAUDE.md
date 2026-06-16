@@ -69,30 +69,52 @@ for single voxels and particles.
   Translate-only path: voxels move with the entity's
   `C_WorldTransform.translation_` (composed by `PROPAGATE_TRANSFORM` from
   `C_LocalTransform` + parent chain + `TRANSFORM_TRANSLATION` modifiers)
-  but no per-set rotation/scale composition. Voxel sets whose translation
-  is unchanged from the prior tick early-out of `updateAsChild` and
-  contribute nothing to the per-pool GPU position queue
-  (`C_VoxelPool::queuePositionRange`) — a static voxel scene pays zero
-  CPU→GPU position bytes/frame.
-- `REBUILD_GRID_VOXELS` (UPDATE pipeline, T-294) — Epic C C6. Runs AFTER
-  `UPDATE_VOXEL_SET_CHILDREN`. Re-rasterizes GRID-mode entities (entities
-  carrying `C_RotationMode::GRID`, the default) into rotated world cells
-  from their live `C_WorldTransform`. On-screen sets re-rasterize every
-  frame (no per-set transform-comparison early-out — that was a dirty flag
-  in disguise, see `.claude/rules/cpp-ecs.md` "No dirty flags"); the only
-  skip is a frustum-cull gate (`C_VoxelPool::isRangeVisible` against the
+  but no per-set rotation/scale composition. On-screen sets re-upload every
+  frame (unconditional per ECS no-dirty-flags rule). Off-screen sets are
+  skipped via `C_VoxelPool::isRangeVisible` against the previous frame's
+  shadow-feeder-expanded cull viewport — same cull gate as `REBUILD_GRID_VOXELS`
+  (#1288). A set entirely outside that viewport pays nothing; a visible set in
+  a static scene re-uploads its positions every frame.
+- `REBUILD_GRID_VOXELS` (UPDATE pipeline, T-294; inverse re-voxelize #1720)
+  — Epic C C6. Runs AFTER `UPDATE_VOXEL_SET_CHILDREN`. Re-rasterizes
+  GRID-mode entities (entities carrying `C_RotationMode::GRID`, the
+  default) into rotated world cells from their live `C_WorldTransform`.
+  Rotating sets render by **dest-lattice inverse resampling** (#1720, the
+  CPU twin of the detached #1619 fix): walk the integer world cells of the
+  rotated source AABB, inverse-map each via `roundHalfUp(R⁻¹·c)` into a
+  per-set source occupancy grid, and author position + color + active per
+  covered cell into the pool span — surjective, so no more forward-scatter
+  coverage holes (which peaked at ~29% of a solid 12³ mid-rotation). The
+  span contract is unchanged (`numVoxels_` slots): covered-cell overshoot
+  is a small boundary fluctuation (≈ 2.8% observed for a solid 12³, ≤ 3.5%
+  at 16³; zero for carved/thin shapes allocated as full boxes), and on
+  overflow
+  INTERIOR cells drop first, deterministically, so the visible surface
+  always renders. While rotating, the authored colors live in
+  `C_VoxelSetNew::rotationSourceVoxels_` (lazy snapshot; color mutators
+  mirror into it; the identity frame restores the span and clears it) —
+  raw `voxels_` span writes are only valid before a set's first rotated
+  frame. On-screen sets re-rasterize every frame (no per-set
+  transform-comparison early-out — that was a dirty flag in disguise, see
+  `.claude/rules/cpp-ecs.md` "No dirty flags"); the only skip is a
+  frustum-cull gate (`C_VoxelPool::isRangeVisible` against the
   shadow-feeder-expanded cull viewport), so sets whose pool chunks are all
-  off-screen pay nothing. DETACHED-mode entities are skipped — they rotate through
-  the per-canvas TRS composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`) and
-  never touch the world voxel pool's globals. Cell aliasing
-  (multiple authored voxels collapsing into one world cell after
-  rotation) is accepted by design; render-order is deterministic given
-  stable entity ids. Math helper:
-  `IRPrefab::GridRotation::worldCellForGridVoxel` in `grid_rotation.hpp`
-  — call directly from creations that need the same mapping outside
-  the pipeline. Creations that spawn entities with `C_RotationMode::GRID`
-  must register `REBUILD_GRID_VOXELS` in their UPDATE pipeline after
-  `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces silent no-ops.
+  off-screen pay nothing. DETACHED-mode entities are skipped — they rotate
+  through the per-canvas TRS composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`)
+  and never touch the world voxel pool's globals. Round-to-cell aliasing
+  (which source voxel a contested dest cell shows) resolves first-wins in
+  authored order — deterministic per pose. Math helpers:
+  `IRPrefab::GridRotation::worldCellForGridVoxel` (forward; identity arm +
+  creation-facing) and `sourceCellForWorldCell` (inverse) in
+  `grid_rotation.hpp` — call directly from creations that need the same
+  mapping outside the pipeline. Both helpers live outside the system header
+  specifically so `test/ecs/grid_rotation_test.cpp` can exercise the math
+  headlessly — when you add a public function here, extend that test file in
+  the same change (the scaffolding already exists; a new function shipping
+  untested is a review miss, #1732). Creations that spawn entities with
+  `C_RotationMode::GRID` must register `REBUILD_GRID_VOXELS` in their
+  UPDATE pipeline after `UPDATE_VOXEL_SET_CHILDREN`; omitting it produces
+  silent no-ops.
 - `REBUILD_DETACHED_VOXELS` (UPDATE pipeline, #1553 P1 / #1555, **repurposed P2
   / #1556**) — P1 re-rasterized a `RotationMode::DETACHED_REVOXELIZE` entity's
   **private** pool into full-rotation cell positions on the CPU every frame. P2
@@ -140,6 +162,17 @@ for single voxels and particles.
 - A pool hierarchy/sort system exists but is commented out — **do not
   re-enable without a design pass.**
 - A WIP scene/skeleton hierarchy traversal system is present but incomplete.
+
+**Shadow-path invariant.** Any UPDATE-pipeline system that writes
+`pool.getPositionGlobals()` (the source buffer for both
+`VOXEL_TO_TRIXEL_STAGE_1` and the shadow bake) must gate on
+`IRPrefab::SunShadow::shadowFeederCullViewport`, **not**
+`cull.isoViewport(kCullChunkMargin)`. The shadow bake reads positions over
+the sun-widened viewport; the narrower render viewport silently drops
+off-screen casters' position updates, freezing their cast-shadow positions.
+`REBUILD_GRID_VOXELS` and `UPDATE_VOXEL_SET_CHILDREN` both use
+`shadowFeederCullViewport` for this reason — port the wider gate, not the
+render gate, into any new position-writing system (#1764).
 
 ## Prefab.spawn voxel_ref → ECS components
 

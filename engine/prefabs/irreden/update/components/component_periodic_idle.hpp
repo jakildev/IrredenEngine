@@ -69,7 +69,7 @@ struct C_PeriodicIdle {
     C_PeriodicIdle()
         : C_PeriodicIdle{vec3{0.0f, 0.0f, 0.0f}, 0.0f} {}
 
-    vec3 getValue() {
+    vec3 getValue() const {
         return m_currentValue;
     }
 

@@ -28,6 +28,13 @@ struct MetalTimestampSampleAttachment {
     MTL::CounterSampleBuffer *sampleBuffer_ = nullptr;
     NS::UInteger startSampleIndex_ = 0;
     NS::UInteger endSampleIndex_ = 1;
+    // Sticky across every encoder of a stage (the window between
+    // writeTimestamp START and END): the first encoder claims the start
+    // boundary; every encoder re-writes the end boundary. Sequential GPU
+    // execution makes the last encoder's end write win, so the resolved pair
+    // spans [first-encoder start, last-encoder end] — the whole stage, not
+    // just its first encoder (#1746).
+    bool firstEncoder_ = true;
 };
 
 MetalTimestampSampleAttachment g_nextComputeTimestampAttachment;
@@ -122,12 +129,18 @@ MTL::ComputeCommandEncoder *createComputeEncoder(MTL::CommandBuffer *commandBuff
     auto *descriptor = MTL::ComputePassDescriptor::alloc()->init();
     auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
     attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
-    attachment->setStartOfEncoderSampleIndex(g_nextComputeTimestampAttachment.startSampleIndex_);
+    attachment->setStartOfEncoderSampleIndex(
+        g_nextComputeTimestampAttachment.firstEncoder_
+            ? g_nextComputeTimestampAttachment.startSampleIndex_
+            : MTL::CounterDontSample
+    );
     attachment->setEndOfEncoderSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
     auto *encoder = commandBuffer->computeCommandEncoder(descriptor);
     descriptor->release();
 
-    g_nextComputeTimestampAttachment = {};
+    // Stay sticky for the rest of the stage's encoders (each re-writes the end
+    // boundary; the last one wins). writeTimestamp(END) clears the attachment.
+    g_nextComputeTimestampAttachment.firstEncoder_ = false;
     return encoder;
 }
 
@@ -138,9 +151,16 @@ void attachTimestampSamples(MTL::RenderPassDescriptor *descriptor) {
 
     auto *attachment = descriptor->sampleBufferAttachments()->object(kTimestampAttachmentIndex);
     attachment->setSampleBuffer(g_nextComputeTimestampAttachment.sampleBuffer_);
-    attachment->setStartOfVertexSampleIndex(g_nextComputeTimestampAttachment.startSampleIndex_);
+    attachment->setStartOfVertexSampleIndex(
+        g_nextComputeTimestampAttachment.firstEncoder_
+            ? g_nextComputeTimestampAttachment.startSampleIndex_
+            : MTL::CounterDontSample
+    );
     attachment->setEndOfFragmentSampleIndex(g_nextComputeTimestampAttachment.endSampleIndex_);
-    g_nextComputeTimestampAttachment = {};
+    // Sticky across the stage's encoders (the shared global means a stage that
+    // mixes compute + render encoders has its first-executed encoder claim the
+    // start boundary). writeTimestamp(END) clears the attachment.
+    g_nextComputeTimestampAttachment.firstEncoder_ = false;
 }
 
 MTL::RenderCommandEncoder *createRenderEncoder() {
@@ -786,11 +806,18 @@ metalCurrentDepthPixelFormat(),
             g_nextComputeTimestampAttachment = {
                 pair->sampleBuffer_,
                 0,
-                1
+                1,
+                /*firstEncoder_=*/true
             };
             pair->hasStart_ = true;
             pair->hasEnd_ = false;
         } else {
+            // Stop tagging once the stage ends: clear the sticky attachment so
+            // encoders created in the gap before the next START stay untracked
+            // (#1746). The end boundary was already attached to every encoder
+            // of the stage up to this point, so the last one's index-1 write
+            // bounds the pair.
+            g_nextComputeTimestampAttachment = {};
             pair->hasEnd_ = true;
         }
     }

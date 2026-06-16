@@ -25,6 +25,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,7 +35,9 @@ from pathlib import Path
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests (#1425).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fleet_branch_match import branch_matches_issue
+from fleet_branch_match import branch_matches_issue, PARKED_PR_LABELS
+from fleet_stack_base import unsafe_base_reason
+from fleet_blocked_by import parse_blocked_by, is_no_blocker_value
 
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
@@ -329,75 +332,16 @@ def _parse_epic_checklist(body):
     ]
 
 
-# A dependency may be declared two ways: the canonical `**Blocked by:** #N`
-# field, or free-form header prose like `## Blocked on #1300` / `Blocked on
-# PR-x`. `_parse_blocked_by` prefers the field and falls back to the header
-# form so a header-only dependency still surfaces as blocked — #1301 was
-# mis-listed as claimable (owner=free, blocked_by=(none)) because its blocker
-# lived in a `Blocked on #1300` header the field parser never read (#1326).
-# Complements #1296, which handled #N refs that already live inside the field.
-_BLOCKED_ON_RE = re.compile(
-    r'^\s{0,3}#{0,6}\s*\**\s*Blocked\s+on\b[:\s]*(.+?)\s*\**\s*$',
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
-def _is_no_blocker_value(value):
-    """True when a **Blocked by:** value declares NO blocker.
-
-    The canonical form is `(none)`, but agents also hand-write a bare `none`,
-    `n/a`, `tbd`, a lone dash, or `(none) — prose`, all of which mean "nothing
-    blocks this". The old filter recognized only the parenthesized `(none)`
-    form, so a bare `none — first unblocked.` fell through to the prose-blocker
-    path and stranded the issue as permanently blocked — freezing the whole
-    downstream chain out of the queue (game #138 → #143). A value that names a
-    `#N` or describes a real blocker in prose ("the auth redesign") is NOT a
-    sentinel and must still gate.
-    """
-    # A concrete `#N` ref anywhere in the value means there IS a blocker —
-    # never let a leading "none" word swallow a real reference.
-    if re.search(r"#\d+", value):
-        return False
-    head = value.strip().lower().lstrip("(").strip()
-    if not head or head[0] in "-–—.":
-        return True
-    token = re.split(r"[\s.,;:)\-–—]", head, maxsplit=1)[0]
-    return token in {"none", "n/a", "na", "tbd"}
-
-
-def _parse_blocked_by(body):
-    # Union every standalone **Blocked by:** line (multi-line + multi-ref) so a
-    # child blocked by several refs surfaces all of them — check_blockers gates
-    # on the union and find-stackable-blockers live-resolves them (#1296). Falls
-    # back to a `Blocked on` header (#1326) only when no canonical line exists.
-    # Kept consistent with fleet-claim's check_blockers parser.
-    vals = re.findall(r'^\s*-?\s*\*\*Blocked by:\*\*\s*(.+?)\s*$',
-                      body or "", re.IGNORECASE | re.MULTILINE)
-    # Also handle inline-bold form: **Blocked by: #N (label)** mid-line where
-    # the colon and value are inside one bold span (#1423). The two patterns are
-    # mutually exclusive: canonical has **Blocked by:** (bold closes at colon),
-    # inline has **Blocked by: value** (space after colon, bold stays open).
-    inline_vals = re.findall(r'\*\*Blocked by:\s+(.+?)\*\*',
-                             body or "", re.IGNORECASE)
-    # No per-line `continue` guard needed (unlike fleet-claim's check_blockers
-    # loop): re.findall over the whole body is safe because canonical and inline
-    # are mutually exclusive — canonical bold closes at ":**", inline bold stays
-    # open past the value — so a single line cannot match both patterns.
-    all_vals = vals + inline_vals
-    real = [v.strip() for v in all_vals if not _is_no_blocker_value(v)]
-    if real:
-        return ", ".join(real)
-    if all_vals:
-        # Every matched form is a no-blocker sentinel → genuinely unblocked.
-        return ""
-    for m in _BLOCKED_ON_RE.finditer(body or ""):
-        cand = m.group(1).strip().strip("*").strip()
-        # Only treat header prose as a blocker when it actually names a #N
-        # issue or a PR; an incidental "Blocked on the redesign" sentence
-        # must not gate the task forever.
-        if cand and ("#" in cand or re.search(r'\bPR\b', cand, re.IGNORECASE)):
-            return cand
-    return ""
+# Blocker-declaration parsing — canonical `**Blocked by:** #N`, inline-bold
+# `**Blocked by: #N**` (#1423), the plain mid-line `Blocked by: #N` form
+# (#1749), the no-blocker sentinels, and the `Blocked on …` header fallback
+# (#1326) — is shared with fleet-queue-ingest and fleet-claim via
+# fleet_blocked_by.py so the three can't drift (the #1749 reconciliation;
+# the scout previously had the richest sentinel logic but ingest/claim lagged,
+# and all three missed the plain form). These aliases preserve the private
+# names the scout's call sites and unit tests reference.
+_parse_blocked_by = parse_blocked_by
+_is_no_blocker_value = is_no_blocker_value
 
 
 def fetch_task_queue(repo_slug):
@@ -913,14 +857,6 @@ def model_tags(task):
     return set(MODEL_TOKEN_RE.findall((task.get("model") or "").lower()))
 
 
-_DESIGN_BLOCK_LABELS = frozenset({
-    "fleet:design-blocked", "fleet:design-escalated",
-    # Steward-parked design question (proposal pending on the umbrella) —
-    # stacking on such a PR has the same hazard as a design-blocked one (#1664).
-    "fleet:design-proposed",
-})
-
-
 def _area_prefixes(area_str):
     # Drops entries without '/' (meta-tags like 'tooling') that can't match diff paths.
     if not area_str:
@@ -957,8 +893,8 @@ def _blocker_pr_files(repo_key, pr_number):
 # A blocker ref may carry an optional `[owner/]Repo#N` qualifier pointing at
 # another repo (game #125 → `jakildev/IrredenEngine#1476`). group(1) is the
 # repo name (None / empty for a bare same-repo `#N`); group(2) is the number.
-# Kept consistent with fleet-claim's check_blockers and
-# fleet-queue-ingest._blocker_refs parsers. (#1522)
+# Kept consistent with fleet_blocked_by.blocker_refs; routing differs
+# (key vs slug) so this helper stays separate. (#1522)
 _BLOCKER_REF_RE = re.compile(r"(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)")
 _REPO_SLUG_MAP = {
     "engine": "jakildev/IrredenEngine",
@@ -1220,16 +1156,29 @@ def enrich_stackable_blocker_prs(state):
                 continue
             pr = matches[0]
 
-            # Filter (b): blocker PR is stalled on a design question — the
-            # downstream task can't make forward progress on it.
-            if set(pr.get("labels", [])) & _DESIGN_BLOCK_LABELS:
+            # Filter (b): blocker PR is in a non-stackable base state — parked
+            # on a design question (design-blocked/escalated/proposed/unblocked),
+            # WIP/amending (head diff in flux), awaiting rebase, a fork, or an
+            # empty claim-commit-only skeleton. One shared predicate with the
+            # claim gate (fleet_stack_base) so the offer and the accept can never
+            # disagree (#1751). blocker_files is the cached diff when the PR
+            # detail is cached, else None ("unknown" — don't suppress a
+            # not-yet-cached base; the claim gate re-checks live). A known-empty
+            # list ([]) is a claim-commit-only skeleton and IS rejected.
+            pr_cache_path = PRS_DIR / repo_key / f"{pr['number']}.json"
+            blocker_files = (
+                _blocker_pr_files(repo_key, pr["number"])
+                if pr_cache_path.exists()
+                else None
+            )
+            if unsafe_base_reason(set(pr.get("labels", [])), blocker_files):
                 continue
 
             # Filter (a): downstream task's area already overlaps with the
             # blocker PR's diff — a stackable claim would conflict at review.
+            # Reuse the file list fetched above (don't double-fetch).
             area_prefixes = _area_prefixes(task.get("area") or "")
-            if area_prefixes:
-                blocker_files = _blocker_pr_files(repo_key, pr["number"])
+            if area_prefixes and blocker_files:
                 if any(
                     f.startswith(p) for f in blocker_files for p in area_prefixes
                 ):
@@ -1242,6 +1191,42 @@ def enrich_stackable_blocker_prs(state):
             }
 
 
+def enrich_inflight_pr_tasks(state):
+    # A queued task whose OWN issue (#N) already has an open implementation PR
+    # (branch `claude/<N>-…`) is not something a fresh worker can claim off the
+    # queue: the PR is either active work or parked awaiting a design answer,
+    # and the resume path in both cases is the feedback / design-unblocked tier,
+    # not a fresh queue claim. The scout already routes actively-claimed tasks
+    # (fleet:in-progress) into tasks.in_progress, but a *parked* design-blocked
+    # PR releases its issue-side claim during the escalation flow — so its task
+    # drops back into tasks.open looking owner-free and claimable, while a fresh
+    # worker would (correctly) refuse it on sight. That projection/behaviour
+    # mismatch let the dispatch resolver keep electing such a task head-of-queue
+    # and churn no-op opus dispatches, starving fable work behind it (#1726 —
+    # the #1640 / PR #1700 incident). Tag the task with `inflight_pr` so
+    # fleet_task_class._task_claimable skips it; the projection item carried in
+    # the role trigger hash is unchanged (id + blocked_by), so this adds no
+    # spurious trigger churn — only the resolver's claimable filter sees it.
+    for repo_key, repo_state in state["repos"].items():
+        prs = repo_state.get("prs", [])
+        for task in repo_state.get("tasks", {}).get("open", []):
+            issue_num = (task.get("issue") or "").lstrip("#")
+            if not issue_num:
+                continue
+            match = next(
+                (pr for pr in prs
+                 if branch_matches_issue(pr.get("headRefName", ""), issue_num, repo_key)),
+                None,
+            )
+            if match is None:
+                continue
+            task["inflight_pr"] = {
+                "number": match.get("number"),
+                "headRefName": match.get("headRefName", ""),
+                "parked": bool(set(match.get("labels", [])) & PARKED_PR_LABELS),
+            }
+
+
 # Narrowed label sets stored in the per-role hash item. Storing the full
 # pr["labels"] list here re-flips the projection hash on every transient
 # label change (merger toggling fleet:merger-cooldown, reviewers swapping
@@ -1249,6 +1234,11 @@ def enrich_stackable_blocker_prs(state):
 # fleet:needs-linux-smoke), waking the role to find nothing actionable.
 # Same anti-pattern project_merger already documents and avoids — keep
 # only the labels each role's own decision logic actually keys on.
+# fleet:semantic-conflict is intentionally NOT in this set. A stale
+# fleet:semantic-conflict on a MERGEABLE PR (fail-then-succeed race, #1654)
+# must not trigger a false step-1c resolution pass — the structural exclusion
+# here is the guarantee. The label is cleared by fleet-rebase's stale-conflict
+# cleanup sweep (#1654) before the worker ever sees the PR.
 _WORKER_RELEVANT_LABELS = FEEDBACK_LABELS | DESIGN_RESUME_LABELS
 
 
@@ -1358,13 +1348,13 @@ def _merger_action_signal(labels, mergeable, base_ref):
     `fleet:human-deferred` is intentionally NOT skipped. It marks a PR
     whose *human-review feedback* was deferred to a follow-up issue
     (approved, internally OK) — NOT a conflict handoff (a failed
-    conflict resolution uses `human:needs-fix`, role-opus-worker.md
-    step j). So the merger treats it like any approved PR: a MERGEABLE
+    conflict resolution uses `human:needs-fix`, role-worker.md
+    step 1c.j). So the merger treats it like any approved PR: a MERGEABLE
     one projects merge-ready, a CONFLICTING one projects needs-resolve
-    and the opus-worker resolves it — and drops `fleet:human-deferred`,
-    since new commits invalidate the deferral (role-opus-worker.md step
+    and the worker resolves it — and drops `fleet:human-deferred`,
+    since new commits invalidate the deferral (role-worker.md step
     1c.i). The old code skipped it on the theory that re-flagging caused
-    opus-worker thrash (game #101); the real fix is the worker dropping
+    worker thrash (game #101); the real fix is the worker dropping
     the label on resolution, which breaks that loop without stranding
     the PR's conflict from the merger.
 
@@ -1869,9 +1859,51 @@ SLICERS = {
 
 
 def write_atomic(path: Path, payload: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(payload)
-    os.replace(tmp, path)
+    # Replace `path` with `payload` so a concurrent reader only ever sees the
+    # complete prior file or the complete new one — never a half-written splice.
+    #
+    # #1750: a FIXED temp name (the old `path.with_suffix(".tmp")`) is the bug.
+    # os.replace is atomic, but two overlapping writers (the 30s fleet-up scout
+    # tick racing a manual / solo-architect scout run, or an overlong tick) shared
+    # one `<name>.tmp`: writer B could os.replace a temp that writer A was still
+    # mid-write into — the reader then json.loads a truncated file. A per-call
+    # unique temp gives each writer its own file; whichever renames last wins, and
+    # no reader ever sees a partial. The temp MUST live in path.parent: os.replace
+    # is only atomic within one filesystem, so a /tmp temp would silently degrade
+    # to a non-atomic cross-device copy. fsync is durability insurance — the rename
+    # is the reader-visibility barrier, not the fsync.
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix="." + path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def read_json_retry(path, attempts=3, backoff=0.05):
+    # Script-side cache readers can still lose the race against a concurrent
+    # os.replace on a slow filesystem; one short retry recovers instead of
+    # surfacing a spurious parse error. Raises the last error after `attempts`
+    # tries so callers keep their existing fallback semantics. (Workers read the
+    # cache out-of-band via the Read tool and can't call this, but the unique-temp
+    # write_atomic above already closes their torn-read window.) A near-twin lives
+    # in fleet-epic-status — the two scripts can't share a module without the
+    # ~/bin symlink module-resolution hazard (#1578), so keep them in sync.
+    last = None
+    for i in range(attempts):
+        try:
+            return json.loads(Path(path).read_text())
+        except (json.JSONDecodeError, FileNotFoundError) as exc:
+            last = exc
+            time.sleep(backoff * (i + 1))
+    raise last
 
 
 def update_role_trigger(role: str, projection) -> bool:
@@ -1888,12 +1920,53 @@ def update_role_trigger(role: str, projection) -> bool:
     return True
 
 
+def clone_freshness(root):
+    """Fetch-free staleness check of <root>'s checked-out master vs origin/master.
+
+    rev-parse / rev-list only — NEVER fetches (the no-per-tick-fetch rule;
+    fleet-up + the dispatcher keep origin/master fresh). Surfaced as
+    state.json `clone_freshness` so readers can see when the main clone (and
+    thus the fleet-script code scout/claim/ingest run) has fallen behind. (#1810)
+
+    Kept as a tiny inline git call rather than importing a shared module — the
+    scout's module resolution is fragile (#1750/#1578).
+    """
+    def _rev(ref):
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--verify", "--quiet", ref],
+                capture_output=True, text=True, timeout=5,
+            )
+            return r.stdout.strip() or None
+        except (subprocess.SubprocessError, OSError):
+            return None
+
+    head = _rev("refs/heads/master")
+    origin_head = _rev("refs/remotes/origin/master")
+    behind = 0
+    if head and origin_head and head != origin_head:
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(root), "rev-list", "--count", "master..origin/master"],
+                capture_output=True, text=True, timeout=5,
+            )
+            behind = int(r.stdout.strip() or 0)
+        except (subprocess.SubprocessError, OSError, ValueError):
+            behind = 0
+    return {
+        "head": head,
+        "origin_master_head": origin_head,
+        "behind": behind,
+        "fresh": behind == 0,
+    }
+
+
 def collect_state():
     # Load previous state so degraded fetches can fall back to last-known-good
     # data instead of writing empty arrays into a fresh-timestamped snapshot.
     _prev_repos = {}
     try:
-        _prev_repos = json.loads(STATE_FILE.read_text()).get("repos", {})
+        _prev_repos = read_json_retry(STATE_FILE).get("repos", {})
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 
@@ -1954,6 +2027,9 @@ def collect_state():
     state = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "repos": repos,
+        # Main-clone freshness for the engine clone (where the fleet-script code
+        # + parsers live). rev-parse only, no fetch. (#1810)
+        "clone_freshness": clone_freshness(ENGINE),
     }
     if _degraded:
         state["degraded"] = sorted(_degraded)
@@ -1976,6 +2052,7 @@ def tick_once():
     resolve_human_approved_blockers(state)
     resolve_epic_children(state)
     enrich_stackable_blocker_prs(state)
+    enrich_inflight_pr_tasks(state)
     write_atomic(STATE_FILE, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
     try:
@@ -2104,32 +2181,6 @@ def cleanup_pid_file():
         pass
 
 
-# Lane names retired by the P2 worker-lane unification. The scout used to
-# write a projection slice, seen-hash, and trigger file per lane; with the
-# keys gone the old files would linger forever — a stale
-# projections/opus-worker.json reads as live to anything that still globs
-# the directory, and a leftover trigger could mis-fire. Sweep them on boot.
-# Remove once P2-2 / P2-3 land (epic #1692).
-_RETIRED_LANE_ROLES = ("opus-worker", "sonnet-author")
-
-
-# Remove once P2-2 / P2-3 land (epic #1692).
-def clean_retired_lane_artifacts():
-    for role in _RETIRED_LANE_ROLES:
-        for path in (
-            PROJECTIONS_DIR / f"{role}.json",
-            SEEN_DIR / role,
-            TRIGGERS_DIR / role,
-        ):
-            try:
-                path.unlink()
-                log(f"removed stale {role} artifact: {path.name}")
-            except FileNotFoundError:
-                pass
-            except OSError as e:
-                log(f"could not remove stale {role} artifact {path}: {e}")
-
-
 def signal_handler(signum, _frame):
     log(f"received signal {signum}; shutting down")
     TERMINATE.set()
@@ -2155,8 +2206,6 @@ def main():
     if not ENGINE.exists():
         log(f"engine repo not found at {ENGINE}; aborting")
         sys.exit(1)
-
-    clean_retired_lane_artifacts()
 
     if args.once:
         tick_once()

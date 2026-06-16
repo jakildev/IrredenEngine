@@ -87,13 +87,19 @@ struct FrameDataTrixelToFramebuffer {
     vec2 cameraTrixelOffset_;
     vec2 textureOffset_;
     vec2 mouseHoveredTriangleIndex_;
-    /// When smooth mode: effective subdivisions for hover coord conversion. x=subdivisions,
-    /// y=unused.
+    /// x = effective subdivisions for smooth-mode hover coord conversion.
+    /// y = depth rescale (effSub / canvas renderedSub) applied to rawDist in
+    /// f_trixel_to_framebuffer before distanceOffset_ is added, so a world-placed
+    /// DETACHED canvas rastered at a capped sub lands in the shared framebuffer
+    /// depth units; <= 0 means 1.0 (the world/overlay fast path).
     vec2 effectiveSubdivisionsForHover_;
     /// Config: when 0, hovered trixel is not visually highlighted (entity detection still works).
     float showHoverHighlight_;
-    /// Added to raw canvas distance before depth normalization.
-    /// 0 for world/overlay canvases; pos3DtoDistance(entityPos) for per-entity canvases.
+    /// Added to (rescaled) raw canvas distance before depth normalization. 0 for
+    /// world/overlay canvases; for a world-placed per-entity canvas it is the
+    /// entity world iso depth in encoded framebuffer units
+    /// (pos3DtoDistance(entityPos) * effSub * 4 — the encodeDepthWithFace ×4 over
+    /// the ×subdivision depth scale).
     int distanceOffset_ = 0;
     /// Smooth camera Z-yaw forward-scatter composite (T3 / #1310). Consumed
     /// only by the per-axis scatter shaders (v_/f_peraxis_scatter); the
@@ -174,6 +180,11 @@ static_assert(
     "per-pixel depth-color mode for the scatter path (#1697); a silent reorder "
     "or resize would corrupt the scatter UBO with no compile diagnostic"
 );
+
+/// Multiplier in the @c encodeDepthWithFace convention (d·4 + face), shared by
+/// the world-placed detached-canvas composite and any producer that converts world
+/// iso depth or model-frame rawDist into shared framebuffer depth units (×effSub × 4).
+constexpr int kDepthEncodeShift = 4;
 
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
@@ -268,22 +279,38 @@ struct FrameDataVoxelToCanvas {
     // path — is unchanged; the gather shaders that read only the prefix
     // (AO, lighting) are unaffected and need no declaration update.
     vec4 voxelDepthAxis_ = vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    // World-receive offset for an opt-in world-placed detached re-voxelize solid
-    // (#1576 P4b-2). `.xyz` = the entity's world cell origin
-    // (`roundVec3HalfUp(C_WorldTransform::translation_)`, the SAME rounding P4b-1's
-    // composite depth offset uses); `.w` = 1.0 when the solid opts into world
-    // placement (`C_EntityCanvas::worldPlaced_`), else 0.0. The detached
+    // World-receive offset for a world-placed detached re-voxelize solid
+    // (#1576 P4b-2; world placement is the default since #1624). `.xyz` = the
+    // entity's world cell origin
+    // (`roundVec3HalfUp(C_WorldTransform::translation_)`, the SAME rounding the
+    // composite depth offset uses); `.w` = 1.0 when the solid is world-placed
+    // (`C_EntityCanvas::screenLocked_` false, the default), else 0.0. The detached
     // re-voxelize canvas rasters its pool in the pool-centered MODEL frame, so the
     // lighting / sun-shadow passes recover each voxel's WORLD pos as
     // `modelPos + .xyz` and then sample the SHARED world sun-shadow map + 128³
     // light volume there (receive), equivalently to an attached GRID solid. `.w`
-    // gates the whole path: 0.0 keeps the default screen-locked overlay
+    // gates the whole path: 0.0 keeps the screen-locked overlay opt-out
     // byte-identical (no shadow received, light volume disabled). Default
-    // (0,0,0,0) so the world canvas + any non-opt-in canvas is unchanged.
+    // (0,0,0,0) so the world canvas + any screen-locked canvas is unchanged.
     // std140-appended after voxelDepthAxis_ (offset 160), so every prior field
     // offset is unchanged and shaders that read only the prefix need no update;
     // only c_lighting_to_trixel declares it.
     vec4 detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    // Un-widened (no shadow-feeder sweep) iso cull viewport for the depth-only
+    // shadow-feeder path (#1740). `.xy` = floor(min), `.zw` = ceil(max) of the
+    // SAME viewport `cullIsoMin_/cullIsoMax_` derive from, but BEFORE
+    // IRMath::shadowFeederIsoBounds widens it toward the sun. A voxel whose
+    // cardinal iso position lies inside [cullIsoMin_, cullIsoMax_] (it passed
+    // the compact cull) but OUTSIDE this box is an off-screen shadow FEEDER —
+    // it only casts sun shadows via the stage-1 distance bake and is never
+    // displayed / lit / picked, so c_voxel_to_trixel_stage_2 skips its
+    // colour + entity-id taps (stage 1 still writes its full-resolution depth,
+    // which is all the bake + AO read). When sun shadows are off the sweep is
+    // zero, so this equals cullIsoMin_/cullIsoMax_ and stage 2 skips nothing —
+    // byte-identical. Read only by c_voxel_to_trixel_stage_2; std140-appended
+    // after detachedWorldReceive_ (offset 176) so every prior offset is
+    // unchanged and the gather shaders that read only the prefix need no update.
+    ivec4 visibleIsoBounds_ = ivec4(0, 0, 0, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -531,9 +558,16 @@ static_assert(
     "every existing offset — and the default screen-locked path — stays unchanged"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 176,
+    offsetof(FrameDataVoxelToCanvas, visibleIsoBounds_) == 176,
+    "FrameDataVoxelToCanvas::visibleIsoBounds_ must land at offset 176 "
+    "(detachedWorldReceive_ at 160 + 16 B). Appended after the prior last field "
+    "so every existing offset — and the shadows-off byte-identical path — stays "
+    "unchanged"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 192,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(detachedWorldReceive_ vec4 append: 160 + 16 = 176)"
+    "(visibleIsoBounds_ ivec4 append: 176 + 16 = 192)"
 );
 
 struct FrameDataSun {

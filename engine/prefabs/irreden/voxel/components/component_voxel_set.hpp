@@ -27,8 +27,6 @@ struct C_VoxelSetNew {
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
     // TODO: Evaulate if we should store here or somewhere else.
     IREntity::EntityId ownerEntityId_ = IREntity::kNullEntity;
-    vec3 lastParentPosition_ = vec3(0.0f);
-    bool hasLastParentPosition_ = false;
 
     // Index into the canvas voxel pool's underlying arrays. Captured at
     // allocation time so consumers never recompute it from a pointer-diff
@@ -75,6 +73,25 @@ struct C_VoxelSetNew {
     // `pendingBoundsMin_ + index1DtoIndex3D(i, size_)`. Only
     // meaningful when `pendingVoxels_` is non-empty.
     ivec3 pendingBoundsMin_ = ivec3(0);
+
+    // Authored-source snapshot for the GRID inverse re-voxelize (#1720) —
+    // the CPU analog of the detached path's `C_DetachedRevoxelizeBuffer::
+    // sourceGrid_`. While a GRID-mode set rotates, REBUILD_GRID_VOXELS
+    // re-arranges the pool span per frame (slot i becomes "dest cell i", and
+    // colors are duplicated across slots wherever one source voxel covers
+    // several dest cells), so the pool colors stop being the authored truth.
+    // This vector holds that truth: built lazily by the rebuild system on the
+    // first non-identity frame (a copy of the span's colors), consumed every
+    // rotating frame, and cleared again on the next identity frame after the
+    // system restores the span — so its non-emptiness IS the "span is in a
+    // re-voxelized arrangement" state, with no separate flag to drift.
+    // The color mutators below mirror writes into it while it exists so a
+    // mutation during a spin survives the per-frame re-derivation. Raw
+    // `voxels_` span writes (the SDF-carve pattern) bypass the mirror — they
+    // are only valid on a set that has not begun GRID rotation (carve at
+    // creation time, before the first rotated frame), same window in which
+    // `syncActiveMask()` is honest.
+    std::vector<C_Voxel> rotationSourceVoxels_;
 
     // `targetCanvas` selects which canvas's voxel pool this set allocates
     // from. `kNullEntity` (the default) keeps the historical behavior —
@@ -282,15 +299,26 @@ struct C_VoxelSetNew {
         }
     }
 
+    // Mirror one slot's record into the rotation-source snapshot, if it
+    // exists (see `rotationSourceVoxels_` — keeps mutations made during a
+    // GRID spin from being overwritten by the per-frame re-voxelize).
+    void mirrorToRotationSource(int idx) {
+        if (static_cast<std::size_t>(idx) < rotationSourceVoxels_.size()) {
+            rotationSourceVoxels_[idx] = voxels_[idx];
+        }
+    }
+
     void changeVoxelColor(ivec3 index, Color color) {
         const int idx = index3DtoIndex1D(index, size_);
         voxels_[idx].color_ = color;
+        mirrorToRotationSource(idx);
         IRPrefab::VoxelPool::markVoxelActive(voxelStartIdx_, idx, color.alpha_ != 0, canvasEntity_);
     }
 
     void changeVoxelColorAll(Color color) {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].color_ = color;
+            mirrorToRotationSource(i);
         }
         if (color.alpha_ != 0) {
             IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
@@ -302,6 +330,7 @@ struct C_VoxelSetNew {
     void deactivateAll() {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].deactivate();
+            mirrorToRotationSource(i);
         }
         IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
@@ -310,6 +339,7 @@ struct C_VoxelSetNew {
     void activateAll() {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].activate();
+            mirrorToRotationSource(i);
         }
         IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
@@ -331,6 +361,7 @@ struct C_VoxelSetNew {
                     const int idx = IRMath::index3DtoIndex1D(coord, sz);
                     voxels_[idx].color_ = color;
                     voxels_[idx].activate();
+                    mirrorToRotationSource(idx);
                     pool.setActiveBit(voxelStartIdx_ + idx);
                 }
             }
@@ -355,6 +386,7 @@ struct C_VoxelSetNew {
                     for (int z = 0; z < size_.z; z++) {
                         int index = index3DtoIndex1D(ivec3(x, y, z), size_);
                         voxels_[index].activate();
+                        mirrorToRotationSource(index);
                     }
                 }
             }
@@ -374,6 +406,7 @@ struct C_VoxelSetNew {
                         } else {
                             voxels_[index].activate();
                         }
+                        mirrorToRotationSource(index);
                     }
                 }
             }
@@ -396,20 +429,17 @@ struct C_VoxelSetNew {
     // after such a migration; only `voxelStartIdx_` and `numVoxels_` remain
     // stable because they are plain scalars on this struct.
     // Returns the number of positions actually written (safeCount), or 0 if
-    // the parent position is unchanged (early-out). Callers use the return
-    // value to queue exactly the written range for GPU upload — avoids
-    // queuing stale slots in the rare case the pool-bounds guard fires.
+    // the pool-bounds guard fires (numVoxels_ exceeds available pool slots).
+    // The caller gates visibility — call only when the set is within the
+    // shadow-feeder cull viewport (see system_update_voxel_set_children.hpp).
+    // Callers use the return value to queue exactly the written range for
+    // GPU upload; avoids queuing stale tail slots on bounds-guard overflow.
     int updateAsChild(
         vec3 parentPosition,
         std::vector<IRRender::VoxelGpuPosition> &poolGlobalsOut,
         const std::vector<IRRender::VoxelGpuPosition> &poolPositions,
         const std::vector<vec3> &poolOffsets
     ) {
-        if (hasLastParentPosition_ && parentPosition == lastParentPosition_) {
-            return 0;
-        }
-        lastParentPosition_ = parentPosition;
-        hasLastParentPosition_ = true;
         const size_t writableTail =
             poolGlobalsOut.size() > voxelStartIdx_ ? poolGlobalsOut.size() - voxelStartIdx_ : 0u;
         const size_t availPositions =

@@ -354,10 +354,10 @@ A reasonable starting setup with the model split in mind:
 | Worktree            | Repo   | Model  | Role                                                |
 |---------------------|--------|--------|-----------------------------------------------------|
 | `opus-architect`    | engine | Opus   | Core engine work, ECS/render/audio. Stand-by.       |
-| `opus-worker-1`     | engine | Opus   | Plans `fleet:needs-plan` issues, executes `fleet:opus` tasks |
-| `opus-worker-2`     | engine | Opus   | Second opus-worker pane — parallel planning/execution    |
-| `sonnet-fleet-1`    | engine | Sonnet | `fleet:sonnet` tasks, tests, docs                   |
-| `sonnet-fleet-2`    | engine | Sonnet | Second `fleet:sonnet` pane — parallel task execution |
+| `worker-1`          | engine | class-routed | Executes queued tasks of the dispatched class; plans at opus+ |
+| `worker-2`          | engine | class-routed | Second worker pane — parallel execution             |
+| `worker-3`          | engine | class-routed | Third worker pane                                   |
+| `worker-4`          | engine | class-routed | Fourth worker pane                                  |
 | `sonnet-reviewer`   | engine | Sonnet | First-pass PR review (polling loop)                 |
 | `opus-reviewer`     | engine | Opus   | Final review on flagged PRs (polling loop)          |
 | `merger`            | engine | Opus   | Auto-rebases stale PRs, resolves semantic conflicts (polling loop) |
@@ -393,10 +393,10 @@ cd ~/src/IrredenEngine
 git fetch origin master
 
 git worktree add -b fleet/opus-architect  .claude/worktrees/opus-architect  origin/master
-git worktree add -b fleet/opus-worker-1   .claude/worktrees/opus-worker-1   origin/master
-git worktree add -b fleet/opus-worker-2   .claude/worktrees/opus-worker-2   origin/master
-git worktree add -b fleet/sonnet-fleet-1  .claude/worktrees/sonnet-fleet-1  origin/master
-git worktree add -b fleet/sonnet-fleet-2  .claude/worktrees/sonnet-fleet-2  origin/master
+git worktree add -b fleet/worker-1        .claude/worktrees/worker-1        origin/master
+git worktree add -b fleet/worker-2        .claude/worktrees/worker-2        origin/master
+git worktree add -b fleet/worker-3        .claude/worktrees/worker-3        origin/master
+git worktree add -b fleet/worker-4        .claude/worktrees/worker-4        origin/master
 git worktree add -b fleet/sonnet-reviewer .claude/worktrees/sonnet-reviewer origin/master
 git worktree add -b fleet/opus-reviewer   .claude/worktrees/opus-reviewer   origin/master
 git worktree add -b fleet/merger               .claude/worktrees/merger               origin/master
@@ -413,8 +413,8 @@ git worktree list
 ```
 
 You should see the main clone on `master` plus eight engine worktrees
-(`opus-architect`, `opus-worker-1`, `opus-worker-2`, `sonnet-fleet-1`,
-`sonnet-fleet-2`, `sonnet-reviewer`, `opus-reviewer`, `merger`) each on
+(`opus-architect`, `worker-1` … `worker-4`,
+`sonnet-reviewer`, `opus-reviewer`, `merger`) each on
 their own `fleet/*` seed branch, plus a ninth `game-architect` worktree under
 `creations/game/` if the game repo is present. The
 `fleet/` prefix keeps these distinct from `claude/<area>-<topic>`
@@ -489,7 +489,7 @@ Each pane in the fleet runs `claude` with a role-specific slash command
 as its initial prompt. The role files live at:
 
 - `~/.claude/commands/role-opus-architect.md`
-- `~/.claude/commands/role-sonnet-author.md`
+- `~/.claude/commands/role-worker.md`
 - `~/.claude/commands/role-sonnet-reviewer.md`
 - `~/.claude/commands/role-opus-reviewer.md`
 - `~/.claude/commands/role-merger.md`
@@ -1063,8 +1063,7 @@ to every future fleet-up.
 | Slash command              | Model  | Worktree           | Loop?         |
 |----------------------------|--------|--------------------|---------------|
 | `/role-opus-architect`     | Opus   | `opus-architect`   | Stand-by      |
-| `/role-opus-worker`        | Opus   | `opus-worker-*`    | Dispatcher-triggered |
-| `/role-sonnet-author`      | Sonnet | `sonnet-fleet-*`   | Dispatcher-triggered |
+| `/role-worker`             | class-routed (fable\|opus\|sonnet) | `worker-*` | Dispatcher-triggered |
 | `/role-sonnet-reviewer`    | Sonnet | `sonnet-reviewer`  | Polling 10min |
 | `/role-opus-reviewer`      | Opus   | `opus-reviewer`    | Polling 30min |
 | `/role-merger`             | Opus   | `merger`           | Polling 10min |
@@ -1107,9 +1106,9 @@ command — that's how `dry-run` vs `live` flows through.
 To edit a role's behavior:
 
 ```bash
-$EDITOR ~/src/IrredenEngine/.claude/commands/role-sonnet-author.md
+$EDITOR ~/src/IrredenEngine/.claude/commands/role-worker.md
 # then mirror to runtime location:
-cp ~/src/IrredenEngine/.claude/commands/role-sonnet-author.md \
+cp ~/src/IrredenEngine/.claude/commands/role-worker.md \
    ~/.claude/commands/
 ```
 
@@ -1215,7 +1214,7 @@ gh issue create --repo jakildev/IrredenEngine \
 Note the issue number printed. Wait ~30 seconds for `fleet-state-scout`
 to ingest it, then confirm it appears in `fleet-queue-list`.
 
-Switch to **sonnet-fleet-1** and type (substituting the actual issue
+Switch to **worker-1** and type (substituting the actual issue
 number):
 
 > exit dry-run mode and do exactly ONE task end-to-end. Pick issue #NNN
@@ -1242,7 +1241,7 @@ finish the dry run first.
 
 Switch to **sonnet-reviewer** and type:
 
-> exit dry-run mode and review exactly ONE PR — the one sonnet-fleet-1
+> exit dry-run mode and review exactly ONE PR — the one worker-1
 > just opened. Use the `review-pr` skill. End with the explicit
 > "Opus recheck not required" or "Opus recheck required" line. Stop
 > after the review posts.
@@ -1274,7 +1273,7 @@ Or merge through the GitHub web UI. **Agents never merge.**
 
 ### Step 6 — test `start-next-task`
 
-Switch back to **sonnet-fleet-1** and type:
+Switch back to **worker-1** and type:
 
 > run the `start-next-task` skill
 
@@ -1320,9 +1319,9 @@ This validates the agent has read the game `CLAUDE.md` correctly.
 
 - Did `commit-and-push` open a PR cleanly without permission prompts?
 - Did `review-pr` check out the PR, post the review, and detach cleanly?
-- Did `fleet-claim` prevent the second opus-worker from picking the
-  same task? (Test: while opus-worker-1 is mid-task, switch to
-  opus-worker-2 and ask it to "list candidate tasks." It should NOT
+- Did `fleet-claim` prevent a second worker from picking the
+  same task? (Test: while worker-1 is mid-task, switch to
+  worker-2 and ask it to "list candidate tasks." It should NOT
   include the in-flight task.)
 - Did the build go cleanly with
   `-j$(nproc 2>/dev/null || sysctl -n hw.ncpu)`? On macOS,

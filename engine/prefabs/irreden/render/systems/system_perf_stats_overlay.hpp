@@ -286,6 +286,18 @@ template <> struct System<PERF_STATS_OVERLAY> {
 
         // CULL — visible/total counters. Not smoothed; integer counts read
         // fine as raw values, and smoothing would lag the diagnostic.
+        //
+        // VOX visible is the prior frame's voxel-cull survivor count. In the
+        // rotating (per-axis) path it sums the three axis regions, so a voxel
+        // exposed on N axes counts N times — a per-axis-work signal, not a 1:1
+        // voxel count (see VOXEL_TO_TRIXEL_STAGE_1's cull-diagnostic readback).
+        //
+        // Settled-vs-transient: these HUD counters and the GPU-stage rows above
+        // report the LAST sampled frame, so a single `--auto-screenshot` shot
+        // captures the unsettled camera-cut frame (per-axis chunk-bounds rebuild,
+        // one-frame occlusion self-disable) and reads low/zero. The settled
+        // `--auto-profile` run (its drained running avg/max) is the authoritative
+        // perf + cull source; the overlay is a live glance, not a measurement.
         std::snprintf(
             line,
             sizeof(line),

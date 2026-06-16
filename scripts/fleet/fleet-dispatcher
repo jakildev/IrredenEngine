@@ -78,6 +78,20 @@ done
 FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_dispatcher_self")" && pwd)}"
 unset _fleet_dispatcher_self
 
+# Engine/game roots + main-clone freshness helper (#1810). The dispatcher
+# periodically advances the shared main clone's master in its main loop, so a
+# fleet-script fix that merges mid-session goes live without a fleet-up restart
+# (fleet-up alone is insufficient — drift recurs across scout cycles in one
+# session). FLEET_LIB_DIR is symlink-resolved, so the helper is the real file.
+ENGINE="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
+GAME="$ENGINE/creations/game"
+if [[ -f "$FLEET_LIB_DIR/fleet-clone-freshness.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$FLEET_LIB_DIR/fleet-clone-freshness.sh"
+else
+    advance_main_clone() { :; }  # helper not installed yet — no-op
+fi
+
 # --- Per-role concurrency cap config ---------------------------------------
 #
 # Soft cap on simultaneous iterations per role. Counts unique active
@@ -118,6 +132,11 @@ _env_effort_smoke_worker="${FLEET_EFFORT_SMOKE_WORKER:-}"
 _env_effort_epic_steward="${FLEET_EFFORT_EPIC_STEWARD:-}"
 # Same guard for the model-class knobs (consumed by the class table and
 # ROLE_MODEL map further down) and the fable concurrency cap.
+# INVARIANT: every FLEET_MODEL_<ROLE> knob must appear in all THREE sites —
+# capture here (before `source`), restore below (after `source`), and unset at
+# the end of the block. Miss one and a conf-set value silently wins over the
+# caller's env for that role (reversed precedence, no error). The
+# FLEET_EFFORT_<ROLE> block above follows the identical three-site rule.
 _env_model_fable="${FLEET_MODEL_FABLE:-}"
 _env_model_opus="${FLEET_MODEL_OPUS:-}"
 _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
@@ -175,7 +194,7 @@ unset _env_worker _worker_cap _dep_opus _dep_sonnet \
 declare -A CAP_DEFER_LOGGED=()
 
 # Seconds to back off after a pane exits with code 2 (suspected usage limit).
-# Mirrors fleet-babysit's LIMIT_DELAY. Per-pane: if one of two opus-worker
+# Mirrors fleet-babysit's LIMIT_DELAY. Per-pane: if one of the worker
 # panes hits a limit, the other keeps running.
 LIMIT_DELAY="${FLEET_DISPATCHER_LIMIT_DELAY:-900}"
 
@@ -310,8 +329,8 @@ PERIODIC_REARM_INTERVAL_SECONDS="${FLEET_DISPATCHER_REARM_INTERVAL:-300}"
 # dispatch when the post-dispatch active count is still below cap. This
 # guards against a race that surfaces at `fleet-up`: tmux applies the
 # `@fleet-role` tags to panes asynchronously, so the dispatcher's first
-# tick can see only a subset of role-tagged panes (e.g. one of two
-# sonnet-author panes). With the existing single-shot trigger semantic
+# tick can see only a subset of role-tagged panes (e.g. one of four
+# worker panes). With the existing single-shot trigger semantic
 # that subset gets dispatched, the bootstrap trigger is consumed, and
 # the late-tagged panes sit idle until scout notices a projection
 # delta — which can take an arbitrarily long time when the same task
@@ -484,10 +503,8 @@ list_pane_state() {
 # (empty output if no idle panes for the role).
 #
 # Plural so dispatch_role can fan out a single trigger across every
-# idle pane that belongs to this lane (see pane_role_matches_lane) —
-# that's how a multi-pane lane gets concurrent iterations. The worker
-# lane spans every legacy opus-worker-* / sonnet-author-* pane until
-# P2-2 renames them, so it can fan out across all of them. The previous
+# idle pane tagged with this lane's role — that's how a multi-pane
+# lane (the four worker panes) gets concurrent iterations. The previous
 # singular form picked the first idle pane and dropped the rest, which
 # silently single-flighted multi-pane roles.
 # Returns 0 (true) when a fleet-dispatch-wrap is currently running as a
@@ -511,30 +528,10 @@ pane_has_running_wrapper() {
     pgrep -P "$pane_pid" -f fleet-dispatch-wrap >/dev/null 2>&1
 }
 
-# Whether a pane's @fleet-role tag (or a dispatch-record / reservation
-# role string) belongs to the given dispatcher lane. Normally an exact
-# match. The P2 unification renamed the two worker lanes into one `worker`
-# lane, but pane renames are a later phase (P2-2) and fleet-claim's
-# reservation-role still reports the pre-P2 lane names — so the `worker`
-# lane also claims the legacy `opus-worker` / `sonnet-author` tags. This is
-# what lets the unified lane find, count, and dispatch into panes that
-# still carry their old tags during the transition.
-# Remove once P2-2 / P2-3 land (epic #1692).
-pane_role_matches_lane() {
-    local pane_role="$1" lane="$2"
-    [[ "$pane_role" == "$lane" ]] && return 0
-    if [[ "$lane" == "worker" ]]; then
-        case "$pane_role" in
-            opus-worker|sonnet-author) return 0 ;;
-        esac
-    fi
-    return 1
-}
-
 find_idle_panes_for_role() {
     local role="$1"
     list_pane_state | while IFS='|' read -r pane_id pane_role pane_cmd; do
-        if ! pane_role_matches_lane "$pane_role" "$role"; then
+        if [[ "$pane_role" != "$role" ]]; then
             continue
         fi
         case "$pane_cmd" in
@@ -872,7 +869,7 @@ usage_gate_open() {
 # filename IS the worktree basename).
 #
 # A reservation on an idle pane is NOT counted. That case is the
-# resume-after-crash signal that role docs (see role-sonnet-author.md
+# resume-after-crash signal that role docs (see role-worker.md
 # step 0.5) consume on the next iteration — counting it would pin the
 # cap and prevent the resume from ever dispatching, which is the exact
 # stuck-fleet failure mode this guards against. The matching pane's
@@ -900,7 +897,7 @@ count_active_for_role() {
         have_tmux=1
         local pane_id pane_role pane_cmd wt_path wt_name
         while IFS='|' read -r pane_id pane_role pane_cmd; do
-            pane_role_matches_lane "$pane_role" "$role" || continue
+            [[ "$pane_role" == "$role" ]] || continue
             wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
             [[ -n "$wt_path" ]] || continue
             wt_name=$(basename "$wt_path")
@@ -926,7 +923,7 @@ count_active_for_role() {
         for f in "$DISPATCH_DIR"/*.json; do
             [[ -e "$f" ]] || continue
             r=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
-            pane_role_matches_lane "$r" "$role" || continue
+            [[ "$r" == "$role" ]] || continue
             p=$(sed -n 's/.*"pane":"\([^"]*\)".*/\1/p' "$f" | head -n 1)
             [[ -n "$p" ]] || continue
             wt_path=""
@@ -948,7 +945,7 @@ count_active_for_role() {
             [[ -e "$rfile" ]] || continue
             wt_name=$(basename "$rfile" .json)
             rrole=$(fleet-claim reservation-role "$wt_name" 2>/dev/null || true)
-            pane_role_matches_lane "$rrole" "$role" || continue
+            [[ "$rrole" == "$role" ]] || continue
             # With tmux available, only count the reservation when its
             # worktree's pane is actually busy. An idle pane with a
             # leftover reservation is the resume-after-crash case and
@@ -1082,7 +1079,7 @@ dispatch_role() {
 
     # Fan out across every idle pane for this role, skipping any that
     # already have an in-flight dispatch record. A role with multiple
-    # panes (opus-worker has -1 and -2, sonnet-author has -1 and -2)
+    # panes (the worker lane has worker-1..4)
     # gets concurrent iterations this way; the previous design
     # single-flighted the role because the dispatch record was keyed
     # by role name and only the first idle pane was ever picked.
@@ -1107,16 +1104,19 @@ dispatch_role() {
     # multiple panes dispatched this tick race-claim within the class.
     resolve_worker_class "$role"
     if (( DISPATCH_DEFER )); then
-        # Only cap-blocked fable work is actionable. Dispatching the lane
-        # default would burn an iteration on gate-refused claims; keep
-        # the trigger and wait for a fable slot to free up.
-        if [[ -z "${CAP_DEFER_LOGGED[$role-fable]+x}" ]]; then
-            log "$role: only fable-class work actionable but fable cap ($FABLE_CONCURRENCY_CAP) is full; deferring trigger"
-            CAP_DEFER_LOGGED["$role-fable"]=1
+        # Nothing a fresh worker can claim right now: either the only
+        # actionable work is cap-blocked fable, or the queue's only items
+        # already have open implementation PRs (inflight_pr, #1726).
+        # Dispatching the lane default would burn an iteration on
+        # gate-refused claims; keep the trigger and wait (a freed fable
+        # slot or a resolved/merged PR re-fires the scout projection).
+        if [[ -z "${CAP_DEFER_LOGGED[$role-noclaim]+x}" ]]; then
+            log "$role: no claimable work (cap-blocked fable or in-flight PRs only); deferring trigger"
+            CAP_DEFER_LOGGED["$role-noclaim"]=1
         fi
         return
     fi
-    unset "CAP_DEFER_LOGGED[$role-fable]"
+    unset "CAP_DEFER_LOGGED[$role-noclaim]"
 
     local dispatched=0
     local gap_blocked=""
@@ -1444,23 +1444,6 @@ PY
     done
 }
 
-# Fold any legacy per-lane trigger into the unified worker trigger. A
-# stale scout or fleet-dispatch-wrap (one still running pre-P2 code during
-# a partial restart, or an operator touching the old path) can drop a
-# triggers/opus-worker or triggers/sonnet-author file the new dispatcher no
-# longer reads — rename it to triggers/worker so the work isn't stranded.
-# Remove once P2-2 / P2-3 land (epic #1692).
-rename_legacy_lane_triggers() {
-    local legacy
-    for legacy in "opus-worker" "sonnet-author"; do
-        if [[ -f "$TRIGGERS_DIR/$legacy" ]]; then
-            mv -f "$TRIGGERS_DIR/$legacy" "$TRIGGERS_DIR/worker" 2>/dev/null || \
-                rm -f "$TRIGGERS_DIR/$legacy"
-            log "folded legacy $legacy trigger into worker"
-        fi
-    done
-}
-
 main() {
     mkdir -p "$(dirname "$LOG_FILE")" "$STATE_DIR" "$TRIGGERS_DIR" "$DISPATCH_DIR" "$RATE_LIMIT_DIR" "$USAGE_DIR"
 
@@ -1492,7 +1475,14 @@ main() {
         fi
 
         cleanup_stale_dispatches
-        rename_legacy_lane_triggers
+
+        # Keep the main clone current so a fleet-script fix that merges
+        # mid-session goes live (rate-limited to one fetch/60s in the helper;
+        # guarded to only ff-advance a clean, on-master, fast-forwardable clone). (#1810)
+        advance_main_clone "$ENGINE"
+        if [[ -d "$GAME/.git" ]]; then
+            advance_main_clone "$GAME"
+        fi
 
         # Scout-watchdog safety net + periodic worker safety rearm.
         # Runs first so any rearm-written triggers are picked up by

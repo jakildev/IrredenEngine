@@ -30,6 +30,7 @@
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_build_distance_hiz.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
@@ -96,6 +97,7 @@ struct PerfGridSettings {
     float wavePeriodSeconds_ = 4.0f;
     bool waveOffscreen_ = false;
     float initialZoom_ = 0.5f;
+    float initialYaw_ = 0.0f;
     // Subdivision — config/preset-settable; CLI overrides both.
     // Only applied if explicit_ is true so the engine's built-in default
     // is undisturbed when neither config nor CLI specifies these.
@@ -112,6 +114,8 @@ struct CliOverrides {
     int gridSize_ = 64;
     bool zoomSet_ = false;
     float zoom_ = 0.5f;
+    bool yawSet_ = false;
+    float yaw_ = 0.0f;
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
     bool subdivisionModeSet_ = false;
@@ -130,6 +134,18 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     // backing T-275 acceptance: future overlay-breaking diffs (font, layout,
     // CPU/GPU readout) trip the render-verify image compare.
     {0.5f, vec2(0, 0), 0.0f, "profiler_overlay"},
+    // Rotated-zoom regression shots: at a non-cardinal residual yaw the
+    // per-axis scatter path replaces the cardinal gather, and camera zoom
+    // must still scale the on-screen content (not just shrink the cull
+    // viewport). Voxels in zoom4_rot must render 4x larger than zoom1_rot.
+    {1.0f, vec2(0, 0), 0.35f, "zoom1_rot"},
+    {4.0f, vec2(0, 0), 0.35f, "zoom4_rot"},
+    // Rotated-pan regression pair: the same camera offset at the same zoom,
+    // cardinal vs rotated. The world content at screen center must match
+    // (rotation pivots about the focus) — a rotated pan that drifts at the
+    // wrong rate breaks this pairing.
+    {4.0f, vec2(16, 8), 0.0f, "zoom4_pan"},
+    {4.0f, vec2(16, 8), 0.35f, "zoom4_rot_pan"},
 };
 
 PerfGridSettings g_settings{};
@@ -137,6 +153,24 @@ CliOverrides g_cliOverrides{};
 int g_autoProfileFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
+// --occlusion-cull (#1294 child 3/3): force the voxel-pool chunk-occlusion HZB
+// pre-pass ON (off by default in the engine). This is the measurement + verify
+// toggle for the cull: pair `--mode voxel_set --auto-profile` runs with and
+// without it to read the realized `voxelStage1` reduction (the 0.97 ceiling on
+// the many-small-entity grid), and pair `--auto-screenshot` runs to prove the
+// output is bit-identical cull-on vs cull-off (fully-occluded voxels write
+// nothing, so any diff would be a cull bug). Intentional drift: on a
+// discontinuous camera move the cull self-disables for one frame (stale Hi-Z),
+// which can produce a one-frame silhouette pop — by design, not a regression.
+bool g_occlusionCull = false;
+// --no-overlay (#1294 child 3/3): drop PERF_STATS_OVERLAY from the render
+// pipeline. The overlay bakes live CPU/GPU timing text into every frame, which
+// is run-variant and defeats a bit-identical screenshot compare. Off (overlay
+// present) by default; pass it to capture a deterministic frame, e.g. to prove
+// cull-on renders pixel-identical to cull-off on the heavily-occluded voxel_set
+// scene. The --auto-profile path enables frame timing explicitly, so timing
+// still works under --no-overlay.
+bool g_noOverlay = false;
 
 PerfGridMode parseMode(const std::string &value) {
     if (value == "voxel_set" || value == "voxel") {
@@ -244,6 +278,9 @@ void applyCliOverrides() {
     if (g_cliOverrides.zoomSet_) {
         g_settings.initialZoom_ = g_cliOverrides.zoom_;
     }
+    if (g_cliOverrides.yawSet_) {
+        g_settings.initialYaw_ = g_cliOverrides.yaw_;
+    }
     if (g_cliOverrides.waveAmplitudeSet_) {
         g_settings.waveAmplitude_ = g_cliOverrides.waveAmplitude_;
     }
@@ -271,6 +308,10 @@ void parseArgs(int argc, char **argv) {
                     ++i;
                 }
             }
+        } else if (std::strcmp(argv[i], "--occlusion-cull") == 0) {
+            g_occlusionCull = true;
+        } else if (std::strcmp(argv[i], "--no-overlay") == 0) {
+            g_noOverlay = true;
         } else if (std::strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
             g_cliOverrides.mode_ = parseMode(argv[i + 1]);
             g_cliOverrides.modeSet_ = true;
@@ -288,6 +329,10 @@ void parseArgs(int argc, char **argv) {
                 g_cliOverrides.zoom_ = zoom;
                 g_cliOverrides.zoomSet_ = true;
             }
+            ++i;
+        } else if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
+            g_cliOverrides.yaw_ = static_cast<float>(std::atof(argv[i + 1]));
+            g_cliOverrides.yawSet_ = true;
             ++i;
         } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
             // 0.0 = static scene (no per-frame voxel motion). Useful for
@@ -558,8 +603,16 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
 
+    if (g_occlusionCull) {
+        IRRender::setVoxelOcclusionCullEnabled(true);
+        IR_LOG_INFO("Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 3/3). "
+                    "Output stays bit-identical to cull-off; one-frame silhouette pop on a "
+                    "discontinuous camera move is intentional drift (stale Hi-Z self-disable).");
+    }
+
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
+    IRRender::setCameraVisualYaw(g_settings.initialYaw_);
     IR_LOG_INFO(
         "Initial camera zoom: requested={}, actual={}",
         g_settings.initialZoom_,
@@ -613,17 +666,30 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
+            // Hi-Z max-depth mip chain over the (now final) distance texture,
+            // for next frame's voxel occlusion cull (#1294 child 1/3). Produces
+            // only — renders unchanged this PR.
+            IRSystem::createSystem<IRSystem::COMPUTE_DISTANCE_HIZ>(),
             IRSystem::createSystem<IRSystem::BAKE_SUN_SHADOW_MAP>(),
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
-            // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
-            // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
-            // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
-            // must be overlay → text → trixel-to-fb for the HUD to land on
-            // screen — matches the lighting demo wiring.
-            IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>(),
+        }
+    );
+    // PERF_STATS_OVERLAY mutates the C_TextSegment of its tracked entity;
+    // TEXT_TO_TRIXEL rasterizes the text onto the GUI canvas; the canvas
+    // is composited into the framebuffer by TRIXEL_TO_FRAMEBUFFER. Order
+    // must be overlay → text → trixel-to-fb for the HUD to land on
+    // screen — matches the lighting demo wiring. --no-overlay drops it so a
+    // captured frame is deterministic (the HUD's live timing text is otherwise
+    // run-variant, defeating a bit-identical cull-on vs cull-off compare).
+    if (!g_noOverlay) {
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::PERF_STATS_OVERLAY>());
+    }
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
             IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),

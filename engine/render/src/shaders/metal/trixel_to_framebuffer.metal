@@ -95,7 +95,14 @@ fragment FragmentOut f_trixel_to_framebuffer(
 
     float4 color = triangleColors.read(sampleCoord);
     const int rawDist = triangleDistances.read(sampleCoord).r;
-    float depth = normalizeDistance(rawDist + frameData.distanceOffset, globals);
+    // effectiveSubdivisionsForHover.y carries the per-canvas depth rescale
+    // (effSub / cubeSub) for world-placed DETACHED canvases — see
+    // f_trixel_to_framebuffer.glsl (#1624 world-placed depth fix). 0 → 1.0
+    // (the byte-identical world/overlay fast path).
+    float depthScale = frameData.effectiveSubdivisionsForHover.y;
+    if (depthScale <= 0.0f) depthScale = 1.0f;
+    float depth = normalizeDistance(
+        int(round(float(rawDist) * depthScale)) + frameData.distanceOffset, globals);
 
     const int subdivisions = max(int(frameData.effectiveSubdivisionsForHover.x), 1);
     const float2 hoveredPosition =

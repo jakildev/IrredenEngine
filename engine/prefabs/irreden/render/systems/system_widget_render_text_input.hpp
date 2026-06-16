@@ -25,6 +25,7 @@ namespace IRSystem {
 template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRRender::RectFillScratch scratch_;
+    std::vector<IRRender::GlyphDrawCommand> textCmds_;
     int frameCounter_ = 0;
 
     void beginTick() {
@@ -39,7 +40,8 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         const IRComponents::C_WidgetState &state,
         const IRComponents::C_GuiPosition &guiPos
     ) {
-        if (!canvas_) return;
+        if (!canvas_)
+            return;
 
         const auto &theme = IRPrefab::Widget::defaultTheme();
         IRRender::fillRect(
@@ -62,8 +64,9 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
 
         const int textX = guiPos.pos_.x + theme.padding_ * 2;
         if (!textInput.text_.empty()) {
-            IRPrefab::Widget::detail::drawLeftText(
-                *canvas_,
+            IRPrefab::Widget::detail::queueLeftText(
+                textCmds_,
+                canvas_->size_,
                 textInput.text_,
                 IRMath::ivec2(textX, guiPos.pos_.y),
                 widget.size_.y,
@@ -71,18 +74,19 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
             );
         }
 
-        if (!state.focused_ || widget.disabled_) return;
+        if (!state.focused_ || widget.disabled_)
+            return;
 
         // Blink: cursor visible during the first half of each blink
         // period, hidden during the second. textCursorBlinkPeriodFrames_
         // is the FULL period.
         const int period = IRMath::max(2, theme.textCursorBlinkPeriodFrames_);
         const bool cursorVisible = (frameCounter_ % period) < (period / 2);
-        if (!cursorVisible) return;
+        if (!cursorVisible)
+            return;
 
-        const int cursorChars = IRMath::clamp(
-            textInput.cursorPos_, 0, static_cast<int>(textInput.text_.size())
-        );
+        const int cursorChars =
+            IRMath::clamp(textInput.cursorPos_, 0, static_cast<int>(textInput.text_.size()));
         const int cursorX = IRMath::min(
             textX + cursorChars * IRRender::kGlyphStepX,
             guiPos.pos_.x + widget.size_.x - theme.textInputCursorWidth_
@@ -99,14 +103,17 @@ template <> struct System<WIDGET_RENDER_TEXT_INPUT> {
         );
     }
 
+    void endTick() {
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
+    }
+
     static SystemId create() {
         return registerSystem<
             WIDGET_RENDER_TEXT_INPUT,
             IRComponents::C_Widget,
             IRComponents::C_WidgetTextInput,
             IRComponents::C_WidgetState,
-            IRComponents::C_GuiPosition
-        >("WidgetRenderTextInput");
+            IRComponents::C_GuiPosition>("WidgetRenderTextInput");
     }
 };
 

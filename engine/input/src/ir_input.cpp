@@ -82,4 +82,24 @@ float getGamepadAxis(GamepadAxes axis, int irGamepadId) {
     return getInputManager().getGamepadAxis(axis, irGamepadId);
 }
 
+void beginSyntheticInput() {
+    getInputManager().beginSyntheticInput();
+}
+
+bool isSyntheticInputActive() {
+    return getInputManager().isSyntheticInputActive();
+}
+
+void injectMouseMove(IRMath::ivec2 screenPx) {
+    getInputManager().injectMouseMove(screenPx);
+}
+
+void injectButton(KeyMouseButtons button, ButtonStatuses status) {
+    getInputManager().injectButton(button, status);
+}
+
+void injectScroll(double xOffset, double yOffset) {
+    getInputManager().injectScroll(xOffset, yOffset);
+}
+
 } // namespace IRInput

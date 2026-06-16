@@ -34,6 +34,44 @@ constant uint kSlotNumGroupsZ     = 2;
 constant uint kSlotVisibleCount   = 3;
 constant uint kSlotCompletedGroups = 4;
 
+// Per-axis store list-walk split (#1739). In single-canvas mode the indirect
+// params buffer holds one struct (slots 0..4 above). In per-axis split mode
+// (frameData.perAxisRoute != 0, carrying the region stride) it holds three
+// dispatch structs spaced kPerAxisIndirectStrideUints (256 B) apart so the CPU
+// can bindRange each at an SSBO-offset-aligned boundary; slot
+// kSlotCompletedGroups of struct 0 is the shared cross-group completion counter
+// in both modes. Mirrors c_voxel_visibility_compact.glsl + C++ kPerAxisSsboAlignBytes.
+constant uint kPerAxisIndirectStrideUints = 64u;  // 256 B / 4
+
+// 12 B per voxel — must match C_Voxel + the `Voxel` struct in
+// c_voxel_to_trixel_stage_1.metal. Read ONLY in split mode for the
+// face-occlusion flags byte (`materialFlagBone >> 8`).
+struct Voxel {
+    uint colorPacked;
+    uint materialFlagBone;
+    uint reserved;
+};
+
+// Indirect dispatch grid for `base`'s struct from its visibleCount slot (matches
+// the single-canvas numGroups math exactly).
+static void writeDispatchDims(
+    device atomic_uint* indirectParams, uint base, int renderModeX, int subdivisionsY
+) {
+    const uint count = atomic_load_explicit(
+        &indirectParams[base + kSlotVisibleCount], memory_order_relaxed
+    );
+    const uint gx = max(min(count, 1024u), 1u);
+    atomic_store_explicit(&indirectParams[base + kSlotNumGroupsX], gx, memory_order_relaxed);
+    atomic_store_explicit(
+        &indirectParams[base + kSlotNumGroupsY],
+        max((count + gx - 1u) / gx, 1u),
+        memory_order_relaxed
+    );
+    const int subdivisions = max(subdivisionsY, 1);
+    const uint gz = (renderModeX != 0) ? uint(subdivisions * subdivisions) : 1u;
+    atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
+}
+
 // T-287 / #950: this kernel no longer reads the per-voxel color SSBO. The
 // per-slot active bit at `activeMask[idx >> 5] & (1 << (idx & 31))` is the
 // CPU-pushed mirror of `m_voxelColors[idx].color_.alpha_ != 0`, kept in
@@ -45,6 +83,7 @@ constant uint kSlotCompletedGroups = 4;
 kernel void c_voxel_visibility_compact(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
+    device const Voxel* voxels [[buffer(6)]],
     device const uint* activeMask [[buffer(8)]],
     device const uint* chunkVisible [[buffer(24)]],
     device uint* compactedVoxelIndices [[buffer(25)]],
@@ -88,12 +127,34 @@ kernel void c_voxel_visibility_compact(
                     isoPos.x <= frameData.cullIsoMax.x + cullMargin &&
                     isoPos.y >= frameData.cullIsoMin.y - cullMargin &&
                     isoPos.y <= frameData.cullIsoMax.y + cullMargin) {
-                    const uint slot = atomic_fetch_add_explicit(
-                        &indirectParams[kSlotVisibleCount],
-                        1u,
-                        memory_order_relaxed
-                    );
-                    compactedVoxelIndices[slot] = idx;
+                    if (frameData.perAxisRoute == 0) {
+                        // Single full list (byte-identical to master).
+                        const uint slot = atomic_fetch_add_explicit(
+                            &indirectParams[kSlotVisibleCount],
+                            1u,
+                            memory_order_relaxed
+                        );
+                        compactedVoxelIndices[slot] = idx;
+                    } else {
+                        // Per-axis split (#1739): append into each axis region the
+                        // voxel has an exposed face on. The store shader re-checks
+                        // precise per-axis exposure, so over-inclusion is harmless;
+                        // a fully-interior voxel lands in no region.
+                        const uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
+                        const uint stride = uint(frameData.perAxisRoute);
+                        for (int axis = 0; axis < 3; ++axis) {
+                            if (faceIsExposed(flagsByte, 2 * axis) ||
+                                faceIsExposed(flagsByte, 2 * axis + 1)) {
+                                const uint base = uint(axis) * kPerAxisIndirectStrideUints;
+                                const uint slot = atomic_fetch_add_explicit(
+                                    &indirectParams[base + kSlotVisibleCount],
+                                    1u,
+                                    memory_order_relaxed
+                                );
+                                compactedVoxelIndices[uint(axis) * stride + slot] = idx;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -102,6 +163,8 @@ kernel void c_voxel_visibility_compact(
     threadgroup_barrier(mem_flags::mem_device);
 
     if (localIndex == 0u) {
+        // Slot kSlotCompletedGroups of struct 0 is the shared cross-group
+        // completion counter in both modes.
         const uint finished = atomic_fetch_add_explicit(
             &indirectParams[kSlotCompletedGroups],
             1u,
@@ -109,32 +172,19 @@ kernel void c_voxel_visibility_compact(
         ) + 1u;
         const uint totalGroups = groupCount.x * groupCount.y;
         if (finished == totalGroups) {
-            const uint count = atomic_load_explicit(
-                &indirectParams[kSlotVisibleCount],
-                memory_order_relaxed
-            );
-            const uint gx = min(count, 1024u);
-            const uint gxClamped = max(gx, 1u);
-            const uint gy = max((count + gxClamped - 1u) / gxClamped, 1u);
-            const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-            const uint gz = (frameData.voxelRenderOptions.x != 0)
-                ? uint(subdivisions * subdivisions)
-                : 1u;
-            atomic_store_explicit(
-                &indirectParams[kSlotNumGroupsX],
-                gxClamped,
-                memory_order_relaxed
-            );
-            atomic_store_explicit(
-                &indirectParams[kSlotNumGroupsY],
-                gy,
-                memory_order_relaxed
-            );
-            atomic_store_explicit(
-                &indirectParams[kSlotNumGroupsZ],
-                gz,
-                memory_order_relaxed
-            );
+            if (frameData.perAxisRoute == 0) {
+                writeDispatchDims(
+                    indirectParams, 0u,
+                    frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y
+                );
+            } else {
+                for (int axis = 0; axis < 3; ++axis) {
+                    writeDispatchDims(
+                        indirectParams, uint(axis) * kPerAxisIndirectStrideUints,
+                        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y
+                    );
+                }
+            }
         }
     }
 }

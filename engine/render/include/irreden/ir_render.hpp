@@ -271,6 +271,10 @@ IREntity::EntityId getEntityIdAtMouseTrixel();
 /// @name Camera setters
 void setCameraZoom(float zoom);
 void setCameraPosition2DIso(vec2 pos);
+/// Set the camera's continuous Z-yaw. Takes @p degrees in degrees (converted
+/// to radians internally); non-zero values switch the voxel rasterizer from
+/// the cardinal gather path to the per-axis scatter path.
+void setCameraVisualYaw(float degrees);
 /// @}
 
 /// @{
@@ -310,6 +314,11 @@ bool isGuiVisible();
 /// mid-frame without understanding the coordinate-mapping consequences.
 void setGuiScale(int scale);
 int getGuiScale();
+/// Opt-in (default off): render the GUI canvas at the native framebuffer pixel
+/// resolution so GUI text / widgets are small and crisp instead of coarse. The
+/// calling creation owns laying its GUI out for the finer coordinate space;
+/// overrides guiScale-based sizing. Call once at init, before building widgets.
+void setGuiCanvasFullResolution();
 /// Enable / disable the trixel hover highlight (visual ring around the trixel under
 /// the cursor). Entity-id detection continues regardless of this flag.
 void setHoveredTrixelVisible(bool visible);
@@ -338,6 +347,12 @@ float getSunAmbient();
 /// When false, sun face shading remains active but projected shadows are disabled.
 void setSunShadowsEnabled(bool enabled);
 bool getSunShadowsEnabled();
+/// Voxel-pool chunk-occlusion cull (#1294 child 2/3). Off by default — the
+/// HZB pre-pass is dispatched only when enabled, so the default pipeline is
+/// byte-identical to master. When on, pool-chunks proven fully covered by
+/// closer geometry (last frame's Hi-Z) are dropped before the compact pass.
+void setVoxelOcclusionCullEnabled(bool enabled);
+bool getVoxelOcclusionCullEnabled();
 /// When false, ambient occlusion crease darkening is skipped — the AO compute
 /// shader short-circuits with a constant 1.0 so the lighting pass treats AO
 /// as a no-op. Sun face shading and projected shadows are unaffected.

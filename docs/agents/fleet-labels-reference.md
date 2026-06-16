@@ -47,7 +47,7 @@ Specifically, **never pass these via `--label` when filing**:
   the landing PR; not added if the comment call fails (safe retry on
   next tick). Don't add manually unless you've verified a merged PR
   covers the scope.
-- `fleet:needs-human` — owned by the **author worker** (opus-worker).
+- `fleet:needs-human` — owned by the **author worker**.
   Set when a queued task can only be completed by a step the fleet
   can't perform autonomously — most often a gated self-config edit
   (`.claude/commands/role-*.md`, `.claude/agents/*`). The worker
@@ -183,7 +183,7 @@ Specifically, **never pass these via `--label` when filing**:
   worker / merger pipeline.
 - `fleet:semantic-conflict` — owned by the **merger** (sets when it
   can't auto-rebase), on **either repo** (the merger runs a game pass
-  too — PR #1371). Cleared by the **opus-worker** after it resolves the
+  too — PR #1371). Cleared by the **worker** (opus+ class) after it resolves the
   conflict — its step 1c covers **both** engine and game PRs (game via
   the game worktree + `--repo jakildev/irreden` + the
   `IRREDEN_USER_PROJECTS` build-verify) — or escalated to
@@ -194,7 +194,7 @@ Specifically, **never pass these via `--label` when filing**:
   rather than from master, meaning the diff carries inherited commits
   from that PR). Signals: wait for the other PR to merge, then use
   `rebase --onto` to drop the inherited commits. The merger skips
-  these in its CONFLICTING sweep; opus-worker excludes them from its
+  these in its CONFLICTING sweep; the worker excludes them from its
   `fleet:semantic-conflict` step. Cleared by the **human** after the
   upstream PR merges.
 - `fleet:needs-base-update` — owned by the **merger** (sets in step 2.6
@@ -206,7 +206,7 @@ Specifically, **never pass these via `--label` when filing**:
   Cleared automatically when the base merges (step 2.5 ii's re-target
   to master removes it) or closes (step 2.5 iii). Otherwise the
   **author** rebases manually onto the new upstream tip and removes
-  the label, or an **opus-worker** drives the resolution similar to
+  the label, or an **opus+-class worker** drives the resolution similar to
   `fleet:semantic-conflict`.
 - `fleet:stacked` — owned by the **author's `commit-and-push`** (set when the
   claim was made with `--stackable-on`). Signals that the PR's base is a
@@ -281,7 +281,7 @@ Specifically, **never pass these via `--label` when filing**:
   --gh` pass sweeps labels older than 30 min and replays orphan
   sentinels. Don't add manually; don't add to issues.
 - `fleet:human-amending` / `fleet:human-deferred` — owned by the
-  **author worker** (sonnet-author / opus-worker) when picking up
+  **author worker** (any class) when picking up
   `human:needs-fix`. The two labels express which disposition the
   worker chose:
   - `fleet:human-amending` — worker is fixing the concerns inline

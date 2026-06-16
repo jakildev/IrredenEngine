@@ -34,6 +34,9 @@
 // Widget framework (T-145 / T-177)
 #include <irreden/render/widgets.hpp>
 
+// GUI-test assertions (P3, #1796)
+#include <irreden/render/gui_test_assertions.hpp>
+
 // Systems
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -105,6 +108,7 @@
 // layout mouse-in-GUI-trixels helper).
 #include <irreden/render/trixel_rect.hpp>
 #include <irreden/render/trixel_text.hpp>
+#include <irreden/render/gui_text_batch.hpp>
 #include <irreden/render/mask_grid_painter.hpp>
 #include <irreden/render/layout.hpp>
 
@@ -276,15 +280,89 @@ struct LoftToolState {
 };
 LoftToolState g_loftTool;
 
-// Three auto-screenshot framings so the render-debug-loop / regression
-// harness records the palette panel and the editable scene from a
-// stable camera. Camera position is irrelevant to the GUI canvas but
-// it does anchor the world-space scene render.
-constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_idle"},
-    {0.75f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_out"},
-    {1.5f, IRMath::vec2(0.0f, 0.0f), 0.0f, "editor_zoom_in"},
+// Scripted palette-click: move cursor to a palette swatch, press, release.
+// frameOffset_ = 0: move; 1: press; 2: release — settle then captures.
+constexpr IRVideo::GuiInputEvent kPaletteClickEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(200, 300)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(200, 300),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(200, 300),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
 };
+
+// Scripted GUI-assert click (P3, #1796): park the cursor over the LAYERS-panel
+// list, press, release. The cursor stays put through capture so the hover
+// assertion still reads it; the latch catches the one-frame click-fire. The
+// list is a large, child-free hover target so the small screen→GUI-trixel
+// offset can't push the cursor off it.
+constexpr IRVideo::GuiInputEvent kGuiAssertEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(190, 284)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(190, 284),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(190, 284),
+     IRMath::vec2(0.0f),
+     IRInput::kMouseButtonLeft},
+};
+
+// Scripted scene-pick (P3, #1796): move the cursor over the 3D scene (right of
+// the left-column GUI panels), so PICKS_VOXEL casts a ray onto a scene voxel —
+// the regression net for the screen→world picking alignment.
+constexpr IRVideo::GuiInputEvent kPickVoxelEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(800, 450)},
+};
+
+// GUI-test shot table covering stable render framings plus the scripted-click
+// shots. Superset of the previous kShots[] — render-verify labels still match.
+// kGuiAssertShotIndex / kPickVoxelShotIndex select the assertion-bearing shots.
+constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_idle"}, nullptr, 0},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_palette_click"}, kPaletteClickEvents, 3},
+    {{0.75f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_out"}, nullptr, 0},
+    {{1.5f, IRMath::vec2(0.0f), 0.0f, "editor_zoom_in"}, nullptr, 0},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_gui_assert"}, kGuiAssertEvents, 3},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "editor_pick_voxel"}, kPickVoxelEvents, 1},
+};
+constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
+constexpr int kGuiAssertShotIndex = 4;
+constexpr int kPickVoxelShotIndex = 5;
+
+// GUI-test assertion tables (P3, #1796). Filled in initEntities once the widget
+// entities exist — assertions reference runtime EntityIds, so unlike the shot
+// table they can't be constexpr. Index-aligned with kGuiTestShots.
+// g_guiAssertLatch is the caller-owned latch the harness's onAssertFrame_
+// callback threads through onFrame (CLICK_FIRES latches the one-frame pulse).
+IRPrefab::GuiTest::LatchState g_guiAssertLatch;
+std::vector<IRPrefab::GuiTest::Assertion> g_shotAssertions[kNumGuiTestShots];
+
+// Forwarder wired to IRVideo::GuiTestConfig::onAssertFrame_. The harness owns
+// input + capture timing in engine/video; this hands each frame to the prefab
+// evaluator with the shot's assertion table (engine/video can't see widgets).
+void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
+    if (shotIndex < 0 || shotIndex >= kNumGuiTestShots)
+        return;
+    const auto &assertions = g_shotAssertions[shotIndex];
+    if (assertions.empty())
+        return; // shots without assertions (idle / zoom framings) skip latch+eval
+    IRPrefab::GuiTest::onFrame(
+        g_guiAssertLatch,
+        shotIndex,
+        isCaptureFrame,
+        kGuiTestShots[shotIndex].render_.label_,
+        assertions.data(),
+        static_cast<int>(assertions.size())
+    );
+}
 
 int g_autoWarmupFrames = 0;
 
@@ -325,6 +403,19 @@ IREntity::EntityId g_jointRenameInput = IREntity::kNullEntity;
 IREntity::EntityId g_jointRenameBtn = IREntity::kNullEntity;
 IREntity::EntityId g_jointReparentInput = IREntity::kNullEntity;
 IREntity::EntityId g_jointReparentBtn = IREntity::kNullEntity;
+
+// Hover help (#: editor F-series). The EditorHelpRender system draws the help
+// text of whatever panel/control the cursor is over into the HELP panel docked
+// below the panel stack. g_helpEntries maps a widget to its one-line help and
+// is populated in initEntities once the widgets exist; the smallest hovered
+// hitbox wins so a control reads more specifically than the panel under it.
+struct HelpEntry {
+    IREntity::EntityId widget_ = IREntity::kNullEntity;
+    const char *text_ = nullptr;
+};
+std::vector<HelpEntry> g_helpEntries;
+constexpr ivec2 kHelpPanelPos{4, 500};
+constexpr ivec2 kHelpPanelSize{372, 92};
 
 void logLayerState() {
     for (const auto &r : g_layerManager.layers()) {
@@ -1062,6 +1153,7 @@ void initSystems() {
     struct LoftRenderParams {
         C_TriangleCanvasTextures *canvas_ = nullptr;
         IRRender::MaskGridPaintScratch scratch_;
+        std::vector<IRRender::GlyphDrawCommand> textCmds_;
     };
     auto loftRenderData = std::make_unique<LoftRenderParams>();
     auto *lrp = loftRenderData.get();
@@ -1102,27 +1194,91 @@ void initSystems() {
                 lrp->scratch_
             );
             const int gridH = sz * IRVoxelEditor::kLoftCellPx;
-            IRRender::renderText(
-                *lrp->canvas_,
+            const ivec2 canvasSize = lrp->canvas_->size_;
+            IRPrefab::GuiText::queueGuiText(
+                lrp->textCmds_,
                 "XZ",
                 IRVoxelEditor::kLoftGridXZPos + ivec2(0, -12),
-                Color{200, 220, 200, 220}
+                canvasSize,
+                Color{200, 220, 200, 220},
+                1
             );
-            IRRender::renderText(
-                *lrp->canvas_,
+            IRPrefab::GuiText::queueGuiText(
+                lrp->textCmds_,
                 "YZ",
                 IRVoxelEditor::kLoftGridYZPos + ivec2(0, -12),
-                Color{200, 220, 200, 220}
+                canvasSize,
+                Color{200, 220, 200, 220},
+                1
             );
-            IRRender::renderText(
-                *lrp->canvas_,
+            IRPrefab::GuiText::queueGuiText(
+                lrp->textCmds_,
                 "LOFT  Shift=sym  C=clear  Enter=stamp  F=exit",
                 ivec2(IRVoxelEditor::kLoftGridXZPos.x, IRVoxelEditor::kLoftGridXZPos.y + gridH + 4),
-                Color{200, 200, 200, 180}
+                canvasSize,
+                Color{200, 200, 200, 180},
+                1
             );
+            // Inline dispatch (not deferred to endTick like the widget
+            // render systems): the loft overlay is a single-canvas system
+            // that runs its whole render once per frame in this tick body,
+            // so queuing and dispatching here is equivalent to the deferred
+            // pattern — there is no second tick that would append more glyphs
+            // before the dispatch.
+            IRPrefab::GuiText::dispatchGuiText(lrp->textCmds_);
         }
     );
     IRSystem::setSystemParams(loftRenderSystem, std::move(loftRenderData));
+
+    // Hover-help render: draws the most-specific hovered widget's help text into
+    // the HELP panel. Registered last among the GUI renders so the text lands
+    // over the HELP panel background; reuses the batched GUI-text path (#1774).
+    struct HelpRenderParams {
+        C_TriangleCanvasTextures *canvas_ = nullptr;
+        std::vector<IRRender::GlyphDrawCommand> textCmds_;
+    };
+    auto helpRenderData = std::make_unique<HelpRenderParams>();
+    auto *hrp = helpRenderData.get();
+    auto helpRenderSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorHelpRender",
+        [](const C_GuiElement &) {},
+        [hrp]() {
+            hrp->canvas_ =
+                &IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui"));
+        },
+        [hrp]() {
+            if (hrp->canvas_ == nullptr)
+                return;
+            const char *help = nullptr;
+            int bestArea = 0;
+            for (const auto &entry : IRVoxelEditor::g_helpEntries) {
+                auto hitbox = IREntity::getComponentOptional<C_HitBox2DGui>(entry.widget_);
+                if (!hitbox.has_value() || !(*hitbox)->hovered_)
+                    continue;
+                const int area = (*hitbox)->size_.x * (*hitbox)->size_.y;
+                if (help == nullptr || area < bestArea) {
+                    bestArea = area;
+                    help = entry.text_;
+                }
+            }
+            const char *shown = (help != nullptr) ? help : "Hover a panel or control for help.";
+            IRPrefab::GuiText::queueGuiText(
+                hrp->textCmds_,
+                shown,
+                IRVoxelEditor::kHelpPanelPos + ivec2(6, 22),
+                hrp->canvas_->size_,
+                Color{180, 200, 220, 255},
+                1,
+                IRComponents::TextAlignH::LEFT,
+                IRComponents::TextAlignV::TOP,
+                0,
+                0,
+                IRVoxelEditor::kHelpPanelSize.x - 12
+            );
+            IRPrefab::GuiText::dispatchGuiText(hrp->textCmds_);
+        }
+    );
+    IRSystem::setSystemParams(helpRenderSystem, std::move(helpRenderData));
 
     // Loft-mask input: detects left-click / drag over the XZ and YZ grid
     // panels and toggles or paints mask cells. Toggle direction is fixed
@@ -1392,7 +1548,8 @@ void initSystems() {
             if (leftReleasedNow && IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(
+                        IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -1925,6 +2082,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
+            helpRenderSystem,
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
@@ -1932,12 +2090,17 @@ void initSystems() {
     );
 
     if (IRVoxelEditor::g_autoWarmupFrames > 0) {
-        IRVideo::AutoScreenshotConfig cfg{};
+        IRVideo::GuiTestConfig cfg{};
         cfg.warmupFrames_ = IRVoxelEditor::g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = IRVoxelEditor::kShots;
-        cfg.numShots_ = sizeof(IRVoxelEditor::kShots) / sizeof(IRVoxelEditor::kShots[0]);
-        renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
+        cfg.shots_ = IRVoxelEditor::kGuiTestShots;
+        cfg.numShots_ =
+            sizeof(IRVoxelEditor::kGuiTestShots) / sizeof(IRVoxelEditor::kGuiTestShots[0]);
+        // P3 (#1796): evaluate GUI assertions at each shot's capture frame. The
+        // assertion tables themselves are populated later in initEntities (once
+        // the widget entities exist), before the game loop fires this callback.
+        cfg.onAssertFrame_ = &IRVoxelEditor::onGuiAssertFrame;
+        renderPipeline.push_back(IRVideo::createGuiTestSystem(cfg));
     }
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
@@ -2256,7 +2419,8 @@ void initCommands() {
             if (IRVoxelEditor::g_fillTool.dragging_) {
                 IRVoxelEditor::g_fillTool.dragging_ = false;
                 if (IRVoxelEditor::g_fillTool.ghostEntity_ != IREntity::kNullEntity) {
-                    IREntity::getComponent<C_ShapeDescriptor>(IRVoxelEditor::g_fillTool.ghostEntity_
+                    IREntity::getComponent<C_ShapeDescriptor>(
+                        IRVoxelEditor::g_fillTool.ghostEntity_
                     )
                         .flags_ = IRMath::SDF::SHAPE_FLAG_NONE;
                 }
@@ -2647,8 +2811,10 @@ void initCommands() {
                 );
                 const bool atRigRoot = j.parentIndex_ == static_cast<std::uint32_t>(i) ||
                                        j.parentIndex_ >= static_cast<std::uint32_t>(count);
-                IR_ASSERT(atRigRoot || j.parentIndex_ < i,
-                    ".rig parentIndex forward-reference — not supported by linear reconstruction");
+                IR_ASSERT(
+                    atRigRoot || j.parentIndex_ < i,
+                    ".rig parentIndex forward-reference — not supported by linear reconstruction"
+                );
                 const IREntity::EntityId parentEntity =
                     atRigRoot ? rigRoot : newJoints[j.parentIndex_];
                 IREntity::setParent(joint, parentEntity);
@@ -2807,6 +2973,11 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
     IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
 
+    // Render the GUI at native framebuffer resolution so panels/text are
+    // small and crisp instead of the coarse iso-canvas default. The editor
+    // lays its widgets out relative to the resulting GUI canvas size below.
+    IRRender::setGuiCanvasFullResolution();
+
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
     // Palette panel — fixed top-left dock at 200×220 trixels. The 16
@@ -2830,7 +3001,9 @@ void initEntities() {
     // manually so clicks on the panel background (title bar, label gap, padding)
     // are blocked from falling through to the scene picker.
     IREntity::setComponent(g_editor.palettePanel_, IRComponents::C_HitBox2DGui{kPanelSize});
-    IRPrefab::Widget::makeLabel(ivec2(kPanelPos.x + 12, kPanelPos.y + 36), "CLICK A SWATCH");
+    // Left-align the hint to the panel padding so it doesn't overflow the
+    // right edge ("CLICK A SWATCH" is ~111 trixels; the panel interior is ~116).
+    IRPrefab::Widget::makeLabel(ivec2(kPanelPos.x + 4, kPanelPos.y + 36), "CLICK A SWATCH");
 
     g_editor.paletteSwatches_.reserve(IRVoxelEditor::kPaletteCount);
     for (int i = 0; i < IRVoxelEditor::kPaletteCount; ++i) {
@@ -2840,12 +3013,14 @@ void initEntities() {
             kSwatchOriginX + col * (kSwatchSize + kSwatchGap),
             kSwatchOriginY + row * (kSwatchSize + kSwatchGap)
         );
-        g_editor.paletteSwatches_.push_back(IRPrefab::Widget::makeColorSwatch(
-            pos,
-            ivec2(kSwatchSize, kSwatchSize),
-            IRVoxelEditor::kPaletteColors[i],
-            i == 0
-        ));
+        g_editor.paletteSwatches_.push_back(
+            IRPrefab::Widget::makeColorSwatch(
+                pos,
+                ivec2(kSwatchSize, kSwatchSize),
+                IRVoxelEditor::kPaletteColors[i],
+                i == 0
+            )
+        );
     }
 
     // Animation controls panel (T-214, F-1.4) — sits below the palette
@@ -2913,19 +3088,22 @@ void initEntities() {
     // Parametric shape bake panel (T-286). Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
+    // List itemHeight is one glyph row + 2-trixel gap so the 6 shape rows
+    // don't touch (itemHeight == glyph height made adjacent rows overlap). The
+    // sub-controls sit below the now-taller 6-row list (18 + 6*13 = 96).
     constexpr ivec2 kBakePanelPos{130, 342};
-    constexpr ivec2 kBakePanelSize{120, 140};
+    constexpr ivec2 kBakePanelSize{120, 156};
     IRVoxelEditor::g_bakePanel = IRPrefab::Widget::makePanel(kBakePanelPos, kBakePanelSize, "BAKE");
     IREntity::setComponent(IRVoxelEditor::g_bakePanel, IRComponents::C_HitBox2DGui{kBakePanelSize});
     IRVoxelEditor::g_bakeShapeList = IRPrefab::Widget::makeList(
         ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 18),
-        ivec2(112, 66),
+        ivec2(112, 78),
         {"BOX", "SPHERE", "CYLINDER", "TORUS", "CONE", "ELLIPSOID"},
         1,
-        11
+        13
     );
     IRVoxelEditor::g_bakeParam1Slider = IRPrefab::Widget::makeSlider(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 88),
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 100),
         ivec2(112, 14),
         "P1",
         0.5f,
@@ -2933,7 +3111,7 @@ void initEntities() {
         8.0f
     );
     IRVoxelEditor::g_bakeParam2Slider = IRPrefab::Widget::makeSlider(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 106),
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 118),
         ivec2(112, 14),
         "P2",
         0.5f,
@@ -2941,7 +3119,7 @@ void initEntities() {
         3.0f
     );
     IRVoxelEditor::g_bakeButton = IRPrefab::Widget::makeButton(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 124),
+        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 136),
         ivec2(112, 12),
         "BAKE"
     );
@@ -3032,6 +3210,35 @@ void initEntities() {
         "PAR"
     );
 
+    // Hover-help panel — docks below the panel stack and shows the help text of
+    // whatever panel/control is hovered (drawn by the EditorHelpRender system).
+    IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kHelpPanelPos,
+        IRVoxelEditor::kHelpPanelSize,
+        "HELP"
+    );
+    IRVoxelEditor::g_helpEntries = {
+        {g_editor.palettePanel_, "PALETTE: click a swatch to set the active paint color."},
+        {IRVoxelEditor::g_scrubberSlider, "FRAME: drag to scrub frames (Left/Right keys too)."},
+        {IRVoxelEditor::g_fpsSlider, "FPS: animation playback speed (1-30)."},
+        {IRVoxelEditor::g_layerPanel, "LAYERS: edit-layer stack. Keys K [ ] H also work."},
+        {IRVoxelEditor::g_layerList, "LAYERS: click a layer row to make it active."},
+        {IRVoxelEditor::g_layerVisCheckbox, "VISIBLE: toggle the active layer's visibility (H)."},
+        {IRVoxelEditor::g_layerAddBtn, "ADD: create a new edit layer."},
+        {IRVoxelEditor::g_layerDelBtn, "DEL: remove the active edit layer."},
+        {IRVoxelEditor::g_bakePanel, "BAKE: pick a shape, set P1/P2, then BAKE the active entity."},
+        {IRVoxelEditor::g_bakeShapeList, "SHAPE: choose the SDF primitive to voxelize."},
+        {IRVoxelEditor::g_bakeParam1Slider, "P1: primary shape parameter (size / radius)."},
+        {IRVoxelEditor::g_bakeParam2Slider, "P2: secondary shape parameter."},
+        {IRVoxelEditor::g_bakeButton, "BAKE: voxelize the selected shape into the active entity."},
+        {IRVoxelEditor::g_bonePaint.bonePanel_,
+         "BONE: click a swatch to pick a bone; N toggles paint."},
+        {IRVoxelEditor::g_skeletonPanel, "SKELETON: click a joint to select it; REN/PAR edit it."},
+        {IRVoxelEditor::g_skeletonList, "JOINTS: click a row to select that joint as active bone."},
+        {IRVoxelEditor::g_jointRenameBtn, "REN: rename the selected joint to the text at left."},
+        {IRVoxelEditor::g_jointReparentBtn, "PAR: reparent selected joint to the index at left."},
+    };
+
     // Ghost preview entity for drag-fill. Invisible until
     // a left-drag starts; the placeEraseSystem sets flags_/params_/pos_ each HELD
     // frame and hides it again on RELEASED.
@@ -3050,4 +3257,28 @@ void initEntities() {
     // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
     // symmetry axes are active so the user can see modifier state at a glance.
     IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
+
+    // GUI-test assertions (P3, #1796) — populated here (not at the constexpr
+    // shot table) because they reference runtime widget EntityIds. The
+    // hover-export singleton (one per world) lets HOVERS read the topmost
+    // hovered widget via WIDGET_INPUT::endTick. The scripted GUI-assert shot
+    // parks the cursor on the layer list and clicks; the pick shot casts a ray
+    // onto the scene. PICKS_VOXEL's expected voxel is the regression baseline
+    // for screen→world picking alignment.
+    IRPrefab::Widget::makeGuiHoverState();
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kGuiAssertShotIndex] = {
+        IRPrefab::GuiTest::hovers(IRVoxelEditor::g_layerList, "layer_list_hover"),
+        IRPrefab::GuiTest::clickFires(IRVoxelEditor::g_layerList, "layer_list_click"),
+        IRPrefab::GuiTest::checkbox(IRVoxelEditor::g_layerVisCheckbox, true, "layer_visible"),
+        IRPrefab::GuiTest::sliderValue(
+            IRVoxelEditor::g_fpsSlider,
+            IRVoxelEditor::g_anim.fps_,
+            0.5f,
+            "fps_value"
+        ),
+    };
+    constexpr ivec3 kScenePickExpected{-1, -1, -1};
+    IRVoxelEditor::g_shotAssertions[IRVoxelEditor::kPickVoxelShotIndex] = {
+        IRPrefab::GuiTest::picksVoxel(kScenePickExpected, "scene_pick"),
+    };
 }

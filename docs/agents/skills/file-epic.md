@@ -269,6 +269,18 @@ The per-ticket plan adds **implementation detail beyond the issue body**.
 Don't duplicate — point at the umbrella plan for arch context, then add file
 paths, code-level approach, and verification.
 
+Each per-ticket plan must carry the **same rigor as a standalone plan**
+(PLANNING-PROTOCOL.md step 2): state the **verified current state** of the
+code this child touches (with a **confirmed repro against the actual code
+path** when the child fixes a defect), commit to **one approach** — never a
+"confirm during investigation/design" hand-off to the worker — and
+**reconcile siblings + in-flight PRs** on the same surface (including the
+epic's other children: say what this child assumes its predecessors have
+landed). A child plan that just restates the umbrella's phase line is a stub
+— #1440's 23-line stub prescribed an approach a sibling had already proved
+wrong (#1456). The queue's plan gate checks only that the file *exists*;
+the rigor is on the author.
+
 ### 6.5. Commit the plan files into the repo (REQUIRED — workers read from master)
 
 The **plans dir** (`~/.fleet/plans/`) is **local staging only** — it is
@@ -369,6 +381,10 @@ auto-approve).
   or several `**Blocked by:**` lines. The gate unions every ref.
 - ❌ Per-ticket plan files that duplicate the issue body verbatim. The plan
   adds implementation detail; the issue is the discussion surface.
+- ❌ Per-ticket plan files that restate the umbrella's phase line and stop.
+  Each child plan meets PLANNING-PROTOCOL.md step-2 rigor on its own:
+  verified current state / confirmed repro, one picked approach, sibling +
+  in-flight reconciliation (#1456).
 - ❌ Skipping the umbrella summary comment — the umbrella↔children
   cross-reference then isn't visible from the umbrella's own thread.
 - ❌ Filing an epic for changes that are really one ticket. If the scope

@@ -60,7 +60,7 @@ effort_for() {
 echo "T1: model-derived defaults"
 assert_eq "$(effort_for fable opus-architect)"  "xhigh" "fable model -> xhigh default"
 assert_eq "$(effort_for opus opus-architect)"   "xhigh" "opus model -> xhigh default"
-assert_eq "$(effort_for sonnet sonnet-author)"  "high"  "sonnet model -> high default"
+assert_eq "$(effort_for sonnet worker)"         "high"  "sonnet model -> high default"
 # Manual run of a dispatched role keys on the model, not the dispatcher's
 # per-role policy — heavy models -> xhigh even for opus-reviewer
 # (documented; the real fleet launches reviewers via the dispatcher, not

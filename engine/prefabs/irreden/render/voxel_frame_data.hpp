@@ -46,12 +46,14 @@ inline void buildVoxelFrameData(
 
     const auto renderMode = IRRender::getSubdivisionMode();
     const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
-    // Clamp to 1: voxelDispatchGridForCount divides by the count, and the
-    // lighting passes author frame data for canvases whose pool is EMPTY
-    // (authorIteratingCanvasVoxelFrame / restoreMainCanvasVoxelFrame have no
-    // liveVoxelCount gate — observed as a SIGFPE on a lit scene whose main
-    // canvas holds zero voxels, #1619 step-0 harness). voxelCount_ below still
-    // carries the honest 0, which gates all shader-side work.
+    // Clamp to 1: voxelDispatchGridForCount divides by the count (and asserts
+    // count > 0 at entry), and the lighting passes author frame data
+    // for canvases whose pool is EMPTY (authorIteratingCanvasVoxelFrame /
+    // restoreMainCanvasVoxelFrame have no liveVoxelCount gate — observed as a
+    // SIGFPE on a lit scene whose main canvas holds zero voxels, #1619 step-0
+    // harness). This clamp is the one deliberate empty-pool exception to that
+    // contract; voxelCount_ below still carries the honest 0, which gates all
+    // shader-side work.
     const ivec2 dispatchGrid = voxelDispatchGridForCount(IRMath::max(liveVoxelCount, 1));
 
     frameData.cameraTrixelOffset_ = IRRender::getEffectiveCameraIso();
@@ -119,9 +121,10 @@ inline void buildVoxelFrameData(
         frameData.faceDeform_[0] = vec4(fd0[0], fd0[1]);
         frameData.faceDeform_[1] = vec4(fd1[0], fd1[1]);
         frameData.faceDeform_[2] = vec4(fd2[0], fd2[1]);
-        // World-receive opt-in (#1576 P4b-2). When the owner world-places this
-        // re-voxelize solid (C_EntityCanvas::worldPlaced_, propagated onto
-        // canvasRotation), publish its world cell origin + the enable flag so
+        // World receive (#1576 P4b-2; the default since #1624 — the owner's
+        // C_EntityCanvas::screenLocked_ opts out, propagated onto
+        // canvasRotation). When world-placed, publish the world cell origin +
+        // the enable flag so
         // COMPUTE_VOXEL_AO / LIGHTING_TO_TRIXEL recover each voxel's WORLD pos as
         // (model pos + .xyz) and sample the shared world sun-shadow map + light
         // volume there. Off → the default screen-locked overlay (.w == 0) stays

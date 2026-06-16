@@ -22,6 +22,7 @@ struct SystemTimingEntry {
 struct GpuStageEntry {
     std::string name_;
     float totalMs_ = 0.0f;
+    float minMs_ = 0.0f;
     float maxMs_ = 0.0f;
     uint32_t sampleCount_ = 0;
 };

@@ -12,6 +12,10 @@ namespace IRRender {
 
 inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
+// Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
+// for both the registry array and the parallel per-stage accumulator array.
+inline constexpr std::size_t kGpuStageCount = 20;
+
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
     float voxelCompactMs_ = 0.0f;
@@ -143,6 +147,47 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
     return instance;
 }
 
+// Per-stage running GPU-timing accumulator. The `gpu_stage_timing_observer`
+// records one sample per resolved timestamp pair per stage; the world's
+// profile-report builder drains the array (indexed parallel to
+// `gpuStageRegistry()` order) at shutdown for true avg / min / max across the
+// run. The single `GpuStageTiming::*Ms_` field only ever holds the *last*
+// frame's sample, so without this accumulator the report can only echo that
+// one value — which is why every stage previously reported Avg == Max (#1738).
+// `enableFrameTiming(true)` calls `resetGpuStageAccumulators()` so each
+// measurement run starts from zero.
+struct GpuStageAccumulator {
+    double sumMs_ = 0.0;
+    float maxMs_ = 0.0f;
+    float minMs_ = 0.0f;
+    std::uint32_t sampleCount_ = 0;
+
+    void record(float ms) {
+        sumMs_ += ms;
+        maxMs_ = IRMath::max(maxMs_, ms);
+        minMs_ = sampleCount_ == 0 ? ms : IRMath::min(minMs_, ms);
+        ++sampleCount_;
+    }
+
+    void reset() {
+        sumMs_ = 0.0;
+        maxMs_ = 0.0f;
+        minMs_ = 0.0f;
+        sampleCount_ = 0;
+    }
+};
+
+inline std::array<GpuStageAccumulator, kGpuStageCount> &gpuStageAccumulators() {
+    static std::array<GpuStageAccumulator, kGpuStageCount> instance{};
+    return instance;
+}
+
+inline void resetGpuStageAccumulators() {
+    for (auto &acc : gpuStageAccumulators()) {
+        acc.reset();
+    }
+}
+
 // Authoritative mapping name → field → budget. `gpu_stage_timing_observer`
 // resolves a system's tag against this table; pass the same name to
 // `IRRender::tagGpuStage(system, "<name>")` and the observer fills the
@@ -160,9 +205,10 @@ inline VoxelCullAccumulator &voxelCullAccumulator() {
 // above — `voxelStage2`'s dispatch now runs inside VOXEL_TO_TRIXEL_STAGE_1),
 // and `shapeCompact` (no system has ever written it; reserved for a
 // future shape-compaction pass). They stay in the registry to keep
-// the Lua API and perf overlay stable; their reported value is 0.0f.
-inline const std::array<GpuStageInfo, 20> &gpuStageRegistry() {
-    static const std::array<GpuStageInfo, 20> registry{{
+// the Lua API and perf overlay stable — the overlay still shows them at
+// 0.0f; the shutdown profile report omits them (sampleCount_ == 0).
+inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
+    static const std::array<GpuStageInfo, kGpuStageCount> registry{{
         {"canvasClear", &GpuStageTiming::canvasClearMs_, 0.05f},
         {"voxelCompact", &GpuStageTiming::voxelCompactMs_, 0.10f},
         {"voxelStage1", &GpuStageTiming::voxelStage1Ms_, 0.20f},

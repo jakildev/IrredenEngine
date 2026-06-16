@@ -34,7 +34,7 @@
 # -----
 #   fleet-pr-claim-feedback <pr-number> <agent> [--repo <slug>]
 #
-#   <agent>        your worktree basename (e.g. opus-worker-2); the
+#   <agent>        your worktree basename (e.g. worker-2); the
 #                  lex-min identity stamped into the claim label.
 #   --repo <slug>  gh owner/repo of the PR (e.g. jakildev/irreden for
 #                  game PRs). Default: jakildev/IrredenEngine (engine).

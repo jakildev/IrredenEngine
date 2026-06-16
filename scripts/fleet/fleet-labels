@@ -105,8 +105,8 @@ LABELS=(
     "fleet:epic|cc317c|Parent issue tracking a set of child issues; the epic-steward maintains its Children checklist and closes it via the close-out flow once every child is verified closed"
     "fleet:queued|c5def5|Queued for fleet pickup (requires human:approved)"
     "fleet:fable|1d76db|Model-affinity tag (fable class — opt-in for hard work); heavy lane dispatches it on Fable"
-    "fleet:opus|1d76db|Model-affinity tag set by fleet-queue-ingest; opus-worker picks tasks with this label"
-    "fleet:sonnet|1d76db|Model-affinity tag set by fleet-queue-ingest; sonnet-author picks tasks with this label"
+    "fleet:opus|1d76db|Model-affinity tag set by fleet-queue-ingest; opus-class workers pick tasks with this label"
+    "fleet:sonnet|1d76db|Model-affinity tag set by fleet-queue-ingest; sonnet-class workers pick tasks with this label"
     "fleet:blocked|c5def5|Queued task whose **Blocked by:** predecessor is still open; not plainly claimable (fleet-claim refuses a plain claim; --stackable-on works). Stamped/cleared by fleet-queue-ingest as blockers close"
     "fleet:needs-info|fbca04|Needs more info from the author before triage"
     "fleet:needs-plan|fbca04|Needs an architect plan before a worker can pick it up"
@@ -119,7 +119,7 @@ LABELS=(
     "fleet:needs-fix|d73a4a|Reviewer agent flagged correctness/quality issues"
     "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
     "fleet:needs-opus-recheck|1d76db|Sonnet first-pass review approved but ended 'Opus recheck required'; the explicit signal the scout projection wakes the opus-reviewer on. opus-reviewer removes it when its pass completes, whatever the verdict"
-    "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus-worker resolves or escalates"
+    "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus+-class worker resolves or escalates"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
     "fleet:design-blocked|fbca04|Worker escalated for architectural input mid-task; architect should respond"
     "fleet:design-unblocked|c5def5|Architect responded; worker resumes per the architect comment + updated plan file"
@@ -150,7 +150,7 @@ LABELS=(
     "human:re-review|5319e7|Human pushed changes; reviewer agent should re-review"
     # NOTE: fleet:reviewing-<host>-<agent> is dynamic — it encodes host +
     # agent identity, and there's a combinatorial explosion of valid names
-    # (mac/windows/linux × {sonnet-fleet-N, opus-worker-N, opus-reviewer,
+    # (mac/windows/linux × {worker-N, opus-reviewer,
     # sonnet-reviewer, ...}). It's created on demand by `fleet-claim
     # review-claim` via POST .../labels (GitHub assigns a random color on
     # first use) and removed by the verdict label-swap or by

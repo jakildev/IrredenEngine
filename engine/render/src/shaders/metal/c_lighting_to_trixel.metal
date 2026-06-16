@@ -154,17 +154,21 @@ kernel void c_lighting_to_trixel(
     // Sun direction is world frame; worldNormal (decoded above) is the matching
     // world-frame surface normal; Lambert is a plain dot product. Mirrors GLSL.
     const float lambert = max(0.0f, dot(worldNormal, sunFrameData.sunDirection.xyz));
+    // Sun-shadow darkens only the directional term; ambient is never blocked —
+    // see the GLSL twin (a fully self-shadowed re-voxelize side face was
+    // collapsing to pure black). Unshadowed pixels stay byte-identical.
     const float faceFactor =
-        mix(sunFrameData.sunAmbient, 1.0f, lambert) * sunFrameData.sunIntensity;
+        (sunFrameData.sunAmbient + (1.0f - sunFrameData.sunAmbient) * lambert * shadow) *
+        sunFrameData.sunIntensity;
 
     float3 baseRgb;
     if (frameData.lutEnabled == 0) {
-        baseRgb = src.rgb * ao * shadow * faceFactor;
+        baseRgb = src.rgb * ao * faceFactor;
     } else {
         constexpr sampler s(filter::nearest, address::clamp_to_edge);
         const float  luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
         const float4 lut       = paletteLUT.sample(s, float2(ao, luminance));
-        baseRgb = src.rgb * lut.rgb * shadow * faceFactor;
+        baseRgb = src.rgb * lut.rgb * faceFactor;
     }
 
     // Light-volume bleed: the world / per-axis camera canvases sample the shared

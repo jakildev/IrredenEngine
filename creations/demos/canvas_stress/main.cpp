@@ -78,15 +78,16 @@
 // each frame, and the standard lighting pipeline (AO + sun + shadows)
 // runs so face orientation is visually perceptible.
 //
-// Rotation-mode contract (#1582 / #1620): the orbit-ring DETACHED/
-// DETACHED_REVOXELIZE entities remain SCREEN-LOCKED overlays. The two center
-// re-voxelize proof solids are WORLD-PLACED by default (C_EntityCanvas::
-// worldPlaced_ = true, P4b-1/#1592 + P4b-2/#1617) so they depth-sort against
-// the SDF floor and receive world sun-shadow + light-volume at their world pos.
-// Run with --screen-lock-revox to revert to screen-locked overlays (the
-// detached-canvas canary path). GRID-mode cubes and world-placed re-voxelize
-// solids cast world shadows (P4b-3 / #1596); the detached orbit ring and
-// canary cubes cast none by design (#1582 Option B).
+// Rotation-mode contract (#1624, supersedes #1582/#1620): every detached
+// canvas — canary cubes, orbit ring, re-voxelize proof solids — is
+// WORLD-PLACED by default (C_EntityCanvas::screenLocked_ = false): it
+// depth-sorts against the SDF floor and world geometry, and the re-voxelize
+// solids receive (P4b-2/#1617) + cast (P4b-3/#1596) world sun-shadow at their
+// world pos. Plain-DETACHED orbiters depth-sort only (forward-scatter has no
+// faithful world-pos recovery for lighting). Run with --screen-lock-detached
+// to opt the whole demo back into fixed-depth overlays at the pre-#1624
+// canary layout — byte-identical to the pre-flip default scene, the
+// regression canary for the screenLocked_ opt-out path.
 // See render/CLAUDE.md "Rotation modes".
 
 using namespace IRComponents;
@@ -111,12 +112,13 @@ struct CanvasStressSettings {
     // ring). Discriminates cross-canvas clobber (renders alone, breaks with
     // neighbours) from a single-canvas mode-1 chain defect (breaks alone too).
     bool soloRevox_ = false;
-    // ON by default: the two center re-voxelize solids opt into world-placement
-    // (C_EntityCanvas::worldPlaced_) so they depth-sort against the SDF floor
-    // spawned unconditionally by #1587. Pass --screen-lock-revox to revert to
-    // the screen-locked overlay path (the detached-canvas regression canary, and
-    // the behavior the committed references were captured against).
-    bool worldPlaceReVox_ = true;
+    // OFF by default (#1624): every detached canvas in the demo rides the
+    // world-placed engine default and depth-sorts against the #1587 SDF floor.
+    // Pass --screen-lock-detached (legacy alias --screen-lock-revox) to opt
+    // them ALL into C_EntityCanvas::screenLocked_ AND keep the pre-#1624
+    // canary z — reproducing the pre-flip overlay scene byte-for-byte, the
+    // regression canary for the screen-locked opt-out path.
+    bool screenLockDetached_ = false;
     // #1721 diagnosis harness. `--only <group>[,<group>...]` spawns only the
     // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
     // 0 means no filter (default run, byte-identical). The sweep flags replace
@@ -133,6 +135,20 @@ struct CanvasStressSettings {
     int sweepYawCount_ = 0;
     int sweepFramesCount_ = 0;
     int sweepFramesSettle_ = 0;
+    // `--auto-profile` enables per-system frame timing so the World dtor
+    // writes save_files/profile_report.txt on the auto-screenshot exit —
+    // the per-system CPU sensor for the rotating-GRID / re-voxelize load
+    // this demo uniquely exercises (perf_grid has no rotating sets).
+    bool autoProfile_ = false;
+    // `--debug-overlay <mode>` forces a render debug overlay for the whole run
+    // (none|ao|light_level|shadow|peraxis_id|peraxis_origin|unlit). T-1 (#1767)
+    // captures with `--debug-overlay shadow` so cast shadows read magenta and
+    // render-shadow-metric.py (#1765) can classify the swiss-cheese / dithering
+    // signature (epic #1717). The run-global form keeps the shared
+    // AutoScreenshotShot table backend-agnostic — a per-shot overlay field is
+    // deferred to the structural-gate work (T-2/T-3). NONE leaves the live
+    // pipeline untouched, so a flagless run is byte-identical.
+    IRRender::DebugOverlayMode debugOverlay_ = IRRender::DebugOverlayMode::NONE;
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -358,6 +374,7 @@ void spawnDetachedVoxelObject(
         kCanvasSize,
         kPoolSize
     );
+    canvas.screenLocked_ = g_settings.screenLockDetached_;
 
     // The voxel cube lives centered in the detached canvas's pool so
     // SYSTEM_REBUILD_DETACHED_VOXELS rotates its cells about the pool origin
@@ -414,16 +431,17 @@ void spawnDetachedReVoxelizeSolid(
     Color color,
     bool carveAsymmetric,
     bool multiColor = false,
-    bool worldPlaced = false
+    bool screenLocked = false
 ) {
     C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
         "revox_canvas_" + std::to_string(index),
         kReVoxCanvasSize,
         kReVoxPoolSize
     );
-    // #1576 P4b-1: opt this detached canvas into world-depth compositing so it
-    // depth-sorts against the world grid (off by default → screen-locked overlay).
-    canvas.worldPlaced_ = worldPlaced;
+    // World-depth compositing is the engine default (#1624); `screenLocked`
+    // (--screen-lock-detached / --solo-revox) reverts this solid to the
+    // fixed-depth overlay regression path.
+    canvas.screenLocked_ = screenLocked;
 
     // Light the re-voxelize solid (#1558): AO + directional sun + sky. Attached
     // HERE — on the re-voxelize canvas only — not on the shared kVoxelPoolCanvas
@@ -588,6 +606,7 @@ void spawnOrbitShape(
         canvasSize,
         poolSize
     );
+    canvas.screenLocked_ = g_settings.screenLockDetached_;
     const EntityId solid = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
         C_VoxelSetNew{shapeSize, color, true, canvas.canvasEntity_}
@@ -649,15 +668,18 @@ void parseArgs(int argc, char **argv) {
             g_settings.noSpin_ = true;
         } else if (std::strcmp(argv[i], "--no-lighting") == 0) {
             g_settings.noLighting_ = true;
-        } else if (std::strcmp(argv[i], "--screen-lock-revox") == 0) {
-            g_settings.worldPlaceReVox_ = false;
+        } else if (
+            std::strcmp(argv[i], "--screen-lock-detached") == 0 ||
+            std::strcmp(argv[i], "--screen-lock-revox") == 0
+        ) {
+            g_settings.screenLockDetached_ = true;
         } else if (std::strcmp(argv[i], "--solo-revox") == 0) {
             g_settings.soloRevox_ = true;
             // The solo harness spawns no floor to depth-sort against, and the
             // #1619 step-0 GL evidence (committed crops) was captured on the
             // screen-locked overlay path — keep the lone L-prism screen-locked
-            // rather than inheriting the #1621 world-place default.
-            g_settings.worldPlaceReVox_ = false;
+            // rather than inheriting the world-place default.
+            g_settings.screenLockDetached_ = true;
         } else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) {
             g_settings.onlyGroups_ |= parseSpawnGroups(argv[i + 1]);
             ++i;
@@ -670,6 +692,11 @@ void parseArgs(int argc, char **argv) {
             g_settings.sweepFramesCount_ = std::atoi(argv[i + 1]);
             g_settings.sweepFramesSettle_ = std::atoi(argv[i + 2]);
             i += 2;
+        } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
+            g_settings.autoProfile_ = true;
+        } else if (std::strcmp(argv[i], "--debug-overlay") == 0 && i + 1 < argc) {
+            g_settings.debugOverlay_ = IRRender::debugOverlayModeFromString(argv[i + 1]);
+            ++i;
         }
     }
     if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
@@ -692,6 +719,9 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: canvas_stress");
     IREngine::init(argv[0]);
     readConfig();
+    if (g_settings.autoProfile_) {
+        IREngine::enableFrameTiming(true);
+    }
 
     initSystems();
     initCommands();
@@ -700,6 +730,12 @@ int main(int argc, char **argv) {
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
     IRPrefab::Camera::setYaw(g_settings.cameraYaw_);
+
+    // T-1 (#1767): force the requested debug overlay for the whole run.
+    // NONE (the default) is a no-op so a flagless run stays byte-identical.
+    if (g_settings.debugOverlay_ != IRRender::DebugOverlayMode::NONE) {
+        IRRender::setDebugOverlay(g_settings.debugOverlay_);
+    }
 
     IREngine::gameLoop();
     return 0;
@@ -837,6 +873,23 @@ void initSystems() {
             // Wide pull-back framing the full orbit ring (radius 200) around the
             // center cluster, so the added shape variety reads as one tumbling orbit.
             g_allShots.push_back({0.32f, vec2(0.0f), 0.0f, "orbit_overview"});
+            // T-1 (#1767) structural-validation framing shots for epic #1766.
+            // Appended AFTER the manifest suite so render-verify (which reads the
+            // first N=manifest shots) ignores them — they feed the structural
+            // metrics, not the pixel-diff gate (T-2 #1768 wires the gate). Both
+            // stay at camera (0,0) for the detached-canvas cull contract above.
+            //
+            // (a) Cast-shadow occupancy: a wide framing of the #1587 SDF floor,
+            //     the GRID spin row, and the grounded re-voxelize cast-proof cube
+            //     (#1596). Capture with `--debug-overlay shadow` so cast shadows
+            //     read magenta and render-shadow-metric.py (#1765) measures
+            //     hole_ratio / components (the swiss-cheese signature, #1717).
+            g_allShots.push_back({0.55f, vec2(0.0f), 0.0f, "shadow_overlay_floor"});
+            // (b) Re-voxelize surface coverage: the screen-center solid column
+            //     zoomed for per-voxel surface readout, captured in normal render
+            //     so a coverage metric can count interior background holes inside
+            //     the solid silhouette (the #1619-class missing-face defect).
+            g_allShots.push_back({2.4f, vec2(0.0f), 0.0f, "revox_coverage"});
         }
 
         IRVideo::AutoScreenshotConfig cfg{};
@@ -991,13 +1044,21 @@ void initEntities() {
         {210, 90, 220, 255},
         {70, 210, 210, 255},
     };
+    // World-placed canaries (#1624) must clear the #1587 floor slab
+    // (z ∈ [kFloorZ ± kFloorThickness/2] = [2, 6]): at the legacy z = 0 a
+    // spinning 10³ cube (rotated half-diagonal 5√3 ≈ 8.66) sweeps into the
+    // band and reads as sunk through the floor. z = -8 keeps the full SO(3)
+    // sweep above the floor top (max extent z ≈ 0.66 < 2). The legacy z is
+    // kept under --screen-lock-detached so the opt-out scene stays
+    // byte-identical to the pre-#1624 default.
+    const float canaryZ = g_settings.screenLockDetached_ ? 0.0f : -8.0f;
     for (int i = 0; i < detached; ++i) {
         const int col = i % cols;
         const int row = i / cols;
         const vec3 worldPos{
             (static_cast<float>(col) - colCenter) * kDetachedSpacing,
             (static_cast<float>(row) - rowCenter) * kDetachedSpacing,
-            0.0f
+            canaryZ
         };
         // Per-entity spin rate: base * (i + 1) so adjacent canvases visibly
         // de-sync within the auto-screenshot capture window (#1259). Spin
@@ -1027,7 +1088,7 @@ void initEntities() {
             Color{255, 150, 60, 255},
             /*carveAsymmetric=*/true,
             /*multiColor=*/true,
-            /*worldPlaced=*/g_settings.worldPlaceReVox_
+            /*screenLocked=*/g_settings.screenLockDetached_
         );
     }
     if (!g_settings.soloRevox_ && groupEnabled(kGroupReVox)) {
@@ -1040,7 +1101,7 @@ void initEntities() {
             Color{70, 210, 210, 255},
             /*carveAsymmetric=*/false,
             /*multiColor=*/false,
-            /*worldPlaced=*/g_settings.worldPlaceReVox_
+            /*screenLocked=*/g_settings.screenLockDetached_
         );
     }
 
@@ -1068,7 +1129,7 @@ void initEntities() {
             Color{210, 120, 255, 255},
             /*carveAsymmetric=*/false,
             /*multiColor=*/false,
-            /*worldPlaced=*/g_settings.worldPlaceReVox_
+            /*screenLocked=*/g_settings.screenLockDetached_
         );
     }
 
@@ -1080,14 +1141,15 @@ void initEntities() {
     constexpr int kOrbitCount = 12;
     constexpr float kOrbitRadius = 200.0f;
     // Shape↔mode pairing is by robustness. Both CELL-REBAKING paths — GRID (main
-    // world canvas) and DETACHED_REVOXELIZE (detached) — now re-derive the
-    // exposed mask against the rotated cells (#1570 detached + its GRID parity),
-    // so they render detailed SOLID shapes (sphere / octahedron) cleanly, not
-    // just cubes. What still aliases on those paths is THIN geometry (round-to-
-    // cell leaves gaps in wireframes / arms), so the frame + cross go to the
-    // forward-scatter DETACHED path, which deforms face SHAPES instead of moving
-    // cells and renders thin detail crisply. Spheres appear on all three paths
-    // for a side-by-side of the techniques.
+    // world canvas) and DETACHED_REVOXELIZE (detached) — re-derive the exposed
+    // mask against the rotated cells (#1570) and inverse-resample the dest
+    // lattice (#1619 detached, #1720 GRID), so coverage is hole-free for solids
+    // AND for thin carved shapes (the full-box span has slot slack ≫ covered
+    // cells). The CROSS rides the GRID path deliberately as the standing thin-
+    // geometry regression guard (#1720 DoD); the FRAME stays on forward-scatter
+    // DETACHED, which deforms face SHAPES instead of moving cells (the
+    // wireframe also showcases that technique's crisp thin detail). Spheres
+    // appear on all three paths for a side-by-side of the techniques.
     constexpr OrbitShape kOrbitShapes[kOrbitCount]{
         OrbitShape::SPHERE,
         OrbitShape::FRAME,
@@ -1106,8 +1168,8 @@ void initEntities() {
         RotationMode::GRID,
         RotationMode::DETACHED,
         RotationMode::DETACHED_REVOXELIZE,
-        RotationMode::GRID,
-        RotationMode::DETACHED,
+        RotationMode::DETACHED, // octahedron
+        RotationMode::GRID,     // cross — the standing GRID thin-geometry guard (#1720)
         RotationMode::DETACHED_REVOXELIZE,
         RotationMode::GRID,
         RotationMode::DETACHED,

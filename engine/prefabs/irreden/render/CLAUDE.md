@@ -8,10 +8,32 @@ the ECS surface.
 ## Key components
 
 - `C_TriangleCanvasTextures` — owns 3 GPU textures (color / distance /
-  entity-id). **Created in ctor, destroyed in `onDestroy()`.** The
-  color/distance/entity-id format triple is centralized in
+  entity-id) plus a Hi-Z max-depth mip chain over the distance texture
+  (`hiZMips_`, #1294). **All created in ctor, destroyed in `onDestroy()`.**
+  The color/distance/entity-id format triple is centralized in
   `detail::makeCanvas*Texture` factories in its header so other canvas
-  components can't drift from it.
+  components can't drift from it; `detail::makeHiZMipChain` builds the
+  downsampled R32I levels (conceptual level 0 is the distance texture).
+  `COMPUTE_DISTANCE_HIZ` downsample-maxes the chain each frame for the
+  voxel occlusion cull (`docs/design/voxel-occlusion-culling.md`). The
+  chunk-occlusion pre-pass (#1294 child 2/3) consumes it inside
+  `VOXEL_TO_TRIXEL_STAGE_1` — HZB-testing each pool-chunk's iso AABB against
+  last frame's chain and ANDing occluded chunks out of `ChunkVisibility`
+  before the compact pass — but is gated off by default
+  (`IRRender::setVoxelOcclusionCullEnabled`), so the chain stays produced-only
+  in the default pipeline. When enabled it also self-disables for one frame
+  after a discontinuous camera move (#1294 child 3/3): `VOXEL_TO_TRIXEL_STAGE_1`
+  `beginTick` compares the camera iso to last frame's and, on a jump over half
+  the visible viewport (cut/teleport/first frame), keeps every chunk that frame
+  — last frame's Hi-Z is the cull's lag source and is stale across a cut. Output
+  is bit-identical cull-on vs cull-off (fully-occluded voxels write nothing); the
+  per-chunk realized payoff is weak vs the per-voxel ceiling (per-voxel follow-on
+  tracked separately). Also carries `renderedSubdivisions_`, stamped each frame
+  by `VOXEL_TO_TRIXEL_STAGE_1` with the sub this canvas actually rastered at
+  (below the global effSub when the `subdivisionCap` fired); the detached
+  composite reads it to rescale model-frame depth into shared framebuffer units
+  (the world-placed depth fix, see "World-integration mechanics" below). 0 = no
+  voxel raster this frame.
 - `C_PerAxisTrixelCanvases` — three per-axis (X/Y/Z) trixel texture sets
   for smooth rotation (#1308; `docs/design/per-axis-trixel-canvas-rotation.md`).
   Same GPU-RAII pattern as `C_TriangleCanvasTextures` but allocated
@@ -366,7 +388,25 @@ so its expanded item panel paints over any neighbor it overlaps.
 per-kind apply followers exist so the input system itself never calls
 `getComponent` on per-entity kind-specific data — slider value and
 checkbox toggle land on their own dedicated systems whose archetype
-filter already includes the kind-specific component.
+filter already includes the kind-specific component. Its `endTick`
+publishes the z-ordered topmost hovered widget (`topHoveredId_`) into the
+optional `C_GuiHoverState` singleton (#1796); create one per world with
+`IRPrefab::Widget::makeGuiHoverState()` and read it back with
+`hoveredWidget()`. No singleton → the publish is a no-op, so non-test
+creations pay nothing.
+
+**Headless GUI assertions (P3, #1796).** `gui_test_assertions.hpp`
+exposes `IRPrefab::GuiTest::` — capture-frame assertions
+(`hovers` / `clickFires` / `sliderValue` / `checkbox` / `picksVoxel`)
+over the introspectable widget + picking state, each emitting one
+machine-readable `GUI-ASSERT …` log line. Evaluation lives in the prefab
+layer (it needs widget / picking access engine/video lacks); the
+`engine/video` scripted-shot harness drives it through the type-erased
+`IRVideo::GuiTestConfig::onAssertFrame_` callback, threading a
+caller-owned `GuiTest::LatchState` (CLICK_FIRES latches the one-frame
+`fireAction_` pulse across the settle window). Reference wiring:
+`creations/editors/voxel_editor/main.cpp` (`editor_gui_assert` /
+`editor_pick_voxel` shots).
 
 `WIDGET_RENDER_*` is split per kind for the same reason. Each renders
 its own backgrounds, borders, and label text onto the **GUI canvas**
@@ -419,11 +459,12 @@ when extending or composing widgets:
   scrollable content by reading `scrollPos_` itself; it does not
   reparent into the scroll widget.
 
-## Rotation modes: GRID is world-integrated, DETACHED is a screen-locked overlay
+## Rotation modes: GRID re-rasterizes the world pool, DETACHED rides a private canvas
 
 A rotating solid reaches the framebuffer through one of two `C_RotationMode`
-paths, and the choice determines whether it participates in world depth and
-lighting. This is a deliberate split, not an asymmetry to "fix" (#1582 decision):
+paths. Since #1624 (see `docs/design/detached-canvas-depth-default.md`) both
+participate in world depth **by default**; the differences are cost and how
+far lighting integration goes:
 
 - **`GRID`** (the default) — `REBUILD_GRID_VOXELS` re-rasterizes the entity's
   rotated voxels into the **shared world pool** every frame, so they write world
@@ -435,42 +476,59 @@ lighting. This is a deliberate split, not an asymmetry to "fix" (#1582 decision)
 - **`DETACHED` / `DETACHED_REVOXELIZE`** — the rotated solid renders on a
   **private canvas** (camera-yaw-zeroed, at the camera origin) which
   `ENTITY_CANVAS_TO_FRAMEBUFFER` (`system_entity_canvas_to_framebuffer.hpp`)
-  composites **by default** as a cheap **2D overlay at the iso screen position, at
-  a FIXED framebuffer depth** (`model` Z = 0, `distanceOffset_` = 0). This is the
-  epic #1553 decision-1 contract: cheap per-frame rotation with no world
-  re-rasterization. The deliberate cost of the default: detached entities **do
-  NOT** depth-sort against, cast shadows onto, or receive shadows from world
-  geometry — they never write world `trixelDistances` at their world depth.
-  `DETACHED_REVOXELIZE` only changes *how* the private canvas is filled (GPU
-  scatter bakes rotation into integer cells, removing per-frame spin flicker); by
-  default it is **still a screen-locked overlay**. The **opt-in**
-  `C_EntityCanvas::worldPlaced_` (P4b / #1576) world-integrates a re-voxelize
-  solid — see "World-integration" below.
+  composites at the iso screen position, paying no per-frame world
+  re-rasterization. **By default the canvas is WORLD-PLACED** (#1624): the
+  composite adds the entity's world iso depth
+  (`pos3DtoDistance(roundVec3HalfUp(translation))`) to the canvas's
+  model-frame distances, so the solid depth-sorts against GRID solids, the
+  floor, and other detached canvases on the shared `trixelDistances`
+  convention. A `DETACHED_REVOXELIZE` solid additionally **receives and
+  casts** world sun-shadow + light-volume at its world position (the P4b
+  pipeline below); plain `DETACHED` (octahedral-snap forward-scatter)
+  depth-sorts only — its per-face deform has no faithful world-pos recovery
+  for lighting (and it is on the retirement path, #1589).
+  The **opt-out** `C_EntityCanvas::screenLocked_` restores the fixed-depth
+  **2D overlay** (`model` Z = 0, `distanceOffset_` = 0, no world receive/cast)
+  — byte-identical to the pre-#1624 default (the epic #1553 decision-1 /
+  #1582 Option B contract) — for genuine overlay cases: HUD props,
+  billboards, floating showcases.
 
-**Picking a mode:** need a rotating solid that casts/receives world shadows and
-sorts against world geometry (e.g. a grounded scene with a shadow floor) → use
-`GRID`. Need cheap, isolated rotation where world depth/shadow don't matter (HUD
-props, floating showcases) → use a `DETACHED` mode.
+**Picking a mode:** need world-integrated rotation with exact cell aliasing
+(or shadows cast by thin/concave detail) → `GRID`. Need cheap smooth SO(3)
+rotation that still sorts/casts/receives in the world → `DETACHED_REVOXELIZE`
+(the default world-placed behavior). Need a screen-locked HUD/billboard
+overlay → any `DETACHED` mode with `screenLocked_ = true`.
 
-**World-integration (opt-in, P4b / #1576).** A detached re-voxelize solid can
-opt into world participation via `C_EntityCanvas::worldPlaced_` (default off):
+**World-integration mechanics (P4b / #1576; default since #1624).** How a
+world-placed re-voxelize solid integrates:
 
-- **P4b-1 (landed):** the composite sets `distanceOffset_` to the entity's world
-  iso depth (`pos3DtoDistance(roundVec3HalfUp(translation))`), so the solid
-  depth-sorts against world geometry on the shared GRID `trixelDistances`
-  convention. `worldPlaced_` off stays byte-identical to the overlay contract.
-- **P4b-2 (landed, #1576):** receive. The entity world cell origin is propagated
+- **Depth (P4b-1):** the composite sets `distanceOffset_` to the entity's world
+  iso depth, so the solid depth-sorts against world geometry on the shared GRID
+  `trixelDistances` convention. The shared framebuffer depth runs at
+  `worldDepth × effSub × 4` (the `encodeDepthWithFace` ×4 face-bit shift over
+  the ×subdivision-scaled depth), and a detached canvas rasters its pool at its
+  OWN possibly-capped sub (`subdivisionCap`, #1570 D2), so the composite must
+  (a) scale the offset to those units —
+  `pos3DtoDistance(roundVec3HalfUp(translation)) × effSub × 4` — and (b) rescale
+  the canvas's model-frame `rawDist` by `effSub / renderedSubdivisions_`
+  (carried in `effectiveSubdivisionsForHover_.y`, applied in
+  `f_trixel_to_framebuffer`). Leaving the offset in raw world units (the #1624
+  default) under-scaled it by `effSub × 4`, sinking world-placed solids behind
+  the floor as zoom grew. `screenLocked_` keeps the offset at 0 + scale 1
+  (overlay, byte-identical).
+- **Receive (P4b-2):** the entity world cell origin is propagated
   onto `C_CanvasLocalRotation` (`worldPlaced_` + `worldCellOffset_`) by
   PROPAGATE_CANVAS_ROTATION and published into the shared voxel-frame UBO as
   `detachedWorldReceive_`. When set, `LIGHTING_TO_TRIXEL` recovers each detached
   voxel's WORLD pos (model pos + the offset) and samples the SHARED world
   sun-shadow map (re-running the cascade lookup — shared `ir_sun_shadow_sample`
   with COMPUTE_SUN_SHADOW) + 128³ light volume there, so the solid darkens in
-  world shadow and picks up light bleed like a GRID solid. Gated on the flag →
-  the default overlay path is byte-identical (no per-canvas sun-shadow texture).
-- **P4b-3 (landed, #1596):** cast. `BAKE_SUN_SHADOW_MAP` scatters every opt-in
-  canvas's model-frame distances (+ its world cell origin) into one shared
-  main-canvas-layout scratch (`c_resolve_world_placed_depth`), blits to a
+  world shadow and picks up light bleed like a GRID solid. Only the re-voxelize
+  frame-data branch publishes the flag, so forward-scatter canvases never
+  world-receive.
+- **Cast (P4b-3, #1596):** `BAKE_SUN_SHADOW_MAP` scatters every world-placed
+  re-voxelize canvas's model-frame distances (+ its world cell origin) into one
+  shared main-canvas-layout scratch (`c_resolve_world_placed_depth`), blits to a
   bake-owned R32I resolve texture, and bakes that through the unchanged cardinal
   recovery — ONE extra bake regardless of caster count, mirroring the per-axis
   resolve precedent. Invariant: the sun-shadow bake only ever reads
@@ -478,9 +536,10 @@ opt into world participation via `C_EntityCanvas::worldPlaced_` (default off):
   never a bake input (the direct read returns empty through Metal's
   image-atomic scratch indirection — #1640 tracks the backend gap).
 
-Keep world-depth behind the opt-in — do not move it onto the default path — and
-match the GRID `trixelDistances` convention so an opt-in cell and the same GRID
-cell composite to the same depth (the `detached_world_depth_test` equivalence).
+Match the GRID `trixelDistances` convention so a world-placed cell and the same
+GRID cell composite to the same depth (the `detached_world_depth_test`
+equivalence), and keep the `screenLocked_` overlay path byte-identical to the
+pre-#1624 default.
 
 ## Gotchas
 
@@ -501,8 +560,8 @@ cell composite to the same depth (the `detached_world_depth_test` equivalence).
 - **Render-behavior flags are the knobs.** Changing pipeline behavior
   for a canvas (disable zoom tracking, turn off hover) is done via
   `C_TrixelCanvasRenderBehavior`, not by branching in the systems.
-- **Detached world-placement is on `C_EntityCanvas`, not the render behavior.**
-  The `worldPlaced_` opt-in (see "World-integration" above) lives on
+- **Detached screen-locking is on `C_EntityCanvas`, not the render behavior.**
+  The `screenLocked_` opt-out (see "World-integration mechanics" above) lives on
   `C_EntityCanvas` — which `ENTITY_CANVAS_TO_FRAMEBUFFER` already iterates — not on
   `C_TrixelCanvasRenderBehavior` (the child canvas entity), so the composite reads
   it with no per-tick foreign getComponent.

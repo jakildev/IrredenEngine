@@ -25,9 +25,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_task_class import resolve, feedback_pr_class  # noqa: E402
 
 
-def _task(issue, model=None, effort=None, owner="free", blocked=False):
+def _task(issue, model=None, effort=None, owner="free", blocked=False,
+          inflight_pr=None):
     return {"issue": issue, "model": model, "effort": effort,
-            "owner": owner, "blocked": blocked}
+            "owner": owner, "blocked": blocked, "inflight_pr": inflight_pr}
 
 
 class FeedbackClassFromLabels(unittest.TestCase):
@@ -70,6 +71,47 @@ class TaskResolution(unittest.TestCase):
                                       _task("#12", "opus")]},
                       "opus", fable_blocked=False)
         self.assertEqual(out, "opus xhigh 0")
+
+    def test_inflight_pr_task_skipped_fable_behind_dispatches(self):
+        # #1726 / the #1640 incident: a head-of-queue opus task whose own issue
+        # already has an open (parked design-blocked) PR is non-actionable. The
+        # scout tags it `inflight_pr`; the resolver must skip it AND not count
+        # it toward `more`, so the fable task queued behind it dispatches
+        # instead of the lane churning no-op opus iterations on the parked head.
+        out = resolve({"tasks_open": [
+            _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
+            _task("#1695", "fable"),
+        ]}, "opus", fable_blocked=False)
+        self.assertEqual(out, "fable xhigh 0")
+
+    def test_inflight_pr_only_candidate_defers(self):
+        # The parked task is the ONLY queue item: nothing a fresh worker can
+        # claim, so the lane goes quiet (defer) rather than churning a
+        # lane-default no-op dispatch every tick (#1726 DoD: "goes quiet").
+        out = resolve({"tasks_open": [
+            _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
+        ]}, "opus", fable_blocked=False)
+        self.assertEqual(out, "defer")
+
+    def test_inflight_head_with_blocked_stackable_falls_through(self):
+        # Mixed slice: inflight head + a plain `blocked` task that may still be
+        # stackable. Must NOT defer — '' lets the dispatcher's lane-default
+        # fallthrough reach the worker's stackable tier for the blocked task.
+        out = resolve({"tasks_open": [
+            _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
+            _task("#1641", "opus", blocked=True),
+        ]}, "opus", fable_blocked=False)
+        self.assertEqual(out, "")
+
+    def test_inflight_pr_head_with_capped_fable_defers(self):
+        # Head parked (skipped), only remaining work is cap-blocked fable ->
+        # defer (keep trigger, dispatch nothing) rather than electing the
+        # parked opus head.
+        out = resolve({"tasks_open": [
+            _task("#1640", "opus", inflight_pr={"number": 1700, "parked": True}),
+            _task("#1695", "fable"),
+        ]}, "opus", fable_blocked=True)
+        self.assertEqual(out, "defer")
 
     def test_feedback_beats_tasks(self):
         out = resolve({"feedback_prs": [{"labels": ["fleet:has-nits"]}],
