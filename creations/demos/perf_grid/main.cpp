@@ -116,6 +116,7 @@ struct CliOverrides {
     float zoom_ = 0.5f;
     bool yawSet_ = false;
     float yaw_ = 0.0f;
+    bool yawRamp_ = false;
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
     bool subdivisionModeSet_ = false;
@@ -147,6 +148,32 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(16, 8), 0.0f, "zoom4_pan"},
     {4.0f, vec2(16, 8), 0.35f, "zoom4_rot_pan"},
 };
+
+// --yaw-ramp harness: the rotated-solidity validation set. Run with
+// `--mode dense --yaw-ramp --auto-screenshot` (driven by
+// scripts/dev/perf-grid-rotate-sweep). Rotates a solid 64^3 cube slowly through
+// the full camera-yaw circle (0 → 2pi) in small fixed steps at a constant
+// whole-cube zoom, capturing every step. The small per-step delta is the point:
+// the iterative lighting (light volume / AO / sun-shadow) accumulates across
+// frames on the live canvas, so a few large yaw jumps capture it mid-converge
+// and unlit faces read as spurious background "holes" — a slow ramp keeps it
+// converged frame-to-frame, isolating true geometry/coverage loss from that
+// settling artifact. A solid cube must stay a solid cube at every yaw. Each
+// capture is scored by scripts/render-coverage-metric.py (interior holes) +
+// scripts/render-silhouette-metric.py (edge raggedness).
+//
+// Built at init (runtime, not constexpr) so the step count lives in one place;
+// the vector must outlive the game loop, so it is a file-scope global.
+std::vector<IRVideo::AutoScreenshotShot> g_yawRampShots;
+
+void buildYawRampShots() {
+    constexpr int kRampSteps = 36; // 10deg per step around the full circle
+    g_yawRampShots.reserve(kRampSteps);
+    for (int i = 0; i < kRampSteps; ++i) {
+        const float yaw = (static_cast<float>(i) / static_cast<float>(kRampSteps)) * kTwoPi;
+        g_yawRampShots.push_back({0.8f, vec2(0, 0), yaw, "ramp"});
+    }
+}
 
 PerfGridSettings g_settings{};
 CliOverrides g_cliOverrides{};
@@ -334,6 +361,8 @@ void parseArgs(int argc, char **argv) {
             g_cliOverrides.yaw_ = static_cast<float>(std::atof(argv[i + 1]));
             g_cliOverrides.yawSet_ = true;
             ++i;
+        } else if (std::strcmp(argv[i], "--yaw-ramp") == 0) {
+            g_cliOverrides.yawRamp_ = true;
         } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
             // 0.0 = static scene (no per-frame voxel motion). Useful for
             // isolating per-frame upload cost in profiler runs.
@@ -760,8 +789,17 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        if (g_cliOverrides.yawRamp_) {
+            buildYawRampShots();
+            cfg.shots_ = g_yawRampShots.data();
+            cfg.numShots_ = static_cast<int>(g_yawRampShots.size());
+            // Small per-step yaw delta + extra settle frames keep the iterative
+            // lighting converged across the ramp (see buildYawRampShots above).
+            cfg.settleFrames_ = 8;
+        } else {
+            cfg.shots_ = kShots;
+            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
