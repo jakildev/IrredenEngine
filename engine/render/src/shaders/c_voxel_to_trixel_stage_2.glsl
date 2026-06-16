@@ -152,13 +152,12 @@ void main() {
     const bool reVoxelize = visibleFaceIds.w != 0;
 
     // Stage 2 mirrors stage 1's exposed-face gate so it doesn't waste an
-    // `imageLoad` + depth compare on faces stage 1 already skipped — and is
-    // BYPASSED for re-voxelize for the same reason (#1570): its `flags_` mask is
-    // in the unrotated authoring frame, not the baked-in rotated cell frame (see
-    // c_voxel_to_trixel_stage_1.glsl). Stage 1 emitted all three cardinal faces
-    // for re-voxelize, so stage 2 must paint them too or the colour tap is lost.
+    // `imageLoad` + depth compare on faces stage 1 already skipped. Re-voxelize
+    // gates here too now that c_revoxelize_detached authors the rotated-frame
+    // mask (see c_voxel_to_trixel_stage_1.glsl) — same face set as stage 1, so
+    // the colour tap matches the distance tap.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 for the contract.
     const mat2 D = mat2(faceDeform[slot].xy, faceDeform[slot].zw);

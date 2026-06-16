@@ -180,21 +180,17 @@ void main() {
     // arise because the interior copy was never emitted. Bit position
     // matches `IRComponents::VoxelFlags::kFaceOccluded(faceId)`.
     //
-    // BYPASSED for re-voxelize (#1570). The GPU scatter (c_revoxelize_detached)
-    // rewrites only the cell POSITIONS; the per-voxel exposed mask in `flags_`
-    // is computed ONCE at authoring time (IRPrefab::Voxel::recomputeFaceOccupancy)
-    // in the UNROTATED model frame and is never recomputed against the rotated
-    // cells — P1's per-frame CPU recompute was removed in P2 (#1556) and never
-    // moved to the GPU. Gating rotated-frame faces against that unrotated mask
-    // systematically drops whole camera-visible faces as the solid spins away
-    // from identity. So re-voxelize emits all three visible-triplet cardinal
-    // faces (X_NEG/Y_NEG/Z_NEG) for every cell and lets the depth re-test
-    // (imageAtomicMin) keep the front-most surface: a convex/centred solid shows
-    // exactly its three iso faces with no holes, and interior cells lose the
-    // depth tie. (A later optimisation can recompute the mask against the rotated
-    // cells on the GPU to cut interior overdraw.)
+    // Re-voxelize now gates here too. The GPU scatter (c_revoxelize_detached
+    // MODE 1) authors the ROTATED-frame exposed mask from dest-grid adjacency
+    // (the GPU twin of REBUILD_GRID_VOXELS' #1720 CPU mask), so `flags_` is
+    // valid in the rotated frame — the old `.w`-bypass (emit all three cardinal
+    // faces, let the depth re-test keep the front) existed only because that
+    // mask used to be stale, and its slot-tie winner drove AO hatching on flat
+    // surfaces that the GRID path never had. Bit position matches
+    // `IRComponents::VoxelFlags::kFaceOccluded(faceId)`. `reVoxelize` still drives
+    // the emit dilation below.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
