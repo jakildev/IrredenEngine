@@ -27,7 +27,6 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
-#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -53,8 +52,6 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
-#include <irreden/render/systems/system_fog_to_trixel.hpp>
-#include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -421,7 +418,6 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::COMPUTE_SUN_SHADOW>(),
             IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>(),
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
-            IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
@@ -1050,7 +1046,6 @@ void initEntities() {
     // AO / sun-shadow / light-volume / lighting systems' archetype filter
     // wouldn't otherwise match the main canvas and they'd silently skip it.
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-    IREntity::setComponent(mainCanvas, C_CanvasFogOfWar{});
 
     // Default sun direction: high and slightly off-axis so every demo
     // shape casts a visible shadow without any further setup.
@@ -1063,12 +1058,6 @@ void initEntities() {
         C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
         C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
     );
-
-    // Seed a visible-circle at origin so the demo's shapes are rendered
-    // while the surrounding floor fades to "unexplored" black — proves
-    // the fog-of-war pass end-to-end. Radius chosen to cover the shape
-    // row (kSpacingX * kNumCases / 2 ≈ 32) with some peripheral margin.
-    IRPrefab::Fog::revealRadius(0, 0, 48);
 
     // --load-vxs: load a DENSE-mode .vxs file (frame 0) and place the voxel
     // set at the origin so it can be compared against the procedural shapes.
