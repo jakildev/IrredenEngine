@@ -181,8 +181,20 @@ vertex VertexOut v_peraxis_scatter(
     float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
+    // Foreshortening-adaptive margin — mirror of v_peraxis_scatter.glsl. Near
+    // ±45deg residual one in-plane axis collapses on screen (su ~|| sv), so the
+    // deformed quad degenerates to a sliver and adjacent faces leave gaps the
+    // fixed 0.85px dilation cannot bridge (the band-clipping). Grow the margin
+    // toward the on-screen voxel step, gated by the degeneracy.
+    const float suLen = length(su);
+    const float svLen = length(sv);
+    const float degenSin = (suLen > 1e-5 && svLen > 1e-5)
+        ? abs(su.x * sv.y - su.y * sv.x) / (suLen * svLen)
+        : 1.0;
+    const float adaptiveMargin =
+        mix(max(suLen, svLen), kScatterDilateMarginPx, clamp(degenSin, 0.0, 1.0));
     const float2 dilNdc = scatterConservativeDilation(
-        su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
+        su, sv, sign(in.position), max(kScatterDilateMarginPx, adaptiveMargin), ndcPerPx
     );
     clipCorner.xy += dilNdc;
     clipCorner.y = -clipCorner.y;
