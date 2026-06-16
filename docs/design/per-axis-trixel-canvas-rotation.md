@@ -1,5 +1,19 @@
 # Smooth camera Z-yaw via per-axis trixel canvases
 
+> **Store-key update (supersedes the #1310 in-plane store below).** The per-axis
+> store is now keyed by the **un-yawed (cardinal) iso pixel**
+> `perAxisBase + pos3DtoPos2DIso(facePos)`, recovered with `isoPixelToPos3D`.
+> The #1310 **face-local in-plane** `(y,z)/(x,z)/(x,y)` index this replaced is
+> collision-free only for a *single connected surface*: it collapses **separate
+> objects stacked along the fixed axis** (same in-plane column, different depth)
+> onto one cell, dropping the back object's face under camera yaw even though it
+> is screen-separated. The un-yawed iso key is the only lossless 2D key (depends
+> on all three coords → screen-unique; un-compressed → no #1310 cracks).
+> "Store" / "Recover" sections that still describe `faceInPlaneCoords` /
+> `faceLocalBase` / `faceOriginFromInPlane` below are the historical #1310 design
+> and read as superseded; the §"Mechanism chosen" store/recover steps and the
+> §"Recommended store" are current.
+
 Status: **in implementation.** T1 (#1308) and T2 (#1309) have merged; T3
 (#1310) is in flight. The framebuffer composite is decided: **Option 4 —
 forward-scatter** (see "## Implementation decision" below). This doc is the
@@ -27,11 +41,15 @@ scatter_:**
 
 1. **Per-axis canvas stays at trixel resolution** (tracks zoom — coarse at
    high zoom; NOT framebuffer resolution). It is a per-axis visible-face
-   G-buffer `{ iso-depth, color, entityId }` per cell. **Recommended store:
-   face-local in-plane integer coords** (X-canvas → (y,z), Y → (x,z),
-   Z → (x,y)) so the grid is a plain regular lattice and parity is a non-issue
-   by construction. (Iso-position indexing also works with scatter; face-local
-   is the cleaner store.)
+   G-buffer `{ iso-depth, color, entityId }` per cell. **Store: un-yawed
+   (cardinal) iso pixel** `perAxisBase + pos3DtoPos2DIso(facePos)` per axis
+   canvas. This is the only lossless 2D key: it depends on all three coords, so
+   two faces that are screen-separated at the live yaw never share a cell, while
+   genuine same-pixel cardinal occlusion (the only legitimate collision)
+   resolves by the `rawDepth` `atomicMin`. The two rejected alternatives each
+   lose faces (see the store section below): the **yawed** iso index collapses
+   the compressed axis, and the **in-plane** `(y,z)/(x,z)/(x,y)` index collapses
+   separate objects stacked along the fixed axis.
 2. **Stage 1 (write):** each exposed visible face (visible-triplet × exposed
    mask) `atomicMin`s its shared world-space `pos3DtoDistance` into its axis
    canvas cell; store the depth winner's color + entityId. **Voxel-vs-voxel
@@ -68,38 +86,42 @@ the old gather could read them). So the canvas is the durable G-buffer.
 
 Concretely:
 
-1. **Stage-1 / Stage-2 per-axis store one cell per face center, indexed
-   face-locally** (not the `emitDeformedFace` super-sampled cluster T2 wrote).
-   The cell is the face's two in-plane world axes — X-canvas → `(y,z)`, Y →
-   `(x,z)`, Z → `(x,y)` (`faceInPlaneCoords`) — offset by a camera-tracking
-   `faceLocalBase`. `writeDistanceTap(base, encodeDepthWithFace(
-   pos3DtoDistance(worldOrigin), slot))` `atomicMin`s the shared world depth into
-   that cell; Stage-2 writes its color + entityId on the depth match. **The
-   `atomicMin` winner per cell IS the occlusion resolution** — every non-empty
-   cell holds the nearest exposed face on its in-plane column. The face-local
-   lattice is **dense and collision-free at every yaw** — this is the design's
-   §"Recommended store", and the reason it is mandatory rather than optional:
-   the originally-shipped iso-position index `perAxisBase + roundHalfUp(
-   pos3DtoPos2DIsoYawed(worldOrigin, visualYaw))` collapsed distinct faces onto
-   one cell on the compressed axis (the iso projection foreshortens it), so
-   `atomicMin` dropped all but one and the dropped faces' footprints showed
-   background as **vertical cracks** through the cube (worsening toward ±45°).
+1. **Stage-1 / Stage-2 per-axis store one cell per face center, indexed by the
+   un-yawed (cardinal) iso pixel** (not the `emitDeformedFace` super-sampled
+   cluster T2 wrote). The cell is `perAxisBase + pos3DtoPos2DIso(facePos)`.
+   `writeDistanceTap(cell, encodeDepthWithFaceFrac(pos3DtoDistance(facePos),
+   slot, …))` `atomicMin`s the shared world depth into that cell; Stage-2 writes
+   its color + entityId on the depth match. **The `atomicMin` winner per cell IS
+   the occlusion resolution** — and because the key is the cardinal iso pixel,
+   two faces collide *only* when they share a cardinal screen pixel, i.e. genuine
+   cardinal occlusion (the nearer wins, correctly). Both rejected indices lose
+   faces that are actually visible:
+   - the **yawed** iso index `perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawed(
+     facePos, visualYaw))` collapsed distinct faces onto one cell on the
+     *compressed* axis (the live yaw foreshortens it), dropping faces as
+     **vertical cracks** worsening toward ±45° — and its inverse was singular at
+     full `visualYaw` ±120°/±240°;
+   - the **in-plane** `(y,z)/(x,z)/(x,y)` index that replaced it is collision-
+     free for a *single connected surface* but collapses **separate objects
+     stacked along the fixed axis** (same in-plane column, different depth) onto
+     one cell — `atomicMin` keeps only the front, so a back object that is
+     screen-separated under yaw loses its face to the floor/background (the
+     maingrid stacking defect). Neither holds at every yaw for arbitrary content;
+     the un-yawed iso key does, because it is un-compressed (cardinal) *and*
+     all-three-coords (screen-unique).
 2. **The scatter is an instanced draw over the canvas grid** (one instance per
    cell, `drawElementsInstanced` of the shared 6-index quad). The vertex shader:
    reads the cell's stored distance; degenerates (off-screen) if it is the clear
-   value; otherwise recovers the **world origin** from the cell by an exact
-   integer subtraction — `inPlane = cell − faceLocalBase`, third axis =
-   `rawDepth − inPlane.x − inPlane.y` (`faceOriginFromInPlane`, with
-   `rawDepth = dist >> 2 = x+y+z`). `slot = dist & 3` recovers the visible-triplet
-   slot → `faceId = visibleFaceIds[slot]`. This recovery is **exact and
-   trig-free**, so it has neither failure of the iso-inverse it replaces: that
-   inverse `z = (rawDepth + P(c+s) − Q(c−s)) / (2cosθ+1)` was singular at the
-   **full** `visualYaw` values ±120° / ±240° (denominator zero → garbage origins,
-   a speckled cube), because the store keys on full `visualYaw`, not the residual
-   the `≥ 1+√2` bound assumes. `faceLocalBase` centers the store on the camera —
-   `faceLocalAnchor` recovers the screen-center world voxel via the **un-yawed**
-   `isoPixelToPos3D` (never singular) and is computed identically by the store
-   and the scatter from the matching `perAxisBase` + canvas size.
+   value; otherwise recovers the **world origin** from the cell by the exact iso
+   inverse — `isoPixelToPos3D(cell − perAxisBase, rawDepth)` (with
+   `rawDepth = dist >> 10 = x+y+z`). `slot = dist & 3` recovers the visible-triplet
+   slot → `faceId = visibleFaceIds[slot]`. This recovery is **exact at every
+   yaw** because the stored index is un-yawed: the singular full-`visualYaw`
+   inverse `z = (rawDepth + P(c+s) − Q(c−s)) / (2cosθ+1)` is gone — the live yaw
+   is applied only forward, at scatter, by `pos3DtoPos2DIsoYawed`. `perAxisBase`
+   (`trixelFrameOffset`) centers the cardinal iso projection on the camera and is
+   computed identically by the store, the scatter, and the lighting/AO recovery
+   (`perAxisCellToWorld3D`) so all agree on `cell ↔ world` by construction.
 3. **The 4 quad corners are the projected face corners** — `perAxisBase +
    pos3DtoPos2DIsoYawed(facePlanePos + inPlaneCornerOffset, visualYaw)` for the
    four in-plane corner offsets of the face's two world axes (`faceSpanCorner`),
@@ -114,7 +136,7 @@ Concretely:
    (`c_voxel_to_trixel_stage_{1,2}`) bakes the face plane into the stored cell
    via `faceMicroPositionFixed6` — a POS face stores the high-side plane
    (`origin + 1` on the fixed axis), a NEG face the low-side plane — and the
-   stored depth is that plane's iso distance. The recovery (`faceOriginFromInPlane`)
+   stored depth is that plane's iso distance. The recovery (`isoPixelToPos3D`)
    therefore returns the **face plane**, and `faceSpanCorner` only spans the two
    in-plane axes (it must NOT re-add the polarity). The original cut applied the
    polarity offset a second time in the scatter (a per-`faceId` `+1`); since the

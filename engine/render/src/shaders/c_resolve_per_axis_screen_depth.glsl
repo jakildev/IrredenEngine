@@ -71,16 +71,15 @@ void main() {
     const int faceId = visibleFaceIds[slot];
     const int axis = faceId >> 1;
 
-    // Recover the face-plane origin in canvas-native (subdivision) units — the
-    // exact integer inverse perAxisCellToWorld3D / v_peraxis_scatter use (no
-    // trig, no 2cos(yaw)+1 singularity). perAxisBase is reproduced from the
-    // per-axis canvas size identically to the store (ir_per_axis_lighting.glsl).
+    // Recover the face-plane origin — the exact iso inverse perAxisCellToWorld3D
+    // / v_peraxis_scatter use (no trig, no 2cos(yaw)+1 singularity, since the
+    // store index is un-yawed). The store filed this face at
+    // `perAxisBase + pos3DtoPos2DIso(facePos)` (ir_per_axis_lighting.glsl).
     const ivec2 perAxisBase = trixelFrameOffset(
         trixelOriginOffsetZ1(perAxisSize), frameCanvasOffset, voxelRenderOptions
     );
-    const ivec3 anchor = faceLocalAnchor(perAxisBase, perAxisSize);
-    const ivec2 inPlane = cell - faceLocalBase(axis, anchor, perAxisSize);
-    const ivec3 origin = faceOriginFromInPlane(faceId, inPlane, rawDepth);
+    const ivec2 isoPix = cell - perAxisBase;
+    const ivec3 origin = ivec3(round(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth))));
 
     // Re-project into the MAIN-canvas cardinal distance layout, mirroring
     // c_voxel_to_trixel_stage_1's cardinal (perAxisRoute==0) store exactly:

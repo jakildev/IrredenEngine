@@ -179,25 +179,22 @@ kernel void c_voxel_to_trixel_stage_2(
     if (frameData.perAxisRoute != 0) {
         const int axis = frameData.perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Face-local in-plane store — mirrors stage 1 (#1310 fix). See
-        // c_voxel_to_trixel_stage_1.glsl / ir_iso_common.metal.
+        // Un-yawed (cardinal) iso store — mirrors stage 1's re-key.
+        // Color tap lands on the same cardinal iso cell + depth the distance tap
+        // did, so the per-axis depth re-test paints the occlusion winner.
         const int2 perAxisBase = trixelFrameOffset(
             frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions
         );
-        const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-        const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (frameData.voxelRenderOptions.x == 0) {
             const int3 worldPos = int3(round(voxelPosition.xyz));
-            // Mirror stage 1's face-plane store (#1310 seam fix) so the color
-            // tap lands on the same cell + depth the distance tap did.
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeColorTap(
-                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance, voxelColor,
+                perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
                 packedEntityId, canvasSize, distanceScratch,
                 triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
             );
@@ -212,7 +209,7 @@ kernel void c_voxel_to_trixel_stage_2(
         const int voxelDistance_s2 =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
         writeColorTap(
-            cellBase + faceInPlaneCoords(faceId, facePos_s2), voxelDistance_s2, voxelColor,
+            perAxisBase + pos3DtoPos2DIso(facePos_s2), voxelDistance_s2, voxelColor,
             packedEntityId, canvasSize, distanceScratch,
             triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );

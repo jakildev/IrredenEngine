@@ -151,20 +151,18 @@ void main() {
     const int faceId = visibleFaceIds[slot];
     const int axis = faceId >> 1;
 
-    // Recover the exact integer (or micro) face origin from the face-local
-    // store. The cell's two in-plane coords + the stored iso depth give the
-    // origin by one integer subtraction (faceOriginFromInPlane) — no
-    // 2cos(yaw)+1 inverse, so it is exact at every yaw. The replaced iso-inverse
-    // dropped compressed-axis faces (cell collisions -> cracks) and went
-    // singular at yaw = +/-120 deg (-> a speckled cube). faceLocalAnchor matches
-    // stage 1/2's store: same perAxisBase + canvasSize. See ir_iso_common.glsl.
+    // Recover the exact face origin from the un-yawed (cardinal) iso store. The
+    // store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`, so the
+    // cardinal iso pixel is `ij - perAxisBase` and isoPixelToPos3D inverts it
+    // exactly against rawDepth (= x+y+z of the face plane). Non-singular at every
+    // yaw because the recovered index is UN-yawed; the live yaw is applied below
+    // by pos3DtoPos2DIsoYawed. See c_voxel_to_trixel_stage_1.glsl.
     // Hoist in-plane axes so the fractional offset below and the coverage
     // dilation block below both share the same eu/ev without a second call.
     vec3 eu, ev;
     faceInPlaneUnitAxes(axis, eu, ev);
-    const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-    const ivec2 inPlane = ij - faceLocalBase(axis, anchor, canvasSize);
-    const vec3 baseOrigin = vec3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    const ivec2 isoPix = ij - perAxisBase;
+    const vec3 baseOrigin = isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
     // Apply sub-cell offset packed in the encoding (#1458).
     const vec3 origin = baseOrigin
         + eu * (float(uFrac4) / 16.0 - 0.5)
