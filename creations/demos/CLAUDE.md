@@ -49,6 +49,15 @@ canonical CMake shape.
 - **Runtime directory layout is exe-relative.** `data/`, `shaders/`,
   `scripts/` must be siblings of the `.exe`. If you launch from the
   project root, file loading fails — use the `IR<Name>Run` target.
+- **`IR*Run` must not repeat the asset-copy commands.** Asset staging is
+  owned by `irreden_bundle_assets(<target> ...)` (parent
+  [`creations/CLAUDE.md`](../CLAUDE.md) §"CMake boilerplate"), and the
+  `IR*Run → IR*Exe → IR*Assets` dependency chain already guarantees
+  `data/`/`shaders/`/`scripts/` are staged before the exe runs. Re-running
+  `copy_directory` in the `IR*Run` target is redundant (idempotent but
+  misleading — a reader of `Run` has no reason to suspect the `DEPENDS` chain
+  covers it). A new demo copied from a reference must not carry the duplicate
+  copies.
 - **Keep Lua bindings lean.** A demo's `lua_component_pack.hpp` should
   register **only** the components the demo actually uses. Don't copy
   the kitchen-sink pack from another demo just to save typing.

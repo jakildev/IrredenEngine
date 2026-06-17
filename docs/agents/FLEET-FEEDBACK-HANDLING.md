@@ -156,6 +156,13 @@ fix in Step i.)
 - **For `fleet:has-nits`**: focus on the latest review's `### Nits`
   section. Treat it like a checklist. Address every nit unless
   it's purely subjective preference.
+- **Verify a cited `file:line` correction before applying it.** When a nit
+  asserts a specific line ("actual: 128-132") or a precedent location, confirm
+  it against `git show origin/master:<path>` first — reviewer citations drift
+  from intermediate `master` merges or off-by-N arithmetic, and applying a
+  wrong "correction" injects a wrong citation (#1832: the suggested 128-132
+  pointed at `private:`/comment lines; the original 136-141 was correct.
+  #1725: a cited line was past the end of an 81-line file).
 - **For `fleet:design-unblocked`** (opus+ classes only): also re-read
   the architect's plan file at `~/.fleet/plans/issue-<N>.md` (current
   naming, keyed to the issue number; some older plans use `T-<NNN>.md`
