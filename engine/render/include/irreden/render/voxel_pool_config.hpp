@@ -1,5 +1,5 @@
-#ifndef IR_RENDER_VOXEL_POOL_CONFIG_HPP
-#define IR_RENDER_VOXEL_POOL_CONFIG_HPP
+#ifndef IR_RENDER_VOXEL_POOL_CONFIG_H
+#define IR_RENDER_VOXEL_POOL_CONFIG_H
 
 #include <irreden/ir_math.hpp>
 
@@ -45,4 +45,4 @@ int getMaxAllocationSizeTotal();
 
 } // namespace IRRender::VoxelPoolConfig
 
-#endif // IR_RENDER_VOXEL_POOL_CONFIG_HPP
+#endif // IR_RENDER_VOXEL_POOL_CONFIG_H

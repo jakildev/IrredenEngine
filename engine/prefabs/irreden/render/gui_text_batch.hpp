@@ -1,5 +1,5 @@
-#ifndef GUI_TEXT_BATCH_HPP
-#define GUI_TEXT_BATCH_HPP
+#ifndef GUI_TEXT_BATCH_H
+#define GUI_TEXT_BATCH_H
 
 // Batched GUI text on the compute path.
 //
@@ -300,4 +300,4 @@ inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
 
 } // namespace IRPrefab::GuiText
 
-#endif /* GUI_TEXT_BATCH_HPP */
+#endif /* GUI_TEXT_BATCH_H */
