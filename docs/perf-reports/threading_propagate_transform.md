@@ -39,21 +39,39 @@ transform from a pre-resolved vector instead of an inline
 
 ## Dispatch tuning
 
-`parallelFor` is called per-level with a heuristic grain size:
+> **Updated by #1804 (intra-node row-range parallelism).** The original
+> T-378 dispatch was per-archetype only — one parallelFor task per
+> archetype node. That degenerates when a single archetype holds the
+> whole scene (IRPerfGrid's 262K-entity node is one node at depth 0):
+> the level has `n = 1`, falls below `kMinForParallel`, and the 262K-row
+> `composeNode` runs serially on one worker. See the dedicated section
+> below for the row-splitting fix and its measurement.
 
-- **`kMinForParallel = 8`** — levels with fewer archetypes than this
-  fall back to a serial walk. The dispatch + wait overhead for a
-  parallelFor with only 1–7 tasks exceeds the savings.
-- **Grain size = `max(kGrainSize, (n + targetTasks - 1) / targetTasks)`**
-  where `targetTasks = max(1, workerCount * 2)`. The "2 tasks per
-  worker" target gives enkiTS room to load-balance without flooding
-  the queue with one-archetype tasks (each archetype already carries
-  hundreds-to-thousands of entities through the inner loop).
+Each level is flattened into a list of row-chunks and dispatched with a
+single `parallelFor`:
+
+- **`kMinForParallel = 8`** (node count) **OR `kMinRowsForParallel = 4096`**
+  (total entity rows) — a level parallelizes when it has at least this
+  many archetypes *or* this many total rows. Below both, the dispatch +
+  wait overhead exceeds the savings and the level composes serially.
+- **`kMinChunkRows = 2048`** — the minimum rows per chunk. A node smaller
+  than the chunk size stays whole (one chunk), preserving the original
+  per-archetype granularity for many-small-node levels; a node larger
+  than the chunk size splits into multiple row-range chunks. The chunk
+  size is `max(kMinChunkRows, ceil(totalRows / targetTasks))` with
+  `targetTasks = max(1, workerCount * 2)`, so a single dominant node
+  splits into ~`targetTasks` chunks (≈2 per worker).
+- **Grain = `max(1, ceil(numChunks / targetTasks))`** over the chunk
+  list — `1` when chunks already number ≤ `targetTasks` (single large
+  node), grouping when many small nodes produce more chunks than tasks.
 - **`g_jobManager == nullptr`** — unit-test and pre-`World` paths
-  short-circuit to the same serial walk as `kMinForParallel`.
+  short-circuit to the serial walk.
 
-The `kGrainSize = 1` member exists as the floor; the smart grain
-computation is the effective grain at runtime.
+`composeNode` became `composeNodeRows(node, parentWorld, rowBegin, rowEnd, …)`
+— same SQT body, now bounded to a row range. Disjoint row ranges are
+race-free (each entity writes only its own `C_WorldTransform[i]`), so
+output is bit-identical to the serial path regardless of chunk
+boundaries.
 
 ## Measurement
 
@@ -99,6 +117,40 @@ This PR keeps the structural correctness and cache invalidation work
 gated behind unit tests so the matrix run only needs to confirm the
 perf delta.
 
+## Intra-node row-range parallelism — measurement (#1804)
+
+The 262K scaling regime the T-378 report flagged but didn't exercise
+is exactly the single-node degeneracy #1804 fixes. With the whole grid
+in one depth-0 archetype, the per-archetype dispatch left the entire
+composition on one worker; row-splitting fans it across all workers.
+
+Method: `fleet-run IRPerfGrid --auto-profile 12 --auto-screenshot` on
+macOS (Metal, Apple Silicon, 10 enkiTS workers). `--auto-screenshot`
+enables fixed-step (one UPDATE tick per render frame) so the profiler's
+last-frame `update` sample reliably lands on a ticked frame; without it
+the fixed-step UPDATE pipeline may not tick the sampled render frame and
+reports `update: 0.000`. grid-size 64 (262,144 entities, one archetype).
+Three runs each; `update` is the whole UPDATE-pipeline stage, and since
+only `PROPAGATE_TRANSFORM` changed, the delta is its contribution.
+
+| Configuration | `update` stage / frame |
+|---|---|
+| `origin/master` (per-archetype dispatch → serial single node) | 4.32 / 4.42 / 4.61 ms |
+| This PR (intra-node row-chunks across 10 workers) | 2.25 / 2.27 / 2.56 ms |
+
+≈ **47% reduction (~2.1 ms)** on the UPDATE pipeline. Render still
+dominates frame time (~8 ms), so this is a secondary-axis win per the
+issue's own framing, but it closes the single-node degeneracy directly.
+
+Bit-identity check: `IRShapeDebug --auto-screenshot` is 28/28
+byte-identical to `origin/master` (deterministic path reading
+`C_WorldTransform`). IRPerfGrid screenshots are non-deterministic
+run-to-run (GPU rasterization speckle), so they can't be byte-compared;
+instead, per-shot pixel-diff magnitude (mine-vs-master) was confirmed to
+sit within the demo's own run-to-run noise floor (mine-vs-mine ≈
+master-vs-master ≈ mine-vs-master, MAE < 0.5/255, < 1% pixels touched,
+no structural region difference).
+
 ## Correctness coverage
 
 `test/ecs/propagate_transform_test.cpp` (13 tests, all green):
@@ -130,12 +182,14 @@ Full suite: 964 tests in IrredenEngineTest pass; IRShapeDebug
   is the authoritative source for the ≥2× target. Defer until the
   perf-CI hardware-fingerprinted baseline (#1100) is online so the
   comparison is hardware-stable.
-- **`kMinForParallel` and grain-size auto-tuning.** The current
-  `kMinForParallel = 8` and `workers × 2` task target are calibrated
-  for IRPerfGrid's shallow hierarchy. If future scenes exhibit deep
-  hierarchies with very small per-level archetype counts, a per-level
-  cost estimator (sum of `node->length_`) might choose better than
-  the archetype-count threshold alone.
+- **`kMinForParallel` and grain-size auto-tuning.** ✅ Addressed by
+  #1804: the per-level cost estimator (sum of `node->length_` →
+  `totalRows`) is now a parallelization trigger alongside the
+  archetype-count threshold, and large single nodes split across
+  workers by row range. Remaining tuning headroom: `kMinChunkRows`
+  (2048) and `kMinRowsForParallel` (4096) are calibrated for the
+  per-row quat/vec3 cost; revisit if a much heavier or lighter
+  per-entity composition lands.
 - **Foreign-component read declaration.** The system reads parent
   `C_WorldTransform` via a foreign-entity lookup, which the
   `SystemAccess` trait does not see from the `tick`/`beginTick`
