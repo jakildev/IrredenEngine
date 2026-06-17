@@ -113,6 +113,31 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
         }
     }
 
+    // PARALLELIZATION (#1803) — DESIGN-BLOCKED. The 262K-entity position
+    // loop above is one of the two dominant UPDATE costs (#1740) and the
+    // plan (.fleet/plans/issue-1803.md) calls for `Concurrency::PARALLEL_FOR`.
+    // Two architecture-shaped blockers the plan's hazard list missed must be
+    // resolved before the tag can land (see the PR's ## NEEDS-DESIGN comment):
+    //
+    //   1. EntityId ownership registration vs the PARALLEL_FOR validator.
+    //      This tick uses the per-entity-id form to do the one-time owner
+    //      registration (`pool.setEntityIdForRange` → GPU picking buffer +
+    //      the `ownerEntityId_` guard). `ir_system.hpp` makes
+    //      `PARALLEL_FOR + usesEntityId_ + !parallelSafe_` FATAL. The write
+    //      is genuinely thread-safe (disjoint span fill), so `ParallelSafe`
+    //      is the sanctioned tag — but `ParallelSafe` is currently unwired:
+    //      `PartitionExcludes` (archetype) and `MakeMemberTickFn` (tick
+    //      lambda) strip only `Exclude<...>`, not tag types. The latent
+    //      wiring needs completing (reuse `detail::FilterTags_t`) OR the
+    //      registration must be relocated out of the parallel tick.
+    //   2. Pool resolution runs `getComponent<C_VoxelPool>(canvas)` on the
+    //      worker (foreign-entity lookup) — not worker-safe per
+    //      `engine/system/CLAUDE.md`. Plus `lastCanvas_`/`lastPool_` race as
+    //      System<N> members under PARALLEL_FOR. Resolution must move to a
+    //      main-thread `beginTick` canvas→pool pre-resolve.
+    //
+    // The thread_local pending-range merge the plan describes is the easy
+    // part and lands once (1) and (2) are settled.
     static SystemId create() {
         return registerSystem<UPDATE_VOXEL_SET_CHILDREN, C_VoxelSetNew, C_WorldTransform>(
             "UpdateVoxelSetChildren"
