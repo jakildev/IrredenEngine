@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# perf-grid-rotate-sweep — rotated-voxel solidity validation harness.
+#
+# Builds IRPerfGrid, rotates a solid 64^3 cube (--mode dense) slowly through the
+# full camera-yaw circle via the demo's --yaw-ramp mode, and scores every
+# captured frame with the structural-metric suite:
+#   * interior-hole ratio  — the cube must stay opaque (no background showing
+#     through it); render-coverage-metric.py's measure.
+#   * silhouette raggedness — perimeter^2 / area; a clean iso cube is a smooth
+#     hexagon, while a sheared "curtain" or scalloped edge spikes this even when
+#     the hole ratio is ~0; render-silhouette-metric.py's measure.
+# Both are computed from render_metric_util with one decode per frame.
+#
+# The slow ramp is the point: the iterative lighting (light volume / AO /
+# sun-shadow) accumulates across frames on the live canvas, so a few large yaw
+# jumps capture it mid-converge and unlit faces read as spurious "holes". A slow
+# ramp keeps lighting converged frame-to-frame, so a spike in either metric
+# localizes a true geometry/coverage break to its yaw rather than a settling
+# artifact.
+#
+# Usage:  bash scripts/dev/perf-grid-rotate-sweep [build_dir] [mode] [warmup]
+#   build_dir   CMake build dir              (default: build)
+#   mode        dense|hollow|voxel_set|sdf   (default: dense)
+#   warmup      frames to converge lighting at yaw 0 before the ramp
+#                                            (default: 60)
+#
+# Repo tooling — cmake + python3 stdlib only. Long enough (build + ~400-frame
+# run + per-frame scoring) that it should be launched in the background and its
+# output read on completion. Self-locating, so it works from any cwd / worktree.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT" || exit 1
+
+BUILD_DIR="${1:-build}"
+MODE="${2:-dense}"
+WARMUP="${3:-60}"
+
+EXE_DIR="$BUILD_DIR/creations/demos/perf_grid"
+SS_DIR="$EXE_DIR/save_files/screenshots"
+
+echo "[1/3] building IRPerfGrid ($BUILD_DIR) ..."
+cmake --build "$BUILD_DIR" --target IRPerfGrid -j 8 >/dev/null || { echo "BUILD FAILED"; exit 1; }
+
+echo "[2/3] running yaw ramp (mode=$MODE, warmup=$WARMUP) ..."
+mkdir -p "$SS_DIR"
+# Scoped find -delete, never an unguarded `rm <dir>/*.png` glob (the dir may be
+# empty, which trips the dangerous-rm guard).
+find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
+( cd "$EXE_DIR" && ./IRPerfGrid --mode "$MODE" --grid-size 64 --yaw-ramp \
+    --no-overlay --auto-screenshot "$WARMUP" ) >/dev/null \
+    || { echo "RUN FAILED"; exit 1; }
+
+echo "[3/3] scoring captures ..."
+SCRIPTS_DIR="$ROOT/scripts" SS_DIR="$SS_DIR" python3 - <<'PY'
+import sys, os, glob
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+import render_metric_util as util
+
+shots = sorted(glob.glob(os.path.join(os.environ["SS_DIR"], "screenshot_*.png")))
+n = len(shots)
+if n == 0:
+    sys.exit("no captures produced — the ramp run failed")
+
+print(f"{'step':<5}{'yaw_deg':<9}{'coverage':<10}{'hole_ratio':<12}{'perim_ratio':<12}")
+worst_hole = (0.0, -1)
+worst_perim = (0.0, -1)
+for i, f in enumerate(shots):
+    mask, w, h, fg, _ = util.foreground_mask(f)
+    hole_px = sum(util.enclosed_holes(mask, w, h))
+    sil = fg + hole_px
+    cov = (fg / sil) if sil else 1.0
+    hr = (hole_px / sil) if sil else 0.0
+    pr = (util.perimeter(mask, w, h) ** 2 / sil) if sil else 0.0
+    yaw_deg = i / n * 360.0
+    print(f"{i:<5}{yaw_deg:<9.1f}{cov:<10.4f}{hr:<12.4f}{pr:<12.2f}")
+    if hr > worst_hole[0]:
+        worst_hole = (hr, i)
+    if pr > worst_perim[0]:
+        worst_perim = (pr, i)
+
+print()
+print(f"worst hole_ratio : {worst_hole[0]:.4f} at step {worst_hole[1]} "
+      f"(yaw {worst_hole[1] / n * 360.0:.1f} deg)")
+print(f"worst perim_ratio: {worst_perim[0]:.2f} at step {worst_perim[1]} "
+      f"(yaw {worst_perim[1] / n * 360.0:.1f} deg)")
+PY

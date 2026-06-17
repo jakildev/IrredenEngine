@@ -30,6 +30,7 @@
       "Bash(cmake --build:*)",
       "Bash(make:*)", "Bash(ninja:*)", "Bash(ctest:*)",
       "Bash(bash scripts/dev/canvas-stress-capture:*)",
+      "Bash(bash scripts/dev/perf-grid-rotate-sweep:*)",
 
       "Bash(fleet-claim:*)", "Bash(fleet-build:*)", "Bash(fleet-debug:*)",
       "Bash(fleet-run:*)", "Bash(fleet-run-targets:*)", "Bash(fleet-help:*)",
