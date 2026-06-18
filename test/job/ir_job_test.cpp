@@ -5,6 +5,7 @@
 #include <irreden/job/job_manager.hpp>
 
 #include <atomic>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -222,4 +223,180 @@ TEST(IRJobManagerTest, FreeFunctionsAreSafeWithoutManager) {
     EXPECT_TRUE(IRJob::isMainThread());
     EXPECT_EQ(IRJob::workerCount(), 0);
     EXPECT_EQ(IRJob::workerId(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// parallelForAutoGrain (#1900) — flat auto-grain + serial fallback.
+// ---------------------------------------------------------------------------
+
+TEST_F(IRJobFixture, AutoGrainParallelCoversRangeExactlyOnce) {
+    // Above the default minItemsToParallelize (4096) -> fans out. Each
+    // item must be visited exactly once across all worker partitions.
+    constexpr int kCount = 10000;
+    std::vector<std::atomic<int>> hits(kCount);
+    for (auto &h : hits) {
+        h.store(0);
+    }
+    std::atomic<int> totalVisits{0};
+
+    IRJob::parallelForAutoGrain(kCount, [&](int begin, int end) {
+        for (int i = begin; i < end; ++i) {
+            hits[i].fetch_add(1, std::memory_order_relaxed);
+        }
+        totalVisits.fetch_add(end - begin, std::memory_order_relaxed);
+    });
+
+    EXPECT_EQ(totalVisits.load(), kCount);
+    for (int i = 0; i < kCount; ++i) {
+        EXPECT_EQ(hits[i].load(), 1) << "index " << i << " visited " << hits[i].load() << " times";
+    }
+}
+
+TEST_F(IRJobFixture, AutoGrainBelowThresholdRunsSerialSingleCall) {
+    // Below threshold with a live pool -> serial: one fn(0, total) call
+    // on the calling thread, no fan-out.
+    constexpr int kCount = 100;
+    int calls = 0;
+    int seenBegin = -1;
+    int seenEnd = -1;
+    IRJob::parallelForAutoGrain(kCount, [&](int begin, int end) {
+        ++calls;
+        seenBegin = begin;
+        seenEnd = end;
+    });
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(seenBegin, 0);
+    EXPECT_EQ(seenEnd, kCount);
+}
+
+TEST_F(IRJobFixture, AutoGrainZeroAndNegativeAreNoOps) {
+    int calls = 0;
+    IRJob::parallelForAutoGrain(0, [&](int, int) { ++calls; });
+    IRJob::parallelForAutoGrain(-5, [&](int, int) { ++calls; });
+    EXPECT_EQ(calls, 0);
+}
+
+TEST(IRJobAutoGrainNoPool, RunsSerialWithoutManager) {
+    // No pool — even above the parallel threshold the work must run
+    // serially as a single fn(0, total) call rather than asserting.
+    ASSERT_EQ(g_jobManager, nullptr);
+    int calls = 0;
+    int seenEnd = -1;
+    IRJob::parallelForAutoGrain(10000, [&](int begin, int end) {
+        ++calls;
+        seenEnd = end;
+        EXPECT_EQ(begin, 0);
+    });
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(seenEnd, 10000);
+}
+
+// ---------------------------------------------------------------------------
+// parallelChunks (#1900) — row-range planner + serial fallback.
+// ---------------------------------------------------------------------------
+
+TEST_F(IRJobFixture, ChunksSingleLargeNodeSplitsAndCoversExactlyOnce) {
+    // One node of 10000 rows: under minNodes (8) but over
+    // minItemsToParallelize (4096) -> the intra-node path splits it into
+    // several row-range chunks, covering every row exactly once.
+    constexpr int kLen = 10000;
+    std::vector<int> nodeLengths{kLen};
+    std::vector<IRJob::RowChunk> scratch;
+    std::vector<std::atomic<int>> hits(kLen);
+    for (auto &h : hits) {
+        h.store(0);
+    }
+    std::atomic<int> chunkCount{0};
+
+    IRJob::parallelChunks(nodeLengths, scratch, [&](int nodeIndex, int rowBegin, int rowEnd) {
+        EXPECT_EQ(nodeIndex, 0);
+        chunkCount.fetch_add(1, std::memory_order_relaxed);
+        for (int i = rowBegin; i < rowEnd; ++i) {
+            hits[i].fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    for (int i = 0; i < kLen; ++i) {
+        EXPECT_EQ(hits[i].load(), 1) << "row " << i << " visited " << hits[i].load() << " times";
+    }
+    EXPECT_GT(chunkCount.load(), 1)
+        << "a dominant node should split into multiple row-range chunks";
+}
+
+TEST_F(IRJobFixture, ChunksManySmallNodesEachStayWhole) {
+    // 10 nodes (>= minNodes 8) of 100 rows each: the inter-node path
+    // fans out, but each node is far below minChunk (2048) so it stays
+    // whole — exactly one chunk per node, full range.
+    constexpr int kNodes = 10;
+    constexpr int kLen = 100;
+    std::vector<int> nodeLengths(kNodes, kLen);
+    std::vector<IRJob::RowChunk> scratch;
+
+    std::mutex mu;
+    std::vector<int> chunksPerNode(kNodes, 0);
+    std::vector<std::vector<int>> rowHits(kNodes, std::vector<int>(kLen, 0));
+
+    IRJob::parallelChunks(nodeLengths, scratch, [&](int nodeIndex, int rowBegin, int rowEnd) {
+        std::lock_guard<std::mutex> lk(mu);
+        ++chunksPerNode[nodeIndex];
+        for (int i = rowBegin; i < rowEnd; ++i) {
+            ++rowHits[nodeIndex][i];
+        }
+    });
+
+    for (int n = 0; n < kNodes; ++n) {
+        EXPECT_EQ(chunksPerNode[n], 1) << "small node " << n << " should stay whole (one chunk)";
+        for (int i = 0; i < kLen; ++i) {
+            EXPECT_EQ(rowHits[n][i], 1) << "node " << n << " row " << i;
+        }
+    }
+}
+
+TEST_F(IRJobFixture, ChunksBelowBothThresholdsRunSerialOneCallPerNode) {
+    // 2 nodes (< minNodes 8) of 100 rows (200 total < minItems 4096) ->
+    // serial: fn(i, 0, len) per node on the calling thread.
+    std::vector<int> nodeLengths{100, 100};
+    std::vector<IRJob::RowChunk> scratch;
+    std::vector<int> chunksPerNode(2, 0);
+    std::vector<std::vector<int>> rowHits(2, std::vector<int>(100, 0));
+
+    IRJob::parallelChunks(nodeLengths, scratch, [&](int nodeIndex, int rowBegin, int rowEnd) {
+        ++chunksPerNode[nodeIndex]; // serial path -> main thread, no lock needed
+        for (int i = rowBegin; i < rowEnd; ++i) {
+            ++rowHits[nodeIndex][i];
+        }
+    });
+
+    for (int n = 0; n < 2; ++n) {
+        EXPECT_EQ(chunksPerNode[n], 1);
+        for (int i = 0; i < 100; ++i) {
+            EXPECT_EQ(rowHits[n][i], 1);
+        }
+    }
+}
+
+TEST_F(IRJobFixture, ChunksEmptyNodeListIsNoOp) {
+    std::vector<int> nodeLengths;
+    std::vector<IRJob::RowChunk> scratch;
+    int calls = 0;
+    IRJob::parallelChunks(nodeLengths, scratch, [&](int, int, int) { ++calls; });
+    EXPECT_EQ(calls, 0);
+}
+
+TEST(IRJobChunksNoPool, RunsSerialWithoutManager) {
+    // No pool — even with a row total above the parallel threshold, the
+    // planner must run serially: one fn(node, 0, len) call per node.
+    ASSERT_EQ(g_jobManager, nullptr);
+    std::vector<int> nodeLengths{10000};
+    std::vector<IRJob::RowChunk> scratch;
+    int calls = 0;
+    int seenEnd = -1;
+    IRJob::parallelChunks(nodeLengths, scratch, [&](int nodeIndex, int rowBegin, int rowEnd) {
+        ++calls;
+        seenEnd = rowEnd;
+        EXPECT_EQ(nodeIndex, 0);
+        EXPECT_EQ(rowBegin, 0);
+    });
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(seenEnd, 10000);
 }

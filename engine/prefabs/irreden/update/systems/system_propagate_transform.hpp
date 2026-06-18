@@ -69,7 +69,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -77,21 +76,13 @@
 namespace IRSystem {
 
 template <> struct System<PROPAGATE_TRANSFORM> {
-    // Parallelization thresholds. A level is dispatched in parallel
-    // when it holds at least kMinForParallel archetype nodes (the
-    // inter-node path) OR at least kMinRowsForParallel total entity
-    // rows (the intra-node path — a single large node still
-    // parallelizes). Below both, per-task dispatch overhead isn't
-    // worth it and the level composes serially.
-    //
-    // Within a parallelized level, work is split into row-chunks of
-    // ~max(kMinChunkRows, totalRows / targetTasks) rows. A node
-    // smaller than the chunk size stays whole (one chunk), so the
-    // many-small-node workload keeps its original node-granularity;
-    // only nodes larger than the chunk size split across workers.
-    static constexpr int kMinForParallel = 8;
-    static constexpr int kMinRowsForParallel = 4096;
-    static constexpr int kMinChunkRows = 2048;
+    // Per-level dispatch policy — fan out, chunk sizing, and serial
+    // fallback — lives in IRJob::parallelChunks (#1900). Its
+    // ParallelTuning defaults ARE this system's hand-tuned values
+    // (#1804): parallelize at ≥8 nodes OR ≥4096 rows; split a dominant
+    // node into ≥2048-row chunks targeting ~2 tasks/worker; small nodes
+    // stay whole. We pass a default-constructed tuning here, so the
+    // knobs live in one tested place instead of re-derived inline.
 
     // Cached level partition: levels_[d] holds archetype nodes whose
     // parent-chain depth is exactly d. parentWorlds_[d][i] is the
@@ -101,18 +92,14 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     std::vector<std::vector<IREntity::ArchetypeNode *>> levels_;
     std::vector<std::vector<IRComponents::C_WorldTransform>> parentWorlds_;
 
-    // Flattened per-level work list (rebuilt for each level, capacity
-    // reused across frames). Each chunk is rows [rowBegin, rowEnd) of
-    // levels_[depth][nodeIndex], composed against
-    // parentWorlds_[depth][nodeIndex]. Large nodes contribute several
-    // chunks, small nodes exactly one. Built on the main thread before
-    // the level's parallelFor and read-only on workers during it.
-    struct RowChunk {
-        int nodeIndex;
-        int rowBegin;
-        int rowEnd;
-    };
-    std::vector<RowChunk> chunks_;
+    // Per-level scratch reused across frames so the planner stays
+    // allocation-free on the hot path. nodeLengths_ mirrors the current
+    // level's per-node row counts (the planner's input); chunks_ is the
+    // flattened row-range work list IRJob::parallelChunks fills and
+    // dispatches. Both are owned here, not by IRJob, precisely so the
+    // capacity carries over between frames.
+    std::vector<int> nodeLengths_;
+    std::vector<IRJob::RowChunk> chunks_;
 
     // Topology cache key: (nodeId, parentNodeId) pairs sorted by
     // nodeId. parentNodeId == 0 means "root archetype" (no CHILD_OF,
@@ -140,9 +127,8 @@ template <> struct System<PROPAGATE_TRANSFORM> {
             IREntity::getComponentType<IRComponents::C_ResolvedFields>();
         const auto modifiersComponentId = IREntity::getComponentType<IRComponents::C_Modifiers>();
 
-        const auto archetype =
-            IREntity::getArchetype<IRComponents::C_LocalTransform, IRComponents::C_WorldTransform>(
-            );
+        const auto archetype = IREntity::
+            getArchetype<IRComponents::C_LocalTransform, IRComponents::C_WorldTransform>();
         auto nodes = IREntity::queryArchetypeNodesSimple(archetype);
 
         buildSignature(nodes, scratchSignature_);
@@ -172,73 +158,38 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 levelParentWorlds[i] = parentWorld;
             }
 
-            const int n = static_cast<int>(levelNodes.size());
-
-            // Total entity rows across this level decides whether to
-            // split large nodes and how big each row-chunk should be.
-            std::int64_t totalRows = 0;
+            // Mirror this level's per-node row counts into the reusable
+            // buffer the planner consumes (capacity carries across
+            // frames). The planner reads only the lengths; the compose
+            // closure resolves nodeIndex back to the live node + parent.
+            nodeLengths_.clear();
+            nodeLengths_.reserve(levelNodes.size());
             for (auto *node : levelNodes) {
-                totalRows += node->length_;
+                nodeLengths_.push_back(node->length_);
             }
 
-            auto composeChunkRange = [&](int chunkBegin, int chunkEnd) {
-                for (int c = chunkBegin; c < chunkEnd; ++c) {
-                    const RowChunk &chunk = chunks_[c];
+            // Fan the level's composition out across the worker pool: a
+            // dominant node splits by row range, small nodes stay whole,
+            // and the level composes serially below threshold — all
+            // owned by IRJob::parallelChunks. Disjoint rows (each entity
+            // writes only its own C_WorldTransform[i]) keep the result
+            // bit-identical to the serial path regardless of chunking.
+            IRJob::parallelChunks(
+                nodeLengths_,
+                chunks_,
+                [&](int nodeIndex, int rowBegin, int rowEnd) {
                     composeNodeRows(
-                        levelNodes[chunk.nodeIndex],
-                        levelParentWorlds[chunk.nodeIndex],
-                        chunk.rowBegin,
-                        chunk.rowEnd,
+                        levelNodes[nodeIndex],
+                        levelParentWorlds[nodeIndex],
+                        rowBegin,
+                        rowEnd,
                         translationField,
                         scaleField,
                         resolvedFieldsComponentId,
                         modifiersComponentId
                     );
                 }
-            };
-
-            const bool runParallel = g_jobManager != nullptr &&
-                                     (n >= kMinForParallel || totalRows >= kMinRowsForParallel);
-
-            if (!runParallel) {
-                for (int i = 0; i < n; ++i) {
-                    composeNodeRows(
-                        levelNodes[i],
-                        levelParentWorlds[i],
-                        0,
-                        levelNodes[i]->length_,
-                        translationField,
-                        scaleField,
-                        resolvedFieldsComponentId,
-                        modifiersComponentId
-                    );
-                }
-                continue;
-            }
-
-            // Aim for ~2 tasks per worker so enkiTS can load-balance
-            // without flooding the queue. The chunk size is derived
-            // from total work: nodes below it stay whole (preserving
-            // node-granularity for many-small-node levels), larger
-            // nodes split into multiple row-range chunks.
-            const int workers = IRMath::max(1, IRJob::workerCount());
-            const int targetTasks = workers * 2;
-            const int chunkRows = IRMath::max(
-                kMinChunkRows,
-                static_cast<int>((totalRows + targetTasks - 1) / targetTasks)
             );
-
-            chunks_.clear();
-            for (int i = 0; i < n; ++i) {
-                const int len = levelNodes[i]->length_;
-                for (int rowBegin = 0; rowBegin < len; rowBegin += chunkRows) {
-                    chunks_.push_back({i, rowBegin, IRMath::min(rowBegin + chunkRows, len)});
-                }
-            }
-
-            const int numChunks = static_cast<int>(chunks_.size());
-            const int chunkGrain = IRMath::max(1, (numChunks + targetTasks - 1) / targetTasks);
-            IRJob::parallelFor(0, numChunks, chunkGrain, composeChunkRange);
         }
     }
 

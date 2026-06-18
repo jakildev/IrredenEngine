@@ -371,6 +371,14 @@ void SystemManager::executePipeline(IRTime::Events event) {
             // members, so any caller that needs per-system observer
             // brackets must put the observed system in its own
             // singleton group.
+            //
+            // #1900: deliberately NOT migrated to IRJob's auto-grain
+            // helper. This fans out *systems* at fixed grain=1 (one
+            // system per task) — auto-grain would batch the group onto
+            // ~tasksPerWorker tasks and collapse a small group onto a
+            // single worker, killing the parallelism. It shares only the
+            // null-pool serial guard with the helper, not the
+            // chunk-planning boilerplate the helper consolidates.
             if (g_jobManager != nullptr) {
                 IRJob::parallelFor(
                     0,
@@ -464,6 +472,16 @@ void SystemManager::executeSystem(SystemId system) {
             // PARALLEL_FOR members in multi-system groups at boot, so
             // this path is unreachable in well-formed programs; the
             // guard is kept as a release-build safety net.
+            // #1900: kept on raw parallelFor with the per-system
+            // grainSize, NOT IRJob's auto-grain helper. grainSize here
+            // is the system's *explicit* kGrainSize tuning knob (or
+            // kDefaultGrainSize) — an author-chosen value, not the
+            // re-derived chunk-planning boilerplate the helper folds
+            // away — and the main-thread binder resolve above must stay
+            // inline. Switching the grainSize-unset case to auto-grain
+            // (so one huge node fans out across ~workers×2 tasks instead
+            // of length/grain tasks) is a measurable per-system perf
+            // change, scoped to its own follow-up per the issue.
             auto rangedTick = tickEvent.prepareRangedTick_(node);
             IRJob::parallelFor(
                 0,
