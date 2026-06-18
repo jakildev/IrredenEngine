@@ -6,6 +6,7 @@ add_library(IrredenEngineAsset STATIC
     src/json_sidecar.cpp
     src/voxel_set_format.cpp
     src/rig_format.cpp
+    src/key_value_store.cpp
 )
 
 target_compile_options(

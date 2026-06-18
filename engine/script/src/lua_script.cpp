@@ -10,6 +10,7 @@
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
+#include <irreden/script/lua_persistence_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
 #include <irreden/script/lua_sim_bindings.hpp>
@@ -650,6 +651,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindRenderGlue(*this);
     detail::bindSimApi(*this);
     detail::bindAudioApi(*this);
+    detail::bindPersistenceApi(*this);
 }
 
 void LuaScript::bindLuaCommands() {

@@ -4,6 +4,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 add_executable(IrredenEngineTest
   asset/binary_io_test.cpp
   asset/json_sidecar_test.cpp
+  asset/key_value_store_test.cpp
   asset/name_table_test.cpp
   asset/rig_format_test.cpp
   asset/sprite_sheet_test.cpp
@@ -61,6 +62,7 @@ add_executable(IrredenEngineTest
   script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
   script/lua_enum_register_test.cpp
+  script/lua_persistence_test.cpp
   script/lua_pipeline_register_test.cpp
   script/lua_render_bindings_test.cpp
   script/lua_rotation_target_lua_test.cpp

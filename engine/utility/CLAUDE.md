@@ -21,6 +21,11 @@ functions for reading files and composing paths. Used by `asset/`,
 - `IRUtility::formatNumberedFilename(prefix, index, width, ext)` — e.g.
   `("screenshot", 7, 4, "png") → "screenshot_0007.png"`. Used for
   screenshot/recording serial numbers.
+- `IRUtility::userDataDir(appName)` — resolve the platform per-user data
+  dir (`$XDG_DATA_HOME` / `~/Library/Application Support` / `%APPDATA%`)
+  for save files that must survive a clean reinstall. Like `joinPath`, it
+  composes the path only — it does **not** create the directory. Used by
+  the `.irkv` key/value store (`engine/asset/`).
 
 ## Gotchas
 

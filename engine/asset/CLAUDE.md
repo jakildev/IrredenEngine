@@ -10,6 +10,9 @@ asset formats land here. Current formats:
   records and/or SDF shape-group composition; see editor-epic design doc).
 - **Rigs** — `.rig` binary + `.rig.json` sidecar (joint hierarchy + bind
   points + skeletal animation tracks).
+- **Key/value stores** — `.irkv` binary (flat named scalar / list values
+  for high scores + settings; Lua-reachable via `IRSave`). No sidecar —
+  not designer-diffed.
 
 The binary-I/O primitives (`BinaryWriter`/`Reader`, chunk-table header
 helpers, name-table encoding, JSON sidecar emitter) used by every new
@@ -36,6 +39,12 @@ snapshot (issue #199). It walks the archetype graph, so it lives in
 - `saveRig(name, path, rig)` / `loadRig(name, path)` — joints-first
   rig asset round-trip (see `.rig format` below). Buffer-mode
   `writeRig` / `readRig` are exposed for in-memory consumers.
+- `saveKeyValueStore(path, store)` / `loadKeyValueStore(path)` — flat
+  `.irkv` key/value round-trip (see `.irkv format` below). Takes a full
+  path (incl. extension), not the `(name, path)` split — callers compose
+  the path, typically `IRUtility::userDataDir("irreden")/<name>.irkv`.
+  Buffer-mode `writeKeyValueStore` / `readKeyValueStore` are exposed for
+  in-memory consumers + tests.
 
 The `name` is embedded in the trixel file header; the `path` is the
 output directory. For sprite sheets, `name` is the basename shared
@@ -99,6 +108,60 @@ The asset-side `IRAsset::Rig` is distinct from the runtime
 via `engine/prefabs/irreden/voxel/rig_bridge.hpp`
 (`IRPrefab::Rig::toComponent` / `fromComponent`). Splitting the two
 keeps `engine/asset/` independent of the prefab voxel component.
+
+## .irkv format
+
+`.irkv` v1 — a flat, named key/value store for high scores + settings
+(#1819). It is the lightweight, Lua-reachable alternative to the ECS world
+snapshot (#199 / epic #667): a flat map of string keys to typed values, NOT
+an archetype-graph walk. A store maps to one file (e.g. `highscores.irkv`,
+`settings.irkv`); gameplay reaches it from Lua via the `IRSave` table.
+
+```
+AssetHeader { magic = "IRKV", version = 1, chunkCount }
+ChunkTableEntry[chunkCount]
+KVPR chunk body:
+    varuint  entryCount
+    repeat entryCount times:
+        string  key              // varuint-prefixed UTF-8
+        uint8   valueTag         // ValueType: 0=NUMBER 1=BOOL 2=STRING 3=LIST
+        value payload, by tag:
+            NUMBER → float64
+            BOOL   → uint8 (0 / 1)
+            STRING → string
+            LIST   → varuint elemCount, then per element:
+                         uint8 elemTag (NUMBER | BOOL | STRING — no nesting)
+                         elem payload (float64 / uint8 / string)
+```
+
+- **Values are a tagged variant** (`IRAsset::Value`): `NUMBER` (float64),
+  `BOOL`, `STRING`, or `LIST` (a flat vector of scalar `ListElem`s — no
+  nested lists in v1). One mechanism covers a high-score table (list of
+  numbers) or a name list (list of strings) plus individual settings.
+- **Numbers are float64** because LuaJIT has no integer subtype (all Lua
+  numbers are doubles) and a double is exact for whole numbers to 2^53 —
+  far beyond any high score. No int64 value type until a real consumer
+  needs values above 2^53.
+- **Entries are written in sorted-key order** so the on-disk bytes are
+  reproducible regardless of hash-map iteration order.
+- **No sidecar** — settings/scores aren't designer-diffed (cf. `.rig.json`).
+  Add one via `json_sidecar.hpp` later if a use case appears; don't block on it.
+- **Recoverable, never fatal** (Extensibility Rule #5): bad magic,
+  truncation, a version above the loader's max, or an **unknown value tag**
+  (a future writer added a value type — its payload can't be length-skipped)
+  all surface as a recoverable `BinaryIOError`; the file-mode `loadKeyValueStore`
+  returns an empty store so a missing/corrupt save degrades to defaults. A
+  whole unknown *chunk*, by contrast, is silently skipped (Rule #1).
+- **Per-user data dir, not the exe dir.** Callers compose the path via
+  `IRUtility::userDataDir("irreden")` (resolves `$XDG_DATA_HOME` /
+  `~/Library/Application Support` / `%APPDATA%`) so a save survives a clean
+  reinstall of the game bundle. `saveKeyValueStore` runs
+  `std::filesystem::create_directories` on the parent first, since
+  `userDataDir` / `joinPath` do not create directories.
+
+The Lua `IRSave` surface (`engine/script/.../lua_persistence_bindings.hpp`)
+crosses values by `sol::type` inspection (number/string/bool/array-table),
+not a Lua-spelled enum, so the `cpp-lua-enums` rule does not apply.
 
 ## Typical usage
 

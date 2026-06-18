@@ -901,6 +901,39 @@ IRSim.stopwatchPause("run"); IRSim.stopwatchResume("run"); IRSim.stopwatchReset(
   pipeline assembly (same as most prefab systems). Coverage:
   `test/time/lua_sim_test.cpp`.
 
+## Persistence (`IRSave.*`)
+
+`bindLuaDrivenEcs()` exposes a flat key/value persistence surface as the
+`IRSave` table (engine #1819) so gameplay can save high scores + settings
+across launches — the lightweight, Lua-reachable alternative to the ECS
+world snapshot (#199). It wraps the `.irkv` format in `engine/asset/`
+(`key_value_store.hpp`); see `engine/asset/CLAUDE.md` "`.irkv` format" for
+the on-disk layout and value model.
+
+```lua
+IRSave.load("highscores")              -- read file into the in-proc store;
+                                       -- missing/corrupt -> empty. returns loaded?
+IRSave.set("highscores", "top1", 5000) -- number | string | bool | array-table
+IRSave.set("highscores", "names", { "ACE", "BEE" })
+IRSave.save("highscores")              -- write the in-proc store to disk. returns ok?
+local v = IRSave.get("highscores", "top1", 0)  -- stored value, or the default arg
+IRSave.has("highscores", "top1"); IRSave.remove("highscores", "top1"); IRSave.clear("highscores")
+```
+
+- **Stores are namespaced by basename** (`"highscores"`, `"settings"`); each
+  maps to `userDataDir("irreden")/<name>.irkv` (per-user dir, not the exe
+  dir — survives a clean bundle reinstall). `save` creates the directory.
+- **Per-`World` lifetime.** The store registry is captured in the binding
+  lambdas (shared_ptr), so it lives as long as the `LuaScript`'s sol::state.
+  Don't hold Lua handles across `World` shutdown.
+- **Values cross by `sol::type` inspection** (number/string/bool/array-table),
+  NOT a Lua-spelled enum, so the `cpp-lua-enums` rule does not apply. A
+  number/string/bool maps to a scalar; an array-style table (contiguous
+  `1..n`) maps to a LIST. A map-style table or a nested list raises a clear
+  Lua error rather than silently dropping the value. Lists do not nest in v1.
+- Coverage: `test/script/lua_persistence_test.cpp` (in-memory surface) +
+  `test/asset/key_value_store_test.cpp` (format round-trip + corruption).
+
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
 `bindLuaDrivenEcs()` also exposes the `Prefab` Lua table — the runtime
