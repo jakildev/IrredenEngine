@@ -8,11 +8,13 @@ should the next iteration for this lane launch with, and at what effort?
 
 Resolution order mirrors the worker role docs' pickup priority:
 
-  1. feedback PRs   — class from review severity: ``fleet:design-unblocked``
-                      routes to opus (tier-4 resume is opus+-only work);
-                      ``fleet:fable`` on the PR routes the fix to fable
-                      (reviewer judged the approach itself wrong); a blocking
-                      label (``fleet:needs-fix`` / ``human:needs-fix`` /
+  1. feedback PRs   — class from review severity: ``fleet:fable`` on the PR
+                      routes the fix to fable (reviewer judged the approach
+                      itself wrong; fable is opus+ so it also serves a
+                      fable-tagged design-unblocked resume — checked first);
+                      ``fleet:design-unblocked`` otherwise routes to opus
+                      (tier-4 resume is opus+-only work); a blocking label
+                      (``fleet:needs-fix`` / ``human:needs-fix`` /
                       ``human:blocker``) routes to opus; nits-only feedback
                       routes to sonnet.
   2. open tasks     — the oldest claimable task's class (slices are sorted
@@ -87,17 +89,22 @@ def _only_inflight_pr_tasks(slice_data):
 
 def feedback_pr_class(labels):
     label_set = set(labels or [])
-    # Design-unblocked resume is opus+-only work (FLEET-FEEDBACK-HANDLING
-    # tier 4: "Opus+ classes only; sonnet-class iterations skip this tier").
-    # Checked before fleet:fable — a fable dispatch would skip the PR the same
-    # way a sonnet one does, re-starving it. Without this clause the scout
-    # surfaces a design-unblocked PR as the top feedback item, this resolver
-    # routes it to sonnet, and the dispatched sonnet worker refuses tier 4:
-    # a no-op every tick, with opus needs_plan starved behind it (engine #1885).
-    if "fleet:design-unblocked" in label_set:
-        return "opus"
+    # fleet:fable is checked first: fable is an opus+ class (role-worker.md
+    # "opus+ = opus or fable") and so it handles tier-4 design-unblocked
+    # resumes too. Checking it before fleet:design-unblocked keeps the rare
+    # both-tagged PR (an architect unblocked a fable-tier task) on fable
+    # rather than silently downgrading it to opus.
     if "fleet:fable" in label_set:
         return "fable"
+    # Design-unblocked resume is opus+-only work (FLEET-FEEDBACK-HANDLING
+    # tier 4: "Opus+ classes only; sonnet-class iterations skip this tier").
+    # Routed to opus so the dispatched worker can serve tier 4: without this
+    # clause the scout surfaces a design-unblocked PR as the top feedback item,
+    # this resolver routes it to sonnet, and the dispatched sonnet worker
+    # refuses tier 4 — a no-op every tick, with opus needs_plan starved behind
+    # it (engine #1885).
+    if "fleet:design-unblocked" in label_set:
+        return "opus"
     if label_set & FEEDBACK_BLOCKING_LABELS:
         return "opus"
     return "sonnet"

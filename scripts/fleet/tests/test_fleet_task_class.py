@@ -47,11 +47,16 @@ class FeedbackClassFromLabels(unittest.TestCase):
     def test_design_unblocked_routes_opus(self):
         # Tier-4 resume is opus+-only (FLEET-FEEDBACK-HANDLING); routing it to
         # sonnet dispatches a worker that then skips the PR -> no-op forever
-        # (engine #1885). Wins even over fleet:fable, which would skip it too.
+        # (engine #1885). design-unblocked alone -> opus.
         self.assertEqual(
             feedback_pr_class(["fleet:design-unblocked", "fleet:wip"]), "opus")
+
+    def test_design_unblocked_plus_fable_routes_fable(self):
+        # fable is opus+ (role-worker.md) and handles tier 4 too, so the rare
+        # both-tagged PR stays fable rather than downgrading to opus —
+        # fleet:fable is checked before fleet:design-unblocked.
         self.assertEqual(
-            feedback_pr_class(["fleet:design-unblocked", "fleet:fable"]), "opus")
+            feedback_pr_class(["fleet:design-unblocked", "fleet:fable"]), "fable")
 
 
 class TaskResolution(unittest.TestCase):
