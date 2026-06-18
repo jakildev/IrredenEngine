@@ -27,12 +27,6 @@ namespace IRPrefab::PerAxisCanvas {
 // (T3) land.
 inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
 
-// Residual-yaw deadband for the allocation gate. |residualYaw| at or below this
-// counts as "cardinal" (not rotating): the per-axis textures stay released and
-// the renderer stays on the byte-identical single-canvas fast path. A small
-// deadband avoids allocate/release churn from float noise right at a cardinal.
-inline constexpr float kResidualYawDeadband = 1e-4f;
-
 namespace detail {
 // Allocate a canvas's three per-axis texture sets at the worst-case size for
 // its cardinal trixel canvas, plus the screen-space resolve-depth texture at
@@ -69,7 +63,12 @@ inline void syncAllocationToCameraYaw() {
     IRComponents::C_PerAxisTrixelCanvases &axes = *perAxis.value();
 
     const float residualYaw = IRPrefab::Camera::computeYawSplit(IRPrefab::Camera::getYaw()).second;
-    const bool rotating = IRMath::abs(residualYaw) > kResidualYawDeadband;
+    // computeYawSplit deadbands the residual to exactly 0 at a settled cardinal
+    // (Camera::kResidualYawDeadband, #1882), so this `!= 0` allocation gate and
+    // the render path-select gate in system_voxel_to_trixel share the identical
+    // predicate — they can never disagree about whether the per-axis textures
+    // should be live.
+    const bool rotating = residualYaw != 0.0f;
 
     if (rotating == axes.isAllocated()) {
         return; // already in the desired allocation state
