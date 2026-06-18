@@ -168,26 +168,40 @@ both backends.
 
 ## Dependency chain
 
-PR #1880 (harness, on master)
-  -> Child 1 (cardinal gather) -> Child 2 (per-axis seams) -> Child 3 (depth)
+PR #1880 (harness, merged)
+  -> Child 1 (#1882: HARNESS fix — isolate cardinals + zoom tier + near-cardinal sampling)
+  -> Child 2 (#1883: per-axis scatter defect — coverage bands + face-alignment seams)
+  -> Child 3 (#1884: depth/clipping unification)
 
-Serialized: the three share ir_iso_common + the framebuffer gather/scatter, so
-they are worked one-at-a-time to avoid parallel conflicts. Child 1 first
-(highest user impact + it touches the gather Child 3 also audits).
+Serialized: they share ir_iso_common + the framebuffer gather/scatter, so they are
+worked one-at-a-time to avoid parallel conflicts. Child 1 (the harness) first — it
+must distinguish the single-canvas vs per-axis render paths and surface the fine
+artifacts before Child 2's per-axis fix can be validated.
+
+**Re-scope (2026-06-17).** Child 1 was "fix the cardinal gather" until the #1885
+investigation proved the single-canvas cardinal path is correct and the real defect
+is the **per-axis** path (now Child 2 / #1883, which absorbed the coverage "bands").
+Child 1 became the harness-methodology fix the misdiagnosis exposed. See the
+per-ticket plans + the #1881 / #1885 comments.
 
 ## Steward ledger
 
-reconciled-through: 2026-06-16
+reconciled-through: 2026-06-17
 proposal-pending: none
 
 ### Children
 | Child | State | PR | Plan | Last validated |
 |---|---|---|---|---|
-| #1882 | filed | — | .fleet/plans/issue-1882.md | — |
-| #1883 | filed (blocked by #1882) | — | .fleet/plans/issue-1883.md | — |
+| #1882 | re-scoped → harness fix; design-unblocked, in progress | #1885 | .fleet/plans/issue-1882.md | — |
+| #1883 | broadened → per-axis defect (bands + alignment); blocked by #1882 | — | .fleet/plans/issue-1883.md | — |
 | #1884 | filed (blocked by #1883) | — | .fleet/plans/issue-1884.md | — |
 
 ### Decisions
+- 2026-06-17: #1882's original "single-canvas cardinal gather" premise was a
+  misdiagnosis (single-canvas path verified correct via static cardinals + an
+  early-return probe in #1885). Re-scoped #1882 → harness methodology fix; folded
+  the real coverage loss + the face-alignment seams into #1883 (per-axis path).
 
 ### Events
 - 2026-06-16: filed via file-epic; plans committed to repo retroactively (the stale global ~/.claude/skills/file-epic ran and skipped step 6.5).
+- 2026-06-17: #1885 worker design-blocked child 1; architect accepted the finding, re-scoped #1882 (harness) + broadened #1883 (per-axis bands + alignment, with human screenshots), unblocked #1885; synced the per-ticket plans to match.
