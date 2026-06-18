@@ -641,6 +641,14 @@ constant float kScatterDilateMarginPx = 0.85;
 // fill pixels no exact footprint claims; never beat a same-plane owner).
 constant float kScatterMarginDepthBiasKey = 0.25;
 
+// Margin-yield gradient scale (#1883) — mirror of ir_iso_common.glsl. Scales the
+// margin yield by the fragment's own plane-extrapolation excursion (penetration
+// past the exact footprint x per-axis depth gradient) so a cell-deep per-axis
+// margin yields the shared ridge to the neighbor face's exact footprint (the
+// doubled top<->side sliver) while sub-pixel gap-fills still win. Folded into the
+// yield-grad varying by the scatter vertex stage.
+constant float kScatterMarginYieldGradScale = 3.0;
+
 // Miter limit for the conservative dilation below (#1538). Mirror of the GLSL
 // constant in ir_iso_common.glsl.
 constant float kScatterMiterLimit = 2.0;

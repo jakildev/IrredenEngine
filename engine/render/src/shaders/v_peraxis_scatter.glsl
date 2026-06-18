@@ -77,6 +77,14 @@ noperspective out float vDepth;
 // claims (the #1494 sub-pixel sliver gaps), never beats a same-plane owner.
 noperspective out vec2 vQuadParam;
 flat out float vMarginDepthBias;
+// Per-axis margin-yield slope (#1883): kScatterMarginYieldGradScale * |depth
+// gradient| per unit of in-plane quad-param, in vDepth units. The fragment stage
+// multiplies these by the fragment's penetration past the exact [0,1]^2 footprint
+// to grow the margin yield in proportion to its plane-extrapolation excursion, so
+// a cell-deep margin yields a shared ridge to the neighbor face's exact footprint
+// (the doubled top<->side sliver) while a sub-pixel gap-fill barely yields.
+flat out float vMarginYieldGradU;
+flat out float vMarginYieldGradV;
 // Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
 // the quad) — origin is the same for all 4 corners of a face instance, so
 // interpolation would be a no-op anyway and flat avoids shader-pipeline
@@ -263,4 +271,10 @@ void main() {
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
     vMarginDepthBias = kScatterMarginDepthBiasKey / depthRange;
+    // Per-axis margin-yield slope (#1883). kU/kV are the per-unit-axis composite
+    // depth gradients; scaled to vDepth units and pre-absed (penetration is always
+    // outward) so the fragment stage adds penetration*slope as the over-grown
+    // margin's extrapolation-proportional yield. Folds in kScatterMarginYieldGradScale.
+    vMarginYieldGradU = kScatterMarginYieldGradScale * abs(kU) / depthRange;
+    vMarginYieldGradV = kScatterMarginYieldGradScale * abs(kV) / depthRange;
 }

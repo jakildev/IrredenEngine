@@ -700,6 +700,22 @@ const float kScatterDilateMarginPx = 0.85;
 // (>= 4*|cos-sin| key units), so genuine occlusion is never reordered.
 const float kScatterMarginDepthBiasKey = 0.25;
 
+// Margin-yield gradient scale (#1883). The flat bias above only breaks SUB-PIXEL
+// same-plane ties. Once the per-axis margin grows large on a foreshortened face
+// (iter-1's 0.5*|n| reaches a cell-deep fraction), the margin EXTRAPOLATES the
+// face plane far enough that its depth beats a NEIGHBORING face's exact footprint
+// along a shared ridge — the #1883 doubled top<->side sliver: the over-grown
+// top-face margin won a ~cell-wide band on the side face below the ridge. The fix
+// is to make a margin yield in proportion to how far it reached: scale the yield
+// by the fragment's own extrapolation excursion (penetration past the exact
+// footprint x the per-axis screen-depth gradient). A sub-pixel gap-fill barely
+// yields (still wins background and cross-cube silhouette overlaps); a cell-deep
+// margin yields hard (loses the ridge to the neighbor's exact footprint). 3
+// covers the worst-case symmetric two-plane depth divergence near a cardinal with
+// headroom. Folded into the per-axis yield-grad varying by the scatter vertex
+// stage, so the fragment stage needs no copy of this constant.
+const float kScatterMarginYieldGradScale = 3.0;
+
 // Miter limit for the conservative dilation below (#1538): caps how far a sharp
 // (acute) sliver corner is allowed to extend, in multiples of marginPx. Bounds
 // the over-fill so a foreshortened cell's tip can't shoot off into a blob while
