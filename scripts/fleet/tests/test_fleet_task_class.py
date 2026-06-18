@@ -44,6 +44,15 @@ class FeedbackClassFromLabels(unittest.TestCase):
         self.assertEqual(feedback_pr_class(["fleet:needs-fix", "fleet:fable"]),
                          "fable")
 
+    def test_design_unblocked_routes_opus(self):
+        # Tier-4 resume is opus+-only (FLEET-FEEDBACK-HANDLING); routing it to
+        # sonnet dispatches a worker that then skips the PR -> no-op forever
+        # (engine #1885). Wins even over fleet:fable, which would skip it too.
+        self.assertEqual(
+            feedback_pr_class(["fleet:design-unblocked", "fleet:wip"]), "opus")
+        self.assertEqual(
+            feedback_pr_class(["fleet:design-unblocked", "fleet:fable"]), "opus")
+
 
 class TaskResolution(unittest.TestCase):
     def test_oldest_claimable_task_wins(self):
@@ -122,6 +131,19 @@ class TaskResolution(unittest.TestCase):
     def test_needs_plan_runs_opus(self):
         out = resolve({"needs_plan": [{"number": 99}]},
                       "opus", fable_blocked=False)
+        self.assertEqual(out, "opus xhigh 0")
+
+    def test_design_unblocked_feedback_resolves_opus(self):
+        # The engine #1885 shape: a design-unblocked PR is the top feedback
+        # item, every open task is parked/blocked, and opus needs_plan sits
+        # behind it. The lane must dispatch opus (and clear it for tier 4),
+        # not sonnet — pre-fix this resolved "sonnet ... 1" and starved both.
+        out = resolve({
+            "feedback_prs": [{"labels": ["fleet:design-unblocked", "fleet:wip"]}],
+            "tasks_open": [_task("#1882", "opus",
+                                 inflight_pr={"number": 1885, "parked": True})],
+            "needs_plan": [{"number": 1887}],
+        }, "opus", fable_blocked=False)
         self.assertEqual(out, "opus xhigh 0")
 
 

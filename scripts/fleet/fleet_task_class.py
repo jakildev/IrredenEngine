@@ -8,11 +8,13 @@ should the next iteration for this lane launch with, and at what effort?
 
 Resolution order mirrors the worker role docs' pickup priority:
 
-  1. feedback PRs   — class from review severity: ``fleet:fable`` on the PR
-                      routes the fix to fable (reviewer judged the approach
-                      itself wrong); a blocking label (``fleet:needs-fix`` /
-                      ``human:needs-fix`` / ``human:blocker``) routes to
-                      opus; nits-only feedback routes to sonnet.
+  1. feedback PRs   — class from review severity: ``fleet:design-unblocked``
+                      routes to opus (tier-4 resume is opus+-only work);
+                      ``fleet:fable`` on the PR routes the fix to fable
+                      (reviewer judged the approach itself wrong); a blocking
+                      label (``fleet:needs-fix`` / ``human:needs-fix`` /
+                      ``human:blocker``) routes to opus; nits-only feedback
+                      routes to sonnet.
   2. open tasks     — the oldest claimable task's class (slices are sorted
                       by issue number; ``model`` comes from the
                       fleet:fable/opus/sonnet labels via the scout).
@@ -85,6 +87,15 @@ def _only_inflight_pr_tasks(slice_data):
 
 def feedback_pr_class(labels):
     label_set = set(labels or [])
+    # Design-unblocked resume is opus+-only work (FLEET-FEEDBACK-HANDLING
+    # tier 4: "Opus+ classes only; sonnet-class iterations skip this tier").
+    # Checked before fleet:fable — a fable dispatch would skip the PR the same
+    # way a sonnet one does, re-starving it. Without this clause the scout
+    # surfaces a design-unblocked PR as the top feedback item, this resolver
+    # routes it to sonnet, and the dispatched sonnet worker refuses tier 4:
+    # a no-op every tick, with opus needs_plan starved behind it (engine #1885).
+    if "fleet:design-unblocked" in label_set:
+        return "opus"
     if "fleet:fable" in label_set:
         return "fable"
     if label_set & FEEDBACK_BLOCKING_LABELS:
