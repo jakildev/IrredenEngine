@@ -47,45 +47,17 @@ foreach(IR_LIGHTING_DEMO_INDEX RANGE ${IR_LIGHTING_DEMO_LAST})
     add_executable(${IR_LIGHTING_DEMO_TARGET} ${IR_LIGHTING_DEMO_SOURCE})
     target_link_libraries(${IR_LIGHTING_DEMO_TARGET} PUBLIC IrredenEngine)
     target_include_directories(${IR_LIGHTING_DEMO_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-
-    if(WIN32)
-        add_custom_command(
-            TARGET ${IR_LIGHTING_DEMO_TARGET}
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy -t
-                $<TARGET_FILE_DIR:${IR_LIGHTING_DEMO_TARGET}>
-                $<TARGET_RUNTIME_DLLS:${IR_LIGHTING_DEMO_TARGET}>
-            COMMAND_EXPAND_LISTS
-        )
-    endif()
 endforeach()
 
-set(IR_LIGHTING_SCRIPTS_DIR ${IR_LIGHTING_RUNTIME_DIR}/scripts)
-set(IR_LIGHTING_CONFIG_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/config.lua)
-set(IR_LIGHTING_CONFIG_LUA_DST ${IR_LIGHTING_SCRIPTS_DIR}/config.lua)
-
-add_custom_command(
-    OUTPUT ${IR_LIGHTING_CONFIG_LUA_DST}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${IR_LIGHTING_SCRIPTS_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${IR_LIGHTING_CONFIG_LUA_SRC} ${IR_LIGHTING_CONFIG_LUA_DST}
-    DEPENDS ${IR_LIGHTING_CONFIG_LUA_SRC}
-    COMMENT "Syncing lighting demo config.lua"
-)
-
-add_custom_target(IRLightingDemoAssets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_LIGHTING_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_LIGHTING_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_LIGHTING_RUNTIME_DIR}/shaders
-    DEPENDS
-        ${IR_LIGHTING_CONFIG_LUA_DST}
-)
-
+# All lighting demos share one runtime dir, so stage assets ONCE (via the first
+# target's bundle) and have every demo depend on it. Preserves the original
+# single-IRLightingDemoAssets layout and avoids N copy_directory jobs racing into
+# the same dir under make -j.
+# Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs).
+list(GET IR_LIGHTING_DEMO_TARGETS 0 IR_LIGHTING_PRIMARY_TARGET)
+irreden_bundle_assets(${IR_LIGHTING_PRIMARY_TARGET} SCRIPTS config.lua)
 foreach(IR_LIGHTING_DEMO_TARGET IN LISTS IR_LIGHTING_DEMO_TARGETS)
-    add_dependencies(${IR_LIGHTING_DEMO_TARGET} IRLightingDemoAssets)
+    add_dependencies(${IR_LIGHTING_DEMO_TARGET} ${IR_LIGHTING_PRIMARY_TARGET}Assets)
 endforeach()
 
 add_custom_target(IRLightingDemos DEPENDS ${IR_LIGHTING_DEMO_TARGETS})
