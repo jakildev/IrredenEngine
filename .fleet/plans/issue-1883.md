@@ -84,18 +84,44 @@ extent; the miter is generalized to unequal per-edge margins (solve
 Metal in parity. **Result (macOS/Metal sweep zoom tier): near-cardinal seam perim
 43 → 22 (= clean card000 baseline ~21), coverage 1.0, silhouette dashing gone.**
 
-**Iteration 2 — NEXT: the doubled sliver at the top↔side shared edge** (now isolated;
-addresses root-cause bullets 2+3 above). Start with rounding unification, then the
-deterministic edge owner. Validate with a HIGH-ZOOM crop of the top↔side edge (the
-doubled line must collapse to one) — the aggregate perim won't show it.
+**Iteration 2 — DONE: the doubled sliver at the top↔side shared edge.**
+Penetration-scaled margin yield (`kScatterMarginYieldGradScale = 3`) in the per-axis
+scatter. **Empirical isolation overturned the planned root cause:** a margin-floor
+diagnostic (set the per-axis margin to its `minMarginPx` floor) made the doubled
+sliver vanish *entirely*, proving the sliver was **iter-1's own `0.5*|n|` margin
+over-painting across the ridge**, NOT the rounding split (bullet 2) — flooring also
+brought the silhouette dashing back (perim 22→42), so the floor is not a fix. Root
+cause is bullet 3 (no deterministic ridge owner) at scale: on a foreshortened face
+iter-1's margin reaches a cell-deep fraction, so the over-grown TOP-face margin
+EXTRAPOLATES its plane deep enough to beat the LEFT face's *exact* footprint along a
+~16px band below the ridge (sampled: exact TOP color (93,111,130) bleeding past the
+ridge onto LEFT (88,106,124)). The flat `kScatterMarginDepthBiasKey` (0.25) only
+breaks sub-pixel same-plane ties — far too small once the margin buys a real
+plane-depth advantage. **Fix:** scale the margin's depth yield by its own
+extrapolation excursion (penetration past the exact `[0,1]^2` footprint × the
+per-axis screen-depth gradient `|kU|/|kV|`), folded into a `vMarginYieldGrad{U,V}`
+varying. A sub-pixel gap-fill barely yields (still wins background / cross-cube
+silhouette overlaps); a cell-deep margin yields hard (loses the ridge to the
+neighbor's exact footprint). GLSL + Metal in parity; per-axis-only, so the cardinal
+fast path is untouched. **Result (macOS/Metal sweep):** doubled sliver collapses to a
+clean single ridge (column samples TOP→LEFT in one step; before/after + img_diff in
+`/tmp/iter2_ridge_before_after.png`), near-cardinal perim stays at the iter-1 ~22
+(NOT the floored ~42), coverage 1.0 across the whole residual band, CARDINAL CHECK
+PASS (path=single). Rounding unification (bullet 2) was deliberately NOT applied —
+it does not touch the visible defect and would perturb the delicate cast/receive
+shadow path; left as a possible future consistency hardening.
 
 **Env traps:** (1) macOS builds METAL only — edit `metal/*.metal`, validate, then
 mirror to the GLSL twin before committing (Linux validates GLSL via cross-host
 smoke). (2) `setCameraVisualYaw` takes DEGREES (`--yaw 84` = a near-90 per-axis
-pose). (3) High-zoom static crop: `cd build/creations/demos/perf_grid && ./IRPerfGrid
---mode dense --no-overlay --auto-screenshot 60 --grid-size 8 --zoom 9 --yaw 84`;
-ROI crops via `--yaw-ramp --yaw-ramp-crops` (crop centering drifts off-cube above
-grid-12/zoom-4 — make it zoom-aware in iter 2). (4) Worktree guard blocks writing
+pose). (3) The canonical per-axis-seam capture is the `--yaw-ramp --yaw-ramp-crops`
+ROI pass at `--grid-size 12 --zoom 4` (e.g. `cd build/creations/demos/perf_grid &&
+./IRPerfGrid --mode dense --yaw-ramp --no-overlay --auto-screenshot 80 --grid-size 12
+--zoom 4 --yaw-ramp-crops`; near90_m06 = the 84° pose). NOTE: `--yaw N` is IGNORED
+when `--auto-screenshot` runs the shot table — kShots/yaw-ramp override per-shot yaw,
+so there is no single-pose static-yaw capture path; use the ramp's near-cardinal
+crop instead. Pixel-sample a column across the ridge (PIL) to read seam structure —
+the aggregate perim does NOT show the doubled sliver. (4) Worktree guard blocks writing
 to `/tmp` and `~/.fleet/` — keep temp commit-msg/PR-body files inside the worktree.
 
 **Claims:** #1883 claimed (`fleet:claim-mac-opus-architect`). #1884 worker-protected
