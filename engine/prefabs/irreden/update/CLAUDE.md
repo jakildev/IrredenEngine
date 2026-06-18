@@ -26,6 +26,17 @@ in the `UPDATE` pipeline unless explicitly noted.
   `minAngle_`/`maxAngle_`, `inputMin_`/`inputMax_`) are read-write member
   pointers, so a Lua automation lane drives `input_` straight through the
   column view; `axis_` + easing stay constructor-only config.
+- `C_OverlapContactBatch` (#1817) — **singleton** component holding this
+  frame's confirmed overlap pairs (`std::vector<ContactPair>`, each with both
+  entity ids + both collision layers + a normal). `COLLISION_NOTE_PLATFORM`
+  appends; `SYSTEM_DISPATCH_LUA_OVERLAP` reads then clears. It is the producer's
+  **opt-in switch**: emission only happens when the singleton exists, and it is
+  created by `SYSTEM_DISPATCH_LUA_OVERLAP::create()` — so creations that only
+  want the per-entity `C_ContactEvent` never pay for pair emission. Reached
+  anywhere via `IREntity::singleton<C_OverlapContactBatch>()` /
+  `singletonOrNull<...>()`, which is how the producer and consumer share the
+  vector without a cross-system SystemId handoff. `ContactPair` is co-located in
+  `component_overlap_contact_batch.hpp`.
 
 ## Key systems (all UPDATE pipeline)
 
@@ -36,6 +47,24 @@ in the `UPDATE` pipeline unless explicitly noted.
 - `PARTICLE_SPAWNER` — spawns particles at configured rate via the voxel
   particle entity builder.
 - `LIFETIME` — decrements `C_Lifetime`; destroys entities at zero.
+- `COLLISION_NOTE_PLATFORM` (collision domain) — broad+narrow-phase AABB
+  overlap detector. Marks per-entity `C_ContactEvent` (single contact) AND,
+  when the `C_OverlapContactBatch` singleton exists, appends every overlapping
+  pair (canonical `a_ < b_`, both layers stamped) to it. The pair scan drops
+  the first-contact `break` so all overlaps are emitted (D3); the
+  `C_ContactEvent` write stays first-contact-only, so existing consumers are
+  byte-identical and non-opted-in creations keep the fast break path.
+- `SYSTEM_DISPATCH_LUA_OVERLAP` (#1817) — turns `C_OverlapContactBatch` into
+  Lua `IRCollision.onOverlapEnter/onOverlapExit` callbacks. Owns the
+  pair-level enter/exit state machine (prev/cur pair maps, reused across
+  frames) — accurate when one entity touches several others, unlike the
+  per-entity `C_ContactEvent`. Holds the `sol::protected_function` handler
+  registry keyed by layer pair (session lifetime, freed before the sol::state
+  per `world.hpp`'s manager-block ordering). **Register after
+  `COLLISION_NOTE_PLATFORM`** in the pipeline; it consumes + clears the batch
+  in its own tick (the `IRCollision.*` Lua surface lives in
+  `engine/script/CLAUDE.md`; the runnable proof is
+  `creations/demos/collision_overlap_demo`).
 - `PERIODIC_IDLE` — advances per-entity `C_PeriodicIdle` timer.
 - `PERIODIC_IDLE_POSITION_OFFSET` — upserts the resolved bob value as a
   vec3 ADD modifier on the entity's `C_Modifiers` each tick via
