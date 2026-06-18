@@ -1,38 +1,67 @@
-# Plan: render — per-axis face seams / slivers / stray lines
+# Plan: render — per-axis scatter defect (coverage bands + face-alignment seams)
 
-- **Issue:** #1883
+- **Issue:** #1883 (**BROADENED** — was "per-axis face seams/slivers" only)
 - **Model:** opus
-- **Date:** 2026-06-16
+- **Date:** 2026-06-17
 - **Epic:** #1881 — see .fleet/plans/issue-1881.md
-- **Blocked by:** #1882 (shared ir_iso_common + framebuffer surface — serialized)
-- **Gated on:** PR #1880 (harness) on master
+- **Blocked by:** #1882 (the harness must isolate render paths + surface fine artifacts first)
 
-## Scope
-Fix the per-axis forward-scatter seams/slivers/stray-lines/staircase on zoomed
-small rotated cubes (canvas_stress 48-55), worst near a face-flip.
+## Scope — the whole per-axis forward-scatter defect (two related faces)
+The #1885 investigation moved the rotated-cube defect here: it is the per-axis
+forward-scatter path, **not** the single-canvas cardinal gather (#1882, re-scoped to
+the harness fix). Two symptoms, one root cause:
 
-## Affected files
-- engine/render/src/shaders/v_peraxis_scatter.glsl:165,199-222 + metal/peraxis_scatter.metal
-- engine/render/src/shaders/ir_iso_common.glsl scatterConservativeDilation ~L752-777 (+ metal)
-- engine/render/src/shaders/c_resolve_per_axis_screen_depth.glsl (+ metal) — rounding parity
+**A. Coverage "bands"** (IRPerfGrid `--mode dense` 64^3): see-through density loss
+across the residual band — whole diagonal bands of the solid read as background. The
+scatter fails to **fill** the rotated faces.
+
+**B. Face-alignment seams** (canvas_stress small cubes, zoomed; human screenshots):
+- a **vertical seam splitting a face into two slightly-offset panels**;
+- a **doubled sliver/ridge along the top↔side face edge** (the faces don't meet — a
+  few-px gap/overlap);
+- **stray thin diagonal lines** on faces;
+- **staircase/jagged edges** where a straight cube edge should be.
+Worst **approaching** a cardinal (small residual). The scatter quads fail to **tile**.
+
+## Root cause (shared)
+The per-axis scatter deform/dilation + placement math:
+- #1878's adaptive dilation margin is **anisotropic** (a single scalar across both
+  in-plane axes) + **discontinuous** (hard `degenSin` gate) → over-grows the
+  non-degenerate axis (stray lines) and under-fills near degeneracy (bands).
+  `v_peraxis_scatter.glsl:199-222` + `metal/peraxis_scatter.metal`.
+- **Float-ulp split**: the scatter consumes `isoPixelToPos3D` UN-rounded
+  (`v_peraxis_scatter.glsl:165`) while resolve/lighting consume it ROUNDED →
+  region-boundary shift (horizontal offsets / seams). `c_resolve_per_axis_screen_depth`.
+- Cross-canvas shared edges have **no deterministic geometric owner** (reconciled
+  only by planar depth + the 0.25 margin bias) → the top↔side sliver/ridge.
 
 ## Approach
-Make the dilation margin per-axis (grow each in-plane axis by its own collapse,
-not the max) and continuous (drop the hard degenSin gate). Unify the rounding:
-consume isoPixelToPos3D the same way (rounded) in scatter + resolve/lighting.
-Give the cross-canvas shared edge a deterministic owner (stable axis/slot tie)
-instead of an ulp-sensitive depth race.
+- Make the dilation margin **per-axis + continuous** (grow each in-plane axis by its
+  own collapse, drop the hard `degenSin` gate) — fixes both stray lines (B) and
+  under-fill bands (A).
+- **Unify the rounding**: consume `isoPixelToPos3D` the same way (rounded) in scatter
+  + resolve/lighting — fixes the region-offset seams.
+- Give the cross-canvas shared edge a **deterministic owner** (stable axis/slot tie)
+  instead of an ulp-sensitive depth race — fixes the top↔side sliver/ridge.
+
+## Affected files
+- `engine/render/src/shaders/v_peraxis_scatter.glsl:165,199-222` + `metal/peraxis_scatter.metal`
+- `engine/render/src/shaders/ir_iso_common.glsl` `scatterConservativeDilation` ~L752-777 (+ metal)
+- `engine/render/src/shaders/c_resolve_per_axis_screen_depth.glsl` (+ metal) — rounding parity
 
 ## Acceptance criteria
-- Add a zoomed shot tier (zoom 3-4) to the harness; per-axis-pose zoomed perim
-  drops near the cardinal-0 level; ROI crops show no slivers/stray-lines/offsets.
-- canvas_stress small cube reads clean through the residual band (ROI before/after).
+- **A:** IRPerfGrid dense — coverage stays solid across the residual band (no bands).
+- **B:** canvas_stress small cube — clean faces through the near-cardinal band: no
+  vertical seams, no top↔side sliver, no stray lines; bounded silhouette raggedness
+  (ROI before/after).
 - Both backends.
 
 ## Gotchas
-Margin-depth bias must still yield grown margin to a real exact footprint (don't
-bloat silhouette); don't regress #1878's band-clipping fix at large residual.
+- The margin-depth bias must still keep grown margin yielding to a real exact
+  footprint (don't bloat the silhouette).
+- Don't regress #1878's band-clipping fix at large residual.
 
 ## Verification
-bash scripts/dev/perf-grid-rotate-sweep with the new zoom tier on both hosts;
-canvas_stress ROI crops; cross-host IRShapeDebug smoke.
+`bash scripts/dev/perf-grid-rotate-sweep` (post-#1882 harness: residual-band coverage
+for A + the zoomed near-cardinal tier for B), both hosts; canvas_stress ROI crops
+before/after.
