@@ -1335,6 +1335,56 @@ Coverage: `test/script/lua_render_bindings_test.cpp` asserts table/function
 presence + the `colorFromLua` parse cases headless; the runtime draw + sun
 path is exercised visually by `creations/demos/lua_pipeline_demo`.
 
+## Collision overlap events (`IRCollision.*`)
+
+`bindLuaDrivenEcs()` exposes a Lua-facing **overlap/trigger event** surface
+(engine #1817) over the engine's existing AABB collider detection. A creation
+registers a handler keyed by a collision-layer pair; the handler fires on
+**enter** (and **exit**) of any two entities on those layers and receives both
+entity ids. No physics solver — overlap notification only. The binding block is
+`detail::bindCollisionEvents` in
+`engine/script/include/irreden/script/lua_collision_bindings.hpp`.
+
+```lua
+-- Built-in layer bits (integer table mirroring the C++ CollisionLayerMask
+-- enum). Lua may ALSO pass raw integer layer bits, so an arcade creation can
+-- use its own player/enemy/projectile/pickup vocabulary.
+IRCollision.Layer.{DEFAULT, NOTE_BLOCK, NOTE_PLATFORM, PARTICLE}
+
+IRCollision.onOverlapEnter(layerA, layerB, function(entA, entB) ... end)
+IRCollision.onOverlapExit (layerA, layerB, function(entA, entB) ... end)
+```
+
+- **Argument order matches registration.** `onOverlapEnter(layerA, layerB, fn)`
+  always calls `fn(entityOnLayerA, entityOnLayerB)`, independent of which entity
+  id is numerically smaller. For a same-layer pair (`layerA == layerB`) the
+  order is the canonical (smaller id, larger id).
+- **Enter fires once** per sustained overlap (the frame it begins), not every
+  frame. **Exit fires once** the frame the overlap ends — including when it ends
+  because an entity despawned, so the exit handler's ids may reference a dead
+  entity; guard with `IREntity.exists` before touching them.
+- **Pipeline requirement.** The handlers are driven by two prefab systems the
+  creation must register (`registerPrefabSystem<...>()`) and place in its UPDATE
+  pipeline **in order**: `COLLISION_NOTE_PLATFORM` (emits the batched
+  contact-pair buffer) **before** `COLLISION_DISPATCH_LUA_OVERLAP` (diffs the
+  buffer and invokes the Lua handlers). Calling `onOverlapEnter`/`onOverlapExit`
+  before `COLLISION_DISPATCH_LUA_OVERLAP` is registered raises a Lua error
+  pointing at the missing registration. `COLLISION_EVENT_CLEAR` is the usual
+  third system (it resets the per-entity `C_ContactEvent` flags) but is not
+  required by the overlap surface itself.
+- **Layering note.** The handlers are stored on the dispatch system as plain
+  `std::function`, NOT `sol::protected_function` — this binding wraps the Lua
+  function (with the same error-trapping idiom as `IRCommand`) before handing it
+  to the prefab system, so the prefab layer stays sol-free. The dispatch system
+  is reached via the per-LuaScript prefab-system id map + `getSystemParams`, and
+  the lookup is deferred to handler-registration time (the creation registers
+  the system after `bindLuaDrivenEcs()` runs).
+- Coverage: `test/script/lua_collision_bindings_test.cpp` drives the full
+  surface headless (both acceptance pairs fire with correct ids, enter-once +
+  exit, unmatched-layer no-fire, the unregistered-system error). The runtime
+  end-to-end path is the `creations/demos/lua_overlap_demo` HUD (two discs that
+  turn green once their overlap handler fires).
+
 ## C++ ↔ Lua math type helpers
 
 When a binding accepts a math type that Lua callers may pass as either a

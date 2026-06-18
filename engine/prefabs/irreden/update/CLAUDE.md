@@ -96,6 +96,42 @@ in the `UPDATE` pipeline unless explicitly noted.
   domain root) is exemplified by
   `engine/prefabs/irreden/spatial/spatial_query.hpp`.
 
+## Collision overlap events (#1817)
+
+AABB collider overlap detection feeding both a per-entity contact event and a
+Lua-facing overlap callback surface. Three systems + one buffer component:
+
+- `COLLISION_NOTE_PLATFORM` — broad+narrow AABB overlap scan over the
+  `C_WorldTransform + C_ColliderIso3DAABB + C_CollisionLayer + C_ContactEvent`
+  archetype. Two additive outputs: (1) per-entity `C_ContactEvent`
+  (first-overlapping-partner-wins; consumed by `system_spring_platform` /
+  `system_contact_*`), and (2) a layer-stamped `ContactPair` vector in the
+  `C_CollisionPairBuffer` singleton — every confirmed overlap, emitted once per
+  unordered pair (canonical `a_ < b_`). The producer owns the buffer lifecycle:
+  its `beginTick` clears the singleton, so a pipeline that runs it without the
+  dispatch consumer still clears every frame.
+- `COLLISION_DISPATCH_LUA_OVERLAP` — iterates the `C_CollisionPairBuffer`
+  singleton, diffs this frame's pairs against last frame's, and fires the
+  registered Lua enter/exit handlers (pair-level enter/exit state machine —
+  handles an entity touching several others in one frame). Handlers are keyed by
+  the unordered collision-layer pair and stored as plain `std::function`, so
+  this prefab header stays sol-free; the `IRCollision` Lua binding
+  (`engine/script/.../lua_collision_bindings.hpp`) does the sol wrapping. Place
+  it AFTER `COLLISION_NOTE_PLATFORM` in the UPDATE pipeline.
+- `COLLISION_EVENT_CLEAR` — resets the per-entity `C_ContactEvent` enter/stay/
+  exit flags each frame. Unrelated to the pair buffer (which the producer
+  clears).
+- `C_CollisionPairBuffer` (`component_collision_pair_buffer.hpp`) — singleton
+  component holding `std::vector<ContactPair>`; the cross-system handoff from
+  producer to dispatch. Cleared+refilled each frame (capacity retained).
+
+The Lua surface (`IRCollision.onOverlapEnter` / `onOverlapExit`, the `Layer`
+table, pipeline-order requirement, enter/exit semantics) is documented in
+`engine/script/CLAUDE.md` §"Collision overlap events". `C_CollisionLayer`'s
+`layer_` is a single bitmask bit per entity; `collidesWithMask_` gates which
+other layers it pairs with (checked both directions). `COLLISION_NOTE_PLATFORM`
+is misnamed (music-demo origin) but IS the general AABB overlap detector.
+
 ## Gotchas
 
 - **Velocity is in blocks/second.** `system_velocity.hpp` multiplies by

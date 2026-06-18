@@ -7,6 +7,7 @@
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_audio_bindings.hpp>
+#include <irreden/script/lua_collision_bindings.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
@@ -645,6 +646,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindSystemNameEnum(*this);
     detail::bindConcurrencyEnum(*this);
     detail::bindRegisterPipelineAndSystemId(*this, prefabSystemIds());
+    detail::bindCollisionEvents(*this, prefabSystemIds());
     detail::bindModifierFramework(*this);
     detail::bindPrefabApi(*this);
     detail::bindSpatialApi(*this);
