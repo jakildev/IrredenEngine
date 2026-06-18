@@ -69,15 +69,19 @@ in the `UPDATE` pipeline unless explicitly noted.
   `C_WorldTransform`. T-378 partitions the archetype set into
   per-depth levels (cached across frames; the partition rebuilds only
   on archetype-graph changes); within each level composition fans out
-  to IRJob workers via `IRJob::parallelFor`. #1804 made the per-level
-  dispatch split by **row range**, not just by archetype: a level is
-  flattened into row-chunks so a single dominant archetype (e.g. a
-  262K-entity grid in one node) splits across workers instead of
-  composing serially on one. Output is bit-identical to the serial
-  path (disjoint rows, each entity writes only its own
-  `C_WorldTransform[i]`). Cost is O(N) total compose work with
-  O(passes × archetypes) topology bookkeeping, where passes is bounded
-  by the deepest parent chain. See
+  to IRJob workers. #1804 made the per-level dispatch split by **row
+  range**, not just by archetype: a level is flattened into row-chunks
+  so a single dominant archetype (e.g. a 262K-entity grid in one node)
+  splits across workers instead of composing serially on one. #1900
+  hoisted that fan-out / chunk-sizing / serial-fallback policy out of
+  the system and into `IRJob::parallelChunks` (tuned via
+  `IRJob::ParallelTuning`, whose defaults *are* this system's original
+  hand-tuned constants); the system now just mirrors each level's
+  per-node row counts into a reused buffer and hands them to the
+  planner. Output is bit-identical to the serial path (disjoint rows,
+  each entity writes only its own `C_WorldTransform[i]`). Cost is O(N)
+  total compose work with O(passes × archetypes) topology bookkeeping,
+  where passes is bounded by the deepest parent chain. See
   `docs/perf-reports/threading_propagate_transform.md`.
 
 ## Commands

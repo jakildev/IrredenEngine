@@ -47,20 +47,34 @@ transform from a pre-resolved vector instead of an inline
 > `composeNode` runs serially on one worker. See the dedicated section
 > below for the row-splitting fix and its measurement.
 
-Each level is flattened into a list of row-chunks and dispatched with a
-single `parallelFor`:
+> **Hoisted into `IRJob` by #1900.** The fan-out decision, chunk
+> sizing, and serial fallback below no longer live in the system —
+> they are `IRJob::parallelChunks`, tuned by an `IRJob::ParallelTuning`
+> struct. The old `kMin*` / `targetTasks` constants are now that
+> struct's **defaults**, so `PROPAGATE_TRANSFORM` passes a
+> default-constructed tuning and the numbers stay bit-identical. The
+> system now only mirrors each level's per-node row counts into a
+> reused buffer (`nodeLengths_`) and calls the planner with its
+> reusable `chunks_` scratch; `engine/job/` owns and unit-tests the
+> policy (`test/job/ir_job_test.cpp`). The field names below are the
+> `ParallelTuning` members.
 
-- **`kMinForParallel = 8`** (node count) **OR `kMinRowsForParallel = 4096`**
+Each level is flattened into a list of row-chunks (by
+`IRJob::parallelChunks`) and dispatched with a single internal
+`parallelFor`:
+
+- **`minNodes_ = 8`** (node count) **OR `minItemsToParallelize_ = 4096`**
   (total entity rows) — a level parallelizes when it has at least this
   many archetypes *or* this many total rows. Below both, the dispatch +
   wait overhead exceeds the savings and the level composes serially.
-- **`kMinChunkRows = 2048`** — the minimum rows per chunk. A node smaller
+- **`minChunk_ = 2048`** — the minimum rows per chunk. A node smaller
   than the chunk size stays whole (one chunk), preserving the original
   per-archetype granularity for many-small-node levels; a node larger
   than the chunk size splits into multiple row-range chunks. The chunk
-  size is `max(kMinChunkRows, ceil(totalRows / targetTasks))` with
-  `targetTasks = max(1, workerCount * 2)`, so a single dominant node
-  splits into ~`targetTasks` chunks (≈2 per worker).
+  size is `max(minChunk_, ceil(totalRows / targetTasks))` with
+  `targetTasks = max(1, workerCount * tasksPerWorker_)` (default
+  `tasksPerWorker_ = 2`), so a single dominant node splits into
+  ~`targetTasks` chunks (≈2 per worker).
 - **Grain = `max(1, ceil(numChunks / targetTasks))`** over the chunk
   list — `1` when chunks already number ≤ `targetTasks` (single large
   node), grouping when many small nodes produce more chunks than tasks.
