@@ -220,6 +220,25 @@ only flag newly introduced narration, not pre-existing comments in
 untouched code. Fix: delete the cross-reference; if it was carrying a real
 WHY, move that WHY to the site it points at.
 
+**Check 5: missing final newline on non-clang-format text files.**
+
+`.editorconfig` sets `insert_final_newline = true` (globally, and again for
+`[*.{lua,cmake,txt,md}]` / `[CMakeLists.txt]`), but the agent file-edit tools
+don't honor it and clang-format only enforces it for the C++ files in its
+scope — so `.cmake`, `.md`, `.lua`, `.txt`, and `CMakeLists.txt` fall through
+to a human/reviewer eyeball (the #1861 nit on `cmake/ir_functions.cmake`). For
+each changed file of those types, flag a missing trailing newline — a non-empty
+last byte (i.e. not `\n`) is the violation:
+
+```bash
+for f in $(git diff --name-only HEAD -- '*.cmake' '*.md' '*.lua' '*.txt' '**/CMakeLists.txt'); do
+  [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo "MISSING final newline: $f"
+done
+```
+
+Auto-fix: append a single `\n`. Scope to files changed on this branch (the
+§10 `format-changed` set), not the whole tree.
+
 ### 2c. Serialized-struct version-bump check
 
 See `engine/asset/CLAUDE.md` §"Automated version-bump detection" for the full

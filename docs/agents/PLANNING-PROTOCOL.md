@@ -15,6 +15,17 @@ higher (`FLEET_ROLE_MODEL` is the signal).
 
 For each `fleet:needs-plan` issue:
 
+0. **Claim the issue before planning.** Acquire a `fleet-claim`-style lock on
+   the `fleet:needs-plan` issue, and **skip it if an open plan PR already
+   references it** (branch/title names the issue) — mirroring the in-flight-PR
+   dedup task pickup already does. Without an atomic claim, two opus panes that
+   select the same oldest needs-plan issue on one scout tick both see no plan
+   PR yet and both plan it (#1810 produced **three** duplicate plan PRs for one
+   issue — add/add conflicts, three review+merge cycles). A PR cross-check
+   alone doesn't close the same-tick race (both planners pass it before either
+   opens a PR); the atomic claim does. (The claim/dedup enforcement is fleet
+   tooling — tracked separately; this step is the contract it implements.)
+
 1. **Read the full issue thread** — title, body, and every comment.
    The plan is often seeded in a comment, and the human may have left
    scope refinements there too. Use the cache-aware wrapper:
@@ -30,7 +41,15 @@ For each `fleet:needs-plan` issue:
      not the path the issue body guesses at. A body ending in "likely
      suspects / confirm during investigation" is a hypothesis, not a
      plan; verify the premise before writing the approach (every #1370
-     carve-off design-blocked because nobody had).
+     carve-off design-blocked because nobody had). **Negative / gap /
+     absence claims** that motivate new infrastructure ("the engine does
+     **not** do X today", "Y is missing", "nothing frees Z") must be
+     **exhaustively source-verified across the full candidate set** before
+     the approach commits to building — a negative is true only if *every*
+     candidate was checked. An unverified gap over-builds, or worse bakes a
+     wrong-by-construction defect into the plan (#1814: "destroying an entity
+     doesn't free its ResourceIds" was false for ~8 of 9 components; the
+     prescribed hook would have double-freed them).
    - **One approach, picked.** Step-by-step: which files, what order,
      key decisions — and the plan **commits to a single approach**.
      Deferring the choice to the worker ("confirm during
@@ -100,6 +119,18 @@ For each `fleet:needs-plan` issue:
    ## Gotchas
    <pitfalls the worker should watch for>
    ```
+
+   **New-creation registration:** when `## Affected files` lists a new
+   `creations/<demo>/` subdirectory, also list its `CMakeLists.txt` (new)
+   **and** the parent `creations/CMakeLists.txt` (the `add_subdirectory`
+   registration) — the target silently doesn't build without the parent entry.
+
+   **Plan files are engine-public.** The committed `.fleet/plans/issue-<N>.md`
+   is world-readable on `master`, so it falls under
+   [`CLAUDE-BASELINE.md` §"Cross-repo information isolation"](CLAUDE-BASELINE.md):
+   use engine terminology only — no game feature names or game jargon (e.g. the
+   "jam" leak in #1815's plan). `commit-and-push`'s hard-token grep won't catch
+   ambiguous words, so this is an author-time check.
 
 4. **Remove the `fleet:needs-plan` label. Do NOT touch
    `human:approved`** — it's still on the issue from when the human
