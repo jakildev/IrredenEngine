@@ -668,25 +668,44 @@ constant float kScatterDetachedPitchFraction = 0.5;
 // moving outward; clamp |δ| to kScatterMiterLimit*marginPx so a sliver tip can't
 // blow into a blob (the failure mode of just raising marginPx).
 inline float2 scatterConservativeDilation(
-    float2 su, float2 sv, float2 cornerSign, float marginPx, float2 ndcPerPx
+    float2 su, float2 sv, float2 cornerSign, float minMarginPx, float2 ndcPerPx
 ) {
+    // Outward normal of each edge = the component of the OTHER edge perpendicular
+    // to it; |nu|/|nv| are the on-screen perpendicular extents across each edge.
     float2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8f));
     float2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8f));
     bool hasU = dot(nu, nu) > 1e-10f;
     bool hasV = dot(nv, nv) > 1e-10f;
     if (!hasU && !hasV) return float2(0.0);
+    // Per-axis margin (#1883): grow each edge by half its OWN on-screen extent,
+    // continuous, floored at minMarginPx for fragment-center coverage. The
+    // collapsing axis grows (bridging the band gap at its sliver ends) while the
+    // long silhouette edge stays at the tight floor — replacing the anisotropic
+    // max(suLen,svLen) + hard degenSin gate that over-grew the long axis and
+    // dashed the foreshortened silhouette.
+    float marginU = max(minMarginPx, 0.5f * length(nu));
+    float marginV = max(minMarginPx, 0.5f * length(nv));
     float2 e1 = hasU ? cornerSign.y * normalize(nu) : float2(0.0); // e_u edge normal
     float2 e2 = hasV ? cornerSign.x * normalize(nv) : float2(0.0); // e_v edge normal
-    if (!hasU) return e2 * marginPx * ndcPerPx;
-    if (!hasV) return e1 * marginPx * ndcPerPx;
-    float2 sum = e1 + e2;
-    float sumLen = length(sum);
-    if (sumLen < 1e-4f) {
-        return float2(-e1.y, e1.x) * (marginPx * kScatterMiterLimit) * ndcPerPx;
+    if (!hasU) return e2 * marginV * ndcPerPx;
+    if (!hasV) return e1 * marginU * ndcPerPx;
+    // Miter that moves edge-u out by marginU and edge-v by marginV: solve
+    // [e1;e2]·δ = (marginU,marginV). Reduces to the #1538 equal-margin miter when
+    // marginU==marginV.
+    float det = e1.x * e2.y - e1.y * e2.x;
+    if (abs(det) < 1e-4f) {
+        return float2(-e1.y, e1.x) * (max(marginU, marginV) * kScatterMiterLimit) * ndcPerPx;
     }
-    float2 miterDir = sum / sumLen;
-    float cosHalf = max(dot(miterDir, e1), 1.0f / kScatterMiterLimit);
-    return miterDir * (marginPx / cosHalf) * ndcPerPx;
+    float2 delta = float2(
+        e2.y * marginU - e1.y * marginV,
+        e1.x * marginV - e2.x * marginU
+    ) / det;
+    // Clamp the miter so an acute corner can't blow a sliver tip into a blob
+    // (the #1538 limit), relative to the larger contributing margin.
+    float maxLen = kScatterMiterLimit * max(marginU, marginV);
+    float dLen = length(delta);
+    if (dLen > maxLen) delta *= maxLen / dLen;
+    return delta * ndcPerPx;
 }
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion

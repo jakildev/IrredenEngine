@@ -198,27 +198,16 @@ void main() {
     vec2 quadEv = vec2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     vec2 su = (mpMatrix * vec4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     vec2 sv = (mpMatrix * vec4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    // Foreshortening-adaptive margin: as the residual yaw approaches ±45deg one
-    // in-plane axis collapses on screen (su nearly parallel to sv), so the
-    // deformed face quad degenerates to a sliver and adjacent faces — spaced ~a
-    // voxel step apart — leave gaps the fixed kScatterDilateMarginPx (0.85px)
-    // cannot bridge: whole diagonal bands of a dense rotating solid clip out
-    // (perf_grid slabs / GRID-spin holes), while the cardinal-projected
-    // resolve→shadow path keeps them (so shadows survive). Grow the margin
-    // toward the on-screen voxel step (max in-plane axis length), gated by
-    // the degeneracy (|sin| of the angle between su,sv → 0 when parallel) so a
-    // non-degenerate quad keeps the tight 0.85px. The margin-depth bias keeps any
-    // grown margin yielding to a real exact footprint, so this only fills genuine
-    // inter-sliver gaps.
-    const float suLen = length(su);
-    const float svLen = length(sv);
-    const float degenSin = (suLen > 1e-5 && svLen > 1e-5)
-        ? abs(su.x * sv.y - su.y * sv.x) / (suLen * svLen)
-        : 1.0;
-    const float adaptiveMargin =
-        mix(max(suLen, svLen), kScatterDilateMarginPx, clamp(degenSin, 0.0, 1.0));
+    // Per-axis continuous conservative margin (#1883). The helper derives a
+    // per-edge margin from each axis's own on-screen extent (floored at
+    // kScatterDilateMarginPx), so the collapsing axis grows to bridge the band
+    // gap while the long silhouette edge stays tight. Replaces the anisotropic
+    // max(suLen,svLen) + hard degenSin gate that over-grew the long axis and
+    // dashed the foreshortened silhouette edge. The margin-depth bias still keeps
+    // any grown margin yielding to a real exact footprint (interior overlap is
+    // harmless; only genuine inter-sliver gaps fill).
     const vec2 dilNdc = scatterConservativeDilation(
-        su, sv, sign(aPos), max(kScatterDilateMarginPx, adaptiveMargin), ndcPerPx);
+        su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
     clipCorner.xy += dilNdc;
     gl_Position = clipCorner;
 

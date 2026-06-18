@@ -750,30 +750,47 @@ const float kScatterDetachedPitchFraction = 0.5;
 // raising marginPx). This is geometric: the fix is WHERE the margin lands per
 // corner, not a bigger blunt margin.
 vec2 scatterConservativeDilation(
-    vec2 su, vec2 sv, vec2 cornerSign, float marginPx, vec2 ndcPerPx
+    vec2 su, vec2 sv, vec2 cornerSign, float minMarginPx, vec2 ndcPerPx
 ) {
     // Outward normal of each edge = the component of the OTHER edge perpendicular
     // to it (so a thin sliver is grown across its thin dimension, not along it).
+    // |nu|/|nv| are the on-screen perpendicular extents across each edge.
     vec2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8));
     vec2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8));
     bool hasU = dot(nu, nu) > 1e-10;
     bool hasV = dot(nv, nv) > 1e-10;
     if (!hasU && !hasV) return vec2(0.0);
-    // Outward normal of each of the two edges meeting at this corner.
+    // Per-axis margin (#1883): grow each edge by half its OWN on-screen extent,
+    // continuous, floored at minMarginPx for fragment-center coverage. The
+    // collapsing axis grows (bridging the band gap at its sliver ends) while the
+    // long silhouette edge stays at the tight floor — replacing the anisotropic
+    // max(suLen,svLen) + hard degenSin gate that over-grew the long axis and
+    // dashed the foreshortened silhouette.
+    float marginU = max(minMarginPx, 0.5 * length(nu));
+    float marginV = max(minMarginPx, 0.5 * length(nv));
     vec2 e1 = hasU ? cornerSign.y * normalize(nu) : vec2(0.0); // e_u edge normal
     vec2 e2 = hasV ? cornerSign.x * normalize(nv) : vec2(0.0); // e_v edge normal
-    if (!hasU) return e2 * marginPx * ndcPerPx;                // only one edge -> plain push
-    if (!hasV) return e1 * marginPx * ndcPerPx;
-    vec2 sum = e1 + e2;
-    float sumLen = length(sum);
-    // Exactly-antiparallel (180deg, degenerate flat corner): no bisector — push
-    // along the shared thin direction (perpendicular to the edges), clamped.
-    if (sumLen < 1e-4) {
-        return vec2(-e1.y, e1.x) * (marginPx * kScatterMiterLimit) * ndcPerPx;
+    if (!hasU) return e2 * marginV * ndcPerPx;                 // only one edge -> plain push
+    if (!hasV) return e1 * marginU * ndcPerPx;
+    // Miter that moves edge-u out by marginU and edge-v by marginV: solve
+    // [e1;e2]·δ = (marginU,marginV). Reduces to the #1538 equal-margin miter when
+    // marginU==marginV.
+    float det = e1.x * e2.y - e1.y * e2.x;
+    // Exactly-antiparallel (180deg, degenerate flat corner): no stable solve —
+    // push along the shared thin direction (perpendicular to the edges), clamped.
+    if (abs(det) < 1e-4) {
+        return vec2(-e1.y, e1.x) * (max(marginU, marginV) * kScatterMiterLimit) * ndcPerPx;
     }
-    vec2 miterDir = sum / sumLen;
-    float cosHalf = max(dot(miterDir, e1), 1.0 / kScatterMiterLimit); // clamp the miter
-    return miterDir * (marginPx / cosHalf) * ndcPerPx;
+    vec2 delta = vec2(
+        e2.y * marginU - e1.y * marginV,
+        e1.x * marginV - e2.x * marginU
+    ) / det;
+    // Clamp the miter so an acute corner can't blow a sliver tip into a blob
+    // (the #1538 limit), relative to the larger contributing margin.
+    float maxLen = kScatterMiterLimit * max(marginU, marginV);
+    float dLen = length(delta);
+    if (dLen > maxLen) delta *= maxLen / dLen;
+    return delta * ndcPerPx;
 }
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion
