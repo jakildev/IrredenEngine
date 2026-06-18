@@ -55,7 +55,7 @@ EXE_DIR="$BUILD_DIR/creations/demos/perf_grid"
 SS_DIR="$EXE_DIR/save_files/screenshots"
 
 echo "[1/4] building IRPerfGrid ($BUILD_DIR) ..."
-cmake --build "$BUILD_DIR" --target IRPerfGrid -j 8 >/dev/null || { echo "BUILD FAILED"; exit 1; }
+cmake --build "$BUILD_DIR" --target IRPerfGrid -j "$(nproc)" >/dev/null || { echo "BUILD FAILED"; exit 1; }
 
 # Run the ramp once with the given extra args, capturing the demo log (the
 # RAMP-POSE render-path lines are parsed from it). Clears prior PNGs first.
