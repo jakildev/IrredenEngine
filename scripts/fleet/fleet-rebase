@@ -345,10 +345,36 @@ attempt_pr() {
     # squash-merge lands. Guarded on the boundary being a real ancestor of
     # the head we fetched; anything else falls back to the plain rebase.
     local drop_boundary=""
-    if [[ -n "$rebase_boundary" ]] \
-        && git -C "$wt" merge-base --is-ancestor "$rebase_boundary" "$head_sha" 2>/dev/null; then
-        drop_boundary="$rebase_boundary"
-        log "$repo_key#$pr: dropping inherited prefix at ${drop_boundary:0:12} (rebase --onto origin/$target)"
+    if [[ -n "$rebase_boundary" ]]; then
+        if git -C "$wt" merge-base --is-ancestor "$rebase_boundary" "$head_sha" 2>/dev/null; then
+            drop_boundary="$rebase_boundary"
+            log "$repo_key#$pr: dropping inherited prefix at ${drop_boundary:0:12} (rebase --onto origin/$target)"
+        elif [[ -n "$base_pr" ]]; then
+            # Parent edited/amended during review AFTER the child forked: the
+            # recorded headRefOid ($rebase_boundary) is the parent's *final*
+            # pre-merge head — a sibling of, not an ancestor of, the child
+            # head — so the fast path above fails (#1824 / #1789-on-#1782).
+            # Fall back to the child's fork point, merge-base(child, parent),
+            # which IS on the child branch and is the top of the inherited
+            # prefix there. The parent head is usually not a local object
+            # after merge+branch-delete, so realize it from the retained pull
+            # ref first; the fetch is non-fatal (a failure leaves drop_boundary
+            # empty so the plain-rebase fallback still runs — no regression).
+            git -C "$wt" fetch origin "refs/pull/$base_pr/head" 2>/dev/null || true
+            local fork_point
+            fork_point=$(git -C "$wt" merge-base "$head_sha" "$rebase_boundary" 2>/dev/null) \
+                || fork_point=""
+            # Accept only a PROPER ancestor of the child head (non-empty and
+            # != head). A history-rewriting parent amend can land the
+            # merge-base below the true inherited boundary; the rebase --onto
+            # replay then conflicts or trips the changed-file-set drift guard
+            # and bails to the LLM exactly as today — never a bad push.
+            if [[ -n "$fork_point" && "$fork_point" != "$head_sha" ]] \
+                && git -C "$wt" merge-base --is-ancestor "$fork_point" "$head_sha" 2>/dev/null; then
+                drop_boundary="$fork_point"
+                log "$repo_key#$pr: parent edited post-fork; deriving inherited boundary from child fork point at ${drop_boundary:0:12} (rebase --onto origin/$target)"
+            fi
+        fi
     fi
 
     # Changed-file-set snapshot: the PR's own files vs its target, before
