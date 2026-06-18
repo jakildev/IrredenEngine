@@ -35,13 +35,27 @@ incidental match have to be rejected:
    body closing-verb says so (a doc PR whose deliverable genuinely IS the doc
    change still ships via ``Closes #N`` in the body).
 
+5. Closing verb inside a code span (#1824 ← #1854). Layer 4 stops a plan-doc
+   *title* from shipping, but a plan PR's *body* routinely quotes the closing
+   verb the future implementation PR will use: "the structured plan for #1824
+   (planning step output; impl PR will carry the code + ``Closes #1824``)" and
+   "Plan doc for #1824 — does not close the issue (the implementation PR
+   will)". That ``Closes #1824`` sits in an inline code span — it is *showing*
+   the literal text the impl PR will write, not performing a close — so the
+   layer-4 title guard fires while the body closing-verb check still matches.
+   Markdown code spans (fenced ```` ``` ```` blocks and inline `` `…` `` spans)
+   are therefore stripped from the body before the closing-verb scan: a verb
+   quoted in code is documentation, never an action. A genuine ship writes
+   ``Closes #N`` as prose, never in backticks, so the strip costs no true
+   positive.
+
 So a body ``#N`` counts only when a closing-action verb sits directly before it
-(``Closes #N``, ``fixes (#N)``, ``supersedes #N``). A ``#N`` in the *title* is
-trusted as-is — PRs in this repo are named ``#N: <desc>`` after the issue they
-implement — EXCEPT (layer 3) when it is a range endpoint, or (layer 4) when the
-title is a plan/design-doc title: both shapes name issues they enumerate or
-plan without implementing. Every other observed false positive came from the
-body.
+in prose (``Closes #N``, ``fixes (#N)``, ``supersedes #N``) — code spans are
+stripped first (layer 5), so a verb quoted in backticks does not count. A
+``#N`` in the *title* is trusted as-is — PRs in this repo are named
+``#N: <desc>`` after the issue they implement — EXCEPT (layer 3) when it is a
+range endpoint, or (layer 4) when the title is a plan/design-doc title: both
+shapes name issues they enumerate or plan without implementing.
 """
 import re
 
@@ -77,6 +91,19 @@ _PLAN_DOC_TITLE = re.compile(
 )
 
 
+# Markdown code spans (layer 4 → layer 5). A closing verb inside a code span is
+# literal text being quoted — a plan PR documenting the ``Closes #N`` its future
+# impl PR will write — not an action. Fenced ``` blocks are stripped first (so an
+# inline backtick inside a fenced block can't desync the inline pass), then
+# inline `…` spans. Both collapse to a space so adjacent words don't fuse.
+_FENCED_CODE = re.compile(r'```.*?```', re.DOTALL)
+_INLINE_CODE = re.compile(r'`[^`]*`')
+
+
+def _strip_code_spans(s):
+    return _INLINE_CODE.sub(' ', _FENCED_CODE.sub(' ', s))
+
+
 def _ref_pattern(n):
     # ``(?<!\w)`` rejects ``abc#1300``; ``(?!\d)`` stops ``#13000`` / ``#21300``
     # from satisfying ``n=1300``. The two range guards reject a ``#N`` that is an
@@ -100,7 +127,10 @@ def pr_references_issue(title, body, n):
     (``docs: plan …`` / ``docs/design: …`` / ``docs: design …`` — a PR that plans/designs ``n``,
     never ships it). Body: ``#n`` counts only when immediately preceded by a
     closing-action verb, and likewise never as a range endpoint. A bare body
-    mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected.
+    mention ("downstream #n", "pre-existing #n", "Refs #n") is rejected, as is
+    a closing verb quoted inside a markdown code span (layer 5): code spans are
+    stripped before the body scan so ``... + `Closes #n` `` in a plan PR's body
+    does not read as a ship.
     """
     if not n:
         return False
@@ -119,7 +149,7 @@ def pr_references_issue(title, body, n):
         r'\b(?:' + _CLOSING_VERB + r')\b' + _VERB_TO_REF_GAP + ref,
         re.IGNORECASE,
     )
-    return bool(body_re.search(body or ''))
+    return bool(body_re.search(_strip_code_spans(body or '')))
 
 
 def select_shipped_pr(prs, n):
