@@ -91,7 +91,8 @@ _PLAN_DOC_TITLE = re.compile(
 )
 
 
-# Markdown code spans (layer 4 → layer 5). A closing verb inside a code span is
+# Markdown code spans — layer 5 (strips before the closing-verb scan; layer 4
+# stopped title refs, not body code spans). A closing verb inside a code span is
 # literal text being quoted — a plan PR documenting the ``Closes #N`` its future
 # impl PR will write — not an action. Fenced ``` blocks are stripped first (so an
 # inline backtick inside a fenced block can't desync the inline pass), then
