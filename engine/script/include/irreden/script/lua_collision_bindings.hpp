@@ -8,10 +8,10 @@
 //   IRCollision.onOverlapExit (layerA, layerB, function(entA, entB) ... end)
 //
 // Handlers are keyed by the (unordered) layer pair and stored in
-// SYSTEM_DISPATCH_LUA_OVERLAP's session-lifetime state (NOT in a component) —
+// DISPATCH_LUA_OVERLAP's session-lifetime state (NOT in a component) —
 // the binding reaches that system through the LuaScript's prefab-system-id map
 // (`IRSystem.systemId`'s mechanism), so a creation must
-// `registerPrefabSystem<IRSystem::SYSTEM_DISPATCH_LUA_OVERLAP>()` and put the
+// `registerPrefabSystem<IRSystem::DISPATCH_LUA_OVERLAP>()` and put the
 // system in its UPDATE pipeline before registering handlers.
 //
 // The dispatcher passes the entity on `layerA` as the callback's FIRST arg and
@@ -40,22 +40,22 @@
 
 namespace IRScript::detail {
 
-// Resolve the live SYSTEM_DISPATCH_LUA_OVERLAP instance via the LuaScript's
+// Resolve the live DISPATCH_LUA_OVERLAP instance via the LuaScript's
 // prefab-system-id map, raising a Lua-visible error that points at the missing
 // registration call (mirrors `IRSystem.systemId`'s fail-fast diagnostic).
-inline IRSystem::System<IRSystem::SYSTEM_DISPATCH_LUA_OVERLAP> *
+inline IRSystem::System<IRSystem::DISPATCH_LUA_OVERLAP> *
 resolveOverlapDispatch(const std::unordered_map<int, IRSystem::SystemId> *prefabSystemIds) {
-    auto it = prefabSystemIds->find(static_cast<int>(IRSystem::SYSTEM_DISPATCH_LUA_OVERLAP));
+    auto it = prefabSystemIds->find(static_cast<int>(IRSystem::DISPATCH_LUA_OVERLAP));
     if (it == prefabSystemIds->end()) {
         throw sol::error{
-            "IRCollision.onOverlap*: SYSTEM_DISPATCH_LUA_OVERLAP is not registered "
+            "IRCollision.onOverlap*: DISPATCH_LUA_OVERLAP is not registered "
             "— the C++ creation must call "
-            "LuaScript::registerPrefabSystem<IRSystem::SYSTEM_DISPATCH_LUA_OVERLAP>() "
+            "LuaScript::registerPrefabSystem<IRSystem::DISPATCH_LUA_OVERLAP>() "
             "and add it to the UPDATE pipeline before main.lua registers handlers"
         };
     }
     auto *system =
-        IRSystem::getSystemParams<IRSystem::System<IRSystem::SYSTEM_DISPATCH_LUA_OVERLAP>>(
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::DISPATCH_LUA_OVERLAP>>(
             it->second
         );
     if (system == nullptr) {

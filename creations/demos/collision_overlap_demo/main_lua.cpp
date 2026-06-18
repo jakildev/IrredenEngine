@@ -75,14 +75,14 @@ void registerLuaBindings() {
             C_Velocity3D>("spawnCollidable");
 
         // Prefab systems main.lua composes via IRSystem.systemId(SystemName.X).
-        // Registering SYSTEM_DISPATCH_LUA_OVERLAP creates the C_OverlapContactBatch
+        // Registering DISPATCH_LUA_OVERLAP creates the C_OverlapContactBatch
         // singleton, which is what switches pair emission on in the producer.
         script.registerPrefabSystems<
             IRSystem::VELOCITY_3D,
             IRSystem::PROPAGATE_TRANSFORM,
             IRSystem::COLLISION_EVENT_CLEAR,
             IRSystem::COLLISION_NOTE_PLATFORM,
-            IRSystem::SYSTEM_DISPATCH_LUA_OVERLAP,
+            IRSystem::DISPATCH_LUA_OVERLAP,
             IRSystem::TRIXEL_TO_FRAMEBUFFER,
             IRSystem::FRAMEBUFFER_TO_SCREEN>();
     });

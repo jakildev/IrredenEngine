@@ -1,7 +1,7 @@
 #ifndef SYSTEM_DISPATCH_LUA_OVERLAP_H
 #define SYSTEM_DISPATCH_LUA_OVERLAP_H
 
-// SYSTEM_DISPATCH_LUA_OVERLAP (#1817) — turns the batched overlap pairs that
+// DISPATCH_LUA_OVERLAP (#1817) — turns the batched overlap pairs that
 // COLLISION_NOTE_PLATFORM emits into Lua-facing enter/exit callbacks.
 //
 // Handlers are registered by collision-LAYER PAIR (not per-entity): a creation
@@ -69,7 +69,7 @@ struct OverlapEntityPairHash {
 
 } // namespace detail
 
-template <> struct System<SYSTEM_DISPATCH_LUA_OVERLAP> {
+template <> struct System<DISPATCH_LUA_OVERLAP> {
     // One registered Lua handler. `layer1_` / `layer2_` are the layers as the
     // author ordered them in `onOverlapEnter(layer1, layer2, fn)`; the
     // dispatcher passes the entity on `layer1_` as the callback's first arg.
@@ -136,7 +136,7 @@ template <> struct System<SYSTEM_DISPATCH_LUA_OVERLAP> {
         // this system switches emission on. Done before the first tick so the
         // producer (which runs earlier in the pipeline) sees it on frame 1.
         IREntity::singletonEntity<C_OverlapContactBatch>();
-        return registerSystem<SYSTEM_DISPATCH_LUA_OVERLAP, C_OverlapContactBatch>(
+        return registerSystem<DISPATCH_LUA_OVERLAP, C_OverlapContactBatch>(
             "DispatchLuaOverlap"
         );
     }

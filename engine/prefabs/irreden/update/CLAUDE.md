@@ -29,9 +29,9 @@ in the `UPDATE` pipeline unless explicitly noted.
 - `C_OverlapContactBatch` (#1817) — **singleton** component holding this
   frame's confirmed overlap pairs (`std::vector<ContactPair>`, each with both
   entity ids + both collision layers + a normal). `COLLISION_NOTE_PLATFORM`
-  appends; `SYSTEM_DISPATCH_LUA_OVERLAP` reads then clears. It is the producer's
+  appends; `DISPATCH_LUA_OVERLAP` reads then clears. It is the producer's
   **opt-in switch**: emission only happens when the singleton exists, and it is
-  created by `SYSTEM_DISPATCH_LUA_OVERLAP::create()` — so creations that only
+  created by `DISPATCH_LUA_OVERLAP::create()` — so creations that only
   want the per-entity `C_ContactEvent` never pay for pair emission. Reached
   anywhere via `IREntity::singleton<C_OverlapContactBatch>()` /
   `singletonOrNull<...>()`, which is how the producer and consumer share the
@@ -54,7 +54,7 @@ in the `UPDATE` pipeline unless explicitly noted.
   the first-contact `break` so all overlaps are emitted (D3); the
   `C_ContactEvent` write stays first-contact-only, so existing consumers are
   byte-identical and non-opted-in creations keep the fast break path.
-- `SYSTEM_DISPATCH_LUA_OVERLAP` (#1817) — turns `C_OverlapContactBatch` into
+- `DISPATCH_LUA_OVERLAP` (#1817) — turns `C_OverlapContactBatch` into
   Lua `IRCollision.onOverlapEnter/onOverlapExit` callbacks. Owns the
   pair-level enter/exit state machine (prev/cur pair maps, reused across
   frames) — accurate when one entity touches several others, unlike the

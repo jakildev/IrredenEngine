@@ -14,7 +14,7 @@ namespace IRComponents {
 // One confirmed AABB overlap, stamped by COLLISION_NOTE_PLATFORM with BOTH
 // colliders' collision layers in hand (#1817). Because the producer already
 // holds both `C_CollisionLayer`s during its broad+narrow scan, it records
-// each entity's layer here — so the SYSTEM_DISPATCH_LUA_OVERLAP consumer never
+// each entity's layer here — so the DISPATCH_LUA_OVERLAP consumer never
 // reaches back to the foreign entity with `getComponent` (the batched-vector
 // contact pattern, `.claude/rules/cpp-ecs.md` §"Foreign-entity lookups").
 //
@@ -33,7 +33,7 @@ struct ContactPair {
 
 // Singleton component holding this frame's confirmed overlap pairs.
 // Producer (COLLISION_NOTE_PLATFORM) appends; consumer
-// (SYSTEM_DISPATCH_LUA_OVERLAP) reads then clears. Reached anywhere via
+// (DISPATCH_LUA_OVERLAP) reads then clears. Reached anywhere via
 // `IREntity::singleton<C_OverlapContactBatch>()` / `singletonOrNull<...>()`,
 // which is what lets the producer and the dispatch system share the vector
 // without a cross-system SystemId handoff.

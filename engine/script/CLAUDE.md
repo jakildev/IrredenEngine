@@ -868,7 +868,7 @@ IRModifier.resolvedQuat(entity, fieldNameOrId, fallback) -- read quat slot
 (engine #1817) over the existing AABB collider + `C_ContactEvent` detection.
 The binding lives in `lua_collision_bindings.hpp`
 (`detail::bindCollisionEvents`); the dispatch + batched-pair plumbing is
-`SYSTEM_DISPATCH_LUA_OVERLAP` + `C_OverlapContactBatch` (see
+`DISPATCH_LUA_OVERLAP` + `C_OverlapContactBatch` (see
 `engine/prefabs/irreden/update/CLAUDE.md`).
 
 ```lua
@@ -887,7 +887,7 @@ IRCollision.Layer.COLLISION_LAYER_PARTICLE      -- 8
 ```
 
 - **Layer-pair keyed, not per-entity.** Handlers live for the session in
-  `SYSTEM_DISPATCH_LUA_OVERLAP`'s state, keyed by the layer pair — so a dead
+  `DISPATCH_LUA_OVERLAP`'s state, keyed by the layer pair — so a dead
   entity simply produces no more contacts (no dangling-handle lifetime
   problem). Enter/exit is derived at PAIR granularity, so one entity touching
   several others is tracked correctly.
@@ -898,7 +898,7 @@ IRCollision.Layer.COLLISION_LAYER_PARTICLE      -- 8
   bit. (Same-layer handlers — `onOverlapEnter(L, L, fn)` — pass the canonical
   `(a, b)` order.)
 - **Wiring contract.** A creation must
-  `registerPrefabSystem<IRSystem::SYSTEM_DISPATCH_LUA_OVERLAP>()` and place it
+  `registerPrefabSystem<IRSystem::DISPATCH_LUA_OVERLAP>()` and place it
   in the UPDATE pipeline **after** `COLLISION_NOTE_PLATFORM` before registering
   handlers — `onOverlap*` resolve the system through the prefab-system-id map
   (like `IRSystem.systemId`) and raise a Lua error naming the missing

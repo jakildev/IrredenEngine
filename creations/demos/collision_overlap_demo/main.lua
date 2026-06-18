@@ -57,7 +57,7 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
     IRSystem.systemId(SystemName.PROPAGATE_TRANSFORM),
     IRSystem.systemId(SystemName.COLLISION_EVENT_CLEAR),
     IRSystem.systemId(SystemName.COLLISION_NOTE_PLATFORM),
-    IRSystem.systemId(SystemName.SYSTEM_DISPATCH_LUA_OVERLAP),
+    IRSystem.systemId(SystemName.DISPATCH_LUA_OVERLAP),
 })
 
 -- Minimal render path so the engine presents / a headless --auto-screenshot
