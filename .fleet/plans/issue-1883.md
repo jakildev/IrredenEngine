@@ -69,3 +69,36 @@ The per-axis scatter deform/dilation + placement math:
 `bash scripts/dev/perf-grid-rotate-sweep` (post-#1882 harness: residual-band coverage
 for A + the zoomed near-cardinal tier for B), both hosts; canvas_stress ROI crops
 before/after.
+
+## Session progress / RESUME (2026-06-18)
+
+Worked in a dedicated architect session. Branch `claude/1883-per-axis-scatter-seams`
+(PR #1907, WIP, stacked on `claude/1882-cardinal-gather-coverage`/#1885).
+
+**Iteration 1 — DONE (commit a48bec0f).** Per-axis continuous dilation margin: the
+margin now lives inside `scatterConservativeDilation`, derived per-edge as
+`max(kScatterDilateMarginPx, 0.5*|n|)` from each axis's own on-screen perpendicular
+extent; the miter is generalized to unequal per-edge margins (solve
+`[e1;e2]·δ=(marginU,marginV)`, reduces to the #1538 equal-margin miter). The old
+`suLen/svLen/degenSin/adaptiveMargin` block is removed from both callers. GLSL +
+Metal in parity. **Result (macOS/Metal sweep zoom tier): near-cardinal seam perim
+43 → 22 (= clean card000 baseline ~21), coverage 1.0, silhouette dashing gone.**
+
+**Iteration 2 — NEXT: the doubled sliver at the top↔side shared edge** (now isolated;
+addresses root-cause bullets 2+3 above). Start with rounding unification, then the
+deterministic edge owner. Validate with a HIGH-ZOOM crop of the top↔side edge (the
+doubled line must collapse to one) — the aggregate perim won't show it.
+
+**Env traps:** (1) macOS builds METAL only — edit `metal/*.metal`, validate, then
+mirror to the GLSL twin before committing (Linux validates GLSL via cross-host
+smoke). (2) `setCameraVisualYaw` takes DEGREES (`--yaw 84` = a near-90 per-axis
+pose). (3) High-zoom static crop: `cd build/creations/demos/perf_grid && ./IRPerfGrid
+--mode dense --no-overlay --auto-screenshot 60 --grid-size 8 --zoom 9 --yaw 84`;
+ROI crops via `--yaw-ramp --yaw-ramp-crops` (crop centering drifts off-cube above
+grid-12/zoom-4 — make it zoom-aware in iter 2). (4) Worktree guard blocks writing
+to `/tmp` and `~/.fleet/` — keep temp commit-msg/PR-body files inside the worktree.
+
+**Claims:** #1883 claimed (`fleet:claim-mac-opus-architect`). #1884 worker-protected
+by the Blocked-by gate while #1907 is WIP; formally claim it
+(`fleet-claim claim 1884 opus-architect --stackable-on <#1907 url>`) once #1907
+leaves `fleet:wip`. #1882 fix+harness = PR #1885, in fleet review (don't re-touch).
