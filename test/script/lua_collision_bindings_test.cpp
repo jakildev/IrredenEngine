@@ -48,9 +48,9 @@ class LuaCollisionBindingsTest : public testing::Test {
         , m_entity_manager{}
         , m_system_manager{} {
         m_lua.bindLuaDrivenEcs();
-        // Registering COLLISION_NOTE_PLATFORM creates the shared pair-buffer
-        // singleton; registering the dispatch system makes its params
-        // reachable from the IRCollision binding.
+        // Registering COLLISION_NOTE_PLATFORM creates the shared overlap
+        // contact batch (C_OverlapContactBatch); registering the dispatch
+        // system makes its params reachable from the IRCollision binding.
         m_lua.registerPrefabSystems<
             IRSystem::COLLISION_EVENT_CLEAR,
             IRSystem::COLLISION_NOTE_PLATFORM,
