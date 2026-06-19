@@ -56,9 +56,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     vec2 cameraZoom_{};
     float visualYaw_ = 0.0f;
     // Game-pixel half of the anti-vibration decomposition — see
-    // IRMath::cameraSubPixelOffsets. Matches the TRIXEL_TO_FRAMEBUFFER call
-    // site so detached canvases composite onto the same sub-pixel-snapped grid
-    // as the main canvas. Derived from cameraIso_ / cameraZoom_.
+    // IRMath::cameraSubPixelOffsets (the same value TRIXEL_TO_FRAMEBUFFER uses
+    // for the native-resolution main canvas). Derived from cameraIso_ /
+    // cameraZoom_. For this UPSCALED detached canvas the raw game-px value is
+    // sub-texel and must be snapped to the canvas texel grid before use (#1883,
+    // jitter fix) — see the tick.
     vec2 isoPixelOffset_{};
     // Global voxel subdivision factor the SHARED framebuffer depth buffer runs
     // at this frame (the main world canvas + SDF floor encode depth as
@@ -122,9 +124,27 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize_;
 
         vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
+        // Camera sub-pixel offset, SNAPPED to the detached canvas's texel grid
+        // (#1883). The detached canvas is an upscaled pixel-art texture — one of
+        // its texels spans `texelFb` framebuffer px (= one main-canvas trixel,
+        // `fbRes × zoom / mainCanvasSize`). `isoPixelOffset_` is an integer
+        // GAME-px offset, which is texel-aligned for the native-resolution main
+        // canvas (TRIXEL_TO_FRAMEBUFFER) but SUB-texel for this upscaled canvas:
+        // applying it raw shifts the gather's sample point a fraction of a texel,
+        // so the silhouette re-rasterizes every frame and the solid shimmers /
+        // jitters under a smooth camera pan (the world content stays put because
+        // it is texel-aligned). Snapping the offset to whole texels makes the
+        // detached move in clean texel steps — no sub-texel resample, so no
+        // shimmer — while still tracking the world to within half a texel. At an
+        // integer camera offset isoPixelOffset_ is 0, so the snap is a no-op and
+        // static / cardinal frames stay byte-identical.
+        const vec2 texelFb = fbRes_ * cameraZoom_ / mainCanvasSize_;
+        const vec2 texelSteps = isoPixelOffset_ / texelFb;
+        const vec2 snappedCamOffset =
+            vec2(IRMath::roundHalfUp(texelSteps.x), IRMath::roundHalfUp(texelSteps.y)) * texelFb;
         vec2 entityFbCenter = vec2(
-            fbRes_.x * 0.5f + isoPixelOffset_.x + entityAPos.x * fbRes_.x * cameraZoom_.x,
-            fbRes_.y * 0.5f + isoPixelOffset_.y + entityAPos.y * fbRes_.y * cameraZoom_.y
+            fbRes_.x * 0.5f + snappedCamOffset.x + entityAPos.x * fbRes_.x * cameraZoom_.x,
+            fbRes_.y * 0.5f + snappedCamOffset.y + entityAPos.y * fbRes_.y * cameraZoom_.y
         );
 
         vec2 entityScale = vec2(entityCanvas.canvasSize_) / mainCanvasSize_;

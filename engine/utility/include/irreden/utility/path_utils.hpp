@@ -13,6 +13,17 @@ std::string joinPath(
 
 std::string pathWithExtension(const std::string &path, const std::string &extension);
 
+/// Resolve the platform-appropriate per-user data directory for @p appName:
+///   - Linux:   `${XDG_DATA_HOME:-$HOME/.local/share}/<appName>`
+///   - macOS:   `$HOME/Library/Application Support/<appName>`
+///   - Windows: `%APPDATA%\<appName>` (fallback `%USERPROFILE%\<appName>`)
+/// Pure path composition — does NOT create the directory (same no-mkdir
+/// contract as `joinPath`). Callers that write into it create the directory
+/// in their save path via `std::filesystem::create_directories`. If the
+/// expected environment variables are absent the bare @p appName is
+/// returned as a last-resort relative path.
+std::string userDataDir(const std::string &appName);
+
 std::string formatNumberedFilename(
     const std::string &prefix,
     int index,

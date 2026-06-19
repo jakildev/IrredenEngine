@@ -150,7 +150,20 @@ gh issue list --repo <repo> --label fleet:coding-improvement --state open \
   A second occurrence is the signal this is a real pattern worth the human
   prioritizing.
 
-- **No match** → file a new ticket, tagging **only** `fleet:coding-improvement`
+Before filing on a **first (single) occurrence**, apply the **single-occurrence
+gate**: open a standalone ticket only if the pattern is (a) a near-miss
+correctness/safety bug (a real defect would have shipped), (b) mechanically
+detectable (it can become an automated-check-surface rule), or (c) a tightening
+or example of an **existing** convention surface (one bullet, no new surface).
+Otherwise it is not yet a demonstrated pattern — fix it in this PR and do **not**
+file; if the class recurs, the second occurrence (finding no match above) files
+it then. This is the anti-false-positive companion to the Step 2 one-off gate:
+it stops a single reviewer nit (a plan-doc note, a muscle-memory style rule with
+no existing surface) from accruing as a low-value ticket the triage pass would
+only reject. Multi-occurrence and `Recurred:`-evidenced items always file.
+
+- **No match** (and the single-occurrence gate passes) → file a new ticket,
+  tagging **only** `fleet:coding-improvement`
   (write the body to a worktree-local file and pass `--body-file` to avoid
   command-substitution hazards, mirroring `file-epic`; use
   `.coding-improvement-body.md` in the worktree root — NOT `/tmp/` — Claude

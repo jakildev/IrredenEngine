@@ -112,7 +112,7 @@ vec3 hueWheel(float t) {
 // via faceMicroPositionFixed6 — POS faces store the high-side plane, NEG faces
 // the low-side plane — so the recovered depth lands on the face plane and the
 // scatter only spans the face's two in-plane world axes (X->y,z  Y->x,z
-// Z->x,y, matching faceInPlaneCoords). Re-adding the polarity offset here (the
+// Z->x,y). Re-adding the polarity offset here (the
 // old per-faceId +1) double-shifts POS faces one cell past the plane: the
 // #1310 back-face seam (a ~1px dark gap between the POS face and its neighbors
 // at cardinals 1/2/3). cornerSel in {0,1}^2.
@@ -151,20 +151,18 @@ void main() {
     const int faceId = visibleFaceIds[slot];
     const int axis = faceId >> 1;
 
-    // Recover the exact integer (or micro) face origin from the face-local
-    // store. The cell's two in-plane coords + the stored iso depth give the
-    // origin by one integer subtraction (faceOriginFromInPlane) — no
-    // 2cos(yaw)+1 inverse, so it is exact at every yaw. The replaced iso-inverse
-    // dropped compressed-axis faces (cell collisions -> cracks) and went
-    // singular at yaw = +/-120 deg (-> a speckled cube). faceLocalAnchor matches
-    // stage 1/2's store: same perAxisBase + canvasSize. See ir_iso_common.glsl.
+    // Recover the exact face origin from the un-yawed (cardinal) iso store. The
+    // store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`, so the
+    // cardinal iso pixel is `ij - perAxisBase` and isoPixelToPos3D inverts it
+    // exactly against rawDepth (= x+y+z of the face plane). Non-singular at every
+    // yaw because the recovered index is UN-yawed; the live yaw is applied below
+    // by pos3DtoPos2DIsoYawed. See c_voxel_to_trixel_stage_1.glsl.
     // Hoist in-plane axes so the fractional offset below and the coverage
     // dilation block below both share the same eu/ev without a second call.
     vec3 eu, ev;
     faceInPlaneUnitAxes(axis, eu, ev);
-    const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-    const ivec2 inPlane = ij - faceLocalBase(axis, anchor, canvasSize);
-    const vec3 baseOrigin = vec3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    const ivec2 isoPix = ij - perAxisBase;
+    const vec3 baseOrigin = isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
     // Apply sub-cell offset packed in the encoding (#1458).
     const vec3 origin = baseOrigin
         + eu * (float(uFrac4) / 16.0 - 0.5)
@@ -200,8 +198,27 @@ void main() {
     vec2 quadEv = vec2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     vec2 su = (mpMatrix * vec4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     vec2 sv = (mpMatrix * vec4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    const vec2 dilNdc =
-        scatterConservativeDilation(su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
+    // Foreshortening-adaptive margin: as the residual yaw approaches ±45deg one
+    // in-plane axis collapses on screen (su nearly parallel to sv), so the
+    // deformed face quad degenerates to a sliver and adjacent faces — spaced ~a
+    // voxel step apart — leave gaps the fixed kScatterDilateMarginPx (0.85px)
+    // cannot bridge: whole diagonal bands of a dense rotating solid clip out
+    // (perf_grid slabs / GRID-spin holes), while the cardinal-projected
+    // resolve→shadow path keeps them (so shadows survive). Grow the margin
+    // toward the on-screen voxel step (max in-plane axis length), gated by
+    // the degeneracy (|sin| of the angle between su,sv → 0 when parallel) so a
+    // non-degenerate quad keeps the tight 0.85px. The margin-depth bias keeps any
+    // grown margin yielding to a real exact footprint, so this only fills genuine
+    // inter-sliver gaps.
+    const float suLen = length(su);
+    const float svLen = length(sv);
+    const float degenSin = (suLen > 1e-5 && svLen > 1e-5)
+        ? abs(su.x * sv.y - su.y * sv.x) / (suLen * svLen)
+        : 1.0;
+    const float adaptiveMargin =
+        mix(max(suLen, svLen), kScatterDilateMarginPx, clamp(degenSin, 0.0, 1.0));
+    const vec2 dilNdc = scatterConservativeDilation(
+        su, sv, sign(aPos), max(kScatterDilateMarginPx, adaptiveMargin), ndcPerPx);
     clipCorner.xy += dilNdc;
     gl_Position = clipCorner;
 

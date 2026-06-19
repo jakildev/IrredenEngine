@@ -208,6 +208,37 @@ class PrReferencesIssue(unittest.TestCase):
         self.assertTrue(pr_references_issue(
             "docs: #1679 cmake preset -S flag", "", 1679))
 
+    # --- closing verb inside a code span (#1824 ← #1854 — layer 5) ---
+
+    def test_closing_verb_in_inline_code_span_rejected(self):
+        # #1824 ← #1854: a plan PR's body quotes the `Closes #N` its FUTURE impl
+        # PR will write. Layer 4 suppresses the plan-doc title; layer 5 must stop
+        # the backtick-quoted closing verb in the body from shipping it.
+        body = ("Adds `.fleet/plans/issue-1824.md`: the structured plan for "
+                "#1824 (planning step output; impl PR will carry the code + "
+                "`Closes #1824`).\n\nPlan doc for #1824 — does not close the "
+                "issue (the implementation PR will).")
+        self.assertFalse(pr_references_issue(
+            "docs: plan #1824 — fleet-rebase fork-point inherited-prefix drop",
+            body, 1824))
+
+    def test_closing_verb_in_fenced_block_rejected(self):
+        # A `Closes #N` shown inside a fenced example block is documentation.
+        body = "Future impl PR body:\n```\nCloses #1300\n```\nThis PR only plans."
+        self.assertFalse(pr_references_issue("title", body, 1300))
+
+    def test_prose_close_with_adjacent_code_span_still_ships(self):
+        # Regression: stripping code spans must not drop a genuine prose close
+        # that merely sits near unrelated inline code.
+        self.assertTrue(pr_references_issue(
+            "title", "Closes #1300. Verified via `fleet-run IRShapeDebug`.", 1300))
+
+    def test_code_span_strip_collapses_to_space_not_empty(self):
+        # A code span between letters must collapse to a SPACE, never empty, so
+        # it can't fuse into a spurious closing verb: "clo`x`ses #1300" must not
+        # become "closes #1300".
+        self.assertFalse(pr_references_issue("title", "clo`x`ses #1300", 1300))
+
 
 class SelectShippedPr(unittest.TestCase):
     def test_empty_candidates(self):
@@ -262,6 +293,15 @@ class SelectShippedPr(unittest.TestCase):
         pr = _pr(1809, "docs: plan rotation-profiling task (#1807)",
                  "Plan doc committed for #1807.")
         self.assertIsNone(select_shipped_pr([pr], 1807))
+
+    def test_real_world_1824_planned_not_shipped_by_1854(self):
+        # #1824 ← #1854: plan-doc title (layer 4) AND a body that quotes the
+        # `Closes #1824` the future impl PR will write (layer 5). Ships nothing.
+        pr = _pr(1854,
+                 "docs: plan #1824 — fleet-rebase fork-point inherited-prefix drop",
+                 "Adds `.fleet/plans/issue-1824.md`: the structured plan for "
+                 "#1824 (impl PR will carry the code + `Closes #1824`).")
+        self.assertIsNone(select_shipped_pr([pr], 1824))
 
 
 if __name__ == "__main__":

@@ -310,3 +310,40 @@ the working-directory requirement, but you still need
 Each creation typically defines an `IR<Name>Run` custom target that
 builds + launches with the correct working directory (on both
 platforms).
+
+## Packaging a distributable bundle
+
+A creation wired with `irreden_package_target(<target> ...)` (see
+`cmake/ir_functions.cmake`) gains a `<target>Package` custom target that
+produces a self-contained, per-platform, double-clickable bundle in one
+command:
+
+```bash
+cmake --build <build-dir> --target <target>Package
+# -> <build-dir>/<target>-<platform>-<arch>.zip
+#    e.g. IRShapeDebug-macos-arm64.zip / IRShapeDebug-linux-x86_64.zip
+```
+
+The archive holds a single `<target>/` folder containing the executable,
+its `data/`, `shaders/`, and `scripts/` (the exe-relative layout
+`IREngine::init` resolves via `current_path(exeDir)`), plus the platform
+runtime libraries — so the unzipped folder runs by double-click on a
+clean box with no repo, build tree, or `PATH` setup. `IRShapeDebug` is
+wired as the reference; the per-platform runtime-dep handling:
+
+- **Linux** — FetchContent deps default to **static** (top-level
+  `CMakeLists.txt`), so the exe is largely self-contained; `$ORIGIN`
+  rpath covers any remaining `.so`.
+- **Windows** — bundles `$<TARGET_RUNTIME_DLLS>` plus the MinGW runtime
+  trio (`libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll`),
+  which `TARGET_RUNTIME_DLLS` omits (pulled from the compiler's `bin`).
+- **macOS** — `cmake/macos_bundle_dylibs.cmake` copies the exe's
+  non-system dylibs next to it and rewrites the load commands to
+  `@executable_path`, then ad-hoc-resigns the modified binary. This is a
+  **shallow** bundle: transitive Homebrew deps (e.g. ffmpeg's codec
+  libraries) are not yet walked, so a truly clean-box macOS bundle is
+  follow-up work — verify a macOS bundle via cross-host smoke or the
+  human, not from the build host alone.
+
+Packaging is a build-time custom target only; it does not run as part of
+a normal `--target <exe>` build.

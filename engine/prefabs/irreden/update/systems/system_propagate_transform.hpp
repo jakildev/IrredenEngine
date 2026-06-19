@@ -36,9 +36,17 @@
 //   Pass 2 (parallel per level) — for each depth in order, resolve
 //   each archetype's parent C_WorldTransform on the main thread (the
 //   prior level finished its writes, so the lookup is safe), then
-//   dispatch the per-archetype composition to IRJob workers via
-//   parallelFor. The implicit barrier between levels guarantees the
-//   prior level's writes are visible.
+//   dispatch composition to IRJob workers via a single parallelFor.
+//   The level is flattened into a list of row-chunks: a small
+//   archetype contributes one chunk (its whole row range), while a
+//   large archetype is split into several row-range chunks so a
+//   single dominant node (e.g. IRPerfGrid's 262K-entity node) fans
+//   out across workers instead of running serially on one. Disjoint
+//   row ranges are race-free — each entity writes only its own
+//   C_WorldTransform[i] from its own C_LocalTransform[i] + a
+//   read-only parent — so the result is bit-identical to the serial
+//   path regardless of chunk boundaries. The implicit barrier between
+//   levels guarantees the prior level's writes are visible.
 //
 // The level partition only depends on the archetype graph (entity
 // spawn/destroy/reparent that introduces or removes archetype nodes,
@@ -68,12 +76,13 @@
 namespace IRSystem {
 
 template <> struct System<PROPAGATE_TRANSFORM> {
-    // One archetype per parallelFor task. Each archetype is already a
-    // batch of entities the composeNode inner loop iterates serially,
-    // so per-task work is already substantial and finer-grained
-    // chunking would only add dispatch overhead.
-    static constexpr int kGrainSize = 1;
-    static constexpr int kMinForParallel = 8;
+    // Per-level dispatch policy — fan out, chunk sizing, and serial
+    // fallback — lives in IRJob::parallelChunks (#1900). Its
+    // ParallelTuning defaults ARE this system's hand-tuned values
+    // (#1804): parallelize at ≥8 nodes OR ≥4096 rows; split a dominant
+    // node into ≥2048-row chunks targeting ~2 tasks/worker; small nodes
+    // stay whole. We pass a default-constructed tuning here, so the
+    // knobs live in one tested place instead of re-derived inline.
 
     // Cached level partition: levels_[d] holds archetype nodes whose
     // parent-chain depth is exactly d. parentWorlds_[d][i] is the
@@ -82,6 +91,15 @@ template <> struct System<PROPAGATE_TRANSFORM> {
     // parallel composition.
     std::vector<std::vector<IREntity::ArchetypeNode *>> levels_;
     std::vector<std::vector<IRComponents::C_WorldTransform>> parentWorlds_;
+
+    // Per-level scratch reused across frames so the planner stays
+    // allocation-free on the hot path. nodeLengths_ mirrors the current
+    // level's per-node row counts (the planner's input); chunks_ is the
+    // flattened row-range work list IRJob::parallelChunks fills and
+    // dispatches. Both are owned here, not by IRJob, precisely so the
+    // capacity carries over between frames.
+    std::vector<int> nodeLengths_;
+    std::vector<IRJob::RowChunk> chunks_;
 
     // Topology cache key: (nodeId, parentNodeId) pairs sorted by
     // nodeId. parentNodeId == 0 means "root archetype" (no CHILD_OF,
@@ -109,9 +127,8 @@ template <> struct System<PROPAGATE_TRANSFORM> {
             IREntity::getComponentType<IRComponents::C_ResolvedFields>();
         const auto modifiersComponentId = IREntity::getComponentType<IRComponents::C_Modifiers>();
 
-        const auto archetype =
-            IREntity::getArchetype<IRComponents::C_LocalTransform, IRComponents::C_WorldTransform>(
-            );
+        const auto archetype = IREntity::
+            getArchetype<IRComponents::C_LocalTransform, IRComponents::C_WorldTransform>();
         auto nodes = IREntity::queryArchetypeNodesSimple(archetype);
 
         buildSignature(nodes, scratchSignature_);
@@ -141,39 +158,47 @@ template <> struct System<PROPAGATE_TRANSFORM> {
                 levelParentWorlds[i] = parentWorld;
             }
 
-            const int n = static_cast<int>(levelNodes.size());
-            auto composeRange = [&](int rangeBegin, int rangeEnd) {
-                for (int i = rangeBegin; i < rangeEnd; ++i) {
-                    composeNode(
-                        levelNodes[i],
-                        levelParentWorlds[i],
+            // Mirror this level's per-node row counts into the reusable
+            // buffer the planner consumes (capacity carries across
+            // frames). The planner reads only the lengths; the compose
+            // closure resolves nodeIndex back to the live node + parent.
+            nodeLengths_.clear();
+            nodeLengths_.reserve(levelNodes.size());
+            for (auto *node : levelNodes) {
+                nodeLengths_.push_back(node->length_);
+            }
+
+            // Fan the level's composition out across the worker pool: a
+            // dominant node splits by row range, small nodes stay whole,
+            // and the level composes serially below threshold — all
+            // owned by IRJob::parallelChunks. Disjoint rows (each entity
+            // writes only its own C_WorldTransform[i]) keep the result
+            // bit-identical to the serial path regardless of chunking.
+            IRJob::parallelChunks(
+                nodeLengths_,
+                chunks_,
+                [&](int nodeIndex, int rowBegin, int rowEnd) {
+                    composeNodeRows(
+                        levelNodes[nodeIndex],
+                        levelParentWorlds[nodeIndex],
+                        rowBegin,
+                        rowEnd,
                         translationField,
                         scaleField,
                         resolvedFieldsComponentId,
                         modifiersComponentId
                     );
                 }
-            };
-
-            if (g_jobManager == nullptr || n < kMinForParallel) {
-                composeRange(0, n);
-            } else {
-                // Aim for ~2 tasks per worker to give enkiTS room to
-                // load-balance without flooding the queue with tiny
-                // tasks. Each archetype carries enough work
-                // (hundreds-to-thousands of entities) that a small
-                // task count is fine.
-                const int workers = IRJob::workerCount();
-                const int targetTasks = IRMath::max(1, workers * 2);
-                const int grain = IRMath::max(kGrainSize, (n + targetTasks - 1) / targetTasks);
-                IRJob::parallelFor(0, n, grain, composeRange);
-            }
+            );
         }
     }
 
-    void
-    tick(const IREntity::Archetype &, std::vector<IREntity::EntityId> &, std::vector<IRComponents::C_LocalTransform> &, std::vector<IRComponents::C_WorldTransform> &) {
-    }
+    void tick(
+        const IREntity::Archetype &,
+        std::vector<IREntity::EntityId> &,
+        std::vector<IRComponents::C_LocalTransform> &,
+        std::vector<IRComponents::C_WorldTransform> &
+    ) {}
 
     static SystemId create() {
         return registerSystem<
@@ -275,9 +300,15 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         }
     }
 
-    static void composeNode(
+    // Composes C_WorldTransform for rows [rowBegin, rowEnd) of node.
+    // The per-node column fetches and isRootArchetype check below are
+    // cheap relative to the row loop, so re-deriving them per chunk
+    // when a large node is split costs nothing meaningful.
+    static void composeNodeRows(
         IREntity::ArchetypeNode *node,
         const IRComponents::C_WorldTransform &parentWorld,
+        int rowBegin,
+        int rowEnd,
         IRComponents::FieldBindingId translationField,
         IRComponents::FieldBindingId scaleField,
         IREntity::ComponentId resolvedFieldsComponentId,
@@ -309,7 +340,7 @@ template <> struct System<PROPAGATE_TRANSFORM> {
         const bool isRootArchetype =
             (IREntity::getParentEntityFromArchetype(node->type_) == IREntity::kNullEntity);
 
-        for (int i = 0; i < node->length_; ++i) {
+        for (int i = rowBegin; i < rowEnd; ++i) {
             const auto &local = locals[i];
 
             IRMath::vec3 modTranslation(0.0f);

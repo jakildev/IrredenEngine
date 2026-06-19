@@ -124,6 +124,11 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
                 } else {
                     IRVideo::requestScreenshot();
                 }
+                // Per-shot capture hook (#1882): fire once on the settled frame
+                // so the caller can record render state the capture reflects.
+                if (state->config_.onCaptureFrame_ != nullptr) {
+                    state->config_.onCaptureFrame_(state->currentShot_);
+                }
                 state->screenshotPending_ = true;
                 return;
             }

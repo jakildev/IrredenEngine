@@ -235,7 +235,7 @@ void main() {
         // byte-identical; non-zero rasterYaw composes R(-rasterYaw)
         // afterward to recover world coordinates.
         // Smooth camera Z-yaw (#1311): a per-axis canvas stores the world frame
-        // face-locally, so recover world-pos via faceOriginFromInPlane; the single
+        // face-locally, so recover world-pos via isoPixelToPos3D; the single
         // canvas uses the cardinal-snap reconstruction. The shared world light
         // volume is then sampled the same way for both (per-axis canvases are only
         // allocated while rotating, so the cardinal fast path is byte-identical).

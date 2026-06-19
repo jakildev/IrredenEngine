@@ -38,6 +38,7 @@ enum class BinaryIOError {
     InvalidString,    ///< string length prefix exceeded available bytes
     ChunkOutOfBounds, ///< chunk-table entry points outside the file
     WriteFailed,      ///< fwrite returned fewer bytes than requested
+    UnknownTag,       ///< unrecognized value/record discriminant byte (likely a newer writer)
 };
 
 /// Status payload returned by void-typed binary operations.

@@ -1,14 +1,17 @@
 # engine/job/ — IRJob worker pool
 
 Phase 1 of the multithreading epic (#226). The module stands up an
-enkiTS-backed worker pool that `World` owns for its lifetime; no
-engine system schedules on it yet — T-222 is the first consumer.
+enkiTS-backed worker pool that `World` owns for its lifetime.
+`PROPAGATE_TRANSFORM` and the `SystemManager` `PARALLEL_FOR` fan-out
+are the first consumers; the auto-grain dispatch helpers below (#1900)
+consolidate the boilerplate they share.
 
 ## Entry point
 
 `engine/job/include/irreden/ir_job.hpp` — `IRJob::parallelFor`,
-`IRJob::run`, `IRJob::pinTo`, `IRJob::isMainThread`,
-`IRJob::workerId`, `IRJob::workerCount`, `IRJob::workerRng`. The
+`IRJob::parallelForAutoGrain`, `IRJob::parallelChunks`, `IRJob::run`,
+`IRJob::pinTo`, `IRJob::isMainThread`, `IRJob::workerId`,
+`IRJob::workerCount`, `IRJob::workerRng`. The
 global pointer `g_jobManager` follows the same `g_*Manager` pattern
 as `g_entityManager` — set by `JobManager`'s ctor, cleared by its
 dtor, valid only between `World` construction and destruction.
@@ -16,6 +19,30 @@ dtor, valid only between `World` construction and destruction.
 The `JobManager` class itself lives at
 `engine/job/include/irreden/job/job_manager.hpp` — engine-internal
 shape. Creations only need the umbrella header.
+
+## Auto-grain dispatch helpers
+
+`parallelFor` is the raw primitive — the caller picks the grain.
+`parallelForAutoGrain(totalItems, fn, tuning)` and
+`parallelChunks(nodeLengths, scratch, fn, tuning)` (#1900) wrap it with
+the fan-out-vs-serial decision, a `~workerCount × tasksPerWorker` grain
+target, and a serial fallback so each consumer stops re-deriving that
+boilerplate. `parallelChunks` additionally splits a single dominant
+node across workers by row range while keeping small nodes whole — the
+generalized form of `PROPAGATE_TRANSFORM`'s per-level dispatch.
+
+- Tunables live in `IRJob::ParallelTuning`
+  (`minItemsToParallelize_`, `minNodes_`, `minChunk_`,
+  `tasksPerWorker_`); the defaults reproduce the original
+  PROPAGATE_TRANSFORM constants, so a default-constructed tuning is
+  bit-identical to the hand-rolled dispatch it replaced.
+- Both fall back to a single serial pass when `g_jobManager ==
+  nullptr` or the work-set is below threshold (the same null-pool
+  contract `parallelFor` asserts on — these helpers tolerate it
+  instead, since their whole job is the parallel-vs-serial decision).
+- Callers own write-disjointness across the dispatched ranges, and
+  own the reused `scratch` buffer (`std::vector<IRJob::RowChunk>`) so
+  per-frame planning stays allocation-free on the hot path.
 
 ## Worker count resolution
 

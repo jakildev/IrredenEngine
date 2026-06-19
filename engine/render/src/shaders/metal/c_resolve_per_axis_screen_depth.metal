@@ -42,9 +42,11 @@ kernel void c_resolve_per_axis_screen_depth(
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions
     );
-    const int3 anchor = faceLocalAnchor(perAxisBase, perAxisSize);
-    const int2 inPlane = cell - faceLocalBase(axis, anchor, perAxisSize);
-    const int3 origin = faceOriginFromInPlane(faceId, inPlane, rawDepth);
+    // Un-yawed iso recovery: the store filed this face at
+    // `perAxisBase + pos3DtoPos2DIso(facePos)`; invert via isoPixelToPos3D
+    // (exact integer facePos for integer cell + rawDepth).
+    const int2 isoPix = cell - perAxisBase;
+    const int3 origin = int3(round(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth))));
 
     // Re-project into the MAIN-canvas cardinal distance layout, mirroring
     // c_voxel_to_trixel_stage_1.metal's cardinal store, so the BAKE cardinal

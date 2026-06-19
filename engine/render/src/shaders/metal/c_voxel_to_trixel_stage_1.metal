@@ -129,7 +129,11 @@ kernel void c_voxel_to_trixel_stage_1(
     // lets the depth re-test keep the front-most surface — see the GLSL twin for
     // the full rationale.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
+    // Re-voxelize now authors the ROTATED-frame exposed mask on the GPU
+    // (c_revoxelize_detached) like the GRID path's #1720, so it gates on
+    // faceIsExposed too (no all-3-face bypass → no slot-tie AO hatching). The
+    // reVoxelize flag still drives the ±1px dilation in emitDeformedFace.
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
     // Per-slot deformation matrix — see stage 1 GLSL for the contract.
     const float2x2 D = float2x2(
@@ -146,29 +150,30 @@ kernel void c_voxel_to_trixel_stage_1(
     if (frameData.perAxisRoute != 0) {
         const int axis = frameData.perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Face-local in-plane store (#1310 fix) — see c_voxel_to_trixel_stage_1.glsl
-        // and ir_iso_common.metal. Dense collision-free lattice replaces the
-        // yawed iso store (cracks on the compressed axis, singular recovery at
-        // +/-120 deg); the scatter recovers the origin exactly and reprojects.
+        // Un-yawed (cardinal) iso store: key each face by its
+        // cardinal iso pixel `perAxisBase + pos3DtoPos2DIso(facePos)` instead of
+        // the in-plane (y,z)/(x,z)/(x,y) lattice. The in-plane lattice collapses
+        // faces that share an in-plane column but differ in depth-along-the-fixed
+        // axis (separate objects stacked along x) onto one cell -> back face
+        // dropped even though screen-separated. The cardinal iso key depends on
+        // all three coords, so screen-separated faces land in distinct cells and
+        // both survive; collisions occur only for genuine same-pixel cardinal
+        // occlusion (resolved by the rawDepth atomicMin). The scatter recovers
+        // the origin via isoPixelToPos3D (exact, non-singular at every yaw since
+        // the index is un-yawed) and reprojects under the live yaw.
         const int2 perAxisBase = trixelFrameOffset(
             frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions
         );
-        const int3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-        const int2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (frameData.voxelRenderOptions.x == 0) {
             const int3 worldPos = int3(round(voxelPosition.xyz));
-            // Store the FACE-PLANE position (#1310 seam fix) — mirror of
-            // c_voxel_to_trixel_stage_1.glsl. faceInPlaneCoords ignores the
-            // fixed axis so the cell is unchanged; the depth now recovers the
-            // face plane, which faceSpanCorner spans without re-adding polarity.
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeDistanceTap(
-                cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance,
+                perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
                 distanceScratch, canvasSize
             );
             return;
@@ -183,7 +188,7 @@ kernel void c_voxel_to_trixel_stage_1(
         const int voxelDistance =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
         writeDistanceTap(
-            cellBase + faceInPlaneCoords(faceId, facePos_sub), voxelDistance,
+            perAxisBase + pos3DtoPos2DIso(facePos_sub), voxelDistance,
             distanceScratch, canvasSize
         );
         return;

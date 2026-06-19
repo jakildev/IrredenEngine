@@ -7,74 +7,15 @@ add_executable(IRCreationDefault
 # add_executable(IRCreationDefault main.cpp)
 target_link_libraries(IRCreationDefault PUBLIC IrredenEngine)
 
-# Lua scripts live beside the executable in scripts/.
-set(IR_DEFAULT_SCRIPTS_DIR ${IR_DEFAULT_RUNTIME_DIR}/scripts)
-set(IR_DEFAULT_MAIN_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/main.lua)
-set(IR_DEFAULT_CONFIG_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/config.lua)
-set(IR_DEFAULT_COMMANDS_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/commands.lua)
-set(IR_DEFAULT_MAIN_LUA_DST ${IR_DEFAULT_SCRIPTS_DIR}/main.lua)
-set(IR_DEFAULT_CONFIG_LUA_DST ${IR_DEFAULT_SCRIPTS_DIR}/config.lua)
-set(IR_DEFAULT_COMMANDS_LUA_DST ${IR_DEFAULT_SCRIPTS_DIR}/commands.lua)
-
-# Track script files as build dependencies so normal UI build/run workflows
-# refresh Lua assets without requiring a C++ recompile.
-add_custom_command(
-    OUTPUT ${IR_DEFAULT_MAIN_LUA_DST}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${IR_DEFAULT_SCRIPTS_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${IR_DEFAULT_MAIN_LUA_SRC} ${IR_DEFAULT_MAIN_LUA_DST}
-    DEPENDS ${IR_DEFAULT_MAIN_LUA_SRC}
-    COMMENT "Syncing default demo main.lua"
-)
-
-add_custom_command(
-    OUTPUT ${IR_DEFAULT_CONFIG_LUA_DST}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${IR_DEFAULT_CONFIG_LUA_SRC} ${IR_DEFAULT_CONFIG_LUA_DST}
-    DEPENDS ${IR_DEFAULT_CONFIG_LUA_SRC}
-    COMMENT "Syncing default demo config.lua"
-)
-
-add_custom_command(
-    OUTPUT ${IR_DEFAULT_COMMANDS_LUA_DST}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${IR_DEFAULT_SCRIPTS_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${IR_DEFAULT_COMMANDS_LUA_SRC} ${IR_DEFAULT_COMMANDS_LUA_DST}
-    DEPENDS ${IR_DEFAULT_COMMANDS_LUA_SRC}
-    COMMENT "Syncing default demo commands.lua"
-)
-
-add_custom_target(IRCreationDefaultAssets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_DEFAULT_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_DEFAULT_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_DEFAULT_RUNTIME_DIR}/shaders
-    DEPENDS
-        ${IR_DEFAULT_MAIN_LUA_DST}
-        ${IR_DEFAULT_CONFIG_LUA_DST}
-        ${IR_DEFAULT_COMMANDS_LUA_DST}
-)
-
-add_dependencies(IRCreationDefault IRCreationDefaultAssets)
+# Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs).
+irreden_bundle_assets(IRCreationDefault SCRIPTS main.lua config.lua commands.lua)
 
 # Run helper target:
-# - Copies the latest Lua/config files every run
 # - Launches the creation executable from the build directory
 # This lets script edits be picked up without rebuilding C++.
 add_custom_target(IRCreationDefaultRun
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_DEFAULT_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_DEFAULT_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_DEFAULT_RUNTIME_DIR}/shaders
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/main.lua ${IR_DEFAULT_SCRIPTS_DIR}/main.lua
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_DEFAULT_SCRIPTS_DIR}/config.lua
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/commands.lua ${IR_DEFAULT_SCRIPTS_DIR}/commands.lua
     COMMAND $<TARGET_FILE:IRCreationDefault>
-    DEPENDS IRCreationDefault
+    DEPENDS IRCreationDefault IRCreationDefaultAssets
     WORKING_DIRECTORY ${IR_DEFAULT_RUNTIME_DIR}
     USES_TERMINAL
 )

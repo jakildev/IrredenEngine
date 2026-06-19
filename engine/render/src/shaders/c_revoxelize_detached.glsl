@@ -28,10 +28,12 @@
 // `rotateByQuat` / `rotateByInverseQuat` / `roundHalfUp` are the shared CPU↔GPU
 // helpers in ir_iso_common.glsl (CPU mirrors IRMath::rotateVectorByQuat /
 // IRMath::roundVec3HalfUp), so CPU, GLSL and Metal classify half-integers the
-// same. The exposed-face mask is NOT authored here: re-voxelize canvases mark
-// frame-data `.w = 1`, which makes stage 1/2 emit all three cardinal faces and
-// depth-resolve the front surface (voxel_frame_data.hpp), so a per-dest-cell
-// neighbour probe is unnecessary.
+// same. MODE 1 ALSO authors the ROTATED-frame face-occlusion mask from dest-grid
+// adjacency (the GPU twin of REBUILD_GRID_VOXELS' #1720 CPU mask), so stage 1/2
+// gate the re-voxelize emit on `faceIsExposed` exactly like the GRID path —
+// instead of the old `.w = 1` bypass that emitted all three cardinal faces and
+// let a slot-tie checkerboard winner drive AO hatching on flat surfaces. `.w`
+// still marks re-voxelize (for the emit dilation), only the gate changed.
 
 #include "ir_iso_common.glsl"
 
@@ -82,6 +84,18 @@ layout(std140, binding = 16) uniform RevoxelizeParams {
     ivec4 srcGridDims_;   // xyz = source grid dims
 };
 
+// Is dest cell `c` covered? Inverse-map to source + check occupancy — the GPU
+// twin of REBUILD_GRID_VOXELS' #1720 dest-grid adjacency probe.
+bool revoxDestCovered(ivec3 c) {
+    ivec3 src = roundHalfUp(rotateByInverseQuat(vec3(c), canvasRotation_));
+    ivec3 g = src - srcGridMin_.xyz;
+    if (any(lessThan(g, ivec3(0))) || any(greaterThanEqual(g, srcGridDims_.xyz))) {
+        return false;
+    }
+    int li = g.x + srcGridDims_.x * (g.y + srcGridDims_.y * g.z);
+    return ((sourceGrid[2 * li] >> 24u) & 0xFFu) != 0u;
+}
+
 void main() {
     uint workGroupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
     uint slot = workGroupIndex * 64u + gl_LocalInvocationID.x;
@@ -130,6 +144,19 @@ void main() {
     if (((colorPacked >> 24u) & 0xFFu) != 0u) {
         // Occupied dest cell — author position + color + active for this slot.
         globalPositions[slot] = vec4(vec3(destCell), 0.0);
+        // Author the ROTATED-frame face-occlusion mask from dest-grid adjacency,
+        // replacing the stale unrotated source mask so stage 1/2 gate the
+        // re-voxelize emit on faceIsExposed (no all-3-face bypass → no slot-tie
+        // AO hatching). occ uses the kFaceOccluded* bit layout
+        // (component_voxel.hpp): flagsByte bits 2..7 sit at matFlagBone 10..15.
+        uint occ = 0u;
+        if (revoxDestCovered(destCell + ivec3(-1, 0, 0))) occ |= (1u << 2);
+        if (revoxDestCovered(destCell + ivec3( 1, 0, 0))) occ |= (1u << 3);
+        if (revoxDestCovered(destCell + ivec3(0, -1, 0))) occ |= (1u << 4);
+        if (revoxDestCovered(destCell + ivec3(0,  1, 0))) occ |= (1u << 5);
+        if (revoxDestCovered(destCell + ivec3(0, 0, -1))) occ |= (1u << 6);
+        if (revoxDestCovered(destCell + ivec3(0, 0,  1))) occ |= (1u << 7);
+        matFlagBone = (matFlagBone & ~(0x3Fu << 10)) | (occ << 8);
         destColors[slot] = Voxel(colorPacked, matFlagBone, 0u);
         atomicOr(activeMask[slot >> 5u], 1u << (slot & 31u));
     }

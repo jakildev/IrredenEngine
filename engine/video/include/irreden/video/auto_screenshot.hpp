@@ -75,11 +75,22 @@ struct AutoScreenshotShot {
 /// Declarative config for @c createAutoScreenshotSystem. @c shots_ /
 /// @c numShots_ point at a shot table owned by the caller — it must outlive
 /// the game loop.
+///
+/// @c onCaptureFrame_ is an optional per-shot hook fired exactly once per shot,
+/// on the settled capture frame, immediately after the screenshot is requested,
+/// passing the shot index. It lets a creation record render state that only the
+/// settled frame reflects — e.g. perf_grid's rotated-solidity harness samples
+/// which render path (single-canvas cardinal vs per-axis) actually drew the
+/// pose, so a "cardinal" row is unambiguous (#1882). State that engine/video
+/// cannot see is injected as a type-erased callback (same pattern as
+/// @c GuiTestConfig::onAssertFrame_). @c nullptr keeps every existing caller
+/// byte-identical.
 struct AutoScreenshotConfig {
     int warmupFrames_ = 10;
     int settleFrames_ = 3;
     const AutoScreenshotShot *shots_ = nullptr;
     int numShots_ = 0;
+    void (*onCaptureFrame_)(int shotIndex) = nullptr;
 };
 
 /// Parse @c --auto-screenshot<space>[frames] from argv. Returns @c true if

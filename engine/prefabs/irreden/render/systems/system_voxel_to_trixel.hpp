@@ -730,7 +730,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // i.e. the per-axis canvases are active), project the chunk-visibility
         // gate with the same continuous yaw the per-axis scatter raster uses, so
         // off-center chunks aren't dropped by the cardinal snap. residual == 0
-        // keeps the byte-identical cardinal path.
+        // keeps the byte-identical cardinal path. residualYaw_ is deadbanded at
+        // its source (Camera::computeYawSplit / kResidualYawDeadband, #1882), so
+        // this `!= 0` path-select predicate matches the per-axis allocation gate
+        // exactly — a near-cardinal residual can't free the textures while still
+        // routing here (the old gap that read freed textures as coverage holes).
         const bool rotating = frameData_.residualYaw_ != 0.0f;
         if (revoxInverse) {
             // Dest-cell domain (#1619): the rotated solid rasters in its own

@@ -147,10 +147,14 @@ vertex VertexOut v_peraxis_scatter(
     // Hoist in-plane axes before origin so fractional offset and dilation block share them.
     float3 eu, ev;
     faceInPlaneUnitAxes(axis, eu, ev);
-    // Exact face-local recovery (#1310 fix) — mirror of v_peraxis_scatter.glsl.
-    const int3 anchor = faceLocalAnchor(frameData.perAxisBase, canvasSize);
-    const int2 inPlane = int2(ij) - faceLocalBase(axis, anchor, canvasSize);
-    const float3 baseOrigin = float3(faceOriginFromInPlane(faceId, inPlane, rawDepth));
+    // Un-yawed iso recovery — mirror of v_peraxis_scatter.glsl. The
+    // store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`, so the
+    // cardinal iso pixel is `ij - perAxisBase` and isoPixelToPos3D inverts it
+    // exactly against rawDepth (= x+y+z of the face plane). Non-singular at every
+    // yaw because the recovered index is un-yawed; the yaw is applied below.
+    const int2 isoPix = int2(ij) - frameData.perAxisBase;
+    const float3 baseOrigin =
+        isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
     // Apply sub-cell offset packed in the encoding (#1458).
     const float3 origin = baseOrigin
         + eu * (float(uFrac4) / 16.0f - 0.5f)
@@ -177,8 +181,20 @@ vertex VertexOut v_peraxis_scatter(
     float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
+    // Foreshortening-adaptive margin — mirror of v_peraxis_scatter.glsl. Near
+    // ±45deg residual one in-plane axis collapses on screen (su ~|| sv), so the
+    // deformed quad degenerates to a sliver and adjacent faces leave gaps the
+    // fixed 0.85px dilation cannot bridge (the band-clipping). Grow the margin
+    // toward the on-screen voxel step, gated by the degeneracy.
+    const float suLen = length(su);
+    const float svLen = length(sv);
+    const float degenSin = (suLen > 1e-5 && svLen > 1e-5)
+        ? abs(su.x * sv.y - su.y * sv.x) / (suLen * svLen)
+        : 1.0;
+    const float adaptiveMargin =
+        mix(max(suLen, svLen), kScatterDilateMarginPx, clamp(degenSin, 0.0, 1.0));
     const float2 dilNdc = scatterConservativeDilation(
-        su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
+        su, sv, sign(in.position), max(kScatterDilateMarginPx, adaptiveMargin), ndcPerPx
     );
     clipCorner.xy += dilNdc;
     clipCorner.y = -clipCorner.y;

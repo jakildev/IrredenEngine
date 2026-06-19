@@ -6,9 +6,12 @@
 
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/modifier_field_registry.hpp>
+#include <irreden/script/lua_audio_bindings.hpp>
+#include <irreden/script/lua_collision_bindings.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
+#include <irreden/script/lua_persistence_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
 #include <irreden/script/lua_sim_bindings.hpp>
@@ -647,7 +650,10 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindPrefabApi(*this);
     detail::bindSpatialApi(*this);
     detail::bindRenderGlue(*this);
+    detail::bindCollisionEvents(*this);
     detail::bindSimApi(*this);
+    detail::bindAudioApi(*this);
+    detail::bindPersistenceApi(*this);
 }
 
 void LuaScript::bindLuaCommands() {

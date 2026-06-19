@@ -1,8 +1,9 @@
-# engine/audio/ — MIDI I/O and audio capture
+# engine/audio/ — MIDI I/O, audio capture, file playback
 
-Thin wrapper around RtMidi (MIDI in/out) and RtAudio (input capture). There
-is no synth, no music playback — creations that need sound generate it
-themselves, or pipe MIDI to an external hardware/software synth.
+Thin wrapper around RtMidi (MIDI in/out), RtAudio (input capture), and
+miniaudio (file playback). There is no synth — creations that need
+generated tones still produce them themselves or pipe MIDI to an external
+synth — but `.wav`/`.ogg` **playback** of SFX and music is built in (#1813).
 
 ## Entry point
 
@@ -15,6 +16,11 @@ functions:
 - MIDI send: `sendNoteOn`, `sendNoteOff`, `sendCC`.
 - Audio input: open/start/stop a capture stream, register a float-sample
   callback.
+- File playback: `playSound` / `playMusic` / `playSoundAt`, `stopSound`,
+  `setSoundVolume`, `fadeInSound` / `fadeOutSound`, `setBusVolume`,
+  `setMasterVolume`, `setListenerPosition`. The Lua mirror is the `IRAudio`
+  table (`engine/script/include/irreden/script/lua_audio_bindings.hpp`,
+  bound by `bindLuaDrivenEcs()`).
 
 ## AudioManager owns
 
@@ -26,6 +32,53 @@ functions:
   to the default (first-opened) port, or to a specific port by index.
 - **`Audio`** — `RtAudio` wrapper for microphone/line-in. Implements
   `IAudioCaptureSource`. Used by `VideoManager` for recording soundtracks.
+- **`AudioPlayback`** — miniaudio file playback (see below). `getAudioPlayback()`.
+
+## File playback model (`AudioPlayback`)
+
+`engine/audio/include/irreden/audio/audio_playback.hpp` — a pImpl wrapper
+over miniaudio's **high-level engine** (`ma_engine` / `ma_sound` /
+`ma_sound_group`). miniaudio is a private implementation detail: only
+`src/audio_playback.cpp` defines `MINIAUDIO_IMPLEMENTATION`, and the
+`ma_*` types never appear in any public header.
+
+- **Library decision — miniaudio, high-level `ma_engine` API.** Single-
+  header, public-domain, cross-platform (CoreAudio / WASAPI / ALSA) with
+  built-in decoding, mixing, **sound groups (= our buses)**, a **listener +
+  3D spatialization (= the #207 seam)**, per-sound volume/loop, and fades —
+  so the engine code is a thin wrapper, not a device/decoder build-out.
+  Vendored via `FetchContent` pinned to a tag (matches the RtMidi/RtAudio
+  pattern), compiled playback-only with `MA_NO_ENCODING`. macOS links the
+  CoreAudio frameworks; Linux pulls `pthread m dl` (ALSA is dlopen'd at
+  runtime, no `-lasound`); Windows needs nothing extra (WASAPI via system).
+  See `CMakeLists.txt`.
+- **Buses.** `AudioBus { CREATURE, ENVIRONMENT, ABILITY, UI, MUSIC, COUNT }`
+  (`ir_audio_types.hpp`) — one `ma_sound_group` each, parented under the
+  engine endpoint. The integer values double as the C++ group-array index
+  and the `IRAudio.Bus` Lua table; keep them contiguous from 0 with `COUNT`
+  last. `setBusVolume` scales a whole category; `setMasterVolume` scales the
+  engine.
+- **Handles + lifetime.** `playSound` (decode-into-memory one-shot) /
+  `playMusic` (streamed, loops by default) / `playSoundAt` (spatialized)
+  return a `SoundHandle` into a handle table of heap-owned `ma_sound`s;
+  `kInvalidSoundHandle` (0) on failure. A **finished one-shot is reaped on
+  the main thread** by `tickPlayback()` — wired into `World::input()` next
+  to `MidiIn::tick()` — never from miniaudio's audio callback. The reap rule
+  is "non-looping AND no longer playing", which also covers a faded-out
+  sound (`fadeOutSound` fades then stops). Looping sounds live until an
+  explicit `stopSound`.
+- **No device = silent, never a crash.** If `ma_engine_init` fails (no
+  playback device, e.g. a headless box) `AudioPlayback` stays uninitialised:
+  every `play*` returns `kInvalidSoundHandle` and the setters no-op.
+- **Forward seams (depth is #207/#208, not built here).** `playSoundAt` +
+  `setListenerPosition` drive the one built-in `ma_engine` listener and a
+  sound's world position — #207 layers occlusion / biome ambience on this
+  existing positional source. A world-time scheduler / bus-gain automation
+  keyed on `IRSim::tick()` / `IRSim::cycleFraction` is the #208 seam (not
+  stubbed; build it there).
+
+The `creations/demos/audio_playback/` demo drives the whole surface from
+Lua (`scripts/audio_demo.lua`).
 
 ## MIDI model
 

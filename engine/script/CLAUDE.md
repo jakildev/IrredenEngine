@@ -862,6 +862,53 @@ IRModifier.resolvedQuat(entity, fieldNameOrId, fallback) -- read quat slot
   engine assertion in debug and silently no-op in release. The compose
   pass normalizes the final resolved quat once at the end.
 
+## Collision overlap events (`IRCollision.*`)
+
+`bindLuaDrivenEcs()` exposes a Lua-facing overlap/trigger callback surface
+(engine #1817) over the existing AABB collider + `C_ContactEvent` detection.
+The binding lives in `lua_collision_bindings.hpp`
+(`detail::bindCollisionEvents`); the dispatch + batched-pair plumbing is
+`DISPATCH_LUA_OVERLAP` + `C_OverlapContactBatch` (see
+`engine/prefabs/irreden/update/CLAUDE.md`).
+
+```lua
+-- Handlers keyed by an (unordered) collision-LAYER pair. The entity on the
+-- FIRST layer arg is the callback's first arg; the second layer's entity is
+-- second (so a creation never re-checks layers in Lua).
+IRCollision.onOverlapEnter(layerA, layerB, function(entA, entB) ... end)
+IRCollision.onOverlapExit (layerA, layerB, function(entA, entB) ... end)
+
+-- Named engine layers as an integer table (cpp-lua-enums.md; keys derive
+-- from the CollisionLayerMask enum so they can't drift):
+IRCollision.Layer.COLLISION_LAYER_DEFAULT       -- 1
+IRCollision.Layer.COLLISION_LAYER_NOTE_BLOCK    -- 2
+IRCollision.Layer.COLLISION_LAYER_NOTE_PLATFORM -- 4
+IRCollision.Layer.COLLISION_LAYER_PARTICLE      -- 8
+```
+
+- **Layer-pair keyed, not per-entity.** Handlers live for the session in
+  `DISPATCH_LUA_OVERLAP`'s state, keyed by the layer pair — so a dead
+  entity simply produces no more contacts (no dangling-handle lifetime
+  problem). Enter/exit is derived at PAIR granularity, so one entity touching
+  several others is tracked correctly.
+- **Raw integer layers are accepted.** The four named engine layers are
+  music-demo-centric; gameplay layers (player / enemy / projectile / pickup)
+  are plain integer bits a creation defines — the dispatcher keys on the
+  value, not the name. Pass either an `IRCollision.Layer.*` value or a raw
+  bit. (Same-layer handlers — `onOverlapEnter(L, L, fn)` — pass the canonical
+  `(a, b)` order.)
+- **Wiring contract.** A creation must
+  `registerPrefabSystem<IRSystem::DISPATCH_LUA_OVERLAP>()` and place it
+  in the UPDATE pipeline **after** `COLLISION_NOTE_PLATFORM` before registering
+  handlers — `onOverlap*` resolve the system through the prefab-system-id map
+  (like `IRSystem.systemId`) and raise a Lua error naming the missing
+  registration if it's absent. Registering the system also creates the
+  `C_OverlapContactBatch` singleton, which is what switches pair emission on in
+  the producer.
+- **No physics response** — overlap notification only. The canonical runnable
+  example (spawn collidables, compose the pipeline, register handlers, prove
+  enter+exit from a headless run) is `creations/demos/collision_overlap_demo`.
+
 ## Sim clock (`IRSim.*`)
 
 `bindLuaDrivenEcs()` exposes the sim-clock / cycle / timer / stopwatch
@@ -900,6 +947,39 @@ IRSim.stopwatchPause("run"); IRSim.stopwatchResume("run"); IRSim.stopwatchReset(
 - Service surface only — the advance systems are not exposed for Lua
   pipeline assembly (same as most prefab systems). Coverage:
   `test/time/lua_sim_test.cpp`.
+
+## Persistence (`IRSave.*`)
+
+`bindLuaDrivenEcs()` exposes a flat key/value persistence surface as the
+`IRSave` table (engine #1819) so gameplay can save high scores + settings
+across launches — the lightweight, Lua-reachable alternative to the ECS
+world snapshot (#199). It wraps the `.irkv` format in `engine/asset/`
+(`key_value_store.hpp`); see `engine/asset/CLAUDE.md` "`.irkv` format" for
+the on-disk layout and value model.
+
+```lua
+IRSave.load("highscores")              -- read file into the in-proc store;
+                                       -- missing/corrupt -> empty. returns loaded?
+IRSave.set("highscores", "top1", 5000) -- number | string | bool | array-table
+IRSave.set("highscores", "names", { "ACE", "BEE" })
+IRSave.save("highscores")              -- write the in-proc store to disk. returns ok?
+local v = IRSave.get("highscores", "top1", 0)  -- stored value, or the default arg
+IRSave.has("highscores", "top1"); IRSave.remove("highscores", "top1"); IRSave.clear("highscores")
+```
+
+- **Stores are namespaced by basename** (`"highscores"`, `"settings"`); each
+  maps to `userDataDir("irreden")/<name>.irkv` (per-user dir, not the exe
+  dir — survives a clean bundle reinstall). `save` creates the directory.
+- **Per-`World` lifetime.** The store registry is captured in the binding
+  lambdas (shared_ptr), so it lives as long as the `LuaScript`'s sol::state.
+  Don't hold Lua handles across `World` shutdown.
+- **Values cross by `sol::type` inspection** (number/string/bool/array-table),
+  NOT a Lua-spelled enum, so the `cpp-lua-enums` rule does not apply. A
+  number/string/bool maps to a scalar; an array-style table (contiguous
+  `1..n`) maps to a LIST. A map-style table or a nested list raises a clear
+  Lua error rather than silently dropping the value. Lists do not nest in v1.
+- Coverage: `test/script/lua_persistence_test.cpp` (in-memory surface) +
+  `test/asset/key_value_store_test.cpp` (format round-trip + corruption).
 
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 

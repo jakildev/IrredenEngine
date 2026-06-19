@@ -180,21 +180,17 @@ void main() {
     // arise because the interior copy was never emitted. Bit position
     // matches `IRComponents::VoxelFlags::kFaceOccluded(faceId)`.
     //
-    // BYPASSED for re-voxelize (#1570). The GPU scatter (c_revoxelize_detached)
-    // rewrites only the cell POSITIONS; the per-voxel exposed mask in `flags_`
-    // is computed ONCE at authoring time (IRPrefab::Voxel::recomputeFaceOccupancy)
-    // in the UNROTATED model frame and is never recomputed against the rotated
-    // cells — P1's per-frame CPU recompute was removed in P2 (#1556) and never
-    // moved to the GPU. Gating rotated-frame faces against that unrotated mask
-    // systematically drops whole camera-visible faces as the solid spins away
-    // from identity. So re-voxelize emits all three visible-triplet cardinal
-    // faces (X_NEG/Y_NEG/Z_NEG) for every cell and lets the depth re-test
-    // (imageAtomicMin) keep the front-most surface: a convex/centred solid shows
-    // exactly its three iso faces with no holes, and interior cells lose the
-    // depth tie. (A later optimisation can recompute the mask against the rotated
-    // cells on the GPU to cut interior overdraw.)
+    // Re-voxelize now gates here too. The GPU scatter (c_revoxelize_detached
+    // MODE 1) authors the ROTATED-frame exposed mask from dest-grid adjacency
+    // (the GPU twin of REBUILD_GRID_VOXELS' #1720 CPU mask), so `flags_` is
+    // valid in the rotated frame — the old `.w`-bypass (emit all three cardinal
+    // faces, let the depth re-test keep the front) existed only because that
+    // mask used to be stale, and its slot-tie winner drove AO hatching on flat
+    // surfaces that the GRID path never had. Bit position matches
+    // `IRComponents::VoxelFlags::kFaceOccluded(faceId)`. `reVoxelize` still drives
+    // the emit dilation below.
     const uint flagsByte = (voxels[voxelIndex].materialFlagBone >> 8u) & 0xFFu;
-    if (!reVoxelize && !faceIsExposed(flagsByte, faceId)) return;
+    if (!faceIsExposed(flagsByte, faceId)) return;
 
     // At cardinalIndex==0 the rotation is the identity; gating it behind a
     // branch keeps the GLSL/MSL compilers from reshuffling instructions or
@@ -233,33 +229,28 @@ void main() {
     if (perAxisRoute != 0) {
         const int axis = perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Face-local in-plane store (#1310 fix): index each face by its two
-        // in-plane world axes, a dense collision-free lattice, instead of the
-        // yawed iso position (which collapsed compressed-axis faces onto one
-        // cell -> dropped faces -> cracks, and recovered via the 2cos(yaw)+1
-        // inverse that is singular at +/-120 deg). The scatter recovers the
-        // origin from the cell exactly (faceOriginFromInPlane) and forward-
-        // projects the deformed face quad. The anchor centers the canvas and is
-        // computed identically here and at scatter time from the same
-        // perAxisBase + canvasSize. See ir_iso_common.glsl.
+        // Un-yawed (cardinal) iso store: key each face by its cardinal iso pixel
+        // `perAxisBase + pos3DtoPos2DIso(facePos)` rather than the in-plane
+        // (y,z)/(x,z)/(x,y) lattice. The in-plane lattice collapses faces sharing
+        // an in-plane column but differing in depth-along-the-fixed-axis (separate
+        // objects stacked along the axis) onto one cell -> the back face is
+        // dropped even though it is screen-separated. The cardinal iso key depends
+        // on all three coords, so screen-separated faces land in distinct cells
+        // and both survive; collisions occur only for genuine same-pixel cardinal
+        // occlusion (resolved by the rawDepth atomicMin). This is NOT the yawed
+        // iso store #1310 fled (compressed-axis collapse + singular inverse): the
+        // index is UN-yawed, so no axis is compressed at store time and the
+        // recovery `isoPixelToPos3D` is exact at every yaw. The scatter reprojects
+        // the recovered origin under the live yaw.
         const ivec2 perAxisBase =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
-        const ivec2 canvasSize = imageSize(triangleCanvasDistances);
-        const ivec3 anchor = faceLocalAnchor(perAxisBase, canvasSize);
-        const ivec2 cellBase = faceLocalBase(axis, anchor, canvasSize);
         if (voxelRenderOptions.x == 0) {
             const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
-            // Store the FACE-PLANE position (POS faces at the high side, NEG at
-            // the low side) so the scatter's faceSpanCorner — which no longer
-            // re-applies polarity — lands the quad on the correct plane for both
-            // polarities, and the stored depth is the face's true iso distance.
-            // faceInPlaneCoords ignores the fixed axis, so the cell is identical
-            // to worldPos's; only the recovered fixed-axis plane changes.
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
             // No sub-cell offset at base resolution; encode centre fracs (8,8).
             const int voxelDistance =
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
-            writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos), voxelDistance);
+            writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance);
             return;
         }
         // #1458: store at BASE (world-unit) resolution regardless of effSub.
@@ -273,7 +264,7 @@ void main() {
         const vec3 fracInCell = worldAligned - vec3(worldPos_sub);
         const int voxelDistance =
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_sub), slot, axis, fracInCell);
-        writeDistanceTap(cellBase + faceInPlaneCoords(faceId, facePos_sub), voxelDistance);
+        writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos_sub), voxelDistance);
         return;
     }
 

@@ -283,7 +283,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         // #1380 cross-face self-occlusion: the per-screen-pixel flattening the
         // raw face-local store lacked. The per-axis RECEIVE
         // (COMPUTE_SUN_SHADOW, perAxisCellToWorld3D) recovers the same world
-        // origin (faceOriginFromInPlane), so cast and receive agree. If the
+        // origin (isoPixelToPos3D), so cast and receive agree. If the
         // resolve stage is not registered, resolveDepth_ stays cleared to the
         // empty sentinel (component allocate) so this dispatch casts nothing —
         // graceful no-op, not corruption. Cardinal (residualYaw == 0) is

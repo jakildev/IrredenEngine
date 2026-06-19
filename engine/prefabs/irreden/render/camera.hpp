@@ -21,15 +21,39 @@
 
 namespace IRPrefab::Camera {
 
+// Residual-yaw deadband. A residual at or below this magnitude counts as a
+// settled cardinal (not rotating): the renderer stays on the byte-identical
+// single-canvas fast path and the per-axis textures stay released. This is the
+// ONE place the threshold lives — `computeYawSplit` snaps the residual to
+// exactly 0 inside it, so every "rotating?" consumer (the per-axis allocation
+// gate in per_axis_canvas.hpp, the render path-select gate in
+// system_voxel_to_trixel.hpp, the FrameDataVoxelToCanvas UBO, the sun-shadow
+// bake's frame patch) derives the same predicate from the same value and
+// cannot disagree. Before #1882 the allocation gate used `|residual| > deadband`
+// while path-select used `residual != 0`; a cardinal whose quat round-trip
+// landed in (0, deadband] freed the per-axis textures yet still routed to the
+// per-axis path, reading freed textures → see-through coverage holes at
+// 90°/180°. Deadbanding at the source closes that gap.
+inline constexpr float kResidualYawDeadband = 1e-4f;
+
 /// Decompose a continuous Z-yaw value into (rasterYaw, residualYaw):
 ///   rasterYaw   = nearest cardinal multiple of π/2 to @p visualYaw
-///   residualYaw = visualYaw - rasterYaw, lies in [-π/4, π/4]
+///   residualYaw = visualYaw - rasterYaw, lies in [-π/4, π/4], reported as
+///                 exactly 0 within kResidualYawDeadband (see above)
 /// rasterYaw selects the cardinal-snap basis for the integer trixel
 /// rasterizer; residualYaw is the leftover angle the screen-space
 /// residual composite pass rotates the canvas by.
 inline std::pair<float, float> computeYawSplit(float visualYaw) {
     const float rasterYaw = IRMath::round(visualYaw / IRMath::kHalfPi) * IRMath::kHalfPi;
-    return {rasterYaw, visualYaw - rasterYaw};
+    const float residualYaw = visualYaw - rasterYaw;
+    // Single-source deadband (#1882): a residual within float-noise of a
+    // cardinal reports as exactly 0 so the allocation gate and the render
+    // path-select gate agree. No-op for visible rotation (|residual| >
+    // deadband) and for an exact cardinal (residual already 0) — byte-identical.
+    if (IRMath::abs(residualYaw) <= kResidualYawDeadband) {
+        return {rasterYaw, 0.0f};
+    }
+    return {rasterYaw, residualYaw};
 }
 
 namespace detail {

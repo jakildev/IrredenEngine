@@ -17,8 +17,13 @@
 #       clean → tier-0 drops the prefix and clears it (cleared=1).
 #   T2: child's OWN commit conflicts with master → still bails to the LLM
 #       pass (cleared=0, llm_remaining=1) — genuine conflicts unaffected.
+#   T3: parent EDITED during review after the child forked, so its recorded
+#       pre-merge head is a sibling of the child head and the #1690
+#       is-ancestor gate fails (#1824 / #1789-on-#1782). The fork-point
+#       fallback derives the boundary from merge-base(child, parent-head) and
+#       still drops the inherited prefix (cleared=1).
 #
-# Both run --auto --dry-run, so the rebase + changed-file-set guard run
+# All run --auto --dry-run, so the rebase + changed-file-set guard run
 # fully but nothing is pushed.
 
 set -euo pipefail
@@ -119,6 +124,33 @@ git -C "$AUTH" add base.txt
 git -C "$AUTH" commit -q -m "C2 own edit base.txt"
 git_q -C "$AUTH" push origin feat-child2
 
+# T3 (#1789 shape — parent EDITED during review AFTER the child forked).
+# P_FORK (inherited: add base.txt "v1") is the SHARED fork commit; the child
+# adds child3.txt on top, while the parent gains a SECOND commit P_EDIT only
+# after the child forked. So the recorded parent head (P_EDIT) is a sibling
+# of — not an ancestor of — the child head, defeating the #1690 is-ancestor
+# gate; the fork-point fallback derives merge-base(child, P_EDIT) == P_FORK.
+git_q -C "$AUTH" checkout -b feat-base3 "$INIT"
+echo "v1" > "$AUTH/base.txt"
+git -C "$AUTH" add base.txt
+git -C "$AUTH" commit -q -m "P_fork inherited add base.txt"
+P_FORK=$(git -C "$AUTH" rev-parse HEAD)
+git_q -C "$AUTH" checkout -b feat-child3 "$P_FORK"
+echo "child3 work" > "$AUTH/child3.txt"
+git -C "$AUTH" add child3.txt
+git -C "$AUTH" commit -q -m "C3 own add child3.txt"
+git_q -C "$AUTH" push origin feat-child3
+# Parent's review edit, layered on the fork point AFTER the child forked. The
+# branch is never pushed as a head (it is "merged + deleted"), but GitHub
+# retains its pre-merge head as refs/pull/<n>/head — push that so the fix's
+# `git fetch origin refs/pull/<n>/head` can realize the otherwise-absent SHA.
+git_q -C "$AUTH" checkout feat-base3
+echo "v1 amended during review" > "$AUTH/base.txt"
+git -C "$AUTH" add base.txt
+git -C "$AUTH" commit -q -m "P_edit parent amended during review"
+P_EDIT=$(git -C "$AUTH" rev-parse HEAD)
+git_q -C "$AUTH" push origin "$P_EDIT:refs/pull/197/head"
+
 # Squash the base PR's content onto master with a DIFFERENT body than the
 # inherited commit — this is the "merged with amendments" case that
 # defeats git's patch-id empty-commit dropping and forces the conflict.
@@ -139,6 +171,9 @@ git -C "$ENGINE" config commit.gpgsign false
 # net output of `gh pr list ... --json number,headRefOid --jq '<tsv>'`.
 printf '199\t%s\n' "$B1"  > "$TMPROOT/merged/feat-base.tsv"
 printf '198\t%s\n' "$B1B" > "$TMPROOT/merged/feat-base2.tsv"
+# T3: the merged parent reports its EDITED head P_EDIT (not the fork commit),
+# which is a sibling of the child head — the #1690 gate fails on it.
+printf '197\t%s\n' "$P_EDIT" > "$TMPROOT/merged/feat-base3.tsv"
 
 # --- Stub gh ---------------------------------------------------------------
 # Only the merged-base lookup is exercised in --dry-run (the retarget
@@ -193,6 +228,17 @@ T2=$(run_rebase)
 assert_contains "$T2" "dropping inherited prefix at ${B1B:0:12}" "T2 still attempts the prefix drop"
 assert_contains "$T2" "(inherited-prefix drop) conflicts; leaving for LLM" "T2 own-commit conflict bails to LLM"
 assert_contains "$T2" "attempted=1 cleared=0 llm_remaining=1" "T2 left for the LLM pass"
+
+# === T3: parent edited after the child forked -> fork-point fallback drops ==
+echo "T3: parent amended post-fork (recorded head is a sibling) -> fork-point fallback drops + clears"
+write_slice '[{"repo":"engine","number":202,"headRefName":"feat-child3","baseRefName":"feat-base3","mergeable":"CONFLICTING","labels":["fleet:approved"]}]'
+T3=$(run_rebase)
+assert_contains "$T3" "retargeting PR to master" "T3 took the retarget path"
+assert_contains "$T3" "parent edited post-fork; deriving inherited boundary from child fork point at ${P_FORK:0:12}" "T3 used the fork-point fallback at the boundary"
+assert_absent   "$T3" "dropping inherited prefix at" "T3 did NOT take the is-ancestor fast path"
+assert_contains "$T3" "attempted=1 cleared=1 llm_remaining=0" "T3 tier-0 cleared the PR (no LLM bail)"
+assert_absent   "$T3" "changed-file set drifted" "T3 no spurious file-set drift"
+assert_absent   "$T3" "conflicts; leaving for LLM" "T3 no conflict bail"
 
 # --- Summary ---------------------------------------------------------------
 echo ""

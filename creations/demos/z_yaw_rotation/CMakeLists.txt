@@ -20,74 +20,30 @@ foreach(IR_ZYAW_DEMO_INDEX RANGE ${IR_ZYAW_DEMO_LAST})
 
     add_executable(${IR_ZYAW_DEMO_TARGET} ${IR_ZYAW_DEMO_SOURCE})
     target_link_libraries(${IR_ZYAW_DEMO_TARGET} PUBLIC IrredenEngine)
-
-    if(WIN32)
-        add_custom_command(
-            TARGET ${IR_ZYAW_DEMO_TARGET}
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy -t
-                $<TARGET_FILE_DIR:${IR_ZYAW_DEMO_TARGET}>
-                $<TARGET_RUNTIME_DLLS:${IR_ZYAW_DEMO_TARGET}>
-            COMMAND_EXPAND_LISTS
-        )
-    endif()
 endforeach()
 
-set(IR_ZYAW_SCRIPTS_DIR ${IR_ZYAW_RUNTIME_DIR}/scripts)
-set(IR_ZYAW_CONFIG_LUA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/config.lua)
-set(IR_ZYAW_CONFIG_LUA_DST ${IR_ZYAW_SCRIPTS_DIR}/config.lua)
-
-add_custom_command(
-    OUTPUT ${IR_ZYAW_CONFIG_LUA_DST}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${IR_ZYAW_SCRIPTS_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${IR_ZYAW_CONFIG_LUA_SRC} ${IR_ZYAW_CONFIG_LUA_DST}
-    DEPENDS ${IR_ZYAW_CONFIG_LUA_SRC}
-    COMMENT "Syncing z_yaw_rotation config.lua"
-)
-
-add_custom_target(IRZYawDemoAssets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_ZYAW_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_ZYAW_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_ZYAW_RUNTIME_DIR}/shaders
-    DEPENDS ${IR_ZYAW_CONFIG_LUA_DST}
-)
-
+# Both demos share one runtime dir, so stage assets ONCE (via the first target's
+# bundle) and have every demo depend on it. Preserves the original
+# single-IRZYawDemoAssets layout and avoids parallel copies into the same dir.
+# Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs).
+list(GET IR_ZYAW_DEMO_TARGETS 0 IR_ZYAW_PRIMARY_TARGET)
+irreden_bundle_assets(${IR_ZYAW_PRIMARY_TARGET} SCRIPTS config.lua)
 foreach(IR_ZYAW_DEMO_TARGET IN LISTS IR_ZYAW_DEMO_TARGETS)
-    add_dependencies(${IR_ZYAW_DEMO_TARGET} IRZYawDemoAssets)
+    add_dependencies(${IR_ZYAW_DEMO_TARGET} ${IR_ZYAW_PRIMARY_TARGET}Assets)
 endforeach()
 
 add_custom_target(IRZYawDemos DEPENDS ${IR_ZYAW_DEMO_TARGETS})
 
 add_custom_target(IRZYawStaticRun
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_ZYAW_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_ZYAW_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_ZYAW_RUNTIME_DIR}/shaders
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_ZYAW_SCRIPTS_DIR}/config.lua
     COMMAND $<TARGET_FILE:IRZYawStatic>
-    DEPENDS IRZYawStatic
+    DEPENDS IRZYawStatic ${IR_ZYAW_PRIMARY_TARGET}Assets
     WORKING_DIRECTORY ${IR_ZYAW_RUNTIME_DIR}
     USES_TERMINAL
 )
 
 add_custom_target(IRZYawInteractiveRun
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/data ${IR_ZYAW_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/data ${IR_ZYAW_RUNTIME_DIR}/data
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_ZYAW_RUNTIME_DIR}/shaders
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_ZYAW_SCRIPTS_DIR}/config.lua
     COMMAND $<TARGET_FILE:IRZYawInteractive>
-    DEPENDS IRZYawInteractive
+    DEPENDS IRZYawInteractive ${IR_ZYAW_PRIMARY_TARGET}Assets
     WORKING_DIRECTORY ${IR_ZYAW_RUNTIME_DIR}
     USES_TERMINAL
 )

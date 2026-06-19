@@ -1,6 +1,7 @@
 add_library(IrredenEngineAudio STATIC
     src/ir_audio.cpp
     src/audio_manager.cpp
+    src/audio_playback.cpp
     src/midi_in.cpp
     src/midi_out.cpp
     src/audio.cpp
@@ -91,3 +92,29 @@ IR_copyDLL(
     librtmidid
     ${rtmidi_BINARY_DIR}
 )
+
+# miniaudio — single-header, public-domain file playback (the engine API:
+# device init + audio thread + decoding + mixing + sound groups + listener +
+# fades). Header-only: no library to build, just an include path. The
+# MINIAUDIO_IMPLEMENTATION TU is src/audio_playback.cpp.
+FetchContent_Declare(
+    miniaudio
+    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
+    GIT_TAG 0.11.25
+    UPDATE_DISCONNECTED TRUE
+)
+FetchContent_MakeAvailable(miniaudio)
+target_include_directories(IrredenEngineAudio PRIVATE ${miniaudio_SOURCE_DIR})
+
+# Playback backend link deps. miniaudio dlopen's ALSA on Linux (no -lasound),
+# uses WASAPI via the system on Windows (no extra link), and needs the
+# CoreAudio frameworks on macOS.
+if(IR_isDarwin)
+    target_link_libraries(IrredenEngineAudio PUBLIC
+        "-framework CoreAudio"
+        "-framework AudioToolbox"
+        "-framework CoreFoundation"
+    )
+elseif(UNIX)
+    target_link_libraries(IrredenEngineAudio PUBLIC pthread m ${CMAKE_DL_LIBS})
+endif()

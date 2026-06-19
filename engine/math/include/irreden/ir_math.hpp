@@ -1595,9 +1595,9 @@ inline ivec2 perAxisTrixelCanvasWorstCaseSize(
 /// Per-axis lattice-density cap for the smooth-camera-Z-yaw store (#1431).
 ///
 /// The per-axis store (`c_voxel_to_trixel_stage_1`, `perAxisRoute != 0`) writes
-/// each voxel face into a face-local integer lattice at `world × subPerAxis`,
-/// keyed at `canvasHalf + inPlane(worldDisp) × subPerAxis` (see
-/// `ir_iso_common.glsl` `faceLocalBase`/`faceInPlaneCoords`). The canvas is
+/// each voxel face into a per-axis canvas keyed by its un-yawed (cardinal) iso
+/// pixel `perAxisBase + pos3DtoPos2DIso(facePos)` (see `ir_iso_common.glsl`
+/// `pos3DtoPos2DIso`/`isoPixelToPos3D`). The canvas is
 /// sized once to the base-resolution rotated footprint
 /// (@ref perAxisTrixelCanvasWorstCaseSize) and does NOT scale with
 /// `subPerAxis`, so a large `subPerAxis` (high `voxel_render_subdivisions`, or
