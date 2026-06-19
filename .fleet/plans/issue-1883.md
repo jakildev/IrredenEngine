@@ -128,3 +128,31 @@ to `/tmp` and `~/.fleet/` — keep temp commit-msg/PR-body files inside the work
 by the Blocked-by gate while #1907 is WIP; formally claim it
 (`fleet-claim claim 1884 opus-architect --stackable-on <#1907 url>`) once #1907
 leaves `fleet:wip`. #1882 fix+harness = PR #1885, in fleet review (don't re-touch).
+
+## Session 2 / RESUME (mac-opus, 2026-06-19)
+
+Status posted to GH: see #1883 comment (this ticket) + #1884 comment (depth).
+
+**Merged since session 1:** #1885 (#1882 cardinal fix) → master. #1909 (detached
+camera sub-pixel jitter — texel-snap the composite offset; discovered + fixed this
+work) → master, verified-macos.
+
+**#1907 (this ticket, WIP):** iter 1 (a48bec0f, dilation margin) + iter 2 (49f64754,
+penetration-scaled yield → top↔side doubled sliver fixed) DONE. ⚠️ stacked on the now-
+merged #1882 branch → **re-target + rebase onto master** before merge (drops the dup
+#1882 commits). BLOCKED from merge by the **near-cardinal corner spikes** (iter 1's
+0.5·|n| margin over-grows convex silhouette corners; iter 2's yield only covers interior
+over-paint). Success criteria + the two fix approaches (neighbour-aware dilation vs
+ridge-seam-source) in the #1883 GH comment.
+
+**Moved to #1884 (depth/clipping):** two "behind-face wins" composite-depth crossings —
+(A) detached cube clips behind the SDF floor at high zoom (#1624 path; canary+grid clean,
+canary+floor breaks); (B) per-axis cardinal-180 vertical-edge stripe (Y exact cells beat
+X ~20px past the edge; NOT yield — persists at scale 20). Shared blocker: need a real
+GPU→CPU **depth-readback probe** (shader-output approximations gave contradictory data).
+Full success criteria in the #1884 GH comment.
+
+**Tooling built this session (reusable):** per-axis-ID overlay must be forced in the
+**Metal** twin (`peraxis_scatter.metal`), NOT the GLSL, to see anything on macOS — the
+GLSL edit silently no-ops. PIL pixel-scan + per-axis-id axis-run analysis is the fastest
+way to classify a stripe (margin over-paint vs exact-cell depth crossing vs coverage gap).
