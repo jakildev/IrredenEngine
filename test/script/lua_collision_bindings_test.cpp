@@ -39,8 +39,8 @@ constexpr std::uint32_t kPlayer = 1u << 7;
 
 // Owns the EntityManager + SystemManager + LuaScript needed to drive the
 // collision overlap surface end-to-end. Declaration order matters — the Lua
-// state destructs first so any captured handler closures finish lua_unref
-// while the lua_State is open (same rationale as lua_pipeline_register_test).
+// state destructs last, keeping the lua_State open while handler closures in
+// m_system_manager finish lua_unref (same rationale as lua_pipeline_register_test).
 class LuaCollisionBindingsTest : public testing::Test {
   protected:
     LuaCollisionBindingsTest()
