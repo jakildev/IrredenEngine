@@ -9,6 +9,7 @@
 #include <irreden/update/components/component_collider_iso3d_aabb.hpp>
 #include <irreden/update/components/component_collision_layer.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
+#include <irreden/update/components/component_overlap_contact_batch.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -104,6 +105,13 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                std::vector<C_ContactEvent> &events) {
                 IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_UPDATE);
 
+                // #1817: opt-in batched overlap-pair emission. The singleton
+                // exists only when a creation registered
+                // DISPATCH_LUA_OVERLAP, so existing C_ContactEvent-only
+                // users keep the fast first-contact break path below (nullptr).
+                auto *overlapBatch = IREntity::singletonOrNull<C_OverlapContactBatch>();
+                const bool emitPairs = overlapBatch != nullptr;
+
                 auto allColliderNodes = IREntity::queryArchetypeNodesSimple(
                     IREntity::getArchetype<
                         C_WorldTransform,
@@ -171,20 +179,49 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                                 continue;
                             }
 
-                            foundAnyContact = true;
-                            detail::markContact(
-                                selfEvent,
-                                otherEntities[j],
-                                vec3(0.0f, 0.0f, 1.0f)
-                            );
-                            detail::markContact(
-                                otherEvents[j],
-                                selfEntity,
-                                vec3(0.0f, 0.0f, -1.0f)
-                            );
+                            // C_ContactEvent keeps its single-contact-per-entity
+                            // semantics: mark only the first overlap, so existing
+                            // consumers (spring/midi/glow) are byte-identical on
+                            // both the emit and non-emit paths.
+                            if (!foundAnyContact) {
+                                foundAnyContact = true;
+                                detail::markContact(
+                                    selfEvent,
+                                    otherEntities[j],
+                                    vec3(0.0f, 0.0f, 1.0f)
+                                );
+                                detail::markContact(
+                                    otherEvents[j],
+                                    selfEntity,
+                                    vec3(0.0f, 0.0f, -1.0f)
+                                );
+                            }
+
+                            if (emitPairs) {
+                                // Emit each pair once (canonical self < other);
+                                // both layers are stamped so the dispatcher never
+                                // reaches the foreign entity. Keep scanning — D3
+                                // pair-level enter/exit needs ALL overlaps, not
+                                // just the first. The vector is cleared (not
+                                // freed) by the dispatcher each frame, so after
+                                // warmup this push_back reuses capacity and never
+                                // reallocates.
+                                if (selfEntity < otherEntities[j]) {
+                                    overlapBatch->pairs_.push_back(
+                                        ContactPair{
+                                            selfEntity,
+                                            otherEntities[j],
+                                            selfLayer.layer_,
+                                            otherLayer.layer_,
+                                            vec3(0.0f, 0.0f, 1.0f)
+                                        }
+                                    );
+                                }
+                                continue;
+                            }
                             break;
                         }
-                        if (foundAnyContact) {
+                        if (!emitPairs && foundAnyContact) {
                             break;
                         }
                     }
