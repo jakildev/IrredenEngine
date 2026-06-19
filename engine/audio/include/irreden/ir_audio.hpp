@@ -54,6 +54,24 @@ void sendMidiMessage(const std::vector<unsigned char> &message);
 /// if the port isn't open.
 void sendMidiMessage(int portIndex, const std::vector<unsigned char> &message);
 
+/// Outbound-MIDI observer callback: `void(message, portIndex)`. Fired for every
+/// message passed to either @ref sendMidiMessage overload — including ones the
+/// C++ ECS audio path emits (`CONTACT_MIDI_TRIGGER` / `MIDI_SEQUENCE_OUT` /
+/// `PERIODIC_IDLE_MIDI_TRIGGER`, and the `C_MidiNote::onDestroy` NOTE_OFF) — so
+/// a monitor sees ALL outbound traffic, not just what it sent itself. It fires
+/// synchronously on the main thread (the UPDATE pipeline; unlike the driver-
+/// thread inbound `AudioInputCallback`) and **unconditionally of whether a
+/// hardware output port is open**, for the headless-monitor case. `portIndex`
+/// is -1 for the default-port overload.
+using OutboundMidiCallback =
+    std::function<void(const IRComponents::C_MidiMessage &message, int portIndex)>;
+/// Registers @p callback as the single outbound-MIDI observer
+/// (last-registration-wins). Pass a null callback or call @ref
+/// clearOutboundMidiObserver to remove it.
+void setOutboundMidiObserver(OutboundMidiCallback callback);
+/// Removes the outbound-MIDI observer if one is set.
+void clearOutboundMidiObserver();
+
 /// Returns the CC value for @p ccMessage on @p channel received this frame
 /// across all open input ports, or @ref kCCFalse if no CC message arrived.
 CCData checkCCMessage(int channel, CCMessage ccMessage);
