@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_source.hpp>
+#include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
@@ -117,6 +118,7 @@ struct CliOverrides {
     bool yawSet_ = false;
     float yaw_ = 0.0f;
     bool yawRamp_ = false;
+    bool yawRampCrops_ = false;
     bool waveAmplitudeSet_ = false;
     float waveAmplitude_ = 0.0f;
     bool subdivisionModeSet_ = false;
@@ -149,34 +151,143 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(16, 8), 0.35f, "zoom4_rot_pan"},
 };
 
-// --yaw-ramp harness: the rotated-solidity validation set. Run with
-// `--mode dense --yaw-ramp --auto-screenshot` (driven by
-// scripts/dev/perf-grid-rotate-sweep). Rotates a solid 64^3 cube slowly through
-// the full camera-yaw circle (0 → 2pi) in small fixed steps at a constant
-// whole-cube zoom, capturing every step. The small per-step delta is the point:
-// the iterative lighting (light volume / AO / sun-shadow) accumulates across
-// frames on the live canvas, so a few large yaw jumps capture it mid-converge
-// and unlit faces read as spurious background "holes" — a slow ramp keeps it
-// converged frame-to-frame, isolating true geometry/coverage loss from that
-// settling artifact. A solid cube must stay a solid cube at every yaw. Each
-// capture is scored by scripts/render-coverage-metric.py (interior holes) +
-// scripts/render-silhouette-metric.py (edge raggedness).
+// --yaw-ramp harness: the rotated-solidity validation set (#1882 / #1883).
+// Run with `--mode dense --yaw-ramp --auto-screenshot` (driven by
+// scripts/dev/perf-grid-rotate-sweep). The original "uniform 36-step ramp"
+// labelled its rows by `i/n*360` and could not tell which render path drew a
+// pose, so a row called "cardinal" might secretly be a per-axis residual frame
+// (the #1882 misdiagnosis). This set fixes that with two tiers plus a measured
+// per-pose render-path label:
 //
-// Built at init (runtime, not constexpr) so the step count lives in one place;
-// the vector must outlive the game loop, so it is a file-scope global.
+//   * Cardinal-isolation tier — the four EXACT cardinals (0/90/180/270). At
+//     residual≈0 the per-axis textures release, so these capture the
+//     single-canvas cardinal path; the harness MEASURES that path per pose
+//     (logRampPose) and scores coverage so "is the single-canvas path clean at
+//     this cardinal?" is answered directly, not assumed.
+//   * Near-cardinal residual tier — dense sampling APPROACHING 90/180/270
+//     (±1..10°), where the per-axis face-alignment seams / coverage bands peak
+//     (#1883). These render through the per-axis path by design; the zoom pass
+//     (small --grid-size + high --zoom + --yaw-ramp-crops) makes the fine seams
+//     a measurable silhouette signal the whole-cube pass under-resolves.
+//
+// Each capture's render path (single-canvas vs per-axis) is MEASURED at the
+// settled frame via the onCaptureFrame_ hook (logRampPose below) so a sweep row
+// labelled "cardinal" is unambiguous. The vectors must outlive the game loop,
+// so they are file-scope globals; g_yawRampLabels backs the shots' label_
+// pointers (filled once, never grown, so the c_str() pointers stay valid).
 std::vector<IRVideo::AutoScreenshotShot> g_yawRampShots;
-
-void buildYawRampShots() {
-    constexpr int kRampSteps = 36; // 10deg per step around the full circle
-    g_yawRampShots.reserve(kRampSteps);
-    for (int i = 0; i < kRampSteps; ++i) {
-        const float yaw = (static_cast<float>(i) / static_cast<float>(kRampSteps)) * kTwoPi;
-        g_yawRampShots.push_back({0.8f, vec2(0, 0), yaw, "ramp"});
-    }
-}
+std::vector<std::string> g_yawRampLabels;
+IRVideo::RoiCrop g_yawRampCenterCrop{};
 
 PerfGridSettings g_settings{};
 CliOverrides g_cliOverrides{};
+
+void buildYawRampShots() {
+    // Every pose uses the run's camera zoom — the sweep drives a wide
+    // whole-cube coverage pass (default 0.8) and a tight small-cube zoom pass
+    // (high --zoom + small --grid-size) through the same shot table.
+    const float zoom = g_settings.initialZoom_;
+
+    struct RampPose {
+        float yawRadians_;
+        bool cardinal_;
+        std::string label_;
+    };
+    std::vector<RampPose> poses;
+
+    const float cardinals[4] = {0.0f, IRMath::kHalfPi, IRMath::kPi, 3.0f * IRMath::kHalfPi};
+    const char *cardinalLabels[4] = {"card000", "card090", "card180", "card270"};
+    for (int k = 0; k < 4; ++k) {
+        poses.push_back({cardinals[k], true, cardinalLabels[k]});
+    }
+
+    const int residualBases[3] = {90, 180, 270};
+    const float offsetsDeg[8] = {-10.0f, -6.0f, -3.0f, -1.0f, 1.0f, 3.0f, 6.0f, 10.0f};
+    for (int base : residualBases) {
+        for (float off : offsetsDeg) {
+            const float deg = static_cast<float>(base) + off;
+            const float rad = deg * IRMath::kPi / 180.0f;
+            const int absOff = static_cast<int>(IRMath::abs(off) + 0.5f);
+            std::string label = "near" + std::to_string(base) + "_" + (off < 0.0f ? "m" : "p") +
+                                (absOff < 10 ? "0" : "") + std::to_string(absOff);
+            poses.push_back({rad, false, std::move(label)});
+        }
+    }
+
+    // Order by yaw so consecutive shots are a small step apart, keeping the
+    // iterative lighting (light volume / AO / sun-shadow) converged frame to
+    // frame; a large jump captures it mid-converge and unlit faces read as
+    // spurious "holes". Only the three region gaps (~70°) jump far — the
+    // settle window absorbs them.
+    std::sort(poses.begin(), poses.end(), [](const RampPose &a, const RampPose &b) {
+        return a.yawRadians_ < b.yawRadians_;
+    });
+
+    const bool useCrops = g_cliOverrides.yawRampCrops_;
+    if (useCrops) {
+        ivec2 fb{0, 0};
+        IRWindow::getFramebufferSize(fb);
+        const int cw = IRMath::max(1, fb.x / 2);
+        const int ch = IRMath::max(1, fb.y / 2);
+        g_yawRampCenterCrop = {(fb.x - cw) / 2, (fb.y - ch) / 2, cw, ch, "center"};
+    }
+
+    g_yawRampLabels.clear();
+    g_yawRampLabels.reserve(poses.size());
+    for (const RampPose &p : poses) {
+        g_yawRampLabels.push_back(p.label_);
+    }
+
+    g_yawRampShots.clear();
+    g_yawRampShots.reserve(poses.size());
+    for (std::size_t i = 0; i < poses.size(); ++i) {
+        IRVideo::AutoScreenshotShot shot{};
+        shot.zoom_ = zoom;
+        shot.cameraIso_ = vec2(0, 0);
+        shot.yawRadians_ = poses[i].yawRadians_;
+        shot.label_ = g_yawRampLabels[i].c_str();
+        // Crops only on the residual-band poses (where the seams live) and only
+        // when the zoom pass asked for them.
+        if (useCrops && !poses[i].cardinal_) {
+            shot.crops_ = &g_yawRampCenterCrop;
+            shot.numCrops_ = 1;
+        }
+        g_yawRampShots.push_back(shot);
+    }
+}
+
+// onCaptureFrame_ hook: measure which render path actually drew this pose so
+// the sweep can label every row unambiguously. The main canvas's per-axis
+// textures are allocated only while a residual rotation is being smoothed, so
+// isAllocated() at the settled capture frame is the ground truth (a 'cardinal'
+// row that still reports peraxis is the #1882 failure). Reads live ECS the
+// harness cannot; emits one greppable line the sweep scorer joins by index.
+void logRampPose(int shotIndex) {
+    bool perAxisActive = false;
+    const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
+    if (mainCanvas != IREntity::kNullEntity) {
+        auto perAxis =
+            IREntity::getComponentOptional<IRComponents::C_PerAxisTrixelCanvases>(mainCanvas);
+        if (perAxis.has_value()) {
+            perAxisActive = perAxis.value()->isAllocated();
+        }
+    }
+    const float residualDeg = IRPrefab::Camera::getResidualYaw() * 180.0f / IRMath::kPi;
+    const float nominalDeg = (shotIndex >= 0 && shotIndex < static_cast<int>(g_yawRampShots.size()))
+                                 ? g_yawRampShots[shotIndex].yawRadians_ * 180.0f / IRMath::kPi
+                                 : 0.0f;
+    const char *label = (shotIndex >= 0 && shotIndex < static_cast<int>(g_yawRampLabels.size()))
+                            ? g_yawRampLabels[shotIndex].c_str()
+                            : "?";
+    IR_LOG_INFO(
+        "RAMP-POSE idx={} label={} yaw_deg={:.3f} path={} residual_deg={:.4f}",
+        shotIndex,
+        label,
+        nominalDeg,
+        perAxisActive ? "peraxis" : "single",
+        residualDeg
+    );
+}
 int g_autoProfileFrames = 0;
 int g_autoProfileCount = 0;
 int g_autoWarmupFrames = 0;
@@ -363,6 +474,10 @@ void parseArgs(int argc, char **argv) {
             ++i;
         } else if (std::strcmp(argv[i], "--yaw-ramp") == 0) {
             g_cliOverrides.yawRamp_ = true;
+        } else if (std::strcmp(argv[i], "--yaw-ramp-crops") == 0) {
+            // Attach a center ROI crop to each near-cardinal residual pose so
+            // the small-cube zoom pass dumps inspectable per-axis-seam crops.
+            g_cliOverrides.yawRampCrops_ = true;
         } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
             // 0.0 = static scene (no per-frame voxel motion). Useful for
             // isolating per-frame upload cost in profiler runs.
@@ -634,9 +749,11 @@ int main(int argc, char **argv) {
 
     if (g_occlusionCull) {
         IRRender::setVoxelOcclusionCullEnabled(true);
-        IR_LOG_INFO("Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 3/3). "
-                    "Output stays bit-identical to cull-off; one-frame silhouette pop on a "
-                    "discontinuous camera move is intentional drift (stale Hi-Z self-disable).");
+        IR_LOG_INFO(
+            "Voxel chunk-occlusion cull forced ON (--occlusion-cull, #1294 child 3/3). "
+            "Output stays bit-identical to cull-off; one-frame silhouette pop on a "
+            "discontinuous camera move is intentional drift (stale Hi-Z self-disable)."
+        );
     }
 
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
@@ -793,9 +910,14 @@ void initSystems() {
             buildYawRampShots();
             cfg.shots_ = g_yawRampShots.data();
             cfg.numShots_ = static_cast<int>(g_yawRampShots.size());
-            // Small per-step yaw delta + extra settle frames keep the iterative
-            // lighting converged across the ramp (see buildYawRampShots above).
-            cfg.settleFrames_ = 8;
+            // The tiered set steps a few degrees within each cardinal region but
+            // jumps ~70° between regions; a generous settle keeps the iterative
+            // lighting (light volume / AO / sun-shadow) converged across those
+            // jumps and lets the per-axis allocation gate settle to the pose's
+            // true render path before capture (see buildYawRampShots above).
+            cfg.settleFrames_ = 16;
+            // Measure each pose's actual render path at the settled frame.
+            cfg.onCaptureFrame_ = &logRampPose;
         } else {
             cfg.shots_ = kShots;
             cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);

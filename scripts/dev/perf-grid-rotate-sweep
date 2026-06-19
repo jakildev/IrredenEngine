@@ -1,31 +1,46 @@
 #!/usr/bin/env bash
-# perf-grid-rotate-sweep — rotated-voxel solidity validation harness.
+# perf-grid-rotate-sweep — rotated-voxel solidity validation harness (#1882).
 #
-# Builds IRPerfGrid, rotates a solid 64^3 cube (--mode dense) slowly through the
-# full camera-yaw circle via the demo's --yaw-ramp mode, and scores every
-# captured frame with the structural-metric suite:
-#   * interior-hole ratio  — the cube must stay opaque (no background showing
-#     through it); render-coverage-metric.py's measure.
-#   * silhouette raggedness — perimeter^2 / area; a clean iso cube is a smooth
-#     hexagon, while a sheared "curtain" or scalloped edge spikes this even when
-#     the hole ratio is ~0; render-silhouette-metric.py's measure.
-# Both are computed from render_metric_util with one decode per frame.
+# Builds IRPerfGrid and drives its `--yaw-ramp` shot table, which is no longer a
+# uniform 36-step circle but a TIERED, render-path-aware set (see
+# `buildYawRampShots` in creations/demos/perf_grid/main.cpp):
 #
-# The slow ramp is the point: the iterative lighting (light volume / AO /
-# sun-shadow) accumulates across frames on the live canvas, so a few large yaw
-# jumps capture it mid-converge and unlit faces read as spurious "holes". A slow
-# ramp keeps lighting converged frame-to-frame, so a spike in either metric
-# localizes a true geometry/coverage break to its yaw rather than a settling
-# artifact.
+#   * Cardinal-isolation tier — the four EXACT cardinals (0/90/180/270). At
+#     residual≈0 the per-axis textures release, so these capture the
+#     single-canvas cardinal path. The demo MEASURES which path actually drew
+#     each pose (single-canvas vs per-axis) at the settled capture frame and
+#     logs it as a `RAMP-POSE` line; this harness joins that label to the
+#     scored frame so a row called "cardinal" is unambiguous (the original
+#     uniform ramp labelled rows by angle and could not distinguish the path,
+#     which is what produced the #1882 misdiagnosis). Cardinal poses are
+#     expected to read clean (coverage >= 0.99) AND report path=single.
+#   * Near-cardinal residual tier — dense sampling APPROACHING 90/180/270
+#     (±1..10°), where the per-axis face-alignment seams / coverage bands peak
+#     (#1883). These render through the per-axis path by design.
+#
+# Two passes:
+#   1. coverage  — 64³ cube, whole-cube zoom. Interior-hole / coverage metric
+#      catches see-through density loss; this is the primary cardinal + band
+#      signal.
+#   2. zoom      — small cube, high zoom, with center ROI crops. The fine
+#      per-axis face seams only resolve when each trixel is large on screen
+#      (zoom 0.8 on the 64³ cube under-resolves them). The silhouette
+#      raggedness metric (perimeter²/area) is the measurable seam signal; the
+#      crops are for visual inspection.
+#
+# Metrics (per frame, one decode, render_metric_util stdlib-only):
+#   * coverage / interior-hole ratio — the cube must stay opaque.
+#   * silhouette raggedness (perim²/area) — a clean iso cube is a smooth
+#     hexagon; seams / slivers / curtains spike this even when holes are ~0.
 #
 # Usage:  bash scripts/dev/perf-grid-rotate-sweep [build_dir] [mode] [warmup]
 #   build_dir   CMake build dir              (default: build)
 #   mode        dense|hollow|voxel_set|sdf   (default: dense)
-#   warmup      frames to converge lighting at yaw 0 before the ramp
-#                                            (default: 60)
+#   warmup      frames to converge lighting at the start pose
+#                                            (default: 80)
 #
-# Repo tooling — cmake + python3 stdlib only. Long enough (build + ~400-frame
-# run + per-frame scoring) that it should be launched in the background and its
+# Repo tooling — cmake + python3 stdlib only. Long enough (build + two runs +
+# per-frame scoring) that it should be launched in the background and its
 # output read on completion. Self-locating, so it works from any cwd / worktree.
 set -uo pipefail
 
@@ -34,37 +49,62 @@ cd "$ROOT" || exit 1
 
 BUILD_DIR="${1:-build}"
 MODE="${2:-dense}"
-WARMUP="${3:-60}"
+WARMUP="${3:-80}"
 
 EXE_DIR="$BUILD_DIR/creations/demos/perf_grid"
 SS_DIR="$EXE_DIR/save_files/screenshots"
 
-echo "[1/3] building IRPerfGrid ($BUILD_DIR) ..."
-cmake --build "$BUILD_DIR" --target IRPerfGrid -j 8 >/dev/null || { echo "BUILD FAILED"; exit 1; }
+echo "[1/4] building IRPerfGrid ($BUILD_DIR) ..."
+cmake --build "$BUILD_DIR" --target IRPerfGrid -j "$(nproc)" >/dev/null || { echo "BUILD FAILED"; exit 1; }
 
-echo "[2/3] running yaw ramp (mode=$MODE, warmup=$WARMUP) ..."
-mkdir -p "$SS_DIR"
-# Scoped find -delete, never an unguarded `rm <dir>/*.png` glob (the dir may be
-# empty, which trips the dangerous-rm guard).
-find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
-( cd "$EXE_DIR" && ./IRPerfGrid --mode "$MODE" --grid-size 64 --yaw-ramp \
-    --no-overlay --auto-screenshot "$WARMUP" ) >/dev/null \
-    || { echo "RUN FAILED"; exit 1; }
+# Run the ramp once with the given extra args, capturing the demo log (the
+# RAMP-POSE render-path lines are parsed from it). Clears prior PNGs first.
+run_ramp() {
+    local logfile="$1"; shift
+    mkdir -p "$SS_DIR"
+    # Scoped find -delete, never an unguarded `rm <dir>/*.png` glob (the dir may
+    # be empty, which trips the dangerous-rm guard).
+    find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
+    ( cd "$EXE_DIR" && ./IRPerfGrid --mode "$MODE" --yaw-ramp --no-overlay \
+        --auto-screenshot "$WARMUP" "$@" ) >"$logfile" 2>&1 \
+        || { echo "RUN FAILED (see $logfile)"; tail -5 "$logfile"; exit 1; }
+}
 
-echo "[3/3] scoring captures ..."
-SCRIPTS_DIR="$ROOT/scripts" SS_DIR="$SS_DIR" python3 - <<'PY'
-import sys, os, glob
+# Score every full-frame PNG and join the demo's measured render-path labels.
+score_pass() {
+    SCRIPTS_DIR="$ROOT/scripts" SS_DIR="$SS_DIR" RUN_LOG="$1" TIER="$2" python3 - <<'PY'
+import sys, os, glob, re
 sys.path.insert(0, os.environ["SCRIPTS_DIR"])
 import render_metric_util as util
 
-shots = sorted(glob.glob(os.path.join(os.environ["SS_DIR"], "screenshot_*.png")))
+# Full-frame captures only — exclude the per-shot ROI crop PNGs
+# (screenshot_<n>_<label>__crop_<crop>.png) the zoom pass also writes.
+shots = sorted(
+    (f for f in glob.glob(os.path.join(os.environ["SS_DIR"], "screenshot_*.png"))
+     if re.search(r"screenshot_\d+\.png$", f)),
+    key=lambda f: int(re.search(r"screenshot_(\d+)\.png$", f).group(1)),
+)
 n = len(shots)
 if n == 0:
     sys.exit("no captures produced — the ramp run failed")
 
-print(f"{'step':<5}{'yaw_deg':<9}{'coverage':<10}{'hole_ratio':<12}{'perim_ratio':<12}")
-worst_hole = (0.0, -1)
-worst_perim = (0.0, -1)
+# Join the measured render path per shot index from the demo log.
+poses = {}
+pat = re.compile(
+    r"RAMP-POSE idx=(\d+) label=(\S+) yaw_deg=([\-\d.]+) path=(\w+) residual_deg=([\-\d.]+)")
+with open(os.environ["RUN_LOG"], encoding="utf-8", errors="replace") as fh:
+    for line in fh:
+        m = pat.search(line)
+        if m:
+            poses[int(m.group(1))] = {
+                "label": m.group(2), "yaw": float(m.group(3)),
+                "path": m.group(4), "residual": float(m.group(5)),
+            }
+
+print(f"=== {os.environ['TIER']} tier ({n} frames) ===")
+print(f"{'idx':<4}{'label':<13}{'yaw':<8}{'path':<9}{'coverage':<10}"
+      f"{'hole':<9}{'perim':<11}")
+cardinal_fail, worst_perim = [], (0.0, "")
 for i, f in enumerate(shots):
     mask, w, h, fg, _ = util.foreground_mask(f)
     hole_px = sum(util.enclosed_holes(mask, w, h))
@@ -72,16 +112,42 @@ for i, f in enumerate(shots):
     cov = (fg / sil) if sil else 1.0
     hr = (hole_px / sil) if sil else 0.0
     pr = (util.perimeter(mask, w, h) ** 2 / sil) if sil else 0.0
-    yaw_deg = i / n * 360.0
-    print(f"{i:<5}{yaw_deg:<9.1f}{cov:<10.4f}{hr:<12.4f}{pr:<12.2f}")
-    if hr > worst_hole[0]:
-        worst_hole = (hr, i)
-    if pr > worst_perim[0]:
-        worst_perim = (pr, i)
+    p = poses.get(i, {})
+    label = p.get("label", "?")
+    yaw = p.get("yaw", float(i))
+    path = p.get("path", "?")
+    is_card = label.startswith("card")
+    flag = ""
+    if is_card and (path != "single" or cov < 0.99):
+        flag = "  <-- CARDINAL NOT CLEAN"
+        cardinal_fail.append((label, path, cov))
+    print(f"{i:<4}{label:<13}{yaw:<8.1f}{path:<9}{cov:<10.4f}{hr:<9.4f}{pr:<11.2f}{flag}")
+    if not is_card and pr > worst_perim[0]:
+        worst_perim = (pr, label)
 
 print()
-print(f"worst hole_ratio : {worst_hole[0]:.4f} at step {worst_hole[1]} "
-      f"(yaw {worst_hole[1] / n * 360.0:.1f} deg)")
-print(f"worst perim_ratio: {worst_perim[0]:.2f} at step {worst_perim[1]} "
-      f"(yaw {worst_perim[1] / n * 360.0:.1f} deg)")
+print(f"worst residual-band perim_ratio (seam signal): {worst_perim[0]:.2f} "
+      f"at {worst_perim[1]}")
+if cardinal_fail:
+    print(f"CARDINAL CHECK: FAIL — {len(cardinal_fail)} cardinal pose(s) not "
+          f"clean single-canvas: "
+          + ", ".join(f"{lbl}(path={pa},cov={cv:.3f})"
+                      for lbl, pa, cv in cardinal_fail))
+else:
+    print("CARDINAL CHECK: PASS — all cardinals are clean single-canvas "
+          "(path=single, coverage >= 0.99)")
 PY
+}
+
+echo "[2/4] coverage pass — 64³ cube, whole-cube zoom (mode=$MODE) ..."
+run_ramp "/tmp/perf-grid-sweep-coverage.log" --grid-size 64 --zoom 0.8
+score_pass "/tmp/perf-grid-sweep-coverage.log" "coverage"
+
+echo
+echo "[3/4] zoom pass — small cube, high zoom + ROI crops (seam signal) ..."
+run_ramp "/tmp/perf-grid-sweep-zoom.log" --grid-size 12 --zoom 4 --yaw-ramp-crops
+score_pass "/tmp/perf-grid-sweep-zoom.log" "zoom"
+
+echo
+echo "[4/4] done. Full-frame + ROI-crop PNGs in: $SS_DIR"
+echo "      (ROI crops: screenshot_<n>_<label>__crop_center.png — residual-band poses)"

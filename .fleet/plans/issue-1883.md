@@ -6,10 +6,14 @@
 - **Epic:** #1881 — see .fleet/plans/issue-1881.md
 - **Blocked by:** #1882 (the harness must isolate render paths + surface fine artifacts first)
 
-## Scope — the whole per-axis forward-scatter defect (two related faces)
-The #1885 investigation moved the rotated-cube defect here: it is the per-axis
-forward-scatter path, **not** the single-canvas cardinal gather (#1882, re-scoped to
-the harness fix). Two symptoms, one root cause:
+## Scope — the per-axis forward-scatter defect at GENUINELY-ROTATING poses
+This ticket is the per-axis forward-scatter path at `|residual| > deadband`
+(the textures are allocated and the scatter actually draws). It is **distinct**
+from the cardinal coverage HOLES at 90°/180° — those were a residual-yaw gate
+mismatch in the SINGLE-CANVAS path, fixed under #1882 (the deadbanded
+`computeYawSplit`); do not re-attribute them here. Validate against the #1882
+harness, reading the near-cardinal *residual* tier (path=peraxis), not the
+settled cardinals (path=single, now clean). Two symptoms, one root cause:
 
 **A. Coverage "bands"** (IRPerfGrid `--mode dense` 64^3): see-through density loss
 across the residual band — whole diagonal bands of the solid read as background. The
