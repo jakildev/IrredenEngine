@@ -69,3 +69,90 @@ The per-axis scatter deform/dilation + placement math:
 `bash scripts/dev/perf-grid-rotate-sweep` (post-#1882 harness: residual-band coverage
 for A + the zoomed near-cardinal tier for B), both hosts; canvas_stress ROI crops
 before/after.
+
+## Session progress / RESUME (2026-06-18)
+
+Worked in a dedicated architect session. Branch `claude/1883-per-axis-scatter-seams`
+(PR #1907, WIP, stacked on `claude/1882-cardinal-gather-coverage`/#1885).
+
+**Iteration 1 — DONE (commit a48bec0f).** Per-axis continuous dilation margin: the
+margin now lives inside `scatterConservativeDilation`, derived per-edge as
+`max(kScatterDilateMarginPx, 0.5*|n|)` from each axis's own on-screen perpendicular
+extent; the miter is generalized to unequal per-edge margins (solve
+`[e1;e2]·δ=(marginU,marginV)`, reduces to the #1538 equal-margin miter). The old
+`suLen/svLen/degenSin/adaptiveMargin` block is removed from both callers. GLSL +
+Metal in parity. **Result (macOS/Metal sweep zoom tier): near-cardinal seam perim
+43 → 22 (= clean card000 baseline ~21), coverage 1.0, silhouette dashing gone.**
+
+**Iteration 2 — DONE: the doubled sliver at the top↔side shared edge.**
+Penetration-scaled margin yield (`kScatterMarginYieldGradScale = 3`) in the per-axis
+scatter. **Empirical isolation overturned the planned root cause:** a margin-floor
+diagnostic (set the per-axis margin to its `minMarginPx` floor) made the doubled
+sliver vanish *entirely*, proving the sliver was **iter-1's own `0.5*|n|` margin
+over-painting across the ridge**, NOT the rounding split (bullet 2) — flooring also
+brought the silhouette dashing back (perim 22→42), so the floor is not a fix. Root
+cause is bullet 3 (no deterministic ridge owner) at scale: on a foreshortened face
+iter-1's margin reaches a cell-deep fraction, so the over-grown TOP-face margin
+EXTRAPOLATES its plane deep enough to beat the LEFT face's *exact* footprint along a
+~16px band below the ridge (sampled: exact TOP color (93,111,130) bleeding past the
+ridge onto LEFT (88,106,124)). The flat `kScatterMarginDepthBiasKey` (0.25) only
+breaks sub-pixel same-plane ties — far too small once the margin buys a real
+plane-depth advantage. **Fix:** scale the margin's depth yield by its own
+extrapolation excursion (penetration past the exact `[0,1]^2` footprint × the
+per-axis screen-depth gradient `|kU|/|kV|`), folded into a `vMarginYieldGrad{U,V}`
+varying. A sub-pixel gap-fill barely yields (still wins background / cross-cube
+silhouette overlaps); a cell-deep margin yields hard (loses the ridge to the
+neighbor's exact footprint). GLSL + Metal in parity; per-axis-only, so the cardinal
+fast path is untouched. **Result (macOS/Metal sweep):** doubled sliver collapses to a
+clean single ridge (column samples TOP→LEFT in one step; before/after + img_diff in
+`/tmp/iter2_ridge_before_after.png`), near-cardinal perim stays at the iter-1 ~22
+(NOT the floored ~42), coverage 1.0 across the whole residual band, CARDINAL CHECK
+PASS (path=single). Rounding unification (bullet 2) was deliberately NOT applied —
+it does not touch the visible defect and would perturb the delicate cast/receive
+shadow path; left as a possible future consistency hardening.
+
+**Env traps:** (1) macOS builds METAL only — edit `metal/*.metal`, validate, then
+mirror to the GLSL twin before committing (Linux validates GLSL via cross-host
+smoke). (2) `setCameraVisualYaw` takes DEGREES (`--yaw 84` = a near-90 per-axis
+pose). (3) The canonical per-axis-seam capture is the `--yaw-ramp --yaw-ramp-crops`
+ROI pass at `--grid-size 12 --zoom 4` (e.g. `cd build/creations/demos/perf_grid &&
+./IRPerfGrid --mode dense --yaw-ramp --no-overlay --auto-screenshot 80 --grid-size 12
+--zoom 4 --yaw-ramp-crops`; near90_m06 = the 84° pose). NOTE: `--yaw N` is IGNORED
+when `--auto-screenshot` runs the shot table — kShots/yaw-ramp override per-shot yaw,
+so there is no single-pose static-yaw capture path; use the ramp's near-cardinal
+crop instead. Pixel-sample a column across the ridge (PIL) to read seam structure —
+the aggregate perim does NOT show the doubled sliver. (4) Worktree guard blocks writing
+to `/tmp` and `~/.fleet/` — keep temp commit-msg/PR-body files inside the worktree.
+
+**Claims:** #1883 claimed (`fleet:claim-mac-opus-architect`). #1884 worker-protected
+by the Blocked-by gate while #1907 is WIP; formally claim it
+(`fleet-claim claim 1884 opus-architect --stackable-on <#1907 url>`) once #1907
+leaves `fleet:wip`. #1882 fix+harness = PR #1885, in fleet review (don't re-touch).
+
+## Session 2 / RESUME (mac-opus, 2026-06-19)
+
+Status posted to GH: see #1883 comment (this ticket) + #1884 comment (depth).
+
+**Merged since session 1:** #1885 (#1882 cardinal fix) → master. #1909 (detached
+camera sub-pixel jitter — texel-snap the composite offset; discovered + fixed this
+work) → master, verified-macos.
+
+**#1907 (this ticket, WIP):** iter 1 (a48bec0f, dilation margin) + iter 2 (49f64754,
+penetration-scaled yield → top↔side doubled sliver fixed) DONE. ⚠️ stacked on the now-
+merged #1882 branch → **re-target + rebase onto master** before merge (drops the dup
+#1882 commits). BLOCKED from merge by the **near-cardinal corner spikes** (iter 1's
+0.5·|n| margin over-grows convex silhouette corners; iter 2's yield only covers interior
+over-paint). Success criteria + the two fix approaches (neighbour-aware dilation vs
+ridge-seam-source) in the #1883 GH comment.
+
+**Moved to #1884 (depth/clipping):** two "behind-face wins" composite-depth crossings —
+(A) detached cube clips behind the SDF floor at high zoom (#1624 path; canary+grid clean,
+canary+floor breaks); (B) per-axis cardinal-180 vertical-edge stripe (Y exact cells beat
+X ~20px past the edge; NOT yield — persists at scale 20). Shared blocker: need a real
+GPU→CPU **depth-readback probe** (shader-output approximations gave contradictory data).
+Full success criteria in the #1884 GH comment.
+
+**Tooling built this session (reusable):** per-axis-ID overlay must be forced in the
+**Metal** twin (`peraxis_scatter.metal`), NOT the GLSL, to see anything on macOS — the
+GLSL edit silently no-ops. PIL pixel-scan + per-axis-id axis-run analysis is the fastest
+way to classify a stripe (margin over-paint vs exact-cell depth crossing vs coverage gap).
