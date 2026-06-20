@@ -26,7 +26,7 @@ Sweep the voxel_to_trixel_stage_1/2, per-axis scatter/resolve, particle, and vis
 - No inlined iso-projection equations in shaders (all via the helper).
 - The cited `glm::` / `std::` math in `ir_render.cpp` + `render_manager.cpp` routes through IRMath; `.fleet/status/glm-deviations.md` updated.
 - Rotated-solidity + jitter harness: no regression at any yaw; ideally the half-integer jitter class measurably shrinks.
-- Cardinal fast path byte-identical; both backends.
+- Cardinal fast path byte-identical for non-half-integer positions; references re-baselined to confirm any half-integer-site changes are CPU↔GPU alignment improvements; both backends.
 
 ## Files (start)
 `engine/render/src/shaders/c_voxel_to_trixel_stage_{1,2}.glsl` + Metal mirrors; `c_resolve_per_axis_screen_depth.glsl`, `v_peraxis_scatter.glsl`, `c_render_*_particles_to_trixel.glsl`, `c_voxel_visibility_compact.glsl` (+ Metal); `engine/render/src/shaders/ir_iso_common.{glsl,metal}`; `engine/render/src/ir_render.cpp:133-151`; `engine/render/src/render_manager.cpp:560`; `.fleet/status/glm-deviations.md`.
