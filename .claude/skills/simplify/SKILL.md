@@ -231,7 +231,7 @@ each changed file of those types, flag a missing trailing newline — a non-empt
 last byte (i.e. not `\n`) is the violation:
 
 ```bash
-for f in $(git diff --name-only HEAD -- '*.cmake' '*.md' '*.lua' '*.txt' '**/CMakeLists.txt'); do
+for f in $(git diff --name-only origin/master -- '*.cmake' '*.md' '*.lua' '*.txt'); do
   [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo "MISSING final newline: $f"
 done
 ```
@@ -248,7 +248,7 @@ demo's `CMakeLists.txt`. The smell is a hand-rolled `add_custom_target(*Assets
 `creations/demos/*/CMakeLists.txt` (#1870's fog_demo shipped 38 such lines):
 
 ```bash
-git diff --name-only HEAD -- 'creations/demos/*/CMakeLists.txt' | while read -r f; do
+git diff --name-only origin/master -- 'creations/demos/*/CMakeLists.txt' | while read -r f; do
   grep -qE 'add_custom_(target|command)' "$f" \
     && grep -qE 'copy_directory|copy_if_different' "$f" \
     && echo "HAND-ROLLED asset copy (use irreden_bundle_assets): $f"
