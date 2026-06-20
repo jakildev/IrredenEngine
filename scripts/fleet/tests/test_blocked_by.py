@@ -35,6 +35,56 @@ class IsNoBlockerValue(unittest.TestCase):
             self.assertFalse(fbb.is_no_blocker_value(v), f"{v!r} should NOT be a sentinel")
 
 
+class SeeAlsoParallelIdiom(unittest.TestCase):
+    """#1910: a `#N` introduced by a see-also / parallel qualifier inside a
+    leading-`none` value is a sibling cross-reference, not a blocker — while
+    the anti-evasion guard for `none, blocked by #5` stays intact."""
+
+    # --- excused: leading `none` + every ref is a see-also / parallel sibling ---
+    def test_parallel_idiom_excused(self):
+        for v in (
+            "(none) — independent tooling; can start immediately, in parallel with #1883",
+            "_(none — independent tooling; in parallel with #1883)_",  # #1910's italic field form
+            "(none — runs in parallel with #1883)",
+            "none — see also #5",
+            "none; sibling of #7",
+            "(none) — related to #9, alongside #10",
+            "n/a — cf. #12",
+        ):
+            self.assertTrue(fbb.is_no_blocker_value(v),
+                            f"{v!r} should be excused as a see-also sibling")
+
+    def test_parallel_idiom_parses_unblocked(self):
+        # The live #1910 field shape (the bug this hardening fixes at the source).
+        body = ("**Blocked by:** (none) — independent tooling; "
+                "in parallel with #1883\n")
+        self.assertEqual(fbb.parse_blocked_by(body), "")
+        self.assertEqual(fbb.blocker_refs(body, "jakildev/IrredenEngine"), [])
+
+    # --- anti-evasion: a blocker verb (or no qualifier at all) still gates ---
+    def test_evasion_blocker_verb_still_gates(self):
+        for v in (
+            "none, actually blocked by #5",        # the canonical evasion
+            "(none) — depends on #5",
+            "none — requires #6 first",
+            "none, #138",                          # no qualifier at all
+            "none — see also #5, blocked by #6",   # mixed: the blocker ref gates the whole value
+        ):
+            self.assertFalse(fbb.is_no_blocker_value(v), f"{v!r} must still gate")
+
+    def test_evasion_surfaces_real_ref(self):
+        body = "**Blocked by:** none, actually blocked by #5\n"
+        self.assertEqual(fbb.parse_blocked_by(body), "none, actually blocked by #5")
+        self.assertEqual(fbb.blocker_refs(body, "jakildev/IrredenEngine"),
+                         [("jakildev/IrredenEngine", "5")])
+
+    # --- a #N WITHOUT a leading `none` sentinel is never excused ---
+    def test_ref_without_leading_none_gates(self):
+        for v in ("#1883", "in parallel with #1883", "see also #5"):
+            self.assertFalse(fbb.is_no_blocker_value(v),
+                             f"{v!r} has no leading `none` → must gate")
+
+
 class ParseBlockedBy(unittest.TestCase):
     def _body(self, line):
         return ("**Model:** opus\n**Part of epic:** #137\n"

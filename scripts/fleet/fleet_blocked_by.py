@@ -76,6 +76,55 @@ _REF_RE = re.compile(r'(?:[A-Za-z0-9][\w.-]*/)?([A-Za-z0-9][\w.-]*)?#(\d+)')
 _REF_NAME_TO_SLUG = {'irredenengine': 'jakildev/IrredenEngine',
                      'irreden': 'jakildev/irreden'}
 
+# See-also / parallel-sibling qualifiers (#1910): a `#N` introduced by one of
+# these inside a leading-`none` value is a cross-reference, not a blocker — the
+# legitimate "(none — runs in parallel with #N)" idiom. Matched per-ref against
+# the clause leading up to the ref so a sibling note can't smuggle a real
+# dependency past the gate (see _ref_is_see_also).
+_SEE_ALSO_RE = re.compile(
+    r'\b(?:see[\s-]+also|related(?:\s+to)?|in\s+parallel(?:\s+with)?|'
+    r'parallel(?:\s+(?:with|to))?|sibling(?:\s+of)?|alongside|'
+    r'concurrent(?:ly)?(?:\s+with)?|cf\.?)\b',
+    re.IGNORECASE,
+)
+# Blocker verbs (#1910): a `#N` introduced by one of these is a real dependency
+# even inside a leading-`none` value — this is what keeps the anti-evasion guard
+# intact for "none, actually blocked by #5".
+_BLOCKER_VERB_RE = re.compile(
+    r'\b(?:blocked\s+by|blocks?|depends?\s+(?:on|upon)|requires?|needs?|'
+    r'waiting\s+(?:on|for)|gated\s+(?:on|by)|blocker)\b',
+    re.IGNORECASE,
+)
+# Clause boundaries used to isolate the text introducing a single `#N`.
+_CLAUSE_SPLIT_RE = re.compile(r'[;,—–(]')
+
+
+def _leads_with_none_sentinel(value):
+    """True when `value` opens with a no-blocker sentinel — `none`, `(none`,
+    `n/a`, `na`, `tbd`, or a lone leading dash/dot. This is the necessary
+    precondition for excusing any `#N` as a see-also reference: a value that
+    does not lead with `none` (e.g. a bare `#5`) is never excused."""
+    # Tolerate leading markdown emphasis / paren wrappers (`_(none …)_`,
+    # `*none*`, `` `(none)` ``) before the sentinel word — #1910's field was
+    # italicized, and the bare token check would otherwise see `_(none`.
+    head = (value or "").strip().lower().lstrip("_*`(").strip()
+    if not head or head[0] in "-–—.":
+        return True
+    token = re.split(r"[\s.,;:)\-–—]", head, maxsplit=1)[0]
+    return token in {"none", "n/a", "na", "tbd"}
+
+
+def _ref_is_see_also(value, ref_start):
+    """True when the `#N` starting at `ref_start` is introduced by a see-also /
+    parallel qualifier rather than a blocker verb. Scans only the clause leading
+    up to the ref (back to the previous `;,—–(` boundary): a blocker verb in
+    that clause disqualifies it, and a see-also keyword licenses it. A ref with
+    neither qualifier is conservatively treated as a blocker (returns False)."""
+    clause = _CLAUSE_SPLIT_RE.split(value[:ref_start])[-1]
+    if _BLOCKER_VERB_RE.search(clause):
+        return False
+    return bool(_SEE_ALSO_RE.search(clause))
+
 
 def is_no_blocker_value(value):
     """True when a `Blocked by:` value declares NO blocker.
@@ -83,20 +132,25 @@ def is_no_blocker_value(value):
     The canonical form is `(none)`, but agents also hand-write a bare `none`,
     `n/a`, `tbd`, a lone dash, or `(none) — prose`, all of which mean "nothing
     blocks this". A value that names a `#N` or describes a real blocker in
-    prose ("the auth redesign") is NOT a sentinel and must still gate. Ported
-    verbatim from the scout's historically-richest version so the other two
-    consumers inherit it.
+    prose ("the auth redesign") is NOT a sentinel and must still gate.
+
+    Exception (#1910): the "(none — … in parallel with #N)" idiom names a
+    *sibling*, not a blocker. Such a `#N` is excused only when (a) the value
+    leads with a `none`/`n-a`/`tbd` sentinel AND (b) every `#N` is introduced by
+    a see-also / parallel qualifier (not a blocker verb). So "none, actually
+    blocked by #5" still gates — the anti-evasion guard is preserved.
     """
     value = value or ""
-    # A concrete `#N` ref anywhere means there IS a blocker — never let a
-    # leading "none" word swallow a real reference.
-    if re.search(r"#\d+", value):
+    refs = list(re.finditer(r"#\d+", value))
+    if refs:
+        # A concrete `#N` normally means there IS a blocker. Excuse it only for
+        # the leading-`none` see-also idiom; any ref carried by a blocker verb
+        # (or with no qualifier at all) still gates.
+        if _leads_with_none_sentinel(value) and all(
+                _ref_is_see_also(value, m.start()) for m in refs):
+            return True
         return False
-    head = value.strip().lower().lstrip("(").strip()
-    if not head or head[0] in "-–—.":
-        return True
-    token = re.split(r"[\s.,;:)\-–—]", head, maxsplit=1)[0]
-    return token in {"none", "n/a", "na", "tbd"}
+    return _leads_with_none_sentinel(value)
 
 
 def _field_values(body):
