@@ -155,7 +155,7 @@ class JitterMetricTest(unittest.TestCase):
             cp = _write_seq(Path(td), 16, _crawling_rings)
             self.assertEqual(_rc([*cp, "--max-jitter", "3.0"]), 1)
 
-    def test_too_few_frames_is_io_error(self):
+    def test_too_few_frames_is_format_error(self):
         with tempfile.TemporaryDirectory() as td:
             paths = _write_seq(Path(td), 2, _static)
             self.assertEqual(_rc(paths), 2)

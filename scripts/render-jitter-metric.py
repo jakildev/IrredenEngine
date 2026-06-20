@@ -66,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from array import array
 
@@ -172,7 +173,10 @@ def jitter_metrics(
         )
 
     per_pixel_d2.sort()
-    p95 = per_pixel_d2[min(interior_px - 1, int(0.95 * interior_px))]
+    # Nearest-rank 95th percentile: ceil(0.95 * N) - 1. For N >= 1 (N == 0 is
+    # rejected above) this lands in [0, N-1]. The old floor-based index
+    # collapsed to the max (interior_px - 1) for small N rather than the 95th.
+    p95 = per_pixel_d2[math.ceil(0.95 * interior_px) - 1]
 
     result = {
         "frames": n,
