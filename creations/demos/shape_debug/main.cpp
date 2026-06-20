@@ -85,9 +85,10 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
 // --pivot-focus-demo (#1921): a tall strip over screen center where the pinned
 // pillar sits. With the fix the pillar holds this crop steady across the yaw
 // sweep; with --pivot-origin it swings out of frame. Coords are a per-host
-// iteration point (see the kCrops* note above) — tuned here for the HiDPI 2x
-// framebuffer (pillar pins at framebuffer center ~(1280, 720)); refine against
-// the capture on a non-scaled host.
+// iteration point (see the kCrops* note above). Tuned for the HiDPI 2x
+// framebuffer (pillar pivot-pins at frame center ~(1280,720) of 2560x1440).
+// Linux/1x smoke: update to ~{490, 100, 300, 520} (center≈(640,360) of
+// 1280x720) and re-baseline after confirming the pillar stays centered.
 constexpr IRVideo::RoiCrop kCropsPivotPillar[] = {
     {1130, 460, 300, 520, "pivot_pillar_center"},
 };
