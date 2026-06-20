@@ -103,13 +103,30 @@ In `engine/prefabs/irreden/voxel/components/component_voxel_pool.hpp`:
   `chunk_streaming_smoke`) reads the frontier; this is purely additive.
 
 Test (extend an existing pool-aware test, do not add a new CMake target):
-`test/ecs/voxel_set_target_canvas_test.cpp` already drives a canvas + pool. Add a
-case: record `getInUseVoxelCount()` baseline → construct N `C_VoxelSetNew` sets of
-*varying* sizes → assert in-use grew by the sum → destroy them
-(`IREntity::destroyEntity`) → assert `getInUseVoxelCount()` returned to baseline,
-**including across a second differently-sized round** (exercises free-span reuse).
-Confirm the file's existing fixture exposes the active canvas's `C_VoxelPool`; if
-not, mirror how that test reaches the pool.
+`test/ecs/voxel_set_target_canvas_test.cpp` already drives a canvas + pool (via its
+own `m_entityManager` fixture, `:26`). Add a case: record `getInUseVoxelCount()`
+baseline → construct N `C_VoxelSetNew` sets of *varying* sizes → assert in-use grew
+by the sum → mark them for destruction → **drain the deferred deletions** (see below)
+→ assert `getInUseVoxelCount()` returned to baseline, **including across a second
+differently-sized round** (exercises free-span reuse). Confirm the file's existing
+fixture exposes the active canvas's `C_VoxelPool`; if not, mirror how that test
+reaches the pool.
+
+**Deferred-deletion drain — don't skip, or the assertion is a silent false
+negative:** entity destroy is *deferred*. `IREntity::destroyEntity` only calls
+`markEntityForDeletion` (`ir_entity.cpp:11-13`), and the pool ranges are freed by
+`C_VoxelSetNew::onDestroy`, which fires only when the marked list is processed — so
+asserting right after the `destroyEntity` calls reads the pre-free count and a
+*correct* reset looks like a leak. After marking the sets, call
+`m_entityManager.destroyMarkedEntities()` **before** the baseline assertion (drive
+the same manager the fixture uses; precede it with
+`m_entityManager.flushStructuralChanges()` if the case also queued deferred
+component ops). `flushStructuralChanges()` alone does **not** drain the
+deletion-marked list — that is `destroyMarkedEntities()`'s job
+(`entity_manager.cpp:204`). This mirrors what `resetGameplay()` →
+`destroyAllExceptPreserved` runs internally (`flushStructuralChanges()` then
+`destroyMarkedEntities()`, `entity_manager.cpp:378-379`) — which is exactly why the
+**demo's** assertions need no explicit drain.
 
 ### Piece 2 — `creations/demos/scene_reset/` (new demo)
 
