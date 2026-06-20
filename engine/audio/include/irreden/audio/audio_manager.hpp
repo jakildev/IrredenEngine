@@ -43,8 +43,14 @@ class AudioManager {
     inline void clearOutboundMidiObserver() {
         m_outboundMidiObserver = nullptr;
     }
-    inline const OutboundMidiObserver &getOutboundMidiObserver() const {
-        return m_outboundMidiObserver;
+    // Fire the registered observer (no-op if none). AudioManager fires its own
+    // observer rather than exposing the stored std::function, mirroring how
+    // Audio fires m_inputCallback internally — keeps the callable encapsulated.
+    inline void
+    fireOutboundMidiObserver(const IRComponents::C_MidiMessage &message, int portIndex) const {
+        if (m_outboundMidiObserver) {
+            m_outboundMidiObserver(message, portIndex);
+        }
     }
 
   private:

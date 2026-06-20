@@ -59,14 +59,10 @@ namespace {
 void notifyOutboundObserver(
     AudioManager &manager, const std::vector<unsigned char> &message, int portIndex
 ) {
-    const AudioManager::OutboundMidiObserver &observer = manager.getOutboundMidiObserver();
-    if (!observer) {
-        return;
-    }
     const unsigned char status = message.empty() ? 0 : message[0];
     const unsigned char data1 = message.size() > 1 ? message[1] : 0;
     const unsigned char data2 = message.size() > 2 ? message[2] : 0;
-    observer(IRComponents::C_MidiMessage{status, data1, data2}, portIndex);
+    manager.fireOutboundMidiObserver(IRComponents::C_MidiMessage{status, data1, data2}, portIndex);
 }
 
 } // namespace
