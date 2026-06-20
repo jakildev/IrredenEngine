@@ -47,6 +47,17 @@ class RenderManager {
     SubdivisionMode getSubdivisionMode() const;
     void setRotationPivotMode(RotationPivotMode mode);
     RotationPivotMode getRotationPivotMode() const;
+    // Explicit world-space point of interest to rotate the camera Z-yaw about
+    // (#1921). When set, CAMERA_CENTER pivots about this point at its true depth
+    // — content there rotates in place instead of arcing about the z=0 world
+    // point under screen center. When unset, the pivot falls back to that legacy
+    // screen-center point (byte-identical to the pre-#1921 path). The choice of
+    // focus (cursor / selection / scene centroid) is a creation-level policy;
+    // the engine only consumes the point.
+    void setRotationPivotFocus(vec3 focusWorld);
+    void clearRotationPivotFocus();
+    bool hasRotationPivotFocus() const;
+    vec3 getRotationPivotFocus() const;
     void setVoxelRenderSubdivisions(int subdivisions);
     int getVoxelRenderSubdivisions() const;
     int getVoxelRenderEffectiveSubdivisions() const;
@@ -150,6 +161,8 @@ class RenderManager {
     FitMode m_fitMode;
     SubdivisionMode m_subdivisionMode = SubdivisionMode::FULL;
     RotationPivotMode m_rotationPivotMode = RotationPivotMode::CAMERA_CENTER;
+    vec3 m_rotationPivotFocus = vec3(0.0f);
+    bool m_hasRotationPivotFocus = false;
     bool m_hoveredTrixelVisible = true;
     int m_voxelRenderSubdivisions = 1;
     bool m_guiVisible = false;

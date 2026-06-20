@@ -82,6 +82,16 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
     {300, 400, 128, 128, "lower_left_face"},
 };
 
+// --pivot-focus-demo (#1921): a tall strip over screen center where the pinned
+// pillar sits. With the fix the pillar holds this crop steady across the yaw
+// sweep; with --pivot-origin it swings out of frame. Coords are a per-host
+// iteration point (see the kCrops* note above) — tuned here for the HiDPI 2x
+// framebuffer (pillar pins at framebuffer center ~(1280, 720)); refine against
+// the capture on a non-scaled host.
+constexpr IRVideo::RoiCrop kCropsPivotPillar[] = {
+    {1130, 460, 300, 520, "pivot_pillar_center"},
+};
+
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
     {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
@@ -212,6 +222,23 @@ bool g_cullValidate = false;
 std::vector<IRVideo::AutoScreenshotShot> g_cullValidateShots;
 std::vector<std::array<char, 40>> g_cullValidateShotLabels;
 
+// --pivot-focus-demo (#1921): spawn a tall, off-center voxel pillar and drive a
+// yaw sweep that pins the camera Z-yaw pivot on the pillar's TRUE-depth center
+// via AutoScreenshotShot::pivotFocusWorld_. With the fix the pillar rotates in
+// place — it stays at screen center across the whole sweep, including its z>0
+// body. Add --pivot-origin for the A/B where the legacy z=0 screen-center pivot
+// swings it in an arc. Requires --auto-screenshot. Same stable-storage
+// discipline as the buffers above.
+bool g_pivotFocusDemo = false;
+std::vector<IRVideo::AutoScreenshotShot> g_pivotFocusShots;
+std::vector<std::array<char, 40>> g_pivotFocusShotLabels;
+// World center of the --pivot-focus-demo pillar. Off the world origin in x/y AND
+// at z > 0, so the legacy pivot exhibits BOTH defects (#1921): the z=0 focus the
+// old path picks lands horizontally offset from a centered tall column, and an
+// off-origin column orbits the origin. Shared by the spawn and the shot table so
+// the focus exactly matches the rendered geometry.
+constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
+
 } // namespace
 
 void initSystems();
@@ -238,6 +265,8 @@ int main(int argc, char **argv) {
             g_occlusionCull = true;
         } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
             g_gpuVoxelSmoke = true;
+        } else if (std::strcmp(argv[i], "--pivot-focus-demo") == 0) {
+            g_pivotFocusDemo = true;
         } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
             g_skinSmoke = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
@@ -551,6 +580,47 @@ void initSystems() {
                 cfg.numShots_,
                 sweepZoom
             );
+        } else if (g_pivotFocusDemo) {
+            // Pin the camera Z-yaw pivot on the tall pillar's true-depth center
+            // across a yaw sweep (#1921). centerPan brings the pillar to screen
+            // center at yaw 0; with the focus set it stays there for EVERY yaw —
+            // the pillar rotates in place while the default scene sweeps around
+            // it. Run the same flag with --pivot-origin for the A/B: the legacy
+            // z=0 screen-center pivot swings the pillar out in an arc.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            // Pan so the pillar lands at screen center at yaw 0: the producers
+            // place content at screen `iso(W) + cameraIso`, so centering the
+            // pillar (`screen == 0`) needs `cameraIso == -iso(pillarCenter)`.
+            const vec2 centerPan = -IRMath::pos3DtoPos2DIso(kPivotPillarCenter);
+            const float yaws[] =
+                {0.0f, IRMath::kHalfPi, IRMath::kPi, 3.0f * IRMath::kHalfPi, IRMath::kQuarterPi};
+            constexpr int n = sizeof(yaws) / sizeof(yaws[0]);
+            g_pivotFocusShotLabels.reserve(n);
+            g_pivotFocusShots.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                auto &label = g_pivotFocusShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), "pivot_focus_yaw_%03d", i);
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = sweepZoom;
+                shot.cameraIso_ = centerPan;
+                shot.yawRadians_ = yaws[i];
+                shot.label_ = label.data();
+                shot.crops_ = kCropsPivotPillar;
+                shot.numCrops_ = sizeof(kCropsPivotPillar) / sizeof(kCropsPivotPillar[0]);
+                shot.pivotFocusWorld_ = kPivotPillarCenter;
+                shot.hasPivotFocus_ = true;
+                g_pivotFocusShots.push_back(shot);
+            }
+            cfg.shots_ = g_pivotFocusShots.data();
+            cfg.numShots_ = static_cast<int>(g_pivotFocusShots.size());
+            IR_LOG_INFO(
+                "Pivot-focus demo: {} yaw shots pinned on pillar ({}, {}, {}) at zoom={}",
+                cfg.numShots_,
+                kPivotPillarCenter.x,
+                kPivotPillarCenter.y,
+                kPivotPillarCenter.z,
+                sweepZoom
+            );
         } else {
             cfg.shots_ = kShots;
             cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
@@ -815,7 +885,52 @@ struct ShapeTestCase {
     Color color_;
 };
 
+// Minimal scene for --pivot-focus-demo (#1921): a tall, off-center pillar plus
+// four distinct ground markers ringing it (one per world cardinal). The dedicated
+// shot table pins the camera Z-yaw pivot on the pillar's true center, so under
+// the fix the pillar holds dead-center while the markers visibly orbit it; with
+// --pivot-origin the legacy z=0 pivot swings the whole group in an arc. Isolated
+// from the cluttered default scene so the pin is unambiguous.
+void initPivotFocusScene() {
+    // Pillar at kPivotPillarCenter (z 0..20, off the world origin in x/y).
+    createVoxelPoolShape(
+        kPivotPillarCenter,
+        IRRender::ShapeType::BOX,
+        vec4(5, 5, 21, 0),
+        Color{230, 200, 120, 255},
+        ivec3(2, 2, 10)
+    );
+    // Asymmetric ground markers (z just above 0) so rotation is legible and its
+    // direction unambiguous — distinct colors at +X / +Y / -X / -Y of the pillar.
+    struct Marker {
+        vec3 offset_;
+        Color color_;
+    };
+    const Marker markers[] = {
+        {vec3(14.0f, 0.0f, 0.0f), Color{220, 80, 80, 255}},
+        {vec3(0.0f, 14.0f, 0.0f), Color{80, 120, 220, 255}},
+        {vec3(-14.0f, 0.0f, 0.0f), Color{90, 200, 110, 255}},
+        {vec3(0.0f, -14.0f, 0.0f), Color{210, 110, 210, 255}},
+    };
+    for (const auto &m : markers) {
+        const vec3 pos = vec3(kPivotPillarCenter.x, kPivotPillarCenter.y, 1.0f) + m.offset_;
+        createVoxelPoolShape(
+            pos,
+            IRRender::ShapeType::BOX,
+            vec4(3, 3, 3, 0),
+            m.color_,
+            ivec3(1, 1, 1)
+        );
+    }
+}
+
 void initEntities() {
+    if (g_pivotFocusDemo) {
+        IR_LOG_INFO("--- Camera pivot-focus demo scene (#1921) ---");
+        initPivotFocusScene();
+        return;
+    }
+
     constexpr float kSpacingX = 16.0f;
     constexpr float kRowSeparationY = 12.0f;
 

@@ -70,6 +70,14 @@ struct AutoScreenshotShot {
     const RoiCrop *crops_ = nullptr;
     int numCrops_ = 0;
     CullAction cullAction_ = CullAction::NONE;
+    // Explicit camera Z-yaw pivot focus (#1921): when @c hasPivotFocus_ is set,
+    // the shot calls @c IRRender::setRotationPivotFocus(pivotFocusWorld_) before
+    // it settles, so the focus world point stays pinned across the shot's yaw —
+    // a regression shot can prove tall / off-center content rotates in place.
+    // Default (@c false) clears the focus, keeping every existing shot table
+    // byte-identical to the pre-#1921 screen-center pivot.
+    vec3 pivotFocusWorld_ = vec3(0.0f);
+    bool hasPivotFocus_ = false;
 };
 
 /// Declarative config for @c createAutoScreenshotSystem. @c shots_ /
