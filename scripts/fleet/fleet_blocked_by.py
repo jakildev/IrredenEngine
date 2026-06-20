@@ -110,7 +110,7 @@ def _leads_with_none_sentinel(value):
     head = (value or "").strip().lower().lstrip("_*`(").strip()
     if not head or head[0] in "-–—.":
         return True
-    token = re.split(r"[\s.,;:)\-–—]", head, maxsplit=1)[0]
+    token = re.split(r"[\s.,;:)\-–—*]", head, maxsplit=1)[0]
     return token in {"none", "n/a", "na", "tbd"}
 
 

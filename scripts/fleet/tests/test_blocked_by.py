@@ -45,6 +45,7 @@ class SeeAlsoParallelIdiom(unittest.TestCase):
         for v in (
             "(none) — independent tooling; can start immediately, in parallel with #1883",
             "_(none — independent tooling; in parallel with #1883)_",  # #1910's italic field form
+            "*none* — in parallel with #1883",                          # bold form
             "(none — runs in parallel with #1883)",
             "none — see also #5",
             "none; sibling of #7",
