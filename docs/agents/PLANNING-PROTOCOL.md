@@ -50,8 +50,10 @@ For each `fleet:needs-plan` issue:
    default and silently drops context.
 
 2. **Assess scope and post the plan as a `## Plan` issue comment.** This
-   comment is the canonical plan — its first heading must be `## Plan` so the
-   queue gate and the implementing worker can find it. Cover:
+   comment is the canonical plan — its first heading must **start with**
+   `## Plan` so the queue gate and the implementing worker can find it. The
+   gate matches the `## Plan` prefix, so the `## Plan: <issue title>` form in
+   the template below is accepted. Cover:
    - What files/modules are involved
    - **Verified current state + confirmed repro.** For a defect ticket,
      name the repro you actually ran **against the actual code path** —
