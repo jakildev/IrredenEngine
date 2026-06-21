@@ -1060,6 +1060,33 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
     return vec2(-position.x + position.y, -position.x - position.y + (2 * position.z));
 }
 
+/// Camera iso offset that pins a world @p focusWorld at a constant on-screen
+/// position as the camera Z-yaws by @p visualYaw — the `CAMERA_CENTER`
+/// rotation pivot. Producers place content on the canvas at `iso_canvas(W) =
+/// pos3DtoPos2DIsoYawed(W, yaw)` and the composite ADDS this offset, so a
+/// point's screen position is `iso_canvas(W) + offset`. This offset cancels the
+/// focus's yaw-induced canvas drift so the focus holds still and the scene
+/// rotates about it:
+/// @code
+///   screen(F) = pos3DtoPos2DIsoYawed(F, yaw) + cameraYawPivotOffset(...)
+///             = cameraIso + pos3DtoPos2DIso(F)      // independent of yaw
+/// @endcode
+/// i.e. `F` keeps a constant screen position across the full yaw sweep
+/// (rotation in place). Pass `F = isoPixelToPos3D(cameraIso, 0)` to rotate about
+/// the screen-center point, or an explicit point of interest (#1921) to rotate
+/// about it at its true depth.
+///
+/// At `visualYaw == 0` the yawed and un-yawed projections coincide, so this
+/// returns @p cameraIso exactly — the no-rotate fast path stays byte-identical
+/// to `ORIGIN` mode. This is the single source of truth for the CAMERA_CENTER
+/// pivot offset (both the screen-center default and the #1921 focus path);
+/// never inline the drift-cancel formula.
+constexpr vec2 cameraYawPivotOffset(const vec2 cameraIso, const vec3 focusWorld,
+                                    const float visualYaw) {
+    return cameraIso - pos3DtoPos2DIsoYawed(focusWorld, visualYaw) +
+           pos3DtoPos2DIso(focusWorld);
+}
+
 /// Returns the `cameraIso` delta that produces an on-screen shift equal to
 /// @p isoDelta when the camera is at `RotationPivotMode::CAMERA_CENTER`.
 ///
