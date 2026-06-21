@@ -23,6 +23,32 @@ namespace {
 struct C_AutoScreenshotAnchor {};
 struct C_GuiTestAnchor {};
 
+// Apply one shot's camera state (zoom / pan / Z-yaw / pivot focus / cull
+// freeze) before the settle window. Shared by the auto-screenshot and GUI-test
+// cyclers — `GuiTestShot::render_` is an AutoScreenshotShot — so the per-shot
+// pivot-focus (#1921) and cull-freeze (#1438) handling can't drift between them.
+void applyShotCameraState(const AutoScreenshotShot &shot) {
+    IRRender::setCameraZoom(shot.zoom_);
+    IRRender::setCameraPosition2DIso(shot.cameraIso_);
+    IRPrefab::Camera::setYaw(shot.yawRadians_);
+    // Set or clear the explicit Z-yaw pivot point of interest so a regression
+    // shot can pin tall / off-center content; clearing keeps shots with no
+    // focus on the legacy screen-center pivot.
+    if (shot.hasPivotFocus_) {
+        IRRender::setRotationPivotFocus(shot.pivotFocusWorld_);
+    } else {
+        IRRender::clearRotationPivotFocus();
+    }
+    // FREEZE pins the cull viewport at this shot's pose (snapshotted on the next
+    // updateCullViewport, within the settle frames) so later shots can free-fly
+    // with the cull held; UNFREEZE returns to live tracking; NONE leaves it.
+    if (shot.cullAction_ == CullAction::FREEZE) {
+        IRRender::setCullingFrozen(true);
+    } else if (shot.cullAction_ == CullAction::UNFREEZE) {
+        IRRender::setCullingFrozen(false);
+    }
+}
+
 struct CyclingState {
     AutoScreenshotConfig config_;
     int warmupRemaining_ = 0;
@@ -94,19 +120,7 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
                     shot.yawRadians_,
                     static_cast<int>(shot.cullAction_)
                 );
-                IRRender::setCameraZoom(shot.zoom_);
-                IRRender::setCameraPosition2DIso(shot.cameraIso_);
-                IRPrefab::Camera::setYaw(shot.yawRadians_);
-                // Drive the shared cull-freeze flag while the camera sits at
-                // THIS shot's pose. FREEZE pins the cull here (the snapshot is
-                // taken on the next IRRender::updateCullViewport, within the
-                // settle frames); subsequent shots move the camera with the
-                // cull held. NONE leaves the flag as-is.
-                if (shot.cullAction_ == CullAction::FREEZE) {
-                    IRRender::setCullingFrozen(true);
-                } else if (shot.cullAction_ == CullAction::UNFREEZE) {
-                    IRRender::setCullingFrozen(false);
-                }
+                applyShotCameraState(shot);
                 state->settleCounter_ = state->config_.settleFrames_;
                 state->screenshotPending_ = false;
                 return;
@@ -185,14 +199,7 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
                     shot.render_.yawRadians_,
                     shot.numInputs_
                 );
-                IRRender::setCameraZoom(shot.render_.zoom_);
-                IRRender::setCameraPosition2DIso(shot.render_.cameraIso_);
-                IRPrefab::Camera::setYaw(shot.render_.yawRadians_);
-                if (shot.render_.cullAction_ == CullAction::FREEZE) {
-                    IRRender::setCullingFrozen(true);
-                } else if (shot.render_.cullAction_ == CullAction::UNFREEZE) {
-                    IRRender::setCullingFrozen(false);
-                }
+                applyShotCameraState(shot.render_);
                 state->shotFrame_ = 0;
                 return;
             }
