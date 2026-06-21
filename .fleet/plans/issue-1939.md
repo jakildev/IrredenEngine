@@ -22,10 +22,10 @@ uniform plumbing** — `grep` over `engine/**/*.{hpp,cpp}` finds none):
 |---|---|---|
 | `scatterConservativeDilation()` | 768 / 678 | per-axis `0.5·|n|` + miter growth |
 | `kScatterDilateMarginPx` | 691 / 636 | fixed camera-path margin floor |
-| `kScatterDetachedPitchFraction` | 738 / — | detached pitch-proportional floor |
+| `kScatterDetachedPitchFraction` | 738 / 660 | detached pitch-proportional floor |
 | `kScatterMiterLimit` | 723 / 654 | acute-corner blow-out cap |
-| `kScatterMarginDepthBiasKey` | 701 / — | margin tie-break depth bias |
-| `kScatterMarginYieldGradScale` | 717 / — | margin yield gradient |
+| `kScatterMarginDepthBiasKey` | 701 / 642 | margin tie-break depth bias |
+| `kScatterMarginYieldGradScale` | 717 / 650 | margin yield gradient |
 
 Consumers: `v_peraxis_scatter.glsl:211,217-218`, `f_peraxis_scatter.glsl`,
 `metal/peraxis_scatter.metal:194,198-200`, and the definitions in
@@ -67,13 +67,11 @@ Consumers: `v_peraxis_scatter.glsl:211,217-218`, `f_peraxis_scatter.glsl`,
 
 ## Gotchas
 
-- Don't half-retire — three symbols are GL-only (`kScatterDetachedPitchFraction`,
-  `kScatterMarginDepthBiasKey`, `kScatterMarginYieldGradScale`; see `—` in the
-  metal column above); the other three (`scatterConservativeDilation`,
-  `kScatterDilateMarginPx`, `kScatterMiterLimit`) live in both shaders.
-  Remove the GL-only symbols from `ir_iso_common.glsl` only, and remove the
-  shared symbols from both `ir_iso_common.glsl` and `ir_iso_common.metal` in
-  lockstep.
+- Don't half-retire — all six symbols are defined in **both** backends (see the
+  glsl/metal columns above; the metal `constant` mirrors live at
+  `ir_iso_common.metal:636,642,650,654,660,678`). Remove all six from both
+  `ir_iso_common.glsl` and `ir_iso_common.metal` in lockstep; leaving any as a
+  dead `constant` in the Metal file trips the "`grep` clean" acceptance criterion.
 - The depth-bias (#1457) + yield-gradient (#1883) exist because the margin
   over-fills; removing them is correct ONLY if analytic coverage left no
   over-fill. Validate before removing.

@@ -162,7 +162,8 @@ migrate (`grep` over `engine/**/*.{hpp,cpp}` finds none). Consumers:
 - `engine/render/src/shaders/metal/peraxis_scatter.metal:194,198-200` — Metal
   mirror of the vertex call.
 - `engine/render/src/shaders/ir_iso_common.glsl:691,701,717,723,738,768` +
-  `…/metal/ir_iso_common.metal:636,654,663,678` — the definitions.
+  `…/metal/ir_iso_common.metal:636,642,650,654,660,678` — the definitions
+  (all six mirror the GLSL; line 663 is a comment, not a symbol).
 
 No other shader, system, or CPU caller references these symbols. The detached
 regime (`kScatterDetachedPitchFraction`) and camera regime
