@@ -128,8 +128,8 @@ its predecessor). They also serialize against the sibling SDF-jitter work
 | Phase | Child | Model | Effort | Blocked by |
 |---|---|---|---|---|
 | C1 | render: analytic edge-aware coverage on the per-axis scatter (GL) | opus | high | (none) |
-| C2 | render: Metal parity port of analytic scatter coverage | opus | medium | #C1 |
-| C3 | render: retire the manual scatter dilation margin/miter/yield tower + full validation | opus | high | #C2, #1922 |
+| C2 | render: Metal parity port of analytic scatter coverage | opus | medium | #1937 |
+| C3 | render: retire the manual scatter dilation margin/miter/yield tower + full validation | opus | high | #1938, #1922 |
 
 - **C1 (GL, de-risk + impl):** add the edge-type-aware analytic coverage to
   `{v_,f_}peraxis_scatter.glsl` + the helper in `ir_iso_common.glsl`; keep a

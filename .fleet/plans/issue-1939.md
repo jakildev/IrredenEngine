@@ -67,8 +67,13 @@ Consumers: `v_peraxis_scatter.glsl:211,217-218`, `f_peraxis_scatter.glsl`,
 
 ## Gotchas
 
-- Don't half-retire — the constants live in both `ir_iso_common.glsl` and
-  `ir_iso_common.metal`; remove from both in lockstep.
+- Don't half-retire — three symbols are GL-only (`kScatterDetachedPitchFraction`,
+  `kScatterMarginDepthBiasKey`, `kScatterMarginYieldGradScale`; see `—` in the
+  metal column above); the other three (`scatterConservativeDilation`,
+  `kScatterDilateMarginPx`, `kScatterMiterLimit`) live in both shaders.
+  Remove the GL-only symbols from `ir_iso_common.glsl` only, and remove the
+  shared symbols from both `ir_iso_common.glsl` and `ir_iso_common.metal` in
+  lockstep.
 - The depth-bias (#1457) + yield-gradient (#1883) exist because the margin
   over-fills; removing them is correct ONLY if analytic coverage left no
   over-fill. Validate before removing.
