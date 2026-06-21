@@ -14,6 +14,7 @@
 #include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -870,9 +871,9 @@ void initSystems() {
     if (g_cliOverrides.depthProbeSet_) {
         const ivec2 probePixel = g_cliOverrides.depthProbePixel_;
         renderPipeline.push_back(
-            IRSystem::createSystem<C_Name>(
+            IRSystem::createSystem<C_Camera>(
                 "DepthProbe",
-                [](C_Name &) {},
+                [](C_Camera &) {},
                 [probePixel]() { IRPrefab::DepthProbe::logCompositeDepth(probePixel); }
             )
         );
