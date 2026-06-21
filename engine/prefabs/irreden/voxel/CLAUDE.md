@@ -74,7 +74,11 @@ for single voxels and particles.
   skipped via `C_VoxelPool::isRangeVisible` against the previous frame's
   shadow-feeder-expanded cull viewport — same cull gate as `REBUILD_GRID_VOXELS`
   (#1288). A set entirely outside that viewport pays nothing; a visible set in
-  a static scene re-uploads its positions every frame.
+  a static scene re-uploads its positions every frame. Runs `PARALLEL_FOR`
+  (#1803, `ParallelSafe`): disjoint per-set span writes, the canvas→pool
+  lookup pre-resolved in `beginTick`, and the `queuePositionRange` hazard
+  deferred into a per-worker accumulator merged in `endTick` — see
+  `engine/system/CLAUDE.md` "Concurrency policy".
 - `REBUILD_GRID_VOXELS` (UPDATE pipeline, T-294; inverse re-voxelize #1720)
   — Epic C C6. Runs AFTER `UPDATE_VOXEL_SET_CHILDREN`. Re-rasterizes
   GRID-mode entities (entities carrying `C_RotationMode::GRID`, the
