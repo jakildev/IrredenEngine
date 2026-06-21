@@ -457,6 +457,20 @@ trivially-safe prefab systems:
 | `RENDERING_VELOCITY_2D_ISO` | render |
 | `TEXTURE_SCROLL` | render |
 | `WIDGET_APPLY_SLIDER` | render |
+| `UPDATE_VOXEL_SET_CHILDREN` | voxel |
+
+`UPDATE_VOXEL_SET_CHILDREN` (#1803) is the first system to carry the
+`IRSystem::ParallelSafe` tag — it keeps the per-entity-id form for its
+one-time picking-id owner registration, so the tag is required to pass the
+`usesEntityId_` validator. Landing it completed the previously-latent tag
+wiring: `createSystem` / `registerSystem` now strip tag types from the
+included pack via `detail::FilterTags_t` (a provable no-op for tag-free
+packs — see `test/system/system_access_test.cpp`), where before only
+`Exclude<...>` was filtered. Its body is audited thread-safe: position
+writes land in each set's disjoint pool span, the one shared-vector hazard
+(`queuePositionRange`) is deferred into a per-worker accumulator merged on
+the main thread in `endTick`, and the worker-side `getComponent<C_VoxelPool>`
+lookup moved to a `beginTick` canvas→pool pre-resolve.
 
 **Kept `SERIAL` (with rationale):**
 
