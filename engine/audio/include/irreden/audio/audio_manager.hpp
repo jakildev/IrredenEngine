@@ -7,10 +7,20 @@
 #include <irreden/audio/midi_in.hpp>
 #include <irreden/audio/midi_out.hpp>
 
+#include <irreden/audio/components/component_midi_message.hpp>
+
+#include <functional>
+#include <utility>
+
 namespace IRAudio {
 
 class AudioManager {
   public:
+    // Storage type for the outbound-MIDI observer; mirrors the namespace-scoped
+    // IRAudio::OutboundMidiCallback alias in ir_audio.hpp (same underlying
+    // std::function), the same split the inbound Audio::AudioInputCallback uses.
+    using OutboundMidiObserver = std::function<void(const IRComponents::C_MidiMessage &, int)>;
+
     AudioManager();
     ~AudioManager();
 
@@ -27,11 +37,33 @@ class AudioManager {
         return m_audioPlayback;
     }
 
+    inline void setOutboundMidiObserver(OutboundMidiObserver observer) {
+        m_outboundMidiObserver = std::move(observer);
+    }
+    inline void clearOutboundMidiObserver() {
+        m_outboundMidiObserver = nullptr;
+    }
+    // Fire the registered observer (no-op if none). AudioManager fires its own
+    // observer rather than exposing the stored std::function, mirroring how
+    // Audio fires m_inputCallback internally — keeps the callable encapsulated.
+    inline void
+    fireOutboundMidiObserver(const IRComponents::C_MidiMessage &message, int portIndex) const {
+        if (m_outboundMidiObserver) {
+            m_outboundMidiObserver(message, portIndex);
+        }
+    }
+
   private:
     Audio m_audio;
     MidiIn m_midiIn;
     MidiOut m_midiOut;
     AudioPlayback m_audioPlayback;
+    // Single observer fired on every outbound sendMidiMessage. Lives for this
+    // AudioManager's lifetime; a captured sol::function inside it must outlive
+    // any send, so the owning World declares m_audioManager AFTER m_lua (it
+    // then destructs first, dropping the function while the sol::state is still
+    // alive). See ir_audio.cpp / engine/audio/CLAUDE.md.
+    OutboundMidiObserver m_outboundMidiObserver;
 };
 
 } // namespace IRAudio

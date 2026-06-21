@@ -13,7 +13,11 @@ functions:
 - `getAudioManager()`, `getMidiIn()`, `getMidiOut()`, `getAudio()`.
 - MIDI device enumeration: list ports, open by index or substring.
 - MIDI query: per-channel, per-frame CC/note-on/note-off queues.
-- MIDI send: `sendNoteOn`, `sendNoteOff`, `sendCC`.
+- MIDI send: `sendMidiMessage(message)` (default port) / `sendMidiMessage(portIndex,
+  message)` — raw RtMidi bytes. (There are no `sendNoteOn`/`sendNoteOff`/`sendCC`
+  helpers; build the `C_MidiMessage` and call `sendMidiMessage`.)
+- MIDI send observer: `setOutboundMidiObserver(cb)` / `clearOutboundMidiObserver()`
+  — see "Outbound MIDI observer" below.
 - Audio input: open/start/stop a capture stream, register a float-sample
   callback.
 - File playback: `playSound` / `playMusic` / `playSoundAt`, `stopSound`,
@@ -103,6 +107,41 @@ Lua (`scripts/audio_demo.lua`).
   fallback patterns for common devices (UMC1820, Focusrite, MPKmini2,
   OP-1). Edit `midi_in.cpp` / `midi_out.cpp` to add a new hardware match.
   Opening an already-open port is a no-op that returns the existing handle.
+
+## Outbound MIDI observer (#1869)
+
+`IRAudio::sendMidiMessage` is the **sole outbound choke point** — every
+prefab path (`CONTACT_MIDI_TRIGGER`, `MIDI_SEQUENCE_OUT`,
+`PERIODIC_IDLE_MIDI_TRIGGER`, the `C_MidiNote::onDestroy` NOTE_OFF) routes
+through it; nothing calls `getMidiOut().sendMessage()` directly. So a single
+observer registered there sees **all** outbound traffic, including C++-emitted
+messages a Lua-only monitor would otherwise miss.
+
+```cpp
+IRAudio::setOutboundMidiObserver(
+    [](const IRComponents::C_MidiMessage &message, int portIndex) { /* ... */ }
+);
+IRAudio::clearOutboundMidiObserver();
+```
+
+- **Single observer, last-registration-wins** — matches the inbound
+  `AudioInputCallback` precedent; multiplex in the handler if you need fan-out.
+- **Fires unconditionally of an open port.** The observer runs even when no
+  hardware output port is open (headless monitor); the actual hardware send
+  no-ops below it. It fires *before* the hardware send.
+- **Main thread, synchronous.** `sendMidiMessage` runs on the UPDATE pipeline
+  (main thread), unlike the driver-thread inbound `MidiIn` callback. Don't move
+  the send to a worker thread.
+- **Storage + lifetime.** The callback is stored on `AudioManager`
+  (`m_outboundMidiObserver`), not a TU-local static. A captured `sol::function`
+  must outlive every send: `World` declares `m_audioManager` after `m_lua` so
+  it destructs first, dropping the function while the `sol::state` is still
+  alive. `clearOutboundMidiObserver()` is the explicit escape hatch.
+- **Lua surface.** `IRAudio.onMidiSent(fn)` registers `fn(status, channel,
+  data1, data2, portIndex)` (integers; `status` matches `IRAudio.MidiStatus.*`);
+  `IRAudio.clearMidiObserver()` detaches. A Lua handler error is logged and
+  swallowed so it can't abort the C++ send loop (bound by `bindLuaDrivenEcs()`
+  in `lua_audio_bindings.hpp`).
 
 ## Audio capture model
 

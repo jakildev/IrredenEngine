@@ -58,6 +58,7 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  script/lua_audio_midi_observer_test.cpp
   script/lua_collision_bindings_test.cpp
   script/lua_command_test.cpp
   script/lua_component_codegen_test.cpp

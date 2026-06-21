@@ -2,6 +2,7 @@
 #define LUA_AUDIO_BINDINGS_H
 
 #include <irreden/ir_audio.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
@@ -9,6 +10,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace IRScript::detail {
 
@@ -104,6 +106,48 @@ inline void bindAudioApi(LuaScript &script) {
     audio["setListenerPosition"] = [](sol::object position) {
         IRAudio::setListenerPosition(vec3FromLua(position));
     };
+
+    // Outbound-MIDI observer (engine #1869). A Lua monitor sees EVERY outbound
+    // message, including ones the C++ ECS audio path emits — not just what Lua
+    // sent. `IRAudio.MidiStatus.*` is the message-type byte as an integer table
+    // (the cpp-lua-enums.md convention) so a handler compares the status arg
+    // against named values, not magic numbers.
+    sol::table midiStatus = lua.create_table();
+#define IR_BIND_MIDI_STATUS(name)                                                                  \
+    midiStatus[#name] = static_cast<lua_Integer>(IRAudio::kMidiStatus_##name)
+    IR_BIND_MIDI_STATUS(NOTE_OFF);
+    IR_BIND_MIDI_STATUS(NOTE_ON);
+    IR_BIND_MIDI_STATUS(POLYPHONIC_KEY_PRESSURE);
+    IR_BIND_MIDI_STATUS(CONTROL_CHANGE);
+    IR_BIND_MIDI_STATUS(PROGRAM_CHANGE);
+    IR_BIND_MIDI_STATUS(CHANNEL_PRESSURE);
+    IR_BIND_MIDI_STATUS(PITCH_BEND);
+#undef IR_BIND_MIDI_STATUS
+    audio["MidiStatus"] = midiStatus;
+
+    // IRAudio.onMidiSent(fn): fn(status, channel, data1, data2, portIndex) — all
+    // integers. `status` is the message-type byte (matches IRAudio.MidiStatus.*);
+    // `channel` is 0-15; `portIndex` is -1 for the default-port send. Last
+    // registration wins (single observer, like the inbound AudioInputCallback);
+    // multiplex in Lua if you need fan-out. A handler error is logged and
+    // swallowed so one bad Lua callback can't abort the C++ send loop.
+    audio["onMidiSent"] = [](sol::protected_function fn) {
+        IRAudio::setOutboundMidiObserver(
+            [fn = std::move(fn)](const IRComponents::C_MidiMessage &message, int portIndex) {
+                sol::protected_function_result result =
+                    fn(static_cast<lua_Integer>(message.getStatusBits()),
+                       static_cast<lua_Integer>(message.getChannelBits()),
+                       static_cast<lua_Integer>(message.data1_),
+                       static_cast<lua_Integer>(message.data2_),
+                       static_cast<lua_Integer>(portIndex));
+                if (!result.valid()) {
+                    sol::error err = result;
+                    IRE_LOG_ERROR("IRAudio.onMidiSent handler error: {}", err.what());
+                }
+            }
+        );
+    };
+    audio["clearMidiObserver"] = []() { IRAudio::clearOutboundMidiObserver(); };
 }
 
 } // namespace IRScript::detail
