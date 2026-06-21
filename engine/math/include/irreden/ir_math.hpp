@@ -1072,9 +1072,9 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
 ///             = cameraIso + pos3DtoPos2DIso(F)      // independent of yaw
 /// @endcode
 /// i.e. `F` keeps a constant screen position across the full yaw sweep
-/// (rotation in place). Pass `F = isoPixelToPos3D(cameraIso, 0)` to rotate about
-/// the screen-center point, or an explicit point of interest (#1921) to rotate
-/// about it at its true depth.
+/// (rotation in place). See `IRRender::getEffectiveCameraIso` for the
+/// screen-center focus value, or pass an explicit point of interest (#1921)
+/// to rotate about it at its true depth.
 ///
 /// At `visualYaw == 0` the yawed and un-yawed projections coincide, so this
 /// returns @p cameraIso exactly — the no-rotate fast path stays byte-identical
