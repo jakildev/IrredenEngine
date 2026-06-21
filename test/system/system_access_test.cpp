@@ -263,6 +263,13 @@ static_assert(
         IRSystem::detail::TypeList<C_AccessA, C_AccessB>>,
     "FilterTags_t<A, ParallelSafe, B> must resolve to exactly TypeList<A, B>"
 );
+// Combined Exclude<...> + ParallelSafe: both kinds of tag stripped together.
+static_assert(
+    std::is_same_v<
+        Filtered<C_AccessA, Exclude<C_AccessC>, ParallelSafe, C_AccessB>,
+        IRSystem::detail::TypeList<C_AccessA, C_AccessB>>,
+    "FilterTags_t must strip both Exclude and tag types in a combined pack"
+);
 
 TEST(SystemAccessTest, FilterTagsIsNoOpForTagFreePacks) {
     // Runtime mirror of the compile-time proof above so a CI run records a

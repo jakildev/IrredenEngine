@@ -152,27 +152,23 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
             pool.getPositions(),
             pool.getPositionOffsets()
         );
-        if (writtenCount > 0) {
-            // CPU world positions moved in place; evict the chunk world-AABB
-            // cache so the continuous-yaw cull re-derives this set's bounds and
-            // stays a conservative superset of the live voxels (#1439). The
-            // dirty-bool write is an idempotent same-value store (benign under
-            // concurrency).
-            pool.markChunkWorldBoundsDirty();
-        }
         // A GPU-transform-indirected set (#1396) has binding 5 written by the
         // UPDATE_VOXEL_POSITIONS_GPU prepass each frame. We still recompute its
         // CPU global mirror above (a sane translation-only fallback for the
         // STAGE_1 canvas-switch re-seed, and for cull/picking), but we must NOT
         // queue it for the steady-state binding-5 flush — that flush runs after
         // the prepass in the RENDER pipeline and would clobber the GPU positions.
-        if (writtenCount > 0 && voxelSet.gpuTransformSlot_ == IRRender::kVoxelTransformStatic) {
-            // Defer the queuePositionRange emplace_back — it races across sets
-            // that share a pool. The merge into pool.m_pendingPositionRanges
-            // happens serially in endTick.
-            pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())].push_back(
-                PendingRange{&pool, voxelSet.voxelStartIdx_, static_cast<std::size_t>(writtenCount)}
-            );
+        // Both cases (static + GPU-slotted) defer to endTick via pendingByWorker_:
+        // count_ > 0 means "queue + dirty"; count_ == 0 means "dirty only". This
+        // keeps markChunkWorldBoundsDirty() on the main thread and off the hot
+        // concurrent path (eliminates the same-value concurrent store TSan would flag).
+        if (writtenCount > 0) {
+            const bool isStatic = voxelSet.gpuTransformSlot_ == IRRender::kVoxelTransformStatic;
+            pendingByWorker_[static_cast<std::size_t>(IRJob::workerId())].push_back(PendingRange{
+                &pool,
+                isStatic ? voxelSet.voxelStartIdx_ : std::size_t{0},
+                isStatic ? static_cast<std::size_t>(writtenCount) : std::size_t{0}
+            });
         }
         if (voxelSet.ownerEntityId_ == IREntity::kNullEntity && entityId != IREntity::kNullEntity &&
             voxelSet.numVoxels_ > 0) {
@@ -188,12 +184,16 @@ template <> struct System<UPDATE_VOXEL_SET_CHILDREN> {
     }
 
     void endTick() {
-        // Main-thread merge of the deferred queuePositionRange calls staged by
-        // every worker this frame. Order-independent downstream (the flusher
-        // treats m_pendingPositionRanges as a set of contiguous-run uploads).
+        // Main-thread merge. For each staged entry: queue the position range when
+        // count_ > 0 (static voxel set), and always evict the chunk world-AABB
+        // cache (markChunkWorldBoundsDirty). Dirty marking runs here, not in tick,
+        // to keep the bool write off the concurrent path (#1803 TSan note).
         for (std::vector<PendingRange> &worker : pendingByWorker_) {
             for (const PendingRange &range : worker) {
-                range.pool_->queuePositionRange(range.startIdx_, range.count_);
+                if (range.count_ > 0) {
+                    range.pool_->queuePositionRange(range.startIdx_, range.count_);
+                }
+                range.pool_->markChunkWorldBoundsDirty();
             }
         }
     }
