@@ -74,7 +74,7 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(0, 0), 0.0f, "zoom4_scene_reset"},
 };
 
-enum class SceneId { A, B };
+enum class SceneId { SCENE_A, SCENE_B };
 
 int g_autoWarmupFrames = 0;
 int g_failCount = 0;
@@ -128,8 +128,8 @@ int main(int argc, char **argv) {
     // UPDATE pipeline (so UPDATE_VOXEL_SET_CHILDREN uploads voxel positions),
     // then run the loop — auto-screenshot renders the post-reset scene
     // (non-blank) and closes the window.
-    buildScene(SceneId::A);
-    registerSceneUpdatePipeline(SceneId::A);
+    buildScene(SceneId::SCENE_A);
+    registerSceneUpdatePipeline(SceneId::SCENE_A);
 
     if (g_failCount == 0) {
         IR_LOG_INFO("[scene_reset] All {} reset/rebuild cycles PASSED", kCycles);
@@ -198,10 +198,10 @@ void initCommands() {
 // dimensions (so the pool waterline stays flat once warmed) but varied color +
 // position per scene. Returns the number of gameplay entities created.
 int buildScene(SceneId scene) {
-    const IRMath::Color color = (scene == SceneId::A)
+    const IRMath::Color color = (scene == SceneId::SCENE_A)
                                     ? IRMath::Color{220, 90, 70, 255}   // scene A: warm red
                                     : IRMath::Color{70, 130, 220, 255}; // scene B: cool blue
-    const float sceneNudge = (scene == SceneId::A) ? 0.0f : 1.0f;
+    const float sceneNudge = (scene == SceneId::SCENE_A) ? 0.0f : 1.0f;
     for (int i = 0; i < kSetsPerScene; ++i) {
         const IRMath::vec3 pos{static_cast<float>((i - 1) * kSetSpacing) + sceneNudge, 0.0f, 0.0f};
         IREntity::createEntity(C_LocalTransform{pos}, C_VoxelSetNew{kSetDims, color, true});
@@ -218,7 +218,7 @@ void registerSceneUpdatePipeline(SceneId scene) {
         g_systems.lodUpdate_,
         g_systems.propagateTransform_,
     };
-    if (scene == SceneId::A) {
+    if (scene == SceneId::SCENE_A) {
         update.push_back(g_systems.squashStretch_);
     }
     update.push_back(g_systems.updateVoxelSetChildren_);
@@ -247,7 +247,7 @@ void captureBaselines() {
     // live, then reset so the entity baseline counts only the preserve set.
     // After this point no new component types register, so the per-cycle counts
     // are exact.
-    buildScene(SceneId::A);
+    buildScene(SceneId::SCENE_A);
     g_baselineWaterline = poolLiveVoxelCount();
     IREntity::resetGameplay();
     g_baselineEntities = IREntity::getLiveEntityCount();
@@ -261,7 +261,7 @@ void captureBaselines() {
 
 void runResetCycles() {
     for (int cycle = 0; cycle < kCycles; ++cycle) {
-        const SceneId scene = (cycle % 2 == 0) ? SceneId::A : SceneId::B;
+        const SceneId scene = (cycle % 2 == 0) ? SceneId::SCENE_A : SceneId::SCENE_B;
 
         const int created = buildScene(scene);
         registerSceneUpdatePipeline(scene);
@@ -274,7 +274,7 @@ void runResetCycles() {
         const IREntity::EntityId liveEnt = IREntity::getLiveEntityCount();
 
         // (a) build happened: gameplay entities added on top of the preserve baseline.
-        if (liveEnt != g_baselineEntities + created) {
+        if (liveEnt != g_baselineEntities + static_cast<IREntity::EntityId>(created)) {
             IR_LOG_ERROR(
                 "[scene_reset] FAIL cycle {}: live entities {} != baseline {} + scene {}",
                 cycle,
@@ -328,7 +328,7 @@ void runResetCycles() {
         IR_LOG_INFO(
             "[scene_reset] cycle {} ({}): liveEnt={} liveVox={} postReset={}",
             cycle,
-            scene == SceneId::A ? "A" : "B",
+            scene == SceneId::SCENE_A ? "A" : "B",
             liveEnt,
             liveVox,
             postReset
