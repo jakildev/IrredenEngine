@@ -27,6 +27,7 @@ GLsizei glTypeSize(GLenum type) {
 
 GLsizei glFormatComponents(GLenum format) {
     switch (format) {
+        case GL_DEPTH_COMPONENT:
         case GL_RED:
         case GL_RED_INTEGER:
             return 1;
