@@ -1,0 +1,83 @@
+# Plan: retire the manual scatter dilation margin/miter/yield tower + full validation (C3)
+
+- **Issue:** #1939
+- **Model:** opus
+- **Date:** 2026-06-21
+- **Epic:** #1933 — see `~/.fleet/plans/issue-1933.md` for full context (incl. the cross-system audit of every retired symbol)
+- **Blocked by:** #1938, #1922
+
+## Scope
+
+With analytic coverage authoritative on both backends (#1937 GL, #1938 Metal),
+retire the now-redundant conservative-dilation margin/miter/yield heuristics
+from the per-axis scatter pass, then run the full temporal-stability + solidity
+validation and update the docs.
+
+## Verified current state
+
+The heuristics to retire (all shader-side `const`/`constant`; **no CPU-side
+uniform plumbing** — `grep` over `engine/**/*.{hpp,cpp}` finds none):
+
+| Symbol | Line (glsl / metal) | Role (post-#1937/#1938: redundant) |
+|---|---|---|
+| `scatterConservativeDilation()` | 768 / 678 | per-axis `0.5·|n|` + miter growth |
+| `kScatterDilateMarginPx` | 691 / 636 | fixed camera-path margin floor |
+| `kScatterDetachedPitchFraction` | 738 / — | detached pitch-proportional floor |
+| `kScatterMiterLimit` | 723 / 654 | acute-corner blow-out cap |
+| `kScatterMarginDepthBiasKey` | 701 / — | margin tie-break depth bias |
+| `kScatterMarginYieldGradScale` | 717 / — | margin yield gradient |
+
+Consumers: `v_peraxis_scatter.glsl:211,217-218`, `f_peraxis_scatter.glsl`,
+`metal/peraxis_scatter.metal:194,198-200`, and the definitions in
+`ir_iso_common.{glsl,metal}`. No other caller.
+
+## Affected files
+
+- `engine/render/src/shaders/ir_iso_common.glsl` + `…/metal/ir_iso_common.metal`
+  — remove/reduce the six symbols above (in lockstep across both backends).
+- `engine/render/src/shaders/v_peraxis_scatter.glsl` +
+  `…/metal/peraxis_scatter.metal` — drop the per-axis miter call; keep only the
+  minimal fixed visit-bound from #1937.
+- `engine/render/src/shaders/f_peraxis_scatter.glsl` +
+  `…/metal/peraxis_scatter.metal` — remove the margin-vs-interior classification
+  + depth-yield bias (every surviving fragment is now interior).
+- `engine/render/CLAUDE.md` — rewrite the convex-corner drift note (#1917): the
+  drift is fixed; describe the analytic coverage model.
+
+## Approach
+
+1. Confirm (via #1937/#1938 results) that the margin depth-bias and yield-gradient
+   are truly dead — no same-plane tie or ridge-bleed reappears with the margin
+   reduced to the visit-bound. If one does, the analytic coverage isn't fully
+   authoritative → fix coverage, do NOT re-add the bias.
+2. Remove the symbols from BOTH backends together; reduce
+   `scatterConservativeDilation` to the minimal visit-bound (or fold it inline).
+3. `grep` `engine/` clean for every retired `kScatter*` name.
+4. Update `engine/render/CLAUDE.md`.
+
+## Acceptance criteria
+
+- **Temporal stability** under the #1922 jitter harness on both backends (the
+  core bar; needs #1922 on master).
+- Coarse-cube near-cardinal: crisp corners + solid faces with the margin tower
+  removed (regression-free vs #1938).
+- `perf-grid-rotate-sweep` (epic #1881 solidity gate) passes; cardinal
+  byte-identical; both backends at parity.
+- No dangling references to retired symbols (`grep` clean).
+
+## Gotchas
+
+- Don't half-retire — the constants live in both `ir_iso_common.glsl` and
+  `ir_iso_common.metal`; remove from both in lockstep.
+- The depth-bias (#1457) + yield-gradient (#1883) exist because the margin
+  over-fills; removing them is correct ONLY if analytic coverage left no
+  over-fill. Validate before removing.
+- Keep scatter depth co-sorted with the SDF #1370 metric.
+- `ir_iso_common` shared with #1920 — serialize per #1881's one-at-a-time rule.
+
+## Verification
+
+- Both backends: `fleet-build`, run the affected demos with `--auto-screenshot`.
+- The #1922 jitter harness (once on master) — temporal-stability gate.
+- `scripts/dev/perf-grid-rotate-sweep` — solidity/silhouette.
+- `render-verify` — cardinal byte-identity; `backend-parity` — GL↔Metal.
