@@ -98,10 +98,31 @@ place all new content outside the framing of every existing `so3_*` /
    screen-locked overlay — a screen-locked label renders at a fixed screen
    position in *every* shot, including `so3_*`, and would break the canary).
    World-anchored labels appear only when their region is in frame, so they are
-   captured solely by the new compare shots. Position via the iso-projection
-   helpers (`engine/math/CLAUDE.md` §"Isometric projection") from each entity's
-   world position to the canvas trixel coordinate; do not inline the iso
-   equations. Labels: `"GRID spin"`, `"world Z-yaw"`, `"detached SO(3)"`.
+   captured solely by the new compare shots. Labels: `"GRID spin"`,
+   `"world Z-yaw"`, `"detached SO(3)"`.
+
+   **This must be a per-frame draw, not a one-time `initEntities()` stamp.** The
+   main trixel buffer is rebuilt every frame (`VOXEL_TO_TRIXEL_STAGE_1`, and the
+   canvas is cleared by the `TEXT_TO_TRIXEL` stage), so a single `renderText`
+   call in `initEntities()` is wiped on the first render pass and never appears.
+   Register the label draw as a lightweight tick in the **RENDER pipeline, after
+   the canvas-clear / voxel stage** — the in-repo model is the voxel_editor's
+   status-label tick at `creations/editors/voxel_editor/main.cpp:1149` ("Runs in
+   the RENDER pipeline after TEXT_TO_TRIXEL (canvas clear) so …"; it re-renders
+   its text once per frame). (The MIDI monitor's `midi_monitor_draw.cpp` is the
+   same pattern but lives in a private creation, not this repo — use the
+   voxel_editor citation as the authoritative, verifiable precedent.)
+
+   **Recompute the label trixel position every frame, not once at spawn.** The
+   projection `IRMath::pos3DtoPos2DIsoYawed(worldPos, visualYaw)` depends on the
+   **current** camera yaw, which advances each frame under `SYSTEM_AUTO_YAW_ROTATE`;
+   a position computed once would drift out from under the (moving) entity after
+   the first yaw step. Project from each entity's fixed world position to the
+   canvas trixel coordinate **inside the per-frame draw tick**, reading the live
+   yaw. Use the named iso-projection helpers (`engine/math/CLAUDE.md`
+   §"Isometric projection"); do not inline the iso equations. Read the entity
+   world positions captured at spawn (cache them in the tick's closure /
+   capture list) rather than per-entity `getComponent` in the tick — see Gotchas.
 
 4. **Append new shots** to `g_allShots` after the existing appended block
    (after ~892), so existing shot indices are untouched:
@@ -178,10 +199,15 @@ place all new content outside the framing of every existing `so3_*` /
   silently misaligns.
 - **IRMath only** for any vector / iso-projection math (no `glm::`/`std::`); use
   the named iso helpers, never inline the projection equations.
-- **No `getComponent` in tick paths** — the spawn block is one-time init, so
-  this is low-risk, but follow the standard ECS discipline if any per-frame
-  label-position update is added (prefer computing label position once at spawn
-  if the layout is static).
+- **The label draw IS a per-frame tick** (Approach step 3) — the canvas is
+  cleared and rebuilt each frame, so the labels can't be stamped once at init.
+  Inside that per-frame tick, do **not** call per-entity `getComponent`: the
+  comparison entities' world positions are fixed at spawn, so capture them once
+  (in the tick's closure / capture list) and re-project them each frame with
+  the live yaw. The label *position* is NOT static even though the entities are
+  — `pos3DtoPos2DIsoYawed` depends on the current camera yaw, so the projected
+  trixel coordinate must be recomputed every frame; only the *world* position
+  is cached.
 - `revoxelize_solids` (zoom 1, detached) IS in the manifest and passes — so a
   moderate-zoom detached compare shot may also be giftable; let the empirical
   gate decide, don't assume.
