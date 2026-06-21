@@ -48,34 +48,27 @@ vec2 getEffectiveCameraIso() {
     }
     const float visualYaw = IRPrefab::Camera::getYaw();
     if (getRenderManager().hasRotationPivotFocus()) {
-        // CAMERA_CENTER with an explicit point of interest `F` (#1921): pivot
-        // Z-yaw about `F` at its TRUE depth, not the z=0 world point under screen
-        // center. Producers place content on the canvas at `iso_canvas(W) =
-        // isoYawed(W, yaw)` and the composite ADDS this offset, so a voxel's
-        // screen position is `isoYawed(W, yaw) + offset`. To keep `F` fixed on
-        // screen across a yaw sweep we cancel its yaw-induced canvas drift:
-        // `offset = cameraIso - (isoYawed(F, yaw) - iso(F))`, giving the constant
-        // `screen(F) = iso(F) + cameraIso`. Content at `F` then rotates in place
-        // (no off-center arc), including content at z > 0. At `visualYaw == 0`
-        // the drift term is zero, so `offset == cameraIso` and the cardinal fast
-        // path stays byte-identical (ORIGIN mode already returned above).
-        const vec3 focusWorld = getRenderManager().getRotationPivotFocus();
-        return cameraIso - IRMath::pos3DtoPos2DIsoYawed(focusWorld, visualYaw) +
-               IRMath::pos3DtoPos2DIso(focusWorld);
+        // CAMERA_CENTER with an explicit point of interest (#1921): pivot Z-yaw
+        // about the focus at its TRUE depth so it rotates in place. The
+        // drift-cancel offset (`IRMath::cameraYawPivotOffset`) keeps the focus at
+        // a constant on-screen position across the yaw sweep.
+        return IRMath::cameraYawPivotOffset(
+            cameraIso, getRenderManager().getRotationPivotFocus(), visualYaw);
     }
-    // CAMERA_CENTER default (legacy #1352): offset by the yawed projection of the
-    // world point under screen center on the z = 0 plane (`P`, the canonical
-    // iso-ray representative since `pos3DtoPos2DIso(isoPixelToPos3D(iso, 0)) ==
-    // iso` holds exactly). At `visualYaw == 0` this collapses to `cameraIso`
-    // exactly, so the no-rotate fast path stays byte-identical to ORIGIN mode.
-    // NOTE: this carries the opposite drift sign to the focus branch above — it
-    // adds rather than cancels `P`'s yaw-induced canvas drift, so a panned-and-
-    // rotated camera over-corrects instead of pinning `P` (a latent #1352
-    // defect, tracked in #1926). Kept byte-identical here per the issue's fast-
-    // path requirement; set an explicit focus for correct point-of-interest
-    // pinning (including at z > 0).
-    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(cameraIso, 0.0f);
-    return IRMath::pos3DtoPos2DIsoYawed(cameraFocusWorld, visualYaw);
+    // CAMERA_CENTER default — rotate about the EXACT center of the screen. The
+    // pivot is the z = 0 world point at viewport center, whose iso is the
+    // `viewCenter` of IRMath::visibleIsoViewport (`canvasSize/2 -
+    // trixelOriginOffsetZ1(canvasSize) - cameraIso`). cameraYawPivotOffset then
+    // holds the viewport center fixed across the yaw sweep — screen(F) =
+    // canvasSize/2 - canvasOriginOffset, a constant. At visualYaw == 0 it
+    // returns cameraIso, so the no-rotate fast path stays byte-identical to
+    // ORIGIN mode. (The legacy default used isoPixelToPos3D(cameraIso, 0), the
+    // point mirrored across — and ~1 trixel off — the true screen center.)
+    const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
+    const vec2 viewCenterIso = vec2(canvasSize) * 0.5f -
+                               vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
+    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(viewCenterIso, 0.0f);
+    return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
 }
 vec2 getCameraZoom() {
     return getRenderManager().getCameraZoom();
@@ -149,8 +142,8 @@ vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
     const float rasterYaw = IRPrefab::Camera::getRasterYaw();
     const vec2 canvasIso = mouseCanvasIso() - IRRender::getEffectiveCameraIso();
     const vec3 rotatedWorld = IRMath::isoPixelToPos3D(
-        static_cast<int>(glm::floor(canvasIso.x)),
-        static_cast<int>(glm::floor(canvasIso.y)),
+        static_cast<int>(IRMath::floor(canvasIso.x)),
+        static_cast<int>(IRMath::floor(canvasIso.y)),
         canvasIsoDepth
     );
     return IRMath::rotateCardinalZInv(rotatedWorld, IRMath::rasterYawCardinalIndex(rasterYaw));
@@ -167,7 +160,7 @@ ivec2 mouseTrixelPositionWorld() {
 
     const vec2 triIndex = IRMath::pos2DIsoToTriangleIndex(scaledMousePos, shaderMod);
     // Use floor() not truncation: truncation gives 0 for -0.5..0, breaking negative x coords
-    return ivec2(glm::floor(triIndex + vec2(1, 1)));
+    return ivec2(IRMath::floor(triIndex + vec2(1, 1)));
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {
