@@ -52,12 +52,14 @@
 // Prefab helpers
 #include <irreden/render/camera.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/depth_probe.hpp>
 #include <irreden/render/entity_canvas.hpp>
 
 // Command suites
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <string>
@@ -149,6 +151,15 @@ struct CanvasStressSettings {
     // deferred to the structural-gate work (T-2/T-3). NONE leaves the live
     // pipeline untouched, so a flagless run is byte-identical.
     IRRender::DebugOverlayMode debugOverlay_ = IRRender::DebugOverlayMode::NONE;
+    // `--depth-probe X,Y` (#1910): each frame, read back and log the real
+    // composite depth-test value at main-framebuffer texture pixel (X,Y) —
+    // top-left origin, in framebuffer-texture space (the size logged at canvas
+    // creation), not window/screenshot pixels. Off by default; when off no probe
+    // system is registered, so a flagless run is byte-identical. Used to
+    // root-cause the #1884 detached-vs-floor depth crossing in this demo (the
+    // floating canary cube clips behind the SDF floor at high zoom).
+    bool depthProbeSet_ = false;
+    ivec2 depthProbePixel_{0, 0};
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -697,6 +708,19 @@ void parseArgs(int argc, char **argv) {
         } else if (std::strcmp(argv[i], "--debug-overlay") == 0 && i + 1 < argc) {
             g_settings.debugOverlay_ = IRRender::debugOverlayModeFromString(argv[i + 1]);
             ++i;
+        } else if (std::strcmp(argv[i], "--depth-probe") == 0 && i + 1 < argc) {
+            int px = 0;
+            int py = 0;
+            if (std::sscanf(argv[i + 1], "%d,%d", &px, &py) == 2) {
+                g_settings.depthProbeSet_ = true;
+                g_settings.depthProbePixel_ = ivec2(px, py);
+            } else {
+                IR_LOG_WARN(
+                    "--depth-probe: expected X,Y (e.g. 960,540); ignoring '{}'",
+                    argv[i + 1]
+                );
+            }
+            ++i;
         }
     }
     if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
@@ -827,6 +851,20 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
+
+    // #1910 composite-depth probe — registered only with --depth-probe so a
+    // flagless run adds no system. Runs last (after the framebuffer composite is
+    // complete) and logs the depth-test winner at the requested pixel each frame.
+    if (g_settings.depthProbeSet_) {
+        const ivec2 probePixel = g_settings.depthProbePixel_;
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "DepthProbe",
+                [](C_Camera &) {},
+                [probePixel]() { IRPrefab::DepthProbe::logCompositeDepth(probePixel); }
+            )
+        );
+    }
 
     if (g_autoWarmupFrames > 0) {
         int settleFrames = 60;

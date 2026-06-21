@@ -34,6 +34,7 @@
 #include <irreden/render/systems/system_build_distance_hiz.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/depth_probe.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
@@ -56,6 +57,7 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <numbers>
@@ -128,6 +130,13 @@ struct CliOverrides {
     // Accepted and recorded for manifest/cell-ID purposes; ignored until T-221.
     int workerThreads_ = 0;
     std::string configPreset_; // path from --config-preset, empty if absent
+    // `--depth-probe X,Y` (#1910): per-frame composite-depth readback + log at
+    // main-framebuffer texture pixel (X,Y), top-left origin (framebuffer-texture
+    // space, not window/screenshot pixels). Off by default → no probe system
+    // registered → flagless run byte-identical. Used to root-cause the #1884
+    // per-axis Y-over-X face-stripe depth crossing this demo exercises.
+    bool depthProbeSet_ = false;
+    ivec2 depthProbePixel_{0, 0};
 };
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
@@ -517,6 +526,19 @@ void parseArgs(int argc, char **argv) {
                 g_cliOverrides.workerThreads_ = wt;
             }
             ++i;
+        } else if (std::strcmp(argv[i], "--depth-probe") == 0 && i + 1 < argc) {
+            int px = 0;
+            int py = 0;
+            if (std::sscanf(argv[i + 1], "%d,%d", &px, &py) == 2) {
+                g_cliOverrides.depthProbeSet_ = true;
+                g_cliOverrides.depthProbePixel_ = ivec2(px, py);
+            } else {
+                IR_LOG_WARN(
+                    "--depth-probe: expected X,Y (e.g. 960,540); ignoring '{}'",
+                    argv[i + 1]
+                );
+            }
+            ++i;
         }
     }
 }
@@ -841,6 +863,20 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
         }
     );
+
+    // #1910 composite-depth probe — registered only with --depth-probe so a
+    // flagless run adds no system. Runs after the framebuffer composite and logs
+    // the depth-test winner at the requested pixel each frame.
+    if (g_cliOverrides.depthProbeSet_) {
+        const ivec2 probePixel = g_cliOverrides.depthProbePixel_;
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Name>(
+                "DepthProbe",
+                [](C_Name &) {},
+                [probePixel]() { IRPrefab::DepthProbe::logCompositeDepth(probePixel); }
+            )
+        );
+    }
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(

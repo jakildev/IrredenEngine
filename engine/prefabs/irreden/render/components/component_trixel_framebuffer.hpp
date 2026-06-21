@@ -45,6 +45,11 @@ struct C_TrixelCanvasFramebuffer {
         framebuffer_.second->getTextureDepth().bind(bindingDepth);
     }
 
+    // The composite depth attachment, for CPU readback (the #1910 depth probe).
+    const Texture2D &getTextureDepth() const {
+        return framebuffer_.second->getTextureDepth();
+    }
+
     const ivec2 getResolution() const {
         return framebuffer_.second->getResolution();
     }

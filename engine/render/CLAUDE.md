@@ -241,6 +241,20 @@ The output renders drifted pixels solid red against a desaturated
 baseline. Useful both for the agent's evaluation step and for
 reviewer-facing PR-body screenshots.
 
+For depth-ordering bugs (a near surface clipping behind a far one)
+where you need the **exact stored composite depth** rather than a
+visual cue, use the `--depth-probe X,Y` flag (#1910;
+`canvas_stress` + `perf_grid`). It reads back and logs the real
+depth-test value at main-framebuffer texture pixel (X,Y) each frame —
+the GL_LESS winner across every render path, since gather, per-axis
+scatter, and the detached-canvas composite all write `gl_FragDepth`
+into the one depth attachment — decoded to shared trixel-distance
+units. The probe lives in `IRPrefab::DepthProbe::` (a prefab-scoped
+Pattern-B namespace over the `Texture2D` /
+`PixelDataFormat::DEPTH_COMPONENT` readback primitive). Pure readback:
+no shader or pipeline change, so a flagless run is byte-identical. Use
+it when a screenshot can't disambiguate which surface won a pixel.
+
 For changes that touch only one graphics backend (GLSL without MSL
 counterpart, or vice versa), follow up with the **`backend-parity`**
 skill on the lagging-side host — the rule is in [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
