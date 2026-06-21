@@ -204,6 +204,21 @@ float g_spinYawDegPerSec = 0.0f;
 // which hits every cardinal (0/90/180/270°) and every rebracket (45/135/...).
 int g_spinYawShotCount = 24;
 
+// --spin-shape <name> (#1922): spawn a single shape centred at the origin (so
+// camera Z-yaw-about-origin keeps it screen-centred) instead of the full
+// side-by-side fixture scene — the per-shape isolation the temporal-jitter
+// sweep harness (scripts/dev/shape-rotate-jitter-sweep) needs. Empty = full
+// scene (default, byte-identical). --spin-shape-voxel renders the voxel-pool
+// twin instead of the SDF solver, so both render paths can be scored.
+std::string g_spinShapeType;
+bool g_spinShapeVoxel = false;
+// Centred ROI crop attached to every --spin-shape sweep shot so the jitter
+// metric decodes a small PNG per frame — a full-framebuffer 100+-frame sweep
+// is otherwise minutes of pure-Python PNG decode. Sized from the live
+// framebuffer at sweep-build time; one shared crop suffices because the single
+// shape stays screen-centred under yaw-about-origin.
+IRVideo::RoiCrop g_spinShapeCrop{};
+
 // Dynamic shot table populated at startup when --spin-yaw + --auto-screenshot
 // are both set. Lives at namespace scope so the pointer handed to
 // IRVideo::AutoScreenshotConfig outlives the game loop. The label strings
@@ -308,6 +323,13 @@ int main(int argc, char **argv) {
                     ++i;
                 }
             }
+        } else if (std::strcmp(argv[i], "--spin-shape") == 0) {
+            if (i + 1 < argc) {
+                g_spinShapeType = argv[i + 1];
+                ++i;
+            }
+        } else if (std::strcmp(argv[i], "--spin-shape-voxel") == 0) {
+            g_spinShapeVoxel = true;
         }
     }
 
@@ -568,11 +590,27 @@ void initSystems() {
             // g_spinYawShots.
             g_spinYawShotLabels.reserve(n);
             g_spinYawShots.reserve(n);
+            // In --spin-shape mode the single shape is screen-centred under
+            // yaw-about-origin, so attach a centred ROI crop sized to half the
+            // shorter framebuffer edge: the jitter sweep then scores small
+            // per-frame PNGs instead of the full retina framebuffer.
+            const bool useSpinShapeCrop = !g_spinShapeType.empty();
+            if (useSpinShapeCrop) {
+                ivec2 fb{0, 0};
+                IRWindow::getFramebufferSize(fb);
+                const int side = IRMath::max(64, IRMath::min(fb.x, fb.y) / 2);
+                g_spinShapeCrop = {(fb.x - side) / 2, (fb.y - side) / 2, side, side, "center"};
+            }
             for (int i = 0; i < n; ++i) {
                 const float yaw = (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
                 auto &label = g_spinYawShotLabels.emplace_back();
                 std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
-                g_spinYawShots.push_back({sweepZoom, vec2(0, 0), yaw, label.data()});
+                IRVideo::AutoScreenshotShot shot{sweepZoom, vec2(0, 0), yaw, label.data()};
+                if (useSpinShapeCrop) {
+                    shot.crops_ = &g_spinShapeCrop;
+                    shot.numCrops_ = 1;
+                }
+                g_spinYawShots.push_back(shot);
             }
             cfg.shots_ = g_spinYawShots.data();
             cfg.numShots_ = static_cast<int>(g_spinYawShots.size());
@@ -925,6 +963,56 @@ void initPivotFocusScene() {
     }
 }
 
+// Map a --spin-shape token to its ShapeType. Tokens match the lower-cased
+// fixture shapes below; returns false (leaving `out` untouched) on an unknown
+// name so the caller can diagnose it.
+bool spinShapeTypeFromName(const std::string &name, IRRender::ShapeType &out) {
+    struct SpinShapeName {
+        const char *token_;
+        IRRender::ShapeType type_;
+    };
+    static const SpinShapeName kSpinShapeNames[] = {
+        {"box", IRRender::ShapeType::BOX},
+        {"sphere", IRRender::ShapeType::SPHERE},
+        {"cylinder", IRRender::ShapeType::CYLINDER},
+        {"ellipsoid", IRRender::ShapeType::ELLIPSOID},
+        {"cone", IRRender::ShapeType::CONE},
+        {"torus", IRRender::ShapeType::TORUS},
+        {"wedge", IRRender::ShapeType::WEDGE},
+        {"curved_panel", IRRender::ShapeType::CURVED_PANEL},
+    };
+    for (const auto &entry : kSpinShapeNames) {
+        if (name == entry.token_) {
+            out = entry.type_;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Canvas lighting setup shared by the full fixture scene and the --spin-shape
+// single-shape scene: the main (voxel-pool) canvas needs the AO / sun-shadow /
+// light-volume textures + C_TrixelCanvasRenderBehavior, or the lighting
+// systems' archetype filter skips it and the shapes render unlit.
+void setupCanvasLighting() {
+    EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+    IR_LOG_INFO("Active canvas entity: {}", mainCanvas);
+
+    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
+
+    // The voxel-pool canvas prefab doesn't include this component, so the
+    // AO / sun-shadow / light-volume / lighting systems' archetype filter
+    // wouldn't otherwise match the main canvas and they'd silently skip it.
+    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
+
+    // Default sun direction: high and slightly off-axis so every demo
+    // shape casts a visible shadow without any further setup.
+    IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+}
+
 void initEntities() {
     if (g_pivotFocusDemo) {
         IR_LOG_INFO("--- Camera pivot-focus demo scene (#1921) ---");
@@ -994,6 +1082,48 @@ void initEntities() {
          Color{220, 100, 180, 255}},
     };
     constexpr int kNumCases = sizeof(cases) / sizeof(cases[0]);
+
+    // --spin-shape <name> (#1922): replace the side-by-side fixture scene with
+    // ONE shape centred at the origin. Under camera Z-yaw-about-origin the shape
+    // stays screen-centred, so the whole frame is that shape — clean per-shape
+    // isolation for the temporal-jitter sweep. No floor / point light: a black
+    // field maximises the metric's interior mask. The flag is absent in every
+    // normal run, so the fixture scene below stays byte-identical.
+    if (!g_spinShapeType.empty()) {
+        IRRender::ShapeType want;
+        if (spinShapeTypeFromName(g_spinShapeType, want)) {
+            for (const auto &tc : cases) {
+                if (tc.type_ != want) {
+                    continue;
+                }
+                if (g_spinShapeVoxel) {
+                    createVoxelPoolShape(
+                        vec3(0.0f, 0.0f, 0.0f),
+                        tc.type_,
+                        tc.params_,
+                        tc.color_,
+                        tc.halfExtent_
+                    );
+                } else {
+                    createSDFShape(vec3(0.0f, 0.0f, 0.0f), tc.type_, tc.params_, tc.color_);
+                }
+                IR_LOG_INFO(
+                    "Spin-shape single fixture: {} ({})",
+                    tc.label_,
+                    g_spinShapeVoxel ? "voxel-pool" : "SDF"
+                );
+                break;
+            }
+        } else {
+            IR_LOG_ERROR(
+                "--spin-shape: unknown shape '{}' "
+                "(box|sphere|cylinder|ellipsoid|cone|torus|wedge|curved_panel)",
+                g_spinShapeType
+            );
+        }
+        setupCanvasLighting();
+        return;
+    }
 
     for (int i = 0; i < kNumCases; ++i) {
         auto &tc = cases[i];
@@ -1150,22 +1280,7 @@ void initEntities() {
     );
     IREntity::setComponent(floorEntity, C_LightBlocker{false, false, 0.0f});
 
-    EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-    IR_LOG_INFO("Active canvas entity: {}", mainCanvas);
-
-    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
-    IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
-    IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
-    IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
-
-    // The voxel-pool canvas prefab doesn't include this component, so the
-    // AO / sun-shadow / light-volume / lighting systems' archetype filter
-    // wouldn't otherwise match the main canvas and they'd silently skip it.
-    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-
-    // Default sun direction: high and slightly off-axis so every demo
-    // shape casts a visible shadow without any further setup.
-    IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+    setupCanvasLighting();
 
     // Emissive point light placed between the shape rows so its colored
     // falloff is visible across both the voxel-pool and SDF copies of the
