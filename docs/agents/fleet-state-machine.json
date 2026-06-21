@@ -78,7 +78,13 @@
       "name": "fleet:needs-plan",
       "scope": "issue",
       "color": "fbca04",
-      "description": "Needs an architect plan before a worker can pick it up"
+      "description": "Needs a plan (## Plan issue comment) before a worker can pick it up"
+    },
+    {
+      "name": "fleet:plan-review",
+      "scope": "issue",
+      "color": "fbca04",
+      "description": "Planner posted the ## Plan comment; plan reviewer (architect/opus) vets it before queueing. Ingest skips it; sound→remove (queues), unsound→back to fleet:needs-plan"
     },
     {
       "name": "fleet:in-progress",
@@ -279,6 +285,12 @@
       "description": "Human took ownership of this issue and de-queued it; fleet-queue-ingest never re-stamps fleet:queued; reconcile flags fleet:queued+human:owned"
     },
     {
+      "name": "human:no-plan",
+      "scope": "issue",
+      "color": "5319e7",
+      "description": "Human opt-out at filing: skip planning, queue directly with no ## Plan comment / plan file. Also honored as a [no-plan] title/body tag; a fleet agent never applies it"
+    },
+    {
       "name": "human:wip",
       "scope": "pr",
       "color": "5319e7",
@@ -434,6 +446,40 @@
         "fleet:design-proposed"
       ],
       "note": "Epic-steward parks a design-blocked epic-child PR whose question(s) are novel; they ride an aggregated STEWARD PROPOSAL on the umbrella. epic-steward-protocol.md flow (a)."
+    },
+    {
+      "name": "plan-propose",
+      "scope": "issue",
+      "owner": "planner",
+      "remove": [
+        "fleet:needs-plan"
+      ],
+      "add": [
+        "fleet:plan-review"
+      ],
+      "note": "Planner posted the ## Plan comment and hands it to review. PLANNING-PROTOCOL.md step 3. Release the planning-claim lock after."
+    },
+    {
+      "name": "plan-approve",
+      "scope": "issue",
+      "owner": "plan-reviewer",
+      "remove": [
+        "fleet:plan-review"
+      ],
+      "add": [],
+      "note": "Plan reviewer judged the ## Plan comment sound. Removing the label makes the issue queue-ready; the scout stamps fleet:queued on its next pass. PLANNING-PROTOCOL.md step 4."
+    },
+    {
+      "name": "plan-reject",
+      "scope": "issue",
+      "owner": "plan-reviewer",
+      "remove": [
+        "fleet:plan-review"
+      ],
+      "add": [
+        "fleet:needs-plan"
+      ],
+      "note": "Plan reviewer found gaps; send back for a revised ## Plan comment with a comment naming them. PLANNING-PROTOCOL.md step 4."
     },
     {
       "name": "smoke-verify-linux",

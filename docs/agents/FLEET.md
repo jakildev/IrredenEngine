@@ -120,6 +120,14 @@ coordination mechanisms prevent duplicate work:
   [`docs/design/fleet-queue-stacking.md`](../design/fleet-queue-stacking.md)
   for the full model (claimability rule, stacking lifecycle, per-repo merger
   requirement).
+- **Planning gate:** ingest only queues an issue once it has a plan — a
+  `## Plan` issue comment (posted by an opus+ planner via
+  [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)) — or an explicit opt-out
+  (`human:no-plan`, a `[no-plan]` tag, or an "investigation spike"). An
+  unplanned `human:approved` issue is bounced to `fleet:needs-plan`; while its
+  plan is in review it carries `fleet:plan-review` and ingest skips it. There is
+  **no separate plan-doc PR** — the plan rides in the implementation PR as its
+  first commit, so plan + code land in one merge.
 
 **Review claiming:**
 - Review claims use `fleet:reviewing-<host>-<agent>` labels on PRs via
@@ -290,13 +298,15 @@ the question to the architect and resume cleanly:
    `fleet:design-blocked` (keeping `fleet:wip`) + commits whatever
    in-progress work is on the branch + `start-next-task`s away to
    pick a different unblocked issue next iteration.
-2. Architect reads the comment, updates the canonical plan at
-   `~/.fleet/plans/issue-<N>.md`, posts a PR comment with concrete
+2. Architect reads the comment, posts a PR comment with concrete
    decisions, swaps `fleet:design-blocked` → `fleet:design-unblocked`.
+   (The plan file `.fleet/plans/issue-<N>.md` already rides on the PR
+   branch; the resuming worker folds the direction into it — the
+   architect doesn't push to the worker's branch.)
 3. Worker (any worker — not necessarily the original one) sees the
    `fleet:design-unblocked` PR via its feedback-PR loop on the next
-   iteration, reads the architect's comment + the updated plan,
-   addresses the direction, removes the label, pushes via
+   iteration, reads the architect's comment, updates the branch's plan
+   file, addresses the direction, removes the label, pushes via
    `commit-and-push`. PR re-enters normal review flow.
 
 **Epic children route steward-first.** When the blocked PR's backing
