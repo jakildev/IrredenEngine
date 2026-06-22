@@ -109,7 +109,7 @@ FetchContent_Declare(
 # as dylibs that reference the ma_* core symbols without linking them; that
 # links on Linux (undefined symbols resolved at load) but fails on macOS
 # arm64 (the linker requires every symbol resolved). Skip building them.
-set(MINIAUDIO_NO_EXTRA_NODES ON)
+set(MINIAUDIO_NO_EXTRA_NODES ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(miniaudio)
 target_include_directories(IrredenEngineAudio PRIVATE ${miniaudio_SOURCE_DIR})
 
