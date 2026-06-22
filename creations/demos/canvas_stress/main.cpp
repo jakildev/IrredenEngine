@@ -54,6 +54,7 @@
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/depth_probe.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/render/trixel_text.hpp>
 
 // Command suites
 #include <irreden/common/command_suite_capture.hpp>
@@ -123,7 +124,10 @@ struct CanvasStressSettings {
     bool screenLockDetached_ = false;
     // #1721 diagnosis harness. `--only <group>[,<group>...]` spawns only the
     // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
-    // 0 means no filter (default run, byte-identical). The sweep flags replace
+    // 0 means no filter (default run, byte-identical). The unified-rotation
+    // comparison region (#1374) is the one OPT-IN group: "compare" spawns it
+    // (e.g. `--only compare` for the isolated labeled side-by-side) and it never
+    // appears in the default run. The sweep flags replace
     // the base auto-screenshot suite with a focused capture run and force
     // --no-auto-rotate so the swept variable is the only one moving:
     // `--sweep-yaw <from> <to> <n>` interpolates camera yaw (radians) across n
@@ -178,6 +182,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupReVox = 1u << 3,
     kGroupOrbit = 1u << 4,
     kGroupFloor = 1u << 5,
+    kGroupCompare = 1u << 6,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -235,6 +240,36 @@ constexpr vec3 kReVoxGroundedWorld{40.0f, 24.0f, -6.0f};
 // smooth true-3D tumble, not a strobe.
 constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
 
+// ── Unified rotation-harness comparison region (#1374) ──────────────────────
+// One labeled entity per rotation technique in a screen-horizontal row, all
+// driven by the shared camera Z-yaw. OPT-IN (`--only compare`) — every manifest
+// shot renders the whole world pool, so world content added here would break the
+// byte-identical detached-canvas canary (full byte-neutrality rationale in PR
+// #1943 / issue #1374). Geometry: world (D,D,0) projects straight down in iso
+// (iso.y = -2D); stepping (-s,+s,0) per cell spreads them horizontally (iso.x =
+// 2s). Camera stays at (0,0) — detached canvases cull on a pan (#1555).
+constexpr float kCompareDepth = 24.0f;  // iso.y = -48; row sits just below center
+constexpr float kCompareSpread = 30.0f; // iso.x step = +-60 between cell centers
+constexpr vec3 kCompareCenterWorld{kCompareDepth, kCompareDepth, 0.0f};
+constexpr vec3 kCompareRowStep{-kCompareSpread, kCompareSpread, 0.0f};
+constexpr ivec3 kCompareCubeSize{12, 12, 12};
+constexpr float kCompareZoom = 1.4f; // tight framing — isolated, no clutter
+// Label offset below each cell along canvas-Y, scaled per-frame by the live
+// subdivision factor so it tracks cell size across zoom. Tuned empirically.
+constexpr int kCompareLabelBelowCells = 16;
+// 0 = GRID-attached spin, 1 = world-Z-yaw GRID (static), 2 = DETACHED SO(3).
+// Distinct hues so the three techniques read apart even before the labels.
+constexpr Color kCompareColors[3]{
+    {235, 130, 90, 255},
+    {110, 200, 240, 255},
+    {180, 235, 110, 255},
+};
+constexpr const char *kCompareLabels[3]{"GRID spin", "world Z-yaw", "detached SO(3)"};
+// World position of comparison cell `i` (0..2), centered row at iso.y = -2D.
+inline vec3 compareCellWorld(int index) {
+    return kCompareCenterWorld + static_cast<float>(index - 1) * kCompareRowStep;
+}
+
 // Sun / lighting tuned for the canvas_stress layout — flat ground plane
 // of GRID cubes plus floating DETACHED canvases. Slightly steeper than
 // the standard lighting demo so detached cube tops and main-grid tops
@@ -286,6 +321,16 @@ bool groupEnabled(std::uint32_t group) {
     return g_settings.onlyGroups_ == 0u || (g_settings.onlyGroups_ & group) != 0u;
 }
 
+// The comparison region (#1374) is OPT-IN, unlike the demo's other spawn groups
+// (which are all-on by default). It must NOT appear in the default render-verify
+// run — the so3_* / revoxelize_solids manifest shots render the whole world, so
+// any added world content breaks their byte-identical canary. It spawns only
+// when `--only` explicitly names "compare" (e.g. `--only compare` for the
+// isolated labeled side-by-side, or `--only compare,maingrid` to mix).
+bool compareGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupCompare) != 0u;
+}
+
 std::uint32_t parseSpawnGroups(const char *arg) {
     struct GroupName {
         const char *name_;
@@ -298,6 +343,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"revox", kGroupReVox},
         {"orbit", kGroupOrbit},
         {"floor", kGroupFloor},
+        {"compare", kGroupCompare},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -848,6 +894,52 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
     }
+    // Per-mode in-scene labels for the comparison region (#1374). The main canvas
+    // is cleared + rebuilt every frame, so labels must be redrawn here each frame
+    // — AFTER lighting (to keep their authored color) and BEFORE
+    // TRIXEL_TO_FRAMEBUFFER. WORLD-ANCHORED (projected through the live camera
+    // yaw, mirroring the voxel raster's `trixelFrameOffset` mapping) so only the
+    // compare_* shots capture them; a screen-locked overlay would paint every
+    // shot and break the so3_* canary. C_Camera anchors the singleton tick; the
+    // draw runs in beginTick (once per frame).
+    if (!g_settings.soloRevox_ && compareGroupRequested()) {
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "CompareRegionLabels",
+                [](C_Camera &) {},
+                []() {
+                    C_TriangleCanvasTextures &canvas =
+                        IREntity::getComponent<C_TriangleCanvasTextures>(
+                            IRRender::getActiveCanvasEntity()
+                        );
+                    const float yaw = IRPrefab::Camera::getYaw();
+                    const int sub =
+                        IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE
+                            ? IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1)
+                            : 1;
+                    const float subF = static_cast<float>(sub);
+                    const ivec2 originOffset = IRMath::trixelOriginOffsetZ1(canvas.size_);
+                    const ivec2 cameraTerm =
+                        ivec2(IRMath::floor(IRRender::getEffectiveCameraIso() * subF));
+                    for (int i = 0; i < 3; ++i) {
+                        const vec2 iso = IRMath::pos3DtoPos2DIsoYawed(compareCellWorld(i), yaw);
+                        const ivec2 cellTrixel =
+                            originOffset + cameraTerm + IRMath::roundVec(iso * subF);
+                        const ivec2 labelSize = IRRender::measureText(kCompareLabels[i]);
+                        const ivec2 labelPos =
+                            cellTrixel + ivec2(-labelSize.x / 2, kCompareLabelBelowCells * sub);
+                        IRRender::renderText(
+                            canvas,
+                            kCompareLabels[i],
+                            labelPos,
+                            kCompareColors[i]
+                        );
+                    }
+                }
+            )
+        );
+    }
+
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
@@ -928,6 +1020,24 @@ void initSystems() {
             //     so a coverage metric can count interior background holes inside
             //     the solid silhouette (the #1619-class missing-face defect).
             g_allShots.push_back({2.4f, vec2(0.0f), 0.0f, "revox_coverage"});
+            // Unified-rotation comparison region (#1374), OPT-IN via
+            // `--only compare`. A tight zoom frames the labeled row (GRID-attached
+            // spin / world-Z-yaw GRID / DETACHED SO(3)) at camera (0,0). Two
+            // camera yaws exercise the shared-yaw comparison: yaw 0 (cardinal) and
+            // an off-cardinal quarter-pi that drives the world-Z-yaw cell's
+            // per-axis deform; compare_detached re-frames at a half-pi yaw so the
+            // detached cell's SO(3) bake reads at another pose. Appended after the
+            // manifest suite (render-verify's first-N pixel-diff ignores them) AND
+            // emitted only in the opt-in run, so the default capture is unchanged.
+            if (compareGroupRequested()) {
+                g_allShots.push_back({kCompareZoom, vec2(0.0f), 0.0f, "compare_yaw0"});
+                g_allShots.push_back(
+                    {kCompareZoom, vec2(0.0f), IRMath::kQuarterPi, "compare_yaw_q"}
+                );
+                g_allShots.push_back(
+                    {kCompareZoom, vec2(0.0f), IRMath::kHalfPi, "compare_detached"}
+                );
+            }
         }
 
         IRVideo::AutoScreenshotConfig cfg{};
@@ -1280,6 +1390,38 @@ void initEntities() {
             spinRate,
             initialRotation,
             kOrbitColors[i]
+        );
+    }
+
+    // Comparison region (#1374): one entity per rotation technique in a labeled
+    // screen-horizontal row, all driven by the shared camera Z-yaw. No
+    // pixel-parity is asserted between them — GRID re-voxelize aliasing and the
+    // detached SO(3) bake are intentionally different visuals. OPT-IN via
+    // `--only compare`; the per-frame label tick (initSystems) draws each name.
+    if (!g_settings.soloRevox_ && compareGroupRequested()) {
+        // Cell 0 — GRID-attached spin: self-spins about Z; REBUILD_GRID_VOXELS
+        // re-rasterizes its rotated cells into the shared world pool each frame.
+        IREntity::createEntity(
+            C_LocalTransform{compareCellWorld(0)},
+            C_RotationMode{RotationMode::GRID},
+            C_AutoSpin{vec3(0.0f, 0.0f, 1.0f), g_settings.noSpin_ ? 0.0f : kGridSpinRadPerFrame},
+            C_VoxelSetNew{kCompareCubeSize, kCompareColors[0], true}
+        );
+        // Cell 1 — world-Z-yaw GRID: static voxels (no C_AutoSpin); its only
+        // motion is the camera Z-yaw via the main canvas per-axis world deform.
+        IREntity::createEntity(
+            C_LocalTransform{compareCellWorld(1)},
+            C_RotationMode{RotationMode::GRID},
+            C_VoxelSetNew{kCompareCubeSize, kCompareColors[1], true}
+        );
+        // Cell 2 — DETACHED SO(3): private-canvas re-voxelize bake, self-spinning
+        // about an off-cardinal axis (the sole shipped detached SO(3) renderer).
+        spawnDetachedVoxelObject(
+            100,
+            compareCellWorld(2),
+            IRMath::normalize(vec3(1.0f, 0.6f, 0.4f)),
+            g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame,
+            kCompareColors[2]
         );
     }
 
