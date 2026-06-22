@@ -33,7 +33,7 @@
 #
 set -euo pipefail
 
-ENGINE="$HOME/src/IrredenEngine"
+ENGINE="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
 GAME="$ENGINE/creations/game"
 # Architects run the fable class. Keep in sync with fleet-up's fable
 # ladder (FABLE_MODEL_CANDIDATES — the fleet's single source of truth)

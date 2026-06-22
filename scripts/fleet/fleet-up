@@ -18,7 +18,11 @@
 
 set -euo pipefail
 
-ENGINE="$HOME/src/IrredenEngine"
+# Engine main-clone location. Defaults to the Linux/macOS fleet layout
+# ($HOME/src/IrredenEngine); override with FLEET_ENGINE_ROOT for hosts that
+# clone elsewhere — e.g. the native-Windows fleet at
+# /c/Users/<you>/.../IrredenEngine (set it in ~/.fleet/fleet-up.conf).
+ENGINE="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
 GAME="$ENGINE/creations/game"
 SESSION="fleet"
 

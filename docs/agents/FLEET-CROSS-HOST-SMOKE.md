@@ -35,8 +35,8 @@ backends live in the engine.
 | Label | Owner | Purpose |
 |---|---|---|
 | `fleet:authored-on-linux` / `fleet:authored-on-macos` / `fleet:authored-on-windows` | `commit-and-push` at PR creation | Records which host the author built + smoked on. Permanent fact, not a state. |
-| `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` / `fleet:needs-windows-smoke` | reviewer (after verdict) | Requests a clean-checkout build + `IRShapeDebug` run from an agent on that host. Cleared by the smoking agent (or `platform-catchup` for Windows) on success; flipped to `fleet:needs-fix` on failure. |
-| `fleet:verified-linux` / `fleet:verified-macos` / `fleet:verified-windows` | smoking agent / `platform-catchup` | Set on success to provide a permanent audit trail of which hosts validated the PR. Not used by the merge gate logic; informational. |
+| `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` / `fleet:needs-windows-smoke` | reviewer (after verdict) | Requests a clean-checkout build + `IRShapeDebug` run from an agent on that host. Cleared by the smoking agent on that host (Windows smoke runs on a native-Windows fleet, or `platform-catchup` as fallback) on success; flipped to `fleet:needs-fix` on failure. |
+| `fleet:verified-linux` / `fleet:verified-macos` / `fleet:verified-windows` | smoking agent (Windows: native-Windows fleet or `platform-catchup`) | Set on success to provide a permanent audit trail of which hosts validated the PR. Not used by the merge gate logic; informational. |
 | `fleet:reviewing-<host>-<agent>` | `fleet-claim` script | Atomic lock around the smoke run (same lock the reviewer roles use). Prevents two same-host author agents from racing on the same PR. Released by `fleet-claim review-release`. |
 
 A PR with an outstanding `fleet:needs-<host>-smoke` label is **not safe
@@ -84,33 +84,39 @@ Skip for:
 
 ### What to tag
 
-Subtract the author's host (`commit-and-push` stamped
-`fleet:authored-on-<host>` at PR creation — the author already smoke-
-tested their own host per the workflow):
+Verification is organized into **two tiers**, not three independent hosts:
 
-- PR has `fleet:authored-on-linux` → add `fleet:needs-macos-smoke` + `fleet:needs-windows-smoke`
-- PR has `fleet:authored-on-macos` → add `fleet:needs-linux-smoke` + `fleet:needs-windows-smoke`
-- PR has `fleet:authored-on-windows` → add `fleet:needs-linux-smoke` + `fleet:needs-macos-smoke`
-- None of the above (unrecognized host or pre-fix PR) → add all three
+- **OpenGL tier = {linux, windows}** — same backend on both; a clean build +
+  `IRShapeDebug` smoke on **either one** satisfies it (never both). The engine
+  ships on Windows, so `windows` is the tier's canonical representative.
+- **Metal tier = {macos}** — its own backend, verified independently.
+
+`commit-and-push` stamped `fleet:authored-on-<host>` at PR creation, and the
+author smoke-tested their own host per the workflow — so authoring covers that
+host's **tier**. Add a smoke label only for a tier the author did NOT cover:
+
+- `fleet:authored-on-linux` (OpenGL ✓) → add `fleet:needs-macos-smoke`
+- `fleet:authored-on-windows` (OpenGL ✓) → add `fleet:needs-macos-smoke`
+- `fleet:authored-on-macos` (Metal ✓) → add `fleet:needs-windows-smoke` (one OpenGL host, the ship platform)
+- None (unrecognized host or pre-fix PR) → add `fleet:needs-windows-smoke` + `fleet:needs-macos-smoke`
 
 ```
-# Linux author:
-gh pr edit <N> --add-label "fleet:needs-macos-smoke"
-gh pr edit <N> --add-label "fleet:needs-windows-smoke"
-
-# macOS author:
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
-gh pr edit <N> --add-label "fleet:needs-windows-smoke"
-
-# Windows author:
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+# Linux or Windows author (OpenGL covered) → Metal smoke only:
 gh pr edit <N> --add-label "fleet:needs-macos-smoke"
 
-# None → three calls:
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
-gh pr edit <N> --add-label "fleet:needs-macos-smoke"
+# macOS author (Metal covered) → one OpenGL smoke, routed to the ship platform:
 gh pr edit <N> --add-label "fleet:needs-windows-smoke"
+
+# None (pre-fix PR) → one OpenGL + Metal:
+gh pr edit <N> --add-label "fleet:needs-windows-smoke"
+gh pr edit <N> --add-label "fleet:needs-macos-smoke"
 ```
+
+**Merge gate.** The OpenGL requirement is satisfied by an OpenGL author **or**
+by either `fleet:verified-windows` / `fleet:verified-linux` — never both at
+once. Routing the OpenGL representative to `windows` exercises the ship platform;
+to instead require a Windows verification on *every* render PR (stricter than
+"either is enough"), also add `fleet:needs-windows-smoke` to linux-authored PRs.
 
 If `sonnet-reviewer` already added the labels on a first pass, the
 later `opus-reviewer` recheck does nothing — the labels are
@@ -136,12 +142,14 @@ Derive the host key from `uname -s`:
 
 - `Linux` → host key `linux`, poll `fleet:needs-linux-smoke`
 - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
+- `MINGW*` / `MSYS*` / `CYGWIN*` → host key `windows`, poll `fleet:needs-windows-smoke`
 
-`fleet:needs-windows-smoke` is **not** polled by fleet author agents — it is
-cleared by the `platform-catchup` workflow (#1093) that runs outside the
-normal agent loop. No role currently claims and executes Windows smoke
-automatically; the label is cleared when the platform-catchup run reports a
-clean Windows build.
+The native-Windows fleet (MSYS2 bash + tmux) runs its smoke pane exactly like
+the other hosts — `fleet-build` / `fleet-run` internally apply the MSYS2 mingw64
+`PATH` fix (the `cc1plus` silent-crash guard) and resolve the `.exe` artifact,
+so no `cmd /c` hand-wrapping is needed. When no Windows fleet is online, the
+`platform-catchup` workflow (#1093) is the manual fallback for clearing
+`fleet:needs-windows-smoke`.
 
 ### Picking a PR
 
@@ -280,10 +288,12 @@ An opus+-class smoke run does everything Sonnet's does, plus:
 
 ### Windows smoke
 
-`fleet:needs-windows-smoke` is outside the Sonnet/Opus split above — neither
-agent type polls for it. It is cleared by `platform-catchup` (#1093). If
-the label persists on a PR and platform-catchup has not run recently, surface
-it in the feedback channel.
+When a native-Windows fleet is online, its `smoke-worker` pane polls
+`fleet:needs-windows-smoke` and runs the same Sonnet-tier build+run smoke as the
+other hosts (host key `windows`), clearing the label to `fleet:verified-windows`
+on success. When no Windows fleet is running, the label is instead cleared by the
+`platform-catchup` workflow (#1093); if it persists on a PR and neither a Windows
+fleet nor platform-catchup has run recently, surface it in the feedback channel.
 
 ### When the split breaks
 

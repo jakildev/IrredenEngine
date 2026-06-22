@@ -192,7 +192,7 @@
       "name": "fleet:needs-windows-smoke",
       "scope": "pr",
       "color": "c5def5",
-      "description": "Engine render PR awaiting Windows cross-host smoke validation; cleared by platform-catchup, not an author agent"
+      "description": "Engine render PR awaiting Windows cross-host smoke validation; cleared by the native-Windows smoke worker, or platform-catchup as fallback"
     },
     {
       "name": "fleet:authored-on-linux",
@@ -210,7 +210,7 @@
       "name": "fleet:authored-on-windows",
       "scope": "pr",
       "color": "ededed",
-      "description": "PR was opened from a Windows host; reviewer skips fleet:needs-windows-smoke"
+      "description": "PR was opened from a Windows host; covers the OpenGL tier — reviewer adds only Metal (macOS) smoke"
     },
     {
       "name": "fleet:verified-linux",
@@ -228,7 +228,7 @@
       "name": "fleet:verified-windows",
       "scope": "pr",
       "color": "0e8a16",
-      "description": "Set by platform-catchup on a successful Windows smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
+      "description": "Set by the native-Windows smoke worker (or platform-catchup) on a successful Windows smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
     },
     {
       "name": "fleet:stacked",
@@ -508,14 +508,14 @@
     {
       "name": "smoke-verify-windows",
       "scope": "pr",
-      "owner": "platform-catchup",
+      "owner": "smoke-worker",
       "remove": [
         "fleet:needs-windows-smoke"
       ],
       "add": [
         "fleet:verified-windows"
       ],
-      "note": "Windows cross-host smoke passed (platform-catchup). FLEET-CROSS-HOST-SMOKE.md."
+      "note": "Windows cross-host smoke passed (native-Windows smoke worker; platform-catchup is the fallback when no Windows fleet is online). FLEET-CROSS-HOST-SMOKE.md."
     }
   ]
 }

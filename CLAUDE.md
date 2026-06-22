@@ -51,7 +51,7 @@ Three supported environments, each with its own preset:
 | Preset          | Target                                | Role                       |
 |-----------------|---------------------------------------|----------------------------|
 | `linux-debug`   | Linux / WSL2 Ubuntu, gcc-13+, OpenGL  | **Fleet environment**      |
-| `windows-debug` | Windows native, MSYS2 mingw64, OpenGL | Original / ship-it         |
+| `windows-debug` | Windows native, MSYS2 mingw64, OpenGL | Ship-it + fleet host       |
 | `macos-debug`   | macOS native, Metal backend           | Matured on demand          |
 
 ```bash

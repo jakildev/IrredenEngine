@@ -87,14 +87,18 @@ coordination mechanisms prevent duplicate work:
   windows) — two hosts with the same host tag would generate identical
   issue labels and skip the tie-break. The taxonomy is a single canonical
   set shared by every host-name producer: claim labels (`derive_host`),
-  cross-host smoke (`uname -s` → linux/macos), the build presets, and
+  cross-host smoke (`uname -s` → linux/macos/windows), the build presets, and
   `commit-and-push`'s `fleet:authored-on-<host>` all agree. **WSL2 derives
   `linux`** (it runs the `linux-debug` OpenGL build and provides the linux
-  smoke), so `windows` is reserved for native MSYS2/mingw. Run
+  smoke); the **native-Windows fleet** (MSYS2 bash + tmux, `windows-debug`
+  OpenGL build) derives `windows` via `uname -s` → `MINGW*/MSYS*/CYGWIN*`. Run
   `fleet-claim host` to print this machine's key. **Collision caveat:** a
   WSL2 host and a native-Linux host both derive `linux`; do not run both as
   separate fleets simultaneously without forcing `FLEET_TEST_HOST` to
-  disambiguate one. Today's topology (mac + WSL2) is collision-free.
+  disambiguate one. A WSL2 fleet and a native-Windows fleet on the *same*
+  physical box are collision-free (linux vs windows) but share CPU — size
+  each host's `~/.config/irreden/host.toml` budgets so they don't starve each
+  other. Today's topology (mac + WSL2 + native-Windows) is collision-free.
 
 **Ingestion (cross-host race prevention):**
 - The scout fires `fleet-queue-ingest` when new `human:approved` issues
@@ -407,10 +411,20 @@ final recheck for anything in the opus/fable lists above.
 
 ### Cross-platform parity (OpenGL ↔ Metal)
 
-The fleet can run from either a **WSL2 Ubuntu** host (Linux,
-OpenGL backend via `linux-debug`) or a **macOS** host (Metal backend
-via `macos-debug`), or both simultaneously. Running on both sides in
-parallel is how we mature the two graphics backends in lockstep.
+The fleet can run from a **WSL2 Ubuntu** host (Linux, OpenGL via
+`linux-debug`), a **macOS** host (Metal via `macos-debug`), or a
+**native-Windows** host (OpenGL via `windows-debug`, MSYS2 bash + tmux; Claude's
+Bash tool is Git Bash, so the same bash fleet scripts run unchanged), in any
+combination. Running on multiple sides in parallel is how we mature the
+backends in lockstep — and since the engine ships on Windows, the native-Windows
+fleet keeps the ship platform continuously built + smoked.
+
+**Two verification tiers, not three hosts.** OpenGL `{linux, windows}` is one
+tier — either host's clean build + `IRShapeDebug` smoke satisfies the OpenGL
+merge gate (never both required); Metal `{macos}` is a separate tier. The
+reviewer's cross-host-smoke tagging routes the single OpenGL representative to
+`windows` (the ship platform). See
+[`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
 
 New rendering work usually lands on whichever backend the author
 happened to be running at the time. That creates drift — a GLSL
