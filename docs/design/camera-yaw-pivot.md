@@ -26,10 +26,19 @@ helper.
 
 `RotationPivotMode::CAMERA_CENTER` (the engine default) picks `F`:
 
-1. **Screen center (default).** `F` is the z=0 world point at the viewport
-   center, whose iso is `viewCenter = canvasSize/2 - trixelOriginOffsetZ1(canvasSize)
-   - cameraIso` (the same `viewCenter` as `IRMath::visibleIsoViewport`). The
-   scene rotates about the exact center of the screen, independent of pan.
+1. **Screen center (default).** `F` is the z=0 world point under screen center,
+   `isoPixelToPos3D(cameraIso, 0)` (the legacy #1352 point). Un-panned this is the
+   world origin — the point where the GRID/world content and the DETACHED entity
+   canvases coincide (the detached composite places entities at
+   `floor(getCameraPosition2DIso()) + isoYawed(world)`, NOT the effective offset).
+   So the origin is the content center for alignment, and the scene rotates about
+   it. **Do not** pivot about the `visibleIsoViewport` viewCenter
+   (`canvasSize/2 - trixelOriginOffsetZ1`): that point is ~1 trixel off the
+   content center, so feeding it as the default focus shifts the effective-offset
+   world content relative to the raw-offset detached entities — yaw-varying — which
+   the canvas_stress detached canary surfaces as rotation jitter (#1942 → #1944).
+   Pivoting about a viewport point at its true center would require the detached
+   path to consume `getEffectiveCameraIso()` too (follow-up).
 2. **Cursor (`Ctrl+Shift+middle-drag`).** `System<CAMERA_MOUSE_ROTATE>` captures
    the world point under the cursor at drag start
    (`IRRender::mouseWorldPos3DAtIsoDepth(0)`) and sets it as an explicit focus via
@@ -60,5 +69,8 @@ content-centroid focus) to rotate it in place.
 
 - #1352 / #1362 — first focus-pivot (panned-and-rotated correctness).
 - #1921 / #1927 — explicit point-of-interest focus (`setRotationPivotFocus`).
-- #1926 — default pivot drift-sign / off-center fix; unified through
-  `cameraYawPivotOffset`; exact viewport-center default; cursor mode.
+- #1926 / #1942 — the `cameraYawPivotOffset` helper + the cursor pivot mode.
+- #1944 — reverted #1942's "exact viewport-center default": the `viewCenter` is
+  ~1 trixel off the content center, so it shifted effective-offset world content
+  relative to the raw-offset detached entities (canvas_stress rotation jitter).
+  The default is the legacy origin-based screen-center point again.

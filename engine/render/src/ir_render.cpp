@@ -55,20 +55,24 @@ vec2 getEffectiveCameraIso() {
         return IRMath::cameraYawPivotOffset(
             cameraIso, getRenderManager().getRotationPivotFocus(), visualYaw);
     }
-    // CAMERA_CENTER default — rotate about the EXACT center of the screen. The
-    // pivot is the z = 0 world point at viewport center, whose iso is the
-    // `viewCenter` of IRMath::visibleIsoViewport (`canvasSize/2 -
-    // trixelOriginOffsetZ1(canvasSize) - cameraIso`). cameraYawPivotOffset then
-    // holds the viewport center fixed across the yaw sweep — screen(F) =
-    // canvasSize/2 - canvasOriginOffset, a constant. At visualYaw == 0 it
-    // returns cameraIso, so the no-rotate fast path stays byte-identical to
-    // ORIGIN mode. (The legacy default used isoPixelToPos3D(cameraIso, 0), the
-    // point mirrored across — and ~1 trixel off — the true screen center.)
-    const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
-    const vec2 viewCenterIso = vec2(canvasSize) * 0.5f -
-                               vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
-    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(viewCenterIso, 0.0f);
-    return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
+    // CAMERA_CENTER default — pivot Z-yaw about the z = 0 world point under
+    // screen center, `isoPixelToPos3D(cameraIso, 0)` (the legacy #1352 point).
+    // Un-panned this is the world origin, where the GRID/world content (which
+    // uses this effective offset) and the DETACHED entity canvases (which the
+    // composite places with the RAW getCameraPosition2DIso(), not the effective
+    // offset) coincide — so it is the content center for alignment. At
+    // visualYaw == 0 it returns cameraIso (byte-identical to ORIGIN mode).
+    //
+    // Do NOT pivot about the visibleIsoViewport viewCenter (`canvasSize/2 -
+    // trixelOriginOffsetZ1 - cameraIso`): that point is ~1 trixel off this
+    // content center, so feeding it as the focus shifts the effective-offset
+    // world content relative to the raw-offset detached entities — yaw-varying —
+    // which the canvas_stress detached canary surfaces as rotation jitter
+    // (#1942 → #1944). A true-viewport-center pivot would need the detached path
+    // to consume the effective offset too (follow-up). See
+    // docs/design/camera-yaw-pivot.md.
+    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(cameraIso, 0.0f);
+    return IRMath::pos3DtoPos2DIsoYawed(cameraFocusWorld, visualYaw);
 }
 vec2 getCameraZoom() {
     return getRenderManager().getCameraZoom();
