@@ -123,3 +123,32 @@ IRCanvasStress --only canary,floor --no-spin --no-auto-rotate --auto-screenshot 
 # Bug B — per-axis doubled stripe at cardinal-180:
 IRPerfGrid --mode dense --grid-size 64 --yaw-ramp --auto-screenshot   # step 18 (180°)
 ```
+
+## Resolution (architect, 2026-06-22)
+
+Design decided on the strength of this spike; #1884 was promoted to a sub-epic
+and implementation split into independently-verifiable children. The agreed
+architecture is a unified **quadrant-stable** depth encoding,
+
+```
+enc = priorityBand·BAND + cardinalIsoDepth·4 + face
+```
+
+with **per-entity / per-trixel priority bands**. The priority band overrides the
+raw `x+y+z` iso ordering for cases where intent (a floating solid in front of the
+floor) diverges from convention — which resolves Bug A (Finding 2) at its root.
+This also **retires #1370**: its near-±45° artifact and Bug A share the same
+iso-depth-ambiguity root cause.
+
+The three findings above map to the children:
+
+| Finding | Child | Scope |
+|---|---|---|
+| Finding 1 (detached composite writes no depth) | **A — #1957** | detached depth-write (foundation; unblocks the encoding work) |
+| Finding 2 / Bug A (iso-depth ranks floating solid behind floor) | **B — #1958** | unified quadrant-stable encoding + priority bands (blocked by A) |
+| Finding 3 / Bug B (cardinal-180 `+slot` tiebreak) | **C — #1959** | per-axis cardinal-180 geometric tiebreak (blocked by B) |
+| — | **D — #1960** | per-trixel priority + demos (blocked by B) |
+| — | **E — #1961** | rotation perf parity (blocked by B) |
+
+This doc is the durable evidence base for that decomposition; #1950 lands it and
+closes (no implementation here — the fix ships through the children above).
