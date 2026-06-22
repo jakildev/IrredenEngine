@@ -230,33 +230,22 @@ constexpr vec3 kReVoxGroundedWorld{40.0f, 24.0f, -6.0f};
 constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
 
 // ── Unified rotation-harness comparison region (#1374) ──────────────────────
-// Three labeled entities — one per rotation technique — in a screen-horizontal
-// row, all driven by the shared camera Z-yaw. **OPT-IN group** (`--only
-// compare`): unlike the demo's other spawn groups it does NOT spawn in the
-// default run. The plan's original "default-on + spatial separation" approach
-// is impossible — the so3_* / revoxelize_solids manifest shots render the ENTIRE
-// world pool (the orbit ring at radius 200 fills the frame), so ANY added world
-// content (GRID cells, world-anchored labels) lands inside those frames and
-// breaks the byte-identical detached-canvas canary (empirically: default-on
-// dropped all 6 manifest shots to ~97.3% match). A GRID cell must live in the
-// shared pool (reach ~r200) yet the widest manifest frame spans ~r440, so no
-// off-frame in-pool placement exists. Gating the region opt-in keeps the default
-// render-verify run byte-identical (the plan's #1 priority) while still giving
-// the labeled side-by-side via `canvas_stress --only compare`. World (D,D,0)
-// projects straight down in iso (iso.y = -2D); stepping world (-s,+s,0) per cell
-// spreads the cells horizontally (iso.x = 2s). The compare shots keep the camera
-// at (0,0) (detached canvases cull on a pan, #1555). Tuned empirically.
+// One labeled entity per rotation technique in a screen-horizontal row, all
+// driven by the shared camera Z-yaw. OPT-IN (`--only compare`) — every manifest
+// shot renders the whole world pool, so world content added here would break the
+// byte-identical detached-canvas canary (full byte-neutrality rationale in PR
+// #1943 / issue #1374). Geometry: world (D,D,0) projects straight down in iso
+// (iso.y = -2D); stepping (-s,+s,0) per cell spreads them horizontally (iso.x =
+// 2s). Camera stays at (0,0) — detached canvases cull on a pan (#1555).
 constexpr float kCompareDepth = 24.0f;  // iso.y = -48; row sits just below center
 constexpr float kCompareSpread = 30.0f; // iso.x step = +-60 between cell centers
 constexpr vec3 kCompareCenterWorld{kCompareDepth, kCompareDepth, 0.0f};
 constexpr vec3 kCompareRowStep{-kCompareSpread, kCompareSpread, 0.0f};
 constexpr ivec3 kCompareCubeSize{12, 12, 12};
 constexpr float kCompareZoom = 1.4f; // tight framing — isolated, no clutter
-// Label offset from each cell along canvas-Y, in trixels per subdivision step
-// (the per-frame tick scales it by the live subdivision factor so it tracks
-// cell size across zoom). Positive lands the label just under its cell in this
-// backend's canvas-to-screen orientation. Tuned empirically.
-constexpr int kCompareLabelRise = 16;
+// Label offset below each cell along canvas-Y, scaled per-frame by the live
+// subdivision factor so it tracks cell size across zoom. Tuned empirically.
+constexpr int kCompareLabelBelowCells = 16;
 // 0 = GRID-attached spin, 1 = world-Z-yaw GRID (static), 2 = DETACHED SO(3).
 // Distinct hues so the three techniques read apart even before the labels.
 constexpr Color kCompareColors[3]{
@@ -881,20 +870,14 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::COMPUTE_LIGHT_VOLUME>());
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>());
     }
-    // Per-mode in-scene labels for the comparison region (#1374). The main
-    // canvas is cleared + rebuilt every RENDER frame (VOXEL_TO_TRIXEL_STAGE_1)
-    // and recolored by LIGHTING_TO_TRIXEL, so a one-time stamp in initEntities
-    // is wiped on frame 1. This tick redraws the labels every frame, here —
-    // AFTER lighting (so they keep their authored color, like a GUI overlay)
-    // and BEFORE TRIXEL_TO_FRAMEBUFFER reads the canvas. Labels are
-    // WORLD-ANCHORED: each is projected from its cell's fixed world position
-    // through the LIVE camera yaw (the row repositions every frame under
-    // SYSTEM_AUTO_YAW_ROTATE), so they track their cell and are captured only by
-    // the compare_* frames — a screen-locked overlay would paint in every shot
-    // and break the so3_* canary. Mirrors the world→canvas-trixel mapping the
-    // voxel raster uses (`trixelFrameOffset` in ir_iso_common.glsl): origin
-    // offset + floor(cameraIso · sub) + sub · isoYawed(world). C_Camera anchors
-    // the singleton tick; the draw runs in beginTick (once per frame).
+    // Per-mode in-scene labels for the comparison region (#1374). The main canvas
+    // is cleared + rebuilt every frame, so labels must be redrawn here each frame
+    // — AFTER lighting (to keep their authored color) and BEFORE
+    // TRIXEL_TO_FRAMEBUFFER. WORLD-ANCHORED (projected through the live camera
+    // yaw, mirroring the voxel raster's `trixelFrameOffset` mapping) so only the
+    // compare_* shots capture them; a screen-locked overlay would paint every
+    // shot and break the so3_* canary. C_Camera anchors the singleton tick; the
+    // draw runs in beginTick (once per frame).
     if (!g_settings.soloRevox_ && compareGroupRequested()) {
         renderPipeline.push_back(
             IRSystem::createSystem<C_Camera>(
@@ -920,7 +903,7 @@ void initSystems() {
                             originOffset + cameraTerm + IRMath::roundVec(iso * subF);
                         const ivec2 labelSize = IRRender::measureText(kCompareLabels[i]);
                         const ivec2 labelPos =
-                            cellTrixel + ivec2(-labelSize.x / 2, kCompareLabelRise * sub);
+                            cellTrixel + ivec2(-labelSize.x / 2, kCompareLabelBelowCells * sub);
                         IRRender::renderText(
                             canvas,
                             kCompareLabels[i],
@@ -1372,13 +1355,11 @@ void initEntities() {
         );
     }
 
-    // Unified rotation-harness comparison region (#1374): one entity per
-    // rotation technique in a labeled screen-horizontal row, all driven by the
-    // shared camera Z-yaw. No pixel-parity is asserted between them — GRID
-    // re-voxelize aliasing and the detached SO(3) bake are intentionally
-    // different visuals (and MAIN_CANVAS_SO3 was retired in #1443: attached
-    // main-canvas SO(3) IS the GRID re-voxelize model). The per-frame label tick
-    // (initSystems) draws each cell's name above it. OPT-IN via `--only compare`.
+    // Comparison region (#1374): one entity per rotation technique in a labeled
+    // screen-horizontal row, all driven by the shared camera Z-yaw. No
+    // pixel-parity is asserted between them — GRID re-voxelize aliasing and the
+    // detached SO(3) bake are intentionally different visuals. OPT-IN via
+    // `--only compare`; the per-frame label tick (initSystems) draws each name.
     if (!g_settings.soloRevox_ && compareGroupRequested()) {
         // Cell 0 — GRID-attached spin: self-spins about Z; REBUILD_GRID_VOXELS
         // re-rasterizes its rotated cells into the shared world pool each frame.
