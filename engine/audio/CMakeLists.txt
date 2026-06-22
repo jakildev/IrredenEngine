@@ -103,6 +103,13 @@ FetchContent_Declare(
     GIT_TAG 0.11.25
     UPDATE_DISCONNECTED TRUE
 )
+# We consume miniaudio as a single header (MINIAUDIO_IMPLEMENTATION lives in
+# src/audio_playback.cpp), so none of its CMake targets are linked. Its
+# extras/nodes/* example libraries (ma_reverb_node, ma_vocoder_node, …) build
+# as dylibs that reference the ma_* core symbols without linking them; that
+# links on Linux (undefined symbols resolved at load) but fails on macOS
+# arm64 (the linker requires every symbol resolved). Skip building them.
+set(MINIAUDIO_NO_EXTRA_NODES ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(miniaudio)
 target_include_directories(IrredenEngineAudio PRIVATE ${miniaudio_SOURCE_DIR})
 

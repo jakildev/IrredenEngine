@@ -99,11 +99,29 @@ void writeFloat32WavFile(
 
 #if IR_VIDEO_HAS_FFMPEG
 [[maybe_unused]] AVSampleFormat chooseAudioSampleFormat(const AVCodec *codec) {
-    if (codec == nullptr || codec->sample_fmts == nullptr) {
+    if (codec == nullptr) {
+        return AV_SAMPLE_FMT_NONE;
+    }
+    // FFmpeg 7.1 (libavcodec 61.13.100) deprecated AVCodec::sample_fmts in
+    // favor of avcodec_get_supported_config(); both yield the encoder's
+    // NONE-terminated list of accepted sample formats. Older FFmpeg (the
+    // Linux/Windows fleet hosts) keeps the field.
+    const AVSampleFormat *sampleFmts = nullptr;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
+    if (avcodec_get_supported_config(
+            nullptr, codec, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
+            reinterpret_cast<const void **>(&sampleFmts), nullptr
+        ) < 0) {
+        return AV_SAMPLE_FMT_NONE;
+    }
+#else
+    sampleFmts = codec->sample_fmts;
+#endif
+    if (sampleFmts == nullptr) {
         return AV_SAMPLE_FMT_NONE;
     }
     AVSampleFormat fallback = AV_SAMPLE_FMT_NONE;
-    for (const AVSampleFormat *fmt = codec->sample_fmts; *fmt != AV_SAMPLE_FMT_NONE; ++fmt) {
+    for (const AVSampleFormat *fmt = sampleFmts; *fmt != AV_SAMPLE_FMT_NONE; ++fmt) {
         if (*fmt == AV_SAMPLE_FMT_FLTP) {
             return *fmt;
         }
