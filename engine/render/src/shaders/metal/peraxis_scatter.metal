@@ -64,6 +64,12 @@ struct VertexOut {
     float depth [[center_no_perspective]];
     float2 quadParam [[center_no_perspective]];
     float marginBias [[flat]];
+    // Per-axis margin-yield slope (#1883), vDepth units per unit quad-param
+    // penetration — mirror of v_/f_peraxis_scatter.glsl. The fragment stage scales
+    // a margin's yield by penetration * slope so a cell-deep margin yields a shared
+    // ridge to the neighbor face's exact footprint (the doubled top<->side sliver).
+    float marginYieldGradU [[flat]];
+    float marginYieldGradV [[flat]];
     // Face-center iso-depth for depth-color (#1697). Flat (constant across the
     // quad) — origin is the same for all 4 corners of a face instance so
     // interpolation is a no-op; flat avoids rasterization divergence.
@@ -132,6 +138,8 @@ vertex VertexOut v_peraxis_scatter(
         out.depthColorExtent = 0.0;
         out.quadParam = float2(0.5);
         out.marginBias = 0.0;
+        out.marginYieldGradU = 0.0;
+        out.marginYieldGradV = 0.0;
         return out;
     }
 
@@ -181,20 +189,14 @@ vertex VertexOut v_peraxis_scatter(
     float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    // Foreshortening-adaptive margin — mirror of v_peraxis_scatter.glsl. Near
-    // ±45deg residual one in-plane axis collapses on screen (su ~|| sv), so the
-    // deformed quad degenerates to a sliver and adjacent faces leave gaps the
-    // fixed 0.85px dilation cannot bridge (the band-clipping). Grow the margin
-    // toward the on-screen voxel step, gated by the degeneracy.
-    const float suLen = length(su);
-    const float svLen = length(sv);
-    const float degenSin = (suLen > 1e-5 && svLen > 1e-5)
-        ? abs(su.x * sv.y - su.y * sv.x) / (suLen * svLen)
-        : 1.0;
-    const float adaptiveMargin =
-        mix(max(suLen, svLen), kScatterDilateMarginPx, clamp(degenSin, 0.0, 1.0));
+    // Per-axis continuous conservative margin (#1883) — mirror of
+    // v_peraxis_scatter.glsl. The helper derives a per-edge margin from each
+    // axis's own on-screen extent (floored at kScatterDilateMarginPx), so the
+    // collapsing axis grows to bridge the band gap while the long silhouette edge
+    // stays tight. Replaces the anisotropic max(suLen,svLen)+degenSin gate that
+    // dashed the foreshortened silhouette.
     const float2 dilNdc = scatterConservativeDilation(
-        su, sv, sign(in.position), max(kScatterDilateMarginPx, adaptiveMargin), ndcPerPx
+        su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
     );
     clipCorner.xy += dilNdc;
     clipCorner.y = -clipCorner.y;
@@ -246,6 +248,13 @@ vertex VertexOut v_peraxis_scatter(
     out.depth =
         (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
     out.marginBias = kScatterMarginDepthBiasKey / depthRange;
+    // Per-axis margin-yield slope (#1883) — mirror of v_peraxis_scatter.glsl.
+    // kU/kV are the per-unit-axis composite depth gradients; scaled to vDepth units
+    // and pre-absed (penetration is always outward) and folded with
+    // kScatterMarginYieldGradScale so the fragment stage adds penetration*slope as
+    // the over-grown margin's extrapolation-proportional yield.
+    out.marginYieldGradU = kScatterMarginYieldGradScale * abs(kU) / depthRange;
+    out.marginYieldGradV = kScatterMarginYieldGradScale * abs(kV) / depthRange;
     return out;
 }
 
@@ -274,6 +283,14 @@ fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     // conservative-dilation margin and only fill pixels no exact footprint
     // claims — mirror of f_peraxis_scatter.glsl.
     const bool inMargin = any(in.quadParam < float2(0.0)) || any(in.quadParam > float2(1.0));
-    out.depth = in.depth + (inMargin ? in.marginBias : 0.0f);
+    // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
+    // fragment yields by the flat bias PLUS penetration * per-axis yield slope so a
+    // cell-deep margin yields the shared ridge to the neighbor face's exact
+    // footprint while a sub-pixel gap-fill still wins (#1883) — mirror of
+    // f_peraxis_scatter.glsl.
+    const float2 outside = max(max(-in.quadParam, in.quadParam - float2(1.0)), float2(0.0));
+    const float yieldBias =
+        in.marginBias + outside.x * in.marginYieldGradU + outside.y * in.marginYieldGradV;
+    out.depth = in.depth + (inMargin ? yieldBias : 0.0f);
     return out;
 }

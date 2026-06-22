@@ -82,6 +82,17 @@ constexpr IRVideo::RoiCrop kCropsZoom8Origin[] = {
     {300, 400, 128, 128, "lower_left_face"},
 };
 
+// --pivot-focus-demo (#1921): a tall strip over screen center where the pinned
+// pillar sits. With the fix the pillar holds this crop steady across the yaw
+// sweep; with --pivot-origin it swings out of frame. Coords are a per-host
+// iteration point (see the kCrops* note above). Tuned for the HiDPI 2x
+// framebuffer (pillar pivot-pins at frame center ~(1280,720) of 2560x1440).
+// Linux/1x smoke: update to ~{490, 100, 300, 520} (center≈(640,360) of
+// 1280x720) and re-baseline after confirming the pillar stays centered.
+constexpr IRVideo::RoiCrop kCropsPivotPillar[] = {
+    {1130, 460, 300, 520, "pivot_pillar_center"},
+};
+
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "zoom1_origin"},
     {2.0f, vec2(0, 0), 0.0f, "zoom2_origin"},
@@ -193,6 +204,21 @@ float g_spinYawDegPerSec = 0.0f;
 // which hits every cardinal (0/90/180/270°) and every rebracket (45/135/...).
 int g_spinYawShotCount = 24;
 
+// --spin-shape <name> (#1922): spawn a single shape centred at the origin (so
+// camera Z-yaw-about-origin keeps it screen-centred) instead of the full
+// side-by-side fixture scene — the per-shape isolation the temporal-jitter
+// sweep harness (scripts/dev/shape-rotate-jitter-sweep) needs. Empty = full
+// scene (default, byte-identical). --spin-shape-voxel renders the voxel-pool
+// twin instead of the SDF solver, so both render paths can be scored.
+std::string g_spinShapeType;
+bool g_spinShapeVoxel = false;
+// Centred ROI crop attached to every --spin-shape sweep shot so the jitter
+// metric decodes a small PNG per frame — a full-framebuffer 100+-frame sweep
+// is otherwise minutes of pure-Python PNG decode. Sized from the live
+// framebuffer at sweep-build time; one shared crop suffices because the single
+// shape stays screen-centred under yaw-about-origin.
+IRVideo::RoiCrop g_spinShapeCrop{};
+
 // Dynamic shot table populated at startup when --spin-yaw + --auto-screenshot
 // are both set. Lives at namespace scope so the pointer handed to
 // IRVideo::AutoScreenshotConfig outlives the game loop. The label strings
@@ -211,6 +237,23 @@ std::vector<std::array<char, 32>> g_spinYawShotLabels;
 bool g_cullValidate = false;
 std::vector<IRVideo::AutoScreenshotShot> g_cullValidateShots;
 std::vector<std::array<char, 40>> g_cullValidateShotLabels;
+
+// --pivot-focus-demo (#1921): spawn a tall, off-center voxel pillar and drive a
+// yaw sweep that pins the camera Z-yaw pivot on the pillar's TRUE-depth center
+// via AutoScreenshotShot::pivotFocusWorld_. With the fix the pillar rotates in
+// place — it stays at screen center across the whole sweep, including its z>0
+// body. Add --pivot-origin for the A/B where the legacy z=0 screen-center pivot
+// swings it in an arc. Requires --auto-screenshot. Same stable-storage
+// discipline as the buffers above.
+bool g_pivotFocusDemo = false;
+std::vector<IRVideo::AutoScreenshotShot> g_pivotFocusShots;
+std::vector<std::array<char, 40>> g_pivotFocusShotLabels;
+// World center of the --pivot-focus-demo pillar. Off the world origin in x/y AND
+// at z > 0, so the legacy pivot exhibits BOTH defects (#1921): the z=0 focus the
+// old path picks lands horizontally offset from a centered tall column, and an
+// off-origin column orbits the origin. Shared by the spawn and the shot table so
+// the focus exactly matches the rendered geometry.
+constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 
 } // namespace
 
@@ -238,6 +281,8 @@ int main(int argc, char **argv) {
             g_occlusionCull = true;
         } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
             g_gpuVoxelSmoke = true;
+        } else if (std::strcmp(argv[i], "--pivot-focus-demo") == 0) {
+            g_pivotFocusDemo = true;
         } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
             g_skinSmoke = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
@@ -278,6 +323,13 @@ int main(int argc, char **argv) {
                     ++i;
                 }
             }
+        } else if (std::strcmp(argv[i], "--spin-shape") == 0) {
+            if (i + 1 < argc) {
+                g_spinShapeType = argv[i + 1];
+                ++i;
+            }
+        } else if (std::strcmp(argv[i], "--spin-shape-voxel") == 0) {
+            g_spinShapeVoxel = true;
         }
     }
 
@@ -538,17 +590,74 @@ void initSystems() {
             // g_spinYawShots.
             g_spinYawShotLabels.reserve(n);
             g_spinYawShots.reserve(n);
+            // In --spin-shape mode the single shape is screen-centred under
+            // yaw-about-origin, so attach a centred ROI crop sized to half the
+            // shorter framebuffer edge: the jitter sweep then scores small
+            // per-frame PNGs instead of the full retina framebuffer.
+            const bool useSpinShapeCrop = !g_spinShapeType.empty();
+            if (useSpinShapeCrop) {
+                ivec2 fb{0, 0};
+                IRWindow::getFramebufferSize(fb);
+                const int side = IRMath::max(64, IRMath::min(fb.x, fb.y) / 2);
+                g_spinShapeCrop = {(fb.x - side) / 2, (fb.y - side) / 2, side, side, "center"};
+            }
             for (int i = 0; i < n; ++i) {
                 const float yaw = (static_cast<float>(i) / static_cast<float>(n)) * IRMath::kTwoPi;
                 auto &label = g_spinYawShotLabels.emplace_back();
                 std::snprintf(label.data(), label.size(), "spin_yaw_%03d_of_%03d", i, n);
-                g_spinYawShots.push_back({sweepZoom, vec2(0, 0), yaw, label.data()});
+                IRVideo::AutoScreenshotShot shot{sweepZoom, vec2(0, 0), yaw, label.data()};
+                if (useSpinShapeCrop) {
+                    shot.crops_ = &g_spinShapeCrop;
+                    shot.numCrops_ = 1;
+                }
+                g_spinYawShots.push_back(shot);
             }
             cfg.shots_ = g_spinYawShots.data();
             cfg.numShots_ = static_cast<int>(g_spinYawShots.size());
             IR_LOG_INFO(
                 "Spin-yaw sweep: {} shots across one rotation at zoom={}",
                 cfg.numShots_,
+                sweepZoom
+            );
+        } else if (g_pivotFocusDemo) {
+            // Pin the camera Z-yaw pivot on the tall pillar's true-depth center
+            // across a yaw sweep (#1921). centerPan brings the pillar to screen
+            // center at yaw 0; with the focus set it stays there for EVERY yaw —
+            // the pillar rotates in place while the default scene sweeps around
+            // it. Run the same flag with --pivot-origin for the A/B: the legacy
+            // z=0 screen-center pivot swings the pillar out in an arc.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            // Pan so the pillar lands at screen center at yaw 0: the producers
+            // place content at screen `iso(W) + cameraIso`, so centering the
+            // pillar (`screen == 0`) needs `cameraIso == -iso(pillarCenter)`.
+            const vec2 centerPan = -IRMath::pos3DtoPos2DIso(kPivotPillarCenter);
+            const float yaws[] =
+                {0.0f, IRMath::kHalfPi, IRMath::kPi, 3.0f * IRMath::kHalfPi, IRMath::kQuarterPi};
+            constexpr int n = sizeof(yaws) / sizeof(yaws[0]);
+            g_pivotFocusShotLabels.reserve(n);
+            g_pivotFocusShots.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                auto &label = g_pivotFocusShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), "pivot_focus_yaw_%03d", i);
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = sweepZoom;
+                shot.cameraIso_ = centerPan;
+                shot.yawRadians_ = yaws[i];
+                shot.label_ = label.data();
+                shot.crops_ = kCropsPivotPillar;
+                shot.numCrops_ = sizeof(kCropsPivotPillar) / sizeof(kCropsPivotPillar[0]);
+                shot.pivotFocusWorld_ = kPivotPillarCenter;
+                shot.hasPivotFocus_ = true;
+                g_pivotFocusShots.push_back(shot);
+            }
+            cfg.shots_ = g_pivotFocusShots.data();
+            cfg.numShots_ = static_cast<int>(g_pivotFocusShots.size());
+            IR_LOG_INFO(
+                "Pivot-focus demo: {} yaw shots pinned on pillar ({}, {}, {}) at zoom={}",
+                cfg.numShots_,
+                kPivotPillarCenter.x,
+                kPivotPillarCenter.y,
+                kPivotPillarCenter.z,
                 sweepZoom
             );
         } else {
@@ -815,7 +924,102 @@ struct ShapeTestCase {
     Color color_;
 };
 
+// Minimal scene for --pivot-focus-demo (#1921): a tall, off-center pillar plus
+// four distinct ground markers ringing it (one per world cardinal). The dedicated
+// shot table pins the camera Z-yaw pivot on the pillar's true center, so under
+// the fix the pillar holds dead-center while the markers visibly orbit it; with
+// --pivot-origin the legacy z=0 pivot swings the whole group in an arc. Isolated
+// from the cluttered default scene so the pin is unambiguous.
+void initPivotFocusScene() {
+    // Pillar at kPivotPillarCenter (z 0..20, off the world origin in x/y).
+    createVoxelPoolShape(
+        kPivotPillarCenter,
+        IRRender::ShapeType::BOX,
+        vec4(5, 5, 21, 0),
+        Color{230, 200, 120, 255},
+        ivec3(2, 2, 10)
+    );
+    // Asymmetric ground markers (z just above 0) so rotation is legible and its
+    // direction unambiguous — distinct colors at +X / +Y / -X / -Y of the pillar.
+    struct Marker {
+        vec3 offset_;
+        Color color_;
+    };
+    const Marker markers[] = {
+        {vec3(14.0f, 0.0f, 0.0f), Color{220, 80, 80, 255}},
+        {vec3(0.0f, 14.0f, 0.0f), Color{80, 120, 220, 255}},
+        {vec3(-14.0f, 0.0f, 0.0f), Color{90, 200, 110, 255}},
+        {vec3(0.0f, -14.0f, 0.0f), Color{210, 110, 210, 255}},
+    };
+    for (const auto &m : markers) {
+        const vec3 pos = vec3(kPivotPillarCenter.x, kPivotPillarCenter.y, 1.0f) + m.offset_;
+        createVoxelPoolShape(
+            pos,
+            IRRender::ShapeType::BOX,
+            vec4(3, 3, 3, 0),
+            m.color_,
+            ivec3(1, 1, 1)
+        );
+    }
+}
+
+// Map a --spin-shape token to its ShapeType. Tokens match the lower-cased
+// fixture shapes below; returns false (leaving `out` untouched) on an unknown
+// name so the caller can diagnose it.
+bool spinShapeTypeFromName(const std::string &name, IRRender::ShapeType &out) {
+    struct SpinShapeName {
+        const char *token_;
+        IRRender::ShapeType type_;
+    };
+    static const SpinShapeName kSpinShapeNames[] = {
+        {"box", IRRender::ShapeType::BOX},
+        {"sphere", IRRender::ShapeType::SPHERE},
+        {"cylinder", IRRender::ShapeType::CYLINDER},
+        {"ellipsoid", IRRender::ShapeType::ELLIPSOID},
+        {"cone", IRRender::ShapeType::CONE},
+        {"torus", IRRender::ShapeType::TORUS},
+        {"wedge", IRRender::ShapeType::WEDGE},
+        {"curved_panel", IRRender::ShapeType::CURVED_PANEL},
+    };
+    for (const auto &entry : kSpinShapeNames) {
+        if (name == entry.token_) {
+            out = entry.type_;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Canvas lighting setup shared by the full fixture scene and the --spin-shape
+// single-shape scene: the main (voxel-pool) canvas needs the AO / sun-shadow /
+// light-volume textures + C_TrixelCanvasRenderBehavior, or the lighting
+// systems' archetype filter skips it and the shapes render unlit.
+void setupCanvasLighting() {
+    EntityId mainCanvas = IRRender::getActiveCanvasEntity();
+    IR_LOG_INFO("Active canvas entity: {}", mainCanvas);
+
+    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
+    IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
+
+    // The voxel-pool canvas prefab doesn't include this component, so the
+    // AO / sun-shadow / light-volume / lighting systems' archetype filter
+    // wouldn't otherwise match the main canvas and they'd silently skip it.
+    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
+
+    // Default sun direction: high and slightly off-axis so every demo
+    // shape casts a visible shadow without any further setup.
+    IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+}
+
 void initEntities() {
+    if (g_pivotFocusDemo) {
+        IR_LOG_INFO("--- Camera pivot-focus demo scene (#1921) ---");
+        initPivotFocusScene();
+        return;
+    }
+
     constexpr float kSpacingX = 16.0f;
     constexpr float kRowSeparationY = 12.0f;
 
@@ -878,6 +1082,48 @@ void initEntities() {
          Color{220, 100, 180, 255}},
     };
     constexpr int kNumCases = sizeof(cases) / sizeof(cases[0]);
+
+    // --spin-shape <name> (#1922): replace the side-by-side fixture scene with
+    // ONE shape centred at the origin. Under camera Z-yaw-about-origin the shape
+    // stays screen-centred, so the whole frame is that shape — clean per-shape
+    // isolation for the temporal-jitter sweep. No floor / point light: a black
+    // field maximises the metric's interior mask. The flag is absent in every
+    // normal run, so the fixture scene below stays byte-identical.
+    if (!g_spinShapeType.empty()) {
+        IRRender::ShapeType want;
+        if (spinShapeTypeFromName(g_spinShapeType, want)) {
+            for (const auto &tc : cases) {
+                if (tc.type_ != want) {
+                    continue;
+                }
+                if (g_spinShapeVoxel) {
+                    createVoxelPoolShape(
+                        vec3(0.0f, 0.0f, 0.0f),
+                        tc.type_,
+                        tc.params_,
+                        tc.color_,
+                        tc.halfExtent_
+                    );
+                } else {
+                    createSDFShape(vec3(0.0f, 0.0f, 0.0f), tc.type_, tc.params_, tc.color_);
+                }
+                IR_LOG_INFO(
+                    "Spin-shape single fixture: {} ({})",
+                    tc.label_,
+                    g_spinShapeVoxel ? "voxel-pool" : "SDF"
+                );
+                break;
+            }
+        } else {
+            IR_LOG_ERROR(
+                "--spin-shape: unknown shape '{}' "
+                "(box|sphere|cylinder|ellipsoid|cone|torus|wedge|curved_panel)",
+                g_spinShapeType
+            );
+        }
+        setupCanvasLighting();
+        return;
+    }
 
     for (int i = 0; i < kNumCases; ++i) {
         auto &tc = cases[i];
@@ -1034,22 +1280,7 @@ void initEntities() {
     );
     IREntity::setComponent(floorEntity, C_LightBlocker{false, false, 0.0f});
 
-    EntityId mainCanvas = IRRender::getActiveCanvasEntity();
-    IR_LOG_INFO("Active canvas entity: {}", mainCanvas);
-
-    const ivec2 canvasSize = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
-    IREntity::setComponent(mainCanvas, C_CanvasAOTexture{canvasSize});
-    IREntity::setComponent(mainCanvas, C_CanvasSunShadow{canvasSize});
-    IREntity::setComponent(mainCanvas, C_CanvasLightVolume{});
-
-    // The voxel-pool canvas prefab doesn't include this component, so the
-    // AO / sun-shadow / light-volume / lighting systems' archetype filter
-    // wouldn't otherwise match the main canvas and they'd silently skip it.
-    IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
-
-    // Default sun direction: high and slightly off-axis so every demo
-    // shape casts a visible shadow without any further setup.
-    IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+    setupCanvasLighting();
 
     // Emissive point light placed between the shape rows so its colored
     // falloff is visible across both the voxel-pool and SDF copies of the

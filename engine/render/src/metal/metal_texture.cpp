@@ -45,6 +45,7 @@ std::size_t pixelSizeBytes(PixelDataFormat format, PixelDataType type) {
             case PixelDataFormat::RGBA:
                 return 4;
             case PixelDataFormat::RED_INTEGER:
+            case PixelDataFormat::DEPTH_COMPONENT:
                 return 1;
             case PixelDataFormat::RG_INTEGER:
                 return 2;

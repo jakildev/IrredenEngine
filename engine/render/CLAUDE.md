@@ -241,6 +241,20 @@ The output renders drifted pixels solid red against a desaturated
 baseline. Useful both for the agent's evaluation step and for
 reviewer-facing PR-body screenshots.
 
+For depth-ordering bugs (a near surface clipping behind a far one)
+where you need the **exact stored composite depth** rather than a
+visual cue, use the `--depth-probe X,Y` flag (#1910;
+`canvas_stress` + `perf_grid`). It reads back and logs the real
+depth-test value at main-framebuffer texture pixel (X,Y) each frame —
+the GL_LESS winner across every render path, since gather, per-axis
+scatter, and the detached-canvas composite all write `gl_FragDepth`
+into the one depth attachment — decoded to shared trixel-distance
+units. The probe lives in `IRPrefab::DepthProbe::` (a prefab-scoped
+Pattern-B namespace over the `Texture2D` /
+`PixelDataFormat::DEPTH_COMPONENT` readback primitive). Pure readback:
+no shader or pipeline change, so a flagless run is byte-identical. Use
+it when a screenshot can't disambiguate which surface won a pixel.
+
 For changes that touch only one graphics backend (GLSL without MSL
 counterpart, or vice versa), follow up with the **`backend-parity`**
 skill on the lagging-side host — the rule is in [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)
@@ -486,6 +500,28 @@ cell is scattered to its true deformed footprint with no gather inverse, so the
 single-global-parity stripe class (#1256) cannot occur. Spec + the rejected
 gather/inverse alternatives:
 [`docs/design/per-axis-trixel-canvas-rotation.md`](../../docs/design/per-axis-trixel-canvas-rotation.md).
+
+**Accepted near-cardinal corner drift (coarse cubes) — #1883, root fix in
+epic #1933.** The forward-scatter composite grows each cell to a conservative
+quad (`scatterConservativeDilation`, `ir_iso_common.glsl`): the per-edge margin
+`C ≈ 0.5·|n|` carries foreshortened-silhouette coverage (anti-dashing) and a
+miter limit `kScatterMiterLimit` (`M = 2.0`) caps the corner extension. At
+near-cardinal poses (≈84° per-axis) on **coarse** cubes this leaves visible
+convex-corner **spikes** — a silhouette-tip cell whose dilation quad
+over-extends into background by ≈ `M·C`. There is **no local (non-neighbour)
+scalar fix**: crisp corners need `M·C ≲ 2px`, but `C` is forced to ≈ half the
+on-screen cell pitch to bridge the inter-cell coverage gap on foreshortened
+faces, and those two bounds are mutually exclusive — no `(margin-ceiling,
+miter-limit)` pair satisfies both (every scalar tried either re-dashes the
+silhouette or keeps the spikes). The defect scales **inversely with cell
+density** — negligible on normal/fine cubes — so it is accepted as intentional
+drift. The neighbour-aware dilation that *would* fix it geometrically was
+rejected on cost (2–4 extra `triangleColors` texel fetches per scatter vertex
+on the hot per-cell path). The principled root fix — hardware **conservative
+rasterization / MSAA** on the scatter pass, which removes the sub-pixel
+rasterization dropout at the source so no manual dilation/margin is needed
+(killing spikes and silhouette dashing together) — is deferred to epic
+**#1933** (fits #935/#937).
 
 Per-axis voxels **cast** sun shadows under continuous yaw via
 `RESOLVE_PER_AXIS_SCREEN_DEPTH` (#1435), which collapses the three face-local

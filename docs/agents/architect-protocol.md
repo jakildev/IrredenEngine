@@ -239,22 +239,22 @@ is a **new, unplanned** ticket — splitting does not transfer the parent's
 planning to it. A body that ends in "Likely suspects / approach (confirm during
 investigation)" is a *hypothesis*, not a plan. If it goes straight to
 `human:approved` + `fleet:queued` (skipping `fleet:needs-plan`, with no
-`~/.fleet/plans/issue-<N>.md`), the worker is the first person to open the
+`## Plan` comment), the worker is the first person to open the
 code: it finds the premise wrong, the root cause in an out-of-scope path, or
 the approach undecided, and design-blocks on claim. Every #1370 carve-off
 blocked exactly this way. So **route carve-offs through planning before they're
 queue-ready**: file them unlabeled per Filing tasks (the human triages →
 `fleet:needs-plan` → you plan it per
-[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) and commit
-`~/.fleet/plans/issue-<N>.md`), or — if the residual is part of a dependent
-stack — file the whole stack via `file-epic` so each child gets its own plan
-file. When you carve **more than one** residual out of the same ticket and
+[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) by posting the `## Plan`
+comment), or — if the residual is part of a dependent stack — file the whole
+stack via `file-epic` so each child gets its own plan. When you carve
+**more than one** residual out of the same ticket and
 they touch the same surface, the `file-epic` chain is the required form: each
 child `Blocked by:` its predecessor, never N flat siblings hanging off the
 parent. Flat siblings all go claimable the moment the parent closes and get
 worked in parallel on the same files — the #1370 trio produced three
 conflicting, all design-blocked PRs exactly this way (#1456 Gap 2).
-The committed plan (not the issue body) is what must (1) name a
+The `## Plan` comment (not the issue body) is what must (1) name a
 **confirmed repro** of the symptom against the actual code path, (2) **pick one
 approach** rather than hand the choice to the worker, and (3) **reconcile
 siblings + in-flight PRs** on the same surface (a carve-off's fix often
@@ -264,9 +264,9 @@ wrong). A carve-off that cannot yet clear those three is not a queued task — i
 is either a `fleet:needs-plan` issue or, if you genuinely need a worker to
 investigate before the design exists, an explicit investigation spike, never a
 `human:approved` build task. This is mechanically enforced (#1456):
-`fleet-queue-ingest` bounces an approved issue with no plan file back to
-`fleet:needs-plan` unless its title/body contains the literal phrase
-"investigation spike".
+`fleet-queue-ingest` bounces an approved issue with no `## Plan` comment back to
+`fleet:needs-plan` unless it is opted out — `human:no-plan`, a `[no-plan]`
+title/body tag, or the literal phrase "investigation spike".
 
 **Fleet self-config changes are human-only — don't file them for autonomous
 pickup.** Edits to the role/command/agent configs the fleet loads
@@ -287,15 +287,21 @@ transient, scout-triggered invocation. You do not need to poll for them.
 If the human asks you to plan an issue directly (e.g. during a design
 conversation), follow the shared
 [`docs/agents/PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) — read the full
-thread, post the structured plan comment (including the **cross-system audit**
-when planning a deletion/migration of a shared resource), save
-`~/.fleet/plans/issue-<N>.md` **and commit it into the repo at
-`.fleet/plans/issue-<N>.md`** (a small docs PR — workers read the plan from the
-repo copy synced from master; `~/.fleet/plans/` is same-host staging only, and
-there is no automatic copy), and remove `fleet:needs-plan` (leaving
-`human:approved`). If you disagree with the issue's direction, comment but
-leave `fleet:needs-plan` on. If the work decomposes into a multi-issue stack,
-file it via `file-epic` per Filing tasks above.
+thread, post the structured **`## Plan` comment** (including the **cross-system
+audit** when planning a deletion/migration of a shared resource), then swap
+`fleet:needs-plan` → `fleet:plan-review` (leaving `human:approved`). The
+`## Plan` comment is the canonical, host-independent plan — there is **no
+separate plan-doc PR**; the implementing worker commits
+`.fleet/plans/issue-<N>.md` as the first commit of its own implementation PR, so
+the plan lands with the code in one merge. If you disagree with the issue's
+direction, comment but leave `fleet:needs-plan` on. If the work decomposes into
+a multi-issue stack, file it via `file-epic` per Filing tasks above.
+
+You may also act as the **plan reviewer**: an issue carrying `fleet:plan-review`
+is waiting for someone to vet its `## Plan` comment *as a plan* (per
+PLANNING-PROTOCOL.md step-2 rigor). Sound → remove `fleet:plan-review` (the
+scout queues it); not sound → swap back to `fleet:needs-plan` with a comment
+naming the gaps.
 
 **Game-side scope.** The architect does not autonomously claim game tasks. The
 responsibility list is the primary repo's only. When the human explicitly asks
@@ -341,9 +347,9 @@ When working a `fleet:design-blocked` PR:
 2. Decide on the architectural questions. You are not coding the fix yourself;
    you are providing direction the worker will execute.
 3. **Capture durable design decisions in `docs/design/`, not just the plan
-   file.** The plan file (`~/.fleet/plans/issue-<N>.md`) is task-scoped and
-   transient — it informs the worker resuming THIS PR and then stops mattering
-   once the task completes. If your decision establishes or changes an
+   file.** The plan file (`.fleet/plans/issue-<N>.md`, on the PR branch) is
+   task-scoped and transient — it informs the worker resuming THIS PR and then
+   stops mattering once the task completes. If your decision establishes or changes an
    **engine-level architectural invariant, model, or contract** that outlives
    the task (a rasterizer face-selection model, a coordinate-system invariant,
    a component-ownership rule, a pipeline-ordering contract, a data-layout
@@ -362,23 +368,19 @@ When working a `fleet:design-blocked` PR:
    need this decision to avoid re-deriving it or contradicting it?" If yes,
    it's a design doc.
 
-   3a. **Plan file** (always): update `~/.fleet/plans/issue-<N>.md` (where
-   `<N>` is the issue number referenced in the PR body via `Closes #<N>`). Add
-   a revision-history entry at the bottom and update scope / acceptance
-   criteria in place. **Then commit it into the repo at
-   `<repo-root>/.fleet/plans/issue-<N>.md`** — `~/.fleet/plans/` is local
-   staging visible only on this host, but the fleet runs across hosts and a
-   worker reads the plan from the **repo copy, synced from master** (per the
-   worker role docs). There is no automatic queue-manager copy; if you skip the
-   commit, a cross-host worker that resumes the PR finds no plan and falls back
-   to the issue body, losing your direction. The commit is docs-only — fold it
-   into the design-doc PR (step 3b) when there is one, else a small standalone
-   docs PR; filenames stay `issue-<N>.md` (the obsolete `T-<NNN>` rename is
-   retired). If the PR has no backing issue (rare), skip the plan-file update
-   and put the full direction inline in the PR comment in step 4. For an
-   engine-level decision, keep the plan file short and **point at the design
-   doc** rather than duplicating it — the doc is canonical, the plan file is
-   the worker's task pointer into it.
+   3a. **Plan direction → the PR comment; the worker folds it into the branch's
+   plan file.** The implementation PR already carries
+   `.fleet/plans/issue-<N>.md` on its branch (the worker committed it as the
+   first commit). You don't push to the worker's branch, so put your concrete
+   direction in the step-4 `## Architect direction` comment; the resuming worker
+   updates the plan file in place on the branch (adding a revision-history entry,
+   re-scoping acceptance criteria) before continuing. **No separate docs PR for
+   the plan file** — it rides in the impl PR it already belongs to, and your
+   direction reaches a cross-host resumer through the PR comment
+   (host-independent) plus the plan file on the branch they check out. For an
+   engine-level decision, the worker keeps the plan file short and **points at
+   the design doc** (step 3b) rather than duplicating it — the doc is canonical,
+   the plan file is the worker's task pointer into it.
 
    3b. **Design doc** (for engine-level architecture): create or update
    `docs/design/<feature>.md` as the source of truth for the
@@ -435,8 +437,8 @@ When working a `fleet:design-blocked` PR:
    <re-scoped acceptance criteria if the original ones changed>
 
    Source of truth for this model: \`docs/design/<feature>.md\`
-   (engine-level decisions). Task pointer:
-   \`~/.fleet/plans/issue-<N>.md\` has been updated."
+   (engine-level decisions). Fold this direction into
+   \`.fleet/plans/issue-<N>.md\` on this branch before resuming."
    ```
 5. **Swap labels via the named transition.** Removing `fleet:design-blocked`
    and adding `fleet:design-unblocked` is a single atomic edge — the

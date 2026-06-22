@@ -46,17 +46,29 @@ vec2 getEffectiveCameraIso() {
     if (getRenderManager().getRotationPivotMode() == RotationPivotMode::ORIGIN) {
         return cameraIso;
     }
-    // CAMERA_CENTER: pivot Z-yaw about the world point under screen center (the
-    // camera focus) instead of the world origin. `P` is the un-yawed world point
-    // that projects to `cameraIso` at z = 0 (depth = 0 is the canonical iso-ray
-    // representative; `pos3DtoPos2DIso(isoPixelToPos3D(iso, 0)) == iso` holds
-    // exactly); re-projecting `P` under the live visual yaw is the offset that
-    // keeps that focus point pinned on screen as the camera rotates. At
-    // `visualYaw == 0` this collapses to `cameraIso` exactly (the round-trip
-    // identity above holds for any depth at yaw = 0, so the cardinal fast path
-    // stays byte-identical to ORIGIN mode).
-    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(cameraIso, 0.0f);
-    return IRMath::pos3DtoPos2DIsoYawed(cameraFocusWorld, IRPrefab::Camera::getYaw());
+    const float visualYaw = IRPrefab::Camera::getYaw();
+    if (getRenderManager().hasRotationPivotFocus()) {
+        // CAMERA_CENTER with an explicit point of interest (#1921): pivot Z-yaw
+        // about the focus at its TRUE depth so it rotates in place. The
+        // drift-cancel offset (`IRMath::cameraYawPivotOffset`) keeps the focus at
+        // a constant on-screen position across the yaw sweep.
+        return IRMath::cameraYawPivotOffset(
+            cameraIso, getRenderManager().getRotationPivotFocus(), visualYaw);
+    }
+    // CAMERA_CENTER default — rotate about the EXACT center of the screen. The
+    // pivot is the z = 0 world point at viewport center, whose iso is the
+    // `viewCenter` of IRMath::visibleIsoViewport (`canvasSize/2 -
+    // trixelOriginOffsetZ1(canvasSize) - cameraIso`). cameraYawPivotOffset then
+    // holds the viewport center fixed across the yaw sweep — screen(F) =
+    // canvasSize/2 - canvasOriginOffset, a constant. At visualYaw == 0 it
+    // returns cameraIso, so the no-rotate fast path stays byte-identical to
+    // ORIGIN mode. (The legacy default used isoPixelToPos3D(cameraIso, 0), the
+    // point mirrored across — and ~1 trixel off — the true screen center.)
+    const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
+    const vec2 viewCenterIso = vec2(canvasSize) * 0.5f -
+                               vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
+    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(viewCenterIso, 0.0f);
+    return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
 }
 vec2 getCameraZoom() {
     return getRenderManager().getCameraZoom();
@@ -130,8 +142,8 @@ vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
     const float rasterYaw = IRPrefab::Camera::getRasterYaw();
     const vec2 canvasIso = mouseCanvasIso() - IRRender::getEffectiveCameraIso();
     const vec3 rotatedWorld = IRMath::isoPixelToPos3D(
-        static_cast<int>(glm::floor(canvasIso.x)),
-        static_cast<int>(glm::floor(canvasIso.y)),
+        static_cast<int>(IRMath::floor(canvasIso.x)),
+        static_cast<int>(IRMath::floor(canvasIso.y)),
         canvasIsoDepth
     );
     return IRMath::rotateCardinalZInv(rotatedWorld, IRMath::rasterYawCardinalIndex(rasterYaw));
@@ -148,7 +160,7 @@ ivec2 mouseTrixelPositionWorld() {
 
     const vec2 triIndex = IRMath::pos2DIsoToTriangleIndex(scaledMousePos, shaderMod);
     // Use floor() not truncation: truncation gives 0 for -0.5..0, breaking negative x coords
-    return ivec2(glm::floor(triIndex + vec2(1, 1)));
+    return ivec2(IRMath::floor(triIndex + vec2(1, 1)));
 }
 
 IREntity::EntityId getEntityIdAtMouseTrixel() {
@@ -200,6 +212,22 @@ void setRotationPivotMode(RotationPivotMode mode) {
 
 RotationPivotMode getRotationPivotMode() {
     return getRenderManager().getRotationPivotMode();
+}
+
+void setRotationPivotFocus(vec3 focusWorld) {
+    getRenderManager().setRotationPivotFocus(focusWorld);
+}
+
+void clearRotationPivotFocus() {
+    getRenderManager().clearRotationPivotFocus();
+}
+
+bool hasRotationPivotFocus() {
+    return getRenderManager().hasRotationPivotFocus();
+}
+
+vec3 getRotationPivotFocus() {
+    return getRenderManager().getRotationPivotFocus();
 }
 
 void setVoxelRenderSubdivisions(int subdivisions) {

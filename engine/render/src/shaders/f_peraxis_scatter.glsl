@@ -21,6 +21,13 @@ flat in vec4 vColor;
 noperspective in float vDepth;
 noperspective in vec2 vQuadParam;
 flat in float vMarginDepthBias;
+// Per-axis margin-yield slope (#1883), in vDepth units per unit of quad-param
+// penetration. A large per-axis margin extrapolates the face plane far enough
+// that its depth would beat a neighbor face's exact footprint across a shared
+// ridge; scaling the yield by penetration * this slope makes the margin yield in
+// proportion to its own extrapolation excursion (the doubled top<->side sliver).
+flat in float vMarginYieldGradU;
+flat in float vMarginYieldGradV;
 // Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
 // the quad) — origin is the same for all 4 corners of a face instance, so
 // interpolation would be a no-op anyway and flat avoids shader-pipeline
@@ -53,5 +60,13 @@ void main() {
     }
     const bool inMargin = any(lessThan(vQuadParam, vec2(0.0))) ||
                           any(greaterThan(vQuadParam, vec2(1.0)));
-    gl_FragDepth = vDepth + (inMargin ? vMarginDepthBias : 0.0);
+    // Penetration past the exact [0,1]^2 footprint (per axis, >= 0). A margin
+    // fragment yields by the flat bias PLUS penetration * per-axis yield slope, so
+    // a cell-deep margin (whose plane extrapolation gained a real depth advantage)
+    // yields the shared ridge to the neighbor face's exact footprint, while a
+    // sub-pixel gap-fill yields almost nothing and still wins (#1883).
+    const vec2 outside = max(max(-vQuadParam, vQuadParam - vec2(1.0)), vec2(0.0));
+    const float yieldBias =
+        vMarginDepthBias + outside.x * vMarginYieldGradU + outside.y * vMarginYieldGradV;
+    gl_FragDepth = vDepth + (inMargin ? yieldBias : 0.0);
 }

@@ -77,6 +77,14 @@ noperspective out float vDepth;
 // claims (the #1494 sub-pixel sliver gaps), never beats a same-plane owner.
 noperspective out vec2 vQuadParam;
 flat out float vMarginDepthBias;
+// Per-axis margin-yield slope (#1883): kScatterMarginYieldGradScale * |depth
+// gradient| per unit of in-plane quad-param, in vDepth units. The fragment stage
+// multiplies these by the fragment's penetration past the exact [0,1]^2 footprint
+// to grow the margin yield in proportion to its plane-extrapolation excursion, so
+// a cell-deep margin yields a shared ridge to the neighbor face's exact footprint
+// (the doubled top<->side sliver) while a sub-pixel gap-fill barely yields.
+flat out float vMarginYieldGradU;
+flat out float vMarginYieldGradV;
 // Face-center iso-depth for per-face depth-color (#1697). Flat (constant across
 // the quad) — origin is the same for all 4 corners of a face instance, so
 // interpolation would be a no-op anyway and flat avoids shader-pipeline
@@ -198,27 +206,16 @@ void main() {
     vec2 quadEv = vec2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     vec2 su = (mpMatrix * vec4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     vec2 sv = (mpMatrix * vec4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    // Foreshortening-adaptive margin: as the residual yaw approaches ±45deg one
-    // in-plane axis collapses on screen (su nearly parallel to sv), so the
-    // deformed face quad degenerates to a sliver and adjacent faces — spaced ~a
-    // voxel step apart — leave gaps the fixed kScatterDilateMarginPx (0.85px)
-    // cannot bridge: whole diagonal bands of a dense rotating solid clip out
-    // (perf_grid slabs / GRID-spin holes), while the cardinal-projected
-    // resolve→shadow path keeps them (so shadows survive). Grow the margin
-    // toward the on-screen voxel step (max in-plane axis length), gated by
-    // the degeneracy (|sin| of the angle between su,sv → 0 when parallel) so a
-    // non-degenerate quad keeps the tight 0.85px. The margin-depth bias keeps any
-    // grown margin yielding to a real exact footprint, so this only fills genuine
-    // inter-sliver gaps.
-    const float suLen = length(su);
-    const float svLen = length(sv);
-    const float degenSin = (suLen > 1e-5 && svLen > 1e-5)
-        ? abs(su.x * sv.y - su.y * sv.x) / (suLen * svLen)
-        : 1.0;
-    const float adaptiveMargin =
-        mix(max(suLen, svLen), kScatterDilateMarginPx, clamp(degenSin, 0.0, 1.0));
+    // Per-axis continuous conservative margin (#1883). The helper derives a
+    // per-edge margin from each axis's own on-screen extent (floored at
+    // kScatterDilateMarginPx), so the collapsing axis grows to bridge the band
+    // gap while the long silhouette edge stays tight. Replaces the anisotropic
+    // max(suLen,svLen) + hard degenSin gate that over-grew the long axis and
+    // dashed the foreshortened silhouette edge. The margin-depth bias still keeps
+    // any grown margin yielding to a real exact footprint (interior overlap is
+    // harmless; only genuine inter-sliver gaps fill).
     const vec2 dilNdc = scatterConservativeDilation(
-        su, sv, sign(aPos), max(kScatterDilateMarginPx, adaptiveMargin), ndcPerPx);
+        su, sv, sign(aPos), kScatterDilateMarginPx, ndcPerPx);
     clipCorner.xy += dilNdc;
     gl_Position = clipCorner;
 
@@ -274,4 +271,10 @@ void main() {
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
     vMarginDepthBias = kScatterMarginDepthBiasKey / depthRange;
+    // Per-axis margin-yield slope (#1883). kU/kV are the per-unit-axis composite
+    // depth gradients; scaled to vDepth units and pre-absed (penetration is always
+    // outward) so the fragment stage adds penetration*slope as the over-grown
+    // margin's extrapolation-proportional yield. Folds in kScatterMarginYieldGradScale.
+    vMarginYieldGradU = kScatterMarginYieldGradScale * abs(kU) / depthRange;
+    vMarginYieldGradV = kScatterMarginYieldGradScale * abs(kV) / depthRange;
 }

@@ -19,7 +19,9 @@ namespace detail {
 
 // Re-expand a TypeList<Cs...> back into the include-pack of
 // SystemManager::createSystem so the matched archetype + dispatch only
-// see the real components (not Exclude<...> placeholders).
+// see the real components — the caller passes a `FilterTags_t`-filtered
+// list, so neither Exclude<...> placeholders nor tag types
+// (ParallelSafe / Spawns / ...) reach the archetype matcher.
 template <typename L> struct CallCreateSystem;
 template <typename... Cs> struct CallCreateSystem<TypeList<Cs...>> {
     template <typename... Args> static SystemId run(SystemManager &mgr, Args &&...args) {
@@ -170,7 +172,16 @@ constexpr SystemId createSystem(
     }();
     detail::validateConcurrencyForAccess(name, concurrency, accessDescriptor);
 
-    return detail::CallCreateSystem<typename Partition::Included>::run(
+    // Strip tag types (ParallelSafe / Spawns / Destroys / MainThread /
+    // AlsoReads / AlsoWrites) AND Exclude<...> out of the included pack
+    // before it reaches the archetype matcher + dispatch binder — a tag
+    // leaking into getArchetype<...> breaks the match, and a tag in the tick
+    // signature static_asserts. `FilterTags_t` is a provable no-op for every
+    // tag-free / Exclude-only system: FilterTags_t<Pack...> ==
+    // PartitionExcludes<Pack...>::Included whenever the pack carries no tag
+    // types (proof: test/system/system_access_test.cpp). The Excluded half
+    // (`Partition::Excluded`, above) still drives the exclude archetype.
+    return detail::CallCreateSystem<detail::FilterTags_t<TickComponents...>>::run(
         getSystemManager(),
         std::move(name),
         std::move(functionTick),
@@ -334,7 +345,13 @@ template <SystemName N, typename... Components, typename... RelationComponents>
 SystemId
 registerSystem(std::string name, RelationParams<RelationComponents...> relationParams = {}) {
     using SystemT = System<N>;
-    using IncludedList = typename detail::PartitionExcludes<Components...>::Included;
+    // Filter tag types out of the member-tick signature too (mirrors
+    // createSystem). A `ParallelSafe` in the pack must not surface as a
+    // `tick(..., ParallelSafe&)` parameter — `FilterTags_t` drops it while
+    // staying byte-identical to `PartitionExcludes::Included` for tag-free
+    // packs. The `createSystem<Components...>` call below still sees the full
+    // pack, so the tag still flips `parallelSafe_` in the access descriptor.
+    using IncludedList = detail::FilterTags_t<Components...>;
 
     auto instance = std::make_unique<SystemT>();
     SystemT *p = instance.get();

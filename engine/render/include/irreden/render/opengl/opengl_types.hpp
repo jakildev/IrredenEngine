@@ -87,6 +87,8 @@ inline GLenum toGLPixelDataFormat(PixelDataFormat format) {
         return GL_RED_INTEGER;
     case PixelDataFormat::RG_INTEGER:
         return GL_RG_INTEGER;
+    case PixelDataFormat::DEPTH_COMPONENT:
+        return GL_DEPTH_COMPONENT;
     }
     return GL_RGBA;
 }

@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# shape-rotate-jitter-sweep — temporal-jitter validation harness (#1922, epic #1881).
+#
+# Sibling to scripts/dev/perf-grid-rotate-sweep (#1882). That harness scores the
+# *solidity* of a single rotated cube per frame; this one scores *temporal
+# stability* of a shape across a fine continuous yaw sweep — does the rendered
+# surface shimmer as the camera turns?
+#
+# It targets the epic #1881 crawl family: under camera Z-yaw the rendered
+# surface shimmers frame-to-frame instead of moving smoothly. Two distinct
+# artifacts show up (see docs/design/jitter-validation-harness.md for the
+# measured master baseline):
+#   * per-axis trixel-scatter SEAM crawl on hard edges + flat faces at grazing
+#     iso angles — box + wedge (this INVERTS the original plan's guess that box
+#     would be the stable control — box FAILs).
+#   * a concentric depth-band crawl on curved SDF surfaces (child #1920) — the
+#     STRONGER mode on master; curved_panel crawls hardest, ellipsoid next, while
+#     the smooth analytic surfaces (sphere/cylinder/cone/torus) stay clean.
+# The crux the metric solves is separating either crawl from the expected smooth
+# sub-pixel motion of the whole image rotating — handled by the second-temporal-
+# difference metric in scripts/render-jitter-metric.py (see its header).
+#
+# How it isolates one shape: IRShapeDebug --spin-shape <name> spawns a SINGLE
+# shape centred at the origin, so under yaw-about-origin it stays screen-centred
+# and a centred ROI crop tracks it across the whole sweep (the default
+# side-by-side fixture scene has shapes orbit off-centre, so no fixed crop would
+# track one). Each --spin-shape sweep shot writes that centred crop; the metric
+# decodes the small crops (a full-framebuffer 100-frame sweep would be minutes
+# of pure-Python PNG decode).
+#
+# Per shape it runs SDF and/or voxel-pool render paths. On origin/master both
+# crawl modes are live, so the hard-edge shapes (box, wedge) AND the curved
+# depth-band shapes (curved_panel worst, ellipsoid) FAIL the gate while the
+# smooth analytic surfaces (sphere, cylinder, cone, torus) pass — the curved
+# family landing on both sides is what proves the metric flags real crawl and
+# not shape class. The fix children (#1920 round-to-cell, #1883 per-axis seams)
+# should pull every shape under the gate.
+#
+# Usage:  bash scripts/dev/shape-rotate-jitter-sweep [build_dir] [shapes] [zoom] [steps]
+#   build_dir   CMake build dir                       (default: build)
+#   shapes      space-separated subset                (default: all 8)
+#               box sphere cylinder ellipsoid cone torus wedge curved_panel
+#   zoom        sweep zoom (4/8/16 per #1920)         (default: 8)
+#   steps       shots across one 360° rotation        (default: 360 → 1°/step)
+#               A FINE sweep is mandatory: at coarse steps even a smoothly-
+#               shaded surface aliases into a high second-difference (sphere
+#               reads ~1.2 at 1°/step but ~2.6 at 2°/step), drowning the real
+#               crawl signal. 1°/step is the issue-#1922 spec and the regime
+#               where smooth shapes settle to near-zero flicker.
+# Env overrides: SPIN_RATE (deg/sec, default 30), MAX_JITTER (gate, default 4.0),
+#   RENDER (sdf|voxel|both, default sdf).
+#
+# Repo tooling — cmake + python3 stdlib only. Long enough (build + one run per
+# shape + per-frame scoring) to launch in the background and read on completion.
+# Self-locating, so it works from any cwd / worktree.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT" || exit 1
+
+BUILD_DIR="${1:-build}"
+SHAPES="${2:-box sphere cylinder ellipsoid cone torus wedge curved_panel}"
+ZOOM="${3:-8}"
+STEPS="${4:-360}"
+RATE="${SPIN_RATE:-30}"
+MAX_JITTER="${MAX_JITTER:-4.0}"
+RENDER="${RENDER:-sdf}"
+
+EXE_DIR="$BUILD_DIR/creations/demos/shape_debug"
+SS_DIR="$EXE_DIR/save_files/screenshots"
+METRIC="$ROOT/scripts/render-jitter-metric.py"
+
+# nproc is Linux-only; macOS uses sysctl. Fall back to a safe default.
+JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+
+echo "[1/3] building IRShapeDebug ($BUILD_DIR) ..."
+cmake --build "$BUILD_DIR" --target IRShapeDebug -j "$JOBS" >/dev/null \
+    || { echo "BUILD FAILED"; exit 1; }
+
+worst_rc=0
+
+# run_one <shape> <voxel-flag-or-empty>
+run_one() {
+    local shape="$1" voxel="$2"
+    local path="sdf"; [ -n "$voxel" ] && path="voxel"
+    mkdir -p "$SS_DIR"
+    # Scoped find -delete, never an unguarded rm glob (the dir may be empty,
+    # which trips the dangerous-rm guard) — matches perf-grid-rotate-sweep.
+    find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
+    local log="/tmp/jitter-sweep-${shape}-${path}.log"
+    ( cd "$EXE_DIR" && ./IRShapeDebug --spin-shape "$shape" $voxel \
+        --spin-yaw "$RATE" --auto-screenshot "$STEPS" --zoom "$ZOOM" ) \
+        >"$log" 2>&1 \
+        || { echo "  $shape/$path: RUN FAILED (see $log)"; tail -3 "$log"; worst_rc=1; return; }
+
+    SS_DIR="$SS_DIR" METRIC="$METRIC" MAX_JITTER="$MAX_JITTER" \
+        SHAPE="$shape" RPATH="$path" python3 - <<'PY'
+import glob, json, os, struct, subprocess, sys
+ss, metric = os.environ["SS_DIR"], os.environ["METRIC"]
+crops = sorted(glob.glob(os.path.join(ss, "screenshot_*__crop_center.png")))
+shape, rpath = os.environ["SHAPE"], os.environ["RPATH"]
+if len(crops) < 3:
+    print(f"  {shape:<13}{rpath:<7}NO CROPS (got {len(crops)} — did the run capture?)")
+    sys.exit(1)
+# Score the centred half of the crop. The shape stays screen-centred under
+# yaw-about-origin, so the middle 50% contains it at the default zoom while
+# quartering the per-pixel pure-Python decode the full crop would cost (the
+# bottleneck at 360 frames). Read the crop's pixel size from the PNG IHDR so the
+# ROI tracks the framebuffer (zoom-robust); width @ byte 16, height @ 20.
+with open(crops[0], "rb") as fh:
+    w, h = struct.unpack(">II", fh.read(24)[16:24])
+roi = f"{w // 4},{h // 4},{w // 2},{h // 2}"
+out = subprocess.run(
+    [sys.executable, metric, *crops, "--roi", roi, "--max-jitter", os.environ["MAX_JITTER"]],
+    capture_output=True, text=True)
+# The metric prints a JSON object on success and {"error": ...} (exit 2) on an
+# I/O / format / empty-interior failure. Report either gracefully and mark the
+# shape failed — never let one shape's error KeyError-abort the whole sweep.
+try:
+    m = json.loads(out.stdout)
+except (ValueError, json.JSONDecodeError):
+    print(f"  {shape:<13}{rpath:<7}METRIC ERROR (no JSON; rc={out.returncode}): "
+          f"{(out.stderr or out.stdout or '').strip()[:120]}")
+    sys.exit(1)
+if "frames" not in m:
+    print(f"  {shape:<13}{rpath:<7}METRIC ERROR: {m.get('error', m)}")
+    sys.exit(1)
+verdict = "PASS" if m.get("pass") else "FAIL"
+print(f"  {shape:<13}{rpath:<7}frames={m['frames']:<4} interior={m['interior_px']:<7} "
+      f"jitter={m['jitter_score']:<8} p95={m['flicker_p95']:<8} "
+      f"frac={m['flicker_frac']:<7} {verdict}")
+sys.exit(0 if m.get("pass") else 1)
+PY
+    [ $? -ne 0 ] && worst_rc=1
+    return 0
+}
+
+echo "[2/3] sweep: shapes=[$SHAPES] zoom=$ZOOM steps=$STEPS rate=${RATE}deg/s render=$RENDER gate=max_jitter=$MAX_JITTER"
+echo "      (on origin/master both crawl modes are live: box/wedge + ellipsoid/curved_panel FAIL; sphere/cylinder/cone/torus pass)"
+for s in $SHAPES; do
+    case "$RENDER" in
+        sdf)   run_one "$s" "" ;;
+        voxel) run_one "$s" "--spin-shape-voxel" ;;
+        both)  run_one "$s" ""; run_one "$s" "--spin-shape-voxel" ;;
+        *)     echo "unknown RENDER='$RENDER' (sdf|voxel|both)"; exit 2 ;;
+    esac
+done
+
+echo "[3/3] done. Last shape's crops remain in $SS_DIR; full logs in /tmp/jitter-sweep-*.log"
+exit "$worst_rc"

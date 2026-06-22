@@ -48,12 +48,45 @@ int openPortMidiOut(const std::string &deviceName) {
     return getAudioManager().getMidiOut().openPort(deviceName);
 }
 
+namespace {
+
+// Rebuilds a C_MidiMessage from the raw RtMidi wire bytes and fires the
+// outbound observer if one is registered. Shared by both sendMidiMessage
+// overloads so the byte unpack lives in one place. Each index is guarded:
+// 1-byte system real-time bytes (e.g. clock 0xF8) and 2-byte messages
+// (PROGRAM_CHANGE / CHANNEL_PRESSURE) must not read past the vector.
+// portIndex is -1 for the default-port send.
+void notifyOutboundObserver(
+    AudioManager &manager, const std::vector<unsigned char> &message, int portIndex
+) {
+    const unsigned char status = message.empty() ? 0 : message[0];
+    const unsigned char data1 = message.size() > 1 ? message[1] : 0;
+    const unsigned char data2 = message.size() > 2 ? message[2] : 0;
+    manager.fireOutboundMidiObserver(IRComponents::C_MidiMessage{status, data1, data2}, portIndex);
+}
+
+} // namespace
+
 void sendMidiMessage(const std::vector<unsigned char> &message) {
-    getAudioManager().getMidiOut().sendMessage(message);
+    AudioManager &manager = getAudioManager();
+    // Fire before the hardware send so a headless monitor observes the message
+    // even with no output port open (the send below then no-ops).
+    notifyOutboundObserver(manager, message, -1);
+    manager.getMidiOut().sendMessage(message);
 }
 
 void sendMidiMessage(int portIndex, const std::vector<unsigned char> &message) {
-    getAudioManager().getMidiOut().sendMessage(portIndex, message);
+    AudioManager &manager = getAudioManager();
+    notifyOutboundObserver(manager, message, portIndex);
+    manager.getMidiOut().sendMessage(portIndex, message);
+}
+
+void setOutboundMidiObserver(OutboundMidiCallback callback) {
+    getAudioManager().setOutboundMidiObserver(std::move(callback));
+}
+
+void clearOutboundMidiObserver() {
+    getAudioManager().clearOutboundMidiObserver();
 }
 
 CCData checkCCMessage(int channel, CCMessage ccMessage) {

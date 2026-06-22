@@ -88,10 +88,31 @@ Specifically, **never pass these via `--label` when filing**:
   the missing detail and removes it to re-enter normal pickup flow.
   Don't add manually.
 - `fleet:needs-plan` — owned by **`fleet-queue-ingest`** as a triage state.
-  Set alongside `fleet:queued` when the scope is understood but an architect
-  plan is required before a worker can begin. Cleared once the human (or
-  opus-architect via the `file-epic` skill) attaches a plan. Workers skip
-  issues carrying this label. Don't add manually.
+  Set (in place of `fleet:queued`) when an `human:approved` issue has no
+  `## Plan` comment and is not opted out — the issue must be planned before it
+  can queue. An opus+ planner (worker or opus-architect, via
+  [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) / the `file-epic` skill) posts
+  the `## Plan` comment and swaps this label for `fleet:plan-review`. Workers
+  skip issues carrying this label. Don't add manually.
+- `fleet:plan-review` — owned by the **planner** (sets it, swapping out
+  `fleet:needs-plan`, once the `## Plan` comment is posted) and the **plan
+  reviewer** (the architect, or the opus-reviewer loop — clears it). While
+  present the issue is NOT queue-ready: `fleet-queue-ingest` skips it. The
+  reviewer judges the `## Plan` comment *as a plan* (per PLANNING-PROTOCOL.md
+  step-2 rigor — verified state, single committed approach, sibling
+  reconciliation, cross-system audit): sound → remove the label (the scout
+  queues the issue on its next pass); not sound → swap back to
+  `fleet:needs-plan` with a comment naming the gaps. Distinct from the code
+  review the implementation PR later gets. Don't add at filing.
+- `human:no-plan` — owned by the **human**, applied at filing to a simple,
+  self-contained issue to skip planning entirely. `fleet-queue-ingest` then
+  stamps `fleet:queued` directly — no `## Plan` comment required — and the
+  worker opens a code-only PR with no `.fleet/plans/` file. The literal
+  `[no-plan]` title/body token is honored the same way (and so is the existing
+  `investigation spike` phrase). `human:*`-prefixed by convention (a human
+  signal, like `human:approved`); a fleet agent never applies it. The default
+  for an unplanned `human:approved` issue is still a bounce to
+  `fleet:needs-plan`.
 - `fleet:fable` / `fleet:opus` / `fleet:sonnet` — owned by
   **`fleet-queue-ingest`** as a model-class tag, parsed from the issue's
   `**Model:**` field. Classes are literal (fable is opt-in for the

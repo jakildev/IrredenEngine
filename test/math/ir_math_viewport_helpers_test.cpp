@@ -509,4 +509,36 @@ TEST(IsoAABBUnderYawTest, ContainsInteriorPointProjection) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// cameraYawPivotOffset
+// The CAMERA_CENTER rotation-pivot offset: pins a world focus F at a constant
+// on-screen position across the yaw sweep, so the scene rotates in place about
+// F. Invariant: screen(F) = pos3DtoPos2DIsoYawed(F, yaw) + offset is
+// yaw-independent and equals cameraIso + pos3DtoPos2DIso(F). (#1926)
+// ---------------------------------------------------------------------------
+
+TEST(CameraYawPivotOffsetTest, PinsFocusAtConstantScreenPositionAcrossYaw) {
+    const IRMath::vec2 cameraIso(16.0f, 16.0f);
+    const IRMath::vec3 focus(3.0f, -2.0f, 5.0f); // off-center, z > 0
+    const IRMath::vec2 expectedScreen = cameraIso + IRMath::pos3DtoPos2DIso(focus);
+    for (float yaw : {-2.0f, -IRMath::kQuarterPi, 0.0f, 0.3f, IRMath::kQuarterPi,
+                      IRMath::kHalfPi, IRMath::kPi, 2.5f}) {
+        const IRMath::vec2 offset = IRMath::cameraYawPivotOffset(cameraIso, focus, yaw);
+        const IRMath::vec2 screen = IRMath::pos3DtoPos2DIsoYawed(focus, yaw) + offset;
+        EXPECT_NEAR(screen.x, expectedScreen.x, kTolerance) << "yaw=" << yaw;
+        EXPECT_NEAR(screen.y, expectedScreen.y, kTolerance) << "yaw=" << yaw;
+    }
+}
+
+TEST(CameraYawPivotOffsetTest, YawZeroReturnsCameraIsoExactly) {
+    // The no-rotate fast path must be byte-identical to ORIGIN mode.
+    const IRMath::vec2 cameraIso(7.0f, -11.0f);
+    for (const IRMath::vec3 focus :
+         {IRMath::vec3(0.0f, 0.0f, 0.0f), IRMath::vec3(4.0f, 9.0f, -3.0f)}) {
+        const IRMath::vec2 offset = IRMath::cameraYawPivotOffset(cameraIso, focus, 0.0f);
+        EXPECT_FLOAT_EQ(offset.x, cameraIso.x);
+        EXPECT_FLOAT_EQ(offset.y, cameraIso.y);
+    }
+}
+
 } // namespace

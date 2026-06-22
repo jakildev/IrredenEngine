@@ -260,6 +260,23 @@ RotationPivotMode RenderManager::getRotationPivotMode() const {
     return m_rotationPivotMode;
 }
 
+void RenderManager::setRotationPivotFocus(vec3 focusWorld) {
+    m_rotationPivotFocus = focusWorld;
+    m_hasRotationPivotFocus = true;
+}
+
+void RenderManager::clearRotationPivotFocus() {
+    m_hasRotationPivotFocus = false;
+}
+
+bool RenderManager::hasRotationPivotFocus() const {
+    return m_hasRotationPivotFocus;
+}
+
+vec3 RenderManager::getRotationPivotFocus() const {
+    return m_rotationPivotFocus;
+}
+
 void RenderManager::setVoxelRenderSubdivisions(int subdivisions) {
     m_voxelRenderSubdivisions = IRMath::max(1, subdivisions);
 }

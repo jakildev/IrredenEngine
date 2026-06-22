@@ -30,7 +30,10 @@ enum class TextureAccess : std::uint8_t {
 enum class TextureFormat : std::uint8_t { RGBA8, RGBA16F, RGBA32F, R32I, RG32UI, DEPTH24_STENCIL8 };
 
 /// CPU-side pixel format for @c glReadPixels / texture upload.
-enum class PixelDataFormat : std::uint8_t { RGBA, RED_INTEGER, RG_INTEGER };
+/// @c DEPTH_COMPONENT reads the depth plane of a @c DEPTH24_STENCIL8 attachment
+/// back to a single-channel @c FLOAT32 buffer (window depth in [0, 1]); the
+/// #1910 composite-depth probe is its only consumer today.
+enum class PixelDataFormat : std::uint8_t { RGBA, RED_INTEGER, RG_INTEGER, DEPTH_COMPONENT };
 
 /// CPU-side pixel data type for @c glReadPixels / texture upload.
 enum class PixelDataType : std::uint8_t { UNSIGNED_BYTE, INT32, UINT32, FLOAT32 };

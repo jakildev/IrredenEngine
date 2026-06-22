@@ -291,6 +291,23 @@ SubdivisionMode getSubdivisionMode();
 /// @see getEffectiveCameraIso for the camera iso offset this setting corrects.
 void setRotationPivotMode(RotationPivotMode mode);
 RotationPivotMode getRotationPivotMode();
+/// Set an explicit world-space point of interest for camera Z-yaw to pivot
+/// about (#1921). In @c CAMERA_CENTER mode @ref getEffectiveCameraIso keeps this
+/// point pinned at its current screen position across a yaw sweep — content
+/// there rotates in place, at the point's true depth, instead of arcing about
+/// the z=0 world point under screen center. Choosing the focus (cursor under the
+/// pointer, the selected entity, a scene centroid, or a #1910 depth-probe of the
+/// screen-center pixel) is a creation-level policy; pass the resolved world
+/// point here, typically once per frame.
+void setRotationPivotFocus(vec3 focusWorld);
+/// Drop the explicit pivot focus, reverting to the legacy screen-center z=0
+/// pivot point (byte-identical to the pre-#1921 path). Idempotent.
+void clearRotationPivotFocus();
+/// True when an explicit pivot focus is set (see @ref setRotationPivotFocus).
+bool hasRotationPivotFocus();
+/// The explicit pivot focus world point. Meaningful only when
+/// @ref hasRotationPivotFocus is true.
+vec3 getRotationPivotFocus();
 /// @}
 
 /// @{
