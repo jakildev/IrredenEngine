@@ -55,24 +55,38 @@ vec2 getEffectiveCameraIso() {
         return IRMath::cameraYawPivotOffset(
             cameraIso, getRenderManager().getRotationPivotFocus(), visualYaw);
     }
-    // CAMERA_CENTER default — pivot Z-yaw about the z = 0 world point under
-    // screen center, `isoPixelToPos3D(cameraIso, 0)` (the legacy #1352 point).
-    // Un-panned this is the world origin, where the GRID/world content (which
-    // uses this effective offset) and the DETACHED entity canvases (which the
-    // composite places with the RAW getCameraPosition2DIso(), not the effective
-    // offset) coincide — so it is the content center for alignment. At
-    // visualYaw == 0 it returns cameraIso (byte-identical to ORIGIN mode).
+    // CAMERA_CENTER default — pivot Z-yaw about the EXACT z = 0 world point under
+    // screen center, held fixed across the yaw sweep so the scene rotates in
+    // place about what the player is looking at. The screen-center world point is
+    // `isoPixelToPos3D(viewCenterIso, 0)`, where `viewCenterIso = canvasSize/2 -
+    // trixelOriginOffsetZ1(canvasSize) - cameraIso` is the iso coordinate of the
+    // viewport center (derive: a world point W lands at screen center when
+    // `pos3DtoPos2DIso(W) + cameraIso == canvasCenterIso`, so `W =
+    // isoPixelToPos3D(canvasCenterIso - cameraIso, 0)`). `cameraYawPivotOffset`
+    // then drift-cancels so screen(F) is yaw-independent. At visualYaw == 0 it
+    // returns cameraIso, byte-identical to ORIGIN mode (the cardinal fast path).
     //
-    // Do NOT pivot about the visibleIsoViewport viewCenter (`canvasSize/2 -
-    // trixelOriginOffsetZ1 - cameraIso`): that point is ~1 trixel off this
-    // content center, so feeding it as the focus shifts the effective-offset
-    // world content relative to the raw-offset detached entities — yaw-varying —
-    // which the canvas_stress detached canary surfaces as rotation jitter
-    // (#1942 → #1944). A true-viewport-center pivot would need the detached path
-    // to consume the effective offset too (follow-up). See
+    // This is the #1942 "exact screen center" pivot. #1944 reverted it to the
+    // legacy #1352 point `isoPixelToPos3D(cameraIso, 0)`, which is the point
+    // MIRRORED across the true screen center (#1942's "~1 trixel off, mirrored"):
+    // the bare-yawed form #1944 paired with it swings the panned scene in an arc
+    // during yaw — the rotation "vibration" reported on shape_debug, which pans
+    // off-origin before yawing (canvas_stress never caught it: it is un-panned, so
+    // every form collapses to cameraIso == 0).
+    //
+    // #1944 reverted because the viewCenter focus is ~1 trixel off origin even
+    // UN-panned, so effective != raw, and the DETACHED entity-canvas composite
+    // (system_entity_canvas_to_framebuffer) placed entities with the RAW
+    // getCameraPosition2DIso() — so detached drifted vs the effective-offset GRID.
+    // That follow-up is now done: the composite consumes getEffectiveCameraIso()
+    // for placement (see system_entity_canvas_to_framebuffer.hpp), so detached and
+    // GRID pivot together and canvas_stress stays aligned through rotation. See
     // docs/design/camera-yaw-pivot.md.
-    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(cameraIso, 0.0f);
-    return IRMath::pos3DtoPos2DIsoYawed(cameraFocusWorld, visualYaw);
+    const ivec2 canvasSize = getRenderManager().getMainCanvasSizeTriangles();
+    const vec2 viewCenterIso = vec2(canvasSize) * 0.5f -
+                               vec2(IRMath::trixelOriginOffsetZ1(canvasSize)) - cameraIso;
+    const vec3 cameraFocusWorld = IRMath::isoPixelToPos3D(viewCenterIso, 0.0f);
+    return IRMath::cameraYawPivotOffset(cameraIso, cameraFocusWorld, visualYaw);
 }
 vec2 getCameraZoom() {
     return getRenderManager().getCameraZoom();

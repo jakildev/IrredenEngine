@@ -52,12 +52,24 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // the former per-entity getComponent carried).
     vec2 fbRes_{};
     vec2 mainCanvasSize_{};
-    vec2 cameraIso_{};
+    // The EFFECTIVE camera iso offset (`getEffectiveCameraIso()`), NOT the raw
+    // `getCameraPosition2DIso()`. Placement must pivot with the GRID/world content
+    // it composites against: the main canvas (TRIXEL_TO_FRAMEBUFFER / voxel raster
+    // / SDF) positions everything relative to the effective offset, which applies
+    // the RotationPivotMode focus correction (#1352/#1942) so camera Z-yaw pivots
+    // about the on-screen focus. Reading the raw offset here (the pre-#1944 state)
+    // made detached entities pivot about the world origin while GRID pivoted about
+    // the focus, so they drifted apart as the camera yawed — the canvas_stress
+    // detached canary's rotation jitter. The two coincide at yaw 0 (effective ==
+    // raw), so cardinal frames stay byte-identical. (The de-tile GATHER parity
+    // below stays keyed to the entity's FIXED world iso, `entityIso`, not this
+    // camera offset — unchanged, so no new #1256-class stripe risk.)
+    vec2 effectiveCameraIso_{};
     vec2 cameraZoom_{};
     float visualYaw_ = 0.0f;
     // Game-pixel half of the anti-vibration decomposition — see
     // IRMath::cameraSubPixelOffsets (the same value TRIXEL_TO_FRAMEBUFFER uses
-    // for the native-resolution main canvas). Derived from cameraIso_ /
+    // for the native-resolution main canvas). Derived from effectiveCameraIso_ /
     // cameraZoom_. For this UPSCALED detached canvas the raw game-px value is
     // sub-texel and must be snapped to the canvas texel grid before use (#1883,
     // jitter fix) — see the tick.
@@ -81,12 +93,12 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
         fbRes_ = vec2(framebuffer.getResolutionPlusBuffer());
         mainCanvasSize_ = IRRender::getMainCanvasSizeTrixels();
-        cameraIso_ = IRRender::getCameraPosition2DIso();
+        effectiveCameraIso_ = IRRender::getEffectiveCameraIso();
         cameraZoom_ = IRRender::getCameraZoom();
         visualYaw_ = IRPrefab::Camera::getYaw();
 
         const IRMath::CameraSubPixelOffsets subPixelOffsets =
-            IRMath::cameraSubPixelOffsets(cameraIso_, cameraZoom_, ivec2(1));
+            IRMath::cameraSubPixelOffsets(effectiveCameraIso_, cameraZoom_, ivec2(1));
         isoPixelOffset_ = vec2(subPixelOffsets.framebufferGamePxOffset_);
 
         effectiveSub_ = IRRender::getVoxelRenderEffectiveSubdivisions();
@@ -112,15 +124,18 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // parity (unchanged, so no new #1256-class stripe risk). The
         // screen PLACEMENT, by contrast, must orbit with the rotating
         // world: project the world position under the camera's continuous
-        // Z-yaw (#1500), exactly as the world / SDF content does
-        // (system_shapes_to_trixel via pos3DtoPos2DIsoYawed). The two
-        // coincide at yaw == 0, so cardinal frames stay byte-identical.
+        // Z-yaw (#1500) and add the EFFECTIVE camera offset (the pivot
+        // correction), exactly as the world / SDF content does
+        // (system_shapes_to_trixel via pos3DtoPos2DIsoYawed + the effective
+        // offset). The two coincide at yaw == 0, so cardinal frames stay
+        // byte-identical.
         vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
         vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_);
 
         ivec2 mainCanvasSizeI = ivec2(mainCanvasSize_);
         vec2 canvasOriginZ1 = vec2(trixelOriginOffsetZ1(mainCanvasSizeI));
-        vec2 entityOnMainCanvas = canvasOriginZ1 + IRMath::floor(cameraIso_) + entityIsoPlacement;
+        vec2 entityOnMainCanvas =
+            canvasOriginZ1 + IRMath::floor(effectiveCameraIso_) + entityIsoPlacement;
         vec2 normalizedPos = entityOnMainCanvas / mainCanvasSize_;
 
         vec2 entityAPos = vec2(normalizedPos.x - 0.5f, 0.5f - normalizedPos.y);
