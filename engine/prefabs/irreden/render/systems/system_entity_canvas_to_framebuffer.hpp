@@ -36,6 +36,16 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     struct CanvasInstance {
         FrameDataTrixelToFramebuffer frameData_;
         const C_TriangleCanvasTextures *textures_;
+        // World-placed (depth-participating) vs screen-locked overlay (#1624).
+        // A world-placed instance WRITES the framebuffer depth attachment so it
+        // occludes the floor / other detached instances and is occluded by world
+        // geometry (#1957); a screen-locked overlay writes color only (fixed 2D
+        // depth, byte-identical to the pre-#1624 default). Drives the per-draw
+        // setDepthWrite() in endTick — without it the composite only depth-tests,
+        // so detached solids could be occluded BY world geometry but never
+        // occlude it (a half-implemented #1624; on Metal the no-write depth state
+        // dropped gl_FragDepth entirely — #1950 Finding 1).
+        bool writesDepth_ = false;
     };
 
     // Per-frame instance list, gathered in tick and consumed in endTick.
@@ -253,6 +263,9 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         CanvasInstance inst{};
         inst.frameData_ = fd;
         inst.textures_ = canvasTextures;
+        // World-placed canvases depth-participate (write depth); screen-locked
+        // overlays do not — the same gate that zeroed distanceOffset_ above.
+        inst.writesDepth_ = !entityCanvas.screenLocked_;
         instances_.push_back(inst);
     }
 
@@ -274,7 +287,21 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // the gather composites the full SO(3) solid plus any SDF / text;
         // at a cardinal/identity pose it renders byte-identically.
         IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
+        // Depth-participation (#1957, completing #1624). The composite depth-TESTS
+        // each detached canvas against the world depth the gather wrote (so world
+        // geometry occludes a detached solid), and now also WRITES the winning
+        // fragment's gl_FragDepth for world-placed instances, so a detached solid
+        // occludes the floor and other detached instances. The fragment shader
+        // already emits gl_FragDepth (f_trixel_to_framebuffer.glsl); the per-draw
+        // setDepthWrite toggles whether it persists. This unifies the backends:
+        // GL inherited glDepthMask(GL_TRUE) so wrote depth for every instance,
+        // while Metal's no-write depth-stencil state dropped it entirely
+        // (#1950 Finding 1) — now both write iff the instance is world-placed.
+        // screenLocked_ overlays keep write OFF: a fixed-depth 2D overlay,
+        // byte-identical to the pre-#1624 default.
+        IRRender::device()->setDepthTest(true);
         for (auto &inst : instances_) {
+            IRRender::device()->setDepthWrite(inst.writesDepth_);
             frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
             inst.textures_->bind(0, 1, 2);
             IRRender::device()->drawElements(
@@ -283,6 +310,10 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 IndexType::UNSIGNED_SHORT
             );
         }
+        // Restore the pipeline's default depth-write so later passes are
+        // unaffected — matches the setDepthWrite(true) / setDepthTest(true)
+        // restore the sprite + debug-overlay passes use.
+        IRRender::device()->setDepthWrite(true);
 
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }

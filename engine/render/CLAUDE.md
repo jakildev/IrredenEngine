@@ -249,11 +249,12 @@ depth-test value at main-framebuffer texture pixel (X,Y) each frame —
 the GL_LESS winner across every render path, since gather, per-axis
 scatter, and the detached-canvas composite all write `gl_FragDepth`
 into the one depth attachment — decoded to shared trixel-distance
-units. (Metal: the detached-canvas composite does **not** yet write
-depth — pending #1957 — so on Metal the probe is currently blind to
-that path; see Finding 1 in
-`docs/design/depth-unification-1884-investigation.md`.) The probe
-lives in `IRPrefab::DepthProbe::` (a prefab-scoped
+units. (The detached composite's depth-write was completed in #1957,
+on both backends: world-placed detached solids depth-participate;
+`screenLocked_` overlays write color only by design. Before #1957 the
+composite dropped depth on Metal entirely — #1950 Finding 1 — so the
+probe was blind to that path on Metal.) The probe lives in
+`IRPrefab::DepthProbe::` (a prefab-scoped
 Pattern-B namespace over the `Texture2D` /
 `PixelDataFormat::DEPTH_COMPONENT` readback primitive). Pure readback:
 no shader or pipeline change, so a flagless run is byte-identical. Use

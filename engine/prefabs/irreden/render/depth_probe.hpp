@@ -16,7 +16,12 @@
 // and the detached-canvas composite (ENTITY_CANVAS_TO_FRAMEBUFFER) — writes its
 // winning fragment's `gl_FragDepth` into this one attachment under the GL_LESS
 // depth test, a single readback captures the true composite winner regardless of
-// which path produced the pixel. That is the reconciled, comparable depth the
+// which path produced the pixel. (The detached composite's depth-write was
+// completed in #1957: world-placed detached solids depth-participate, so the
+// probe reads their stored depth; a screen-locked overlay — the #1624 opt-out —
+// writes color only, so the probe reads the depth of whatever is behind it.
+// Before #1957 the composite dropped depth on Metal entirely — #1950 Finding 1 —
+// so the probe was blind to that path on Metal.) That is the reconciled, comparable depth the
 // #1884 "behind-face wins" crossings need diagnosed in real units, and the
 // reason this reads the attachment rather than approximating depth as a shader
 // color output (which loses precision and can't be decoded per-path).
