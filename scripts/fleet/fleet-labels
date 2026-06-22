@@ -98,19 +98,19 @@ fi
 
 LABELS=(
     "fleet:scope-shipped|fbca04|Issue scope already landed under a different T-NNN; queue-manager skipped ingest; human should close"
-    "fleet:needs-human|fbca04|Fleet can't complete this autonomously (e.g. a gated self-config edit); a human must act. Parks the issue out of the queue while KEEPING human:approved; clears when the human resolves it (ingest re-queues) or closes the issue"
-    "fleet:state-drift|fbca04|reconcile surfaced unresolved/ambiguous claim-surface drift that persisted across N ticks; one deduped tracking issue, human resolves"
+    "fleet:needs-human|fbca04|Fleet can't finish autonomously (e.g. gated self-config); human acts. Held, keeps human:approved"
+    "fleet:state-drift|fbca04|reconcile found claim-surface drift persisting N ticks; one deduped tracking issue for a human"
     "fleet:coding-improvement|c2e0c6|Worker-filed: a fix revealed a generalizable rule for the fleet's dev procedures; human triages"
     "fleet:task|0366d6|Task from the fleet issue queue"
-    "fleet:epic|cc317c|Parent issue tracking a set of child issues; the epic-steward maintains its Children checklist and closes it via the close-out flow once every child is verified closed"
+    "fleet:epic|cc317c|Parent issue tracking child issues; epic-steward maintains the Children checklist, closes it out"
     "fleet:queued|c5def5|Queued for fleet pickup (requires human:approved)"
     "fleet:fable|1d76db|Model-affinity tag (fable class — opt-in for hard work); heavy lane dispatches it on Fable"
     "fleet:opus|1d76db|Model-affinity tag set by fleet-queue-ingest; opus-class workers pick tasks with this label"
     "fleet:sonnet|1d76db|Model-affinity tag set by fleet-queue-ingest; sonnet-class workers pick tasks with this label"
-    "fleet:blocked|c5def5|Queued task whose **Blocked by:** predecessor is still open; not plainly claimable (fleet-claim refuses a plain claim; --stackable-on works). Stamped/cleared by fleet-queue-ingest as blockers close"
+    "fleet:blocked|c5def5|Queued task whose Blocked-by predecessor is still open; not plainly claimable. Set/cleared by ingest"
     "fleet:needs-info|fbca04|Needs more info from the author before triage"
     "fleet:needs-plan|fbca04|Needs a plan (## Plan issue comment) before a worker can pick it up"
-    "fleet:plan-review|fbca04|Planner posted the ## Plan comment; plan reviewer (architect/opus) vets it before queueing. Ingest skips it; sound→remove (queues), unsound→back to fleet:needs-plan"
+    "fleet:plan-review|fbca04|Plan comment posted; reviewer vets before queueing; ingest skips it (sound→remove, else needs-plan)"
     "fleet:in-progress|c5def5|A fleet worker has claimed this task"
     "fleet:wip|c5def5|Fleet worker is mid-task on the corresponding PR"
     "fleet:stalled|fbca04|A fleet:wip PR has been idle 7+ days; human decides to merge / close / re-arm"
@@ -119,32 +119,32 @@ LABELS=(
     "fleet:has-nits|fbca04|Approved but author should clean up nits before merge"
     "fleet:needs-fix|d73a4a|Reviewer agent flagged correctness/quality issues"
     "fleet:blocker|800010|Reviewer agent flagged a blocker; do not merge"
-    "fleet:needs-opus-recheck|1d76db|Sonnet first-pass review approved but ended 'Opus recheck required'; the explicit signal the scout projection wakes the opus-reviewer on. opus-reviewer removes it when its pass completes, whatever the verdict"
+    "fleet:needs-opus-recheck|1d76db|Sonnet approved but flagged 'Opus recheck required'; wakes the opus-reviewer, which removes it"
     "fleet:semantic-conflict|d73a4a|Merger hit non-mechanical conflict; opus+-class worker resolves or escalates"
     "fleet:merger-cooldown|bfdadc|Merger touched this PR; skip until next iteration"
     "fleet:design-blocked|fbca04|Worker escalated for architectural input mid-task; architect should respond"
     "fleet:design-unblocked|c5def5|Architect responded; worker resumes per the architect comment + updated plan file"
-    "fleet:design-proposed|fbca04|Epic-steward parked this design-blocked epic-child PR; its novel question(s) ride a STEWARD PROPOSAL on the umbrella; reviewer/merger/reconcile skip until the proposal is answered"
-    "fleet:steward-proposal|fbca04|Umbrella issue carries a pending STEWARD PROPOSAL package; human/architect answers inline on the thread and removes this label — removal re-fires the steward's distribution pass"
+    "fleet:design-proposed|fbca04|Epic-steward parked this design-blocked child; its question rides a STEWARD PROPOSAL upstream"
+    "fleet:steward-proposal|fbca04|Umbrella has a pending STEWARD PROPOSAL; human answers inline + removes it (re-fires distribution)"
     "fleet:needs-linux-smoke|c5def5|Engine render PR awaiting Linux/OpenGL cross-host smoke validation"
     "fleet:needs-macos-smoke|c5def5|Engine render PR awaiting macOS/Metal cross-host smoke validation"
-    "fleet:needs-windows-smoke|c5def5|Engine render PR awaiting Windows cross-host smoke validation; cleared by platform-catchup, not an author agent"
+    "fleet:needs-windows-smoke|c5def5|Engine render PR awaiting Windows cross-host smoke; cleared by platform-catchup, not the author"
     "fleet:authored-on-linux|ededed|PR was opened from a Linux/WSL host; reviewer skips fleet:needs-linux-smoke"
     "fleet:authored-on-macos|ededed|PR was opened from a macOS host; reviewer skips fleet:needs-macos-smoke"
     "fleet:authored-on-windows|ededed|PR was opened from a Windows host; reviewer skips fleet:needs-windows-smoke"
-    "fleet:verified-linux|0e8a16|Set by the smoking agent on a successful Linux smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
-    "fleet:verified-macos|0e8a16|Set by the smoking agent on a successful macOS smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
-    "fleet:verified-windows|0e8a16|Set by platform-catchup on a successful Windows smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
+    "fleet:verified-linux|0e8a16|Smoking agent set this on a successful Linux smoke run; audit trail, not a merge gate"
+    "fleet:verified-macos|0e8a16|Smoking agent set this on a successful macOS smoke run; audit trail, not a merge gate"
+    "fleet:verified-windows|0e8a16|platform-catchup set this on a successful Windows smoke run; audit trail, not a merge gate"
     "fleet:stacked|c5def5|PR's base is a feature branch (stacked PR)"
     "fleet:awaiting-base|c5def5|Stacked PR; merger is waiting for base PR to merge"
     "fleet:needs-base-update|fbca04|Stacked child PR; upstream force-pushed and cascade-rebase conflicted; author rebases manually"
-    "fleet:fork-of-other-pr|c5def5|Merger detected this PR's branch was forked from another open PR's branch (inherited commits); wait for the upstream PR to merge, then rebase --onto to drop them"
+    "fleet:fork-of-other-pr|c5def5|Branch forked from another open PR (inherited commits); rebase --onto after the upstream merges"
     "fleet:stacked-rebase|c5def5|Stacked PR; base just merged, re-targeted to master, awaiting reviewer re-eval"
     "fleet:awaiting-upstream-review|c5def5|Stacked PR; reviewer is holding verdict until upstream PR is approved"
-    "fleet:human-deferred|fbca04|Worker filed human:needs-fix concerns as a follow-up issue; PR is internally OK to merge if human accepts the deferral (fleet:approved kept)"
-    "fleet:human-amending|c5def5|Worker is amending this PR with the fixes for the human:needs-fix concerns; hold merge until fleet:changes-made appears"
-    "human:owned|5319e7|Human took ownership of this issue and de-queued it; fleet-queue-ingest never re-stamps fleet:queued; reconcile flags fleet:queued+human:owned"
-    "human:no-plan|5319e7|Human opt-out at filing: skip planning, queue directly with no ## Plan comment / plan file. Also honored as a [no-plan] title/body tag; a fleet agent never applies it"
+    "fleet:human-deferred|fbca04|Worker deferred human:needs-fix concerns to a follow-up; OK to merge if human accepts the deferral"
+    "fleet:human-amending|c5def5|Worker is amending this PR with the human:needs-fix fixes; hold merge until fleet:changes-made"
+    "human:owned|5319e7|Human took this issue out of the queue; ingest never re-stamps fleet:queued (reconcile flags both)"
+    "human:no-plan|5319e7|Human opt-out at filing: skip planning, queue directly; [no-plan] tag honored; agents never apply it"
     "human:wip|5319e7|Human is editing the PR directly; agents stand off"
     "human:approved|0e8a16|Human approved the PR (overrides agent verdict)"
     "human:needs-fix|d4c5f9|Human flagged a fix request; agent should address"
@@ -196,11 +196,9 @@ ensure_label_for_repo() {
         local color="${rest%%|*}"
         local desc="${rest#*|}"
         # GitHub's label API caps descriptions at 100 characters and 422s
-        # anything longer ("description is too long"). A rejected create
-        # falls through to the "failed to create" branch below, so every
-        # over-long catalog entry silently fails to sync on each run. The
-        # catalog keeps the full text as documentation (--check compares
-        # names only); trim a copy down to the limit before sending it.
+        # anything longer ("description is too long"). Catalog entries are
+        # kept ≤100 (enforced by `--check`); as a safety net this still
+        # trims a copy down to the limit before sending it.
         # When the cut lands mid-word, back up to the previous space and
         # append an ellipsis so the GitHub tooltip still reads cleanly —
         # but only when a boundary is reasonably close, else hard-cut.
@@ -303,20 +301,40 @@ if [[ "$CHECK" -eq 1 ]]; then
     only_catalog=$(comm -23 <(printf '%s\n' "$catalog_names") <(printf '%s\n' "$json_names"))
     only_json=$(comm -13 <(printf '%s\n' "$catalog_names") <(printf '%s\n' "$json_names"))
 
-    if [[ -z "$only_catalog" && -z "$only_json" ]]; then
-        echo "fleet-labels --check: OK — catalog and $STATE_MACHINE agree ($(printf '%s\n' "$catalog_names" | grep -c . ) labels)."
+    # Description length guard: GitHub caps label descriptions at 100 chars and
+    # 422s anything longer, so the sync loop lossily truncates over-long catalog
+    # entries — the catalog text and the on-GitHub text then silently diverge.
+    # Flag any over-long entry so it's hand-shortened in CI / pre-commit instead.
+    overlong=""
+    for _entry in "${LABELS[@]}"; do
+        _rest="${_entry#*|}"
+        _desc="${_rest#*|}"
+        if (( ${#_desc} > 100 )); then
+            overlong+="    ${_entry%%|*} (${#_desc} chars)"$'\n'
+        fi
+    done
+
+    if [[ -z "$only_catalog" && -z "$only_json" && -z "$overlong" ]]; then
+        echo "fleet-labels --check: OK — catalog and $STATE_MACHINE agree ($(printf '%s\n' "$catalog_names" | grep -c . ) labels), all descriptions ≤100 chars."
         exit 0
     fi
-    echo "fleet-labels --check: DRIFT between the catalog and the state-machine node set." >&2
-    if [[ -n "$only_catalog" ]]; then
-        echo "  In fleet-labels but NOT in fleet-state-machine.json:" >&2
-        printf '    %s\n' $only_catalog >&2
+    if [[ -n "$only_catalog" || -n "$only_json" ]]; then
+        echo "fleet-labels --check: DRIFT between the catalog and the state-machine node set." >&2
+        if [[ -n "$only_catalog" ]]; then
+            echo "  In fleet-labels but NOT in fleet-state-machine.json:" >&2
+            printf '    %s\n' $only_catalog >&2
+        fi
+        if [[ -n "$only_json" ]]; then
+            echo "  In fleet-state-machine.json but NOT in fleet-labels:" >&2
+            printf '    %s\n' $only_json >&2
+        fi
+        echo "  Add/remove the label in BOTH places (and docs/agents/fleet-labels-reference.md)." >&2
     fi
-    if [[ -n "$only_json" ]]; then
-        echo "  In fleet-state-machine.json but NOT in fleet-labels:" >&2
-        printf '    %s\n' $only_json >&2
+    if [[ -n "$overlong" ]]; then
+        echo "fleet-labels --check: catalog descriptions over GitHub's 100-char limit (lossily truncated at sync):" >&2
+        printf '%s' "$overlong" >&2
+        echo "  Shorten each to ≤100 chars." >&2
     fi
-    echo "  Add/remove the label in BOTH places (and docs/agents/fleet-labels-reference.md)." >&2
     exit 1
 fi
 
