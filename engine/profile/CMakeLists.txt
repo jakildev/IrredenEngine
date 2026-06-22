@@ -90,6 +90,11 @@ set(EASY_PROFILER_NO_GUI ON CACHE BOOL "" FORCE)
 if(IRREDEN_PROFILE_ENABLE_EASY_PROFILER_GUI)
     set(EASY_PROFILER_NO_GUI OFF CACHE BOOL "" FORCE)
 endif()
+# We link only the easy_profiler core library. Its bundled sample/reader
+# executables are dead weight in our build and their link step adds a stale
+# `${CMAKE_SOURCE_DIR}/../bin` search path, which the macOS linker warns about
+# ("search path '…/../bin' not found"). Skip building them.
+set(EASY_PROFILER_NO_SAMPLES ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(easy_profiler)
 target_link_libraries(IrredenEngineProfile PUBLIC easy_profiler)
 target_include_directories(

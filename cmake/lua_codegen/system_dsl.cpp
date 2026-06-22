@@ -1601,9 +1601,19 @@ struct Emitter {
             case StmtKind::IF: {
                 for (size_t i = 0; i < s.ifBranches_.size(); ++i) {
                     writeIndent();
-                    if (i == 0) out_ << "if ("; else out_ << "} else if (";
-                    emitExpr(*s.ifBranches_[i].cond_);
-                    out_ << ") {\n";
+                    out_ << (i == 0 ? "if " : "} else if ");
+                    // emitExpr already parenthesizes BINARY_OP / UNARY_OP, so
+                    // wrapping those again here emits "((x == y))", which trips
+                    // -Wparentheses-equality. Let the self-parenthesizing kinds
+                    // supply the condition's grouping; wrap only the atoms that
+                    // emit no parens of their own.
+                    const Expr &cond = *s.ifBranches_[i].cond_;
+                    const bool selfParen = cond.kind_ == ExprKind::BINARY_OP ||
+                                           cond.kind_ == ExprKind::UNARY_OP;
+                    if (!selfParen) out_ << "(";
+                    emitExpr(cond);
+                    if (!selfParen) out_ << ")";
+                    out_ << " {\n";
                     ++indent_;
                     auto savedSymbols = symbols_;
                     for (const auto &bs : s.ifBranches_[i].body_) emitStmt(*bs);
