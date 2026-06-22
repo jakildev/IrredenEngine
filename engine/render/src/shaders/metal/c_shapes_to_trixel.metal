@@ -1023,7 +1023,21 @@ kernel void c_shapes_to_trixel(
     // composites SDF against the three voxel canvases.
     int baseDepth;
     if (smoothYaw) {
-        const float3 viewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
+        // Lattice-couple the smooth-yaw composite depth (#1920) — mirror of the
+        // GLSL. Integer voxels on this iso pixel's (1,1,1) ray sit at depths
+        // d == 3*Vz - isoY (d ≡ -isoY mod 3), 3 iso-units (== 1 world voxel)
+        // apart — the lattice the cardinal snapLatticeWalk walks. The analytical
+        // solver quantizes surfaceD to 1-iso-unit bands off that lattice, so
+        // under a continuous yaw sweep they cross integers ~3x as often as the
+        // voxel pool's and beat against the lighting samples (the depth-band
+        // crawl + AO/light speckle on curved SDF shapes). Snapping surfaceD onto
+        // the 3-spaced column lattice steps the depth in lock with the voxel
+        // pool and absorbs the sub-lattice jitter. On-ray (depth only) so
+        // coverage is untouched. Only reached when smoothYawEnabled
+        // (residualYaw != 0); cardinals stay byte-exact.
+        const int latticeD =
+            roundHalfUp(float(surfaceD + isoPixelRel.y) / 3.0) * 3 - isoPixelRel.y;
+        const float3 viewOffset = isoToLocal3D(isoPixelRel, float(latticeD));
         // worldOffset = R_z(+visualYaw) * viewOffset (view -> world).
         const float3 worldOffset = float3(yawC * viewOffset.x - yawS * viewOffset.y,
                                           yawS * viewOffset.x + yawC * viewOffset.y,
