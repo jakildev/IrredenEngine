@@ -95,7 +95,7 @@ rotation angle (binary step, not a ramp).
 
 Off-cardinal, `SYSTEM_TRIXEL_TO_FRAMEBUFFER` replaces the single cardinal
 gather draw on the main canvas with **`drawPerAxisScatter`** (T3 / #1310,
-`engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp:106-176`):
+`engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp:187-289`):
 a **three-pass forward-scatter depth composite** of the X/Y/Z per-axis canvases,
 one vertex per source texel, GL_LESS depth-compositing the front face per pixel.
 The per-axis canvases are allocated at **worst-case size**
@@ -121,7 +121,7 @@ is *composite + resolve* combined; splitting them needs the infra fix.
    silently untimed (both backends).**
    `system_resolve_per_axis_screen_depth.hpp:204` calls
    `tagGpuStage(systemId, "resolvePerAxisScreenDepth")`, but the registry
-   (`gpu_stage_timing.hpp:210`) has no row of that name — it has
+   (`gpu_stage_timing.hpp:230`) has no row of that name — it has
    `screenSpaceResidualRotate` instead, which **no system tags** (dead, always
    0.0; only the overlay references it as "SCREEN-ROT"). `tagGpuStage` is a
    silent no-op on an unknown name, so the per-axis resolve stage is never
