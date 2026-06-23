@@ -259,6 +259,60 @@ Pattern-B namespace over the `Texture2D` /
 no shader or pipeline change, so a flagless run is byte-identical. Use
 it when a screenshot can't disambiguate which surface won a pixel.
 
+### Verifying temporal stability (per-frame jitter)
+
+**A single screenshot cannot prove a moving scene is jitter-free.** Pan/rotation
+jitter is content that *should* translate smoothly but instead oscillates ±1px
+(or worse) frame-to-frame — typically when an integer canvas anchor and its
+sub-pixel compensation disagree at a cell boundary (the #1944 per-axis class).
+Each individual frame looks correct; only the *sequence* reveals it. Any change
+to the camera-offset decomposition, the per-axis scatter, the anti-vibration
+split, or the framebuffer/screen blit MUST be checked this way, not just by
+before/after stills.
+
+Three checks, in order:
+
+1. **Static ("after the camera stops") — must be byte-identical run-to-run.**
+   Capture the same pose in two separate runs and `img_diff` them; expect 0
+   drift. A non-zero diff here is non-determinism / static jitter.
+
+2. **During pan / during rotation — sweep + `tools/jitter_probe`.** `shape_debug`
+   has two fine-step sweep harnesses that hold everything fixed except the swept
+   variable, capturing one frame per step:
+   - `--pan-sweep` — steps the camera position at a fixed (non-cardinal) yaw.
+   - `--yaw-sweep` — steps the camera yaw within ONE cardinal quadrant (constant
+     visible-face triplet) at a fixed position.
+
+   Drive them with an **isolated shape on a black field** so the centroid is
+   clean — `--spin-shape <shape> --spin-shape-voxel` (voxel → exercises the
+   per-axis path; omit `--spin-shape-voxel` for the SDF/cardinal path). For
+   rotation use a **vertical cylinder**: its silhouette is Z-yaw-invariant, so
+   any centroid wobble is jitter, not a legitimate face-triplet change (a cube's
+   silhouette changes under yaw and contaminates the metric).
+
+   ```bash
+   # pan jitter (voxel box, yaw 45, zoom 4):
+   IRShapeDebug --spin-shape box --spin-shape-voxel --pan-sweep --yaw 0.785 \
+       --zoom 4 --auto-screenshot 6
+   # rotation jitter (voxel cylinder, Z-yaw-invariant probe):
+   IRShapeDebug --spin-shape cylinder --spin-shape-voxel --yaw-sweep \
+       --zoom 4 --auto-screenshot 6
+   # then score the captured sequence (in order):
+   build/tools/jitter_probe/jitter_probe <save_files>/screenshots/screenshot_0*.png
+   ```
+
+3. **Read the verdict.** `jitter_probe` tracks the shape's centroid across the
+   sequence and reports `SMOOTH` (0 direction-reversals, sub-pixel residual off
+   the smooth-motion line, exit 0) vs `JITTER` (sign-reversing deltas + multi-px
+   residual, exit 1). A correct fix flips JITTER → SMOOTH; re-run at multiple
+   zooms (the per-axis class worsens with zoom/subdivision). For a multi-shape
+   scene with no isolation, pass `jitter_probe --color R,G,B,T` to lock onto one
+   shape. See `tools/jitter_probe/README.md`.
+
+**Jitter is NOT the same as cardinal byte-identity.** Confirm yaw-0 / static
+frames stay byte-identical (`img_diff`) *and* that motion is jitter-free
+(`jitter_probe`) — a change can pass one and fail the other.
+
 For changes that touch only one graphics backend (GLSL without MSL
 counterpart, or vice versa), follow up with the **`backend-parity`**
 skill on the lagging-side host — the rule is in [`docs/agents/FLEET.md`](../../docs/agents/FLEET.md)

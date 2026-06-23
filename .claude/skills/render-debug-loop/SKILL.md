@@ -113,6 +113,18 @@ to `scripts/render-compare.py`, which gives aggregate metrics
 (PSNR, max delta, match%) — use the python tool for pass/fail gates
 and `img_diff` for "show me where the drift is".
 
+#### 4d. Check temporal stability (jitter) when the change touches motion
+
+`img_diff` and stills catch **spatial** drift; they **cannot** prove a moving
+scene is jitter-free. If the change touches the camera-offset decomposition,
+the per-axis scatter, the anti-vibration split, or the framebuffer/screen blit,
+also run the jitter check: capture a fine `--pan-sweep` / `--yaw-sweep` of an
+isolated shape and score it with **`tools/jitter_probe`** (SMOOTH vs JITTER,
+exit 0/1). Full recipe + the isolated-cylinder rotation probe live in
+[`engine/render/CLAUDE.md`](../../../engine/render/CLAUDE.md) §"Verifying
+temporal stability (per-frame jitter)". Jitter ≠ cardinal byte-identity —
+verify both.
+
 ### 5. Evaluate
 
 Check these **always-on** criteria across every screenshot AND every
