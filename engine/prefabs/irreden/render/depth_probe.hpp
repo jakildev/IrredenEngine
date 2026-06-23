@@ -16,15 +16,22 @@
 // and the detached-canvas composite (ENTITY_CANVAS_TO_FRAMEBUFFER) — writes its
 // winning fragment's `gl_FragDepth` into this one attachment under the GL_LESS
 // depth test, a single readback captures the true composite winner regardless of
-// which path produced the pixel. (The detached composite's depth-write was
-// completed in #1957: world-placed detached solids depth-participate, so the
-// probe reads their stored depth; a screen-locked overlay — the #1624 opt-out —
-// writes color only, so the probe reads the depth of whatever is behind it.
-// Before #1957 the composite dropped depth on Metal entirely — #1950 Finding 1 —
-// so the probe was blind to that path on Metal.) That is the reconciled, comparable depth the
-// #1884 "behind-face wins" crossings need diagnosed in real units, and the
+// which path produced the pixel. The detached composite writes depth on BOTH
+// backends — #1957 verified the depth-write state is default-ENABLED when the
+// composite runs (Metal `depthWriteEnabled_`, OpenGL `glDepthMask(GL_TRUE)`) and
+// made that write explicit so it can't silently regress — so the probe reads the
+// detached solid's stored depth on both backends, not just the floor/world
+// behind it. (The earlier "Metal composite is depth-blind — #1884/#1950 Finding
+// 1" reading was a misdiagnosis: the composite participates in depth; where its
+// iso-depth ranks behind the floor it LOSES the test, the #1958 wrong-winner
+// problem, rather than never writing.) That is the reconciled, comparable depth
+// the #1884 "behind-face wins" crossings need diagnosed in real units, and the
 // reason this reads the attachment rather than approximating depth as a shader
 // color output (which loses precision and can't be decoded per-path).
+//
+// `assertCompositeWritesDepth` is the #1957 regression guard: it turns one
+// readback into a machine-readable PASS/FAIL so a future pass that disables the
+// composite depth-write is caught headlessly (canvas_stress --depth-probe-assert).
 //
 // Pure readback: it touches no shader and no render state, so a scene with the
 // probe off — or even on — is byte-identical at the pixel level. The cost is a
@@ -95,12 +102,11 @@ inline CompositeDepthSample readbackCompositeDepth(IRMath::ivec2 px) {
     );
 
     sample.normDepth_ = windowDepth;
-    sample.rawDist_ =
-        windowDepth * static_cast<float>(
-                          IRConstants::kTrixelDistanceMaxDistance -
-                          IRConstants::kTrixelDistanceMinDistance
-                      ) +
-        static_cast<float>(IRConstants::kTrixelDistanceMinDistance);
+    sample.rawDist_ = windowDepth * static_cast<float>(
+                                        IRConstants::kTrixelDistanceMaxDistance -
+                                        IRConstants::kTrixelDistanceMinDistance
+                                    ) +
+                      static_cast<float>(IRConstants::kTrixelDistanceMinDistance);
     sample.valid_ = true;
     return sample;
 }
@@ -121,6 +127,36 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
         sample.normDepth_,
         sample.rawDist_
     );
+}
+
+/// #1957 depth-write regression guard. Reads @p px (expected to fall inside a
+/// world-placed detached solid) and emits one machine-readable verdict line:
+/// @c [depth-probe-assert] pixel=(x,y) normDepth=… rawDist=… result=PASS|FAIL.
+/// PASS means the composite stored a non-background depth there — i.e. the
+/// detached-canvas composite WROTE the depth attachment. FAIL means the texel
+/// reads the far-plane background (@c normDepth_ ~= 1.0): either the composite
+/// stopped writing depth (the regression this guards) or no solid covers @p px.
+/// A failed readback (pixel out of range) also reports FAIL so a mis-aimed probe
+/// can't masquerade as a pass. Backend-agnostic: it reads the same shared depth
+/// attachment on GL and Metal. Pure readback, so registering this guard never
+/// perturbs the frame (byte-identical, like the diagnostic probe).
+inline bool assertCompositeWritesDepth(IRMath::ivec2 px) {
+    // Background is the depth clear at the far plane: rawDist == +kTrixelDistance
+    // MaxDistance, i.e. normDepth == 1.0. Any composite-written surface reads
+    // well below that (the canvas_stress canary reads ~0.49). 0.99 separates the
+    // two with wide margin and no dependence on the exact stored distance.
+    constexpr float kBackgroundNormDepthThreshold = 0.99f;
+    const CompositeDepthSample sample = readbackCompositeDepth(px);
+    const bool wroteDepth = sample.valid_ && sample.normDepth_ < kBackgroundNormDepthThreshold;
+    IR_LOG_INFO(
+        "[depth-probe-assert] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} result={}",
+        px.x,
+        px.y,
+        sample.normDepth_,
+        sample.rawDist_,
+        wroteDepth ? "PASS" : "FAIL"
+    );
+    return wroteDepth;
 }
 
 } // namespace IRPrefab::DepthProbe

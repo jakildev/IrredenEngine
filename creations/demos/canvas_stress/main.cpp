@@ -164,6 +164,17 @@ struct CanvasStressSettings {
     // floating canary cube clips behind the SDF floor at high zoom).
     bool depthProbeSet_ = false;
     ivec2 depthProbePixel_{0, 0};
+    // `--depth-probe-assert X,Y` (#1957): the depth-write regression guard. Like
+    // --depth-probe but emits a `[depth-probe-assert] … result=PASS|FAIL` verdict
+    // line — PASS iff the composite stored a non-background depth at (X,Y), i.e.
+    // the detached-canvas composite WROTE the depth attachment there. Aim it at a
+    // texel inside a world-placed detached solid (canonical:
+    // `--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`,
+    // which the canary covers on both backends). FAILs if a future pass disables
+    // the composite depth-write. Off by default; registers no system when unset,
+    // so a flagless run is byte-identical.
+    bool depthProbeAssertSet_ = false;
+    ivec2 depthProbeAssertPixel_{0, 0};
     // readConfig() runs AFTER parseArgs() (it needs IREngine::init), so a
     // config `auto_rotate` would otherwise clobber an explicit
     // --auto-rotate / --no-auto-rotate flag. Latch CLI intent so config only
@@ -767,6 +778,19 @@ void parseArgs(int argc, char **argv) {
                 );
             }
             ++i;
+        } else if (std::strcmp(argv[i], "--depth-probe-assert") == 0 && i + 1 < argc) {
+            int px = 0;
+            int py = 0;
+            if (std::sscanf(argv[i + 1], "%d,%d", &px, &py) == 2) {
+                g_settings.depthProbeAssertSet_ = true;
+                g_settings.depthProbeAssertPixel_ = ivec2(px, py);
+            } else {
+                IR_LOG_WARN(
+                    "--depth-probe-assert: expected X,Y (e.g. 321,210); ignoring '{}'",
+                    argv[i + 1]
+                );
+            }
+            ++i;
         }
     }
     if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0) {
@@ -954,6 +978,21 @@ void initSystems() {
                 "DepthProbe",
                 [](C_Camera &) {},
                 [probePixel]() { IRPrefab::DepthProbe::logCompositeDepth(probePixel); }
+            )
+        );
+    }
+
+    // #1957 depth-write regression guard — registered only with
+    // --depth-probe-assert. Runs after the framebuffer composite and emits a
+    // PASS/FAIL verdict line so a headless run catches a future pass that
+    // disables the detached-canvas composite depth-write.
+    if (g_settings.depthProbeAssertSet_) {
+        const ivec2 assertPixel = g_settings.depthProbeAssertPixel_;
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_Camera>(
+                "DepthProbeAssert",
+                [](C_Camera &) {},
+                [assertPixel]() { IRPrefab::DepthProbe::assertCompositeWritesDepth(assertPixel); }
             )
         );
     }
