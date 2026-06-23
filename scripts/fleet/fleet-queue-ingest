@@ -221,6 +221,12 @@ MODEL_RE = re.compile(r'\*\*(?:Suggested\s+)?Model:\*\*\s*(.+?)(?:\n|$)', re.IGN
 # queues without a plan file (architect-protocol.md §"Carve-offs are unplanned
 # tickets" is where the phrase is defined).
 SPIKE_RE = re.compile(r'investigation\s+spike', re.IGNORECASE)
+# #1932 PR2: the `[no-plan]` opt-out tag — the label-light twin of the
+# human:no-plan label, honored the same way as the investigation-spike phrase.
+NO_PLAN_RE = re.compile(r'\[no-plan\]', re.IGNORECASE)
+# #1932 PR2: the canonical plan is now a `## Plan` issue comment (no longer a
+# committed/staged plan file). Match a Markdown heading line "## Plan…".
+PLAN_COMMENT_RE = re.compile(r'^\s{0,3}#{2,}\s+Plan\b', re.MULTILINE)
 PLANS_DIR = os.path.expanduser('~/.fleet/plans')
 
 
@@ -272,6 +278,17 @@ def _plan_exists(repo, n, cache):
     cache[key] = present
     return present
 
+
+def _has_plan_comment(comments):
+    """True when any issue comment is a `## Plan` comment — the canonical plan
+    in the redesigned flow (#1932 PR2). `comments` is the list returned by
+    `gh issue view --json comments` (each item a dict carrying a 'body')."""
+    for c in comments or []:
+        body = c.get('body', '') if isinstance(c, dict) else ''
+        if body and PLAN_COMMENT_RE.search(body):
+            return True
+    return False
+
 stamped = 0
 skipped_already = 0
 blocked_marked = 0
@@ -288,7 +305,7 @@ for issue in pending:
 
     r = subprocess.run(
         ['gh', 'issue', 'view', str(n), '--repo', repo,
-         '--json', 'title,body,labels'],
+         '--json', 'title,body,labels,comments'],
         capture_output=True, text=True, timeout=15,
     )
     if r.returncode != 0:
@@ -305,7 +322,11 @@ for issue in pending:
     labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
-            or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels):
+            or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
+            or 'fleet:plan-review' in labels):
+        # fleet:plan-review (#1932): the plan is posted but a reviewer hasn't
+        # vetted it yet — ingest holds off until the reviewer clears the label
+        # (sound → removed; not sound → swapped to fleet:needs-plan).
         skipped_already += 1
         continue
 
@@ -318,24 +339,32 @@ for issue in pending:
         print(f'INFO issue {repo}#{n}: human:owned — skipping ingest (human de-queued)', file=sys.stderr)
         continue
 
-    # Planning gate (#1456): refuse to queue an issue that never passed
-    # through planning. Carve-offs stamped human:approved directly carry a
-    # hypothesis, not a plan — without a plan file the claiming worker is
-    # the first to open the code and design-blocks. Bounce to
-    # fleet:needs-plan (routes through PLANNING-PROTOCOL.md; the label also
-    # drops the issue out of the ingest pending set via the live-label skip guard)
-    # unless the issue is an explicit investigation spike. Sits before the
-    # blocker probes so a bounced issue costs no per-blocker API calls.
-    if (not SPIKE_RE.search(title) and not SPIKE_RE.search(body)
-            and not _plan_exists(repo, n, plan_cache)):
+    # Planning gate (#1456, re-keyed by #1932): refuse to queue an issue that
+    # never passed through planning. The canonical plan is now a `## Plan`
+    # issue comment (#1932); a committed/staged plan file still counts
+    # (backward compat for pre-redesign issues). Opt-outs: an explicit
+    # investigation spike, the `[no-plan]` tag, or the human:no-plan label.
+    # Without a plan or an opt-out the claiming worker is the first to open the
+    # code and design-blocks, so bounce to fleet:needs-plan (routes through
+    # PLANNING-PROTOCOL.md; the label also drops the issue out of the ingest
+    # pending set via the live-label skip guard). Sits before the blocker probes
+    # so a bounced issue costs no per-blocker API calls.
+    opted_out = bool(
+        SPIKE_RE.search(title) or SPIKE_RE.search(body)
+        or NO_PLAN_RE.search(title) or NO_PLAN_RE.search(body)
+        or 'human:no-plan' in labels
+    )
+    has_plan = (_has_plan_comment(view.get('comments', []))
+                or _plan_exists(repo, n, plan_cache))
+    if not opted_out and not has_plan:
         comment = (
-            f"Planning gate: no plan file found for this issue — neither "
-            f"committed `.fleet/plans/issue-{n}.md` nor planner-host "
-            f"`~/.fleet/plans/issue-{n}.md` — and it is not an explicit "
-            "investigation spike. Unplanned carve-offs design-block on "
-            "claim (#1456), so adding `fleet:needs-plan` to route it "
-            "through PLANNING-PROTOCOL.md before it can queue. "
-            "— fleet-queue-ingest"
+            f"Planning gate: this issue has no `## Plan` comment (the canonical "
+            f"plan per #1932) and no committed/staged plan file "
+            f"(`.fleet/plans/issue-{n}.md`), and it is not opted out "
+            f"(`human:no-plan` / `[no-plan]` / investigation spike). Unplanned "
+            f"carve-offs design-block on claim (#1456), so adding "
+            f"`fleet:needs-plan` to route it through PLANNING-PROTOCOL.md before "
+            "it can queue. — fleet-queue-ingest"
         )
         subprocess.run(
             ['gh', 'issue', 'comment', str(n), '--repo', repo,

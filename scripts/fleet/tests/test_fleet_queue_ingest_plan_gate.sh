@@ -45,13 +45,21 @@ PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # #742 = committed repo-side plan (gh api 200)    → stamp
 # #743 = no plan, body declares investigation spike → stamp
 # #744 = plan probe fails WITHOUT a 404 (network) → fail open, stamp
+# #745 = `## Plan` issue comment, no file (#1932)  → stamp (the canonical path)
+# #746 = `[no-plan]` opt-out tag in title (#1932)  → stamp
+# #747 = human:no-plan opt-out label (#1932)       → stamp
+# #748 = fleet:plan-review (plan not yet vetted)    → early-skip (no stamp/bounce)
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":740,"repo":"engine"},
   {"number":741,"repo":"engine"},
   {"number":742,"repo":"engine"},
   {"number":743,"repo":"engine"},
-  {"number":744,"repo":"engine"}
+  {"number":744,"repo":"engine"},
+  {"number":745,"repo":"engine"},
+  {"number":746,"repo":"engine"},
+  {"number":747,"repo":"engine"},
+  {"number":748,"repo":"engine"}
 ],"unblock_issues":[]}
 JSON
 
@@ -72,6 +80,10 @@ case "$1" in
                     742) echo '{"title":"render: epic child","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
                     743) echo '{"title":"render: probe the culling path","body":"**Model:** opus\n**Blocked by:** (none)\n\nExplicit investigation spike: report findings, no fix expected.","labels":[{"name":"human:approved"}]}' ;;
                     744) echo '{"title":"render: planned elsewhere","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
+                    745) echo '{"title":"render: planned via comment","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"}],"comments":[{"body":"## Plan: do the thing\n\nstep one"}]}' ;;
+                    746) echo '{"title":"render: tiny tweak [no-plan]","body":"**Model:** sonnet\n**Blocked by:** (none)","labels":[{"name":"human:approved"}]}' ;;
+                    747) echo '{"title":"render: human said skip","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"human:no-plan"}]}' ;;
+                    748) echo '{"title":"render: plan under review","body":"**Model:** opus\n**Blocked by:** (none)","labels":[{"name":"human:approved"},{"name":"fleet:plan-review"}]}' ;;
                     *)   echo '{"title":"","body":"","labels":[]}' ;;
                 esac
                 exit 0 ;;
@@ -162,6 +174,39 @@ if [[ -n "$l744" && "$l744" == *"fleet:queued"* && "$l744" != *"fleet:needs-plan
     ok "#744 (non-404 probe failure) failed open and stamped"
 else
     bad "#744 transient probe failure wrongly bounced: '$l744'"
+fi
+
+# --- #1932: comment-based plan + opt-outs -----------------------------------
+# #745 (`## Plan` issue comment, no file) → stamped (the canonical redesign path).
+l745=$(edit_line 745)
+if [[ -n "$l745" && "$l745" == *"fleet:queued"* && "$l745" != *"fleet:needs-plan"* ]]; then
+    ok "#745 (## Plan comment, no file) stamped fleet:queued"
+else
+    bad "#745 comment-based plan mis-handled: '$l745'"
+fi
+
+# #746 ([no-plan] tag in title) → stamped (opt-out).
+l746=$(edit_line 746)
+if [[ -n "$l746" && "$l746" == *"fleet:queued"* && "$l746" != *"fleet:needs-plan"* ]]; then
+    ok "#746 ([no-plan] opt-out tag) stamped without a plan"
+else
+    bad "#746 [no-plan] opt-out failed: '$l746'"
+fi
+
+# #747 (human:no-plan label) → stamped (opt-out).
+l747=$(edit_line 747)
+if [[ -n "$l747" && "$l747" == *"fleet:queued"* && "$l747" != *"fleet:needs-plan"* ]]; then
+    ok "#747 (human:no-plan opt-out label) stamped without a plan"
+else
+    bad "#747 human:no-plan opt-out failed: '$l747'"
+fi
+
+# #748 (fleet:plan-review) → early-skipped: neither queued nor bounced.
+l748=$(edit_line 748)
+if [[ -z "$l748" ]]; then
+    ok "#748 (fleet:plan-review) early-skipped — no stamp, no bounce"
+else
+    bad "#748 plan-review issue was not skipped: '$l748'"
 fi
 
 echo
