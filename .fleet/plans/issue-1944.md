@@ -35,7 +35,7 @@ Re-bless the stale `canvas_stress` render-verify reference images (both `macos-d
 
 ### Acceptance criteria
 - On `origin/master` **with #1953 merged**, `python3 scripts/render-verify.py --target IRCanvasStress` → **6/6 PASS** on the authoring host's backend.
-- Both `macos-debug` and `linux-debug` reference sets refreshed and committed (cross-host handoff completed before merge).
+- **Reference sets refreshed and committed across both backends, split by host (cross-host handoff).** This PR delivers the `macos-debug` half only; the `linux-debug` half ships separately as #1969 (the cross-host smoke protocol runs `IRShapeDebug` and cannot `render-verify --update-references` for `canvas_stress`, so it can't bless these refs — #1577 is the precedent for splitting). **Merge ordering:** land #1969 before or alongside this PR — merging macos-debug alone leaves the `linux-debug` gate red until #1969 lands.
 - No source/manifest/structural-baseline changes; `shadow_overlay_floor` (capture idx 8) and `revox_coverage` (idx 9) indices unchanged.
 - A focused follow-up issue filed for compare-shot gating (see Gotchas).
 
