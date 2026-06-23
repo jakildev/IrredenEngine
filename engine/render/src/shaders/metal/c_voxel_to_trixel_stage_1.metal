@@ -161,11 +161,12 @@ kernel void c_voxel_to_trixel_stage_1(
         // occlusion (resolved by the rawDepth atomicMin). The scatter recovers
         // the origin via isoPixelToPos3D (exact, non-singular at every yaw since
         // the index is un-yawed) and reprojects under the live yaw.
-        const int2 perAxisBase = trixelFrameOffset(
-            frameData.trixelCanvasOffsetZ1,
-            frameData.frameCanvasOffset,
-            frameData.voxelRenderOptions
-        );
+        // Whole-iso base anchor (#1944): per-axis store is base-resolution, so the
+        // anchor must NOT be density-scaled (the scaled anchor jittered under pan —
+        // see the #1944 NOTE in ir_iso_common). Cardinal single-canvas paths below
+        // keep trixelFrameOffset.
+        const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
+                                 int2(floor(frameData.frameCanvasOffset));
         if (frameData.voxelRenderOptions.x == 0) {
             const int3 worldPos = int3(round(voxelPosition.xyz));
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);

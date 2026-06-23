@@ -37,11 +37,10 @@ kernel void c_resolve_per_axis_screen_depth(
 
     // Recover the face-plane origin (canvas-native units) — exact integer
     // inverse, identical to perAxisCellToWorld3D / peraxis_scatter.metal.
-    const int2 perAxisBase = trixelFrameOffset(
-        trixelOriginOffsetZ1(perAxisSize),
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions
-    );
+    // Whole-iso base anchor (#1944) — must match the store/recovery anchor; the
+    // re-projection `scale` below stays density-scaled (subdivided main layout).
+    const int2 perAxisBase =
+        trixelOriginOffsetZ1(perAxisSize) + int2(floor(frameData.frameCanvasOffset));
     // Un-yawed iso recovery: the store filed this face at
     // `perAxisBase + pos3DtoPos2DIso(facePos)`; invert via isoPixelToPos3D
     // (exact integer facePos for integer cell + rawDepth).

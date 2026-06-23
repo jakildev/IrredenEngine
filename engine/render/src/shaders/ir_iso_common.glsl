@@ -373,6 +373,16 @@ ivec2 trixelFrameOffset(
     return trixelCanvasOffsetZ1 + ivec2(floor(frameCanvasOffset * float(scale)));
 }
 
+// NOTE (#1944): the per-axis camera-pan anchor is `trixelOriginOffsetZ1(size) +
+// ivec2(floor(frameCanvasOffset))` — the WHOLE-iso camera offset, NOT the
+// density-scaled `trixelFrameOffset` above (per-axis canvases are
+// base-resolution since #1458, so the scaled anchor jittered under pan; see
+// system_trixel_to_framebuffer.hpp drawPerAxisScatter). It is INLINED at each
+// per-axis site rather than centralised here so this shared header does not gain
+// a symbol — adding to ir_iso_common perturbs the cardinal SDF/voxel shaders'
+// FP scheduling and drifts their byte-identical fast path (the same reason
+// perAxisCellToWorld3D lives in ir_per_axis_lighting, not here).
+
 ivec2 trixelCanvasPixelToIsoRel(
     ivec2 pixel,
     ivec2 trixelCanvasOffsetZ1,

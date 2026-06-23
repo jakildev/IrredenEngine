@@ -372,6 +372,12 @@ inline int2 trixelFrameOffset(
     return trixelCanvasOffsetZ1 + int2(floor(frameCanvasOffset * float(scale)));
 }
 
+// NOTE (#1944): the per-axis camera-pan anchor is `trixelOriginOffsetZ1(size) +
+// int2(floor(frameCanvasOffset))` — whole-iso, NOT density-scaled — and is
+// INLINED at each per-axis site, not centralised here, so this shared header
+// gains no symbol that would drift the cardinal SDF/voxel fast path. See the
+// GLSL twin and system_trixel_to_framebuffer.hpp for the rationale.
+
 inline int2 trixelCanvasPixelToIsoRel(
     int2 pixel,
     int2 trixelCanvasOffsetZ1,

@@ -607,7 +607,8 @@ parity with voxel-pool primary shapes.
 - **Camera-iso offset pivots about the focus (`getEffectiveCameraIso`).**
   Any producer that positions world content relative to the camera — voxel
   raster, SDF main-canvas placement, per-axis scatter base, trixel→trixel
-  composite, particles, the framebuffer pan/blit, cull viewports, and the
+  composite, particles, the framebuffer pan/blit, cull viewports, the
+  detached entity-canvas composite (`ENTITY_CANVAS_TO_FRAMEBUFFER`), and the
   picking/hover inverses — must read `IRRender::getEffectiveCameraIso()`,
   **not** `getCameraPosition2DIso()`. The effective offset applies the
   `RotationPivotMode` correction (#1352) so camera Z-yaw pivots about the
@@ -615,9 +616,11 @@ parity with voxel-pool primary shapes.
   `visualYaw == 0` it returns the raw offset, so the cardinal fast path is
   byte-identical. Reading the raw offset at a new producer site silently
   reintroduces the off-origin orbital swing while every other layer pivots
-  correctly. Lighting-grid centering (`camera_anchor`), screen-space
-  sprites, detached entity canvases, and debug overlays intentionally stay
-  on the raw offset.
+  correctly. The detached composite reads the effective offset only for the
+  screen PLACEMENT of the canvas quad; its de-tile gather parity stays keyed
+  to the entity's FIXED world iso (`-entityIso`), which is camera-independent.
+  Lighting-grid centering (`camera_anchor`), screen-space sprites, and debug
+  overlays intentionally stay on the raw offset.
 - **Distance texture clear.** Cleared to `kTrixelDistanceMaxDistance`
   (65535, **not** INT32_MAX). Voxels and shapes both write smaller values
   via `imageAtomicMin`; the clear value acts as the "nothing here" background.

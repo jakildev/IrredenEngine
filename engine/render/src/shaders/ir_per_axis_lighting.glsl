@@ -20,8 +20,10 @@ vec3 perAxisCellToWorld3D(
     ivec2 cell, int rawDepth, int faceId,
     ivec2 canvasSize, vec2 frameCanvasOffset, ivec2 voxelRenderOptions
 ) {
-    ivec2 perAxisBase =
-        trixelFrameOffset(trixelOriginOffsetZ1(canvasSize), frameCanvasOffset, voxelRenderOptions);
+    // Whole-iso base anchor (#1944) — per-axis canvases are base-resolution, so
+    // the anchor is NOT density-scaled (voxelRenderOptions retained in the
+    // signature for caller compatibility; no longer consulted for the anchor).
+    ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSize) + ivec2(floor(frameCanvasOffset));
     ivec2 isoPix = cell - perAxisBase;
     return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
 }

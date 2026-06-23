@@ -255,6 +255,31 @@ std::vector<std::array<char, 40>> g_pivotFocusShotLabels;
 // the focus exactly matches the rendered geometry.
 constexpr vec3 kPivotPillarCenter = vec3(8.0f, -8.0f, 10.0f);
 
+// --pan-sweep (#1944 diagnosis): hold yaw + zoom fixed and step the camera iso
+// position in fine sub-trixel increments across ~2 trixels, capturing one frame
+// per step. A static scene must translate SMOOTHLY across the sweep — any
+// per-frame +/-1px oscillation as the camera crosses a trixel boundary is the
+// anti-vibration jitter (the sub-pixel decomposition disagreeing with the
+// integer canvas placement). Defaults to yaw 45 deg (residual != 0 → per-axis
+// composite active) so it exercises rotation; override with --yaw. Requires
+// --auto-screenshot (its value sets the step count, min 2).
+bool g_panSweep = false;
+std::vector<IRVideo::AutoScreenshotShot> g_panSweepShots;
+std::vector<std::array<char, 40>> g_panSweepShotLabels;
+
+// --yaw-sweep (#1944 diagnosis): hold camera position + zoom fixed and step the
+// camera Z-yaw in fine increments, capturing one frame per step. The companion
+// to --pan-sweep: it exercises jitter during ROTATION (the effective camera iso
+// changes via the RotationPivotMode drift-cancel as yaw advances, so the per-axis
+// composite's camera-offset decomposition is swept). The range stays inside ONE
+// cardinal quadrant (residual yaw 0..π/4, constant visible-face triplet) so a
+// Z-yaw-invariant probe (a vertical cylinder) has a stable silhouette and any
+// per-frame centroid wobble is jitter, not a face-triplet flip. Requires
+// --auto-screenshot.
+bool g_yawSweep = false;
+std::vector<IRVideo::AutoScreenshotShot> g_yawSweepShots;
+std::vector<std::array<char, 40>> g_yawSweepShotLabels;
+
 } // namespace
 
 void initSystems();
@@ -285,6 +310,10 @@ int main(int argc, char **argv) {
             g_pivotFocusDemo = true;
         } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
             g_skinSmoke = true;
+        } else if (std::strcmp(argv[i], "--pan-sweep") == 0) {
+            g_panSweep = true;
+        } else if (std::strcmp(argv[i], "--yaw-sweep") == 0) {
+            g_yawSweep = true;
         } else if (std::strcmp(argv[i], "--zoom") == 0) {
             if (i + 1 < argc) {
                 float z = static_cast<float>(std::atof(argv[i + 1]));
@@ -658,6 +687,73 @@ void initSystems() {
                 kPivotPillarCenter.x,
                 kPivotPillarCenter.y,
                 kPivotPillarCenter.z,
+                sweepZoom
+            );
+        } else if (g_panSweep) {
+            // Fine pan sweep at a FIXED yaw (#1944 jitter diagnosis). Steps the
+            // camera iso across 2 trixels in X so the integer game-px part of the
+            // anti-vibration decomposition ticks twice; a correct pipeline
+            // translates the scene smoothly, a broken one oscillates +/-1px at
+            // each tick. yaw defaults to 45 deg (per-axis composite active).
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            const float sweepYaw = g_initialYawSet ? g_initialYaw : IRMath::kQuarterPi;
+            const int n = IRMath::max(2, g_autoWarmupFrames > 0 ? g_spinYawShotCount : 24);
+            const vec2 base = vec2(16.0f, 16.0f);
+            g_panSweepShotLabels.reserve(n);
+            g_panSweepShots.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                const float t = static_cast<float>(i) / static_cast<float>(n - 1);
+                auto &label = g_panSweepShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), "pan_sweep_%03d_of_%03d", i, n);
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = sweepZoom;
+                shot.cameraIso_ = base + vec2(2.0f * t, 0.0f);
+                shot.yawRadians_ = sweepYaw;
+                shot.label_ = label.data();
+                g_panSweepShots.push_back(shot);
+            }
+            cfg.shots_ = g_panSweepShots.data();
+            cfg.numShots_ = static_cast<int>(g_panSweepShots.size());
+            IR_LOG_INFO(
+                "Pan-sweep: {} shots, cameraIso ({},{})->({},{}) at yaw={} rad zoom={}",
+                cfg.numShots_,
+                base.x,
+                base.y,
+                base.x + 2.0f,
+                base.y,
+                sweepYaw,
+                sweepZoom
+            );
+        } else if (g_yawSweep) {
+            // Fine yaw sweep at FIXED camera position (#1944 jitter diagnosis,
+            // rotation half). Steps yaw across [0.05, 0.70] rad — inside the first
+            // cardinal quadrant (< π/4 ≈ 0.785), so the per-axis visible-face
+            // triplet is constant and a vertical cylinder probe's silhouette is
+            // Z-yaw-invariant: smooth centroid = pass, oscillation = jitter.
+            const float sweepZoom = g_initialZoom > 0.0f ? g_initialZoom : 4.0f;
+            const int n = IRMath::max(2, 24);
+            constexpr float kYawLo = 0.05f;
+            constexpr float kYawHi = 0.70f;
+            g_yawSweepShotLabels.reserve(n);
+            g_yawSweepShots.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                const float t = static_cast<float>(i) / static_cast<float>(n - 1);
+                auto &label = g_yawSweepShotLabels.emplace_back();
+                std::snprintf(label.data(), label.size(), "yaw_sweep_%03d_of_%03d", i, n);
+                IRVideo::AutoScreenshotShot shot{};
+                shot.zoom_ = sweepZoom;
+                shot.cameraIso_ = vec2(0.0f, 0.0f);
+                shot.yawRadians_ = kYawLo + (kYawHi - kYawLo) * t;
+                shot.label_ = label.data();
+                g_yawSweepShots.push_back(shot);
+            }
+            cfg.shots_ = g_yawSweepShots.data();
+            cfg.numShots_ = static_cast<int>(g_yawSweepShots.size());
+            IR_LOG_INFO(
+                "Yaw-sweep: {} shots, yaw {}->{} rad at cameraIso (0,0) zoom={}",
+                cfg.numShots_,
+                kYawLo,
+                kYawHi,
                 sweepZoom
             );
         } else {

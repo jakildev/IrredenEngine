@@ -75,9 +75,10 @@ void main() {
     // / v_peraxis_scatter use (no trig, no 2cos(yaw)+1 singularity, since the
     // store index is un-yawed). The store filed this face at
     // `perAxisBase + pos3DtoPos2DIso(facePos)` (ir_per_axis_lighting.glsl).
-    const ivec2 perAxisBase = trixelFrameOffset(
-        trixelOriginOffsetZ1(perAxisSize), frameCanvasOffset, voxelRenderOptions
-    );
+    // Whole-iso base anchor (#1944) — must match the store/recovery anchor.
+    // (The re-projection `scale` below stays density-scaled: it maps the recovered
+    // base-resolution origin into the SUBDIVIDED main-canvas cardinal layout.)
+    const ivec2 perAxisBase = trixelOriginOffsetZ1(perAxisSize) + ivec2(floor(frameCanvasOffset));
     const ivec2 isoPix = cell - perAxisBase;
     const ivec3 origin = ivec3(round(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth))));
 

@@ -242,8 +242,12 @@ void main() {
         // index is UN-yawed, so no axis is compressed at store time and the
         // recovery `isoPixelToPos3D` is exact at every yaw. The scatter reprojects
         // the recovered origin under the live yaw.
-        const ivec2 perAxisBase =
-            trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+        // Whole-iso base anchor (#1944): the per-axis store is BASE-resolution, so
+        // the anchor must NOT be density-scaled like the subdivided cardinal canvas
+        // (the density-scaled anchor jittered under pan — see the #1944 NOTE in
+        // ir_iso_common). The cardinal single-canvas paths below keep
+        // trixelFrameOffset (their content IS subdivided).
+        const ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSizePixels) + ivec2(floor(frameCanvasOffset));
         if (voxelRenderOptions.x == 0) {
             const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
