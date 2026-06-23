@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Test the fleet-queue-ingest planning gate (#1456).
 #
-# An approved issue with no plan file — neither planner-host staging
-# (~/.fleet/plans/issue-<N>.md) nor the committed repo-side copy
-# (.fleet/plans/issue-<N>.md, probed via `gh api`) — must be bounced to
-# fleet:needs-plan (never stamped fleet:queued), with an explanatory comment.
-# Escape hatches: a local plan file, a committed repo-side plan file, an
-# explicit "investigation spike" in the title/body, and a non-404 probe
-# failure (fail open — a transient API error must never bounce a planned
-# issue).
+# An approved issue with no `## Plan` issue comment (canonical since #1932) and
+# no plan file (neither planner-host staging ~/.fleet/plans/issue-<N>.md nor the
+# committed repo-side copy .fleet/plans/issue-<N>.md, probed via `gh api`) must
+# be bounced to fleet:needs-plan (never stamped fleet:queued), with an explanatory
+# comment. Escape hatches: a `## Plan` comment, a local plan file, a committed
+# plan file, an explicit "investigation spike" in the title/body, the `[no-plan]`
+# tag, the `human:no-plan` label, the `fleet:plan-review` early-skip, and a
+# non-404 probe failure (fail open — a transient API error must never bounce a
+# planned issue).
 #
 # HOME is redirected to a temp dir so the script's hardcoded projection/log/lock
 # paths land in the sandbox, and `gh` is stubbed to canned issue/PR surfaces.

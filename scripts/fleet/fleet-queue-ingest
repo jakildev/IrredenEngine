@@ -25,13 +25,13 @@
 # hand-built projection). Claimability is unchanged — fleet-claim's own
 # Blocked-by gate still refuses a plain claim; see docs/design/fleet-queue-stacking.md.
 #
-# Planning gate (#1456): an approved issue with no plan file — neither the
-# committed repo-side `.fleet/plans/issue-<N>.md` nor the planner-host
-# `~/.fleet/plans/issue-<N>.md` staging copy — is bounced to fleet:needs-plan
-# instead of stamped fleet:queued, unless its title/body names an explicit
-# "investigation spike". Carve-offs queued straight to human:approved without
-# ever passing through planning made the worker the first person to open the
-# code, and it design-blocked on claim (the #1370 → #1414/#1431/#1435 pattern).
+# Planning gate (#1456, re-keyed by #1932): an approved issue with no plan — no
+# `## Plan` issue comment (canonical since #1932), no committed/staged plan file
+# (.fleet/plans/issue-<N>.md or ~/.fleet/plans/issue-<N>.md) — is bounced to
+# fleet:needs-plan unless opted out (`[no-plan]` / `human:no-plan` / investigation
+# spike). fleet:plan-review holds ingest until a reviewer vets the posted plan.
+# Carve-offs queued without planning made the worker the first to open the code,
+# and it design-blocked on claim (the #1370 → #1414/#1431/#1435 pattern).
 #
 # Source of truth: scripts/fleet/fleet-queue-ingest in the engine repo.
 # Installed to ~/bin/fleet-queue-ingest by scripts/fleet/install.sh.
@@ -381,8 +381,8 @@ for issue in pending:
             print(f'WARN issue {repo}#{n}: add fleet:needs-plan failed: {er.stderr.strip()}', file=sys.stderr)
             continue
         plan_bounced += 1
-        print(f'WARN issue {repo}#{n}: no plan file and not an investigation '
-              f'spike — bounced to fleet:needs-plan (#1456)', file=sys.stderr)
+        print(f'WARN issue {repo}#{n}: no ## Plan comment, no plan file, and not '
+              f'opted out ([no-plan] / human:no-plan / spike) — bounced to fleet:needs-plan', file=sys.stderr)
         continue
 
     # Blocked-by handling (#1527): queue blocked tasks too. A task whose
