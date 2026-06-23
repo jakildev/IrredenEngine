@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# canvas-stress-rotate-jitter-sweep — temporal-jitter validation harness for the
+# MIXED DETACHED + GRID scene (#1954, epic #1881).
+#
+# Sibling to scripts/dev/shape-rotate-jitter-sweep (#1922), which scores a SINGLE
+# centred SDF / voxel shape on the main canvas. This one scores the canvas_stress
+# demo's MIXED scene — detached re-voxelize SO(3) solids + GRID-spin cubes on the
+# screen-center column — under a fine continuous CAMERA Z-yaw sweep. That is the
+# multi-canvas-type temporal coverage gap #1922 deferred (the stated "Part of:
+# epic #1881").
+#
+# What it measures: as the CAMERA yaws, does the rendered surface shimmer
+# frame-to-frame instead of moving smoothly? Same second-temporal-difference
+# metric (scripts/render-jitter-metric.py), same curvature-not-speed
+# discriminator — see docs/design/jitter-validation-harness.md. Entities are
+# frozen with --no-spin so camera yaw is the ONLY moving variable (the #1944
+# surface: entities static in world space, camera turning). Without --no-spin the
+# detached + GRID solids keep self-spinning ~24-30 degrees between the 60-settle-
+# frame shots, and that gross self-rotation — not the camera-yaw crawl — would
+# dominate the metric.
+#
+# IMPORTANT — this gate brackets temporal CRAWL above a FLOOR, not zero. The mixed
+# scene's central interior reads jitter_score ~= 1.2 on clean master (camera-yaw
+# fine sweep, entities frozen) — the same clean regime as the sibling's smooth
+# shapes (sphere/cylinder ~1.2) — with the residual coming from the inherent
+# re-voxelize round-to-cell scatter speckle (the documented CPU<->GPU divergence
+# that already excludes revoxelize_solids_zoom from pixel-diff). That floor is NOT
+# a bug; MAX_JITTER sits ABOVE it with margin, so the gate catches a temporal-crawl
+# REGRESSION (a change that worsens the shimmer) and passes on current master.
+#
+# NB on the floor number: a careless sweep WITHOUT --no-spin reads ~3.7-4.4, but
+# that is NOT the speckle floor — it is metric aliasing from the entities self-
+# spinning ~30 degrees between the 60-settle-frame shots (the metric needs a fine
+# <~2 deg/step sweep; 30 deg/step aliases any surface into a high second-difference).
+# Freezing the entities isolates the actual camera-yaw crawl, which is the #1944
+# surface and what #1922's camera-yaw methodology measures. Hence --no-spin and a
+# floor of ~1.2, not ~4.4.
+#
+# The #1942 world<->detached spatial-registration drift is a DIFFERENT artifact
+# class — a smooth sub-pixel translation at the moving silhouette boundary,
+# invisible to this temporal metric by construction (it keys on the second temporal
+# difference to ignore smooth motion, and AND-masks the moving boundary out of the
+# interior). #1942 is owned by the #1944 render-verify reference gate, not this
+# harness.
+#
+# Usage:  bash scripts/dev/canvas-stress-rotate-jitter-sweep [build_dir] [from_rad] [to_rad] [steps]
+#   build_dir   CMake build dir                          (default: build)
+#   from_rad    sweep start camera yaw, RADIANS          (default: 0)
+#   to_rad      sweep end camera yaw, RADIANS            (default: 0.2618 = 15 deg)
+#   steps       sweep shots from->to                     (default: 36 -> ~0.42 deg/step)
+#               --sweep-yaw interpolates yaw in RADIANS, and full-frame decode is
+#               ~2.3 s/frame at 2560x1440, so keep steps bounded (~30-40). Do NOT
+#               pass a degree count as the range (e.g. "30" = ~4.7 revolutions).
+# Env overrides:
+#   WARMUP      settle frames before the sweep starts    (default: 60)
+#   MAX_JITTER  gate on jitter_score                     (default: see below)
+#   ROI_FRAC    central ROI as a fraction of the frame   (default: 0.5)
+#
+# Repo tooling — cmake + python3 stdlib only. Long enough (build + sweep + per-
+# frame scoring) to launch in the background and read on completion. Self-
+# locating, so it works from any cwd / worktree.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT" || exit 1
+
+BUILD_DIR="${1:-build}"
+FROM="${2:-0}"
+TO="${3:-0.2618}"
+STEPS="${4:-36}"
+WARMUP="${WARMUP:-60}"
+# Floor on clean master is jitter_score ~= 1.2 (central-half ROI, 15 deg / 36-step
+# camera-yaw sweep, --no-spin), with run-to-run variation in the hundredths. The
+# gate at 4.0 mirrors the sibling shape-rotate-jitter-sweep (#1922): same metric,
+# same ~1.2 clean floor, leaving a >3x margin so speckle variation passes while a
+# real crawl regression (the sibling's failing shapes hit 6-11) fails. See the
+# harness doc's canvas_stress baseline for the measured numbers.
+MAX_JITTER="${MAX_JITTER:-4.0}"
+ROI_FRAC="${ROI_FRAC:-0.5}"
+
+EXE_DIR="$BUILD_DIR/creations/demos/canvas_stress"
+SS_DIR="$EXE_DIR/save_files/screenshots"
+METRIC="$ROOT/scripts/render-jitter-metric.py"
+
+# nproc is Linux-only; macOS uses sysctl. Fall back to a safe default.
+JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+
+echo "[1/3] building IRCanvasStress ($BUILD_DIR) ..."
+cmake --build "$BUILD_DIR" --target IRCanvasStress -j "$JOBS" >/dev/null \
+    || { echo "BUILD FAILED"; exit 1; }
+
+mkdir -p "$SS_DIR"
+# Scoped find -delete, never an unguarded rm glob (the dir may be empty, which
+# trips the dangerous-rm guard) — matches the sibling harnesses.
+find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
+
+echo "[2/3] sweep: camera yaw ${FROM}->${TO} rad across $STEPS shots (entities frozen, --no-spin), warmup=$WARMUP gate=max_jitter=$MAX_JITTER"
+LOG="/tmp/canvas-stress-jitter-sweep.log"
+( cd "$EXE_DIR" && ./IRCanvasStress --sweep-yaw "$FROM" "$TO" "$STEPS" --no-spin \
+    --auto-screenshot "$WARMUP" ) >"$LOG" 2>&1 \
+    || { echo "  RUN FAILED (see $LOG)"; tail -5 "$LOG"; exit 1; }
+
+echo "[3/3] scoring central ${ROI_FRAC} ROI ..."
+SS_DIR="$SS_DIR" METRIC="$METRIC" MAX_JITTER="$MAX_JITTER" ROI_FRAC="$ROI_FRAC" python3 - <<'PY'
+import glob, json, os, struct, subprocess, sys
+ss, metric = os.environ["SS_DIR"], os.environ["METRIC"]
+# Full frames in capture order = yaw order (screenshot_NNNNNN.png, no per-shot
+# crop — unlike shape_debug's centred --spin-shape crops). The metric ROI-scopes
+# to the screen-center column where the detached + GRID solids sit; deriving the
+# ROI from the frame's IHDR size keeps it zoom / host robust.
+frames = sorted(glob.glob(os.path.join(ss, "screenshot_*.png")))
+if len(frames) < 3:
+    print(f"  NO SWEEP FRAMES (got {len(frames)} — did the run capture?)")
+    sys.exit(1)
+with open(frames[0], "rb") as fh:
+    w, h = struct.unpack(">II", fh.read(24)[16:24])
+frac = float(os.environ["ROI_FRAC"])
+rw, rh = int(w * frac), int(h * frac)
+rx, ry = (w - rw) // 2, (h - rh) // 2
+roi = f"{rx},{ry},{rw},{rh}"
+out = subprocess.run(
+    [sys.executable, metric, *frames, "--roi", roi, "--max-jitter", os.environ["MAX_JITTER"]],
+    capture_output=True, text=True)
+# The metric prints a JSON object on success and {"error": ...} (exit 2) on an
+# I/O / format / empty-interior failure. Report either gracefully.
+try:
+    m = json.loads(out.stdout)
+except (ValueError, json.JSONDecodeError):
+    print(f"  METRIC ERROR (no JSON; rc={out.returncode}): "
+          f"{(out.stderr or out.stdout or '').strip()[:160]}")
+    sys.exit(1)
+if "frames" not in m:
+    print(f"  METRIC ERROR: {m.get('error', m)}")
+    sys.exit(1)
+verdict = "PASS" if m.get("pass") else "FAIL"
+print(f"  roi={roi}  frames={m['frames']}  interior={m['interior_px']}  "
+      f"jitter={m['jitter_score']}  p95={m['flicker_p95']}  "
+      f"frac={m['flicker_frac']}  gate={os.environ['MAX_JITTER']}  {verdict}")
+sys.exit(0 if m.get("pass") else 1)
+PY
+rc=$?
+echo "done. Frames remain in $SS_DIR; run log in $LOG"
+exit "$rc"
