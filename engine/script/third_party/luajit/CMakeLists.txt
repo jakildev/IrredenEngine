@@ -33,12 +33,16 @@ FetchContent_MakeAvailable(luajit_src)
 set(LUAJIT_SRC_DIR ${luajit_src_SOURCE_DIR})
 set(LUAJIT_INCLUDE_DIR ${LUAJIT_SRC_DIR}/src)
 
-# Output static-library name produced by LuaJIT's Makefile per platform.
-if(WIN32)
-    set(LUAJIT_LIB_NAME libluajit-5.1.a)
-else()
-    set(LUAJIT_LIB_NAME libluajit.a)
-endif()
+# Output static-library name produced by LuaJIT's Makefile. The engine
+# builds LuaJIT through its upstream *Unix* Makefile on every supported
+# toolchain — including Windows, where the `windows-debug` preset uses
+# MinGW Makefiles + MSYS2 `make` (not MSVC) — so the archive is always
+# `libluajit.a`. A prior `if(WIN32)` branch expected a versioned
+# `libluajit-5.1.a` that the MinGW build never emits, which silently broke
+# the native-Windows link (latent because the fleet only built on WSL /
+# macOS). MSVC's msvcbuild.bat would emit `lua51.lib`, but the engine has
+# no MSVC preset.
+set(LUAJIT_LIB_NAME libluajit.a)
 set(LUAJIT_LIB_PATH ${LUAJIT_INCLUDE_DIR}/${LUAJIT_LIB_NAME})
 
 # `make BUILDMODE=static` forces the static archive even when the

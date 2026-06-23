@@ -8,6 +8,20 @@
 # Bash-sourceable. Comments start with `#`. Values without quotes work
 # for integers; quote any value containing spaces.
 
+# --- Host / paths ------------------------------------------------------------
+
+# Engine main-clone location. Defaults to the Linux/macOS fleet layout
+# ($HOME/src/IrredenEngine). Override on hosts that clone elsewhere — e.g.
+# the native-Windows fleet (host key `windows`, MSYS2 bash + tmux), whose
+# repo lives under the Windows profile. Use an MSYS2/Git-Bash POSIX path:
+# FLEET_ENGINE_ROOT="/c/Users/you/VSCODE_PROJECTS/repos/IrredenEngine"
+#
+# Windows hosts: run fleet-up from an MSYS2 bash shell that has tmux
+# (`pacman -S tmux`), and pin HOME to the Windows profile so MSYS2 bash and
+# Claude's Git Bash share ~/.fleet (set `db_home: windows` in
+# /etc/nsswitch.conf, or `export HOME=/c/Users/you`). See docs/agents/FLEET.md
+# "Cross-platform parity".
+
 # --- Model classes -----------------------------------------------------------
 #
 # Work routes by model class — fable | opus | sonnet — carried on each task

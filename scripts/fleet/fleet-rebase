@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-ENGINE="$HOME/src/IrredenEngine"
+ENGINE="${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}"
 GAME="$ENGINE/creations/game"
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 SLICE="$STATE_DIR/projections/merger.json"

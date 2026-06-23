@@ -153,8 +153,10 @@ Specifically, **never pass these via `--label` when filing**:
   add to issues.
 - `fleet:needs-linux-smoke` / `fleet:needs-macos-smoke` / `fleet:needs-windows-smoke` — owned by the
   **reviewer agents**, added after the verdict to request a cross-host
-  build + run validation. `fleet:needs-windows-smoke` is cleared by
-  `platform-catchup`, not an author agent.
+  build + run validation. OpenGL `{linux, windows}` is one tier (either
+  one satisfies it); Metal `{macos}` is separate. `fleet:needs-windows-smoke`
+  is cleared by a native-Windows smoke worker, or `platform-catchup` as
+  fallback.
 - `fleet:wip` — owned by the **fleet author worker** while a **claimed /
   in-progress** PR is not ready for fleet review (reviewers **skip** this
   label). Set on claim / early fleet-worker PRs; remove when ready for
@@ -179,8 +181,9 @@ Specifically, **never pass these via `--label` when filing**:
   and ran the demo). Permanent label — it's a fact about the PR,
   not a state. Don't add to issues.
 - `fleet:verified-linux` / `fleet:verified-macos` / `fleet:verified-windows` — set by the
-  **smoking agent** (or `platform-catchup` for Windows) on a successful smoke
-  run. Permanent audit trail; not used by the merge gate. Don't add to issues.
+  **smoking agent** on a successful smoke run (Windows: a native-Windows
+  smoke worker, or `platform-catchup` as fallback). Permanent audit trail;
+  not used by the merge gate. Don't add to issues.
 - `fleet:in-progress` — generic "a worker has claimed this issue"
   marker. Today this is mostly superseded by the dynamic per-host
   `fleet:claim-<host>-<agent>` issue label (see below); the static

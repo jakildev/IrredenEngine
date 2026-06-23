@@ -15,6 +15,42 @@
 
 set -euo pipefail
 
+# --- Windows (MSYS2 / Git Bash) symlink support -----------------------------
+# The fleet scripts and ir-* tools resolve their sibling helpers through their
+# *real* on-disk location (BASH_SOURCE symlink-walk + ../lib /
+# ../../engine/tools/bin). A plain MSYS2 `ln -s` COPIES by default, which
+# breaks that relative resolution — so on Windows we require real symlinks.
+# Native NTFS symlinks need Windows Developer Mode (or an elevated shell);
+# winsymlinks:nativestrict makes `ln` fail loudly instead of silently copying.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        export MSYS=winsymlinks:nativestrict
+        export CYGWIN=winsymlinks:nativestrict
+        _probe_dir="$(mktemp -d)"
+        if ln -s "$_probe_dir/nonexistent-target" "$_probe_dir/link" 2>/dev/null \
+            && [[ -L "$_probe_dir/link" ]]; then
+            rm -rf "$_probe_dir"
+            echo "note: native symlinks enabled (Windows)."
+        else
+            rm -rf "$_probe_dir" 2>/dev/null || true
+            cat >&2 <<'EOF'
+install.sh: this Windows shell cannot create native symlinks, which the fleet
+            tooling requires (sibling-helper resolution breaks under copies).
+            Two fixes:
+
+  1. Enable Developer Mode (Settings > For developers > Developer Mode),
+     open a fresh terminal, and re-run install.sh; OR
+  2. Skip install.sh for the executables and put the repo's tool dirs on
+     PATH instead — the scripts run from their real location, no symlinks:
+         export PATH="<repo>/scripts/fleet:<repo>/engine/tools/bin:$PATH"
+     (add to ~/.bashrc). Role files still want symlinking into
+     ~/.claude/commands; re-run install.sh after enabling Developer Mode.
+EOF
+            exit 1
+        fi
+        ;;
+esac
+
 INSTALL_APPEND_ZSHRC=1
 [[ -n "${IRREDEN_INSTALL_SKIP_ZSHRC:-}" ]] && INSTALL_APPEND_ZSHRC=0
 for arg in "$@"; do

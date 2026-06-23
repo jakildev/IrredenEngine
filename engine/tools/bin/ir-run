@@ -58,6 +58,21 @@ fi
 # shellcheck source=../lib/concurrency_helpers.sh
 source "$HELPERS"
 
+# On native Windows (MSYS2/Git-Bash) the built artifact carries a `.exe`
+# suffix and needs the MinGW + GLFW + FFmpeg runtime DLLs from MSYS2's
+# mingw64 on PATH (see docs/agents/BUILD.md "Runtime DLL drama"). Prepend it
+# so the exe resolves its own runtime DLLs ahead of any Git-for-Windows ones.
+# IR_MSYS2_MINGW (Windows-form path, shared with ir-build) overrides the dir.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        IR_IS_WINDOWS=1
+        IR_MSYS2_MINGW="${IR_MSYS2_MINGW:-C:\\msys64\\mingw64\\bin}"
+        _ir_mingw_posix="$(cygpath -u "$IR_MSYS2_MINGW" 2>/dev/null || echo /c/msys64/mingw64/bin)"
+        export PATH="$_ir_mingw_posix:$PATH"
+        ;;
+    *) IR_IS_WINDOWS=0 ;;
+esac
+
 BUILD_DIR=""
 TIMEOUT=""
 TIMEOUT_EXPLICIT=0
@@ -231,6 +246,11 @@ fi
 # Find the executable in the build tree.
 EXE_PATH=$(find "$BUILD_DIR" -maxdepth 8 -name "$EXE_NAME" -type f -perm -u=x 2>/dev/null | head -1)
 
+# Windows build artifacts carry a `.exe` suffix the caller usually omits.
+if [[ -z "$EXE_PATH" && "$IR_IS_WINDOWS" == "1" ]]; then
+    EXE_PATH=$(find "$BUILD_DIR" -maxdepth 8 -name "$EXE_NAME.exe" -type f 2>/dev/null | head -1)
+fi
+
 if [[ -z "$EXE_PATH" ]]; then
     echo "ir-run: could not find executable '$EXE_NAME' in $BUILD_DIR" >&2
     echo "        build it first: ir-build --target $EXE_NAME" >&2
@@ -238,6 +258,9 @@ if [[ -z "$EXE_PATH" ]]; then
 fi
 
 EXE_DIR=$(dirname "$EXE_PATH")
+# Run by the actual on-disk basename so the `.exe` suffix (Windows) is
+# preserved; on Linux/macOS this is identical to $EXE_NAME.
+EXE_RUN=$(basename "$EXE_PATH")
 
 # Pre-compose the ir-acquire prefix (empty when no exclusive verb).
 # Using an array preserves quoting around exe args containing spaces.
@@ -265,7 +288,7 @@ if [[ -z "$TIMEOUT" ]]; then
         # ourselves rather than letting bash bail out on the first non-
         # zero (which is exactly the signal we want to surface).
         set +e
-        "${acquire_prefix[@]}" "./$EXE_NAME" "$@"
+        "${acquire_prefix[@]}" "./$EXE_RUN" "$@"
         rc=$?
         set -e
         if [[ $rc -ne 0 ]]; then
@@ -282,7 +305,7 @@ if [[ -z "$TIMEOUT" ]]; then
         echo "ir-run: $EXE_PATH $*"
     fi
     cd "$EXE_DIR"
-    exec "${acquire_prefix[@]}" "./$EXE_NAME" "$@"
+    exec "${acquire_prefix[@]}" "./$EXE_RUN" "$@"
 fi
 
 # --- Timeout mode: launch, wait, kill, report ------------------------------
@@ -292,7 +315,7 @@ else
     echo "ir-run: $EXE_PATH $* (timeout: ${TIMEOUT}s)"
 fi
 cd "$EXE_DIR"
-"${acquire_prefix[@]}" "./$EXE_NAME" "$@" &
+"${acquire_prefix[@]}" "./$EXE_RUN" "$@" &
 PID=$!
 
 # Wait for either the timeout or the process to exit early (crash).

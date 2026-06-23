@@ -176,6 +176,19 @@ CMake preset (MinGW Makefiles, MSYS2 GCC at `C:\msys64\mingw64\bin\c++.exe`).
 The configured build tree is already present — do not reconfigure unless
 the user asks.
 
+**Fleet agents: use `fleet-build` / `fleet-run`.** On Windows these wrappers
+internalize the `cc1plus` PATH fix below (they run cmake inside `cmd /c "set
+PATH=…mingw64…"`) and resolve the `.exe` artifact + runtime DLLs automatically —
+so a Windows agent calls them exactly like on Linux/macOS:
+
+```bash
+fleet-build --target IRShapeDebug
+fleet-run IRShapeDebug --auto-screenshot 10
+```
+
+The raw `cmake --build` form below is what they run under the hood; reach for it
+only when debugging the wrappers themselves.
+
 **Canonical build command** from the Bash tool on Windows native (PATH
 fix is mandatory — see below):
 

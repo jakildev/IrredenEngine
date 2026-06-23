@@ -35,8 +35,10 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
   NOT inspect screenshots or run `render-debug-loop`. If compile warnings
   appear in the run log but the process exits zero, escalate to Opus per
   step 5e below — do not mark as clean.
-- `fleet:needs-windows-smoke` is **not** polled here — it is cleared by
-  the `platform-catchup` workflow (#1093), not by fleet agents.
+- `fleet:needs-windows-smoke` is polled **only** by a smoke pane running on
+  the native-Windows fleet (host key `windows`). On Linux/macOS hosts it is
+  not polled here; the `platform-catchup` workflow (#1093) remains the manual
+  fallback for clearing Windows smoke when no Windows fleet is online.
 
 ---
 
@@ -61,9 +63,14 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
    `gh pr checkout` will rewrite this branch for each smoke run.
 
 4. **Detect your host key** from `uname -s`:
-   - `Linux`  → host key `linux`,  poll `fleet:needs-linux-smoke`
-   - `Darwin` → host key `macos`, poll `fleet:needs-macos-smoke`
-   `fleet:needs-windows-smoke` is not polled here — skip it.
+   - `Linux`              → host key `linux`,   poll `fleet:needs-linux-smoke`
+   - `Darwin`             → host key `macos`,   poll `fleet:needs-macos-smoke`
+   - `MINGW*`/`MSYS*`/`CYGWIN*` → host key `windows`, poll `fleet:needs-windows-smoke`
+
+   On the native-Windows fleet, build + run go through `fleet-build` /
+   `fleet-run`, which internally apply the MSYS2 mingw64 `PATH` fix (the
+   `cc1plus` silent-crash guard) and find the `.exe` artifact — you call them
+   exactly like on Linux/macOS, no `cmd /c` wrapping by hand.
 
 5. **Read the shared fleet state cache** with the Read tool:
    `~/.fleet/state/state.json`. Check `generated_at` — if missing or

@@ -26,40 +26,65 @@ The working principle is "narrow + caught-as-we-go", not "smoke everything that 
 
 If none of these match, return to `SKILL.md` step 6 — no smoke tagging needed.
 
-## Subtract the author's host before tagging
+## Two verification tiers
 
-`commit-and-push` stamps `fleet:authored-on-linux`, `fleet:authored-on-macos`, or `fleet:authored-on-windows` at PR-create time based on the author's `uname -s`. Per [`engine/render/CLAUDE.md`](../../../../engine/render/CLAUDE.md) "Verifying render changes", render-PR authors build + run the demo on their host before opening, so authoring on a host is reasonable evidence its smoke is baseline-validated. Only the OTHER hosts actually need cross-host validation.
+Cross-host smoke is organized into two tiers, not three independent hosts:
 
-Read the candidate's labels (already in the cache as `repos.engine.prs[].labels`) and add the smoke labels for the hosts the author was NOT on:
+- **OpenGL tier = {linux, windows}.** Both build the same OpenGL backend; a clean
+  build + `IRShapeDebug` smoke on **either one** is sufficient evidence the OpenGL
+  path is healthy — you do NOT need both. The engine ships on Windows, so
+  `windows` is the tier's canonical representative.
+- **Metal tier = {macos}.** Its own backend; verified independently.
 
-| Author label present | Add smoke labels |
-|---|---|
-| `fleet:authored-on-linux` | `fleet:needs-macos-smoke`, `fleet:needs-windows-smoke` |
-| `fleet:authored-on-macos` | `fleet:needs-linux-smoke`, `fleet:needs-windows-smoke` |
-| `fleet:authored-on-windows` | `fleet:needs-linux-smoke`, `fleet:needs-macos-smoke` |
-| None (unrecognized host or pre-fix PR) | All three labels |
+`commit-and-push` stamps `fleet:authored-on-linux`, `fleet:authored-on-macos`, or
+`fleet:authored-on-windows` at PR-create time based on the author's `uname -s`.
+Per [`engine/render/CLAUDE.md`](../../../../engine/render/CLAUDE.md) "Verifying
+render changes", render-PR authors build + run the demo on their host before
+opening, so authoring on a host baseline-validates that host's **tier**. Only the
+OTHER tier(s) need cross-host validation.
+
+## Subtract the author's tier before tagging
+
+Read the candidate's labels (already in the cache as `repos.engine.prs[].labels`)
+and add a smoke label only for a tier the author did NOT cover:
+
+| Author label present | Author's tier | Add smoke labels |
+|---|---|---|
+| `fleet:authored-on-linux` | OpenGL ✓ | `fleet:needs-macos-smoke` |
+| `fleet:authored-on-windows` | OpenGL ✓ | `fleet:needs-macos-smoke` |
+| `fleet:authored-on-macos` | Metal ✓ | `fleet:needs-windows-smoke` |
+| None (unrecognized host or pre-fix PR) | — | `fleet:needs-windows-smoke`, `fleet:needs-macos-smoke` |
+
+An OpenGL author (linux **or** windows) already covers the OpenGL tier, so the only
+outstanding work is the Metal smoke. A Metal author needs one OpenGL verification —
+routed to `windows`, the ship platform — and nothing more.
 
 ```bash
-# Linux author:
-gh pr edit <N> --add-label "fleet:needs-macos-smoke"
-gh pr edit <N> --add-label "fleet:needs-windows-smoke"
-
-# macOS author:
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
-gh pr edit <N> --add-label "fleet:needs-windows-smoke"
-
-# Windows author:
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+# Linux author (OpenGL covered) → Metal smoke only:
 gh pr edit <N> --add-label "fleet:needs-macos-smoke"
 
-# None (pre-fix PR) → three calls, one per label
-# (keep them separate so each is independently safe and idempotent):
-gh pr edit <N> --add-label "fleet:needs-linux-smoke"
+# Windows author (OpenGL covered) → Metal smoke only:
 gh pr edit <N> --add-label "fleet:needs-macos-smoke"
+
+# macOS author (Metal covered) → one OpenGL smoke, routed to the ship platform:
 gh pr edit <N> --add-label "fleet:needs-windows-smoke"
+
+# None (pre-fix PR) → one OpenGL + Metal (keep separate; each is idempotent):
+gh pr edit <N> --add-label "fleet:needs-windows-smoke"
+gh pr edit <N> --add-label "fleet:needs-macos-smoke"
 ```
 
-Each host's worker iterations poll for the label matching their host, run a clean-checkout build + `IRShapeDebug` smoke, and remove the label on success. While any smoke label persists, the human should hold the merge — that's the whole point of the tally.
+Each host's worker iterations poll for the label matching their host, run a
+clean-checkout build + `IRShapeDebug` smoke, and remove the label on success.
+While any smoke label persists, the human should hold the merge.
+
+**Merge gate (OpenGL tier).** The OpenGL requirement is satisfied by **either**
+`fleet:verified-windows` **or** `fleet:verified-linux` (or by an OpenGL author,
+who needs no smoke) — never both. Because the engine ships on Windows, the OpenGL
+representative is routed to `windows` above; if you instead want every render PR
+to carry a Windows verification rather than relying on a linux author's own build,
+add `fleet:needs-windows-smoke` to linux-authored render PRs too — that is stricter
+than "either is enough" and a deliberate per-repo choice.
 
 ## Skip the tagging step for
 

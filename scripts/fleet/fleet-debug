@@ -111,7 +111,7 @@ if [[ "${1:-}" == "--" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+WORKTREE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}")
 BUILD_DIR="${BUILD_DIR:-${IRREDEN_BUILD_DIR:-$WORKTREE_ROOT/build}}"
 
 if $SHOULD_BUILD; then

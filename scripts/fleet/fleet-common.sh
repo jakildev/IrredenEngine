@@ -17,7 +17,7 @@
 # git root is a nested .claude/worktrees/… path).
 detect_engine_root() {
     local root
-    root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$HOME/src/IrredenEngine")
+    root=$(git rev-parse --show-toplevel 2>/dev/null || echo "${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}")
     if [[ ! -f "$root/CMakePresets.json" ]]; then
         if [[ -f "$root/../../CMakePresets.json" ]]; then
             root="$(cd "$root/../.." && pwd)"
