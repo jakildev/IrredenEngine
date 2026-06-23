@@ -254,7 +254,7 @@ the comment body to a temp file, then
 (`<N>` is the tracker-assigned number):
 
 ```markdown
-# Plan: <ticket title>
+## Plan: <ticket title>
 
 - **Issue:** #<N>
 - **Model:** <fable|opus|sonnet>
@@ -262,22 +262,22 @@ the comment body to a temp file, then
 - **Epic:** #<umbrella> — see `<plans-dir>/issue-<umbrella>.md` for full context
 - **Blocked by:** (none)   <!-- or same-repo `#<prior>[, #<other>]`; same exact form as the issue body -->
 
-## Scope
+### Scope
 <focused subset of the umbrella plan that applies to THIS ticket>
 
-## Affected files
+### Affected files
 <bullet list of file paths the implementer will touch>
 
-## Approach
+### Approach
 <more detail than the issue body — the implementation guide>
 
-## Acceptance criteria
+### Acceptance criteria
 <concrete, testable>
 
-## Gotchas
+### Gotchas
 <watchouts that need code-aware framing>
 
-## Verification
+### Verification
 <what to build, what to run, what passes>
 ```
 
