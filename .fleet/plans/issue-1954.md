@@ -49,10 +49,12 @@ worsens the speckle) is what would turn it red.
 ### Verified current state
 - canvas_stress already has the sweep mode: `--sweep-yaw <from> <to> <count>`
   (`main.cpp:743`) emits `count` evenly-spaced full-frame shots `sweep_yaw_0..N-1`
-  from `from`→`to` yaw. **Sweep mode auto-disables entity auto-rotation**
-  (`main.cpp:772-777`), so `--no-auto-rotate` is redundant-but-harmless — the sweep
-  isolates pure camera-yaw motion (entities static in world space, which is the
-  #1944 surface).
+  from `from`→`to` yaw. **Sweep mode disables only the _camera_ auto-yaw**
+  (`autoRotate_`, `main.cpp:841`) — NOT per-entity self-spin, which is gated
+  separately by `noSpin_`. So `--no-spin` IS required to isolate pure camera-yaw
+  motion; without it entity self-spin keeps running and aliases the metric (see
+  Gotchas / Revision history — this corrects the initial assumption that the sweep
+  froze entities outright).
 - Unlike shape_debug's `--spin-shape` (single centred shape → auto `__crop_center`
   PNG), the canvas_stress sweep emits **full frames, no auto crop**. The metric
   scopes via `--roi` but still decodes each full PNG, so the step count must be
