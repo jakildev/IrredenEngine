@@ -183,11 +183,9 @@ kernel void c_voxel_to_trixel_stage_2(
         // Un-yawed (cardinal) iso store — mirrors stage 1's re-key.
         // Color tap lands on the same cardinal iso cell + depth the distance tap
         // did, so the per-axis depth re-test paints the occlusion winner.
-        const int2 perAxisBase = trixelFrameOffset(
-            frameData.trixelCanvasOffsetZ1,
-            frameData.frameCanvasOffset,
-            frameData.voxelRenderOptions
-        );
+        // Whole-iso base anchor (#1944) — MUST match stage 1's per-axis anchor.
+        const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
+                                 int2(floor(frameData.frameCanvasOffset));
         if (frameData.voxelRenderOptions.x == 0) {
             const int3 worldPos = int3(round(voxelPosition.xyz));
             const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);

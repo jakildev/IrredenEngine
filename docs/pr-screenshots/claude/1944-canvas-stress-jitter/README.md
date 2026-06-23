@@ -5,6 +5,43 @@ detached composite on the effective offset). macOS / Metal, full engine build.
 Images downscaled to 1280px wide. The `so3_*` files are the earlier #1944
 *revert* evidence (commit `8ac0f784`), unchanged.
 
+## Per-axis camera-offset jitter fix (`peraxis_jitter_before_after_plot.png`)
+
+The follow-up fix for the per-frame jitter that survived the pivot change: the
+smooth-camera-yaw per-axis composite split the camera offset into a
+density-scaled integer anchor (`floor(cameraIso·subdivisionScale)`) plus a
+sub-pixel term scaled to the canvas, not to one anchor cell — so at every
+sub-iso anchor crossing the scene snapped back ~1 cell along the world axes
+(worse at higher zoom). Fix: a whole-iso base anchor (per-axis canvases are
+base-resolution since #1458) + a continuous sub-cell term scaled to one anchor
+cell (`screenPxPerCell·fract(cameraIso)`), so anchor + smooth = `K·cameraIso`,
+continuous. See `system_trixel_to_framebuffer.hpp` `drawPerAxisScatter` and the
+per-axis stores/recoveries.
+
+The plot is a **centroid-residual trajectory** (temporal jitter can't be shown
+in one screenshot): a single voxel shape is captured frame-by-frame while the
+camera moves, and its centroid is plotted as deviation from the smooth motion
+line.
+
+- **Left — PAN at yaw 45° (zoom 4):** voxel box, camera panning. Before (red):
+  ±12px sawtooth. After (green): flat — `dx = +1.0px`/frame, std 0.00,
+  0 direction-reversals (was std 12.4, max 22px, 11 reversals).
+- **Right — ROTATION (fine yaw sweep within one cardinal quadrant):** voxel
+  cylinder (Z-yaw-invariant probe), camera yawing. Before (red): ±15px wander
+  + snap. After (green): flat — ≤0.7px/frame, 0 reversals (was max 26px,
+  7–8 reversals).
+
+Verified separately: yaw-0 cardinal is byte-identical run-to-run (no static
+"after move" jitter); the full multi-shape scene and `canvas_stress` (GRID +
+orbit) still render correctly with lighting/shadows intact. The only cardinal
+delta is an 8-pixel / max-Δ-8 (0.0002%) FP-scheduling shift on the lit
+SDF/voxel edges — the unavoidable, sub-perceptual cost of editing the
+per-axis blocks that share a compilation unit with the cardinal-active shaders.
+
+The `--pan-sweep` / `--yaw-sweep` flags added to `shape_debug` are the
+regression harness used to produce this (jitter shows as centroid-residual
+oscillation; a clean pipeline is flat).
+
 ## shape_debug — the reported bug (camera panned to (16,16), then yawed)
 
 | File | What it shows |

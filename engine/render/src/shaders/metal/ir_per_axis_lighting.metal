@@ -18,8 +18,10 @@ inline float3 perAxisCellToWorld3D(
     int2 cell, int rawDepth, int faceId,
     int2 canvasSize, float2 frameCanvasOffset, int2 voxelRenderOptions
 ) {
-    const int2 perAxisBase =
-        trixelFrameOffset(trixelOriginOffsetZ1(canvasSize), frameCanvasOffset, voxelRenderOptions);
+    // Whole-iso base anchor (#1944) — per-axis canvases are base-resolution, so
+    // the anchor is NOT density-scaled (voxelRenderOptions retained in the
+    // signature for caller compatibility; no longer consulted for the anchor).
+    const int2 perAxisBase = trixelOriginOffsetZ1(canvasSize) + int2(floor(frameCanvasOffset));
     // Un-yawed iso recovery — mirror of the scatter + stage 1/2 store.
     // faceId retained in signature for caller compatibility; no longer used in recovery.
     // The store filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`.

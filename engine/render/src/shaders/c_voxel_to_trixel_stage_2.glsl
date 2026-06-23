@@ -173,8 +173,9 @@ void main() {
         // Un-yawed (cardinal) iso store — mirrors stage 1's re-key so the color /
         // entity-id tap lands on the same cardinal iso cell + depth the distance
         // tap did. See c_voxel_to_trixel_stage_1.glsl for the full rationale.
-        const ivec2 perAxisBase =
-            trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+        // Whole-iso base anchor (#1944) — MUST match stage 1's per-axis anchor
+        // exactly, or color/id taps land on a different cell than the distance.
+        const ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSizePixels) + ivec2(floor(frameCanvasOffset));
         if (voxelRenderOptions.x == 0) {
             const ivec3 worldPos = ivec3(round(voxelPosition.xyz));
             const ivec3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);

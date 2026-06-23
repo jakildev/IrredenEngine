@@ -204,48 +204,59 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                              vec2(axes.size_) / vec2(mainCanvasSize);
 
         // Per-axis scatter inputs. `perAxisBase` MUST match
-        // VOXEL_TO_TRIXEL_STAGE_1's trixelFrameOffset for this axis canvas
-        // (trixelOriginOffsetZ1(axisSize) + floor(cameraIso * subdivisionScale))
-        // so the vertex shader's world-origin recovery is bit-consistent with
-        // where the cells were written. visualYaw + visibleFaceIds mirror
-        // buildVoxelFrameData.
+        // VOXEL_TO_TRIXEL_STAGE_1's per-axis store anchor (perAxisFrameOffset:
+        // trixelOriginOffsetZ1(axisSize) + floor(cameraIso)) so the vertex
+        // shader's world-origin recovery is bit-consistent with where the cells
+        // were written. visualYaw + visibleFaceIds mirror buildVoxelFrameData.
         const float visualYaw = IRPrefab::Camera::getYaw();
         const auto cardinalIndex =
             IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        // perAxisBase MUST match the store's trixelFrameOffset, which uses the
-        // #1431-capped density (in voxelRenderOptions.y) — so the scatter's
-        // face-origin recovery (isoPixelToPos3D) is bit-consistent
-        // with where the cells were written. NONE mode stores at world scale
-        // (effectiveTrixelSubdivisionScale == 1 when renderMode == NONE).
-        const int cappedDensity = IRPrefab::PerAxisCanvas::subdivisionDensity();
-        const int subdivisionScale =
-            IRRender::getSubdivisionMode() != IRRender::SubdivisionMode::NONE ? cappedDensity : 1;
+        // Whole-iso base anchor (#1944). The per-axis canvases are BASE-resolution
+        // (#1458), so the camera-pan anchor is the WHOLE-iso camera offset
+        // `floor(cameraIso)` — exactly the cardinal path's anchor — NOT scaled by
+        // the subdivision density (the density-scaled anchor was vestigial since
+        // #1458 made the content base-resolution).
         const vec2 cameraIso = IRRender::getEffectiveCameraIso();
-        const ivec2 anchorPan =
-            ivec2(IRMath::floor(cameraIso * static_cast<float>(subdivisionScale)));
-        frameData.frameData_.perAxisBase_ = IRMath::trixelOriginOffsetZ1(axes.size_) + anchorPan;
+        const vec2 anchorFloor = IRMath::floor(cameraIso);
+        frameData.frameData_.perAxisBase_ =
+            IRMath::trixelOriginOffsetZ1(axes.size_) + ivec2(anchorFloor);
 
-        // The anchor's camera term pans the lattice window in store-scale
-        // steps (subdivisionScale anchor cells per iso pixel), but on screen —
-        // at the base-resolution zoom above — each anchor cell now spans a
-        // FULL world cell, so the anchor pan runs subdivisionScale× the true
-        // camera pan. Cancel the excess in the matrix translate (game px);
-        // exactly zero when subdivisionScale == 1, so previously-correct
-        // configurations are untouched.
-        const vec2 screenPxPerCanvasPx = framebufferResolution * zoomEff / vec2(axes.size_);
-        const vec2 anchorPanExcess = vec2(anchorPan) *
-                                     (1.0f / static_cast<float>(subdivisionScale) - 1.0f) *
-                                     screenPxPerCanvasPx;
-        mat4 panCorrection =
-            translate(mat4(1.0f), vec3(anchorPanExcess.x, -anchorPanExcess.y, 0.0f));
-        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
-                                         panCorrection *
-                                         calcModelMatrix(
-                                             framebufferResolution,
-                                             frameData.frameData_.cameraTrixelOffset_,
-                                             zoomEff
-                                         );
+        // Sub-cell camera pan (#1944 — the jitter fix). The anchor above places
+        // content in WHOLE canvas cells; the remaining fraction must move the
+        // scatter CONTINUOUSLY at the SAME screen scale as one anchor cell, or the
+        // two disagree at every cell boundary and the scene snaps back ~1 cell per
+        // crossing — the per-frame pan/rotation jitter (along the world axes; worse
+        // at higher zoom). One canvas cell maps to `screenPxPerCell`
+        // (fbRes·zoomEff/axisSize) framebuffer px through the model scale below, so
+        // the smooth term is screenPxPerCell·fract(cameraIso) — it exactly
+        // complements screenPxPerCell·floor(cameraIso) (the anchor), so their sum
+        // is screenPxPerCell·cameraIso, continuous. The y term carries the iso→
+        // screen sign flip the scatter applies to cornerIso
+        // (quadPos.y = 0.5 - cornerIso.y/size.y). This REPLACES calcModelMatrix's
+        // whole-game-px offset, which snapped to the canvas's game-px grid
+        // (zoomEff·2) — a different scale than one anchor cell — leaving the
+        // uncompensated snap. (The cardinal single-canvas path keeps
+        // calcModelMatrix: there the canvas IS the native-res blit grid, so its
+        // game-px snap + the framebuffer→screen residual are the anti-vibration.)
+        const vec2 fractIso = cameraIso - anchorFloor;
+        const vec2 screenPxPerCell = framebufferResolution * zoomEff / vec2(axes.size_);
+        const vec2 smoothPx =
+            vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
+        mat4 perAxisModel = translate(
+            mat4(1.0f),
+            vec3(
+                framebufferResolution.x * 0.5f + smoothPx.x,
+                framebufferResolution.y * 0.5f + smoothPx.y,
+                0.0f
+            )
+        );
+        perAxisModel = scale(
+            perAxisModel,
+            vec3(framebufferResolution.x * zoomEff.x, framebufferResolution.y * zoomEff.y, 1.0f)
+        );
+        frameData.frameData_.mpMatrix_ =
+            calcProjectionMatrix(framebufferResolution) * perAxisModel;
         frameData.frameData_.visualYaw_ = visualYaw;
         frameData.frameData_.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
