@@ -21,6 +21,22 @@ struct FrameDataIsoTriangles {
     float2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
     int distanceOffset;
+    // Scatter UBO tail (consumed only by peraxis_scatter). Declared here only to
+    // reach depthPriorityMode at offset 204 — the gather reads none of these but
+    // the struct must mirror the shared C++ FrameDataTrixelToFramebuffer layout.
+    int2 perAxisBase;
+    float visualYaw;
+    int scatterDebugMode;
+    int4 visibleFaceIds;
+    float4 _detachedResidualPad;
+    float4 _detachedDepthAxisPad;
+    float4 scatterFbResolution;
+    int depthColorMode;
+    float depthColorExtent;
+    float _depthColorPad0;
+    // Two-tier composite depth partition (#1958): 0 = world content (clamped out
+    // of the reserved near band), != 0 = foreground priority (pinned into it).
+    int depthPriorityMode;
 };
 
 // SSBO populated by the fragment shader when the mouse hovers over a
@@ -101,8 +117,20 @@ fragment FragmentOut f_trixel_to_framebuffer(
     // (the byte-identical world/overlay fast path).
     float depthScale = frameData.effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0f) depthScale = 1.0f;
-    float depth = normalizeDistance(
-        int(round(float(rawDist) * depthScale)) + frameData.distanceOffset, globals);
+    int enc = int(round(float(rawDist) * depthScale)) + frameData.distanceOffset;
+    // Two-tier composite depth partition (#1958) — twin of f_trixel_to_framebuffer.glsl.
+    // The most-negative kDepthForegroundBandWidth codes of [kMin, kMax] are
+    // reserved for foreground-priority detached solids (more-negative enc =
+    // nearer). depthPriorityMode != 0 pins this draw's local iso-depth INTO the
+    // band (clamped to its edges); otherwise world content is clamped OUT of it
+    // (a no-op for all in-budget content → byte-identical fast path).
+    int foregroundCeil = globals.kMinTriangleDistance + kDepthForegroundBandWidth;
+    if (frameData.depthPriorityMode != 0) {
+        enc = clamp(enc, globals.kMinTriangleDistance, foregroundCeil);
+    } else {
+        enc = max(enc, foregroundCeil + 1);
+    }
+    float depth = normalizeDistance(enc, globals);
 
     const int subdivisions = max(int(frameData.effectiveSubdivisionsForHover.x), 1);
     const float2 hoveredPosition =

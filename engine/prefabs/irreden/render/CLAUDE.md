@@ -565,6 +565,17 @@ pre-#1624 default.
   `C_EntityCanvas` — which `ENTITY_CANVAS_TO_FRAMEBUFFER` already iterates — not on
   `C_TrixelCanvasRenderBehavior` (the child canvas entity), so the composite reads
   it with no per-tick foreign getComponent.
+- **Foreground depth priority is `C_EntityCanvas::depthPriority_` (#1958).** A
+  world-placed canvas with `depthPriority_ != 0` composites into a RESERVED near
+  depth band (`kDepthForegroundCeil`, `ir_render_types.hpp`) instead of its world
+  iso-depth, so it renders unconditionally in front of the floor / any world
+  geometry below it at every zoom and yaw — for floating showcases that must not
+  clip behind the floor (the #1884 Bug-A fix; the two-tier disjoint near-plane
+  partition in `f_trixel_to_framebuffer`). Only meaningful when `!screenLocked_`.
+  World content (`depthPriority_ == 0`) is clamped OUT of the band — a no-op for
+  in-budget content, so the cardinal fast path stays byte-identical. Per-trixel
+  priority tiers are #1960. Source of truth:
+  `docs/design/depth-unification-1884-investigation.md` §Resolution.
 - **Seed GPU-buffer sentinels GPU-side, never via a resource-sized CPU
   staging vector + `subData`.** Metal's `fillBuffer` writes a repeating
   single byte, so multi-byte sentinels like `kTrixelDistanceMaxDistance`

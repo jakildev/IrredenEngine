@@ -1029,12 +1029,16 @@ kernel void c_shapes_to_trixel(
                                           yawS * viewOffset.x + yawC * viewOffset.y,
                                           viewOffset.z);
         const float3 worldSurface = worldPos * float(sub) + worldOffset;
-        // Yaw-consistent composite depth (#1370) — mirror of the GLSL. Order by
-        // the depth matching the YAWED iso projection (iso of R_z(-visualYaw)*
-        // world), not the un-yawed world x+y+z, so a low/back surface stops
-        // winning the depth test against geometry above it at residual yaw.
-        const float dvx = worldSurface.x * yawC + worldSurface.y * yawS;
-        const float dvy = -worldSurface.x * yawS + worldSurface.y * yawC;
+        // Quadrant-stable iso-depth (#1958 Part A, fix Bug A) — mirror of the GLSL.
+        // Derive the depth metric's cos/sin from the CARDINAL bracket
+        // (cardinalCosSin) instead of the continuous visualYaw (yawC/yawS): the
+        // stored floor depth becomes piecewise-constant per 90 deg quadrant and
+        // stops drifting toward/under geometry above it near the +/-45 deg bracket
+        // (#1370's low/back-surface-wins crossing, Bug A's root). On-screen
+        // PLACEMENT is unchanged (worldSurface still uses visualYaw); only the
+        // stored DEPTH changes. Cardinal frames stay byte-identical.
+        const float dvx = worldSurface.x * cardinalCosSin.x + worldSurface.y * cardinalCosSin.y;
+        const float dvy = -worldSurface.x * cardinalCosSin.y + worldSurface.y * cardinalCosSin.x;
         baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;

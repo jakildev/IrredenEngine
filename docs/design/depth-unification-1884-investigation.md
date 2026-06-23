@@ -124,28 +124,79 @@ IRCanvasStress --only canary,floor --no-spin --no-auto-rotate --auto-screenshot 
 IRPerfGrid --mode dense --grid-size 64 --yaw-ramp --auto-screenshot   # step 18 (180°)
 ```
 
-## Resolution (architect, 2026-06-22)
+## Resolution (architect, 2026-06-22; revised 2026-06-23)
 
 Design decided on the strength of this spike; #1884 was promoted to a sub-epic
 and implementation split into independently-verifiable children. The agreed
-architecture is a unified **quadrant-stable** depth encoding,
+architecture is a unified **quadrant-stable** depth encoding plus a **two-tier
+disjoint near-plane partition** for foreground priority. Two pieces:
+
+**Quadrant-stable iso-depth (retires #1370).** On the SDF smooth-yaw path the
+stored depth metric derives its cos/sin from the **cardinal bracket**
+(`cardinalYawCosSin(rasterYawCardinalIndex(rasterYaw))`) instead of the
+continuous `visualYaw`, so the stored depth is piecewise-constant per 90°
+quadrant and no longer drifts toward/under geometry above it near the ±45°
+bracket boundary. On-screen placement still uses `visualYaw`; only the stored
+depth becomes quadrant-stable. Cardinal frames are byte-identical (the smooth
+branch is gated off at cardinals). This shares Bug A's iso-depth-ambiguity root.
+
+**Disjoint near-plane priority partition (resolves Bug A — revised model).** The
+original plan proposed an *additive* priority band
+(`enc = priorityBand·BAND + cardinalIsoDepth·4 + face`). Implementation surfaced
+that **no fixed additive band can dominate unbounded world placement**: an
+additive band must out-size *twice the world's iso-depth spread* to lift a
+far-placed foreground entity past the near edge of world content, and that term
+scales with world extent — `canvas_stress`'s radius-200 GRID orbit exhausts it
+(the band-headroom × subdivisions trap the plan flagged). Escalated
+`fleet:design-blocked`; the architect ruling **replaced the additive band with a
+disjoint near-plane partition**:
 
 ```
-enc = priorityBand·BAND + cardinalIsoDepth·4 + face
+world content (priority 0):  enc = cardinalIsoDepth·4 + face                  // UNCHANGED
+                             enc = max(enc, kDepthForegroundCeil + 1)         // clamped OUT of the near band
+foreground priority:         enc = clamp(localIsoDepth + bandCenter,          // pinned INTO the reserved
+                                         kMin, kDepthForegroundCeil)          //   near band, self-occluding
 ```
 
-with **per-entity / per-trixel priority bands**. The priority band overrides the
-raw `x+y+z` iso ordering for cases where intent (a floating solid in front of the
-floor) diverges from convention — which resolves Bug A (Finding 2) at its root.
-This also **retires #1370**: its near-±45° artifact and Bug A share the same
-iso-depth-ambiguity root cause.
+The most-negative `kDepthForegroundBandWidth` (16384) codes of the shared
+`[kMin, kMax]` range are **reserved** exclusively for foreground-priority detached
+solids. **Invariant (the point):** a foreground fragment is unconditionally nearer
+than any non-priority fragment *independent of world extent* — dominance is by
+**partition membership**, not by out-sizing the world's depth spread. World
+content is clamped to stay out of the band; the clamp is a **no-op** for every
+current demo at the effSub-16 cap (it fires only when `cardinalIsoDepth·4 <
+kDepthForegroundCeil` ≈ world extent far past the r=200 orbit), so the cardinal
+fast path and all in-budget content stay byte-identical. Beyond the documented
+ceiling, far world content **saturates** against the boundary (loses depth
+resolution) instead of letting a background fragment beat a priority solid —
+strictly better than the additive model, which broke foreground dominance the
+moment the world got deep. The encodable range is already symmetric about
+`enc = 0`, so this is not an off-center / insufficient-buffer problem; centering
+changes the offset, not the spread.
+
+The unsatisfiable world-extent `static_assert` (`2·4·maxSubdividedIso + 3 < BAND`)
+is replaced by a **partition-layout** assert on constants only
+(`kDepthForegroundCeil < 0`; `kMin ≤ kDepthForegroundCeil < kMax`).
+
+**Per-trixel generalization (#1960).** The partition generalizes to N disjoint
+sub-ranges; `priority = max(entity, trixel)` selects the tier. #1958 (B) ships the
+**two-tier** split only (world + one foreground tier); per-trixel tiers are D
+(#1960).
+
+**32-bit composite depth (#1983, filed).** The `±65535` ceiling is a
+normalization convention on the shared composite depth, not a hardware limit.
+Widening it (DEPTH32F or a manual integer R32I composite) would *raise* the
+ceiling but not make it unbounded; under world streaming (#938) coordinates are
+genuinely unbounded, where the partition's O(1) correctness still wins. #1983
+evaluates retiring the convention and simplifying the partition special-casing
+for practical worlds; the partition ships now (unconditional, unblocks B/C/D/E).
 
 The three findings above map to the children:
 
 | Finding | Child | Scope |
 |---|---|---|
 | Finding 1 (detached composite writes no depth) | **A — #1957** | detached depth-write (foundation; unblocks the encoding work) |
-| Finding 2 / Bug A (iso-depth ranks floating solid behind floor) | **B — #1958** | unified quadrant-stable encoding + priority bands (blocked by A) |
+| Finding 2 / Bug A (iso-depth ranks floating solid behind floor) | **B — #1958** | quadrant-stable SDF depth + two-tier disjoint near-plane priority partition (blocked by A) |
 | Finding 3 / Bug B (cardinal-180 `+slot` tiebreak) | **C — #1959** | per-axis cardinal-180 geometric tiebreak (blocked by B) |
 | — | **D — #1960** | per-trixel priority + demos (blocked by B) |
 | — | **E — #1961** | rotation perf parity (blocked by B) |

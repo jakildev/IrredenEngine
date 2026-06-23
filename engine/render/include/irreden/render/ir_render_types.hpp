@@ -148,7 +148,20 @@ struct FrameDataTrixelToFramebuffer {
     int depthColorMode_ = 0;
     float depthColorExtent_ = 0.0f;
     float _depthColorPad0_ = 0.0f;
-    float _depthColorPad1_ = 0.0f;
+    /// Two-tier composite depth partition (#1958). 0 = WORLD content: the gather
+    /// (f_trixel_to_framebuffer) clamps `enc` OUT of the reserved near band
+    /// (`enc = max(enc, kDepthForegroundCeil + 1)`) — a no-op for every in-budget
+    /// demo, so the byte-identical fast path is preserved. != 0 = FOREGROUND
+    /// priority: the gather pins this draw's model-frame local iso-depth INTO the
+    /// reserved near band (`clamp(enc, kMin, kDepthForegroundCeil)`), so a floating
+    /// solid is unconditionally nearer than any world fragment regardless of world
+    /// extent (the disjoint near-plane partition of the #1884 escalation). Only the
+    /// detached composite (ENTITY_CANVAS_TO_FRAMEBUFFER) for a world-placed
+    /// C_EntityCanvas with depthPriority_ != 0 uploads a non-zero value; the main
+    /// gather + every other producer leave it 0. Repurposes the former
+    /// `_depthColorPad1_` std140 slot (offset 204) — no size/offset change, so the
+    /// scatter UBO asserts below stay valid.
+    int depthPriorityMode_ = 0;
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -185,6 +198,51 @@ static_assert(
 /// the world-placed detached-canvas composite and any producer that converts world
 /// iso depth or model-frame rawDist into shared framebuffer depth units (×effSub × 4).
 constexpr int kDepthEncodeShift = 4;
+
+/// Two-tier composite depth partition (#1958; the #1884 sub-epic's Bug-A fix).
+/// The most-negative @c kDepthForegroundBandWidth codes of the shared
+/// `[kTrixelDistanceMinDistance, kTrixelDistanceMaxDistance]` depth range are
+/// RESERVED for foreground-priority detached solids. A fragment whose composite
+/// `enc` lands in that band is unconditionally nearer (GL_LESS +
+/// `normalizeDistance`) than any non-priority "world" fragment, INDEPENDENT of
+/// world extent — dominance is by partition membership, not by out-sizing the
+/// world iso-depth spread. This is the disjoint near-plane partition the #1884
+/// escalation settled on, retiring the additive priority band (no fixed band
+/// could dominate unbounded world placement — the radius-200 GRID orbit proved
+/// it). World content is clamped to stay OUT of the band; the clamp is a no-op
+/// for every current demo at the effSub-16 cap (it fires only when
+/// `cardinalIsoDepth·4 < kDepthForegroundCeil` ≈ world extent far past
+/// canvas_stress's r=200 orbit), so the cardinal fast path and all in-budget
+/// content stay byte-identical. Mirror in `ir_iso_common.glsl` /
+/// `metal/ir_iso_common.metal`. Full model:
+/// docs/design/depth-unification-1884-investigation.md §Resolution.
+constexpr int kDepthForegroundBandWidth = 16384;
+/// Inclusive far edge of the reserved foreground band:
+/// `[kTrixelDistanceMinDistance, kDepthForegroundCeil]`. World content is clamped
+/// to `>= kDepthForegroundCeil + 1`.
+constexpr int kDepthForegroundCeil =
+    IRConstants::kTrixelDistanceMinDistance + kDepthForegroundBandWidth;
+/// Center of the reserved band. The composite sets `distanceOffset_` to this for
+/// a priority entity so its OWN model-frame local iso-depth lands centered in the
+/// band and self-occludes correctly; the gather clamps to the band edges so a
+/// pathologically deep solid saturates (graceful degradation) instead of escaping.
+constexpr int kDepthForegroundBandCenter =
+    IRConstants::kTrixelDistanceMinDistance + kDepthForegroundBandWidth / 2;
+
+// Partition-layout asserts (#1958). These REPLACE the plan's original
+// world-extent band assert (`2·4·maxSubdividedIso + 3 < BAND`), which the
+// architect escalation proved unsatisfiable — world placement is unbounded, so
+// no sound compile-time `maxSubdividedIso` exists. The partition needs only that
+// the reserved band is on the near side and lies inside the encodable range.
+static_assert(
+    kDepthForegroundCeil < 0,
+    "reserved foreground band must be on the near (most-negative) side of the range"
+);
+static_assert(
+    IRConstants::kTrixelDistanceMinDistance <= kDepthForegroundCeil &&
+        kDepthForegroundCeil < IRConstants::kTrixelDistanceMaxDistance,
+    "foreground band [kMin, kDepthForegroundCeil] must lie inside the encodable depth range"
+);
 
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;

@@ -443,6 +443,14 @@ void spawnDetachedVoxelObject(
         kPoolSize
     );
     canvas.screenLocked_ = g_settings.screenLockDetached_;
+    // #1958 Bug-A acceptance: the floating canary cubes carry FOREGROUND depth
+    // priority so they render fully in front of the SDF floor at every zoom and
+    // yaw (the `--only canary,floor` case) instead of clipping behind it as world
+    // iso-depth grows. No-op under screenLocked_ (the composite gates priority on
+    // !screenLocked_), so the screen-locked byte-identical regression canary is
+    // unchanged. The canary still writes depth, so --depth-probe-assert 321,210
+    // (now reading inside the foreground near band) still PASSes.
+    canvas.depthPriority_ = 1;
 
     // The voxel cube lives centered in the detached canvas's pool so
     // SYSTEM_REBUILD_DETACHED_VOXELS rotates its cells about the pool origin

@@ -933,8 +933,19 @@ void main() {
         // R_z(-visualYaw) and take its iso-depth (vx+vy+z). yawC/yawS are
         // cos/sin(visualYaw) on the smoothYaw path. Per-axis voxel scatter
         // applies the identical transform so SDF + voxels stay co-sorted.
-        float dvx = worldSurface.x * yawC + worldSurface.y * yawS;
-        float dvy = -worldSurface.x * yawS + worldSurface.y * yawC;
+        // Quadrant-stable iso-depth (#1958 Part A, fix Bug A). Derive the depth
+        // metric's cos/sin from the CARDINAL bracket (cardinalCosSin, the
+        // rasterYaw cardinal index) instead of the continuous visualYaw (yawC/yawS).
+        // The stored floor depth is then piecewise-constant per 90 deg quadrant and
+        // no longer drifts toward/under geometry above it as residual yaw grows —
+        // killing #1370's near-+/-45 deg "low/back surface wins" crossing (the
+        // iso-depth-ambiguity root of Bug A). On-screen PLACEMENT is unchanged:
+        // worldSurface is still built from visualYaw above; ONLY the stored DEPTH
+        // becomes quadrant-stable. At a cardinal pose the bracket cos/sin equals
+        // visualYaw's (and smoothYaw is gated off there — the per-axis canvases are
+        // freed at cardinals), so cardinal frames stay byte-identical.
+        float dvx = worldSurface.x * cardinalCosSin.x + worldSurface.y * cardinalCosSin.y;
+        float dvy = -worldSurface.x * cardinalCosSin.y + worldSurface.y * cardinalCosSin.x;
         baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;

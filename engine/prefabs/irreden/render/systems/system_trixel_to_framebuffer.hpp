@@ -83,6 +83,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         frameData.frameData_.textureOffset_ = vec2(0);
         frameData.frameData_.distanceOffset_ = 0;
+        // Main world gather is always WORLD content (#1958): the gather clamps it
+        // out of the reserved foreground near band (a no-op for in-budget content).
+        // Explicit so the persistent mainFramebuffer frame-data (shared with the
+        // per-axis scatter path) never carries a stale foreground flag.
+        frameData.frameData_.depthPriorityMode_ = 0;
         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                          calcModelMatrix(
                                              framebufferResolution,
@@ -241,8 +246,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // game-px snap + the framebuffer→screen residual are the anti-vibration.)
         const vec2 fractIso = cameraIso - anchorFloor;
         const vec2 screenPxPerCell = framebufferResolution * zoomEff / vec2(axes.size_);
-        const vec2 smoothPx =
-            vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
+        const vec2 smoothPx = vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
         mat4 perAxisModel = translate(
             mat4(1.0f),
             vec3(
@@ -255,8 +259,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             perAxisModel,
             vec3(framebufferResolution.x * zoomEff.x, framebufferResolution.y * zoomEff.y, 1.0f)
         );
-        frameData.frameData_.mpMatrix_ =
-            calcProjectionMatrix(framebufferResolution) * perAxisModel;
+        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) * perAxisModel;
         frameData.frameData_.visualYaw_ = visualYaw;
         frameData.frameData_.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),

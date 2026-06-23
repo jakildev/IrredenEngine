@@ -26,6 +26,19 @@ struct C_EntityCanvas {
     // composite (which already iterates C_EntityCanvas), so no per-tick
     // foreign getComponent.
     bool screenLocked_ = false;
+    // Foreground depth priority (#1958 two-tier partition; the #1884 Bug-A fix).
+    // 0 (default) = world content: the canvas depth-sorts against world geometry
+    // on the shared iso-depth convention (the #1624 world-placed default). != 0 =
+    // FOREGROUND priority: ENTITY_CANVAS_TO_FRAMEBUFFER pins the canvas's
+    // model-frame local iso-depth into a reserved near depth band
+    // (kDepthForegroundCeil) so the solid renders unconditionally in front of the
+    // floor / any world geometry below it, at all zooms and yaws, INDEPENDENT of
+    // world extent — for floating showcases that must not clip behind the floor.
+    // Only meaningful when !screenLocked_ (a screen-locked overlay already sits at
+    // a fixed near depth). Two-tier for now: any non-zero value selects the single
+    // foreground tier; per-trixel priority tiers are #1960. Read directly by the
+    // composite (which already iterates C_EntityCanvas), so no per-tick getComponent.
+    int depthPriority_ = 0;
 
     C_EntityCanvas() = default;
 
@@ -33,12 +46,14 @@ struct C_EntityCanvas {
         IREntity::EntityId canvasEntity,
         ivec2 canvasSize,
         bool visible = true,
-        bool screenLocked = false
+        bool screenLocked = false,
+        int depthPriority = 0
     )
         : canvasEntity_{canvasEntity}
         , canvasSize_{canvasSize}
         , visible_{visible}
-        , screenLocked_{screenLocked} {}
+        , screenLocked_{screenLocked}
+        , depthPriority_{depthPriority} {}
 };
 
 } // namespace IRComponents

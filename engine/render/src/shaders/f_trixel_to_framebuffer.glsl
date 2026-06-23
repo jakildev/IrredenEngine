@@ -31,6 +31,23 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
     int distanceOffset;
+    // The scatter UBO tail (consumed only by v_/f_peraxis_scatter). Declared
+    // here only to reach depthPriorityMode at offset 204; the gather reads none
+    // of these but the std140 layout must match the shared C++ struct
+    // (FrameDataTrixelToFramebuffer, ir_render_types.hpp).
+    ivec2 perAxisBase;
+    float visualYaw;
+    int scatterDebugMode;
+    ivec4 visibleFaceIds;
+    vec4 _detachedResidualPad;
+    vec4 _detachedDepthAxisPad;
+    vec4 scatterFbResolution;
+    int depthColorMode;
+    float depthColorExtent;
+    float _depthColorPad0;
+    // Two-tier composite depth partition (#1958): 0 = world content (clamped out
+    // of the reserved near band), != 0 = foreground priority (pinned into it).
+    int depthPriorityMode;
 };
 
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
@@ -63,7 +80,29 @@ void main() {
     // i.e. the byte-identical fast path.
     float depthScale = effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0) depthScale = 1.0;
-    float depth = normalizeDistance(int(round(float(rawDist) * depthScale)) + distanceOffset);
+    int enc = int(round(float(rawDist) * depthScale)) + distanceOffset;
+    // Two-tier composite depth partition (#1958). The most-negative
+    // kDepthForegroundBandWidth codes of [kMin, kMax] are reserved for
+    // foreground-priority detached solids. More-negative enc = nearer (GL_LESS +
+    // normalizeDistance), so this near slice is the priority partition.
+    // - depthPriorityMode != 0 (a world-placed C_EntityCanvas with depthPriority_
+    //   set): pin the canvas's model-frame local iso-depth INTO the band so it is
+    //   unconditionally nearer than any world fragment regardless of world extent.
+    //   Clamping the band edges makes a pathologically deep solid saturate
+    //   (graceful degradation) instead of escaping into the world range.
+    // - depthPriorityMode == 0 (the main world gather + every non-priority
+    //   composite): clamp world content OUT of the band. A no-op for all in-budget
+    //   content (enc >> foregroundCeil), so the cardinal fast path is
+    //   byte-identical; far world content saturates against the boundary (loses
+    //   depth resolution) rather than letting a background fragment beat a
+    //   priority solid.
+    int foregroundCeil = kMinTriangleDistance + kDepthForegroundBandWidth;
+    if (depthPriorityMode != 0) {
+        enc = clamp(enc, kMinTriangleDistance, foregroundCeil);
+    } else {
+        enc = max(enc, foregroundCeil + 1);
+    }
+    float depth = normalizeDistance(enc);
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
     // canvasOffset is already scaled by subdivisions in smooth mode (CPU side)
     // mouseHoveredTriangleIndex is base space; scale to subdivided space for comparison

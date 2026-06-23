@@ -124,6 +124,16 @@ int encodeDepthWithFace(int rawDepth, int face) {
     return rawDepth * 4 + face;
 }
 
+// Two-tier composite depth partition (#1958). The most-negative
+// kDepthForegroundBandWidth codes of [kMinTriangleDistance, kMaxTriangleDistance]
+// are reserved for foreground-priority detached solids: the framebuffer gather
+// (f_trixel_to_framebuffer) clamps WORLD content out of the band and pins
+// FOREGROUND content into it, so a priority solid is unconditionally nearer than
+// any world fragment regardless of world extent. The far edge is
+// foregroundCeil = kMinTriangleDistance + kDepthForegroundBandWidth. Mirrors
+// IRRender::kDepthForegroundBandWidth (ir_render_types.hpp) and the .metal twin.
+const int kDepthForegroundBandWidth = 16384;
+
 // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
 // uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders by depth first.
 // Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid encoding overwrites the sentinel.

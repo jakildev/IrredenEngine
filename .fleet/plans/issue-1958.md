@@ -24,7 +24,40 @@ Explicitly **out of scope** (own children, both blocked by this one): the per-ax
 
 Repro confirmed in the spike (`docs/design/depth-unification-1884-investigation.md`, on `claude/1884-depth-unification`): `--only canary,floor` breaks (clip line), `--only canary,maingrid` is clean.
 
-### Approach (single, committed)
+### Architect revision (2026-06-23) — disjoint near-plane partition supersedes the additive band
+
+The plan's Approach **B** below (additive `enc = priorityBand·BAND + cardinalIsoDepth·4 + face`)
+was escalated `fleet:design-blocked` on the band-headroom × subdivisions trap (the
+gotcha flagged below fired for `canvas_stress`): **no fixed additive band can dominate
+unbounded world placement** — the band must out-size 2× the world iso-depth spread,
+which scales with world extent, and the radius-200 GRID orbit exhausts it. The architect
+ruling **replaces the additive band with a disjoint near-plane partition** (authoritative
+over B/C below):
+
+- **World content (priority 0):** `enc = cardinalIsoDepth·4 + face` (unchanged), then
+  clamped OUT of the reserved near band: `enc = max(enc, kDepthForegroundCeil + 1)`.
+- **Foreground priority:** `enc = clamp(localIsoDepth + kDepthForegroundBandCenter, kMin, kDepthForegroundCeil)`
+  — pinned INTO the reserved near band `[kMin, kDepthForegroundCeil]`
+  (`kDepthForegroundBandWidth = 16384`, `ir_render_types.hpp`), encoding the entity's OWN
+  model-frame local iso-depth so it self-occludes; clamped to the band edges so a deep
+  solid saturates instead of escaping.
+- **Invariant:** a foreground fragment is unconditionally nearer than any world fragment
+  *independent of world extent* (dominance by partition membership, not by out-sizing the
+  spread). The world clamp is a **no-op** for every current demo at the effSub-16 cap
+  (cardinal fast path byte-identical). The unsatisfiable world-extent `static_assert`
+  is replaced by a **partition-layout** assert on constants
+  (`kDepthForegroundCeil < 0`; `kMin ≤ kDepthForegroundCeil < kMax`).
+- **Two-tier only** for #1958; per-trixel tiers are #1960. 32-bit composite depth is the
+  filed follow-up #1983.
+- **Implementation:** the partition lives at the single depth-finalization chokepoint
+  `f_trixel_to_framebuffer.glsl` (+ `.metal` twin), keyed on a per-draw `depthPriorityMode`
+  field on `FrameDataTrixelToFramebuffer` (repurposed the trailing std140 pad — no
+  offset/size change). The composite sets it (+ `distanceOffset_ = kDepthForegroundBandCenter`)
+  for a world-placed `C_EntityCanvas` with `depthPriority_ != 0`. Part **A** below is
+  unchanged and lands alongside. Source of truth:
+  `docs/design/depth-unification-1884-investigation.md` §Resolution.
+
+### Approach (single, committed) — **B is superseded by the partition above; A unchanged**
 
 **A. Quadrant-stable SDF depth** (`c_shapes_to_trixel.glsl` + `metal/c_shapes_to_trixel.metal`):
 In the smooth-yaw `baseDepth` branch only, derive the depth metric's cos/sin from the **cardinal bracket** (`cardinalYawCosSin(rasterYawCardinalIndex(rasterYaw))`) instead of `yawC/yawS` (= cos/sin `visualYaw`). Keep on-screen **pixel placement** at `visualYaw` (unchanged) — only the stored depth becomes quadrant-stable. Net effect: within a 90° bracket the floor's depth no longer drifts toward/under the geometry above it, killing #1370's near-±45° crossing. Cardinal frames are unaffected (cardinal cos/sin == visualYaw cos/sin at the bracket).
