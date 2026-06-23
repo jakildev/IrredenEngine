@@ -35,7 +35,7 @@ convention as `img_diff`, so it drops into the same verification scripts).
 Use an **isolated shape on a black field** so the centroid is uncontaminated.
 `shape_debug` has two sweep harnesses (see
 [`engine/render/CLAUDE.md`](../../engine/render/CLAUDE.md) §"Verifying temporal
-stability (jitter)"):
+stability (per-frame jitter)"):
 
 ```bash
 # Pan jitter — camera pans at a fixed non-cardinal yaw:
