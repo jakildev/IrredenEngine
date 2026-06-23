@@ -34,8 +34,8 @@ mechanism.
 | **epic label** | Marks the umbrella so the queue-manager skips it. | `fleet:epic` |
 | **task label** | Marks each child as a queue-ingestable task. | `fleet:task` |
 | **architect plans dir** | Where the approved architect draft lives. | `~/.claude/plans/<slug>.md` |
-| **plans dir** | Local staging for the plan, pre-commit. | `~/.fleet/plans/issue-<N>.md` |
-| **repo-side plan path** | Committed, authoritative plan workers read from master. | `<repo>/.fleet/plans/issue-<N>.md` |
+| **plans dir** | Local staging for the plan, pre-commit (umbrella only). | `~/.fleet/plans/issue-<N>.md` |
+| **repo-side plan path** | Committed, authoritative plan workers read from master (umbrella only). | `<repo>/.fleet/plans/issue-<N>.md` |
 | **validate-stack command** | Asserts every child carries the structured fields. | `fleet-validate-stack` |
 | **title area vocabulary** | `<area>` tokens for child titles. | `engine`, `render`, `game`, module names |
 
@@ -294,8 +294,8 @@ path** when the child fixes a defect), commit to **one approach** — never a
 epic's other children: say what this child assumes its predecessors have
 landed). A child plan that just restates the umbrella's phase line is a stub
 — #1440's 23-line stub prescribed an approach a sibling had already proved
-wrong (#1456). The queue's plan gate checks only that the file *exists*;
-the rigor is on the author.
+wrong (#1456). The queue's plan gate checks only that a `## Plan` comment
+exists; the rigor is on the author.
 
 ### 6.5. Commit the umbrella plan into the repo (REQUIRED — the steward reads it)
 
