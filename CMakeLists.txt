@@ -101,6 +101,7 @@ endif()
 
 if(IRREDEN_BUILD_TOOLS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/tools/img_diff)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/tools/jitter_probe)
 endif()
 
 if(IRREDEN_BUILD_QUALITY_TARGETS)
