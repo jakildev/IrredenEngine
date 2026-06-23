@@ -304,6 +304,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // Restore the pipeline's default depth-write so later passes are
         // unaffected — matches the setDepthWrite(true) / setDepthTest(true)
         // restore the sprite + debug-overlay passes use.
+        IRRender::device()->setDepthTest(true);
         IRRender::device()->setDepthWrite(true);
 
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
