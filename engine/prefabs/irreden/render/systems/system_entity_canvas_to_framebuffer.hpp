@@ -274,6 +274,24 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // the gather composites the full SO(3) solid plus any SDF / text;
         // at a cardinal/identity pose it renders byte-identically.
         IRRender::getNamedResource<ShaderProgram>("CanvasToFramebufferProgram")->use();
+        // Depth-participation (#1957, hardening #1624). The composite depth-TESTS
+        // each detached canvas against the world depth the gather wrote (so world
+        // geometry occludes a detached solid) and WRITES its winning fragment's
+        // gl_FragDepth (f_trixel_to_framebuffer.glsl) so a detached solid occludes
+        // the floor and other detached instances. The write already happened on
+        // both backends — Metal's depth-stencil state at composite time is the
+        // default-ENABLED state (g_runtime().depthWriteEnabled_ defaults true,
+        // metal_runtime.cpp), OpenGL's glDepthMask defaults GL_TRUE, and the only
+        // togglers (SPRITE_TO_SCREEN, debug overlay) run AFTER this pass and
+        // restore. #1957 makes that implicit write EXPLICIT (setDepthWrite(true)
+        // here = glDepthMask(GL_TRUE) on GL, depthWriteEnabled_=true on Metal) and
+        // restores after, so a future pass that leaves depth-write off upstream
+        // can't silently regress the composite — guarded by the canvas_stress
+        // --depth-probe-assert canary (see depth_probe.hpp). All instances write
+        // depth, including screen-locked overlays, keeping the screenLocked_ path
+        // byte-identical to master (the #1957 acceptance).
+        IRRender::device()->setDepthTest(true);
+        IRRender::device()->setDepthWrite(true);
         for (auto &inst : instances_) {
             frameDataBuffer->subData(0, sizeof(FrameDataTrixelToFramebuffer), &inst.frameData_);
             inst.textures_->bind(0, 1, 2);
@@ -283,6 +301,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 IndexType::UNSIGNED_SHORT
             );
         }
+        // Restore the pipeline's default depth-write so later passes are
+        // unaffected — matches the setDepthWrite(true) / setDepthTest(true)
+        // restore the sprite + debug-overlay passes use.
+        IRRender::device()->setDepthTest(true);
+        IRRender::device()->setDepthWrite(true);
 
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
     }

@@ -249,15 +249,30 @@ depth-test value at main-framebuffer texture pixel (X,Y) each frame —
 the GL_LESS winner across every render path, since gather, per-axis
 scatter, and the detached-canvas composite all write `gl_FragDepth`
 into the one depth attachment — decoded to shared trixel-distance
-units. (Metal: the detached-canvas composite does **not** yet write
-depth — pending #1957 — so on Metal the probe is currently blind to
-that path; see Finding 1 in
-`docs/design/depth-unification-1884-investigation.md`.) The probe
-lives in `IRPrefab::DepthProbe::` (a prefab-scoped
+units. (The detached composite writes depth on **both** backends —
+#1957 verified Metal `depthWriteEnabled_` and OpenGL `glDepthMask` are
+both at their default-enabled state when the composite runs, then made
+that write explicit (`setDepthWrite(true)` + restore) so it can't
+silently regress. The probe is **not** blind to the detached path on
+either backend; the earlier "Metal composite drops depth — #1884/#1950
+Finding 1" reading was a misdiagnosis — the composite participates in
+depth, and where its `x+y+z` iso-depth ranks behind the floor it loses
+the test rather than failing to write, which is the #1958 Bug A
+wrong-winner problem, not a missing write.) The probe lives in
+`IRPrefab::DepthProbe::` (a prefab-scoped
 Pattern-B namespace over the `Texture2D` /
 `PixelDataFormat::DEPTH_COMPONENT` readback primitive). Pure readback:
 no shader or pipeline change, so a flagless run is byte-identical. Use
 it when a screenshot can't disambiguate which surface won a pixel.
+
+The sibling `--depth-probe-assert X,Y` flag (#1957; `canvas_stress`) is
+the composite depth-write **regression guard**: it turns one readback
+into a machine-readable `[depth-probe-assert] … result=PASS|FAIL` line
+— PASS iff the composite stored a non-background depth at (X,Y). Aim it
+at a texel inside a world-placed detached solid (canonical:
+`--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`)
+so a future pass that disables the detached-canvas composite depth-write
+fails the run headlessly on either backend.
 
 ### Verifying temporal stability (per-frame jitter)
 
