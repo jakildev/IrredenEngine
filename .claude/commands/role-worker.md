@@ -69,9 +69,11 @@ See [docs/agents/FLEET-RUNTIME.md § Exit protocol](../../docs/agents/FLEET-RUNT
   queues. (game-architect is interactive only and does not autonomously
   claim tasks.)
 - **[opus+ classes]** Plan issues flagged with `fleet:needs-plan` on
-  either repo — read the issue thread, write a structured plan, post it
-  as an issue comment, save it to `~/.fleet/plans/`, and remove
-  `fleet:needs-plan` so the scout picks it up.
+  either repo — claim it (`fleet-claim planning-claim`), read the thread,
+  post the structured plan as a `## Plan` comment, then swap
+  `fleet:needs-plan` → `fleet:plan-review` for a reviewer to vet, and release
+  (`fleet-claim planning-release`). The plan lands in `.fleet/plans/` as the
+  first commit of the implementer's PR — not a separate plan-doc PR (#1932).
 - Handle tasks escalated from a lower class (look for an `escalated
   from <class>` note in the issue body or a recent issue comment).
 
@@ -487,9 +489,13 @@ Do the work, then exit cleanly:
    (smallest `number`) across both repos, then follow
    [docs/agents/PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md)
    — read the full thread (`fleet-issue view <N>`, add `--repo game`
-   for game), post the structured plan comment, save
-   `~/.fleet/plans/issue-<N>.md`, and remove `fleet:needs-plan`
-   (leaving `human:approved`). If the work decomposes into a stack,
+   for game), acquire the planning claim (`fleet-claim planning-claim <N>
+   <agent>` — exit 3 means a `## Plan` comment already exists, so skip it),
+   post the structured `## Plan` comment, swap `fleet:needs-plan` →
+   `fleet:plan-review` (leaving `human:approved`) for a reviewer to vet, and
+   release (`fleet-claim planning-release`). The plan file is committed by the
+   implementer as the first commit of its PR (#1932). If the work decomposes
+   into a stack,
    that doc routes you to `file-epic` via
    [docs/agents/TASK-FILING.md](../../docs/agents/TASK-FILING.md).
 
