@@ -254,9 +254,14 @@ void main() {
     // face-local origin-recovery KEY and must not change. Each corner emits
     // the continuous yawed camera-space depth of its own (dilated) corner
     // point via the shared scatterCompositeDepthKey helper
-    // (ir_iso_common.glsl) — *4 + slot scale, so it co-sorts with the SDF
-    // (c_shapes_to_trixel smoothYaw). Linear interpolation then reproduces
-    // the face plane's affine depth field at every fragment. The flat
+    // (ir_iso_common.glsl) — *4 scale, so it co-sorts with the SDF
+    // (c_shapes_to_trixel smoothYaw). The corner base goes through
+    // scatterCompositeCornerKey, which folds the #1959 geometric X/Y tiebreak
+    // into the sub-iso budget the old `+slot` held (kills the Bug-B cardinal-180
+    // stripe); the kU/kV gradients stay on scatterCompositeDepthKey so the
+    // tiebreak is a per-quad constant and the affine field stays planar.
+    // Linear interpolation then reproduces the face plane's affine depth field
+    // at every fragment. The flat
     // per-quad ROUNDED key this replaces had two failure modes at off-snap
     // residuals: integer quantization tied distinct planes (draw order picked
     // the farther quad on the sign-flip side of the bracket), and same-plane
@@ -266,7 +271,7 @@ void main() {
     // cardinal fast path is untouched (byte-identical).
     const float kU = scatterCompositeDepthKey(eu, visualYaw, 0);  // gradient only — slot term cancels
     const float kV = scatterCompositeDepthKey(ev, visualYaw, 0);  // gradient only — slot term cancels
-    const float cornerKey = scatterCompositeDepthKey(worldCorner, visualYaw, slot) +
+    const float cornerKey = scatterCompositeCornerKey(worldCorner, visualYaw, slot) +
                             dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;

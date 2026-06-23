@@ -237,11 +237,14 @@ vertex VertexOut v_peraxis_scatter(
     // the continuous yawed depth of its own (dilated) corner point via the
     // shared scatterCompositeDepthKey helper (ir_iso_common.metal), so linear
     // interpolation reproduces the face plane's affine depth field per
-    // fragment. Per-axis is residual-only -> cardinal fast path
-    // byte-identical.
+    // fragment. The corner base goes through scatterCompositeCornerKey, which
+    // folds the #1959 geometric X/Y tiebreak into the sub-iso budget the old
+    // `+slot` held (kills the Bug-B cardinal-180 stripe) as a per-quad constant,
+    // leaving the kU/kV gradients planar. Per-axis is residual-only -> cardinal
+    // fast path byte-identical.
     const float kU = scatterCompositeDepthKey(eu, frameData.visualYaw, 0);  // gradient only — slot term cancels
     const float kV = scatterCompositeDepthKey(ev, frameData.visualYaw, 0);  // gradient only — slot term cancels
-    const float cornerKey = scatterCompositeDepthKey(worldCorner, frameData.visualYaw, slot) +
+    const float cornerKey = scatterCompositeCornerKey(worldCorner, frameData.visualYaw, slot) +
                             dilParam.x * kU + dilParam.y * kV;
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);

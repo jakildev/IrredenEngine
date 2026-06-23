@@ -599,6 +599,50 @@ float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {
     return yawedSum * 4.0 + float(slot);
 }
 
+// Geometric tiebreak constants (#1959). At cardinal yaw 0/pi the X-face and
+// Y-face contributions to `yawedSum` use coefficients (c-s) and (s+c) that
+// become EQUAL (s == 0), so the exact cells along a shared front vertical edge
+// TIE on `yawedSum` and the old `+slot` arbiter deterministically picked X
+// regardless of true depth — the doubled `YXYX` face-stripe (#1950 Finding 3 /
+// Bug B). The orthogonal screen-horizontal projection `perp` is the dropped
+// axis of pos3DtoPos2DIsoYawed (its `-vx+vy` component): NON-degenerate exactly
+// where `yawedSum` collapses, so it separates the two faces by true screen
+// geometry. We map it into the [0,4) sub-iso budget the `+slot` term held, so
+// the tiebreak can only re-order WITHIN one iso unit, never across a real depth
+// boundary (which would re-open the #1457 wrong-quad bands).
+//   - kScatterTiebreakScale: fits the target demos' content extent (|perp| up
+//     to ~128 world units) under the clamp without saturating adjacent faces.
+//   - kScatterTiebreakClamp: < 2.0 so `2.0 + geom` stays in (0, 4).
+//   - kScatterSlotEpsilon: final deterministic nudge for exact-perp ties; kept
+//     far below the smallest geometric separation so geometry always dominates.
+const float kScatterTiebreakScale = 1.0 / 64.0;
+const float kScatterTiebreakClamp = 1.9;
+const float kScatterSlotEpsilon = 1.0e-4;
+
+// Composite depth key for a scattered face's CORNER (base) point: the same
+// linear iso depth as scatterCompositeDepthKey, but with the per-face `+slot`
+// arbiter replaced by the geometric X/Y tiebreak above. Kept SEPARATE from
+// scatterCompositeDepthKey (the linear gradient basis) on purpose: the caller
+// interpolates depth across the dilated quad as `corner + du*kU + dv*kV`, where
+// kU/kV are gradient calls into scatterCompositeDepthKey. The tiebreak's `perp`
+// term is position-dependent and its `clamp` is non-linear, so folding it into
+// scatterCompositeDepthKey would (a) leak the `2.0` constant into kU/kV via
+// `du*kU` and (b) kink the affine field — both breaking the planar interpolation
+// #1457/#1883 depend on. Applying it ONLY here makes it a per-quad CONSTANT that
+// shifts the whole face-quad's depth uniformly (gradient untouched), which is
+// exactly what breaks the X/Y tie without reordering genuine depth.
+float scatterCompositeCornerKey(vec3 origin, float visualYaw, int slot) {
+    float c = cos(visualYaw);
+    float s = sin(visualYaw);
+    // Same linear iso depth as scatterCompositeDepthKey (kept inline, not a call,
+    // so the FMA/reassociation matches the cardinal path bit-for-bit). The +slot
+    // arbiter is replaced by the geometric tiebreak; slot stays as the sub-nudge.
+    float yawedSum = origin.x * (c - s) + origin.y * (s + c) + origin.z;
+    float perp = origin.x * (-c - s) + origin.y * (c - s);
+    float geom = clamp(perp * kScatterTiebreakScale, -kScatterTiebreakClamp, kScatterTiebreakClamp);
+    return yawedSum * 4.0 + (2.0 + geom) + float(slot) * kScatterSlotEpsilon;
+}
+
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
 // (cosYaw, sinYaw): each in-plane axis grows to |c|*hX + |s|*hY, Z unchanged.
 // CPU mirror: IRMath::yawGrownIsoHalfExtent. Keeps the SDF/voxel iso-cull

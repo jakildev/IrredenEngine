@@ -559,6 +559,29 @@ inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) 
     return yawedSum * 4.0f + float(slot);
 }
 
+// Geometric tiebreak constants + corner-key helper (#1959) — mirror of
+// ir_iso_common.glsl; see that file for the full rationale (Bug B: the X/Y-face
+// `yawedSum` tie at cardinal yaw 0/pi, broken by the orthogonal screen-
+// horizontal `perp` projection in the sub-iso budget the old `+slot` held). Kept
+// SEPARATE from scatterCompositeDepthKey so the caller's kU/kV gradient calls
+// stay pure-linear and the affine quad interpolation stays planar (#1457/#1883);
+// the tiebreak is a per-quad CONSTANT applied only at the corner.
+constant float kScatterTiebreakScale = 1.0f / 64.0f;
+constant float kScatterTiebreakClamp = 1.9f;
+constant float kScatterSlotEpsilon = 1.0e-4f;
+
+inline float scatterCompositeCornerKey(float3 origin, float visualYaw, int slot) {
+    const float c = cos(visualYaw);
+    const float s = sin(visualYaw);
+    // Same linear iso depth as scatterCompositeDepthKey (kept inline, not a call,
+    // so the FMA/reassociation matches the cardinal path bit-for-bit). The +slot
+    // arbiter is replaced by the geometric tiebreak; slot stays as the sub-nudge.
+    const float yawedSum = origin.x * (c - s) + origin.y * (s + c) + origin.z;
+    const float perp = origin.x * (-c - s) + origin.y * (c - s);
+    const float geom = clamp(perp * kScatterTiebreakScale, -kScatterTiebreakClamp, kScatterTiebreakClamp);
+    return yawedSum * 4.0f + (2.0f + geom) + float(slot) * kScatterSlotEpsilon;
+}
+
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
 // (cosYaw, sinYaw): each in-plane axis grows to |c|*hX + |s|*hY, Z unchanged.
 // CPU mirror: IRMath::yawGrownIsoHalfExtent; GLSL mirror in ir_iso_common.glsl.
