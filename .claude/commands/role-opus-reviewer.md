@@ -136,18 +136,35 @@ architect also clears it during a design conversation; see
 [architect-protocol.md](../../docs/agents/architect-protocol.md) §"plan
 reviewer").
 
-Find candidates in both repos (cheap — issue labels, not a diff):
+Candidates are in your scout slice (`~/.fleet/state/state.json` →
+`slices.opus-reviewer.plan_review`, both repos). The scout now **wakes you on
+`fleet:plan-review` issue state** (#1932 trigger), so a posted plan fires this
+pass directly instead of waiting for an unrelated PR to wake you; the slice is
+already pre-filtered of human-held issues (`human:owned` / `human:wip` /
+`human:no-plan`). Live fallback if needed:
+`gh issue list --repo <repo> --label "fleet:plan-review" --json number,title --limit 50`.
 
-```bash
-gh issue list --repo <repo> --label "fleet:plan-review" --json number,title --limit 50
-```
+For each candidate, **lint first, judge only what the lint can't** (the same
+cheap-first / Opus-for-judgment split the PR path uses):
 
-For each, apply the [PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md)
-step-4 verdict — read the `## Plan` comment (`fleet-issue view <N>`; add
-`--repo game` for game) and judge it **as a plan** against step-2 rigor:
-verified current state (a confirmed repro for a defect), a single committed
-approach (no "decide during implementation" hand-off), sibling + in-flight
-reconciliation, and a cross-system audit where one is required.
+1. **Lint (deterministic, no LLM):** `fleet-plan-lint <N>` (add `--repo game`
+   for game). It mechanically checks structure — a `## Plan` comment exists, the
+   core sections (Scope / Approach / Acceptance) are present, and there is no
+   deferred-approach phrase ("decide during implementation", "option A or B",
+   "TBD", "likely suspects", …). **Exit 1 (hard fail) →** the plan is not sound;
+   go straight to the **Not sound** bounce below and quote the lint output as the
+   gaps — do **not** spend the Opus judgment on what the lint already decided.
+   **Exit 0 →** structure is sound; continue to the judgment. Warnings it prints
+   are inputs to step 2, not auto-bounces.
+2. **Design-soundness judgment (the call a lint can't make):** read the
+   `## Plan` comment (`fleet-issue view <N>`) and judge it against
+   [PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md) step-2 rigor —
+   the things structure can't prove: is the **verified current state actually
+   verified** (did they read the real code path, not the issue's guess; were
+   negative/gap claims checked across the full candidate set), is the **single
+   approach actually correct** (not merely present), is the **sibling + in-flight
+   reconciliation** right, and is the **cross-system audit** complete where one
+   is required.
 
 - **Sound →** remove the label: `gh issue edit <N> --repo <repo> --remove-label
   "fleet:plan-review"`. The scout queues it on its next pass.
