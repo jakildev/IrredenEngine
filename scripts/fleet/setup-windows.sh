@@ -3,9 +3,10 @@
 #
 # Configures a Windows machine to run the Irreden Engine fleet (host key
 # `windows`, OpenGL via the windows-debug preset). Run from an **MSYS2 bash**
-# shell (the one place tmux lives) — NOT from PowerShell/cmd. Claude Code's
-# Bash tool is Git Bash; both share $HOME, so the fleet's ~/.fleet state is
-# common to orchestration (MSYS2) and the agent panes (Git Bash).
+# shell (the one place tmux lives) — NOT from PowerShell/cmd or Cygwin.
+# Claude Code's Bash tool is Git Bash; both share $HOME, so the fleet's
+# ~/.fleet state is common to orchestration (MSYS2) and the agent panes
+# (Git Bash).
 #
 # What it does (all idempotent — safe to re-run):
 #   1. Checks prerequisites (git, tmux, jq, claude, MSYS2 mingw64 toolchain).
@@ -27,6 +28,10 @@
 #
 # Override any default via env, e.g.:
 #   FLEET_CLONE=/c/work/IrredenEngine FLEET_CPU_BUDGET=32 bash setup-windows.sh
+# Full override set (useful when cloning from a fork or a non-default MSYS2 path):
+#   FLEET_REPO_URL=git@github.com:yourfork/IrredenEngine.git \
+#   IR_MSYS2_MINGW_DIR=/c/msys2/mingw64/bin \
+#   FLEET_CLONE=/c/work/IrredenEngine FLEET_CPU_BUDGET=32 bash setup-windows.sh
 #
 # Source of truth: scripts/fleet/setup-windows.sh in the engine repo.
 
@@ -43,8 +48,9 @@ FLEET_BUILD_WORKERS="${FLEET_BUILD_WORKERS:-4}"
 # Game-repo worktrees are created by fleet-up itself when creations/game exists.
 # STORAGE: each worktree's source is ~250 MB; once it compiles, its build/ tree
 # is ~4-5 GB — the full list below grows to ~25-55 GB of build trees over time.
-# On a tight disk, trim it: FLEET_ROLES="worker-1 sonnet-reviewer smoke-worker".
-FLEET_ROLES="${FLEET_ROLES:-opus-architect worker-1 worker-2 worker-3 worker-4 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger smoke-worker}"
+# On a tight disk, trim it: FLEET_ROLES="worker-1 sonnet-reviewer".
+# Add smoke-worker only if FLEET_SMOKE_WORKER=1 — it needs an extra ~5 GB build.
+FLEET_ROLES="${FLEET_ROLES:-opus-architect worker-1 worker-2 worker-3 worker-4 sonnet-reviewer opus-reviewer queue-manager queue-manager-ingest merger}"
 
 say() { printf '\n== %s ==\n' "$*"; }
 
@@ -65,7 +71,7 @@ if [[ ! -x "${IR_MSYS2_MINGW_DIR:-/c/msys64/mingw64/bin}/g++.exe" ]] \
     echo "        install with: pacman -S mingw-w64-x86_64-toolchain" >&2
 fi
 case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) : ;;
+    MINGW*|MSYS*) : ;;
     *) echo "  ERROR: not a Windows MSYS2/Git-Bash shell (uname=$(uname -s))." >&2; exit 1 ;;
 esac
 (( missing == 0 )) || { echo "Install the missing tools above, then re-run." >&2; exit 1; }
@@ -112,13 +118,13 @@ marker="# IRREDEN_ENGINE: fleet tool dirs"
 # following export), then append a fresh one targeting this FLEET_CLONE — so a
 # re-run with a different FLEET_CLONE moves PATH instead of stacking entries.
 if [[ -f "$HOME/.bashrc" ]] && grep -qF "$marker" "$HOME/.bashrc"; then
-    sed -i "\\|$marker|,+1d" "$HOME/.bashrc"
+    sed -i "\\|$marker|,+2d" "$HOME/.bashrc"
     echo "  removed previous fleet PATH block"
 fi
 cat >> "$HOME/.bashrc" <<EOF
-
 $marker (setup-windows.sh; no Developer-Mode symlinks needed)
 export PATH="$FLEET_CLONE/scripts/fleet:$FLEET_CLONE/engine/tools/bin:\$PATH"
+
 EOF
 echo "  set fleet tool dirs on PATH — run 'source ~/.bashrc' or open a new shell"
 
