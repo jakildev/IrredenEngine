@@ -151,10 +151,16 @@ reconciliation, and a cross-system audit where one is required.
 
 - **Sound →** remove the label: `gh issue edit <N> --repo <repo> --remove-label
   "fleet:plan-review"`. The scout queues it on its next pass.
-- **Not sound →** swap it back and name the gaps: `gh issue edit <N> --repo
-  <repo> --remove-label "fleet:plan-review" --add-label "fleet:needs-plan"`,
-  then comment the specific gaps. The next planning pass revises the `## Plan`
-  comment.
+- **Not sound →** delete the existing `## Plan` comment **first**, then requeue.
+  `fleet-claim planning-claim` exit-3's on `## Plan` *comment presence* (not on
+  the `fleet:needs-plan` label), so swapping the label back while the stale plan
+  comment remains leaves the issue **un-plannable** — the next planning pass can't
+  re-claim it. Get the comment id from `fleet-issue view <N>` and delete it
+  (`gh api -X DELETE repos/<owner>/<repo>/issues/comments/<comment-id>`), then
+  swap the label: `gh issue edit <N> --repo <repo> --remove-label
+  "fleet:plan-review" --add-label "fleet:needs-plan"`, and comment the specific
+  gaps. The next planning pass can then claim afresh and post a corrected
+  `## Plan` comment.
 
 This is a review of the **plan**, distinct from the PR code review — and it's
 cheap (no build, no diff), so do it every iteration even when there are no PR
