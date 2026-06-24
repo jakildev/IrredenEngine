@@ -61,6 +61,7 @@ add_executable(IrredenEngineTest
   script/lua_audio_midi_observer_test.cpp
   script/lua_collision_bindings_test.cpp
   script/lua_command_test.cpp
+  script/lua_input_bindings_test.cpp
   script/lua_component_codegen_test.cpp
   script/lua_component_register_test.cpp
   script/lua_enum_register_test.cpp
