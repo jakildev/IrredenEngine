@@ -384,6 +384,11 @@ if [[ -f "$FLEET_QUEUE_INGEST_SRC" ]]; then
     echo "symlinked $FLEET_QUEUE_INGEST_DEST -> $FLEET_QUEUE_INGEST_SRC"
 fi
 
+if [[ -f "$FLEET_PLAN_LINT_SRC" ]]; then
+    ln -sf "$FLEET_PLAN_LINT_SRC" "$FLEET_PLAN_LINT_DEST"
+    echo "symlinked $FLEET_PLAN_LINT_DEST -> $FLEET_PLAN_LINT_SRC"
+fi
+
 if [[ -f "$FLEET_QUEUE_LIST_SRC" ]]; then
     ln -sf "$FLEET_QUEUE_LIST_SRC" "$FLEET_QUEUE_LIST_DEST"
     echo "symlinked $FLEET_QUEUE_LIST_DEST -> $FLEET_QUEUE_LIST_SRC"
