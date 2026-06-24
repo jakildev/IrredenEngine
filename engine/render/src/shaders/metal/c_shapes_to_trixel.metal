@@ -1037,7 +1037,11 @@ kernel void c_shapes_to_trixel(
         // projection (a low/back surface no longer wins against geometry above it
         // near the +/-45 deg bracket). PLACEMENT is unchanged (worldSurface uses
         // visualYaw); only the stored depth. At a cardinal pose yawedIsoDistance
-        // collapses to un-yawed x+y+z, so cardinal frames stay byte-identical.
+        // collapses to un-yawed x+y+z, so cardinal frames stay byte-identical. The
+        // depth is SUBDIVIDED to preserve the floor's sub-pixel depth gradient at
+        // high zoom; the per-axis voxel scatter is scaled to the same subdivided
+        // magnitude (peraxis_scatter) so SDF + voxels co-sort at every zoom (#1884
+        // high-zoom fix).
         baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, frameData.visualYaw));
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;

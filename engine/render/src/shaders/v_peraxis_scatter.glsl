@@ -264,13 +264,24 @@ void main() {
     // margin beat the true owner's interior along every cell boundary) — the
     // #1457 wrong-voxel-color bands. Per-axis is residual-only, so the
     // cardinal fast path is untouched (byte-identical).
-    const float kU = scatterCompositeDepthKey(eu, visualYaw, 0);  // gradient only — slot term cancels
-    const float kV = scatterCompositeDepthKey(ev, visualYaw, 0);  // gradient only — slot term cancels
-    const float cornerKey = scatterCompositeDepthKey(worldCorner, visualYaw, slot) +
-                            dilParam.x * kU + dilParam.y * kV;
+    // Subdivided composite-depth scale (#1884 high-zoom fix). The SDF floor +
+    // cardinal voxel gather encode iso-depth SUBDIVIDED (worldDepth × effSub × 4);
+    // the per-axis store is BASE-resolution (#1458), so its recovered worldCorner
+    // is in world units and scatterCompositeDepthKey is ×1. Lift it to the same
+    // subdivided magnitude (effSub, carried in effectiveSubdivisionsForHover.x) so
+    // SDF + scattered voxels co-sort at every zoom — otherwise the floor out-scaled
+    // the voxels ~effSub× at high zoom and clipped them into the floor. Scale only
+    // the iso-depth (×4) term, NOT the slot tiebreak, so slot stays a unit-scale
+    // tiebreak comparable to the SDF's face bits. worldCorner carries the #1458
+    // sub-cell offset, so this scale-up keeps sub-cell depth precision (no z-fight).
+    const float subScale = max(effectiveSubdivisionsForHover.x, 1.0);
+    const float kU = yawedIsoDistance(eu, visualYaw) * (4.0 * subScale);  // gradient (no slot)
+    const float kV = yawedIsoDistance(ev, visualYaw) * (4.0 * subScale);  // gradient (no slot)
+    const float cornerKey = yawedIsoDistance(worldCorner, visualYaw) * (4.0 * subScale) +
+                            float(slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
-    vMarginDepthBias = kScatterMarginDepthBiasKey / depthRange;
+    vMarginDepthBias = kScatterMarginDepthBiasKey * subScale / depthRange;
     // Per-axis margin-yield slope (#1883). kU/kV are the per-unit-axis composite
     // depth gradients; scaled to vDepth units and pre-absed (penetration is always
     // outward) so the fragment stage adds penetration*slope as the over-grown

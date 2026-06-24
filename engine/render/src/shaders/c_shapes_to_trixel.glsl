@@ -936,7 +936,12 @@ void main() {
         // the on-screen placement. On-screen PLACEMENT is unchanged (worldSurface
         // is built from visualYaw above); this is only the stored composite
         // depth. At a cardinal pose yawedIsoDistance collapses to the un-yawed
-        // x+y+z, so cardinal frames stay byte-identical.
+        // x+y+z, so cardinal frames stay byte-identical. The depth is SUBDIVIDED
+        // (worldSurface = worldPos*sub) to preserve the floor's own sub-pixel depth
+        // gradient at high zoom; the per-axis voxel scatter is scaled to the same
+        // subdivided magnitude (v_peraxis_scatter) so SDF + voxels co-sort at every
+        // zoom (#1884 high-zoom fix — the scatter was base-resolution while this is
+        // ×sub, so the floor out-scaled the voxels and clipped them at high zoom).
         baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw));
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;

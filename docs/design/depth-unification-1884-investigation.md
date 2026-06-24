@@ -164,26 +164,41 @@ producers that were previously each open-coding their own variant:
 - **Per-axis voxel scatter** (`scatterCompositeDepthKey`): unchanged behavior — now factored to call `yawedIsoDistance`.
 - **Detached composite** (`system_entity_canvas_to_framebuffer`): world-depth offset = `pos3DtoDistanceYawed(worldCell, visualYaw)` instead of the un-yawed `pos3DtoDistance(worldCell)`.
 
+The non-cardinal regime is unambiguous: the per-axis canvases are allocated
+whenever `residualYaw != 0` (`system_voxel_to_trixel.hpp` — *not* gated on active
+motion), so at **every** non-cardinal yaw, rest or moving, the main-world voxels
+go through the scatter and the cardinal single-canvas gather runs only at exact
+cardinals (where everything is cardinal anyway). There is therefore no "at-rest
+non-cardinal gather" regime to desync — the metric is continuous for all
+co-rendered world content at all non-cardinal yaws.
+
 At a cardinal pose `yawedIsoDistance` collapses to the un-yawed `x+y+z`
 (`pos3DtoDistance`), so cardinal frames stay byte-identical (verified:
-`canvas_stress` 8/8 cardinal shots byte-identical, only the 2 non-cardinal yaw
+`canvas_stress` 8/8 cardinal shots byte-identical, only the non-cardinal yaw
 shots change). The earlier "quadrant-stable / cardinal-bracket" SDF metric is
 **withdrawn** — it traded the rotating regime for the at-rest regime and
 introduced the per-quadrant jump; the continuous metric is correct in both.
 
-**Remaining known gap (the main-canvas at-rest gather → #1959).** When the
-camera sits *at rest* at a non-cardinal yaw, the per-axis canvases are released
-and the main-world voxels composite through the gather, which reads the stored
-un-yawed cardinal depth (`pos3DtoDistance`, kept cardinal because AO / shadow /
-per-axis-resolve reconstruct world position from it via `isoPixelToPos3D`, which
-assumes `depth = x+y+z`). So at a *resting* non-cardinal yaw the main-world
-voxels still sort on the cardinal metric while the (now-continuous) floor sorts
-on `visualYaw` — the master-era at-rest drift, unchanged by this PR. Closing it
-needs the gather to recompute the continuous occlusion depth from the recovered
-world position at the final `gl_FragDepth` (stored depth must stay cardinal for
-the reconstruction consumers); that is the per-axis/gather charter of **#1959**.
-The auto-rotating demos exercise only the rotating regime, which this PR fixes
-completely.
+**Subdivision-scale unification (the high-zoom clip — revised 2026-06-23b).**
+Matching the *metric* is necessary but not sufficient: the co-rendered surfaces
+must also share the same subdivision **scale**, or they desync by `effSub` at
+high zoom. The SDF floor and the cardinal voxel gather encode depth SUBDIVIDED
+(`worldDepth × effSub × 4`), but the per-axis scatter store is BASE-resolution
+(#1458: `rawDist >> 10` = world units), so its composite key was `×1`. At low
+zoom (`effSub == 1`) they coincide, but as zoom climbs (`effSub → 16`) the floor
+depth out-scaled the scattered voxels ~`effSub×`: near floor cells (very negative
+inflated depth) rendered in front of and **clipped the voxel cubes' lower cells
+into the floor** — "back to square 1 at high zoom," and pre-existing on master /
+the branch (their depth was cardinal but equally subdivided, so the same scale
+gap bit). The fix lifts the scatter's composite iso-depth to the same subdivided
+magnitude (`× effSub`, carried in `effectiveSubdivisionsForHover.x`) in
+`v_/f_peraxis_scatter`; the #1458 frac bits keep the recovered corner sub-cell
+exact, so the scale-up preserves precision (no floor z-fight — confirmed: scaling
+the SDF *down* to base instead caused floor z-fighting, the wrong direction). The
+slot tiebreak is left unscaled so it stays comparable to the SDF face bits.
+Verified `canvas_stress` static + spinning yaw grid (zoom 4/8/16 × yaw
+0/26/45/60/80/115/160/214°): no clip / no disappear at any pose; cardinal still
+byte-identical.
 
 **Disjoint near-plane priority partition (resolves Bug A — revised model).** The
 original plan proposed an *additive* priority band
