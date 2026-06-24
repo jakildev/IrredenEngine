@@ -239,15 +239,23 @@ vertex VertexOut v_peraxis_scatter(
     // interpolation reproduces the face plane's affine depth field per
     // fragment. Per-axis is residual-only -> cardinal fast path
     // byte-identical.
-    const float kU = scatterCompositeDepthKey(eu, frameData.visualYaw, 0);  // gradient only — slot term cancels
-    const float kV = scatterCompositeDepthKey(ev, frameData.visualYaw, 0);  // gradient only — slot term cancels
-    const float cornerKey = scatterCompositeDepthKey(worldCorner, frameData.visualYaw, slot) +
-                            dilParam.x * kU + dilParam.y * kV;
+    // Subdivided composite-depth scale (#1884 high-zoom fix) — mirror of the GLSL.
+    // The SDF floor + cardinal gather encode iso-depth SUBDIVIDED (×effSub); the
+    // per-axis store is BASE-resolution (#1458), so lift the scatter iso-depth to
+    // the same subdivided magnitude (effSub via effectiveSubdivisionsForHover.x) or
+    // the floor out-scales the voxels ~effSub× at high zoom and clips them. Scale
+    // only the iso-depth (×4) term, not the slot tiebreak; worldCorner keeps its
+    // #1458 sub-cell offset so precision is preserved.
+    const float subScale = max(frameData.effectiveSubdivisionsForHover.x, 1.0f);
+    const float kU = yawedIsoDistance(eu, frameData.visualYaw) * (4.0f * subScale);  // gradient (no slot)
+    const float kV = yawedIsoDistance(ev, frameData.visualYaw) * (4.0f * subScale);  // gradient (no slot)
+    const float cornerKey = yawedIsoDistance(worldCorner, frameData.visualYaw) * (4.0f * subScale) +
+                            float(slot) + dilParam.x * kU + dilParam.y * kV;
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =
         (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
-    out.marginBias = kScatterMarginDepthBiasKey / depthRange;
+    out.marginBias = kScatterMarginDepthBiasKey * subScale / depthRange;
     // Per-axis margin-yield slope (#1883) — mirror of v_peraxis_scatter.glsl.
     // kU/kV are the per-unit-axis composite depth gradients; scaled to vDepth units
     // and pre-absed (penetration is always outward) and folded with

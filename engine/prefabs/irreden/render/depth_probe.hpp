@@ -3,10 +3,12 @@
 
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_platform.hpp>
 #include <irreden/ir_profile.hpp>
 
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
+#include <irreden/render/ir_render_types.hpp>
 
 // GPU→CPU composite-depth probe (#1910). A debug-only readback that, for a
 // requested screen pixel, reads the REAL depth-test value stored in the main
@@ -120,12 +122,27 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
         IR_LOG_INFO("[depth-probe] pixel=({},{}) out-of-range (no framebuffer pixel)", px.x, px.y);
         return;
     }
+    // Decode the integer composite enc into the #1958 two-tier partition so a
+    // debugger reads the depth ordering directly. enc <= kDepthForegroundCeil is a
+    // FOREGROUND-priority fragment (reserved near band); otherwise it is WORLD
+    // content encoded as iso*4 + face (subdivided). Without this split the
+    // partitioned enc reads as an opaque rawDist (the Finding-1-style mis-read the
+    // plan flagged). iso/face is the encodeDepthWithFace inverse; for the
+    // foreground tier `iso` is band-relative (tier= disambiguates).
+    const int enc = static_cast<int>(IRMath::roundHalfUp(sample.rawDist_));
+    const int face = ((enc % 4) + 4) % 4;
+    const int iso = (enc - face) / 4;
+    const bool foreground = enc <= IRRender::kDepthForegroundCeil;
     IR_LOG_INFO(
-        "[depth-probe] pixel=({},{}) normDepth={:.6f} rawDist={:.1f}",
+        "[depth-probe] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} enc={} tier={} iso={} face={}",
         sample.pixel_.x,
         sample.pixel_.y,
         sample.normDepth_,
-        sample.rawDist_
+        sample.rawDist_,
+        enc,
+        foreground ? "foreground" : "world",
+        iso,
+        face
     );
 }
 

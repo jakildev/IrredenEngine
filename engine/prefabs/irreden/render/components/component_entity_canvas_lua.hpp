@@ -20,7 +20,9 @@ template <> inline void bindLuaType<IRComponents::C_EntityCanvas>(LuaScript &lua
         "canvasEntity",
         &C_EntityCanvas::canvasEntity_,
         "screenLocked",
-        &C_EntityCanvas::screenLocked_
+        &C_EntityCanvas::screenLocked_,
+        "depthPriority",
+        &C_EntityCanvas::depthPriority_
     );
 }
 } // namespace IRScript

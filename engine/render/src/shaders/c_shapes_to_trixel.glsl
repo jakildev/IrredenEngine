@@ -923,19 +923,26 @@ void main() {
                                 yawS * viewOffset.x + yawC * viewOffset.y,
                                 viewOffset.z);
         vec3 worldSurface = worldPos * float(sub) + worldOffset;
-        // Yaw-consistent composite depth (#1370): the framebuffer depth test
-        // must order by the depth that matches the YAWED iso projection
-        // (pos3DtoPos2DIsoYawed = iso of R_z(-visualYaw)*world), NOT the
-        // un-yawed world x+y+z. With the un-yawed metric the ordering diverges
-        // from the on-screen projection as residual yaw grows, so a low/back
-        // surface (e.g. the ground platform) wins the depth test against
-        // geometry above it near the +/-45 deg bracket. Rotate the surface by
-        // R_z(-visualYaw) and take its iso-depth (vx+vy+z). yawC/yawS are
-        // cos/sin(visualYaw) on the smoothYaw path. Per-axis voxel scatter
-        // applies the identical transform so SDF + voxels stay co-sorted.
-        float dvx = worldSurface.x * yawC + worldSurface.y * yawS;
-        float dvy = -worldSurface.x * yawS + worldSurface.y * yawC;
-        baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
+        // Continuous-yaw composite depth (#1370/#1884): the framebuffer depth
+        // test must order by the depth that matches the YAWED iso projection
+        // (pos3DtoPos2DIsoYawed = iso of R_z(-visualYaw)*world), NOT the un-yawed
+        // world x+y+z — with the un-yawed metric the ordering diverges from the
+        // on-screen projection as residual yaw grows, so a low/back surface (the
+        // ground platform) wins the depth test against geometry above it near the
+        // +/-45 deg bracket. Order by the SHARED yawedIsoDistance — the SAME
+        // continuous-yaw metric the per-axis voxel scatter key and the detached
+        // composite (IRMath::pos3DtoDistanceYawed) use — so SDF, voxels, and
+        // detached solids stay co-sorted at EVERY yaw and the depth always tracks
+        // the on-screen placement. On-screen PLACEMENT is unchanged (worldSurface
+        // is built from visualYaw above); this is only the stored composite
+        // depth. At a cardinal pose yawedIsoDistance collapses to the un-yawed
+        // x+y+z, so cardinal frames stay byte-identical. The depth is SUBDIVIDED
+        // (worldSurface = worldPos*sub) to preserve the floor's own sub-pixel depth
+        // gradient at high zoom; the per-axis voxel scatter is scaled to the same
+        // subdivided magnitude (v_peraxis_scatter) so SDF + voxels co-sort at every
+        // zoom (#1884 high-zoom fix — the scatter was base-resolution while this is
+        // ×sub, so the floor out-scaled the voxels and clipped them at high zoom).
+        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw));
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;

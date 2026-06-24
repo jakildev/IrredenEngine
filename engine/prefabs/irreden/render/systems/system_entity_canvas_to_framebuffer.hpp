@@ -234,18 +234,56 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // voxel pool this frame (renderedSubdivisions_ == 0, e.g. pure SDF/text
         // overlay) keeps the pre-existing raw offset.
         const int cubeSub = canvasTextures->renderedSubdivisions_;
+        // Foreground depth priority (#1958 two-tier partition; the #1884 Bug-A
+        // fix). A world-placed canvas with depthPriority_ set renders
+        // unconditionally in front of the floor / any world geometry below it,
+        // independent of world extent. screenLocked_ overlays already sit at a
+        // fixed near depth, so priority is meaningless there (and stays the
+        // byte-identical overlay path).
+        const bool foregroundPriority =
+            !entityCanvas.screenLocked_ && entityCanvas.depthPriority_ != 0;
         float depthScale = 1.0f;
         int compositeDistanceOffset = 0;
         if (!entityCanvas.screenLocked_) {
-            const int worldDepth = pos3DtoDistance(roundVec3HalfUp(worldTransform.translation_));
+            // Model-frame rawDist → shared framebuffer depth units. Foreground and
+            // world-placed alike rescale by effSub / cubeSub so the canvas's own
+            // (possibly #1570-D2-capped) raster self-occludes at the right
+            // resolution; they differ only in the OFFSET folded in below.
             if (cubeSub >= 1) {
                 depthScale = static_cast<float>(effectiveSub_) / static_cast<float>(cubeSub);
-                compositeDistanceOffset = worldDepth * effectiveSub_ * kDepthEncodeShift;
+            }
+            if (foregroundPriority) {
+                // Pin the canvas's local iso-depth into the reserved near band by
+                // centering its model-frame rawDist there (kDepthForegroundBandCenter);
+                // the gather (f_trixel_to_framebuffer) clamps to the band edges so a
+                // pathologically deep solid saturates instead of escaping. The world
+                // iso-depth is intentionally NOT added — priority OVERRIDES world
+                // depth ordering; only the screen PLACEMENT above tracks the world.
+                compositeDistanceOffset = kDepthForegroundBandCenter;
             } else {
-                compositeDistanceOffset = worldDepth;
+                // Continuous-yaw world depth: place the solid by the SAME
+                // yawedIsoDistance the SDF floor + per-axis voxel scatter sort on
+                // (IRMath::pos3DtoDistanceYawed, the CPU twin), so a world-placed
+                // detached solid co-sorts against the floor at EVERY yaw — not
+                // just cardinals. The cardinal-only pos3DtoDistance offset stayed
+                // fixed while the continuous floor drifted under rotation, so the
+                // solid clipped behind the floor between cardinals (#1884's
+                // wrong-winner root). Round the translation to its world cell
+                // first (the GRID re-voxelize cell classification this co-sorts
+                // with); at a cardinal pose pos3DtoDistanceYawed(cell, 0) ==
+                // pos3DtoDistance(cell) exactly, so the cardinal fast path stays
+                // byte-identical.
+                const int worldDepth = pos3DtoDistanceYawed(
+                    vec3(roundVec3HalfUp(worldTransform.translation_)), visualYaw_);
+                compositeDistanceOffset =
+                    (cubeSub >= 1) ? worldDepth * effectiveSub_ * kDepthEncodeShift : worldDepth;
             }
         }
         fd.distanceOffset_ = compositeDistanceOffset;
+        // World content (0) is clamped OUT of the reserved near band by the gather;
+        // foreground priority (1) is pinned INTO it. Two-tier: any non-zero
+        // depthPriority_ selects the single foreground tier (per-trixel tiers #1960).
+        fd.depthPriorityMode_ = foregroundPriority ? 1 : 0;
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
         fd.effectiveSubdivisionsForHover_ = vec2(1.0f, depthScale);
         fd.showHoverHighlight_ = 0.0f;

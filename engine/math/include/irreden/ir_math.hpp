@@ -1338,6 +1338,22 @@ constexpr Distance pos3DtoDistance(const vec3 position) {
     return round(sumVecComponents(position));
 }
 
+/// Continuous-yaw depth scalar: the camera-forward iso distance of a world
+/// point under a continuous Z-yaw camera —
+/// `pos3DtoDistance(R_z(-visualYaw) · worldPos) = x·(cos-sin) + y·(sin+cos) + z`.
+/// The yawed companion to @ref pos3DtoDistance (identical to it at
+/// `visualYaw == 0`). Smaller = nearer. Use for composite depth offsets that
+/// must co-sort with the smooth-yaw SDF + per-axis-voxel paths — the detached
+/// canvas composite folds this in so a world-placed solid sorts against the
+/// continuous-yaw floor at every yaw, not just cardinals. Rounds half-up to
+/// match the GPU mirror. GPU mirror: `yawedIsoDistance` in
+/// shaders/ir_iso_common.glsl / .metal.
+constexpr Distance pos3DtoDistanceYawed(const vec3 worldPos, float visualYaw) {
+    const float c = glm::cos(visualYaw);
+    const float s = glm::sin(visualYaw);
+    return roundHalfUp(worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z);
+}
+
 /// Determines which isometric face (X, Y, Z, or NONE) a canvas triangle
 /// index belongs to for a rectangular prism of @p size dimensions.
 template <ivec3 size> constexpr FaceType calcFaceTypeFromTriangleIndexAndSize(const ivec2 index) {

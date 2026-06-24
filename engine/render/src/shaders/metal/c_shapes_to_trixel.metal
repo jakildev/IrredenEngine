@@ -1029,13 +1029,20 @@ kernel void c_shapes_to_trixel(
                                           yawS * viewOffset.x + yawC * viewOffset.y,
                                           viewOffset.z);
         const float3 worldSurface = worldPos * float(sub) + worldOffset;
-        // Yaw-consistent composite depth (#1370) — mirror of the GLSL. Order by
-        // the depth matching the YAWED iso projection (iso of R_z(-visualYaw)*
-        // world), not the un-yawed world x+y+z, so a low/back surface stops
-        // winning the depth test against geometry above it at residual yaw.
-        const float dvx = worldSurface.x * yawC + worldSurface.y * yawS;
-        const float dvy = -worldSurface.x * yawS + worldSurface.y * yawC;
-        baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
+        // Continuous-yaw composite depth (#1370/#1884) — mirror of the GLSL.
+        // Order by the SHARED yawedIsoDistance — the SAME continuous-yaw metric
+        // the per-axis voxel scatter key and the detached composite
+        // (IRMath::pos3DtoDistanceYawed) use — so SDF, voxels, and detached
+        // solids stay co-sorted at EVERY yaw and the depth tracks the on-screen
+        // projection (a low/back surface no longer wins against geometry above it
+        // near the +/-45 deg bracket). PLACEMENT is unchanged (worldSurface uses
+        // visualYaw); only the stored depth. At a cardinal pose yawedIsoDistance
+        // collapses to un-yawed x+y+z, so cardinal frames stay byte-identical. The
+        // depth is SUBDIVIDED to preserve the floor's sub-pixel depth gradient at
+        // high zoom; the per-axis voxel scatter is scaled to the same subdivided
+        // magnitude (peraxis_scatter) so SDF + voxels co-sort at every zoom (#1884
+        // high-zoom fix).
+        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, frameData.visualYaw));
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;

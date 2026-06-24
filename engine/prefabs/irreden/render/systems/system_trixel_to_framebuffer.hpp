@@ -83,6 +83,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         frameData.frameData_.textureOffset_ = vec2(0);
         frameData.frameData_.distanceOffset_ = 0;
+        // Main world gather is always WORLD content (#1958): the gather clamps it
+        // out of the reserved foreground near band (a no-op for in-budget content).
+        // Explicit so the persistent mainFramebuffer frame-data (shared with the
+        // per-axis scatter path) never carries a stale foreground flag.
+        frameData.frameData_.depthPriorityMode_ = 0;
         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                          calcModelMatrix(
                                              framebufferResolution,
@@ -241,8 +246,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // game-px snap + the framebuffer→screen residual are the anti-vibration.)
         const vec2 fractIso = cameraIso - anchorFloor;
         const vec2 screenPxPerCell = framebufferResolution * zoomEff / vec2(axes.size_);
-        const vec2 smoothPx =
-            vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
+        const vec2 smoothPx = vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
         mat4 perAxisModel = translate(
             mat4(1.0f),
             vec3(
@@ -255,8 +259,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             perAxisModel,
             vec3(framebufferResolution.x * zoomEff.x, framebufferResolution.y * zoomEff.y, 1.0f)
         );
-        frameData.frameData_.mpMatrix_ =
-            calcProjectionMatrix(framebufferResolution) * perAxisModel;
+        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) * perAxisModel;
         frameData.frameData_.visualYaw_ = visualYaw;
         frameData.frameData_.visibleFaceIds_ = ivec4(
             static_cast<int>(visibleFaces[0]),
@@ -265,6 +268,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             0
         );
         frameData.frameData_.distanceOffset_ = 0;
+        // Subdivided composite-depth scale (#1884 high-zoom fix). The per-axis
+        // store is BASE-resolution (#1458: rawDist>>10 = world units), but the SDF
+        // floor + cardinal voxel gather encode depth SUBDIVIDED (worldDepth×effSub).
+        // At high zoom the floor's depth out-scaled the base scatter ~effSub× and
+        // clipped the voxels into the floor. Carry effSub in effectiveSubdivisions-
+        // ForHover_.x so the scatter (v_peraxis_scatter) lifts its iso-depth to the
+        // same subdivided magnitude. The store + the #1458 frac bits keep the
+        // recovered worldCorner sub-cell-exact, so the scale-up preserves precision.
+        // The .y stays 0 → the fall-through gather clamps its depthScale to 1
+        // (unchanged main-canvas path); .x only feeds hover, which is gated off here.
+        frameData.frameData_.effectiveSubdivisionsForHover_ =
+            vec2(static_cast<float>(effSub), 0.0f);
         // Conservative-coverage dilation needs the framebuffer extent the ortho
         // mpMatrix maps into, to convert a pixel margin to NDC (#1494).
         frameData.frameData_.scatterFbResolution_ = vec4(framebufferResolution, 0.0f, 0.0f);

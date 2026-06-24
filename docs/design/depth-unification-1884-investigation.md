@@ -124,28 +124,139 @@ IRCanvasStress --only canary,floor --no-spin --no-auto-rotate --auto-screenshot 
 IRPerfGrid --mode dense --grid-size 64 --yaw-ramp --auto-screenshot   # step 18 (180°)
 ```
 
-## Resolution (architect, 2026-06-22)
+## Resolution (architect, 2026-06-22; revised 2026-06-23; revised 2026-06-23b)
 
 Design decided on the strength of this spike; #1884 was promoted to a sub-epic
 and implementation split into independently-verifiable children. The agreed
-architecture is a unified **quadrant-stable** depth encoding,
+architecture is a **unified continuous-yaw composite depth metric** plus a
+**two-tier disjoint near-plane partition** for foreground priority. Two pieces:
+
+**Unified continuous-yaw composite depth (retires #1370; fixes Bug A's
+wrong-winner — revised 2026-06-23b).** The first cut of #1958 made the SDF
+smooth-yaw depth *quadrant-stable* — it derived its cos/sin from the cardinal
+bracket (`cardinalYawCosSin(rasterYawCardinalIndex(rasterYaw))`) so the stored
+floor depth was piecewise-constant per 90° quadrant. That fixed the **at-rest**
+non-cardinal floor drift but **regressed the rotating regime**: the per-axis
+voxel scatter key (`scatterCompositeDepthKey`) and the detached composite still
+sorted on the *continuous* `visualYaw` metric, so a cardinal-snapped floor
+desynced from the continuously-sliding voxels during camera rotation — the floor
+depth *jumped* at each ±45° quadrant boundary while voxels slid, and world
+voxels/detached solids clipped into the floor between cardinals. The original SDF
+comment even promised "per-axis voxel scatter applies the identical transform so
+SDF + voxels stay co-sorted"; the cardinal snap broke exactly that invariant.
+
+The revised resolution **consolidates every composite depth writer onto one
+shared continuous-yaw iso-depth metric** rather than snapping any of them to
+cardinal:
 
 ```
-enc = priorityBand·BAND + cardinalIsoDepth·4 + face
+depth(p) = pos3DtoDistance(R_z(-visualYaw) · p) = x·(cos-sin) + y·(sin+cos) + z   // smaller = nearer
 ```
 
-with **per-entity / per-trixel priority bands**. The priority band overrides the
-raw `x+y+z` iso ordering for cases where intent (a floating solid in front of the
-floor) diverges from convention — which resolves Bug A (Finding 2) at its root.
-This also **retires #1370**: its near-±45° artifact and Bug A share the same
-iso-depth-ambiguity root cause.
+This is the *geometrically correct* camera-forward distance at the actual
+`visualYaw` — it always tracks the on-screen placement, so it cannot drift
+toward/under geometry above it. It is exposed as the single shared helper
+`yawedIsoDistance` (`ir_iso_common.glsl` / `.metal`) with CPU twin
+`IRMath::pos3DtoDistanceYawed`, and called by **all three** world-content depth
+producers that were previously each open-coding their own variant:
+
+- **SDF smooth-yaw** (`c_shapes_to_trixel`): `baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw))`.
+- **Per-axis voxel scatter** (`scatterCompositeDepthKey`): unchanged behavior — now factored to call `yawedIsoDistance`.
+- **Detached composite** (`system_entity_canvas_to_framebuffer`): world-depth offset = `pos3DtoDistanceYawed(worldCell, visualYaw)` instead of the un-yawed `pos3DtoDistance(worldCell)`.
+
+The non-cardinal regime is unambiguous: the per-axis canvases are allocated
+whenever `residualYaw != 0` (`system_voxel_to_trixel.hpp` — *not* gated on active
+motion), so at **every** non-cardinal yaw, rest or moving, the main-world voxels
+go through the scatter and the cardinal single-canvas gather runs only at exact
+cardinals (where everything is cardinal anyway). There is therefore no "at-rest
+non-cardinal gather" regime to desync — the metric is continuous for all
+co-rendered world content at all non-cardinal yaws.
+
+At a cardinal pose `yawedIsoDistance` collapses to the un-yawed `x+y+z`
+(`pos3DtoDistance`), so cardinal frames stay byte-identical (verified:
+`canvas_stress` 8/8 cardinal shots byte-identical, only the non-cardinal yaw
+shots change). The earlier "quadrant-stable / cardinal-bracket" SDF metric is
+**withdrawn** — it traded the rotating regime for the at-rest regime and
+introduced the per-quadrant jump; the continuous metric is correct in both.
+
+**Subdivision-scale unification (the high-zoom clip — revised 2026-06-23b).**
+Matching the *metric* is necessary but not sufficient: the co-rendered surfaces
+must also share the same subdivision **scale**, or they desync by `effSub` at
+high zoom. The SDF floor and the cardinal voxel gather encode depth SUBDIVIDED
+(`worldDepth × effSub × 4`), but the per-axis scatter store is BASE-resolution
+(#1458: `rawDist >> 10` = world units), so its composite key was `×1`. At low
+zoom (`effSub == 1`) they coincide, but as zoom climbs (`effSub → 16`) the floor
+depth out-scaled the scattered voxels ~`effSub×`: near floor cells (very negative
+inflated depth) rendered in front of and **clipped the voxel cubes' lower cells
+into the floor** — "back to square 1 at high zoom," and pre-existing on master /
+the branch (their depth was cardinal but equally subdivided, so the same scale
+gap bit). The fix lifts the scatter's composite iso-depth to the same subdivided
+magnitude (`× effSub`, carried in `effectiveSubdivisionsForHover.x`) in
+`v_/f_peraxis_scatter`; the #1458 frac bits keep the recovered corner sub-cell
+exact, so the scale-up preserves precision (no floor z-fight — confirmed: scaling
+the SDF *down* to base instead caused floor z-fighting, the wrong direction). The
+slot tiebreak is left unscaled so it stays comparable to the SDF face bits.
+Verified `canvas_stress` static + spinning yaw grid (zoom 4/8/16 × yaw
+0/26/45/60/80/115/160/214°): no clip / no disappear at any pose; cardinal still
+byte-identical.
+
+**Disjoint near-plane priority partition (resolves Bug A — revised model).** The
+original plan proposed an *additive* priority band
+(`enc = priorityBand·BAND + cardinalIsoDepth·4 + face`). Implementation surfaced
+that **no fixed additive band can dominate unbounded world placement**: an
+additive band must out-size *twice the world's iso-depth spread* to lift a
+far-placed foreground entity past the near edge of world content, and that term
+scales with world extent — `canvas_stress`'s radius-200 GRID orbit exhausts it
+(the band-headroom × subdivisions trap the plan flagged). Escalated
+`fleet:design-blocked`; the architect ruling **replaced the additive band with a
+disjoint near-plane partition**:
+
+```
+world content (priority 0):  enc = cardinalIsoDepth·4 + face                  // UNCHANGED
+                             enc = max(enc, kDepthForegroundCeil + 1)         // clamped OUT of the near band
+foreground priority:         enc = clamp(localIsoDepth + bandCenter,          // pinned INTO the reserved
+                                         kMin, kDepthForegroundCeil)          //   near band, self-occluding
+```
+
+The most-negative `kDepthForegroundBandWidth` (16384) codes of the shared
+`[kMin, kMax]` range are **reserved** exclusively for foreground-priority detached
+solids. **Invariant (the point):** a foreground fragment is unconditionally nearer
+than any non-priority fragment *independent of world extent* — dominance is by
+**partition membership**, not by out-sizing the world's depth spread. World
+content is clamped to stay out of the band; the clamp is a **no-op** for every
+current demo at the effSub-16 cap (it fires only when `cardinalIsoDepth·4 <
+kDepthForegroundCeil` ≈ world extent far past the r=200 orbit), so the cardinal
+fast path and all in-budget content stay byte-identical. Beyond the documented
+ceiling, far world content **saturates** against the boundary (loses depth
+resolution) instead of letting a background fragment beat a priority solid —
+strictly better than the additive model, which broke foreground dominance the
+moment the world got deep. The encodable range is already symmetric about
+`enc = 0`, so this is not an off-center / insufficient-buffer problem; centering
+changes the offset, not the spread.
+
+The unsatisfiable world-extent `static_assert` (`2·4·maxSubdividedIso + 3 < BAND`)
+is replaced by a **partition-layout** assert on constants only
+(`kDepthForegroundCeil < 0`; `kMin ≤ kDepthForegroundCeil < kMax`).
+
+**Per-trixel generalization (#1960).** The partition generalizes to N disjoint
+sub-ranges; `priority = max(entity, trixel)` selects the tier. #1958 (B) ships the
+**two-tier** split only (world + one foreground tier); per-trixel tiers are D
+(#1960).
+
+**32-bit composite depth (#1983, filed).** The `±65535` ceiling is a
+normalization convention on the shared composite depth, not a hardware limit.
+Widening it (DEPTH32F or a manual integer R32I composite) would *raise* the
+ceiling but not make it unbounded; under world streaming (#938) coordinates are
+genuinely unbounded, where the partition's O(1) correctness still wins. #1983
+evaluates retiring the convention and simplifying the partition special-casing
+for practical worlds; the partition ships now (unconditional, unblocks B/C/D/E).
 
 The three findings above map to the children:
 
 | Finding | Child | Scope |
 |---|---|---|
 | Finding 1 (detached composite writes no depth) | **A — #1957** | detached depth-write (foundation; unblocks the encoding work) |
-| Finding 2 / Bug A (iso-depth ranks floating solid behind floor) | **B — #1958** | unified quadrant-stable encoding + priority bands (blocked by A) |
+| Finding 2 / Bug A (iso-depth ranks floating solid behind floor) | **B — #1958** | unified continuous-yaw composite depth (SDF + scatter + detached share `yawedIsoDistance`) + two-tier disjoint near-plane priority partition (blocked by A) |
 | Finding 3 / Bug B (cardinal-180 `+slot` tiebreak) | **C — #1959** | per-axis cardinal-180 geometric tiebreak (blocked by B) |
 | — | **D — #1960** | per-trixel priority + demos (blocked by B) |
 | — | **E — #1961** | rotation perf parity (blocked by B) |
