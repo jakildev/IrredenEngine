@@ -552,11 +552,20 @@ inline float2 pos3DtoPos2DIsoYawed(float3 worldPos, float visualYaw) {
 // sign-flip side of a bracket — the #1457 wrong-voxel-color bands). Keeps the
 // cardinal encodeDepthWithFace scale (x4 + slot) so it co-sorts with the SDF
 // smooth-yaw path. Shared by every forward-scatter composite writer.
-inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) {
+//
+// Continuous-yaw iso depth — mirror of yawedIsoDistance in ir_iso_common.glsl.
+// pos3DtoDistance(R_z(-visualYaw) * worldPos) = x(cos-sin) + y(sin+cos) + z, the
+// one shared composite depth metric for SDF + per-axis voxels + the detached
+// composite (CPU twin IRMath::pos3DtoDistanceYawed) so all three co-sort at
+// every yaw; collapses to un-yawed x+y+z at cardinals (byte-identical).
+inline float yawedIsoDistance(float3 worldPos, float visualYaw) {
     const float c = cos(visualYaw);
     const float s = sin(visualYaw);
-    const float yawedSum = origin.x * (c - s) + origin.y * (s + c) + origin.z;
-    return yawedSum * 4.0f + float(slot);
+    return worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z;
+}
+
+inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) {
+    return yawedIsoDistance(origin, visualYaw) * 4.0f + float(slot);
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of

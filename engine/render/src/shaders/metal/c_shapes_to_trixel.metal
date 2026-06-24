@@ -1029,17 +1029,16 @@ kernel void c_shapes_to_trixel(
                                           yawS * viewOffset.x + yawC * viewOffset.y,
                                           viewOffset.z);
         const float3 worldSurface = worldPos * float(sub) + worldOffset;
-        // Quadrant-stable iso-depth (#1958 Part A, fix Bug A) — mirror of the GLSL.
-        // Derive the depth metric's cos/sin from the CARDINAL bracket
-        // (cardinalCosSin) instead of the continuous visualYaw (yawC/yawS): the
-        // stored floor depth becomes piecewise-constant per 90 deg quadrant and
-        // stops drifting toward/under geometry above it near the +/-45 deg bracket
-        // (#1370's low/back-surface-wins crossing, Bug A's root). On-screen
-        // PLACEMENT is unchanged (worldSurface still uses visualYaw); only the
-        // stored DEPTH changes. Cardinal frames stay byte-identical.
-        const float dvx = worldSurface.x * cardinalCosSin.x + worldSurface.y * cardinalCosSin.y;
-        const float dvy = -worldSurface.x * cardinalCosSin.y + worldSurface.y * cardinalCosSin.x;
-        baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
+        // Continuous-yaw composite depth (#1370/#1884) — mirror of the GLSL.
+        // Order by the SHARED yawedIsoDistance — the SAME continuous-yaw metric
+        // the per-axis voxel scatter key and the detached composite
+        // (IRMath::pos3DtoDistanceYawed) use — so SDF, voxels, and detached
+        // solids stay co-sorted at EVERY yaw and the depth tracks the on-screen
+        // projection (a low/back surface no longer wins against geometry above it
+        // near the +/-45 deg bracket). PLACEMENT is unchanged (worldSurface uses
+        // visualYaw); only the stored depth. At a cardinal pose yawedIsoDistance
+        // collapses to un-yawed x+y+z, so cardinal frames stay byte-identical.
+        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, frameData.visualYaw));
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;

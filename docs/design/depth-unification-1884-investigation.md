@@ -124,21 +124,66 @@ IRCanvasStress --only canary,floor --no-spin --no-auto-rotate --auto-screenshot 
 IRPerfGrid --mode dense --grid-size 64 --yaw-ramp --auto-screenshot   # step 18 (180°)
 ```
 
-## Resolution (architect, 2026-06-22; revised 2026-06-23)
+## Resolution (architect, 2026-06-22; revised 2026-06-23; revised 2026-06-23b)
 
 Design decided on the strength of this spike; #1884 was promoted to a sub-epic
 and implementation split into independently-verifiable children. The agreed
-architecture is a unified **quadrant-stable** depth encoding plus a **two-tier
-disjoint near-plane partition** for foreground priority. Two pieces:
+architecture is a **unified continuous-yaw composite depth metric** plus a
+**two-tier disjoint near-plane partition** for foreground priority. Two pieces:
 
-**Quadrant-stable iso-depth (retires #1370).** On the SDF smooth-yaw path the
-stored depth metric derives its cos/sin from the **cardinal bracket**
-(`cardinalYawCosSin(rasterYawCardinalIndex(rasterYaw))`) instead of the
-continuous `visualYaw`, so the stored depth is piecewise-constant per 90°
-quadrant and no longer drifts toward/under geometry above it near the ±45°
-bracket boundary. On-screen placement still uses `visualYaw`; only the stored
-depth becomes quadrant-stable. Cardinal frames are byte-identical (the smooth
-branch is gated off at cardinals). This shares Bug A's iso-depth-ambiguity root.
+**Unified continuous-yaw composite depth (retires #1370; fixes Bug A's
+wrong-winner — revised 2026-06-23b).** The first cut of #1958 made the SDF
+smooth-yaw depth *quadrant-stable* — it derived its cos/sin from the cardinal
+bracket (`cardinalYawCosSin(rasterYawCardinalIndex(rasterYaw))`) so the stored
+floor depth was piecewise-constant per 90° quadrant. That fixed the **at-rest**
+non-cardinal floor drift but **regressed the rotating regime**: the per-axis
+voxel scatter key (`scatterCompositeDepthKey`) and the detached composite still
+sorted on the *continuous* `visualYaw` metric, so a cardinal-snapped floor
+desynced from the continuously-sliding voxels during camera rotation — the floor
+depth *jumped* at each ±45° quadrant boundary while voxels slid, and world
+voxels/detached solids clipped into the floor between cardinals. The original SDF
+comment even promised "per-axis voxel scatter applies the identical transform so
+SDF + voxels stay co-sorted"; the cardinal snap broke exactly that invariant.
+
+The revised resolution **consolidates every composite depth writer onto one
+shared continuous-yaw iso-depth metric** rather than snapping any of them to
+cardinal:
+
+```
+depth(p) = pos3DtoDistance(R_z(-visualYaw) · p) = x·(cos-sin) + y·(sin+cos) + z   // smaller = nearer
+```
+
+This is the *geometrically correct* camera-forward distance at the actual
+`visualYaw` — it always tracks the on-screen placement, so it cannot drift
+toward/under geometry above it. It is exposed as the single shared helper
+`yawedIsoDistance` (`ir_iso_common.glsl` / `.metal`) with CPU twin
+`IRMath::pos3DtoDistanceYawed`, and called by **all three** world-content depth
+producers that were previously each open-coding their own variant:
+
+- **SDF smooth-yaw** (`c_shapes_to_trixel`): `baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw))`.
+- **Per-axis voxel scatter** (`scatterCompositeDepthKey`): unchanged behavior — now factored to call `yawedIsoDistance`.
+- **Detached composite** (`system_entity_canvas_to_framebuffer`): world-depth offset = `pos3DtoDistanceYawed(worldCell, visualYaw)` instead of the un-yawed `pos3DtoDistance(worldCell)`.
+
+At a cardinal pose `yawedIsoDistance` collapses to the un-yawed `x+y+z`
+(`pos3DtoDistance`), so cardinal frames stay byte-identical (verified:
+`canvas_stress` 8/8 cardinal shots byte-identical, only the 2 non-cardinal yaw
+shots change). The earlier "quadrant-stable / cardinal-bracket" SDF metric is
+**withdrawn** — it traded the rotating regime for the at-rest regime and
+introduced the per-quadrant jump; the continuous metric is correct in both.
+
+**Remaining known gap (the main-canvas at-rest gather → #1959).** When the
+camera sits *at rest* at a non-cardinal yaw, the per-axis canvases are released
+and the main-world voxels composite through the gather, which reads the stored
+un-yawed cardinal depth (`pos3DtoDistance`, kept cardinal because AO / shadow /
+per-axis-resolve reconstruct world position from it via `isoPixelToPos3D`, which
+assumes `depth = x+y+z`). So at a *resting* non-cardinal yaw the main-world
+voxels still sort on the cardinal metric while the (now-continuous) floor sorts
+on `visualYaw` — the master-era at-rest drift, unchanged by this PR. Closing it
+needs the gather to recompute the continuous occlusion depth from the recovered
+world position at the final `gl_FragDepth` (stored depth must stay cardinal for
+the reconstruction consumers); that is the per-axis/gather charter of **#1959**.
+The auto-rotating demos exercise only the rotating regime, which this PR fixes
+completely.
 
 **Disjoint near-plane priority partition (resolves Bug A — revised model).** The
 original plan proposed an *additive* priority band
@@ -196,7 +241,7 @@ The three findings above map to the children:
 | Finding | Child | Scope |
 |---|---|---|
 | Finding 1 (detached composite writes no depth) | **A — #1957** | detached depth-write (foundation; unblocks the encoding work) |
-| Finding 2 / Bug A (iso-depth ranks floating solid behind floor) | **B — #1958** | quadrant-stable SDF depth + two-tier disjoint near-plane priority partition (blocked by A) |
+| Finding 2 / Bug A (iso-depth ranks floating solid behind floor) | **B — #1958** | unified continuous-yaw composite depth (SDF + scatter + detached share `yawedIsoDistance`) + two-tier disjoint near-plane priority partition (blocked by A) |
 | Finding 3 / Bug B (cardinal-180 `+slot` tiebreak) | **C — #1959** | per-axis cardinal-180 geometric tiebreak (blocked by B) |
 | — | **D — #1960** | per-trixel priority + demos (blocked by B) |
 | — | **E — #1961** | rotation perf parity (blocked by B) |

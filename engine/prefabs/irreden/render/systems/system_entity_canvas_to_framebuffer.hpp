@@ -261,8 +261,20 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 // depth ordering; only the screen PLACEMENT above tracks the world.
                 compositeDistanceOffset = kDepthForegroundBandCenter;
             } else {
-                const int worldDepth =
-                    pos3DtoDistance(roundVec3HalfUp(worldTransform.translation_));
+                // Continuous-yaw world depth: place the solid by the SAME
+                // yawedIsoDistance the SDF floor + per-axis voxel scatter sort on
+                // (IRMath::pos3DtoDistanceYawed, the CPU twin), so a world-placed
+                // detached solid co-sorts against the floor at EVERY yaw — not
+                // just cardinals. The cardinal-only pos3DtoDistance offset stayed
+                // fixed while the continuous floor drifted under rotation, so the
+                // solid clipped behind the floor between cardinals (#1884's
+                // wrong-winner root). Round the translation to its world cell
+                // first (the GRID re-voxelize cell classification this co-sorts
+                // with); at a cardinal pose pos3DtoDistanceYawed(cell, 0) ==
+                // pos3DtoDistance(cell) exactly, so the cardinal fast path stays
+                // byte-identical.
+                const int worldDepth = pos3DtoDistanceYawed(
+                    vec3(roundVec3HalfUp(worldTransform.translation_)), visualYaw_);
                 compositeDistanceOffset =
                     (cubeSub >= 1) ? worldDepth * effectiveSub_ * kDepthEncodeShift : worldDepth;
             }

@@ -923,30 +923,21 @@ void main() {
                                 yawS * viewOffset.x + yawC * viewOffset.y,
                                 viewOffset.z);
         vec3 worldSurface = worldPos * float(sub) + worldOffset;
-        // Yaw-consistent composite depth (#1370): the framebuffer depth test
-        // must order by the depth that matches the YAWED iso projection
-        // (pos3DtoPos2DIsoYawed = iso of R_z(-visualYaw)*world), NOT the
-        // un-yawed world x+y+z. With the un-yawed metric the ordering diverges
-        // from the on-screen projection as residual yaw grows, so a low/back
-        // surface (e.g. the ground platform) wins the depth test against
-        // geometry above it near the +/-45 deg bracket. Rotate the surface by
-        // R_z(-visualYaw) and take its iso-depth (vx+vy+z). yawC/yawS are
-        // cos/sin(visualYaw) on the smoothYaw path. Per-axis voxel scatter
-        // applies the identical transform so SDF + voxels stay co-sorted.
-        // Quadrant-stable iso-depth (#1958 Part A, fix Bug A). Derive the depth
-        // metric's cos/sin from the CARDINAL bracket (cardinalCosSin, the
-        // rasterYaw cardinal index) instead of the continuous visualYaw (yawC/yawS).
-        // The stored floor depth is then piecewise-constant per 90 deg quadrant and
-        // no longer drifts toward/under geometry above it as residual yaw grows —
-        // killing #1370's near-+/-45 deg "low/back surface wins" crossing (the
-        // iso-depth-ambiguity root of Bug A). On-screen PLACEMENT is unchanged:
-        // worldSurface is still built from visualYaw above; ONLY the stored DEPTH
-        // becomes quadrant-stable. At a cardinal pose the bracket cos/sin equals
-        // visualYaw's (and smoothYaw is gated off there — the per-axis canvases are
-        // freed at cardinals), so cardinal frames stay byte-identical.
-        float dvx = worldSurface.x * cardinalCosSin.x + worldSurface.y * cardinalCosSin.y;
-        float dvy = -worldSurface.x * cardinalCosSin.y + worldSurface.y * cardinalCosSin.x;
-        baseDepth = roundHalfUp(dvx + dvy + worldSurface.z);
+        // Continuous-yaw composite depth (#1370/#1884): the framebuffer depth
+        // test must order by the depth that matches the YAWED iso projection
+        // (pos3DtoPos2DIsoYawed = iso of R_z(-visualYaw)*world), NOT the un-yawed
+        // world x+y+z — with the un-yawed metric the ordering diverges from the
+        // on-screen projection as residual yaw grows, so a low/back surface (the
+        // ground platform) wins the depth test against geometry above it near the
+        // +/-45 deg bracket. Order by the SHARED yawedIsoDistance — the SAME
+        // continuous-yaw metric the per-axis voxel scatter key and the detached
+        // composite (IRMath::pos3DtoDistanceYawed) use — so SDF, voxels, and
+        // detached solids stay co-sorted at EVERY yaw and the depth always tracks
+        // the on-screen placement. On-screen PLACEMENT is unchanged (worldSurface
+        // is built from visualYaw above); this is only the stored composite
+        // depth. At a cardinal pose yawedIsoDistance collapses to the un-yawed
+        // x+y+z, so cardinal frames stay byte-identical.
+        baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw));
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = surfaceD + originDistance;

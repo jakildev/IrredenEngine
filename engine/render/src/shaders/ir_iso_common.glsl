@@ -592,11 +592,26 @@ vec2 pos3DtoPos2DIsoYawed(vec3 worldPos, float visualYaw) {
 // measure-zero, so the depth test orders every overlap correctly at every
 // residual. Shared by every forward-scatter composite writer — do not inline
 // per-shader copies.
-float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {
+//
+// Continuous-yaw iso depth — the camera-forward distance of a world point under
+// a continuous Z-yaw camera: pos3DtoDistance(R_z(-visualYaw) * worldPos) =
+// x(cos-sin) + y(sin+cos) + z. Smaller = nearer (GL_LESS). THE shared composite
+// depth metric for every world surface under smooth yaw: the SDF smooth path
+// (c_shapes_to_trixel), the scatterCompositeDepthKey below, and the detached
+// composite (CPU twin IRMath::pos3DtoDistanceYawed) all derive their final
+// occlusion depth from this one function, so SDF + voxels + detached stay
+// co-sorted at EVERY yaw — not just cardinals. At a cardinal pose it collapses
+// to the un-yawed x+y+z (pos3DtoDistance), so the cardinal fast path stays
+// byte-identical. CPU mirror: IRMath::pos3DtoDistanceYawed; Metal twin in
+// ir_iso_common.metal.
+float yawedIsoDistance(vec3 worldPos, float visualYaw) {
     float c = cos(visualYaw);
     float s = sin(visualYaw);
-    float yawedSum = origin.x * (c - s) + origin.y * (s + c) + origin.z;
-    return yawedSum * 4.0 + float(slot);
+    return worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z;
+}
+
+float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {
+    return yawedIsoDistance(origin, visualYaw) * 4.0 + float(slot);
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
