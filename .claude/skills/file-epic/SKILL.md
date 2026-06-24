@@ -28,7 +28,7 @@ for why.
 | **task label** | `fleet:task` |
 | **architect plans dir** | `~/.claude/plans/<slug>.md` |
 | **plans dir** | `~/.fleet/plans/issue-<N>.md` |
-| **repo-side plan path** | `<repo>/.fleet/plans/issue-<N>.md` (committed via the step-6.5 docs PR; no `T-<NNN>` rename) |
+| **repo-side plan path** | `<repo>/.fleet/plans/issue-<N>.md` — umbrella plan committed via the step-6.5 docs PR; each child plan committed as the first commit of its own impl PR (#1932); no `T-<NNN>` rename |
 | **validate-stack command** | `fleet-validate-stack <umbrella>` (add `--repo game` for the game repo) |
 | **title area vocabulary** | `engine`, `render`, `engine/voxel`, `game`, etc. (the same scope vocabulary `commit-and-push` uses) |
 
@@ -38,13 +38,15 @@ for why.
   command**; it auto-discovers children and fails loudly on a malformed
   body. It is the belt that the step-5 hand-filing convention is the
   suspenders for.
-- Per-child plan files (flow step 6) must meet
+- Per-child `## Plan` comments (flow step 6) must meet
   [`PLANNING-PROTOCOL.md`](../../../docs/agents/PLANNING-PROTOCOL.md)
   step-2 rigor — verified current state / confirmed repro, one picked
   approach, sibling + in-flight reconciliation — not a restated phase line
-  (#1456). The engine's `fleet-queue-ingest` plan gate only checks that
-  `.fleet/plans/issue-<N>.md` exists, so land the step-6.5 docs PR promptly
-  (it is also what makes a child pass the gate cross-host).
+  (#1456). The engine's `fleet-queue-ingest` plan gate (#1932 PR2) keys on the
+  `## Plan` comment, so a child is queue-ready as soon as its comment is posted;
+  its plan file lands cross-host as the first commit of the child's impl PR. The
+  step-6.5 docs PR carries only the umbrella plan (+ steward ledger) — land it
+  promptly so the steward reads it from master.
 - Engine-repo vs game-repo: most epics target `jakildev/IrredenEngine`.
   The cross-repo info-isolation rule (see
   [`docs/agents/CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)

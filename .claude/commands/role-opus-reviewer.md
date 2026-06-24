@@ -126,6 +126,47 @@ Don't re-check these — wasted Opus budget. Spend the pass on the
    inherited commits that don't belong to this PR's scope — skip
    until the human runs `rebase --onto` and clears this label).
 
+## Plan-review pass (#1932)
+
+Alongside the PR recheck, vet any issue carrying `fleet:plan-review` — a
+`## Plan` comment was posted but no reviewer has cleared it yet, and
+`fleet-queue-ingest` **skips** it until you do, so an un-vetted plan strands the
+issue out of the queue. You are the autonomous clearer of this gate (the
+architect also clears it during a design conversation; see
+[architect-protocol.md](../../docs/agents/architect-protocol.md) §"plan
+reviewer").
+
+Find candidates in both repos (cheap — issue labels, not a diff):
+
+```bash
+gh issue list --repo <repo> --label "fleet:plan-review" --json number,title --limit 50
+```
+
+For each, apply the [PLANNING-PROTOCOL.md](../../docs/agents/PLANNING-PROTOCOL.md)
+step-4 verdict — read the `## Plan` comment (`fleet-issue view <N>`; add
+`--repo game` for game) and judge it **as a plan** against step-2 rigor:
+verified current state (a confirmed repro for a defect), a single committed
+approach (no "decide during implementation" hand-off), sibling + in-flight
+reconciliation, and a cross-system audit where one is required.
+
+- **Sound →** remove the label: `gh issue edit <N> --repo <repo> --remove-label
+  "fleet:plan-review"`. The scout queues it on its next pass.
+- **Not sound →** delete the existing `## Plan` comment **first**, then requeue.
+  `fleet-claim planning-claim` exit-3's on `## Plan` *comment presence* (not on
+  the `fleet:needs-plan` label), so swapping the label back while the stale plan
+  comment remains leaves the issue **un-plannable** — the next planning pass can't
+  re-claim it. Get the comment id from `fleet-issue view <N>` and delete it
+  (`gh api -X DELETE repos/<owner>/<repo>/issues/comments/<comment-id>`), then
+  swap the label: `gh issue edit <N> --repo <repo> --remove-label
+  "fleet:plan-review" --add-label "fleet:needs-plan"`, and comment the specific
+  gaps. The next planning pass can then claim afresh and post a corrected
+  `## Plan` comment.
+
+This is a review of the **plan**, distinct from the PR code review — and it's
+cheap (no build, no diff), so do it every iteration even when there are no PR
+candidates. Apply the standard skip set (don't touch a `fleet:plan-review` issue
+that also carries `human:owned`).
+
 ## Loop behavior
 
 `fleet-dispatcher` launches a fresh `claude` for this role when scout
