@@ -230,6 +230,29 @@ builds work there unconditionally. Never tell the user "something is
 wrong with your GCC" based on a Bash-tool-only failure on
 Windows-native — first verify with the PATH prefix.
 
+### Running the fleet on native Windows
+
+The full bash+tmux fleet runs natively on Windows as a co-equal host (key
+`windows`). Orchestration (`fleet-up`/tmux/dispatcher) runs from an **MSYS2
+bash** shell (`pacman -S tmux jq`); the agent panes run `claude`, whose Bash
+tool is Git Bash — both share `$HOME`, so `~/.fleet` is common.
+
+One-shot, idempotent host setup — clones a dedicated fleet checkout (kept
+separate from any interactive dev clone), writes `~/.fleet/fleet-up.conf` +
+`~/.config/irreden/host.toml`, puts the tool dirs on PATH, and creates the
+worktrees:
+
+```bash
+bash scripts/fleet/setup-windows.sh        # FLEET_CLONE / FLEET_CPU_BUDGET overridable
+```
+
+Native symlinks (`install.sh`) need Windows Developer Mode; the PATH approach
+`setup-windows.sh` uses does not — the scripts resolve their siblings from
+their real location either way. The fleet's OpenGL build must be on `master`
+before worktrees can build (the cc1plus/LuaJIT fixes above). Then `fleet-up
+dry-run` from the clone, `tmux attach -t fleet`, `fleet-up live`. See
+[`FLEET.md`](FLEET.md) "Cross-platform parity".
+
 ---
 
 ## Build-hygiene canary (both environments)
