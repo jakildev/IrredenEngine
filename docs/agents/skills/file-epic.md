@@ -3,9 +3,20 @@
 The canonical `file-epic` flow: take an approved architect plan that covers
 a multi-ticket epic and file it as a fleet expects — an umbrella issue
 labelled with the repo's **epic label**, one child per phase labelled with
-the **task label**, per-ticket plan files **committed into the repo** at the
-**repo-side plan path** so a worker on any host reads them from master, and
-post-filing stack validation.
+the **task label**, each **child plan posted as a `## Plan` issue comment**
+(the canonical plan per the #1932 redesign — its implementer commits
+`.fleet/plans/issue-<N>.md` as the **first commit of the child's impl PR**,
+so there is **no separate per-child plan-doc PR**), and post-filing stack
+validation.
+
+> **Umbrella plan + steward ledger stay a committed file.** The umbrella has
+> no impl PR to carry its plan, and the epic-steward maintains its `## Steward
+> ledger` in the committed `.fleet/plans/issue-<umbrella>.md` via its own
+> docs PRs (`epic-steward-protocol.md`). So this flow commits **only** the
+> umbrella plan (step 6.5), not the children's. Moving the umbrella plan into
+> a `## Plan` comment too (per #1932 PR4's full intent) is coupled to a
+> matching epic-steward-protocol change (the ledger's home) and is a tracked
+> follow-on — see step 6.5.
 
 Every repo that runs a fleet keeps its
 `.claude/skills/file-epic/SKILL.md` as a thin wrapper that points here and
@@ -23,8 +34,8 @@ mechanism.
 | **epic label** | Marks the umbrella so the queue-manager skips it. | `fleet:epic` |
 | **task label** | Marks each child as a queue-ingestable task. | `fleet:task` |
 | **architect plans dir** | Where the approved architect draft lives. | `~/.claude/plans/<slug>.md` |
-| **plans dir** | Local staging for the plan, pre-commit. | `~/.fleet/plans/issue-<N>.md` |
-| **repo-side plan path** | Committed, authoritative plan workers read from master. | `<repo>/.fleet/plans/issue-<N>.md` |
+| **plans dir** | Local staging for the plan, pre-commit (umbrella only). | `~/.fleet/plans/issue-<N>.md` |
+| **repo-side plan path** | Committed, authoritative plan workers read from master (umbrella only). | `<repo>/.fleet/plans/issue-<N>.md` |
 | **validate-stack command** | Asserts every child carries the structured fields. | `fleet-validate-stack` |
 | **title area vocabulary** | `<area>` tokens for child titles. | `engine`, `render`, `game`, module names |
 
@@ -232,13 +243,18 @@ for this epic. Pre-protocol epics get healed on the steward's first claim;
 new filings must be born managed — skip this step and the checklist is
 missing from the start.
 
-### 6. Write per-ticket plan file
+### 6. Post each child's plan as a `## Plan` comment
 
-After each child is filed, write `<plans-dir>/issue-<N>.md` (where `<N>` is
-the tracker-assigned number):
+After each child is filed, post its plan as a **`## Plan` comment on the child
+issue** — the canonical plan per the #1932 redesign. The queue gate keys on this
+comment, and the child's implementer commits it to `.fleet/plans/issue-<N>.md`
+as the **first commit of the child's impl PR** (no separate plan-doc PR). Write
+the comment body to a temp file, then
+`gh issue comment <N> --repo <repo> --body-file <file>`. The comment body
+(`<N>` is the tracker-assigned number):
 
 ```markdown
-# Plan: <ticket title>
+## Plan: <ticket title>
 
 - **Issue:** #<N>
 - **Model:** <fable|opus|sonnet>
@@ -246,22 +262,22 @@ the tracker-assigned number):
 - **Epic:** #<umbrella> — see `<plans-dir>/issue-<umbrella>.md` for full context
 - **Blocked by:** (none)   <!-- or same-repo `#<prior>[, #<other>]`; same exact form as the issue body -->
 
-## Scope
+### Scope
 <focused subset of the umbrella plan that applies to THIS ticket>
 
-## Affected files
+### Affected files
 <bullet list of file paths the implementer will touch>
 
-## Approach
+### Approach
 <more detail than the issue body — the implementation guide>
 
-## Acceptance criteria
+### Acceptance criteria
 <concrete, testable>
 
-## Gotchas
+### Gotchas
 <watchouts that need code-aware framing>
 
-## Verification
+### Verification
 <what to build, what to run, what passes>
 ```
 
@@ -278,37 +294,36 @@ path** when the child fixes a defect), commit to **one approach** — never a
 epic's other children: say what this child assumes its predecessors have
 landed). A child plan that just restates the umbrella's phase line is a stub
 — #1440's 23-line stub prescribed an approach a sibling had already proved
-wrong (#1456). The queue's plan gate checks only that the file *exists*;
-the rigor is on the author.
+wrong (#1456). The queue's plan gate checks only that a `## Plan` comment
+exists; the rigor is on the author.
 
-### 6.5. Commit the plan files into the repo (REQUIRED — workers read from master)
+### 6.5. Commit the umbrella plan into the repo (REQUIRED — the steward reads it)
 
-The **plans dir** (`~/.fleet/plans/`) is **local staging only** — it is
-visible solely on the host that filed the epic. The fleet runs across hosts
-(Linux/WSL + macOS), so a worker that claims a child on a *different* host
-reads its plan from the **repo-side plan path** (`<repo>/.fleet/plans/issue-<N>.md`,
-"synced from master" per the worker role docs). If the plan never lands in the
-repo, that worker finds nothing and falls back to the issue body — the
-per-ticket detail you just wrote is lost. So the producer (this skill) must
-commit the plans; there is **no** automatic queue-manager copy.
-
-Copy the umbrella plan **and** every per-ticket plan into the repo and open a
-small docs PR (never commit to the default branch directly):
+Only the **umbrella** plan (with its `## Steward ledger`) is committed by this
+flow. The children's plans are `## Plan` comments now (step 6), and each child's
+plan file lands via the **first commit of its own impl PR** (#1932) — `file-epic`
+no longer opens a per-child plan-doc PR. But the umbrella has no impl PR, and the
+epic-steward maintains the ledger in the committed
+`.fleet/plans/issue-<umbrella>.md` via its iteration docs PRs
+(`epic-steward-protocol.md`), so the umbrella plan must live in the repo.
 
 ```bash
 mkdir -p <repo-root>/.fleet/plans
 cp <plans-dir>/issue-<umbrella>.md <repo-root>/.fleet/plans/issue-<umbrella>.md
-for N in <child-1> <child-2> ...; do
-    cp <plans-dir>/issue-$N.md <repo-root>/.fleet/plans/issue-$N.md
-done
-# branch + commit + PR via the commit-and-push skill (filenames keep the
-# issue-<N>.md form — there is NO T-<NNN> rename).
+# branch + commit + PR via the commit-and-push skill (docs-only, reviews fast).
+# Filename keeps the issue-<N>.md form — there is NO T-<NNN> rename.
 ```
 
-The PR is docs-only (reviews fast). It does **not** need to merge before the
-head child is claimable — same-host workers read local staging — but a
-cross-host worker needs it merged, so land it promptly. Naming stays
-`issue-<N>.md`; the obsolete `T-<NNN>` rename is retired.
+The PR is docs-only. It does **not** gate child claimability — children carry
+their plan in the `## Plan` comment, which the queue gate (`fleet-queue-ingest`,
+#1932 PR2) reads directly — but land it promptly so the steward and any
+cross-host reader see the umbrella plan + ledger from master.
+
+> **Follow-on (#1932 PR4 full intent).** Moving the umbrella plan + ledger out
+> of a committed file and into the umbrella's `## Plan` comment requires a
+> matching `epic-steward-protocol.md` change (the steward would edit the comment
+> instead of writing the file via its docs PR). That coupling is out of this
+> flow's scope; until it lands, the umbrella plan stays a committed file.
 
 ### 7. Post the umbrella summary comment
 
@@ -359,7 +374,7 @@ umbrella's `## Children` checklist:
 ### 8. Report
 
 Reply with: the umbrella issue URL + epic-label confirmation; the child
-issue URLs; the umbrella plan-file path; the per-ticket plan-file paths; the
+issue URLs; the umbrella plan-file path; the per-child `## Plan` comment links; the
 validate-stack result (must pass); and what the user still must do
 (typically: triage each child individually — the queue-manager won't
 auto-approve).
@@ -379,9 +394,9 @@ auto-approve).
   catch, write the standalone line.
 - ✅ Multiple blockers are supported: `**Blocked by:** #A, #B` on one line
   or several `**Blocked by:**` lines. The gate unions every ref.
-- ❌ Per-ticket plan files that duplicate the issue body verbatim. The plan
-  adds implementation detail; the issue is the discussion surface.
-- ❌ Per-ticket plan files that restate the umbrella's phase line and stop.
+- ❌ Per-child `## Plan` comments that duplicate the issue body verbatim. The
+  plan adds implementation detail; the issue body is the discussion surface.
+- ❌ Per-child `## Plan` comments that restate the umbrella's phase line and stop.
   Each child plan meets PLANNING-PROTOCOL.md step-2 rigor on its own:
   verified current state / confirmed repro, one picked approach, sibling +
   in-flight reconciliation (#1456).
@@ -400,8 +415,8 @@ auto-approve).
 | Location | Purpose | Lifecycle |
 |---|---|---|
 | **architect plans dir** (`<slug>.md`) | Architect's draft, approved by user. | Session-local; archive after the epic ships. |
-| **plans dir** (`issue-<N>.md`) | Local staging, pre-commit (same-host only). | Written in step 6; copied into the repo in step 6.5. |
-| **repo-side plan path** (`issue-<N>.md`) | Committed, authoritative plan workers read from master. | Committed via the step-6.5 docs PR; lives in the repo until the ticket closes. |
+| **child `## Plan` comment** (on each child issue) | Canonical child plan; the queue gate reads it (#1932). | Posted in step 6; committed to `.fleet/plans/issue-<N>.md` as the first commit of the child's impl PR. |
+| **umbrella plan** (`issue-<umbrella>.md`) | Umbrella plan + `## Steward ledger`; the steward reads/maintains it. | Staged in step 2; committed via the step-6.5 docs PR; maintained thereafter by the epic-steward's iteration docs PRs until close-out. |
 
 ## When the architect plan is rough
 
