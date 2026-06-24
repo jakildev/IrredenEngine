@@ -101,16 +101,19 @@ echo "  cpu budget=$FLEET_CPU_BUDGET  workers=$FLEET_BUILD_WORKERS  (per_build_m
 # --- 4. PATH (idempotent ~/.bashrc block) ----------------------------------
 say "Putting fleet tool dirs on PATH (~/.bashrc)"
 marker="# IRREDEN_ENGINE: fleet tool dirs"
-if grep -qF "$marker" "$HOME/.bashrc" 2>/dev/null; then
-    echo "  already present — leaving ~/.bashrc untouched (edit the marked block to repoint)"
-else
-    cat >> "$HOME/.bashrc" <<EOF
+# Idempotent + repointing: drop any prior marked block (marker line + its
+# following export), then append a fresh one targeting this FLEET_CLONE — so a
+# re-run with a different FLEET_CLONE moves PATH instead of stacking entries.
+if [[ -f "$HOME/.bashrc" ]] && grep -qF "$marker" "$HOME/.bashrc"; then
+    sed -i "\\|$marker|,+1d" "$HOME/.bashrc"
+    echo "  removed previous fleet PATH block"
+fi
+cat >> "$HOME/.bashrc" <<EOF
 
 $marker (setup-windows.sh; no Developer-Mode symlinks needed)
 export PATH="$FLEET_CLONE/scripts/fleet:$FLEET_CLONE/engine/tools/bin:\$PATH"
 EOF
-    echo "  appended — run 'source ~/.bashrc' or open a new shell"
-fi
+echo "  set fleet tool dirs on PATH — run 'source ~/.bashrc' or open a new shell"
 
 # --- 5. Fleet worktrees -----------------------------------------------------
 # fleet-up creates/repairs these itself, but pre-creating them off origin/master
