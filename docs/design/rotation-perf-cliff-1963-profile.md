@@ -129,7 +129,10 @@ is *composite + resolve* combined; splitting them needs the infra fix.
    row (or vice versa). Fixing it (rename the registry row to
    `resolvePerAxisScreenDepth`, or retag the system) makes the resolve stage
    observable and lets #1961 separate composite cost from resolve cost. Filed
-   as #1965.
+   as #1965. **Resolved (#1965):** the dead `screenSpaceResidualRotate`
+   registry row (field + overlay label) was renamed to
+   `resolvePerAxisScreenDepth`, completing the half-done rename so the system's
+   existing tag now resolves and the stage records on both backends.
 
 ## Scoping #1961
 

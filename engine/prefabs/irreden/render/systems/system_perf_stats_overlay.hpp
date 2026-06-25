@@ -199,7 +199,7 @@ template <> struct System<PERF_STATS_OVERLAY> {
         if (name == "trixelToTrixel") return "TRIX-COMP";
         if (name == "trixelToFb") return "TRIX-FB";
         if (name == "entityCanvasToFb") return "ENT-FB";
-        if (name == "screenSpaceResidualRotate") return "SCREEN-ROT";
+        if (name == "resolvePerAxisScreenDepth") return "PERAXIS-DEPTH";
         if (name == "fbToScreen") return "FB-SCREEN";
         return nullptr;
     }

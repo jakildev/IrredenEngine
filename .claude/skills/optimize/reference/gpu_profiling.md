@@ -13,7 +13,7 @@ Registered stages (canvasClear, voxelCompact, voxelStage1, voxelStage2,
 shapeCompact, shapePass0, shapePass1, textToTrixel,
 buildLightOcclusionGrid, computeVoxelAO, bakeSunShadowMap,
 computeSunShadow, computeLightVolume, lightingToTrixel, fogToTrixel,
-trixelToTrixel, trixelToFb, entityCanvasToFb, screenSpaceResidualRotate,
+trixelToTrixel, trixelToFb, entityCanvasToFb, resolvePerAxisScreenDepth,
 fbToScreen) each carry a soft budget share (`GpuStageInfo::budgetShare_`).
 A pass exceeding its share is flagged via `overBudget` in the Lua surface.
 
