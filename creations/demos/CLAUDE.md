@@ -19,8 +19,9 @@ reference, T-106..T-108 pattern). Use `Glob creations/demos/*/` to see the full 
 
 ## Adding a new demo
 
-Copy the closest demo, rename targets, add `add_subdirectory(your_name)` to
-`creations/demos/CMakeLists.txt`. See `shape_debug/CMakeLists.txt` for the
+Copy the closest demo, rename targets, add
+`add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/demos/your_name)` to
+`creations/CMakeLists.txt`. See `shape_debug/CMakeLists.txt` for the
 canonical CMake shape.
 
 ## Conventions
@@ -42,7 +43,7 @@ canonical CMake shape.
 - **Runtime DLL copying is not free.** Every demo that links against
   FFmpeg/sol2/GLFW gets a POST_BUILD copy. Large demos slow down their
   incremental builds. Keep demos minimal.
-- **Don't edit `creations/demos/CMakeLists.txt` to re-order
+- **Don't edit `creations/CMakeLists.txt` to re-order demo
   subdirectories.** Order doesn't affect build correctness, but some
   demos implicitly assume others have been built (tools/data pipelines
   especially). Append new entries; don't reshuffle.
