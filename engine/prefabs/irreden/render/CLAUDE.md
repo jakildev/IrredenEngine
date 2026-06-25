@@ -395,6 +395,16 @@ optional `C_GuiHoverState` singleton (#1796); create one per world with
 `hoveredWidget()`. No singleton → the publish is a no-op, so non-test
 creations pay nothing.
 
+**Lua `onClick` dispatch (#1975).** `system_widget_lua_dispatch.hpp`
+(`WIDGET_LUA_DISPATCH`) turns a widget's `C_WidgetState::fireAction_` pulse
+into an error-trapped Lua `onClick`, keyed per widget `EntityId` on the
+system's own state (mirrors `DISPATCH_LUA_OVERLAP`; SERIAL — LuaJIT is
+single-threaded). A Lua-driven creation registers it as a prefab system and
+places it in the INPUT pipeline **immediately after `WIDGET_INPUT`** (so
+`fireAction_` is fresh). It is the optional dispatch half of the
+`IRGui.makeButton(..., onClick)` Lua binding — full surface +
+wiring contract in `engine/script/CLAUDE.md` §"Widget framework bindings".
+
 **Headless GUI assertions (P3, #1796).** `gui_test_assertions.hpp`
 exposes `IRPrefab::GuiTest::` — capture-frame assertions
 (`hovers` / `clickFires` / `sliderValue` / `checkbox` / `picksVoxel`)

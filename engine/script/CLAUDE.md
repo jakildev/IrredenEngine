@@ -1382,6 +1382,52 @@ Coverage: `test/script/lua_render_bindings_test.cpp` asserts table/function
 presence + the `colorFromLua` parse cases headless; the runtime draw + sun
 path is exercised visually by `creations/demos/lua_pipeline_demo`.
 
+## Widget framework bindings (`IRGui.make*`, `WIDGET_LUA_DISPATCH`)
+
+`bindLuaDrivenEcs()` also extends the `IRGui` / `IRRender` tables with the
+widget-framework surface (engine #1975) so a creation builds a panel + label +
+button **entirely from Lua**, with a Lua `onClick` that fires on click. The
+binding block is `detail::bindWidgets` in
+`engine/script/include/irreden/script/lua_widget_bindings.hpp`; it forwards to
+the C++ `IRPrefab::Widget::make*` constructors (which take `IRMath::ivec2`, so
+the binding composes the ivec2s from plain Lua ints).
+
+```lua
+local panel  = IRGui.makePanel(x, y, w, h, title?, drawBorder?, zOrder?)
+local label  = IRGui.makeLabel(x, y, text, color?)   -- color: IRMath::Color or {r,g,b[,a]}
+local button = IRGui.makeButton(x, y, w, h, label, onClick?)  -- onClick(widgetId)
+if IRGui.wasClicked(button) then ... end             -- poll the click pulse
+local gx, gy = IRGui.glyphStep()                      -- font cell step (px)
+local w,  h  = IRRender.getGuiCanvasSize()            -- "gui" canvas size (trixels)
+```
+
+- **`onClick` dispatch (the load-bearing new piece).** Click was poll-only
+  (`C_WidgetState::fireAction_` via `IRGui.wasClicked`) until this landed. A
+  Lua `onClick` is stored in the `WIDGET_LUA_DISPATCH` system's session-lifetime
+  state (NOT a component), keyed by the widget's `EntityId`; the system's tick
+  invokes it (error-trapped) the frame `fireAction_` pulses, passing the
+  clicked widget's id. Same prefab-system-id-map resolution + lifetime contract
+  as `DISPATCH_LUA_OVERLAP` (`resolveWidgetDispatch` mirrors
+  `resolveOverlapDispatch`).
+- **Wiring contract.** A creation must
+  `registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>()` and place that system
+  in the INPUT pipeline **immediately after `WIDGET_INPUT`** (so `fireAction_`
+  is fresh) before main.lua registers an `onClick` — the binding raises a Lua
+  error naming the missing registration if it's absent. Because
+  `registerPrefabSystem` and a C++ `createSystem` would make two instances, the
+  creation passes the registered prefab id into the pipeline (so the binding
+  and the ticked instance are the same one).
+- **`IRGui` / `IRRender` are extended, never replaced** (`if (!valid())`
+  guard), so the render-glue `drawDisc`/`drawLine` and setters bound earlier
+  survive.
+- **`getGuiCanvasSize` / `glyphStep`** are layout accessors so Lua lays out
+  against the live GUI-canvas size + font metrics. `getGuiCanvasSize` raises a
+  Lua error if no `"gui"` canvas exists.
+
+Coverage: `creations/demos/lua_widgets` builds the whole UI from `main.lua` and
+proves `onClick` + `wasClicked` headlessly via the gui-verify GUI-test harness
+(`GUI-ASSERT … result=PASS`).
+
 ## C++ ↔ Lua math type helpers
 
 When a binding accepts a math type that Lua callers may pass as either a

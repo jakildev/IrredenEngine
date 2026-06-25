@@ -176,6 +176,7 @@ inline void bindSystemNameEnum(LuaScript &script) {
     IR_BIND_SYS(DEBUG_CULLING_MINIMAP);
     IR_BIND_SYS(PERF_STATS_OVERLAY);
     IR_BIND_SYS(ENTITY_CANVAS_TO_FRAMEBUFFER);
+    IR_BIND_SYS(WIDGET_LUA_DISPATCH);
 #undef IR_BIND_SYS
     lua["IRSystem"]["SystemName"] = t;
 }
