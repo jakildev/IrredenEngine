@@ -77,9 +77,9 @@ using IRMath::vec4;
 
 namespace {
 
-// The visible reveal radius (taxicab) and the explored memory band sit just
-// outside it. `revealRadius` reveals a diamond of `kRevealRadius`; the band
-// occupies the next `kBandWidth` taxicab rings so the desaturate+darken
+// The visible reveal radius (Euclidean) and the explored memory band sit just
+// outside it. `revealRadius` reveals a circle of `kRevealRadius`; the band
+// occupies the next `kBandWidth` Euclidean rings so the desaturate+darken
 // explored shading appears as a ring immediately bordering the bright circle.
 constexpr int kRevealRadius = 18;
 constexpr int kBandWidth = 8;
@@ -123,7 +123,8 @@ void initSystems() {
     );
 
     IRSystem::registerPipeline(
-        IRTime::Events::INPUT, {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
+        IRTime::Events::INPUT,
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
     // The lighting passes feed the trixel textures that FOG_TO_TRIXEL then
@@ -227,19 +228,21 @@ void initEntities() {
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
-    // VISIBLE state: a reveal diamond around the origin. Everything inside
+    // VISIBLE state: a reveal circle around the origin. Everything inside
     // renders at full color.
     IRPrefab::Fog::revealRadius(0, 0, kRevealRadius);
 
-    // EXPLORED state: a "memory" band of cells in the taxicab rings just
-    // outside the visible diamond. revealRadius leaves these untouched, so
+    // EXPLORED state: a "memory" band of cells in the Euclidean rings just
+    // outside the visible circle. revealRadius leaves these untouched, so
     // setting them to kFogStateExplored produces the desaturate+darken band
     // the fog pass applies to remembered-but-not-visible terrain. Beyond the
     // band, cells stay kFogStateUnexplored (black) — the third state.
+    const int innerSq = kRevealRadius * kRevealRadius;
+    const int outerSq = (kRevealRadius + kBandWidth) * (kRevealRadius + kBandWidth);
     for (int wy = -(kRevealRadius + kBandWidth); wy <= kRevealRadius + kBandWidth; ++wy) {
         for (int wx = -(kRevealRadius + kBandWidth); wx <= kRevealRadius + kBandWidth; ++wx) {
-            const int taxicab = IRMath::abs(wx) + IRMath::abs(wy);
-            if (taxicab > kRevealRadius && taxicab <= kRevealRadius + kBandWidth) {
+            const int distSq = wx * wx + wy * wy;
+            if (distSq > innerSq && distSq <= outerSq) {
                 IRPrefab::Fog::setCell(wx, wy, IRComponents::kFogStateExplored);
             }
         }

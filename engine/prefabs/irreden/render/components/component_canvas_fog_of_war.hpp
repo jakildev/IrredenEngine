@@ -143,7 +143,7 @@ struct C_CanvasFogOfWar {
             allUnexplored_ = false;
     }
 
-    /// Mark every cell within `radius` (taxicab distance) of `(cx,cy)`
+    /// Mark every cell within `radius` (Euclidean distance) of `(cx,cy)`
     /// as visible. Cells previously visible but now outside the radius
     /// are NOT downgraded — that lifecycle belongs to the deferred
     /// `fadeExplored` pass, since downgrade requires knowing every
@@ -161,7 +161,7 @@ struct C_CanvasFogOfWar {
             for (int x = xMin; x <= xMax; ++x) {
                 const int dx = x - cx;
                 const int dy = y - cy;
-                if (std::abs(dx) + std::abs(dy) > radius)
+                if (dx * dx + dy * dy > radius * radius)
                     continue;
                 const std::size_t idx = flatIndex(x, y);
                 if (cpuBuffer_[idx] == kFogStateVisible)
