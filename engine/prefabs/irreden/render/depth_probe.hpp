@@ -122,25 +122,40 @@ inline void logCompositeDepth(IRMath::ivec2 px) {
         IR_LOG_INFO("[depth-probe] pixel=({},{}) out-of-range (no framebuffer pixel)", px.x, px.y);
         return;
     }
-    // Decode the integer composite enc into the #1958 two-tier partition so a
-    // debugger reads the depth ordering directly. enc <= kDepthForegroundCeil is a
-    // FOREGROUND-priority fragment (reserved near band); otherwise it is WORLD
-    // content encoded as iso*4 + face (subdivided). Without this split the
-    // partitioned enc reads as an opaque rawDist (the Finding-1-style mis-read the
-    // plan flagged). iso/face is the encodeDepthWithFace inverse; for the
-    // foreground tier `iso` is band-relative (tier= disambiguates).
+    // Decode the integer composite enc into the #1960 N-tier partition so a
+    // debugger reads the depth ordering directly. enc > kDepthForegroundCeil is
+    // WORLD content (tier 0), encoded as iso*4 + face; enc inside the reserved band
+    // is a FOREGROUND fragment whose disjoint sub-range names its priority tier
+    // (1..N-1). Without this split the partitioned enc reads as an opaque rawDist
+    // (the Finding-1-style mis-read the plan flagged). Reporting the numeric tier
+    // makes Demo 2's per-trixel `tier = max(entity, trixel)` headlessly
+    // ground-truthable at an interpenetration pixel (#1960 acceptance G). iso/face
+    // is the encodeDepthWithFace inverse, taken tier-center-relative for a
+    // foreground fragment so `iso` reads as the unit's local model-frame iso depth.
     const int enc = static_cast<int>(IRMath::roundHalfUp(sample.rawDist_));
-    const int face = ((enc % 4) + 4) % 4;
-    const int iso = (enc - face) / 4;
-    const bool foreground = enc <= IRRender::kDepthForegroundCeil;
+    int tier = 0;
+    if (enc <= IRRender::kDepthForegroundCeil) {
+        const int slot =
+            (enc - IRConstants::kTrixelDistanceMinDistance) / IRRender::kDepthForegroundTierWidth;
+        tier = IRMath::clamp(
+            IRRender::kDepthForegroundTierCount - 1 - slot,
+            1,
+            IRRender::kDepthForegroundTierCount - 1
+        );
+    }
+    const int encRel = tier == 0 ? enc : enc - IRRender::depthForegroundTierCenter(tier);
+    const int face = ((encRel % 4) + 4) % 4;
+    const int iso = (encRel - face) / 4;
     IR_LOG_INFO(
-        "[depth-probe] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} enc={} tier={} iso={} face={}",
+        "[depth-probe] pixel=({},{}) normDepth={:.6f} rawDist={:.1f} enc={} tier={} ({}) iso={} "
+        "face={}",
         sample.pixel_.x,
         sample.pixel_.y,
         sample.normDepth_,
         sample.rawDist_,
         enc,
-        foreground ? "foreground" : "world",
+        tier,
+        tier == 0 ? "world" : "foreground",
         iso,
         face
     );

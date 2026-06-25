@@ -150,7 +150,12 @@ kernel void c_voxel_to_trixel_stage_2(
 
     const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     const int2 canvasSize = frameData.canvasSizePixels;
-    const uint2 packedEntityId = entityIds[voxelIndex];
+    // Pack the per-voxel priority tier (low 2 bits of Voxel.reserved, #1960) into
+    // the top 2 bits of the stored entity id via the shared carrier chokepoint.
+    // Default reserved == 0 ⇒ id unchanged. Read by f_trixel_to_framebuffer as the
+    // per-trixel tier; masked off by every id reader (decodeEntityId).
+    const uint2 packedEntityId =
+        encodeEntityIdWithPriority(entityIds[voxelIndex], voxels[voxelIndex].reserved & 0x3u);
 
     // Re-voxelize marker — mirror of stage 1.
     const bool reVoxelize = frameData.visibleFaceIds.w != 0;

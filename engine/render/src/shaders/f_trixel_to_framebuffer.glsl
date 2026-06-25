@@ -80,27 +80,38 @@ void main() {
     // i.e. the byte-identical fast path.
     float depthScale = effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0) depthScale = 1.0;
-    int enc = int(round(float(rawDist) * depthScale)) + distanceOffset;
-    // Two-tier composite depth partition (#1958). The most-negative
-    // kDepthForegroundBandWidth codes of [kMin, kMax] are reserved for
-    // foreground-priority detached solids. More-negative enc = nearer (GL_LESS +
-    // normalizeDistance), so this near slice is the priority partition.
-    // - depthPriorityMode != 0 (a world-placed C_EntityCanvas with depthPriority_
-    //   set): pin the canvas's model-frame local iso-depth INTO the band so it is
-    //   unconditionally nearer than any world fragment regardless of world extent.
-    //   Clamping the band edges makes a pathologically deep solid saturate
-    //   (graceful degradation) instead of escaping into the world range.
-    // - depthPriorityMode == 0 (the main world gather + every non-priority
-    //   composite): clamp world content OUT of the band. A no-op for all in-budget
-    //   content (enc >> foregroundCeil), so the cardinal fast path is
-    //   byte-identical; far world content saturates against the boundary (loses
-    //   depth resolution) rather than letting a background fragment beat a
-    //   priority solid.
+    int base = int(round(float(rawDist) * depthScale));
+    // Per-trixel priority tiers (#1960; generalizes #1958's two-tier partition).
+    // Read this fragment's stored entity id once — its top 2 bits carry the
+    // per-trixel priority, and the SAME sample feeds the hover read below (one
+    // texture fetch, decoded via the shared chokepoint so neither use sees the
+    // carrier bits as part of the id).
+    uvec2 rawEntityId = textureLod(triangleEntityIds, origin / vec2(textureSize), 0).rg;
+    // Resolve the tier: the higher of this draw's per-entity tier
+    // (depthPriorityMode, #1958's C_EntityCanvas::depthPriority_) and the per-voxel
+    // tier authored into the id carrier. Default 0 everywhere ⇒ world.
+    int tier = max(depthPriorityMode, int(decodePriority(rawEntityId)));
     int foregroundCeil = kMinTriangleDistance + kDepthForegroundBandWidth;
-    if (depthPriorityMode != 0) {
-        enc = clamp(enc, kMinTriangleDistance, foregroundCeil);
+    int enc;
+    if (tier == 0) {
+        // World content: clamp OUT of the reserved near band. A no-op for every
+        // in-budget fragment (base + distanceOffset >> foregroundCeil), so the
+        // cardinal fast path stays byte-identical to #1958 master; far world
+        // content saturates against the boundary rather than letting a background
+        // fragment beat a priority solid.
+        enc = max(base + distanceOffset, foregroundCeil + 1);
     } else {
-        enc = max(enc, foregroundCeil + 1);
+        // Foreground tier: center this fragment's model-frame local iso-depth in
+        // the resolved tier and pin it into the tier's disjoint sub-range. A
+        // higher tier is a strictly more-negative (nearer) sub-range, so it wins
+        // unconditionally against every lower tier and all world content,
+        // independent of world extent. A pathologically deep solid saturates
+        // against its tier edge (graceful degradation) instead of escaping. The
+        // per-draw distanceOffset (world placement) is intentionally dropped here
+        // — priority OVERRIDES world depth ordering.
+        enc = clamp(base + depthForegroundTierCenter(kMinTriangleDistance, tier),
+                    depthForegroundTierLo(kMinTriangleDistance, tier),
+                    depthForegroundTierHi(kMinTriangleDistance, tier));
     }
     float depth = normalizeDistance(enc);
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
@@ -116,7 +127,10 @@ void main() {
     bool isMouseHovered = all(equal(hoveredIndex, originIndex));
     if (isMouseHovered) {
         if (color.a >= 0.1 && depth <= hoveredDepth) {
-            uvec2 entityId = textureLod(triangleEntityIds, origin / vec2(textureSize), 0).rg;
+            // Strip the per-trixel priority carrier so a prioritized fragment
+            // reports its true picked id (#1960 masking-trap discipline). Reuses
+            // the sample taken above for the tier resolve.
+            uvec2 entityId = decodeEntityId(rawEntityId);
             if (entityId != uvec2(0u)) {
                 hoveredEntityId = entityId;
                 hoveredDepth = depth;

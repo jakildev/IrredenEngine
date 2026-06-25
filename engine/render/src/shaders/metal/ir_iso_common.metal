@@ -123,6 +123,42 @@ inline int encodeDepthWithFace(int rawDepth, int face) {
 // and the GLSL twin (ir_iso_common.glsl).
 constant int kDepthForegroundBandWidth = 16384;
 
+// Per-trixel priority tiers (#1960) — twin of ir_iso_common.glsl. Subdivide the
+// reserved foreground band into N-1 disjoint equal-width tiers; tier 0 = world
+// (out of band). MORE-negative = higher priority (tier N-1 at the near band edge).
+// trixel_to_framebuffer selects tier = max(perEntityTier, perTrixelTier). Default
+// tier 0 ⇒ byte-identical. Mirror IRRender::kDepthForegroundTier* + the GLSL twin.
+constant int kDepthForegroundTierCount = 3;
+constant int kDepthForegroundTierWidth = kDepthForegroundBandWidth / (kDepthForegroundTierCount - 1);
+inline int depthForegroundTierLo(int kMin, int tier) {
+    return kMin + (kDepthForegroundTierCount - 1 - tier) * kDepthForegroundTierWidth;
+}
+inline int depthForegroundTierHi(int kMin, int tier) {
+    return depthForegroundTierLo(kMin, tier) + kDepthForegroundTierWidth - 1;
+}
+inline int depthForegroundTierCenter(int kMin, int tier) {
+    return depthForegroundTierLo(kMin, tier) + kDepthForegroundTierWidth / 2;
+}
+
+// Per-trixel priority carrier (#1960) — twin of ir_iso_common.glsl. The per-trixel
+// tier rides the top K=2 bits of the 64-bit entity id stored in triangleEntityIds
+// (uint2: .x = low word, .y = high word; carrier = bits 30..31 of the high word).
+// THE chokepoint: every reader masks via decodeEntityId, the stage-2 writer packs
+// via encodeEntityIdWithPriority. Priority 0 ⇒ id unchanged.
+constant uint kEntityIdPriorityShiftInHighWord = 30u;
+constant uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftInHighWord;
+constant uint kEntityIdHighWordMask = ~kEntityIdPriorityMaskInHighWord;
+inline uint decodePriority(uint2 rawId) {
+    return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
+}
+inline uint2 decodeEntityId(uint2 rawId) {
+    return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
+}
+inline uint2 encodeEntityIdWithPriority(uint2 id, uint priority) {
+    return uint2(id.x, (id.y & kEntityIdHighWordMask) |
+                           ((priority & 0x3u) << kEntityIdPriorityShiftInHighWord));
+}
+
 // Per-axis fractional encoding (#1458): (depth << 10) | (uFrac4 << 6) | (vFrac4 << 2) | slot
 // uFrac4/vFrac4 in 0..15 where 8 = cell centre (fracInCell=0). atomicMin orders by depth first.
 // Per-axis canvases clear to INT_MAX (0x7FFFFFFF) so any valid encoding overwrites the sentinel.

@@ -117,18 +117,30 @@ fragment FragmentOut f_trixel_to_framebuffer(
     // (the byte-identical world/overlay fast path).
     float depthScale = frameData.effectiveSubdivisionsForHover.y;
     if (depthScale <= 0.0f) depthScale = 1.0f;
-    int enc = int(round(float(rawDist) * depthScale)) + frameData.distanceOffset;
-    // Two-tier composite depth partition (#1958) — twin of f_trixel_to_framebuffer.glsl.
-    // The most-negative kDepthForegroundBandWidth codes of [kMin, kMax] are
-    // reserved for foreground-priority detached solids (more-negative enc =
-    // nearer). depthPriorityMode != 0 pins this draw's local iso-depth INTO the
-    // band (clamped to its edges); otherwise world content is clamped OUT of it
-    // (a no-op for all in-budget content → byte-identical fast path).
-    int foregroundCeil = globals.kMinTriangleDistance + kDepthForegroundBandWidth;
-    if (frameData.depthPriorityMode != 0) {
-        enc = clamp(enc, globals.kMinTriangleDistance, foregroundCeil);
+    int base = int(round(float(rawDist) * depthScale));
+    // Per-trixel priority tiers (#1960) — twin of f_trixel_to_framebuffer.glsl.
+    // Read this fragment's entity id at the SAME texel its color/depth came from
+    // (sampleCoord, the raw position — the hover read below uses the shifted
+    // hoverCoord and is left untouched). The id's top 2 bits carry the per-trixel
+    // priority.
+    const uint2 sampleEntityId = triangleEntityIds.read(sampleCoord).rg;
+    const int tier =
+        max(frameData.depthPriorityMode, int(decodePriority(sampleEntityId)));
+    const int foregroundCeil = globals.kMinTriangleDistance + kDepthForegroundBandWidth;
+    int enc;
+    if (tier == 0) {
+        // World content: clamp OUT of the reserved band (no-op for in-budget
+        // content → byte-identical to #1958 master).
+        enc = max(base + frameData.distanceOffset, foregroundCeil + 1);
     } else {
-        enc = max(enc, foregroundCeil + 1);
+        // Foreground tier: center the model-frame local iso-depth in the resolved
+        // tier and pin into its disjoint sub-range (more-negative = nearer, so a
+        // higher tier wins unconditionally; saturates gracefully on overflow). The
+        // per-draw distanceOffset (world placement) is dropped — priority overrides
+        // world depth ordering.
+        enc = clamp(base + depthForegroundTierCenter(globals.kMinTriangleDistance, tier),
+                    depthForegroundTierLo(globals.kMinTriangleDistance, tier),
+                    depthForegroundTierHi(globals.kMinTriangleDistance, tier));
     }
     float depth = normalizeDistance(enc, globals);
 
@@ -142,7 +154,11 @@ fragment FragmentOut f_trixel_to_framebuffer(
     const bool isMouseHovered = all(hoveredIndex == originIndex);
     if (isMouseHovered) {
         if (color.a >= 0.1f && depth <= hovered.hoveredDepth) {
-            const uint2 entityId = triangleEntityIds.read(hoverCoord).rg;
+            // Strip the per-trixel priority carrier so picking reports the true id
+            // (#1960). The hover read uses the shifted hoverCoord (kept in lockstep
+            // with CPU mouseTrixelPositionWorld), distinct from the sampleCoord
+            // tier read above.
+            const uint2 entityId = decodeEntityId(triangleEntityIds.read(hoverCoord).rg);
             if (any(entityId != uint2(0u))) {
                 hovered.hoveredEntityId = entityId;
                 hovered.hoveredDepth = depth;

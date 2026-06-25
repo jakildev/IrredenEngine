@@ -247,6 +247,18 @@ struct C_VoxelPool {
             count,
             m_voxelEntities.size()
         );
+        // The per-trixel priority carrier (#1960) steals the top 2 bits of the
+        // stored 64-bit id (IRRender::kEntityIdPriorityShift). A live id that sets
+        // them would be decoded as a non-zero priority AND a corrupted picked id —
+        // guard the invariant once per set (entity ids are allocation counters that
+        // never approach 2^62). Debug-only; compiled out in release.
+        IR_ASSERT(
+            (entityId >> IRRender::kEntityIdPriorityShift) == 0,
+            "entity id {} sets the per-trixel priority carrier bits "
+            "(must stay below 2^{})",
+            entityId,
+            IRRender::kEntityIdPriorityShift
+        );
         std::fill(
             m_voxelEntities.begin() + startIdx,
             m_voxelEntities.begin() + startIdx + count,

@@ -200,8 +200,10 @@ IREntity::EntityId getEntityIdAtMouseTrixel() {
     uvec2 packed;
     std::memcpy(&packed, mappedPtr, sizeof(uvec2));
 
-    return static_cast<IREntity::EntityId>(packed.x) |
-           (static_cast<IREntity::EntityId>(packed.y) << 32);
+    // Strip the per-trixel priority carrier (top 2 bits of the high word, #1960)
+    // before reconstructing the 64-bit id — THE chokepoint so a prioritized
+    // fragment never reports a corrupted picked id.
+    return static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed));
 }
 
 void setCameraZoom(float zoom) {
