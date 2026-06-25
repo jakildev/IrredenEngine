@@ -414,6 +414,11 @@ def fetch_task_queue(repo_slug):
         if "fleet:needs-human" in labels:
             continue
 
+        # fleet:plan-review marks tasks whose plan is posted and awaiting
+        # human/architect approval — not yet pickable by autonomous workers.
+        if "fleet:plan-review" in labels:
+            continue
+
         in_progress = "fleet:in-progress" in labels or owner != "free"
         status = "~" if in_progress else " "
 
@@ -792,6 +797,12 @@ REVIEW_SKIP_LABELS = frozenset({
     # question is queued on the umbrella for the human/architect; reviewing
     # the in-flux diff is wasted work until design-unblock clears it (#1664).
     "fleet:design-proposed",
+    # A PR whose verdict was deferred to a follow-up issue, or that requires
+    # manual human action. Re-reviewing would re-flag needs-fix indefinitely;
+    # skip until the human acts and the label is cleared. Note: the merger's
+    # _merger_action_signal does NOT skip fleet:human-deferred (an approved
+    # deferred PR is still mergeable) — this skip is reviewer-only.
+    "fleet:human-deferred", "fleet:needs-human",
 })
 # Dynamic per-host claim prefixes that also bar reviewer pickup. A worker
 # amending a fleet:needs-fix PR holds fleet:amending-<host>-<agent> (minted

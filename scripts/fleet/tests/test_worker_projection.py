@@ -23,8 +23,10 @@ against that one projector.
 """
 import importlib.machinery
 import importlib.util
+import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _SCRIPT = Path(__file__).parent.parent / "fleet-state-scout"
 _loader = importlib.machinery.SourceFileLoader("fleet_state_scout", str(_SCRIPT))
@@ -282,6 +284,91 @@ class AmendingClaimBarsReviewerPickup(unittest.TestCase):
     def test_plain_needs_fix_unaffected(self):
         # No amend claim -> opus-reviewer still sees the flagged PR.
         self.assertEqual(len(self._opus([_pr(101, labels=["fleet:needs-fix"])])), 1)
+
+
+class HumanDeferredDropsFromReviewers(unittest.TestCase):
+    """fleet:human-deferred and fleet:needs-human PRs must not surface in
+    reviewer projections (#1996 Gap 2).
+
+    Without fleet:human-deferred in REVIEW_SKIP_LABELS, a no-verdict deferred
+    PR re-enters the sonnet-reviewer pool, gets re-flagged fleet:needs-fix,
+    and the worker re-escalates back to fleet:human-deferred indefinitely.
+    """
+
+    def _sonnet(self, prs):
+        return project_sonnet_reviewer(_state(prs))
+
+    def _opus(self, prs):
+        return project_opus_reviewer(_state(prs))
+
+    def test_human_deferred_drops_from_sonnet_reviewer(self):
+        result = self._sonnet([_pr(101, labels=["fleet:human-deferred"])])
+        self.assertEqual(result, [])
+
+    def test_human_deferred_drops_from_opus_reviewer(self):
+        result = self._opus([_pr(101, labels=[
+            "fleet:needs-fix", "fleet:human-deferred",
+        ])])
+        self.assertEqual(result, [])
+
+    def test_needs_human_drops_from_sonnet_reviewer(self):
+        result = self._sonnet([_pr(101, labels=["fleet:needs-human"])])
+        self.assertEqual(result, [])
+
+    def test_needs_human_drops_from_opus_reviewer(self):
+        result = self._opus([_pr(101, labels=[
+            "fleet:needs-fix", "fleet:needs-human",
+        ])])
+        self.assertEqual(result, [])
+
+    def test_plain_pr_without_defer_still_reviewed(self):
+        # Regression: PRs without a skip label still surface normally.
+        result = self._sonnet([_pr(101, labels=["fleet:changes-made"])])
+        self.assertEqual(len(result), 1)
+
+
+class PlanReviewExcludedFromTasksOpen(unittest.TestCase):
+    """fetch_task_queue must skip fleet:plan-review issues so they don't
+    appear in tasks.open[] as pickable by autonomous workers (#1996 Gap 1).
+
+    A plan-review task has its plan posted and awaits human/architect
+    approval — it must not trigger an autonomous dispatch that immediately
+    no-ops because the issue isn't claimable.
+    """
+
+    def _fetch(self, issues_list):
+        payload = json.dumps(issues_list)
+        with patch.object(_mod, "run_capture", return_value=payload):
+            return _mod.fetch_task_queue("jakildev/IrredenEngine")
+
+    def _issue(self, number, extra_labels=()):
+        return {
+            "number": number,
+            "title": f"task #{number}",
+            "labels": [
+                {"name": "fleet:queued"},
+                {"name": "fleet:sonnet"},
+                {"name": "human:approved"},
+            ] + [{"name": l} for l in extra_labels],
+            "body": "**Model:** sonnet\n",
+        }
+
+    def test_plan_review_task_not_in_open(self):
+        result = self._fetch([self._issue(42, extra_labels=["fleet:plan-review"])])
+        self.assertEqual(result["open"], [],
+                         "fleet:plan-review task must not enter tasks.open[]")
+        self.assertEqual(result["in_progress"], [])
+
+    def test_needs_human_task_still_excluded(self):
+        # Regression: existing fleet:needs-human skip must still work.
+        result = self._fetch([self._issue(99, extra_labels=["fleet:needs-human"])])
+        self.assertEqual(result["open"], [])
+
+    def test_normal_task_still_enters_open(self):
+        # Regression: ordinary sonnet task with no skip labels still projects.
+        result = self._fetch([self._issue(55)])
+        self.assertEqual(len(result["open"]), 1)
+        self.assertEqual(result["open"][0]["id"], "#55")
 
 
 if __name__ == "__main__":
