@@ -93,7 +93,7 @@ Metal GPU-stage snapshot from the final frame:
 | `computeLightVolume` | 0.000 ms | 0.000 ms |
 | `lightingToTrixel` | 0.050 ms | 0.082 ms |
 | `trixelToFb` | 0.123 ms | 0.125 ms |
-| `screenSpaceResidualRotate` | 0.155 ms | 0.176 ms |
+| `resolvePerAxisScreenDepth` | 0.155 ms | 0.176 ms |
 
 `ComputeLightVolume` CPU phase breakdown:
 

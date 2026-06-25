@@ -35,7 +35,7 @@ struct GpuStageTiming {
     float trixelToTrixelMs_ = 0.0f;
     float trixelToFbMs_ = 0.0f;
     float entityCanvasToFbMs_ = 0.0f;
-    float screenSpaceResidualRotateMs_ = 0.0f;
+    float resolvePerAxisScreenDepthMs_ = 0.0f;
     float fbToScreenMs_ = 0.0f;
     std::uint32_t visibleShapeCount_ = 0;
     std::uint32_t shapeGroupsZ_ = 0;
@@ -227,7 +227,7 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"trixelToTrixel", &GpuStageTiming::trixelToTrixelMs_, 0.05f},
         {"trixelToFb", &GpuStageTiming::trixelToFbMs_, 0.15f},
         {"entityCanvasToFb", &GpuStageTiming::entityCanvasToFbMs_, 0.05f},
-        {"screenSpaceResidualRotate", &GpuStageTiming::screenSpaceResidualRotateMs_, 0.05f},
+        {"resolvePerAxisScreenDepth", &GpuStageTiming::resolvePerAxisScreenDepthMs_, 0.05f},
         {"fbToScreen", &GpuStageTiming::fbToScreenMs_, 0.05f},
     }};
     return registry;
