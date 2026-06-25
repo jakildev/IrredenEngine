@@ -143,7 +143,7 @@ struct C_CanvasFogOfWar {
             allUnexplored_ = false;
     }
 
-    /// Mark every cell within `radius` (taxicab distance) of `(cx,cy)`
+    /// Mark every cell within `radius` (Euclidean distance) of `(cx,cy)`
     /// as visible. Cells previously visible but now outside the radius
     /// are NOT downgraded — that lifecycle belongs to the deferred
     /// `fadeExplored` pass, since downgrade requires knowing every
@@ -157,11 +157,20 @@ struct C_CanvasFogOfWar {
         const int xMax = std::min(cx + radius, kFogOfWarHalfExtent - 1);
         const int yMin = std::max(cy - radius, -kFogOfWarHalfExtent);
         const int yMax = std::min(cy + radius, kFogOfWarHalfExtent - 1);
+        // The loop bounds already clamp iteration to the grid, so a radius
+        // spanning more than the full grid extent reveals every in-bounds
+        // cell regardless. Clamp before squaring so `radius * radius` can't
+        // overflow int (UB above ~46340) for absurd inputs — `2 *
+        // kFogOfWarSize` exceeds the largest squared cell distance any
+        // in-bounds center can produce, so every in-range call stays
+        // byte-identical, and the multiply is hoisted out of the inner loop.
+        const int radiusClamped = IRMath::min(radius, 2 * kFogOfWarSize);
+        const int radiusSq = radiusClamped * radiusClamped;
         for (int y = yMin; y <= yMax; ++y) {
             for (int x = xMin; x <= xMax; ++x) {
                 const int dx = x - cx;
                 const int dy = y - cy;
-                if (std::abs(dx) + std::abs(dy) > radius)
+                if (dx * dx + dy * dy > radiusSq)
                     continue;
                 const std::size_t idx = flatIndex(x, y);
                 if (cpuBuffer_[idx] == kFogStateVisible)
