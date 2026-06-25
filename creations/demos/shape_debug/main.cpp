@@ -910,7 +910,7 @@ EntityId createCustomVoxelFigure(vec3 position, Color color) {
         if (box(x, -2, 2) && box(y, -1, 1) && box(z, -3, 4))
             return true; // torso
         if (box(x, -1, 1) && box(y, -1, 1) && box(z, 5, 7))
-            return true; // head (neck via z=4..5 torso top)
+            return true; // head (adjacent to torso top at z=4)
         if (box(x, 3, 5) && box(y, 0, 1) && box(z, 1, 2))
             return true;               // right arm (box appendage)
         for (int s = 0; s <= 3; ++s) { // left arm (raised staircase)
