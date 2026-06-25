@@ -28,6 +28,32 @@ RENDER) so each stage sees the state relevant to its tick.
   calls assert if `beginSyntheticInput()` was not called first. Design:
   [`docs/design/gui-mouse-harness.md`](../../docs/design/gui-mouse-harness.md) §"Phase 1".
 
+#### Lua surface for synthetic input (#1981)
+
+`LuaScript::bindLuaInput()` (in `engine/script/include/irreden/script/lua_input_bindings.hpp`)
+exposes the synthetic-input API to Lua alongside two new enum tables:
+
+```lua
+-- Full C++ enum names for injectButton's button argument.
+-- Distinct from IRInput.Key (short-names); both map the same enum integers.
+IRInput.KeyMouseButtons.kKeyButtonSpace   -- == IRInput.Key.SPACE
+IRInput.KeyMouseButtons.kMouseButtonLeft
+
+-- Plural form, same ordinals as IRInput.ButtonStatus.
+IRInput.ButtonStatuses.NOT_HELD
+IRInput.ButtonStatuses.PRESSED
+
+IRInput.beginSyntheticInput()
+IRInput.isSyntheticInputActive()          -- → bool
+IRInput.injectButton(button, status)      -- integers from the tables above
+IRInput.injectMouseMove(x, y)            -- screen pixels
+IRInput.injectScroll(dx, dy)
+```
+
+`bindLuaInput()` is idempotent and extends the `IRInput` table created by
+`bindLuaCommands()` — call both. Acceptance test:
+`test/script/lua_input_bindings_test.cpp`.
+
 ### Gamepad
 
 - `checkGamepadButton(button, status, irGamepadId = 0)` — is this gamepad button in

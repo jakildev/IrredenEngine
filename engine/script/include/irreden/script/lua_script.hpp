@@ -56,6 +56,14 @@ class LuaScript {
     // for the surface contract.
     void bindLuaCommands();
 
+    // Bind the synthetic-input surface — IRInput.KeyMouseButtons,
+    // IRInput.ButtonStatuses, and IRInput.{beginSyntheticInput,
+    // isSyntheticInputActive, injectButton, injectMouseMove, injectScroll}.
+    // Idempotent. Extends the IRInput table without displacing the short-name
+    // tables populated by bindLuaCommands(). Used by behavior-smoke tests and
+    // headless harnesses. See engine/input/CLAUDE.md "Synthetic input".
+    void bindLuaInput();
+
     // Set the creation-default mode used by
     // `IRSystem.registerSystem({...})` when the call has no explicit
     // `mode = "..."` field. Mirrors the build-time
