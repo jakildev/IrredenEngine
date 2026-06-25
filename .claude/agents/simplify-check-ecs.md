@@ -22,7 +22,7 @@ For each `.hpp`/`.cpp` file in the diff, scan for:
 
 3. **Mid-iteration structural changes:** `createEntity`, `setComponent`, `removeComponent`, `removeEntity` called inside a per-entity tick. Use the deferred variants (`deferredCreate`, etc.) and let `flushStructuralChanges` run.
 
-4. **New prefab system without `SystemName` enum entry.** A new `template <> struct IRSystem::System<X>` requires `X` in `engine/system/include/irreden/ir_system_types.hpp`. Missing → linker error.
+4. **New prefab system without `SystemName` enum entry.** A new `template <> struct IRSystem::System<X>` requires `X` in `engine/system/include/irreden/ir_system_types.hpp`. Missing → linker error. Also flag any **added** `SystemName` enum entry whose first token is `SYSTEM_` (e.g. `SYSTEM_FOO`): entries are action-first with no `SYSTEM_` prefix (`DISPATCH_LUA_OVERLAP`, not `SYSTEM_DISPATCH_LUA_OVERLAP`) — every existing entry follows this. `nit`.
 
 5. **Component method tier-c violations.** A component method that calls `IREntity::getComponent`, `setComponent`, `createEntity`, `setParent`, or `getEntity` on a *different* entity. Allowed exceptions are listed in `cpp-ecs.md` (GPU resource RAII, `onDestroy()` IO cleanup, constructor snapshots ambient state) — don't flag those.
 

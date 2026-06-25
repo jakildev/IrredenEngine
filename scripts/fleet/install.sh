@@ -128,6 +128,19 @@ if [[ ! -f "$REPO_ROOT/.claude/commands/role-opus-architect.md" ]]; then
     exit 1
 fi
 
+# ----------------------------------------------------------------------
+# Tool registry — each fleet tool needs THREE coordinated edits below, or
+# its ~/bin symlink is silently never created (install reports success;
+# the tool only fails "command not found" later, when something invokes it):
+#   1. a `<NAME>_SRC` / `<NAME>_DEST` var pair here,
+#   2. `<NAME>_SRC` added to the chmod loop ("Ensure the sources are
+#      executable" below), and
+#   3. a matching `if [[ -f "$<NAME>_SRC" ]]; then ln -sf ... fi` install
+#      block under "Step 1: symlink fleet scripts".
+# Forgetting (3) — it lives ~100 lines below the var pair — is the easy
+# miss (PR #1990: FLEET_PLAN_LINT defined + chmod'd but never symlinked).
+# Keep all three in sync when adding or removing a tool.
+# ----------------------------------------------------------------------
 FLEET_UP_SRC="$SCRIPT_DIR/fleet-up"
 FLEET_UP_DEST="$HOME/bin/fleet-up"
 FLEET_DOWN_SRC="$SCRIPT_DIR/fleet-down"

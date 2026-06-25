@@ -45,6 +45,11 @@ In any system `tick` function:
   `engine/system/include/irreden/system/ir_system_types.hpp`. Fix: add a
   `SCREAMING_SNAKE_CASE` entry under the appropriate group comment.
 
+- **`SystemName` entry carries a `SYSTEM_` prefix.** Entries are action-first
+  with no `SYSTEM_` prefix (`DISPATCH_LUA_OVERLAP`, not
+  `SYSTEM_DISPATCH_LUA_OVERLAP`) — every existing entry follows this shape.
+  A new enum line whose first token is `SYSTEM_` is the smell.
+
 ## Tick-function signatures
 
 - **`functionBeginTick` / `functionEndTick` with `Archetype&` or component

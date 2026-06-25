@@ -5,7 +5,8 @@ description: >-
   them to `docs/pr-screenshots/<branch>/` so the PR body can embed them
   via raw GitHub URLs. Runs an auto-screenshot-capable demo (default
   `IRShapeDebug`) once against origin/master and once against the dirty
-  working tree, pairs the outputs by shot label, and prints a markdown
+  working tree — or, in `--two-ref` mode, between two committed refs for the
+  feedback-AMEND path — pairs the outputs by shot label, and prints a markdown
   snippet the worker pastes into the PR body. Invoke when a PR touches
   `engine/render/`, `engine/prefabs/irreden/render/`, any `.glsl`/`.metal`
   shader, or `creations/demos/*/src/`, so reviewers can see the visual
@@ -39,9 +40,12 @@ negatives cost reviewer clarity — prefer asking.
 
 ## Preconditions
 
-1. **Dirty working tree** reflecting the PR's code change. The "before"
-   capture stashes this to roll back to `origin/master`. If the tree is
-   clean, stop — there is no "before vs after" to capture.
+1. **A capturable delta** — *either* a **dirty working tree** reflecting the
+   PR's code change (default mode: the "before" capture stashes it to roll
+   back to `origin/master`), *or* two distinct **committed refs** passed to
+   `--two-ref` (see "Two-ref mode" below — the feedback-AMEND path, where the
+   change is already committed on a clean detached HEAD). In default mode a
+   clean tree means stop — there is no "before vs after" to capture.
 2. **Build host with a usable display.** WSLg (Windows 11), native
    Linux with X/Wayland, or native macOS all work. Headless hosts
    cannot capture GLFW screenshots — the skill reports and exits.
@@ -328,6 +332,58 @@ attach-screenshots: <demo-name> (<N> shots)
   markdown snippet printed above — paste into PR body
 ```
 
+## Two-ref mode (feedback-AMEND)
+
+The default flow assumes the PR change is **uncommitted** (the authoring flow:
+dirty tree = "after", stashed-away `origin/master` = "before"). The
+**feedback-AMEND** path is different — the change is already committed and the
+worker is on a clean **detached HEAD** (`fleet-pr-claim-feedback` /
+`fleet-pr-checkout-detached`), so there is no dirty tree to stash and the
+default flow exits at Precondition #1 / step 5. The "attach a screenshot pair"
+nit is a common render-PR nit *and* render PRs routinely finish via
+feedback-AMEND, so this path is first-class.
+
+Invoke explicitly:
+
+```bash
+attach-screenshots --two-ref [<before-ref>] [<after-ref>]
+```
+
+`<before-ref>` defaults to `origin/master`; `<after-ref>` defaults to the
+current `HEAD` (the detached PR-head commit). The mode runs the same
+build → run → pair → stage → snippet flow as steps 1–9, with these deltas:
+
+- **Capture refs up front, no stash.** Record `RETURN=$(git rev-parse HEAD)`
+  (the detached PR-head, to land back on) and resolve `AFTER` (`<after-ref>`,
+  default `$RETURN`) **before** any checkout. The tree is clean, so the whole
+  `git stash` dance — and the shared-`refs/stash` cross-worktree race it
+  guards against — is **skipped**.
+- **Step 1 (dir name).** On a detached HEAD `git rev-parse --abbrev-ref HEAD`
+  returns `HEAD`. Resolve the `docs/pr-screenshots/<DIR>/` name from the PR's
+  head ref instead (the feedback context records it) — never write under a
+  `HEAD/` directory.
+- **Step 5 (before).** `git checkout --detach <before-ref>` instead of
+  stash+detach; build, run, move PNGs to `<label>-before.png`.
+- **Step 6 (after).** `git checkout --detach "$AFTER"` instead of restoring a
+  stash; build, run, move PNGs to `<label>-after.png`.
+- **Restore.** `git checkout --detach "$RETURN"` to return to the PR-head the
+  feedback flow left you on. No `stash apply` / `drop`.
+- **Step 7 (stage).** PNGs are new untracked files — `git add` them as usual.
+  In feedback-AMEND the worker folds them into the amend commit (the AMEND
+  flow), not a fresh `commit-and-push`.
+
+If `<before-ref>` and `<after-ref>` resolve to the same commit, stop — there
+is no delta to capture.
+
+### Camera-yaw fixes need a non-cardinal shot
+
+The default `g_shots` cardinal sequence is **byte-identical before/after for
+yaw-only render fixes** — the delta only shows at non-cardinal camera yaw
+(e.g. 45°/30°). For a PR in the camera-yaw family, capture at a non-cardinal
+yaw (a demo yaw flag / yaw-sweep shot); a cardinal-only suite understates the
+change and reads as "no visual delta" (this compounded #1953: 8 of 10 base
+shots were identical — only the 45°/30° shots showed the fix).
+
 ## Failure modes
 
 Handle each cleanly — no partial commits, no orphan PNGs, no left-
@@ -335,7 +391,7 @@ over stash:
 
 | Failure                                | Response                                                                                               |
 |----------------------------------------|--------------------------------------------------------------------------------------------------------|
-| Clean working tree                     | Stop with `nothing to capture — tree is clean`. No stash, no capture.                                  |
+| Clean working tree (default mode)      | Stop with `nothing to capture — tree is clean`. No stash, no capture. (In `--two-ref` mode a clean tree is expected — the delta is the two refs.) |
 | On `master`/`main`                     | Refuse to run.                                                                                         |
 | Chosen demo lacks `--auto-screenshot`  | Report the gap; exit without capturing.                                                                |
 | `fleet-build` fails in either pass     | Restore stash if mid-before-pass, report the build error, exit. No PNGs staged.                        |
@@ -379,7 +435,8 @@ What this skill does:
 
 - Engine-demo support (default `IRShapeDebug`).
 - Single-demo capture per invocation.
-- Stash/run/restore flow against `origin/master`.
+- Stash/run/restore flow against `origin/master` (default), or a
+  checkout-based two-ref flow for the feedback-AMEND path (`--two-ref`).
 
 What this skill does **not** do:
 
