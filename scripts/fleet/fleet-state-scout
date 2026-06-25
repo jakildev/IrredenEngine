@@ -31,6 +31,20 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+# Force UTF-8 Mode when this script is invoked directly on native-Windows
+# (cp1252 default) outside a fleet-up session. fleet-up's `export PYTHONUTF8`
+# already covers the daemon launch (and child processes inherit it), and
+# Linux/macOS default to UTF-8 text mode — so this only matters for a manual
+# `fleet-state-scout` run on Windows, where cp1252 would throw UnicodeDecodeError
+# decoding UTF-8 gh/git output (issue titles, emoji). UTF-8 Mode is fixed at
+# interpreter startup, so setting os.environ here is too late; re-exec once with
+# it set. The truthiness guard mirrors the bash `${PYTHONUTF8:-1}` idiom — force
+# UTF-8 when unset/empty, but respect an explicit PYTHONUTF8=0 opt-out (and skip
+# the re-exec when already "1"). See fleet-up.
+if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
+    os.environ["PYTHONUTF8"] = "1"
+    os.execv(sys.executable, [sys.executable, *sys.argv])
+
 # Shared branch<->issue matcher, also imported by fleet-claim's inline
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests (#1425).
