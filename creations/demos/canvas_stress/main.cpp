@@ -124,11 +124,12 @@ struct CanvasStressSettings {
     bool screenLockDetached_ = false;
     // #1721 diagnosis harness. `--only <group>[,<group>...]` spawns only the
     // named entity groups (maingrid, gridspin, canary, revox, orbit, floor);
-    // 0 means no filter (default run, byte-identical). The unified-rotation
-    // comparison region (#1374) is the one OPT-IN group: "compare" spawns it
-    // (e.g. `--only compare` for the isolated labeled side-by-side) and it never
-    // appears in the default run. The sweep flags replace
-    // the base auto-screenshot suite with a focused capture run and force
+    // 0 means no filter (default run, byte-identical). Two OPT-IN groups never
+    // appear in the default run: "compare" (the #1374 unified-rotation labeled
+    // side-by-side) and "interpenetrate" (the #1960 per-trixel-priority depth
+    // override — `--only interpenetrate` isolates two static detached units, the
+    // far one tagged a per-trixel tier so it renders in front of the near one). The sweep flags
+    // replace the base auto-screenshot suite with a focused capture run and force
     // --no-auto-rotate so the swept variable is the only one moving:
     // `--sweep-yaw <from> <to> <n>` interpolates camera yaw (radians) across n
     // shots (brackets a rebracket threshold, e.g. 0.6→0.95 across π/4);
@@ -194,6 +195,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupOrbit = 1u << 4,
     kGroupFloor = 1u << 5,
     kGroupCompare = 1u << 6,
+    kGroupInterpenetrate = 1u << 7,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -342,6 +344,15 @@ bool compareGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupCompare) != 0u;
 }
 
+// The per-trixel-priority interpenetration demo (#1960) is OPT-IN only — like
+// `compare`, it never spawns in the default scene, so every existing manifest
+// shot stays byte-identical. `--only interpenetrate` also gates every other
+// group off (groupEnabled() is false for the unselected bits), isolating the
+// two-cube scene.
+bool interpenetrateGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupInterpenetrate) != 0u;
+}
+
 std::uint32_t parseSpawnGroups(const char *arg) {
     struct GroupName {
         const char *name_;
@@ -355,6 +366,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"orbit", kGroupOrbit},
         {"floor", kGroupFloor},
         {"compare", kGroupCompare},
+        {"interpenetrate", kGroupInterpenetrate},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -693,6 +705,68 @@ void spawnOrbitShape(
         C_RotationMode{mode},
         C_AutoSpin{spinAxis, spinRate},
         canvas
+    );
+}
+
+// One STATIC world-placed DETACHED unit for the #1960 interpenetration demo: a
+// per-entity canvas + private 10³ voxel cube, NO per-entity depth priority
+// (depthPriority_ = 0) so the demo isolates the per-TRIXEL carrier, optionally
+// tagged with a per-voxel priority tier. World-placed (not screen-locked) so the
+// composite depth-sorts it against the other unit on the shared trixelDistances.
+// STATIC (no AutoSpin): at identity the re-voxelize compute writes only positions
+// (mode 0), so the CPU per-frame Voxel-record upload carries `reserved` into the
+// canvas raster — a rotating unit would need the re-voxelize source grid to carry
+// reserved too (c_revoxelize_detached hardcodes it 0; tracked as follow-up).
+void spawnPerTrixelDetachedUnit(int index, vec3 worldPos, Color color, std::uint8_t priority) {
+    constexpr ivec2 kCanvasSize{128, 128};
+    constexpr ivec3 kPoolSize{20, 20, 20};
+    constexpr ivec3 kCubeSize{10, 10, 10};
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "interpenetrate_canvas_" + std::to_string(index),
+        kCanvasSize,
+        kPoolSize
+    );
+    canvas.screenLocked_ = false; // world-placed ⇒ participates in shared depth
+    canvas.depthPriority_ = 0;    // NO per-entity priority — isolate the per-trixel carrier
+    const EntityId voxelSet = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{kCubeSize, color, true, canvas.canvasEntity_}
+    );
+    if (priority != 0) {
+        IREntity::getComponent<C_VoxelSetNew>(voxelSet).changeVoxelPriorityAll(priority);
+    }
+    IREntity::createEntity(
+        C_LocalTransform{worldPos},
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+        canvas
+    );
+}
+
+// #1960 part F — per-trixel priority interpenetration demo (`--only interpenetrate`).
+// Two STATIC world-placed DETACHED units (separate canvases) at the SAME screen
+// position but different world depth: the FAR unit sits +6 along each axis, i.e.
+// ≈6·(1,1,1) — pure iso DEPTH with negligible screen-space shift (the (1,1,1) axis
+// is the depth axis). By world depth the near unit occludes the far one. The far
+// unit carries per-trixel priority `kDepthForegroundTierCount-1` (the top voxel
+// tier) via changeVoxelPriorityAll, so the stage-2 raster packs it into the
+// entity-id carrier and f_trixel_to_framebuffer resolves
+// tier = max(perEntityTier=0, perTrixelTier=2) = 2 — lifting every far-unit trixel
+// into the most-negative reserved sub-range so it renders IN FRONT of the near
+// unit regardless of true depth ("animate inside each other"). SEPARATE canvases
+// are required: two voxel sets on ONE canvas resolve depth at the canvas raster
+// (atomicMin), upstream of the per-trixel partition, so the occluded set's
+// priority never reaches finalization. Static + no rotation ⇒ deterministic:
+// --depth-probe at the overlap reads the resolved tier (depth_probe.hpp, part G).
+// Default priority 0 ⇒ no override (near unit wins, the world-placed depth path).
+void spawnPerTrixelInterpenetration() {
+    // Near unit — ordinary world-tier voxels (priority 0).
+    spawnPerTrixelDetachedUnit(0, vec3(0.0f, 0.0f, 0.0f), Color{80, 110, 235, 255}, 0);
+    // Far unit — +6 along each axis (behind, ~same screen position), top voxel tier.
+    spawnPerTrixelDetachedUnit(
+        1,
+        vec3(6.0f, 6.0f, 6.0f),
+        Color{235, 80, 80, 255},
+        static_cast<std::uint8_t>(IRRender::kDepthForegroundTierCount - 1)
     );
 }
 
@@ -1144,6 +1218,16 @@ void initEntities() {
             );
             IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
         }
+    }
+
+    // #1960 per-trixel priority interpenetration demo — OPT-IN only
+    // (`--only interpenetrate`), so the default scene (and every manifest shot)
+    // is untouched. `--only interpenetrate` also gates every other group off, so
+    // this is an isolated, deterministic two-cube scene; run it with --no-spin
+    // --no-auto-rotate --depth-probe <overlap-px> to ground-truth the resolved
+    // tier headlessly.
+    if (interpenetrateGroupRequested()) {
+        spawnPerTrixelInterpenetration();
     }
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
