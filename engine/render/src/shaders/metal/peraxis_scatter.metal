@@ -63,6 +63,12 @@ struct VertexOut {
     // bands).
     float depth [[center_no_perspective]];
     float2 quadParam [[center_no_perspective]];
+    // Per-edge on-screen margins (marginU, marginV, framebuffer pixels) the
+    // visit-bound dilation grew this quad by (#1937). The fragment's analytic
+    // coverage half-covers each edge marginPx outside its true edge — reproducing
+    // the dilation's conservative fill (seam/gap closing) with a min-combine
+    // corner instead of the spiking miter. flat — constant per face instance.
+    float2 edgeMarginPx [[flat]];
     float marginBias [[flat]];
     // Per-axis margin-yield slope (#1883), vDepth units per unit quad-param
     // penetration — mirror of v_/f_peraxis_scatter.glsl. The fragment stage scales
@@ -137,6 +143,7 @@ vertex VertexOut v_peraxis_scatter(
         out.depthColorMode = 0;
         out.depthColorExtent = 0.0;
         out.quadParam = float2(0.5);
+        out.edgeMarginPx = float2(0.0);
         out.marginBias = 0.0;
         out.marginYieldGradU = 0.0;
         out.marginYieldGradV = 0.0;
@@ -189,15 +196,17 @@ vertex VertexOut v_peraxis_scatter(
     float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    // Per-axis continuous conservative margin (#1883) — mirror of
-    // v_peraxis_scatter.glsl. The helper derives a per-edge margin from each
-    // axis's own on-screen extent (floored at kScatterDilateMarginPx), so the
-    // collapsing axis grows to bridge the band gap while the long silhouette edge
-    // stays tight. Replaces the anisotropic max(suLen,svLen)+degenSin gate that
-    // dashed the foreshortened silhouette.
+    // Conservative screen-space coverage (#1494/#1883), now the rasterization
+    // VISIT-BOUND for the #1937 analytic path: the 0.5*extent grow over-covers
+    // the foreshortened-gap and cross-axis-ridge regions the fragment's
+    // conservative offset needs filled, but no longer DECIDES coverage — the
+    // fragment's analytic per-edge min-combine is the authority and replaces the
+    // spiking miter with a clean half-plane-intersection corner.
+    float2 edgeMarginPx;
     const float2 dilNdc = scatterConservativeDilation(
-        su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
+        su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx, edgeMarginPx
     );
+    out.edgeMarginPx = edgeMarginPx;
     clipCorner.xy += dilNdc;
     clipCorner.y = -clipCorner.y;
     out.position = clipCorner;
@@ -277,6 +286,17 @@ static inline float3 hsvToRgb(float3 c) {
 fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     FragmentOut out;
     if (in.color.a < 0.1f) {
+        discard_fragment();
+    }
+    // Analytic edge-aware coverage (#1937): the visit-bound dilation over-draws
+    // each quad, so the silhouette decision lives here. Each edge is half-covered
+    // marginPx outside its true edge — reproducing the dilation's conservative
+    // fill (no dashing, no cross-axis ridge seam) — but the min-combine corner
+    // replaces the spiking miter. Hard-threshold at 0.5 for the R32I-distance /
+    // depth co-sort (a single per-pixel write — no alpha-blended partial
+    // coverage). Fragments surviving past the true [0,1]^2 footprint are
+    // conservative fill and keep the #1457 flat depth-yield below.
+    if (scatterAnalyticCoverage(in.quadParam, in.edgeMarginPx) < 0.5f) {
         discard_fragment();
     }
     if (in.depthColorMode != 0) {

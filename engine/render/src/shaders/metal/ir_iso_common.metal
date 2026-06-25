@@ -699,9 +699,18 @@ constant float kScatterDetachedPitchFraction = 0.5;
 // marginPx, equals the additive sum at a square corner, and keeps the acute tip
 // moving outward; clamp |δ| to kScatterMiterLimit*marginPx so a sliver tip can't
 // blow into a blob (the failure mode of just raising marginPx).
+//
+// #1937: `outMarginPx` returns the per-edge on-screen margins (marginU, marginV,
+// in framebuffer pixels) the geometry grew by, so the fragment stage can
+// reproduce this exact per-edge coverage ANALYTICALLY (half-covered marginU/V px
+// outside each true edge) but with a per-edge min-combine corner instead of the
+// miter — the miter is the #1883 corner-spike source; the half-plane
+// intersection is not.
 inline float2 scatterConservativeDilation(
-    float2 su, float2 sv, float2 cornerSign, float minMarginPx, float2 ndcPerPx
+    float2 su, float2 sv, float2 cornerSign, float minMarginPx, float2 ndcPerPx,
+    thread float2& outMarginPx
 ) {
+    outMarginPx = float2(minMarginPx);
     // Outward normal of each edge = the component of the OTHER edge perpendicular
     // to it; |nu|/|nv| are the on-screen perpendicular extents across each edge.
     float2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8f));
@@ -715,8 +724,18 @@ inline float2 scatterConservativeDilation(
     // long silhouette edge stays at the tight floor — replacing the anisotropic
     // max(suLen,svLen) + hard degenSin gate that over-grew the long axis and
     // dashed the foreshortened silhouette.
+    //
+    // #1937 retains this as the rasterization VISIT-BOUND: it over-covers each
+    // quad (including the foreshortened-gap and cross-axis-ridge regions the
+    // fragment's conservative offset needs filled), then the fragment's analytic
+    // per-edge coverage decides the true silhouette. The #1883 corner SPIKE was
+    // the MITER over-extension at acute corners (clamped to kScatterMiterLimit *
+    // half-cell); the fragment's per-edge min-combine replaces that miter with a
+    // clean half-plane intersection, so corners no longer spike even though the
+    // geometry still grows by the half-extent here.
     float marginU = max(minMarginPx, 0.5f * length(nu));
     float marginV = max(minMarginPx, 0.5f * length(nv));
+    outMarginPx = float2(marginU, marginV); // #1937: hand the per-edge margins to the fragment stage
     float2 e1 = hasU ? cornerSign.y * normalize(nu) : float2(0.0); // e_u edge normal
     float2 e2 = hasV ? cornerSign.x * normalize(nv) : float2(0.0); // e_v edge normal
     if (!hasU) return e2 * marginV * ndcPerPx;
@@ -738,6 +757,35 @@ inline float2 scatterConservativeDilation(
     float dLen = length(delta);
     if (dLen > maxLen) delta *= maxLen / dLen;
     return delta * ndcPerPx;
+}
+
+// Analytic edge-aware coverage for the per-axis forward-scatter (#1937).
+// quadParam is the fragment's position in the face's true [0,1]^2 footprint
+// (dilated corners land outside), so the inside-positive signed distance to each
+// of the 4 edges is quadParam.{x,y} / (1 - quadParam.{x,y}); fwidth converts
+// quad-param units to framebuffer pixels. Each edge is half-covered marginPx
+// OUTSIDE its true edge — exactly where scatterConservativeDilation's geometry
+// drew it (marginPx = its outMarginPx: .x for the two u-edges, .y for the two
+// v-edges) — so the per-edge coverage reproduces the #1883 conservative fill that
+// closes inter-cell gaps and cross-axis ridge seams (no dashing, no seam). The
+// difference is the COMBINE: min across the 4 edges is the clean intersection of
+// the four offset half-planes, replacing the dilation's MITER — the #1883 corner
+// SPIKE was that miter over-extending at acute corners; the half-plane corner
+// does not. The caller hard-thresholds the result (discard < 0.5) for the
+// R32I/depth co-sort. Mirror in ir_iso_common.glsl when #1938 ports this to GL.
+inline float scatterAnalyticCoverage(float2 quadParam, float2 marginPx) {
+    const float2 fw = max(fwidth(quadParam), float2(1e-5f));
+    // inside-positive signed pixel distance to each of the 4 true edges
+    const float pU0 = quadParam.x / fw.x;
+    const float pU1 = (1.0f - quadParam.x) / fw.x;
+    const float pV0 = quadParam.y / fw.y;
+    const float pV1 = (1.0f - quadParam.y) / fw.y;
+    // each edge's half-coverage point sits marginPx outside its true edge.
+    float cov = clamp(0.5f + pU0 + marginPx.x, 0.0f, 1.0f);
+    cov = min(cov, clamp(0.5f + pU1 + marginPx.x, 0.0f, 1.0f));
+    cov = min(cov, clamp(0.5f + pV0 + marginPx.y, 0.0f, 1.0f));
+    cov = min(cov, clamp(0.5f + pV1 + marginPx.y, 0.0f, 1.0f));
+    return cov;
 }
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion
