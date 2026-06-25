@@ -654,9 +654,14 @@ inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
     sv = roundHalfUp(normalize(float2(pos3DtoPos2DIso(int3(ev)))));
 }
 
-// Default conservative-coverage margin (framebuffer pixels) the per-axis
-// forward-scatter grows each quad by along each screen edge normal (#1494).
-// Mirror of the GLSL constant in ir_iso_common.glsl.
+// Visit-bound margin (framebuffer pixels) the per-axis forward-scatter grows each
+// quad by along each screen edge normal. Originally the conservative-coverage
+// margin (#1494); as of the #1937 analytic-coverage rework (Metal-lead) it is
+// ONLY a rasterization visit-bound — f_peraxis_scatter now decides coverage
+// analytically from the true [0,1]^2 footprint, so this just has to be wide
+// enough (~1px) that every fragment the true footprint could touch gets visited.
+// The GL twin still carries the old coverage role; it ports to the visit-bound in
+// #1938.
 constant float kScatterDilateMarginPx = 0.85;
 
 // Depth penalty (x4+slot key scale) a scatter fragment in the conservative-
@@ -683,13 +688,20 @@ constant float kScatterMiterLimit = 2.0;
 // scale without blobbing small cubes.
 constant float kScatterDetachedPitchFraction = 0.5;
 
-// Conservative screen-space coverage for the per-axis forward-scatter (#1494,
-// #1538) — mirror of scatterConservativeDilation in ir_iso_common.glsl. At
-// off-snap residual poses a per-cell deformed rhombus foreshortens toward a
-// sub-pixel-thin sliver that slips between fragment centers and drops out under
-// pixel-center rasterization. Grow each quad outward; `su`/`sv` are the face
-// in-plane unit axes projected to framebuffer pixels, `cornerSign` is
-// sign(position). Returns the clip-space (NDC) offset to add.
+// Screen-space visit-bound dilation for the per-axis forward-scatter (#1494,
+// #1538, #1937). At off-snap residual poses a per-cell deformed rhombus
+// foreshortens toward a sub-pixel-thin sliver that slips between fragment centers
+// and drops out under pixel-center rasterization. Grow each quad outward; `su`/
+// `sv` are the face in-plane unit axes projected to framebuffer pixels,
+// `cornerSign` is sign(position). Returns the clip-space (NDC) offset to add.
+//
+// #1937 (Metal-lead): the margin is now a FIXED `minMarginPx` per edge — the old
+// continuous per-axis growth (0.5*|n|) that DECIDED coverage is retired here, so
+// the dilation only guarantees the rasterizer VISITS the fragments the true
+// footprint could touch. f_peraxis_scatter decides coverage analytically from
+// vQuadParam, which removes the #1883 corner-spike-vs-dashing trade-off at the
+// source. The #1538 miter geometry below is kept as the visit-bound shape. GL
+// twin (still the old per-axis coverage role) ports in #1938.
 //
 // MITER, not additive sum (#1538): the naive marginPx*(e1+e2) of the two edge
 // normals cancels at a sliver's acute corner (e1,e2 antiparallel -> sum ~0),
@@ -709,14 +721,14 @@ inline float2 scatterConservativeDilation(
     bool hasU = dot(nu, nu) > 1e-10f;
     bool hasV = dot(nv, nv) > 1e-10f;
     if (!hasU && !hasV) return float2(0.0);
-    // Per-axis margin (#1883): grow each edge by half its OWN on-screen extent,
-    // continuous, floored at minMarginPx for fragment-center coverage. The
-    // collapsing axis grows (bridging the band gap at its sliver ends) while the
-    // long silhouette edge stays at the tight floor — replacing the anisotropic
-    // max(suLen,svLen) + hard degenSin gate that over-grew the long axis and
-    // dashed the foreshortened silhouette.
-    float marginU = max(minMarginPx, 0.5f * length(nu));
-    float marginV = max(minMarginPx, 0.5f * length(nv));
+    // Fixed visit-bound (#1937, Metal-lead): both edges grow by the same fixed
+    // minMarginPx. The continuous per-axis growth (0.5*length(nu)) that used to
+    // decide coverage — and forced the #1883 corner-spike-vs-silhouette-dashing
+    // mutual exclusion — is gone; f_peraxis_scatter now decides coverage
+    // analytically. marginU == marginV reduces the miter solve below to the #1538
+    // equal-margin miter.
+    const float marginU = minMarginPx;
+    const float marginV = minMarginPx;
     float2 e1 = hasU ? cornerSign.y * normalize(nu) : float2(0.0); // e_u edge normal
     float2 e2 = hasV ? cornerSign.x * normalize(nv) : float2(0.0); // e_v edge normal
     if (!hasU) return e2 * marginV * ndcPerPx;
@@ -738,6 +750,40 @@ inline float2 scatterConservativeDilation(
     float dLen = length(delta);
     if (dLen > maxLen) delta *= maxLen / dLen;
     return delta * ndcPerPx;
+}
+
+// Analytic edge-aware coverage for the per-axis forward-scatter (#1937, the epic
+// #1933 root fix; Metal-lead, GL twin in #1938). `q` is the fragment's position in
+// the face's true [0,1]^2 footprint (the scatter's vQuadParam, with the
+// visit-bound dilation landing just outside the unit box); `fw = fwidth(q)`
+// converts a footprint-parameter distance to framebuffer pixels. `interior` flags
+// the 4 edges — .x = u-low (q.x==0), .y = u-high (q.x==1), .z = v-low (q.y==0),
+// .w = v-high (q.y==1) — as 1 = occupied same-plane neighbour (interior: the face
+// continues, no silhouette here) or 0 = silhouette (boundary).
+//
+// Interior edges fill the whole visit-bound region solid (coverage 1), so
+// foreshortened same-plane cells bridge the sub-pixel scatter gaps between their
+// true footprints — the depth-yield bias in f_peraxis_scatter arbitrates the
+// resulting 1px overlap, exactly as the old conservative dilation did, so an exact
+// footprint owner still wins and only genuine gaps fill. Boundary edges get exact
+// sub-pixel box coverage clamp(0.5 + distPx, 0, 1): at a convex corner two
+// boundary edges intersect, so min() yields a crisp corner with no #1883 spike,
+// and a foreshortened silhouette gets per-pixel partial coverage instead of
+// dropping out (no dashing). Returns min coverage across the 4 edges; the caller
+// hard-thresholds it at 0.5 (no alpha blend — the R32I/depth co-sort write is a
+// single per-pixel value).
+inline float scatterAnalyticEdgeCoverage(float2 q, float2 fw, float4 interior) {
+    const float2 inv = 1.0f / max(fw, float2(1e-5f));
+    // Signed pixel distance to each edge; + is inside the footprint.
+    const float dULo = q.x * inv.x;
+    const float dUHi = (1.0f - q.x) * inv.x;
+    const float dVLo = q.y * inv.y;
+    const float dVHi = (1.0f - q.y) * inv.y;
+    const float cULo = (interior.x > 0.5f) ? 1.0f : clamp(0.5f + dULo, 0.0f, 1.0f);
+    const float cUHi = (interior.y > 0.5f) ? 1.0f : clamp(0.5f + dUHi, 0.0f, 1.0f);
+    const float cVLo = (interior.z > 0.5f) ? 1.0f : clamp(0.5f + dVLo, 0.0f, 1.0f);
+    const float cVHi = (interior.w > 0.5f) ? 1.0f : clamp(0.5f + dVHi, 0.0f, 1.0f);
+    return min(min(cULo, cUHi), min(cVLo, cVHi));
 }
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion

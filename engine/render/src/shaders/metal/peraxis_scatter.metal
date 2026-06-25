@@ -76,6 +76,14 @@ struct VertexOut {
     float isoDepth [[flat]];
     int depthColorMode [[flat]];
     float depthColorExtent [[flat]];
+    // Per-edge interior/boundary classification for analytic coverage (#1937) —
+    // .x = u-low, .y = u-high, .z = v-low, .w = v-high (in the face's eu/ev basis);
+    // 1 = interior (fill solid / close seam), 0 = true silhouette (crisp trim). An
+    // edge is interior if the face continues to its same-axis in-plane neighbour OR
+    // it points toward a visible perpendicular face (a convex cube edge shared with
+    // another visible face — see the vertex stage). Flat: classified once per
+    // instance, constant across its quad.
+    float4 edgeInterior [[flat]];
 };
 
 // Composite-instrumentation overlay modes (#1457) — raw DebugOverlayMode
@@ -103,6 +111,37 @@ struct FragmentOut {
     float4 color [[color(0)]];
     float depth [[depth(any)]];
 };
+
+// Occupancy of a per-axis canvas cell at pixel `p`, for the #1937 interior/
+// boundary edge classification. The bound `triangleColors` holds ONLY this axis's
+// faces (each axis binds its own textures — system_trixel_to_framebuffer.hpp), so
+// a non-empty neighbour means this face continues to its in-plane neighbour
+// (interior edge); an empty or out-of-bounds neighbour is a silhouette (boundary).
+static inline float occupiedNeighbor(texture2d<float> tex, int2 p, int2 size) {
+    if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) {
+        return 0.0f;
+    }
+    return (tex.read(uint2(p)).a >= 0.1f) ? 1.0f : 0.0f;
+}
+
+// Polarity (+1 / -1) of the visible face for world axis `axisIdx` (0=x,1=y,2=z),
+// from the visible-triplet, for the #1937 cross-axis edge classification. The
+// camera sees exactly one polarity per axis; an in-plane edge of the current face
+// that points toward that visible side face is a CONVEX CUBE EDGE shared with
+// another VISIBLE face (in a different per-axis canvas, so the same-axis occupancy
+// tap above can't see it). Such an edge is an inter-face seam to CLOSE
+// (conservative overlap), not a silhouette to trim — only the opposite,
+// background-facing edges are true silhouettes. Returns 0 if the axis has no
+// visible face in the triplet (degenerate).
+static inline int visiblePolarityForAxis(int axisIdx, int4 visibleFaceIds) {
+    for (int s = 0; s < 3; ++s) {
+        const int fid = visibleFaceIds[s];
+        if ((fid >> 1) == axisIdx) {
+            return ((fid & 1) == 1) ? 1 : -1;
+        }
+    }
+    return 0;
+}
 
 // In-plane corner of a face whose `origin` ALREADY sits at the face plane on
 // the fixed axis (the store bakes the polarity via faceMicroPositionFixed6).
@@ -140,6 +179,7 @@ vertex VertexOut v_peraxis_scatter(
         out.marginBias = 0.0;
         out.marginYieldGradU = 0.0;
         out.marginYieldGradV = 0.0;
+        out.edgeInterior = float4(0.0);
         return out;
     }
 
@@ -168,6 +208,33 @@ vertex VertexOut v_peraxis_scatter(
         + eu * (float(uFrac4) / 16.0f - 0.5f)
         + ev * (float(vFrac4) / 16.0f - 0.5f);
 
+    // Interior/boundary classification for the analytic coverage (#1937). An edge
+    // is INTERIOR (fill solid, close the seam) if EITHER:
+    //  (1) the face continues to its same-axis in-plane neighbour — a unit in-plane
+    //      world step projects to the integer iso offset pos3DtoPos2DIso(eu/ev)
+    //      (linear, so the cell's per-axis pixel is ij ± step); tap THIS axis's
+    //      colour texture there, OR
+    //  (2) the edge points toward the VISIBLE perpendicular face — a convex cube
+    //      edge shared with another visible face in a different per-axis canvas
+    //      (the same-axis tap can't see it). Exactly one of the ±eu / ±ev edges
+    //      faces each visible side face; the opposite, background-facing edges
+    //      stay BOUNDARY and get crisply trimmed (true silhouette, no #1883 spike).
+    // The polarity-interior edge of each axis SKIPS its occupancy tap — it is
+    // interior unconditionally, so the tap result is irrelevant (max with 1.0).
+    // That halves the per-vertex texture reads (2 taps, not 4) on this hot per-cell
+    // path while staying output-identical to the max(tap, polarity) form.
+    const int2 stepU = pos3DtoPos2DIso(int3(eu));
+    const int2 stepV = pos3DtoPos2DIso(int3(ev));
+    const int euAxis = (eu.x != 0.0f) ? 0 : ((eu.y != 0.0f) ? 1 : 2);
+    const int evAxis = (ev.x != 0.0f) ? 0 : ((ev.y != 0.0f) ? 1 : 2);
+    const int euPol = visiblePolarityForAxis(euAxis, frameData.visibleFaceIds);
+    const int evPol = visiblePolarityForAxis(evAxis, frameData.visibleFaceIds);
+    out.edgeInterior = float4(
+        (euPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) - stepU, canvasSize),  // u-low  (-eu)
+        (euPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) + stepU, canvasSize),  // u-high (+eu)
+        (evPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) - stepV, canvasSize),  // v-low  (-ev)
+        (evPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, int2(ij) + stepV, canvasSize)); // v-high (+ev)
+
     const float2 cornerSel = in.position + float2(0.5);
     const float3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
     const float2 cornerIso =
@@ -189,12 +256,13 @@ vertex VertexOut v_peraxis_scatter(
     float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
     float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
     float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    // Per-axis continuous conservative margin (#1883) — mirror of
-    // v_peraxis_scatter.glsl. The helper derives a per-edge margin from each
-    // axis's own on-screen extent (floored at kScatterDilateMarginPx), so the
-    // collapsing axis grows to bridge the band gap while the long silhouette edge
-    // stays tight. Replaces the anisotropic max(suLen,svLen)+degenSin gate that
-    // dashed the foreshortened silhouette.
+    // Visit-bound dilation (#1937, Metal-lead). scatterConservativeDilation now
+    // grows each edge by a FIXED kScatterDilateMarginPx (~1px) — just enough that
+    // the rasterizer VISITS every fragment the true footprint could touch. The
+    // coverage DECISION moved to f_peraxis_scatter (analytic, from quadParam +
+    // edgeInterior), so the old per-axis continuous margin (#1883) that *decided*
+    // coverage is retired here. The GL twin (v_peraxis_scatter.glsl) still carries
+    // that old coverage role; it ports to this visit-bound in #1938.
     const float2 dilNdc = scatterConservativeDilation(
         su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
     );
@@ -277,6 +345,19 @@ static inline float3 hsvToRgb(float3 c) {
 fragment FragmentOut f_peraxis_scatter(VertexOut in [[stage_in]]) {
     FragmentOut out;
     if (in.color.a < 0.1f) {
+        discard_fragment();
+    }
+    // Analytic edge-aware coverage (#1937, epic #1933 root fix). The visit-bound
+    // dilation now only guarantees this fragment was VISITED; the coverage DECISION
+    // is here, from the fragment's position in the true [0,1]^2 footprint
+    // (in.quadParam) and its per-edge interior/boundary flags. Hard-thresholded for
+    // the R32I/depth co-sort write (no alpha blend). This removes the #1883
+    // near-cardinal corner spikes and foreshortened-silhouette dashing at the
+    // source. fwidth() before any non-uniform discard so the derivative is valid
+    // (the alpha test above is on a flat varying — uniform across the instance).
+    const float coverage = scatterAnalyticEdgeCoverage(
+        in.quadParam, fwidth(in.quadParam), in.edgeInterior);
+    if (coverage < 0.5f) {
         discard_fragment();
     }
     if (in.depthColorMode != 0) {
