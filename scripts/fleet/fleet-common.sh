@@ -15,6 +15,13 @@
 # detect_engine_root — walk up from the git root to find the directory
 # that contains CMakePresets.json (handles linked worktrees where the
 # git root is a nested .claude/worktrees/… path).
+#
+# Engine-root fallback convention: any fleet script that needs the engine
+# root as a fallback must use `${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}`
+# (as on the next line), never a bare `$HOME/src/IrredenEngine` — non-standard
+# clone paths (e.g. the Windows fleet) override the location via
+# FLEET_ENGINE_ROOT. Prefer sourcing this helper and calling
+# detect_engine_root over hand-rolling the fallback.
 detect_engine_root() {
     local root
     root=$(git rev-parse --show-toplevel 2>/dev/null || echo "${FLEET_ENGINE_ROOT:-$HOME/src/IrredenEngine}")
