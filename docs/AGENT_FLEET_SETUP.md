@@ -8,9 +8,9 @@ environment, auth, and process.
 Work through the list top-to-bottom. Each step is independent unless
 noted.
 
-## Fleet environment: tmux on WSL2 OR macOS
+## Fleet environment: tmux on WSL2, macOS, or native Windows
 
-The parallel-agent fleet runs inside **tmux**, on one of two hosts:
+The parallel-agent fleet runs inside **tmux**, on one of three hosts:
 
 - **WSL2 Ubuntu 24.04 on your Windows PC** — Linux shell, `linux-debug`
   CMake preset, OpenGL backend. Builds in `~/src/IrredenEngine` on the
@@ -18,10 +18,16 @@ The parallel-agent fleet runs inside **tmux**, on one of two hosts:
 - **macOS native (Apple Silicon or Intel)** — macOS shell, `macos-debug`
   CMake preset, Metal backend. Builds in `~/src/IrredenEngine` on the
   Mac filesystem.
+- **native Windows (MSYS2 bash + tmux)** — `windows-debug` CMake preset,
+  OpenGL backend, host key `windows`; the engine's ship platform. Setup
+  is one-shot via `scripts/fleet/setup-windows.sh` — see §1c. (This host
+  is the exception to the "no `cmd.exe` wrappers" note below: builds wrap
+  `cmake` in a `cmd.exe` PATH fix to dodge the `cc1plus` crash, applied
+  automatically by `ir-build`/`fleet-build`.)
 
-You can run the fleet on either host (or both, for parallel parity
-work — see step 11 and the `backend-parity` skill). The two hosts are
-independent clones of the engine repo; they share code through
+You can run the fleet on any of these hosts (or several at once, for
+parallel parity work — see step 11 and the `backend-parity` skill). The
+hosts are independent clones of the engine repo; they share code through
 `origin/master` on GitHub.
 
 Why tmux-on-unix either way:
@@ -257,6 +263,120 @@ ssh-keygen -t ed25519 -C "<email>"
 pbcopy < ~/.ssh/id_ed25519.pub   # paste into github.com/settings/keys
 ssh -T git@github.com            # should greet you
 ```
+
+---
+
+## 1c. native-Windows + MSYS2 + base tooling (Windows host)
+
+*Skip this section if you're setting up the fleet on WSL (§1a) or macOS
+(§1b) instead.*
+
+The native-Windows fleet runs from an **MSYS2 bash** shell (that's where
+`tmux` lives), builds with the `windows-debug` preset (MSYS2 mingw64 GCC,
+OpenGL), and derives the host key `windows`. It keeps the engine's ship
+platform continuously built and smoked. Claude Code's Bash tool inside
+each agent pane is **Git Bash**, which shares `$HOME` with MSYS2 (see the
+HOME note below), so the fleet's `~/.fleet` state is common to the
+orchestrator (MSYS2) and the panes (Git Bash).
+
+> **Not PowerShell.** `fleet-up`, `tmux`, and every `fleet-*` script are
+> bash. Launch the fleet from an MSYS2 shell — never PowerShell or
+> `cmd.exe`.
+
+### Install the toolchain
+
+Install [MSYS2](https://www.msys2.org/), then from an **MSYS2 MINGW64**
+shell:
+
+```bash
+pacman -Syu                       # then reopen the shell if it asks
+pacman -S --needed tmux jq \
+    mingw-w64-x86_64-toolchain \  # gcc/g++ >= 13 — the windows-debug compiler
+    mingw-w64-x86_64-gh \         # GitHub CLI
+    mingw-w64-x86_64-python       # fleet python helpers (scout, reconcile)
+```
+
+Install separately on the **Windows** side: **Git for Windows** (the
+`git` the panes use), **Node.js** (for Claude Code), **CMake** (the
+`windows-debug` preset uses the Windows CMake), and **Claude Code**
+itself (`claude`, installed to `~/.local/bin`). These add themselves to
+the *Windows* PATH, which MSYS2 does not inherit by default — see PATH
+below.
+
+### ⚠ Unify `$HOME` (MSYS2 ↔ Git Bash)
+
+By default MSYS2 sets `$HOME` to `/c/msys64/home/<user>` while Git Bash
+uses your Windows profile `/c/Users/<user>`. The fleet's shared-state
+design **requires they match** — otherwise the orchestrator and the
+agent panes read different `~/.fleet` (split-brain claims / usage-gate).
+Point MSYS2 at the Windows profile by editing
+`/c/msys64/etc/nsswitch.conf`:
+
+```
+db_home: windows cygwin desc     # was: db_home: cygwin desc
+```
+
+Open a fresh MSYS2 shell and confirm `echo $HOME` prints
+`/c/Users/<user>` — the same value Git Bash reports.
+
+### PATH (MSYS2 doesn't inherit the Windows user PATH)
+
+`setup-windows.sh` (below) puts `scripts/fleet` and `engine/tools/bin` on
+PATH via `~/.bashrc`. But the base MSYS2 PATH does **not** include the
+dirs where `git`, `node`, `cmake`, `claude` (Windows side) or `gh`,
+`python3`, the mingw64 toolchain (MSYS2 mingw64) live, so add them too
+(adjust to your install paths):
+
+```bash
+cat >> ~/.bashrc <<'EOF'
+export PATH="/c/msys64/mingw64/bin:/c/Program Files/Git/cmd:/c/Program Files/nodejs:/c/Program Files/CMake/bin:$HOME/.local/bin:$PATH"
+EOF
+```
+
+(`jq` and `tmux` come from MSYS2's `/usr/bin`, already on the base PATH.)
+
+### Run the setup script
+
+`scripts/fleet/setup-windows.sh` is the one-shot, idempotent installer:
+it clones the engine to `$HOME/src/IrredenEngine`, writes
+`~/.fleet/fleet-up.conf` and `~/.config/irreden/host.toml` sized for the
+box, puts the fleet tool dirs on PATH, and creates the worktrees off
+`origin/master`. From an MSYS2 bash shell:
+
+```bash
+bash "$HOME/src/IrredenEngine/scripts/fleet/setup-windows.sh"
+source ~/.bashrc                  # pick up PATH + HOME changes
+```
+
+Verify everything resolves from a fresh MSYS2 shell:
+
+```bash
+echo "$HOME"                                          # /c/Users/<user>
+for t in git gh jq tmux claude node python3 cmake fleet-up; do command -v "$t"; done
+fleet-claim host                                      # prints: windows
+```
+
+### Build the host tree once
+
+```bash
+cd "$HOME/src/IrredenEngine"
+cmake --preset windows-debug
+fleet-build --target IRShapeDebug
+```
+
+The native-Windows build needs a `cc1plus` PATH fix (Git's older mingw
+runtime DLLs must not shadow MSYS2's); `fleet-build` / `ir-build` apply
+it automatically, so prefer them over a raw `cmake --build` (which can
+crash `cc1plus` silently with no output). See
+[`docs/agents/BUILD.md`](agents/BUILD.md) "Windows-native build" for the
+root-cause writeup.
+
+### tmux prefix
+
+`setup-windows.sh` does not install a `~/.tmux.conf`, so the prefix is
+the tmux default **`Ctrl+b`** (detach = `Ctrl+b` then `d`). For the
+`Ctrl+a` remap + mouse the rest of this doc assumes, drop in the
+`~/.tmux.conf` from §5a.
 
 ---
 
