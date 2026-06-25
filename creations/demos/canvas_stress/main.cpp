@@ -128,8 +128,8 @@ struct CanvasStressSettings {
     // appear in the default run: "compare" (the #1374 unified-rotation labeled
     // side-by-side) and "interpenetrate" (the #1960 per-trixel-priority depth
     // override — `--only interpenetrate` isolates two static detached units, the
-    // far one tagged a per-trixel tier so it renders in front of the near one). The sweep flags
-    // replace the base auto-screenshot suite with a focused capture run and force
+    // far one tagged a per-trixel tier so it renders in front of the near one).
+    // The sweep flags replace the base auto-screenshot suite with a focused capture run and force
     // --no-auto-rotate so the swept variable is the only one moving:
     // `--sweep-yaw <from> <to> <n>` interpolates camera yaw (radians) across n
     // shots (brackets a rebracket threshold, e.g. 0.6→0.95 across π/4);

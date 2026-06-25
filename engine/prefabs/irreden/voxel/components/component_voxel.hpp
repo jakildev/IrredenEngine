@@ -55,7 +55,7 @@ constexpr std::uint8_t kFaceOccludedMask = kFaceOccludedNegX | kFaceOccludedPosX
 ///   [6]    bone_id_       skeletal-rig joint index (0 = identity)
 ///   [7]    layer_id_      editor layer membership (0 = default layer); keeps
 ///                         the trailing uint32 4-byte aligned
-///   [8:11] reserved_      reserved for future per-voxel fields
+///   [8:11] reserved_      bits[1:0] = per-trixel priority tier carrier (#1960); bits[31:2] reserved
 ///
 /// The compute shaders (`c_voxel_to_trixel_stage_*`) read `color_` from
 /// offset 0; `flags_` is consumed by stage 1 to skip occluded faces;
