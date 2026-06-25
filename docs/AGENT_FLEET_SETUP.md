@@ -338,10 +338,18 @@ EOF
 ### Run the setup script
 
 `scripts/fleet/setup-windows.sh` is the one-shot, idempotent installer:
-it clones the engine to `$HOME/src/IrredenEngine`, writes
-`~/.fleet/fleet-up.conf` and `~/.config/irreden/host.toml` sized for the
-box, puts the fleet tool dirs on PATH, and creates the worktrees off
-`origin/master`. From an MSYS2 bash shell:
+it clones the engine to `$HOME/src/IrredenEngine` (or fetches if already
+present), writes `~/.fleet/fleet-up.conf` and `~/.config/irreden/host.toml`
+sized for the box, puts the fleet tool dirs on PATH, and creates the
+worktrees off `origin/master`. To get the script itself, clone the repo first
+if you haven't already:
+
+```bash
+git clone https://github.com/jakildev/IrredenEngine.git "$HOME/src/IrredenEngine"
+```
+
+Then run the setup script from an MSYS2 bash shell (idempotent — safe to
+re-run if the clone already exists):
 
 ```bash
 bash "$HOME/src/IrredenEngine/scripts/fleet/setup-windows.sh"
@@ -1602,9 +1610,10 @@ logical boundary. That's the whole reason the skill exists.
 
 ## Recap
 
-**On each host you intend to run the fleet on (WSL and/or macOS):**
+**On each host you intend to run the fleet on (WSL, macOS, and/or native Windows):**
 
-- Host base toolchain installed (§1a for WSL, §1b for macOS). ✅
+- Host base toolchain installed (§1a for WSL, §1b for macOS, §1c for native
+  Windows). ✅
 - Engine cloned into `~/src/IrredenEngine` (on the host's native
   filesystem). ✅
 - GitHub CLI installed on this host and authed. ✅
@@ -1612,9 +1621,9 @@ logical boundary. That's the whole reason the skill exists.
 - Permanent worktrees created under this host's clone. ✅
 - tmux + `fleet-up` helper ready. ✅
 - Build tree configured with the right preset
-  (`linux-debug` on WSL / `macos-debug` on macOS) and `IRShapeDebug`
-  builds cleanly (or cross-platform-maturation tasks are filed for
-  whatever doesn't). ✅
+  (`linux-debug` on WSL / `macos-debug` on macOS / `windows-debug` on native
+  Windows) and `IRShapeDebug` builds cleanly (or cross-platform-maturation
+  tasks are filed for whatever doesn't). ✅
 - Reviewer worktrees parked on `claude/<role>-scratch`. ✅
 
 **Shared across hosts:**
