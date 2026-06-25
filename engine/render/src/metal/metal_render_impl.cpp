@@ -523,6 +523,58 @@ metalCurrentDepthPixelFormat(),
         encoder->endEncoding();
     }
 
+    void drawElementsInstancedIndirect(
+        DrawMode drawMode,
+        IndexType indexType,
+        const Buffer *indirectBuffer,
+        std::ptrdiff_t indirectOffset
+    ) override {
+        if (indirectBuffer == nullptr) {
+            return;
+        }
+        auto *pipeline = activeMetalPipeline();
+        const auto &layout = activeMetalVertexLayout();
+        if (pipeline == nullptr || pipeline->isComputePipeline() || layout.indexBuffer_ == nullptr) {
+            return;
+        }
+        auto *mtlIndirect = static_cast<MTL::Buffer *>(indirectBuffer->getNativeBuffer());
+        if (mtlIndirect == nullptr) {
+            return;
+        }
+
+        auto *encoder = createRenderEncoder();
+        if (encoder == nullptr) {
+            return;
+        }
+
+        auto *pipelineState = pipeline->getRenderPipelineState(
+            metalCurrentColorPixelFormat(),
+            metalCurrentDepthPixelFormat(),
+            layout.vertexDescriptor_
+        );
+        IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
+        encoder->setRenderPipelineState(pipelineState);
+        if (metalCurrentDepthTexture() != nullptr) {
+            encoder->setDepthStencilState(currentMetalDepthStencilState());
+        }
+        bindRenderResources(encoder);
+        encoder->setVertexBuffer(layout.vertexBuffer_, 0, 0);
+        markMetalBufferEncoded(layout.vertexBuffer_);
+        markMetalBufferEncoded(layout.indexBuffer_);
+        markMetalBufferEncoded(mtlIndirect);
+        // Index/instance counts come from the GPU-written indirect args; the
+        // leading five uints match MTLDrawIndexedPrimitivesIndirectArguments.
+        encoder->drawIndexedPrimitives(
+            toMetalPrimitiveType(drawMode),
+            toMetalIndexType(indexType),
+            layout.indexBuffer_,
+            0,
+            mtlIndirect,
+            static_cast<NS::UInteger>(indirectOffset)
+        );
+        encoder->endEncoding();
+    }
+
     void copyImageSubData(
         std::uint32_t, int, int, int, int,
         std::uint32_t, int, int, int, int,

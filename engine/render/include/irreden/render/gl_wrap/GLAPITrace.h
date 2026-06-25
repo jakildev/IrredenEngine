@@ -2128,6 +2128,7 @@ void GetAPI4(GL4API *api, PFNGETGLPROC GetGLProc) {
     LOAD_GL_FUNC(glDrawArraysInstanced);
     LOAD_GL_FUNC(glDrawBuffers);
     LOAD_GL_FUNC(glDrawElements);
+    LOAD_GL_FUNC(glDrawElementsIndirect);
     LOAD_GL_FUNC(glDrawElementsInstanced);
     LOAD_GL_FUNC(glEnable);
     LOAD_GL_FUNC(glEnableVertexArrayAttrib);

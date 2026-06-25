@@ -157,6 +157,76 @@ is *composite + resolve* combined; splitting them needs the infra fix.
   fix can be verified per-stage; otherwise the fix can only be checked against
   the coarse frame-time delta.
 
+## Resolution (#1961) — per-axis empty-cell compaction (composite consumer)
+
+Landed in PR #2007. The lever is the design doc's "compute compaction pre-pass"
+(`per-axis-trixel-canvas-rotation.md` §149-159): a `beginTick` compute prelude
+(`c_per_axis_cell_compact.{glsl,metal}`) scans each per-axis distance canvas,
+appends only the **occupied** cell indices into a per-axis SSBO region, and
+writes indirect instanced-draw args. `drawPerAxisScatter` then issues
+`drawElementsInstancedIndirect` over that compacted list instead of sweeping the
+full worst-case `size.x*size.y` grid (mostly empty). Route 0 (cardinal) is
+untouched — the compaction path is taken only while the per-axis canvases are
+allocated (rotating).
+
+**Measured before/after** (macOS/Metal, M-series, 64³ dense, `--zoom 0.8`,
+`--auto-profile 200`, **avg over 200 frames**, re-measured on master `de496a45`
+vs the PR on the same host; two runs per cell, both shown stable). Compared
+**master vs PR at the same pose** so the occlusion-cull ratio is held constant
+(see the reframing note below — a raw cardinal-vs-off-cardinal column is no
+longer apples-to-apples):
+
+| stage / frame (avg) | pose | master | #2007 | Δ |
+|---|---|---|---|---|
+| **trixelToFb** | off-cardinal (yaw 0.39, ~91 % culled) | **8.94 ms** | **0.31 ms** | **−8.6 ms** |
+| **Frame**      | off-cardinal | **11.93 ms** | **8.86 ms** | **−3.07 ms** |
+| trixelToFb     | cardinal (yaw 0, ~0 % culled) | 5.28 ms | 4.68 ms | ~0 (route 0 untouched) |
+| Frame          | cardinal | 8.60 ms | 8.57 ms | ~0 |
+
+**The rotation cliff is closed.** On master the off-cardinal frame costs
+**+3.3 ms** over cardinal (11.93 vs 8.60 ms); with the compaction it costs
+**+0.3 ms** (8.86 vs 8.57 ms) — off-cardinal returns to cardinal parity. The
+entire win is in `trixelToFb`: the per-axis forward-scatter sweeps the full
+worst-case canvas **regardless of how many voxels survive occlusion cull**
+(8.94 ms even at 91 % culled), so compacting the draw to occupied cells only
+(0.31 ms) removes the variable cost. Cardinal output stays **byte-identical**
+(route 0 untouched) — shape_debug render-verify cardinals are max_delta 0.
+
+> **Reframing vs the #1963 baseline (cardinal 0.25 → off-cardinal 4.91 ms).**
+> That baseline predates the occlusion-cull pre-pass (#1798/#1799), which now
+> culls ~91 % of the 64³ grid at this off-cardinal pose but ~0 % at cardinal
+> (occupancy depends on the view angle). So the two poses no longer render the
+> same voxel count, and "cardinal vs off-cardinal" mixes the cull delta with
+> the scatter delta — at cardinal the cardinal-gather now pays for ~262 k
+> un-culled voxels (5.3 ms), at off-cardinal the scatter pays for the empty
+> worst-case sweep (8.9 ms). The clean isolation of the compaction's effect is
+> **master vs PR at the same pose** (the table above), not cardinal vs
+> off-cardinal. The cliff #1961 set out to close — off-cardinal costing more
+> than cardinal — is real (+3.3 ms) and closed (+0.3 ms).
+
+**Composite consumer only — resolve consumer deferred.** The plan scoped one
+pre-pass feeding *two* consumers (composite + the per-axis screen-depth
+resolve). PR #2007 ships the **composite** consumer, which the data above shows
+closes the entire measured cliff: the resolve pass never surfaces as its own GPU
+stage and the frame floor already returns to cardinal without touching it. The
+**resolve** consumer (plan step 3 — `dispatchComputeIndirect` over the same
+compacted list in `system_resolve_per_axis_screen_depth.hpp`) is the plan's
+sanctioned natural split; it is tracked as low-priority follow-up #2015 (an
+attribution/future-proofing improvement, not a perf need).
+
+**Residual per-axis non-determinism (accepted).** The compaction appends cells
+in non-deterministic GPU-scheduling order, so where two occupied cells'
+`#1494`/`#1883` dilation-margin slivers overlap a pixel at the same plane depth,
+the draw order picks the winner. After rebasing onto #1937/PR #2013 (analytic
+edge-aware coverage became the authority over the dilation margin), this shrank
+to sub-perceptual: `zoom4_yaw45_inter_cardinal` is now **byte-identical
+run-to-run**, and `zoom4_pan16_yaw45_pivot` jitters by **max_delta 7, 100.0 %
+match** run-to-run — comfortably inside render-verify thresholds (≤ 64 / ≥ 99.9 %),
+so both shots stay in the gate rather than being excluded. This is the same
+class of accepted per-axis non-determinism the re-voxelize path documents
+(round-to-cell speckle), and it is **self-resolving**: C3 #1939 retires the
+dilation-margin tower entirely, removing the tie source.
+
 ## Repro
 
 ```bash

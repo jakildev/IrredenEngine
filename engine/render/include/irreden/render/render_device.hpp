@@ -32,6 +32,17 @@ class RenderDevice {
     virtual void drawElements(DrawMode drawMode, int count, IndexType indexType) = 0;
     virtual void
     drawElementsInstanced(DrawMode drawMode, int count, IndexType indexType, int instanceCount) = 0;
+    // Indirect instanced indexed draw: index/instance counts come from a
+    // DrawElementsIndirectCommand (GL) / MTLDrawIndexedPrimitivesIndirectArguments
+    // (Metal) at @p indirectOffset in @p indirectBuffer, GPU-written by a compute
+    // pass the same frame (#1961 per-axis cell compaction). Symmetric to
+    // dispatchComputeIndirect; the bound element buffer supplies the indices.
+    virtual void drawElementsInstancedIndirect(
+        DrawMode drawMode,
+        IndexType indexType,
+        const Buffer *indirectBuffer,
+        std::ptrdiff_t indirectOffset
+    ) = 0;
     virtual void drawArrays(DrawMode drawMode, int first, int count) = 0;
     virtual void
     drawArraysInstanced(DrawMode drawMode, int first, int count, int instanceCount) = 0;

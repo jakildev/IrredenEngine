@@ -778,6 +778,19 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // scratch lives on a buffer because Metal has no portable image-atomic
 // syntax (see c_voxel_to_trixel_stage_1.metal's distance scratch).
 constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightOcclusionGrid;
+// Per-axis empty-cell compaction (#1961). The TRIXEL_TO_FRAMEBUFFER composite
+// compacts each per-axis canvas's occupied cells into an indirect instanced
+// draw, so the scatter rasterizes only non-empty cells instead of sweeping the
+// whole worst-case-sized per-axis grid (~12x the cardinal area, mostly empty).
+// Aliases slots 25/26: the voxel compaction (VOXEL_TO_TRIXEL_STAGE_1/2) writes
+// and consumes them several stages earlier, and SPRITE_TO_SCREEN (the other
+// slot-25 consumer) draws after the main framebuffer — same non-overlapping-
+// stage rationale as the aliases above. CompactedCells is bound as an SSBO for
+// both the compaction write and the scatter vertex-shader read; CellIndirect is
+// bound as an SSBO for the compaction write and as the draw-indirect buffer for
+// the issue.
+constexpr std::uint32_t kBufferIndex_PerAxisCellCompacted = kBufferIndex_CompactedVoxelIndices;
+constexpr std::uint32_t kBufferIndex_PerAxisCellIndirect = kBufferIndex_IndirectDispatchParams;
 // SPRITE_TO_SCREEN aliases two slots whose prior consumers finish before the
 // sprite draw. Safety is enforced by a defensive rebind in
 // `SPRITE_TO_SCREEN::bindPipeline()` — both slots are re-asserted to the
@@ -1055,6 +1068,26 @@ struct VoxelIndirectDispatchParams {
     std::uint32_t completedGroups = 0;
     std::uint32_t _padding[3] = {};
 };
+
+// GPU indirect draw-args for the per-axis empty-cell compaction composite
+// (#1961). The leading five uints are byte-identical to GL's
+// DrawElementsIndirectCommand and Metal's MTLDrawIndexedPrimitivesIndirectArguments,
+// so one compaction kernel fills a buffer both backends issue an indirect
+// instanced draw from. The compaction resets instanceCount to 0 and
+// atomic-appends one occupied cell per increment (the append index is the
+// instance id); indexCount is the quad index count, the rest stay 0. Padded to
+// 32 B; the three per-axis structs are spaced kPerAxisCellIndirectStrideBytes
+// apart so each sits at an SSBO-bindRange-aligned offset for the compaction
+// write (mirrors VoxelIndirectDispatchParams's kPerAxisSsboAlignBytes spacing).
+struct PerAxisCellDrawCommand {
+    std::uint32_t indexCount = 0;
+    std::uint32_t instanceCount = 0;
+    std::uint32_t firstIndex = 0;
+    std::uint32_t baseVertex = 0;
+    std::uint32_t baseInstance = 0;
+    std::uint32_t _padding[3] = {};
+};
+constexpr std::ptrdiff_t kPerAxisCellIndirectStrideBytes = 256;
 
 // TODO: Future culling optimization constants
 // Chunk-level frustum culling: voxel pool is partitioned into chunks of
