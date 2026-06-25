@@ -54,6 +54,10 @@ fi
 
 set -euo pipefail
 
+# Force UTF-8 Mode so python helpers don't crash decoding UTF-8 gh/git output
+# under native-Windows python's cp1252 default. No-op on Linux/macOS. See fleet-up.
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+
 # --- Paths -----------------------------------------------------------------
 
 FLEET_SESSION="${FLEET_SESSION:-fleet}"

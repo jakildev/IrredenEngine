@@ -18,6 +18,14 @@
 
 set -euo pipefail
 
+# Native-Windows mingw64 python is a Windows build that defaults to the cp1252
+# code page; reading UTF-8 gh/git output (issue titles, emoji) in text mode then
+# throws UnicodeDecodeError and crashes the daemons this launches
+# (fleet-state-scout projections, dispatcher/ingest helpers). UTF-8 Mode makes
+# locale.getpreferredencoding() — and thus subprocess/open text decoding — UTF-8,
+# which child python processes inherit. No-op on Linux/macOS.
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+
 # Engine main-clone location. Defaults to the Linux/macOS fleet layout
 # ($HOME/src/IrredenEngine); override with FLEET_ENGINE_ROOT for hosts that
 # clone elsewhere — e.g. the native-Windows fleet at

@@ -50,6 +50,11 @@
 
 set -euo pipefail
 
+# Force UTF-8 Mode so the embedded python reconcile helpers don't crash decoding
+# UTF-8 gh/git output under native-Windows python's cp1252 default. No-op on
+# Linux/macOS. See fleet-up.
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+
 CLAIMS_DIR="${FLEET_CLAIMS_DIR:-$HOME/.fleet/claims}"
 MOLECULES_DIR="${FLEET_MOLECULES_DIR:-$HOME/.fleet/molecules}"
 RESERVATIONS_DIR="${FLEET_RESERVATIONS_DIR:-$HOME/.fleet/reservations}"
@@ -2541,7 +2546,15 @@ reconcile_escalate_drift() {
     local persistent_count
     persistent_count=$(NOW="$now" THRESHOLD="$threshold" PERSIST="$persist_file" \
         BODY="$body_file" python3 - "$findings" <<'PYEOF'
-import sys, os, json, fcntl
+import sys, os, json
+try:
+    import fcntl  # POSIX-only; absent on native-Windows python
+    def _flock_ex(fh):
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+except ImportError:
+    # Best-effort advisory lock; the fleet is single-host, so a no-op is safe.
+    def _flock_ex(fh):
+        pass
 findings_path = sys.argv[1]
 now = int(os.environ["NOW"])
 threshold = int(os.environ["THRESHOLD"])
@@ -2571,7 +2584,7 @@ def key(f):
     return "%s:%s:%s:%s" % (f["rule"], f["repo"], f["target_kind"], f["target"])
 
 with open(persist_path + ".lock", "a") as _lock_fh:
-    fcntl.flock(_lock_fh.fileno(), fcntl.LOCK_EX)
+    _flock_ex(_lock_fh)
     state = load(persist_path, {})
     if not isinstance(state, dict):
         state = {}
@@ -2709,7 +2722,15 @@ reconcile_heal_design_unblock() {
     local healable
     healable=$(NOW="$now" THRESHOLD="$threshold" PERSIST="$persist_file" \
         python3 - "$findings" <<'PYEOF'
-import sys, os, json, fcntl
+import sys, os, json
+try:
+    import fcntl  # POSIX-only; absent on native-Windows python
+    def _flock_ex(fh):
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+except ImportError:
+    # Best-effort advisory lock; the fleet is single-host, so a no-op is safe.
+    def _flock_ex(fh):
+        pass
 findings_path = sys.argv[1]
 now = int(os.environ["NOW"])
 threshold = int(os.environ["THRESHOLD"])
@@ -2738,7 +2759,7 @@ def key(f):
     return "%s:%s" % (a["repo"], a["pr"])
 
 with open(persist_path + ".lock", "a") as _lock_fh:
-    fcntl.flock(_lock_fh.fileno(), fcntl.LOCK_EX)
+    _flock_ex(_lock_fh)
     state = load(persist_path, {})
     if not isinstance(state, dict):
         state = {}
