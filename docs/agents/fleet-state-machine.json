@@ -291,6 +291,12 @@
       "description": "Human opt-out at filing: skip planning, queue directly with no ## Plan comment / plan file. Also honored as a [no-plan] title/body tag; a fleet agent never applies it"
     },
     {
+      "name": "human:review-plan",
+      "scope": "issue",
+      "color": "5319e7",
+      "description": "High-stakes worker-planned issue: planner adds it alongside fleet:plan-review so the issue holds for the HUMAN's approach sign-off before implementation (distinct from fleet:plan-review's agent vetting). Both are queue-blocks; keeps human:approved and survives re-ingest like fleet:needs-human; only the human removes it. PLANNING-PROTOCOL.md step 3"
+    },
+    {
       "name": "human:wip",
       "scope": "pr",
       "color": "5319e7",
@@ -458,6 +464,29 @@
         "fleet:plan-review"
       ],
       "note": "Planner posted the ## Plan comment and hands it to review. PLANNING-PROTOCOL.md step 3. Release the planning-claim lock after."
+    },
+    {
+      "name": "plan-propose-high-stakes",
+      "scope": "issue",
+      "owner": "planner",
+      "remove": [
+        "fleet:needs-plan"
+      ],
+      "add": [
+        "fleet:plan-review",
+        "human:review-plan"
+      ],
+      "note": "Like plan-propose, but the issue is high-stakes (ambiguous / cross-cutting / expensive / public-contract — PLANNING-PROTOCOL.md step 3 checklist), so the planner also adds human:review-plan to hold for the human's approach sign-off. Both labels are queue-blocks; the issue queues only once plan-approve clears fleet:plan-review AND plan-human-approve clears human:review-plan."
+    },
+    {
+      "name": "plan-human-approve",
+      "scope": "issue",
+      "owner": "human",
+      "remove": [
+        "human:review-plan"
+      ],
+      "add": [],
+      "note": "Human signed off on the approach for a high-stakes worker-planned issue. Once fleet:plan-review is also cleared (plan-approve), the issue is queue-ready and the scout stamps fleet:queued. PLANNING-PROTOCOL.md step 5."
     },
     {
       "name": "plan-approve",

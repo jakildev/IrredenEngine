@@ -104,6 +104,21 @@ Specifically, **never pass these via `--label` when filing**:
   queues the issue on its next pass); not sound → swap back to
   `fleet:needs-plan` with a comment naming the gaps. Distinct from the code
   review the implementation PR later gets. Don't add at filing.
+- `human:review-plan` — owned by the **human** as a release gate; **set by an
+  opus+ planner** (worker or architect) when a worker-planned issue is
+  **high-stakes** (#2011). Added alongside `fleet:plan-review` in the same edit
+  (PLANNING-PROTOCOL.md step 3). It is a *second*, human-owned hold distinct from
+  `fleet:plan-review`: `fleet:plan-review` is the **agent** vetting the plan's
+  rigor; `human:review-plan` holds for a **human** to sign off on the *approach*
+  before implementation. Both are queue-blocks — `fleet-queue-ingest` skips the
+  issue while either is present and the scout surfaces it as
+  `repos.<repo>.review_plan` — so the issue queues only once the agent clears
+  `fleet:plan-review` **and** the human removes `human:review-plan`. Keeps
+  `human:approved` and survives re-ingest (like `fleet:needs-human`). Only the
+  human removes it. High-stakes = ambiguous approach / cross-cutting / expensive
+  or hard to reverse / changes a public contract (PLANNING-PROTOCOL.md step 3
+  checklist); low-stakes worker-planned issues queue on agent plan-review alone.
+  Architect-filed-with-plan work skips planning and never reaches this gate.
 - `human:no-plan` — owned by the **human**, applied at filing to a simple,
   self-contained issue to skip planning entirely. `fleet-queue-ingest` then
   stamps `fleet:queued` directly — no `## Plan` comment required — and the

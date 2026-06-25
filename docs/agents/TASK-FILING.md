@@ -39,6 +39,42 @@ and `fleet-claim`'s blocker gate parse them):
 The issue sits in the backlog until the **human triages and adds
 `human:approved`**. Only then does the scout ingest it.
 
+### File with a plan (the architect default for substantial tasks)
+
+When you (the architect) **planned a task with the human** in a design
+conversation, or the task is substantial enough to need a plan, **post the
+structured `## Plan` comment at file time** — don't leave the plan in the issue
+body. The planning gate in `fleet-queue-ingest` keys on a `## Plan` *comment*
+(per #1932), not the body, so an issue whose plan lives only in the body gets
+bounced to `fleet:needs-plan` and a worker **re-plans work the human already
+shaped** (and may loop back to the human for plan review) — a wasted pass.
+Posting the `## Plan` comment makes the issue **queue directly**, skipping
+`fleet:needs-plan` entirely (the human was already in the planning loop, so no
+further sign-off is needed):
+
+```
+gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<body>"
+gh issue comment <N> --repo jakildev/IrredenEngine --body "## Plan
+<structured plan per PLANNING-PROTOCOL.md §2 — Scope / Approach / Affected files /
+Acceptance criteria / Gotchas>"
+```
+
+The `## Plan` comment must follow the structure in
+[`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md) (its first heading
+starts with `## Plan` so the gate finds it). Today only the `file-epic` skill
+posts `## Plan` comments (for epic children); this generalizes the same
+mechanism to single tasks.
+
+**Plan-less filing is still valid** for mechanical or obvious tasks: file with
+no `## Plan` comment and the ingest bounces it to `fleet:needs-plan` for a
+worker to plan (the safety net). For a genuinely trivial change, the human can
+opt out at filing with `human:no-plan` / a `[no-plan]` tag and it queues with no
+plan at all. The choice: planned-with-the-human → post `## Plan` (queues
+directly); mechanical → leave it (worker plans, and if **high-stakes** the
+worker holds it on `human:review-plan` for your approach sign-off — see
+[`PLANNING-PROTOCOL.md § The flow`](PLANNING-PROTOCOL.md) step 3); trivial →
+`human:no-plan`.
+
 ### Escalation issues (scope-grew)
 
 When a worker hits a non-architectural blocker (scope grew, structural

@@ -30,6 +30,9 @@
 # (.fleet/plans/issue-<N>.md or ~/.fleet/plans/issue-<N>.md) — is bounced to
 # fleet:needs-plan unless opted out (`[no-plan]` / `human:no-plan` / investigation
 # spike). fleet:plan-review holds ingest until a reviewer vets the posted plan.
+# human:review-plan (#2011) is a second, human-owned hold: a worker-planned
+# HIGH-STAKES issue waits on the human's approach sign-off before it can queue
+# (kept alongside human:approved, like fleet:needs-human).
 # Carve-offs queued without planning made the worker the first to open the code,
 # and it design-blocked on claim (the #1370 → #1414/#1431/#1435 pattern).
 #
@@ -323,10 +326,16 @@ for issue in pending:
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
             or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
-            or 'fleet:plan-review' in labels):
+            or 'fleet:plan-review' in labels or 'human:review-plan' in labels):
         # fleet:plan-review (#1932): the plan is posted but a reviewer hasn't
         # vetted it yet — ingest holds off until the reviewer clears the label
         # (sound → removed; not sound → swapped to fleet:needs-plan).
+        # human:review-plan (#2011): a worker-planned HIGH-STAKES issue holds
+        # for the human's approach sign-off before implementation (distinct from
+        # fleet:plan-review's agent vetting). It keeps human:approved (so it
+        # stays in the pending set and survives re-ingest, like fleet:needs-human)
+        # but ingest must NOT stamp fleet:queued while present — the human clears
+        # the label to release it. See PLANNING-PROTOCOL.md §"High-stakes".
         skipped_already += 1
         continue
 
