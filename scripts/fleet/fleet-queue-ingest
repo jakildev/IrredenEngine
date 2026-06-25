@@ -41,6 +41,10 @@
 
 set -euo pipefail
 
+# Force UTF-8 Mode so python helpers don't crash decoding UTF-8 gh/git output
+# under native-Windows python's cp1252 default. No-op on Linux/macOS. See fleet-up.
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+
 LOCK_DIR="${FLEET_QUEUE_INGEST_LOCK:-$HOME/.fleet/state/queue-ingest.lock}"
 LOG_FILE="$HOME/.fleet/logs/queue-ingest.log"
 PROJECTION_FILE="$HOME/.fleet/state/projections/queue-manager-ingest.json"
