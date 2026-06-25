@@ -220,6 +220,19 @@ file it per [`docs/agents/TASK-FILING.md`](TASK-FILING.md): a GitHub issue with
 criteria / Context). The human stamps `human:approved` when they want it picked
 up; the scout ingests it on its next pass and adds the rest.
 
+**If you planned the task with the human, file it *with* a `## Plan` comment.**
+When the work came out of a design conversation (you and the human already
+shaped the approach), post the structured `## Plan` comment at file time per
+[`TASK-FILING.md § File with a plan`](TASK-FILING.md) — don't leave the plan in
+the body. The planning gate keys on the `## Plan` *comment*, so a plan-in-body
+issue is bounced to `fleet:needs-plan` and a worker re-plans what you already
+shaped, sometimes re-looping you for plan review (observed on #2008/#2009 and
+game #211). Posting the comment makes it **queue directly** — no worker re-plan,
+no return trip — since the human was already in the planning loop. Leave plan-less
+filing for mechanical tasks (the worker plans those; a high-stakes worker-planned
+issue then holds on `human:review-plan` for your sign-off — see
+[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) step 3).
+
 **Multi-issue stacks (epic decomposition).** When the work decomposes into a
 stack of N issues that each depend on the prior — the canonical smooth-yaw /
 SO(3) / rotation / streaming patterns — do NOT hand-file the children. Invoke

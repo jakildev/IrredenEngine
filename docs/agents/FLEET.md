@@ -127,11 +127,26 @@ coordination mechanisms prevent duplicate work:
 - **Planning gate:** ingest only queues an issue once it has a plan — a
   `## Plan` issue comment (posted by an opus+ planner via
   [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)) — or an explicit opt-out
-  (`human:no-plan`, a `[no-plan]` tag, or an "investigation spike"). An
-  unplanned `human:approved` issue is bounced to `fleet:needs-plan`; while its
-  plan is in review it carries `fleet:plan-review` and ingest skips it. There is
-  **no separate plan-doc PR** — the plan rides in the implementation PR as its
-  first commit, so plan + code land in one merge.
+  (`human:no-plan`, a `[no-plan]` tag, or an "investigation spike"). Two paths
+  reach the queue:
+  - **Architect files *with* a plan → queues directly.** When the architect
+    planned a task with the human, they post the `## Plan` comment at file time
+    (per [`TASK-FILING.md § File with a plan`](TASK-FILING.md)); the gate's
+    `## Plan`-comment check is satisfied, so it skips `fleet:needs-plan` and
+    queues with no worker re-plan and no return trip to the human (#2011).
+  - **Planless filing → worker plans (the fallback).** An unplanned
+    `human:approved` issue is bounced to `fleet:needs-plan`; an opus+ worker
+    plans it and swaps to `fleet:plan-review` (agent vetting), and ingest skips
+    it while that label is present. For a **high-stakes** worker-planned issue
+    (ambiguous / cross-cutting / expensive / public-contract — see
+    [`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) step 3) the planner also adds
+    `human:review-plan`, a human-owned hold for approach sign-off; the issue
+    queues only once **both** `fleet:plan-review` (agent) and `human:review-plan`
+    (human) are cleared. Low-stakes worker-planned issues queue on agent
+    plan-review alone.
+
+  There is **no separate plan-doc PR** — the plan rides in the implementation PR
+  as its first commit, so plan + code land in one merge.
 
 **Review claiming:**
 - Review claims use `fleet:reviewing-<host>-<agent>` labels on PRs via

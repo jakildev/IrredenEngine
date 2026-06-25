@@ -170,6 +170,10 @@ _INGEST_SKIP_LABELS = frozenset({
     "fleet:scope-shipped", # scope landed under a different issue; human should close
     "fleet:needs-human",   # parked: fleet can't do it autonomously, human must act;
                            # keeps human:approved but must NOT be re-queued
+    "human:review-plan",   # #2011: worker-planned high-stakes issue holding for the
+                           # human's approach sign-off; keeps human:approved but must
+                           # NOT queue until the human clears it (surfaced separately
+                           # as repos.<repo>.review_plan, see _populate_review_plan).
 })
 
 
@@ -2054,11 +2058,27 @@ def _populate_done_tasks(state):
         tasks["done"] = _populate_tasks_done(repo_state)
 
 
+def _populate_review_plan(state):
+    """Surface human:review-plan issues to the human (#2011), parallel to how
+    needs_plan is surfaced. A worker-planned high-stakes issue holds on
+    human:review-plan for the human's approach sign-off before it can queue.
+    Derived from human_approved (no extra fetch): such issues keep
+    human:approved and human:review-plan is NOT in _ALREADY_QUEUED_LABELS, so
+    fetch_human_approved still returns them. _INGEST_SKIP_LABELS keeps them out
+    of the ingest pending set; this list is the human-facing read-out."""
+    for repo_key, repo_state in state["repos"].items():
+        repo_state["review_plan"] = [
+            issue for issue in repo_state.get("human_approved", [])
+            if "human:review-plan" in issue.get("labels", [])
+        ]
+
+
 def tick_once():
     state = collect_state()
     if state.get("degraded"):
         log(f"state degraded: {state['degraded']} — reconcile disabled this tick")
     _populate_done_tasks(state)
+    _populate_review_plan(state)
     resolve_blocked_by(state)
     resolve_human_approved_blockers(state)
     resolve_epic_children(state)

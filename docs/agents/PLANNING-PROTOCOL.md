@@ -159,6 +159,39 @@ For each `fleet:needs-plan` issue:
    the planning claim on **every** exit path — including the
    "disagree with the direction" branch below — so the lock is never orphaned.
 
+   **High-stakes? Also add `human:review-plan` (the human approach gate, #2011).**
+   When the issue is high-stakes (checklist below), add `human:review-plan` in
+   the **same** `gh issue edit` (alongside the `fleet:plan-review` swap). It is a
+   second, **human-owned** hold, distinct from `fleet:plan-review`: the agent
+   plan review (step 4) vets the plan's *rigor*; `human:review-plan` holds for a
+   human to sign off on the *approach* before implementation. Both are
+   queue-blocks (`fleet-queue-ingest` skips the issue while either is present),
+   so the issue queues only once the agent has cleared `fleet:plan-review` **and**
+   the human has removed `human:review-plan`. The order is independent. Use:
+   ```
+   gh issue edit <N> --repo <owner/repo> \
+     --remove-label "fleet:needs-plan" \
+     --add-label "fleet:plan-review" --add-label "human:review-plan"
+   ```
+   An issue is **high-stakes** if ANY of these hold — otherwise it is low-stakes
+   and queues on agent plan-review alone (no `human:review-plan`):
+   - **Ambiguous approach** — more than one materially different implementation
+     strategy is viable and the choice has lasting consequences.
+   - **Cross-cutting** — touches ≥3 modules, or changes a shared subsystem
+     (ECS core, the render pipeline, fleet infra/protocol).
+   - **Expensive or hard to reverse** — more than one PR's worth of work, or a
+     change that is costly to undo once shipped.
+   - **Changes a public contract** — the public `ir_*.hpp` API surface, a Lua
+     binding signature, an on-disk/serialized format, or fleet label/protocol
+     semantics.
+
+   Prefer the checklist over vibes: if none of the four apply, do not add
+   `human:review-plan` — the gate is for genuinely high-stakes work, not a
+   default hold. `human:review-plan` is a **fallback** that only applies on the
+   worker-planning path; architect-filed-with-plan work (see
+   [`architect-protocol.md § Filing tasks`](architect-protocol.md)) skips
+   planning entirely and never hits this gate.
+
    You may optionally stage a local copy at `~/.fleet/plans/issue-<N>.md` for
    your own reference, but it is not required and nothing reads it — the `## Plan`
    comment is the source of truth.
@@ -169,17 +202,22 @@ For each `fleet:needs-plan` issue:
    comment and judges it *as a plan* against the step-2 rigor — verified current
    state, a single committed approach, sibling/in-flight reconciliation, a
    cross-system audit where one is required:
-   - **Sound →** remove `fleet:plan-review`. The issue is now queue-ready and
-     the scout queues it on its next pass.
+   - **Sound →** remove `fleet:plan-review`. The issue is queue-ready **unless**
+     it also carries `human:review-plan` (a high-stakes hold) — in that case it
+     stays held for the human's approach sign-off; the scout queues it only once
+     the human removes that label too.
    - **Not sound →** swap `fleet:plan-review` → `fleet:needs-plan` and comment
      the specific gaps. The next planning pass revises the `## Plan` comment.
 
    This is a review of the *plan*, distinct from the code review the
-   implementation PR later gets.
+   implementation PR later gets. The plan reviewer does not add or remove
+   `human:review-plan` — that human-owned gate is the planner's to set (step 3)
+   and the human's to clear.
 
 5. **Queue and implement.** Once the issue is `human:approved`, carries a
-   `## Plan` comment, and has neither `fleet:needs-plan` nor `fleet:plan-review`,
-   the scout stamps `fleet:queued` + the model label. The implementing worker:
+   `## Plan` comment, and has none of `fleet:needs-plan`, `fleet:plan-review`, or
+   `human:review-plan` (the high-stakes human gate, when it was set), the scout
+   stamps `fleet:queued` + the model label. The implementing worker:
    - reads the plan from the `## Plan` comment (`fleet-issue view <N>`),
    - writes it to `.fleet/plans/issue-<N>.md` as the **first commit** of the
      implementation branch (an at-rest repo record that lands with the code),
@@ -226,9 +264,10 @@ the oldest unprocessed entry (smallest `number`) across both repos.
 This runs as a scout-triggered loop step — see the worker role file
 for where it sits in the iteration. Cross-repo: add `--repo game` to
 `fleet-issue` / `gh issue edit` for game-side issues. You post the
-`## Plan` comment and swap to `fleet:plan-review`; the implementation
-step (later, possibly a cheaper-class worker on another host) reads the
-comment and commits the plan file into its own PR.
+`## Plan` comment and swap to `fleet:plan-review`; for **high-stakes** issues
+(step 3 checklist) also add `human:review-plan` in the same edit. The
+implementation step (later, possibly a cheaper-class worker on another host)
+reads the comment and commits the plan file into its own PR.
 
 **[plan reviewer]** Scan open issues carrying `fleet:plan-review` and apply the
 step-4 verdict. The architect does this during a design conversation; the opus
