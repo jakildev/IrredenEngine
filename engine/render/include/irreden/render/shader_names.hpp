@@ -18,6 +18,13 @@ const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffe
 // metal/peraxis_scatter.metal).
 const char *const kFileVertPerAxisScatter = "shaders/v_peraxis_scatter.glsl";
 const char *const kFileFragPerAxisScatter = "shaders/f_peraxis_scatter.glsl";
+// Per-axis empty-cell compaction pre-pass (#1961): scans each per-axis canvas's
+// distance image and atomic-appends every occupied cell's linear index into a
+// per-axis SSBO region + sets the indirect instanced-draw arg count, so the
+// scatter composite draws only non-empty cells instead of the full worst-case
+// grid. Metal mirror in metal/c_per_axis_cell_compact.metal (add to
+// threadgroupSizeForFunctionName).
+const char *const kFileCompPerAxisCellCompact = "shaders/c_per_axis_cell_compact.glsl";
 
 const char *const kFileCompVoxelToTrixelStage1 = "shaders/c_voxel_to_trixel_stage_1.glsl";
 const char *const kFileCompVoxelToTrixelStage2 = "shaders/c_voxel_to_trixel_stage_2.glsl";

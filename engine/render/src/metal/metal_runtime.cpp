@@ -257,6 +257,21 @@ MTL::Texture *boundMetalImageTexture(std::uint32_t unit) {
     return g_runtime().imageTextures_[unit];
 }
 
+void untrackMetalTexture(MTL::Texture *texture) {
+    if (texture == nullptr) {
+        return;
+    }
+    auto &runtime = g_runtime();
+    for (std::uint32_t unit = 0; unit < kMaxMetalTextureBindings; ++unit) {
+        if (runtime.textures_[unit] == texture) {
+            runtime.textures_[unit] = nullptr;
+        }
+        if (runtime.imageTextures_[unit] == texture) {
+            runtime.imageTextures_[unit] = nullptr;
+        }
+    }
+}
+
 void bindMetalDefaultRenderTarget() {
     g_runtime().useDefaultRenderTarget_ = true;
     g_runtime().colorTexture_ = nullptr;

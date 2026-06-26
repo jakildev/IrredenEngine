@@ -98,6 +98,10 @@ class MetalTexture2DImpl final : public Texture2DImpl {
     ~MetalTexture2DImpl() override {
         releaseImageAtomicScratchBuffer(m_texture);
         removeClearSourceBuffer(m_texture);
+        // Drop any sticky sampler/image bind slot that still references this
+        // handle so a later dispatch's bind pass can't re-bind the freed
+        // texture (#1961).
+        untrackMetalTexture(m_texture);
         if (m_texture != nullptr) {
             m_texture->release();
             m_texture = nullptr;
@@ -343,6 +347,8 @@ class MetalTexture3DImpl final : public Texture3DImpl {
     }
 
     ~MetalTexture3DImpl() override {
+        // Drop any sticky bind slot referencing this handle (#1961).
+        untrackMetalTexture(m_texture);
         if (m_texture != nullptr) {
             m_texture->release();
             m_texture = nullptr;

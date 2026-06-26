@@ -75,6 +75,14 @@ MTL::Texture *boundMetalTexture(std::uint32_t unit);
 void bindMetalImageTexture(std::uint32_t unit, MTL::Texture *texture);
 MTL::Texture *boundMetalImageTexture(std::uint32_t unit);
 
+// Null every sticky sampler/image bind slot that still points at @p texture.
+// Bindings are sticky (set on bind, never cleared), so a destroyed texture
+// otherwise lingers as a dangling pointer that bindRenderResources /
+// bindComputeResources re-binds on a later dispatch — setTexture on the freed
+// handle EXC_BAD_ACCESSes (#1961). Call from the Metal texture destructor
+// before releasing the handle.
+void untrackMetalTexture(MTL::Texture *texture);
+
 void bindMetalDefaultRenderTarget();
 void bindMetalFramebufferRenderTarget(
     MTL::Texture *colorTexture,

@@ -78,6 +78,13 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_resolve_world_placed_depth") {
         return MTL::Size(16, 16, 1);
     }
+    // Per-axis empty-cell compaction (#1961): one thread per per-axis canvas
+    // cell, dispatched 2D over the axis grid (matches local_size_{x,y} = 16 in
+    // c_per_axis_cell_compact.glsl). Reads the distance image via imageLoad —
+    // no image-atomic scratch, so it is NOT in functionUsesImageAtomicScratch.
+    if (functionName == "c_per_axis_cell_compact") {
+        return MTL::Size(16, 16, 1);
+    }
     if (functionName == "c_clear_light_volume") {
         return MTL::Size(8, 8, 8);
     }

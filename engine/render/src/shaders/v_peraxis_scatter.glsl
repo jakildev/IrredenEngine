@@ -18,6 +18,15 @@ layout (location = 0) in vec2 aPos;
 layout (binding = 0) uniform sampler2D  triangleColors;
 layout (binding = 1) uniform isampler2D triangleDistances;
 
+// Per-axis empty-cell compaction (#1961): this axis's occupied-cell linear
+// indices, bindRange'd so index 0 is the axis region base. The composite draws
+// only occupied cells via indirect instanced draw, so gl_InstanceID indexes the
+// compacted list rather than sweeping the whole worst-case grid. SSBO binding 25
+// is a separate namespace from the sampler/UBO bindings, so it does not collide.
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+
 // binding = 1 is intentionally reused below for the GlobalConstants UBO: in
 // GL 4.5 sampler texture-image units and uniform-buffer binding points are
 // separate namespaces, so the shared index does not collide (same pattern as
@@ -132,7 +141,10 @@ vec3 faceSpanCorner(int axis, vec3 origin, vec2 cornerSel) {
 
 void main() {
     const ivec2 canvasSize = textureSize(triangleDistances, 0);
-    const int cell = gl_InstanceID;
+    // #1961: the compaction pre-pass appended this axis's occupied cells, so the
+    // instance id indexes the compacted list (this axis bindRange'd to base 0)
+    // instead of enumerating every worst-case grid cell.
+    const int cell = int(compactedCells[gl_InstanceID]);
     const ivec2 ij = ivec2(cell % canvasSize.x, cell / canvasSize.x);
 
     const vec4 color = texelFetch(triangleColors, ij, 0);
