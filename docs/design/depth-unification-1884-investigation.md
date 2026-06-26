@@ -243,13 +243,17 @@ sub-ranges; `priority = max(entity, trixel)` selects the tier. #1958 (B) ships t
 **two-tier** split only (world + one foreground tier); per-trixel tiers are D
 (#1960).
 
-**32-bit composite depth (#1983, filed).** The `±65535` ceiling is a
-normalization convention on the shared composite depth, not a hardware limit.
-Widening it (DEPTH32F or a manual integer R32I composite) would *raise* the
-ceiling but not make it unbounded; under world streaming (#938) coordinates are
-genuinely unbounded, where the partition's O(1) correctness still wins. #1983
-evaluates retiring the convention and simplifying the partition special-casing
-for practical worlds; the partition ships now (unconditional, unblocks B/C/D/E).
+**32-bit composite depth (#1983, evaluated — keep the partition).** The `±65535`
+ceiling is a normalization convention on the shared composite depth, not a
+hardware limit. Widening it (DEPTH32F or a manual integer R32I composite) would
+*raise* the ceiling but not make it unbounded; under world streaming (#938)
+coordinates are genuinely unbounded, where the partition's O(1) correctness still
+wins. The #1983 spike evaluated retiring the convention and simplifying the
+partition special-casing and recommended **against** both — keep the partition,
+don't widen now (Metal is already DEPTH32F; no shipping demo binds the ceiling;
+the composite stage is perf-invisible). Full finding:
+[`composite-depth-32bit-evaluation-1983.md`](composite-depth-32bit-evaluation-1983.md).
+The partition ships now (unconditional, unblocks B/C/D/E).
 
 The three findings above map to the children:
 
