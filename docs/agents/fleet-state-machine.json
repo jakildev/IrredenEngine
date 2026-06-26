@@ -231,6 +231,12 @@
       "description": "Set by the native-Windows smoke worker (or platform-catchup) on a successful Windows smoke run; permanent audit trail, not used by merge gate. Don't add to issues."
     },
     {
+      "name": "fleet:needs-gl-host",
+      "scope": "issue",
+      "color": "c5def5",
+      "description": "Task needs an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it (dispatcher filter + claim gate). Human/architect triage signal."
+    },
+    {
       "name": "fleet:stacked",
       "scope": "pr",
       "color": "c5def5",

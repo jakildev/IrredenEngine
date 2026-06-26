@@ -13,10 +13,14 @@ that matter:
     lane, and yields ``defer`` (keep trigger, dispatch nothing) when ONLY
     cap-blocked fable work remains — an empty result would dispatch the
     lane default, which the claim gate then refuses, burning an iteration;
+  - a GL-only task (``needs_gl_host``) is unclaimable on a Metal-only host —
+    skipped like ``inflight_pr``, and the lane defers when it's the only
+    work (#1998, the GL-vs-Metal host-capability gate);
   - per-task **Effort:** overrides beat class defaults;
   - an empty/unroutable slice falls through to the lane default (covers
     reservation resumes and missing slices).
 """
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -26,9 +30,10 @@ from fleet_task_class import resolve, feedback_pr_class  # noqa: E402
 
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,
-          inflight_pr=None):
+          inflight_pr=None, needs_gl_host=False):
     return {"issue": issue, "model": model, "effort": effort,
-            "owner": owner, "blocked": blocked, "inflight_pr": inflight_pr}
+            "owner": owner, "blocked": blocked, "inflight_pr": inflight_pr,
+            "needs_gl_host": needs_gl_host}
 
 
 class FeedbackClassFromLabels(unittest.TestCase):
@@ -178,6 +183,81 @@ class EmptySlice(unittest.TestCase):
         self.assertEqual(resolve({}, "opus", fable_blocked=False), "")
         self.assertEqual(resolve({"tasks_open": [], "feedback_prs": []},
                                  "sonnet", fable_blocked=False), "")
+
+
+class GlHostGate(unittest.TestCase):
+    """#1998: a `needs_gl_host` task can't be built/run/verified on a
+    Metal-only (macOS) host. The dispatcher's claimability filter skips it
+    there — so a mac slice whose only open work is GL-only defers (goes
+    quiet) instead of churning a lane-default no-op, while a Linux/Windows
+    slice claims it normally. Host comes from `_current_host()`, driven here
+    via the FLEET_TEST_HOST seam (same seam fleet-claim's derive_host uses)."""
+
+    def setUp(self):
+        self._saved_host = os.environ.get("FLEET_TEST_HOST")
+
+    def tearDown(self):
+        if self._saved_host is None:
+            os.environ.pop("FLEET_TEST_HOST", None)
+        else:
+            os.environ["FLEET_TEST_HOST"] = self._saved_host
+
+    def _resolve_on(self, host, slice_data, fable_blocked=False):
+        os.environ["FLEET_TEST_HOST"] = host
+        return resolve(slice_data, "opus", fable_blocked=fable_blocked)
+
+    def test_gl_only_task_alone_on_mac_defers(self):
+        # The #1937 churn shape: a GL-backend task is the only open work and
+        # the pane is Metal-only -> defer (go quiet), not a lane-default no-op.
+        out = self._resolve_on(
+            "mac", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
+        self.assertEqual(out, "defer")
+
+    def test_gl_only_task_claimable_on_linux(self):
+        out = self._resolve_on(
+            "linux", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
+        self.assertEqual(out, "opus xhigh 0")
+
+    def test_gl_only_task_claimable_on_windows(self):
+        out = self._resolve_on(
+            "windows", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
+        self.assertEqual(out, "opus xhigh 0")
+
+    def test_mixed_mac_slice_dispatches_claimable_no_churn(self):
+        # GL-only #1937-shaped head + a claimable opus task: the mac pane skips
+        # the GL task (not counted toward `more`) and dispatches the claimable
+        # one — no defer, no churn.
+        out = self._resolve_on("mac", {"tasks_open": [
+            _task("#1937", "opus", needs_gl_host=True),
+            _task("#1998", "opus"),
+        ]})
+        self.assertEqual(out, "opus xhigh 0")
+
+    def test_gl_only_plus_inflight_only_on_mac_defers(self):
+        # All-terminal mix on a mac pane: one GL-only (host-terminal) + one
+        # inflight (PR-terminal). Nothing claimable -> defer.
+        out = self._resolve_on("mac", {"tasks_open": [
+            _task("#1937", "opus", needs_gl_host=True),
+            _task("#1640", "opus", inflight_pr={"number": 1700}),
+        ]})
+        self.assertEqual(out, "defer")
+
+    def test_gl_only_head_with_blocked_compatible_falls_through(self):
+        # GL-only head (host-terminal on mac) + a plain `blocked` but
+        # host-compatible task that may still be stackable -> '' so the
+        # worker's stackable tier still gets its lane-default dispatch.
+        out = self._resolve_on("mac", {"tasks_open": [
+            _task("#1937", "opus", needs_gl_host=True),
+            _task("#1941", "opus", blocked=True),
+        ]})
+        self.assertEqual(out, "")
+
+    def test_unknown_host_is_fail_closed(self):
+        # Fail-closed: an unrecognized host is treated as not GL-capable, so a
+        # GL-only task is skipped (real dispatch hosts are always mac/linux/win).
+        out = self._resolve_on(
+            "unknown", {"tasks_open": [_task("#1937", "opus", needs_gl_host=True)]})
+        self.assertEqual(out, "defer")
 
 
 if __name__ == "__main__":

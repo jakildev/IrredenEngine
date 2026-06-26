@@ -660,6 +660,49 @@ PYEOF
     return 0
 }
 
+# --- host-capability gate -------------------------------------------------
+
+check_host_capability() {
+    # Refuse the claim if the issue requires an OpenGL-4.5 host (label
+    # `fleet:needs-gl-host`) and this machine is not GL-capable. GL-capable
+    # hosts are {linux, windows}; macOS GL is 4.1 (< the shaders' required
+    # 4.5), so a Metal host cannot build/run/verify the GL backend. Mirrors
+    # check_model_tag: read the issue's labels, soft no-op when gh is
+    # unavailable or the issue can't be fetched.
+    #
+    # The dispatcher's claimability filter (fleet_task_class.py) is the
+    # load-bearing fix that stops the GL-on-Metal *dispatch*; this is the
+    # backstop for a manual or raced claim, and it runs unconditionally so it
+    # also covers --stackable-on GL claims. Fail-closed on an unrecognized
+    # host (refuse) — a real dispatch host is always mac/linux/windows.
+    local issue_num="$1"
+
+    local info
+    info=$(fetch_issue_info "$issue_num") || true
+    [[ -z "$info" ]] && return 0
+
+    local labels=""
+    while IFS=$'\t' read -r key value; do
+        case "$key" in
+            labels) labels="$value" ;;
+        esac
+    done <<< "$info"
+
+    case " $labels " in
+        *" fleet:needs-gl-host "*) ;;
+        *) return 0 ;;
+    esac
+
+    local host
+    host=$(derive_host)
+    case "$host" in
+        linux|windows) return 0 ;;
+    esac
+
+    echo "fleet-claim: refuse #${issue_num} — tagged [fleet:needs-gl-host], this host is [${host}]; needs an OpenGL-4.5 host (linux/windows)" >&2
+    return 1
+}
+
 # --- subcommands ----------------------------------------------------------
 
 cmd_claim() {
@@ -797,6 +840,12 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
     # Model-tag gate: refuse when FLEET_ROLE_MODEL is set and doesn't
     # match the issue's model labels / body field.
     if ! check_model_tag "$issue_num"; then
+        return 1
+    fi
+
+    # Host-capability gate: refuse a fleet:needs-gl-host claim from a
+    # Metal-only (macOS) host — it can't build/run/verify the GL backend.
+    if ! check_host_capability "$issue_num"; then
         return 1
     fi
 
