@@ -181,7 +181,40 @@ fix in Step i.)
 For `human:needs-fix` / `human:blocker` only, choose a disposition.
 The fleet-label paths (`fleet:needs-fix`, `fleet:has-nits`,
 `fleet:design-unblocked`) always AMEND — there is no ESCALATE for
-fleet feedback.
+fleet feedback — **except when the entire fix surface is gated self-config**
+(see DEFER path below).
+
+### DEFER (gated-self-config) — fleet:needs-fix only
+
+If a `fleet:needs-fix` PR's **entire** changed-file set matches the
+auto-mode self-edit gate (`.claude/commands/role-*.md`, `.claude/agents/*`,
+`.claude/skills/**/SKILL.md`), no worker class can amend it — the gate
+is deterministic and escalating class does not help. This is the PR-feedback
+analogue of role-worker.md step 8b. Take the DEFER path, **not** AMEND:
+
+1. Comment the **precise** human fix — exact file(s) and the change needed:
+   ```
+   gh pr comment <N> --repo jakildev/IrredenEngine \
+     --body "Fix surface is entirely gated self-config; cannot amend. \
+   Human fix needed: <exact file> — <what to change>. \
+   Parking fleet:human-deferred. — worker"
+   ```
+2. Atomically swap labels (`fleet:needs-fix` dropped → `fleet:human-deferred`
+   added; keep `fleet:approved` if present — the diff is internally consistent):
+   ```
+   gh pr edit <N> --repo jakildev/IrredenEngine \
+     --remove-label "fleet:needs-fix" \
+     --add-label "fleet:human-deferred"
+   ```
+3. Release the feedback claim and move on — do **not** amend, do **not** push:
+   ```
+   fleet-claim amending-release <N> <your-worktree-basename>
+   ```
+
+This makes the park terminal: `fleet:needs-fix` is gone, so the PR is excluded
+from the worker dispatch trigger on the next tick. A partially-gated PR (some
+gated, some normal paths) should **not** take this path — amend the non-gated
+part normally and comment the gated part for the human.
 
 ### AMEND (default)
 
@@ -304,7 +337,8 @@ fleet-pr-clear-feedback-labels <N> --labels "fleet:human-deferred"
 For `fleet:needs-fix` / `fleet:has-nits` / `fleet:design-unblocked`
 only (no human label): skip all three — reviewer-flagged feedback
 and architect direction don't trigger the human-amending state, and
-`fleet:human-deferred` belongs only to the ESCALATE→AMEND path.
+`fleet:human-deferred` belongs to the ESCALATE→AMEND path and the DEFER
+(gated-self-config) path — not to the normal fleet-label AMEND path.
 
 #### Worker-only: reserve the worktree for the in-flight amendment
 
