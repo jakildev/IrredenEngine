@@ -51,18 +51,12 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # scout is run directly or loaded by-path in the unit tests (#1425).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fleet_branch_match import branch_matches_issue, PARKED_PR_LABELS
+from fleet_stack_base import unsafe_base_reason
+from fleet_blocked_by import parse_blocked_by, is_no_blocker_value
 
 
 def _fleet_script_argv(cmd):
-    """Make a sibling fleet-script command spawnable on this platform.
-
-    The fleet scripts (fleet-claim, fleet-queue-ingest, ...) are bash with a
-    `#!/usr/bin/env bash` shebang. POSIX honors the shebang, so the bare name
-    on PATH works. Native-Windows python's CreateProcess cannot exec a shebang
-    script (`[WinError 2]`), so resolve cmd[0] to its absolute sibling path
-    (every fleet script lives in this script's dir) and route it through bash.
-    On POSIX this only resolves the bare name to that same absolute path.
-    """
+    """Resolve a bare fleet-script name to a spawnable argv (bash-wrapped on win32)."""
     name = cmd[0]
     if not os.path.isabs(name):
         sibling = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
@@ -70,12 +64,10 @@ def _fleet_script_argv(cmd):
             name = sibling
     if sys.platform == "win32":
         bash = shutil.which("bash") or "bash"
-        # Forward slashes: bash on Windows execs "C:/path/script" reliably,
-        # backslash paths get mangled as escapes.
+        # bash on Windows needs forward-slashed path (backslashes are mangled as escapes).
         return [bash, name.replace("\\", "/"), *cmd[1:]]
     return [name, *cmd[1:]]
-from fleet_stack_base import unsafe_base_reason
-from fleet_blocked_by import parse_blocked_by, is_no_blocker_value
+
 
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
