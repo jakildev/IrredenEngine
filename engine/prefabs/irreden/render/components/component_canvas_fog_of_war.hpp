@@ -15,8 +15,12 @@
 // and unused.
 //
 // v1 scope: the texture and a CPU-side mirror plus a dirty flag the
-// system uses to gate the per-frame `subImage2D` upload. This is the
-// documented exception to the "no dirty flags on components" rule —
+// system uses to gate the per-frame `subImage2D` upload. The upload is
+// performed by `VOXEL_TO_TRIXEL_STAGE_1` (#2008) — which also reads the
+// fog to cull unexplored-column voxels and so needs it current — not by
+// `FOG_TO_TRIXEL`, which is now a read-only consumer of the
+// already-uploaded texture. This is the documented exception to the
+// "no dirty flags on components" rule —
 // see `.claude/rules/cpp-ecs.md` § "No dirty flags on components".
 // The exception applies because the texture is CPU-authored,
 // GPU-read-only, and a per-cell `subImage2D` would split
@@ -73,8 +77,8 @@ struct C_CanvasFogOfWar {
     /// writes stay allocation-free for the common per-frame
     /// `revealRadius` case.
     std::vector<std::uint8_t> cpuBuffer_;
-    /// Set by any cell-mutating helper; cleared by the system after the
-    /// `subImage2D` upload completes. Also set on construction so the
+    /// Set by any cell-mutating helper; cleared by VOXEL_TO_TRIXEL_STAGE_1
+    /// after the `subImage2D` upload completes. Also set on construction so the
     /// initial all-zero state ships through to the GPU before the first
     /// FOG_TO_TRIXEL dispatch (a stale GPU-side texture from a previous
     /// frame's canvas teardown would otherwise leak into this canvas).

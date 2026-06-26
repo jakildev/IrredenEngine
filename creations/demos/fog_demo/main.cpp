@@ -44,6 +44,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 // Fog driver-side API (revealRadius / setCell).
 #include <irreden/render/fog_of_war.hpp>
@@ -210,6 +211,28 @@ void initEntities() {
         IRRender::ShapeType::CONE,
         vec4(4, 4, 8, 0),
         Color{220, 140, 100, 255}
+    );
+
+    // #2008 column-cull regression canary: a TALL voxel pillar standing on an
+    // UNEXPLORED column (XY = (-22,-22), Euclidean distance ~31 > the reveal+band
+    // radius of 26). It is a voxel set (not an SDF shape) so it travels the
+    // voxel-pool path — VOXEL_TO_TRIXEL_STAGE_1 → c_voxel_visibility_compact —
+    // which is exactly where #2008 culls unexplored-column voxels.
+    //
+    // -X-Y projects DOWN-screen in this iso (the +X+Y cone sits at the top of
+    // the disk), so the pillar's base sits below the bright disk and its 44-tall
+    // extent projects its top straight up OVER the visible disk. Before #2008
+    // the whole pillar rasterized and FOG_TO_TRIXEL hard-blacked every pixel
+    // (its column is unexplored), painting a black silhouette across the lit
+    // disk — the reported bug. With the cull the pillar's voxels never
+    // rasterize, so the disk stays clean.
+    //
+    // The canary is therefore a NEGATIVE one: in the fixed state the pillar is
+    // invisible and the zoom-2 disk is unmarred; if the cull regresses, the
+    // black silhouette reappears over the disk and the shot diff catches it.
+    IREntity::createEntity(
+        C_LocalTransform{vec3(-22.0f, -22.0f, -19.0f)},
+        C_VoxelSetNew{IRMath::ivec3{5, 5, 44}, Color{220, 70, 200, 255}, true}
     );
 
     // Canvas lighting attachments + fog. The voxel-pool canvas prefab doesn't

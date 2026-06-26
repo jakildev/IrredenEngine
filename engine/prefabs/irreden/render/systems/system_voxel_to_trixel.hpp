@@ -26,6 +26,7 @@
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -302,6 +303,20 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // Re-resolved every frame in beginTick — never held across frames. (.claude/rules/cpp-ecs.md)
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
+
+    // Fog-of-war column cull (#2008): a shared 1×1 all-visible texture bound at
+    // image slot 0 of the compact dispatch for every canvas that has no
+    // C_CanvasFogOfWar (detached, GUI, non-fog creations). The compact shader
+    // short-circuits on imageSize().x <= 1, so the placeholder is a true no-op —
+    // it exists only to satisfy Metal's "every bound texture slot must be
+    // populated" requirement. The real 256² fog texture is bound for the world
+    // fog canvas instead.
+    Texture2D *fogCullPlaceholder_ = nullptr;
+    // Reusable .r → RGBA8 expansion scratch for the relocated fog upload
+    // (#2008). System ticks are serial, so one shared buffer keeps the
+    // per-dirty-frame upload allocation-free across however many fog canvases
+    // exist; the value-init resize zeros the GBA bytes the loop never writes.
+    std::vector<std::uint8_t> fogUploadScratch_;
 
     // Every DETACHED_REVOXELIZE canvas's resident locals buffer, resolved once
     // per frame in beginTick by IRPrefab::DetachedRevoxelize::syncResidentBuffers
@@ -625,6 +640,36 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         compactedBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_CompactedVoxelIndices);
     }
 
+    // Relocated from FOG_TO_TRIXEL (#2008): push the CPU fog mirror to its GPU
+    // texture once per dirty frame. STAGE_1 now owns the upload so the column
+    // cull below — and the later FOG_TO_TRIXEL post-process — read the SAME,
+    // current-frame fog (no one-frame lag, no startup-frame garbage). The
+    // dirty-flag exception (CPU-authored, GPU-read-only, 256 KiB whole-texture
+    // upload) is unchanged; only the system performing the upload moved.
+    void uploadFogIfDirty(C_CanvasFogOfWar &fog) {
+        if (!fog.dirty_) {
+            return;
+        }
+        const std::size_t cellCount = fog.cpuBuffer_.size();
+        if (fogUploadScratch_.size() < cellCount * 4) {
+            fogUploadScratch_.resize(cellCount * 4);
+        }
+        // Only the .r channel ever changes; GBA stay at the resize zero-init.
+        for (std::size_t i = 0; i < cellCount; ++i) {
+            fogUploadScratch_[i * 4] = fog.cpuBuffer_[i];
+        }
+        fog.getTexture()->subImage2D(
+            0,
+            0,
+            kFogOfWarSize,
+            kFogOfWarSize,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            fogUploadScratch_.data()
+        );
+        fog.dirty_ = false;
+    }
+
     void tick(
         IREntity::EntityId entity,
         C_VoxelPool &voxelPool,
@@ -645,6 +690,24 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         {
             IR_PROFILE_SCOPE("vs1_clear");
             clearCanvasAndDistances(entity, triangleCanvasTextures);
+        }
+
+        // Fog-of-war column cull (#2008): resolve this canvas's optional fog
+        // texture and flush any pending CPU edit to the GPU BEFORE the
+        // early-return below, so a pure-SDF fog scene (no live voxels) still
+        // uploads current fog for FOG_TO_TRIXEL's explored/unexplored masking.
+        // `fog` is held for the compact-dispatch bind further down. The
+        // getComponentOptional is on the iterating canvas — the accepted
+        // per-canvas O(handful) pattern; same shape as LIGHTING_TO_TRIXEL's
+        // C_CanvasSunShadow + C_CanvasLightVolume lookups (line 143-144), not
+        // the per-voxel getComponent footgun.
+        C_CanvasFogOfWar *fog = nullptr;
+        {
+            auto fogOpt = IREntity::getComponentOptional<C_CanvasFogOfWar>(entity);
+            if (fogOpt.has_value()) {
+                fog = fogOpt.value();
+                uploadFogIfDirty(*fog);
+            }
         }
 
         if (liveVoxelCount == 0)
@@ -943,6 +1006,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         compactProgram_->use();
+        // Fog cull input (#2008): the real 256² fog texture for the world fog
+        // canvas, else the shared 1×1 all-visible placeholder (compact shader
+        // short-circuits on imageSize<=1 → no cull, byte-identical to master).
+        // Bound right before the dispatch so an intervening chunk-occlusion
+        // pre-pass can't leave a stale texture on image slot 0.
+        (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
+            ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
         constexpr int kCompactLocalSize = 64;
         // Inverse-resample walks the D dest slots; the source path walks the live
         // source count. frameData_.voxelCount_ (the compact's per-slot guard) was
@@ -1202,6 +1272,34 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_IndirectDispatchParams
         );
 
+        // Fog-of-war cull placeholder (#2008): a 1×1 all-visible texture bound at
+        // image slot 0 of the compact dispatch for any canvas without a real
+        // C_CanvasFogOfWar. Seeded visible so it is harmless even if the shader's
+        // imageSize<=1 short-circuit were ever removed; in practice the shader
+        // never samples it.
+        IRRender::createNamedResource<Texture2D>(
+            "FogCullVisiblePlaceholder",
+            TextureKind::TEXTURE_2D,
+            1,
+            1,
+            TextureFormat::RGBA8,
+            TextureWrap::CLAMP_TO_EDGE,
+            TextureFilter::NEAREST
+        );
+        {
+            const std::array<std::uint8_t, 4> visiblePixel = {kFogStateVisible, 0u, 0u, 0u};
+            IRRender::getNamedResource<Texture2D>("FogCullVisiblePlaceholder")
+                ->subImage2D(
+                    0,
+                    0,
+                    1,
+                    1,
+                    PixelDataFormat::RGBA,
+                    PixelDataType::UNSIGNED_BYTE,
+                    visiblePixel.data()
+                );
+        }
+
         // Chunk-occlusion query buffer (#1294 child 2/3): a 32-byte header record
         // + one record per pool-chunk. Created on slot 25 like the per-axis
         // buffers (bound there transiently by the pre-pass); the restore below
@@ -1245,6 +1343,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         p->chunkOcclusionQueryBuf_ =
             IRRender::getNamedResource<Buffer>("ChunkOcclusionQueryBuffer");
         p->maxPoolChunks_ = maxVoxelPoolChunks;
+        p->fogCullPlaceholder_ = IRRender::getNamedResource<Texture2D>("FogCullVisiblePlaceholder");
         // The per-axis buffers were created with the 25/26 bind indices, which
         // displaced the full compact buffers' steady-state binding. Restore
         // 25/26 to the full buffers; the per-axis buffers are re-bound onto

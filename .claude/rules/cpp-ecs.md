@@ -91,7 +91,7 @@ Worked example (#1288): `SYSTEM_REBUILD_GRID_VOXELS` cached `lastRebuildWorld{Ro
 
 ### Live deviations
 
-- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). T-161 evaluated migration to per-region `subImage2D` and deferred; see [`docs/design/fog-of-war-upload-strategy.md`](../../docs/design/fog-of-war-upload-strategy.md) for the analysis, the trigger conditions for revisiting, and the mechanical Strategy C migration sketch.
+- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `C_CanvasFogOfWar::dirty_` and `allUnexplored_` gate the per-frame `subImage2D` upload of the 256² fog texture. The upload is performed by `VOXEL_TO_TRIXEL_STAGE_1` (#2008), which both reads the fog to cull unexplored-column voxels and runs earlier in the pipeline; `FOG_TO_TRIXEL` is now a read-only consumer of the already-uploaded texture. Documented exception (CPU-authored, GPU-read-only, full-texture upload). T-161 evaluated migration to per-region `subImage2D` and deferred; see [`docs/design/fog-of-war-upload-strategy.md`](../../docs/design/fog-of-war-upload-strategy.md) for the analysis, the trigger conditions for revisiting, and the mechanical Strategy C migration sketch.
 
 ## Allocations in hot tick paths
 

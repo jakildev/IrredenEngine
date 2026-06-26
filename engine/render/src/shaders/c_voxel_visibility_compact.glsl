@@ -77,6 +77,45 @@ layout(std430, binding = 26) buffer IndirectDispatchParamsBuf {
     uint params[];
 };
 
+// Fog-of-war column cull (#2008). The world fog canvas binds its 256² fog
+// visibility texture here; every other canvas (detached, GUI, non-fog
+// creations) binds a 1×1 all-visible placeholder. A voxel whose RAW world
+// (x,y) column is unexplored is dropped from BOTH the single-list and the
+// per-axis appends, so it never rasterizes — there is no surviving pixel for
+// FOG_TO_TRIXEL to hard-black, which is what turned a tall object on an
+// unrevealed column into a black silhouette. The `imageSize().x <= 1`
+// short-circuit makes the placeholder path a true no-op, so non-fog canvases
+// stay byte-identical to master.
+layout(rgba8, binding = 0) readonly uniform image2D canvasFogOfWar;
+
+// Mirrors C_CanvasFogOfWar + c_fog_to_trixel.glsl. The fog `.r` channel reads
+// back in normalized space: unexplored 0.0, explored ≈0.5, visible 1.0 — so
+// `state < kFogExploredThreshold` selects ONLY unexplored columns. Explored
+// columns still rasterize (FOG_TO_TRIXEL desaturates them as "memory").
+const int kFogOfWarHalfExtent = 128;
+const float kFogExploredThreshold = 0.25;
+
+// True iff this voxel's raw world column is unexplored on the bound fog
+// texture. Uses voxelPosRaw (the pre-cardinal-rotation world position) because
+// the fog grid is world-space; out-of-range columns and the 1×1 placeholder
+// both return false (visible → no cull), matching c_fog_to_trixel's bounds
+// convention.
+bool fogColumnUnexplored(ivec3 voxelPosRaw) {
+    ivec2 fogSize = imageSize(canvasFogOfWar);
+    if (fogSize.x <= 1) {
+        return false;
+    }
+    ivec2 fogCell = ivec2(
+        voxelPosRaw.x + kFogOfWarHalfExtent,
+        voxelPosRaw.y + kFogOfWarHalfExtent
+    );
+    if (fogCell.x < 0 || fogCell.x >= fogSize.x ||
+        fogCell.y < 0 || fogCell.y >= fogSize.y) {
+        return false;
+    }
+    return imageLoad(canvasFogOfWar, fogCell).r < kFogExploredThreshold;
+}
+
 // Compute the indirect dispatch grid for the struct at `base` from its
 // visibleCount slot (matches the single-canvas numGroups math exactly). The
 // count is read atomically so the last group sees every other group's appends.
@@ -127,7 +166,8 @@ void main() {
                 if (isoPos.x >= cullIsoMin.x - cullMargin &&
                     isoPos.x <= cullIsoMax.x + cullMargin &&
                     isoPos.y >= cullIsoMin.y - cullMargin &&
-                    isoPos.y <= cullIsoMax.y + cullMargin) {
+                    isoPos.y <= cullIsoMax.y + cullMargin &&
+                    !fogColumnUnexplored(voxelPosRaw)) {
                     if (perAxisSplitStride == 0) {
                         // Single full list (byte-identical to master).
                         uint slot = atomicAdd(params[3], 1u);
