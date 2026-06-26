@@ -18,6 +18,7 @@ Installed to ~/bin/fleet-state-scout by scripts/fleet/install.sh.
 """
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import os
@@ -908,6 +909,26 @@ def _blocker_pr_files(repo_key, pr_number):
     return [f.get("path", "") for f in data.get("files", [])]
 
 
+def _is_gated_self_config(path):
+    # Auto-mode self-edit gate (role-worker.md step 8b) — deterministic across
+    # all worker classes. Keep in sync with that doc.
+    return (
+        fnmatch.fnmatch(path, ".claude/commands/role-*.md")
+        or path.startswith(".claude/agents/")
+        or (path.startswith(".claude/skills/") and path.endswith("/SKILL.md"))
+    )
+
+
+def _pr_all_gated_self_config(repo_key, pr_number):
+    # #1997: a PR whose entire diff is gated self-config cannot be amended by
+    # any worker class. Returns False on cache miss / empty diff (safe: never
+    # wrongly excludes a PR with an unseen file list).
+    files = _blocker_pr_files(repo_key, pr_number)
+    if not files:
+        return False
+    return all(_is_gated_self_config(p) for p in files)
+
+
 # ---------------------------------------------------------------------------
 # Live blocker resolution (T-1296)
 # ---------------------------------------------------------------------------
@@ -1291,6 +1312,13 @@ def project_worker(state):
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
             if "human:wip" in labels:
+                continue
+            # #1997: an all-gated-self-config PR already parked human-deferred
+            # cannot be amended by any worker class. Exclude from dispatch so
+            # a re-stamp of fleet:needs-fix doesn't re-fan-out N panes.
+            if "fleet:human-deferred" in labels and _pr_all_gated_self_config(
+                repo, pr["number"]
+            ):
                 continue
             if labels & _WORKER_RELEVANT_LABELS:
                 items.append({"kind": "pr", "repo": repo, "pr": pr["number"],
