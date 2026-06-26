@@ -371,5 +371,39 @@ class PlanReviewExcludedFromTasksOpen(unittest.TestCase):
         self.assertEqual(result["open"][0]["id"], "#55")
 
 
+class NeedsGlHostAnnotation(unittest.TestCase):
+    """fetch_task_queue stamps each task with needs_gl_host (#1998) so the
+    dispatcher's claimability filter (fleet_task_class.py) can skip GL-only
+    tasks on a Metal-only host. The flag flows into the worker slice via
+    dict(task) and into state.json tasks.open[]."""
+
+    def _fetch(self, issues_list):
+        payload = json.dumps(issues_list)
+        with patch.object(_mod, "run_capture", return_value=payload):
+            return _mod.fetch_task_queue("jakildev/IrredenEngine")
+
+    def _issue(self, number, extra_labels=()):
+        return {
+            "number": number,
+            "title": f"task #{number}",
+            "labels": [
+                {"name": "fleet:queued"},
+                {"name": "fleet:opus"},
+                {"name": "human:approved"},
+            ] + [{"name": l} for l in extra_labels],
+            "body": "**Model:** opus\n",
+        }
+
+    def test_needs_gl_host_true_when_labeled(self):
+        result = self._fetch([self._issue(1937, extra_labels=["fleet:needs-gl-host"])])
+        self.assertEqual(len(result["open"]), 1)
+        self.assertTrue(result["open"][0]["needs_gl_host"])
+
+    def test_needs_gl_host_false_when_absent(self):
+        result = self._fetch([self._issue(1998)])
+        self.assertEqual(len(result["open"]), 1)
+        self.assertFalse(result["open"][0]["needs_gl_host"])
+
+
 if __name__ == "__main__":
     unittest.main()

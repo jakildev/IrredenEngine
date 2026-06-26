@@ -465,6 +465,12 @@ def fetch_task_queue(repo_slug):
             # projection can drive fleet:blocked removal once the blocker closes
             # (see _ingest_unblock_candidates).
             "blocked": "fleet:blocked" in labels,
+            # #1998: `fleet:needs-gl-host` marks a backend-specific task that
+            # needs an OpenGL-4.5 host (linux/windows); macOS/Metal panes can't
+            # build/run/verify it. Surfaced here so the dispatcher's claimability
+            # filter (fleet_task_class.py) skips it on a Metal host instead of
+            # churning claim->refuse->release no-ops.
+            "needs_gl_host": "fleet:needs-gl-host" in labels,
             "issue": task_id,
             # `**Part of epic:** #U` back-ref (raw field value, e.g. "#1661").
             # The epic-steward adoption projection joins this against open

@@ -28,10 +28,11 @@ else the class default below.
 The fable concurrency cap is enforced here by *skipping* fable items when
 the cap is reached — the lane then serves its next non-fable item instead
 of idling. When the only work left is non-actionable — cap-blocked fable,
-or tasks already covered by an open implementation PR (``inflight_pr``,
-#1726) — the verdict is ``defer`` (keep the trigger, dispatch nothing)
-rather than an empty result, so the dispatcher doesn't burn an iteration
-on a lane whose only work a fresh worker would refuse.
+tasks already covered by an open implementation PR (``inflight_pr``, #1726),
+or backend-specific tasks this host can't run (``needs_gl_host`` on a
+Metal-only host, #1998) — the verdict is ``defer`` (keep the trigger,
+dispatch nothing) rather than an empty result, so the dispatcher doesn't
+burn an iteration on a lane whose only work a fresh worker would refuse.
 
 Output protocol (one line on stdout, consumed by fleet-dispatcher):
 
@@ -40,9 +41,10 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
                                   remain (keep the trigger so the next tick
                                   serves them), else 0.
   ``defer``                     — queue isn't empty but nothing is claimable
-                                  right now (only cap-blocked fable, or tasks
-                                  with an open implementation PR). Keep the
-                                  trigger; dispatch nothing.
+                                  right now (only cap-blocked fable, tasks with
+                                  an open implementation PR, or GL-only tasks on
+                                  a non-GL host). Keep the trigger; dispatch
+                                  nothing.
   (empty)                       — nothing class-routable in the slice; the
                                   dispatcher falls back to the lane default
                                   (this path covers reservation resumes and
@@ -50,6 +52,8 @@ Output protocol (one line on stdout, consumed by fleet-dispatcher):
 """
 
 import json
+import os
+import platform
 import sys
 
 CLASS_DEFAULT_EFFORT = {"fable": "xhigh", "opus": "xhigh", "sonnet": "high"}
@@ -58,33 +62,72 @@ CLASS_DEFAULT_EFFORT = {"fable": "xhigh", "opus": "xhigh", "sonnet": "high"}
 # feedback (fleet:has-nits) stays sonnet.
 FEEDBACK_BLOCKING_LABELS = {"human:needs-fix", "human:blocker", "fleet:needs-fix"}
 
+# Hosts that can build/run/verify the OpenGL backend. macOS GL is 4.1 < the
+# shaders' required 4.5, so a Metal-only host genuinely cannot do GL work; a
+# `fleet:needs-gl-host` task (scout field `needs_gl_host`) is unclaimable there
+# and dispatching to it is a guaranteed no-op (#1998).
+GL_CAPABLE_HOSTS = {"linux", "windows"}
 
-def _task_claimable(task):
+
+def _current_host():
+    # Canonical host key (mac | linux | windows | unknown), mirroring
+    # fleet-claim's host_from_uname/derive_host: the FLEET_TEST_HOST seam plus
+    # the same uname mapping (MINGW*/MSYS*/CYGWIN*/Windows* all = windows).
+    # Inlined rather than imported — module resolution across the scout's ~/bin
+    # symlink vs the dispatcher's FLEET_LIB_DIR is fragile (#1750/#1578), and
+    # fleet-claim's mapping is bash. Fail-closed: an unrecognized host is
+    # "unknown" (treated as not GL-capable); real dispatch hosts are always
+    # mac/linux/windows.
+    override = os.environ.get("FLEET_TEST_HOST")
+    if override:
+        return override
+    sysname = platform.system()
+    if sysname == "Darwin":
+        return "mac"
+    if sysname == "Linux":
+        return "linux"
+    if sysname.startswith(("Windows", "MINGW", "MSYS", "CYGWIN")):
+        return "windows"
+    return "unknown"
+
+
+def _host_incompatible(task, host):
+    # A `needs_gl_host` task on a non-GL host (macOS/Metal, or unknown) can
+    # never be built/run/verified here — terminally unclaimable, like inflight.
+    return bool(task.get("needs_gl_host")) and host not in GL_CAPABLE_HOSTS
+
+
+def _task_claimable(task, host):
     # `inflight_pr` (set by the scout) means an open PR already implements this
     # issue — parked on a design question or otherwise in flight — so a fresh
     # worker can't start it off the queue. Skipping it here stops the dispatcher
     # churning no-op iterations on a head-of-queue task every candidate refuses,
     # which was starving lower-class work queued behind it (#1726, the #1640 /
-    # design-blocked PR #1700 incident).
+    # design-blocked PR #1700 incident). The `needs_gl_host` clause does the
+    # same for backend-specific tasks a Metal-only host can't run (#1998).
     return (
         task.get("owner") in (None, "", "free")
         and not task.get("blocked")
         and not task.get("inflight_pr")
+        and not _host_incompatible(task, host)
     )
 
 
-def _only_inflight_pr_tasks(slice_data):
-    """True when tasks_open is non-empty and EVERY item is non-actionable
-    solely because an open PR already implements it (`inflight_pr`).
+def _only_unclaimable_tasks(slice_data, host):
+    """True when tasks_open is non-empty and EVERY item is non-actionable for a
+    *terminal* reason — an open PR already implements it (`inflight_pr`) or this
+    host can't build/run/verify it (`needs_gl_host` on a non-GL host, #1998).
 
     Used to pick 'go quiet' (defer) over the lane-default dispatch fallthrough:
     in this shape a fresh worker can claim nothing, so a dispatch is a no-op.
-    Requiring *all* items to be inflight keeps a mixed slice (an inflight head
-    plus a stackable `blocked` task behind it) on the '' fallthrough so the
-    worker's stackable tier still gets its dispatch.
+    Requiring *all* items to be terminally-unclaimable keeps a mixed slice (a
+    terminal head plus a stackable `blocked` but host-compatible task behind it)
+    on the '' fallthrough so the worker's stackable tier still gets its dispatch.
     """
     tasks = slice_data.get("tasks_open") or []
-    return bool(tasks) and all(t.get("inflight_pr") for t in tasks)
+    return bool(tasks) and all(
+        t.get("inflight_pr") or _host_incompatible(t, host) for t in tasks
+    )
 
 
 def feedback_pr_class(labels):
@@ -110,7 +153,7 @@ def feedback_pr_class(labels):
     return "sonnet"
 
 
-def _candidates(slice_data, lane_default):
+def _candidates(slice_data, lane_default, host):
     """Yield (class, effort) for each actionable item, pickup-priority order.
 
     Feedback PRs come first regardless of count — mirrors the worker role
@@ -120,7 +163,7 @@ def _candidates(slice_data, lane_default):
         cls = feedback_pr_class(pr.get("labels", []))
         yield cls, CLASS_DEFAULT_EFFORT[cls]
     for task in slice_data.get("tasks_open", []) or []:
-        if not _task_claimable(task):
+        if not _task_claimable(task, host):
             continue
         cls = (task.get("model") or lane_default).lower()
         if cls not in CLASS_DEFAULT_EFFORT:
@@ -135,10 +178,11 @@ def resolve(slice_data, lane_default, fable_blocked):
     """Return 'cls effort more', 'defer', or '' per the output protocol."""
     if lane_default not in CLASS_DEFAULT_EFFORT:
         lane_default = "opus"
+    host = _current_host()
     chosen = None
     skipped_fable = False
     servable_classes = set()
-    for cls, effort in _candidates(slice_data, lane_default):
+    for cls, effort in _candidates(slice_data, lane_default, host):
         if cls == "fable" and fable_blocked:
             # Cap-blocked fable is not currently servable: don't let it
             # hold the trigger open via `more` (that would re-dispatch
@@ -161,11 +205,11 @@ def resolve(slice_data, lane_default, fable_blocked):
     # `inflight_pr`), a lane-default dispatch is a guaranteed no-op — a fresh
     # worker refuses every one on sight — so the lane goes quiet (defer) instead
     # of churning that no-op every tick (#1726). Any other shape (a claimable
-    # task would have been chosen above; a plain `blocked` task may still be
-    # stackable; an owned task, an empty/missing slice) returns '' so the
-    # dispatcher's lane-default fallthrough keeps covering the stackable tier,
-    # reservation resumes, and missing slices.
-    if _only_inflight_pr_tasks(slice_data):
+    # task would have been chosen above; a plain `blocked` host-compatible task
+    # may still be stackable; an owned task, an empty/missing slice) returns ''
+    # so the dispatcher's lane-default fallthrough keeps covering the stackable
+    # tier, reservation resumes, and missing slices.
+    if _only_unclaimable_tasks(slice_data, host):
         return "defer"
     return ""
 
