@@ -9,10 +9,11 @@ description: >-
   and holds labels on PRs that touch the implicated source paths until
   the fix lands. On partial (per-demo runtime hang or crash but build
   green), sweeps the rest and files a follow-up perf / functional issue
-  for the offending demo. Use when the human cues "platform-catchup",
-  "catch up smoke tests", or "verify Linux builds the recent PRs". Skill
-  is **cue-only**, never auto-run — multi-target builds and 30-demo runs
-  are expensive, the human chooses when to spend them.
+  for the offending demo. Runs on Linux, macOS, AND native Windows (MSYS2
+  mingw64) — Windows is now the primary validation host. Use when the human
+  cues "platform-catchup", "catch up smoke tests", or "catch up Windows
+  builds". Skill is **cue-only**, never auto-run — multi-target builds and
+  ~40-demo runs are expensive, the human chooses when to spend them.
 ---
 
 # platform-catchup
@@ -84,10 +85,21 @@ a new creation joins the fleet):
 
 | Repo                       | Build cohort                                                 |
 |----------------------------|--------------------------------------------------------------|
-| `jakildev/IrredenEngine`   | Engine demo cohort (see below) — 27 targets                  |
+| `jakildev/IrredenEngine`   | Engine demo cohort (see below) — ~41 targets, derive from source |
 | `jakildev/irreden`         | `IRGame` (single-target)                                     |
 
 ### Engine demo cohort
+
+> **This static list drifts — derive the cohort from the source.** The
+> authoritative build set is every `add_executable(...)` across
+> `creations/demos/*/CMakeLists.txt` plus the `lighting/` (15 targets, incl.
+> `IRLightingHDR`) and `z_yaw_rotation/` (2) `foreach` lists. As of 2026-06
+> that is **41 targets** — the snapshot below predates `IRLightingHDR` and the
+> newer demos `IRFogDemo`, `IRDayCycle`, `IRSceneReset`, `IRSkeletalDemo`,
+> `IRCollisionOverlapDemo`, `IRLuaWidgetsDemo`, `IRAudioPlayback`,
+> `IRChunkStreamingSmoke`, `IRAnalyticOracle`, `IRVoxelYaw`. `ir-run --targets
+> --plan` is the build-system view but is incomplete on some hosts; grep the
+> CMakeLists when in doubt.
 
 ```
 IRShapeDebug              IRCanvasStress              IRGpuParticles
@@ -116,6 +128,58 @@ on 2026-05-24 (PR #1152 fix) only manifested when building
 `IRUIWidgetsDemo` / `IRUiDockspace`. `IRShapeDebug` built clean
 against the same source. v1 of this skill must build multi-target.
 
+## Native Windows (host-tag `windows-x86_64`)
+
+Windows is a first-class catch-up host — the fleet's **primary** validation
+host going forward (Linux validation is minimal; macOS/Metal is the parity
+backend). Everything below is the Windows delta on the generic flow.
+
+**Build / run wrappers.** Use `ir-build` / `ir-run` (the `fleet-build` /
+`fleet-run` shims still work). On Windows `ir-build` runs the whole
+`cmake --build` inside `cmd.exe` with `C:\msys64\mingw64\bin` prepended to
+PATH — the cc1plus silent-crash fix (see BUILD.md). `ir-run` resolves the
+`.exe` suffix and prepends the mingw64 runtime DLLs.
+
+**Display + timeout.** Native Windows has a real desktop, so GLFW window
+creation and `--auto-screenshot` work — no headless build-only downgrade.
+MSYS2 ships `timeout` at `/usr/bin/timeout`, so the belt-and-suspenders bash
+wrapper from step 6 is available; `ir-run --timeout` (pure bash) also works.
+
+**Gotchas from the first native-Windows run (2026-06, PR #2034):**
+
+- **`gh pr list` default `--limit 30` under-counts the backlog** — always
+  `--limit 500` (see step 2). The real merged backlog was 135, not 30.
+- **Building a NAMED target skips `cmake_check_build_system`.** After editing
+  a `CMakeLists.txt`, `ir-build --target <one-target>` does NOT reconfigure
+  and the stale recipe runs. Force a reconfigure first
+  (`cmd.exe /c "set PATH=C:\msys64\mingw64\bin;%PATH% && cmake <build-dir>"`),
+  or build with no single-target filter.
+- **Shaders are bundled per-demo.** A `.glsl` edit only reaches a demo after
+  its `*Assets` target re-copies it — rebuild the cohort to re-bundle before
+  re-running.
+- **`fleet-run-targets` has a Windows path-scope bug** (`/c/...` vs `C:/...`
+  mismatch → "scope … is outside …; showing whole tree" / "no built
+  executables"). Derive the cohort from the CMakeLists instead (above); a fix
+  is tracked separately.
+- **A trailing `; echo …` masks a wrapper's real exit code** — the `echo`
+  returns 0 and hides a failed `ir-build`/`ir-run`. Make the command you care
+  about the LAST one, or scan the log rather than trusting the exit status.
+- **`gdb` works** (`/c/msys64/mingw64/bin/gdb.exe`). For a SIGSEGV (exit 139),
+  get a backtrace with
+  `cmd.exe /c "set PATH=C:\msys64\mingw64\bin;%PATH% && cd /d <exe-dir> && gdb
+  --batch -ex run -ex bt -ex quit --args <exe>.exe --auto-screenshot 5"` — this
+  is how the first run's three segfaults were root-caused (#2031, #2032).
+
+**Stricter-driver class of finding.** The native-Windows GL driver enforces
+GLSL/GL rules lenient Linux/macOS drivers tolerate — e.g. a uniform block
+shared by name across stages MUST be member-identical (the
+`FrameDataIsoTriangles` vertex/fragment mismatch, PR #2034, crashed every demo
+at link). A clean Linux build is NOT evidence the GL program links on Windows.
+Expect "latent everywhere, fatal only here" UB — out-of-bounds `std::span`
+derefs, GL calls at process-exit static destruction — to surface first on
+Windows under gcc-15/MSYS2. Treat a Windows run-pass crash as a real engine
+bug to root-cause (gdb), not a flaky demo.
+
 ## Flow
 
 ### 1. Detect host + repo
@@ -126,12 +190,26 @@ uname -s -m
 
 Map to host-tag:
 
-| `uname` output       | host-tag           |
-|----------------------|--------------------|
-| `Linux x86_64`       | `linux-x86_64`     |
-| `Darwin x86_64`      | `macos-x86_64`     |
-| `Darwin arm64`       | `macos-arm64`      |
-| `MINGW*` / `MSYS*`   | (skill unsupported on Windows; print + exit) |
+| `uname` output       | host-tag (marker/log) | label host-tag |
+|----------------------|-----------------------|----------------|
+| `Linux x86_64`       | `linux-x86_64`        | `linux`        |
+| `Darwin x86_64`      | `macos-x86_64`        | `macos`        |
+| `Darwin arm64`       | `macos-arm64`         | `macos`        |
+| `MINGW*` / `MSYS*`   | `windows-x86_64`      | `windows`      |
+
+**Two host-tags — do not conflate them.** The `fleet:needs-<host>-smoke` /
+`fleet:verified-<host>` LABELS use the **short** form (`windows`, `linux`,
+`macos`) — verified against the live label catalog. The **marker + log-dir
+paths** use the arch-qualified form (`windows-x86_64`, matching the existing
+`linux-x86_64` markers). Build the label name from the short tag and every
+local path from the arch tag; one `<host-tag>` substitution used everywhere
+will either sweep the wrong label or split the marker.
+
+**Native Windows is supported and is now the primary validation host** (see
+"Native Windows" below) — the historical "exit on `MINGW*`" guard is gone. The
+fleet runs natively on Windows (MSYS2 mingw64, OpenGL) via `ir-build` /
+`ir-run`; WSL is no longer required and Linux validation is minimal going
+forward. macOS/Metal stays the parity backend.
 
 ```bash
 gh repo view --json nameWithOwner --jq .nameWithOwner
@@ -163,17 +241,23 @@ Format:
 ```
 
 Read `git rev-parse origin/master`. If `last_verified_commit == HEAD`
-AND `gh pr list --label "fleet:needs-<host-tag>-smoke" --state all
---json number --jq length` is `0`, print `platform-catchup: marker
-matches origin/master, no labeled PRs in scope; nothing to do` and
+AND `gh pr list --label "fleet:needs-<label-host-tag>-smoke" --state all
+--json number --jq length --limit 500` is `0`, print `platform-catchup:
+marker matches origin/master, no labeled PRs in scope; nothing to do` and
 exit. Otherwise continue.
+
+> **`--limit` gotcha (load-bearing).** `gh pr list` silently defaults to
+> **30** rows. EVERY count/list query in this skill MUST pass `--limit 500`.
+> On the first native-Windows catch-up the real merged backlog was **135**,
+> but the default-limited `length` reported `30` and badly under-counted the
+> work. A missing `--limit` reads as "small backlog" when it isn't.
 
 ### 3. Read backlog
 
 ```bash
-gh pr list --repo <repo> --label "fleet:needs-<host-tag>-smoke" \
+gh pr list --repo <repo> --label "fleet:needs-<label-host-tag>-smoke" \
   --state all --json number,title,state,mergedAt,mergeCommit,labels,headRefName \
-  --limit 300 > ~/.fleet/platform-catchup/<host-tag>-backlog.json
+  --limit 500 > ~/.fleet/platform-catchup/<host-tag>-backlog.json
 ```
 
 Strip CLOSED PRs — not on master. Group remaining by state:
@@ -262,8 +346,8 @@ For every merged PR in the backlog (closed PRs already stripped):
 
 ```bash
 gh pr edit <N> --repo <repo> \
-  --remove-label "fleet:needs-<host-tag>-smoke" \
-  --add-label "fleet:verified-<host-tag>"
+  --remove-label "fleet:needs-<label-host-tag>-smoke" \
+  --add-label "fleet:verified-<label-host-tag>"
 ```
 
 Run serially. The OPEN PRs with the label are left untouched.
@@ -331,7 +415,7 @@ it). The fix is the right move:
    build is running and you want to avoid CPU contention, manually
    via `git push -u` + `gh pr create`).
 5. Apply the host-author label: `gh pr edit <PR> --add-label
-   "fleet:authored-on-<host-tag>"`.
+   "fleet:authored-on-<label-host-tag>"`.
 
 **Functional bug** in a recent PR (the recent change actually
 introduced a wrong-behavior regression): file an issue, do NOT
@@ -389,7 +473,7 @@ platform-catchup: <repo> on <host-tag>
   build:   <X/Y> targets clean (<failed>)
   run:     <X/Y> targets pass (<failed>)
   outcome: <green | partial-runtime | partial-build | red>
-  swept:   <N> PRs (fleet:needs-<host-tag>-smoke → fleet:verified-<host-tag>)
+  swept:   <N> PRs (fleet:needs-<label-host-tag>-smoke → fleet:verified-<label-host-tag>)
   held:    <N> PRs (touched <held-paths>; will sweep after <PR/issue> resolves)
   filed:   <N> parity-fix issue(s): <#issue-list>
   fix PR:  #<N> (if step 8c opened one)
@@ -474,8 +558,6 @@ authoritative spec going forward.
 
 ## Out of scope
 
-- **Windows execution.** Windows catch-up has its own (not-yet-built)
-  workflow; this skill exits early when run on Windows.
 - **`git bisect`-based walk-back.** Linear only for v1.
 - **Cross-host shared ledger.** GitHub labels are the shared state.
 - **Lua-script-only PR optimization.** v1 rebuilds the cohort
