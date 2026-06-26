@@ -70,10 +70,28 @@ endif()
 # before the populate step runs.
 file(MAKE_DIRECTORY ${LUAJIT_INCLUDE_DIR})
 
+# LuaJIT builds through its own Makefile, so this must invoke a *make*
+# program — and on native Windows that program is `mingw32-make`, not
+# `make`. The windows-debug preset uses MinGW Makefiles + MSYS2's mingw64
+# toolchain, which ships `mingw32-make.exe`; the Unix `make` lives in
+# MSYS2's /usr/bin, which is NOT on the build PATH (ir-build prepends only
+# mingw64/bin). A bare `make` there dies with "no such file or directory"
+# and breaks the whole native-Windows link — latent until the fleet first
+# built on real Windows, because WSL/macOS both have `make`.
+#
+# Deliberately NOT ${CMAKE_MAKE_PROGRAM}: under a Ninja generator that is
+# `ninja`, and `ninja BUILDMODE=static …` is nonsense — LuaJIT always
+# needs a make. Select by platform instead.
+if(WIN32)
+    set(LUAJIT_MAKE_PROGRAM mingw32-make)
+else()
+    set(LUAJIT_MAKE_PROGRAM make)
+endif()
+
 add_custom_command(
     OUTPUT ${LUAJIT_LIB_PATH}
     WORKING_DIRECTORY ${LUAJIT_SRC_DIR}
-    COMMAND ${CMAKE_COMMAND} -E env make ${LUAJIT_MAKE_ARGS}
+    COMMAND ${CMAKE_COMMAND} -E env ${LUAJIT_MAKE_PROGRAM} ${LUAJIT_MAKE_ARGS}
     COMMENT "Building LuaJIT 2.1 static library (${LUAJIT_LIB_NAME})"
     VERBATIM
 )

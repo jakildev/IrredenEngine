@@ -24,6 +24,28 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     vec2 effectiveSubdivisionsForHover;
     float showHoverHighlight;
     int distanceOffset;
+    // This block is ALSO declared in f_trixel_to_framebuffer.glsl, and a
+    // uniform block shared by name across stages MUST be member-identical or
+    // the GL spec makes the program link ill-formed. Lenient drivers
+    // (Linux/macOS) accepted the vertex-side head-only form; the stricter
+    // native-Windows driver rejects it with "members of uniform block (named
+    // FrameDataIsoTriangles) are not the same between shader stages" and the
+    // program-link assert crashes every demo at startup. The vertex stage
+    // consumes only mpMatrix + textureOffset, but it must still declare the
+    // full scatter UBO tail so the std140 layout matches BOTH the fragment
+    // stage and the shared C++ struct (FrameDataTrixelToFramebuffer,
+    // ir_render_types.hpp). Keep these two blocks in lockstep.
+    ivec2 perAxisBase;
+    float visualYaw;
+    int scatterDebugMode;
+    ivec4 visibleFaceIds;
+    vec4 _detachedResidualPad;
+    vec4 _detachedDepthAxisPad;
+    vec4 scatterFbResolution;
+    int depthColorMode;
+    float depthColorExtent;
+    float _depthColorPad0;
+    int depthPriorityMode;
 };
 
 void main() {
