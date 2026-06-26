@@ -97,11 +97,16 @@ Specifically, **never pass these via `--label` when filing**:
 - `fleet:plan-review` — owned by the **planner** (sets it, swapping out
   `fleet:needs-plan`, once the `## Plan` comment is posted) and the **plan
   reviewer** (the architect, or the opus-reviewer loop — clears it). While
-  present the issue is NOT queue-ready: `fleet-queue-ingest` skips it. The
+  present the issue is NOT queue-ready: it is in **both** the scout's
+  `_INGEST_SKIP_LABELS` and `fleet-queue-ingest`'s own stamping skip (the two
+  must stay in sync — if only ingest skips it, the issue counts as "in the
+  scout's ingest set" the whole time the label is on, so *removing* it is not a
+  set change and never fires ingest). The
   reviewer judges the `## Plan` comment *as a plan* (per PLANNING-PROTOCOL.md
   step-2 rigor — verified state, single committed approach, sibling
-  reconciliation, cross-system audit): sound → remove the label (the scout
-  queues the issue on its next pass); not sound → swap back to
+  reconciliation, cross-system audit): sound → remove the label (the membership
+  flips out→in, the scout fires ingest, and it queues on the next pass); not
+  sound → swap back to
   `fleet:needs-plan` with a comment naming the gaps. Distinct from the code
   review the implementation PR later gets. Don't add at filing.
 - `human:review-plan` — owned by the **human** as a release gate; **set by an
