@@ -911,7 +911,7 @@ def _blocker_pr_files(repo_key, pr_number):
 
 def _is_gated_self_config(path):
     # Auto-mode self-edit gate (role-worker.md step 8b) — deterministic across
-    # all worker classes. Keep in sync with that doc.
+    # all worker classes. Keep in sync with role-worker.md step 8b and FLEET-FEEDBACK-HANDLING.md § DEFER (gated-self-config).
     return (
         fnmatch.fnmatch(path, ".claude/commands/role-*.md")
         or path.startswith(".claude/agents/")
