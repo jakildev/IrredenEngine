@@ -290,10 +290,11 @@ shell:
 
 ```bash
 pacman -Syu                       # then reopen the shell if it asks
-pacman -S --needed tmux jq \
+pacman -S --needed tmux \
     mingw-w64-x86_64-toolchain \  # gcc/g++ >= 13 — the windows-debug compiler
     mingw-w64-x86_64-gh \         # GitHub CLI
-    mingw-w64-x86_64-python       # fleet python helpers (scout, reconcile)
+    mingw-w64-x86_64-python \     # fleet python helpers (scout, reconcile)
+    mingw-w64-x86_64-jq           # JSON — must be the mingw build (see note below)
 ```
 
 Install separately on the **Windows** side: **Git for Windows** (the
@@ -333,7 +334,13 @@ export PATH="/c/msys64/mingw64/bin:/c/Program Files/Git/cmd:/c/Program Files/nod
 EOF
 ```
 
-(`jq` and `tmux` come from MSYS2's `/usr/bin`, already on the base PATH.)
+`tmux` comes from MSYS2's `/usr/bin` (already on the base PATH) and only
+the orchestrator needs it. **`jq` must be the mingw build**
+(`mingw-w64-x86_64-jq`, in `mingw64/bin`), *not* the MSYS `jq` in
+`/usr/bin`: the agent panes run their Bash tool as **Git Bash**, whose
+PATH includes `mingw64/bin` (via the line above) but not the MSYS
+`/usr/bin`. An MSYS-only `jq` works for the orchestrator but the agents
+hit `jq: command not found`.
 
 ### Run the setup script
 
