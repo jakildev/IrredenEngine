@@ -180,6 +180,15 @@ _INGEST_SKIP_LABELS = frozenset({
     "fleet:queued",        # pre-filtered by fetch_human_approved, included for explicitness
     "fleet:epic",
     "fleet:needs-plan",
+    "fleet:plan-review",   # #1932: plan posted, reviewer vetting before queue.
+                           # MUST mirror fleet-queue-ingest's own per-issue skip
+                           # (it also skips fleet:plan-review). Without it the issue
+                           # counts as "in the set" the whole time plan-review is on,
+                           # so the reviewer REMOVING plan-review — the queue trigger —
+                           # is not a membership change → no hash flip → no ingest fire
+                           # → the issue strands approved-but-unqueued until an unrelated
+                           # approval/unblock sweeps the set. Symmetric with the
+                           # human:review-plan hold below.
     "fleet:needs-info",
     "fleet:scope-shipped", # scope landed under a different issue; human should close
     "fleet:needs-human",   # parked: fleet can't do it autonomously, human must act;
@@ -1481,8 +1490,9 @@ def project_queue_manager_ingest(state):
     CHANGES, and each change spawns fleet-queue-ingest:
 
     - **Add path** — every `human:approved` issue not yet stamped
-      `fleet:queued` and not in a skip category (epic, needs-plan, needs-info,
-      needs-human, scope-shipped). Since #1527 a `**Blocked by:**`-blocked
+      `fleet:queued` and not in a skip category (epic, needs-plan, plan-review,
+      needs-info, needs-human, scope-shipped, human:review-plan). Since #1527 a
+      `**Blocked by:**`-blocked
       issue is NO LONGER excluded: it enters the set, ingest stamps
       `fleet:queued` + a model label + `fleet:blocked`, and it drops out
       (now carrying fleet:queued). The whole queue is visible immediately
