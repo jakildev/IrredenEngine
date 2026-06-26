@@ -23,6 +23,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -52,6 +53,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fleet_branch_match import branch_matches_issue, PARKED_PR_LABELS
 from fleet_stack_base import unsafe_base_reason
 from fleet_blocked_by import parse_blocked_by, is_no_blocker_value
+
+
+def _fleet_script_argv(cmd):
+    """Resolve a bare fleet-script name to a spawnable argv (bash-wrapped on win32)."""
+    name = cmd[0]
+    if not os.path.isabs(name):
+        sibling = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+        if os.path.exists(sibling):
+            name = sibling
+    if sys.platform == "win32":
+        bash = shutil.which("bash") or "bash"
+        # bash on Windows needs forward-slashed path (backslashes are mangled as escapes).
+        return [bash, name.replace("\\", "/"), *cmd[1:]]
+    return [name, *cmd[1:]]
+
 
 ENGINE = Path.home() / "src" / "IrredenEngine"
 GAME = ENGINE / "creations" / "game"
@@ -2152,7 +2168,7 @@ def tick_once():
                 for sweep_cmd in sweep_cmds:
                     try:
                         subprocess.Popen(
-                            sweep_cmd,
+                            _fleet_script_argv(sweep_cmd),
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                             start_new_session=True,
@@ -2179,12 +2195,8 @@ def tick_once():
                     triggers_fired.append("queue-manager-ingest(skipped-degraded)")
                     continue
                 try:
-                    ingest_cmd = subprocess.run(
-                        ["which", "fleet-queue-ingest"],
-                        capture_output=True, text=True,
-                    ).stdout.strip() or str(ENGINE / "scripts" / "fleet" / "fleet-queue-ingest")
                     subprocess.Popen(
-                        [ingest_cmd],
+                        _fleet_script_argv(["fleet-queue-ingest"]),
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
