@@ -50,15 +50,24 @@ REMOVE_LOG="$TMPROOT/remove.log"; : > "$REMOVE_LOG"
 
 # Stateful gh stub. STUB_HOLDERS = planning labels already on the issue; the
 # POST echoes those + the just-posted label. STUB_PLAN_COMMENTS is the count
-# `_issue_has_plan_comment`'s --jq returns (the dedup probe). issue-edit calls
-# are logged for self-removal / release assertions.
+# `_issue_has_plan_comment`'s --jq returns (the dedup probe). STUB_NEEDS_PLAN is
+# the literal true/false `_issue_has_needs_plan`'s --jq returns (the --replan
+# needs-plan-present guard). The two issue-view probes are disambiguated by
+# their --json arg. issue-edit calls are logged for self-removal / release.
 STUB_HOLDERS=""
 STUB_PLAN_COMMENTS=0
+STUB_NEEDS_PLAN=false
 gh() {
     case "${1:-}" in
         issue)
             case "${2:-}" in
-                view) printf '%s\n' "${STUB_PLAN_COMMENTS:-0}"; return 0 ;;  # dedup probe
+                view)
+                    if printf '%s ' "$@" | grep -q -- "--json labels"; then
+                        printf '%s\n' "${STUB_NEEDS_PLAN:-false}"   # needs-plan guard (--replan)
+                    else
+                        printf '%s\n' "${STUB_PLAN_COMMENTS:-0}"    # dedup probe (--json comments)
+                    fi
+                    return 0 ;;
                 edit) printf '%s\n' "$*" >> "$REMOVE_LOG"; return 0 ;;
                 *) return 0 ;;
             esac ;;
@@ -106,6 +115,26 @@ echo "T5: planning-release removes the label"
 cmd_planning_release 740 worker >/dev/null 2>&1 || rc=$?
 assert_exit "$rc" 0 "release exits 0"
 if grep -q -- "--remove-label $MINE" "$REMOVE_LOG"; then ok "release removed $MINE"; else bad "release did not remove $MINE (log: $(cat "$REMOVE_LOG"))"; fi
+
+echo "== --replan re-plan path (#1999): bypass dedup, gate on needs-plan present =="
+
+echo "T8: --replan with a ## Plan comment AND fleet:needs-plan present → acquires (exit 0), bypassing dedup"
+STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_NEEDS_PLAN=true
+rc=0; out=$(cmd_planning_claim 740 worker --replan 2>&1) || rc=$?
+assert_exit "$rc" 0 "--replan + plan comment + needs-plan present → exit 0 (re-plan lock armed, not exit 3)"
+case "$out" in *"issue#740"*) ok "re-plan acquire names the target as an issue" ;; *) bad "expected acquire message naming issue#740, got: $out" ;; esac
+
+echo "T9: --replan WITHOUT fleet:needs-plan present → refuses (exit 2, misuse)"
+STUB_HOLDERS=""; STUB_PLAN_COMMENTS=1; STUB_NEEDS_PLAN=false
+rc=0; out=$(cmd_planning_claim 740 worker --replan 2>&1) || rc=$?
+assert_exit "$rc" 2 "--replan with needs-plan absent → exit 2"
+case "$out" in *"not flagged fleet:needs-plan"*) ok "refusal explains the missing needs-plan label" ;; *) bad "expected 'not flagged fleet:needs-plan', got: $out" ;; esac
+
+echo "T10: --replan loser path (another host already holds fleet:planning-*) → yield (exit 1) + self-remove"
+STUB_HOLDERS="$OTHER"; STUB_PLAN_COMMENTS=1; STUB_NEEDS_PLAN=true; : > "$REMOVE_LOG"
+rc=0; cmd_planning_claim 740 worker --replan >/dev/null 2>&1 || rc=$?
+assert_exit "$rc" 1 "--replan with a persistent planning holder → exit 1 (never a co-win)"
+if grep -q -- "--remove-label $MINE" "$REMOVE_LOG"; then ok "losing re-plan claimant self-removed its planning label"; else bad "losing re-plan claimant did not self-remove (log: $(cat "$REMOVE_LOG"))"; fi
 
 echo "== cleanup --gh fourth pass: stale planning sweep over fleet:needs-plan =="
 NOW_EPOCH=$(date +%s)
