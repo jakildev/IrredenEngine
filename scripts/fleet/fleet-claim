@@ -1279,12 +1279,63 @@ _issue_has_plan_comment() {
         2>/dev/null || echo 0)
     [[ "${cnt:-0}" =~ ^[0-9]+$ && "${cnt:-0}" -gt 0 ]]
 }
+
+# True iff the issue currently carries fleet:needs-plan. The --replan re-plan
+# path gates on this: a worker flips fleet:queued -> fleet:needs-plan before
+# re-claiming, so its presence is the signal that a deliberate re-plan was
+# requested — and its absence stops --replan from grabbing a freshly-planned or
+# never-re-flagged issue nobody asked to re-plan (#1999).
+_issue_has_needs_plan() {
+    local repo="$1" issue="$2" present
+    present=$(gh issue view "$issue" --repo "$repo" --json labels \
+        --jq 'any(.labels[]; .name == "fleet:needs-plan")' 2>/dev/null || echo false)
+    [[ "$present" == "true" ]]
+}
 cmd_planning_claim() {
-    local issue="${1:-}" agent="${2:-unknown}" repo
-    if [[ "$issue" =~ ^[0-9]+$ ]] && command -v gh >/dev/null 2>&1; then
-        repo=$(repo_from_ns)
-        if [[ -n "$repo" ]] && _issue_has_plan_comment "$repo" "$issue"; then
-            echo "planning-claim: issue#$issue already has a ## Plan comment; skipping (already planned)"
+    # planning-claim <issue> <agent> [--replan]
+    #   --replan is a trailing boolean flag (mirrors cmd_claim's --stackable-on
+    #   arg-shift): issue first, agent the next non-flag positional, flags after.
+    local issue="${1:-}"
+    shift || true
+    local agent="unknown"
+    if [[ "${1:-}" != --* && $# -ge 1 ]]; then
+        agent="$1"
+        shift
+    fi
+    local replan=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --replan) replan=1; shift ;;
+            *) echo "fleet-claim planning-claim: unknown flag '$1'" >&2; return 2 ;;
+        esac
+    done
+
+    local repo
+    repo=$(repo_from_ns)
+
+    if [[ "$replan" -eq 1 ]]; then
+        # A deliberate RE-plan of a stale committed plan. SKIP the
+        # `## Plan`-comment dedup early-out — a re-plan EXPECTS a prior plan, so
+        # it must ACQUIRE the lock (not be refused) so two opus panes can't both
+        # deep-investigate the same stale-plan refresh (#1999). The lex-min
+        # label lock then guarantees a sole re-plan holder, exactly like a first
+        # plan; the comment-presence early-out would otherwise both leave the
+        # re-plan unguarded AND strand it (exit 3 for every planner) until a
+        # human hand-deletes the prior `## Plan` comment. GUARD: fleet:needs-plan
+        # must be CURRENTLY present (the worker flips fleet:queued ->
+        # fleet:needs-plan before claiming), so --replan can't grab a
+        # freshly-planned/queued issue nobody re-flagged.
+        if [[ "$issue" =~ ^[0-9]+$ ]] && command -v gh >/dev/null 2>&1 && [[ -n "$repo" ]]; then
+            if ! _issue_has_needs_plan "$repo" "$issue"; then
+                echo "planning-claim --replan: issue#$issue is not flagged fleet:needs-plan; flip fleet:queued -> fleet:needs-plan before re-planning (refusing)" >&2
+                return 2
+            fi
+        fi
+    else
+        # First-time plan claim: refuse an already-planned issue via the cheap
+        # `## Plan`-comment dedup early-out.
+        if [[ "$issue" =~ ^[0-9]+$ ]] && command -v gh >/dev/null 2>&1 && [[ -n "$repo" ]] && _issue_has_plan_comment "$repo" "$issue"; then
+            echo "planning-claim: issue#$issue already has a ## Plan comment; skipping (already planned). Pass --replan to race-guard a deliberate re-plan."
             return 3
         fi
     fi
@@ -3873,10 +3924,11 @@ case "${1:-}" in
         ;;
     planning-claim)
         if [[ -z "${3:-}" ]]; then
-            echo "usage: fleet-claim [--repo <ns>] planning-claim <needs-plan-issue> <agent>" >&2
+            echo "usage: fleet-claim [--repo <ns>] planning-claim <needs-plan-issue> <agent> [--replan]" >&2
             exit 2
         fi
-        cmd_planning_claim "$2" "$3"
+        shift  # drop subcommand; forward <issue> <agent> [--replan]
+        cmd_planning_claim "$@"
         ;;
     planning-release)
         if [[ -z "${3:-}" ]]; then
@@ -4107,7 +4159,7 @@ commands:
                                 FLEET_CLAIM_STALE_SECS_STEWARD).
   steward-release <umbrella-issue> <agent>
                                 release a stewardship claim.
-  planning-claim <needs-plan-issue> <agent>
+  planning-claim <needs-plan-issue> <agent> [--replan]
                                 atomically claim a fleet:needs-plan ISSUE
                                 before planning via a
                                 fleet:planning-<host>-<agent> label
@@ -4115,6 +4167,12 @@ commands:
                                 when a ## Plan comment already exists;
                                 swept by cleanup --gh after
                                 FLEET_CLAIM_STALE_SECS_PLANNING).
+                                --replan skips the comment-presence
+                                early-out so a deliberate re-plan of a
+                                stale committed plan is race-guarded like
+                                a first plan; it requires fleet:needs-plan
+                                to be currently present (else exit 2)
+                                (#1999).
   planning-release <needs-plan-issue> <agent>
                                 release a planning claim.
   clear-all                     wipe all claims (used by fleet-up on

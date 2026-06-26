@@ -40,7 +40,8 @@ For each `fleet:needs-plan` issue:
    planners pass it before either posts a comment); the atomic claim does. (The
    claim/dedup enforcement is fleet tooling — `fleet-claim planning-claim`,
    landing with the re-scoped #1889; until it ships, honor this contract
-   manually.)
+   manually.) **Re-planning an already-planned task** that went stale has its
+   own guarded flow — see [§ Re-planning a stale queued plan](#re-planning-a-stale-queued-plan).
 
 1. **Read the full issue thread** — title, body, and every comment.
    The plan is often seeded in a comment, and the human may have left
@@ -227,6 +228,58 @@ For each `fleet:needs-plan` issue:
 **If you disagree with the issue's direction** (at planning time), comment with
 your concerns, leave `fleet:needs-plan` on, release the planning claim, and let
 the human decide.
+
+---
+
+## Re-planning a stale queued plan
+
+A first plan and its claim are guarded by step 0. **A re-plan is not** — and that
+gap is its own race. A `fleet:queued` task whose already-committed plan goes
+**stale post-approval** (its blocker shipped a *different* design during review,
+so the committed `.fleet/plans/issue-<N>.md` / `## Plan` comment now cites a
+renamed/removed symbol or a superseded decision) needs a fresh plan. The trigger
+to re-plan lives **outside** the first-plan lock, so without a guard two opus
+panes can both judge the same queued task stale and both deep-investigate the
+refresh — #1999: #1960 was re-derived by three panes after #1958/PR #1974 shipped
+a different encoding (no clobber, ~1 opus iteration wasted each).
+
+**The contract — re-flag and lock BEFORE any deep re-investigation.** The moment
+you judge a queued task's committed plan stale, and *before* spending an
+iteration re-deriving it:
+
+1. Flip the labels `fleet:queued → fleet:needs-plan`:
+   ```
+   gh issue edit <N> --repo <owner/repo> \
+     --remove-label "fleet:queued" --add-label "fleet:needs-plan"
+   ```
+2. Take the re-plan lock with the trailing `--replan` flag:
+   ```
+   fleet-claim planning-claim <N> <your-agent-name> --replan
+   ```
+   - **Exit 0** — you own the re-plan. Re-investigate, then post a **fresh**
+     `## Plan` comment that notes it supersedes the prior plan (the prior comment
+     stays as audit trail; the implementer reads the most-recent `## Plan`
+     comment as authoritative). Then proceed as a normal plan: swap
+     `fleet:needs-plan → fleet:plan-review` and `planning-release`.
+   - **Exit 1** — another pane already owns the re-plan. Back off immediately, do
+     **not** investigate, pick a different task (the losing label self-removes;
+     nothing to clean up).
+   - **Exit 2** — misuse: `fleet:needs-plan` isn't currently on the issue.
+     `--replan` requires it (step 1 sets it) so a re-plan can't grab a
+     freshly-planned or never-re-flagged issue. Re-check the label state.
+
+`--replan` exists because plain `planning-claim` would refuse a re-plan: a stale
+queued plan *has* a `## Plan` comment by definition, so the step-0 dedup early-out
+returns exit 3 to *every* planner — leaving the re-plan both unguarded **and**
+stranded until someone hand-deletes the old comment. `--replan` skips that
+comment-presence early-out (a re-plan expects a prior plan) and instead gates on
+the `fleet:needs-plan` label you set in step 1, so the lex-min lock arms for
+re-plans and guarantees a sole holder — exactly like a first plan.
+
+> The `role-worker.md` echo of this contract ("judge a queued plan stale → flip
+> `fleet:queued → fleet:needs-plan` + `planning-claim --replan` before
+> investigating") is **gated self-config** and is a human follow-up — this doc is
+> the worker-applicable half.
 
 ---
 
