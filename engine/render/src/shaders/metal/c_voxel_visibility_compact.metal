@@ -72,6 +72,35 @@ static void writeDispatchDims(
     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
 }
 
+// Fog-of-war column cull (#2008). Mirrors c_voxel_visibility_compact.glsl. The
+// fog `.r` channel reads back in normalized space: unexplored 0.0, explored
+// ≈0.5, visible 1.0. The world fog canvas binds its 256² fog texture at
+// [[texture(0)]]; every non-fog canvas binds a 1×1 all-visible placeholder, so
+// `get_width() <= 1` short-circuits the cull (byte-identical to master).
+constant int kFogOfWarHalfExtent = 128;
+constant float kFogExploredThreshold = 0.25f;
+
+// True iff this voxel's RAW world column is unexplored. World-space fog grid →
+// use voxelPosRaw (pre-cardinal-rotation). Out-of-range columns + the 1×1
+// placeholder both return false (visible → no cull), matching c_fog_to_trixel.
+static bool fogColumnUnexplored(
+    texture2d<float, access::read> fog, int3 voxelPosRaw
+) {
+    const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
+    if (fogSize.x <= 1) {
+        return false;
+    }
+    const int2 fogCell = int2(
+        voxelPosRaw.x + kFogOfWarHalfExtent,
+        voxelPosRaw.y + kFogOfWarHalfExtent
+    );
+    if (fogCell.x < 0 || fogCell.x >= fogSize.x ||
+        fogCell.y < 0 || fogCell.y >= fogSize.y) {
+        return false;
+    }
+    return fog.read(uint2(fogCell)).r < kFogExploredThreshold;
+}
+
 // T-287 / #950: this kernel no longer reads the per-voxel color SSBO. The
 // per-slot active bit at `activeMask[idx >> 5] & (1 << (idx & 31))` is the
 // CPU-pushed mirror of `m_voxelColors[idx].color_.alpha_ != 0`, kept in
@@ -88,6 +117,7 @@ kernel void c_voxel_visibility_compact(
     device const uint* chunkVisible [[buffer(24)]],
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
+    texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 groupCount [[threadgroups_per_grid]],
     uint3 localId [[thread_position_in_threadgroup]],
@@ -126,7 +156,8 @@ kernel void c_voxel_visibility_compact(
                 if (isoPos.x >= frameData.cullIsoMin.x - cullMargin &&
                     isoPos.x <= frameData.cullIsoMax.x + cullMargin &&
                     isoPos.y >= frameData.cullIsoMin.y - cullMargin &&
-                    isoPos.y <= frameData.cullIsoMax.y + cullMargin) {
+                    isoPos.y <= frameData.cullIsoMax.y + cullMargin &&
+                    !fogColumnUnexplored(canvasFogOfWar, voxelPosRaw)) {
                     if (frameData.perAxisRoute == 0) {
                         // Single full list (byte-identical to master).
                         const uint slot = atomic_fetch_add_explicit(

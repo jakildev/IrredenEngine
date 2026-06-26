@@ -8,9 +8,6 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
-#include <cstdint>
-#include <vector>
-
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
@@ -34,51 +31,24 @@ constexpr int kFogToTrixelGroupSize = 16;
 // pixels have no associated world position and would render garbage if
 // the pos3D recovery ran on them.
 //
-// CPU→GPU sync: the fog texture is uploaded via `subImage2D` at most
-// once per frame, gated by `C_CanvasFogOfWar::dirty_`. The CPU mirror
-// stores only the .r channel (one byte per cell); upload expands to
-// RGBA8 in a transient buffer because the GPU texture format is RGBA8
-// (Metal binding-layout sharing — see C_CanvasSunShadow rationale).
+// CPU→GPU sync: the dirty-gated `subImage2D` upload now lives in
+// VOXEL_TO_TRIXEL_STAGE_1 (#2008), which both performs the column cull
+// (it needs current-frame fog) and runs earlier in the pipeline. This
+// pass is read-only on the already-uploaded fog texture — hence the
+// const fog param — so the cull and this post-process always see the
+// same fog with no one-frame lag.
 template <> struct System<FOG_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
-    // Reusable CPU staging buffer for the .r → RGBA8 expansion.
-    // Single shared scratch keeps per-frame uploads allocation-free
-    // regardless of how many fog canvases exist — system ticks are
-    // serial. value-init on resize zeros GBA bytes we never write.
-    std::vector<std::uint8_t> uploadScratch_;
 
     void tick(
         const C_TriangleCanvasTextures &canvasTextures,
         const C_TrixelCanvasRenderBehavior &behavior,
-        C_CanvasFogOfWar &fog
+        const C_CanvasFogOfWar &fog
     ) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
         if (!behavior.useCameraPositionIso_) {
             return;
-        }
-
-        if (fog.dirty_) {
-            const std::size_t cellCount = fog.cpuBuffer_.size();
-            if (uploadScratch_.size() < cellCount * 4) {
-                uploadScratch_.resize(cellCount * 4);
-            }
-            // Only the .r channel ever changes; GBA stay at the
-            // zero-init from resize. Cuts per-dirty-frame stores
-            // 4×, ~256K → ~64K at 256² grid.
-            for (std::size_t i = 0; i < cellCount; ++i) {
-                uploadScratch_[i * 4] = fog.cpuBuffer_[i];
-            }
-            fog.getTexture()->subImage2D(
-                0,
-                0,
-                kFogOfWarSize,
-                kFogOfWarSize,
-                PixelDataFormat::RGBA,
-                PixelDataType::UNSIGNED_BYTE,
-                uploadScratch_.data()
-            );
-            fog.dirty_ = false;
         }
 
         canvasTextures.getTextureColors()
