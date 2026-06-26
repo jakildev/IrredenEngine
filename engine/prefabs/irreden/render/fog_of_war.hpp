@@ -47,12 +47,23 @@ inline std::uint8_t getCell(int worldX, int worldY) {
     return IRComponents::kFogStateUnexplored;
 }
 
-/// Mark every cell within @p radius (taxicab distance) of @p (cx, cy)
-/// as visible. See `C_CanvasFogOfWar::revealRadius` for the v1 contract
-/// around the cells that are NOT downgraded.
+/// Mark every cell within @p radius (Euclidean distance, since #1994) of
+/// @p (cx, cy) as visible. See `C_CanvasFogOfWar::revealRadius` for the v1
+/// contract around the cells that are NOT downgraded.
 inline void revealRadius(int cx, int cy, int radius) {
     if (auto *fog = detail::activeFogComponent()) {
         fog->revealRadius(cx, cy, radius);
+    }
+}
+
+/// Float-center, feathered reveal for a smoothly-moving observer: cells within
+/// `radius - feather` are fully visible, beyond @p radius untouched, and the
+/// band between ramps smoothly (Hermite) over Euclidean distance so a
+/// sub-cell-moving center reveals without per-cell vibration. Combines via max.
+/// See `C_CanvasFogOfWar::revealRadius(float,float,float,float)`.
+inline void revealRadius(float cx, float cy, float radius, float feather) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->revealRadius(cx, cy, radius, feather);
     }
 }
 

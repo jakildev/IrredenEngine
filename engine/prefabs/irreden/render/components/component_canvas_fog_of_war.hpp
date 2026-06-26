@@ -157,10 +157,10 @@ struct C_CanvasFogOfWar {
     void revealRadius(int cx, int cy, int radius) {
         if (radius < 0)
             return;
-        const int xMin = std::max(cx - radius, -kFogOfWarHalfExtent);
-        const int xMax = std::min(cx + radius, kFogOfWarHalfExtent - 1);
-        const int yMin = std::max(cy - radius, -kFogOfWarHalfExtent);
-        const int yMax = std::min(cy + radius, kFogOfWarHalfExtent - 1);
+        const int xMin = IRMath::max(cx - radius, -kFogOfWarHalfExtent);
+        const int xMax = IRMath::min(cx + radius, kFogOfWarHalfExtent - 1);
+        const int yMin = IRMath::max(cy - radius, -kFogOfWarHalfExtent);
+        const int yMax = IRMath::min(cy + radius, kFogOfWarHalfExtent - 1);
         // The loop bounds already clamp iteration to the grid, so a radius
         // spanning more than the full grid extent reveals every in-bounds
         // cell regardless. Clamp before squaring so `radius * radius` can't
@@ -180,6 +180,52 @@ struct C_CanvasFogOfWar {
                 if (cpuBuffer_[idx] == kFogStateVisible)
                     continue;
                 cpuBuffer_[idx] = kFogStateVisible;
+                dirty_ = true;
+                allUnexplored_ = false;
+            }
+        }
+    }
+
+    /// Float-center, feathered variant of @ref revealRadius for a
+    /// smoothly-moving observer. Cells within `radius - feather` of the
+    /// (possibly fractional) center @p (cx,cy) are set fully visible; cells
+    /// beyond `radius` are untouched; the band between ramps via a Hermite
+    /// `smoothstep` over the Euclidean distance so the stored field — and the
+    /// rendered edge — evolves continuously with sub-cell motion instead of
+    /// popping a whole cell when the center crosses an integer boundary.
+    /// `radius` and `feather` are world units; `feather` is clamped to
+    /// `[0, radius]`. Combines via **max** so overlapping reveals and the
+    /// explored/visible floor compose monotonically (a partial value never
+    /// erases an already-brighter cell). Like the integer overload, cells
+    /// outside the radius are NOT downgraded — a single moving observer wipes
+    /// with `clearAll()` before each call.
+    void revealRadius(float cx, float cy, float radius, float feather) {
+        if (radius <= 0.0f)
+            return;
+        const float featherClamped = IRMath::clamp(feather, 0.0f, radius);
+        // smoothstep(radius, innerEdge, d) ramps 1.0 -> 0.0 across the feather
+        // band (edge0 > edge1 inverts the ramp): 1.0 at d <= innerEdge, 0.0 at
+        // d >= radius. innerEdge == radius (feather 0) reproduces a hard disc.
+        const float innerEdge = radius - featherClamped;
+        const int xMin =
+            IRMath::max(static_cast<int>(IRMath::floor(cx - radius)), -kFogOfWarHalfExtent);
+        const int xMax =
+            IRMath::min(static_cast<int>(IRMath::ceil(cx + radius)), kFogOfWarHalfExtent - 1);
+        const int yMin =
+            IRMath::max(static_cast<int>(IRMath::floor(cy - radius)), -kFogOfWarHalfExtent);
+        const int yMax =
+            IRMath::min(static_cast<int>(IRMath::ceil(cy + radius)), kFogOfWarHalfExtent - 1);
+        for (int y = yMin; y <= yMax; ++y) {
+            for (int x = xMin; x <= xMax; ++x) {
+                const float dx = static_cast<float>(x) - cx;
+                const float dy = static_cast<float>(y) - cy;
+                const float d = IRMath::length(IRMath::vec2(dx, dy));
+                const float v = IRMath::smoothstep(radius, innerEdge, d);
+                const std::uint8_t value = IRMath::roundFloatToByte(v);
+                const std::size_t idx = flatIndex(x, y);
+                if (value <= cpuBuffer_[idx])
+                    continue;
+                cpuBuffer_[idx] = value;
                 dirty_ = true;
                 allUnexplored_ = false;
             }

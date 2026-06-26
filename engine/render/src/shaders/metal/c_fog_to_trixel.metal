@@ -1,17 +1,37 @@
 #include "ir_iso_common.metal"
 
 // Mirrors shaders/c_fog_to_trixel.glsl. Screen-space fog-of-war pass —
-// recovers each rasterized pixel's source-voxel column, samples the 2D
-// fog visibility texture at that (x,y) cell, and modulates trixelColors:
-//   visible    (.r ~= 1.0) — pass through
-//   explored   (.r ~= 0.5) — desaturate + darken
-//   unexplored (.r == 0.0) — black
+// recovers each rasterized pixel's source-voxel column, samples the 2D fog
+// visibility texture at that (x,y) column with manual 4-tap bilinear, and
+// modulates trixelColors continuously by the sampled state:
+//   visible    (1.0)     — pass through
+//   explored   (128/255) — desaturate + darken
+//   unexplored (0.0)     — black
+// with a smooth lerp between those anchors so a feathered reveal edge (and a
+// sub-cell-moving observer) fades without per-cell vibration. Texture reads
+// have no hardware sampler, so the bilinear is by hand; OOB taps read as
+// visible. Over a uniform region the bilinear collapses to the exact cell and
+// the lerp passes through the old bucket output, so a fully-revealed scene is
+// byte-identical to the pre-feather pass.
 
 constant int kFogOfWarSize = 256;
 constant int kFogOfWarHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
-constant float kFogVisibleThreshold = 0.75f;
-constant float kFogExploredThreshold = 0.25f;
+// Normalized stored explored value (128/255, NOT 0.5) — the continuous
+// modulation pivots through this so the two-segment lerp passes exactly
+// through the pre-feather bucket outputs at the three canonical stored states.
+constant float kFogExploredValue = 128.0f / 255.0f;
+
+// One bilinear tap of the fog grid. Out-of-range cells read as visible (1.0):
+// texture reads have no sampler wrap mode, so this bounds check is load-bearing
+// (the OOB-as-visible invariant in the component header).
+static float fogTap(int2 cell, int2 fogSize, texture2d<float, access::read> fog) {
+    if (cell.x < 0 || cell.x >= fogSize.x ||
+        cell.y < 0 || cell.y >= fogSize.y) {
+        return 1.0f;
+    }
+    return fog.read(uint2(cell)).r;
+}
 
 kernel void c_fog_to_trixel(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
@@ -46,41 +66,48 @@ kernel void c_fog_to_trixel(
         frameData.voxelRenderOptions,
         frameData.rasterYaw
     );
-    const int3 surfaceVoxel = roundHalfUp(pos3D);
 
-    // Iso convention: X-Y is the floor plane, +Z is the downward height
-    // axis, so the fog grid lookup is (x, y) with half-extent offset.
-    const int2 fogCell = int2(
-        surfaceVoxel.x + kFogOfWarHalfExtent,
-        surfaceVoxel.y + kFogOfWarHalfExtent
-    );
+    // Manual 4-tap bilinear over the continuous world column. Iso convention:
+    // X-Y is the floor plane, so the fog grid lookup is (x, y) with the
+    // half-extent offset; +Z is the downward height axis and plays no part.
+    // Sampling the float column (not a rounded cell) is what feathers a
+    // sub-cell-moving reveal edge — at an integer column frac==0 and the tap
+    // collapses to the exact cell.
+    const float2 fogCoord = pos3D.xy + float2(float(kFogOfWarHalfExtent));
+    const float2 base = floor(fogCoord);
+    const float2 frac = fogCoord - base;
+    const int2 cell = int2(base);
     const int2 fogSize = int2(
         int(canvasFogOfWar.get_width()),
         int(canvasFogOfWar.get_height())
     );
-    if (fogCell.x < 0 || fogCell.x >= fogSize.x ||
-        fogCell.y < 0 || fogCell.y >= fogSize.y) {
-        // Out-of-range columns are treated as visible. Matches the
-        // image-binding wrap-mode invariant documented in the component
-        // header — texture2d<...>::read has no sampler wrap-mode
-        // behavior, so the bounds check is load-bearing.
-        return;
-    }
+    const float t00 = fogTap(cell + int2(0, 0), fogSize, canvasFogOfWar);
+    const float t10 = fogTap(cell + int2(1, 0), fogSize, canvasFogOfWar);
+    const float t01 = fogTap(cell + int2(0, 1), fogSize, canvasFogOfWar);
+    const float t11 = fogTap(cell + int2(1, 1), fogSize, canvasFogOfWar);
+    const float state = mix(mix(t00, t10, frac.x), mix(t01, t11, frac.x), frac.y);
 
-    const float state = canvasFogOfWar.read(uint2(fogCell)).r;
-    if (state >= kFogVisibleThreshold) {
+    // Fully-visible fast path: pass through untouched. Byte-identical to the
+    // pre-feather pass over a fully-revealed region, and skips the store.
+    if (state >= 1.0f) {
         return;
     }
 
     const float4 src = trixelColors.read(uint2(pixel));
-    if (state >= kFogExploredThreshold) {
-        const float luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
-        trixelColors.write(
-            float4(float3(luminance) * 0.4f, src.a),
-            uint2(pixel)
-        );
-        return;
-    }
+    // Desaturate to luminance, then darken — the explored "memory" tone.
+    const float luminance = dot(src.rgb, float3(0.299f, 0.587f, 0.114f));
+    const float3 exploredColor = float3(luminance) * 0.4f;
 
-    trixelColors.write(float4(0.0f, 0.0f, 0.0f, src.a), uint2(pixel));
+    // Two-segment continuous lerp anchored on the three canonical stored
+    // states: black at 0, exploredColor at 128/255, src at 1.0. Alpha is
+    // preserved so any text/overlay antialiasing still composites cleanly.
+    float3 outColor;
+    if (state >= kFogExploredValue) {
+        const float t = (state - kFogExploredValue) / (1.0f - kFogExploredValue);
+        outColor = mix(exploredColor, src.rgb, t);
+    } else {
+        const float t = state / kFogExploredValue;
+        outColor = mix(float3(0.0f), exploredColor, t);
+    }
+    trixelColors.write(float4(outColor, src.a), uint2(pixel));
 }

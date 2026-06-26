@@ -228,6 +228,15 @@ template <typename T, typename U> constexpr T mix(const T &value1, const T &valu
     return glm::mix(value1, value2, t);
 }
 
+/// Hermite smoothstep: 0 below @p edge0, 1 above @p edge1, and a smooth
+/// `3t²−2t³` ramp between (scalar or component-wise). Mirrors the GLSL/Metal
+/// `smoothstep` builtin so CPU-authored ramps (e.g. the feathered fog reveal)
+/// match a shader that evaluates the same shape. Note `edge0 > edge1` is
+/// valid and inverts the ramp. GLM wrapper.
+template <typename T> constexpr T smoothstep(const T &edge0, const T &edge1, const T &value) {
+    return glm::smoothstep(edge0, edge1, value);
+}
+
 /// Dot product of @p value1 and @p value2. GLM wrapper.
 template <typename T> constexpr auto dot(const T &value1, const T &value2) {
     return glm::dot(value1, value2);
