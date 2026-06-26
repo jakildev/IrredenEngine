@@ -24,6 +24,7 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
+#include <irreden/voxel/face_occupancy.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -889,6 +890,73 @@ EntityId createVoxelPoolShape(
     return entity;
 }
 
+// Directly-authored asymmetric voxel figure — the non-uniform stress case for
+// the #1937 analytic per-axis-scatter edge coverage. Unlike the symmetric SDF
+// primitives, it has appendages (a horizontal right arm, a RAISED diagonal
+// staircase left arm, two legs in an offset stance) and slanted, non-axis-aligned
+// surface planes (the staircase arm + a head visor), so under camera Z-yaw many
+// differently-oriented silhouette edges face the camera at once — exactly where a
+// corner-spike / dashing / seam regression would show. Centred at origin so
+// --spin-shape's yaw-about-origin keeps it screen-locked. Opt-in (--spin-shape
+// figure); never in the default scene, so committed references stay byte-identical.
+EntityId createCustomVoxelFigure(vec3 position, Color color) {
+    const ivec3 size{13, 9, 17}; // centred: x[-6,6] y[-4,4] z[-8,8] — demo native scale
+    EntityId entity =
+        IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
+    auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
+
+    const auto box = [](int v, int lo, int hi) { return v >= lo && v <= hi; };
+    const auto solid = [&](int x, int y, int z) -> bool {
+        if (box(x, -2, 2) && box(y, -1, 1) && box(z, -3, 4))
+            return true; // torso
+        if (box(x, -1, 1) && box(y, -1, 1) && box(z, 5, 7))
+            return true; // head (adjacent to torso top at z=4)
+        if (box(x, 3, 5) && box(y, 0, 1) && box(z, 1, 2))
+            return true;               // right arm (box appendage)
+        for (int s = 0; s <= 3; ++s) { // left arm (raised staircase)
+            if (x == -3 - s && box(y, -1, 0) && z == 3 + s)
+                return true;
+        }
+        if (box(x, -2, -1) && box(y, -1, 1) && box(z, -8, -4))
+            return true; // left leg
+        if (box(x, 1, 2) && box(y, 0, 2) && box(z, -8, -4))
+            return true;               // right leg (offset stance)
+        for (int s = 0; s <= 1; ++s) { // head visor (slanted plane)
+            if (box(x, -1, 1) && y == 2 + s && z == 6 - s)
+                return true;
+        }
+        return false;
+    };
+
+    int activeCount = 0;
+    for (int i = 0; i < vs.numVoxels_; ++i) {
+        const vec3 p = vs.positions_[i].pos_;
+        if (!solid(IRMath::round(p.x), IRMath::round(p.y), IRMath::round(p.z))) {
+            vs.voxels_[i].deactivate();
+        } else {
+            ++activeCount;
+        }
+    }
+    // Per-voxel deactivate() does NOT update the exposed-face mask (it is keyed
+    // to the ctor's all-active grid), so the carved figure's true surface faces
+    // stay wrongly occluded and never emit — only static GRID/rotating sets get
+    // a per-frame mask rebuild. Recompute it from in-grid neighbour occupancy so
+    // every newly-exposed surface face renders. (face_occupancy.hpp §"callers
+    // invoke this from any set-level mutator that toggles voxel occupancy".)
+    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size);
+    vs.syncActiveMask();
+    IR_LOG_INFO(
+        "Custom voxel figure entity={} canvas={} size=({},{},{}) active={}",
+        entity,
+        vs.canvasEntity_,
+        size.x,
+        size.y,
+        size.z,
+        activeCount
+    );
+    return entity;
+}
+
 // Create an SDF shape entity at the given position.
 EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Color color) {
     C_ShapeDescriptor desc{type, params, color};
@@ -1186,6 +1254,15 @@ void initEntities() {
     // field maximises the metric's interior mask. The flag is absent in every
     // normal run, so the fixture scene below stays byte-identical.
     if (!g_spinShapeType.empty()) {
+        // "figure" is the non-uniform stress case (not an SDF primitive): a
+        // directly-authored asymmetric voxel set with appendages + slanted
+        // planes, to verify the #1937 analytic edge coverage under camera yaw.
+        if (g_spinShapeType == "figure") {
+            createCustomVoxelFigure(vec3(0.0f, 0.0f, 0.0f), Color{210, 180, 140, 255});
+            IR_LOG_INFO("Spin-shape single fixture: custom voxel figure");
+            setupCanvasLighting();
+            return;
+        }
         IRRender::ShapeType want;
         if (spinShapeTypeFromName(g_spinShapeType, want)) {
             for (const auto &tc : cases) {
@@ -1213,7 +1290,7 @@ void initEntities() {
         } else {
             IR_LOG_ERROR(
                 "--spin-shape: unknown shape '{}' "
-                "(box|sphere|cylinder|ellipsoid|cone|torus|wedge|curved_panel)",
+                "(box|sphere|cylinder|ellipsoid|cone|torus|wedge|curved_panel|figure)",
                 g_spinShapeType
             );
         }
