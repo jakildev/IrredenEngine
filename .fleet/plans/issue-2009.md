@@ -1,125 +1,79 @@
-# Plan — #2009: smooth/sub-tile fog-of-war reveal (feathered edge)
+# Plan — #2009: smooth/sub-tile fog-of-war reveal (analytic vision circle)
 
-**Task:** smooth / sub-tile / feathered fog-of-war reveal that tracks a
-smoothly-moving observer without per-cell vibration, on GL + Metal.
+**Task:** a smooth / sub-tile fog-of-war reveal that tracks a smoothly-moving
+observer without per-cell vibration, on GL + Metal — and an option to keep the
+existing hard voxelized circle.
 
-## Verified current state (read the real code, not the issue's guess)
+## Why not "feather the grid" (the original recommendation)
 
-- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` —
-  `revealRadius(int cx, int cy, int radius)` writes a **hard**
-  `kFogStateVisible (255)` per **integer** cell inside a **Euclidean** disc
-  (`dx*dx+dy*dy <= radiusSq` — the post-#1994 circular reveal). Center and
-  radius are **integers**. `.r`-only CPU mirror, RGBA8 GPU texture,
-  `dirty_`-gated `subImage2D` (documented exception).
-- `engine/render/src/shaders/c_fog_to_trixel.glsl` and
-  `metal/c_fog_to_trixel.metal` — **both** bind the fog texture as an
-  **unfiltered image** (`layout(rgba8,binding=2) readonly uniform image2D` /
-  `texture2d<float, access::read>`) and read it with **`imageLoad` / `.read()`**
-  at the **rounded integer** cell. Modulation is **3 hard buckets** (`>=0.75`
-  visible/pass-through, `>=0.25` explored = luminance ×0.4, else black).
-- `engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp` —
-  once-per-frame `.r->RGBA8` expand + `subImage2D` upload; binds the texture
-  `bindAsImage(2, READ_ONLY, RGBA8)`.
+The first pass softened the *grid*: a CPU `smoothstep` feather band + a shader
+4-tap bilinear. But the fog grid is at **voxel resolution**, so any softening of
+it is just *blur* of voxel-resolution data — the circle's interior still snaps
+to voxels and the edge reorganizes at cell granularity as the observer moves.
+That is exactly the "blurs the edges but still snaps to voxels" failure. A
+grid-resolution source cannot represent a crisp sub-voxel circle.
 
-**Two correctness findings that change the issue's recommended approach:**
-1. The issue's "switch the texture filter `NEAREST -> LINEAR`" is a **NO-OP** on
-   both backends — neither shader samples through a sampler; both use unfiltered
-   image reads (`imageLoad` / `access::read`), which ignore `TextureFilter`.
-   Hardware bilinear is unreachable without switching to a sampled
-   texture+sampler on both backends, which would break the deliberate `image2D`
-   binding-layout sharing with AO/sun-shadow and the OOB-as-visible invariant
-   (image reads have no wrap mode). **Drop the filter change; do bilinear
-   manually (4-tap `imageLoad` lerp) keeping the image binding.**
-2. Integer reveal center is the temporal-vibration root. A soft *spatial* edge
-   (bilinear) alone still pops one whole cell each time a moving observer
-   crosses an integer boundary. Sub-tile smoothness requires a **float-center,
-   float-distance** gradient write so the field evolves continuously with
-   sub-cell motion.
+## Approach (shipped) — analytic vision circle, max-combined with the grid
 
-Callers of `revealRadius` (all init-time, integer center):
-`creations/demos/{fog_demo,perf_grid,skeletal_demo,lua_perf_grid}`,
-`creations/demos/lighting/common/lighting_demo_scene.hpp`, and game
-`arcade_starter`/`scene_demo`. `IRMath::length` exists; `IRMath::smoothstep`
-does NOT (only `mix`/`fract`/`clamp`). The Metal `c_fog_to_trixel`
-threadgroup-size is already registered (#1986) — editing the existing kernel
-needs no re-registration.
+The fog shader already recovers each pixel's **continuous** world column
+(`pos3D.xy`) before it rounds to a cell. Evaluate the reveal disc analytically
+from that, per pixel, instead of sampling a voxel grid:
 
-## Approach (single committed) — CPU-authored feather + manual bilinear + continuous lerp
+1. **Two reveal sources, max-combined in `c_fog_to_trixel` (GLSL + Metal):**
+   - **Grid** (the existing 256² texture): a single NEAREST read — coarse,
+     voxel-quantized explored/visible *memory* and the hard **voxelized circle**
+     (`revealRadius`, unchanged). The 4-tap bilinear is **removed**.
+   - **Analytic vision circles** (new): up to `kMaxFogVisionCircles` world-space
+     discs in a tiny UBO; `state = max(grid, max_i(1 - smoothstep(r-aa, r+aa,
+     |pos3D.xy - center_i|)))`. Crisp at render resolution, slides smoothly with
+     sub-voxel motion, reveals partial voxels at the boundary.
+   - **Zoom-stable AA:** `aa = max(edgeSoftness, worldPerPixel)`, where
+     `worldPerPixel` is recovered in-shader from the iso inverse-projection
+     Jacobian (the `+x` neighbour at the same depth). No `fwidth` (compute
+     shader), no AA uniform; the rim stays ~1px at every zoom. `edgeSoftness`
+     (per-circle `.w`, default 0) adds an optional deliberately-soft falloff.
 
-**1. CPU — add a float-center feathered reveal (additive; keep the int one byte-identical).**
-- Add `IRMath::smoothstep(edge0, edge1, x)` wrapper to
-  `engine/math/include/irreden/ir_math.hpp`.
-- Add `C_CanvasFogOfWar::revealRadius(float cx, float cy, float radius, float feather)`:
-  for each integer cell in the bounding box,
-  `d = IRMath::length(vec2(x-cx, y-cy))`,
-  `v = IRMath::smoothstep(radius, radius - feather, d)` (1.0 inside, ramping to
-  0 across the last `feather` units; clamp `feather` to `(0, radius]`), store
-  `value = round(255*v)` via **max-combine** so overlapping reveals and the
-  explored floor compose sanely; set `dirty_`/`allUnexplored_` like today. Keep
-  the existing integer `revealRadius` unchanged so the existing init callers and
-  their render-verify references stay **byte-identical**.
-- `engine/prefabs/irreden/render/fog_of_war.hpp` — add the
-  `IRPrefab::Fog::revealRadius(float,float,float,float)` overload; fix the stale
-  doc (revealRadius doc still says "taxicab" — it's Euclidean since #1994).
+2. **CPU API (additive; the integer grid path is byte-identical):**
+   - `C_CanvasFogOfWar`: `FrameDataFogObservers` UBO payload held on the
+     component + `addVisionCircle` / `clearVisionCircles`. The float feather
+     `revealRadius(float,float,float,float)` is **removed**.
+   - `IRPrefab::Fog::setVisionCircle` / `addVisionCircle` / `clearVisionCircles`.
+   - `System<FOG_TO_TRIXEL>`: a tiny per-frame UBO upload (small, unconditional —
+     no dirty flag) + bind before dispatch.
 
-**2. Shader (GLSL + Metal in lockstep) — manual bilinear + continuous modulation.**
-- Replace the single rounded-cell `imageLoad` with **4-tap bilinear** over the
-  **continuous** recovered coord: `vec2 fogCoord = pos3D.xy + halfExtent;
-  vec2 base = floor(fogCoord); vec2 f = fogCoord - base;` load `(base)`,
-  `(base+(1,0))`, `(base+(0,1))`, `(base+(1,1))`; each tap **OOB -> 1.0
-  (visible)** to preserve the OOB-as-visible invariant;
-  `state = mix(mix(t00,t10,f.x), mix(t01,t11,f.x), f.y)`.
-- Replace the 3-bucket branch with a **continuous lerp that is byte-identical at
-  the canonical 0 / 0.5 / 1.0 values**: `exploredColor = vec3(dot(src.rgb,LUMA))*0.4;`
-  then `v>=0.5 -> mix(exploredColor, src.rgb, (v-0.5)*2)`,
-  `v<0.5 -> mix(vec3(0), exploredColor, v*2)`; alpha = `src.a`.
-  (At v=1 -> src exactly; v=0.5 -> exploredColor exactly; v=0 -> black exactly.)
-- Keep `TextureFilter::NEAREST` (irrelevant to image reads); do not switch the
-  binding to a sampler.
+3. **Metal buffer-table constraint:** the Metal 0-30 buffer table is full, so the
+   observer UBO **aliases slot 27** (`kBufferIndex_FrameDataLightingToTrixel`).
+   Fog runs immediately after lighting (it masks the *lit* canvas), lighting is
+   done with slot 27 by then, nothing between reads it, and lighting rebinds
+   before its own dispatch — same rebind-before-use discipline the engine
+   already relies on. Documented in `ir_render_types.hpp` + both shaders.
 
-**3. Demo — give the smooth/temporal behavior a headless verification vehicle.**
-- Add a moving-observer mode to `creations/demos/fog_demo/main.cpp` (e.g.
-  `--moving-observer`): each frame `Fog::clear()` + `Fog::revealRadius(fx, fy,
-  radius, feather)` with a smoothly-advancing float center. Keep the default
-  static path unchanged.
+4. **Demo:** `fog_demo --moving-observer` drives `setVisionCircle` at a smooth
+   float center on an all-unexplored grid → the crisp smooth circle alone on
+   black. The default static scene keeps the **voxelized** grid circle + explored
+   band, so both reveal styles sit side by side in one demo.
 
-## Byte-identity / drift analysis
-- **Continuous lerp** is byte-identical for any hard `0/128/255` field -> demos
-  with off-screen fog boundaries (perf_grid, skeletal_demo, lua_perf_grid) stay
-  **byte-identical**.
-- **Bilinear** softens fog only at a visible boundary -> the intended change.
-  Only `fog_demo` and `lighting_demo` have on-screen boundaries; **refresh those
-  two render-verify references** as intentional drift and call it out for
-  reviewers.
+## Detached-player payoff (#211)
+
+The smooth-moving player just calls `Fog::setVisionCircle(x, y, r)` each frame —
+the disc follows continuously with no grid quantization and no per-frame texture
+upload. The grid stays available for static-terrain "explored memory" if wanted;
+per-entity memory policy (enemies never remembered) stays game-side.
 
 ## Files
-- `engine/math/include/irreden/ir_math.hpp` — add `IRMath::smoothstep`.
-- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` —
-  float feathered `revealRadius`; `std::->IRMath` cleanup.
-- `engine/prefabs/irreden/render/fog_of_war.hpp` — float overload + taxicab->Euclidean doc fix.
-- `engine/render/src/shaders/c_fog_to_trixel.glsl` + `metal/c_fog_to_trixel.metal` — bilinear + continuous lerp (lockstep).
-- `creations/demos/fog_demo/main.cpp` — moving-observer mode.
+- `engine/render/include/irreden/render/ir_render_types.hpp` — `kBufferIndex_FogObservers` (alias of 27).
+- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp` — `FrameDataFogObservers`, vision-circle API; drop float feather.
+- `engine/prefabs/irreden/render/fog_of_war.hpp` — `setVisionCircle` / `addVisionCircle` / `clearVisionCircles`; drop float overload.
+- `engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp` — UBO create + per-frame upload + bind.
+- `engine/render/src/shaders/c_fog_to_trixel.glsl` + `metal/c_fog_to_trixel.metal` — single grid read + analytic circles + Jacobian AA (lockstep).
+- `engine/math/include/irreden/ir_math.hpp` — drop the now-unused `smoothstep` wrapper.
+- `creations/demos/fog_demo/main.cpp` — `--moving-observer` drives the analytic circle.
 
-## Acceptance / verification
-- `render-debug-loop` on `fog_demo` (GL host + Metal host): before/after
-  full-frame + ROI-crop pair showing the feathered edge; static yaw-0 capture
-  stays byte-identical away from a fog boundary.
-- Moving-observer capture sequence: a smoothly-advancing center produces a
-  smooth, non-vibrating edge (no per-cell pop); feather width visibly tunable.
-- Refresh `fog_demo`/`lighting_demo` render-verify references (intentional
-  drift); confirm perf_grid/skeletal/lua_perf_grid references unchanged.
-- GL + Metal parity (`backend-parity` if authored single-host); both shaders
-  edited in lockstep.
-
-## Sibling / in-flight reconciliation
-- **#2008** (engine, fog cull): different files (visibility/cull path vs fog
-  shader+reveal). Both edit `c_fog_to_trixel` (#2008 removes the dead hard-black
-  store; this replaces the bucket branch with continuous lerp) and
-  `component_canvas_fog_of_war.hpp` — whichever lands second rebases on the
-  other. No semantic conflict; coordinate on shared fog semantics only.
-- **#211** (game, player on a detached canvas): the downstream consumer; this
-  ships the float `Fog::revealRadius` it will call. Separate repo, no conflict.
-- Builds on **#1994** (Euclidean reveal) and **#1986** (Metal `c_fog_to_trixel`
-  threadgroup registration).
+## Verification
+- `IRFogDemo` builds + runs clean (macOS/Metal); `--moving-observer` shows a
+  crisp, smoothly-sliding circle revealing partial voxels; static scene shows the
+  hard voxelized circle + explored band.
+- Both shaders edited in lockstep; GL/Linux cross-host smoke still owed (authored
+  on Metal).
 
 **Class:** opus. No epic — single PR.

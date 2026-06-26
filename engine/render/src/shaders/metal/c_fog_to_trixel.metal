@@ -1,28 +1,42 @@
 #include "ir_iso_common.metal"
 
 // Mirrors shaders/c_fog_to_trixel.glsl. Screen-space fog-of-war pass —
-// recovers each rasterized pixel's source-voxel column, samples the 2D fog
-// visibility texture at that (x,y) column with manual 4-tap bilinear, and
-// modulates trixelColors continuously by the sampled state:
+// recovers each rasterized pixel's source-voxel column, then masks trixelColors
+// by the MAX of two reveal sources:
+//   1. The voxel GRID — a single NEAREST read of the fog texture at the
+//      rounded cell. Coarse, voxel-quantized: explored/voxelized memory.
+//   2. Live analytic VISION CIRCLES — world-space discs (FogObserverData)
+//      tested against the CONTINUOUS world column `pos3D.xy` per pixel, so a
+//      disc edge is crisp at render resolution, slides smoothly with sub-voxel
+//      observer motion, and reveals partial voxels at the boundary.
+// The combined visibility drives a continuous two-segment lerp:
 //   visible    (1.0)     — pass through
 //   explored   (128/255) — desaturate + darken
 //   unexplored (0.0)     — black
-// with a smooth lerp between those anchors so a feathered reveal edge (and a
-// sub-cell-moving observer) fades without per-cell vibration. Texture reads
-// have no hardware sampler, so the bilinear is by hand; OOB taps read as
-// visible. Over a uniform region the bilinear collapses to the exact cell and
-// the lerp passes through the old bucket output, so a fully-revealed scene is
-// byte-identical to the pre-feather pass.
+// Texture reads have no hardware sampler, so OOB grid cells read as visible.
+// With no vision circles (count 0) the pass is grid-only — byte-identical to
+// the legacy bucket pass at the canonical 0/128/255 stored states.
 
 constant int kFogOfWarSize = 256;
 constant int kFogOfWarHalfExtent = 128;
 constant int kEmptyDistanceEncoded = 65535;
 // Normalized stored explored value (128/255, NOT 0.5) — the continuous
 // modulation pivots through this so the two-segment lerp passes exactly
-// through the pre-feather bucket outputs at the three canonical stored states.
+// through the legacy bucket outputs at the three canonical stored states.
 constant float kFogExploredValue = 128.0f / 255.0f;
 
-// One bilinear tap of the fog grid. Out-of-range cells read as visible (1.0):
+// Live analytic vision circles. Mirrors kMaxFogVisionCircles and
+// FrameDataFogObservers in component_canvas_fog_of_war.hpp — this struct is the
+// system's `FogObserverData` upload verbatim. visionCircles[i] =
+// (centerX, centerY, radius, edgeSoftness) in world units; only the first
+// visionCircleCount entries are read.
+constant int kMaxFogVisionCircles = 8;
+struct FogObserverData {
+    float4 visionCircles[kMaxFogVisionCircles];
+    int visionCircleCount;
+};
+
+// Read the fog grid at a cell. Out-of-range cells read as visible (1.0):
 // texture reads have no sampler wrap mode, so this bounds check is load-bearing
 // (the OOB-as-visible invariant in the component header).
 static float fogTap(int2 cell, int2 fogSize, texture2d<float, access::read> fog) {
@@ -38,6 +52,10 @@ kernel void c_fog_to_trixel(
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
+    // buffer(27) ALIASES kBufferIndex_FrameDataLightingToTrixel — the Metal
+    // 0-30 buffer table is full, and fog runs right after lighting (done with
+    // slot 27 by then). See kBufferIndex_FogObservers in ir_render_types.hpp.
+    constant FogObserverData& fogObservers [[buffer(27)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     const int2 pixel = int2(globalId.xy);
@@ -67,28 +85,46 @@ kernel void c_fog_to_trixel(
         frameData.rasterYaw
     );
 
-    // Manual 4-tap bilinear over the continuous world column. Iso convention:
+    // Grid memory: a single NEAREST read at the rounded cell. Iso convention:
     // X-Y is the floor plane, so the fog grid lookup is (x, y) with the
     // half-extent offset; +Z is the downward height axis and plays no part.
-    // Sampling the float column (not a rounded cell) is what feathers a
-    // sub-cell-moving reveal edge — at an integer column frac==0 and the tap
-    // collapses to the exact cell.
-    const float2 fogCoord = pos3D.xy + float2(float(kFogOfWarHalfExtent));
-    const float2 base = floor(fogCoord);
-    const float2 frac = fogCoord - base;
-    const int2 cell = int2(base);
+    const int3 surfaceVoxel = roundHalfUp(pos3D);
+    const int2 fogCell = surfaceVoxel.xy + int2(kFogOfWarHalfExtent);
     const int2 fogSize = int2(
         int(canvasFogOfWar.get_width()),
         int(canvasFogOfWar.get_height())
     );
-    const float t00 = fogTap(cell + int2(0, 0), fogSize, canvasFogOfWar);
-    const float t10 = fogTap(cell + int2(1, 0), fogSize, canvasFogOfWar);
-    const float t01 = fogTap(cell + int2(0, 1), fogSize, canvasFogOfWar);
-    const float t11 = fogTap(cell + int2(1, 1), fogSize, canvasFogOfWar);
-    const float state = mix(mix(t00, t10, frac.x), mix(t01, t11, frac.x), frac.y);
+    float state = fogTap(fogCell, fogSize, canvasFogOfWar);
 
-    // Fully-visible fast path: pass through untouched. Byte-identical to the
-    // pre-feather pass over a fully-revealed region, and skips the store.
+    // Live analytic vision circles: max-combine each disc's smooth visibility,
+    // evaluated against the CONTINUOUS world column so the edge is crisp at
+    // render resolution and reveals partial voxels as a moving observer slides
+    // sub-cell. The rim is floored at one canvas pixel for zoom-stable AA; at
+    // count 0 the loop is skipped and `state` stays the grid value (legacy).
+    if (fogObservers.visionCircleCount > 0) {
+        // Local world-units-per-pixel from the iso inverse-projection Jacobian:
+        // recover the +x neighbour at the same depth and measure the world step.
+        // Zoom- and iso-correct, so the AA rim stays ~1px at any zoom with no
+        // uniform.
+        const float3 pos3DNeighborX = trixelCanvasPixelToWorld3D(
+            pixel + int2(1, 0),
+            rawDepth,
+            frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset,
+            frameData.voxelRenderOptions,
+            frameData.rasterYaw
+        );
+        const float worldPerPixel = length(pos3DNeighborX.xy - pos3D.xy);
+        for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
+            const float4 circle = fogObservers.visionCircles[i];
+            const float dist = length(pos3D.xy - circle.xy);
+            const float aa = max(circle.w, worldPerPixel);
+            const float vis = 1.0f - smoothstep(circle.z - aa, circle.z + aa, dist);
+            state = max(state, vis);
+        }
+    }
+
+    // Fully-visible fast path: pass through untouched. Skips the store.
     if (state >= 1.0f) {
         return;
     }

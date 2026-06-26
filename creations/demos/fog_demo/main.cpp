@@ -19,13 +19,15 @@
 // visible→explored→unexplored boundary at increasing magnification so the
 // per-state transitions are sampled at multiple pixel scales.
 //
-// `--moving-observer` (#2009) swaps the static reveal for a per-frame float
-// reveal that orbits the origin in sub-cell steps and drives the FEATHERED
-// `revealRadius(float,float,float,float)` overload. It is the vehicle for
-// inspecting the soft, non-vibrating reveal edge (render-debug-loop / a
-// move-capture sequence) — a smoothly-moving float center reveals without the
-// per-cell popping an integer-snapping reveal would show. The default (no
-// flag) static scene is unchanged and owns the committed render-verify refs.
+// `--moving-observer` (#2009) swaps the static grid reveal for a per-frame
+// analytic VISION CIRCLE (`Fog::setVisionCircle`) orbiting the origin in
+// sub-cell steps. This is the vehicle for inspecting the SMOOTH reveal: the
+// disc is evaluated per pixel from the continuous world column, so its edge is
+// crisp at render resolution and slides smoothly across voxels (partial-voxel
+// reveal) as the float center moves — no grid write, no per-frame texture
+// upload, no per-cell popping. The default (no flag) static scene drives the
+// VOXELIZED grid reveal instead and owns the committed render-verify refs, so
+// the two reveal styles sit side by side in one demo.
 //
 // Fog wiring (canvas component + pipeline position) is faithful to the
 // pre-removal shape_debug setup; the rest of the skeleton follows the smaller
@@ -95,12 +97,11 @@ namespace {
 constexpr int kRevealRadius = 18;
 constexpr int kBandWidth = 8;
 
-// --moving-observer feathered reveal (#2009). The center orbits the origin in
-// sub-cell per-frame steps (orbit × angular-step ≈ 0.4 cell/frame < 1 cell) so
-// successive frames land on distinct sub-cell offsets — the case that exposes
-// per-cell popping if the reveal snapped to integers. kFeather is the width of
-// the smooth ramp at the disc edge (a third of the radius reads clearly).
-constexpr float kFeather = 6.0f;
+// --moving-observer analytic vision circle (#2009). The center orbits the
+// origin in sub-cell per-frame steps (orbit × angular-step ≈ 0.4 cell/frame
+// < 1 cell) so successive frames land on distinct sub-cell offsets — the case
+// that exposes per-cell popping if the reveal snapped to integers. The disc
+// edge uses the default antialiased softness (kFogVisionEdgeDefault).
 constexpr float kObserverOrbit = 8.0f;
 constexpr float kObserverAngularStep = 0.05f;
 
@@ -115,18 +116,18 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 
-bool g_movingObserver = false; // --moving-observer: per-frame feathered reveal
+bool g_movingObserver = false; // --moving-observer: per-frame analytic vision circle
 int g_observerFrame = 0;       // deterministic frame index for the orbit
 
-// Per-frame hook for --moving-observer: wipe the fog and re-reveal a feathered
-// disc at a smoothly-advancing float center. Re-uploading the whole grid each
-// frame is the documented single-moving-observer pattern (component header).
+// Per-frame hook for --moving-observer: point the single analytic vision
+// circle at a smoothly-advancing float center. No grid write and no texture
+// upload — the shader evaluates the disc per pixel, so the reveal tracks the
+// sub-cell motion with a crisp, smoothly-sliding edge.
 void driveMovingObserver() {
     const float theta = static_cast<float>(g_observerFrame) * kObserverAngularStep;
     const float cx = kObserverOrbit * IRMath::cos(theta);
     const float cy = kObserverOrbit * IRMath::sin(theta);
-    IRPrefab::Fog::clear();
-    IRPrefab::Fog::revealRadius(cx, cy, static_cast<float>(kRevealRadius), kFeather);
+    IRPrefab::Fog::setVisionCircle(cx, cy, static_cast<float>(kRevealRadius));
     ++g_observerFrame;
 }
 
@@ -191,7 +192,7 @@ void initSystems() {
     );
 
     // --moving-observer: a once-per-frame beginTick hook (same idiom as the
-    // day_cycle sun hook) that wipes + re-reveals the feathered disc at the
+    // day_cycle sun hook) that re-points the analytic vision circle at the
     // advancing float center. Pushed to the front so the new fog is current
     // before VOXEL_TO_TRIXEL / FOG_TO_TRIXEL run this frame.
     if (g_movingObserver) {
@@ -303,9 +304,11 @@ void initEntities() {
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
 
-    // --moving-observer drives the reveal per-frame instead (see
-    // driveMovingObserver); leave the fog all-unexplored at init so the first
-    // frame's clear+reveal owns the whole grid.
+    // --moving-observer drives an analytic vision circle per-frame instead
+    // (see driveMovingObserver). Leave the grid all-unexplored: everything
+    // outside the moving disc reads as black, so the smooth circle stands
+    // alone against unrevealed terrain — the cleanest read of the sub-voxel
+    // edge with no grid memory competing.
     if (g_movingObserver) {
         return;
     }
