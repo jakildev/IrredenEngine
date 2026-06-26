@@ -583,9 +583,29 @@ pre-#1624 default.
   clip behind the floor (the #1884 Bug-A fix; the two-tier disjoint near-plane
   partition in `f_trixel_to_framebuffer`). Only meaningful when `!screenLocked_`.
   World content (`depthPriority_ == 0`) is clamped OUT of the band — a no-op for
-  in-budget content, so the cardinal fast path stays byte-identical. Per-trixel
-  priority tiers are #1960. Source of truth:
-  `docs/design/depth-unification-1884-investigation.md` §Resolution.
+  in-budget content, so the cardinal fast path stays byte-identical. Source of
+  truth: `docs/design/depth-unification-1884-investigation.md` §Resolution.
+- **Per-trixel priority tiers generalize the partition (#1960).** #1958's
+  two-way split is now N disjoint foreground tiers (`kDepthForegroundTierCount`
+  = 3: world / entity-fg / per-trixel-override) in `ir_render_types.hpp`;
+  `f_trixel_to_framebuffer` resolves `tier = max(perEntityTier /*depthPriorityMode*/,
+  perTrixelTier)` per fragment and pins `enc` into `depthForegroundTier{Lo,Hi}`.
+  The per-trixel tier is authored per voxel (`C_VoxelSetNew::changeVoxelPriority`,
+  low 2 bits of `C_Voxel::reserved_`) and **rides the top K=2 bits of the 64-bit
+  entity id** in the `triangleEntityIds` channel — the single decode chokepoint
+  (`decodeEntityId`/`decodePriority` in `ir_iso_common.{glsl,metal}`,
+  `IRRender::decodeCarrierEntityId/Priority` in C++) masks the carrier off
+  everywhere an id is READ (picking, hover) so a non-zero priority can't corrupt
+  a picked id. Default priority 0 ⇒ byte-identical. **Caveat:** a per-trixel
+  override only arbitrates ACROSS canvases at finalization — two voxel sets on
+  ONE canvas resolve depth at the canvas raster (`atomicMin`), upstream of the
+  partition, so an occluded same-canvas voxel's priority never reaches the
+  composite (use separate detached units). **Caveat:** the carrier reaches the
+  GPU via the per-frame Voxel-record (binding 6) upload, so a STATIC detached
+  unit carries it but a ROTATING `DETACHED_REVOXELIZE` unit does NOT yet — the
+  re-voxelize compute (`c_revoxelize_detached`) hardcodes `reserved` to 0 and its
+  source grid is 2 uints/cell (follow-up: carry `reserved` through the source
+  grid + dest write). Demo: `canvas_stress --only interpenetrate`.
 - **Seed GPU-buffer sentinels GPU-side, never via a resource-sized CPU
   staging vector + `subData`.** Metal's `fillBuffer` writes a repeating
   single byte, so multi-byte sentinels like `kTrixelDistanceMaxDistance`

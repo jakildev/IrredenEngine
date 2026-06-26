@@ -86,14 +86,14 @@ void writeColorTap(
     const ivec2 canvasPixel,
     const int voxelDistance,
     const vec4 voxelColor,
-    const uint voxelIndex
+    const uvec2 packedEntityId
 ) {
     if (!isInsideCanvas(canvasPixel, imageSize(triangleCanvasDistances))) return;
     int canvasDistance = imageLoad(triangleCanvasDistances, canvasPixel).x;
     if (voxelDistance == canvasDistance) {
         imageStore(triangleCanvasColors, canvasPixel, voxelColor);
         imageStore(triangleCanvasEntityIds, canvasPixel,
-                   uvec4(entityIds[voxelIndex], 0u, 0u));
+                   uvec4(packedEntityId, 0u, 0u));
     }
 }
 
@@ -104,7 +104,7 @@ void emitDeformedFace(
     const mat2 D,
     const int voxelDistance,
     const vec4 voxelColor,
-    const uint voxelIndex,
+    const uvec2 packedEntityId,
     const int faceId,
     const bool reVoxelize
 ) {
@@ -124,12 +124,12 @@ void emitDeformedFace(
         for (int sx = 0; sx < n; ++sx) {
             vec2 src = vec2(gl_LocalInvocationID.xy) + vec2(float(sx), float(sy)) * inv;
             ivec2 p = base + roundHalfUp(D * src);
-            writeColorTap(p, voxelDistance, voxelColor, voxelIndex);
+            writeColorTap(p, voxelDistance, voxelColor, packedEntityId);
             if (reVoxelize) {
-                writeColorTap(p + su, voxelDistance, voxelColor, voxelIndex);
-                writeColorTap(p - su, voxelDistance, voxelColor, voxelIndex);
-                writeColorTap(p + sv, voxelDistance, voxelColor, voxelIndex);
-                writeColorTap(p - sv, voxelDistance, voxelColor, voxelIndex);
+                writeColorTap(p + su, voxelDistance, voxelColor, packedEntityId);
+                writeColorTap(p - su, voxelDistance, voxelColor, packedEntityId);
+                writeColorTap(p + sv, voxelDistance, voxelColor, packedEntityId);
+                writeColorTap(p - sv, voxelDistance, voxelColor, packedEntityId);
             }
         }
     }
@@ -142,6 +142,12 @@ void main() {
     uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const vec4 voxelPosition = positions[voxelIndex];
     vec4 voxelColor = unpackColor(voxels[voxelIndex].colorPacked);
+    // Pack the per-voxel priority tier (low 2 bits of Voxel.reserved, #1960) into
+    // the top 2 bits of the stored entity id via the shared carrier chokepoint.
+    // Default reserved == 0 ⇒ id unchanged. f_trixel_to_framebuffer reads it as the
+    // per-trixel tier; every id reader masks it off (decodeEntityId).
+    const uvec2 packedEntityId =
+        encodeEntityIdWithPriority(entityIds[voxelIndex], voxels[voxelIndex].reserved & 0x3u);
     // See c_voxel_to_trixel_stage_1.glsl for the slot/faceId contract (#1278).
     const int slot = localIDToFace_2x3(gl_LocalInvocationID.xy);
     const int faceId = visibleFaceIds[slot];
@@ -184,7 +190,7 @@ void main() {
                 encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, 8, 8);
             writeColorTap(
                 perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
-                voxelColor, voxelIndex
+                voxelColor, packedEntityId
             );
             return;
         }
@@ -198,7 +204,7 @@ void main() {
             encodeDepthWithFaceFrac(pos3DtoDistance(facePos_s2), slot, axis, fracInCell_s2);
         writeColorTap(
             perAxisBase + pos3DtoPos2DIso(facePos_s2), voxelDistance_s2,
-            voxelColor, voxelIndex
+            voxelColor, packedEntityId
         );
         return;
     }
@@ -247,7 +253,7 @@ void main() {
         const ivec2 base =
             trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions) +
             pos3DtoPos2DIso(voxelPositionInt);
-        emitDeformedFace(base, D, voxelDistance, voxelColor, voxelIndex, faceId, reVoxelize);
+        emitDeformedFace(base, D, voxelDistance, voxelColor, packedEntityId, faceId, reVoxelize);
         return;
     }
 

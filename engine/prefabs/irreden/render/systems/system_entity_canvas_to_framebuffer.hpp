@@ -253,13 +253,17 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 depthScale = static_cast<float>(effectiveSub_) / static_cast<float>(cubeSub);
             }
             if (foregroundPriority) {
-                // Pin the canvas's local iso-depth into the reserved near band by
-                // centering its model-frame rawDist there (kDepthForegroundBandCenter);
-                // the gather (f_trixel_to_framebuffer) clamps to the band edges so a
-                // pathologically deep solid saturates instead of escaping. The world
-                // iso-depth is intentionally NOT added — priority OVERRIDES world
-                // depth ordering; only the screen PLACEMENT above tracks the world.
-                compositeDistanceOffset = kDepthForegroundBandCenter;
+                // Per-trixel priority tiers (#1960): the gather
+                // (f_trixel_to_framebuffer) now CENTERS a foreground fragment on
+                // its resolved tier's center (depthForegroundTierCenter) and clamps
+                // into that tier's disjoint sub-range, so the CPU offset is no
+                // longer the band-center carrier — leave it 0. (Pre-#1960 this set
+                // kDepthForegroundBandCenter; centering moved into the shader so the
+                // per-trixel-override tier can re-center a fragment bumped above the
+                // entity tier.) The world iso-depth is still intentionally NOT added
+                // — priority OVERRIDES world depth ordering; only the screen
+                // PLACEMENT above tracks the world.
+                compositeDistanceOffset = 0;
             } else {
                 // Continuous-yaw world depth: place the solid by the SAME
                 // yawedIsoDistance the SDF floor + per-axis voxel scatter sort on
@@ -280,9 +284,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             }
         }
         fd.distanceOffset_ = compositeDistanceOffset;
-        // World content (0) is clamped OUT of the reserved near band by the gather;
-        // foreground priority (1) is pinned INTO it. Two-tier: any non-zero
-        // depthPriority_ selects the single foreground tier (per-trixel tiers #1960).
+        // Per-fragment depth tier (#1960). The gather resolves
+        // tier = max(perEntityTier /*this*/, perTrixelTier /*id carrier*/). A
+        // non-zero depthPriority_ selects the single ENTITY-foreground tier (1);
+        // the per-trixel-override tier (2) is authored per voxel, never here. tier 0
+        // (world) is clamped OUT of the reserved band, byte-identical to #1958.
         fd.depthPriorityMode_ = foregroundPriority ? 1 : 0;
         fd.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
         fd.effectiveSubdivisionsForHover_ = vec2(1.0f, depthScale);

@@ -234,8 +234,9 @@ struct C_TriangleCanvasTextures {
             PixelDataType::UINT32,
             &packed
         );
-        return static_cast<IREntity::EntityId>(packed.x) |
-               (static_cast<IREntity::EntityId>(packed.y) << 32);
+        // Strip the per-trixel priority carrier (#1960) before reconstructing the
+        // 64-bit id — same chokepoint as getEntityIdAtMouseTrixel.
+        return static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed));
     }
 
     void clearDistances() const {

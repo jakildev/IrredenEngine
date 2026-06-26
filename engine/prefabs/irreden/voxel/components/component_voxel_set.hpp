@@ -327,6 +327,25 @@ struct C_VoxelSetNew {
         }
     }
 
+    // Per-trixel render priority (#1960). Sets the low 2 bits of the voxel's
+    // `reserved_` carrier — 0 = default world tier, higher = renders in front of
+    // lower tiers regardless of depth. Rides the per-frame Voxel-record (binding 6)
+    // upload, so no active-mask change is needed; the stage-2 raster packs it into
+    // the entity-id carrier and f_trixel_to_framebuffer resolves
+    // tier = max(perEntityTier, perTrixelTier). Default 0 ⇒ byte-identical.
+    void changeVoxelPriority(ivec3 index, std::uint8_t priority) {
+        const int idx = index3DtoIndex1D(index, size_);
+        voxels_[idx].reserved_ = (voxels_[idx].reserved_ & ~0x3u) | (priority & 0x3u);
+        mirrorToRotationSource(idx);
+    }
+
+    void changeVoxelPriorityAll(std::uint8_t priority) {
+        for (int i = 0; i < numVoxels_; i++) {
+            voxels_[i].reserved_ = (voxels_[i].reserved_ & ~0x3u) | (priority & 0x3u);
+            mirrorToRotationSource(i);
+        }
+    }
+
     void deactivateAll() {
         for (int i = 0; i < numVoxels_; i++) {
             voxels_[i].deactivate();

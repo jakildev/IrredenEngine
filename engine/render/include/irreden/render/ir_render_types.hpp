@@ -244,6 +244,99 @@ static_assert(
     "foreground band [kMin, kDepthForegroundCeil] must lie inside the encodable depth range"
 );
 
+// ── Per-trixel priority tiers (#1960) ─────────────────────────────────────────
+// Generalizes #1958's two-tier partition (world vs ONE foreground band) into N
+// disjoint foreground tiers, selected per fragment by `tier = max(perEntityTier,
+// perTrixelTier)` at the depth-finalization chokepoint (f_trixel_to_framebuffer).
+// More-negative `enc` = nearer (GL_LESS), so a higher tier is a more-negative
+// disjoint sub-range of the reserved band — unconditionally in front of every
+// lower tier AND of all world content, independent of world extent. Default tier
+// 0 everywhere ⇒ byte-identical to #1958 master (the world clamp is unchanged and
+// every producer that authors no priority stays at tier 0).
+//
+// N = 3: tier 0 = world (clamped OUT of the band), tier 1 = entity-foreground
+// (the #1958 `C_EntityCanvas::depthPriority_` path), tier 2 = per-trixel override
+// (a voxel-authored priority that renders in front even of an entity-foreground
+// solid — Demo 2's "animate inside each other"). Architect ruling (#1884/#1958
+// steward direction) caps the carrier at K=2 stolen id bits ⇒ at most 4 tiers;
+// raise N only up to that ceiling, else switch to a dedicated attachment.
+constexpr int kDepthForegroundTierCount = 3;
+// Equal-width split of the reserved band across the N-1 foreground tiers. Each
+// tier holds a unit's subdivided local iso-depth spread at the effSub-16 cap; a
+// pathologically deep unit saturates against its tier edge (graceful degradation
+// — it stays pinned in front, loses only intra-tier depth resolution), exactly as
+// #1958's single band did.
+constexpr int kDepthForegroundTierWidth =
+    kDepthForegroundBandWidth / (kDepthForegroundTierCount - 1);
+
+// Disjoint sub-range of the reserved band owned by foreground @p tier (1..N-1).
+// MORE-negative = higher priority, so tier N-1 sits at the near (most-negative)
+// band edge and tier 1 just inside kDepthForegroundCeil; tier 0 (world) has no
+// sub-range (it is the out-of-band partition). Mirror: ir_iso_common.{glsl,metal}.
+constexpr int depthForegroundTierLo(int tier) {
+    return IRConstants::kTrixelDistanceMinDistance +
+           (kDepthForegroundTierCount - 1 - tier) * kDepthForegroundTierWidth;
+}
+constexpr int depthForegroundTierHi(int tier) {
+    return depthForegroundTierLo(tier) + kDepthForegroundTierWidth - 1;
+}
+// Center a priority fragment's model-frame local iso-depth lands on so it
+// self-occludes correctly within its tier (per-tier kDepthForegroundBandCenter).
+constexpr int depthForegroundTierCenter(int tier) {
+    return depthForegroundTierLo(tier) + kDepthForegroundTierWidth / 2;
+}
+
+static_assert(kDepthForegroundTierCount >= 2, "need world tier 0 + at least one foreground tier");
+static_assert(kDepthForegroundTierWidth > 0, "foreground tier width must be positive");
+static_assert(
+    (kDepthForegroundTierCount - 1) * kDepthForegroundTierWidth <= kDepthForegroundBandWidth,
+    "foreground tiers must fit disjointly inside the reserved band"
+);
+static_assert(
+    depthForegroundTierLo(kDepthForegroundTierCount - 1) == IRConstants::kTrixelDistanceMinDistance,
+    "highest-priority tier must start at the near (most-negative) band edge"
+);
+static_assert(
+    depthForegroundTierHi(1) <= kDepthForegroundCeil,
+    "lowest-priority foreground tier must stay within the reserved band"
+);
+
+// ── Per-trixel priority carrier (#1960) ───────────────────────────────────────
+// The per-trixel tier travels voxel authoring → trixel raster → finalization in
+// the top K=2 bits of the 64-bit entity id stored in the `triangleEntityIds`
+// channel (the only per-texel channel that already reaches finalization). Entity
+// ids are allocation counters that never approach 2^62, so the top 2 bits are
+// free; a SINGLE decode chokepoint (these helpers + the .glsl/.metal twins) masks
+// them off everywhere an id is READ so a non-zero priority can never corrupt a
+// picked id (the architect's "neutralize the trap" discipline — no reader
+// open-codes the mask). Default priority 0 ⇒ the stored id is unchanged.
+constexpr int kEntityIdPriorityBits = 2;
+// Shift WITHIN the high 32-bit word (the id's bits 62..63 = the high word's bits
+// 30..31). The two 32-bit words are stored as a uvec2 (low = .x, high = .y).
+constexpr int kEntityIdPriorityShiftInHighWord = 30;
+constexpr std::uint32_t kEntityIdPriorityMaskInHighWord = ((1u << kEntityIdPriorityBits) - 1u)
+                                                          << kEntityIdPriorityShiftInHighWord;
+constexpr std::uint32_t kEntityIdHighWordMask = ~kEntityIdPriorityMaskInHighWord;
+// Full-64-bit shift of the carrier — the invariant a live id must satisfy
+// (`id >> kEntityIdPriorityShift == 0`), guarded at the voxel-pool upload boundary.
+constexpr int kEntityIdPriorityShift = 32 + kEntityIdPriorityShiftInHighWord;
+static_assert(
+    kDepthForegroundTierCount <= (1 << kEntityIdPriorityBits),
+    "tier count must fit in the K stolen entity-id bits"
+);
+
+// Reconstruct the 64-bit entity id from its two stored words with the priority
+// carrier bits stripped — THE chokepoint every CPU id reader routes through
+// (getEntityIdAtMouseTrixel, C_TriangleCanvasTextures::readEntityIdAt). Mirror of
+// the .glsl/.metal `decodeEntityId`.
+inline std::uint64_t decodeCarrierEntityId(uvec2 packed) {
+    return static_cast<std::uint64_t>(packed.x) |
+           (static_cast<std::uint64_t>(packed.y & kEntityIdHighWordMask) << 32);
+}
+inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
+    return (packed.y >> kEntityIdPriorityShiftInHighWord) & ((1u << kEntityIdPriorityBits) - 1u);
+}
+
 struct FrameDataVoxelToCanvas {
     vec2 cameraTrixelOffset_;
     ivec2 trixelCanvasOffsetZ1_;
