@@ -5,7 +5,8 @@
 #   - empty usage dir => gate open
 #   - utilization >= threshold + fresh + future reset => gate closed
 #   - threshold override via env var (FLEET_DISPATCHER_USAGE_GATE)
-#   - stale observation (older than USAGE_STALE_SECONDS) => ignored
+#   - stale observation (older than USAGE_STALE_SECONDS) w/o resetsAt => ignored
+#   - stale observation but future resetsAt => still closed (window authoritative)
 #   - resetsAt well in the past (past grace) => observation ignored
 #   - resetsAt recently in the past, within RESET_GRACE_SECONDS => still active
 #   - RESET_GRACE_SECONDS=0 reverts to instant open at resetsAt
@@ -51,6 +52,17 @@ TMPROOT=$(mktemp -d)
 export FLEET_STATE_DIR="$TMPROOT/state"
 mkdir -p "$FLEET_STATE_DIR/usage"
 
+# Isolate from the operator's ~/.fleet/fleet-up.conf — the dispatcher sources
+# it on startup, so a host that sets e.g. FLEET_DISPATCHER_USAGE_GATE_FIVE_HOUR
+# would clobber the thresholds these cases assert (per-type beats the global
+# override T3 passes). Point FLEET_CONF at an empty file and clear any gate
+# vars already in the caller env so the suite tests the baked defaults.
+export FLEET_CONF=/dev/null
+for _v in $(compgen -A variable | grep '^FLEET_DISPATCHER_USAGE_GATE' || true); do
+    unset "$_v"
+done
+unset _v
+
 NOW=$(date +%s)
 # Future ISO-8601 timestamp; portable across BSD/GNU date.
 RESETS=$(python3 -c "import datetime,time; print(datetime.datetime.fromtimestamp(time.time()+3600,tz=datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
@@ -69,11 +81,22 @@ echo "T3: same fixture, threshold 0.99 => open"
 out=$(FLEET_DISPATCHER_USAGE_GATE=0.99 "$DISPATCHER" --gate-status)
 assert_starts_with "$out" "open:five_hour util=85%" "raised threshold opens gate"
 
-echo "T4: stale observation (2h old) => open"
-printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$((NOW - 7200))" \
+echo "T4: stale observation (2h old) with NO resetsAt => open"
+# Staleness cutoff only applies when there's no reset boundary to trust.
+printf '{"rateLimitType":"five_hour","utilization":0.85,"observed_at":%s}\n' "$((NOW - 7200))" \
     > "$FLEET_STATE_DIR/usage/five_hour.json"
 out=$("$DISPATCHER" --gate-status)
-assert_starts_with "$out" "open" "stale observation ignored"
+assert_starts_with "$out" "open" "stale observation without resetsAt ages out"
+
+echo "T4b: stale observation (2h old) but future resetsAt => still closed"
+# Regression guard: a future resetsAt is authoritative. Utilization can't
+# fall below the wall until the window resets, so an old-but-still-bound
+# reading must keep the gate closed. Previously the stale cutoff ran first
+# and blinded the gate mid-window, re-triggering a worker into the wall.
+printf '{"rateLimitType":"five_hour","utilization":1,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$((NOW - 7200))" \
+    > "$FLEET_STATE_DIR/usage/five_hour.json"
+out=$("$DISPATCHER" --gate-status)
+assert_starts_with "$out" "closed:five_hour util=100%" "future resetsAt overrides stale observed_at"
 
 echo "T5: resetsAt in the past (well past grace) => open"
 printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":"2020-01-01T00:00:00Z","observed_at":%s}\n' "$NOW" \

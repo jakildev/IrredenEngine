@@ -251,10 +251,15 @@ LAST_DISPATCH_EPOCH=0
 #      five_hour=0.80; everything else falls to the global default)
 #   4. Final fallback 0.80
 #
-# Conservative against staleness: an observation older than
-# USAGE_STALE_SECONDS (default 1h) or whose resetsAt + RESET_GRACE_SECONDS
-# is in the past is ignored, so the gate doesn't latch closed forever
-# after a single high-watermark reading.
+# Conservative against staleness, but resetsAt is authoritative: an
+# observation whose resetsAt + RESET_GRACE_SECONDS is in the past is
+# ignored (window closed). A future resetsAt keeps the observation live
+# no matter how old observed_at is — utilization can't fall below the
+# wall until the window resets, so an old-but-still-bound reading must
+# keep the gate closed. The USAGE_STALE_SECONDS cutoff (default 1h)
+# only applies when resetsAt is absent/unparseable, so an orphaned
+# latch still ages out. (Earlier the stale cutoff ran first and blinded
+# the gate ~4h into a 5h window, re-triggering a worker into the wall.)
 #
 # RESET_GRACE_SECONDS pads the resetsAt boundary so the gate doesn't flip
 # open on the exact second the latched window expires. Anthropic's rolling
@@ -793,22 +798,42 @@ for path in sorted(usage_dir.glob("*.json")):
     util = data.get("utilization")
     if not isinstance(util, (int, float)):
         continue
-    observed_at = data.get("observed_at")
-    if isinstance(observed_at, (int, float)) and now - int(observed_at) > stale_s:
-        continue
     resets_at = data.get("resetsAt")
     # rate_limit_info ships resetsAt as either an ISO-8601 string or a
     # Unix epoch int/float depending on CLI version — handle both.
+    # resets_known: we parsed a reset boundary. window_open: that
+    # boundary (plus grace) is still in the future.
+    resets_known = False
+    window_open = False
     if isinstance(resets_at, str):
         try:
             # datetime.fromisoformat accepts +00:00 but not Z until 3.11.
             dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
-            if dt.timestamp() + reset_grace_s <= now:
-                continue
+            resets_known = True
+            window_open = dt.timestamp() + reset_grace_s > now
         except ValueError:
             pass
     elif isinstance(resets_at, (int, float)):
-        if resets_at + reset_grace_s <= now:
+        resets_known = True
+        window_open = resets_at + reset_grace_s > now
+
+    # A known reset boundary is authoritative: skip iff the window has
+    # already closed (resetsAt + grace passed); keep it otherwise no
+    # matter how old observed_at is. Utilization can't fall below the
+    # wall until the window resets, so an old observation with a future
+    # resetsAt is still live — discarding it on the observed_at
+    # staleness cutoff blinds the gate for the (window - stale) gap and
+    # lets a worker re-trigger straight into the wall. The 5h window is
+    # ~5x the 1h stale default, so that gap was ~4h wide. Only when
+    # resetsAt is absent/unparseable do we fall back to the observed_at
+    # cutoff so an orphaned latch (process that never refreshed) still
+    # ages out.
+    if resets_known:
+        if not window_open:
+            continue
+    else:
+        observed_at = data.get("observed_at")
+        if isinstance(observed_at, (int, float)) and now - int(observed_at) > stale_s:
             continue
     util_f = float(util)
     # Utilization comes back in [0,1]. Be defensive against a future
