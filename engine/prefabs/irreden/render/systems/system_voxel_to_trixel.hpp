@@ -697,10 +697,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // early-return below, so a pure-SDF fog scene (no live voxels) still
         // uploads current fog for FOG_TO_TRIXEL's explored/unexplored masking.
         // `fog` is held for the compact-dispatch bind further down. The
-        // getComponentOptional is on the iterating canvas — the documented
-        // canvas-iteration pattern (a handful of canvases, mirroring
-        // LIGHTING_TO_TRIXEL's per-canvas sun-shadow), not the per-voxel
-        // getComponent footgun.
+        // getComponentOptional is on the iterating canvas — the accepted
+        // per-canvas O(handful) pattern; same shape as LIGHTING_TO_TRIXEL's
+        // C_CanvasSunShadow + C_CanvasLightVolume lookups (line 143-144), not
+        // the per-voxel getComponent footgun.
         C_CanvasFogOfWar *fog = nullptr;
         {
             auto fogOpt = IREntity::getComponentOptional<C_CanvasFogOfWar>(entity);
