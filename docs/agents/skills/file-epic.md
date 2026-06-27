@@ -285,14 +285,33 @@ The per-ticket plan adds **implementation detail beyond the issue body**.
 Don't duplicate — point at the umbrella plan for arch context, then add file
 paths, code-level approach, and verification.
 
-Each per-ticket plan must carry the **same rigor as a standalone plan**
-(PLANNING-PROTOCOL.md step 2): state the **verified current state** of the
-code this child touches (with a **confirmed repro against the actual code
-path** when the child fixes a defect), commit to **one approach** — never a
-"confirm during investigation/design" hand-off to the worker — and
-**reconcile siblings + in-flight PRs** on the same surface (including the
-epic's other children: say what this child assumes its predecessors have
-landed). A child plan that just restates the umbrella's phase line is a stub
+Each per-ticket plan must carry the **same rigor as a standalone plan**.
+[`PLANNING-PROTOCOL.md`](../PLANNING-PROTOCOL.md) step 2 is the **canonical
+rigor list** — treat this paragraph as a pointer to it, not a replacement, so
+the bar can't drift out of sync (it has before: #2012's gate and the
+cross-system-audit requirement landed in PLANNING-PROTOCOL but not here). At
+minimum a child plan must: state the **verified current state** of the code
+this child touches (with a **confirmed repro against the actual code path**
+when the child fixes a defect); commit to **one approach** — never a "confirm
+during investigation/design" hand-off to the worker; and **reconcile siblings
++ in-flight PRs** on the same surface (including the epic's other children: say
+what this child assumes its predecessors have landed).
+
+Two step-2 requirements bite epic children specifically, because an epic child
+is **usually a migration or a shared-resource change**:
+
+- **Cross-system audit.** When the child deletes or migrates a shared resource
+  (a component, system, SSBO/GPU buffer, public API, coordinate convention,
+  helper retired across many call sites — exactly the shape most epics take),
+  list **every consumer** with a per-consumer migration note. Audit by grep on
+  the type/symbol name **and** on any slot/binding numbers. Without it the
+  worker discovers gaps mid-task and design-blocks.
+- **Source-verify negative/gap claims.** Any "the engine does not do X today" /
+  "Y is missing" claim that motivates the child's work must be checked across
+  the **full candidate set** before the approach commits — a negative is true
+  only if every candidate was checked (#1814).
+
+A child plan that just restates the umbrella's phase line is a stub
 — #1440's 23-line stub prescribed an approach a sibling had already proved
 wrong (#1456). The queue's plan gate checks only that a `## Plan` comment
 exists; the rigor is on the author.
@@ -371,13 +390,54 @@ umbrella's `## Children` checklist:
 <validate-stack-command> <umbrella> --check-checklist --repo game  # game repo
 ```
 
+### 7.6. How the human gates interact (file-with-plan model, #2012)
+
+Epic children filed this way are **file-with-plan**: each carries its `## Plan`
+comment (step 6), so the planning gate is already satisfied. The consequence
+for the human gates:
+
+- A child **queues directly** once the human stamps `human:approved` on it —
+  no worker re-plan round, because the plan is already posted.
+- A child does **not** hit the worker-planning `human:review-plan` fallback.
+  That gate (#2012) holds a *worker-authored* plan for a human's approach
+  sign-off; an epic filed from a design conversation already had the human in
+  the planning loop, and their approval of the umbrella plan **is** the
+  approach sign-off. So **do not pre-stamp `human:review-plan`** on children.
+- **Exception the human owns:** if one child is independently high-stakes
+  (PLANNING-PROTOCOL.md step 3 checklist — ambiguous approach, cross-cutting,
+  expensive/hard-to-reverse, or changes a public contract) *beyond* what the
+  umbrella plan settled, the human may add `human:review-plan` to that child
+  for a separate per-child hold. It is a queue-block until they clear it. This
+  is a human action, not something this flow applies by default.
+
+What the human still owns regardless: **per-child `human:approved` triage.**
+The `fleet:task` label means "ready for human triage" — the queue-manager
+never auto-approves children. The human approves each child individually (and
+the `**Blocked by:**` chain still gates the dependents until their
+predecessors close).
+
+If, on reading a child's `## Plan` comment, the human wants its **approach
+reworked**, they don't hand-swap labels — they **add the single
+`human:revise-plan` label** (#2052) plus a comment, and the fleet re-plans the
+child for them (adds `fleet:needs-plan`, strips stale stage labels, keeps
+`human:approved`). See
+[`PLANNING-PROTOCOL.md § Human: requesting plan changes`](../PLANNING-PROTOCOL.md#human-requesting-plan-changes-humanrevise-plan).
+
+> **Stale child before it's worked?** If a filed child's plan goes stale
+> (a predecessor shipped a different design than its `## Plan` assumed) before
+> the child is claimed, it re-plans through the guarded re-plan flow — flip
+> `fleet:queued → fleet:needs-plan` and take `planning-claim --replan` before
+> re-investigating. See
+> [`PLANNING-PROTOCOL.md § Re-planning a stale queued plan`](../PLANNING-PROTOCOL.md#re-planning-a-stale-queued-plan)
+> (#1999). `file-epic` does not re-file the child.
+
 ### 8. Report
 
 Reply with: the umbrella issue URL + epic-label confirmation; the child
 issue URLs; the umbrella plan-file path; the per-child `## Plan` comment links; the
 validate-stack result (must pass); and what the user still must do
-(typically: triage each child individually — the queue-manager won't
-auto-approve).
+(triage each child individually with `human:approved` — the queue-manager
+won't auto-approve; do not pre-stamp `human:review-plan`, per step 7.6).
 
 ---
 
@@ -400,6 +460,13 @@ auto-approve).
   Each child plan meets PLANNING-PROTOCOL.md step-2 rigor on its own:
   verified current state / confirmed repro, one picked approach, sibling +
   in-flight reconciliation (#1456).
+- ❌ A migration/deletion child plan with **no cross-system audit**. Most epic
+  children change a shared resource (retire a helper, change a public API,
+  migrate every consumer); a plan that doesn't enumerate every consumer +
+  per-consumer migration is a stub (step 6, PLANNING-PROTOCOL.md step 2).
+- ❌ Pre-stamping `human:review-plan` on children. They're file-with-plan, so
+  the umbrella-plan approval is the approach sign-off (step 7.6, #2012). The
+  human adds that label only for a child that's high-stakes beyond the umbrella.
 - ❌ Skipping the umbrella summary comment — the umbrella↔children
   cross-reference then isn't visible from the umbrella's own thread.
 - ❌ Filing an epic for changes that are really one ticket. If the scope
