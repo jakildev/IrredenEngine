@@ -229,6 +229,32 @@ For each `fleet:needs-plan` issue:
 your concerns, leave `fleet:needs-plan` on, release the planning claim, and let
 the human decide.
 
+### Human: requesting plan changes (`human:revise-plan`)
+
+When the human reviewing a posted plan (step 4, while it sits in
+`fleet:plan-review` / `human:review-plan`) wants the **approach** reworked, they
+do **not** swap labels by hand. They **add one label, `human:revise-plan`**,
+plus a comment describing the change. On the next scout tick `fleet-queue-ingest`
+reconciles the issue for them:
+
+- adds `fleet:needs-plan` (so an opus+ planner re-plans, reading the new comment
+  per step 1),
+- strips the now-stale stage labels (`fleet:plan-review`, and any model /
+  `fleet:blocked` label),
+- consumes `human:revise-plan`,
+- **keeps** `human:approved` (the original triage) and `human:review-plan` (the
+  human's approach gate persists across the re-plan — the issue cannot queue
+  until the human clears it on the revised plan).
+
+The re-planner then revises the `## Plan` comment and swaps back to
+`fleet:plan-review` (re-asserting `human:review-plan` for high-stakes work). The
+human reviews the new plan and clears `human:review-plan` when satisfied. Net:
+the human only ever *adds* a label — the fleet manages every other transition.
+(The scout pulls a `human:revise-plan` issue back into the ingest set even though
+its stage labels would otherwise exclude it; see `_ingest_skipped`.) This affords
+the **pre-queue** stages only; an already-queued plan that has gone stale uses
+the race-guarded flow below.
+
 ---
 
 ## Re-planning a stale queued plan

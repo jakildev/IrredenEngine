@@ -210,6 +210,33 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         self.assertEqual(out["pending_issues"], [],
                          "needs-human issue must be absent from pending_issues slice")
 
+    def test_revise_plan_overrides_skip_into_pending(self):
+        # human:revise-plan is the human-added "change the posted plan" gate. It
+        # lands on an issue mid-review (fleet:plan-review / human:review-plan,
+        # both skip labels), so it must OVERRIDE the skip — re-entering the
+        # ingest set so adding it flips the hash (fires ingest) and surfaces it
+        # in pending_issues for fleet-queue-ingest to reset to fleet:needs-plan.
+        revise = [{"number": 2043, "title": "revise me",
+                   "labels": ["human:approved", "fleet:plan-review",
+                              "human:review-plan", "human:revise-plan"]}]
+        h = stable_hash(project_queue_manager_ingest(_state(engine_human_approved=revise)))
+        self.assertNotEqual(h, stable_hash(project_queue_manager_ingest(_state())),
+                            "human:revise-plan must re-enter the ingest set so ingest fires")
+        out = slice_queue_manager_ingest(_state(engine_human_approved=revise))
+        nums = [i["number"] for i in out["pending_issues"]]
+        self.assertIn(2043, nums,
+                      "human:revise-plan issue must appear in pending_issues for reconcile")
+
+    def test_plan_review_without_revise_still_excluded(self):
+        # Guard the override is narrow: a plain mid-review plan (no revise-plan)
+        # stays out of the ingest set exactly as before.
+        review = [{"number": 2044, "title": "in review",
+                   "labels": ["human:approved", "fleet:plan-review",
+                              "human:review-plan"]}]
+        out = slice_queue_manager_ingest(_state(engine_human_approved=review))
+        self.assertEqual(out["pending_issues"], [],
+                         "plan-review issue without revise-plan must stay excluded")
+
 
 class IngestHonorsBlockedBy(unittest.TestCase):
     """resolve_human_approved_blockers() flags issues whose `**Blocked by:**`

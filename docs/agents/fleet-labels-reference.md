@@ -124,6 +124,20 @@ Specifically, **never pass these via `--label` when filing**:
   or hard to reverse / changes a public contract (PLANNING-PROTOCOL.md step 3
   checklist); low-stakes worker-planned issues queue on agent plan-review alone.
   Architect-filed-with-plan work skips planning and never reaches this gate.
+- `human:revise-plan` — owned by the **human** as a re-plan request; **added by
+  the human** (and nothing else) to a posted plan in review when the *approach*
+  needs reworking, alongside a comment describing the change. The human never
+  swaps labels: on the next scout tick `fleet-queue-ingest` reconciles the issue
+  — adds `fleet:needs-plan` (an opus+ planner re-plans, reading the comment),
+  strips the now-stale stage labels (`fleet:plan-review`, any model /
+  `fleet:blocked` label), consumes `human:revise-plan`, and **keeps**
+  `human:approved` + any `human:review-plan` (the approach gate persists so the
+  issue can't queue behind the human's back). The scout pulls the issue back
+  into the ingest set via `_ingest_skipped` even though its stage labels would
+  otherwise exclude it, so adding the label both fires ingest and surfaces it in
+  `pending_issues`. Pre-queue stages only — an already-queued stale plan uses the
+  race-guarded re-plan flow (PLANNING-PROTOCOL.md §"Re-planning a stale queued
+  plan"). A fleet agent never applies it (`human:*` by convention).
 - `human:no-plan` — owned by the **human**, applied at filing to a simple,
   self-contained issue to skip planning entirely. `fleet-queue-ingest` then
   stamps `fleet:queued` directly — no `## Plan` comment required — and the
