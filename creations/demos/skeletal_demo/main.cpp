@@ -78,9 +78,9 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
     IR_LOG_INFO("Starting creation: skeletal_demo");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     initEntities();
@@ -157,16 +157,18 @@ void initCommands() {
 // Rig round-trip verification. Builds an IRAsset::Rig from the C_Skeleton,
 // writes it to memory, reads it back, and checks joint count.
 // ---------------------------------------------------------------------------
-static void verifyRigRoundTrip(
-    const C_Skeleton &skeleton, const std::string &label, int expectedJoints
-) {
+static void
+verifyRigRoundTrip(const C_Skeleton &skeleton, const std::string &label, int expectedJoints) {
     IRAsset::Rig rig;
     rig.joints_.reserve(skeleton.joints_.size());
     for (std::size_t i = 0; i < skeleton.joints_.size(); ++i) {
         IRAsset::RigJoint j;
         j.translation_ = vec4(skeleton.bindPose_[i].translation_, 0.0f);
         j.rotation_ = skeleton.bindPose_[i].rotation_;
-        j.parentIndex_ = (i == 0) ? 0u : static_cast<std::uint32_t>(i - 1); // linear chain; hierarchy not round-tripped
+        j.parentIndex_ =
+            (i == 0)
+                ? 0u
+                : static_cast<std::uint32_t>(i - 1); // linear chain; hierarchy not round-tripped
         rig.joints_.push_back(j);
     }
     IRAsset::MemoryBinaryWriter w;
@@ -184,7 +186,12 @@ static void verifyRigRoundTrip(
     }
     const int got = static_cast<int>(loaded.value_.joints_.size());
     if (got != expectedJoints) {
-        IR_LOG_ERROR("{}: round-trip joint count mismatch: expected={} got={}", label, expectedJoints, got);
+        IR_LOG_ERROR(
+            "{}: round-trip joint count mismatch: expected={} got={}",
+            label,
+            expectedJoints,
+            got
+        );
     } else {
         IR_LOG_INFO("{}: rig round-trip OK ({} joints)", label, got);
     }
@@ -196,14 +203,12 @@ static void verifyRigRoundTrip(
 // ---------------------------------------------------------------------------
 static void createSnake(vec3 worldPos) {
     constexpr int kNumJoints = 30;
-    constexpr int kSegLen = 3; // voxels per segment along Z
+    constexpr int kSegLen = 3;                    // voxels per segment along Z
     const ivec3 size{3, 3, kNumJoints * kSegLen}; // 3x3x90
     const Color baseColor{60, 200, 90, 255};
 
-    IREntity::EntityId rigRoot = IREntity::createEntity(
-        C_LocalTransform{worldPos},
-        C_VoxelSetNew{size, baseColor, false}
-    );
+    IREntity::EntityId rigRoot =
+        IREntity::createEntity(C_LocalTransform{worldPos}, C_VoxelSetNew{size, baseColor, false});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
 
     for (int i = 0; i < vs.numVoxels_; ++i) {
@@ -224,9 +229,8 @@ static void createSnake(vec3 worldPos) {
 
     IREntity::EntityId prevJoint = IREntity::kNullEntity;
     for (int i = 0; i < kNumJoints; ++i) {
-        const vec3 localPos = (i == 0)
-            ? vec3(1.0f, 1.0f, 0.0f)
-            : vec3(0.0f, 0.0f, static_cast<float>(kSegLen));
+        const vec3 localPos =
+            (i == 0) ? vec3(1.0f, 1.0f, 0.0f) : vec3(0.0f, 0.0f, static_cast<float>(kSegLen));
         const vec4 rot = (i == kNumJoints / 2) ? kBendPose : kIdentity;
 
         IREntity::EntityId joint =
@@ -237,11 +241,9 @@ static void createSnake(vec3 worldPos) {
             IREntity::setParent(joint, prevJoint);
         }
         skeleton.joints_.push_back(joint);
-        skeleton.bindPose_.push_back(IRMath::SQT{
-            vec3(1.0f),
-            kIdentity,
-            vec3(1.0f, 1.0f, static_cast<float>(i * kSegLen))
-        });
+        skeleton.bindPose_.push_back(
+            IRMath::SQT{vec3(1.0f), kIdentity, vec3(1.0f, 1.0f, static_cast<float>(i * kSegLen))}
+        );
         prevJoint = joint;
     }
     const int snakeVoxels = vs.numVoxels_;
@@ -269,9 +271,9 @@ static void createDesk(vec3 worldPos) {
     const vec4 legParams{kR, kR, kH, 0.0f};
     const vec3 legOffsets[4] = {
         {-6.0f, kH * 0.5f + 0.5f, -3.0f},
-        { 6.0f, kH * 0.5f + 0.5f, -3.0f},
-        {-6.0f, kH * 0.5f + 0.5f,  3.0f},
-        { 6.0f, kH * 0.5f + 0.5f,  3.0f},
+        {6.0f, kH * 0.5f + 0.5f, -3.0f},
+        {-6.0f, kH * 0.5f + 0.5f, 3.0f},
+        {6.0f, kH * 0.5f + 0.5f, 3.0f},
     };
     for (const auto &off : legOffsets) {
         IREntity::createEntity(
@@ -288,14 +290,12 @@ static void createDesk(vec3 worldPos) {
 // ---------------------------------------------------------------------------
 static void createLamp(vec3 worldPos) {
     constexpr int kNumJoints = 4;
-    constexpr int kSegLen = 5; // voxels per segment along Y
+    constexpr int kSegLen = 5;                    // voxels per segment along Y
     const ivec3 size{2, kNumJoints * kSegLen, 2}; // 2x20x2
     const Color baseColor{220, 185, 50, 255};
 
-    IREntity::EntityId rigRoot = IREntity::createEntity(
-        C_LocalTransform{worldPos},
-        C_VoxelSetNew{size, baseColor, false}
-    );
+    IREntity::EntityId rigRoot =
+        IREntity::createEntity(C_LocalTransform{worldPos}, C_VoxelSetNew{size, baseColor, false});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
 
     for (int i = 0; i < vs.numVoxels_; ++i) {
@@ -304,7 +304,12 @@ static void createLamp(vec3 worldPos) {
         // Lighten toward the top to simulate a warm glow gradient.
         const float t = static_cast<float>(seg) / static_cast<float>(kNumJoints - 1);
         const auto r = static_cast<std::uint8_t>(220u + static_cast<std::uint8_t>(35u * t));
-        vs.voxels_[i].color_ = Color{r, static_cast<std::uint8_t>(185u - static_cast<std::uint8_t>(40u * t)), 50u, 255u};
+        vs.voxels_[i].color_ = Color{
+            r,
+            static_cast<std::uint8_t>(185u - static_cast<std::uint8_t>(40u * t)),
+            50u,
+            255u
+        };
     }
 
     constexpr vec4 kIdentity{0.0f, 0.0f, 0.0f, 1.0f};
@@ -316,9 +321,8 @@ static void createLamp(vec3 worldPos) {
 
     IREntity::EntityId prevJoint = IREntity::kNullEntity;
     for (int i = 0; i < kNumJoints; ++i) {
-        const vec3 localPos = (i == 0)
-            ? vec3(0.5f, 0.0f, 0.5f)
-            : vec3(0.0f, static_cast<float>(kSegLen), 0.0f);
+        const vec3 localPos =
+            (i == 0) ? vec3(0.5f, 0.0f, 0.5f) : vec3(0.0f, static_cast<float>(kSegLen), 0.0f);
         const vec4 rot = (i == kNumJoints - 1) ? kHeadPose : kIdentity;
 
         IREntity::EntityId joint =
@@ -329,11 +333,9 @@ static void createLamp(vec3 worldPos) {
             IREntity::setParent(joint, prevJoint);
         }
         skeleton.joints_.push_back(joint);
-        skeleton.bindPose_.push_back(IRMath::SQT{
-            vec3(1.0f),
-            kIdentity,
-            vec3(0.5f, static_cast<float>(i * kSegLen), 0.5f)
-        });
+        skeleton.bindPose_.push_back(
+            IRMath::SQT{vec3(1.0f), kIdentity, vec3(0.5f, static_cast<float>(i * kSegLen), 0.5f)}
+        );
         prevJoint = joint;
     }
     const int lampVoxels = vs.numVoxels_;
@@ -359,10 +361,8 @@ static void createCross(vec3 worldPos) {
     const ivec3 size{10, 3, 10};
     const Color armColor{80, 140, 220, 255};
 
-    IREntity::EntityId rigRoot = IREntity::createEntity(
-        C_LocalTransform{worldPos},
-        C_VoxelSetNew{size, armColor, false}
-    );
+    IREntity::EntityId rigRoot =
+        IREntity::createEntity(C_LocalTransform{worldPos}, C_VoxelSetNew{size, armColor, false});
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
 
     // Classify each voxel into a body region and assign bone_id.
@@ -370,11 +370,11 @@ static void createCross(vec3 worldPos) {
     for (int i = 0; i < vs.numVoxels_; ++i) {
         const int x = static_cast<int>(vs.positions_[i].pos_.x);
         const int z = static_cast<int>(vs.positions_[i].pos_.z);
-        const bool inCenter  = (x >= 3 && x <= 6 && z >= 3 && z <= 6);
-        const bool inLeft    = (x >= 0 && x <= 2 && z >= 3 && z <= 6);
-        const bool inRight   = (x >= 7 && x <= 9 && z >= 3 && z <= 6);
-        const bool inFront   = (x >= 3 && x <= 6 && z >= 0 && z <= 2);
-        const bool inBack    = (x >= 3 && x <= 6 && z >= 7 && z <= 9);
+        const bool inCenter = (x >= 3 && x <= 6 && z >= 3 && z <= 6);
+        const bool inLeft = (x >= 0 && x <= 2 && z >= 3 && z <= 6);
+        const bool inRight = (x >= 7 && x <= 9 && z >= 3 && z <= 6);
+        const bool inFront = (x >= 3 && x <= 6 && z >= 0 && z <= 2);
+        const bool inBack = (x >= 3 && x <= 6 && z >= 7 && z <= 9);
 
         if (inCenter) {
             vs.voxels_[i].bone_id_ = 0;
@@ -420,15 +420,15 @@ static void createCross(vec3 worldPos) {
         vec3 bindPos_;  // rig-root-local rest position
     };
     const JointDef defs[9] = {
-        { vec3(4.5f, 1.0f, 4.5f), kIdentity,    -1, vec3(4.5f, 1.0f, 4.5f) },
-        { vec3(-2.5f, 0.0f, 0.0f), kIdentity,    0, vec3(2.0f, 1.0f, 4.5f) },
-        { vec3(-2.0f, 0.0f, 0.0f), kWristBendLR, 1, vec3(0.0f, 1.0f, 4.5f) },
-        { vec3(2.5f, 0.0f, 0.0f),  kIdentity,    0, vec3(7.0f, 1.0f, 4.5f) },
-        { vec3(2.0f, 0.0f, 0.0f),  kWristBendLR, 3, vec3(9.0f, 1.0f, 4.5f) },
-        { vec3(0.0f, 0.0f, -2.5f), kIdentity,    0, vec3(4.5f, 1.0f, 2.0f) },
-        { vec3(0.0f, 0.0f, -2.0f), kWristBendFB, 5, vec3(4.5f, 1.0f, 0.0f) },
-        { vec3(0.0f, 0.0f, 2.5f),  kIdentity,    0, vec3(4.5f, 1.0f, 7.0f) },
-        { vec3(0.0f, 0.0f, 2.0f),  kWristBendFB, 7, vec3(4.5f, 1.0f, 9.0f) },
+        {vec3(4.5f, 1.0f, 4.5f), kIdentity, -1, vec3(4.5f, 1.0f, 4.5f)},
+        {vec3(-2.5f, 0.0f, 0.0f), kIdentity, 0, vec3(2.0f, 1.0f, 4.5f)},
+        {vec3(-2.0f, 0.0f, 0.0f), kWristBendLR, 1, vec3(0.0f, 1.0f, 4.5f)},
+        {vec3(2.5f, 0.0f, 0.0f), kIdentity, 0, vec3(7.0f, 1.0f, 4.5f)},
+        {vec3(2.0f, 0.0f, 0.0f), kWristBendLR, 3, vec3(9.0f, 1.0f, 4.5f)},
+        {vec3(0.0f, 0.0f, -2.5f), kIdentity, 0, vec3(4.5f, 1.0f, 2.0f)},
+        {vec3(0.0f, 0.0f, -2.0f), kWristBendFB, 5, vec3(4.5f, 1.0f, 0.0f)},
+        {vec3(0.0f, 0.0f, 2.5f), kIdentity, 0, vec3(4.5f, 1.0f, 7.0f)},
+        {vec3(0.0f, 0.0f, 2.0f), kWristBendFB, 7, vec3(4.5f, 1.0f, 9.0f)},
     };
 
     C_Skeleton skeleton;
@@ -437,18 +437,15 @@ static void createCross(vec3 worldPos) {
     IREntity::EntityId jointIds[9] = {};
 
     for (int i = 0; i < 9; ++i) {
-        jointIds[i] = IREntity::createEntity(
-            C_Joint{}, C_LocalTransform{defs[i].localPos_, defs[i].rot_}
-        );
+        jointIds[i] =
+            IREntity::createEntity(C_Joint{}, C_LocalTransform{defs[i].localPos_, defs[i].rot_});
         if (defs[i].parentIdx_ < 0) {
             IREntity::setParent(jointIds[i], rigRoot);
         } else {
             IREntity::setParent(jointIds[i], jointIds[defs[i].parentIdx_]);
         }
         skeleton.joints_.push_back(jointIds[i]);
-        skeleton.bindPose_.push_back(
-            IRMath::SQT{vec3(1.0f), kIdentity, defs[i].bindPos_}
-        );
+        skeleton.bindPose_.push_back(IRMath::SQT{vec3(1.0f), kIdentity, defs[i].bindPos_});
     }
     const int crossVoxels = vs.numVoxels_;
     IREntity::setComponent(rigRoot, skeleton);

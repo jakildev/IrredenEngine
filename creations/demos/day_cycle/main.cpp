@@ -142,10 +142,9 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-
     IR_LOG_INFO("Starting creation: day_cycle");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     initEntities();
@@ -169,7 +168,8 @@ void initSystems() {
     );
 
     IRSystem::registerPipeline(
-        IRTime::Events::INPUT, {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
+        IRTime::Events::INPUT,
+        {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
     );
 
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
@@ -193,7 +193,9 @@ void initSystems() {
     // Per-frame hook (once-per-frame beginTick form, cf. the lighting demos'
     // animated sun): runs first so the lighting passes pick up the new sun.
     IRSystem::SystemId sunTickId = IRSystem::createSystem<C_Name>(
-        "DayCycleSunTick", [](C_Name &) {}, []() { driveSunFromDayCycle(); }
+        "DayCycleSunTick",
+        [](C_Name &) {},
+        []() { driveSunFromDayCycle(); }
     );
     renderPipeline.push_front(sunTickId);
 

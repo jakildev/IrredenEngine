@@ -94,10 +94,9 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: collision_overlap_demo");
 
     int autoWarmupFrames = 0;
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &autoWarmupFrames);
-
     registerLuaBindings();
-    IREngine::init(argv[0], "config.lua");
+    IREngine::init(argc, argv, "config.lua");
+    autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     IREngine::runScript("main.lua");
 
     if (autoWarmupFrames > 0) {

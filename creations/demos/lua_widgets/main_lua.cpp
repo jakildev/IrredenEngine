@@ -183,10 +183,9 @@ void initSystems();
 
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: lua_widgets");
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &IRLuaWidgets::g_autoWarmupFrames);
-
     registerLuaBindings();
-    IREngine::init(argv[0], "config.lua");
+    IREngine::init(argc, argv, "config.lua");
+    IRLuaWidgets::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     IREngine::runScript("main.lua"); // builds widgets + registers onClick / poll system
     IREngine::gameLoop();

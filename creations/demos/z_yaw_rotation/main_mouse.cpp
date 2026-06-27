@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: z_yaw_rotation/interactive");
     IR_LOG_INFO("  R — toggle mouse-driven yaw rotation");
     IR_LOG_INFO("  Left click on entity — sun-flash effect (proves per-voxel pick)");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
     initSystems();
     initCommands();
     initEntities();

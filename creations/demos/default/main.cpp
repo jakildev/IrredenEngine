@@ -37,7 +37,7 @@ void initCommands();
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
     initSystems();
     initCommands();
     initEntities();

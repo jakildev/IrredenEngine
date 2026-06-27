@@ -154,7 +154,6 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--spin-yaw") == 0) {
             g_spinYawDegPerSec = 30.0f;
@@ -195,7 +194,8 @@ int main(int argc, char **argv) {
     }
 
     IR_LOG_INFO("Starting creation: ir_voxel_yaw");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
     initEntities();

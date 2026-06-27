@@ -62,15 +62,12 @@ int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: audio_playback");
 
     int autoWarmupFrames = 0;
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &autoWarmupFrames);
-
     // Wire the Lua-driven ECS surface, which now also exposes the IRAudio
     // file-playback table consumed by audio_demo.lua.
-    IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
-        script.bindLuaDrivenEcs();
-    });
+    IREngine::registerLuaBindings([](IRScript::LuaScript &script) { script.bindLuaDrivenEcs(); });
 
-    IREngine::init(argv[0], "config.lua");
+    IREngine::init(argc, argv, "config.lua");
+    autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initEntities();
     IREngine::runScript("audio_demo.lua");

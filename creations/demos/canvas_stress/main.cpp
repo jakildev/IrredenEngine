@@ -802,7 +802,6 @@ void readConfig() {
 }
 
 void parseArgs(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
             g_settings.cameraYaw_ = static_cast<float>(std::atof(argv[i + 1]));
@@ -894,7 +893,8 @@ void initEntities();
 int main(int argc, char **argv) {
     parseArgs(argc, argv);
     IR_LOG_INFO("Starting creation: canvas_stress");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     readConfig();
     if (g_settings.autoProfile_) {
         IREngine::enableFrameTiming(true);

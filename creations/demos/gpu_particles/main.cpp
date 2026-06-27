@@ -46,7 +46,6 @@ int g_autoWarmupFrames = 0;
 int g_spawnsPerFrame = 0; // T-159 continuous-emitter verification knob
 
 void parseArgs(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--spawns-per-frame") == 0 && i + 1 < argc) {
             const int n = std::atoi(argv[i + 1]);
@@ -107,7 +106,8 @@ int main(int argc, char **argv) {
     parseArgs(argc, argv);
 
     IR_LOG_INFO("Starting creation: gpu_particles");
-    IREngine::init(argv[0]);
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
 
     initSystems();
     initCommands();
