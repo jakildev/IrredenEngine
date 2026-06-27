@@ -741,10 +741,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // this cap (the #2043 root cause); it is now correct, so a generously-sized
         // canvas (footprint cap ≫ effSub) admits cubeSub > 1, which surfaces the
         // #2043 detached-canvas oversize. The cubeSub→apparent-size decoupling that
-        // fixes that is a composite-side change (ENTITY_CANVAS_TO_FRAMEBUFFER) —
-        // design-escalated on the #2043 PR; it is NOT a raster-side zoom-track here
-        // (camera zoom is clamped to ≥ 1 by kTrixelCanvasZoomMin, so a zoom-track
-        // at this site can never lower the density).
+        // fixes that is a composite-side change (ENTITY_CANVAS_TO_FRAMEBUFFER divides
+        // cubeSub out of the quad scale + gather density — #2043 Option A, see
+        // docs/design/detached-canvas-density-compensation.md); it is NOT a
+        // raster-side zoom-track here (camera zoom is clamped to ≥ 1 by
+        // kTrixelCanvasZoomMin, so a zoom-track at this site can never lower the
+        // density).
         if (canvasLocalRotation.isDetached() && canvasLocalRotation.reVoxelize_) {
             const int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
                 triangleCanvasTextures.size_,
@@ -979,10 +981,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
             gpuStageTiming().visibleVoxelCount_ = visible;
             gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(effectiveVoxelCount);
-            voxelCullAccumulator().record(
-                visible,
-                static_cast<std::uint32_t>(effectiveVoxelCount)
-            );
+            voxelCullAccumulator().record(visible, static_cast<std::uint32_t>(effectiveVoxelCount));
         }
 
         const VoxelIndirectDispatchParams zeroed{};

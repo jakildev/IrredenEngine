@@ -784,11 +784,8 @@ void spawnSmallZoomRepro() {
     constexpr vec3 kGridPos{-14.0f, -14.0f, 0.0f};
     constexpr Color kColor{90, 210, 235, 255};
 
-    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
-        "smallzoom_canvas",
-        kCanvasSize,
-        kPoolSize
-    );
+    C_EntityCanvas canvas =
+        IRPrefab::EntityCanvas::createWithVoxelPool("smallzoom_canvas", kCanvasSize, kPoolSize);
     canvas.screenLocked_ = g_settings.screenLockDetached_;
     IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
