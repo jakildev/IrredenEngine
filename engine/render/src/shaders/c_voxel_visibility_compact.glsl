@@ -103,13 +103,10 @@ const float kFogExploredThreshold = 0.25;
 // The compact keeps a column covered by any disc EVEN when its grid cell is
 // unexplored, so a voxel-floor scene driven purely by setVisionCircle keeps its
 // floor (the grid-only cull would otherwise drop every column and black it out).
-const int kMaxFogVisionCircles = 8;
+const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
-    int _fogObsPad0;
-    int _fogObsPad1;
-    int _fogObsPad2;
 };
 
 // True iff this voxel's raw world column is unexplored on the bound fog

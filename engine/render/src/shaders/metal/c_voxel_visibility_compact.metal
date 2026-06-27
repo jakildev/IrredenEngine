@@ -110,7 +110,7 @@ static bool fogColumnUnexplored(
 // covers survives the grid cull, so a voxel-floor scene driven purely by
 // setVisionCircle keeps its floor (the grid-only cull would otherwise drop
 // every unexplored column and black it out).
-constant int kMaxFogVisionCircles = 8;
+constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
