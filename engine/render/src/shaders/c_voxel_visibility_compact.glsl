@@ -95,6 +95,20 @@ layout(rgba8, binding = 0) readonly uniform image2D canvasFogOfWar;
 const int kFogOfWarHalfExtent = 128;
 const float kFogExploredThreshold = 0.25;
 
+// Live analytic fog vision circles (aliases binding 27 — uploaded by
+// VOXEL_TO_TRIXEL_STAGE_1 right before this compact). Std140-mirrors
+// FrameDataFogObservers (C_CanvasFogOfWar) and the FogObserverData UBO in
+// c_fog_to_trixel.glsl. The grid texture above carries only coarse
+// explored/voxelized memory; these discs carry the smooth "currently visible".
+// The compact keeps a column covered by any disc EVEN when its grid cell is
+// unexplored, so a voxel-floor scene driven purely by setVisionCircle keeps its
+// floor (the grid-only cull would otherwise drop every column and black it out).
+const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
+layout(std140, binding = 27) uniform FogObserverData {
+    vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
+    int visionCircleCount;
+};
+
 // True iff this voxel's raw world column is unexplored on the bound fog
 // texture. Uses voxelPosRaw (the pre-cardinal-rotation world position) because
 // the fog grid is world-space; out-of-range columns and the 1×1 placeholder
@@ -114,6 +128,22 @@ bool fogColumnUnexplored(ivec3 voxelPosRaw) {
         return false;
     }
     return imageLoad(canvasFogOfWar, fogCell).r < kFogExploredThreshold;
+}
+
+// True iff this column lies under any live analytic vision circle, so its
+// voxels survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per
+// pixel. Tested with a +1 cell margin (plus the edge softness) so columns the
+// disc only partially covers at its boundary still rasterize.
+bool fogColumnInVisionCircle(ivec3 voxelPosRaw) {
+    vec2 col = vec2(voxelPosRaw.xy);
+    for (int i = 0; i < visionCircleCount; ++i) {
+        vec2 d = col - visionCircles[i].xy;
+        float keepR = visionCircles[i].z + max(visionCircles[i].w, 0.0) + 1.0;
+        if (dot(d, d) <= keepR * keepR) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Compute the indirect dispatch grid for the struct at `base` from its
@@ -167,7 +197,8 @@ void main() {
                     isoPos.x <= cullIsoMax.x + cullMargin &&
                     isoPos.y >= cullIsoMin.y - cullMargin &&
                     isoPos.y <= cullIsoMax.y + cullMargin &&
-                    !fogColumnUnexplored(voxelPosRaw)) {
+                    (!fogColumnUnexplored(voxelPosRaw) ||
+                     fogColumnInVisionCircle(voxelPosRaw))) {
                     if (perAxisSplitStride == 0) {
                         // Single full list (byte-identical to master).
                         uint slot = atomicAdd(params[3], 1u);
