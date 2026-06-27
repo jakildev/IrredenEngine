@@ -9,6 +9,7 @@ include_directories(
 
 add_library(IrredenEngine STATIC
     engine.cpp
+    ir_args.cpp
 )
 
 # set(CMAKE_CXX_SCAN_FOR_MODULES ON)
