@@ -36,6 +36,7 @@ _loader.exec_module(_mod)
 project_worker = _mod.project_worker
 project_opus_reviewer = _mod.project_opus_reviewer
 project_sonnet_reviewer = _mod.project_sonnet_reviewer
+slice_worker = _mod.slice_worker
 stable_hash = _mod.stable_hash
 
 
@@ -209,6 +210,38 @@ class WorkerSkipLabelsDropPR(unittest.TestCase):
             project_worker(_state([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])])),
             [],
         )
+
+
+class SliceWorkerSkipLabelsDropPR(unittest.TestCase):
+    """slice_worker is the dispatch slice a woken worker reads (distinct from
+    project_worker, the hash-input that decides *whether* to wake). It must
+    mirror project_worker's human:wip / fleet:gated exclusions so a woken
+    worker never even surfaces a gated, human-only PR as a candidate."""
+
+    def _feedback(self, prs):
+        return slice_worker(_state(prs))["feedback_prs"]
+
+    def test_human_wip_drops_pr(self):
+        self.assertEqual(
+            self._feedback([_pr(101, labels=["fleet:needs-fix", "human:wip"])]),
+            [],
+        )
+
+    def test_fleet_gated_drops_pr(self):
+        # Mirror of WorkerSkipLabelsDropPR.test_fleet_gated_drops_pr for the
+        # slice: a gated PR carrying an otherwise-actionable feedback label
+        # (#1990: fleet:gated alongside fleet:needs-fix) must not reach the
+        # woken worker's candidate list. fleet:gated wins unconditionally.
+        self.assertEqual(
+            self._feedback([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])]),
+            [],
+        )
+
+    def test_plain_feedback_pr_still_surfaces(self):
+        # Regression: a non-gated feedback PR must still reach the worker.
+        result = self._feedback([_pr(101, labels=["fleet:needs-fix"])])
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["number"], 101)
 
 
 class OpusReviewerStableAcrossIrrelevantLabels(unittest.TestCase):

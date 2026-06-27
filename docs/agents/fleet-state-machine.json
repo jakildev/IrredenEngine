@@ -282,7 +282,7 @@
       "name": "fleet:gated",
       "scope": "pr",
       "color": "b60205",
-      "description": "Conflict/fix surface is a gated self-config file no agent can push; human-only; merger + all worker classes + reviewers skip it"
+      "description": "Conflict/fix surface is gated self-config; human-only; merger + all workers + reviewers skip"
     },
     {
       "name": "fleet:human-amending",
