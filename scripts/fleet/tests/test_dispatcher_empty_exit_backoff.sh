@@ -72,6 +72,13 @@ assert_eq "$(disp "$S" --empty-streak-check worker)" "under 2" "2 < cap(3) -> re
 disp "$S" --record-outcome worker 1
 assert_eq "$(disp "$S" --empty-streak-check worker)" "over 3" "3 >= cap(3) -> consume (stand down)"
 
+echo "T2b: reset_empty_streak clears the streak file — post-consume reads 0"
+# Simulate the reset dispatch_role applies after consuming the trigger:
+# record_dispatch_outcome with a long-run duration calls reset_empty_streak
+# (same function, same rm -f path), so the next check should read 0.
+disp "$S" --record-outcome worker 600
+assert_eq "$(disp "$S" --empty-streak-check worker)" "under 0" "reset_empty_streak: streak file removed, reads 0"
+
 echo "T3: streaks are per-role (one role's churn doesn't trip another)"
 S=$(mktemp -d "$TMPROOT/s.XXXXXX")
 disp "$S" --record-outcome worker 1
