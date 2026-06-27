@@ -240,6 +240,17 @@ front when the child Win32 process is spawned. You need the `set PATH=`
 inside `cmd /c` to guarantee the DLL loader sees MSYS2's `mingw64\bin`
 first.
 
+> **Interactive-terminal caveat (`/c` vs `//c`):** the bare `cmd.exe /c`
+> above works under Claude's Bash tool, but in a real MSYS2 / Git-Bash
+> terminal POSIX path conversion rewrites the standalone `/c` argument into
+> `C:/`, so `cmd.exe /c "…"` becomes `cmd.exe C:/ "…"` — which opens `cmd`
+> **interactively** instead of running the command. When typing one of these
+> by hand in a terminal, use the conversion-proof `//c` idiom (it collapses
+> back to `/c` for cmd.exe and works in both contexts). `ir-build` already
+> uses `//c` internally for this reason; also avoid embedding `"…"` quotes
+> around a no-space path inside the `//c` string — the literal quotes leak
+> into the wrapped command's arguments.
+
 This whole section **does not apply in WSL** — WSL has a single clean
 Linux PATH, no Git-for-Windows mingw64 to fight. If you're running in
 the fleet, skip it.
