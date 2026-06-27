@@ -1081,10 +1081,9 @@ constexpr vec2 pos3DtoPos2DIso(const vec3 position) {
 /// to `ORIGIN` mode. This is the single source of truth for the CAMERA_CENTER
 /// pivot offset (both the screen-center default and the #1921 focus path);
 /// never inline the drift-cancel formula.
-constexpr vec2 cameraYawPivotOffset(const vec2 cameraIso, const vec3 focusWorld,
-                                    const float visualYaw) {
-    return cameraIso - pos3DtoPos2DIsoYawed(focusWorld, visualYaw) +
-           pos3DtoPos2DIso(focusWorld);
+constexpr vec2
+cameraYawPivotOffset(const vec2 cameraIso, const vec3 focusWorld, const float visualYaw) {
+    return cameraIso - pos3DtoPos2DIsoYawed(focusWorld, visualYaw) + pos3DtoPos2DIso(focusWorld);
 }
 
 /// Returns the `cameraIso` delta that produces an on-screen shift equal to

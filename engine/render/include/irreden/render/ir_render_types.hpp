@@ -853,6 +853,21 @@ constexpr std::uint32_t kBufferIndex_FrameDataLightingToTrixel = 27;
 constexpr std::uint32_t kBufferIndex_LightOcclusionGrid = 28;
 constexpr std::uint32_t kBufferIndex_FrameDataSun = 29;
 constexpr std::uint32_t kBufferIndex_ShapeTileDescriptors = 30;
+// Live analytic fog vision circles (FOG_TO_TRIXEL). A tiny per-canvas UBO
+// (a handful of vec4 circles + a count) the fog pass reads to mask the scene
+// by a smooth, render-resolution vision disc evaluated per pixel from the
+// continuous world column — distinct from the voxel-grid fog texture (binding
+// 2), which carries only the coarse explored/voxelized memory. Uploaded every
+// frame (small, unconditional) so no dirty flag is needed.
+//
+// ALIASES slot 27 (FrameDataLightingToTrixel): the Metal 0-30 buffer table is
+// full, so a new pass must reuse a slot. FOG_TO_TRIXEL is documented to run
+// immediately after LIGHTING_TO_TRIXEL (it masks the *lit* canvas), so by the
+// time fog dispatches, lighting has finished consuming slot 27 this frame; no
+// stage between fog and next-frame lighting reads it, and lighting rebinds 27
+// before its own dispatch (the engine's rebind-before-use discipline). Both
+// shaders hard-code `27` for this UBO — keep them in lockstep with this alias.
+constexpr std::uint32_t kBufferIndex_FogObservers = kBufferIndex_FrameDataLightingToTrixel;
 // Aliases the light-occlusion-grid slot. The light-volume propagate
 // shader reads LightOcclusionGrid; the sun bake writes /
 // the sun shadow lookup reads SunShadowDepthMap. Both consumers run on

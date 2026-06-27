@@ -19,6 +19,16 @@
 // visible→explored→unexplored boundary at increasing magnification so the
 // per-state transitions are sampled at multiple pixel scales.
 //
+// `--moving-observer` (#2009) swaps the static grid reveal for a per-frame
+// analytic VISION CIRCLE (`Fog::setVisionCircle`) orbiting the origin in
+// sub-cell steps. This is the vehicle for inspecting the SMOOTH reveal: the
+// disc is evaluated per pixel from the continuous world column, so its edge is
+// crisp at render resolution and slides smoothly across voxels (partial-voxel
+// reveal) as the float center moves — no grid write, no per-frame texture
+// upload, no per-cell popping. The default (no flag) static scene drives the
+// VOXELIZED grid reveal instead and owns the committed render-verify refs, so
+// the two reveal styles sit side by side in one demo.
+//
 // Fog wiring (canvas component + pipeline position) is faithful to the
 // pre-removal shape_debug setup; the rest of the skeleton follows the smaller
 // day_cycle demo.
@@ -37,6 +47,7 @@
 // Scene components.
 #include <irreden/common/command_suite_capture.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_name.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -69,6 +80,7 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <list>
+#include <string_view>
 
 using namespace IRComponents;
 using IRMath::Color;
@@ -85,6 +97,14 @@ namespace {
 constexpr int kRevealRadius = 18;
 constexpr int kBandWidth = 8;
 
+// --moving-observer analytic vision circle (#2009). The center orbits the
+// origin in sub-cell per-frame steps (orbit × angular-step ≈ 0.4 cell/frame
+// < 1 cell) so successive frames land on distinct sub-cell offsets — the case
+// that exposes per-cell popping if the reveal snapped to integers. The disc
+// edge uses the default antialiased softness (kFogVisionEdgeDefault).
+constexpr float kObserverOrbit = 8.0f;
+constexpr float kObserverAngularStep = 0.05f;
+
 // Three shots straddling the fog boundary at increasing magnification. All at
 // the origin so the visible→explored→unexplored rings stay centered; the
 // climbing zoom samples the per-state transitions at multiple pixel scales.
@@ -96,6 +116,21 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 
+bool g_movingObserver = false; // --moving-observer: per-frame analytic vision circle
+int g_observerFrame = 0;       // deterministic frame index for the orbit
+
+// Per-frame hook for --moving-observer: point the single analytic vision
+// circle at a smoothly-advancing float center. No grid write and no texture
+// upload — the shader evaluates the disc per pixel, so the reveal tracks the
+// sub-cell motion with a crisp, smoothly-sliding edge.
+void driveMovingObserver() {
+    const float theta = static_cast<float>(g_observerFrame) * kObserverAngularStep;
+    const float cx = kObserverOrbit * IRMath::cos(theta);
+    const float cy = kObserverOrbit * IRMath::sin(theta);
+    IRPrefab::Fog::setVisionCircle(cx, cy, static_cast<float>(kRevealRadius));
+    ++g_observerFrame;
+}
+
 } // namespace
 
 void initSystems();
@@ -104,6 +139,11 @@ void initEntities();
 
 int main(int argc, char **argv) {
     IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
+    for (int i = 1; i < argc; ++i) {
+        if (std::string_view(argv[i]) == "--moving-observer") {
+            g_movingObserver = true;
+        }
+    }
 
     IR_LOG_INFO("Starting creation: fog_demo");
     IREngine::init(argv[0]);
@@ -150,6 +190,19 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
         }
     );
+
+    // --moving-observer: a once-per-frame beginTick hook (same idiom as the
+    // day_cycle sun hook) that re-points the analytic vision circle at the
+    // advancing float center. Pushed to the front so the new fog is current
+    // before VOXEL_TO_TRIXEL / FOG_TO_TRIXEL run this frame.
+    if (g_movingObserver) {
+        IRSystem::SystemId observerTickId = IRSystem::createSystem<C_Name>(
+            "FogMovingObserverTick",
+            [](C_Name &) {},
+            []() { driveMovingObserver(); }
+        );
+        renderPipeline.push_front(observerTickId);
+    }
 
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
@@ -250,6 +303,15 @@ void initEntities() {
 
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+
+    // --moving-observer drives an analytic vision circle per-frame instead
+    // (see driveMovingObserver). Leave the grid all-unexplored: everything
+    // outside the moving disc reads as black, so the smooth circle stands
+    // alone against unrevealed terrain — the cleanest read of the sub-voxel
+    // edge with no grid memory competing.
+    if (g_movingObserver) {
+        return;
+    }
 
     // VISIBLE state: a reveal circle around the origin. Everything inside
     // renders at full color.

@@ -20,9 +20,11 @@ namespace detail {
 
 inline IRComponents::C_CanvasFogOfWar *activeFogComponent() {
     const IREntity::EntityId canvas = IRRender::getActiveCanvasEntity();
-    if (canvas == IREntity::kNullEntity) return nullptr;
+    if (canvas == IREntity::kNullEntity)
+        return nullptr;
     auto opt = IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(canvas);
-    if (!opt.has_value()) return nullptr;
+    if (!opt.has_value())
+        return nullptr;
     return *opt;
 }
 
@@ -47,12 +49,48 @@ inline std::uint8_t getCell(int worldX, int worldY) {
     return IRComponents::kFogStateUnexplored;
 }
 
-/// Mark every cell within @p radius (taxicab distance) of @p (cx, cy)
-/// as visible. See `C_CanvasFogOfWar::revealRadius` for the v1 contract
-/// around the cells that are NOT downgraded.
+/// Mark every cell within @p radius (Euclidean distance, since #1994) of
+/// @p (cx, cy) as visible. See `C_CanvasFogOfWar::revealRadius` for the v1
+/// contract around the cells that are NOT downgraded.
 inline void revealRadius(int cx, int cy, int radius) {
     if (auto *fog = detail::activeFogComponent()) {
         fog->revealRadius(cx, cy, radius);
+    }
+}
+
+/// Replace the live vision set with a single analytic disc centered at the
+/// (fractional) world column @p (cx, cy), @p radius world units. This is the
+/// SMOOTH, render-resolution reveal: evaluated per pixel in the fog shader, so
+/// the edge is crisp at game resolution, tracks sub-voxel observer motion
+/// without grid quantization, and reveals partial voxels at the boundary —
+/// distinct from the voxel-grid `revealRadius`. @p edge is the edge softness
+/// in world units (default reads as antialiasing). For multiple sources, call
+/// `clearVisionCircles` then `addVisionCircle` per source. Combines (with the
+/// grid and other circles) via max.
+inline void setVisionCircle(
+    float cx, float cy, float radius, float edge = IRComponents::kFogVisionEdgeDefault
+) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->clearVisionCircles();
+        fog->addVisionCircle(cx, cy, radius, edge);
+    }
+}
+
+/// Append one analytic vision disc to the live set (up to
+/// `kMaxFogVisionCircles`). See `setVisionCircle` for disc semantics; use this
+/// after `clearVisionCircles` to drive several vision sources in one frame.
+inline void addVisionCircle(
+    float cx, float cy, float radius, float edge = IRComponents::kFogVisionEdgeDefault
+) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->addVisionCircle(cx, cy, radius, edge);
+    }
+}
+
+/// Drop every live analytic vision disc → grid-only fog.
+inline void clearVisionCircles() {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->clearVisionCircles();
     }
 }
 

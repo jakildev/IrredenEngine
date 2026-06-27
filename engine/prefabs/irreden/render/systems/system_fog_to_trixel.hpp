@@ -40,6 +40,10 @@ constexpr int kFogToTrixelGroupSize = 16;
 template <> struct System<FOG_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
+    // Tiny per-canvas UBO carrying the live analytic vision circles. Uploaded
+    // every frame (a few vec4 + a count) — small and unconditional, so unlike
+    // the fog texture it needs no dirty flag.
+    Buffer *observerBuf_ = nullptr;
 
     void tick(
         const C_TriangleCanvasTextures &canvasTextures,
@@ -50,6 +54,13 @@ template <> struct System<FOG_TO_TRIXEL> {
         if (!behavior.useCameraPositionIso_) {
             return;
         }
+
+        // Live analytic vision circles. Small, GPU-read-only, re-authored by
+        // gameplay each frame — uploaded unconditionally (no dirty flag). The
+        // shader max-combines these with the grid memory above. (The grid fog
+        // texture itself is uploaded earlier in VOXEL_TO_TRIXEL_STAGE_1 (#2008);
+        // this pass only reads it — hence the const fog param.)
+        observerBuf_->subData(0, sizeof(FrameDataFogObservers), &fog.observers_);
 
         canvasTextures.getTextureColors()
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
@@ -62,6 +73,7 @@ template <> struct System<FOG_TO_TRIXEL> {
         // Each pass that consumes it re-binds explicitly because
         // any intervening dispatch may have rebound binding 7.
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
+        observerBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
 
         const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kFogToTrixelGroupSize);
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kFogToTrixelGroupSize);
@@ -79,6 +91,16 @@ template <> struct System<FOG_TO_TRIXEL> {
             std::vector{ShaderStage{IRRender::kFileCompFogToTrixel, ShaderType::COMPUTE}}
         );
 
+        // Per-canvas analytic vision-circle UBO (binding kBufferIndex_FogObservers).
+        IRRender::createNamedResource<Buffer>(
+            "FogObserverData",
+            nullptr,
+            sizeof(FrameDataFogObservers),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
+            kBufferIndex_FogObservers
+        );
+
         SystemId systemId = registerSystem<
             FOG_TO_TRIXEL,
             C_TriangleCanvasTextures,
@@ -87,6 +109,7 @@ template <> struct System<FOG_TO_TRIXEL> {
         auto *p = getSystemParams<System<FOG_TO_TRIXEL>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("FogToTrixelProgram");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
+        p->observerBuf_ = IRRender::getNamedResource<Buffer>("FogObserverData");
         IRRender::tagGpuStage(systemId, "fogToTrixel");
         return systemId;
     }
