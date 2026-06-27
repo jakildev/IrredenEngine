@@ -187,7 +187,7 @@ class WorkerCoversEveryTaskClass(unittest.TestCase):
 
 
 class WorkerSkipLabelsDropPR(unittest.TestCase):
-    """human:wip excludes a PR from the projection entirely."""
+    """human:wip / fleet:gated exclude a PR from the projection entirely."""
 
     def _hash(self, prs):
         return stable_hash(project_worker(_state(prs)))
@@ -196,6 +196,19 @@ class WorkerSkipLabelsDropPR(unittest.TestCase):
         empty = self._hash([])
         with_wip = self._hash([_pr(101, labels=["fleet:needs-fix", "human:wip"])])
         self.assertEqual(empty, with_wip)
+
+    def test_fleet_gated_drops_pr(self):
+        # A gated, human-only PR must never dispatch a worker, even when it
+        # also carries a normally-actionable feedback label (the #1990 case
+        # carried fleet:semantic-conflict; a DEFER park can keep fleet:needs-fix
+        # before the swap). fleet:gated wins unconditionally.
+        empty = self._hash([])
+        gated = self._hash([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])])
+        self.assertEqual(empty, gated)
+        self.assertEqual(
+            project_worker(_state([_pr(101, labels=["fleet:needs-fix", "fleet:gated"])])),
+            [],
+        )
 
 
 class OpusReviewerStableAcrossIrrelevantLabels(unittest.TestCase):
@@ -318,6 +331,17 @@ class HumanDeferredDropsFromReviewers(unittest.TestCase):
     def test_needs_human_drops_from_opus_reviewer(self):
         result = self._opus([_pr(101, labels=[
             "fleet:needs-fix", "fleet:needs-human",
+        ])])
+        self.assertEqual(result, [])
+
+    def test_gated_drops_from_sonnet_reviewer(self):
+        result = self._sonnet([_pr(101, labels=["fleet:gated"])])
+        self.assertEqual(result, [])
+
+    def test_gated_drops_from_opus_reviewer(self):
+        # Even with a reviewer-relevant flag label, a gated PR is human-only.
+        result = self._opus([_pr(101, labels=[
+            "fleet:has-nits", "fleet:gated",
         ])])
         self.assertEqual(result, [])
 

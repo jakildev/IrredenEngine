@@ -143,6 +143,7 @@ LABELS=(
     "fleet:stacked-rebase|c5def5|Stacked PR; base just merged, re-targeted to master, awaiting reviewer re-eval"
     "fleet:awaiting-upstream-review|c5def5|Stacked PR; reviewer is holding verdict until upstream PR is approved"
     "fleet:human-deferred|fbca04|Worker deferred human:needs-fix concerns to a follow-up; OK to merge if human accepts the deferral"
+    "fleet:gated|b60205|Conflict/fix surface is a gated self-config file no agent can push; human-only; all agents skip"
     "fleet:human-amending|c5def5|Worker is amending this PR with the human:needs-fix fixes; hold merge until fleet:changes-made"
     "human:owned|5319e7|Human took this issue out of the queue; ingest never re-stamps fleet:queued (reconcile flags both)"
     "human:no-plan|5319e7|Human opt-out at filing: skip planning, queue directly; [no-plan] tag honored; agents never apply it"

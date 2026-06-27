@@ -182,6 +182,16 @@ class HumanOwesFixLabelsDropped(unittest.TestCase):
     def test_human_re_review_dropped(self):
         self._dropped("human:re-review")
 
+    def test_fleet_gated_dropped(self):
+        # A gated, human-only PR must never wake or be acted on by the merger.
+        self._dropped("fleet:gated")
+
+    def test_fleet_gated_conflicting_dropped(self):
+        # Even CONFLICTING (the #1990 case): the conflict is in a gated file
+        # the merger can't push, so it must skip rather than re-flag
+        # semantic-conflict — that was the 11-pass thrash.
+        self._dropped("fleet:gated", mergeable="CONFLICTING")
+
     def test_repo_agnostic_game_human_needs_fix_dropped(self):
         # The projection loops both repos; the skip must hold for game too
         # (game #144 was the live offender).
@@ -246,6 +256,20 @@ class SignalSemantics(unittest.TestCase):
             "fleet:approved", "fleet:human-deferred",
         ], mergeable="MERGEABLE")]))
         self.assertEqual(items[0]["signal"], "merge-ready")
+
+    def test_gated_is_the_inverse_of_human_deferred(self):
+        # The whole point of fleet:gated: where a CONFLICTING human-deferred PR
+        # projects needs-resolve (merger acts), the same PR labeled fleet:gated
+        # projects NOTHING — the merger can't push the gated conflict, so it
+        # must stay hands-off (breaks the #1990 thrash at the source).
+        deferred = project_merger(_state([_pr(101, labels=[
+            "fleet:approved", "fleet:human-deferred",
+        ], mergeable="CONFLICTING")]))
+        gated = project_merger(_state([_pr(101, labels=[
+            "fleet:approved", "fleet:gated",
+        ], mergeable="CONFLICTING")]))
+        self.assertEqual(deferred[0]["signal"], "needs-resolve")
+        self.assertEqual(gated, [])
 
 
 class FailThenSucceedStackedRebase(unittest.TestCase):
