@@ -21,6 +21,15 @@ In any system `tick` function:
   it arrives via dense-column iteration. Auto-fix when the call is
   unconditional and the component is small; flag when the call is conditional
   or the component may not exist on every entity in the archetype.
+  - *Carve-out — per-canvas `getComponentOptional` in a canvas-iterating
+    tick.* A render tick that must visit **all** canvas entities while only
+    **some** carry an optional per-canvas component (`C_CanvasFogOfWar`,
+    `C_CanvasSunShadow`, `C_CanvasLightVolume`) correctly uses
+    `getComponentOptional` on the iterating canvas — it is O(canvases), not
+    the O(voxels) per-voxel footgun, and the template-param fix does **not**
+    apply (it would restrict iteration to canvases that *have* the component,
+    dropping the rest). This is the accepted canvas-iteration pattern; don't
+    flag it.
 
 - **`createEntity`, `addComponent`, `removeComponent`, or `removeEntity`**
   mid-iteration without the deferred variant. Fix: use

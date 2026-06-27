@@ -25,8 +25,9 @@ for single voxels and particles.
   and read by `c_voxel_visibility_compact.{glsl,metal}` in place of the
   per-voxel alpha test (T-287). Push-at-mutation: mutations through
   `C_VoxelSetNew`'s helpers sync the mask automatically; raw `voxels_[i]`
-  span writes must follow with `vs.syncActiveMask()`. **One pool per
-  canvas entity.**
+  span writes must follow with `vs.syncActiveMask()` **and**
+  `IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size)` (see the
+  `C_VoxelSetNew` note below). **One pool per canvas entity.**
 - `C_VoxelSetNew` — owns a span of voxels from a pool; pushes local → global
   position updates; supports reshape (box/sphere SDF). Use the provided
   helpers instead of iterating voxels individually: `deactivateAll()`,
@@ -35,8 +36,15 @@ for single voxels and particles.
   `reshape(Shape3D)` (box or sphere fill). All of these keep the pool's
   active-mask in sync. If a caller bypasses them and writes alpha through
   the raw `voxels_` span (e.g. an SDF-carving loop calling
-  `voxels_[i].deactivate()` per slot), it must follow up with
-  `syncActiveMask()` so the GPU compaction stage sees the new active set.
+  `voxels_[i].deactivate()` per slot), it must follow up with **both**
+  `syncActiveMask()` (so the GPU compaction stage sees the new active set)
+  **and** `IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size)` (so
+  the carve's newly-exposed surface faces aren't left occluded). Dropping
+  the recompute renders the carved set black under the lit/rotated path
+  while the active-mask half looks done — an easy footgun because the
+  active-mask requirement is the loud one. `simplify-check-ecs` flags a
+  `.deactivate()` carve loop + `syncActiveMask()` with no
+  `recomputeFaceOccupancy` in the same function.
 - `C_ShapeDescriptor` — SDF shape type + params + color + flags (visible,
   hollow, mirror). Rendered directly by the GPU; **does not allocate voxels**.
 - `C_Skeleton` — rig-root component holding an ordered vector of joint
@@ -322,6 +330,13 @@ string.
 
 ## Gotchas
 
+- **Carving `reserved_` bits? Update the layout comment in the same change.**
+  When you repurpose sub-bits of a `reserved_` field in `C_Voxel` (or any
+  GPU-mirrored std430 struct with a layout comment), update that struct's
+  layout comment in the same commit. A stale "reserved for future fields"
+  comment leads the next allocator to believe the bits are free and silently
+  collide with the live encoding in the shader — no compile error, just
+  corrupted GPU decode.
 - **Never add `C_VoxelPool` to a non-canvas entity.** Pools are
   canvas-scoped. Only the canvas entity created by
   `IRRender::createCanvas` should own one.
