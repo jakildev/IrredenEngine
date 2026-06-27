@@ -369,6 +369,22 @@ Do the work, then exit cleanly:
        is the manual fallback for when it silently doesn't fire — e.g. the
        parent branch was amended during review *after* you forked, so its
        recorded `headRefOid` is no longer an ancestor of your head (#1791).
+    d''. **Gated-conflict guard — check before resolving.** List the
+       conflicted files (`git diff --name-only --diff-filter=U`). If **every**
+       one is a gated self-config file (`.claude/commands/role-*.md`,
+       `.claude/agents/*`, `.claude/skills/**/SKILL.md`), you physically
+       cannot push the resolution — the commit gate blocks the role-doc/agent/
+       SKILL edit regardless of how cleanly you resolve it. Do **not** resolve
+       and do **not** escalate to `human:needs-fix` (that re-triggers step-1
+       worker pickup, and the next worker re-hits the same wall — this is the
+       #1990 thrash). Park it `fleet:gated`, which every picker skips:
+       - `git rebase --abort`
+       - `gh pr edit <N> --repo jakildev/IrredenEngine --remove-label "fleet:semantic-conflict" --add-label "fleet:gated"`
+       - `gh pr comment <N> --repo jakildev/IrredenEngine --body "Conflict surface is entirely gated self-config; no worker class can push the resolution. Parking \`fleet:gated\` for human-only resolution (or the architect, who can push gated edits with a human in the loop). Conflicted: <file list>. — worker"`
+       - Jump to step k (reset + release the resolving lock).
+       A **partially** gated conflict (some gated files, some normal) is still
+       worker-resolvable for the normal part — proceed to step e, resolve the
+       non-gated files, and comment the gated part for the human.
     e. For each conflicted file (`git diff --name-only --diff-filter=U`):
        - **Read the full file** (not just the conflict block) so you
          understand the surrounding code.

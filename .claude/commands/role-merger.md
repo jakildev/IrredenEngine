@@ -210,7 +210,7 @@ exit cleanly:
      `fleet:blocker`, `human:needs-fix`, `human:blocker`,
      `human:re-review`, `fleet:semantic-conflict`,
      `fleet:fork-of-other-pr`, `fleet:needs-base-update`,
-     `fleet:needs-info`, `fleet:merger-cooldown`.
+     `fleet:needs-info`, `fleet:gated`, `fleet:merger-cooldown`.
 
    `fleet:awaiting-base` is intentionally NOT in this skip list —
    those PRs are exactly the population whose upstream tip we
@@ -350,6 +350,14 @@ exit cleanly:
    - `fleet:needs-info` — set in stacked-PR case iii (orphaned base).
      Durable human-handoff signal; only the human clears it by
      re-targeting or closing.
+   - `fleet:gated` — the PR's conflict surface is a gated self-config file
+     (`role-*.md` / `.claude/agents/*` / `SKILL.md`) no agent can push. A
+     worker hit the gate and parked it human-only. **Do not re-flag it
+     `fleet:semantic-conflict`** — that is the exact loop fleet:gated
+     exists to break (a worker would re-claim, re-hit the gate, re-park;
+     #1990 thrashed 11× before this label existed). Only the human (or the
+     architect, who can push gated edits with a human in the loop) clears it
+     by resolving the conflict and dropping the label.
    - `fleet:fork-of-other-pr` — PR's branch forked from another open PR; skip until the human clears this label after the upstream PR merges
    - `fleet:needs-base-update` — set in step 2.6 when a stacked child's
      upstream tip moved and the cascade-rebase conflicted. Durable
@@ -695,6 +703,30 @@ exit cleanly:
 
       **ii. Anything else (semantic conflict).**
          - `git rebase --abort`
+         - **Gated short-circuit — check the conflicted file set FIRST.**
+           Get the conflicted files (`git diff --name-only --diff-filter=U`
+           from the aborted rebase, or `git rebase` then read the markers).
+           If **every** conflicted file is a gated self-config file —
+           `.claude/commands/role-*.md`, `.claude/agents/*`, or
+           `.claude/skills/**/SKILL.md` — then **no worker class can push a
+           resolution**, so labeling `fleet:semantic-conflict` only starts the
+           worker↔merger thrash (the worker re-claims, re-hits the commit
+           gate, re-parks — #1990 looped 11× this way). Skip the
+           semantic-conflict path entirely:
+             - `git switch claude/merger-scratch`
+             - `gh pr edit <N> --add-label "fleet:gated"`
+             - `gh pr edit <N> --remove-label "fleet:approved"` (best-effort;
+               the diff no longer represents a mergeable state)
+             - `gh pr comment <N> --body "Merger: conflict surface is entirely
+               gated self-config (no agent class can push the resolution).
+               Labeled \`fleet:gated\` — human-only resolution (or the
+               architect, who can push gated edits with a human in the loop).
+               Conflicted: <file list>. — fleet merger"`
+             - Log: `... gated-self-config conflict, labeled fleet:gated`
+             - Jump to step f. Do NOT label fleet:semantic-conflict.
+           A **partially** gated conflict (some gated files, some normal) is
+           still worker-resolvable for the normal part — fall through to the
+           semantic-conflict path below and let the worker handle it.
          - Reset to scratch. With detached HEAD (step a) this no
            longer matters for unblocking other agents — detached
            HEAD never claimed the branch — but the reset still
@@ -896,8 +928,8 @@ See [`docs/agents/CLAUDE-BASELINE.md §"Hard rules for autonomous fleet roles"`]
   actions on your own PRs. Use `--comment` for status posts
   (already handled via `gh pr comment`).
 - **Never bypass labels.** A PR with `human:wip`, `fleet:wip`,
-  `fleet:blocker`, `human:needs-fix`, or `human:blocker` is off-
-  limits. Do not touch.
+  `fleet:blocker`, `human:needs-fix`, `human:blocker`, or `fleet:gated`
+  is off-limits. Do not touch.
 - **Never edit code mid-rebase to make a conflict resolve.** The
   only in-rebase resolutions you apply are mechanical
   whitespace-only diffs handled in case (i). Any other source-file

@@ -208,24 +208,37 @@ analogue of role-worker.md step 8b. Take the DEFER path, **not** AMEND:
    gh pr comment <N> --repo jakildev/IrredenEngine \
      --body "Fix surface is entirely gated self-config; cannot amend. \
    Human fix needed: <exact file> — <what to change>. \
-   Parking fleet:human-deferred. — worker"
+   Parking fleet:gated. — worker"
    ```
-2. Atomically swap labels (`fleet:needs-fix` dropped → `fleet:human-deferred`
+2. Atomically swap labels (`fleet:needs-fix` dropped → `fleet:gated`
    added; keep `fleet:approved` if present — the diff is internally consistent):
    ```
    gh pr edit <N> --repo jakildev/IrredenEngine \
      --remove-label "fleet:needs-fix" \
-     --add-label "fleet:human-deferred"
+     --add-label "fleet:gated"
    ```
 3. Release the feedback claim and move on — do **not** amend, do **not** push:
    ```
    fleet-claim amending-release <N> <your-worktree-basename>
    ```
 
-This makes the park terminal: `fleet:needs-fix` is gone, so the PR is excluded
-from the worker dispatch trigger on the next tick. A partially-gated PR (some
-gated, some normal paths) should **not** take this path — amend the non-gated
-part normally and comment the gated part for the human.
+This makes the park terminal: `fleet:needs-fix` is gone and `fleet:gated` is in
+every picker's skip set (merger, all worker classes, reviewers — see
+fleet-state-scout `REVIEW_SKIP_LABELS` / `_merger_action_signal` /
+`project_worker`), so the PR is excluded from the worker dispatch trigger AND
+the merger sweep on the next tick — nothing re-grabs it until a human clears the
+label. A partially-gated PR (some gated, some normal paths) should **not** take
+this path — amend the non-gated part normally and comment the gated part for the
+human.
+
+> **Why `fleet:gated`, not `fleet:human-deferred`?** `fleet:human-deferred`
+> marks an *approved, still-mergeable* PR whose follow-up concern moved to a new
+> issue — the merger is meant to merge it, so it deliberately does **not** skip
+> that label. A gated block is the opposite: the PR is **not** mergeable as-is
+> (a human must apply the gated edit), so it needs a label every picker skips.
+> Overloading `fleet:human-deferred` for both is what made #1990 thrash 11×
+> (the merger kept treating the gated park as merge-ready and re-flagging
+> `fleet:semantic-conflict`). `fleet:gated` is the dedicated human-only state.
 
 ### AMEND (default)
 

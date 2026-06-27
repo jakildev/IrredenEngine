@@ -871,6 +871,12 @@ REVIEW_SKIP_LABELS = frozenset({
     # _merger_action_signal does NOT skip fleet:human-deferred (an approved
     # deferred PR is still mergeable) — this skip is reviewer-only.
     "fleet:human-deferred", "fleet:needs-human",
+    # Blocked on a gated self-config edit no agent can push (role-*.md /
+    # .claude/agents/* / SKILL.md). Human-only; every picker skips it
+    # unconditionally — see _merger_action_signal and project_worker. Unlike
+    # fleet:human-deferred this is NOT mergeable-by-the-merger: the conflict
+    # itself sits in the gated file, so a human must resolve before merge.
+    "fleet:gated",
 })
 # Dynamic per-host claim prefixes that also bar reviewer pickup. A worker
 # amending a fleet:needs-fix PR holds fleet:amending-<host>-<agent> (minted
@@ -1363,9 +1369,17 @@ def project_worker(state):
             labels = set(pr["labels"])
             if "human:wip" in labels:
                 continue
+            # Blocked on a gated self-config edit no worker class can push;
+            # the worker that hit the gate parked it human-only. Exclude from
+            # dispatch unconditionally so no feedback/conflict label on the PR
+            # re-fans-out a pane that would just re-hit the same wall.
+            if "fleet:gated" in labels:
+                continue
             # #1997: an all-gated-self-config PR already parked human-deferred
             # cannot be amended by any worker class. Exclude from dispatch so
-            # a re-stamp of fleet:needs-fix doesn't re-fan-out N panes.
+            # a re-stamp of fleet:needs-fix doesn't re-fan-out N panes. (The
+            # explicit fleet:gated park above is the preferred signal; this
+            # heuristic stays as a safety net for legacy human-deferred parks.)
             if "fleet:human-deferred" in labels and _pr_all_gated_self_config(
                 repo, pr["number"]
             ):
@@ -1487,6 +1501,13 @@ def _merger_action_signal(labels, mergeable, base_ref):
         "fleet:design-proposed",
         "fleet:needs-info", "fleet:needs-linux-smoke",
         "fleet:needs-macos-smoke",
+        # Blocked on a gated self-config edit no agent can push. The
+        # conflict itself is in the gated file, so the merger can never
+        # resolve or merge it — skip unconditionally (human-only). This is
+        # the merger-side counterpart of fleet:human-deferred's deliberate
+        # NON-skip above: human-deferred marks an *approved, still-mergeable*
+        # PR; fleet:gated marks one a human must touch before it can merge.
+        "fleet:gated",
         # Human-owes-a-fix labels — mirror role-merger.md step 3. NOT
         # `FEEDBACK_LABELS`: that set carries `fleet:has-nits` (an
         # approved+has-nits PR is still merge-ready, so the merger must
@@ -1805,6 +1826,10 @@ def slice_worker(state):
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
             if "human:wip" in labels:
+                continue
+            # Gated, human-only — mirror the project_worker exclusion so a
+            # woken worker iteration doesn't even surface it as a candidate.
+            if "fleet:gated" in labels:
                 continue
             if labels & (FEEDBACK_LABELS | DESIGN_RESUME_LABELS):
                 out["feedback_prs"].append(_slice_pr_with_repo(repo_key, pr))

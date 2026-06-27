@@ -388,6 +388,29 @@ Specifically, **never pass these via `--label` when filing**:
     **Read as: "agent acknowledged your concerns, linked issue tracks
     them; the deferral covers the diff at defer time, not the PR
     forever."**
+- `fleet:gated` — owned by **whichever agent first hits the wall**: the
+  merger (when a conflict's whole surface is gated self-config — it labels
+  `fleet:gated` instead of `fleet:semantic-conflict`), or a worker (a
+  semantic-conflict whose conflicted files are all gated, role-worker.md step
+  1c d''; or a `fleet:needs-fix` PR whose entire fix surface is gated,
+  FLEET-FEEDBACK-HANDLING.md DEFER path). Means **the PR is blocked on an edit
+  to a gated self-config file** (`.claude/commands/role-*.md`,
+  `.claude/agents/*`, `.claude/skills/**/SKILL.md`) that the auto-mode
+  self-modification gate physically prevents any agent class from pushing.
+  **It is a hard, human-only stop:** it is in *every* picker's skip set —
+  the merger sweep, all worker-class dispatch, and reviewer pickup (see
+  fleet-state-scout `_merger_action_signal`, `project_worker`/`slice_worker`,
+  and `REVIEW_SKIP_LABELS`). Nothing automated touches it until a human (or
+  the architect, who can push gated edits with a human in the loop) resolves
+  the gated edit and drops the label.
+  **Why it exists, distinct from `fleet:human-deferred`:** human-deferred
+  marks an *approved, still-mergeable* PR (the merger deliberately does NOT
+  skip it). A gated block is the opposite — *not* mergeable until a human acts
+  — so it needs a label the merger skips. Overloading human-deferred for both
+  is what made #1990 thrash 11× (merger read the gated park as merge-ready and
+  re-flagged `fleet:semantic-conflict` every tick; no worker class could clear
+  it). **Read as: "an agent hit a permission wall it can't cross — a human
+  must make this edit."**
 - `fleet:design-blocked` / `fleet:design-unblocked` — paired
   state qualifiers for the mid-task design-escalation cycle (see
   [`FLEET.md`](FLEET.md) "Design-escalation flow"). `design-blocked` is set by the
