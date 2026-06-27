@@ -223,6 +223,10 @@ int main(int argc, char **argv) {
     g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
     g_movingObserver = args.getFlag("--moving-observer");
     g_playerWalk = args.getFlag("--player-walk");
+    if (g_playerWalk && g_movingObserver) {
+        IR_LOG_INFO("--player-walk and --moving-observer are mutually exclusive; ignoring --moving-observer");
+        g_movingObserver = false;
+    }
 
     IR_LOG_INFO("Starting creation: fog_demo");
     IREngine::init(argv[0]);
