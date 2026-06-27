@@ -28,8 +28,8 @@ engine owns the parse so it "comes with the world".
   the common-arg parse happens in `main()` **before** `init`, via the legacy
   helpers, and results are threaded back in by hand.
 - Legacy helper 1: `IRVideo::parseAutoScreenshotArgv(argc, argv, &warmupOut)`
-  — decl `engine/video/include/irreden/video/auto_screenshot.hpp:104`, impl
-  `engine/video/src/auto_screenshot.cpp:209`.
+  — decl `engine/video/include/irreden/video/auto_screenshot.hpp:114`, impl
+  `engine/video/src/auto_screenshot.cpp:68`.
 - Legacy helper 2: `IREngine::parseConfigPresetArg(argc, argv)` — inline in
   `engine/include/irreden/ir_engine.hpp:90`.
 - `IRArgs::Parser`'s ctor pre-registers the engine-common args
