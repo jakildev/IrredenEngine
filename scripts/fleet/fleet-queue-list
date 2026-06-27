@@ -50,10 +50,24 @@ if [[ "$JSON_MODE" == "1" ]]; then
     exit 0
 fi
 
-python3 - "$raw" << 'PYEOF'
+# Hand the issue JSON to python via a temp file rather than argv. On native
+# Windows (MSYS2) a 200-issue payload with bodies overruns the command-line
+# length limit — `python3 - "$raw"` dies with "Argument list too long". A file
+# is bounded only by disk, so this works regardless of queue size or platform.
+queue_raw_file=$(mktemp "${TMPDIR:-/tmp}/fleet-queue-raw.XXXXXX")
+trap 'rm -f "$queue_raw_file"' EXIT
+printf '%s' "$raw" > "$queue_raw_file"
+
+# PYTHONIOENCODING forces UTF-8 stdout: python3 on native Windows defaults to
+# the cp1252 console codec, which raises UnicodeEncodeError on the table's
+# box-drawing / em-dash glyphs. Harmless on Linux/macOS (already UTF-8).
+PYTHONIOENCODING=utf-8 python3 - "$queue_raw_file" << 'PYEOF'
 import json, re, sys
 
-raw = json.loads(sys.argv[1]) if len(sys.argv) > 1 else []
+raw = []
+if len(sys.argv) > 1:
+    with open(sys.argv[1], encoding="utf-8") as raw_file:
+        raw = json.load(raw_file)
 
 def parse_field(body, field):
     if not body:
