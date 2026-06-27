@@ -56,15 +56,13 @@ void applyPreInitLuaConfig(const char *configFile);
 
 } // namespace detail
 
-// The process-global engine argument parser. Lazily constructed with the
-// engine-common args (--auto-screenshot, --config-preset) and --help/-h
-// pre-registered by the IRArgs::Parser ctor. A launch target registers its
-// own flags on this parser BEFORE calling init(argc, argv); init parses it as
-// its first action. A target with no custom flags gets --help /
-// --auto-screenshot / --config-preset for free with no parser code, then reads
-// the common flags back via args().autoScreenshotWarmupFrames() /
-// args().configPreset(). Inline so the function-local static is one shared
-// instance across every translation unit.
+// The process-global engine argument parser, pre-loaded with the engine-common
+// args (--auto-screenshot, --config-preset, --help/-h) by the IRArgs::Parser
+// ctor. A launch target registers its own flags on this parser BEFORE calling
+// init(argc, argv) — init parses it as its first action — then reads results
+// back via args(). See engine/CLAUDE.md "CLI args go through IRArgs" for the
+// no-custom-flags / custom-flags patterns. Inline so the function-local static
+// is one shared instance across every translation unit.
 inline IRArgs::Parser &args() {
     static IRArgs::Parser parser;
     return parser;
@@ -90,6 +88,7 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
 // target uses: IREngine::init(argc, argv) gives it --help / --auto-screenshot
 // / --config-preset with no parser code.
 inline void init(int argc, char **argv, const char *configFileName = "config.lua") {
+    IR_ASSERT(argc > 0, "init(argc, argv) needs argv[0] for exe-dir resolution");
     args().parse(argc, argv);
     init(argc > 0 ? argv[0] : "", configFileName);
 }
