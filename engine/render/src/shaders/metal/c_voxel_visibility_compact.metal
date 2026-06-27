@@ -101,6 +101,43 @@ static bool fogColumnUnexplored(
     return fog.read(uint2(fogCell)).r < kFogExploredThreshold;
 }
 
+// Live analytic fog vision circles — see the GLSL mirror. Std140/Metal-tight
+// mirror of FrameDataFogObservers (component_canvas_fog_of_war.hpp); the
+// system's per-frame observer upload verbatim. Bound at buffer(27)
+// (kBufferIndex_FogObservers alias) by VOXEL_TO_TRIXEL_STAGE_1 right before this
+// compact. The grid texture above carries only coarse explored/voxelized
+// memory; these discs carry the smooth "currently visible". A column any disc
+// covers survives the grid cull, so a voxel-floor scene driven purely by
+// setVisionCircle keeps its floor (the grid-only cull would otherwise drop
+// every unexplored column and black it out).
+constant int kMaxFogVisionCircles = 8;
+struct FogObserverData {
+    float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
+    int visionCircleCount;
+    int _fogObsPad0;
+    int _fogObsPad1;
+    int _fogObsPad2;
+};
+
+// True iff this column lies under any live analytic vision circle, so its voxels
+// survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per pixel.
+// Tested with a +1 cell margin (plus edge softness) so columns the disc only
+// partially covers at its boundary still rasterize.
+static bool fogColumnInVisionCircle(
+    constant FogObserverData& obs, int3 voxelPosRaw
+) {
+    const float2 col = float2(voxelPosRaw.xy);
+    for (int i = 0; i < obs.visionCircleCount; ++i) {
+        const float2 d = col - obs.visionCircles[i].xy;
+        const float keepR =
+            obs.visionCircles[i].z + max(obs.visionCircles[i].w, 0.0f) + 1.0f;
+        if (dot(d, d) <= keepR * keepR) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // T-287 / #950: this kernel no longer reads the per-voxel color SSBO. The
 // per-slot active bit at `activeMask[idx >> 5] & (1 << (idx & 31))` is the
 // CPU-pushed mirror of `m_voxelColors[idx].color_.alpha_ != 0`, kept in
@@ -118,6 +155,7 @@ kernel void c_voxel_visibility_compact(
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
+    constant FogObserverData& fogObservers [[buffer(27)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 groupCount [[threadgroups_per_grid]],
     uint3 localId [[thread_position_in_threadgroup]],
@@ -157,7 +195,8 @@ kernel void c_voxel_visibility_compact(
                     isoPos.x <= frameData.cullIsoMax.x + cullMargin &&
                     isoPos.y >= frameData.cullIsoMin.y - cullMargin &&
                     isoPos.y <= frameData.cullIsoMax.y + cullMargin &&
-                    !fogColumnUnexplored(canvasFogOfWar, voxelPosRaw)) {
+                    (!fogColumnUnexplored(canvasFogOfWar, voxelPosRaw) ||
+                     fogColumnInVisionCircle(fogObservers, voxelPosRaw))) {
                     if (frameData.perAxisRoute == 0) {
                         // Single full list (byte-identical to master).
                         const uint slot = atomic_fetch_add_explicit(

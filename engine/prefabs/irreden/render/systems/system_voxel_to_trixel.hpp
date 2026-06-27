@@ -312,6 +312,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // populated" requirement. The real 256² fog texture is bound for the world
     // fog canvas instead.
     Texture2D *fogCullPlaceholder_ = nullptr;
+    // Analytic vision-circle UBO for the compact's fog cull (slot 27). Uploaded
+    // + bound just before the compact so a column a live vision circle covers
+    // survives the grid-only cull — the voxel-floor smooth-fog case. Its own
+    // buffer (not FOG_TO_TRIXEL's) so STAGE_1 carries no creation-order
+    // dependency and reads the CURRENT frame's circles, not a frame-stale copy.
+    Buffer *fogObserverBuf_ = nullptr;
     // Reusable .r → RGBA8 expansion scratch for the relocated fog upload
     // (#2008). System ticks are serial, so one shared buffer keeps the
     // per-dirty-frame upload allocation-free across however many fog canvases
@@ -969,10 +975,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             }
             gpuStageTiming().visibleVoxelCount_ = visible;
             gpuStageTiming().totalVoxelCount_ = static_cast<std::uint32_t>(effectiveVoxelCount);
-            voxelCullAccumulator().record(
-                visible,
-                static_cast<std::uint32_t>(effectiveVoxelCount)
-            );
+            voxelCullAccumulator().record(visible, static_cast<std::uint32_t>(effectiveVoxelCount));
         }
 
         const VoxelIndirectDispatchParams zeroed{};
@@ -1013,6 +1016,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // pre-pass can't leave a stale texture on image slot 0.
         (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        // Analytic vision-circle cull input: upload the CURRENT frame's circles
+        // (FOG_TO_TRIXEL runs later, so its copy would be a frame stale) and bind
+        // at slot 27. A column a live circle covers is kept even when its grid
+        // cell is unexplored, so a voxel-floor scene driven purely by
+        // setVisionCircle keeps its floor. Non-fog canvases keep the seeded
+        // count-0 buffer (the shader short-circuits on the placeholder anyway).
+        if (fog != nullptr) {
+            fogObserverBuf_->subData(0, sizeof(FrameDataFogObservers), &fog->observers_);
+        }
+        fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
         constexpr int kCompactLocalSize = 64;
         // Inverse-resample walks the D dest slots; the source path walks the live
         // source count. frameData_.voxelCount_ (the compact's per-slot guard) was
@@ -1300,6 +1313,25 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
         }
 
+        // Analytic vision-circle UBO for the compact's fog cull. Aliases slot 27
+        // (kBufferIndex_FogObservers) like FOG_TO_TRIXEL's own observer UBO; bound
+        // transiently for the compact dispatch and rebound by LIGHTING_TO_TRIXEL
+        // before its own use (the rebind-before-use discipline). Seeded count-0 so
+        // a non-fog canvas's compact never reads stale circles.
+        IRRender::createNamedResource<Buffer>(
+            "FogCullObservers",
+            nullptr,
+            sizeof(FrameDataFogObservers),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
+            kBufferIndex_FogObservers
+        );
+        {
+            const FrameDataFogObservers zeroObservers{};
+            IRRender::getNamedResource<Buffer>("FogCullObservers")
+                ->subData(0, sizeof(FrameDataFogObservers), &zeroObservers);
+        }
+
         // Chunk-occlusion query buffer (#1294 child 2/3): a 32-byte header record
         // + one record per pool-chunk. Created on slot 25 like the per-axis
         // buffers (bound there transiently by the pre-pass); the restore below
@@ -1344,6 +1376,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getNamedResource<Buffer>("ChunkOcclusionQueryBuffer");
         p->maxPoolChunks_ = maxVoxelPoolChunks;
         p->fogCullPlaceholder_ = IRRender::getNamedResource<Texture2D>("FogCullVisiblePlaceholder");
+        p->fogObserverBuf_ = IRRender::getNamedResource<Buffer>("FogCullObservers");
         // The per-axis buffers were created with the 25/26 bind indices, which
         // displaced the full compact buffers' steady-state binding. Restore
         // 25/26 to the full buffers; the per-axis buffers are re-bound onto
