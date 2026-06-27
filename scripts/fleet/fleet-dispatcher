@@ -362,6 +362,45 @@ if ! [[ "$BOOT_FANOUT_WINDOW_SECONDS" =~ ^[0-9]+$ ]]; then
     BOOT_FANOUT_WINDOW_SECONDS=60
 fi
 
+# --- Empty-exit backoff ----------------------------------------------------
+#
+# A standing trigger whose role has no claimable work spins the pane: the
+# dispatcher fires a worker, the worker finds nothing to claim and returns to
+# the shell in ~10s, the trigger is retained (gap-blocked fan-out / boot
+# fan-out paths never reach consume-on-success), and the next tick re-fires —
+# every ~11s, indefinitely, each cycle burning a fresh `claude` cold start.
+# Observed on the native-Windows host with a stale boot trigger the scout
+# never re-armed (its projection had gone empty for this host's class).
+#
+# The fix: treat a dispatch that returns to a shell in under EMPTY_EXIT_SECONDS
+# as "claimed nothing" (a genuine claim runs for minutes — build / test / PR).
+# Count consecutive empty exits per role; once the streak reaches
+# EMPTY_STREAK_CAP, consume the trigger after the tick's probe dispatches (all
+# idle panes for the role) instead of retaining it. The scout re-arms on the
+# next real projection change, and a genuine long-running claim resets the
+# streak (cleanup_stale_dispatches). Net: at most one wasted probe-fan-out per
+# armed trigger instead of an unbounded loop.
+EMPTY_EXIT_SECONDS="${FLEET_DISPATCHER_EMPTY_EXIT_SECONDS:-60}"
+EMPTY_STREAK_CAP="${FLEET_DISPATCHER_EMPTY_STREAK_CAP:-3}"
+EMPTY_STREAK_DIR="$STATE_DIR/empty-streak"
+# Validate-and-clamp both overrides the same way BOOT_FANOUT_WINDOW_SECONDS is
+# guarded above — a non-numeric value would emit arithmetic errors every tick
+# or kill the daemon under `set -u`.
+if ! [[ "$EMPTY_EXIT_SECONDS" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] EMPTY_EXIT_SECONDS=%q is not a non-negative integer; falling back to 60\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$EMPTY_EXIT_SECONDS" >&2
+    EMPTY_EXIT_SECONDS=60
+fi
+if ! [[ "$EMPTY_STREAK_CAP" =~ ^[0-9]+$ ]]; then
+    printf '[%s dispatcher] EMPTY_STREAK_CAP=%q is not a positive integer; falling back to 3\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$EMPTY_STREAK_CAP" >&2
+    EMPTY_STREAK_CAP=3
+elif (( EMPTY_STREAK_CAP < 1 )); then
+    printf '[%s dispatcher] EMPTY_STREAK_CAP=0 stands down on every dispatch; falling back to 3\n' \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >&2
+    EMPTY_STREAK_CAP=3
+fi
+
 # Roles this dispatcher is responsible for. Architects are excluded
 # (kept on fleet-babysit). Aligned with the worker / reviewer /
 # queue-mgr / merger roles in fleet-up.
@@ -621,11 +660,12 @@ write_dispatch_record() {
     # $3 = model class of the dispatch (fable|opus|sonnet) — counted by
     # count_active_for_class for the fable concurrency cap.
     local role="$1" pane_id="$2" class="${3:-}"
-    local ts
+    local ts epoch
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
     mkdir -p "$DISPATCH_DIR"
-    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s"}\n' \
-        "$role" "$pane_id" "$class" "$ts" >"$(dispatch_record "$pane_id")"
+    printf '{"role":"%s","pane":"%s","class":"%s","dispatched_at":"%s","dispatched_epoch":%s}\n' \
+        "$role" "$pane_id" "$class" "$ts" "$epoch" >"$(dispatch_record "$pane_id")"
 }
 
 # Map a concrete model string back to its class name, for stamping
@@ -655,11 +695,54 @@ count_active_for_class() {
     echo "$count"
 }
 
+# --- Empty-exit streak bookkeeping -----------------------------------------
+# Per-role counter of consecutive dispatches that returned to a shell without
+# claiming work (see the EMPTY_EXIT_SECONDS config block). One small file per
+# role under $EMPTY_STREAK_DIR holding a non-negative integer.
+
+empty_streak_file() {
+    printf '%s\n' "$EMPTY_STREAK_DIR/$1"
+}
+
+read_empty_streak() {
+    local f n
+    f=$(empty_streak_file "$1")
+    n=$(cat "$f" 2>/dev/null || printf '0')
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    printf '%s\n' "$n"
+}
+
+# 0 (true) when the role's streak has reached the cap — caller should consume
+# the trigger rather than retain it.
+empty_streak_over_cap() {
+    local n
+    n=$(read_empty_streak "$1")
+    (( n >= EMPTY_STREAK_CAP ))
+}
+
+reset_empty_streak() {
+    rm -f "$(empty_streak_file "$1")"
+}
+
+# Fold one completed dispatch's wall-clock duration into the role's streak: a
+# fast exit (no claim) bumps it, a long-running one (real work) resets it.
+# Shared by cleanup_stale_dispatches and the --record-outcome test hook.
+record_dispatch_outcome() {
+    local role="$1" duration="$2"
+    [[ "$duration" =~ ^[0-9]+$ ]] || return 0
+    if (( duration < EMPTY_EXIT_SECONDS )); then
+        mkdir -p "$EMPTY_STREAK_DIR"
+        printf '%s\n' "$(( $(read_empty_streak "$role") + 1 ))" > "$(empty_streak_file "$role")"
+    else
+        reset_empty_streak "$role"
+    fi
+}
+
 cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
     fi
-    local file role pane
+    local file role pane dispatched_epoch
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
         role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
@@ -670,6 +753,12 @@ cleanup_stale_dispatches() {
         fi
         if pane_is_occupied "$pane"; then
             continue
+        fi
+        # Fold the just-finished dispatch into the role's empty-exit streak.
+        # Legacy records (pre-upgrade, no dispatched_epoch) skip this silently.
+        dispatched_epoch=$(sed -n 's/.*"dispatched_epoch":\([0-9]*\).*/\1/p' "$file" | head -n 1)
+        if [[ -n "$dispatched_epoch" ]]; then
+            record_dispatch_outcome "$role" "$(( $(date +%s) - dispatched_epoch ))"
         fi
         log "dispatch for $role on $pane completed (pane returned to shell)"
         rm -f "$file"
@@ -1226,6 +1315,23 @@ dispatch_role() {
         dispatched=$((dispatched + 1))
     done <<< "$idle_panes"
 
+    # Empty-exit backoff. If this role's recent dispatches kept returning to a
+    # shell within EMPTY_EXIT_SECONDS (no task claimed) EMPTY_STREAK_CAP times
+    # running, stop re-arming on the standing trigger: this tick's dispatches
+    # (all idle panes for the role) were the probe, so consume the trigger now
+    # instead of retaining it via any of the paths below. Prevents a stale or
+    # false-actionable trigger from spinning the pane forever (every ~11s). The
+    # scout re-arms on the next
+    # genuine projection change; a real long-running claim resets the streak in
+    # cleanup_stale_dispatches. Guarded on dispatched>0 so a tick that sent
+    # nothing leaves the existing min-gap/retry semantics untouched.
+    if (( dispatched > 0 )) && empty_streak_over_cap "$role"; then
+        rm -f "$trigger_file"
+        reset_empty_streak "$role"
+        log "$role: ${EMPTY_STREAK_CAP} consecutive fast exits (<${EMPTY_EXIT_SECONDS}s, no claim) — standing down; scout re-arms on new work"
+        return
+    fi
+
     # If the global min-gap stopped us mid-fan-out (gap_blocked set on break),
     # keep the trigger so the remaining idle panes launch on later ticks — one
     # per gap — regardless of how many fired this tick or the boot-window
@@ -1634,6 +1740,38 @@ case "${1:-}" in
             echo "wait"
         else
             echo "ok"
+        fi
+        exit 0
+        ;;
+    --record-outcome)
+        # Test/debug: fold one dispatch outcome into a role's empty-exit
+        # streak. <duration> is the dispatch's wall-clock seconds; under
+        # EMPTY_EXIT_SECONDS bumps the streak, at/over it resets. Honors
+        # FLEET_DISPATCHER_EMPTY_EXIT_SECONDS / _EMPTY_STREAK_CAP and writes
+        # under FLEET_STATE_DIR, so tests drive it against a scratch dir.
+        if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo "usage: fleet-dispatcher --record-outcome <role> <duration-seconds>" >&2
+            exit 2
+        fi
+        if ! [[ "$3" =~ ^[0-9]+$ ]]; then
+            echo "fleet-dispatcher --record-outcome: <duration-seconds> must be a non-negative integer (got: $3)" >&2
+            exit 2
+        fi
+        record_dispatch_outcome "$2" "$3"
+        exit 0
+        ;;
+    --empty-streak-check)
+        # Test/debug: print `over` (streak >= cap → consume the trigger) or
+        # `under` (still retain) for a role, plus the current count. Reads the
+        # streak files under FLEET_STATE_DIR seeded by --record-outcome.
+        if [[ -z "${2:-}" ]]; then
+            echo "usage: fleet-dispatcher --empty-streak-check <role>" >&2
+            exit 2
+        fi
+        if empty_streak_over_cap "$2"; then
+            echo "over $(read_empty_streak "$2")"
+        else
+            echo "under $(read_empty_streak "$2")"
         fi
         exit 0
         ;;
