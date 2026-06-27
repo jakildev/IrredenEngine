@@ -136,8 +136,8 @@ architect also clears it during a design conversation; see
 [architect-protocol.md](../../docs/agents/architect-protocol.md) §"plan
 reviewer").
 
-Candidates are in your scout slice (`~/.fleet/state/state.json` →
-`slices.opus-reviewer.plan_review`, both repos). The scout now **wakes you on
+Candidates are in your scout slice (`~/.fleet/state/projections/opus-reviewer.json`
+→ `plan_review`, both repos). The scout now **wakes you on
 `fleet:plan-review` issue state** (#1932 trigger), so a posted plan fires this
 pass directly instead of waiting for an unrelated PR to wake you; the slice is
 already pre-filtered of human-held issues (`human:owned` / `human:wip` /
