@@ -44,8 +44,6 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 #include <functional>
 #include <list>
 
@@ -126,35 +124,29 @@ inline IRRender::DebugOverlayMode g_cliOverlay = IRRender::DebugOverlayMode::NON
 // off without rebuilding.
 inline bool g_cliDisableAO = false;
 
-inline void parseArgs(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-profile") == 0) {
-            g_autoProfileFrames = 300;
-            if (i + 1 < argc) {
-                int frames = std::atoi(argv[i + 1]);
-                if (frames > 0) {
-                    g_autoProfileFrames = frames;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--zoom") == 0) {
-            if (i + 1 < argc) {
-                float zoom = static_cast<float>(std::atof(argv[i + 1]));
-                if (zoom > 0.0f) {
-                    g_initialZoom = zoom;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--debug-overlay") == 0) {
-            if (i + 1 < argc) {
-                g_cliOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
-                ++i;
-            }
-        } else if (std::strcmp(argv[i], "--no-ao") == 0 || std::strcmp(argv[i], "--ao-off") == 0) {
-            g_cliDisableAO = true;
-        }
-    }
+inline void registerArgs() {
+    IREngine::args().optionalInt("--auto-profile", "Run for N frames then exit (default 300)", 300);
+    IREngine::args().number("--zoom", "Initial camera zoom", 0.0f);
+    IREngine::args().string(
+        "--debug-overlay",
+        "Debug overlay mode (none, ao, light_level, shadow, peraxis_id, peraxis_origin, unlit)",
+        ""
+    );
+    IREngine::args().flag("--no-ao", "Disable ambient-occlusion crease darkening");
+    IREngine::args().flag("--ao-off", "Alias for --no-ao");
+}
+
+inline void readArgs() {
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    if (IREngine::args().wasProvided("--auto-profile"))
+        g_autoProfileFrames = IREngine::args().getInt("--auto-profile");
+    float zoom = IREngine::args().getFloat("--zoom");
+    if (zoom > 0.0f)
+        g_initialZoom = zoom;
+    std::string overlayStr = IREngine::args().getString("--debug-overlay");
+    if (!overlayStr.empty())
+        g_cliOverlay = IRRender::debugOverlayModeFromString(overlayStr.c_str());
+    g_cliDisableAO = IREngine::args().getFlag("--no-ao") || IREngine::args().getFlag("--ao-off");
 }
 
 inline EntityId createVoxelPoolShape(
@@ -424,9 +416,10 @@ inline void initSystems(const DemoConfig &config) {
 } // namespace detail
 
 inline int run(int argc, char **argv, const DemoConfig &config) {
-    detail::parseArgs(argc, argv);
+    detail::registerArgs();
+    IREngine::init(argc, argv);
+    detail::readArgs();
     IR_LOG_INFO("Starting creation: {}", config.name_);
-    IREngine::init(argv[0]);
     IREngine::enableFrameTiming(true);
     detail::initSystems(config);
     detail::initCommands();
