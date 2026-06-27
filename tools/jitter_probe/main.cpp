@@ -29,11 +29,12 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <irreden/ir_args.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <string>
 #include <vector>
 
@@ -48,54 +49,6 @@ struct Args {
     double maxResidual_ = 1.50;
     bool verbose_ = false;
 };
-
-void usage(const char *exe) {
-    std::fprintf(
-        stderr,
-        "Usage: %s <frame_0.png> <frame_1.png> ... (>=3, in capture order)\n"
-        "  [--threshold L] [--color R,G,B,T] [--reversal-eps PX]\n"
-        "  [--max-residual PX] [--verbose]\n",
-        exe
-    );
-}
-
-bool parseArgs(int argc, char **argv, Args &out) {
-    for (int i = 1; i < argc; ++i) {
-        const std::string a = argv[i];
-        if (a == "--threshold" && i + 1 < argc) {
-            out.threshold_ = std::atoi(argv[++i]);
-        } else if (a == "--reversal-eps" && i + 1 < argc) {
-            out.reversalEps_ = std::atof(argv[++i]);
-        } else if (a == "--max-residual" && i + 1 < argc) {
-            out.maxResidual_ = std::atof(argv[++i]);
-        } else if (a == "--verbose") {
-            out.verbose_ = true;
-        } else if (a == "--color" && i + 1 < argc) {
-            out.useColor_ = true;
-            if (std::sscanf(
-                    argv[++i],
-                    "%d,%d,%d,%d",
-                    &out.colorR_,
-                    &out.colorG_,
-                    &out.colorB_,
-                    &out.colorTol_
-                ) != 4) {
-                std::fprintf(stderr, "jitter_probe: --color expects R,G,B,T\n");
-                return false;
-            }
-        } else if (!a.empty() && a[0] == '-') {
-            std::fprintf(stderr, "jitter_probe: unknown flag '%s'\n", a.c_str());
-            return false;
-        } else {
-            out.frames_.push_back(a);
-        }
-    }
-    if (out.frames_.size() < 3) {
-        std::fprintf(stderr, "jitter_probe: need >= 3 frames (got %zu)\n", out.frames_.size());
-        return false;
-    }
-    return true;
-}
 
 // Foreground centroid (mean x,y of matching pixels) for one frame.
 // Returns false if too few pixels match (shape off-screen / empty frame).
@@ -221,10 +174,36 @@ AxisStats analyze(
 } // namespace
 
 int main(int argc, char **argv) {
+    IRArgs::Parser parser(
+        "jitter_probe — temporal-jitter detector across a frame sequence captured "
+        "during a smooth camera sweep. Frames MUST be given in capture order. "
+        "Exit: 0 = SMOOTH, 1 = JITTER, 2 = argument/IO error.",
+        IRArgs::Common::NONE
+    );
+    parser.integer("--threshold", "Foreground = pixels with (R+G+B) > L (0..765)", 24);
+    parser.string("--color", "Foreground = pixels within T of color R,G,B (format: R,G,B,T)", "");
+    parser.number("--reversal-eps", "Per-frame deltas under this (px) are treated as 0", 0.10f);
+    parser.number("--max-residual", "SMOOTH verdict requires residual <= this (px)", 1.50f);
+    parser.flag("--verbose", "Print the per-frame centroid + residual table");
+    parser.variadic("frames", "Frame PNGs in capture order (>= 3)", 3);
+    parser.parse(argc, argv);
+
     Args args;
-    if (!parseArgs(argc, argv, args)) {
-        usage(argv[0]);
-        return 2;
+    args.threshold_ = parser.getInt("--threshold");
+    args.reversalEps_ = parser.getFloat("--reversal-eps");
+    args.maxResidual_ = parser.getFloat("--max-residual");
+    args.verbose_ = parser.getFlag("--verbose");
+    args.frames_ = parser.positionalArgs();
+    if (parser.wasProvided("--color")) {
+        args.useColor_ = true;
+        const std::string color = parser.getString("--color");
+        if (std::sscanf(
+                color.c_str(), "%d,%d,%d,%d", &args.colorR_, &args.colorG_, &args.colorB_,
+                &args.colorTol_
+            ) != 4) {
+            std::fprintf(stderr, "jitter_probe: --color expects R,G,B,T\n");
+            return 2;
+        }
     }
 
     const size_t n = args.frames_.size();
