@@ -279,6 +279,12 @@
       "description": "Worker filed human:needs-fix concerns as a follow-up issue; PR is internally OK to merge if human accepts the deferral (fleet:approved kept)"
     },
     {
+      "name": "fleet:gated",
+      "scope": "pr",
+      "color": "b60205",
+      "description": "Conflict/fix surface is a gated self-config file no agent can push; human-only; merger + all worker classes + reviewers skip it"
+    },
+    {
       "name": "fleet:human-amending",
       "scope": "pr",
       "color": "c5def5",
