@@ -1,7 +1,10 @@
 # #2080 — detached canvases & world lighting: verify-first investigation
 
-**Status:** verify-first complete; root cause routes into a known design-blocked
-backend gap (#1640) + architect-scoping questions. Escalated `fleet:design-blocked`.
+**Status:** RESOLVED (receive facet). Verify-first found the engine receive path
+already correct; the symptom was a `canvas_stress` demo gap (the detached cube
+the investigation looked at was never lit). Fix shipped — see ## Resolution. The
+CAST facet stays blocked on #1640 and the floor self-shadow acne (finding 4) are
+separate architect-filed tickets, per the steward split below.
 
 **Host:** macOS / Metal (the only host this worker can run; OpenGL side
 unverified — see Q3).
@@ -107,3 +110,51 @@ run — the per-run shot index N maps to `base + N + 1`, not a fixed file number
 5. Sequencing vs. the C-series (#2081–#2083) — the plan flags these as parallel;
    a newly-participating detached caster should cast a *clean* (C-series-aware)
    shadow, not a ragged one.
+
+## Resolution (receive facet, #2080)
+
+The architect (epic #1717 steward) split #2080 into a **receive** facet (this
+ticket, tractable now) and a **cast** facet (separate ticket, blocked on the
+#1640 Metal R32I foreign-canvas read), and routed the floor self-shadow acne
+(finding 4) to its own ticket. Receive is independent of #1640 because it
+re-runs the sun-shadow cascade in the lighting shader at the solid's recovered
+world pos (`worldSunShadowFactor`, `ir_sun_shadow_sample.glsl`) — no foreign
+distance-texture read.
+
+**Root cause of the symptom (not the engine).** The engine receive path is
+already correctly wired and *engages*:
+
+- `PROPAGATE_CANVAS_ROTATION` publishes `worldPlaced_` (= `!screenLocked_`) and
+  `worldCellOffset_` onto `C_CanvasLocalRotation`
+  (`system_propagate_canvas_rotation.hpp`).
+- `buildVoxelFrameData` packs them into the shared voxel-frame UBO's
+  `detachedWorldReceive_` (`voxel_frame_data.hpp`), and
+  `authorIteratingCanvasVoxelFrame` uploads it per-canvas in
+  `LIGHTING_TO_TRIXEL::tick`.
+- `c_lighting_to_trixel.glsl` gates `worldReceive` on
+  `detachedWorldReceive.w != 0` and darkens the Lambert term by the world
+  sun-shadow at the recovered world pos.
+
+An A/B on a properly-lit world-placed re-voxelize solid (`--only revox,floor`
+vs the same with `--screen-lock-detached`) confirms receive ON modulates the
+solid's shading — the difference lands on its lower / away-from-sun faces where
+the world geometry occludes the sun (img_diff drift localized to the solid).
+
+The investigation's "DETACHED cube reads pasted-on / renders raw albedo in the
+shadow overlay" was a **demo-scaffolding gap, not the engine**: the
+`compare` (and `canary`) cells spawn through `spawnDetachedVoxelObject`, which —
+unlike `spawnDetachedReVoxelizeSolid` — never attached `C_CanvasAOTexture` or
+`C_TrixelCanvasRenderBehavior`. Without those the canvas matches neither
+`COMPUTE_VOXEL_AO` nor `LIGHTING_TO_TRIXEL`, so it gets **no** AO, Lambert, sky,
+or world-receive and composites its raw rasterized albedo.
+
+**Fix.** Factor the lighting attach into a shared `lightDetachedCanvas(canvas,
+size)` helper (`canvas_stress/main.cpp`) and call it from **both** detached
+spawn helpers, so every detached solid participates in AO + directional sun +
+sky + world-receive (the `#1624` world-integration default). The compare-scene
+`DETACHED SO(3)` cube now shades like its `GRID` twins and false-colours under
+the shadow overlay (no longer raw albedo); `img_diff` of the compare shot
+before/after is isolated to that cube (GRID/WORLD twins + floor byte-identical).
+The `#1958` canary depth-priority `--depth-probe-assert 321,210` still PASSes
+(lighting changes colour, not the composite depth write). The cast facet (the
+floater casting a floor shadow) remains #1640-blocked and is out of scope here.

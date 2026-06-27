@@ -430,6 +430,27 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {0.65f, vec2(0, 0), IRMath::kPi / 6.0f, "so3_offsnap_wide"},
 };
 
+// Light a detached re-voxelize canvas (#1558; receive facet #2080): AO +
+// directional sun + sky, and — when world-placed (the #1624 default) — world
+// sun-shadow + 128³ light-volume RECEIVE at the solid's recovered world pos
+// (#1576 P4b-2). Attaching C_CanvasAOTexture + the default
+// C_TrixelCanvasRenderBehavior (useCameraPositionIso_ == true) is what puts the
+// canvas in the COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL archetypes; without them a
+// detached solid matches neither pass and renders raw albedo ("pasted-on", the
+// #2080 symptom). Attached HERE — on the detached canvas only — not on the shared
+// kVoxelPoolCanvas builder, which also builds the main canvas (double-allocating
+// its AO and lighting the forward-scatter cubes, breaking byte-identity). No
+// C_CanvasSunShadow / C_CanvasLightVolume even on the world path: a world-placed
+// solid RECEIVES the SHARED world sun-shadow map + light volume directly in
+// LIGHTING_TO_TRIXEL at its recovered world pos, not via a per-canvas texture.
+void lightDetachedCanvas(EntityId canvasEntity, ivec2 canvasSize) {
+    if (g_settings.noLighting_) {
+        return;
+    }
+    IREntity::setComponent(canvasEntity, C_TrixelCanvasRenderBehavior{});
+    IREntity::setComponent(canvasEntity, C_CanvasAOTexture{canvasSize});
+}
+
 // One detached SO(3) CANARY cube (#1259 / #1589): a per-entity canvas (textures
 // + voxel pool), a voxel cube allocated into that pool, and a world entity
 // carrying C_EntityCanvas + RotationMode::DETACHED_REVOXELIZE that
@@ -464,6 +485,12 @@ void spawnDetachedVoxelObject(
     // unchanged. The canary still writes depth, so --depth-probe-assert 321,210
     // (now reading inside the foreground near band) still PASSes.
     canvas.depthPriority_ = 1;
+
+    // Light the canvas so the floater participates in AO + directional sun + sky
+    // and (world-placed) world sun-shadow + light-volume RECEIVE (#2080) — without
+    // this it matches neither lighting pass and renders raw albedo (the
+    // "pasted-on" symptom). Mirrors spawnDetachedReVoxelizeSolid.
+    lightDetachedCanvas(canvas.canvasEntity_, kCanvasSize);
 
     // The voxel cube lives centered in the detached canvas's pool so
     // SYSTEM_REBUILD_DETACHED_VOXELS rotates its cells about the pool origin
@@ -532,21 +559,9 @@ void spawnDetachedReVoxelizeSolid(
     // fixed-depth overlay regression path.
     canvas.screenLocked_ = screenLocked;
 
-    // Light the re-voxelize solid (#1558): AO + directional sun + sky. Attached
-    // HERE — on the re-voxelize canvas only — not on the shared kVoxelPoolCanvas
-    // builder, which also builds the main canvas (double-allocating its AO and
-    // lighting the forward-scatter cubes, breaking the byte-identical guarantee).
-    // C_TrixelCanvasRenderBehavior's default useCameraPositionIso_ lets the AO /
-    // lighting passes run over this canvas; COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL
-    // author its own (cardinal) voxel frame before each dispatch. No
-    // C_CanvasSunShadow / C_CanvasLightVolume here even on the opt-in world path:
-    // a world-placed solid RECEIVES the SHARED world sun-shadow map + 128³ light
-    // volume at its recovered world pos directly in LIGHTING_TO_TRIXEL (#1576
-    // P4b-2), not via a per-canvas texture.
-    if (!g_settings.noLighting_) {
-        IREntity::setComponent(canvas.canvasEntity_, C_TrixelCanvasRenderBehavior{});
-        IREntity::setComponent(canvas.canvasEntity_, C_CanvasAOTexture{kReVoxCanvasSize});
-    }
+    // Light the re-voxelize solid (#1558): AO + directional sun + sky + (world-
+    // placed) world sun-shadow + light-volume RECEIVE — see lightDetachedCanvas.
+    lightDetachedCanvas(canvas.canvasEntity_, kReVoxCanvasSize);
 
     // Centered around origin so SYSTEM_REBUILD_DETACHED_VOXELS can rotate the
     // cells about the pool origin (translation-free) and keep the solid centered
