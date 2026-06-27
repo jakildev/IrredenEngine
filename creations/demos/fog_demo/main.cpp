@@ -29,6 +29,15 @@
 // VOXELIZED grid reveal instead and owns the committed render-verify refs, so
 // the two reveal styles sit side by side in one demo.
 //
+// `--player-walk` (#2009) is the detached-player payoff: an SDF pillar "player"
+// walks a straight line in sub-voxel per-frame steps while `setVisionCircle`
+// keeps its analytic disc centered on the moving float position. Six fixed-
+// camera shots capture the glide; flat floor tiles in the player's path resolve
+// as partial CRESCENTS at the smooth leading edge — a partial reveal the
+// cell-snapped `revealRadius` path cannot produce. This is the proof that the
+// smooth reveal tracks a real moving entity with sub-voxel fidelity, not just a
+// synthetic orbit.
+//
 // Fog wiring (canvas component + pipeline position) is faithful to the
 // pre-removal shape_debug setup; the rest of the skeleton follows the smaller
 // day_cycle demo.
@@ -131,6 +140,65 @@ void driveMovingObserver() {
     ++g_observerFrame;
 }
 
+// --player-walk (#2009 proof): a "detached player" — an SDF pillar marker —
+// walks in a straight line at a SUB-VOXEL per-frame step while its analytic
+// vision circle (radius kWalkVisionRadius) tracks its float position. The camera
+// is fixed (origin), so across the captured sequence the disc + marker slide
+// smoothly to the side, the disc edge advances by fractional-voxel amounts, the
+// floor reveals (and re-hides behind the trailing edge), and the flat floor
+// tiles in its path resolve as crisp partial CRESCENTS that never snap to the
+// cell grid — the property a single still can't show and the voxel-grid
+// `revealRadius` path cannot produce.
+constexpr float kWalkVisionRadius = 8.0f;
+constexpr float kWalkStepPerFrame = 0.22f; // sub-voxel per-render-frame advance (< 1 cell)
+constexpr float kWalkStartX = -3.0f;
+constexpr float kWalkY = 0.0f;
+constexpr float kWalkGroundZ = 0.0f;
+
+// Fixed-camera sequence: identical shots so the auto-screenshot captures the
+// SAME view at successive frames. The player advances kWalkStepPerFrame (a
+// sub-voxel step) every render frame; the capture cadence samples roughly every
+// fifth frame, so consecutive stills show the disc + marker shifted ~1 cell —
+// but the underlying motion is sub-voxel, and the disc edge slices the low
+// landmarks into smooth crescents (revealing one, re-hiding another). A partial
+// crescent is something a cell-snapped grid reveal cannot produce; that plus the
+// smoothly-sliding edge are the movement+shape fidelity proof.
+constexpr IRVideo::AutoScreenshotShot kWalkShots[] = {
+    {7.0f, vec2(0, 0), 0.0f, "fog_walk_0"},
+    {7.0f, vec2(0, 0), 0.0f, "fog_walk_1"},
+    {7.0f, vec2(0, 0), 0.0f, "fog_walk_2"},
+    {7.0f, vec2(0, 0), 0.0f, "fog_walk_3"},
+    {7.0f, vec2(0, 0), 0.0f, "fog_walk_4"},
+    {7.0f, vec2(0, 0), 0.0f, "fog_walk_5"},
+};
+
+bool g_playerWalk = false; // --player-walk: walking detached player + tracking vision circle
+int g_walkFrame = 0;       // deterministic per-frame index for the walk
+IREntity::EntityId g_playerEntity{}; // the moving marker, repositioned each frame
+
+// Per-frame RENDER-front hook for --player-walk: advance the player's float
+// position a sub-voxel step, move the marker entity there (UPDATE's
+// PROPAGATE_TRANSFORM re-places it within a frame), and re-point the analytic
+// vision circle at it. Render-driven so the walk advances in lockstep with the
+// render-frame-counted auto-screenshot rather than the wall-clock UPDATE step.
+void drivePlayerWalk() {
+    // This hook fires every frame, INCLUDING the warmup frames that run before
+    // the first capture. Hold the marker at the start through warmup so the
+    // captured sequence begins at kWalkStartX (otherwise the warmup frames walk
+    // the player past the framed region before shot 0). The vision circle is
+    // still set during warmup so the disc is present in the very first capture.
+    if (g_walkFrame < g_autoWarmupFrames) {
+        IRPrefab::Fog::setVisionCircle(kWalkStartX, kWalkY, kWalkVisionRadius);
+        ++g_walkFrame;
+        return;
+    }
+    const int walkedFrames = g_walkFrame - g_autoWarmupFrames;
+    const float px = kWalkStartX + static_cast<float>(walkedFrames) * kWalkStepPerFrame;
+    IREntity::setComponent(g_playerEntity, C_LocalTransform{vec3(px, kWalkY, kWalkGroundZ)});
+    IRPrefab::Fog::setVisionCircle(px, kWalkY, kWalkVisionRadius);
+    ++g_walkFrame;
+}
+
 } // namespace
 
 void initSystems();
@@ -146,9 +214,19 @@ int main(int argc, char **argv) {
         "Per-frame analytic vision circle orbiting the origin (smooth reveal) "
         "instead of the static grid reveal"
     );
+    args.flag(
+        "--player-walk",
+        "Walking detached-player marker with a tracking analytic vision circle "
+        "(sub-voxel crescent reveal proof); skips the static grid reveal"
+    );
     args.parse(argc, argv);
     g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
     g_movingObserver = args.getFlag("--moving-observer");
+    g_playerWalk = args.getFlag("--player-walk");
+    if (g_playerWalk && g_movingObserver) {
+        IR_LOG_INFO("--player-walk and --moving-observer are mutually exclusive; ignoring --moving-observer");
+        g_movingObserver = false;
+    }
 
     IR_LOG_INFO("Starting creation: fog_demo");
     IREngine::init(argv[0]);
@@ -209,12 +287,36 @@ void initSystems() {
         renderPipeline.push_front(observerTickId);
     }
 
+    // --player-walk: same render-front placement as --moving-observer. The walk
+    // MUST advance per render frame, not per UPDATE tick: the UPDATE pipeline
+    // runs on a wall-clock fixed timestep, so a walk hook there races ahead of
+    // the auto-screenshot's render-frame warmup/settle/capture counting and the
+    // captured disc overshoots its framing. Driven here, one walk step lands per
+    // render frame, in lockstep with the capture counter. The marker entity's
+    // C_WorldTransform is refreshed by UPDATE's PROPAGATE_TRANSFORM at most one
+    // frame later — invisible at the sub-voxel per-frame step.
+    if (g_playerWalk) {
+        IRSystem::SystemId walkTickId = IRSystem::createSystem<C_Name>(
+            "FogPlayerWalkTick",
+            [](C_Name &) {},
+            []() { drivePlayerWalk(); }
+        );
+        renderPipeline.push_front(walkTickId);
+    }
+
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        cfg.shots_ = kShots;
-        cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        // --player-walk captures a fixed-camera sequence (the walking reveal);
+        // the default captures the three static fog-boundary shots.
+        if (g_playerWalk) {
+            cfg.shots_ = kWalkShots;
+            cfg.numShots_ = sizeof(kWalkShots) / sizeof(kWalkShots[0]);
+        } else {
+            cfg.shots_ = kShots;
+            cfg.numShots_ = sizeof(kShots) / sizeof(kShots[0]);
+        }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
     }
 
@@ -244,54 +346,61 @@ void initEntities() {
         Color{150, 150, 160, 255}
     );
 
-    // A few simple SDF primitives sitting on the floor inside the visible
-    // circle, so the bright (visible) region has recognizable content.
-    createShape(
-        vec3(0.0f, 0.0f, 0.0f),
-        IRRender::ShapeType::BOX,
-        vec4(7, 7, 7, 0),
-        Color{100, 200, 220, 255}
-    );
-    createShape(
-        vec3(-12.0f, 8.0f, 0.0f),
-        IRRender::ShapeType::SPHERE,
-        vec4(4, 4, 4, 0),
-        Color{220, 180, 100, 255}
-    );
-    createShape(
-        vec3(12.0f, -8.0f, 0.0f),
-        IRRender::ShapeType::CYLINDER,
-        vec4(3, 3, 7, 0),
-        Color{100, 220, 140, 255}
-    );
-    createShape(
-        vec3(10.0f, 10.0f, 0.0f),
-        IRRender::ShapeType::CONE,
-        vec4(4, 4, 8, 0),
-        Color{220, 140, 100, 255}
-    );
+    // The default + --moving-observer scenes dress the floor with SDF primitives
+    // and the #2008 column-cull pillar canary. --player-walk skips ALL of them:
+    // it wants a clean floor so the gliding disc + marker read clearly, and the
+    // tall shapes' iso-projected tops poke through the disc edge in confusing
+    // ways. The walk supplies its own low landmarks below.
+    if (!g_playerWalk) {
+        // A few simple SDF primitives sitting on the floor inside the visible
+        // circle, so the bright (visible) region has recognizable content.
+        createShape(
+            vec3(0.0f, 0.0f, 0.0f),
+            IRRender::ShapeType::BOX,
+            vec4(7, 7, 7, 0),
+            Color{100, 200, 220, 255}
+        );
+        createShape(
+            vec3(-12.0f, 8.0f, 0.0f),
+            IRRender::ShapeType::SPHERE,
+            vec4(4, 4, 4, 0),
+            Color{220, 180, 100, 255}
+        );
+        createShape(
+            vec3(12.0f, -8.0f, 0.0f),
+            IRRender::ShapeType::CYLINDER,
+            vec4(3, 3, 7, 0),
+            Color{100, 220, 140, 255}
+        );
+        createShape(
+            vec3(10.0f, 10.0f, 0.0f),
+            IRRender::ShapeType::CONE,
+            vec4(4, 4, 8, 0),
+            Color{220, 140, 100, 255}
+        );
 
-    // #2008 column-cull regression canary: a TALL voxel pillar standing on an
-    // UNEXPLORED column (XY = (-22,-22), Euclidean distance ~31 > the reveal+band
-    // radius of 26). It is a voxel set (not an SDF shape) so it travels the
-    // voxel-pool path — VOXEL_TO_TRIXEL_STAGE_1 → c_voxel_visibility_compact —
-    // which is exactly where #2008 culls unexplored-column voxels.
-    //
-    // -X-Y projects DOWN-screen in this iso (the +X+Y cone sits at the top of
-    // the disk), so the pillar's base sits below the bright disk and its 44-tall
-    // extent projects its top straight up OVER the visible disk. Before #2008
-    // the whole pillar rasterized and FOG_TO_TRIXEL hard-blacked every pixel
-    // (its column is unexplored), painting a black silhouette across the lit
-    // disk — the reported bug. With the cull the pillar's voxels never
-    // rasterize, so the disk stays clean.
-    //
-    // The canary is therefore a NEGATIVE one: in the fixed state the pillar is
-    // invisible and the zoom-2 disk is unmarred; if the cull regresses, the
-    // black silhouette reappears over the disk and the shot diff catches it.
-    IREntity::createEntity(
-        C_LocalTransform{vec3(-22.0f, -22.0f, -19.0f)},
-        C_VoxelSetNew{IRMath::ivec3{5, 5, 44}, Color{220, 70, 200, 255}, true}
-    );
+        // #2008 column-cull regression canary: a TALL voxel pillar standing on an
+        // UNEXPLORED column (XY = (-22,-22), Euclidean distance ~31 > the reveal+band
+        // radius of 26). It is a voxel set (not an SDF shape) so it travels the
+        // voxel-pool path — VOXEL_TO_TRIXEL_STAGE_1 → c_voxel_visibility_compact —
+        // which is exactly where #2008 culls unexplored-column voxels.
+        //
+        // -X-Y projects DOWN-screen in this iso (the +X+Y cone sits at the top of
+        // the disk), so the pillar's base sits below the bright disk and its 44-tall
+        // extent projects its top straight up OVER the visible disk. Before #2008
+        // the whole pillar rasterized and FOG_TO_TRIXEL hard-blacked every pixel
+        // (its column is unexplored), painting a black silhouette across the lit
+        // disk — the reported bug. With the cull the pillar's voxels never
+        // rasterize, so the disk stays clean.
+        //
+        // The canary is therefore a NEGATIVE one: in the fixed state the pillar is
+        // invisible and the zoom-2 disk is unmarred; if the cull regresses, the
+        // black silhouette reappears over the disk and the shot diff catches it.
+        IREntity::createEntity(
+            C_LocalTransform{vec3(-22.0f, -22.0f, -19.0f)},
+            C_VoxelSetNew{IRMath::ivec3{5, 5, 44}, Color{220, 70, 200, 255}, true}
+        );
+    }
 
     // Canvas lighting attachments + fog. The voxel-pool canvas prefab doesn't
     // bundle these, so the AO / sun-shadow / light-volume / fog systems'
@@ -308,6 +417,55 @@ void initEntities() {
 
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
+
+    // --player-walk: spawn the moving "player" marker — a bright vertical pillar
+    // that reads clearly above the floor as it walks. The per-frame walk hook
+    // repositions it + re-points its analytic vision circle each tick. The grid
+    // stays all-unexplored, so only the disc tracking the player reveals the
+    // floor + the low landmarks it sweeps over — the cleanest read of a crisp
+    // edge tracking a smoothly-moving entity.
+    if (g_playerWalk) {
+        // Flat colored floor tiles in the player's FORWARD path (the walk runs
+        // toward +X). The smoothly-advancing leading edge sweeps over them one by
+        // one, slicing each into a growing crescent before fully revealing it: the
+        // center tile is lit from the first frame for stable content, the +X tiles
+        // reveal mid- and late-walk. Placed ahead (never behind) so each only
+        // ever reveals — the trailing edge re-hiding a tile's floor footprint
+        // produces a lighting seam we don't want competing with the reveal. Flat-
+        // on-the-floor (not floating) so they neither occlude floor behind them
+        // nor cast offset shadows; the disc edge is the only thing shaping them.
+        // A partial crescent is impossible for a cell-snapped grid reveal — that
+        // plus the smoothly-sliding edge is the shape+movement fidelity proof.
+        constexpr float kTileZ = 2.7f; // flush on the floor surface (top at z≈3)
+        createShape(
+            vec3(2.0f, 4.0f, kTileZ),
+            IRRender::ShapeType::CYLINDER,
+            vec4(2.0f, 2.0f, 0.3f, 0.0f),
+            Color{110, 150, 230, 255}
+        );
+        createShape(
+            vec3(7.0f, -2.0f, kTileZ),
+            IRRender::ShapeType::CYLINDER,
+            vec4(2.5f, 2.5f, 0.3f, 0.0f),
+            Color{90, 210, 130, 255}
+        );
+        createShape(
+            vec3(10.0f, 2.0f, kTileZ),
+            IRRender::ShapeType::CYLINDER,
+            vec4(2.5f, 2.5f, 0.3f, 0.0f),
+            Color{220, 180, 90, 255}
+        );
+
+        g_playerEntity = IREntity::createEntity(
+            C_LocalTransform{vec3(kWalkStartX, kWalkY, kWalkGroundZ)},
+            C_ShapeDescriptor{
+                IRRender::ShapeType::CYLINDER,
+                vec4(1.5f, 1.5f, 5.0f, 0.0f),
+                Color{240, 80, 80, 255}
+            }
+        );
+        return;
+    }
 
     // --moving-observer drives an analytic vision circle per-frame instead
     // (see driveMovingObserver). Leave the grid all-unexplored: everything
