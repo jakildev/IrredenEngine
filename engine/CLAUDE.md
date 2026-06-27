@@ -19,21 +19,31 @@ Core engine static libraries. Everything here is shared by every creation.
 
 ## CLI args go through `IRArgs`, never a hand-rolled `strcmp` loop
 
-`engine/include/irreden/ir_args.hpp` is the declarative argument framework.
-A launch target constructs an `IRArgs::Parser` (which pre-registers the
-engine-common args — `--auto-screenshot`, `--config-preset` — plus a free
-`--help` / `-h`), declares its own args (`flag` / `integer` / `number` /
-`string` / `optionalInt`), then calls `parse(argc, argv)` at the **top of
-`main`, before any window / GL / Metal init** so `--help` is instant and
-headless-safe. `--help` prints the auto-generated usage and `exit(0)`; an
-unknown arg prints an error + usage and `exit(2)`. Read the common flags via
-`autoScreenshotWarmupFrames()` / `configPreset()`. `creations/demos/fog_demo/
-main.cpp` is the reference adoption.
+`engine/include/irreden/ir_args.hpp` is the declarative argument framework, and
+the engine **owns the parse**: `IREngine::args()` is a process-global
+`IRArgs::Parser` pre-loaded with the engine-common args (`--auto-screenshot`,
+`--config-preset`) plus a free `--help` / `-h`. `IREngine::init(argc, argv)`
+calls `args().parse(argc, argv)` as its **first action**, before any window /
+GL / Metal init, so `--help` is instant and headless-safe.
+
+- **No custom flags?** Just call `IREngine::init(argc, argv)` — the target gets
+  working `--help` / `--auto-screenshot` / `--config-preset` with no parser
+  code at all, read back via `IREngine::args().autoScreenshotWarmupFrames()` /
+  `IREngine::args().configPreset()`.
+- **Custom flags?** Register them on `IREngine::args()` (`.flag` / `.integer` /
+  `.number` / `.string` / `.optionalInt`) **before** `IREngine::init(argc,
+  argv)`, then read them back via `IREngine::args().getFlag(...)` etc. The
+  single engine parse covers common + custom flags, so `--help` aggregates
+  everything.
+
+`--help` prints the auto-generated usage and `exit(0)`; an unknown arg prints an
+error + usage and `exit(2)`. `creations/demos/fog_demo/main.cpp` is the
+reference adoption.
 
 Do **not** add a new `for (i…) std::strcmp(argv[i], "--foo")` parse loop to a
-target. The legacy scattered helpers (`IRVideo::parseAutoScreenshotArgv`,
-`IREngine::parseConfigPresetArg`) and the remaining demos' hand-rolled loops
-are being migrated onto `IRArgs` and retired (#2044 follow-ons).
+target. The one remaining legacy helper (`IRVideo::parseAutoScreenshotArgv`)
+and the demos' hand-rolled loops are being migrated onto `IRArgs` and retired
+(epic #2057).
 
 ## `SystemName` enum is authoritative
 

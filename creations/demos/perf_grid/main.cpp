@@ -445,9 +445,16 @@ void applyCliOverrides() {
 
 void parseArgs(int argc, char **argv) {
     IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-    g_cliOverrides.configPreset_ = IREngine::parseConfigPresetArg(argc, argv);
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-profile") == 0) {
+        if (std::strcmp(argv[i], "--config-preset") == 0 && i + 1 < argc) {
+            // Read locally for now: perf_grid still hand-rolls its argv loop
+            // and calls init(argv[0]), so it can't go through IREngine::args()
+            // until its full IRArgs migration (epic #2057 P3, #2060). This
+            // branch replaces the retired IREngine::parseConfigPresetArg helper
+            // with no behaviour change.
+            g_cliOverrides.configPreset_ = argv[i + 1];
+            ++i;
+        } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
             g_autoProfileFrames = 300;
             if (i + 1 < argc) {
                 int frames = std::atoi(argv[i + 1]);

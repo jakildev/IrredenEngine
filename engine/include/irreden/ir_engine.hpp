@@ -1,8 +1,8 @@
 #ifndef IR_ENGINE_H
 #define IR_ENGINE_H
 
+#include <irreden/ir_args.hpp>
 #include <irreden/world.hpp>
-#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -56,6 +56,18 @@ void applyPreInitLuaConfig(const char *configFile);
 
 } // namespace detail
 
+// The process-global engine argument parser, pre-loaded with the engine-common
+// args (--auto-screenshot, --config-preset, --help/-h) by the IRArgs::Parser
+// ctor. A launch target registers its own flags on this parser BEFORE calling
+// init(argc, argv) — init parses it as its first action — then reads results
+// back via args(). See engine/CLAUDE.md "CLI args go through IRArgs" for the
+// no-custom-flags / custom-flags patterns. Inline so the function-local static
+// is one shared instance across every translation unit.
+inline IRArgs::Parser &args() {
+    static IRArgs::Parser parser;
+    return parser;
+}
+
 // Sets cwd to the executable's directory and resolves creation scripts
 // from a sibling scripts/ directory. All relative engine paths
 // (shaders/, data/) resolve from the exe directory.
@@ -67,6 +79,18 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
     detail::applyPreInitLuaConfig(resolveScriptPath(configFileName).c_str());
     g_world = std::make_unique<World>(resolveScriptPath(configFileName).c_str());
     g_world->setupLuaBindings(g_luaBindingRegistrations);
+}
+
+// Parses the engine-common args (plus any the target pre-registered on args())
+// as its FIRST action — so --help and unknown-arg exit(2) resolve before the
+// cwd change and World (window/GL/Metal) construction — then runs the same
+// exe-dir setup as the argv0 overload. This is the entry point a no-custom-arg
+// target uses: IREngine::init(argc, argv) gives it --help / --auto-screenshot
+// / --config-preset with no parser code.
+inline void init(int argc, char **argv, const char *configFileName = "config.lua") {
+    IR_ASSERT(argc > 0, "init(argc, argv) needs argv[0] for exe-dir resolution");
+    args().parse(argc, argv);
+    init(argc > 0 ? argv[0] : "", configFileName);
 }
 
 inline void runScript(const char *scriptFileName) {
@@ -83,17 +107,6 @@ inline int entityCountOverride() {
 
 inline void gameLoop() {
     getWorld().gameLoop();
-}
-
-// Scans argv for the first --config-preset <path> pair and returns the
-// path string, or an empty string if the flag is absent.
-inline std::string parseConfigPresetArg(int argc, char **argv) {
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (std::strcmp(argv[i], "--config-preset") == 0) {
-            return argv[i + 1];
-        }
-    }
-    return {};
 }
 
 } // namespace IREngine
