@@ -281,10 +281,6 @@ void main() {
         : (microPositionFixed.x + microPositionFixed.y + microPositionFixed.z);
     const int voxelDistance = encodeDepthWithFace(depthBase, slot);
     const ivec2 base = frameOffsetFixed + pos3DtoPos2DIso(microPositionFixed);
-    // packedEntityId, NOT voxelIndex: emitDeformedFace's 5th param is the uvec2
-    // entity-id carrier (#1960). The per-trixel-priority change updated the
-    // per-axis call site (above) but missed this cardinal one, leaving a
-    // uint->uvec2 arg. Lenient GL drivers broadcast the scalar; native-Windows
-    // rejects the implicit cast (C7011) and the whole shader fails to compile.
+    // packedEntityId, not voxelIndex — emitDeformedFace's 5th param is uvec2 (#1960 carrier).
     emitDeformedFace(base, D, voxelDistance, voxelColor, packedEntityId, faceId, reVoxelize);
 }
