@@ -206,30 +206,32 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRArgs::Parser args(
-        "fog_demo — fog-of-war render-pass demo (FOG_TO_TRIXEL) + cross-host smoke coverage."
-    );
-    args.flag(
+    // Register this demo's custom flags on the engine-owned parser BEFORE init;
+    // init parses (engine-common args + these flags) as its first action, so
+    // --help / --auto-screenshot / --config-preset come for free and --help
+    // exits before any window/GL/Metal init.
+    IREngine::args().flag(
         "--moving-observer",
         "Per-frame analytic vision circle orbiting the origin (smooth reveal) "
         "instead of the static grid reveal"
     );
-    args.flag(
+    IREngine::args().flag(
         "--player-walk",
         "Walking detached-player marker with a tracking analytic vision circle "
         "(sub-voxel crescent reveal proof); skips the static grid reveal"
     );
-    args.parse(argc, argv);
-    g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
-    g_movingObserver = args.getFlag("--moving-observer");
-    g_playerWalk = args.getFlag("--player-walk");
+    IREngine::init(argc, argv);
+    g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    g_movingObserver = IREngine::args().getFlag("--moving-observer");
+    g_playerWalk = IREngine::args().getFlag("--player-walk");
     if (g_playerWalk && g_movingObserver) {
-        IR_LOG_INFO("--player-walk and --moving-observer are mutually exclusive; ignoring --moving-observer");
+        IR_LOG_INFO(
+            "--player-walk and --moving-observer are mutually exclusive; ignoring --moving-observer"
+        );
         g_movingObserver = false;
     }
 
     IR_LOG_INFO("Starting creation: fog_demo");
-    IREngine::init(argv[0]);
     initSystems();
     initCommands();
     initEntities();
