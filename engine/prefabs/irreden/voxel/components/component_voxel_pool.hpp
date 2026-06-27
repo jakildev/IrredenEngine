@@ -661,10 +661,10 @@ struct C_VoxelPool {
   private:
     int m_voxelPoolSize;
     // 3D pool dimensions, kept alongside the scalar count. Read by the detached
-    // re-voxelize footprint cap (subdivisionCap, #1570 D2). MUST be set by every
-    // constructor — left uninitialized it fed garbage to subdivisionCap, which
-    // non-deterministically pinned the cap (the #2043 root cause); the default
-    // initializer keeps the empty-pool ctor safe.
+    // re-voxelize footprint cap (subdivisionCap, #1570 D2). Must be initialized —
+    // either via the ivec3 numVoxels ctor or the {0,0,0} default initializer.
+    // Left uninitialized it fed garbage to subdivisionCap, non-deterministically
+    // pinning the cap (the #2043 root cause).
     ivec3 m_voxelPoolSize3D{0, 0, 0};
     bool m_entityIdsDirty = true;
     bool m_chunkBoundsDirty = true;

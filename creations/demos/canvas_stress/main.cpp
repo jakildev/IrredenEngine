@@ -1223,12 +1223,12 @@ void initSystems() {
             //     so a coverage metric can count interior background holes inside
             //     the solid silhouette (the #1619-class missing-face defect).
             g_allShots.push_back({2.4f, vec2(0.0f), 0.0f, "revox_coverage"});
-            // #2043 small/low-zoom repro framing (OPT-IN via `--only smallzoom`).
-            // smallzoom_low (zoom 0.5) is the bug pose: the generous-canvas
-            // detached cube renders with gaps + oversized on master and solid +
-            // GRID-matched after the fix. smallzoom_high (zoom 2.0) is the
-            // byte-identity guard (nothing at or above zoom 1 may move). Both at
-            // camera (0,0) so the detached-canvas cull keeps the subject on-screen.
+            // #2043 repro framing (OPT-IN via `--only smallzoom`). The bug pose is
+            // --subdivisions 8 (forces cubeSub > 1); zoom 0.5 is requested but
+            // clamped to 1.0 by kTrixelCanvasZoomMin, so smallzoom_low actually
+            // renders at zoom 1.0. The name is a historical artifact. smallzoom_high
+            // (zoom 2.0) is the byte-identity guard. Both at camera (0,0) so the
+            // detached-canvas cull keeps the subject on-screen.
             g_allShots.push_back({0.5f, vec2(0.0f), 0.0f, "smallzoom_low"});
             g_allShots.push_back({2.0f, vec2(0.0f), 0.0f, "smallzoom_high"});
             // Unified-rotation comparison region (#1374), OPT-IN via
