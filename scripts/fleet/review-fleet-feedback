@@ -34,7 +34,7 @@ import re
 import subprocess
 import sys
 from collections import defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -61,7 +61,7 @@ ENTRY_HEAD_FILE = re.compile(
     r"^##\s+"
     r"(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)"   # date, optional time
     r"(?:\s*(?:Z|UTC))?"                                      # optional Z / UTC suffix
-    r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                       # optional inline headline; separator optional
+    r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                 # optional inline headline (sep optional)
 )
 
 # Pattern bank — order matters; first match wins. Widen aggressively;
@@ -512,8 +512,11 @@ def cmd_digest(args: argparse.Namespace) -> int:
         "marker_note": marker_note,
         "now": now.strftime("%Y-%m-%dT%H:%M:%S"),
         "total_entries": len(entries),
-        "clusters": [c.to_dict() for c in clusters
-                     if c.signature != "uncategorized" and len(c.entries) >= MIN_CLUSTER_SIZE_FOR_PROPOSAL],
+        "clusters": [
+            c.to_dict() for c in clusters
+            if c.signature != "uncategorized"
+            and len(c.entries) >= MIN_CLUSTER_SIZE_FOR_PROPOSAL
+        ],
         "singletons": [
             {"ts": e.ts, "role": e.role, "headline": e.headline,
              "signature": signature_for(e)}

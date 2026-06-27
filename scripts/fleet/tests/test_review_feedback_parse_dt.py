@@ -1,4 +1,5 @@
-"""parse_dt Z-suffix regression: applied_at silently returned None, killing both mechanical transitions."""
+"""parse_dt Z-suffix regression: applied_at silently returned None, killing
+both mechanical transitions."""
 import importlib.machinery
 import importlib.util
 import sys

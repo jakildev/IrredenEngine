@@ -12,11 +12,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_branch_match import (
+    _is_game,
     branch_matches_issue,
     issue_branch_prefixes,
     issue_from_branch,
     issue_pr_state,
-    _is_game,
 )
 
 

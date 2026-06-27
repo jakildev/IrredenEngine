@@ -40,7 +40,9 @@ import sys
 # cwd — same idiom fleet-queue-ingest uses for fleet_scope_shipped.
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from fleet_validate_stack import (  # noqa: E402
-    discover_children, is_epic_child, validate_stack, check_checklist,
+    check_checklist,
+    discover_children,
+    validate_stack,
 )
 
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")

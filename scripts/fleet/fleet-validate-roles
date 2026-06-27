@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from fleet_validate_roles import validate_roles, DELTA_KEY_ALIASES  # noqa: E402
+from fleet_validate_roles import DELTA_KEY_ALIASES, validate_roles  # noqa: E402
 
 SCRIPT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
 REPO_ROOT = SCRIPT_DIR.parent.parent

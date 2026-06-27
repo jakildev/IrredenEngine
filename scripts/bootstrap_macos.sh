@@ -55,14 +55,17 @@ fi
 
 ensure_homebrew
 
+# ruff lints the fleet Python surface (scripts/fleet/) — the Python analogue of
+# clang-format/clang-tidy; available as a native brew formula.
 brew update
-brew install cmake ninja pkg-config ffmpeg llvm qt@5
+brew install cmake ninja pkg-config ffmpeg llvm qt@5 ruff
 
 echo
 echo "Verifying toolchain..."
 verify_tool "Homebrew ffmpeg pkg-config metadata found" pkg-config --exists libavcodec
 verify_tool "clang-format available" "$(brew --prefix llvm)/bin/clang-format" --version
 verify_tool "clang-tidy available" "$(brew --prefix llvm)/bin/clang-tidy" --version
+verify_tool "ruff available (fleet Python lint)" ruff --version
 verify_tool "Qt5 qmake available" "$(brew --prefix qt@5)/bin/qmake" --version
 
 if xcrun --find metal >/dev/null 2>&1 && xcrun --find metallib >/dev/null 2>&1; then

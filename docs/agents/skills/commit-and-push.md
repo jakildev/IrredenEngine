@@ -139,6 +139,18 @@ for this branch.
 draft for the cross-repo leakage tokens listed in the **info-isolation
 check** reference. Surface any match before committing.
 
+**Then**, if the diff touches `scripts/fleet/` (the fleet Python surface), run
+the **Python lint** — the analogue of the C++ `format-changed`/`lint` targets:
+
+```bash
+ruff check --fix scripts/fleet/   # autofix import-order / unused imports
+ruff check scripts/fleet/         # must exit 0 — gated in CI (quality.yml)
+```
+
+Resolve any remaining findings (line-length, ambiguous names, bare asserts)
+before committing; the CI `Python lint` step rejects the PR otherwise. See
+BUILD.md § "Python (fleet scripts)" for the rule set and install.
+
 **Then** invoke the **simplify skill** to review the dirty changes for
 reuse, quality, and efficiency issues. It reads the same diff and applies
 fixes directly. **Always run it, regardless of file types** — no doc-only or
