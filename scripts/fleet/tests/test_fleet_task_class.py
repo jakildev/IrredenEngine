@@ -26,7 +26,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from fleet_task_class import resolve, feedback_pr_class  # noqa: E402
+from fleet_task_class import feedback_pr_class, resolve  # noqa: E402
 
 
 def _task(issue, model=None, effort=None, owner="free", blocked=False,

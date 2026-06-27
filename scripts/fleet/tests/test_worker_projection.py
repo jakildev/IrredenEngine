@@ -349,7 +349,7 @@ class PlanReviewExcludedFromTasksOpen(unittest.TestCase):
                 {"name": "fleet:queued"},
                 {"name": "fleet:sonnet"},
                 {"name": "human:approved"},
-            ] + [{"name": l} for l in extra_labels],
+            ] + [{"name": label} for label in extra_labels],
             "body": "**Model:** sonnet\n",
         }
 
@@ -390,7 +390,7 @@ class NeedsGlHostAnnotation(unittest.TestCase):
                 {"name": "fleet:queued"},
                 {"name": "fleet:opus"},
                 {"name": "human:approved"},
-            ] + [{"name": l} for l in extra_labels],
+            ] + [{"name": label} for label in extra_labels],
             "body": "**Model:** opus\n",
         }
 

@@ -9,7 +9,6 @@ Covers:
 import importlib.machinery
 import importlib.util
 import json
-import os
 import pathlib
 import tempfile
 import unittest

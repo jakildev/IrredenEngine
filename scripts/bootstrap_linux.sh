@@ -74,6 +74,19 @@ fi
 ${SUDO} apt-get install -y qtbase5-dev qttools5-dev-tools || \
     echo "[warn] qtbase5-dev not installed; easy_profiler GUI will be disabled."
 
+# ruff lints the fleet Python surface (scripts/fleet/) — the Python analogue of
+# clang-format/clang-tidy. apt has no ruff package, so install via pipx, which
+# isolates it from the system Python and sidesteps PEP 668. Best-effort: a
+# missing ruff only disables the local fleet Python lint, not the build.
+if command -v ruff >/dev/null 2>&1; then
+    echo "[ok] ruff already installed"
+elif ${SUDO} apt-get install -y pipx && pipx install ruff; then
+    echo "[ok] Installed ruff via pipx"
+else
+    echo "[warn] ruff not installed; run 'pipx install ruff' (or 'pip install" \
+         "--user ruff') to enable 'ruff check scripts/fleet/' before commit."
+fi
+
 verify_tool() {
     local label="$1"
     shift
@@ -96,6 +109,7 @@ verify_tool "pkg-config finds gl" pkg-config --exists gl
 verify_tool "pkg-config finds wayland-protocols" pkg-config --exists wayland-protocols
 verify_tool "clang-format available" clang-format --version
 verify_tool "clang-tidy available" clang-tidy --version
+verify_tool "ruff available (fleet Python lint)" ruff --version
 
 echo
 echo "Bootstrap complete."

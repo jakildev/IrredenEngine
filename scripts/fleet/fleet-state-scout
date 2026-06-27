@@ -23,8 +23,8 @@ import hashlib
 import json
 import os
 import re
-import signal
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -51,9 +51,9 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests (#1425).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fleet_branch_match import branch_matches_issue, PARKED_PR_LABELS
+from fleet_blocked_by import is_no_blocker_value, parse_blocked_by
+from fleet_branch_match import PARKED_PR_LABELS, branch_matches_issue
 from fleet_stack_base import unsafe_base_reason
-from fleet_blocked_by import parse_blocked_by, is_no_blocker_value
 
 
 def _fleet_script_argv(cmd):
@@ -431,8 +431,8 @@ def fetch_task_queue(repo_slug):
     for issue in issues:
         raw_labels = issue.get("labels", [])
         labels = {
-            (l["name"] if isinstance(l, dict) else l)
-            for l in raw_labels
+            (label["name"] if isinstance(label, dict) else label)
+            for label in raw_labels
         }
         body = issue.get("body", "") or ""
         title = issue.get("title", "")
@@ -463,9 +463,9 @@ def fetch_task_queue(repo_slug):
         # Claim labels are `fleet:claim-<host>-<agent>`; agent half is what
         # roles see in `fleet-claim list`.
         owner = "free"
-        for l in labels:
-            if l.startswith("fleet:claim-"):
-                suffix = l[len("fleet:claim-"):]
+        for label in labels:
+            if label.startswith("fleet:claim-"):
+                suffix = label[len("fleet:claim-"):]
                 _, _, agent = suffix.partition("-")
                 owner = agent or suffix
                 break
@@ -486,7 +486,7 @@ def fetch_task_queue(repo_slug):
 
         blocked_by = _parse_blocked_by(body) or "(none)"
 
-        area_parts = [_AREA_LABEL_MAP[l] for l in labels if l in _AREA_LABEL_MAP]
+        area_parts = [_AREA_LABEL_MAP[label] for label in labels if label in _AREA_LABEL_MAP]
         area = (
             ", ".join(sorted(area_parts))
             if area_parts
@@ -903,7 +903,7 @@ def _review_skipped(labels):
     labels or any dynamic per-host claim prefix (e.g. fleet:amending-*)."""
     if labels & REVIEW_SKIP_LABELS:
         return True
-    return any(l.startswith(p) for l in labels for p in REVIEW_SKIP_PREFIXES)
+    return any(label.startswith(p) for label in labels for p in REVIEW_SKIP_PREFIXES)
 
 # Smoke-worker label sets. Windows smoke is excluded — cleared by
 # platform-catchup (#1093), not by fleet agents.
@@ -960,7 +960,8 @@ def _blocker_pr_files(repo_key, pr_number):
 
 def _is_gated_self_config(path):
     # Auto-mode self-edit gate (role-worker.md step 8b) — deterministic across
-    # all worker classes. Keep in sync with role-worker.md step 8b and FLEET-FEEDBACK-HANDLING.md § DEFER (gated-self-config).
+    # all worker classes. Keep in sync with role-worker.md step 8b and
+    # FLEET-FEEDBACK-HANDLING.md § DEFER (gated-self-config).
     return (
         fnmatch.fnmatch(path, ".claude/commands/role-*.md")
         or path.startswith(".claude/agents/")
@@ -1593,7 +1594,7 @@ def _smoke_pr_eligible(labels_set):
         return False
     if labels_set & _SMOKE_SKIP_LABELS:
         return False
-    if any(l.startswith("fleet:reviewing-") for l in labels_set):
+    if any(label.startswith("fleet:reviewing-") for label in labels_set):
         return False
     return True
 
@@ -2087,8 +2088,10 @@ def collect_state():
             ("engine", "prs", lambda: fetch_prs("jakildev/IrredenEngine")),
             ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
-            ("engine", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
-            ("engine", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
+            ("engine", "closed_fleet_queued",
+             lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
+            ("engine", "recent_merged_prs",
+             lambda: fetch_recent_merged_prs("jakildev/IrredenEngine")),
             ("engine", "tasks", lambda: fetch_task_queue("jakildev/IrredenEngine")),
             ("engine", "epics", lambda: fetch_epics("jakildev/IrredenEngine")),
         ]

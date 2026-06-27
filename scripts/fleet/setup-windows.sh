@@ -70,6 +70,19 @@ if [[ ! -x "${IR_MSYS2_MINGW_DIR:-/c/msys64/mingw64/bin}/g++.exe" ]] \
     echo "  WARN: MSYS2 mingw64 toolchain not found at /c/msys64/mingw64/bin" >&2
     echo "        install with: pacman -S mingw-w64-x86_64-toolchain" >&2
 fi
+# ruff lints the fleet Python surface (scripts/fleet/) — run before committing
+# fleet-script changes. Soft dependency (needed for the local Python lint, not
+# to run the fleet), so install best-effort: MSYS2 package first, else pipx/pip.
+if command -v ruff >/dev/null 2>&1; then
+    echo "  ok: ruff ($(command -v ruff))"
+elif pacman -S --needed --noconfirm mingw-w64-x86_64-ruff >/dev/null 2>&1; then
+    echo "  ok: installed ruff via pacman"
+elif command -v pipx >/dev/null 2>&1 && pipx install ruff >/dev/null 2>&1; then
+    echo "  ok: installed ruff via pipx"
+else
+    echo "  WARN: ruff not installed — 'ruff check scripts/fleet/' (the fleet" >&2
+    echo "        Python lint) won't run locally. Try: pacman -S mingw-w64-x86_64-ruff" >&2
+fi
 case "$(uname -s)" in
     MINGW*|MSYS*) : ;;
     *) echo "  ERROR: not a Windows MSYS2/Git-Bash shell (uname=$(uname -s))." >&2; exit 1 ;;

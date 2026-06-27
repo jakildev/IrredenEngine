@@ -1,0 +1,60 @@
+# Ruff lint config for the fleet Python surface (scripts/fleet/).
+#
+# The fleet automation is a large, growing body of Python that the C++-only
+# quality surface (clang-format + the simplify-* subagents) never covered, so
+# PEP8 / import-order nits slipped through to review. Ruff is the Python
+# analogue: one fast single-binary pass over scripts/fleet/, gated in CI
+# (.github/workflows/quality.yml) and run author-side before commit.
+#
+# Canonical invocation: `ruff check scripts/fleet/` (this file pins the rules
+# and the file set; the path argument pins the v1 scope). v1 scope is
+# scripts/fleet/ only; extending to the rest of scripts/ (render / perf / gui
+# harnesses) is a tracked follow-up.
+
+# 100, not ruff's default 88: the existing fleet Python was written to a ~100-col
+# soft limit (96 of 106 pre-existing E501s were 89–99 chars), and PEP8 itself
+# blesses extending to 99. Enforcing 88 would force ~106 high-risk hand-wraps in
+# critical infra (fleet-state-scout, fleet-claim-adjacent logic) for near-zero
+# value; 100 matches the code and keeps the first-fix diff reviewable.
+target-version = "py310"
+line-length = 100
+
+# Many fleet scripts are Python executables with no .py extension. ruff's
+# directory scan only matches *.py / *.pyi by default, and a bare basename in
+# extend-include is root-anchored (won't match a nested file), so each Python
+# executable is listed by its repo-relative path. They are enumerated
+# explicitly — NOT via a `fleet-*` glob — because the largest fleet scripts
+# (fleet-claim, fleet-dispatcher, fleet-up, fleet-babysit, fleet-rebase) are
+# bash, and feeding bash to ruff yields thousands of false positives. Add a new
+# Python executable here when one is introduced.
+extend-include = [
+    "scripts/fleet/fleet-claude-stream",
+    "scripts/fleet/fleet-epic-status",
+    "scripts/fleet/fleet-feedback",
+    "scripts/fleet/fleet-issue",
+    "scripts/fleet/fleet-pr",
+    "scripts/fleet/fleet-reconcile-amendments",
+    "scripts/fleet/fleet-state-scout",
+    "scripts/fleet/fleet-validate-roles",
+    "scripts/fleet/fleet-validate-stack",
+    "scripts/fleet/review-fleet-feedback",
+]
+
+extend-exclude = [
+    "scripts/fleet/__pycache__",
+    "scripts/fleet/completions",
+    "scripts/fleet/tests/__pycache__",
+]
+
+[lint]
+# E/W  pycodestyle   — PEP8 errors + warnings (spacing, blank lines, E402)
+# F    pyflakes      — undefined names, unused imports, redefinitions
+# I    isort         — import ordering (the nit #2047 calls out)
+# S101 flake8-bandit — bare `assert` as a runtime guard (retroactively covers
+#                      the #1868 class; ignored in tests, where assert is the
+#                      test primitive)
+select = ["E", "W", "F", "I", "S101"]
+
+[lint.per-file-ignores]
+# pytest-style test modules use `assert` as their assertion primitive.
+"scripts/fleet/tests/**" = ["S101"]

@@ -12,7 +12,6 @@ no .py extension, mirroring test_enrich_stackable_blocker_prs.py.
 """
 import importlib.machinery
 import importlib.util
-import json
 import unittest
 from pathlib import Path
 
@@ -188,7 +187,8 @@ class IngestProjectionFiresOnNewApprovedIssue(unittest.TestCase):
         # only the pending ones should appear in the slice.
         issues = [
             {"number": 9003, "title": "Pending", "labels": ["human:approved"]},
-            {"number": 9004, "title": "Shipped", "labels": ["human:approved", "fleet:scope-shipped"]},
+            {"number": 9004, "title": "Shipped",
+             "labels": ["human:approved", "fleet:scope-shipped"]},
         ]
         out = slice_queue_manager_ingest(_state(engine_human_approved=issues))
         nums = [i["number"] for i in out["pending_issues"]]
