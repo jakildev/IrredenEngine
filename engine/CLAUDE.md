@@ -17,6 +17,24 @@ Core engine static libraries. Everything here is shared by every creation.
   modules (`common/`, `math/`, `profile/`) do not depend on high-level
   ones (`render/`, `world/`).
 
+## CLI args go through `IRArgs`, never a hand-rolled `strcmp` loop
+
+`engine/include/irreden/ir_args.hpp` is the declarative argument framework.
+A launch target constructs an `IRArgs::Parser` (which pre-registers the
+engine-common args — `--auto-screenshot`, `--config-preset` — plus a free
+`--help` / `-h`), declares its own args (`flag` / `integer` / `number` /
+`string` / `optionalInt`), then calls `parse(argc, argv)` at the **top of
+`main`, before any window / GL / Metal init** so `--help` is instant and
+headless-safe. `--help` prints the auto-generated usage and `exit(0)`; an
+unknown arg prints an error + usage and `exit(2)`. Read the common flags via
+`autoScreenshotWarmupFrames()` / `configPreset()`. `creations/demos/fog_demo/
+main.cpp` is the reference adoption.
+
+Do **not** add a new `for (i…) std::strcmp(argv[i], "--foo")` parse loop to a
+target. The legacy scattered helpers (`IRVideo::parseAutoScreenshotArgv`,
+`IREngine::parseConfigPresetArg`) and the remaining demos' hand-rolled loops
+are being migrated onto `IRArgs` and retired (#2044 follow-ons).
+
 ## `SystemName` enum is authoritative
 
 Every prefab system that uses the `System<NAME>::create()` template pattern

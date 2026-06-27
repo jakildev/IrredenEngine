@@ -33,6 +33,7 @@
 // pre-removal shape_debug setup; the rest of the skeleton follows the smaller
 // day_cycle demo.
 
+#include <irreden/ir_args.hpp>
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -80,7 +81,6 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <list>
-#include <string_view>
 
 using namespace IRComponents;
 using IRMath::Color;
@@ -138,12 +138,17 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-    for (int i = 1; i < argc; ++i) {
-        if (std::string_view(argv[i]) == "--moving-observer") {
-            g_movingObserver = true;
-        }
-    }
+    IRArgs::Parser args(
+        "fog_demo — fog-of-war render-pass demo (FOG_TO_TRIXEL) + cross-host smoke coverage."
+    );
+    args.flag(
+        "--moving-observer",
+        "Per-frame analytic vision circle orbiting the origin (smooth reveal) "
+        "instead of the static grid reveal"
+    );
+    args.parse(argc, argv);
+    g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
+    g_movingObserver = args.getFlag("--moving-observer");
 
     IR_LOG_INFO("Starting creation: fog_demo");
     IREngine::init(argv[0]);
