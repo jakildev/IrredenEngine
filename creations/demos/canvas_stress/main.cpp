@@ -103,6 +103,13 @@ struct CanvasStressSettings {
     int mainGridSize_ = 5;
     int detachedCount_ = 5;
     float initialZoom_ = 1.0f;
+    // Base voxel-render subdivision factor (m_vrs). 0 = leave the engine default
+    // (1) untouched; > 0 forces IRRender::setVoxelRenderSubdivisions at init. The
+    // detached small/low-zoom gap class (#2043) only reproduces at baseSub > 1
+    // (at baseSub == 1 effSub floors at 1 below zoom 1, so the detached canvas
+    // already rasters at sub 1 — nothing to coarsen and no gaps). Set --subdivisions 8
+    // to reproduce the bug + verify the fix on the orbit-ring re-voxelize shapes.
+    int subdivisions_ = 0;
     float cameraYaw_ = 0.0f;
     bool autoRotate_ = true;
     bool fullRotate_ = false;
@@ -197,6 +204,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupFloor = 1u << 5,
     kGroupCompare = 1u << 6,
     kGroupInterpenetrate = 1u << 7,
+    kGroupSmallZoom = 1u << 8,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -354,6 +362,14 @@ bool interpenetrateGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupInterpenetrate) != 0u;
 }
 
+// #2043 small/low-zoom repro is opt-in only (like interpenetrate) — it must NOT
+// spawn in the default scene, or it would change the manifest / render-verify
+// references. Request explicitly with `--only smallzoom` (add `,floor` for the
+// depth-probe-assert variant).
+bool smallZoomGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupSmallZoom) != 0u;
+}
+
 std::uint32_t parseSpawnGroups(const char *arg) {
     struct GroupName {
         const char *name_;
@@ -368,6 +384,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"floor", kGroupFloor},
         {"compare", kGroupCompare},
         {"interpenetrate", kGroupInterpenetrate},
+        {"smallzoom", kGroupSmallZoom},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -743,6 +760,56 @@ void spawnPerTrixelDetachedUnit(int index, vec3 worldPos, Color color, std::uint
     );
 }
 
+// #2043 small/low-zoom repro (`--only smallzoom`). The orbit + canary detached
+// canvases are sized TIGHT to their pool's iso footprint at base resolution
+// (#1570 D2), so subdivisionCap pins cubeSub == 1 and they never exercise the
+// #2043 gap/oversize class. The real bug needs a canvas sized GENEROUSLY
+// relative to its pool, so the footprint cap leaves room for cubeSub > 1 — then
+// at low zoom the de-tile gather minifies and the NEAREST iso-brick parity
+// reconstruction aliases (see-through gaps) while the cubeSub factor leaks into
+// on-screen size. This spawns a small (3³) world-placed DETACHED_REVOXELIZE cube
+// on a generous 256² canvas (footprintCap ≫ 1) next to a GRID cube of the SAME
+// world extent, so the captures show both the gap fix and the size match against
+// GRID. STATIC (no spin) so the before/after is deterministic. World-placed (not
+// screen-locked) and at the screen-center column so the detached-canvas cull
+// keeps it on-screen at camera (0,0).
+void spawnSmallZoomRepro() {
+    constexpr ivec3 kCubeSize{3, 3, 3};
+    // Detached subject: generous canvas (256²) over a snug pool (5³) ⇒ the
+    // footprint cap leaves room for cubeSub up to ~8 at baseSub 8, so the gap
+    // class manifests at low zoom and the zoom-track fix has something to lower.
+    constexpr ivec2 kCanvasSize{256, 256};
+    constexpr ivec3 kPoolSize{5, 5, 5};
+    constexpr vec3 kDetachedPos{0.0f, 0.0f, 0.0f};
+    constexpr vec3 kGridPos{-14.0f, -14.0f, 0.0f};
+    constexpr Color kColor{90, 210, 235, 255};
+
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        "smallzoom_canvas",
+        kCanvasSize,
+        kPoolSize
+    );
+    canvas.screenLocked_ = g_settings.screenLockDetached_;
+    IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{kCubeSize, kColor, true, canvas.canvasEntity_}
+    );
+    IREntity::createEntity(
+        C_LocalTransform{kDetachedPos},
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+        canvas
+    );
+
+    // GRID twin of the same world extent — the size reference. GRID re-rasterizes
+    // into the shared world pool, so its apparent size is always worldExtent ×
+    // zoom (no cubeSub factor); the detached subject must match it after the fix.
+    IREntity::createEntity(
+        C_LocalTransform{kGridPos},
+        C_RotationMode{RotationMode::GRID},
+        C_VoxelSetNew{kCubeSize, kColor, true}
+    );
+}
+
 // #1960 part F — per-trixel priority interpenetration demo (`--only interpenetrate`).
 // Two STATIC world-placed DETACHED units (separate canvases) at the SAME screen
 // position but different world depth: the FAR unit sits +6 along each axis, i.e.
@@ -806,6 +873,17 @@ void parseArgs(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
             g_settings.cameraYaw_ = static_cast<float>(std::atof(argv[i + 1]));
+            ++i;
+        } else if (std::strcmp(argv[i], "--subdivisions") == 0 && i + 1 < argc) {
+            // Debug toggle (#2043 repro): force the base voxel-render subdivision
+            // factor so the detached small/low-zoom gap reproduces (needs > 1).
+            g_settings.subdivisions_ = std::atoi(argv[i + 1]);
+            ++i;
+        } else if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc) {
+            // Debug toggle (#2043 repro): override the interactive initial zoom.
+            // Auto-screenshot shots still drive their own per-shot zoom (the
+            // orbit shot table already includes orbit_overview @ 0.32).
+            g_settings.initialZoom_ = static_cast<float>(std::atof(argv[i + 1]));
             ++i;
         } else if (std::strcmp(argv[i], "--auto-rotate") == 0) {
             g_settings.autoRotate_ = true;
@@ -907,6 +985,12 @@ int main(int argc, char **argv) {
     IRRender::setCameraPosition2DIso(vec2(0.0f, 0.0f));
     IRRender::setCameraZoom(g_settings.initialZoom_);
     IRPrefab::Camera::setYaw(g_settings.cameraYaw_);
+
+    // #2043 repro: force base subdivisions when requested (--subdivisions N). 0
+    // leaves the engine default (1) so a flagless run stays byte-identical.
+    if (g_settings.subdivisions_ > 0) {
+        IRRender::setVoxelRenderSubdivisions(g_settings.subdivisions_);
+    }
 
     // T-1 (#1767): force the requested debug overlay for the whole run.
     // NONE (the default) is a no-op so a flagless run stays byte-identical.
@@ -1142,6 +1226,14 @@ void initSystems() {
             //     so a coverage metric can count interior background holes inside
             //     the solid silhouette (the #1619-class missing-face defect).
             g_allShots.push_back({2.4f, vec2(0.0f), 0.0f, "revox_coverage"});
+            // #2043 small/low-zoom repro framing (OPT-IN via `--only smallzoom`).
+            // smallzoom_low (zoom 0.5) is the bug pose: the generous-canvas
+            // detached cube renders with gaps + oversized on master and solid +
+            // GRID-matched after the fix. smallzoom_high (zoom 2.0) is the
+            // byte-identity guard (nothing at or above zoom 1 may move). Both at
+            // camera (0,0) so the detached-canvas cull keeps the subject on-screen.
+            g_allShots.push_back({0.5f, vec2(0.0f), 0.0f, "smallzoom_low"});
+            g_allShots.push_back({2.0f, vec2(0.0f), 0.0f, "smallzoom_high"});
             // Unified-rotation comparison region (#1374), OPT-IN via
             // `--only compare`. A tight zoom frames the labeled row (GRID-attached
             // spin / world-Z-yaw GRID / DETACHED SO(3)) at camera (0,0). Two
@@ -1229,6 +1321,11 @@ void initEntities() {
     // tier headlessly.
     if (interpenetrateGroupRequested()) {
         spawnPerTrixelInterpenetration();
+    }
+
+    // #2043 small/low-zoom gap + size repro (opt-in via `--only smallzoom`).
+    if (smallZoomGroupRequested()) {
+        spawnSmallZoomRepro();
     }
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises

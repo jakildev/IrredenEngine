@@ -735,6 +735,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // pass sizes the indirect Z count from the capped value too (no skip guard
         // needed). Gated on re-voxelize so the main world canvas and the
         // forward-scatter detached canvases stay byte-identical.
+        //
+        // The pool size feeding subdivisionCap was uninitialized before #2043 —
+        // see C_VoxelPool::m_voxelPoolSize3D — which non-deterministically pinned
+        // this cap (the #2043 root cause); it is now correct, so a generously-sized
+        // canvas (footprint cap ≫ effSub) admits cubeSub > 1, which surfaces the
+        // #2043 detached-canvas oversize. The cubeSub→apparent-size decoupling that
+        // fixes that is a composite-side change (ENTITY_CANVAS_TO_FRAMEBUFFER) —
+        // design-escalated on the #2043 PR; it is NOT a raster-side zoom-track here
+        // (camera zoom is clamped to ≥ 1 by kTrixelCanvasZoomMin, so a zoom-track
+        // at this site can never lower the density).
         if (canvasLocalRotation.isDetached() && canvasLocalRotation.reVoxelize_) {
             const int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
                 triangleCanvasTextures.size_,
