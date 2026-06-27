@@ -161,5 +161,64 @@ class SliceTagsRepo(unittest.TestCase):
         self.assertEqual(out["flagged_prs"], [])
 
 
+def _issue(num, *, labels=None):
+    return {"number": num, "title": f"#{num}: task", "labels": sorted(labels or [])}
+
+
+def _state_pr_plan(prs=None, plan_review=None):
+    return {"repos": {"engine": {"prs": prs or [],
+                                 "plan_review": plan_review or []}}}
+
+
+class PlanReviewWakesPane(unittest.TestCase):
+    """#1932: a posted ## Plan (fleet:plan-review issue) must wake the reviewer.
+
+    Before this, project_opus_reviewer keyed only on PRs, so nothing triggered
+    the pane on issue state — plans piled up in fleet:plan-review until some
+    unrelated PR coincidentally woke the reviewer.
+    """
+
+    def test_plan_review_issue_flips_hash(self):
+        before = _state_pr_plan(plan_review=[])
+        after = _state_pr_plan(plan_review=[_issue(50, labels=["fleet:plan-review"])])
+        self.assertNotEqual(_hash(before), _hash(after),
+                            "a plan-review issue must wake the opus pane")
+
+    def test_plan_review_issue_in_projection(self):
+        items = project_opus_reviewer(_state_pr_plan(
+            plan_review=[_issue(50, labels=["fleet:plan-review"])]))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["kind"], "plan_review")
+        self.assertEqual(items[0]["issue"], 50)
+
+    def test_human_held_plan_review_skipped(self):
+        for held in ("human:owned", "human:wip", "human:no-plan"):
+            empty = _state_pr_plan(plan_review=[])
+            held_state = _state_pr_plan(
+                plan_review=[_issue(50, labels=["fleet:plan-review", held])])
+            self.assertEqual(
+                _hash(empty), _hash(held_state),
+                f"{held} plan-review issue must be invisible to the pane")
+
+    def test_cleared_plan_review_drops(self):
+        # The reviewer verdict removed fleet:plan-review -> the issue leaves the
+        # set (terminal), so the pane isn't re-woken for it.
+        self.assertEqual(project_opus_reviewer(_state_pr_plan(plan_review=[])), [])
+
+    def test_slice_includes_plan_review(self):
+        out = slice_opus_reviewer(_state_pr_plan(
+            plan_review=[_issue(50, labels=["fleet:plan-review"])]))
+        self.assertEqual(len(out["plan_review"]), 1)
+        self.assertEqual(out["plan_review"][0]["number"], 50)
+        self.assertEqual(out["plan_review"][0]["repo"], "engine")
+
+    def test_pr_and_plan_review_coexist(self):
+        items = project_opus_reviewer(_state_pr_plan(
+            prs=[_pr(101, labels=["fleet:needs-opus-recheck"])],
+            plan_review=[_issue(50, labels=["fleet:plan-review"])]))
+        kinds = sorted(it.get("kind", "pr") for it in items)
+        self.assertEqual(kinds, ["plan_review", "pr"])
+
+
 if __name__ == "__main__":
     unittest.main()

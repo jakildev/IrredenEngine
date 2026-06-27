@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# fleet-plan-lint — deterministic structural lint for an issue's `## Plan`
+# comment. The CHEAP first half of the plan-review (PLANNING-PROTOCOL.md step 4):
+# it mechanically catches the structural failures a plan-review verdict would
+# otherwise spend an Opus invocation on, so the reviewer reserves the LLM pass
+# for the one thing a lint can't judge — design SOUNDNESS.
+#
+# Read-only (one `gh issue view`, no mutation). The reviewer interprets the exit
+# code: hard fail (1) => the plan is not sound; bounce to fleet:needs-plan via
+# the role-doc "Not sound" path (delete the stale `## Plan` comment first, then
+# swap the label). Clean/warnings-only (0) => proceed to the Opus design-soundness
+# judgment. Humans can run it directly: `fleet-plan-lint <N> [--repo game]`.
+#
+# It is CONSERVATIVE by design — it only HARD-fails on unambiguous structural
+# problems (no `## Plan` comment, a deferred-approach phrase, or a plan missing
+# most of its core sections), because a false bounce wastes a whole re-plan
+# round. Everything judgment-adjacent is a warning the Opus pass weighs.
+#
+# Checks (HARD => bounce):
+#   - no `## Plan` comment exists on the issue
+#   - a deferred-approach phrase ("decide during implementation", "option A or B",
+#     "TBD", "likely suspects", ...) — the "one approach, picked" violation
+#     (relaxed to a warning when the plan is an explicit investigation spike)
+#   - >= 2 of the core sections (Scope / Approach / Acceptance) absent
+# Checks (WARN => Opus weighs, no auto-bounce):
+#   - exactly one core section absent (format variance, not necessarily broken)
+#   - no `### Affected files` / `### Gotchas` section
+#   - no verified-current-state / repro signal
+#   - no `**Model:**` tag
+#
+# Source of truth: scripts/fleet/fleet-plan-lint in the engine repo.
+set -euo pipefail
+exec python3 - "$@" <<'PY'
+import json
+import re
+import subprocess
+import sys
+
+REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+
+
+def usage(code):
+    sys.stderr.write("usage: fleet-plan-lint <issue-number> [--repo engine|game]\n")
+    sys.exit(code)
+
+
+args = sys.argv[1:]
+repo_ns = "engine"
+issue = None
+i = 0
+while i < len(args):
+    a = args[i]
+    if a in ("-h", "--help"):
+        print(
+            "fleet-plan-lint <issue-number> [--repo engine|game]\n"
+            "Deterministic structural lint of the issue's ## Plan comment.\n"
+            "  exit 0 = structure sound (warnings allowed) -> proceed to judgment\n"
+            "  exit 1 = hard structural fail -> bounce to fleet:needs-plan\n"
+            "  exit 2 = usage / fetch error"
+        )
+        sys.exit(0)
+    if a == "--repo" and i + 1 < len(args):
+        repo_ns = args[i + 1]
+        i += 2
+        continue
+    if issue is None and a.isdigit():
+        issue = a
+        i += 1
+        continue
+    usage(2)
+
+if issue is None or repo_ns not in REPO_SLUGS:
+    usage(2)
+repo = REPO_SLUGS[repo_ns]
+
+try:
+    out = subprocess.run(
+        ["gh", "issue", "view", issue, "--repo", repo, "--json", "comments,title"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+except subprocess.CalledProcessError as e:
+    sys.stderr.write(f"fleet-plan-lint: gh issue view {issue} failed: {e.stderr.strip()}\n")
+    sys.exit(2)
+
+data = json.loads(out)
+title = data.get("title", "")
+# Most-recent `## Plan` comment (a re-plan posts a fresh one).
+plans = [c.get("body", "") for c in data.get("comments", [])
+         if c.get("body", "").lstrip().startswith("## Plan")]
+
+hard, warn = [], []
+
+if not plans:
+    print(f"FAIL #{issue}: no `## Plan` comment found")
+    sys.exit(1)
+
+plan = plans[-1]
+low = plan.lower()
+is_spike = "investigation spike" in low or "investigation spike" in title.lower()
+
+# Core + soft sections (heading at any depth, case-insensitive).
+missing_core = [s for s in ("Scope", "Approach", "Acceptance")
+                if not re.search(r"(?im)^\s*#{1,4}\s+" + s + r"\b", plan)]
+for s in ("Affected files", "Gotchas"):
+    if not re.search(r"(?im)^\s*#{1,4}\s+" + re.escape(s) + r"\b", plan):
+        warn.append(f"no '### {s}' section")
+if len(missing_core) >= 2:
+    hard.append("missing core sections: " + ", ".join(missing_core))
+elif missing_core:
+    warn.append(f"core section absent (format variance?): {missing_core[0]}")
+
+# Deferred-approach smells — the "one approach, picked" violation.
+DEFER = [
+    "decide during implementation", "decide while implementing",
+    "decide during investigation", "confirm during investigation",
+    "confirm during design", "decide later", "decide in the pr",
+    "figure out during", "option a or b", "to be decided",
+]
+hits = [p for p in DEFER if p in low]
+if re.search(r"(?i)\btbd\b", plan):
+    hits.append("TBD")
+if "likely suspects" in low:
+    hits.append("likely suspects")
+if hits:
+    msg = "deferred-approach phrase(s): " + ", ".join(sorted(set(hits)))
+    if is_spike:
+        warn.append(msg + " (allowed — investigation spike)")
+    else:
+        hard.append(msg)
+
+# Soft signals (Opus weighs; never an auto-bounce on their own).
+if not any(k in low for k in (
+        "verified current state", "current state", "repro",
+        "source-checked", "source-verified")):
+    warn.append("no verified-current-state / repro signal")
+if "**model:**" not in low and not re.search(r"(?im)^\s*-?\s*\*\*model", plan):
+    warn.append("no '**Model:**' tag")
+
+for w in warn:
+    print(f"warn #{issue}: {w}")
+if hard:
+    for h in hard:
+        print(f"FAIL #{issue}: {h}")
+    print(f"FAIL #{issue}: {len(hard)} hard issue(s) — not sound; bounce to fleet:needs-plan")
+    sys.exit(1)
+print(f"PASS #{issue}: structure sound ({len(warn)} warning(s)) — proceed to design judgment")
+sys.exit(0)
+PY

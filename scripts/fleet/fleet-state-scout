@@ -265,6 +265,16 @@ def fetch_needs_plan(repo):
     return fetch_issues_by_label(repo, "fleet:needs-plan")
 
 
+def fetch_plan_review(repo):
+    # Issues carrying a posted `## Plan` comment awaiting a reviewer verdict
+    # (#1932). The opus-reviewer's plan-review pass clears these (fleet-plan-lint
+    # then design judgment: sound -> remove the label / queue; not-sound -> Option
+    # A bounce to fleet:needs-plan). Projecting + slicing these is what WAKES the
+    # reviewer to do it — without it nothing triggers on issue (vs PR) state, so
+    # plans piled up in fleet:plan-review until a PR happened to wake the reviewer.
+    return fetch_issues_by_label(repo, "fleet:plan-review")
+
+
 def fetch_epics(repo):
     # Open fleet:epic umbrellas for the epic-steward role (#1664). The body's
     # `## Children` checklist is the steward's membership source of truth —
@@ -1420,6 +1430,18 @@ def project_opus_reviewer(state):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "labels": sorted(labels & OPUS_REVIEWER_FLAG_LABELS)})
+        # Plan-review issues (#1932): a posted `## Plan` awaiting a verdict.
+        # Nothing else wakes the reviewer on issue (vs PR) state, so project them
+        # here. Skip human-held ones. The reviewer's verdict removes
+        # fleet:plan-review, so the issue leaves this set — a terminal change
+        # (one trailing empty wake, exactly like a PR verdict label-swap), NOT a
+        # self-toggled label, so it can't self-trigger a loop.
+        for issue in repo_state.get("plan_review", []):
+            labels = set(issue.get("labels", []))
+            if labels & {"human:owned", "human:wip", "human:no-plan"}:
+                continue
+            items.append({"repo": repo, "kind": "plan_review",
+                          "issue": issue["number"]})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
@@ -1854,7 +1876,7 @@ def slice_sonnet_reviewer(state):
 
 
 def slice_opus_reviewer(state):
-    out = {"flagged_prs": []}
+    out = {"flagged_prs": [], "plan_review": []}
     for repo_key, repo_state in state["repos"].items():
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
@@ -1863,6 +1885,13 @@ def slice_opus_reviewer(state):
             if not (labels & OPUS_REVIEWER_FLAG_LABELS):
                 continue
             out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
+        # Plan-review issues the reviewer should vet (mirror project_opus_reviewer
+        # so a woken reviewer reads the same set that triggered it). #1932.
+        for issue in repo_state.get("plan_review", []):
+            labels = set(issue.get("labels", []))
+            if labels & {"human:owned", "human:wip", "human:no-plan"}:
+                continue
+            out["plan_review"].append(_slice_issue_with_repo(repo_key, issue))
     return out
 
 
@@ -2112,6 +2141,7 @@ def collect_state():
         fetch_specs += [
             ("engine", "prs", lambda: fetch_prs("jakildev/IrredenEngine")),
             ("engine", "needs_plan", lambda: fetch_needs_plan("jakildev/IrredenEngine")),
+            ("engine", "plan_review", lambda: fetch_plan_review("jakildev/IrredenEngine")),
             ("engine", "human_approved", lambda: fetch_human_approved("jakildev/IrredenEngine")),
             ("engine", "closed_fleet_queued",
              lambda: fetch_closed_fleet_queued("jakildev/IrredenEngine")),
@@ -2124,6 +2154,7 @@ def collect_state():
         fetch_specs += [
             ("game", "prs", lambda: fetch_prs("jakildev/irreden")),
             ("game", "needs_plan", lambda: fetch_needs_plan("jakildev/irreden")),
+            ("game", "plan_review", lambda: fetch_plan_review("jakildev/irreden")),
             ("game", "human_approved", lambda: fetch_human_approved("jakildev/irreden")),
             ("game", "closed_fleet_queued", lambda: fetch_closed_fleet_queued("jakildev/irreden")),
             ("game", "recent_merged_prs", lambda: fetch_recent_merged_prs("jakildev/irreden")),
