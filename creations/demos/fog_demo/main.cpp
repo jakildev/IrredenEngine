@@ -138,10 +138,6 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    // Declarative arg parsing via the engine framework: fog_demo registers its
-    // own --moving-observer flag and inherits the engine-common args
-    // (--auto-screenshot, --config-preset) plus a free --help / -h. Reference
-    // adoption for #2044 — `IRFogDemo --help` lists every arg and exits.
     IRArgs::Parser args(
         "fog_demo — fog-of-war render-pass demo (FOG_TO_TRIXEL) + cross-host smoke coverage."
     );

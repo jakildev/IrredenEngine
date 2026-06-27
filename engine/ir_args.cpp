@@ -51,6 +51,10 @@ Parser::Entry &Parser::add(const char *name, const char *help, Type type, const 
         "IRArgs: argument name must start with '--'"
     );
     IR_ASSERT(find(name) == nullptr, "IRArgs: duplicate argument registered");
+    IR_ASSERT(
+        shortAlias == nullptr || find(shortAlias) == nullptr,
+        "IRArgs: duplicate short alias registered"
+    );
     Entry entry;
     entry.name_ = name;
     entry.shortAlias_ = shortAlias != nullptr ? shortAlias : "";

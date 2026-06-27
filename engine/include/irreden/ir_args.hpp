@@ -4,15 +4,7 @@
 #include <string>
 #include <vector>
 
-// IRArgs — declarative command-line argument framework with a built-in
-// --help / -h for every launch target.
-//
-// Before this, every demo hand-rolled its own `for (i…) std::strcmp(...)`
-// parse loop, no target had a --help, and the two engine helpers
-// (IRVideo::parseAutoScreenshotArgv, IREngine::parseConfigPresetArg) lived
-// scattered apart. A target instead constructs an IRArgs::Parser (which
-// pre-registers the engine-common args + --help), declares its own args, then
-// calls parse():
+// IRArgs — declarative command-line argument framework.
 //
 //     IRArgs::Parser args("my_demo — what it does.");
 //     args.flag("--no-overlay", "Hide the debug overlay");
@@ -20,14 +12,6 @@
 //     args.parse(argc, argv);
 //     if (args.getFlag("--no-overlay")) ...
 //     int n = args.getInt("--grid-size");
-//
-// --help / -h prints the auto-generated usage (all registered args) and exits
-// 0; an unknown argument prints an error + usage and exits 2. parse() must run
-// before any heavy init (window / GL / Metal) so `MyDemo --help` is instant and
-// headless-safe.
-//
-// The header is intentionally light (only <string> / <vector>) because every
-// target includes it; all logic lives in ir_args.cpp.
 namespace IRArgs {
 
 // The engine-common --auto-screenshot warmup default when the flag is given
