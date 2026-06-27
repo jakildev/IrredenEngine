@@ -216,6 +216,24 @@ _INGEST_SKIP_LABELS = frozenset({
                            # as repos.<repo>.review_plan, see _populate_review_plan).
 })
 
+# Labels that PULL an issue back into the ingest set even though it also carries
+# a skip label. human:revise-plan is the human-added "change the posted plan"
+# gate: it lands on an issue that is mid-review (fleet:plan-review /
+# human:review-plan, both skip labels), so without this override adding it would
+# neither flip the membership hash (no ingest fire) nor surface the issue in
+# pending_issues (no reconcile). Letting it override both means the human only
+# ever ADDS one label — fleet-queue-ingest resets it to fleet:needs-plan.
+_INGEST_OVERRIDE_LABELS = frozenset({"human:revise-plan"})
+
+
+def _ingest_skipped(labels):
+    """True when an issue should stay OUT of the ingest set. A skip label keeps
+    it out — unless an override label (human:revise-plan) pulls it back in."""
+    lbls = set(labels)
+    if lbls & _INGEST_OVERRIDE_LABELS:
+        return False
+    return bool(lbls & _INGEST_SKIP_LABELS)
+
 
 def fetch_issues_by_label(repo, filter_label, exclude_labels=None, with_body=False):
     # with_body pulls the issue body too — the queue-manager-ingest projection
@@ -1559,7 +1577,7 @@ def project_queue_manager_ingest(state):
     items = []
     for repo, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
-            if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+            if _ingest_skipped(issue.get("labels", [])):
                 continue
             items.append({"repo": repo, "issue": issue["number"]})
         for num in _ingest_unblock_candidates(repo_state):
@@ -1857,7 +1875,7 @@ def slice_queue_manager_ingest(state):
     out = {"pending_issues": [], "unblock_issues": []}
     for repo_key, repo_state in state["repos"].items():
         for issue in repo_state.get("human_approved", []):
-            if set(issue.get("labels", [])) & _INGEST_SKIP_LABELS:
+            if _ingest_skipped(issue.get("labels", [])):
                 continue
             out["pending_issues"].append(_slice_issue_with_repo(repo_key, issue))
         for num in _ingest_unblock_candidates(repo_state):

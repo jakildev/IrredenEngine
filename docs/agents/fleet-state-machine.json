@@ -303,6 +303,12 @@
       "description": "High-stakes worker-planned issue: planner adds it alongside fleet:plan-review so the issue holds for the HUMAN's approach sign-off before implementation (distinct from fleet:plan-review's agent vetting). Both are queue-blocks; keeps human:approved and survives re-ingest like fleet:needs-human; only the human removes it. PLANNING-PROTOCOL.md step 3"
     },
     {
+      "name": "human:revise-plan",
+      "scope": "issue",
+      "color": "5319e7",
+      "description": "Human-added re-plan request on a plan in review: the human adds ONLY this label (plus a comment) and fleet-queue-ingest reconciles — adds fleet:needs-plan, strips stale stage labels (fleet:plan-review / model / fleet:blocked), consumes human:revise-plan, keeps human:approved + human:review-plan. Scout pulls it back into the ingest set via _ingest_skipped. Pre-queue stages only. PLANNING-PROTOCOL.md"
+    },
+    {
       "name": "human:wip",
       "scope": "pr",
       "color": "5319e7",

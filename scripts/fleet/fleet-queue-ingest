@@ -297,6 +297,7 @@ def _has_plan_comment(comments):
     return False
 
 stamped = 0
+revise_reconciled = 0
 skipped_already = 0
 blocked_marked = 0
 plan_bounced = 0
@@ -327,6 +328,40 @@ for issue in pending:
     title = view.get('title', '') or ''
     body = view.get('body', '') or ''
     labels = {(l['name'] if isinstance(l, dict) else l) for l in view.get('labels', [])}
+
+    # human:revise-plan: the human-added "I want the posted plan changed" gate.
+    # Rather than make the human swap labels by hand, ingest reconciles the
+    # issue back to the planning state and consumes the marker — the human only
+    # ever *adds* one label, the fleet manages the rest. Sits before the
+    # already-labeled skip below precisely because the issue it lands on is
+    # usually in fleet:plan-review / human:review-plan (which that block skips).
+    # We add fleet:needs-plan so an opus+ worker re-plans (reading the human's
+    # comment per PLANNING-PROTOCOL.md step 1), strip the now-stale stage labels,
+    # and remove human:revise-plan. We KEEP human:approved (original triage) and
+    # human:review-plan (the human's approach gate persists across the re-plan;
+    # the re-planner re-asserts it on high-stakes work anyway). Scope is the
+    # pre-queue stages (the pending set); an already-queued plan uses the
+    # race-guarded stale-replan flow (PLANNING-PROTOCOL.md §"Re-planning").
+    if 'human:revise-plan' in labels:
+        remove = ['human:revise-plan']
+        for lbl in ('fleet:plan-review', 'fleet:blocked',
+                    'fleet:fable', 'fleet:opus', 'fleet:sonnet'):
+            if lbl in labels:
+                remove.append(lbl)
+        cmd = ['gh', 'issue', 'edit', str(n), '--repo', repo,
+               '--add-label', 'fleet:needs-plan']
+        for lbl in remove:
+            cmd.extend(['--remove-label', lbl])
+        er = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if er.returncode != 0:
+            failed += 1
+            print(f'WARN issue {repo}#{n}: human:revise-plan reconcile failed: '
+                  f'{er.stderr.strip()}', file=sys.stderr)
+            continue
+        revise_reconciled += 1
+        print(f'INFO issue {repo}#{n}: human:revise-plan → reset to fleet:needs-plan '
+              f'for re-plan (kept human:approved + any human:review-plan)', file=sys.stderr)
+        continue
 
     if ('fleet:queued' in labels or 'fleet:scope-shipped' in labels
             or 'fleet:needs-human' in labels or 'fleet:needs-plan' in labels
@@ -498,13 +533,13 @@ for issue in data.get('unblock_issues', []):
         continue
     unblocked += 1
 
-print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced}')
+print(f'{stamped},{skipped_already},{failed},{blocked_marked},{unblocked},{unblock_still},{plan_bounced},{revise_reconciled}')
 STAMP_PY
 )
 
 if [[ -n "$stamping_out" ]]; then
-    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count <<< "$stamping_out"
-    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
+    IFS=',' read -r stamped_count skipped_count failed_count blocked_count unblocked_count unblock_still_count plan_bounced_count revise_reconciled_count <<< "$stamping_out"
+    log "stamped ${stamped_count:-0} issue(s) (${blocked_count:-0} marked fleet:blocked); skipped ${skipped_count:-0} already-labeled; bounced ${plan_bounced_count:-0} to fleet:needs-plan; re-plan requested ${revise_reconciled_count:-0} (human:revise-plan); unblocked ${unblocked_count:-0} (${unblock_still_count:-0} still blocked); ${failed_count:-0} failed"
 fi
 
 log "ingestion iteration complete"
