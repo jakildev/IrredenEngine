@@ -176,6 +176,17 @@ fix in Step i.)
   file is the long-form version. If the two diverge, the comment wins
   for this PR.
 
+- **Re-verify carried-over measurements before trusting or pushing them.**
+  When resuming an orphaned / `fleet:design-unblocked` PR, treat any
+  *uncommitted or unpushed* staged work left by a prior iteration — perf
+  numbers, benchmarks, measurements written into docs — as **unverified**.
+  Build/test gates catch carried-over *code*, but docs and measurements
+  aren't exercised by the build, so a prior iteration's wrong-but-confident
+  numbers (a stale baseline, a cold-start-contaminated run) ship unchecked
+  under your name. Independently re-run the measure / render-verify on your
+  own host and reconcile before pushing. The authoritative handoff is the
+  *pushed* PR head + the plan/comments, never the local working tree.
+
 ## AMEND vs ESCALATE (human-label paths only)
 
 For `human:needs-fix` / `human:blocker` only, choose a disposition.

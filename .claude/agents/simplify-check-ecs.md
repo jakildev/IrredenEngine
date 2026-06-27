@@ -18,6 +18,8 @@ For each `.hpp`/`.cpp` file in the diff, scan for:
 
    - **Allowed exception:** dynamically-determined foreign entities (contact pair `.otherEntity_`, parent lookups via stored `EntityId`). Note this case as "foreign-entity lookup" and recommend the batched-vector pattern from `cpp-ecs.md` §"Foreign-entity lookups".
 
+   - **Allowed exception:** per-canvas `getComponentOptional` in a render tick that must iterate *all* canvases while only *some* carry an optional per-canvas component (`C_CanvasFogOfWar`, `C_CanvasSunShadow`, `C_CanvasLightVolume`). This is O(canvases), not the O(voxels) footgun, and the template-param fix would wrongly drop the canvases without the component. Don't flag it. See the carve-out in `cpp-ecs-smells.md` §"Per-entity tick violations".
+
 2. **Allocations in hot tick paths:** `new`, `std::vector::push_back` on a hot vector, `std::string` concatenation, `std::map::operator[]` insertion, `std::make_unique` inside a tick. Reserve at `beginTick` or in `SystemParams` instead.
 
 3. **Mid-iteration structural changes:** `createEntity`, `setComponent`, `removeComponent`, `removeEntity` called inside a per-entity tick. Use the deferred variants (`deferredCreate`, etc.) and let `flushStructuralChanges` run.
@@ -31,6 +33,8 @@ For each `.hpp`/`.cpp` file in the diff, scan for:
 7. **`endTick` indexing `ids[0]` or similar without `ids.size() == 0` guard.** Both fire even when the archetype is empty.
 
 8. **Render system reading `C_Position3D` for visual placement** instead of `C_PositionGlobal3D` (`APPLY_POSITION_OFFSET` has already folded modifier-driven offsets into globalPos). Flag and confirm intent.
+
+9. **Raw-span voxel carve missing `recomputeFaceOccupancy`.** A function body that mutates a voxel set through the raw `voxels_` span — a loop calling `voxels_[i].deactivate()` (or writing `.color_.alpha_ = 0`) — followed by `syncActiveMask()` but with **no** `IRPrefab::Voxel::recomputeFaceOccupancy(...)` call in the same function. Flag it: the carve's newly-exposed surface faces stay occluded and the set renders black under the lit/rotated path while the active-mask half looks done. Fix: add `recomputeFaceOccupancy(vs.voxels_, size)` alongside the `syncActiveMask()`. (Set-level helpers — `reshape`/`fillPlane`/`activate/deactivateAll` — already do both; this only fires on raw-span bypass. See `engine/prefabs/irreden/voxel/CLAUDE.md`.) `needs-fix`.
 
 ## Output format
 

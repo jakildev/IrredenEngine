@@ -274,6 +274,19 @@ at a texel inside a world-placed detached solid (canonical:
 so a future pass that disables the detached-canvas composite depth-write
 fails the run headlessly on either backend.
 
+**Default-off features need a positive enabled-path test, not just
+byte-identity at default.** Render features routinely default OFF (priority
+0, a mode flag off, an opt-in branch) precisely to preserve byte-identity —
+but byte-identity at default only proves the OFF path is a no-op, never that
+the feature works. Author a test that exercises the **ENABLED** path (a
+`--depth-probe`/`-assert` reading, a demo shot with the flag ON) and confirms
+the effect end-to-end (CPU author → GPU upload → shader output). A
+CPU-authored field uploaded only on a *specific* path (e.g. the per-frame
+binding-6 voxel upload, not a detached-revoxelize bake) can silently never
+reach the shader, and a "compiles + byte-identical at default" merge ships a
+feature that doesn't function in its actual use case (#1989 per-trixel
+priority caught exactly this on resume).
+
 ### Verifying temporal stability (per-frame jitter)
 
 **A single screenshot cannot prove a moving scene is jitter-free.** Pan/rotation
