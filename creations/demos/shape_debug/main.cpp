@@ -1,3 +1,4 @@
+#include <irreden/ir_args.hpp>
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
@@ -12,8 +13,6 @@
 
 #include <array>
 #include <cstdio>
-#include <cstring>
-#include <cstdlib>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -281,6 +280,105 @@ bool g_yawSweep = false;
 std::vector<IRVideo::AutoScreenshotShot> g_yawSweepShots;
 std::vector<std::array<char, 40>> g_yawSweepShotLabels;
 
+// Register shape_debug's custom flags on the engine-owned parser. --help /
+// --auto-screenshot / --config-preset are pre-registered by the Parser ctor;
+// IREngine::init(argc, argv) parses common + these in one pass, so --help lists
+// every flag and exits before any window/GL/Metal init (epic #2057 P3, #2060).
+void registerCliArgs() {
+    IRArgs::Parser &args = IREngine::args();
+    args.optionalInt(
+        "--auto-profile",
+        "Run N frames (default 300) with frame timing, then exit",
+        300
+    );
+    args.flag("--depth-color", "Tint each voxel by local iso-depth (front=red, back=blue)");
+    args.flag("--checkerboard", "Tint alternating voxels darker (flickers; off by default)");
+    args.flag(
+        "--occlusion-cull",
+        "Force the voxel-pool chunk-occlusion HZB pre-pass ON (off by default)"
+    );
+    args.flag("--gpu-voxel-smoke", "Spawn one cube routed through the GPU voxel-position prepass");
+    args.flag("--pivot-focus-demo", "Yaw sweep pinning the pivot on a tall pillar (#1921)");
+    args.flag("--skin-smoke", "Spawn one 2-bone rigged voxel bar skinned via binding-17 (#1605)");
+    args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
+    args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
+    args.number("--zoom", "Initial camera zoom (snapped to nearest power of two)", 0.0f);
+    args.string("--debug-overlay", "Debug overlay mode (e.g. none, depth, normals)", "none");
+    args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
+    args.flag("--pivot-origin", "Force the legacy world-origin Z-yaw pivot (#1352 A/B)");
+    args.flag("--cull-validate", "Frozen-cull free-fly validation sweep (#1438)");
+    args.string(
+        "--load-vxs",
+        "Path to a DENSE-mode .vxs to load and render alongside fixtures",
+        ""
+    );
+    args.optionalInt(
+        "--spin-yaw",
+        "Drive camera Z-yaw (deg/sec live, default 30; shot-count across one rotation when "
+        "combined with --auto-screenshot)",
+        30
+    );
+    args.string(
+        "--spin-shape",
+        "Spawn a single named shape centred at origin instead of the full fixture scene (#1922)",
+        ""
+    );
+    args.flag("--spin-shape-voxel", "Render the --spin-shape via the voxel-pool twin, not the SDF");
+}
+
+// Read the parsed values back into the demo's globals. Runs AFTER
+// IREngine::init(argc, argv) has parsed. A value flag only writes its global
+// when actually provided, preserving each global's pre-parse default.
+void readCliArgs() {
+    const IRArgs::Parser &args = IREngine::args();
+
+    g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
+
+    // --auto-profile: 0 when absent, else the frame count (300 if bare).
+    if (args.wasProvided("--auto-profile")) {
+        g_autoProfileFrames = args.getInt("--auto-profile");
+    }
+    g_depthColor = args.getFlag("--depth-color");
+    g_checkerboard = args.getFlag("--checkerboard");
+    g_occlusionCull = args.getFlag("--occlusion-cull");
+    g_gpuVoxelSmoke = args.getFlag("--gpu-voxel-smoke");
+    g_pivotFocusDemo = args.getFlag("--pivot-focus-demo");
+    g_skinSmoke = args.getFlag("--skin-smoke");
+    g_panSweep = args.getFlag("--pan-sweep");
+    g_yawSweep = args.getFlag("--yaw-sweep");
+
+    if (args.wasProvided("--zoom")) {
+        const float zoom = args.getFloat("--zoom");
+        if (zoom > 0.0f) {
+            g_initialZoom = zoom;
+        }
+    }
+    if (args.wasProvided("--debug-overlay")) {
+        g_debugOverlay =
+            IRRender::debugOverlayModeFromString(args.getString("--debug-overlay").c_str());
+    }
+    if (args.wasProvided("--yaw")) {
+        const float yaw = args.getFloat("--yaw");
+        g_initialYawRadians = yaw;
+        g_initialYaw = yaw;
+        g_initialYawSet = true;
+    }
+    g_pivotOrigin = args.getFlag("--pivot-origin");
+    g_cullValidate = args.getFlag("--cull-validate");
+    if (args.wasProvided("--load-vxs")) {
+        g_loadVxsPath = args.getString("--load-vxs");
+    }
+    // --spin-yaw: 0 (disabled) when absent, else the rate (30 if bare). The
+    // optional value reads as an int — fractional deg/sec is truncated.
+    if (args.wasProvided("--spin-yaw")) {
+        g_spinYawDegPerSec = static_cast<float>(args.getInt("--spin-yaw"));
+    }
+    if (args.wasProvided("--spin-shape")) {
+        g_spinShapeType = args.getString("--spin-shape");
+    }
+    g_spinShapeVoxel = args.getFlag("--spin-shape-voxel");
+}
+
 } // namespace
 
 void initSystems();
@@ -288,80 +386,11 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--auto-profile") == 0) {
-            g_autoProfileFrames = 300; // default
-            if (i + 1 < argc) {
-                int frames = std::atoi(argv[i + 1]);
-                if (frames > 0) {
-                    g_autoProfileFrames = frames;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--depth-color") == 0) {
-            g_depthColor = true;
-        } else if (std::strcmp(argv[i], "--checkerboard") == 0) {
-            g_checkerboard = true;
-        } else if (std::strcmp(argv[i], "--occlusion-cull") == 0) {
-            g_occlusionCull = true;
-        } else if (std::strcmp(argv[i], "--gpu-voxel-smoke") == 0) {
-            g_gpuVoxelSmoke = true;
-        } else if (std::strcmp(argv[i], "--pivot-focus-demo") == 0) {
-            g_pivotFocusDemo = true;
-        } else if (std::strcmp(argv[i], "--skin-smoke") == 0) {
-            g_skinSmoke = true;
-        } else if (std::strcmp(argv[i], "--pan-sweep") == 0) {
-            g_panSweep = true;
-        } else if (std::strcmp(argv[i], "--yaw-sweep") == 0) {
-            g_yawSweep = true;
-        } else if (std::strcmp(argv[i], "--zoom") == 0) {
-            if (i + 1 < argc) {
-                float z = static_cast<float>(std::atof(argv[i + 1]));
-                if (z > 0.0f) {
-                    g_initialZoom = z;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--debug-overlay") == 0) {
-            if (i + 1 < argc) {
-                g_debugOverlay = IRRender::debugOverlayModeFromString(argv[i + 1]);
-                ++i;
-            }
-        } else if (std::strcmp(argv[i], "--yaw") == 0) {
-            if (i + 1 < argc) {
-                g_initialYawRadians = static_cast<float>(std::atof(argv[i + 1]));
-                g_initialYaw = static_cast<float>(std::atof(argv[i + 1]));
-                g_initialYawSet = true;
-                ++i;
-            }
-        } else if (std::strcmp(argv[i], "--pivot-origin") == 0) {
-            g_pivotOrigin = true;
-        } else if (std::strcmp(argv[i], "--cull-validate") == 0) {
-            g_cullValidate = true;
-        } else if (std::strcmp(argv[i], "--load-vxs") == 0) {
-            if (i + 1 < argc) {
-                g_loadVxsPath = argv[i + 1];
-                ++i;
-            }
-        } else if (std::strcmp(argv[i], "--spin-yaw") == 0) {
-            g_spinYawDegPerSec = 30.0f; // default rotation rate
-            if (i + 1 < argc) {
-                float v = static_cast<float>(std::atof(argv[i + 1]));
-                if (v > 0.0f) {
-                    g_spinYawDegPerSec = v;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--spin-shape") == 0) {
-            if (i + 1 < argc) {
-                g_spinShapeType = argv[i + 1];
-                ++i;
-            }
-        } else if (std::strcmp(argv[i], "--spin-shape-voxel") == 0) {
-            g_spinShapeVoxel = true;
-        }
-    }
+    // Register custom flags, then let init parse common + custom in one pass
+    // (--help exits here, pre-window). Read the parsed values back afterwards.
+    registerCliArgs();
+    IREngine::init(argc, argv);
+    readCliArgs();
 
     // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as
     // "shots across one rotation", and use a small internal warmup. This is
@@ -378,7 +407,6 @@ int main(int argc, char **argv) {
     }
 
     IR_LOG_INFO("Starting creation: shape_debug");
-    IREngine::init(argv[0]);
     if (g_autoProfileFrames > 0) {
         IREngine::enableFrameTiming(true);
     }

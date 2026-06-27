@@ -1,3 +1,4 @@
+#include <irreden/ir_args.hpp>
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
@@ -59,8 +60,6 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
-#include <cstdlib>
 #include <numbers>
 #include <string>
 #include <string_view>
@@ -443,110 +442,127 @@ void applyCliOverrides() {
     }
 }
 
-void parseArgs(int argc, char **argv) {
-    IRVideo::parseAutoScreenshotArgv(argc, argv, &g_autoWarmupFrames);
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--config-preset") == 0 && i + 1 < argc) {
-            // Read locally for now: perf_grid still hand-rolls its argv loop
-            // and calls init(argv[0]), so it can't go through IREngine::args()
-            // until its full IRArgs migration (epic #2057 P3, #2060). This
-            // branch replaces the retired IREngine::parseConfigPresetArg helper
-            // with no behaviour change.
-            g_cliOverrides.configPreset_ = argv[i + 1];
-            ++i;
-        } else if (std::strcmp(argv[i], "--auto-profile") == 0) {
-            g_autoProfileFrames = 300;
-            if (i + 1 < argc) {
-                int frames = std::atoi(argv[i + 1]);
-                if (frames > 0) {
-                    g_autoProfileFrames = frames;
-                    ++i;
-                }
-            }
-        } else if (std::strcmp(argv[i], "--occlusion-cull") == 0) {
-            g_occlusionCull = true;
-        } else if (std::strcmp(argv[i], "--no-overlay") == 0) {
-            g_noOverlay = true;
-        } else if (std::strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
-            g_cliOverrides.mode_ = parseMode(argv[i + 1]);
-            g_cliOverrides.modeSet_ = true;
-            ++i;
-        } else if (std::strcmp(argv[i], "--grid-size") == 0 && i + 1 < argc) {
-            int gridSize = std::atoi(argv[i + 1]);
-            if (gridSize > 0) {
-                g_cliOverrides.gridSize_ = gridSize;
-                g_cliOverrides.gridSizeSet_ = true;
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--zoom") == 0 && i + 1 < argc) {
-            float zoom = static_cast<float>(std::atof(argv[i + 1]));
-            if (zoom > 0.0f) {
-                g_cliOverrides.zoom_ = zoom;
-                g_cliOverrides.zoomSet_ = true;
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--yaw") == 0 && i + 1 < argc) {
-            g_cliOverrides.yaw_ = static_cast<float>(std::atof(argv[i + 1]));
-            g_cliOverrides.yawSet_ = true;
-            ++i;
-        } else if (std::strcmp(argv[i], "--yaw-ramp") == 0) {
-            g_cliOverrides.yawRamp_ = true;
-        } else if (std::strcmp(argv[i], "--yaw-ramp-crops") == 0) {
-            // Attach a center ROI crop to each near-cardinal residual pose so
-            // the small-cube zoom pass dumps inspectable per-axis-seam crops.
-            g_cliOverrides.yawRampCrops_ = true;
-        } else if (std::strcmp(argv[i], "--wave-amplitude") == 0 && i + 1 < argc) {
-            // 0.0 = static scene (no per-frame voxel motion). Useful for
-            // isolating per-frame upload cost in profiler runs.
-            g_cliOverrides.waveAmplitude_ = static_cast<float>(std::atof(argv[i + 1]));
-            g_cliOverrides.waveAmplitudeSet_ = true;
-            ++i;
-        } else if (std::strcmp(argv[i], "--subdivision-mode") == 0 && i + 1 < argc) {
-            std::string mode = argv[i + 1];
-            if (mode == "none") {
-                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
-                g_cliOverrides.subdivisionModeSet_ = true;
-            } else if (mode == "position_only") {
-                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
-                g_cliOverrides.subdivisionModeSet_ = true;
-            } else if (mode == "full") {
-                g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
-                g_cliOverrides.subdivisionModeSet_ = true;
-            } else {
-                IR_LOG_WARN(
-                    "Unknown --subdivision-mode '{}'; expected none|position_only|full",
-                    mode
-                );
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--base-subdivisions") == 0 && i + 1 < argc) {
-            int sub = std::atoi(argv[i + 1]);
-            if (sub > 0) {
-                g_cliOverrides.baseSubdivisions_ = sub;
-                g_cliOverrides.baseSubdivisionsSet_ = true;
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--worker-threads") == 0 && i + 1 < argc) {
-            // Accepted for cell-ID purposes by perf_grid_matrix.sh; ignored
-            // until T-221 wires enkiTS thread-pool sizing.
-            int wt = std::atoi(argv[i + 1]);
-            if (wt >= 0) {
-                g_cliOverrides.workerThreads_ = wt;
-            }
-            ++i;
-        } else if (std::strcmp(argv[i], "--depth-probe") == 0 && i + 1 < argc) {
-            int px = 0;
-            int py = 0;
-            if (std::sscanf(argv[i + 1], "%d,%d", &px, &py) == 2) {
-                g_cliOverrides.depthProbeSet_ = true;
-                g_cliOverrides.depthProbePixel_ = ivec2(px, py);
-            } else {
-                IR_LOG_WARN(
-                    "--depth-probe: expected X,Y (e.g. 960,540); ignoring '{}'",
-                    argv[i + 1]
-                );
-            }
-            ++i;
+// Register perf_grid's custom flags on the engine-owned parser. --help /
+// --auto-screenshot / --config-preset are pre-registered by the Parser ctor;
+// IREngine::init(argc, argv) parses common + these in one pass, so --help lists
+// every flag and exits before any window/GL/Metal init (epic #2057 P3, #2060).
+void registerCliArgs() {
+    IRArgs::Parser &args = IREngine::args();
+    args.optionalInt(
+        "--auto-profile",
+        "Run N frames (default 300) collecting CPU+GPU per-stage timing, then exit",
+        300
+    );
+    args.flag(
+        "--occlusion-cull",
+        "Force the voxel-pool chunk-occlusion HZB pre-pass ON (off by default)"
+    );
+    args.flag("--no-overlay", "Drop PERF_STATS_OVERLAY so a captured frame is deterministic");
+    args.string("--mode", "Scene mode: voxel_set | sdf | dense_set | hollow_set", "voxel_set");
+    args.integer("--grid-size", "Grid edge in cells", 64);
+    args.number("--zoom", "Initial camera zoom", 0.5f);
+    args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
+    args.flag("--yaw-ramp", "Rotated-solidity validation sweep (#1882/#1883)");
+    args.flag(
+        "--yaw-ramp-crops",
+        "Attach a center ROI crop to each near-cardinal residual --yaw-ramp pose"
+    );
+    args.number("--wave-amplitude", "Per-frame idle wave amplitude (0 = static scene)", 0.0f);
+    args.string("--subdivision-mode", "Trixel subdivision: none | position_only | full", "full");
+    args.integer("--base-subdivisions", "Base trixel subdivision count", 1);
+    args.integer("--worker-threads", "Recorded for manifest/cell-ID; thread wiring is T-221", 0);
+    args.string("--depth-probe", "Per-frame composite-depth readback at framebuffer pixel X,Y", "");
+}
+
+// Read the parsed values back into the settings/override structs. Runs AFTER
+// IREngine::init(argc, argv) has parsed. The CLI-override precedence (defaults <
+// config.lua < preset < CLI) is unchanged: a flag only sets its `*Set_` gate
+// when actually provided, so config/preset values stand otherwise.
+void readCliArgs() {
+    const IRArgs::Parser &args = IREngine::args();
+
+    // Engine-common args now own these (P1 #2058 retired the local reads).
+    g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
+    g_cliOverrides.configPreset_ = args.configPreset();
+
+    // --auto-profile: 0 when absent, else the frame count (300 if bare).
+    if (args.wasProvided("--auto-profile")) {
+        g_autoProfileFrames = args.getInt("--auto-profile");
+    }
+    g_occlusionCull = args.getFlag("--occlusion-cull");
+    g_noOverlay = args.getFlag("--no-overlay");
+
+    if (args.wasProvided("--mode")) {
+        g_cliOverrides.mode_ = parseMode(args.getString("--mode"));
+        g_cliOverrides.modeSet_ = true;
+    }
+    if (args.wasProvided("--grid-size")) {
+        const int gridSize = args.getInt("--grid-size");
+        if (gridSize > 0) {
+            g_cliOverrides.gridSize_ = gridSize;
+            g_cliOverrides.gridSizeSet_ = true;
+        }
+    }
+    if (args.wasProvided("--zoom")) {
+        const float zoom = args.getFloat("--zoom");
+        if (zoom > 0.0f) {
+            g_cliOverrides.zoom_ = zoom;
+            g_cliOverrides.zoomSet_ = true;
+        }
+    }
+    if (args.wasProvided("--yaw")) {
+        g_cliOverrides.yaw_ = args.getFloat("--yaw");
+        g_cliOverrides.yawSet_ = true;
+    }
+    g_cliOverrides.yawRamp_ = args.getFlag("--yaw-ramp");
+    g_cliOverrides.yawRampCrops_ = args.getFlag("--yaw-ramp-crops");
+    if (args.wasProvided("--wave-amplitude")) {
+        // 0.0 = static scene (no per-frame voxel motion). Useful for isolating
+        // per-frame upload cost in profiler runs.
+        g_cliOverrides.waveAmplitude_ = args.getFloat("--wave-amplitude");
+        g_cliOverrides.waveAmplitudeSet_ = true;
+    }
+    if (args.wasProvided("--subdivision-mode")) {
+        const std::string mode = args.getString("--subdivision-mode");
+        if (mode == "none") {
+            g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::NONE;
+            g_cliOverrides.subdivisionModeSet_ = true;
+        } else if (mode == "position_only") {
+            g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::POSITION_ONLY;
+            g_cliOverrides.subdivisionModeSet_ = true;
+        } else if (mode == "full") {
+            g_cliOverrides.subdivisionMode_ = IRRender::SubdivisionMode::FULL;
+            g_cliOverrides.subdivisionModeSet_ = true;
+        } else {
+            IR_LOG_WARN("Unknown --subdivision-mode '{}'; expected none|position_only|full", mode);
+        }
+    }
+    if (args.wasProvided("--base-subdivisions")) {
+        const int sub = args.getInt("--base-subdivisions");
+        if (sub > 0) {
+            g_cliOverrides.baseSubdivisions_ = sub;
+            g_cliOverrides.baseSubdivisionsSet_ = true;
+        }
+    }
+    if (args.wasProvided("--worker-threads")) {
+        // Accepted for cell-ID purposes by perf_grid_matrix.sh; ignored until
+        // T-221 wires enkiTS thread-pool sizing.
+        const int wt = args.getInt("--worker-threads");
+        if (wt >= 0) {
+            g_cliOverrides.workerThreads_ = wt;
+        }
+    }
+    if (args.wasProvided("--depth-probe")) {
+        // `--depth-probe X,Y` (#1910): IRArgs has no pair type, so register as a
+        // string and keep the demo-side comma split.
+        const std::string probe = args.getString("--depth-probe");
+        int px = 0;
+        int py = 0;
+        if (std::sscanf(probe.c_str(), "%d,%d", &px, &py) == 2) {
+            g_cliOverrides.depthProbeSet_ = true;
+            g_cliOverrides.depthProbePixel_ = ivec2(px, py);
+        } else {
+            IR_LOG_WARN("--depth-probe: expected X,Y (e.g. 960,540); ignoring '{}'", probe);
         }
     }
 }
@@ -739,10 +755,13 @@ void initCommands();
 void initEntities();
 
 int main(int argc, char **argv) {
-    parseArgs(argc, argv);
+    // Register custom flags, then let init parse common + custom in one pass
+    // (--help exits here, pre-window). Read the parsed values back afterwards.
+    registerCliArgs();
+    IREngine::init(argc, argv);
+    readCliArgs();
 
     IR_LOG_INFO("Starting creation: perf_grid");
-    IREngine::init(argv[0]);
     applyConfigTable();
     applyConfigPreset(g_cliOverrides.configPreset_);
     applyCliOverrides();
