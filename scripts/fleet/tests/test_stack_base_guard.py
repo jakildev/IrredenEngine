@@ -32,13 +32,14 @@ class TestUnsafeBaseReason(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertEqual(unsafe_base_reason([label]), label)
 
-    def test_wip_and_design_states(self):
+    def test_wip_and_active_rework_states(self):
+        # WIP and design-UNBLOCKED (architect answered, worker resuming the
+        # rework) have a moving head diff -> rejected. Frozen design states are
+        # covered separately in test_frozen_design_states_are_stackable.
         self.assertEqual(unsafe_base_reason(["fleet:wip"]), "fleet:wip")
         self.assertEqual(unsafe_base_reason(["human:wip"]), "human:wip")
         self.assertEqual(unsafe_base_reason(["fleet:design-unblocked"]),
                          "fleet:design-unblocked")
-        self.assertEqual(unsafe_base_reason(["fleet:design-blocked"]),
-                         "fleet:design-blocked")
 
     def test_amending_prefix_matched(self):
         """The dynamic per-host amend claim is matched by prefix, not equality."""
@@ -71,13 +72,17 @@ class TestUnsafeBaseReason(unittest.TestCase):
         """Guard the amending prefix tuple so a refactor can't silently empty it."""
         self.assertIn("fleet:amending-", NOT_STACKABLE_BASE_PREFIXES)
 
-    def test_design_block_labels_still_covered(self):
-        """The old scout _DESIGN_BLOCK_LABELS members must remain in the
-        superset (no narrowing of the original design-block rejection)."""
+    def test_frozen_design_states_are_stackable(self):
+        """Frozen-design bases (worker escalated and walked away → diff parked
+        and stable) ARE valid stack bases. A non-approved base is fine to stack
+        on; only an actively-moving head (WIP / amending / design-unblocked)
+        disqualifies. So these must NOT be in the reject set and must return
+        None when paired with a real diff."""
         for label in ("fleet:design-blocked", "fleet:design-escalated",
                       "fleet:design-proposed"):
             with self.subTest(label=label):
-                self.assertIn(label, NOT_STACKABLE_BASE_LABELS)
+                self.assertNotIn(label, NOT_STACKABLE_BASE_LABELS)
+                self.assertIsNone(unsafe_base_reason([label], ["engine/x.cpp"]))
 
     def test_semantic_conflict_rejected(self):
         """A PR awaiting merger rebase is not a safe stack base — its diff

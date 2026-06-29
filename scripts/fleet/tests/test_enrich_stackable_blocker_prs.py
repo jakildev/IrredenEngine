@@ -290,10 +290,22 @@ class TestEnrichStackableBlockerPrs(unittest.TestCase):
         2026-06-06 empty-skeleton hazard)."""
         self._assert_no_offer(labels=["fleet:design-unblocked"])
 
-    def test_design_blocked_base_no_field(self):
-        """Regression: the old filter (b) design-block rejection still holds
-        through the unified predicate."""
-        self._assert_no_offer(labels=["fleet:design-blocked"])
+    def test_frozen_design_base_offered(self):
+        """Frozen-design bases (design-blocked / -proposed / -escalated) have a
+        parked, stable diff, so they ARE offered as stack bases — a non-approved
+        base is fine; only an actively-moving head (WIP / amending /
+        design-unblocked) disqualifies."""
+        for label in ("fleet:design-blocked", "fleet:design-proposed",
+                      "fleet:design-escalated"):
+            with self.subTest(label=label):
+                tasks = [_task("#1112", "#1111")]
+                prs = [_pr(536, "claude/1111-x", labels=[label])]
+                self._write_pr_cache("engine", 536, ["engine/render/x.cpp"])
+                state = _state(engine_tasks=tasks, engine_prs=prs)
+                enrich_stackable_blocker_prs(state)
+                task = state["repos"]["engine"]["tasks"]["open"][0]
+                self.assertIn("stackable_blocker_pr", task)
+                self.assertEqual(task["stackable_blocker_pr"]["number"], 536)
 
     def test_amending_base_no_field(self):
         """fleet:amending-<host>-<agent> (dynamic prefix) base is not offered."""
