@@ -27,6 +27,7 @@
 
 #include "system_dsl.hpp"
 
+#include <irreden/ir_args.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 
 #include <algorithm>
@@ -914,12 +915,6 @@ void writeOutput(
     out << os.str();
 }
 
-void usage(const char *progName) {
-    std::cerr << "usage: " << progName
-              << " --out <output.hpp> [--default-mode=codegen|eval]"
-                 " <input1.lua> [input2.lua ...]\n";
-}
-
 bool parseModeArg(const std::string &val, IRLuaCodegen::SystemMode &out) {
     // Accept lowercase (helper's preferred form, see CMake CODEGEN-token
     // workaround in ir_functions.cmake) and uppercase for direct CLI use.
@@ -937,48 +932,33 @@ bool parseModeArg(const std::string &val, IRLuaCodegen::SystemMode &out) {
 } // namespace
 
 int main(int argc, char **argv) {
-    std::string outPath;
-    std::vector<std::string> inputs;
-    // Creation-default mode for systems without an explicit
-    // `mode = "..."` field. Threaded from the CMake helper's
-    // DEFAULT_MODE param (sourced from IR_LUA_ECS_DEFAULT_MODE cache var).
+    // Creation-default mode for systems without an explicit `mode = "..."`
+    // field. Threaded from the CMake helper's DEFAULT_MODE param (sourced from
+    // the IR_LUA_ECS_DEFAULT_MODE cache var). IRArgs accepts both
+    // `--default-mode codegen` and the `--default-mode=codegen` form the CMake
+    // helper passes (ir_functions.cmake's CODEGEN-token workaround).
+    IRArgs::Parser parser(
+        "ir_lua_codegen — emit C++ component/system definitions from Lua schemas.",
+        IRArgs::Common::NONE
+    );
+    parser.string("--out", "Output .hpp path (required)", "");
+    parser.string(
+        "--default-mode", "Default mode for schemas without an explicit mode: codegen | eval",
+        "codegen"
+    );
+    parser.variadic("inputs", "Lua schema files (.lua)", 1);
+    parser.parse(argc, argv);
+
+    const std::string outPath = parser.getString("--out");
+    const std::vector<std::string> inputs = parser.positionalArgs();
     IRLuaCodegen::SystemMode defaultMode = IRLuaCodegen::SystemMode::CODEGEN;
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-        if (arg == "--out") {
-            if (i + 1 >= argc) {
-                usage(argv[0]);
-                return 1;
-            }
-            outPath = argv[++i];
-        } else if (arg.rfind("--default-mode=", 0) == 0) {
-            constexpr std::string_view kDefaultModePrefix = "--default-mode=";
-            const std::string val = arg.substr(kDefaultModePrefix.size());
-            if (!parseModeArg(val, defaultMode)) {
-                std::cerr << "lua_codegen: --default-mode must be codegen or eval (got '"
-                          << val << "')\n";
-                return 1;
-            }
-        } else if (arg == "--default-mode") {
-            if (i + 1 >= argc) {
-                usage(argv[0]);
-                return 1;
-            }
-            const std::string val = argv[++i];
-            if (!parseModeArg(val, defaultMode)) {
-                std::cerr << "lua_codegen: --default-mode must be codegen or eval (got '"
-                          << val << "')\n";
-                return 1;
-            }
-        } else if (arg == "-h" || arg == "--help") {
-            usage(argv[0]);
-            return 0;
-        } else {
-            inputs.push_back(arg);
-        }
+    if (!parseModeArg(parser.getString("--default-mode"), defaultMode)) {
+        std::cerr << "lua_codegen: --default-mode must be codegen or eval (got '"
+                  << parser.getString("--default-mode") << "')\n";
+        return 1;
     }
-    if (outPath.empty() || inputs.empty()) {
-        usage(argv[0]);
+    if (outPath.empty()) {
+        std::cerr << "lua_codegen: --out <output.hpp> is required\n";
         return 1;
     }
 

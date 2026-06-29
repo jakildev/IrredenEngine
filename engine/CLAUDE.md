@@ -35,10 +35,19 @@ GL / Metal init, so `--help` is instant and headless-safe.
   argv)`, then read them back via `IREngine::args().getFlag(...)` etc. The
   single engine parse covers common + custom flags, so `--help` aggregates
   everything.
+- **Standalone tool (no engine loop)?** Construct your own
+  `IRArgs::Parser(desc, IRArgs::Common::NONE)` — that drops the engine-common
+  args (so `--help` advertises only the tool's flags) and lets you declare
+  ordered positionals with `.positional(name, help)` / `.variadic(name, help,
+  minCount)`, read back via `getPositional(...)` / `positionalArgs()`. The
+  parser has no engine dependencies, so the tool compiles `engine/ir_args.cpp`
+  directly and stays standalone (`tools/img_diff`, `tools/jitter_probe`,
+  `cmake/lua_codegen`).
 
-`--help` prints the auto-generated usage and `exit(0)`; an unknown arg prints an
-error + usage and `exit(2)`. `creations/demos/fog_demo/main.cpp` is the
-reference adoption.
+Value-taking args accept both `--name value` and `--name=value`. `--help`
+prints the auto-generated usage and `exit(0)`; an unknown arg or bad positional
+count prints an error + usage and `exit(2)`. `creations/demos/fog_demo/main.cpp`
+is the reference adoption.
 
 Do **not** add a new `for (i…) std::strcmp(argv[i], "--foo")` parse loop to a
 target. The one remaining legacy helper (`IRVideo::parseAutoScreenshotArgv`)

@@ -12,5 +12,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stbimage)
 
-add_executable(jitter_probe main.cpp)
-target_include_directories(jitter_probe PRIVATE ${stbimage_SOURCE_DIR})
+# IRArgs lives in the engine tree but has no engine dependencies (see the
+# dependency-free assert note in engine/ir_args.cpp), so jitter_probe compiles
+# the source directly and stays standalone — no link against the engine library.
+add_executable(jitter_probe main.cpp ${PROJECT_SOURCE_DIR}/engine/ir_args.cpp)
+target_include_directories(jitter_probe PRIVATE
+    ${stbimage_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/engine/include
+)

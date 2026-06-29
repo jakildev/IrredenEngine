@@ -1,11 +1,19 @@
 #include <irreden/ir_args.hpp>
 
-#include <irreden/ir_profile.hpp>
-
 #include <algorithm>
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+// IRArgs invariants are programmer errors (duplicate registration, typed-getter
+// mismatch). We assert on a dependency-free macro rather than the engine's
+// IR_ASSERT so the standalone tools — img_diff, jitter_probe, lua_codegen —
+// can compile this translation unit without linking the engine profiler. The
+// Release config defines NDEBUG alongside IR_RELEASE, so assert() and IR_ASSERT
+// share the same compiled-out-in-release behavior; in debug both abort/throw on
+// the same conditions.
+#define IR_ASSERT(cond, msg) assert((cond) && (msg))
 
 namespace IRArgs {
 
@@ -28,15 +36,39 @@ const char *placeholderFor(Type type) {
     return "";
 }
 
+// Split a "--name=value" long option into its name (before the first '=') and
+// inline value (after). Returns true when an inline value was present; for any
+// other token the whole token is the name and the value is empty. Splitting on
+// the first '=' only, so a value may itself contain '='.
+bool splitInlineValue(const char *token, std::string &name, std::string &value) {
+    std::string t = token != nullptr ? token : "";
+    if (t.rfind("--", 0) == 0) {
+        const auto eq = t.find('=');
+        if (eq != std::string::npos) {
+            name = t.substr(0, eq);
+            value = t.substr(eq + 1);
+            return true;
+        }
+    }
+    name = std::move(t);
+    value.clear();
+    return false;
+}
+
 } // namespace
 
-Parser::Parser(const char *programDescription)
+Parser::Parser(const char *programDescription, Common common)
     : m_description(programDescription != nullptr ? programDescription : "") {
     // Built-in help — owned by the parser, free for every target.
     flag("--help", "Show this help and exit", "-h");
-    // Engine-common args: every target that constructs a Parser inherits these
-    // (and --help) without re-declaring. The canonical spellings are preserved
-    // so existing command lines keep working.
+    if (common == Common::NONE) {
+        // Standalone tool: only --help. Caller declares its own flags /
+        // positionals; the engine-common args would be misleading noise.
+        return;
+    }
+    // Engine-common args: every engine target that constructs a Parser inherits
+    // these (and --help) without re-declaring. The canonical spellings are
+    // preserved so existing command lines keep working.
     optionalInt(
         "--auto-screenshot",
         "Headless capture: cycle the shot table then exit; optional warmup frame count",
@@ -99,6 +131,32 @@ Parser::optionalInt(const char *name, const char *help, int defaultIfBare, const
     return *this;
 }
 
+Parser &Parser::positional(const char *name, const char *help) {
+    IR_ASSERT(
+        m_positionals.empty() || !m_positionals.back().variadic_,
+        "IRArgs: a fixed positional cannot follow a variadic one"
+    );
+    Positional p;
+    p.name_ = name != nullptr ? name : "";
+    p.help_ = help != nullptr ? help : "";
+    m_positionals.push_back(std::move(p));
+    return *this;
+}
+
+Parser &Parser::variadic(const char *name, const char *help, int minCount) {
+    IR_ASSERT(
+        m_positionals.empty() || !m_positionals.back().variadic_,
+        "IRArgs: only one variadic positional, registered last"
+    );
+    Positional p;
+    p.name_ = name != nullptr ? name : "";
+    p.help_ = help != nullptr ? help : "";
+    p.variadic_ = true;
+    p.minCount_ = minCount;
+    m_positionals.push_back(std::move(p));
+    return *this;
+}
+
 Parser::Entry *Parser::find(const std::string &token) {
     for (Entry &e : m_entries) {
         if (e.name_ == token || (!e.shortAlias_.empty() && e.shortAlias_ == token)) {
@@ -129,50 +187,72 @@ void Parser::parse(int argc, char **argv) {
     // also keeps usage() reporting the registered defaults rather than values
     // parsed from tokens that happened to precede --help on the line.
     for (int i = 1; i < argc; ++i) {
-        const Entry *e = find(argv[i]);
+        std::string name;
+        std::string value;
+        splitInlineValue(argv[i], name, value);
+        const Entry *e = find(name);
         if (e != nullptr && e->name_ == "--help") {
             exitWithUsage(0);
         }
     }
 
+    m_positionalValues.clear();
     for (int i = 1; i < argc; ++i) {
-        Entry *e = find(argv[i]);
+        std::string name;
+        std::string inlineValue;
+        const bool hasInline = splitInlineValue(argv[i], name, inlineValue);
+        Entry *e = find(name);
         if (e == nullptr) {
-            std::fprintf(stderr, "Unknown argument: %s\n\n", argv[i]);
-            exitWithUsage(2);
+            // Not a registered named arg. A dash-led token is an unknown flag;
+            // anything else is a positional (its count is validated below).
+            if (!name.empty() && name[0] == '-') {
+                std::fprintf(stderr, "Unknown argument: %s\n\n", argv[i]);
+                exitWithUsage(2);
+            }
+            m_positionalValues.push_back(argv[i]);
+            continue;
         }
+
+        // The value for a value-taking arg comes inline ("--name=value") or as
+        // the next token ("--name value"); a missing next token is an error.
+        const auto valueFor = [&](const char *expects) -> std::string {
+            if (hasInline) {
+                return inlineValue;
+            }
+            if (i + 1 < argc) {
+                return argv[++i];
+            }
+            std::fprintf(stderr, "Argument %s expects %s\n\n", name.c_str(), expects);
+            exitWithUsage(2);
+        };
+
         e->provided_ = true;
         switch (e->type_) {
         case Type::FLAG:
+            if (hasInline) {
+                std::fprintf(stderr, "Argument %s takes no value\n\n", name.c_str());
+                exitWithUsage(2);
+            }
             e->boolValue_ = true;
             break;
         case Type::INT:
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "Argument %s expects an integer value\n\n", argv[i]);
-                exitWithUsage(2);
-            }
-            e->intValue_ = std::atoi(argv[++i]);
+            e->intValue_ = std::atoi(valueFor("an integer value").c_str());
             break;
         case Type::FLOAT:
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "Argument %s expects a float value\n\n", argv[i]);
-                exitWithUsage(2);
-            }
-            e->floatValue_ = static_cast<float>(std::atof(argv[++i]));
+            e->floatValue_ = static_cast<float>(std::atof(valueFor("a float value").c_str()));
             break;
         case Type::STRING:
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "Argument %s expects a value\n\n", argv[i]);
-                exitWithUsage(2);
-            }
-            e->stringValue_ = argv[++i];
+            e->stringValue_ = valueFor("a value");
             break;
         case Type::OPTIONAL_INT:
-            // Consume the next token only when it reads as a positive integer,
-            // otherwise leave it for the loop. Mirrors the historical
-            // parseAutoScreenshotArgv peek so existing command lines are
-            // byte-identical (the bare default stays in intValue_).
-            if (i + 1 < argc) {
+            // An inline value is taken verbatim; otherwise consume the next
+            // token only when it reads as a positive integer, leaving it for the
+            // loop otherwise. Mirrors the historical parseAutoScreenshotArgv peek
+            // so existing command lines are byte-identical (the bare default
+            // stays in intValue_).
+            if (hasInline) {
+                e->intValue_ = std::atoi(inlineValue.c_str());
+            } else if (i + 1 < argc) {
                 const int parsed = std::atoi(argv[i + 1]);
                 if (parsed > 0) {
                     e->intValue_ = parsed;
@@ -181,6 +261,35 @@ void Parser::parse(int argc, char **argv) {
             }
             break;
         }
+    }
+
+    // Validate positional count against the declarations.
+    std::size_t fixedCount = 0;
+    for (const Positional &p : m_positionals) {
+        if (!p.variadic_) {
+            ++fixedCount;
+        }
+    }
+    const bool hasVariadic = !m_positionals.empty() && m_positionals.back().variadic_;
+    const std::size_t minNeeded =
+        fixedCount + (hasVariadic ? static_cast<std::size_t>(m_positionals.back().minCount_) : 0);
+    if (m_positionalValues.size() < minNeeded) {
+        std::fprintf(
+            stderr,
+            "Expected %s%zu positional argument(s), got %zu\n\n",
+            hasVariadic ? "at least " : "",
+            minNeeded,
+            m_positionalValues.size()
+        );
+        exitWithUsage(2);
+    }
+    if (!hasVariadic && m_positionalValues.size() > fixedCount) {
+        std::fprintf(
+            stderr,
+            "Unexpected positional argument: %s\n\n",
+            m_positionalValues[fixedCount].c_str()
+        );
+        exitWithUsage(2);
     }
 }
 
@@ -226,6 +335,23 @@ bool Parser::wasProvided(const char *name) const {
     return e != nullptr && e->provided_;
 }
 
+std::string Parser::getPositional(const char *name) const {
+    // Fixed positionals fill the first slots of m_positionalValues in
+    // registration order (the variadic tail, if any, captures the rest), so a
+    // declaration's index doubles as its value index.
+    for (std::size_t i = 0; i < m_positionals.size(); ++i) {
+        if (!m_positionals[i].variadic_ && m_positionals[i].name_ == name) {
+            return i < m_positionalValues.size() ? m_positionalValues[i] : std::string{};
+        }
+    }
+    IR_ASSERT(false, "IRArgs: getPositional on unregistered positional");
+    return std::string{};
+}
+
+const std::vector<std::string> &Parser::positionalArgs() const {
+    return m_positionalValues;
+}
+
 int Parser::autoScreenshotWarmupFrames() const {
     return wasProvided("--auto-screenshot") ? getInt("--auto-screenshot") : 0;
 }
@@ -247,7 +373,8 @@ std::string Parser::usage() const {
     });
 
     // Build each left column ("--name, -a <value>") and find the widest so the
-    // help text aligns into a second column.
+    // help text aligns into a second column. Positional names share the same
+    // width so both sections line up.
     std::vector<std::string> leftCols;
     leftCols.reserve(sorted.size());
     std::size_t widest = 0;
@@ -262,8 +389,19 @@ std::string Parser::usage() const {
         }
         leftCols.push_back(std::move(left));
     }
+    for (const Positional &p : m_positionals) {
+        if (p.name_.size() > widest) {
+            widest = p.name_.size();
+        }
+    }
 
-    std::string out = "Usage: " + m_programName + " [options]\n";
+    // Usage line: positional placeholders trail the [options] marker, with the
+    // variadic tail shown as "<name>...".
+    std::string out = "Usage: " + m_programName + " [options]";
+    for (const Positional &p : m_positionals) {
+        out += " <" + p.name_ + (p.variadic_ ? ">..." : ">");
+    }
+    out += "\n";
     if (!m_description.empty()) {
         out += "\n" + m_description + "\n";
     }
@@ -273,6 +411,15 @@ std::string Parser::usage() const {
         out += std::string(widest - leftCols[i].size() + 2, ' ');
         out += sorted[i]->help_;
         out += "\n";
+    }
+    if (!m_positionals.empty()) {
+        out += "\nPositional arguments:\n";
+        for (const Positional &p : m_positionals) {
+            out += "  " + p.name_;
+            out += std::string(widest - p.name_.size() + 2, ' ');
+            out += p.help_;
+            out += "\n";
+        }
     }
     return out;
 }

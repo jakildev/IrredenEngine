@@ -19,11 +19,11 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <irreden/ir_args.hpp>
+
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
-#include <stdexcept>
 #include <string>
 
 namespace {
@@ -41,67 +41,6 @@ struct Args {
     int threshold_ = 0;
     bool ignoreAlpha_ = false;
 };
-
-void printUsage(const char *exe) {
-    std::fprintf(
-        stderr,
-        "Usage: %s <baseline.png> <current.png> <out_diff.png> "
-        "[--threshold N] [--ignore-alpha]\n"
-        "\n"
-        "Highlights pixels that drift between baseline and current. Drifted\n"
-        "pixels are written red; unchanged pixels are written as a desaturated\n"
-        "30%%-luminance copy of the baseline so context stays visible.\n"
-        "\n"
-        "Options:\n"
-        "  --threshold N    Per-channel delta tolerance (default: 0).\n"
-        "  --ignore-alpha   Compare RGB only; ignore the alpha channel.\n"
-        "\n"
-        "Exit code: 0 on zero drift, 1 on any drift, 2 on argument / IO error.\n",
-        exe
-    );
-}
-
-bool parseArgs(int argc, char **argv, Args &out) {
-    int positional = 0;
-    for (int i = 1; i < argc; ++i) {
-        const char *a = argv[i];
-        if (std::strcmp(a, "--threshold") == 0) {
-            if (i + 1 >= argc) {
-                std::fprintf(stderr, "img_diff: --threshold requires an argument\n");
-                return false;
-            }
-            try {
-                out.threshold_ = std::stoi(argv[++i]);
-            } catch (const std::exception &) {
-                std::fprintf(stderr, "img_diff: --threshold requires a numeric argument\n");
-                return false;
-            }
-            if (out.threshold_ < 0) {
-                std::fprintf(stderr, "img_diff: --threshold must be >= 0\n");
-                return false;
-            }
-        } else if (std::strcmp(a, "--ignore-alpha") == 0) {
-            out.ignoreAlpha_ = true;
-        } else if (a[0] == '-') {
-            std::fprintf(stderr, "img_diff: unknown option '%s'\n", a);
-            return false;
-        } else {
-            switch (positional++) {
-            case 0: out.baselinePath_ = a; break;
-            case 1: out.currentPath_ = a; break;
-            case 2: out.outputPath_ = a; break;
-            default:
-                std::fprintf(stderr, "img_diff: unexpected argument '%s'\n", a);
-                return false;
-            }
-        }
-    }
-    if (positional != 3) {
-        std::fprintf(stderr, "img_diff: expected 3 positional arguments, got %d\n", positional);
-        return false;
-    }
-    return true;
-}
 
 struct Image {
     unsigned char *data_ = nullptr;
@@ -133,15 +72,27 @@ bool loadRgba(const std::string &path, Image &out) {
 } // namespace
 
 int main(int argc, char **argv) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "-h") == 0 || std::strcmp(argv[i], "--help") == 0) {
-            printUsage(argv[0]);
-            return 0;
-        }
-    }
+    IRArgs::Parser parser(
+        "img_diff — highlight per-pixel drift between two PNGs. Drifted pixels are "
+        "written red; unchanged pixels become a 30%-luminance copy of the baseline "
+        "so context stays visible. Exit: 0 = no drift, 1 = drift, 2 = argument/IO error.",
+        IRArgs::Common::NONE
+    );
+    parser.integer("--threshold", "Per-channel delta tolerance (default 0)", 0);
+    parser.flag("--ignore-alpha", "Compare RGB only; ignore the alpha channel");
+    parser.positional("baseline", "Baseline PNG");
+    parser.positional("current", "Current PNG");
+    parser.positional("out_diff", "Output diff PNG");
+    parser.parse(argc, argv);
+
     Args args;
-    if (!parseArgs(argc, argv, args)) {
-        printUsage(argv[0]);
+    args.baselinePath_ = parser.getPositional("baseline");
+    args.currentPath_ = parser.getPositional("current");
+    args.outputPath_ = parser.getPositional("out_diff");
+    args.threshold_ = parser.getInt("--threshold");
+    args.ignoreAlpha_ = parser.getFlag("--ignore-alpha");
+    if (args.threshold_ < 0) {
+        std::fprintf(stderr, "img_diff: --threshold must be >= 0\n");
         return kExitArgError;
     }
 
