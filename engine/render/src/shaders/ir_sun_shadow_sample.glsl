@@ -52,11 +52,22 @@ float unpackSunDepth(uint packedDepth) {
 
 float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir,
-    vec2 origin, vec2 texelSz, int bufferOffset
+    vec2 origin, vec2 texelSz, int bufferOffset, float selfStepDepthRange
 ) {
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+    // Round-to-cell staircase self-step rejection (#2010). On a rebuilt-rotating
+    // GRID solid the round-to-cell quantization turns a tilted-flat surface into
+    // a voxel staircase whose riser is self-occluded by its own in-cell tread —
+    // a blocker ~1 cell closer in sun-Z than the receiver — reading as venetian
+    // banding. selfStepDepthRange lifts the NEAR rejection so that own-step
+    // blocker is skipped; it is 0 for every caller except a geometrically-
+    // detected staircase riser (c_compute_sun_shadow's detectSelfStepStaircase),
+    // so the detached world-receive path and all flat/cardinal geometry stay
+    // byte-identical. The kMaxShadowDepthRange window below keeps using `bias`,
+    // so genuine contact shadows farther than the self-step still register.
+    float nearReject = max(bias, selfStepDepthRange);
 
     vec2 sunPxF = (sunUV - origin) / texelSz;
     ivec2 base = ivec2(floor(sunPxF));
@@ -73,7 +84,7 @@ float sampleCascadeShadow(
             float weight = mix(1.0 - frac.x, frac.x, float(dx))
                          * mix(1.0 - frac.y, frac.y, float(dy));
             float depthDiff = sunZ - nearestZ;
-            if (depthDiff > bias && depthDiff - bias < kMaxShadowDepthRange)
+            if (depthDiff > nearReject && depthDiff - bias < kMaxShadowDepthRange)
                 shadowAccum += weight;
         }
     }
@@ -86,7 +97,10 @@ float sampleCascadeShadow(
 // axis). Returns 1.0 (fully lit) … kShadowDarken (fully shadowed). This is the
 // per-pixel cascade body of c_compute_sun_shadow's main() lifted verbatim so
 // both that pass and the detached world-receive path (#1576) share one source.
-float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
+// `selfStepDepthRange` (#2010) is the near-rejection lift for a round-to-cell
+// staircase riser (0 = no lift = pre-#2010 behaviour); threaded to every
+// cascade sample so it applies regardless of which cascade the receiver lands in.
+float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth, float selfStepDepthRange) {
     vec3 sunDir = sunDirection.xyz;
     vec3 uHat = sunBasisU.xyz;
     vec3 vHat = sunBasisV.xyz;
@@ -98,32 +112,39 @@ float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
     if (cascadeCount <= 1) {
         shadowAccum = sampleCascadeShadow(
             sunUV, sunZ, normal, sunDir,
-            sunBufferOriginUV, sunBufferTexelSize, 0
+            sunBufferOriginUV, sunBufferTexelSize, 0, selfStepDepthRange
         );
     } else {
         float distToSplit = isoDepth - cascadeSplitDepth;
         if (distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                cascadeOriginUV_0, cascadeTexelSize_0, 0
+                cascadeOriginUV_0, cascadeTexelSize_0, 0, selfStepDepthRange
             );
         } else if (distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount
+                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, selfStepDepthRange
             );
         } else {
             float nearShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                cascadeOriginUV_0, cascadeTexelSize_0, 0
+                cascadeOriginUV_0, cascadeTexelSize_0, 0, selfStepDepthRange
             );
             float farShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount
+                cascadeOriginUV_1, cascadeTexelSize_1, kCascadeTexelCount, selfStepDepthRange
             );
             float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
             shadowAccum = mix(nearShadow, farShadow, t);
         }
     }
     return mix(1.0, kShadowDarken, shadowAccum);
+}
+
+// Default 3-arg form — full self-occlusion (no staircase carve). Used by the
+// detached world-receive path (c_lighting_to_trixel, #1576) and any caller that
+// has no per-receiver staircase signal; byte-identical to pre-#2010 master.
+float worldSunShadowFactor(vec3 pos3D, vec3 normal, float isoDepth) {
+    return worldSunShadowFactor(pos3D, normal, isoDepth, 0.0);
 }

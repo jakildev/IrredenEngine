@@ -10,6 +10,69 @@
 
 constant int kEmptyDistanceEncoded = 65535;
 
+// Round-to-cell staircase band + near self-step rejection (#2010) — in lockstep
+// with the GLSL twin (c_compute_sun_shadow.glsl). See the GLSL twin for the full
+// rationale.
+constant float kSelfStepMinHeight = 0.5;
+constant float kSelfStepMaxHeight = 1.5;
+constant float kSelfStepDepthRange = 3.0;
+
+// Is this single-canvas receiver on a round-to-cell staircase — the case where
+// its near sun-shadow blocker is its OWN in-cell step (venetian banding) rather
+// than a separate caster? Detected geometrically (#2010, the marker-free intent
+// of #1718/#2089): a tilted-flat surface quantized into a voxel staircase has a
+// SAME-face in-plane neighbour offset ~1 cell along the receiver normal (the
+// round-to-cell step), whereas a flat cardinal face is coplanar (offset ~0) and
+// a genuine concave crease is a DIFFERENT face. So a same-face neighbour at
+// [kSelfStepMinHeight, kSelfStepMaxHeight] along the outward normal is the
+// signature; 8 in-plane directions catch axis- and diagonal-aligned steps.
+inline bool detectSelfStepStaircase(
+    int2 pixel, int2 size, int slot, int rawDepth, int cardinalIndex,
+    float3 centerPos3D,
+    constant FrameDataVoxelToTrixel &frameData,
+    texture2d<int, access::read> trixelDistances
+) {
+    int faceId = frameData.visibleFaceIds[slot];
+    float3 worldOutward = float3(faceOutwardNormal6I(faceId));
+    int3 t1;
+    int3 t2;
+    if (faceId == kFaceZNeg || faceId == kFaceZPos) {
+        t1 = int3(1, 0, 0);
+        t2 = int3(0, 1, 0);
+    } else if (faceId == kFaceXNeg || faceId == kFaceXPos) {
+        t1 = int3(0, 1, 0);
+        t2 = int3(0, 0, 1);
+    } else {
+        t1 = int3(1, 0, 0);
+        t2 = int3(0, 0, 1);
+    }
+    int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
+    int3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
+    int3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
+    int2 deltaT1 = pos3DtoPos2DIso(t1View) * scale;
+    int2 deltaT2 = pos3DtoPos2DIso(t2View) * scale;
+    int2 dirs[8] = {
+        deltaT1, -deltaT1, deltaT2, -deltaT2,
+        deltaT1 + deltaT2, deltaT1 - deltaT2, -deltaT1 + deltaT2, -deltaT1 - deltaT2
+    };
+
+    for (int dir = 0; dir < 8; ++dir) {
+        int2 samplePixel = pixel + dirs[dir];
+        if (samplePixel.x < 0 || samplePixel.x >= size.x ||
+            samplePixel.y < 0 || samplePixel.y >= size.y) continue;
+        int neighbourEncoded = trixelDistances.read(uint2(samplePixel)).x;
+        if (neighbourEncoded >= kEmptyDistanceEncoded) continue;
+        if ((neighbourEncoded & 3) != slot) continue;   // SAME-face only
+        float3 neighbourPos3D = trixelCanvasPixelToWorld3D(
+            samplePixel, neighbourEncoded >> 2, frameData.trixelCanvasOffsetZ1,
+            frameData.frameCanvasOffset, frameData.voxelRenderOptions, cardinalIndex
+        );
+        float step = abs(dot(neighbourPos3D - centerPos3D, worldOutward));
+        if (step > kSelfStepMinHeight && step < kSelfStepMaxHeight) return true;
+    }
+    return false;
+}
+
 kernel void c_compute_sun_shadow(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
@@ -91,5 +154,17 @@ kernel void c_compute_sun_shadow(
     // world canvas this pass runs on. The cascade PCF lookup is shared with the
     // detached world-receive path (ir_sun_shadow_sample.metal, #1576).
     float factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
+    // Round-to-cell staircase self-step suppression (#2010). Only a SHADOWED
+    // receiver (factor < 1.0) on a detected staircase needs the carve, so the
+    // neighbour probe runs only then — lit pixels and flats stay byte-identical.
+    // Scoped to the static-camera GRID single-canvas raster (residualYaw == 0).
+    // The recompute reuses the same pos/normal with the near self-step rejection
+    // lifted, so genuine FAR contact shadows survive. Mirrors GLSL.
+    if (!perAxis && frameData.residualYaw == 0.0 && factor < 1.0 &&
+        detectSelfStepStaircase(pixel, size, face, rawDepth, cardinalIndex, pos3D, frameData, trixelDistances)) {
+        factor = worldSunShadowFactor(
+            pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf, kSelfStepDepthRange
+        );
+    }
     canvasSunShadow.write(float4(factor, 0.0, 0.0, 0.0), uint2(pixel));
 }
