@@ -15,8 +15,14 @@ so the test runs regardless of cwd.
 """
 import importlib.machinery
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+# fleet_validate_stack now imports fleet_blocked_by at module level; add
+# scripts/fleet/ to sys.path so exec_module resolves it (the importlib loader
+# does not inherit the CLI wrapper's sys.path.insert).
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 _MODULE = Path(__file__).parent.parent / "fleet_validate_stack.py"
 _loader = importlib.machinery.SourceFileLoader("fleet_validate_stack", str(_MODULE))
@@ -152,6 +158,54 @@ class ValidateChildNonHead(unittest.TestCase):
             "**Blocked by:** #1308 (foundation must land)\n"
         )
         self.assertEqual(validate_child(body, 1307, is_head=False), [])
+
+    def test_plain_only_blocked_by_warns_with_specific_message(self):
+        # The #174-children degraded form: non-bold inline `Blocked by: #N`.
+        # Must produce exactly one WARN naming the canonical form (#1786).
+        body = (
+            "**Model:** opus\n**Part of epic:** #1307\n"
+            "Part of epic #1307 (Phase D). [opus] Blocked by: #1308, #1309.\n"
+        )
+        findings = validate_child(body, 1307, is_head=False)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["severity"], _mod.WARN)
+        self.assertIn("degraded plain", findings[0]["msg"])
+        self.assertIn("#1786", findings[0]["msg"])
+
+    def test_plain_only_warn_stack_still_ok(self):
+        # A plain-only child is a warning, not an error — the stack stays ok.
+        body = (
+            "**Model:** sonnet\n**Part of epic:** #1307\n"
+            "Blocked by: #1308\n"
+        )
+        result = validate_stack(
+            [
+                {"number": 1308, "body": "**Model:** sonnet\n**Part of epic:** #1307\n"},
+                {"number": 1309, "body": body},
+            ],
+            1307,
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["n_errors"], 0)
+        self.assertEqual(result["n_warnings"], 1)
+
+    def test_bold_canonical_blocked_by_not_flagged_as_plain(self):
+        # Canonical bold form must NOT trigger the plain-only warning.
+        body = (
+            "**Model:** opus\n**Part of epic:** #1307\n"
+            "**Blocked by:** #1308\n"
+        )
+        findings = validate_child(body, 1307, is_head=False)
+        self.assertEqual(findings, [])
+
+    def test_no_blocker_at_all_gets_generic_warning(self):
+        # A child with NO blocker declaration at all (not even plain) still
+        # gets the existing generic warning, not the plain-only message.
+        body = "**Model:** opus\n**Part of epic:** #1307\n"
+        findings = validate_child(body, 1307, is_head=False)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["severity"], _mod.WARN)
+        self.assertNotIn("degraded plain", findings[0]["msg"])
 
 
 class ValidateStack(unittest.TestCase):

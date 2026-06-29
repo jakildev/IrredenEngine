@@ -231,5 +231,40 @@ class HasBlockedByField(unittest.TestCase):
             self.assertFalse(fbb.has_blocked_by_field(body), f"{body!r} should count as absent")
 
 
+class BlockedByIsPlainOnly(unittest.TestCase):
+    """Unit cases for `blocked_by_is_plain_only` (#1786)."""
+
+    def test_plain_only_returns_true(self):
+        # The #174-children shape: non-bold mid-line form, no bold field.
+        body = "Part of epic #174 (Phase D). [opus] Blocked by: #175, #176, #177."
+        self.assertTrue(fbb.blocked_by_is_plain_only(body))
+
+    def test_canonical_bold_returns_false(self):
+        self.assertFalse(fbb.blocked_by_is_plain_only("**Blocked by:** #5\n"))
+
+    def test_inline_bold_returns_false(self):
+        self.assertFalse(fbb.blocked_by_is_plain_only("**Blocked by: #5 (x)**\n"))
+
+    def test_both_bold_and_plain_returns_false(self):
+        # Bold canonical present — not plain-only even if plain also appears.
+        body = "**Blocked by:** #5\nAlso Blocked by: #6\n"
+        self.assertFalse(fbb.blocked_by_is_plain_only(body))
+
+    def test_header_only_returns_false(self):
+        # `Blocked on #N` header has NO _PLAIN_RE match — not plain-only.
+        self.assertFalse(fbb.blocked_by_is_plain_only("## Blocked on #5\n"))
+
+    def test_no_blocker_at_all_returns_false(self):
+        self.assertFalse(fbb.blocked_by_is_plain_only("**Model:** sonnet\n## Scope\n"))
+
+    def test_sentinel_plain_returns_false(self):
+        # `Blocked by: (none)` has no `#\d+` so _PLAIN_RE doesn't match.
+        self.assertFalse(fbb.blocked_by_is_plain_only("Blocked by: (none)\n"))
+
+    def test_empty_body_returns_false(self):
+        self.assertFalse(fbb.blocked_by_is_plain_only(""))
+        self.assertFalse(fbb.blocked_by_is_plain_only(None))
+
+
 if __name__ == "__main__":
     unittest.main()
