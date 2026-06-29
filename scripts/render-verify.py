@@ -35,9 +35,22 @@ expectation, not a jittery captured reference, so it is deterministic at zoom
 and shared across backends. A manifest whose shots are *all* structural_only
 commits no reference PNGs at all.
 
+The optional ``extra_runs`` manifest block declares additional capture passes
+of the same target, each with its own demo args and its own gated reference
+subset. This gates shots the default scene *suppresses* — e.g. canvas_stress's
+``compare_yaw0`` / ``compare_yaw_q``, which only spawn under ``--only compare``
+(a flag that hides the default groups, so the two can't share one capture).
+Each extra pass re-runs the demo, slices its gated shots out of the capture by
+``capture_offset`` (negative = from the tail, for end-appended shots), and
+pixel-diffs them against the same backend reference dir. Because an extra
+pass's references are blessed per-host (a fresh shot is captured on macOS, then
+on Linux), a backend that has not yet committed them *skips* that pass instead
+of failing the run — the gate engages on a backend once its references exist.
+
 `--update-references` copies the captured shots (and any manifest-declared ROI
 crops) over the reference set for the current backend (after explicit
-confirmation unless ``--force`` is given).
+confirmation unless ``--force`` is given). It blesses the default pass and
+every ``extra_runs`` pass, so a first run on a new host bootstraps all of them.
 
 Assumes this file lives at ``<repo>/scripts/render-verify.py``.
 """
@@ -154,11 +167,24 @@ def _load_manifest(demo_dir: Path) -> dict[str, Any]:
 _FULL_FRAME_RE = re.compile(r"screenshot_\d+\.png")
 
 
-def _collect_shots(shots_dir: Path, num_shots: int) -> list[Path]:
-    shots = sorted(
+def _collect_all_shots(shots_dir: Path) -> list[Path]:
+    """All full-frame captures in index order, with no count expectation.
+
+    The default pass knows exactly how many shots it gates (``_collect_shots``
+    asserts the count). An ``extra_runs`` pass instead gates a *slice* of a
+    larger capture — e.g. canvas_stress ``--only compare`` still emits every
+    default-scene shot (the leading frames render a near-empty scene) and
+    appends the compare shots at the tail — so its mapping is positional into
+    the full list, resolved by the pass's ``capture_offset``.
+    """
+    return sorted(
         p for p in shots_dir.glob("screenshot_*.png")
         if _FULL_FRAME_RE.fullmatch(p.name)
     )
+
+
+def _collect_shots(shots_dir: Path, num_shots: int) -> list[Path]:
+    shots = _collect_all_shots(shots_dir)
     if len(shots) < num_shots:
         raise SystemExit(
             f"expected {num_shots} screenshots in {shots_dir}, got {len(shots)}"
@@ -169,6 +195,25 @@ def _collect_shots(shots_dir: Path, num_shots: int) -> list[Path]:
             f"manifest expects {num_shots}; ignoring extras"
         )
     return shots[:num_shots]
+
+
+def _slice_capture(all_shots: list[Path], offset: int, count: int,
+                   pass_name: str) -> list[Path]:
+    """Pick ``count`` captures starting at ``offset`` (Python-negative ok).
+
+    A negative ``offset`` indexes from the end, so a tail-appended block (the
+    compare shots) stays correctly mapped even as leading default shots are
+    added or removed over time — the offset only couples to the block's own
+    length, which is co-located in the demo's shot-list source.
+    """
+    start = offset if offset >= 0 else len(all_shots) + offset
+    if start < 0 or start + count > len(all_shots):
+        raise SystemExit(
+            f"extra run '{pass_name}': capture_offset {offset} + {count} shots "
+            f"is out of range for the {len(all_shots)} captured screenshots — "
+            f"did the demo args emit a different shot count than expected?"
+        )
+    return all_shots[start:start + count]
 
 
 def _compare_shot(actual: Path, reference: Path, thresholds: dict[str, Any],
@@ -287,18 +332,28 @@ def evaluate_shots(
     crops: dict[str, list[str]] | None = None,
     structural: dict[str, list[dict[str, Any]]] | None = None,
     structural_only: set[str] | None = None,
+    missing_ref_is_skip: bool = False,
+    backend: str | None = None,
 ) -> list[dict[str, Any]]:
     """Compare captures and run structural gates; return one row per check.
 
     Each row is ``{label, kind, pass, ...}`` where ``kind`` is ``frame``
-    (full-frame pixel-diff), ``crop`` (ROI-crop pixel-diff) or ``struct``
-    (structural-metric gate). Pure given its inputs — no build/run — so the
-    gate logic is unit-testable against synthetic captures + references.
+    (full-frame pixel-diff), ``crop`` (ROI-crop pixel-diff), ``struct``
+    (structural-metric gate) or ``skip`` (a frame whose backend reference is
+    not yet committed; non-fatal). Pure given its inputs — no build/run — so
+    the gate logic is unit-testable against synthetic captures + references.
 
     ``structural_only`` shots are still captured (so the index→reference map
     stays aligned) but skip the full-frame pixel-diff and need no committed
     reference PNG — they're gated purely by their ``structural`` entries
     (an analytic oracle, deterministic at zoom where pixel-diff is excluded).
+
+    ``missing_ref_is_skip`` flips a missing full-frame reference from a hard
+    FAIL into a non-fatal ``skip`` row. The default-pass references are always
+    committed for both backends, so a missing one there is a real failure; an
+    ``extra_runs`` pass (e.g. canvas_stress ``--only compare``) blesses its
+    references per-host, so a backend that hasn't captured them yet must skip
+    rather than fail the whole run while the cross-host handoff is in flight.
     """
     rows: list[dict[str, Any]] = []
     crops = crops or {}
@@ -314,6 +369,12 @@ def evaluate_shots(
             continue
         reference = ref_dir / f"{label}.png"
         if not reference.exists():
+            if missing_ref_is_skip:
+                rows.append({"label": label, "kind": "skip", "pass": True,
+                             "reason": f"no {backend or ref_dir.name} reference "
+                                       f"yet — bless with --update-references "
+                                       f"on this host"})
+                continue
             rows.append({"label": label, "kind": "frame", "pass": False,
                          "reason": f"no reference at {reference}"})
             continue
@@ -366,6 +427,138 @@ def evaluate_shots(
     return rows
 
 
+def _parse_extra_runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate + normalize the optional ``extra_runs`` manifest block.
+
+    Each entry declares a *second capture pass* of the same target with its
+    own demo args and its own gated reference subset, so a manifest can gate
+    shots that the default scene suppresses (e.g. canvas_stress
+    ``compare_yaw0`` / ``compare_yaw_q``, which only spawn under
+    ``--only compare`` — a flag that hides the default groups). Fields:
+
+      * ``name`` (required)      — pass label for logs / diff filenames.
+      * ``demo_args`` (required) — args appended after ``--auto-screenshot N``.
+      * ``shots`` (required)     — gated labels, positional into this pass's
+                                   captures starting at ``capture_offset``.
+      * ``capture_offset``       — index of the first gated shot in the pass's
+                                   full capture list (default 0; negative =
+                                   from the tail, for end-appended shots).
+      * ``warmup`` / ``thresholds`` / ``crops`` / ``structural`` /
+        ``structural_only`` — optional per-pass overrides; each defaults to
+        the top-level manifest value.
+
+    A manifest with no ``extra_runs`` behaves exactly as before.
+    """
+    raw = manifest.get("extra_runs", [])
+    if not isinstance(raw, list):
+        raise SystemExit("manifest 'extra_runs' must be a list")
+    parsed: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise SystemExit(f"manifest 'extra_runs'[{i}] must be an object")
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            raise SystemExit(f"manifest 'extra_runs'[{i}] needs a non-empty 'name'")
+        if name in seen:
+            raise SystemExit(f"manifest 'extra_runs' has a duplicate name '{name}'")
+        seen.add(name)
+        demo_args = entry.get("demo_args")
+        if not isinstance(demo_args, list) or not demo_args \
+                or not all(isinstance(a, str) for a in demo_args):
+            raise SystemExit(
+                f"extra run '{name}': 'demo_args' must be a non-empty list of "
+                f"strings (the args that select this pass's scene)"
+            )
+        shots = entry.get("shots")
+        if not isinstance(shots, list) or not shots \
+                or not all(isinstance(s, str) for s in shots):
+            raise SystemExit(
+                f"extra run '{name}': 'shots' must be a non-empty list of "
+                f"reference labels to gate"
+            )
+        offset = entry.get("capture_offset", 0)
+        if not isinstance(offset, int):
+            raise SystemExit(
+                f"extra run '{name}': 'capture_offset' must be an integer"
+            )
+        parsed.append({
+            "name": name,
+            "demo_args": demo_args,
+            "shots": shots,
+            "capture_offset": offset,
+            "warmup": entry.get("warmup"),
+            "thresholds": entry.get("thresholds"),
+            "crops": entry.get("crops", {}),
+            "structural": entry.get("structural", {}),
+            "structural_only": set(entry.get("structural_only", [])),
+        })
+    return parsed
+
+
+def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
+                 timeout: int, demo_args: list[str],
+                 pass_label: str) -> tuple[int, str] | None:
+    """Clear ``shots_dir`` and run one ``--auto-screenshot`` capture pass.
+
+    Returns a ``(returncode, tail)`` crash tuple if ``fleet-run`` exits
+    non-zero (a real early-exit crash — ``--timeout`` makes a clean kill exit
+    0), else ``None``. Each pass owns the whole ``shots_dir``, so the caller
+    must collect this pass's screenshots before starting the next one.
+    """
+    if shots_dir.exists():
+        shutil.rmtree(shots_dir)
+    shots_dir.mkdir(parents=True, exist_ok=True)
+
+    run_cmd = ["fleet-run", "--timeout", str(timeout), target,
+               "--auto-screenshot", str(warmup)]
+    run_cmd.extend(demo_args)
+    print("+ " + " ".join(run_cmd), flush=True)
+    proc = subprocess.run(run_cmd, cwd=str(worktree), capture_output=True,
+                          text=True)
+    if proc.returncode != 0:
+        print(f"[render-verify] ({pass_label}) fleet-run exited "
+              f"{proc.returncode}; tail of output follows (screenshot count "
+              f"will be checked against manifest below):", file=sys.stderr)
+        tail = (proc.stdout + proc.stderr).splitlines()[-40:]
+        for line in tail:
+            print(f"    {line}", file=sys.stderr)
+        return (proc.returncode, "\n".join(tail))
+    return None
+
+
+def _write_references(*, captured: list[Path], shot_labels: list[str],
+                      ref_dir: Path, crops_block: dict[str, list[str]],
+                      structural_only: set[str]) -> None:
+    """Overwrite the backend reference set from one pass's captures.
+
+    Frame references for every non-structural-only shot, plus any
+    manifest-declared ROI crops. Structural gates are threshold-based (no
+    reference PNG), so they need nothing here.
+    """
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    for actual, label in zip(captured, shot_labels):
+        if label in structural_only:
+            continue  # threshold-gated, no reference PNG to write
+        dest = ref_dir / f"{label}.png"
+        shutil.copy2(actual, dest)
+        print(f"[render-verify] updated {dest}")
+    label_index = _label_index(shot_labels)
+    for label, crop_labels in crops_block.items():
+        if label not in label_index:
+            continue
+        fullframe = captured[label_index[label]]
+        for crop_label in crop_labels:
+            src = _crop_capture_path(fullframe, label, crop_label)
+            if not src.exists():
+                print(f"[render-verify] warning: declared crop not captured, "
+                      f"skipping ({src.name})")
+                continue
+            dest = ref_dir / _crop_reference_name(label, crop_label)
+            shutil.copy2(src, dest)
+            print(f"[render-verify] updated {dest}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--target", default="IRShapeDebug",
@@ -389,10 +582,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-build", action="store_true",
                     help="Skip `fleet-build`; assume the target is already built.")
     ap.add_argument("--demo-arg", action="append", default=[], metavar="ARG",
-                    help="Extra argument passed through to the demo after "
-                         "--auto-screenshot (repeatable). Use to prove a feature "
-                         "flag is output-neutral against the committed references "
-                         "— e.g. `--demo-arg --occlusion-cull` checks the voxel "
+                    help="Extra argument passed through to the DEFAULT pass's "
+                         "demo run after --auto-screenshot (repeatable; "
+                         "manifest 'extra_runs' passes use their own declared "
+                         "demo_args). Use to prove a feature flag is output-"
+                         "neutral against the committed references — e.g. "
+                         "`--demo-arg --occlusion-cull` checks the voxel "
                          "occlusion cull renders bit-identical to the cull-off "
                          "baseline (#1294 child 3/3).")
     args = ap.parse_args(argv)
@@ -431,6 +626,10 @@ def main(argv: list[str] | None = None) -> int:
                 f"gate — it would be captured but never checked. Add a "
                 f"structural entry or drop it from structural_only."
             )
+    # Optional second/third capture passes with their own demo args + gated
+    # reference subset (e.g. canvas_stress `--only compare`). Empty for a
+    # single-pass manifest, so the default path is untouched.
+    extra_runs = _parse_extra_runs(manifest)
     screenshot_subdir = manifest.get("screenshot_subdir", "save_files/screenshots")
     # CLI --warmup wins; manifest["warmup"] overrides the hardcoded default of 10.
     warmup: int = args.warmup if args.warmup is not None else manifest.get("warmup", 10)
@@ -438,76 +637,69 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[render-verify] target={args.target} demo={demo_name} backend={backend} warmup={warmup}")
     print(f"[render-verify] {len(shot_labels)} shots: {', '.join(shot_labels)}")
 
+    if extra_runs:
+        print(f"[render-verify] {len(extra_runs)} extra run(s): "
+              f"{', '.join(e['name'] for e in extra_runs)}")
+
     if not args.no_build:
         _run(["fleet-build", "--target", args.target], cwd=worktree)
 
     exe = _find_exe(build_dir, args.target, demo_name)
     shots_dir = exe.parent / screenshot_subdir
-    if shots_dir.exists():
-        shutil.rmtree(shots_dir)
-    shots_dir.mkdir(parents=True, exist_ok=True)
-
-    run_cmd = ["fleet-run", "--timeout", str(args.timeout), args.target,
-               "--auto-screenshot", str(warmup)]
-    run_cmd.extend(args.demo_arg)
-    print("+ " + " ".join(run_cmd), flush=True)
-    proc = subprocess.run(run_cmd, cwd=str(worktree),
-                          capture_output=True, text=True)
-    # In `--auto-screenshot` mode the demo fires `closeWindow()` after the
-    # last shot and exits 0; any non-zero return is a crash (e.g. a Metal
-    # static-destruction segfault that lands AFTER the screenshots are
-    # saved, which the per-shot comparator would otherwise silently
-    # "pass" — T-336). With `--timeout`, ir-run returns 0 on timeout-kill
-    # too, so the only way we see non-zero here is a real early-exit
-    # crash. Surface the tail and let the run_crash flag block a PASS
-    # verdict below even when all shots compare clean.
-    run_crash: tuple[int, str] | None = None
-    if proc.returncode != 0:
-        print(f"[render-verify] fleet-run exited {proc.returncode}; "
-              f"tail of output follows (screenshot count will be checked "
-              f"against manifest below):", file=sys.stderr)
-        tail = (proc.stdout + proc.stderr).splitlines()[-40:]
-        for line in tail:
-            print(f"    {line}", file=sys.stderr)
-        run_crash = (proc.returncode, "\n".join(tail))
-
-    captured = _collect_shots(shots_dir, len(shot_labels))
     ref_dir = demo_dir / "test" / "references" / backend
-    diff_dir = shots_dir / "diffs"
+    # Single-pass runs keep diffs in shots_dir/diffs (the original location,
+    # cleared along with shots_dir each run). With extra_runs, each pass
+    # rmtrees shots_dir on entry, so a diff written there by an earlier pass's
+    # evaluate would be wiped — route those to a sibling dir that survives the
+    # later passes, cleared once up front so stale diffs don't linger.
+    diff_dir = (shots_dir.parent / "render_verify_diffs") if extra_runs \
+        else (shots_dir / "diffs")
+    if extra_runs and diff_dir.exists():
+        shutil.rmtree(diff_dir)
+
+    if args.update_references and not args.force:
+        reply = input(
+            f"[render-verify] About to overwrite references in {ref_dir}. "
+            f"Continue? [y/N] "
+        )
+        if reply.strip().lower() not in ("y", "yes"):
+            print("[render-verify] aborted.")
+            return 1
+
+    # ── Default pass ──────────────────────────────────────────────────────
+    # `--auto-screenshot` fires `closeWindow()` after the last shot and exits
+    # 0; a non-zero return is a real early-exit crash (e.g. a Metal static-
+    # destruction segfault landing AFTER the screenshots save, which the per-
+    # shot comparator would otherwise silently "pass" — T-336). `--timeout`
+    # also exits 0 on a clean kill, so a crash is the only non-zero path; we
+    # let it block a PASS verdict even when every shot compares clean.
+    crashes: list[tuple[int, str]] = []
+    crash_main = _run_capture(
+        worktree=worktree, target=args.target, shots_dir=shots_dir,
+        warmup=warmup, timeout=args.timeout, demo_args=args.demo_arg,
+        pass_label="default")
+    if crash_main is not None:
+        crashes.append(crash_main)
+    captured = _collect_shots(shots_dir, len(shot_labels))
 
     if args.update_references:
-        if not args.force:
-            reply = input(
-                f"[render-verify] About to overwrite references in {ref_dir}. "
-                f"Continue? [y/N] "
-            )
-            if reply.strip().lower() not in ("y", "yes"):
-                print("[render-verify] aborted.")
-                return 1
-        ref_dir.mkdir(parents=True, exist_ok=True)
-        for actual, label in zip(captured, shot_labels):
-            if label in structural_only:
-                continue  # threshold-gated, no reference PNG to write
-            dest = ref_dir / f"{label}.png"
-            shutil.copy2(actual, dest)
-            print(f"[render-verify] updated {dest}")
-        # Also snapshot any manifest-declared ROI crops so the crop gate has
-        # a baseline. Structural gates are threshold-based (no reference PNG),
-        # so they need nothing here.
-        label_index = _label_index(shot_labels)
-        for label, crop_labels in crops_block.items():
-            if label not in label_index:
-                continue
-            fullframe = captured[label_index[label]]
-            for crop_label in crop_labels:
-                src = _crop_capture_path(fullframe, label, crop_label)
-                if not src.exists():
-                    print(f"[render-verify] warning: declared crop not captured, "
-                          f"skipping ({src.name})")
-                    continue
-                dest = ref_dir / _crop_reference_name(label, crop_label)
-                shutil.copy2(src, dest)
-                print(f"[render-verify] updated {dest}")
+        _write_references(captured=captured, shot_labels=shot_labels,
+                          ref_dir=ref_dir, crops_block=crops_block,
+                          structural_only=structural_only)
+        # Each extra pass must run even when its references don't exist yet —
+        # this is exactly how those references get blessed for the first time.
+        for extra in extra_runs:
+            _run_capture(
+                worktree=worktree, target=args.target, shots_dir=shots_dir,
+                warmup=extra["warmup"] if extra["warmup"] is not None else warmup,
+                timeout=args.timeout, demo_args=extra["demo_args"],
+                pass_label=extra["name"])
+            all_caps = _collect_all_shots(shots_dir)
+            sliced = _slice_capture(all_caps, extra["capture_offset"],
+                                    len(extra["shots"]), extra["name"])
+            _write_references(captured=sliced, shot_labels=extra["shots"],
+                              ref_dir=ref_dir, crops_block=extra["crops"],
+                              structural_only=extra["structural_only"])
         return 0
 
     # A reference set is only required when at least one shot is pixel-diffed.
@@ -536,43 +728,97 @@ def main(argv: list[str] | None = None) -> int:
         structural_only=structural_only,
     )
 
+    # ── Extra passes ──────────────────────────────────────────────────────
+    # Each is a separate capture with its own demo args (e.g. `--only compare`)
+    # and gated reference subset. The default-pass captures are already
+    # consumed (evaluated) above, so it is safe for the pass below to rmtree
+    # shots_dir. A pass whose backend has not blessed ANY of its references is
+    # skipped wholesale (no demo run) — the cross-host reference handoff may
+    # still be in flight; a per-shot missing reference becomes a non-fatal
+    # `skip` row rather than failing the run.
+    for extra in extra_runs:
+        gated = extra["shots"]
+        pixel_shots = [s for s in gated if s not in extra["structural_only"]]
+        if pixel_shots and not any((ref_dir / f"{s}.png").exists()
+                                   for s in pixel_shots):
+            print(f"[render-verify] extra run '{extra['name']}' skipped — no "
+                  f"{backend} references for {', '.join(pixel_shots)} yet "
+                  f"(bless with --update-references on this host).")
+            for s in pixel_shots:
+                rows.append({"label": f"{extra['name']}:{s}", "kind": "skip",
+                             "pass": True,
+                             "reason": f"no {backend} reference yet"})
+            continue
+        print(f"[render-verify] extra run '{extra['name']}': "
+              f"{' '.join(extra['demo_args'])}")
+        crash = _run_capture(
+            worktree=worktree, target=args.target, shots_dir=shots_dir,
+            warmup=extra["warmup"] if extra["warmup"] is not None else warmup,
+            timeout=args.timeout, demo_args=extra["demo_args"],
+            pass_label=extra["name"])
+        if crash is not None:
+            crashes.append(crash)
+        all_caps = _collect_all_shots(shots_dir)
+        sliced = _slice_capture(all_caps, extra["capture_offset"],
+                                len(gated), extra["name"])
+        extra_rows = evaluate_shots(
+            captured=sliced,
+            shot_labels=gated,
+            ref_dir=ref_dir,
+            diff_dir=diff_dir,
+            thresholds=extra["thresholds"] or thresholds,
+            crops=extra["crops"],
+            structural=extra["structural"],
+            structural_only=extra["structural_only"],
+            missing_ref_is_skip=True,
+            backend=backend,
+        )
+        # Namespace each row under its pass so a label shared across passes
+        # stays unambiguous in the report and its diff path.
+        for r in extra_rows:
+            r["label"] = f"{extra['name']}:{r['label']}"
+        rows.extend(extra_rows)
+
+    # ── Report ────────────────────────────────────────────────────────────
     print()
     print(f"{'shot':40} {'result':8} {'match%':>8} {'max_d':>6} {'psnr':>8}")
     print("-" * 76)
     failures: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     for row in rows:
-        verdict = "PASS" if row["pass"] else "FAIL"
+        verdict = ("SKIP" if row["kind"] == "skip"
+                   else "PASS" if row["pass"] else "FAIL")
         result = row.get("result")
         if row["kind"] in ("frame", "crop") and result and "match_pct" in result:
             print(f"{row['label']:40} {verdict:8} {result['match_pct']:>8} "
                   f"{result['max_delta']:>6} {result['psnr_db']:>8}")
         else:
-            # MISSING / not-captured rows and structural gates have no
+            # SKIP / MISSING / not-captured rows and structural gates have no
             # pixel-diff numbers — show the reason in the wide column.
             reason = row.get("reason") or (result.get("reason") if result else "") or ""
             print(f"{row['label']:40} {verdict:8} {reason}")
-        if not row["pass"]:
+        if row["kind"] == "skip":
+            skipped.append(row)
+        elif not row["pass"]:
             failures.append(row)
     all_pass = not failures
+    checked = len(rows) - len(skipped)
 
     print()
-    if all_pass and run_crash is None:
-        print(f"[render-verify] all {len(rows)} checks PASS "
-              f"({len(shot_labels)} frames"
-              f"{f', {sum(len(v) for v in crops_block.values())} crops' if crops_block else ''}"
-              f"{f', {sum(len(v) for v in structural_block.values())} structural' if structural_block else ''})")
+    skip_note = f" ({len(skipped)} skipped — references pending)" if skipped else ""
+    if all_pass and not crashes:
+        print(f"[render-verify] all {checked} checks PASS{skip_note}")
         return 0
 
     if not all_pass:
-        print(f"[render-verify] {len(failures)} of {len(rows)} checks FAIL")
+        print(f"[render-verify] {len(failures)} of {checked} checks FAIL{skip_note}")
         for row in failures:
             result = row.get("result") or {}
             reason = row.get("reason") or result.get("reason", "mismatch")
             diff = result.get("diff_path", "(no diff)")
             print(f"  - {row['label']}: {reason}  diff={diff}")
 
-    if run_crash is not None:
-        rc, _ = run_crash
+    for rc, _ in crashes:
         print(f"[render-verify] demo crashed at shutdown (fleet-run exit={rc}); "
               f"failing the verify run even when shots match — see tail above.",
               file=sys.stderr)
