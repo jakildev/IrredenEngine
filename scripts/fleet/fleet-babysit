@@ -520,6 +520,7 @@ resume_mid_task() {
     # "step 0.5"; reviewers are read-only and just re-review) and carries on.
     # The crashed session's in-context scratch is lost, but the task is not.
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
+        # Crash recovery — not fleet restart; the prompt signals mid-task continuity, not cold-start burn.
         claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
             "resume your work from where you left off"
     else
