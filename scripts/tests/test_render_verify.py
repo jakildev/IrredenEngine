@@ -41,6 +41,8 @@ write_png = _cmp.write_png
 evaluate_shots = _rv.evaluate_shots
 _run_structural_metric = _rv._run_structural_metric
 _crop_capture_path = _rv._crop_capture_path
+_parse_extra_runs = _rv._parse_extra_runs
+_slice_capture = _rv._slice_capture
 
 MAGENTA = (255, 0, 255)
 BLACK = (0, 0, 0)
@@ -290,6 +292,117 @@ class RenderVerifyHarness(unittest.TestCase):
         self.assertEqual(
             got.name, "screenshot_000007_shotA__crop_center_cube_top.png")
         self.assertEqual(got.parent, frame.parent)
+
+    # ── extra-run missing-reference skip (cross-host handoff) ────────────
+    def test_missing_ref_is_skip_yields_nonfatal_skip(self):
+        # An extra_runs pass whose backend reference isn't committed yet must
+        # SKIP (pass=True, kind=skip) instead of failing — the reference is
+        # blessed per-host, so a host that hasn't captured it should not fail.
+        rows = evaluate_shots(
+            captured=self.frames, shot_labels=self.labels, ref_dir=self.refs,
+            diff_dir=self.diffs, thresholds={},
+            missing_ref_is_skip=True, backend="macos-debug")
+        self.assertEqual([r["kind"] for r in rows], ["skip", "skip"])
+        self.assertTrue(all(r["pass"] for r in rows))
+        self.assertIn("macos-debug", self._row(rows, "shotA")["reason"])
+
+    def test_missing_ref_is_skip_still_gates_present_reference(self):
+        # When the reference IS present the skip flag is inert — a real
+        # regression still fails even in extra-run mode.
+        self._ref("shotA.png")                         # matches capture -> pass
+        self._ref("shotB.png", fn=lambda x, y: WHITE)  # diverges -> fail
+        rows = evaluate_shots(
+            captured=self.frames, shot_labels=self.labels, ref_dir=self.refs,
+            diff_dir=self.diffs, thresholds={},
+            missing_ref_is_skip=True, backend="macos-debug")
+        self.assertEqual(self._row(rows, "shotA")["kind"], "frame")
+        self.assertTrue(self._row(rows, "shotA")["pass"])
+        self.assertFalse(self._row(rows, "shotB")["pass"])  # diverged -> fail
+
+
+class SliceCapture(unittest.TestCase):
+    def _caps(self, n):
+        return [Path(f"screenshot_{i:06d}.png") for i in range(n)]
+
+    def test_positive_offset(self):
+        caps = self._caps(15)
+        got = _slice_capture(caps, 12, 2, "compare")
+        self.assertEqual([p.name for p in got],
+                         ["screenshot_000012.png", "screenshot_000013.png"])
+
+    def test_negative_offset_indexes_from_tail(self):
+        # -3 with 2 shots over 15 captures -> indices 12,13 (skips the last,
+        # e.g. an ungated compare_detached). Robust to leading-shot growth.
+        caps = self._caps(15)
+        got = _slice_capture(caps, -3, 2, "compare")
+        self.assertEqual([p.name for p in got],
+                         ["screenshot_000012.png", "screenshot_000013.png"])
+        # Same -3 still lands the tail block after a leading shot is added.
+        caps2 = self._caps(16)
+        got2 = _slice_capture(caps2, -3, 2, "compare")
+        self.assertEqual([p.name for p in got2],
+                         ["screenshot_000013.png", "screenshot_000014.png"])
+
+    def test_offset_out_of_range_raises(self):
+        with self.assertRaises(SystemExit):
+            _slice_capture(self._caps(3), 12, 2, "compare")
+        with self.assertRaises(SystemExit):
+            _slice_capture(self._caps(2), -3, 2, "compare")
+
+
+class ParseExtraRuns(unittest.TestCase):
+    def test_absent_block_is_empty(self):
+        self.assertEqual(_parse_extra_runs({}), [])
+
+    def test_valid_entry_normalizes_defaults(self):
+        runs = _parse_extra_runs({"extra_runs": [{
+            "name": "compare",
+            "demo_args": ["--only", "compare"],
+            "shots": ["compare_yaw0", "compare_yaw_q"],
+            "capture_offset": -3,
+        }]})
+        self.assertEqual(len(runs), 1)
+        r = runs[0]
+        self.assertEqual(r["name"], "compare")
+        self.assertEqual(r["demo_args"], ["--only", "compare"])
+        self.assertEqual(r["shots"], ["compare_yaw0", "compare_yaw_q"])
+        self.assertEqual(r["capture_offset"], -3)
+        self.assertIsNone(r["warmup"])          # inherits top-level
+        self.assertIsNone(r["thresholds"])      # inherits top-level
+        self.assertEqual(r["crops"], {})
+        self.assertEqual(r["structural_only"], set())
+
+    def test_default_offset_is_zero(self):
+        runs = _parse_extra_runs({"extra_runs": [{
+            "name": "x", "demo_args": ["--flag"], "shots": ["s"]}]})
+        self.assertEqual(runs[0]["capture_offset"], 0)
+
+    def test_rejects_bad_entries(self):
+        bad = [
+            {"demo_args": ["--x"], "shots": ["s"]},                    # no name
+            {"name": "", "demo_args": ["--x"], "shots": ["s"]},        # empty name
+            {"name": "x", "shots": ["s"]},                            # no demo_args
+            {"name": "x", "demo_args": [], "shots": ["s"]},            # empty demo_args
+            {"name": "x", "demo_args": "--x", "shots": ["s"]},        # demo_args not list
+            {"name": "x", "demo_args": ["--x"]},                      # no shots
+            {"name": "x", "demo_args": ["--x"], "shots": []},          # empty shots
+            {"name": "x", "demo_args": ["--x"], "shots": ["s"],
+             "capture_offset": "tail"},                               # offset not int
+        ]
+        for entry in bad:
+            with self.assertRaises(SystemExit):
+                _parse_extra_runs({"extra_runs": [entry]})
+
+    def test_rejects_duplicate_names(self):
+        with self.assertRaises(SystemExit):
+            _parse_extra_runs({"extra_runs": [
+                {"name": "dup", "demo_args": ["--a"], "shots": ["s"]},
+                {"name": "dup", "demo_args": ["--b"], "shots": ["t"]},
+            ]})
+
+    def test_rejects_non_list_block(self):
+        with self.assertRaises(SystemExit):
+            _parse_extra_runs({"extra_runs": {"name": "x"}})
 
 
 if __name__ == "__main__":
