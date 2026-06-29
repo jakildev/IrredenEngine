@@ -225,6 +225,13 @@ _INGEST_SKIP_LABELS = frozenset({
 # ever ADDS one label — fleet-queue-ingest resets it to fleet:needs-plan.
 _INGEST_OVERRIDE_LABELS = frozenset({"human:revise-plan"})
 
+# Human-gate labels that take an issue out of fleet *planning/dispatch* rotation:
+# human:owned (de-queued), human:wip (human is on it), human:no-plan (queue
+# directly, never plan). A needs-plan or plan-review issue carrying any of these
+# is not worker-actionable, so the worker slice and the review projections drop
+# it rather than waking a no-op iteration on it.
+_HUMAN_GATE_LABELS = frozenset({"human:owned", "human:wip", "human:no-plan"})
+
 
 def _ingest_skipped(labels):
     """True when an issue should stay OUT of the ingest set. A skip label keeps
@@ -1438,7 +1445,7 @@ def project_opus_reviewer(state):
         # self-toggled label, so it can't self-trigger a loop.
         for issue in repo_state.get("plan_review", []):
             labels = set(issue.get("labels", []))
-            if labels & {"human:owned", "human:wip", "human:no-plan"}:
+            if labels & _HUMAN_GATE_LABELS:
                 continue
             items.append({"repo": repo, "kind": "plan_review",
                           "issue": issue["number"]})
@@ -1844,6 +1851,16 @@ def slice_worker(state):
             if model_tags(task) & {"opus", "fable", "sonnet"}:
                 out["tasks_open"].append(_slice_task_with_repo(repo_key, task))
         for issue in repo_state.get("needs_plan", []):
+            # Skip human-gated issues (human:no-plan / owned / wip). They carry
+            # fleet:needs-plan but are not worker-plannable: human:no-plan must
+            # be queued directly (handled by ingest), and owned/wip belong to the
+            # human. Surfacing them here makes the dispatcher's class resolver
+            # count them as plannable and spin a no-op opus worker that finds
+            # nothing — the idle-fleet churn behind the needs-plan/no-plan limbo.
+            # A merely fleet:blocked needs-plan issue is still plannable, so it
+            # is NOT gated here.
+            if set(issue.get("labels", [])) & _HUMAN_GATE_LABELS:
+                continue
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
         for pr in repo_state.get("prs", []):
             labels = set(pr["labels"])
@@ -1889,7 +1906,7 @@ def slice_opus_reviewer(state):
         # so a woken reviewer reads the same set that triggered it). #1932.
         for issue in repo_state.get("plan_review", []):
             labels = set(issue.get("labels", []))
-            if labels & {"human:owned", "human:wip", "human:no-plan"}:
+            if labels & _HUMAN_GATE_LABELS:
                 continue
             out["plan_review"].append(_slice_issue_with_repo(repo_key, issue))
     return out
