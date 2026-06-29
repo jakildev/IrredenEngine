@@ -218,6 +218,23 @@ def _ref_slug(name, default_repo):
     return default_repo
 
 
+def blocked_by_is_plain_only(body):
+    """True when `body` declares a real blocker ONLY via the degraded plain
+    (non-bold) `Blocked by: #N` form — `_PLAIN_RE` matches but neither bold
+    field form (`_CANONICAL_RE` / `_INLINE_RE`) is present.
+
+    Anchored on `_PLAIN_RE` (not `parse_blocked_by` non-empty) so a
+    header-only child (`Blocked on #N`) returns False — that is a separate
+    recognized fallback and should not be misflagged (#1786).
+    A sentinel `Blocked by: (none)` body has `has_plain` False (the
+    `#\\d+` anchor filters sentinels), so that also returns False.
+    """
+    body = body or ""
+    has_plain = bool(_PLAIN_RE.search(body))
+    has_bold = bool(_CANONICAL_RE.search(body) or _INLINE_RE.search(body))
+    return has_plain and not has_bold
+
+
 def blocker_refs(body, default_repo):
     """(slug, number) for every blocker `#N` declared in `body`, routing each
     cross-repo `[owner/]Repo#N` qualifier to its GitHub slug (#1522) and

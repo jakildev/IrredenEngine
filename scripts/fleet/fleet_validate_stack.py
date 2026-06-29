@@ -34,6 +34,8 @@ import re
 import subprocess
 import sys
 
+import fleet_blocked_by
+
 # A child belongs to umbrella N if a body line *starts* with either the
 # canonical ``**Part of epic:**`` field or the condensed ``**Epic:**`` header
 # bullet and references #N. Discovery accepts both forms so the drift case
@@ -128,10 +130,20 @@ def validate_child(body, umbrella, is_head):
     if not is_head:
         bb_lines = _BLOCKED_BY_LINE_RE.findall(b)
         if not bb_lines:
-            warn("no standalone `**Blocked by:** #N` line — drift if this "
-                 "child chains on a sibling (prose `Blocked on ...` headers "
-                 "are read only as a fallback; the standalone line is "
-                 "canonical); fine if it is a genuine independent root")
+            if fleet_blocked_by.blocked_by_is_plain_only(b):
+                warn("declares its blocker via the degraded plain "
+                     "`Blocked by: #N` form only — use the canonical "
+                     "standalone `**Blocked by:** #N` line (file-epic "
+                     "discovery and the queue parsers key on the bold "
+                     "form; the shared parser reads the plain form as a "
+                     "#1749 backstop, but it stays a filing-time contract "
+                     "violation, #1786)")
+            else:
+                warn("no standalone `**Blocked by:** #N` line — drift if "
+                     "this child chains on a sibling (prose `Blocked on "
+                     "...` headers are read only as a fallback; the "
+                     "standalone line is canonical); fine if it is a "
+                     "genuine independent root")
         else:
             # Multiple blockers are supported (#1296): check_blockers gates on
             # the union of every `#N` across all `**Blocked by:**` lines, and
