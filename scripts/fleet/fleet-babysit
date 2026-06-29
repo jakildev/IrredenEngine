@@ -437,11 +437,19 @@ run_with_heartbeat() {
 #     signal, not "agent is unhealthy, retry".
 
 launch_architect_first() {
+    local -a cmd
     if [[ -f "$SESSION_FILE" ]]; then
         SESSION_ID=$(cat "$SESSION_FILE")
         log "resuming architect session $SESSION_ID (preserved across fleet restart)"
-        claude --model "$MODEL" --effort "$EFFORT" --resume "$SESSION_ID" \
-            "fleet just restarted. resume our previous conversation; you don't need to re-run your startup banner. tell me what you were last working on so we can continue."
+        # Resume with NO trailing prompt: load the prior conversation and drop
+        # the human straight back into it, generating no model turn. The old
+        # behaviour fired a "tell me what you were last working on" nudge here,
+        # which cost a full model turn per architect on every fleet-up — pure
+        # cold-start token + request burn that fed the startup short-window 429
+        # burst — for nothing the human couldn't get by reading the resumed
+        # transcript. An interactive --resume with no prompt just waits for
+        # input.
+        cmd=(claude --model "$MODEL" --effort "$EFFORT" --resume "$SESSION_ID")
     else
         # Generate and persist a stable session ID so subsequent
         # fleet-ups can resume this conversation. Persist BEFORE
@@ -450,9 +458,19 @@ launch_architect_first() {
         SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
         echo "$SESSION_ID" > "$SESSION_FILE"
         log "starting architect session $SESSION_ID (saved to $SESSION_FILE)"
-        claude --model "$MODEL" --effort "$EFFORT" --session-id "$SESSION_ID" \
-            "/role-$ROLE $MODE"
+        cmd=(claude --model "$MODEL" --effort "$EFFORT" --session-id "$SESSION_ID" \
+            "/role-$ROLE $MODE")
     fi
+    if [[ -n "${FLEET_BABYSIT_PRINT_LAUNCH:-}" ]]; then
+        # Inspection hook (mirrors FLEET_BABYSIT_PRINT_EFFORT): print the
+        # resolved launch command and exit before spawning claude. Lets
+        # test_babysit_launch.sh assert the resume path carries no prompt.
+        # Safe to exit here — architects start no heartbeat keeper (see
+        # HEARTBEAT_FILE), so there's no background process to leak.
+        printf '%s\n' "${cmd[*]}"
+        exit 0
+    fi
+    "${cmd[@]}"
 }
 
 launch_worker_fresh() {
@@ -502,6 +520,7 @@ resume_mid_task() {
     # "step 0.5"; reviewers are read-only and just re-review) and carries on.
     # The crashed session's in-context scratch is lost, but the task is not.
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
+        # Crash recovery — not fleet restart; the prompt signals mid-task continuity, not cold-start burn.
         claude --model "$MODEL" --effort "$EFFORT" --resume "$(cat "$SESSION_FILE")" \
             "resume your work from where you left off"
     else

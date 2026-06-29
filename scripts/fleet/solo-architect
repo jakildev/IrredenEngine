@@ -109,10 +109,13 @@ if [[ -s "$SESSION_FILE" && "$FRESH" -eq 0 ]]; then
   SID="$(cat "$SESSION_FILE")"
   echo "solo-architect: resuming $ROLE session $SID (cwd $WORKTREE)" >&2
   echo "  (if the session can't be resumed, re-run with --fresh)" >&2
+  # Resume with NO trailing prompt — load the conversation and wait for input,
+  # generating no model turn. The old "tell me what we were last working on"
+  # nudge bought nothing (the transcript is right there) and cost a full turn
+  # on every relaunch; same reasoning as fleet-babysit's launch_architect_first.
   exec claude --model "$MODEL" --effort "$EFFORT" \
     --append-system-prompt "$SOLO_PROMPT" \
-    --resume "$SID" "${PASSTHRU[@]+"${PASSTHRU[@]}"}" \
-    "resuming our solo session — you don't need to re-run the full startup banner. tell me what we were last working on so we can continue."
+    --resume "$SID" "${PASSTHRU[@]+"${PASSTHRU[@]}"}"
 else
   SID="$(uuidgen | tr 'A-Z' 'a-z')"
   echo "$SID" > "$SESSION_FILE"
