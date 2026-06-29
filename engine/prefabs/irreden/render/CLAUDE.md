@@ -618,12 +618,13 @@ scale. Full invariant + verify steps:
   override only arbitrates ACROSS canvases at finalization — two voxel sets on
   ONE canvas resolve depth at the canvas raster (`atomicMin`), upstream of the
   partition, so an occluded same-canvas voxel's priority never reaches the
-  composite (use separate detached units). **Caveat:** the carrier reaches the
-  GPU via the per-frame Voxel-record (binding 6) upload, so a STATIC detached
-  unit carries it but a ROTATING `DETACHED_REVOXELIZE` unit does NOT yet — the
-  re-voxelize compute (`c_revoxelize_detached`) hardcodes `reserved` to 0 and its
-  source grid is 2 uints/cell (follow-up: carry `reserved` through the source
-  grid + dest write). Demo: `canvas_stress --only interpenetrate`.
+  composite (use separate detached units). A STATIC detached unit carries the
+  carrier via the per-frame Voxel-record (binding 6) upload; a ROTATING
+  `DETACHED_REVOXELIZE` unit carries it too since #2023 — the re-voxelize compute
+  (`c_revoxelize_detached`) source grid is 3 uints/cell ({colorPacked,
+  materialFlagBone, reserved}) and its MODE 1 inverse-resample dest write carries
+  the `reserved` lane verbatim (stage 2 still masks `& 0x3u` at decode). Demo:
+  `canvas_stress --only interpenetrate` (far unit rotated to exercise MODE 1).
 - **Seed GPU-buffer sentinels GPU-side, never via a resource-sized CPU
   staging vector + `subData`.** Metal's `fillBuffer` writes a repeating
   single byte, so multi-byte sentinels like `kTrixelDistanceMaxDistance`

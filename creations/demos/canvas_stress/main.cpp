@@ -134,8 +134,9 @@ struct CanvasStressSettings {
     // 0 means no filter (default run, byte-identical). Two OPT-IN groups never
     // appear in the default run: "compare" (the #1374 unified-rotation labeled
     // side-by-side) and "interpenetrate" (the #1960 per-trixel-priority depth
-    // override — `--only interpenetrate` isolates two static detached units, the
-    // far one tagged a per-trixel tier so it renders in front of the near one).
+    // override — `--only interpenetrate` isolates two detached units, the far one
+    // ROTATED and tagged a per-trixel tier so it renders in front of the near one,
+    // proving the carrier survives the re-voxelize MODE 1 fill, #2023).
     //
     // The sweep flags replace the base auto-screenshot suite with a focused capture run and force
     // --no-auto-rotate so the swept variable is the only one moving:
@@ -741,16 +742,28 @@ void spawnOrbitShape(
     );
 }
 
-// One STATIC world-placed DETACHED unit for the #1960 interpenetration demo: a
+// One world-placed DETACHED unit for the #1960 / #2023 interpenetration demo: a
 // per-entity canvas + private 10³ voxel cube, NO per-entity depth priority
 // (depthPriority_ = 0) so the demo isolates the per-TRIXEL carrier, optionally
 // tagged with a per-voxel priority tier. World-placed (not screen-locked) so the
 // composite depth-sorts it against the other unit on the shared trixelDistances.
-// STATIC (no AutoSpin): at identity the re-voxelize compute writes only positions
-// (mode 0), so the CPU per-frame Voxel-record upload carries `reserved` into the
-// canvas raster — a rotating unit would need the re-voxelize source grid to carry
-// reserved too (c_revoxelize_detached hardcodes it 0; tracked as follow-up).
-void spawnPerTrixelDetachedUnit(int index, vec3 worldPos, Color color, std::uint8_t priority) {
+//
+// `rotate` selects which re-voxelize fill path the per-trixel carrier must
+// survive:
+//   - false — STATIC at identity: the fill runs MODE 0 (forward positions only),
+//     so the CPU per-frame Voxel-record (binding 6) upload carries `reserved`
+//     into the raster. This path always carried priority (#1960).
+//   - true  — ROTATED: a FIXED non-cardinal initial pose (so even under
+//     `--no-spin` the fill runs the MODE 1 inverse resample, not the identity
+//     MODE 0 passthrough) plus continuous AutoSpin when spin is enabled. MODE 1
+//     authors the dest Voxel record GPU-side from the per-pool source grid, which
+//     now carries `reserved` (#2023) — the gap this demo proves closed. Under
+//     `--no-spin` the pose is deterministic, so `--depth-probe <overlap>` reads a
+//     stable `tier=N` for a headless gate; without the #2023 fix the rotated unit
+//     decodes `tier=0` and the nearer unit wins.
+void spawnPerTrixelDetachedUnit(
+    int index, vec3 worldPos, Color color, std::uint8_t priority, bool rotate
+) {
     constexpr ivec2 kCanvasSize{128, 128};
     constexpr ivec3 kPoolSize{20, 20, 20};
     constexpr ivec3 kCubeSize{10, 10, 10};
@@ -767,6 +780,22 @@ void spawnPerTrixelDetachedUnit(int index, vec3 worldPos, Color color, std::uint
     );
     if (priority != 0) {
         IREntity::getComponent<C_VoxelSetNew>(voxelSet).changeVoxelPriorityAll(priority);
+    }
+    if (rotate) {
+        // Non-cardinal axis + a fixed initial angle so the canvas rotation is
+        // non-identity even at spin rate 0 (`--no-spin`) — that forces the MODE 1
+        // inverse-resample fill deterministically. AutoSpin then accumulates onto
+        // the initial pose, so spin-enabled runs tumble it continuously for the
+        // visual proof.
+        constexpr vec3 kSpinAxis{0.4f, 1.0f, 0.2f};
+        const vec4 fixedPose = IRMath::quatAxisAngle(kSpinAxis, 0.6f);
+        IREntity::createEntity(
+            C_LocalTransform{worldPos, fixedPose},
+            C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+            C_AutoSpin{kSpinAxis, g_settings.noSpin_ ? 0.0f : kDetachedSpinBaseRadPerFrame},
+            canvas
+        );
+        return;
     }
     IREntity::createEntity(
         C_LocalTransform{worldPos},
@@ -835,18 +864,27 @@ void spawnSmallZoomRepro() {
 // unit regardless of true depth ("animate inside each other"). SEPARATE canvases
 // are required: two voxel sets on ONE canvas resolve depth at the canvas raster
 // (atomicMin), upstream of the per-trixel partition, so the occluded set's
-// priority never reaches finalization. Static + no rotation ⇒ deterministic:
-// --depth-probe at the overlap reads the resolved tier (depth_probe.hpp, part G).
-// Default priority 0 ⇒ no override (near unit wins, the world-placed depth path).
+// priority never reaches finalization.
+//
+// The FAR (priority) unit ROTATES (#2023): a non-identity pose routes its
+// re-voxelize fill through the MODE 1 inverse resample, which authors the dest
+// Voxel record GPU-side from the per-pool source grid. That grid now carries
+// `reserved`, so the per-trixel tier survives rotation — a spinning detached
+// solid keeps its depth priority. Under `--no-spin --no-auto-rotate` the far
+// unit holds its fixed non-cardinal pose, so `--depth-probe <overlap>` reads a
+// deterministic `tier=2` (depth_probe.hpp, part G); the near unit stays static
+// (MODE 0). Default priority 0 ⇒ no override (near unit wins, world-placed depth).
 void spawnPerTrixelInterpenetration() {
-    // Near unit — ordinary world-tier voxels (priority 0).
-    spawnPerTrixelDetachedUnit(0, vec3(0.0f, 0.0f, 0.0f), Color{80, 110, 235, 255}, 0);
-    // Far unit — +6 along each axis (behind, ~same screen position), top voxel tier.
+    // Near unit — ordinary world-tier voxels (priority 0), static (MODE 0).
+    spawnPerTrixelDetachedUnit(0, vec3(0.0f, 0.0f, 0.0f), Color{80, 110, 235, 255}, 0, false);
+    // Far unit — +6 along each axis (behind, ~same screen position), top voxel
+    // tier, ROTATED so the carrier rides the MODE 1 fill (the #2023 proof).
     spawnPerTrixelDetachedUnit(
         1,
         vec3(6.0f, 6.0f, 6.0f),
         Color{235, 80, 80, 255},
-        static_cast<std::uint8_t>(IRRender::kDepthForegroundTierCount - 1)
+        static_cast<std::uint8_t>(IRRender::kDepthForegroundTierCount - 1),
+        true
     );
 }
 
@@ -1325,12 +1363,14 @@ void initEntities() {
         }
     }
 
-    // #1960 per-trixel priority interpenetration demo — OPT-IN only
+    // #1960 / #2023 per-trixel priority interpenetration demo — OPT-IN only
     // (`--only interpenetrate`), so the default scene (and every manifest shot)
     // is untouched. `--only interpenetrate` also gates every other group off, so
-    // this is an isolated, deterministic two-cube scene; run it with --no-spin
-    // --no-auto-rotate --depth-probe <overlap-px> to ground-truth the resolved
-    // tier headlessly.
+    // this is an isolated two-cube scene; the far (priority) cube ROTATES to prove
+    // the carrier survives the re-voxelize MODE 1 fill (#2023). Run it with
+    // --no-spin --no-auto-rotate --depth-probe <overlap-px> to ground-truth the
+    // resolved tier headlessly (the far cube holds a fixed non-identity pose under
+    // --no-spin, so the readback is deterministic and still exercises MODE 1).
     if (interpenetrateGroupRequested()) {
         spawnPerTrixelInterpenetration();
     }

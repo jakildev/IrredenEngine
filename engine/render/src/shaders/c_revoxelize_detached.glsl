@@ -63,9 +63,10 @@ layout(std430, binding = 8) buffer VoxelActiveMaskBuffer {
     uint activeMask[];
 };
 
-// binding 9 — this pool's source occupancy+color grid (inverse lookup). Two
-// uints per source cell: [2k] = colorPacked (occupied iff alpha byte != 0),
-// [2k+1] = materialFlagBone. Keyed by `srcCell - srcGridMin_`.
+// binding 9 — this pool's source occupancy+color grid (inverse lookup). Three
+// uints per source cell: [3k] = colorPacked (occupied iff alpha byte != 0),
+// [3k+1] = materialFlagBone, [3k+2] = reserved (per-trixel priority carrier,
+// #2023). Keyed by `srcCell - srcGridMin_`.
 layout(std430, binding = 9) readonly buffer RevoxelizeSourceGrid {
     uint sourceGrid[];
 };
@@ -93,7 +94,7 @@ bool revoxDestCovered(ivec3 c) {
         return false;
     }
     int li = g.x + srcGridDims_.x * (g.y + srcGridDims_.y * g.z);
-    return ((sourceGrid[2 * li] >> 24u) & 0xFFu) != 0u;
+    return ((sourceGrid[3 * li] >> 24u) & 0xFFu) != 0u;
 }
 
 void main() {
@@ -135,10 +136,12 @@ void main() {
     ivec3 g = src - srcGridMin_.xyz;
     uint colorPacked = 0u;
     uint matFlagBone = 0u;
+    uint reserved = 0u;
     if (all(greaterThanEqual(g, ivec3(0))) && all(lessThan(g, srcGridDims_.xyz))) {
         int li = g.x + srcGridDims_.x * (g.y + srcGridDims_.y * g.z);
-        colorPacked = sourceGrid[2 * li];
-        matFlagBone = sourceGrid[2 * li + 1];
+        colorPacked = sourceGrid[3 * li];
+        matFlagBone = sourceGrid[3 * li + 1];
+        reserved = sourceGrid[3 * li + 2];
     }
 
     if (((colorPacked >> 24u) & 0xFFu) != 0u) {
@@ -157,7 +160,12 @@ void main() {
         if (revoxDestCovered(destCell + ivec3(0, 0, -1))) occ |= (1u << 6);
         if (revoxDestCovered(destCell + ivec3(0, 0,  1))) occ |= (1u << 7);
         matFlagBone = (matFlagBone & ~(0x3Fu << 10)) | (occ << 8);
-        destColors[slot] = Voxel(colorPacked, matFlagBone, 0u);
+        // Carry the source voxel's reserved word (per-trixel priority in
+        // bits[1:0], #1960 / #2023) into the dest record verbatim — the same
+        // word the static binding-6 upload writes; stage 2 masks `& 0x3u` at
+        // decode. Without this the rotating fill hardcoded reserved 0, so a
+        // spinning detached solid silently lost its per-trixel depth priority.
+        destColors[slot] = Voxel(colorPacked, matFlagBone, reserved);
         atomicOr(activeMask[slot >> 5u], 1u << (slot & 31u));
     }
     // Empty dest cells: active bit stays 0 (CPU pre-cleared the window); their

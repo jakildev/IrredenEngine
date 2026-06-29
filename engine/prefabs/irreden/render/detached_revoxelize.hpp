@@ -36,8 +36,12 @@ namespace detail {
 //   1. residentLocals_ — one vec4 per voxel (.xyz = composed) for the IDENTITY
 //      fast-path fill (slot == source voxel), unchanged from #1556.
 //   2. sourceGrid_ — the dense 3D occupancy+color grid the INVERSE resample
-//      (#1619) inverse-looks-up: two uints per source cell ({colorPacked,
-//      materialFlagBone}), keyed by `roundHalfUp(composed) - gridMin`.
+//      (#1619) inverse-looks-up: three uints per source cell ({colorPacked,
+//      materialFlagBone, reserved}), keyed by `roundHalfUp(composed) - gridMin`.
+//      The third lane carries C_Voxel::reserved_ (per-trixel priority tier,
+//      #1960 / #2023) so a ROTATING re-voxelize unit preserves it like a static
+//      one — the GPU-side inverse fill authored color without it before, so a
+//      spinning detached solid lost its per-trixel depth priority.
 //   3. the rotation-independent dest-AABB cube bound (destSide_/destCenter_/
 //      destCount_) the inverse fill dispatches + the shared compact walks.
 inline void seedResidentLocals(
@@ -75,8 +79,9 @@ inline void seedResidentLocals(
         ->subData(0, static_cast<std::size_t>(n) * sizeof(IRMath::vec4), staging.data());
 
     // Source occupancy+color grid (inverse resample). Dims = source local AABB;
-    // two uints per cell, zero = empty (alpha byte 0). (Re)allocate only when the
-    // cell count grows past the high-water capacity so a re-seed never shrinks.
+    // three uints per cell ({colorPacked, materialFlagBone, reserved}), zero =
+    // empty (alpha byte 0). (Re)allocate only when the cell count grows past the
+    // high-water capacity so a re-seed never shrinks.
     const IRMath::ivec3 dims =
         (n > 0) ? (gridMax - gridMin + IRMath::ivec3(1, 1, 1)) : IRMath::ivec3(0, 0, 0);
     const int cellCount = (n > 0) ? dims.x * dims.y * dims.z : 0;
@@ -86,25 +91,29 @@ inline void seedResidentLocals(
         }
         buffer.sourceGrid_ = IRRender::createResource<IRRender::Buffer>(
             nullptr,
-            static_cast<std::size_t>(cellCount) * 2 * sizeof(std::uint32_t),
+            static_cast<std::size_t>(cellCount) * 3 * sizeof(std::uint32_t),
             IRRender::BUFFER_STORAGE_DYNAMIC,
             IRRender::BufferTarget::SHADER_STORAGE,
             IRRender::kBufferIndex_RevoxelizeSourceGrid
         );
         buffer.sourceGridCellCapacity_ = cellCount;
     }
-    std::vector<std::uint32_t> grid(static_cast<std::size_t>(cellCount) * 2, 0u);
+    std::vector<std::uint32_t> grid(static_cast<std::size_t>(cellCount) * 3, 0u);
     const int m = IRMath::min(n, static_cast<int>(colors.size()));
     for (int i = 0; i < m; ++i) {
         const IRMath::ivec3 g = cells[i] - gridMin;
         const int li = g.x + dims.x * (g.y + dims.y * g.z);
         const IRComponents::C_Voxel &v = colors[i];
-        grid[static_cast<std::size_t>(li) * 2] = v.color_.toPackedRGBA();
-        grid[static_cast<std::size_t>(li) * 2 + 1] =
+        grid[static_cast<std::size_t>(li) * 3] = v.color_.toPackedRGBA();
+        grid[static_cast<std::size_t>(li) * 3 + 1] =
             static_cast<std::uint32_t>(v.material_id_) |
             (static_cast<std::uint32_t>(v.flags_) << 8) |
             (static_cast<std::uint32_t>(v.bone_id_) << 16) |
             (static_cast<std::uint32_t>(v.layer_id_) << 24);
+        // Third lane mirrors the full C_Voxel::reserved_ word (per-trixel
+        // priority in bits[1:0]) so MODE 1's GPU-authored dest record carries it
+        // exactly like the static binding-6 upload does (#2023).
+        grid[static_cast<std::size_t>(li) * 3 + 2] = v.reserved_;
     }
     if (cellCount > 0) {
         buffer.sourceGrid_.second->subData(0, grid.size() * sizeof(std::uint32_t), grid.data());
@@ -154,11 +163,12 @@ inline void syncResidentBuffers(
 
     // Dense per-archetype-column iteration (no per-entity getComponent): the
     // three components arrive as parallel column vectors indexed by row.
-    const std::vector<IREntity::ArchetypeNode *> nodes =
-        IREntity::queryArchetypeNodesSimple(IREntity::getArchetype<
-                                            IRComponents::C_CanvasLocalRotation,
-                                            IRComponents::C_VoxelPool,
-                                            IRComponents::C_DetachedRevoxelizeBuffer>());
+    const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
+        IREntity::getArchetype<
+            IRComponents::C_CanvasLocalRotation,
+            IRComponents::C_VoxelPool,
+            IRComponents::C_DetachedRevoxelizeBuffer>()
+    );
 
     for (IREntity::ArchetypeNode *node : nodes) {
         std::vector<IRComponents::C_CanvasLocalRotation> &rotations =

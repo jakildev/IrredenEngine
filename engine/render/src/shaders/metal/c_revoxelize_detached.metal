@@ -49,7 +49,7 @@ static inline bool revoxDestCovered(
         return false;
     }
     const int li = g.x + srcGridDims.x * (g.y + srcGridDims.y * g.z);
-    return ((sourceGrid[2 * li] >> 24u) & 0xFFu) != 0u;
+    return ((sourceGrid[3 * li] >> 24u) & 0xFFu) != 0u;
 }
 
 kernel void c_revoxelize_detached(
@@ -97,10 +97,12 @@ kernel void c_revoxelize_detached(
     const int3 g = src - params.srcGridMin_.xyz;
     uint colorPacked = 0u;
     uint matFlagBone = 0u;
+    uint reserved = 0u;
     if (all(g >= int3(0)) && all(g < params.srcGridDims_.xyz)) {
         const int li = g.x + params.srcGridDims_.x * (g.y + params.srcGridDims_.y * g.z);
-        colorPacked = sourceGrid[2 * li];
-        matFlagBone = sourceGrid[2 * li + 1];
+        colorPacked = sourceGrid[3 * li];
+        matFlagBone = sourceGrid[3 * li + 1];
+        reserved = sourceGrid[3 * li + 2];
     }
 
     if (((colorPacked >> 24u) & 0xFFu) != 0u) {
@@ -125,10 +127,15 @@ kernel void c_revoxelize_detached(
         if (revoxDestCovered(destCell + int3(0, 0, -1), rot, gmin, gdim, sourceGrid)) occ |= (1u << 6);
         if (revoxDestCovered(destCell + int3(0, 0,  1), rot, gmin, gdim, sourceGrid)) occ |= (1u << 7);
         matFlagBone = (matFlagBone & ~(0x3Fu << 10)) | (occ << 8);
+        // Carry the source voxel's reserved word (per-trixel priority in
+        // bits[1:0], #1960 / #2023) into the dest record verbatim — the same
+        // word the static buffer-6 upload writes; stage 2 masks `& 0x3u` at
+        // decode. Without this the rotating fill hardcoded reserved 0, so a
+        // spinning detached solid silently lost its per-trixel depth priority.
         Voxel v;
         v.colorPacked = colorPacked;
         v.materialFlagBone = matFlagBone;
-        v.reserved = 0u;
+        v.reserved = reserved;
         destColors[slot] = v;
         atomic_fetch_or_explicit(
             &activeMask[slot >> 5u],
