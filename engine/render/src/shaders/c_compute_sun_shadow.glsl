@@ -71,7 +71,7 @@ const float kSelfStepDepthRange = 3.0;
 // receiver is the riser/tread of the staircase itself, for which the same-face
 // round-to-cell step is the reliable signal. Cardinal flats (offset ~0) never
 // match, so a static cardinal scene is byte-identical.
-bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int rawDepth, int cardinalIndex) {
+bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int rawDepth, int cardinalIndex, vec3 centerPos3D) {
     int faceId = visibleFaceIds[slot];
     vec3 worldOutward = vec3(faceOutwardNormal6I(faceId));
     // In-plane tangent pair for the receiver's face axis.
@@ -96,10 +96,6 @@ bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int rawDepth, in
         deltaT1 + deltaT2, deltaT1 - deltaT2, -deltaT1 + deltaT2, -deltaT1 - deltaT2
     );
 
-    vec3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
-    );
-
     for (int dir = 0; dir < 8; ++dir) {
         ivec2 samplePixel = pixel + dirs[dir];
         if (samplePixel.x < 0 || samplePixel.x >= size.x ||
@@ -111,7 +107,7 @@ bool detectSelfStepStaircase(ivec2 pixel, ivec2 size, int slot, int rawDepth, in
             samplePixel, neighbourEncoded >> 2, trixelCanvasOffsetZ1,
             frameCanvasOffset, voxelRenderOptions, cardinalIndex
         );
-        float step = abs(dot(neighbourPos3D - pos3D, worldOutward));
+        float step = abs(dot(neighbourPos3D - centerPos3D, worldOutward));
         if (step > kSelfStepMinHeight && step < kSelfStepMaxHeight) return true;
     }
     return false;
@@ -189,7 +185,7 @@ void main() {
     // upstream); the recompute reuses the same pos/normal with the near self-step
     // rejection lifted, so genuine far contact shadows are untouched.
     if (!perAxis && residualYaw == 0.0 && factor < 1.0 &&
-        detectSelfStepStaircase(pixel, size, face, rawDepth, cardinalIndex)) {
+        detectSelfStepStaircase(pixel, size, face, rawDepth, cardinalIndex, pos3D)) {
         factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), kSelfStepDepthRange);
     }
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));

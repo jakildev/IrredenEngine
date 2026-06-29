@@ -28,6 +28,7 @@ constant float kSelfStepDepthRange = 3.0;
 // signature; 8 in-plane directions catch axis- and diagonal-aligned steps.
 inline bool detectSelfStepStaircase(
     int2 pixel, int2 size, int slot, int rawDepth, int cardinalIndex,
+    float3 centerPos3D,
     constant FrameDataVoxelToTrixel &frameData,
     texture2d<int, access::read> trixelDistances
 ) {
@@ -55,11 +56,6 @@ inline bool detectSelfStepStaircase(
         deltaT1 + deltaT2, deltaT1 - deltaT2, -deltaT1 + deltaT2, -deltaT1 - deltaT2
     };
 
-    float3 pos3D = trixelCanvasPixelToWorld3D(
-        pixel, rawDepth, frameData.trixelCanvasOffsetZ1,
-        frameData.frameCanvasOffset, frameData.voxelRenderOptions, cardinalIndex
-    );
-
     for (int dir = 0; dir < 8; ++dir) {
         int2 samplePixel = pixel + dirs[dir];
         if (samplePixel.x < 0 || samplePixel.x >= size.x ||
@@ -71,7 +67,7 @@ inline bool detectSelfStepStaircase(
             samplePixel, neighbourEncoded >> 2, frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset, frameData.voxelRenderOptions, cardinalIndex
         );
-        float step = abs(dot(neighbourPos3D - pos3D, worldOutward));
+        float step = abs(dot(neighbourPos3D - centerPos3D, worldOutward));
         if (step > kSelfStepMinHeight && step < kSelfStepMaxHeight) return true;
     }
     return false;
@@ -165,7 +161,7 @@ kernel void c_compute_sun_shadow(
     // The recompute reuses the same pos/normal with the near self-step rejection
     // lifted, so genuine FAR contact shadows survive. Mirrors GLSL.
     if (!perAxis && frameData.residualYaw == 0.0 && factor < 1.0 &&
-        detectSelfStepStaircase(pixel, size, face, rawDepth, cardinalIndex, frameData, trixelDistances)) {
+        detectSelfStepStaircase(pixel, size, face, rawDepth, cardinalIndex, pos3D, frameData, trixelDistances)) {
         factor = worldSunShadowFactor(
             pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf, kSelfStepDepthRange
         );
