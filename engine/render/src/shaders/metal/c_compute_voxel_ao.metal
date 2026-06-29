@@ -4,7 +4,11 @@
 // Mirrors shaders/c_compute_voxel_ao.glsl. Per-pixel ambient-occlusion
 // compute. Samples four face-tangent neighbour pixels in trixelDistances
 // and counts each as occluding when its decoded surface position sits in
-// front of the receiver's face plane by ~1 voxel along face-outward.
+// front of the receiver's face plane by ~1 voxel along face-outward AND
+// belongs to a different visible face. The tilt-aware same-face resample
+// (#1718) then suppresses different-face steps that are really the 1-cell
+// riser of a quantized tilted-flat surface (re-voxelize / REBUILD_GRID
+// staircase) — see the GLSL for the full crease-vs-staircase rationale.
 
 constant int kEmptyDistanceEncoded = 65535;
 

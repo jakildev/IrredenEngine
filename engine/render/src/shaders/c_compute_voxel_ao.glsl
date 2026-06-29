@@ -13,6 +13,16 @@
 // speckle that reads as "missing sections" on rotating solids). Flat
 // cardinal faces are coplanar (d ~ 0) so the gate never changes them.
 //
+// Tilt-aware same-face resample (#1718): a re-voxelize / REBUILD_GRID
+// rotating solid is rebuilt as real voxels, so its tilted-flat surface
+// becomes a true voxel staircase whose tread (+Z) and riser (±X/±Y) ARE
+// different faces — the different-face gate alone would then count every
+// 1-cell step as a crease and re-introduce the banding. The resample
+// (search "Tilt-aware" below) looks one cell beyond a different-face
+// step: a monotone staircase returns to the receiver's own face there
+// (suppress), whereas a genuine concave crease (the L-prism notch) meets
+// a perpendicular wall (keep). Per-pixel, so legitimate creases keep AO.
+//
 // SDF shapes participate in crease AO automatically because their
 // `trixelDistances` writes are visible to the sampling — no separate
 // rasterization into a side buffer is needed.
