@@ -9,6 +9,11 @@
 #   $4  role      e.g. "worker"
 #   $5  fallback  optional --fallback-model chain (comma-separated) for
 #                 heavy-tier dispatches; empty for sonnet roles
+#   $6  mode      role mode — dry-run | live | review-only (default: live).
+#                 Carried through to `/role-<role> <mode>` so a dry-run boot
+#                 runs the standby path, not a live task-pickup iteration
+#                 (#2022). Absent/unrecognized → live (an older dispatcher
+#                 that passes only 5 args keeps today's behavior).
 #
 # On usage-limit exit (exit code 2), writes a Unix-epoch timestamp to
 # ~/.fleet/state/rate-limit/<pane_key>.ts. fleet-dispatcher checks that
@@ -26,6 +31,16 @@ MODEL="${2:?fleet-dispatch-wrap: missing model}"
 EFFORT="${3:?fleet-dispatch-wrap: missing effort}"
 ROLE="${4:?fleet-dispatch-wrap: missing role}"
 FALLBACK_MODEL="${5:-}"
+# Role mode passed to the slash command. `${6:-live}` first so an older dispatcher
+# that passes only 5 args (no mode) doesn't trip `set -u` on bare $6. Validate so
+# a stray value can't reach the role doc as an unrecognized mode; anything but the
+# three known modes → live.
+_mode_arg="${6:-live}"
+case "$_mode_arg" in
+    dry-run|live|review-only) ROLE_MODE="$_mode_arg" ;;
+    *) ROLE_MODE="live" ;;
+esac
+unset _mode_arg
 # Track fleet-dispatcher's STATE_DIR via the same env-var override so a
 # config change in one place propagates to both scripts.
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
@@ -82,7 +97,7 @@ if [[ -n "$FALLBACK_MODEL" ]]; then
     CLAUDE_ARGS+=(--fallback-model "$FALLBACK_MODEL")
 fi
 
-claude "${CLAUDE_ARGS[@]}" "/role-$ROLE live" | fleet-claude-stream
+claude "${CLAUDE_ARGS[@]}" "/role-$ROLE $ROLE_MODE" | fleet-claude-stream
 
 rc="${PIPESTATUS[0]}"
 TRIGGERS_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"

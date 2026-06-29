@@ -255,9 +255,15 @@ fi
 # parser further down recognizes the same flags as no-ops so the
 # unknown-arg guard doesn't reject them.
 RESET_USAGE=0
+# MODE is resolved here (not only in the main arg loop below) because the
+# dispatcher launch in step 3f — which writes the dispatch-mode sentinel — runs
+# before that loop. The main loop re-recognizes the mode tokens as no-ops so the
+# unknown-arg guard still accepts them (#2022).
+MODE="dry-run"
 for arg in "$@"; do
     case "$arg" in
         --reset-usage) RESET_USAGE=1 ;;
+        dry-run|live|review-only) MODE="$arg" ;;
     esac
 done
 
@@ -1218,6 +1224,12 @@ else
         rm -f "$dispatcher_pid_file"
     fi
     mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
+    # Record the boot mode for the dispatcher to read each tick. In dry-run it
+    # hands each role one standby iteration then idles, instead of cycling real
+    # (live) iterations every ~13s and burning the model window (#2022). Written
+    # before the launch so the daemon never sees a missing sentinel, and rewritten
+    # on every boot so it can't go stale.
+    printf '%s\n' "$MODE" > "$HOME/.fleet/state/dispatch-mode"
     dispatcher_log="$HOME/.fleet/logs/dispatcher.log"
     nohup "$dispatcher_cmd" >>"$dispatcher_log" 2>&1 &
     disown
@@ -1286,11 +1298,13 @@ fi
 # See the heredoc below ("mode review-only ...") for the user-facing
 # description of each mode.
 
-MODE="dry-run"
+# MODE is resolved in the early-parse loop near the top (it must be known before
+# the step-3f dispatcher launch). Recognized here as a no-op so the unknown-arg
+# guard accepts it — same pattern as --reset-usage.
 ATTACH_LIVE=1   # in live mode, attach to the tmux session at the end
 for arg in "$@"; do
     case "$arg" in
-        dry-run|live|review-only) MODE="$arg" ;;
+        dry-run|live|review-only) ;;  # handled in early parse loop near the top
         --no-attach)  ATTACH_LIVE=0 ;;
         --reset-usage) ;;  # handled in early parse loop near the top
         *) echo "fleet-up: unknown argument '$arg'" >&2; exit 2 ;;
