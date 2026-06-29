@@ -119,18 +119,27 @@ struct FogObserverData {
     int _fogObsPad2;
 };
 
+// Safety margin (cells) — mirrors kCullSafetyCells in the GLSL: covers the
+// per-pixel worldPerPixel AA in c_fog_to_trixel that this shader can't compute.
+constant float kCullSafetyCells = 1.0f;
+
 // True iff this column lies under any live analytic vision circle, so its voxels
 // survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per pixel.
-// Tested with a +1 cell margin (plus edge softness) so columns the disc only
-// partially covers at its boundary still rasterize.
+// Uses a cell nearest-point (AABB) test (mirrors the GLSL): the voxel cell at
+// integer (cx,cy) covers [cx-0.5, cx+0.5]×[cy-0.5, cy+0.5]; the residual after
+// clamping is the distance to the nearest point of the AABB. Strictly more
+// permissive than a center-only test, so columns whose nearest corner touches the
+// smooth band rasterize — the per-pixel mask owns the visible edge at pixel
+// resolution and no grid-aligned notches appear along the arc.
 static bool fogColumnInVisionCircle(
     constant FogObserverData& obs, int3 voxelPosRaw
 ) {
     const float2 col = float2(voxelPosRaw.xy);
     for (int i = 0; i < obs.visionCircleCount; ++i) {
-        const float2 d = col - obs.visionCircles[i].xy;
+        float2 d = abs(col - obs.visionCircles[i].xy) - float2(0.5f);
+        d = max(d, float2(0.0f));
         const float keepR =
-            obs.visionCircles[i].z + max(obs.visionCircles[i].w, 0.0f) + 1.0f;
+            obs.visionCircles[i].z + max(obs.visionCircles[i].w, 0.0f) + kCullSafetyCells;
         if (dot(d, d) <= keepR * keepR) {
             return true;
         }

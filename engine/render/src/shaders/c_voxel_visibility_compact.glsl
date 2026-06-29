@@ -130,15 +130,26 @@ bool fogColumnUnexplored(ivec3 voxelPosRaw) {
     return imageLoad(canvasFogOfWar, fogCell).r < kFogExploredThreshold;
 }
 
+// Safety margin (cells): covers the per-pixel worldPerPixel AA that
+// c_fog_to_trixel adds at low zoom — this shader can't compute zoom.
+// >=1 so every column any pixel could reveal survives the cull.
+const float kCullSafetyCells = 1.0;
+
 // True iff this column lies under any live analytic vision circle, so its
 // voxels survive the grid cull and FOG_TO_TRIXEL can reveal them smoothly per
-// pixel. Tested with a +1 cell margin (plus the edge softness) so columns the
-// disc only partially covers at its boundary still rasterize.
+// pixel. Uses a cell nearest-point (AABB) test: the voxel cell at integer
+// (cx,cy) covers [cx-0.5, cx+0.5]×[cy-0.5, cy+0.5]; clamping the offset to
+// that extent and measuring the residual gives the distance from the circle
+// center to the nearest point of the cell. Strictly more permissive than a
+// center-only test, so columns whose nearest corner touches the smooth band
+// rasterize — the per-pixel mask owns the visible edge at pixel resolution
+// and no grid-aligned notches appear along the arc.
 bool fogColumnInVisionCircle(ivec3 voxelPosRaw) {
     vec2 col = vec2(voxelPosRaw.xy);
     for (int i = 0; i < visionCircleCount; ++i) {
-        vec2 d = col - visionCircles[i].xy;
-        float keepR = visionCircles[i].z + max(visionCircles[i].w, 0.0) + 1.0;
+        vec2 d = abs(col - visionCircles[i].xy) - vec2(0.5);
+        d = max(d, vec2(0.0));
+        float keepR = visionCircles[i].z + max(visionCircles[i].w, 0.0) + kCullSafetyCells;
         if (dot(d, d) <= keepR * keepR) {
             return true;
         }
