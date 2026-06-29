@@ -902,10 +902,12 @@ EntityId createVoxelPoolShape(
     }
     // The SDF-carving loop above writes alpha directly through
     // `vs.voxels_[i].deactivate()` rather than going through a
-    // `C_VoxelSetNew` mutator method, so the pool's per-slot active mask
-    // (consumed by `c_voxel_visibility_compact`) is still pinned to the
-    // ctor's all-active state. Re-derive it from the live alphas so the
-    // compact shader skips carved-away interior slots.
+    // `C_VoxelSetNew` mutator method, so both the exposed-face mask and the
+    // per-slot active mask stay pinned to the ctor's all-active grid.
+    // Recompute face occupancy first (newly-exposed surface faces otherwise
+    // stay wrongly occluded), then sync the active mask so the compact shader
+    // skips carved-away interior slots. Mirrors createCustomVoxelFigure.
+    IRPrefab::Voxel::recomputeFaceOccupancy(vs.voxels_, size);
     vs.syncActiveMask();
 
     IR_LOG_INFO(
