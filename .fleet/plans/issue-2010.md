@@ -1,66 +1,86 @@
-# Plan: render — re-voxelize SOLID cubes venetian gaps under rotation (confirmation spike → fix)
+# Plan: render — re-voxelize SOLID staircase venetian banding (sun-shadow riser facet)
 
-- **Issue:** #2010 (`fleet:task`, part of epic #1717; geometry-coverage prereq for the #1717 C-series)
+- **Issue:** #2010 (`fleet:task`, part of epic #1717 staircase-banding family)
 - **Model:** opus
-- **Date:** 2026-06-27
+- **Date:** 2026-06-27 (spike); resolved 2026-06-29 (opus-architect)
 - **Architect:** opus-architect
 
-## Status: confirmation spike FIRST
+## Status: design RESOLVED — marker-free, mirror #2089
 
-Root cause is **not yet proven** (cf. #1457 mis-diagnosis history). Do not patch
-before an instrumented repro confirms the mechanism.
+The confirmation spike (committed evidence on the branch) **refuted** the
+original mask/geometry premise: re-voxelize coverage is hole-free and the
+exposed mask is correct by construction. The banding is **lighting**. After
+steward re-scoping, #2010 owns the **sun-shadow riser facet**; #1718 (PR #2089,
+**merged** 2026-06-29) owned the **AO facet**. Disjoint shaders, no collision.
 
-## Verified current state (2026-06-27 code read)
+The 3 design-block cycles parked on a premise — "the sun-shadow tolerance needs
+a shared per-canvas 'rebuilt-rotating GRID solid' marker that #1718 must plumb
+first." **That premise is dissolved:** #2089 shipped **marker-free** (touches
+only `c_compute_voxel_ao.glsl` / `.metal` — no UBO field, no canvas component,
+no C++). There is no marker to wait for or reuse.
 
-Revoxelization is already inverse-mapped — there are no classic forward-mapping
-holes: DETACHED MODE 1 inverse path `c_revoxelize_detached.glsl:121-165`; GRID
-inverse walk `system_rebuild_grid_voxels.hpp:420-444`. So the venetian gaps are
-NOT missing occupancy; they are a **face-exposure-mask** defect on a solid that
-is geometrically present.
+## Approach (resolved): geometric staircase discriminator (same-face step)
 
-## Leading hypothesis (to confirm)
+Same marker-free intent as #2089 (discriminate the self-step **purely in-shader,
+from rendered geometry** — no per-canvas marker, no UBO change, no C++), but the
+discriminator is reframed for the sun-shadow receiver. #2089's literal probe
+(a DIFFERENT-face occluder ~1 cell in front + a `pixel + 2*delta` same-face
+return) is tuned for the AO receiver — a *tread* whose occluder is a *riser*. The
+sun-shadow shadowed pixels are the staircase risers/treads themselves, for which
+that probe matches almost nothing (empirically ~3% of banded pixels).
 
-`revoxDestCovered()` (`c_revoxelize_detached.glsl:89-97`) inverse-maps each dest
-neighbor via `roundHalfUp(rotateByInverseQuat(...))` and returns false when it
-lands outside the tight source AABB. On near-cardinal residual rotations the
-round-to-cell toggles neighbor coverage on alternating rows → the six-neighbor
-exposed mask (:152-159) flips row-by-row → venetian banding. Non-uniform shapes
-amplify it (more edge voxels). Possible second contributor: CPU<->GPU mask
-mismatch — CPU recompute `system_rebuild_detached_voxels.hpp:111-141` vs GPU
-authorship `c_revoxelize_detached.glsl:144-161`, with the CPU color/active
-upload SKIPPED when `revoxInverse==true` (`system_voxel_to_trixel.hpp:902`).
+The reliable signal at the sun-shadow receiver is the **same-face round-to-cell
+step**: a tilted-flat surface quantized into a voxel staircase has a SAME-face
+in-plane neighbour offset ~1 cell along the receiver's outward normal, whereas a
+flat cardinal face is coplanar (offset ~0) and a genuine concave crease meets a
+DIFFERENT face. So a same-face neighbour at `[0.5, 1.5]` along the normal (8
+in-plane directions, axis + diagonal) is the unambiguous staircase signature.
+When detected, lift the near sun-shadow rejection so the receiver's own ~1-cell
+in-cell step blocker is skipped; genuine FAR contacts (and all flat receivers)
+are untouched.
 
-## Confirmation steps
+## Files (sun-shadow shaders only)
 
-1. Instrument the exposed mask: dump per-cell flags for a mid-bracket pose of a
-   SOLID cube; check whether the banded rows correspond to flipped exposure bits
-   (not missing occupancy). `--no-lighting` to isolate geometry from lighting.
-2. A/B: widen the source-AABB neighbor query by 1 cell (or treat
-   out-of-AABB-but-occupied-source as covered) and observe whether banding closes.
-3. Check CPU vs GPU mask agreement on the identical pose.
+- `ir_sun_shadow_sample.glsl` / `.metal` — `sampleCascadeShadow` gains a
+  `selfStepDepthRange` arg that lifts the NEAR rejection
+  (`nearReject = max(bias, selfStepDepthRange)`); the `kMaxShadowDepthRange`
+  window keeps using `bias`. `worldSunShadowFactor` threads it through (GLSL: a
+  4-arg overload + 3-arg delegate; Metal: a defaulted param). 0 = pre-#2010
+  byte-identical (detached world-receive + all flat geometry).
+- `c_compute_sun_shadow.glsl` / `.metal` — `detectSelfStepStaircase()` probes 8
+  in-plane neighbours for a same-face ~1-cell step. main() recomputes the factor
+  with `kSelfStepDepthRange` only when a SHADOWED receiver (`factor < 1.0`) on the
+  single-canvas static-camera path (`!perAxis && residualYaw == 0`) is detected
+  as a staircase — lit pixels and flats skip the probe (byte-identical).
 
-## Then fix
+## Validation (macOS / Metal)
 
-Per whichever contributor confirms: correct the neighbor-coverage boundary /
-rounding so exposure is rotation-stable, and/or reconcile CPU<->GPU mask
-authorship. Land on BOTH backends.
+- canvas_stress `--only gridspin --debug-overlay shadow --no-auto-rotate`: the
+  dense magenta venetian rows on the GRID spin cubes clear; a residual genuine
+  edge shadow (vertical column) is preserved.
+- canvas_stress full scene: `img_diff` (fix vs master) drift is confined to the
+  GRID self-shadow — the SDF floor and every detached canvas are untouched (no
+  genuine-shadow over-suppression).
+- shape_debug labeled crops (incl. cardinal yaw180): `img_diff` drift = 0
+  (byte-identical static cardinal scenes).
+- Pre-existing blocker found + filed: canvas_stress (and other migrated demos)
+  reject their own custom CLI flags because `IREngine::init(argc, argv)` parses
+  strictly without the flags registered (IRArgs migration gap).
 
-## Files
+## Scope / acceptance (steward GRID-only narrowing)
 
-c_revoxelize_detached.glsl:89-97,144-161; system_rebuild_detached_voxels.hpp:111-141;
-system_voxel_to_trixel.hpp:902-919; face_occupancy.hpp:132-162; metal twins.
-
-## Acceptance
-
-canvas_stress `revox_coverage` / `revoxelize_solids_zoom` shots solid (no
-venetian banding) across a full spin AND the non-uniform `--spin-shape` figure
-(commit ad93066d) at 0/45/90; both backends; `--no-lighting` clean (geometry)
-confirmed before re-checking lit.
+- **GRID main-canvas spin cubes only.** Detached riser banding is routed to
+  #1444's smooth deform — not patched here.
+- `--debug-overlay shadow` over the GRID spin cubes: no magenta riser venetian
+  rows at any orientation; genuine contact shadows preserved.
+- `#1922` jitter harness passes; both backends; `--no-lighting` byte-clean;
+  cardinal static scenes byte-identical (img_diff drift 0).
+- Size `kSelfStepDepthRange` against a post-#2089 baseline (merged): once AO
+  stops darkening the treads, the magenta residual to tune against is cleaner.
 
 ## Reconciliation
 
-Geometry-coverage **prerequisite** for the #1717 C-series (shadow consolidation
-assumes a hole-free caster). Sibling of #1718 (sun-shadow rows; in flight PR
-#1742 — that is the lighting facet, this is the geometry facet). Shares the
-rotated-voxel path with epic #1881 (Child 1 cardinal gather is a different
-defect; coordinate ir_iso_common edits).
+Sun-shadow riser facet of the #1717 staircase-banding family. Sibling #1718
+(AO facet, PR #2089, merged). Detached riser banding → #1444. The shared
+`ir_sun_shadow_sample` lookup stays byte-identical for the detached world-receive
+path (#1576 P4b-2) via the 0-default range.

@@ -51,11 +51,17 @@ inline float unpackSunDepth(uint packedDepth) {
 inline float sampleCascadeShadow(
     float2 sunUV, float sunZ, float3 normal, float3 sunDir,
     float2 origin, float2 texelSz, int bufferOffset,
-    device const uint *sunDepthBuf
+    device const uint *sunDepthBuf, float selfStepDepthRange = 0.0
 ) {
     float slope = max(kShadowBiasSlopeMin, dot(normal, sunDir));
     float texelSize = max(texelSz.x, texelSz.y);
     float bias = texelSize * kShadowBiasTexelScale / slope + kShadowBiasQuantNoise;
+    // Round-to-cell staircase self-step rejection (#2010) — mirrors the GLSL
+    // twin: selfStepDepthRange lifts the near rejection so a riser's own in-cell
+    // tread (~1 cell closer in sun-Z) is skipped. 0 for every caller except a
+    // detected staircase riser, so detached world-receive + flats stay
+    // byte-identical; the kMaxShadowDepthRange window keeps using `bias`.
+    float nearReject = max(bias, selfStepDepthRange);
 
     float2 sunPxF = (sunUV - origin) / texelSz;
     int2 base = int2(floor(sunPxF));
@@ -72,7 +78,7 @@ inline float sampleCascadeShadow(
             float weight = mix(1.0f - frac.x, frac.x, float(dx))
                          * mix(1.0f - frac.y, frac.y, float(dy));
             float depthDiff = sunZ - nearestZ;
-            if (depthDiff > bias && depthDiff - bias < kMaxShadowDepthRange)
+            if (depthDiff > nearReject && depthDiff - bias < kMaxShadowDepthRange)
                 shadowAccum += weight;
         }
     }
@@ -85,7 +91,8 @@ inline float sampleCascadeShadow(
 // of c_compute_sun_shadow's main(); shared with the detached world-receive path.
 inline float worldSunShadowFactor(
     float3 pos3D, float3 normal, float isoDepth,
-    constant FrameDataSun &sun, device const uint *sunDepthBuf
+    constant FrameDataSun &sun, device const uint *sunDepthBuf,
+    float selfStepDepthRange = 0.0
 ) {
     float3 sunDir = sun.sunDirection.xyz;
     float3 uHat = sun.sunBasisU.xyz;
@@ -94,32 +101,36 @@ inline float worldSunShadowFactor(
     float2 sunUV = float2(dot(biasedPos3D, uHat), dot(biasedPos3D, vHat));
     float sunZ = -dot(biasedPos3D, sunDir);
 
+    // #2010: selfStepDepthRange (0 = pre-#2010) threaded to every cascade sample
+    // so the staircase self-step carve applies in whichever cascade the receiver
+    // lands in. The 5-arg detached caller (c_lighting_to_trixel) takes the
+    // default 0.0 and stays byte-identical.
     float shadowAccum;
     if (sun.cascadeCount <= 1) {
         shadowAccum = sampleCascadeShadow(
             sunUV, sunZ, normal, sunDir,
-            sun.sunBufferOriginUV, sun.sunBufferTexelSize, 0, sunDepthBuf
+            sun.sunBufferOriginUV, sun.sunBufferTexelSize, 0, sunDepthBuf, selfStepDepthRange
         );
     } else {
         float distToSplit = isoDepth - sun.cascadeSplitDepth;
         if (distToSplit < -kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf
+                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, selfStepDepthRange
             );
         } else if (distToSplit > kCascadeBlendRange) {
             shadowAccum = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf
+                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, selfStepDepthRange
             );
         } else {
             float nearShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf
+                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, selfStepDepthRange
             );
             float farShadow = sampleCascadeShadow(
                 sunUV, sunZ, normal, sunDir,
-                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf
+                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, selfStepDepthRange
             );
             float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
             shadowAccum = mix(nearShadow, farShadow, t);
